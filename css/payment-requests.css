@@ -1335,3 +1335,256 @@
 @media (max-width: 900px) {
     .rpt-charts-row { grid-template-columns: 1fr; }
 }
+
+/* ══════════════════════════════════════════════════════
+   DARK MODE — Payment Requests, Reports & SOA
+   Palette: bg-card #1e2822 · bg-input #141c19
+            border #2c3d35 · border-sub #222d28
+            text #d4e4dc · muted #7d9a8c
+══════════════════════════════════════════════════════ */
+
+/* ── Stat Cards ── */
+body.dark-mode .pr-stat-card {
+    background: #1e2822;
+    border-color: #2c3d35;
+    box-shadow: 0 2px 8px rgba(0,0,0,.25);
+}
+body.dark-mode .pr-stat-info h3 { color: #d4e4dc; }
+body.dark-mode .pr-stat-info p  { color: #7d9a8c; }
+
+/* ── Toolbar inputs / selects ── */
+body.dark-mode .pr-search-input {
+    background: #141c19;
+    border-color: #2c3d35;
+    color: #d4e4dc;
+}
+body.dark-mode .pr-search-input::placeholder { color: #4a6858; }
+body.dark-mode .pr-search-input:focus {
+    border-color: #00a85e;
+    box-shadow: 0 0 0 3px rgba(0,168,94,.14);
+}
+body.dark-mode .pr-filter-select {
+    background: #141c19;
+    border-color: #2c3d35;
+    color: #d4e4dc;
+}
+body.dark-mode .pr-filter-select:focus { border-color: #00a85e; }
+
+/* ── Toolbar buttons (neutral/white) ── */
+body.dark-mode .pr-btn-qrsettings {
+    background: #1e2822;
+    border-color: #2c3d35;
+    color: #7d9a8c;
+}
+body.dark-mode .pr-btn-qrsettings:hover {
+    background: #252f2a;
+    border-color: #00a85e;
+    color: #52c47a;
+}
+body.dark-mode .pr-btn-cancel {
+    background: #1e2822;
+    border-color: #2c3d35;
+    color: #7d9a8c;
+}
+body.dark-mode .pr-btn-cancel:hover {
+    background: #252f2a;
+    border-color: #3a5048;
+    color: #d4e4dc;
+}
+
+/* ── Table ── */
+body.dark-mode .pr-table-wrap { background: #1e2822; }
+body.dark-mode .pr-table thead tr { background: #141c19; }
+body.dark-mode .pr-table th { color: #7d9a8c; border-color: #2c3d35; }
+body.dark-mode .pr-table td { border-color: #222d28; color: #d4e4dc; }
+body.dark-mode .pr-table tbody tr:hover td { background: #252f2a; }
+
+/* ── Modal ── */
+body.dark-mode .pr-modal-card {
+    background: #1e2822;
+    border-color: #2c3d35;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45);
+}
+body.dark-mode .pr-modal-header {
+    background: linear-gradient(135deg, #202e26 0%, #1e2822 100%);
+    border-color: #2c3d35;
+}
+body.dark-mode .pr-modal-header h3 { color: #d4e4dc; }
+body.dark-mode .pr-modal-close { color: #7d9a8c; }
+body.dark-mode .pr-modal-close:hover { background: #252f2a; color: #d4e4dc; }
+body.dark-mode .pr-modal-body { background: #1e2822; }
+body.dark-mode .pr-modal-footer {
+    border-color: #2c3d35;
+    background: #171f1c;
+}
+body.dark-mode .pr-form-group label { color: #7d9a8c; }
+body.dark-mode .pr-form-input,
+body.dark-mode .pr-form-select,
+body.dark-mode .pr-form-textarea {
+    background: #141c19;
+    border-color: #2c3d35;
+    color: #d4e4dc;
+}
+body.dark-mode .pr-form-input::placeholder,
+body.dark-mode .pr-form-textarea::placeholder { color: #4a6858; }
+body.dark-mode .pr-form-input:focus,
+body.dark-mode .pr-form-select:focus,
+body.dark-mode .pr-form-textarea:focus {
+    border-color: #00a85e;
+    box-shadow: 0 0 0 3px rgba(0,168,94,.12);
+}
+body.dark-mode .pr-detail-label { color: #7d9a8c; }
+body.dark-mode .pr-detail-value { color: #d4e4dc; }
+body.dark-mode .pr-rejected-note {
+    background: rgba(201,112,112,0.09);
+    border-color: rgba(201,112,112,0.28);
+    color: #c97878;
+}
+body.dark-mode .pr-error-msg {
+    background: rgba(201,112,112,0.09);
+    border-color: rgba(201,112,112,0.28);
+    color: #c97878;
+}
+
+/* ── Receipt viewer close button ── */
+body.dark-mode .pr-receipt-viewer-close {
+    background: #252f2a;
+    color: #d4e4dc;
+}
+body.dark-mode .pr-receipt-viewer-close:hover { background: #2c3d35; }
+
+/* ── CLIENT SIDE: Payment request cards ── */
+body.dark-mode .pr-client-card {
+    background: #1e2822;
+    border-color: #2c3d35;
+    box-shadow: 0 2px 10px rgba(0,0,0,.25);
+}
+body.dark-mode .pr-client-card-title   { color: #d4e4dc; }
+body.dark-mode .pr-client-card-sub     { color: #7d9a8c; }
+body.dark-mode .pr-client-card-due     { color: #7d9a8c; }
+body.dark-mode .pr-client-card-due.overdue { color: #c97878; }
+body.dark-mode .pr-client-qr-wrap img  { border-color: #2c3d35; }
+body.dark-mode .pr-client-verified-badge {
+    background: rgba(82,196,138,0.12);
+    color: #5cbf88;
+}
+body.dark-mode .pr-client-rejected-note {
+    background: rgba(201,112,112,0.09);
+    border-color: rgba(201,112,112,0.28);
+    color: #c97878;
+}
+body.dark-mode .pr-client-submitted-note {
+    background: rgba(37,99,235,0.09);
+    border-color: rgba(37,99,235,0.25);
+    color: #93c5fd;
+}
+
+/* ── Upload zone ── */
+body.dark-mode .pr-upload-zone {
+    background: #141c19;
+    border-color: #2c3d35;
+}
+body.dark-mode .pr-upload-zone:hover,
+body.dark-mode .pr-upload-zone.dragover {
+    border-color: #00a85e;
+    background: #1a2820;
+}
+body.dark-mode .pr-upload-zone-text { color: #7d9a8c; }
+body.dark-mode .pr-receipt-preview img { border-color: #2c3d35; }
+
+/* ── Payment method tabs ── */
+body.dark-mode .pr-method-tab {
+    background: #141c19;
+    border-color: #2c3d35;
+    color: #7d9a8c;
+}
+body.dark-mode .pr-method-tab:hover {
+    border-color: #00a85e;
+    color: #52c47a;
+}
+body.dark-mode .pr-method-tab.active {
+    border-color: #00a85e;
+    background: #1a2820;
+    color: #52c47a;
+    font-weight: 600;
+}
+body.dark-mode .pr-qr-tab-item {
+    background: #141c19;
+    border-color: #2c3d35;
+}
+body.dark-mode .pr-qr-tab-label { color: #7d9a8c; }
+
+/* ── Reports: chart & table cards ── */
+body.dark-mode .rpt-chart-card {
+    background: #1e2822;
+    border-color: #2c3d35;
+}
+body.dark-mode .rpt-chart-title { color: #d4e4dc; }
+body.dark-mode .rpt-table-card {
+    background: #1e2822;
+    border-color: #2c3d35;
+}
+body.dark-mode .rpt-table-header { border-color: #222d28; }
+body.dark-mode .rpt-table-title  { color: #d4e4dc; }
+body.dark-mode .rpt-table-sub    { color: #7d9a8c; }
+
+/* ── Reports: data table ── */
+body.dark-mode .rpt-table thead tr {
+    background: #141c19;
+    border-color: #2c3d35;
+}
+body.dark-mode .rpt-table th { color: #7d9a8c; }
+body.dark-mode .rpt-table td { border-color: #222d28; }
+body.dark-mode .rpt-table tbody tr:hover td { background: #252f2a; }
+body.dark-mode .rpt-client-name  { color: #d4e4dc; }
+body.dark-mode .rpt-client-email { color: #7d9a8c; }
+body.dark-mode .rpt-td-center    { color: #d4e4dc; }
+body.dark-mode .rpt-td-amt       { color: #d4e4dc; }
+body.dark-mode .rpt-td-date      { color: #7d9a8c; }
+body.dark-mode .rpt-overdue-pill { background: rgba(201,112,112,0.15); color: #c97878; }
+
+/* ── Reports: page header ── */
+body.dark-mode .rpt-page-title { color: #d4e4dc; }
+body.dark-mode .rpt-page-sub   { color: #7d9a8c; }
+
+/* ── Reports: month select / refresh button ── */
+body.dark-mode .rpt-month-select {
+    background: #141c19;
+    border-color: #2c3d35;
+    color: #d4e4dc;
+}
+body.dark-mode .rpt-month-select:focus { border-color: #00a85e; }
+body.dark-mode .rpt-btn-refresh {
+    background: #1e2822;
+    border-color: #2c3d35;
+    color: #7d9a8c;
+}
+body.dark-mode .rpt-btn-refresh:hover {
+    background: #252f2a;
+    border-color: #3a5048;
+}
+
+/* ── SOA (SOWA) modal ── */
+body.dark-mode .sowa-header-block { border-color: #2c3d35; }
+body.dark-mode .sowa-doc-title    { color: #d4e4dc; }
+body.dark-mode .sowa-meta         { color: #d4e4dc; }
+body.dark-mode .sowa-meta-label   { color: #7d9a8c; }
+
+/* SOWA table rows */
+body.dark-mode .sowa-item-row td {
+    background: #1e2822;
+    color: #d4e4dc;
+    border-color: #2c3d35;
+}
+body.dark-mode .sowa-item-row:hover td { background: #252f2a; }
+body.dark-mode .sowa-subtotal-row td {
+    background: rgba(212,168,64,0.09);
+    color: #d4a840;
+    border-color: rgba(212,168,64,0.22);
+}
+/* Grand total and category rows retain their own dark colors */
+
+/* ── KPI grid (rpt-kpi-grid5) — colored, just reduce shadow intensity ── */
+body.dark-mode .rpt-kpi-grid5 {
+    box-shadow: 0 2px 10px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.25);
+}

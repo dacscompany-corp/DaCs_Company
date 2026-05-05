@@ -211,17 +211,8 @@
                     <i data-lucide="chevron-right" class="nav-group-chevron"></i>
                 </button>
                 <div class="nav-group-children">
-                    <a href="#" class="nav-item nav-child" data-view="pmWeekly">
-                        <span class="nav-icon-wrap"><i data-lucide="calendar-days" class="nav-icon"></i></span><span>Weekly Summary</span>
-                    </a>
-                    <a href="#" class="nav-item nav-child" data-view="pmProcurement">
-                        <span class="nav-icon-wrap"><i data-lucide="shopping-cart" class="nav-icon"></i></span><span>Materials Procurement</span><span id="pm-proc-badge" style="display:none;" class="pr-nav-badge"></span>
-                    </a>
-                    <a href="#" class="nav-item nav-child" data-view="pmRevolving">
-                        <span class="nav-icon-wrap"><i data-lucide="refresh-cw" class="nav-icon"></i></span><span>Revolving Fund</span>
-                    </a>
-                    <a href="#" class="nav-item nav-child" data-view="pmPayment">
-                        <span class="nav-icon-wrap"><i data-lucide="banknote" class="nav-icon"></i></span><span>Payment</span>
+                    <a href="#" class="nav-item nav-child" data-view="pmProjects">
+                        <span class="nav-icon-wrap"><i data-lucide="folder-open" class="nav-icon"></i></span><span>Projects</span>
                     </a>
                 </div>
             </div>
@@ -1145,276 +1136,198 @@
         </div>
 
         <!-- ════════════ PROJECT MANAGEMENT VIEWS ════════════ -->
-        <div id="pmWeeklyView" class="content-view" style="display:none;">
+
+        <!-- PROJECTS — Card Grid -->
+        <div id="pmProjectsView" class="content-view" style="display:none;">
           <div class="pm-admin-header">
             <div>
-              <div class="pm-admin-title">Weekly Summary</div>
-              <div class="pm-admin-sub">Input weekly labor and materials totals. The 15% management fee is computed automatically.</div>
+              <div class="pm-admin-title">Construction Projects</div>
+              <div class="pm-admin-sub">Select a project to manage its weekly billing, procurement, revolving fund, and payments.</div>
             </div>
-            <button class="pm-btn pm-btn-primary" onclick="pmOpenWeeklyModal()">
-              <i data-lucide="plus" style="width:15px;height:15px;"></i> New Entry
+            <button class="pm-btn pm-btn-primary" onclick="pmOpenProjectModal()">
+              <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Project
+            </button>
+          </div>
+          <div class="pm-cards-grid" id="pm-cards-grid">
+            <div class="pm-cards-empty"><div class="pm-cards-empty-icon">🏗️</div>Loading projects…</div>
+          </div>
+        </div><!-- /pmProjectsView -->
+
+        <!-- PROJECT WORKSPACE — Tabs -->
+        <div id="pmWorkspaceView" class="content-view" style="display:none;">
+
+          <!-- Top bar: back + project info -->
+          <div class="pm-workspace-topbar">
+            <button class="pm-workspace-back" onclick="switchView('pmProjects')">
+              <i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Projects
+            </button>
+            <div class="pm-workspace-info">
+              <div class="pm-workspace-client" id="ws-client-name">—</div>
+              <div class="pm-workspace-project" id="ws-project-name">—</div>
+            </div>
+            <div id="ws-status-badge"></div>
+          </div>
+
+          <!-- Tab bar -->
+          <div class="pm-ws-tabs">
+            <button class="pm-ws-tab active" onclick="pmWsTab('weekly',this)">
+              <i data-lucide="calendar-days" style="width:14px;height:14px;"></i> Weekly Summary
+            </button>
+            <button class="pm-ws-tab" onclick="pmWsTab('procurement',this)">
+              <i data-lucide="shopping-cart" style="width:14px;height:14px;"></i> Procurement
+            </button>
+            <button class="pm-ws-tab" onclick="pmWsTab('revolving',this)">
+              <i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Revolving Fund
+            </button>
+            <button class="pm-ws-tab" onclick="pmWsTab('payment',this)">
+              <i data-lucide="banknote" style="width:14px;height:14px;"></i> Payment
             </button>
           </div>
 
-          <!-- Client Selector -->
-          <div class="pm-client-selector-bar">
-            <label class="pm-field-label">Client / Project</label>
-            <select id="pm-client-select" class="pm-select" onchange="pmOnClientChange()">
-              <option value="">— Select a client project —</option>
-            </select>
-          </div>
-
-          <!-- KPI Row -->
-          <div class="pm-kpi-row">
-            <div class="pm-kpi-card">
-              <div class="pm-kpi-icon" style="background:#e0f2fe;"><i data-lucide="hard-hat" style="color:#0284c7;width:20px;height:20px;"></i></div>
-              <div class="pm-kpi-body">
-                <div class="pm-kpi-label">Total Labor (All Weeks)</div>
-                <div class="pm-kpi-value" id="pm-kpi-labor">₱0</div>
+          <!-- ── Weekly Summary Panel ── -->
+          <div class="pm-ws-panel active" id="ws-panel-weekly">
+            <div class="pm-ws-panel-header">
+              <div>
+                <div class="pm-ws-panel-title">Weekly Summary</div>
+                <div class="pm-ws-panel-sub">Input weekly labor and materials totals. The 15% management fee is computed automatically.</div>
+              </div>
+              <button class="pm-btn pm-btn-primary" onclick="pmOpenWeeklyModal()">
+                <i data-lucide="plus" style="width:14px;height:14px;"></i> New Entry
+              </button>
+            </div>
+            <div class="pm-kpi-row">
+              <div class="pm-kpi-card">
+                <div class="pm-kpi-icon" style="background:#e0f2fe;"><i data-lucide="hard-hat" style="color:#0284c7;width:20px;height:20px;"></i></div>
+                <div class="pm-kpi-body"><div class="pm-kpi-label">Total Labor (All Weeks)</div><div class="pm-kpi-value" id="pm-kpi-labor">₱0</div></div>
+              </div>
+              <div class="pm-kpi-card">
+                <div class="pm-kpi-icon" style="background:#fef3c7;"><i data-lucide="package" style="color:#d97706;width:20px;height:20px;"></i></div>
+                <div class="pm-kpi-body"><div class="pm-kpi-label">Total Materials (All Weeks)</div><div class="pm-kpi-value" id="pm-kpi-materials">₱0</div></div>
+              </div>
+              <div class="pm-kpi-card">
+                <div class="pm-kpi-icon" style="background:#ede9fe;"><i data-lucide="percent" style="color:#7c3aed;width:20px;height:20px;"></i></div>
+                <div class="pm-kpi-body"><div class="pm-kpi-label">Total Management Fee (15%)</div><div class="pm-kpi-value" id="pm-kpi-fee">₱0</div></div>
+              </div>
+              <div class="pm-kpi-card pm-kpi-total">
+                <div class="pm-kpi-icon" style="background:#d1fae5;"><i data-lucide="circle-dollar-sign" style="color:#059669;width:20px;height:20px;"></i></div>
+                <div class="pm-kpi-body"><div class="pm-kpi-label">Grand Total</div><div class="pm-kpi-value" id="pm-kpi-grand">₱0</div></div>
               </div>
             </div>
-            <div class="pm-kpi-card">
-              <div class="pm-kpi-icon" style="background:#fef3c7;"><i data-lucide="package" style="color:#d97706;width:20px;height:20px;"></i></div>
-              <div class="pm-kpi-body">
-                <div class="pm-kpi-label">Total Materials (All Weeks)</div>
-                <div class="pm-kpi-value" id="pm-kpi-materials">₱0</div>
+            <div class="pm-table-wrap">
+              <table class="pm-table">
+                <thead><tr><th>Week Of (Friday)</th><th>Labor</th><th>Materials</th><th>Mgmt Fee (15%)</th><th>Grand Total</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="pm-weekly-tbody"><tr><td colspan="7" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div><!-- /ws-panel-weekly -->
+
+          <!-- ── Procurement Panel ── -->
+          <div class="pm-ws-panel" id="ws-panel-procurement">
+            <div class="pm-ws-panel-header">
+              <div>
+                <div class="pm-ws-panel-title">Materials Procurement</div>
+                <div class="pm-ws-panel-sub">Manage items to be purchased. Mark company purchases with amount and receipt for full transparency.</div>
+              </div>
+              <button class="pm-btn pm-btn-primary" onclick="pmOpenAddItemModal()">
+                <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Item
+              </button>
+            </div>
+            <div class="pm-stat-row">
+              <div class="pm-stat-chip pm-chip-blue"><span id="pm-proc-total">0</span> Total Items</div>
+              <div class="pm-stat-chip pm-chip-amber"><span id="pm-proc-pending">0</span> Pending</div>
+              <div class="pm-stat-chip pm-chip-green"><span id="pm-proc-company">0</span> Bought by Company</div>
+              <div class="pm-stat-chip pm-chip-purple"><span id="pm-proc-client">0</span> Bought by Client</div>
+            </div>
+            <div style="margin:14px 0;">
+              <input type="text" id="pm-proc-search" class="pm-input" placeholder="Search items…" oninput="pmProcFilter()" style="max-width:320px;">
+            </div>
+            <div class="pm-table-wrap">
+              <table class="pm-table">
+                <thead><tr><th>Item</th><th>Qty</th><th>Est. Price</th><th>Status</th><th>Actual Amount</th><th>Bought By</th><th>Receipt</th><th>Actions</th></tr></thead>
+                <tbody id="pm-proc-tbody"><tr><td colspan="8" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div><!-- /ws-panel-procurement -->
+
+          <!-- ── Revolving Fund Panel ── -->
+          <div class="pm-ws-panel" id="ws-panel-revolving">
+            <div class="pm-ws-panel-header">
+              <div>
+                <div class="pm-ws-panel-title">Revolving Fund</div>
+                <div class="pm-ws-panel-sub">Track client-provided revolving fund. Record expenses drawn and replenishments each Friday.</div>
+              </div>
+              <button class="pm-btn pm-btn-primary" onclick="pmOpenExpenseModal()">
+                <i data-lucide="plus" style="width:14px;height:14px;"></i> Record Expense
+              </button>
+            </div>
+            <div class="pm-kpi-row">
+              <div class="pm-kpi-card">
+                <div class="pm-kpi-icon" style="background:#d1fae5;"><i data-lucide="wallet" style="color:#059669;width:20px;height:20px;"></i></div>
+                <div class="pm-kpi-body"><div class="pm-kpi-label">Initial Fund</div><div class="pm-kpi-value" id="pm-rev-initial">₱0</div></div>
+              </div>
+              <div class="pm-kpi-card">
+                <div class="pm-kpi-icon" style="background:#fee2e2;"><i data-lucide="trending-down" style="color:#dc2626;width:20px;height:20px;"></i></div>
+                <div class="pm-kpi-body"><div class="pm-kpi-label">Total Spent</div><div class="pm-kpi-value" id="pm-rev-spent">₱0</div></div>
+              </div>
+              <div class="pm-kpi-card">
+                <div class="pm-kpi-icon" style="background:#fef3c7;"><i data-lucide="coins" style="color:#d97706;width:20px;height:20px;"></i></div>
+                <div class="pm-kpi-body"><div class="pm-kpi-label">Remaining Balance</div><div class="pm-kpi-value" id="pm-rev-balance">₱0</div></div>
+              </div>
+              <div class="pm-kpi-card">
+                <div class="pm-kpi-icon" style="background:#ede9fe;"><i data-lucide="refresh-cw" style="color:#7c3aed;width:20px;height:20px;"></i></div>
+                <div class="pm-kpi-body"><div class="pm-kpi-label">To Replenish (Friday)</div><div class="pm-kpi-value" id="pm-rev-replenish">₱0</div></div>
               </div>
             </div>
-            <div class="pm-kpi-card">
-              <div class="pm-kpi-icon" style="background:#ede9fe;"><i data-lucide="percent" style="color:#7c3aed;width:20px;height:20px;"></i></div>
-              <div class="pm-kpi-body">
-                <div class="pm-kpi-label">Total Management Fee (15%)</div>
-                <div class="pm-kpi-value" id="pm-kpi-fee">₱0</div>
+            <div style="display:flex;gap:10px;margin-bottom:16px;">
+              <button class="pm-btn pm-btn-secondary" onclick="pmOpenSetFundModal()"><i data-lucide="settings" style="width:14px;height:14px;"></i> Set Initial Fund</button>
+              <button class="pm-btn pm-btn-secondary" onclick="pmOpenReplenishModal()"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Record Replenishment</button>
+            </div>
+            <div class="pm-table-wrap">
+              <table class="pm-table">
+                <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Notes</th><th>Actions</th></tr></thead>
+                <tbody id="pm-rev-tbody"><tr><td colspan="5" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div><!-- /ws-panel-revolving -->
+
+          <!-- ── Payment Panel ── -->
+          <div class="pm-ws-panel" id="ws-panel-payment">
+            <div class="pm-ws-panel-header">
+              <div>
+                <div class="pm-ws-panel-title">Payment</div>
+                <div class="pm-ws-panel-sub">Send payment requests, edit amounts, mark weeks as strict, and track payment history.</div>
+              </div>
+              <button class="pm-btn pm-btn-primary" onclick="pmOpenPaymentRequestModal()">
+                <i data-lucide="send" style="width:14px;height:14px;"></i> Send Payment Request
+              </button>
+            </div>
+            <div class="pm-kpi-row">
+              <div class="pm-kpi-card">
+                <div class="pm-kpi-icon" style="background:#fee2e2;"><i data-lucide="alert-circle" style="color:#dc2626;width:20px;height:20px;"></i></div>
+                <div class="pm-kpi-body"><div class="pm-kpi-label">Outstanding Balance</div><div class="pm-kpi-value" id="pm-pay-outstanding">₱0</div></div>
+              </div>
+              <div class="pm-kpi-card">
+                <div class="pm-kpi-icon" style="background:#d1fae5;"><i data-lucide="check-circle" style="color:#059669;width:20px;height:20px;"></i></div>
+                <div class="pm-kpi-body"><div class="pm-kpi-label">Total Paid</div><div class="pm-kpi-value" id="pm-pay-total-paid">₱0</div></div>
+              </div>
+              <div class="pm-kpi-card">
+                <div class="pm-kpi-icon" style="background:#fef3c7;"><i data-lucide="clock" style="color:#d97706;width:20px;height:20px;"></i></div>
+                <div class="pm-kpi-body"><div class="pm-kpi-label">Next Payment Due</div><div class="pm-kpi-value" id="pm-pay-next-due">—</div></div>
+              </div>
+              <div class="pm-kpi-card">
+                <div class="pm-kpi-icon" style="background:#ede9fe;"><i data-lucide="shield-alert" style="color:#7c3aed;width:20px;height:20px;"></i></div>
+                <div class="pm-kpi-body"><div class="pm-kpi-label">Strict Weeks</div><div class="pm-kpi-value" id="pm-pay-strict-count">0</div></div>
               </div>
             </div>
-            <div class="pm-kpi-card pm-kpi-total">
-              <div class="pm-kpi-icon" style="background:#d1fae5;"><i data-lucide="circle-dollar-sign" style="color:#059669;width:20px;height:20px;"></i></div>
-              <div class="pm-kpi-body">
-                <div class="pm-kpi-label">Grand Total</div>
-                <div class="pm-kpi-value" id="pm-kpi-grand">₱0</div>
-              </div>
+            <div class="pm-table-wrap">
+              <table class="pm-table">
+                <thead><tr><th>Week Of (Friday)</th><th>Amount Due</th><th>Carryover</th><th>Total</th><th>Strict</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="pm-pay-tbody"><tr><td colspan="7" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr></tbody>
+              </table>
             </div>
-          </div>
+          </div><!-- /ws-panel-payment -->
 
-          <!-- Weekly Entries Table -->
-          <div class="pm-table-wrap">
-            <table class="pm-table">
-              <thead>
-                <tr>
-                  <th>Week Of (Friday)</th>
-                  <th>Labor</th>
-                  <th>Materials</th>
-                  <th>Mgmt Fee (15%)</th>
-                  <th>Grand Total</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="pm-weekly-tbody">
-                <tr><td colspan="7" class="pm-empty-row">Select a client project to view weekly entries.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div><!-- /pmWeeklyView -->
-
-        <div id="pmProcurementView" class="content-view" style="display:none;">
-          <div class="pm-admin-header">
-            <div>
-              <div class="pm-admin-title">Materials Procurement List</div>
-              <div class="pm-admin-sub">Manage items to be purchased. Mark company purchases with amount and receipt for full transparency.</div>
-            </div>
-            <button class="pm-btn pm-btn-primary" onclick="pmOpenAddItemModal()">
-              <i data-lucide="plus" style="width:15px;height:15px;"></i> Add Item
-            </button>
-          </div>
-
-          <!-- Client Selector -->
-          <div class="pm-client-selector-bar">
-            <label class="pm-field-label">Client / Project</label>
-            <select id="pm-proc-client-select" class="pm-select" onchange="pmProcOnClientChange()">
-              <option value="">— Select a client project —</option>
-            </select>
-          </div>
-
-          <!-- Stats -->
-          <div class="pm-stat-row" id="pm-proc-stats">
-            <div class="pm-stat-chip pm-chip-blue"><span id="pm-proc-total">0</span> Total Items</div>
-            <div class="pm-stat-chip pm-chip-amber"><span id="pm-proc-pending">0</span> Pending</div>
-            <div class="pm-stat-chip pm-chip-green"><span id="pm-proc-company">0</span> Bought by Company</div>
-            <div class="pm-stat-chip pm-chip-purple"><span id="pm-proc-client">0</span> Bought by Client</div>
-          </div>
-
-          <!-- Search -->
-          <div style="margin-bottom:14px;">
-            <input type="text" id="pm-proc-search" class="pm-input" placeholder="Search items…" oninput="pmProcFilter()" style="max-width:320px;">
-          </div>
-
-          <!-- Table -->
-          <div class="pm-table-wrap">
-            <table class="pm-table">
-              <thead>
-                <tr>
-                  <th>Item</th>
-                  <th>Qty</th>
-                  <th>Est. Price</th>
-                  <th>Status</th>
-                  <th>Actual Amount</th>
-                  <th>Bought By</th>
-                  <th>Receipt</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="pm-proc-tbody">
-                <tr><td colspan="8" class="pm-empty-row">Select a client project to view items.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div><!-- /pmProcurementView -->
-
-        <div id="pmRevolvingView" class="content-view" style="display:none;">
-          <div class="pm-admin-header">
-            <div>
-              <div class="pm-admin-title">Revolving Fund</div>
-              <div class="pm-admin-sub">Track client-provided revolving fund. Record expenses drawn and replenishments each Friday.</div>
-            </div>
-            <button class="pm-btn pm-btn-primary" onclick="pmOpenExpenseModal()">
-              <i data-lucide="plus" style="width:15px;height:15px;"></i> Record Expense
-            </button>
-          </div>
-
-          <!-- Client Selector -->
-          <div class="pm-client-selector-bar">
-            <label class="pm-field-label">Client / Project</label>
-            <select id="pm-rev-client-select" class="pm-select" onchange="pmRevOnClientChange()">
-              <option value="">— Select a client project —</option>
-            </select>
-          </div>
-
-          <!-- Fund Overview -->
-          <div class="pm-kpi-row" id="pm-rev-kpis">
-            <div class="pm-kpi-card">
-              <div class="pm-kpi-icon" style="background:#d1fae5;"><i data-lucide="wallet" style="color:#059669;width:20px;height:20px;"></i></div>
-              <div class="pm-kpi-body">
-                <div class="pm-kpi-label">Initial Fund</div>
-                <div class="pm-kpi-value" id="pm-rev-initial">₱0</div>
-              </div>
-            </div>
-            <div class="pm-kpi-card">
-              <div class="pm-kpi-icon" style="background:#fee2e2;"><i data-lucide="trending-down" style="color:#dc2626;width:20px;height:20px;"></i></div>
-              <div class="pm-kpi-body">
-                <div class="pm-kpi-label">Total Spent</div>
-                <div class="pm-kpi-value" id="pm-rev-spent">₱0</div>
-              </div>
-            </div>
-            <div class="pm-kpi-card">
-              <div class="pm-kpi-icon" style="background:#fef3c7;"><i data-lucide="coins" style="color:#d97706;width:20px;height:20px;"></i></div>
-              <div class="pm-kpi-body">
-                <div class="pm-kpi-label">Remaining Balance</div>
-                <div class="pm-kpi-value" id="pm-rev-balance">₱0</div>
-              </div>
-            </div>
-            <div class="pm-kpi-card">
-              <div class="pm-kpi-icon" style="background:#ede9fe;"><i data-lucide="refresh-cw" style="color:#7c3aed;width:20px;height:20px;"></i></div>
-              <div class="pm-kpi-body">
-                <div class="pm-kpi-label">To Replenish (Friday)</div>
-                <div class="pm-kpi-value" id="pm-rev-replenish">₱0</div>
-              </div>
-            </div>
-          </div>
-
-          <div style="display:flex;gap:10px;margin-bottom:16px;">
-            <button class="pm-btn pm-btn-secondary" onclick="pmOpenSetFundModal()">
-              <i data-lucide="settings" style="width:14px;height:14px;"></i> Set Initial Fund
-            </button>
-            <button class="pm-btn pm-btn-secondary" onclick="pmOpenReplenishModal()">
-              <i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Record Replenishment
-            </button>
-          </div>
-
-          <!-- Expenses Table -->
-          <div class="pm-table-wrap">
-            <table class="pm-table">
-              <thead>
-                <tr><th>Date</th><th>Description</th><th>Amount</th><th>Notes</th><th>Actions</th></tr>
-              </thead>
-              <tbody id="pm-rev-tbody">
-                <tr><td colspan="5" class="pm-empty-row">Select a client project to view expenses.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div><!-- /pmRevolvingView -->
-
-        <div id="pmPaymentView" class="content-view" style="display:none;">
-          <div class="pm-admin-header">
-            <div>
-              <div class="pm-admin-title">Payment</div>
-              <div class="pm-admin-sub">Send payment requests, edit amounts, mark weeks as strict, and track payment history.</div>
-            </div>
-            <button class="pm-btn pm-btn-primary" onclick="pmOpenPaymentRequestModal()">
-              <i data-lucide="send" style="width:15px;height:15px;"></i> Send Payment Request
-            </button>
-          </div>
-
-          <!-- Client Selector -->
-          <div class="pm-client-selector-bar">
-            <label class="pm-field-label">Client / Project</label>
-            <select id="pm-pay-client-select" class="pm-select" onchange="pmPayOnClientChange()">
-              <option value="">— Select a client project —</option>
-            </select>
-          </div>
-
-          <!-- Payment KPIs -->
-          <div class="pm-kpi-row">
-            <div class="pm-kpi-card">
-              <div class="pm-kpi-icon" style="background:#fee2e2;"><i data-lucide="alert-circle" style="color:#dc2626;width:20px;height:20px;"></i></div>
-              <div class="pm-kpi-body">
-                <div class="pm-kpi-label">Outstanding Balance</div>
-                <div class="pm-kpi-value" id="pm-pay-outstanding">₱0</div>
-              </div>
-            </div>
-            <div class="pm-kpi-card">
-              <div class="pm-kpi-icon" style="background:#d1fae5;"><i data-lucide="check-circle" style="color:#059669;width:20px;height:20px;"></i></div>
-              <div class="pm-kpi-body">
-                <div class="pm-kpi-label">Total Paid</div>
-                <div class="pm-kpi-value" id="pm-pay-total-paid">₱0</div>
-              </div>
-            </div>
-            <div class="pm-kpi-card">
-              <div class="pm-kpi-icon" style="background:#fef3c7;"><i data-lucide="clock" style="color:#d97706;width:20px;height:20px;"></i></div>
-              <div class="pm-kpi-body">
-                <div class="pm-kpi-label">Next Payment Due</div>
-                <div class="pm-kpi-value" id="pm-pay-next-due">—</div>
-              </div>
-            </div>
-            <div class="pm-kpi-card">
-              <div class="pm-kpi-icon" style="background:#ede9fe;"><i data-lucide="shield-alert" style="color:#7c3aed;width:20px;height:20px;"></i></div>
-              <div class="pm-kpi-body">
-                <div class="pm-kpi-label">Strict Weeks</div>
-                <div class="pm-kpi-value" id="pm-pay-strict-count">0</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Payment Requests Table -->
-          <div class="pm-table-wrap">
-            <table class="pm-table">
-              <thead>
-                <tr>
-                  <th>Week Of (Friday)</th>
-                  <th>Amount Due</th>
-                  <th>Carryover</th>
-                  <th>Total</th>
-                  <th>Strict</th>
-                  <th>Status</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody id="pm-pay-tbody">
-                <tr><td colspan="7" class="pm-empty-row">Select a client project to view payment requests.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div><!-- /pmPaymentView -->
+        </div><!-- /pmWorkspaceView -->
 
         <!-- ════════════ BOQ BUILDER ════════════ -->
         <div id="boqBuilderView" class="content-view" style="display: none;">
@@ -1424,73 +1337,143 @@
         <!-- ════════════ USER NAVIGATOR ════════════ -->
         <div id="userNavigatorView" class="content-view" style="display: none;">
 
-            <!-- Stats Row -->
-            <div class="un-stats-row">
-                <div class="un-stat-card">
-                    <div class="un-stat-icon un-icon-total"><i data-lucide="users"></i></div>
-                    <div class="un-stat-info"><h3 id="unTotalCount">0</h3><p>Total Users</p></div>
+            <!-- Tab Switcher -->
+            <div style="display:flex;gap:0;border-bottom:2px solid #e5e7eb;margin-bottom:20px;">
+                <button id="un-tab-all" onclick="switchUnTab('all')"
+                    style="padding:9px 22px;font-size:13px;font-weight:700;border:none;background:none;cursor:pointer;color:#1d4ed8;border-bottom:2.5px solid #2563eb;margin-bottom:-2px;outline:none;">
+                    All Users
+                </button>
+                <button id="un-tab-construction" onclick="switchUnTab('construction')"
+                    style="padding:9px 22px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;color:#6b7280;border-bottom:2.5px solid transparent;margin-bottom:-2px;outline:none;">
+                    Client Management
+                </button>
+            </div>
+
+            <!-- ── ALL USERS PANEL ── -->
+            <div id="un-panel-all">
+                <!-- Stats Row -->
+                <div class="un-stats-row">
+                    <div class="un-stat-card">
+                        <div class="un-stat-icon un-icon-total"><i data-lucide="users"></i></div>
+                        <div class="un-stat-info"><h3 id="unTotalCount">0</h3><p>Total Users</p></div>
+                    </div>
+                    <div class="un-stat-card">
+                        <div class="un-stat-icon un-icon-active"><i data-lucide="user-check"></i></div>
+                        <div class="un-stat-info"><h3 id="unActiveCount">0</h3><p>Active Users</p></div>
+                    </div>
+                    <div class="un-stat-card">
+                        <div class="un-stat-icon un-icon-inactive"><i data-lucide="user-x"></i></div>
+                        <div class="un-stat-info"><h3 id="unInactiveCount">0</h3><p>Inactive Users</p></div>
+                    </div>
                 </div>
-                <div class="un-stat-card">
-                    <div class="un-stat-icon un-icon-active"><i data-lucide="user-check"></i></div>
-                    <div class="un-stat-info"><h3 id="unActiveCount">0</h3><p>Active Users</p></div>
+                <!-- Toolbar -->
+                <div class="un-toolbar">
+                    <div class="un-search-wrap">
+                        <i data-lucide="search" class="un-search-icon"></i>
+                        <input type="text" id="unSearchInput" class="un-search-input" placeholder="Search by name or email…" oninput="unFilterUsers()">
+                    </div>
+                    <select id="unTypeFilter" class="un-filter-select" onchange="unFilterUsers()">
+                        <option value="">All Users</option>
+                        <option value="admin">Admin Users</option>
+                        <option value="client">Client Users</option>
+                    </select>
+                    <select id="unRoleFilter" class="un-filter-select" onchange="unFilterUsers()">
+                        <option value="">All Roles</option>
+                        <option value="owner">Owner</option>
+                        <option value="staff">Staff</option>
+                        <option value="worker">Worker</option>
+                        <option value="teamLeader">Team Leader</option>
+                        <option value="engineer">Engineer</option>
+                        <option value="client">Client</option>
+                    </select>
+                    <select id="unStatusFilter" class="un-filter-select" onchange="unFilterUsers()">
+                        <option value="">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                    <button class="pr-btn-create" onclick="unOpenAddEmployeeModal()" style="margin-left:auto;">
+                        <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Add Employee
+                    </button>
                 </div>
-                <div class="un-stat-card">
-                    <div class="un-stat-icon un-icon-inactive"><i data-lucide="user-x"></i></div>
-                    <div class="un-stat-info"><h3 id="unInactiveCount">0</h3><p>Inactive Users</p></div>
+                <!-- Table -->
+                <div class="un-table-wrap">
+                    <div id="unLoadingState" class="un-loading-state">
+                        <div class="un-loading-spinner"></div>
+                        <span>Loading users…</span>
+                    </div>
+                    <div id="unEmptyState" class="un-empty-state" style="display:none;">
+                        <i data-lucide="users" style="width:48px;height:48px;opacity:.3;"></i>
+                        <p>No users found.</p>
+                    </div>
+                    <table class="un-table" id="unTable" style="display:none;">
+                        <thead>
+                            <tr>
+                                <th>Full Name</th><th>Email</th><th>Type</th>
+                                <th>Role</th><th>Status</th><th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="unTableBody"></tbody>
+                    </table>
                 </div>
             </div>
 
-            <!-- Toolbar: Search + Filters -->
-            <div class="un-toolbar">
-                <div class="un-search-wrap">
-                    <i data-lucide="search" class="un-search-icon"></i>
-                    <input type="text" id="unSearchInput" class="un-search-input" placeholder="Search by name or email…" oninput="unFilterUsers()">
+            <!-- ── CONSTRUCTION CLIENTS PANEL ── -->
+            <div id="un-panel-construction" style="display:none;">
+                <!-- Stats Row -->
+                <div class="un-stats-row">
+                    <div class="un-stat-card">
+                        <div class="un-stat-icon un-icon-total"><i data-lucide="hard-hat"></i></div>
+                        <div class="un-stat-info"><h3 id="ccTotalCount">0</h3><p>Total Clients</p></div>
+                    </div>
+                    <div class="un-stat-card">
+                        <div class="un-stat-icon un-icon-active"><i data-lucide="user-check"></i></div>
+                        <div class="un-stat-info"><h3 id="ccActiveCount">0</h3><p>Active</p></div>
+                    </div>
+                    <div class="un-stat-card">
+                        <div class="un-stat-icon un-icon-inactive"><i data-lucide="user-x"></i></div>
+                        <div class="un-stat-info"><h3 id="ccInactiveCount">0</h3><p>Inactive</p></div>
+                    </div>
                 </div>
-                <select id="unTypeFilter" class="un-filter-select" onchange="unFilterUsers()">
-                    <option value="">All Users</option>
-                    <option value="admin">Admin Users</option>
-                    <option value="client">Client Users</option>
-                </select>
-                <select id="unRoleFilter" class="un-filter-select" onchange="unFilterUsers()">
-                    <option value="">All Roles</option>
-                    <option value="owner">Owner</option>
-                    <option value="staff">Staff</option>
-                    <option value="worker">Worker</option>
-                    <option value="teamLeader">Team Leader</option>
-                    <option value="engineer">Engineer</option>
-                    <option value="client">Client</option>
-                </select>
-                <select id="unStatusFilter" class="un-filter-select" onchange="unFilterUsers()">
-                    <option value="">All Status</option>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                </select>
+                <!-- Toolbar -->
+                <div class="un-toolbar">
+                    <div class="un-search-wrap">
+                        <i data-lucide="search" class="un-search-icon"></i>
+                        <input type="text" id="ccSearchInput" class="un-search-input" placeholder="Search by name or email…" oninput="ccFilterClients()">
+                    </div>
+                    <select id="ccStatusFilter" class="un-filter-select" onchange="ccFilterClients()">
+                        <option value="">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                    <button class="pr-btn-create" onclick="caOpenCreateModal()" style="margin-left:auto;">
+                        <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Create Account
+                    </button>
+                </div>
+                <!-- Table -->
+                <div class="un-table-wrap">
+                    <div id="ccLoadingState" class="un-loading-state" style="display:none;">
+                        <div class="un-loading-spinner"></div>
+                        <span>Loading client management…</span>
+                    </div>
+                    <div id="ccEmptyState" class="un-empty-state" style="display:none;">
+                        <i data-lucide="hard-hat" style="width:48px;height:48px;opacity:.3;"></i>
+                        <p style="margin-bottom:12px;">No construction client accounts yet.</p>
+                        <button onclick="caOpenCreateModal()" class="pr-btn-create">
+                            <i data-lucide="user-plus" style="width:14px;height:14px;"></i> Create First Account
+                        </button>
+                    </div>
+                    <table class="un-table" id="ccTable" style="display:none;">
+                        <thead>
+                            <tr>
+                                <th>Full Name</th><th>Email</th><th>Construction Project</th>
+                                <th>Created</th><th>Status</th><th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ccTableBody"></tbody>
+                    </table>
+                </div>
             </div>
 
-            <!-- Table -->
-            <div class="un-table-wrap">
-                <div id="unLoadingState" class="un-loading-state">
-                    <div class="un-loading-spinner"></div>
-                    <span>Loading users…</span>
-                </div>
-                <div id="unEmptyState" class="un-empty-state" style="display:none;">
-                    <i data-lucide="users" style="width:48px;height:48px;opacity:.3;"></i>
-                    <p>No users found.</p>
-                </div>
-                <table class="un-table" id="unTable" style="display:none;">
-                    <thead>
-                        <tr>
-                            <th>Full Name</th>
-                            <th>Email</th>
-                            <th>Type</th>
-                            <th>Role</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="unTableBody"></tbody>
-                </table>
-            </div>
         </div>
 
     <!-- ══════════ CLIENT ACCOUNTS VIEW ══════════ -->
@@ -1511,7 +1494,6 @@
                     <div class="un-stat-info"><h3 id="caInactiveCount">0</h3><p>Inactive</p></div>
                 </div>
             </div>
-
             <!-- Toolbar -->
             <div class="un-toolbar">
                 <div class="un-search-wrap">
@@ -1524,7 +1506,6 @@
                     <option value="inactive">Inactive</option>
                 </select>
             </div>
-
             <!-- Table -->
             <div class="un-table-wrap">
                 <div id="caLoadingState" class="un-loading-state">
@@ -1538,12 +1519,8 @@
                 <table class="un-table" id="caTable" style="display:none;">
                     <thead>
                         <tr>
-                            <th>Full Name</th>
-                            <th>Email</th>
-                            <th>Project</th>
-                            <th>Registered</th>
-                            <th>Status</th>
-                            <th>Actions</th>
+                            <th>Full Name</th><th>Email</th><th>Project</th>
+                            <th>Registered</th><th>Status</th><th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="caTableBody"></tbody>
@@ -1848,6 +1825,79 @@
     </div>
 </div>
 
+<!-- ════ USER NAVIGATOR: Add Employee Modal ════ -->
+<div id="unAddEmployeeModal" class="un-modal-overlay" style="display:none;" onclick="if(event.target===this)unCloseAddEmployeeModal()">
+    <div class="un-modal-card" style="max-width:520px;width:94%;">
+        <div class="un-modal-header">
+            <div class="un-modal-avatar" style="background:#7c3aed;color:#fff;font-size:18px;">+</div>
+            <div class="un-modal-title-block">
+                <h3>Add Employee / Staff</h3>
+                <span class="un-role-badge un-role-staff">New Account</span>
+            </div>
+            <button class="un-modal-close" onclick="unCloseAddEmployeeModal()"><i data-lucide="x"></i></button>
+        </div>
+        <div class="un-modal-body" style="padding:20px 24px 24px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">First Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="emp-create-firstname" placeholder="First name"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-emp-firstname" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+                <div>
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Last Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="emp-create-lastname" placeholder="Last name"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-emp-lastname" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Email Address <span style="color:#ef4444;">*</span></label>
+                <input type="email" id="emp-create-email" placeholder="employee@email.com"
+                    style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                <div id="err-emp-email" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Role <span style="color:#ef4444;">*</span></label>
+                <select id="emp-create-role"
+                    style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;background:#fff;font-family:inherit;">
+                    <option value="">— Select role —</option>
+                    <option value="staff">Staff</option>
+                    <option value="worker">Worker</option>
+                    <option value="teamLeader">Team Leader</option>
+                    <option value="engineer">Engineer</option>
+                </select>
+                <div id="err-emp-role" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
+                <div>
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Password <span style="color:#ef4444;">*</span></label>
+                    <input type="password" id="emp-create-password" placeholder="Min. 8 characters"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-emp-password" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+                <div>
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Confirm Password <span style="color:#ef4444;">*</span></label>
+                    <input type="password" id="emp-create-confirm" placeholder="Re-enter password"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-emp-confirm" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+            </div>
+            <div id="emp-create-general-err" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;"></div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button onclick="unCloseAddEmployeeModal()"
+                    style="padding:9px 20px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+                    Cancel
+                </button>
+                <button id="emp-create-submit-btn" onclick="unSubmitAddEmployee()"
+                    style="padding:9px 20px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;">
+                    <i data-lucide="user-plus" style="width:14px;height:14px;"></i> Add Employee
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- ════ CLIENT ACCOUNTS: Profile Modal ════ -->
 <div id="caProfileModal" class="un-modal-overlay" style="display:none;" onclick="if(event.target===this)caCloseProfile()">
     <div class="un-modal-card">
@@ -1860,6 +1910,206 @@
             <button class="un-modal-close" onclick="caCloseProfile()"><i data-lucide="x"></i></button>
         </div>
         <div id="caProfileBody" class="un-modal-body"></div>
+    </div>
+</div>
+
+<!-- ════ CONSTRUCTION CLIENT: Create Account Modal ════ -->
+<div id="caCreateModal" class="un-modal-overlay" style="display:none;" onclick="if(event.target===this)caCloseCreateModal()">
+    <div class="un-modal-card" style="max-width:520px;width:94%;">
+        <div class="un-modal-header">
+            <div class="un-modal-avatar un-avatar-client" style="background:#2563eb;color:#fff;font-size:18px;">+</div>
+            <div class="un-modal-title-block">
+                <h3>Create Construction Client</h3>
+                <span class="un-role-badge un-role-client">New Account</span>
+            </div>
+            <button class="un-modal-close" onclick="caCloseCreateModal()"><i data-lucide="x"></i></button>
+        </div>
+        <div class="un-modal-body" style="padding:20px 24px 24px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">First Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="cc-create-firstname" placeholder="First name"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-cc-firstname" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+                <div>
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Last Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="cc-create-lastname" placeholder="Last name"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-cc-lastname" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Email Address <span style="color:#ef4444;">*</span></label>
+                <input type="email" id="cc-create-email" placeholder="client@email.com"
+                    style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                <div id="err-cc-email" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Password <span style="color:#ef4444;">*</span></label>
+                    <input type="password" id="cc-create-password" placeholder="Min. 8 characters"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-cc-password" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+                <div>
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Confirm Password <span style="color:#ef4444;">*</span></label>
+                    <input type="password" id="cc-create-confirm" placeholder="Re-enter password"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-cc-confirm" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">
+                    Link to Construction Project
+                    <span style="color:#9ca3af;font-weight:400;">(optional)</span>
+                </label>
+                <select id="cc-create-project"
+                    style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;background:#fff;font-family:inherit;">
+                    <option value="">— No project yet —</option>
+                </select>
+                <div style="font-size:11.5px;color:#6b7280;margin-top:4px;">If selected, the project's client email will be updated to this account's email.</div>
+            </div>
+            <div id="cc-create-general-err" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;"></div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button onclick="caCloseCreateModal()"
+                    style="padding:9px 20px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+                    Cancel
+                </button>
+                <button id="cc-create-submit-btn" onclick="caSubmitCreateClient()"
+                    style="padding:9px 20px;border-radius:8px;border:none;background:#2563eb;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;">
+                    <i data-lucide="user-plus" style="width:14px;height:14px;"></i> Create Account
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════ USER NAVIGATOR: Edit User Modal ════ -->
+<div id="unEditModal" class="un-modal-overlay" style="display:none;" onclick="if(event.target===this)unCloseEditModal()">
+    <div class="un-modal-card" style="max-width:520px;width:94%;">
+        <div class="un-modal-header">
+            <div class="un-modal-avatar" style="background:#16a34a;color:#fff;display:flex;align-items:center;justify-content:center;">
+                <i data-lucide="pencil" style="width:20px;height:20px;"></i>
+            </div>
+            <div class="un-modal-title-block">
+                <h3>Edit User</h3>
+                <span id="un-edit-modal-name" style="font-size:12px;color:#6b7280;"></span>
+            </div>
+            <button class="un-modal-close" onclick="unCloseEditModal()"><i data-lucide="x"></i></button>
+        </div>
+        <div class="un-modal-body" style="padding:20px 24px 24px;">
+            <div style="margin-bottom:14px;">
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Email Address <span style="color:#9ca3af;font-weight:400;">(read-only)</span></label>
+                <div id="un-edit-email" style="padding:9px 12px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;color:#6b7280;"></div>
+            </div>
+            <!-- Admin/Staff fields -->
+            <div id="un-edit-admin-fields">
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Display Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="un-edit-displayname" placeholder="Full name"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-un-edit-displayname" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+                <div style="margin-bottom:14px;">
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Role <span style="color:#ef4444;">*</span></label>
+                    <select id="un-edit-role"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;background:#fff;font-family:inherit;">
+                        <option value="">— Select role —</option>
+                        <option value="staff">Staff</option>
+                        <option value="worker">Worker</option>
+                        <option value="teamLeader">Team Leader</option>
+                        <option value="engineer">Engineer</option>
+                    </select>
+                    <div id="err-un-edit-role" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+            </div>
+            <!-- Client fields -->
+            <div id="un-edit-client-fields" style="display:none;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                    <div>
+                        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">First Name <span style="color:#ef4444;">*</span></label>
+                        <input type="text" id="un-edit-firstname" placeholder="First name"
+                            style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                        <div id="err-un-edit-firstname" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                    </div>
+                    <div>
+                        <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Last Name <span style="color:#ef4444;">*</span></label>
+                        <input type="text" id="un-edit-lastname" placeholder="Last name"
+                            style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                        <div id="err-un-edit-lastname" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                    </div>
+                </div>
+            </div>
+            <div id="un-edit-general-err" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;"></div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button onclick="unCloseEditModal()"
+                    style="padding:9px 20px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+                    Cancel
+                </button>
+                <button id="un-edit-submit-btn" onclick="unSubmitEdit()"
+                    style="padding:9px 20px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;">
+                    <i data-lucide="save" style="width:14px;height:14px;"></i> Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════ CONSTRUCTION CLIENT: Edit Modal ════ -->
+<div id="ccEditModal" class="un-modal-overlay" style="display:none;" onclick="if(event.target===this)ccCloseEditModal()">
+    <div class="un-modal-card" style="max-width:520px;width:94%;">
+        <div class="un-modal-header">
+            <div class="un-modal-avatar un-avatar-client" style="background:#16a34a;color:#fff;display:flex;align-items:center;justify-content:center;">
+                <i data-lucide="pencil" style="width:20px;height:20px;"></i>
+            </div>
+            <div class="un-modal-title-block">
+                <h3>Edit Construction Client</h3>
+                <span id="cc-edit-modal-name" style="font-size:12px;color:#6b7280;"></span>
+            </div>
+            <button class="un-modal-close" onclick="ccCloseEditModal()"><i data-lucide="x"></i></button>
+        </div>
+        <div class="un-modal-body" style="padding:20px 24px 24px;">
+            <div style="margin-bottom:14px;">
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Email Address <span style="color:#9ca3af;font-weight:400;">(read-only)</span></label>
+                <div id="cc-edit-email" style="padding:9px 12px;background:#f9fafb;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;color:#6b7280;"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">First Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="cc-edit-firstname" placeholder="First name"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-cc-edit-firstname" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+                <div>
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Last Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="cc-edit-lastname" placeholder="Last name"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-cc-edit-lastname" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">
+                    Linked Construction Project
+                    <span style="color:#9ca3af;font-weight:400;">(optional)</span>
+                </label>
+                <select id="cc-edit-project"
+                    style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;background:#fff;font-family:inherit;">
+                    <option value="">— No project linked —</option>
+                </select>
+            </div>
+            <div id="cc-edit-general-err" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;"></div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button onclick="ccCloseEditModal()"
+                    style="padding:9px 20px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+                    Cancel
+                </button>
+                <button id="cc-edit-submit-btn" onclick="ccSubmitEdit()"
+                    style="padding:9px 20px;border-radius:8px;border:none;background:#16a34a;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;">
+                    <i data-lucide="save" style="width:14px;height:14px;"></i> Save Changes
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -2711,6 +2961,59 @@
 
 <!-- ════════════ PROJECT MANAGEMENT MODALS ════════════ -->
 
+<!-- Add / Edit Project Modal -->
+<div id="pmProjectModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmProjectModal')" style="display:none;">
+  <div class="pm-modal-box">
+    <div class="pm-modal-header">
+      <h3 id="pmProjectModalTitle">Add Construction Project</h3>
+      <button class="pm-modal-close" onclick="pmCloseModal('pmProjectModal')"><i data-lucide="x"></i></button>
+    </div>
+    <div class="pm-modal-body">
+      <input type="hidden" id="pmProjectId">
+      <div class="pm-form-row">
+        <div class="pm-form-group">
+          <label class="pm-field-label">Client Name <span class="pm-req">*</span></label>
+          <input type="text" id="pmProjectClientName" class="pm-input" placeholder="e.g. Juan dela Cruz">
+          <div class="pm-field-err" id="err-pmProjectClientName"></div>
+        </div>
+        <div class="pm-form-group">
+          <label class="pm-field-label">Project Name <span class="pm-req">*</span></label>
+          <input type="text" id="pmProjectName" class="pm-input" placeholder="e.g. Residence - Batangas">
+          <div class="pm-field-err" id="err-pmProjectName"></div>
+        </div>
+      </div>
+      <div class="pm-form-group">
+        <label class="pm-field-label">Client Email <span style="color:#9ca3af;font-weight:400;">(used to link with client app)</span></label>
+        <input type="email" id="pmProjectEmail" class="pm-input" placeholder="client@email.com">
+      </div>
+      <div class="pm-form-row">
+        <div class="pm-form-group">
+          <label class="pm-field-label">Status</label>
+          <select id="pmProjectStatus" class="pm-select">
+            <option value="active">Active</option>
+            <option value="on-hold">On Hold</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+        <div class="pm-form-group">
+          <label class="pm-field-label">Start Date</label>
+          <input type="date" id="pmProjectStartDate" class="pm-input">
+        </div>
+      </div>
+      <div class="pm-form-group">
+        <label class="pm-field-label">Address / Location</label>
+        <input type="text" id="pmProjectAddress" class="pm-input" placeholder="e.g. Brgy. Poblacion, Lipa City">
+      </div>
+    </div>
+    <div class="pm-modal-footer">
+      <button class="pm-btn pm-btn-secondary" onclick="pmCloseModal('pmProjectModal')">Cancel</button>
+      <button class="pm-btn pm-btn-primary" onclick="pmSaveProject()">
+        <i data-lucide="save" style="width:14px;height:14px;"></i> Save Project
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Weekly Entry Modal -->
 <div id="pmWeeklyModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmWeeklyModal')" style="display:none;">
   <div class="pm-modal-box">
@@ -3021,7 +3324,7 @@
     const CONS_VIEWS = ['consBatch','consUrgent','consBatchHistory','consInventory'];
     const BOQ_VIEWS  = ['boqBuilder'];
     const UN_VIEWS   = ['userNavigator','clientAccounts'];
-    const PM_VIEWS   = ['pmWeekly','pmProcurement','pmRevolving','pmPayment'];
+    const PM_VIEWS   = ['pmProjects','pmWorkspace'];
     const TITLES = {
         dashboard:        'Dashboard',
         appointments:     'Appointments',
@@ -3041,10 +3344,8 @@
         paymentRequests:  'Payment Requests',
         paymentReports:   'Payment Reports',
         invoices:         'Invoice Receipt',
-        pmWeekly:         'Weekly Summary',
-        pmProcurement:    'Materials Procurement',
-        pmRevolving:      'Revolving Fund',
-        pmPayment:        'Payment',
+        pmProjects:       'Project Management',
+        pmWorkspace:      'Project Workspace',
     };
 
     window.switchView = function(view) {

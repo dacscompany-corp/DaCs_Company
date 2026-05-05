@@ -1,7 +1,8 @@
 // ════════════════════════════════════════════════════════════
 // CLIENT ACCOUNTS MODULE
-// Displays and manages accounts from the clientUsers collection,
+// Displays and manages design client accounts (clientUsers)
 // including their designated projects from boqDocuments.
+// Construction clients are managed in user-navigator.js.
 // ════════════════════════════════════════════════════════════
 
 (function () {
@@ -22,17 +23,15 @@
         _showLoading(true);
 
         try {
-            // Fetch clients and their projects in parallel
             const uid = window.currentDataUserId || auth.currentUser?.uid;
             const [clientSnap, boqSnap] = await Promise.all([
                 db.collection('clientUsers').get(),
                 db.collection('boqDocuments').where('userId', '==', uid).get()
             ]);
 
-            // Build a map: email → [projectName, ...]
             const projectsByEmail = {};
             boqSnap.docs.forEach(doc => {
-                const d    = doc.data();
+                const d     = doc.data();
                 const email = (d.clientEmail || '').toLowerCase();
                 const name  = d.projectName || d.header?.projectName || d.header?.subject || '';
                 if (!email || !name) return;
@@ -44,15 +43,15 @@
                 const d     = doc.data();
                 const email = (d.email || '').toLowerCase();
                 return {
-                    uid:       doc.id,
-                    name:      ((d.firstName || '') + ' ' + (d.lastName || '')).trim() || null,
+                    uid      : doc.id,
+                    name     : ((d.firstName || '') + ' ' + (d.lastName || '')).trim() || null,
                     firstName: d.firstName || '',
-                    lastName:  d.lastName  || '',
-                    email:     d.email     || '',
-                    status:    d.status    || 'active',
-                    photoURL:  d.photoURL  || '',
+                    lastName : d.lastName  || '',
+                    email    : d.email     || '',
+                    status   : d.status    || 'active',
+                    photoURL : d.photoURL  || '',
                     createdAt: d.createdAt || null,
-                    projects:  projectsByEmail[email] || []
+                    projects : projectsByEmail[email] || []
                 };
             }).sort((a, b) => _tsToMs(b.createdAt) - _tsToMs(a.createdAt));
 
@@ -60,7 +59,6 @@
             _showLoading(false);
             _renderStats(_allClients);
             _renderTable(_allClients);
-            // Clear new-client badge — admin has now seen all clients
             _clearNewClientBadge();
         } catch (e) {
             _loading = false;
@@ -72,12 +70,11 @@
 
     // ── Stats ────────────────────────────────────────────────
     function _renderStats(clients) {
-        const total    = clients.length;
-        const active   = clients.filter(c => c.status === 'active').length;
-        const inactive = total - active;
+        const total  = clients.length;
+        const active = clients.filter(c => c.status === 'active').length;
         _setText('caTotalCount',    total);
         _setText('caActiveCount',   active);
-        _setText('caInactiveCount', inactive);
+        _setText('caInactiveCount', total - active);
     }
 
     // ── Table ────────────────────────────────────────────────
@@ -96,46 +93,38 @@
 
         if (table) table.style.display = 'table';
         if (empty) empty.style.display = 'none';
-
-        tbody.innerHTML = clients.map(c => _buildRow(c)).join('');
+        tbody.innerHTML = clients.map(_buildRow).join('');
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
-    function _buildRow(client) {
-        const name    = client.name || _nameFromEmail(client.email);
+    function _buildRow(c) {
+        const name    = c.name || _nameFromEmail(c.email);
         const initial = (name[0] || 'C').toUpperCase();
-        const avatar  = client.photoURL
-            ? `<img src="${client.photoURL}" alt="${_esc(initial)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+        const avatar  = c.photoURL
+            ? `<img src="${_esc(c.photoURL)}" alt="${_esc(initial)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
             : initial;
-        const statusBadge = _statusBadge(client.status);
-        const toggleBtn   = client.status === 'active'
-            ? `<button class="un-btn-toggle un-btn-deactivate" onclick="caToggleStatus('${client.uid}','active')">Deactivate</button>`
-            : `<button class="un-btn-toggle un-btn-activate"   onclick="caToggleStatus('${client.uid}','inactive')">Activate</button>`;
-
-        const projectCell = client.projects.length
-            ? client.projects.map(p => `<span class="ca-project-tag">${_esc(p)}</span>`).join(' ')
+        const toggleBtn = c.status === 'active'
+            ? `<button class="un-btn-toggle un-btn-deactivate" onclick="caToggleStatus('${c.uid}','active')">Deactivate</button>`
+            : `<button class="un-btn-toggle un-btn-activate"   onclick="caToggleStatus('${c.uid}','inactive')">Activate</button>`;
+        const projectCell = c.projects.length
+            ? c.projects.map(p => `<span class="ca-project-tag">${_esc(p)}</span>`).join(' ')
             : `<span style="color:#d1d5db;font-size:12px;">No project assigned</span>`;
 
-        return `
-        <tr data-uid="${client.uid}">
-            <td>
-                <div class="un-user-cell">
-                    <div class="un-avatar un-avatar-client">${avatar}</div>
-                    <span class="un-user-name">${_esc(name)}</span>
-                </div>
-            </td>
-            <td style="color:#6b7280;font-size:13px;">${_esc(client.email)}</td>
+        return `<tr data-uid="${c.uid}">
+            <td><div class="un-user-cell">
+                <div class="un-avatar un-avatar-client">${avatar}</div>
+                <span class="un-user-name">${_esc(name)}</span>
+            </div></td>
+            <td style="color:#6b7280;font-size:13px;">${_esc(c.email)}</td>
             <td>${projectCell}</td>
-            <td style="color:#6b7280;font-size:13px;">${_formatDate(client.createdAt)}</td>
-            <td>${statusBadge}</td>
-            <td>
-                <div class="un-actions">
-                    <button class="un-btn-view" onclick="caViewProfile('${client.uid}')">
-                        <i data-lucide="eye" style="width:13px;height:13px;"></i> View
-                    </button>
-                    ${toggleBtn}
-                </div>
-            </td>
+            <td style="color:#6b7280;font-size:13px;">${_formatDate(c.createdAt)}</td>
+            <td>${_statusBadge(c.status)}</td>
+            <td><div class="un-actions">
+                <button class="un-btn-view" onclick="caViewProfile('${c.uid}')">
+                    <i data-lucide="eye" style="width:13px;height:13px;"></i> View
+                </button>
+                ${toggleBtn}
+            </div></td>
         </tr>`;
     }
 
@@ -143,7 +132,6 @@
     window.caFilterClients = function () {
         const q      = (document.getElementById('caSearchInput')?.value  || '').toLowerCase().trim();
         const status = (document.getElementById('caStatusFilter')?.value || '');
-
         const filtered = _allClients.filter(c => {
             const name     = (c.name || _nameFromEmail(c.email)).toLowerCase();
             const email    = (c.email || '').toLowerCase();
@@ -151,7 +139,6 @@
             return (!q      || name.includes(q) || email.includes(q) || projects.includes(q))
                 && (!status || c.status === status);
         });
-
         _renderTable(filtered);
     };
 
@@ -160,89 +147,65 @@
         const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
         try {
             await db.collection('clientUsers').doc(uid).update({ status: newStatus });
-            const client = _allClients.find(c => c.uid === uid);
-            if (client) client.status = newStatus;
+            const c = _allClients.find(x => x.uid === uid);
+            if (c) c.status = newStatus;
             _renderStats(_allClients);
             caFilterClients();
         } catch (err) {
-            console.error('ClientAccounts: toggle status failed', err);
+            console.error('caToggleStatus:', err);
             alert('Could not update account status. Please try again.');
         }
     };
 
     // ── View Profile Modal ────────────────────────────────────
     window.caViewProfile = function (uid) {
-        const client = _allClients.find(c => c.uid === uid);
-        if (!client) return;
-
-        const name    = client.name || _nameFromEmail(client.email);
+        const c = _allClients.find(x => x.uid === uid);
+        if (!c) return;
+        const name    = c.name || _nameFromEmail(c.email);
         const initial = (name[0] || 'C').toUpperCase();
 
         const avatar = document.getElementById('caModalAvatar');
         const nameEl = document.getElementById('caModalName');
-
         if (avatar) {
-            if (client.photoURL) {
-                avatar.innerHTML = `<img src="${client.photoURL}" alt="${_esc(initial)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+            if (c.photoURL) {
+                avatar.innerHTML = `<img src="${_esc(c.photoURL)}" alt="${initial}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
             } else {
                 avatar.textContent = initial;
             }
         }
         if (nameEl) nameEl.textContent = name;
 
-        const projectsHtml = client.projects.length
-            ? client.projects.map(p => `<span class="ca-project-tag">${_esc(p)}</span>`).join(' ')
+        const projectsHtml = c.projects.length
+            ? c.projects.map(p => `<span class="ca-project-tag">${_esc(p)}</span>`).join(' ')
             : '<span style="color:#9ca3af;font-size:13px;">No project assigned</span>';
 
         const body = document.getElementById('caProfileBody');
-        if (body) {
-            body.innerHTML = `
-                <div class="un-profile-section">
-                    <div class="un-profile-section-title">Account Info</div>
-                    <div class="un-profile-row">
-                        <span class="un-profile-label">Full Name</span>
-                        <span class="un-profile-value">${_esc(name)}</span>
-                    </div>
-                    <div class="un-profile-row">
-                        <span class="un-profile-label">Email</span>
-                        <span class="un-profile-value">${_esc(client.email)}</span>
-                    </div>
-                    <div class="un-profile-row">
-                        <span class="un-profile-label">Status</span>
-                        <span class="un-profile-value">${_statusBadge(client.status)}</span>
-                    </div>
-                </div>
-                <div class="un-profile-section">
-                    <div class="un-profile-section-title">Assigned Projects</div>
-                    <div class="un-profile-row" style="flex-wrap:wrap;gap:6px;">
-                        ${projectsHtml}
-                    </div>
-                </div>
-                <div class="un-profile-section">
-                    <div class="un-profile-section-title">Registration</div>
-                    <div class="un-profile-row">
-                        <span class="un-profile-label">Registered</span>
-                        <span class="un-profile-value">${_formatDate(client.createdAt)}</span>
-                    </div>
-                    <div class="un-profile-row">
-                        <span class="un-profile-label">User ID</span>
-                        <span class="un-profile-value" style="font-size:11px;color:#9ca3af;word-break:break-all;">${client.uid}</span>
-                    </div>
-                </div>
-                <div class="un-modal-footer" style="padding:0;margin-top:8px;border:none;display:flex;justify-content:flex-end;gap:10px;">
-                    <button class="un-btn-toggle ${client.status === 'active' ? 'un-btn-deactivate' : 'un-btn-activate'}"
-                        onclick="caToggleStatus('${uid}','${client.status}');caCloseProfile();">
-                        ${client.status === 'active' ? 'Deactivate Account' : 'Activate Account'}
-                    </button>
-                    <button class="un-modal-btn-close" onclick="caCloseProfile()">Close</button>
-                </div>`;
-        }
+        if (body) body.innerHTML = `
+            <div class="un-profile-section">
+                <div class="un-profile-section-title">Account Info</div>
+                <div class="un-profile-row"><span class="un-profile-label">Full Name</span><span class="un-profile-value">${_esc(name)}</span></div>
+                <div class="un-profile-row"><span class="un-profile-label">Email</span><span class="un-profile-value">${_esc(c.email)}</span></div>
+                <div class="un-profile-row"><span class="un-profile-label">Status</span><span class="un-profile-value">${_statusBadge(c.status)}</span></div>
+            </div>
+            <div class="un-profile-section">
+                <div class="un-profile-section-title">Assigned Projects</div>
+                <div class="un-profile-row" style="flex-wrap:wrap;gap:6px;">${projectsHtml}</div>
+            </div>
+            <div class="un-profile-section">
+                <div class="un-profile-section-title">Registration</div>
+                <div class="un-profile-row"><span class="un-profile-label">Registered</span><span class="un-profile-value">${_formatDate(c.createdAt)}</span></div>
+                <div class="un-profile-row"><span class="un-profile-label">User ID</span><span class="un-profile-value" style="font-size:11px;color:#9ca3af;word-break:break-all;">${c.uid}</span></div>
+            </div>
+            <div class="un-modal-footer" style="padding:0;margin-top:8px;border:none;display:flex;justify-content:flex-end;gap:10px;">
+                <button class="un-btn-toggle ${c.status === 'active' ? 'un-btn-deactivate' : 'un-btn-activate'}"
+                    onclick="caToggleStatus('${uid}','${c.status}');caCloseProfile();">
+                    ${c.status === 'active' ? 'Deactivate Account' : 'Activate Account'}
+                </button>
+                <button class="un-modal-btn-close" onclick="caCloseProfile()">Close</button>
+            </div>`;
 
         const modal = document.getElementById('caProfileModal');
-        if (modal) {
-            modal.style.display = 'flex';
-            if (typeof lucide !== 'undefined') lucide.createIcons();
-        }
+        if (modal) { modal.style.display = 'flex'; if (typeof lucide !== 'undefined') lucide.createIcons(); }
     };
 
     window.caCloseProfile = function () {
@@ -256,7 +219,7 @@
         const table   = document.getElementById('caTable');
         const empty   = document.getElementById('caEmptyState');
         if (on) {
-            if (loading) { loading.style.display = 'flex'; loading.innerHTML = '<div class="un-loading-spinner"></div><span>Loading clients\u2026</span>'; }
+            if (loading) { loading.style.display = 'flex'; loading.innerHTML = '<div class="un-loading-spinner"></div><span>Loading clients…</span>'; }
             if (table)   table.style.display = 'none';
             if (empty)   empty.style.display = 'none';
         } else {
@@ -292,8 +255,7 @@
 
     function _nameFromEmail(email) {
         if (!email) return 'Unknown';
-        return email.split('@')[0].replace(/[._-]/g, ' ')
-            .replace(/\b\w/g, c => c.toUpperCase());
+        return email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
     }
 
     function _esc(str) {
@@ -310,7 +272,7 @@
 
     function _formatDate(ts) {
         const ms = _tsToMs(ts);
-        if (!ms) return '\u2014';
+        if (!ms) return '—';
         return new Date(ms).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     }
 
@@ -325,7 +287,6 @@
         if (typeof window.syncBillingGroupBadge === 'function') window.syncBillingGroupBadge();
     }
 
-    // Called on page load — counts new clients without navigating to the view
     window.syncNewClientsBadgeEager = function () {
         db.collection('clientUsers').get().then(snap => {
             const lastSeen = parseInt(localStorage.getItem(_SEEN_KEY) || '0', 10);

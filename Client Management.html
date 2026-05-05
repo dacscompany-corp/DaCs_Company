@@ -58,21 +58,6 @@
 
       <button class="btn-signin" id="btn-login" type="button" onclick="doLogin()">Sign In</button>
 
-      <!-- Demo account hint -->
-      <div style="margin-top:14px;padding:12px 14px;background:#f0fdf4;border:1.5px dashed #6ee7b7;border-radius:10px;text-align:center;">
-        <div style="font-size:11.5px;font-weight:700;color:#059669;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px;">Demo Account</div>
-        <div style="font-size:13px;color:#374151;line-height:1.7;">
-          <span style="font-weight:600;">Email:</span> demo@dacs.com<br/>
-          <span style="font-weight:600;">Password:</span> demo1234
-        </div>
-        <button type="button" onclick="
-          document.getElementById('login-email').value='demo@dacs.com';
-          document.getElementById('login-password').value='demo1234';
-        " style="margin-top:8px;padding:5px 14px;border-radius:7px;border:1.5px solid #6ee7b7;background:#fff;color:#059669;font-size:12px;font-weight:700;cursor:pointer;">
-          Fill in Demo Credentials
-        </button>
-      </div>
-
       <hr class="form-divider"/>
       <div class="footer-signup-cta">
         <span class="footer-cta-text">Don't have an account?</span>
@@ -170,65 +155,89 @@
     </div>
 
     <nav class="sidebar-nav">
-      <div class="nav-label">Main</div>
-      <a class="nav-item active" onclick="showSection('dashboard')">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-          <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-        </svg>
-        Dashboard
-      </a>
-      <a class="nav-item" onclick="showSection('notifications')">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-        </svg>
-        Notifications
-        <span id="notif-nav-badge" class="pr-nav-badge" style="display:none;">0</span>
-      </a>
-      <a class="nav-item" onclick="showSection('documents')">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-          <polyline points="14 2 14 8 20 8"/>
-          <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
-        </svg>
-        Documents
-      </a>
 
-      <div class="nav-label pm-parent">Project Management</div>
-      <a class="nav-item nav-pm-sub" onclick="showSection('weekly-billing')">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="5" y="2" width="14" height="20" rx="2"/>
-          <line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/>
-          <line x1="9" y1="15" x2="13" y2="15"/>
+      <!-- ── Project Folder Header ── -->
+      <div class="sidebar-folder-btn" id="sidebar-folder-btn" onclick="showSection('kpi-dashboard')" title="Open Project Dashboard">
+        <div class="sfb-icon-wrap">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+            <path d="M20 6h-8l-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2z"/>
+          </svg>
+        </div>
+        <div class="sfb-text">
+          <div class="sfb-label">Project Folder</div>
+          <div class="sfb-name" id="sidebar-folder-name">Loading…</div>
+        </div>
+        <svg class="sfb-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 18 15 12 9 6"/>
         </svg>
-        Weekly Summary
-        <span id="weekly-overdue-badge" class="pr-nav-badge" style="display:none;background:#ef4444;">!</span>
-      </a>
-      <a class="nav-item nav-pm-sub" onclick="showSection('procurement-list')">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
-          <rect x="9" y="3" width="6" height="4" rx="1"/>
-          <line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>
-        </svg>
-        Materials Procurement
-        <span id="procurement-pending-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;">!</span>
-      </a>
-      <a class="nav-item nav-pm-sub" onclick="showSection('revolving-fund')">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="7" width="20" height="14" rx="2"/>
-          <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
-        </svg>
-        Revolving Fund
-        <span id="rf-low-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;">!</span>
-      </a>
-      <a class="nav-item nav-pm-sub" onclick="showSection('billing')">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
-        </svg>
-        Payment
-        <span id="billing-badge" class="pr-nav-badge" style="display:none;">0</span>
-      </a>
+      </div>
+
+      <!-- ── Folder Contents ── -->
+      <div class="sidebar-folder-items">
+        <a class="nav-item nav-folder-sub" onclick="showSection('kpi-dashboard')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+          </svg>
+          Overview
+        </a>
+        <a class="nav-item nav-folder-sub" onclick="showSection('accomplishment')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+            <rect x="9" y="3" width="6" height="4" rx="1"/>
+            <polyline points="9 12 11 14 15 10"/>
+          </svg>
+          Reports
+        </a>
+        <a class="nav-item nav-folder-sub" onclick="showSection('milestones')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+            <line x1="4" y1="22" x2="4" y2="15"/>
+          </svg>
+          Milestones
+          <span id="milestone-active-badge" class="pr-nav-badge" style="display:none;background:#2563eb;"></span>
+        </a>
+        <a class="nav-item nav-folder-sub" onclick="showSection('weekly-billing')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="5" y="2" width="14" height="20" rx="2"/>
+            <line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/>
+            <line x1="9" y1="15" x2="13" y2="15"/>
+          </svg>
+          Labor & Weekly
+          <span id="weekly-overdue-badge" class="pr-nav-badge" style="display:none;background:#ef4444;">!</span>
+        </a>
+        <a class="nav-item nav-folder-sub" onclick="showSection('procurement-list')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+            <rect x="9" y="3" width="6" height="4" rx="1"/>
+            <line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>
+          </svg>
+          Materials
+          <span id="procurement-pending-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;">!</span>
+        </a>
+        <a class="nav-item nav-folder-sub" onclick="showSection('revolving-fund')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="7" width="20" height="14" rx="2"/>
+            <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+          </svg>
+          Revolving Fund
+          <span id="rf-low-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;">!</span>
+        </a>
+        <a class="nav-item nav-folder-sub" onclick="showSection('billing')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+          </svg>
+          Payments
+          <span id="billing-badge" class="pr-nav-badge" style="display:none;">0</span>
+        </a>
+        <a class="nav-item nav-folder-sub" onclick="showSection('notifications')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          Notifications
+          <span id="notif-nav-badge" class="pr-nav-badge" style="display:none;">0</span>
+        </a>
+      </div>
 
       <div class="nav-label">Account</div>
       <a class="nav-item" onclick="showSection('profile')">
@@ -307,190 +316,27 @@
 
     <div class="page-body">
 
-      <!-- ── Dashboard ── -->
-      <div class="sub-page active" id="section-dashboard">
-
-      <!-- ══════════ HERO 3-KPI ROW (Dashboard only) ══════════ -->
-      <div class="hero-kpi-row" id="hero-kpis">
-        <!-- 1. Outstanding Balance -->
-        <div class="hero-kpi-card design-progress">
-          <div class="kpi-icon">💸</div>
-          <div class="kpi-text">
-            <div class="kpi-label">Outstanding Balance</div>
-            <div class="kpi-main" id="hero-design-pct">&#8369;0</div>
-            <div class="kpi-sub" id="hero-design-sub">no overdue bills</div>
-          </div>
-        </div>
-
-        <!-- 2. Total Paid -->
-        <div class="hero-kpi-card total-billed">
-          <div class="kpi-icon">✅</div>
-          <div class="kpi-text">
-            <div class="kpi-label">Total Paid</div>
-            <div class="kpi-main" id="hero-billed-pct">&#8369;0</div>
-            <div class="kpi-sub" id="hero-billed-sub">0 weekly bills paid</div>
-          </div>
-        </div>
-
-        <!-- 3. Recent Activity -->
-        <div class="hero-kpi-card recent-activity">
-          <div class="kpi-icon">🔔</div>
-          <div class="kpi-text">
-            <div class="kpi-label">Recent Activity</div>
-            <div class="kpi-main" id="hero-activity-count">0</div>
-            <div class="kpi-sub" id="hero-activity-last">-</div>
-          </div>
-        </div>
-      </div>
-        <!-- No project assigned state -->
-        <div id="no-project-state" style="display:none;">
-          <div class="content-panel" style="text-align:center; padding:60px 20px;">
-            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#b0c8bc" stroke-width="1.5" style="margin-bottom:18px;">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
-            </svg>
-            <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:var(--text-dark);margin-bottom:8px;">No Project Assigned Yet</div>
-            <p style="font-size:13.5px;color:var(--text-muted);max-width:380px;margin:0 auto;line-height:1.6;">
-              Your account hasn't been linked to a project yet. Please contact DAC's Building Design Services to get access to your project reports.
-            </p>
-          </div>
-        </div>
-
-        <div id="project-content">
-          <div class="section-title" id="dash-project-title">Manager Dashboard</div>
-          <div class="section-sub" id="dash-project-sub">Cost-Plus project management overview (Labor + Materials + 15% Fee).</div>
-
-          <!-- Scope of Services KPIs -->
-          <div class="hero-kpi-row scope-kpis">
-            <div class="hero-kpi-card kpi-labor">
-              <div class="kpi-icon">👷</div>
-              <div class="kpi-main" id="kpi-labor-value">₱0</div>
-              <div class="kpi-label">Labor Management</div>
-              <div class="kpi-sub" id="kpi-labor-sub">Sourcing, supervising &amp; scheduling</div>
-            </div>
-            <div class="hero-kpi-card kpi-procurement">
-              <div class="kpi-icon">📦</div>
-              <div class="kpi-main" id="kpi-procurement-value">₱0</div>
-              <div class="kpi-label">Procurement Management</div>
-              <div class="kpi-sub" id="kpi-procurement-sub">Materials sourcing &amp; quality control</div>
-            </div>
-            <div class="hero-kpi-card kpi-site-supervision">
-              <div class="kpi-icon">🏗️</div>
-              <div class="kpi-main" id="kpi-site-value">₱0</div>
-              <div class="kpi-label">Site Supervision</div>
-              <div class="kpi-sub" id="kpi-site-sub">Labor + Procurement total</div>
-            </div>
-          </div>
-
-          <div class="stats-grid">
-
-            <div class="stat-card budget">
-              <div class="stat-icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00a85e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                </svg>
-              </div>
-              <div class="stat-label">Total Contract Value</div>
-              <div class="stat-value" id="stat-budget">&#8369;0</div>
-              <div class="stat-sub-info" id="stat-budget-sub">Combined across all projects</div>
-            </div>
-            <div class="stat-card usage">
-              <div class="stat-icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e67e22" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-                </svg>
-              </div>
-              <div class="stat-label">Total Billed</div>
-              <div class="stat-value" id="stat-usage">0%</div>
-              <div class="stat-sub-info" id="stat-usage-sub">&#8369;0 of &#8369;0 billed</div>
-              <div style="margin-top:14px;">
-                <div class="stat-bar-wrap"><div class="stat-bar" id="bar-usage"></div></div>
-              </div>
-            </div>
-            <div class="stat-card progress">
-              <div class="stat-icon">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="18" y1="20" x2="18" y2="10"/>
-                  <line x1="12" y1="20" x2="12" y2="4"/>
-                  <line x1="6"  y1="20" x2="6"  y2="14"/>
-                </svg>
-              </div>
-              <div class="stat-label">Design Progress</div>
-              <div class="stat-value" id="stat-progress">0%</div>
-              <div class="stat-sub-info" id="stat-progress-sub">Accomplishment reports</div>
-              <div style="margin-top:14px;">
-                <div class="stat-bar-wrap"><div class="stat-bar stat-bar-blue" id="bar-progress"></div></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="dash-bottom-grid">
-            <div class="content-panel ring-panel">
-              <div class="panel-header">
-                <span class="panel-title">Overall Completion</span>
-                <span class="panel-badge panel-badge-blue" id="overall-badge">In Progress</span>
-              </div>
-              <div class="ring-center-wrap">
-                <svg class="progress-ring" width="160" height="160" viewBox="0 0 160 160">
-                  <circle class="ring-bg" cx="80" cy="80" r="64" fill="none" stroke-width="12"/>
-                  <circle class="ring-fill" id="ring-fill" cx="80" cy="80" r="64" fill="none" stroke-width="12"
-                    stroke-dasharray="402.12" stroke-dashoffset="402.12"
-                    stroke-linecap="round" transform="rotate(-90 80 80)"/>
-                </svg>
-                <div class="ring-label-wrap">
-                  <div class="ring-pct" id="ring-pct">0%</div>
-                  <div class="ring-sub">Complete</div>
-                </div>
-              </div>
-              <div class="ring-legend">
-                <div class="ring-legend-item"><span class="ring-dot ring-dot-green"></span>Approved</div>
-                <div class="ring-legend-item"><span class="ring-dot ring-dot-blue"></span>Submitted / For Review</div>
-                <div class="ring-legend-item"><span class="ring-dot ring-dot-gray"></span>Draft</div>
-              </div>
-            </div>
-
-            <div class="content-panel phase-panel">
-              <div class="panel-header">
-                <span class="panel-title">Report Breakdown</span>
-                <span class="panel-badge panel-badge-green" id="phase-count-badge">0 Reports</span>
-              </div>
-              <div class="phase-list" id="phase-list">
-                <div class="empty-state"><p>No reports yet.</p></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Project Completion Timeline -->
-          <div class="content-panel" style="margin-bottom:20px;">
-            <div class="panel-header">
-              <span class="panel-title">Project Timeline</span>
-              <span class="panel-badge panel-badge-blue" id="timeline-badge" style="display:none;"></span>
-            </div>
-            <div id="project-timeline" style="padding:8px 0 4px;">
-              <div style="color:#9ca3af;font-size:13px;text-align:center;padding:16px 0;">No milestones yet.</div>
-            </div>
-          </div>
-
-          <div class="content-panel">
-            <div class="panel-header">
-              <span class="panel-title">Recent Activity</span>
-              <span class="activity-count" id="activity-count"></span>
-            </div>
-            <div class="activity-list" id="activity-list">
-              <div class="empty-state"><p>No recent activity.</p></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- ── Accomplishment Reports ── -->
       <div class="sub-page" id="section-accomplishment">
         <div class="section-title">Accomplishment Reports</div>
-        <div class="section-sub">Track project milestones and deliverables per phase.</div>
-        <div class="content-panel" style="padding:0; overflow:hidden;">
+        <div class="section-sub">Periodic progress updates validated by DACS admin before being made visible to you.</div>
+
+        <!-- Progress Summary Bar -->
+        <div id="ar-summary-bar" class="ar-summary-bar" style="display:none;margin-bottom:20px;">
+          <div class="ar-progress-top">
+            <span class="ar-progress-label">Overall Project Progress (latest approved report)</span>
+            <span class="ar-progress-pct">0%</span>
+          </div>
+          <div class="ar-progress-track">
+            <div class="ar-progress-fill" style="width:0%;"></div>
+          </div>
+        </div>
+
+        <div class="content-panel" style="padding:0;overflow:hidden;">
           <div class="table-toolbar">
             <div class="table-search-wrap">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" class="table-search" id="report-search" placeholder="Search reports…" oninput="filterReports()"/>
+              <input type="text" class="table-search" id="report-search" placeholder="Search by title, milestone…" oninput="filterReports()"/>
             </div>
           </div>
           <div class="table-scroll">
@@ -498,27 +344,77 @@
               <thead>
                 <tr>
                   <th>Report</th>
-                  <th>Project</th>
                   <th>Date</th>
-                  <th>Accomplishment</th>
+                  <th>Milestone</th>
+                  <th>Completed Tasks</th>
+                  <th style="text-align:center;">Progress</th>
                   <th>Status</th>
-                  <th>Action</th>
+                  <th>Details</th>
                 </tr>
               </thead>
               <tbody id="reports-tbody">
-                <tr><td colspan="6" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">Loading reports…</td></tr>
+                <tr><td colspan="7" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">Loading reports…</td></tr>
               </tbody>
             </table>
           </div>
         </div>
       </div>
 
-      <!-- ── Billing Periods ── -->
+      <!-- ── Milestone Progress Tracking ── -->
+      <div class="sub-page" id="section-milestones">
+        <div class="section-title">Milestone Progress Tracking</div>
+        <div class="section-sub">Project divided into defined milestones. Each milestone is validated by DACS admin.</div>
+
+        <!-- Stats row -->
+        <div id="milestone-stats-row" class="ms-stats-row" style="display:none;margin-bottom:20px;"></div>
+
+        <!-- Empty state -->
+        <div id="milestone-empty" style="display:none;">
+          <div class="content-panel" style="text-align:center;padding:60px 20px;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#b0c8bc" stroke-width="1.5" style="margin-bottom:14px;">
+              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+            </svg>
+            <div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:6px;">No Milestones Yet</div>
+            <div style="font-size:13.5px;color:#9ca3af;max-width:340px;margin:0 auto;line-height:1.6;">
+              No milestones have been defined for this project. Contact DACS to set up milestone tracking.
+            </div>
+          </div>
+        </div>
+
+        <!-- Milestones table panel -->
+        <div class="content-panel" id="milestones-panel" style="padding:0;overflow:hidden;display:none;">
+          <div class="table-toolbar">
+            <div class="table-search-wrap">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" class="table-search" id="milestone-search" placeholder="Search milestones…" oninput="cmFilterMilestones()"/>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="milestones-table">
+              <thead>
+                <tr>
+                  <th>Milestone</th>
+                  <th>Phase</th>
+                  <th>Planned Date</th>
+                  <th style="text-align:center;">Accomplishment</th>
+                  <th>Status</th>
+                  <th style="text-align:center;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="milestones-tbody">
+                <tr><td colspan="6" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">Loading milestones…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Billing Periods (SOA) ── -->
       <div class="sub-page" id="section-billing">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
           <div>
-            <div class="section-title" style="margin-bottom:4px;">Payment</div>
-            <div class="section-sub" style="margin-bottom:0;">Manage your payments and view your billing history. Payment is due every Friday.</div>
+            <div class="section-title" style="margin-bottom:4px;">Statement of Account (SOA)</div>
+            <div class="section-sub" style="margin-bottom:0;">Your financial transactions — payments, expenses, remaining balance, and billing history.</div>
           </div>
           <button onclick="prClientOpenSelfPayModal()" style="display:inline-flex;align-items:center;gap:8px;background:#00a85e;color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,168,94,.25);">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
@@ -727,6 +623,23 @@
             <p class="pw-placeholder-text">Keep your account secure by updating your password regularly.</p>
           </div>
         </div>
+
+        <!-- ── Termination Zone ── -->
+        <div class="cm-termination-zone">
+          <div class="cm-termination-zone-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Project Termination
+          </div>
+          <p>If you wish to end this project early, you may submit a termination request. The system will calculate all consumed labor costs, materials used, and the equivalent management fee. Any remaining balance must be settled before the project is officially closed.</p>
+          <button class="cm-termination-request-btn" onclick="cmOpenTerminationModal()" id="cm-term-open-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Request Termination
+          </button>
+          <div id="cm-term-status" class="cm-term-submitted-note" style="display:none;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Termination request submitted — pending admin review. You will be notified once processed.
+          </div>
+        </div>
       </div>
 
       <!-- ── Notifications History ── -->
@@ -748,53 +661,62 @@
         </div>
       </div>
 
-      <!-- ── Documents ── -->
-      <div class="sub-page" id="section-documents">
+
+      <!-- ══════════ PROJECT DASHBOARD / FOLDER VIEW ══════════ -->
+      <div class="sub-page" id="section-kpi-dashboard">
+
+        <!-- Header -->
         <div style="margin-bottom:24px;">
-          <div class="section-title" style="margin-bottom:4px;">Documents</div>
-          <div class="section-sub" style="margin-bottom:0;">Download your invoices, contract, and statements.</div>
+          <div class="section-title" style="margin-bottom:4px;">Project Dashboard</div>
+          <div class="section-sub" style="margin-bottom:0;">All project data, KPIs, and folders organized in one place for full transparency and easy navigation.</div>
         </div>
 
-        <!-- Signed Contract -->
-        <div class="content-panel" style="padding:0;overflow:hidden;margin-bottom:24px;">
-          <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
-            <div>
-              <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Signed Contract</div>
-              <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Project Management &amp; Procurement Agreement — view only.</div>
-            </div>
-            <span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;background:#f0fdf4;border:1px solid #bbf7d0;font-size:12px;font-weight:600;color:#15803d;">
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              View Only
-            </span>
-          </div>
-          <div id="docs-contract-section" style="padding:22px;">
-            <div style="padding:12px 0;text-align:center;color:#9ca3af;font-size:14px;">Loading contract…</div>
+        <!-- No Project State -->
+        <div id="kpi-no-data" style="display:none;">
+          <div class="content-panel" style="text-align:center;padding:60px 20px;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#b0c8bc" stroke-width="1.5" style="margin-bottom:14px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            <div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:6px;">No Project Data</div>
+            <div style="font-size:13.5px;color:#9ca3af;">Your account is not yet linked to a construction project.</div>
           </div>
         </div>
 
-        <!-- Invoices -->
-        <div class="content-panel" style="padding:0;overflow:hidden;margin-bottom:24px;">
-          <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
-            <div>
-              <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Invoices</div>
-              <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Auto-generated after each verified payment.</div>
+        <!-- Project Folder View (shown when project data exists) -->
+        <div id="kpi-project-folder" style="display:none;">
+
+          <!-- ── Project Header Card ── -->
+          <div class="pf-project-header" id="pf-project-header">
+            <!-- populated by JS -->
+          </div>
+
+          <!-- ── Cost Distribution Pie Chart ── -->
+          <div id="pf-cost-chart"></div>
+
+          <!-- ── Combined KPI Grid ── -->
+          <div class="pf-kpi-grid" id="pf-kpi-grid">
+            <!-- populated by JS -->
+          </div>
+
+          <!-- ── KPI Alerts ── -->
+          <div id="kpi-alerts-standalone" style="display:none;margin-bottom:20px;"></div>
+
+          <!-- ── Weekly Activity Summary Preview ── -->
+          <div class="content-panel" style="padding:0;overflow:hidden;margin-bottom:24px;">
+            <div class="pm-panel-header">
+              <div>
+                <div class="pm-panel-title">Weekly Activity Summary</div>
+                <div class="pm-panel-sub">Latest billing weeks — labor, materials, and totals.</div>
+              </div>
+              <button onclick="showSection('weekly-billing')" class="pf-view-all-btn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                View All
+              </button>
             </div>
+            <div id="pf-weekly-preview"></div>
           </div>
-          <div id="docs-invoice-list" style="min-height:80px;">
-            <div style="padding:32px;text-align:center;color:#9ca3af;font-size:14px;">Loading…</div>
-          </div>
-        </div>
-        <!-- SOWA -->
-        <div class="content-panel" style="padding:0;overflow:hidden;">
-          <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;">
-            <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Statement of Work Accomplished (SOWA)</div>
-            <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Official project accomplishment summary issued by DAC.</div>
-          </div>
-          <div id="docs-sowa-section" style="padding:22px;">
-            <div style="padding:12px 0;text-align:center;color:#9ca3af;font-size:14px;">Loading…</div>
-          </div>
-        </div>
-      </div>
+
+        </div><!-- /kpi-project-folder -->
+
+      </div><!-- /section-kpi-dashboard -->
 
       <!-- ══════════ WEEKLY SUMMARY ══════════ -->
       <div class="sub-page" id="section-weekly-billing">
@@ -803,6 +725,24 @@
             <div class="section-title" style="margin-bottom:4px;">Weekly Summary</div>
             <div class="section-sub" style="margin-bottom:0;">Cost-Plus model — Direct Costs + 15% Management Fee. Payment due every Friday.</div>
           </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div class="table-search-wrap" style="width:190px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <select id="wb-week-filter" onchange="filterWeeklyBills()" style="border:none;background:transparent;font-size:13px;color:#374151;outline:none;cursor:pointer;width:100%;padding:0 4px;">
+                <option value="">All Weeks</option>
+              </select>
+            </div>
+            <button onclick="printWeeklyReport()" class="btn-print-report">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              Print Report
+            </button>
+          </div>
+        </div>
+
+        <!-- Price Variability Disclaimer -->
+        <div class="cm-price-disclaimer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span><strong>Cost Notice:</strong> Prices may vary based on market conditions and material availability. All figures reflect actual recorded costs at the time of billing.</span>
         </div>
 
         <!-- Overdue Alert -->
@@ -933,9 +873,15 @@
 
       <!-- ══════════ MATERIALS PROCUREMENT LIST ══════════ -->
       <div class="sub-page" id="section-procurement-list">
-        <div style="margin-bottom:24px;">
+        <div style="margin-bottom:16px;">
           <div class="section-title" style="margin-bottom:4px;">Materials Procurement List</div>
           <div class="section-sub" style="margin-bottom:0;">Items your project manager needs to purchase. You may buy any item yourself — mark it as bought and upload your receipt.</div>
+        </div>
+
+        <!-- Price Variability Disclaimer -->
+        <div class="cm-price-disclaimer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span><strong>Cost Notice:</strong> Estimated prices are for reference only. Actual purchase prices may vary based on current market conditions and supplier availability.</span>
         </div>
 
         <!-- Summary Cards -->
@@ -946,19 +892,19 @@
             <div class="pm-stat-sub">on the procurement list</div>
           </div>
           <div class="pm-stat-card pm-stat-amber">
-            <div class="pm-stat-label">Pending</div>
+            <div class="pm-stat-label">Undecided</div>
             <div class="pm-stat-value" id="pl-pending-items">0</div>
-            <div class="pm-stat-sub">items not yet purchased</div>
+            <div class="pm-stat-sub">awaiting your decision</div>
           </div>
           <div class="pm-stat-card pm-stat-blue">
-            <div class="pm-stat-label">Bought by You</div>
+            <div class="pm-stat-label">Your Responsibility</div>
             <div class="pm-stat-value" id="pl-client-items">0</div>
-            <div class="pm-stat-sub">items you purchased</div>
+            <div class="pm-stat-sub">assigned to you or purchased</div>
           </div>
           <div class="pm-stat-card pm-stat-purple">
-            <div class="pm-stat-label">Bought by Company</div>
+            <div class="pm-stat-label">Admin Handling</div>
             <div class="pm-stat-value" id="pl-company-items">0</div>
-            <div class="pm-stat-sub">items company purchased</div>
+            <div class="pm-stat-sub">assigned to or bought by admin</div>
           </div>
         </div>
 
@@ -1105,6 +1051,30 @@
   </div>
 </div>
 
+<!-- ══════════ MILESTONE DETAIL MODAL ══════════ -->
+<div class="modal-overlay" id="milestone-detail-modal" onclick="cmCloseMilestoneModal(event)">
+  <div class="report-modal-card">
+    <div class="report-modal-header">
+      <div class="report-modal-header-info">
+        <div class="report-modal-logo">
+          <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC Logo"/>
+          <span>DAC's Building Design Services</span>
+        </div>
+        <div class="report-modal-title" id="msd-title">Milestone Report</div>
+        <div class="report-modal-meta" id="msd-meta"></div>
+      </div>
+      <div class="report-modal-header-right">
+        <span class="badge" id="msd-status-badge"></span>
+        <button class="report-modal-close" onclick="cmCloseMilestoneModal()" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="report-modal-body" id="msd-body"></div>
+    <div class="report-modal-footer" id="msd-footer"></div>
+  </div>
+</div>
+
 <!-- ══════════ LOGOUT MODAL ══════════ -->
 <div class="modal-overlay" id="logout-modal" onclick="closeLogoutModal(event)">
   <div class="modal-card">
@@ -1206,6 +1176,57 @@
     <div class="pm-receipt-modal-body">
       <img id="plReceiptViewImg" src="" alt="Receipt" style="display:none;"/>
       <iframe id="plReceiptViewPdf" src="" style="width:100%;height:60vh;border:none;border-radius:8px;display:none;"></iframe>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ PROCUREMENT: DECISION MODAL ══════════ -->
+<div id="plDecisionModal" class="pm-modal-overlay" style="display:none;" onclick="if(event.target===this)plCloseDecisionModal()">
+  <div class="pm-modal-card pl-decision-card">
+    <div class="pm-modal-header">
+      <div class="pm-modal-icon pl-decision-modal-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      </div>
+      <span class="pm-modal-title">Purchase Decision</span>
+      <button class="pm-modal-close" onclick="plCloseDecisionModal()" aria-label="Close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="pm-modal-body">
+      <!-- Item info -->
+      <div class="pm-item-info-box">
+        <div class="pm-item-info-label">Item Details</div>
+        <div class="pm-item-info-name" id="plDecItemName">—</div>
+        <div class="pm-item-info-meta">Qty: <span id="plDecItemQty">—</span> &nbsp;·&nbsp; Est. Price: <span id="plDecItemEst">—</span></div>
+        <div class="pm-item-info-notes" id="plDecItemNotes"></div>
+      </div>
+
+      <p class="pl-decision-prompt">This item needs to be purchased. Will you handle the purchase yourself, or should the admin/company take care of it?</p>
+
+      <div class="pl-decision-options">
+        <button id="plDecAcceptBtn" class="pl-decision-option pl-decision-accept" onclick="plClientAcceptItem()">
+          <div class="pl-decision-option-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          </div>
+          <div class="pl-decision-option-text">
+            <div class="pl-decision-option-title">I'll Purchase This</div>
+            <div class="pl-decision-option-sub">You agree to buy this item and submit the receipt</div>
+          </div>
+        </button>
+
+        <button id="plDecDeclineBtn" class="pl-decision-option pl-decision-decline" onclick="plClientDeclineItem()">
+          <div class="pl-decision-option-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+          </div>
+          <div class="pl-decision-option-text">
+            <div class="pl-decision-option-title">Admin Will Handle</div>
+            <div class="pl-decision-option-sub">The company/admin will purchase this item instead</div>
+          </div>
+        </button>
+      </div>
+    </div>
+    <div class="pm-modal-footer">
+      <button class="pm-btn-cancel" onclick="plCloseDecisionModal()">Decide Later</button>
     </div>
   </div>
 </div>
@@ -1406,7 +1427,7 @@ function openWBDetail(bill){
   var m=document.getElementById('wbDetailModal');
   var sub=document.getElementById('wbDetailSubtitle');
   var body=document.getElementById('wbDetailBody');
-  sub.textContent='Week ending '+( bill.weekEnding||'—' );
+  sub.textContent='Week ending '+( bill.weekEndingDate||bill.weekEnding||'—' );
   var labor=bill.labor||0, materials=bill.materials||0,
       delivery=bill.delivery||0, consumables=bill.consumables||0,
       other=bill.other||0;
@@ -1432,7 +1453,7 @@ function openWBDetail(bill){
     '<tr style="background:#1f2937;"><td style="padding:14px;font-weight:700;color:#fff;font-size:16px;border-radius:0 0 0 8px;">TOTAL DUE</td><td style="padding:14px;text-align:right;font-weight:700;color:#4ade80;font-size:18px;border-radius:0 0 8px 0;">'+fmt(total)+'</td></tr>',
     '</tbody></table>',
     bill.paymentDue?'<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;font-size:13px;color:#b45309;font-weight:600;">Payment due by: '+bill.paymentDue+'</div>':'',
-    bill.remarks?'<div style="margin-top:12px;padding:10px 14px;background:#f9fafb;border-radius:8px;font-size:13px;color:#6b7280;"><strong>Remarks:</strong> '+bill.remarks+'</div>':''
+    (bill.remarks||bill.notes)?'<div style="margin-top:12px;padding:10px 14px;background:#f9fafb;border-radius:8px;font-size:13px;color:#6b7280;"><strong>Remarks:</strong> '+(bill.remarks||bill.notes)+'</div>':''
   ].join('');
   m.style.display='flex';
 }
@@ -1512,6 +1533,360 @@ function filterProgressLogs(){
     <div style="padding:16px 24px;display:flex;gap:10px;justify-content:flex-end;">
       <button onclick="closeForgotPasswordModal()" style="padding:9px 18px;border-radius:8px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
       <button id="sendResetBtn" onclick="sendResetEmail()" style="padding:9px 18px;border-radius:8px;border:none;background:#059669;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Send Reset Link</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ COST-PLUS AGREEMENT MODAL ══════════ -->
+<div id="cm-agreement-modal" class="cm-agreement-overlay" style="display:none;">
+  <div class="cm-agreement-card">
+
+    <!-- Header -->
+    <div class="cm-agreement-header">
+      <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo"/>
+      <div class="cm-agreement-badge">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Official Document
+      </div>
+      <div class="cm-agreement-title">Cost-Plus Project Management Agreement</div>
+      <div class="cm-agreement-subtitle">Please read the full agreement carefully before accessing your project portal. Your acceptance is required to proceed.</div>
+    </div>
+
+    <!-- Scrollable Body -->
+    <div class="cm-agreement-body">
+
+      <!-- Section 1 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">1</span> Parties
+        </div>
+        <p>This Cost-Plus Project Management Agreement is entered into between:</p>
+        <ul>
+          <li><strong>Manager:</strong> DAC's Building Design Services — responsible for all construction management activities including labor, procurement, and site supervision.</li>
+          <li><strong>Client:</strong> The registered account holder — responsible for funding all direct costs and the management fee as defined herein.</li>
+        </ul>
+        <p style="margin-top:8px;">Each project must be formally linked to both a Manager and a Client account within the system.</p>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <!-- Section 2 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">2</span> Scope of Services
+        </div>
+        <p>The Manager shall provide the following services on behalf of the Client:</p>
+        <ul>
+          <li><strong>Labor Management:</strong> Adding, assigning, and scheduling workers; tracking daily/weekly labor activities and payroll.</li>
+          <li><strong>Procurement Management:</strong> Recording material requests, supplier canvassing, tracking purchases, delivery status, and quality checks.</li>
+          <li><strong>Site Supervision:</strong> Monitoring project progress; uploading site reports, images, and compliance updates accessible by the Client.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <!-- Section 3 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">3</span> Cost-Plus Fee Structure
+        </div>
+        <p>This agreement operates under a <strong>Cost-Plus Model</strong>:</p>
+        <ul>
+          <li><strong>Direct Costs:</strong> Weekly labor payroll, materials and supplies, delivery, and consumables — all tracked individually in the system.</li>
+          <li><strong>Management Fee:</strong> 15% of the total weekly direct costs, automatically computed and displayed in all billing reports.</li>
+        </ul>
+        <div class="cm-agreement-highlight">Total Weekly Amount = Direct Costs + 15% Management Fee</div>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <!-- Section 4 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">4</span> Payment Terms
+        </div>
+        <ul>
+          <li>The Manager uploads a Weekly Labor &amp; Material Summary every billing period.</li>
+          <li>The Client is notified and must release payment within <strong>24 hours</strong> of submission.</li>
+          <li>Payment covers labor costs, material expenses, and the 15% management fee.</li>
+          <li>The Client may pay suppliers directly or fund the system's revolving fund for petty purchases.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <!-- Section 5 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">5</span> Revolving Fund
+        </div>
+        <p>An optional revolving fund (petty cash) may be established by the Client for minor and urgent site purchases. The system shall:</p>
+        <ul>
+          <li>Track deductions from the revolving fund with receipts as proof.</li>
+          <li>Calculate the remaining balance weekly.</li>
+          <li>Prompt the Client to replenish the fund when the balance falls below the required threshold.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <!-- Section 6 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">6</span> Responsibilities &amp; System Rules
+        </div>
+        <ul>
+          <li><strong>Quality Control:</strong> The Manager logs defective materials; the system records return and replacement actions.</li>
+          <li><strong>Labor Management:</strong> All workers are managed by the Manager. Payroll is funded and approved by the Client.</li>
+          <li><strong>Price Variability:</strong> Material and labor costs are subject to market fluctuations.</li>
+        </ul>
+        <div class="cm-agreement-warn-box">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" flex-shrink="0" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>⚠ Costs may vary based on market price changes. The Client acknowledges that quoted estimates are not guaranteed fixed prices.</span>
+        </div>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <!-- Section 7 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">7</span> Termination
+        </div>
+        <p>Either party may request early project termination through the system. Upon termination:</p>
+        <ul>
+          <li>The system auto-calculates: total consumed labor costs, total materials used, and the equivalent management fee.</li>
+          <li>The final payable balance must be settled in full before the project is officially closed.</li>
+          <li>Termination requests are subject to review and confirmation by the Manager.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <!-- Section 8 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">8</span> Agreement Confirmation
+        </div>
+        <p>By accepting this agreement, the Client confirms that they have fully read, understood, and voluntarily agree to all terms and conditions set forth in this Cost-Plus Project Management Agreement with DAC's Building Design Services.</p>
+        <p>This digital acceptance serves as a binding confirmation equivalent to a written signature.</p>
+      </div>
+
+    </div><!-- /agreement-body -->
+
+    <!-- Footer -->
+    <div class="cm-agreement-footer">
+      <label class="cm-agreement-check-wrap" for="cm-agreement-checkbox">
+        <input type="checkbox" id="cm-agreement-checkbox" onchange="cmToggleAgreementBtn()"/>
+        <span>I have fully read and understood this <strong>Cost-Plus Project Management Agreement</strong> and agree to all its terms and conditions.</span>
+      </label>
+      <button id="cm-agreement-accept-btn" class="cm-agreement-accept-btn" onclick="cmAcceptAgreement()" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>
+        Accept &amp; Continue to Portal
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════ MVP TERMS & FEATURES MODAL ══════════ -->
+<div id="cm-mvp-modal" class="cm-agreement-overlay" style="display:none;" onclick="if(event.target===this)cmCloseMvpModal()">
+  <div class="cm-agreement-card">
+
+    <div class="cm-agreement-header">
+      <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo"/>
+      <div class="cm-agreement-badge">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        MVP Specification
+      </div>
+      <div class="cm-agreement-title">Portal Features &amp; System Specification</div>
+      <div class="cm-agreement-subtitle">DACS Client Portal &amp; KPI Dashboard System — Minimum Viable Product (MVP) Terms &amp; Features</div>
+    </div>
+
+    <div class="cm-agreement-body">
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">1</span> System Overview
+        </div>
+        <p>The system provides a <strong>Client Portal</strong> that enables users to monitor project progress, financial status, and performance metrics through structured modules such as SOA, Accomplishment Reports, Milestone Tracking, and KPI Dashboard. All data presented to the client must be validated by the admin (DACS) prior to visibility.</p>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">2</span> Statement of Account (SOA) Module
+        </div>
+        <p>The SOA feature provides:</p>
+        <ul>
+          <li>All financial transactions including payments, expenses, and remaining balance.</li>
+          <li>Cost breakdown into categories such as labor, materials, and other expenses.</li>
+          <li>A clear and organized financial summary for client review.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">3</span> Accomplishment Reports Module
+        </div>
+        <p>The Accomplishment Reports feature includes:</p>
+        <ul>
+          <li>Periodic updates (weekly or milestone-based).</li>
+          <li>Completed tasks, descriptions, dates, and progress percentages.</li>
+          <li>Serves as the basis for progress tracking and KPI computation.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">4</span> Milestone Progress Tracking with Notifications
+        </div>
+        <p>The Milestone Tracking Module:</p>
+        <ul>
+          <li>Divides the project into defined milestones with corresponding percentages.</li>
+          <li>Tracks completion status per milestone.</li>
+          <li>Sends push notifications when a milestone is updated, completed, or delayed.</li>
+          <li>Notifications are accessible within the client portal.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">5</span> Project Overview Dashboard
+        </div>
+        <p>The Project Overview Dashboard displays:</p>
+        <ul>
+          <li>Total budget, total expenses, and remaining balance.</li>
+          <li>Overall project progress.</li>
+          <li>Milestone status summary and recent updates.</li>
+          <li>Acts as the main entry point for client monitoring.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">6</span> KPI Dashboard — Performance-Based Metrics
+        </div>
+        <p>The KPI Dashboard measures actual project performance using computed indicators. Included KPI metrics:</p>
+        <ul>
+          <li><strong>Project Completion Rate</strong> — (Completed Milestones ÷ Total Milestones) × 100</li>
+          <li><strong>Budget Utilization Rate</strong> — (Total Expenses ÷ Total Budget) × 100</li>
+          <li><strong>Schedule Performance Indicator</strong> — (Actual Progress ÷ Planned Progress) × 100</li>
+          <li><strong>Cost Variance</strong> — Budget − Actual Cost</li>
+          <li><strong>Weekly Progress Growth</strong> — Current Progress − Previous Progress</li>
+        </ul>
+        <div class="cm-agreement-highlight" style="display:flex;gap:18px;flex-wrap:wrap;justify-content:center;">
+          <span style="color:#16a34a;font-weight:700;">● Green = On Track</span>
+          <span style="color:#d97706;font-weight:700;">● Yellow = Warning</span>
+          <span style="color:#dc2626;font-weight:700;">● Red = Critical</span>
+        </div>
+        <p style="margin-top:10px;">KPIs are automatically computed using data from the SOA Module (financial), Accomplishment Reports (progress), and Milestone Tracking (schedule). The dashboard supports filtering by weekly, monthly, or per milestone view.</p>
+        <div class="cm-agreement-warn-box" style="margin-top:10px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>Weekly totals (labor, materials, payments) are <strong>not classified as KPIs</strong> — they remain as supporting reports only.</span>
+        </div>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">6.4</span> KPI Alerts
+        </div>
+        <p>The system generates alerts when:</p>
+        <ul>
+          <li>Budget exceeds defined limits.</li>
+          <li>Project falls behind schedule.</li>
+          <li>No progress updates are recorded within a set timeframe.</li>
+        </ul>
+        <p>Alerts appear in the notification panel.</p>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">7</span> Client Portal Login &amp; Authentication
+        </div>
+        <ul>
+          <li>Secure login using registered credentials.</li>
+          <li>Proper error handling for invalid login and session expiration.</li>
+          <li>Access control — clients can only view their assigned projects.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">8</span> Buyer Identification Requirement
+        </div>
+        <p>Each project must have a registered buyer classified as either:</p>
+        <ul>
+          <li><strong>Individual User</strong>, or</li>
+          <li><strong>Company / Organization</strong></li>
+        </ul>
+        <p>Required buyer details must be completed before any transaction or project activation.</p>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">9</span> DACS Review &amp; Validation
+        </div>
+        <ul>
+          <li>Admin validates SOA entries, reports, and milestone updates.</li>
+          <li>Only approved data becomes visible to the client.</li>
+          <li>Ensures accuracy, transparency, and accountability.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">10</span> System Scope (MVP Limitation)
+        </div>
+        <p>This MVP is scoped to:</p>
+        <ul>
+          <li>Client-side monitoring and viewing features only.</li>
+          <li>Basic KPI computation — no advanced analytics, forecasting, or automation beyond this.</li>
+          <li>Priority on clarity, usability, and essential tracking functions.</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <div class="cm-agreement-footer" style="justify-content:flex-end;">
+      <button class="cm-agreement-accept-btn" onclick="cmCloseMvpModal()" style="background:linear-gradient(135deg,#059669,#047857);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>
+        Got It — Close
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════ TERMINATION CONFIRMATION MODAL ══════════ -->
+<div id="cm-termination-modal" class="cm-termination-overlay" style="display:none;">
+  <div class="cm-termination-card">
+    <div class="cm-termination-header">
+      <div class="cm-termination-header-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div class="cm-termination-header-text">
+        <h3>Request Project Termination</h3>
+        <p>Review your calculated final balance before submitting</p>
+      </div>
+    </div>
+    <div class="cm-termination-body">
+      <div id="cm-term-cost-breakdown">
+        <!-- populated by JS -->
+      </div>
+      <div class="cm-term-warn-box">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>This action submits a termination request to the Manager. Your account remains active until the request is reviewed. The final balance must be settled before project closure.</span>
+      </div>
+    </div>
+    <div class="cm-termination-footer">
+      <button class="cm-term-cancel-btn" onclick="cmCloseTerminationModal()">Cancel</button>
+      <button class="cm-term-confirm-btn" onclick="cmConfirmTermination()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:5px;"><polyline points="20 6 9 17 4 12"/></svg>
+        Submit Request
+      </button>
     </div>
   </div>
 </div>

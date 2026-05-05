@@ -203,6 +203,12 @@ service cloud.firestore {
       allow read, write: if isOwner() || isStaff();
     }
 
+    // Construction management client profiles
+    match /constructionClientUsers/{userId} {
+      allow read, write: if isAuthenticated() && request.auth.uid == userId;
+      allow read, write: if isOwner() || isStaff();
+    }
+
     match /boqDocuments/{boqId} {
       // Owner/staff can list all (needed for client accounts page)
       allow read, update, delete: if isOwner() || isStaff();
@@ -262,6 +268,29 @@ service cloud.firestore {
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // CONSTRUCTION PROJECT MANAGEMENT COLLECTIONS
+    // ═══════════════════════════════════════════════════════════════════
+
+    match /constructionProjects/{projectId} {
+      // Owner/staff: full CRUD on project documents
+      allow read, create, update, delete: if isOwner() || isStaff();
+      // Clients: read only the project linked to their email
+      allow read: if isAuthenticated()
+                  && resource.data.clientEmail == request.auth.token.email;
+
+      // All subcollections (weeklyBills, procurementList, revolvingFund, etc.)
+      match /{document=**} {
+        allow read, create, update, delete: if isOwner() || isStaff();
+        // Clients can read subcollection data of their own project
+        allow read: if isAuthenticated()
+                    && get(/databases/$(database)/documents/constructionProjects/$(projectId)).data.clientEmail == request.auth.token.email;
+        // Clients can update procurementList items (mark as bought by client)
+        allow update: if isAuthenticated()
+                      && get(/databases/$(database)/documents/constructionProjects/$(projectId)).data.clientEmail == request.auth.token.email;
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // SOA MODULE COLLECTIONS
     // ═══════════════════════════════════════════════════════════════════
 
@@ -292,6 +321,15 @@ service cloud.firestore {
     // Billings — admin only (used for SOA computation)
     match /billings/{billingId} {
       allow read, create, update, delete: if isOwner() || isStaff();
+    }
+
+    // Termination Requests — client submits; admin manages
+    match /terminationRequests/{requestId} {
+      allow create: if isAuthenticated()
+                    && request.auth.uid == request.resource.data.clientUid;
+      allow read: if isAuthenticated()
+                  && request.auth.uid == resource.data.clientUid;
+      allow read, update, delete: if isOwner() || isStaff();
     }
 
     // SOA Records — generated SOA documents; admin CRUD; clients can read their own

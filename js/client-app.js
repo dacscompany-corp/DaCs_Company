@@ -469,7 +469,7 @@ function populateDashboard() {
     // 1. Design Progress
     const totalAcc   = currentBoqDocs.reduce((s, d) => s + calcTotalAcc(d.costItems), 0);
     const totalCost  = currentBoqDocs.reduce((s, d) => s + calcGrandTotal(d.costItems), 0);
-    const progressPct = totalCost > 0 ? Math.round((totalAcc / totalCost) * 100) : 0;
+    const progressPct = totalCost > 0 ? Math.round((totalAcc / totalCost) * 100) : calcStatusProgress();
     const approved   = currentBoqDocs.filter(d => d.status === 'approved').length;
     if (designPctEl) animateValue(designPctEl, 0, progressPct, 1200, n => n + '%');
     if (designSubEl) designSubEl.textContent = approved + ' approved';
@@ -523,12 +523,7 @@ function populateDashboard() {
     _setText('dash-project-sub', 'Here\'s an overview of all your projects.');
 
     // ── Budget stats (aggregate across all folders)
-    const totalBudget = currentFolders.reduce((s, f) => s + (parseFloat(f.totalBudget) || 0), 0);
-    const totalBilled = (window._clientPayRequests || [])
-        .filter(r => r.status === 'verified')
-        .reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-    const billedPct   = totalBudget > 0 ? Math.round((totalBilled / totalBudget) * 100) : 0;
-
+    // (totalBudget, totalBilled, billedPct already computed above)
     const budgetEl = document.getElementById('stat-budget');
     if (budgetEl) animateValue(budgetEl, 0, totalBudget, 1200, formatPeso);
     const usageEl = document.getElementById('stat-usage');
@@ -544,13 +539,9 @@ function populateDashboard() {
         if (bu) bu.style.width = Math.min(billedPct, 100) + '%';
     }, 300);
 
-    // ── Progress (weighted from boqDocs status & percentCompletion)
-    const totalAcc   = currentBoqDocs.reduce((s, d) => s + calcTotalAcc(d.costItems), 0);
-    const totalCost  = currentBoqDocs.reduce((s, d) => s + calcGrandTotal(d.costItems), 0);
-    const progressPct = totalCost > 0 ? Math.round((totalAcc / totalCost) * 100) : calcStatusProgress();
+    // ── Progress (totalAcc, totalCost, progressPct, approved already computed above)
     const progressEl  = document.getElementById('stat-progress');
     if (progressEl) animateValue(progressEl, 0, progressPct, 1100, n => n + '%');
-    const approved   = currentBoqDocs.filter(d => d.status === 'approved').length;
     const submitted  = currentBoqDocs.filter(d => d.status === 'submitted').length;
     _setText('stat-progress-sub', approved + ' approved, ' + submitted + ' under review');
     setTimeout(() => {
