@@ -1999,18 +1999,7 @@
   }
 
   /* ── Company header ── */
-  .pr-co-hdr{
-    padding-bottom:7px;
-    margin-bottom:7px;
-    border-bottom:2.5px solid #1a1a1a;
-    display:flex;
-    align-items:flex-end;
-    justify-content:space-between;
-    min-height:60px;
-  }
-  .pr-co-hdr-text{ display:flex; flex-direction:column; }
-  .pr-co-name{font-size:13pt;font-weight:900;letter-spacing:.1em;text-transform:uppercase;}
-  .pr-co-tagline{font-size:7.5pt;color:#555;margin-top:2px;letter-spacing:.03em;}
+  .pr-co-hdr{ margin-bottom:7px; }
 
   /* ── Info box ── */
   .pr-info{width:50%;border-collapse:collapse;margin-bottom:9px;border:2px solid #111;}
@@ -2099,11 +2088,7 @@
 
   <!-- Company header -->
   <div class="pr-co-hdr">
-    <div class="pr-co-hdr-text">
-      <div class="pr-co-name">DAC'S BUILDING DESIGN SERVICES</div>
-      <div class="pr-co-tagline">Accomplishment Report</div>
-    </div>
-    <img src="${_base}assets/images/DACS-TRANSPARENT.png" style="height:150px;display:block;align-self:flex-end;" alt="DAC's Logo">
+    ${window.dacsPrintHeader('Accomplishment Report')}
   </div>
 
   <!-- Document info box -->

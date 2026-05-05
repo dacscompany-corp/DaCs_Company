@@ -3096,18 +3096,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#111;background
 <div class="page">
 
   <!-- Header -->
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:3px solid #1e3a5f;margin-bottom:18px;">
-    <div>
-      <h1 style="font-size:17px;font-weight:800;color:#1a1a2e;">${esc(bizName)}</h1>
-      ${bizAddr ? `<p style="font-size:11px;color:#555;margin-top:3px;">${esc(bizAddr)}</p>` : ''}
-    </div>
-    <div style="text-align:right;">
-      <div style="font-size:20px;font-weight:900;color:#1e3a5f;letter-spacing:2px;text-transform:uppercase;">Payroll</div>
-      <div style="font-size:20px;font-weight:900;color:#1e3a5f;letter-spacing:2px;text-transform:uppercase;margin-top:-4px;">Summary</div>
-      <div style="font-size:11px;font-weight:700;color:#7c3aed;margin-top:3px;letter-spacing:.5px;text-transform:uppercase;">Labor &amp; Payroll</div>
-      <div style="font-size:11px;color:#444;margin-top:6px;">Printed: <strong>${today}</strong></div>
-    </div>
-  </div>
+  ${window.dacsPrintHeader('Payroll Summary', `Labor &amp; Payroll<br>Printed: ${today}`)}
 
   <!-- Worker Info Band -->
   <div style="display:flex;gap:0;margin-bottom:18px;border:1.5px solid #e5e7eb;border-radius:6px;overflow:hidden;">
@@ -4935,17 +4924,7 @@ function printFullBillingSummary() {
   body { font-family:'Segoe UI',Arial,sans-serif; background:#f0f0f0; color:#1a1a1a; font-size:13px; }
   .page { max-width:820px; margin:20px auto; background:#fff; box-shadow:0 2px 16px rgba(0,0,0,0.15); }
   /* -- Company Header -- */
-  .co-header { background:linear-gradient(135deg,#1a1a2e 70%,#0f2744 100%); color:#fff; padding:20px 28px 16px; display:flex; align-items:center; gap:20px; border-bottom:3px solid #059669; position:relative; overflow:hidden; }
-  .co-header::after { content:''; position:absolute; top:0; right:0; width:200px; height:100%; background:linear-gradient(to left,rgba(5,150,105,0.1),transparent); pointer-events:none; }
-  .co-logo { width:68px; height:68px; border-radius:10px; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#ffffff; padding:6px; border:1px solid rgba(255,255,255,0.3); }
-  .co-logo img { width:100%; height:100%; object-fit:contain; }
-  .co-divider { width:1px; height:48px; background:rgba(255,255,255,0.2); flex-shrink:0; }
-  .co-info { flex:1; }
-  .co-name { font-size:1.15rem; font-weight:900; letter-spacing:0.07em; text-transform:uppercase; }
-  .co-tagline { font-size:0.72rem; opacity:0.6; margin-top:4px; letter-spacing:0.02em; }
-  .co-right { text-align:right; }
-  .doc-type { font-size:0.6rem; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; opacity:0.55; margin-bottom:4px; }
-  .doc-title { font-size:1rem; font-weight:800; color:#059669; letter-spacing:0.04em; }
+  .co-header { padding:20px 28px 0; }
   /* -- Project Info Bar -- */
   .proj-bar { background:#f8f9fa; border-bottom:3px solid #e5c100; padding:10px 24px; display:flex; justify-content:space-between; align-items:center; }
   .proj-name { font-size:1rem; font-weight:800; color:#1a1a1a; }
@@ -4990,16 +4969,7 @@ function printFullBillingSummary() {
 <div class="page">
   <!-- Company Header -->
   <div class="co-header">
-    <div class="co-logo"><img src="${_prtBaseUrl}assets/images/DACS-TRANSPARENT.png" alt="DAC\'S Logo"></div>
-    <div class="co-divider"></div>
-    <div class="co-info">
-      <div class="co-name">DAC'S BUILDING DESIGN SERVICES</div>
-      <div class="co-tagline">Professional Building Design &amp; Construction Management</div>
-    </div>
-    <div class="co-right">
-      <div class="doc-type">Document Type</div>
-      <div class="doc-title">BILLING SUMMARY</div>
-    </div>
+    ${window.dacsPrintHeader('Billing Summary', `Printed: ${printDate}`)}
   </div>
 
   <!-- Project Info Bar -->
@@ -5154,7 +5124,7 @@ function printBillingSummaryReceipt(projectId) {
   .rc-page { max-width:600px; margin:24px auto; background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,0.12); }
   .rc-header { background:linear-gradient(135deg,#059669,#047857); padding:24px 28px 18px; color:#fff; }
   .rc-header-top { display:flex; align-items:center; gap:14px; margin-bottom:14px; }
-  .rc-logo { width:48px; height:48px; background:rgba(255,255,255,0.2); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.4rem; font-weight:900; flex-shrink:0; }
+  .rc-logo { width:56px; height:56px; background:#fff; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:4px; flex-shrink:0; overflow:hidden; }
   .rc-company-name { font-size:1.05rem; font-weight:800; letter-spacing:0.04em; }
   .rc-company-sub  { font-size:0.72rem; opacity:0.85; margin-top:2px; }
   .rc-type-badge { background:rgba(255,255,255,0.25); border:1px solid rgba(255,255,255,0.4); border-radius:20px; padding:4px 14px; font-size:0.75rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; white-space:nowrap; }
@@ -5191,7 +5161,7 @@ function printBillingSummaryReceipt(projectId) {
 <div class="rc-page">
   <div class="rc-header">
     <div class="rc-header-top">
-      <div class="rc-logo">D</div>
+      <div class="rc-logo"><img src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'"></div>
       <div style="flex:1">
         <div class="rc-company-name">DAC'S BUILDING DESIGN SERVICES</div>
         <div class="rc-company-sub">Billing Period Summary</div>

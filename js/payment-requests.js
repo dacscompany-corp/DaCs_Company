@@ -1085,11 +1085,7 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; color: #1f2937; }
-        .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #00a85e; padding-bottom: 20px; }
-        .header-logo { height: 70px; max-width: 200px; object-fit: contain; margin-bottom: 10px; }
-        .header h1 { font-size: 28px; color: #00a85e; margin-bottom: 4px; }
-        .header .company { font-size: 15px; font-weight: 700; color: #1e3a5f; margin-bottom: 4px; }
-        .header p { font-size: 13px; color: #6b7280; }
+        .header { margin-bottom: 30px; }
         .summary { display: flex; justify-content: space-around; margin-bottom: 30px; }
         .summary-card { text-align: center; padding: 15px; background: #f9fafb; border-radius: 8px; flex: 1; margin: 0 10px; }
         .summary-card .label { font-size: 12px; color: #6b7280; text-transform: uppercase; margin-bottom: 5px; }
@@ -1112,11 +1108,7 @@
 </head>
 <body>
     <div class="header">
-        <img src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png"
-             class="header-logo" alt="DACS Logo" onerror="this.style.display='none'">
-        <h1>Payment Requests</h1>
-        <div class="company">DAC's Building Design Services</div>
-        <p>Generated on ${now}</p>
+        ${window.dacsPrintHeader('Payment Requests', `Generated: ${now}`)}
     </div>
 
     <div class="summary">

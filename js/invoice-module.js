@@ -1435,21 +1435,7 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
 <div class="page">
 
   <!-- Header -->
-  <div class="hdr">
-    <div class="hdr-biz">
-      <h1>${esc(bizName)}</h1>
-      <p>TIN: ${esc(bizTin)}<br>${esc(bizAddr)}</p>
-    </div>
-    <div class="hdr-right">
-      <div class="inv-title">Acknowledge</div>
-      <div class="inv-title" style="margin-top:-4px;">Invoice</div>
-      <div class="inv-sub">Labor &amp; Payroll</div>
-      <div class="inv-meta">
-        No: <strong>${esc(invoiceNo)}</strong><br>
-        Date: <strong>${esc(today)}</strong>
-      </div>
-    </div>
-  </div>
+  ${window.dacsPrintHeader('Acknowledge Invoice', `Labor &amp; Payroll<br>No: ${esc(invoiceNo)} &nbsp;·&nbsp; Date: ${esc(today)}`)}
 
   <!-- Worker Info -->
   <div class="info-band">

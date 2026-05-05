@@ -58,86 +58,6 @@
 
       <button class="btn-signin" id="btn-login" type="button" onclick="doLogin()">Sign In</button>
 
-      <hr class="form-divider"/>
-      <div class="footer-signup-cta">
-        <span class="footer-cta-text">Don't have an account?</span>
-        <a href="#" class="footer-cta-link" onclick="switchToSignup(); return false;">Create an account</a>
-      </div>
-    </div>
-
-    <!-- SIGN UP FORM -->
-    <div id="form-signup" style="display:none;">
-      <div class="login-header">
-        <div class="logo-wrap">
-          <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC Logo"/>
-        </div>
-        <h1>Create Your Account</h1>
-        <p class="signup-sub">Join DAC's Building Design Services Portal</p>
-        <div class="accent-bar"></div>
-      </div>
-
-      <div class="signup-row">
-        <div class="field">
-          <label for="su-firstname">First Name</label>
-          <div class="input-wrap">
-            <input type="text" id="su-firstname" placeholder="Juan"/>
-          </div>
-          <div class="field-error" id="err-su-firstname"></div>
-        </div>
-        <div class="field">
-          <label for="su-lastname">Last Name</label>
-          <div class="input-wrap">
-            <input type="text" id="su-lastname" placeholder="Dela Cruz"/>
-          </div>
-          <div class="field-error" id="err-su-lastname"></div>
-        </div>
-      </div>
-
-      <div class="field">
-        <label for="su-email">Email Address</label>
-        <div class="input-wrap">
-          <input type="email" id="su-email" placeholder="juan@example.com" autocomplete="email"/>
-        </div>
-        <div class="field-error" id="err-su-email"></div>
-      </div>
-
-      <div class="field">
-        <label for="su-password">Password</label>
-        <div class="input-wrap">
-          <input type="password" id="su-password" placeholder="Min. 8 characters" autocomplete="new-password"/>
-          <button class="eye-btn" type="button" onclick="togglePassword('su-password','eye-su')" aria-label="Toggle password">
-            <svg id="eye-su" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-            </svg>
-          </button>
-        </div>
-        <div class="field-error" id="err-su-password"></div>
-        <div class="pw-strength-wrap" id="pw-strength-wrap" style="display:none;">
-          <div class="pw-strength-bar"><div class="pw-strength-fill" id="pw-strength-fill"></div></div>
-          <span class="pw-strength-label" id="pw-strength-label"></span>
-        </div>
-      </div>
-
-      <div class="field">
-        <label for="su-confirm">Confirm Password</label>
-        <div class="input-wrap">
-          <input type="password" id="su-confirm" placeholder="Re-enter your password" autocomplete="new-password"/>
-          <button class="eye-btn" type="button" onclick="togglePassword('su-confirm','eye-confirm')" aria-label="Toggle">
-            <svg id="eye-confirm" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-            </svg>
-          </button>
-        </div>
-        <div class="field-error" id="err-su-confirm"></div>
-      </div>
-
-      <button class="btn-signin" id="btn-signup" type="button" onclick="doSignup()">Create Account</button>
-
-      <hr class="form-divider"/>
-      <div class="footer-signup-cta">
-        <span class="footer-cta-text">Already have an account?</span>
-        <a href="#" class="footer-cta-link" onclick="switchToLogin(); return false;">Sign In</a>
-      </div>
     </div>
 
   </div>
@@ -156,96 +76,88 @@
 
     <nav class="sidebar-nav">
 
-      <!-- ── Project Folder Header ── -->
-      <div class="sidebar-folder-btn" id="sidebar-folder-btn" onclick="showSection('kpi-dashboard')" title="Open Project Dashboard">
-        <div class="sfb-icon-wrap">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-            <path d="M20 6h-8l-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2z"/>
-          </svg>
-        </div>
-        <div class="sfb-text">
-          <div class="sfb-label">Project Folder</div>
-          <div class="sfb-name" id="sidebar-folder-name">Loading…</div>
-        </div>
-        <svg class="sfb-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </div>
+      <div class="nav-label">Navigation</div>
 
-      <!-- ── Folder Contents ── -->
-      <div class="sidebar-folder-items">
-        <a class="nav-item nav-folder-sub" onclick="showSection('kpi-dashboard')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
-          </svg>
-          Overview
-        </a>
-        <a class="nav-item nav-folder-sub" onclick="showSection('accomplishment')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
-            <rect x="9" y="3" width="6" height="4" rx="1"/>
-            <polyline points="9 12 11 14 15 10"/>
-          </svg>
-          Reports
-        </a>
-        <a class="nav-item nav-folder-sub" onclick="showSection('milestones')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
-            <line x1="4" y1="22" x2="4" y2="15"/>
-          </svg>
-          Milestones
-          <span id="milestone-active-badge" class="pr-nav-badge" style="display:none;background:#2563eb;"></span>
-        </a>
-        <a class="nav-item nav-folder-sub" onclick="showSection('weekly-billing')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="5" y="2" width="14" height="20" rx="2"/>
-            <line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/>
-            <line x1="9" y1="15" x2="13" y2="15"/>
-          </svg>
-          Labor & Weekly
-          <span id="weekly-overdue-badge" class="pr-nav-badge" style="display:none;background:#ef4444;">!</span>
-        </a>
-        <a class="nav-item nav-folder-sub" onclick="showSection('procurement-list')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
-            <rect x="9" y="3" width="6" height="4" rx="1"/>
-            <line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>
-          </svg>
-          Materials
-          <span id="procurement-pending-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;">!</span>
-        </a>
-        <a class="nav-item nav-folder-sub" onclick="showSection('revolving-fund')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="7" width="20" height="14" rx="2"/>
-            <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
-          </svg>
-          Revolving Fund
-          <span id="rf-low-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;">!</span>
-        </a>
-        <a class="nav-item nav-folder-sub" onclick="showSection('billing')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
-          </svg>
-          Payments
-          <span id="billing-badge" class="pr-nav-badge" style="display:none;">0</span>
-        </a>
-        <a class="nav-item nav-folder-sub" onclick="showSection('notifications')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-          </svg>
-          Notifications
-          <span id="notif-nav-badge" class="pr-nav-badge" style="display:none;">0</span>
-        </a>
-      </div>
+      <a class="nav-item" onclick="showSection('kpi-dashboard')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        Overview
+      </a>
+
+      <a class="nav-item" onclick="showSection('accomplishment')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1"/>
+          <polyline points="9 12 11 14 15 10"/>
+        </svg>
+        Accomplishment Reports
+      </a>
+
+      <a class="nav-item" onclick="showSection('milestones')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+          <line x1="4" y1="22" x2="4" y2="15"/>
+        </svg>
+        Milestone Progress
+        <span id="milestone-active-badge" class="pr-nav-badge" style="display:none;background:#2563eb;margin-left:auto;"></span>
+      </a>
+
+      <a class="nav-item" onclick="showSection('weekly-billing')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="2" width="14" height="20" rx="2"/>
+          <line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/>
+          <line x1="9" y1="15" x2="13" y2="15"/>
+        </svg>
+        Weekly Summary
+        <span id="weekly-overdue-badge" class="pr-nav-badge" style="display:none;background:#ef4444;margin-left:auto;">!</span>
+      </a>
+
+      <a class="nav-item" onclick="showSection('procurement-list')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1"/>
+          <line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>
+        </svg>
+        Materials Procurement
+        <span id="procurement-pending-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;margin-left:auto;">!</span>
+      </a>
+
+      <a class="nav-item" onclick="showSection('revolving-fund')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="7" width="20" height="14" rx="2"/>
+          <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+        </svg>
+        Revolving Fund
+        <span id="rf-low-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;margin-left:auto;">!</span>
+      </a>
+
+      <a class="nav-item" onclick="showSection('billing')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+        </svg>
+        Statement of Account
+        <span id="billing-badge" class="pr-nav-badge" style="display:none;margin-left:auto;">0</span>
+      </a>
+
+      <a class="nav-item" onclick="showSection('notifications')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        Notifications
+        <span id="notif-nav-badge" class="pr-nav-badge" style="display:none;margin-left:auto;">0</span>
+      </a>
 
       <div class="nav-label">Account</div>
+
       <a class="nav-item" onclick="showSection('profile')">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
         </svg>
         Profile
       </a>
+
     </nav>
 
     <div class="sidebar-footer">
@@ -1392,6 +1304,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
 <script src="js/firebase-config.js"></script>
+<script src="js/print-utils.js"></script>
 <script src="js/client-management-app.js"></script>
 
 <!-- Client SOWA Modal -->

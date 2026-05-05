@@ -1341,11 +1341,15 @@
             <div style="display:flex;gap:0;border-bottom:2px solid #e5e7eb;margin-bottom:20px;">
                 <button id="un-tab-all" onclick="switchUnTab('all')"
                     style="padding:9px 22px;font-size:13px;font-weight:700;border:none;background:none;cursor:pointer;color:#1d4ed8;border-bottom:2.5px solid #2563eb;margin-bottom:-2px;outline:none;">
-                    All Users
+                    Employees
                 </button>
                 <button id="un-tab-construction" onclick="switchUnTab('construction')"
                     style="padding:9px 22px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;color:#6b7280;border-bottom:2.5px solid transparent;margin-bottom:-2px;outline:none;">
                     Client Management
+                </button>
+                <button id="un-tab-portal" onclick="switchUnTab('portal')"
+                    style="padding:9px 22px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;color:#6b7280;border-bottom:2.5px solid transparent;margin-bottom:-2px;outline:none;">
+                    Client Portal
                 </button>
             </div>
 
@@ -1355,15 +1359,15 @@
                 <div class="un-stats-row">
                     <div class="un-stat-card">
                         <div class="un-stat-icon un-icon-total"><i data-lucide="users"></i></div>
-                        <div class="un-stat-info"><h3 id="unTotalCount">0</h3><p>Total Users</p></div>
+                        <div class="un-stat-info"><h3 id="unTotalCount">0</h3><p>Total Employees</p></div>
                     </div>
                     <div class="un-stat-card">
                         <div class="un-stat-icon un-icon-active"><i data-lucide="user-check"></i></div>
-                        <div class="un-stat-info"><h3 id="unActiveCount">0</h3><p>Active Users</p></div>
+                        <div class="un-stat-info"><h3 id="unActiveCount">0</h3><p>Active</p></div>
                     </div>
                     <div class="un-stat-card">
                         <div class="un-stat-icon un-icon-inactive"><i data-lucide="user-x"></i></div>
-                        <div class="un-stat-info"><h3 id="unInactiveCount">0</h3><p>Inactive Users</p></div>
+                        <div class="un-stat-info"><h3 id="unInactiveCount">0</h3><p>Inactive</p></div>
                     </div>
                 </div>
                 <!-- Toolbar -->
@@ -1372,11 +1376,6 @@
                         <i data-lucide="search" class="un-search-icon"></i>
                         <input type="text" id="unSearchInput" class="un-search-input" placeholder="Search by name or email…" oninput="unFilterUsers()">
                     </div>
-                    <select id="unTypeFilter" class="un-filter-select" onchange="unFilterUsers()">
-                        <option value="">All Users</option>
-                        <option value="admin">Admin Users</option>
-                        <option value="client">Client Users</option>
-                    </select>
                     <select id="unRoleFilter" class="un-filter-select" onchange="unFilterUsers()">
                         <option value="">All Roles</option>
                         <option value="owner">Owner</option>
@@ -1384,7 +1383,6 @@
                         <option value="worker">Worker</option>
                         <option value="teamLeader">Team Leader</option>
                         <option value="engineer">Engineer</option>
-                        <option value="client">Client</option>
                     </select>
                     <select id="unStatusFilter" class="un-filter-select" onchange="unFilterUsers()">
                         <option value="">All Status</option>
@@ -1399,17 +1397,16 @@
                 <div class="un-table-wrap">
                     <div id="unLoadingState" class="un-loading-state">
                         <div class="un-loading-spinner"></div>
-                        <span>Loading users…</span>
+                        <span>Loading employees…</span>
                     </div>
                     <div id="unEmptyState" class="un-empty-state" style="display:none;">
                         <i data-lucide="users" style="width:48px;height:48px;opacity:.3;"></i>
-                        <p>No users found.</p>
+                        <p>No employees found.</p>
                     </div>
                     <table class="un-table" id="unTable" style="display:none;">
                         <thead>
                             <tr>
-                                <th>Full Name</th><th>Email</th><th>Type</th>
-                                <th>Role</th><th>Status</th><th>Actions</th>
+                                <th>Full Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="unTableBody"></tbody>
@@ -1470,6 +1467,63 @@
                             </tr>
                         </thead>
                         <tbody id="ccTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ── CLIENT PORTAL PANEL ── -->
+            <div id="un-panel-portal" style="display:none;">
+                <!-- Stats Row -->
+                <div class="un-stats-row">
+                    <div class="un-stat-card">
+                        <div class="un-stat-icon un-icon-total"><i data-lucide="monitor"></i></div>
+                        <div class="un-stat-info"><h3 id="cpTotalCount">0</h3><p>Total Clients</p></div>
+                    </div>
+                    <div class="un-stat-card">
+                        <div class="un-stat-icon un-icon-active"><i data-lucide="user-check"></i></div>
+                        <div class="un-stat-info"><h3 id="cpActiveCount">0</h3><p>Active</p></div>
+                    </div>
+                    <div class="un-stat-card">
+                        <div class="un-stat-icon un-icon-inactive"><i data-lucide="user-x"></i></div>
+                        <div class="un-stat-info"><h3 id="cpInactiveCount">0</h3><p>Inactive</p></div>
+                    </div>
+                </div>
+                <!-- Toolbar -->
+                <div class="un-toolbar">
+                    <div class="un-search-wrap">
+                        <i data-lucide="search" class="un-search-icon"></i>
+                        <input type="text" id="cpSearchInput" class="un-search-input" placeholder="Search by name or email…" oninput="cpFilterClients()">
+                    </div>
+                    <select id="cpStatusFilter" class="un-filter-select" onchange="cpFilterClients()">
+                        <option value="">All Status</option>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                    </select>
+                    <button class="pr-btn-create" onclick="cpOpenCreateModal()" style="margin-left:auto;">
+                        <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Create Account
+                    </button>
+                </div>
+                <!-- Table -->
+                <div class="un-table-wrap">
+                    <div id="cpLoadingState" class="un-loading-state" style="display:none;">
+                        <div class="un-loading-spinner"></div>
+                        <span>Loading client portal accounts…</span>
+                    </div>
+                    <div id="cpEmptyState" class="un-empty-state" style="display:none;">
+                        <i data-lucide="monitor" style="width:48px;height:48px;opacity:.3;"></i>
+                        <p style="margin-bottom:12px;">No client portal accounts yet.</p>
+                        <button onclick="cpOpenCreateModal()" class="pr-btn-create">
+                            <i data-lucide="user-plus" style="width:14px;height:14px;"></i> Create First Account
+                        </button>
+                    </div>
+                    <table class="un-table" id="cpTable" style="display:none;">
+                        <thead>
+                            <tr>
+                                <th>Full Name</th><th>Email</th><th>Project</th>
+                                <th>Created</th><th>Status</th><th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cpTableBody"></tbody>
                     </table>
                 </div>
             </div>
@@ -1978,6 +2032,78 @@
                 </button>
                 <button id="cc-create-submit-btn" onclick="caSubmitCreateClient()"
                     style="padding:9px 20px;border-radius:8px;border:none;background:#2563eb;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;">
+                    <i data-lucide="user-plus" style="width:14px;height:14px;"></i> Create Account
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════ CLIENT PORTAL: Create Account Modal ════ -->
+<div id="cpCreateModal" class="un-modal-overlay" style="display:none;" onclick="if(event.target===this)cpCloseCreateModal()">
+    <div class="un-modal-card" style="max-width:520px;width:94%;">
+        <div class="un-modal-header">
+            <div class="un-modal-avatar un-avatar-client" style="background:#7c3aed;color:#fff;font-size:18px;">+</div>
+            <div class="un-modal-title-block">
+                <h3>Create Client Portal Account</h3>
+                <span class="un-role-badge un-role-client">New Account</span>
+            </div>
+            <button class="un-modal-close" onclick="cpCloseCreateModal()"><i data-lucide="x"></i></button>
+        </div>
+        <div class="un-modal-body" style="padding:20px 24px 24px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">First Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="cp-create-firstname" placeholder="First name"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-cp-firstname" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+                <div>
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Last Name <span style="color:#ef4444;">*</span></label>
+                    <input type="text" id="cp-create-lastname" placeholder="Last name"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-cp-lastname" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+            </div>
+            <div style="margin-bottom:14px;">
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Email Address <span style="color:#ef4444;">*</span></label>
+                <input type="email" id="cp-create-email" placeholder="client@email.com"
+                    style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                <div id="err-cp-email" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+                <div>
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Password <span style="color:#ef4444;">*</span></label>
+                    <input type="password" id="cp-create-password" placeholder="Min. 8 characters"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-cp-password" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+                <div>
+                    <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Confirm Password <span style="color:#ef4444;">*</span></label>
+                    <input type="password" id="cp-create-confirm" placeholder="Re-enter password"
+                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div id="err-cp-confirm" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+                </div>
+            </div>
+            <div style="margin-bottom:20px;">
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">
+                    Link to Project
+                    <span style="color:#9ca3af;font-weight:400;">(optional)</span>
+                </label>
+                <select id="cp-create-project"
+                    style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;background:#fff;font-family:inherit;">
+                    <option value="">— No project yet —</option>
+                </select>
+                <div style="font-size:11.5px;color:#6b7280;margin-top:4px;">If selected, the project's client email will be updated to this account's email.</div>
+            </div>
+            <div id="cp-create-general-err" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;"></div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;">
+                <button onclick="cpCloseCreateModal()"
+                    style="padding:9px 20px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+                    Cancel
+                </button>
+                <button id="cp-create-submit-btn" onclick="cpSubmitCreateClient()"
+                    style="padding:9px 20px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;">
                     <i data-lucide="user-plus" style="width:14px;height:14px;"></i> Create Account
                 </button>
             </div>
@@ -2948,6 +3074,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/admin.js"></script>
+<script src="js/print-utils.js"></script>
 <script src="js/expenses-module.js"></script>
 <script src="js/overhead-module.js"></script>
 <script src="js/construction-module.js"></script>

@@ -44,7 +44,7 @@ auth.onAuthStateChanged(async function(user) {
                 await auth.signOut();
                 cmCurrentUser = null; window.currentUser = null;
                 cmShowLogin();
-                cmShowLoginError('Access denied. This account is not registered as a construction management client.');
+                cmShowLoginError('Access denied. Client accounts are provisioned by DACS admin. Contact your project manager if you need access.');
                 return;
             }
         } catch (err) {
@@ -95,11 +95,6 @@ function cmClearLoginErrors() {
     ['login-error','err-login-email','err-login-password'].forEach(cmClear);
 }
 
-function cmClearSignupErrors() {
-    ['err-su-firstname','err-su-lastname','err-su-email','err-su-password','err-su-confirm'].forEach(cmClear);
-}
-
-
 // ── Login ────────────────────────────────────────────────────────
 window.doLogin = async function() {
     cmClearLoginErrors();
@@ -129,47 +124,6 @@ window.doLogin = async function() {
         else                                          el.textContent = 'Incorrect email or password. Please try again.';
         if (el) el.classList.add('show');
         btn.disabled = false; btn.textContent = 'Sign In';
-    }
-};
-
-// ── Sign Up ──────────────────────────────────────────────────────
-window.doSignup = async function() {
-    cmClearSignupErrors();
-    const firstName = document.getElementById('su-firstname').value.trim();
-    const lastName  = document.getElementById('su-lastname').value.trim();
-    const email     = document.getElementById('su-email').value.trim();
-    const password  = document.getElementById('su-password').value;
-    const confirm   = document.getElementById('su-confirm').value;
-    let valid = true;
-
-    if (!firstName)                { cmErr('err-su-firstname', 'Please enter your first name.');       valid = false; }
-    if (!lastName)                 { cmErr('err-su-lastname',  'Please enter your last name.');        valid = false; }
-    if (!email)                    { cmErr('err-su-email',     'Please enter your email address.');    valid = false; }
-    else if (!cmIsValid(email))    { cmErr('err-su-email',     'Enter a valid email address.');        valid = false; }
-    if (!password)                 { cmErr('err-su-password',  'Please create a password.');           valid = false; }
-    else if (password.length < 8)  { cmErr('err-su-password',  'Password must be at least 8 characters.'); valid = false; }
-    if (!confirm)                  { cmErr('err-su-confirm',   'Please re-enter your password.');      valid = false; }
-    else if (confirm !== password) { cmErr('err-su-confirm',   'Passwords don\'t match.');             valid = false; }
-    if (!valid) return;
-
-    const btn = document.getElementById('btn-signup');
-    btn.disabled = true; btn.textContent = 'Creating account…';
-
-    try {
-        await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
-        const cred = await auth.createUserWithEmailAndPassword(email, password);
-        await db.collection(CM_COLLECTION).doc(cred.user.uid).set({
-            firstName, lastName, email,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-            role: 'client'
-        });
-        // onAuthStateChanged handles the rest
-    } catch (err) {
-        let msg = 'Something went wrong. Please try again.';
-        if (err.code === 'auth/email-already-in-use') msg = 'An account with this email already exists. Try signing in.';
-        if (err.code === 'auth/weak-password')        msg = 'Password is too weak. Choose a stronger one.';
-        cmErr('err-su-email', msg);
-        btn.disabled = false; btn.textContent = 'Create Account';
     }
 };
 
@@ -865,13 +819,9 @@ window.doChangePassword = async function() {
 };
 
 // ── Auth helpers (used by login form) ────────────────────────────
-window.switchToLogin  = function switchToLogin()  {
-    const fl = document.getElementById('form-login');  if (fl) fl.style.display = '';
-    const fs = document.getElementById('form-signup'); if (fs) fs.style.display = 'none';
-};
-window.switchToSignup = function switchToSignup() {
-    const fl = document.getElementById('form-login');  if (fl) fl.style.display = 'none';
-    const fs = document.getElementById('form-signup'); if (fs) fs.style.display = '';
+window.switchToLogin = function switchToLogin() {
+    const fl = document.getElementById('form-login');
+    if (fl) fl.style.display = '';
 };
 
 // ── Password toggle / strength ────────────────────────────────────
@@ -1882,13 +1832,7 @@ window.printWeeklyReport = function() {
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family: Arial, sans-serif; color:#1f2937; background:#fff; padding:32px; font-size:13px; }
-    .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:28px; padding-bottom:18px; border-bottom:3px solid #1a5c3a; }
-    .brand { }
-    .brand-name { font-size:18px; font-weight:800; color:#1a5c3a; }
-    .brand-sub { font-size:11.5px; color:#6b7280; margin-top:3px; }
-    .report-title { text-align:right; }
-    .report-title h1 { font-size:20px; font-weight:700; color:#1a5c3a; margin-bottom:4px; }
-    .report-title .meta { font-size:12px; color:#6b7280; line-height:1.7; }
+    .report-meta { font-size:12px; color:#6b7280; line-height:1.7; text-align:right; }
     .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:16px 20px; margin-bottom:22px; }
     .info-item .label { font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#6b7280; }
     .info-item .value { font-size:13.5px; font-weight:600; color:#1f2937; margin-top:2px; }
@@ -1913,19 +1857,7 @@ window.printWeeklyReport = function() {
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="brand">
-      <div class="brand-name">DAC's Building Design Services</div>
-      <div class="brand-sub">Construction Project Management Portal</div>
-    </div>
-    <div class="report-title">
-      <h1>Weekly Billing Summary Report</h1>
-      <div class="meta">
-        <div>Generated: ${today}</div>
-        <div>Scope: ${reportScope}</div>
-      </div>
-    </div>
-  </div>
+  ${window.dacsPrintHeader('Weekly Billing Report', `Generated: ${today}<br>Scope: ${reportScope}`)}
 
   <div class="info-grid">
     <div class="info-item"><div class="label">Client Name</div><div class="value">${clientName}</div></div>

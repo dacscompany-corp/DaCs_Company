@@ -1,51 +1,50 @@
 // ════════════════════════════════════════════════════════════
 // USER NAVIGATOR MODULE
-// Tab 1 — All Users: admin (users) + design clients (clientUsers)
-// Tab 2 — Client Management: constructionClientUsers
-//          Admins/staff can create construction client accounts
-//          without signing out via a secondary Firebase app.
+// Tab 1 — Employees: admin/staff/worker accounts (users collection only)
+// Tab 2 — Client Management: constructionClientUsers (admin-provisioned)
+// Tab 3 — Client Portal: clientPortalUsers (admin-provisioned)
 // ════════════════════════════════════════════════════════════
 
 (function () {
     'use strict';
 
     // ── State ────────────────────────────────────────────────
-    let _allUsers      = [];
-    let _allConClients = [];
-    let _conProjects   = [];
-    let _loading       = false;
-    let _activeTab     = 'all';
+    let _allUsers        = [];
+    let _allConClients   = [];
+    let _allPortalClients = [];
+    let _conProjects     = [];
+    let _loading         = false;
+    let _activeTab       = 'all';
 
     // ── Tab Switching ────────────────────────────────────────
     window.switchUnTab = function (tab) {
         _activeTab = tab;
-        ['all', 'construction'].forEach(t => {
+        ['all', 'construction', 'portal'].forEach(t => {
             const btn   = document.getElementById('un-tab-' + t);
             const panel = document.getElementById('un-panel-' + t);
             const active = t === tab;
             if (btn) {
-                btn.style.color              = active ? '#1d4ed8' : '#6b7280';
-                btn.style.borderBottomColor  = active ? '#2563eb' : 'transparent';
-                btn.style.fontWeight         = active ? '700'     : '600';
+                btn.style.color             = active ? '#1d4ed8' : '#6b7280';
+                btn.style.borderBottomColor = active ? '#2563eb' : 'transparent';
+                btn.style.fontWeight        = active ? '700'     : '600';
             }
             if (panel) panel.style.display = active ? '' : 'none';
         });
-        if (tab === 'construction' && !_allConClients.length) _loadConClients();
+        if (tab === 'construction' && !_allConClients.length)   _loadConClients();
+        if (tab === 'portal'       && !_allPortalClients.length) _loadPortalClients();
     };
 
     // ── Public entry point ────────────────────────────────────
     window.initUserNavigator = function () {
         if (_loading) return;
-        // Reset to All Users tab on each open
         _activeTab = 'all';
-        const allBtn = document.getElementById('un-tab-all');
-        const conBtn = document.getElementById('un-tab-construction');
-        if (allBtn) { allBtn.style.color = '#1d4ed8'; allBtn.style.borderBottomColor = '#2563eb'; allBtn.style.fontWeight = '700'; }
-        if (conBtn) { conBtn.style.color = '#6b7280'; conBtn.style.borderBottomColor = 'transparent'; conBtn.style.fontWeight = '600'; }
-        const allPanel = document.getElementById('un-panel-all');
-        const conPanel = document.getElementById('un-panel-construction');
-        if (allPanel) allPanel.style.display = '';
-        if (conPanel) conPanel.style.display = 'none';
+        ['all', 'construction', 'portal'].forEach(t => {
+            const btn   = document.getElementById('un-tab-' + t);
+            const panel = document.getElementById('un-panel-' + t);
+            const active = t === 'all';
+            if (btn) { btn.style.color = active ? '#1d4ed8' : '#6b7280'; btn.style.borderBottomColor = active ? '#2563eb' : 'transparent'; btn.style.fontWeight = active ? '700' : '600'; }
+            if (panel) panel.style.display = active ? '' : 'none';
+        });
         _loadUsers();
     };
 
@@ -57,14 +56,11 @@
         _loading = true;
         _showLoading(true);
 
-        let adminUsers  = [];
-        let clientUsers = [];
-        let adminErr    = null;
-        let clientErr   = null;
+        let adminErr = null;
 
         try {
             const snap = await db.collection('users').get();
-            adminUsers = snap.docs.map(doc => {
+            _allUsers = snap.docs.map(doc => {
                 const d = doc.data();
                 return {
                     uid      : doc.id,
@@ -76,47 +72,20 @@
                     lastLogin: d.lastLogin || d.last_login || null,
                     createdAt: d.createdAt || null
                 };
-            });
+            }).sort((a, b) => _tsToMs(b.createdAt) - _tsToMs(a.createdAt));
         } catch (e) {
             adminErr = e;
-            console.warn('UserNavigator: could not load admin users —', e.message);
-        }
-
-        try {
-            const snap = await db.collection('clientUsers').get();
-            clientUsers = snap.docs.map(doc => {
-                const d = doc.data();
-                return {
-                    uid      : doc.id,
-                    _type    : 'client',
-                    name     : ((d.firstName || '') + ' ' + (d.lastName || '')).trim() || null,
-                    email    : d.email || '',
-                    role     : 'client',
-                    status   : d.status || 'active',
-                    photoURL : d.photoURL || '',
-                    lastLogin: d.lastLogin || null,
-                    createdAt: d.createdAt || null
-                };
-            });
-        } catch (e) {
-            clientErr = e;
-            console.warn('UserNavigator: could not load client users —', e.message);
+            console.warn('UserNavigator: could not load employee users —', e.message);
         }
 
         _loading = false;
         _showLoading(false);
 
-        if (adminErr && clientErr) { _showPermissionError(); return; }
+        if (adminErr) { _showPermissionError(); return; }
 
-        _allUsers = [...adminUsers, ...clientUsers].sort((a, b) =>
-            _tsToMs(b.createdAt) - _tsToMs(a.createdAt)
-        );
         _renderStats(_allUsers);
         _renderTable(_allUsers);
         _clearNewUserBadge();
-
-        if (adminErr)  _showPartialWarning('Admin users could not be loaded — check Firestore rules for the <b>users</b> collection.');
-        if (clientErr) _showPartialWarning('Client users could not be loaded — check Firestore rules for the <b>clientUsers</b> collection.');
     }
 
     function _renderStats(users) {
@@ -151,23 +120,22 @@
             ? `<img src="${_esc(user.photoURL)}" alt="${_esc(initial)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
             : initial;
         const toggleBtn = user.status === 'active'
-            ? `<button class="un-btn-toggle un-btn-deactivate" onclick="unToggleStatus('${user.uid}','active','${user._type}')">Deactivate</button>`
-            : `<button class="un-btn-toggle un-btn-activate"   onclick="unToggleStatus('${user.uid}','inactive','${user._type}')">Activate</button>`;
+            ? `<button class="un-btn-toggle un-btn-deactivate" onclick="unToggleStatus('${user.uid}','active')">Deactivate</button>`
+            : `<button class="un-btn-toggle un-btn-activate"   onclick="unToggleStatus('${user.uid}','inactive')">Activate</button>`;
 
-        return `<tr data-uid="${user.uid}" data-type="${user._type}">
+        return `<tr data-uid="${user.uid}">
             <td><div class="un-user-cell">
-                <div class="un-avatar ${user._type === 'client' ? 'un-avatar-client' : ''}">${avatarContent}</div>
+                <div class="un-avatar">${avatarContent}</div>
                 <span class="un-user-name">${_esc(name)}</span>
             </div></td>
             <td style="color:#6b7280;font-size:13px;">${_esc(user.email)}</td>
-            <td>${_typeBadge(user._type)}</td>
             <td><span class="un-role-badge ${_roleClass(user.role)}">${_roleLabel(user.role)}</span></td>
             <td>${_statusBadge(user.status)}</td>
             <td><div class="un-actions">
-                <button class="un-btn-view" onclick="unViewProfile('${user.uid}','${user._type}')">
+                <button class="un-btn-view" onclick="unViewProfile('${user.uid}','admin')">
                     <i data-lucide="eye" style="width:13px;height:13px;"></i> View
                 </button>
-                <button class="un-btn-view" onclick="unOpenEditModal('${user.uid}','${user._type}')" style="background:#f0fdf4;color:#16a34a;border-color:#bbf7d0;">
+                <button class="un-btn-view" onclick="unOpenEditModal('${user.uid}','admin')" style="background:#f0fdf4;color:#16a34a;border-color:#bbf7d0;">
                     <i data-lucide="pencil" style="width:13px;height:13px;"></i> Edit
                 </button>
                 ${toggleBtn}
@@ -177,25 +145,22 @@
 
     window.unFilterUsers = function () {
         const q      = (document.getElementById('unSearchInput')?.value  || '').toLowerCase().trim();
-        const type   = (document.getElementById('unTypeFilter')?.value   || '');
         const role   = (document.getElementById('unRoleFilter')?.value   || '');
         const status = (document.getElementById('unStatusFilter')?.value || '');
         const filtered = _allUsers.filter(u => {
             const name  = (u.name || _nameFromEmail(u.email)).toLowerCase();
             const email = (u.email || '').toLowerCase();
             return (!q      || name.includes(q)  || email.includes(q))
-                && (!type   || u._type  === type)
                 && (!role   || u.role   === role)
                 && (!status || u.status === status);
         });
         _renderTable(filtered);
     };
 
-    window.unToggleStatus = async function (uid, currentStatus, userType) {
-        const newStatus  = currentStatus === 'active' ? 'inactive' : 'active';
-        const collection = userType === 'client' ? 'clientUsers' : 'users';
+    window.unToggleStatus = async function (uid, currentStatus) {
+        const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
         try {
-            await db.collection(collection).doc(uid).update({ status: newStatus });
+            await db.collection('users').doc(uid).update({ status: newStatus });
             const u = _allUsers.find(x => x.uid === uid);
             if (u) u.status = newStatus;
             _renderStats(_allUsers);
@@ -206,8 +171,8 @@
         }
     };
 
-    window.unViewProfile = function (uid, userType) {
-        const user = _allUsers.find(u => u.uid === uid && u._type === userType);
+    window.unViewProfile = function (uid) {
+        const user = _allUsers.find(u => u.uid === uid);
         if (!user) return;
         const name    = user.name || _nameFromEmail(user.email);
         const initial = (name[0] || 'U').toUpperCase();
@@ -217,7 +182,7 @@
         const badge  = document.getElementById('unModalRoleBadge');
 
         if (avatar) {
-            avatar.className = `un-modal-avatar${user._type === 'client' ? ' un-avatar-client' : ''}`;
+            avatar.className = 'un-modal-avatar';
             if (user.photoURL) {
                 avatar.innerHTML = `<img src="${_esc(user.photoURL)}" alt="${initial}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
             } else {
@@ -233,7 +198,7 @@
                 <div class="un-profile-section-title">Account Info</div>
                 <div class="un-profile-row"><span class="un-profile-label">Full Name</span><span class="un-profile-value">${_esc(name)}</span></div>
                 <div class="un-profile-row"><span class="un-profile-label">Email</span><span class="un-profile-value">${_esc(user.email)}</span></div>
-                <div class="un-profile-row"><span class="un-profile-label">User Type</span><span class="un-profile-value">${_typeBadge(user._type)}</span></div>
+                <div class="un-profile-row"><span class="un-profile-label">Account Type</span><span class="un-profile-value"><span class="un-role-badge" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">Employee</span></span></div>
                 <div class="un-profile-row"><span class="un-profile-label">Role</span><span class="un-profile-value"><span class="un-role-badge ${_roleClass(user.role)}">${_roleLabel(user.role)}</span></span></div>
                 <div class="un-profile-row"><span class="un-profile-label">Status</span><span class="un-profile-value">${_statusBadge(user.status)}</span></div>
             </div>
@@ -244,7 +209,7 @@
             </div>
             <div class="un-modal-footer" style="padding:0;margin-top:8px;border:none;display:flex;justify-content:flex-end;gap:10px;">
                 <button class="un-btn-toggle ${user.status === 'active' ? 'un-btn-deactivate' : 'un-btn-activate'}"
-                    onclick="unToggleStatus('${uid}','${user.status}','${user._type}');unCloseProfile();">
+                    onclick="unToggleStatus('${uid}','${user.status}');unCloseProfile();">
                     ${user.status === 'active' ? 'Deactivate User' : 'Activate User'}
                 </button>
                 <button class="un-modal-btn-close" onclick="unCloseProfile()">Close</button>
@@ -274,7 +239,7 @@
         });
 
         modal.dataset.uid  = uid;
-        modal.dataset.type = userType;
+        modal.dataset.type = 'admin';
 
         const adminFields  = document.getElementById('un-edit-admin-fields');
         const clientFields = document.getElementById('un-edit-client-fields');
@@ -284,22 +249,12 @@
         if (emailEl) emailEl.textContent = user.email;
         if (nameEl)  nameEl.textContent  = user.name || _nameFromEmail(user.email);
 
-        if (userType === 'client') {
-            if (adminFields)  adminFields.style.display  = 'none';
-            if (clientFields) clientFields.style.display = '';
-            const nameParts = (user.name || '').split(' ');
-            const fnEl = document.getElementById('un-edit-firstname');
-            const lnEl = document.getElementById('un-edit-lastname');
-            if (fnEl) fnEl.value = nameParts[0] || '';
-            if (lnEl) lnEl.value = nameParts.slice(1).join(' ') || '';
-        } else {
-            if (adminFields)  adminFields.style.display  = '';
-            if (clientFields) clientFields.style.display = 'none';
-            const dnEl   = document.getElementById('un-edit-displayname');
-            const roleEl = document.getElementById('un-edit-role');
-            if (dnEl)   dnEl.value   = user.name || '';
-            if (roleEl) roleEl.value = user.role || '';
-        }
+        if (adminFields)  adminFields.style.display  = '';
+        if (clientFields) clientFields.style.display = 'none';
+        const dnEl   = document.getElementById('un-edit-displayname');
+        const roleEl = document.getElementById('un-edit-role');
+        if (dnEl)   dnEl.value   = user.name || '';
+        if (roleEl) roleEl.value = user.role || '';
 
         modal.style.display = 'flex';
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -317,45 +272,31 @@
             if (el) { el.style.display = 'none'; el.textContent = ''; }
         });
 
-        const modal    = document.getElementById('unEditModal');
-        const uid      = modal?.dataset.uid;
-        const userType = modal?.dataset.type;
-        if (!uid || !userType) return;
-        const user = _allUsers.find(u => u.uid === uid && u._type === userType);
+        const modal = document.getElementById('unEditModal');
+        const uid   = modal?.dataset.uid;
+        if (!uid) return;
+        const user = _allUsers.find(u => u.uid === uid);
         if (!user) return;
 
         let valid = true;
         function _fe(id, msg) { const el = document.getElementById(id); if (el) { el.textContent = msg; el.style.display = 'block'; } valid = false; }
 
-        let updates = {};
-        let newName;
+        const displayName = (document.getElementById('un-edit-displayname')?.value || '').trim();
+        const role        = (document.getElementById('un-edit-role')?.value        || '');
+        if (!displayName) _fe('err-un-edit-displayname', 'Display name is required.');
+        if (!role)        _fe('err-un-edit-role',        'Please select a role.');
+        if (!valid) return;
 
-        if (userType === 'client') {
-            const firstName = (document.getElementById('un-edit-firstname')?.value || '').trim();
-            const lastName  = (document.getElementById('un-edit-lastname')?.value  || '').trim();
-            if (!firstName) _fe('err-un-edit-firstname', 'First name is required.');
-            if (!lastName)  _fe('err-un-edit-lastname',  'Last name is required.');
-            if (!valid) return;
-            newName = firstName + ' ' + lastName;
-            updates = { firstName, lastName };
-        } else {
-            const displayName = (document.getElementById('un-edit-displayname')?.value || '').trim();
-            const role        = (document.getElementById('un-edit-role')?.value        || '');
-            if (!displayName) _fe('err-un-edit-displayname', 'Display name is required.');
-            if (!role)        _fe('err-un-edit-role',        'Please select a role.');
-            if (!valid) return;
-            newName = displayName;
-            updates = { displayName, role };
-        }
+        const updates = { displayName, role };
+        const newName = displayName;
 
         const btn = document.getElementById('un-edit-submit-btn');
         if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
 
         try {
-            const collection = userType === 'client' ? 'clientUsers' : 'users';
-            await db.collection(collection).doc(uid).update(updates);
+            await db.collection('users').doc(uid).update(updates);
             user.name = newName;
-            if (userType !== 'client') user.role = updates.role;
+            user.role = role;
             _renderStats(_allUsers);
             unFilterUsers();
             unCloseEditModal();
@@ -939,6 +880,271 @@
         banner.style.display = 'flex';
         clearTimeout(banner._timer);
         banner._timer = setTimeout(() => { banner.style.display = 'none'; }, 5000);
+    }
+
+    // ════════════════════════════════════════════════════════
+    // CLIENT PORTAL
+    // ════════════════════════════════════════════════════════
+
+    async function _loadPortalClients() {
+        _showPortalLoading(true);
+        try {
+            const [portalSnap, projSnap] = await Promise.all([
+                db.collection('clientPortalUsers').get(),
+                db.collection('constructionProjects').orderBy('projectName').get()
+            ]);
+
+            if (!_conProjects.length)
+                _conProjects = projSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            const projectByEmail = {};
+            _conProjects.forEach(p => {
+                if (p.clientEmail) projectByEmail[(p.clientEmail || '').toLowerCase()] = p.projectName || '';
+            });
+
+            _allPortalClients = portalSnap.docs.map(doc => {
+                const d     = doc.data();
+                const email = (d.email || '').toLowerCase();
+                return {
+                    uid      : doc.id,
+                    firstName: d.firstName || '',
+                    lastName : d.lastName  || '',
+                    name     : ((d.firstName || '') + ' ' + (d.lastName || '')).trim() || null,
+                    email    : d.email  || '',
+                    status   : d.status || 'active',
+                    createdAt: d.createdAt || null,
+                    project  : projectByEmail[email] || ''
+                };
+            }).sort((a, b) => _tsToMs(b.createdAt) - _tsToMs(a.createdAt));
+
+            _showPortalLoading(false);
+            _renderPortalStats(_allPortalClients);
+            _renderPortalTable(_allPortalClients);
+        } catch (e) {
+            console.error('PortalClients: load error', e);
+            const el = document.getElementById('cpLoadingState');
+            if (el) el.innerHTML = `<div style="text-align:center;"><p style="color:#b91c1c;font-weight:600;margin:0;">Could not load client portal accounts.</p></div>`;
+        }
+    }
+
+    function _renderPortalStats(clients) {
+        const total  = clients.length;
+        const active = clients.filter(c => c.status === 'active').length;
+        _setText('cpTotalCount',    total);
+        _setText('cpActiveCount',   active);
+        _setText('cpInactiveCount', total - active);
+    }
+
+    function _renderPortalTable(clients) {
+        const tbody = document.getElementById('cpTableBody');
+        const table = document.getElementById('cpTable');
+        const empty = document.getElementById('cpEmptyState');
+        if (!tbody) return;
+        if (!clients.length) {
+            if (table) table.style.display = 'none';
+            if (empty) empty.style.display = 'flex';
+        } else {
+            if (table) table.style.display = 'table';
+            if (empty) empty.style.display = 'none';
+            tbody.innerHTML = clients.map(_buildPortalRow).join('');
+        }
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function _buildPortalRow(c) {
+        const name    = c.name || _nameFromEmail(c.email);
+        const initial = (name[0] || 'C').toUpperCase();
+        const toggleBtn = c.status === 'active'
+            ? `<button class="un-btn-toggle un-btn-deactivate" onclick="cpToggleStatus('${c.uid}','active')">Deactivate</button>`
+            : `<button class="un-btn-toggle un-btn-activate"   onclick="cpToggleStatus('${c.uid}','inactive')">Activate</button>`;
+        const projectCell = c.project
+            ? `<span class="ca-project-tag">${_esc(c.project)}</span>`
+            : `<span style="color:#d1d5db;font-size:12px;">No project linked</span>`;
+        return `<tr data-uid="${c.uid}">
+            <td><div class="un-user-cell">
+                <div class="un-avatar un-avatar-client">${initial}</div>
+                <span class="un-user-name">${_esc(name)}</span>
+            </div></td>
+            <td style="color:#6b7280;font-size:13px;">${_esc(c.email)}</td>
+            <td>${projectCell}</td>
+            <td style="color:#6b7280;font-size:13px;">${_formatDate(c.createdAt)}</td>
+            <td>${_statusBadge(c.status)}</td>
+            <td><div class="un-actions">
+                ${toggleBtn}
+            </div></td>
+        </tr>`;
+    }
+
+    window.cpFilterClients = function () {
+        const q      = (document.getElementById('cpSearchInput')?.value  || '').toLowerCase().trim();
+        const status = (document.getElementById('cpStatusFilter')?.value || '');
+        const filtered = _allPortalClients.filter(c => {
+            const name  = (c.name || _nameFromEmail(c.email)).toLowerCase();
+            const email = (c.email || '').toLowerCase();
+            return (!q      || name.includes(q) || email.includes(q))
+                && (!status || c.status === status);
+        });
+        _renderPortalTable(filtered);
+    };
+
+    window.cpToggleStatus = async function (uid, currentStatus) {
+        const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+        try {
+            await db.collection('clientPortalUsers').doc(uid).update({ status: newStatus });
+            const c = _allPortalClients.find(x => x.uid === uid);
+            if (c) c.status = newStatus;
+            _renderPortalStats(_allPortalClients);
+            cpFilterClients();
+        } catch (err) {
+            console.error('cpToggleStatus:', err);
+            alert('Could not update account status. Please try again.');
+        }
+    };
+
+    // ── Create Portal Account Modal ───────────────────────────────
+
+    window.cpOpenCreateModal = async function () {
+        const modal = document.getElementById('cpCreateModal');
+        if (!modal) return;
+        ['cp-create-firstname','cp-create-lastname','cp-create-email',
+         'cp-create-password','cp-create-confirm'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        ['err-cp-firstname','err-cp-lastname','err-cp-email',
+         'err-cp-password','err-cp-confirm','cp-create-general-err'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) { el.style.display = 'none'; el.textContent = ''; }
+        });
+        modal.style.display = 'flex';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        setTimeout(() => document.getElementById('cp-create-firstname')?.focus(), 80);
+
+        const sel = document.getElementById('cp-create-project');
+        if (sel) {
+            sel.innerHTML = '<option value="">Loading projects…</option>';
+            if (!_conProjects.length) {
+                try {
+                    const snap = await db.collection('constructionProjects').orderBy('projectName').get();
+                    _conProjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                } catch (e) { console.warn('Could not load projects for portal dropdown'); }
+            }
+            sel.innerHTML = '<option value="">— No project yet —</option>';
+            _conProjects.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value       = p.id;
+                opt.textContent = (p.clientName ? p.clientName + ' — ' : '') + (p.projectName || p.id);
+                sel.appendChild(opt);
+            });
+        }
+    };
+
+    window.cpCloseCreateModal = function () {
+        const modal = document.getElementById('cpCreateModal');
+        if (modal) modal.style.display = 'none';
+    };
+
+    window.cpSubmitCreateClient = async function () {
+        ['err-cp-firstname','err-cp-lastname','err-cp-email',
+         'err-cp-password','err-cp-confirm','cp-create-general-err'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) { el.style.display = 'none'; el.textContent = ''; }
+        });
+
+        const firstName = (document.getElementById('cp-create-firstname')?.value || '').trim();
+        const lastName  = (document.getElementById('cp-create-lastname')?.value  || '').trim();
+        const email     = (document.getElementById('cp-create-email')?.value     || '').trim();
+        const password  = (document.getElementById('cp-create-password')?.value  || '');
+        const confirm   = (document.getElementById('cp-create-confirm')?.value   || '');
+        const projectId = (document.getElementById('cp-create-project')?.value   || '');
+
+        let valid = true;
+        function _fe(id, msg) { const el = document.getElementById(id); if (el) { el.textContent = msg; el.style.display = 'block'; } valid = false; }
+
+        if (!firstName)                                          _fe('err-cp-firstname', 'First name is required.');
+        if (!lastName)                                           _fe('err-cp-lastname',  'Last name is required.');
+        if (!email)                                              _fe('err-cp-email',     'Email is required.');
+        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))     _fe('err-cp-email',     'Enter a valid email address.');
+        if (!password)                                           _fe('err-cp-password',  'Password is required.');
+        else if (password.length < 8)                            _fe('err-cp-password',  'Minimum 8 characters.');
+        if (!confirm)                                            _fe('err-cp-confirm',   'Please confirm the password.');
+        else if (confirm !== password)                           _fe('err-cp-confirm',   'Passwords don\'t match.');
+        if (!valid) return;
+
+        const btn = document.getElementById('cp-create-submit-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<div class="un-loading-spinner" style="width:14px;height:14px;border-width:2px;margin-right:6px;display:inline-block;"></div>Creating…'; }
+
+        let secondaryApp = null;
+        try {
+            const config = firebase.apps[0].options;
+            secondaryApp = firebase.initializeApp(config, 'CpCreate_' + Date.now());
+            const secAuth = secondaryApp.auth();
+
+            const cred = await secAuth.createUserWithEmailAndPassword(email, password);
+            const uid  = cred.user.uid;
+            await secAuth.signOut();
+
+            await db.collection('clientPortalUsers').doc(uid).set({
+                firstName,
+                lastName,
+                email,
+                role     : 'client',
+                status   : 'active',
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+
+            if (projectId) {
+                await db.collection('constructionProjects').doc(projectId).update({
+                    clientEmail: email,
+                    clientName : firstName + ' ' + lastName
+                });
+                const proj = _conProjects.find(p => p.id === projectId);
+                if (proj) { proj.clientEmail = email; proj.clientName = firstName + ' ' + lastName; }
+            }
+
+            const linkedProject = _conProjects.find(p => p.id === projectId);
+            _allPortalClients.unshift({
+                uid, firstName, lastName,
+                name     : firstName + ' ' + lastName,
+                email,
+                status   : 'active',
+                createdAt: new Date(),
+                project  : linkedProject?.projectName || ''
+            });
+            _renderPortalStats(_allPortalClients);
+            _renderPortalTable(_allPortalClients);
+
+            cpCloseCreateModal();
+            _showSuccessBanner('Account created for ' + firstName + ' ' + lastName + '. They can now log in to the Client Portal.');
+        } catch (err) {
+            console.error('cpSubmitCreateClient:', err);
+            let msg = 'Something went wrong. Please try again.';
+            if (err.code === 'auth/email-already-in-use') msg = 'An account with this email already exists.';
+            if (err.code === 'auth/weak-password')        msg = 'Password is too weak. Use at least 8 characters.';
+            if (err.code === 'auth/invalid-email')        msg = 'The email address is not valid.';
+            const errEl = document.getElementById('cp-create-general-err');
+            if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+        } finally {
+            if (secondaryApp) { try { await secondaryApp.delete(); } catch (_) {} }
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="user-plus" style="width:14px;height:14px;"></i> Create Account';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+        }
+    };
+
+    function _showPortalLoading(on) {
+        const loading = document.getElementById('cpLoadingState');
+        const table   = document.getElementById('cpTable');
+        const empty   = document.getElementById('cpEmptyState');
+        if (on) {
+            if (loading) { loading.style.display = 'flex'; loading.innerHTML = '<div class="un-loading-spinner"></div><span>Loading client portal accounts…</span>'; }
+            if (table)   table.style.display = 'none';
+            if (empty)   empty.style.display = 'none';
+        } else {
+            if (loading) loading.style.display = 'none';
+        }
     }
 
     // ════════════════════════════════════════════════════════
