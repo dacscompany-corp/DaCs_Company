@@ -7,7 +7,7 @@
     'use strict';
 
     let _requests     = [];
-    let _globalQR     = null;  // loaded from settings/paymentQR
+    let _globalQR     = null;  // loaded from settings/paymentQR or settings/cmPaymentQR
     let _currentId    = null;  // id being paid (null = self-pay mode)
     let _selfPayData  = null;  // billing period data for self-initiated payment
 
@@ -38,8 +38,9 @@
 
         try {
             // Load global QR settings and payment requests in parallel
+            const qrDocId = window._paymentQRDocId || 'paymentQR';
             const [qrSnap, snap] = await Promise.all([
-                db.collection('settings').doc('paymentQR').get(),
+                db.collection('settings').doc(qrDocId).get(),
                 db.collection('paymentRequests')
                     .where('clientEmail', '==', currentUser.email)
                     .get()

@@ -166,12 +166,15 @@ async function cmLoadProjectData(user) {
                 .doc(cmProjectData.id)
                 .collection('weeklyBills')
                 .where('status', 'in', ['Submitted', 'Paid', 'Overdue', 'Partial'])
-                .orderBy('weekEndingDate', 'desc')
                 .get();
             cmWeeklyBills = billSnap.docs.map(d => {
                 const data = { id: d.id, ...d.data() };
                 if (!data.totalDue && data.grandTotal) data.totalDue = data.grandTotal;
                 return data;
+            }).sort((a, b) => {
+                const ta = a.weekEndingDate?.toMillis?.() ?? (a.weekEndingDate ? new Date(a.weekEndingDate).getTime() : 0);
+                const tb = b.weekEndingDate?.toMillis?.() ?? (b.weekEndingDate ? new Date(b.weekEndingDate).getTime() : 0);
+                return tb - ta;
             });
 
             // Load revolving fund

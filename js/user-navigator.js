@@ -13,6 +13,7 @@
     let _allConClients   = [];
     let _allPortalClients = [];
     let _conProjects     = [];
+    let _boqProjects     = [];
     let _loading         = false;
     let _activeTab       = 'all';
 
@@ -685,13 +686,29 @@
 
         let secondaryApp = null;
         try {
-            // Create Firebase Auth user via secondary app — admin stays logged in
             const config = firebase.apps[0].options;
             secondaryApp = firebase.initializeApp(config, 'CcCreate_' + Date.now());
             const secAuth = secondaryApp.auth();
 
-            const cred = await secAuth.createUserWithEmailAndPassword(email, password);
-            const uid  = cred.user.uid;
+            let uid;
+            try {
+                // Try creating a new Firebase Auth account
+                const cred = await secAuth.createUserWithEmailAndPassword(email, password);
+                uid = cred.user.uid;
+            } catch (authErr) {
+                if (authErr.code === 'auth/email-already-in-use') {
+                    // Email exists in another system — sign in to reuse the same UID
+                    const existing = await secAuth.signInWithEmailAndPassword(email, password);
+                    uid = existing.user.uid;
+                    // Check if already a construction client
+                    const alreadyExists = await db.collection('constructionClientUsers').doc(uid).get();
+                    if (alreadyExists.exists) {
+                        throw new Error('ALREADY_CLIENT');
+                    }
+                } else {
+                    throw authErr;
+                }
+            }
             await secAuth.signOut();
 
             await db.collection('constructionClientUsers').doc(uid).set({
@@ -730,9 +747,15 @@
         } catch (err) {
             console.error('caSubmitCreateClient:', err);
             let msg = 'Something went wrong. Please try again.';
-            if (err.code === 'auth/email-already-in-use') msg = 'An account with this email already exists.';
-            if (err.code === 'auth/weak-password')        msg = 'Password is too weak. Use at least 8 characters with mixed characters.';
-            if (err.code === 'auth/invalid-email')        msg = 'The email address is not valid.';
+            if (err.message === 'ALREADY_CLIENT') {
+                msg = 'This email is already registered as a Construction Management client.';
+            } else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+                msg = 'This email already has an account in another system. The password you entered does not match their existing account. Please enter their correct password.';
+            } else if (err.code === 'auth/weak-password') {
+                msg = 'Password is too weak. Use at least 8 characters with mixed characters.';
+            } else if (err.code === 'auth/invalid-email') {
+                msg = 'The email address is not valid.';
+            }
             const errEl = document.getElementById('cc-create-general-err');
             if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
         } finally {
@@ -889,17 +912,21 @@
     async function _loadPortalClients() {
         _showPortalLoading(true);
         try {
-            const [portalSnap, projSnap] = await Promise.all([
-                db.collection('clientPortalUsers').get(),
-                db.collection('constructionProjects').orderBy('projectName').get()
+            const uid = window.currentDataUserId || auth.currentUser?.uid;
+            const [portalSnap, boqSnap] = await Promise.all([
+                db.collection('clientUsers').get(),
+                db.collection('boqDocuments').where('userId', '==', uid).get()
             ]);
 
-            if (!_conProjects.length)
-                _conProjects = projSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            _boqProjects = boqSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            const projectByEmail = {};
-            _conProjects.forEach(p => {
-                if (p.clientEmail) projectByEmail[(p.clientEmail || '').toLowerCase()] = p.projectName || '';
+            const projectsByEmail = {};
+            _boqProjects.forEach(p => {
+                const email = (p.clientEmail || '').toLowerCase();
+                const name  = p.projectName || p.header?.projectName || p.header?.subject || '';
+                if (!email || !name) return;
+                if (!projectsByEmail[email]) projectsByEmail[email] = [];
+                if (!projectsByEmail[email].includes(name)) projectsByEmail[email].push(name);
             });
 
             _allPortalClients = portalSnap.docs.map(doc => {
@@ -913,7 +940,7 @@
                     email    : d.email  || '',
                     status   : d.status || 'active',
                     createdAt: d.createdAt || null,
-                    project  : projectByEmail[email] || ''
+                    projects : projectsByEmail[email] || []
                 };
             }).sort((a, b) => _tsToMs(b.createdAt) - _tsToMs(a.createdAt));
 
@@ -957,8 +984,8 @@
         const toggleBtn = c.status === 'active'
             ? `<button class="un-btn-toggle un-btn-deactivate" onclick="cpToggleStatus('${c.uid}','active')">Deactivate</button>`
             : `<button class="un-btn-toggle un-btn-activate"   onclick="cpToggleStatus('${c.uid}','inactive')">Activate</button>`;
-        const projectCell = c.project
-            ? `<span class="ca-project-tag">${_esc(c.project)}</span>`
+        const projectCell = c.projects?.length
+            ? c.projects.map(p => `<span class="ca-project-tag">${_esc(p)}</span>`).join(' ')
             : `<span style="color:#d1d5db;font-size:12px;">No project linked</span>`;
         return `<tr data-uid="${c.uid}">
             <td><div class="un-user-cell">
@@ -990,7 +1017,7 @@
     window.cpToggleStatus = async function (uid, currentStatus) {
         const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
         try {
-            await db.collection('clientPortalUsers').doc(uid).update({ status: newStatus });
+            await db.collection('clientUsers').doc(uid).update({ status: newStatus });
             const c = _allPortalClients.find(x => x.uid === uid);
             if (c) c.status = newStatus;
             _renderPortalStats(_allPortalClients);
@@ -1023,17 +1050,18 @@
         const sel = document.getElementById('cp-create-project');
         if (sel) {
             sel.innerHTML = '<option value="">Loading projects…</option>';
-            if (!_conProjects.length) {
+            const ownerUid = window.currentDataUserId || auth.currentUser?.uid;
+            if (!_boqProjects.length) {
                 try {
-                    const snap = await db.collection('constructionProjects').orderBy('projectName').get();
-                    _conProjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                } catch (e) { console.warn('Could not load projects for portal dropdown'); }
+                    const snap = await db.collection('boqDocuments').where('userId', '==', ownerUid).get();
+                    _boqProjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                } catch (e) { console.warn('Could not load BOQ projects for portal dropdown'); }
             }
             sel.innerHTML = '<option value="">— No project yet —</option>';
-            _conProjects.forEach(p => {
+            _boqProjects.forEach(p => {
                 const opt = document.createElement('option');
                 opt.value       = p.id;
-                opt.textContent = (p.clientName ? p.clientName + ' — ' : '') + (p.projectName || p.id);
+                opt.textContent = p.projectName || p.header?.projectName || p.header?.subject || p.id;
                 sel.appendChild(opt);
             });
         }
@@ -1080,11 +1108,27 @@
             secondaryApp = firebase.initializeApp(config, 'CpCreate_' + Date.now());
             const secAuth = secondaryApp.auth();
 
-            const cred = await secAuth.createUserWithEmailAndPassword(email, password);
-            const uid  = cred.user.uid;
+            let uid;
+            try {
+                const cred = await secAuth.createUserWithEmailAndPassword(email, password);
+                uid = cred.user.uid;
+            } catch (authErr) {
+                if (authErr.code === 'auth/email-already-in-use') {
+                    // Email exists in another system — sign in to reuse the same UID
+                    const existing = await secAuth.signInWithEmailAndPassword(email, password);
+                    uid = existing.user.uid;
+                    // Check if already a client portal user
+                    const alreadyExists = await db.collection('clientUsers').doc(uid).get();
+                    if (alreadyExists.exists) {
+                        throw new Error('ALREADY_CLIENT');
+                    }
+                } else {
+                    throw authErr;
+                }
+            }
             await secAuth.signOut();
 
-            await db.collection('clientPortalUsers').doc(uid).set({
+            await db.collection('clientUsers').doc(uid).set({
                 firstName,
                 lastName,
                 email,
@@ -1094,22 +1138,22 @@
             });
 
             if (projectId) {
-                await db.collection('constructionProjects').doc(projectId).update({
-                    clientEmail: email,
-                    clientName : firstName + ' ' + lastName
-                });
-                const proj = _conProjects.find(p => p.id === projectId);
-                if (proj) { proj.clientEmail = email; proj.clientName = firstName + ' ' + lastName; }
+                await db.collection('boqDocuments').doc(projectId).update({ clientEmail: email });
+                const proj = _boqProjects.find(p => p.id === projectId);
+                if (proj) proj.clientEmail = email;
             }
 
-            const linkedProject = _conProjects.find(p => p.id === projectId);
+            const linkedProject = _boqProjects.find(p => p.id === projectId);
+            const linkedName = linkedProject
+                ? (linkedProject.projectName || linkedProject.header?.projectName || linkedProject.header?.subject || '')
+                : '';
             _allPortalClients.unshift({
                 uid, firstName, lastName,
                 name     : firstName + ' ' + lastName,
                 email,
                 status   : 'active',
                 createdAt: new Date(),
-                project  : linkedProject?.projectName || ''
+                projects : linkedName ? [linkedName] : []
             });
             _renderPortalStats(_allPortalClients);
             _renderPortalTable(_allPortalClients);
@@ -1119,9 +1163,15 @@
         } catch (err) {
             console.error('cpSubmitCreateClient:', err);
             let msg = 'Something went wrong. Please try again.';
-            if (err.code === 'auth/email-already-in-use') msg = 'An account with this email already exists.';
-            if (err.code === 'auth/weak-password')        msg = 'Password is too weak. Use at least 8 characters.';
-            if (err.code === 'auth/invalid-email')        msg = 'The email address is not valid.';
+            if (err.message === 'ALREADY_CLIENT') {
+                msg = 'This email is already registered as a Client Portal user.';
+            } else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+                msg = 'This email already has an account in another system. The password you entered does not match their existing account. Please enter their correct password.';
+            } else if (err.code === 'auth/weak-password') {
+                msg = 'Password is too weak. Use at least 8 characters.';
+            } else if (err.code === 'auth/invalid-email') {
+                msg = 'The email address is not valid.';
+            }
             const errEl = document.getElementById('cp-create-general-err');
             if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
         } finally {
