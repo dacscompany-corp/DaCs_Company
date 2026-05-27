@@ -70,7 +70,8 @@
         },
         isDirty:         false,
         unsub:           null,
-        docsUnsub:       null
+        docsUnsub:       null,
+        mobExpenses:     []     // mobilization expenses for the current folder (for the line-item picker)
     };
 
     // ── Init ──────────────────────────────────────────────────
@@ -280,6 +281,7 @@
                     includeDuration:   true
                 };
             }
+            await loadMobilizationExpenses(folderId);
             renderBuilderArea();
         } catch (e) {
             console.error('BOQ load error:', e);
@@ -287,6 +289,27 @@
             if (root) root.innerHTML = '<div class="boq-error" style="padding:3rem;text-align:center;color:#ef4444;">Error loading BOQ. Please try again.</div>';
         }
     };
+
+    // ── Load mobilization expenses ────────────────────────────
+    // Pulls every expense logged in the Expenses module whose name relates to
+    // mobilization/demobilization, so they can be picked when editing a line
+    // item in a Mobilization sub-item.
+    async function loadMobilizationExpenses(folderId) {
+        boq.mobExpenses = [];
+        try {
+            const expSnap = await db.collection('expenses')
+                .where('userId', '==', uid())
+                .get();
+            const all = expSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // "demobilization" also contains "mobiliz", so one test covers both.
+            boq.mobExpenses = all
+                .filter(e => (e.expenseName || '').toLowerCase().includes('mobiliz'))
+                .sort((a, b) => new Date(b.dateTime || 0) - new Date(a.dateTime || 0));
+            console.log(`[BOQ] Loaded ${boq.mobExpenses.length} mobilization expense(s) of ${all.length} total.`);
+        } catch (e) {
+            console.error('BOQ mobilization expenses load error:', e);
+        }
+    }
 
     // ── Render builder area ────────────────────────────────────
     function renderBuilderArea() {
@@ -545,6 +568,22 @@
                 : `<option value="value" selected>Enter value</option><option value="by owner">By owner</option><option value="not applicable">N/A</option>`;
 
             const _liKeys = `onkeydown="if(event.key==='Enter')boqSaveLineItem('${ciId}','${siId}','${li.id}');else if(event.key==='Escape')boqCancelEditLI('${ciId}','${siId}','${li.id}')"`;
+
+            // Show a "fill from mobilization expense" picker only inside a Mobilization sub-item.
+            const _ci  = boq.costItems.find(c => c.id === ciId);
+            const _si  = _ci?.subItems?.find(s => s.id === siId);
+            const _isMobSub = (_si?.label || '').toLowerCase().includes('mobiliz');
+            let _mobPicker = '';
+            if (_isMobSub) {
+                _mobPicker = boq.mobExpenses.length
+                    ? `<select class="boq-cell-select boq-mob-picker" onchange="boqFillFromExpense('${li.id}', this)" title="Fill from a mobilization expense">
+                            <option value="">+ Fill from mobilization expense…</option>
+                            ${boq.mobExpenses.map(e => `<option value="${escAttr(e.id)}">${escHtml(e.expenseName || 'Expense')} — ₱${fmt(e.amount)}</option>`).join('')}
+                       </select>`
+                    : `<select class="boq-cell-select boq-mob-picker" disabled title="No mobilization expenses found in the Expenses module">
+                            <option value="">No mobilization expenses found</option>
+                       </select>`;
+            }
             return `
             <tr class="boq-row-l3 boq-row-editing" id="row-li-${li.id}">
                 <td class="boq-col-no">
@@ -557,6 +596,7 @@
                             <input type="checkbox" id="li-opt-${li.id}" ${li.isOptional?'checked':''}> Opt.
                         </label>
                     </div>
+                    ${_mobPicker}
                 </td>
                 <td class="boq-col-qty">
                     <input type="text" class="boq-cell-input" id="li-qty-${li.id}" value="${li.qty||''}" oninput="boqCalcRow('${li.id}')" placeholder="0" ${_liKeys}>
@@ -683,6 +723,33 @@
         const sel    = el(`li-${type}-type-${liId}`)?.value;
         const input  = el(`li-${type}-${liId}`);
         if (input) { input.style.display = sel === 'value' ? '' : 'none'; if (sel !== 'value') input.value = ''; }
+        boqCalcRow(liId);
+    };
+
+    // Fill a line item from a selected mobilization expense (description + amount).
+    // Mobilization is booked under Labor & Equipment (material N/A), matching how
+    // the existing Mobilization rows are recorded.
+    window.boqFillFromExpense = function (liId, sel) {
+        const exp = (boq.mobExpenses || []).find(e => e.id === sel.value);
+        sel.value = '';                       // reset so the placeholder shows again
+        if (!exp) return;
+
+        const descInput = el(`li-desc-${liId}`);
+        if (descInput) descInput.value = exp.expenseName || '';
+
+        const matType = el(`li-mat-type-${liId}`);
+        if (matType) { matType.value = 'not applicable'; boqToggleRate(liId, 'mat'); }
+
+        const labType  = el(`li-lab-type-${liId}`);
+        const labInput = el(`li-lab-${liId}`);
+        if (labType)  { labType.value = 'value'; boqToggleRate(liId, 'lab'); }
+        if (labInput)   labInput.value = fmt(exp.amount);
+
+        const qtyInput = el(`li-qty-${liId}`);
+        if (qtyInput && !parseNum(qtyInput.value)) qtyInput.value = 1;
+        const unitInput = el(`li-unit-${liId}`);
+        if (unitInput && !unitInput.value) unitInput.value = 'lot';
+
         boqCalcRow(liId);
     };
 

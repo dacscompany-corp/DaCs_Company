@@ -592,6 +592,19 @@ td .exp-icon-btn { opacity: 1; }
     font-size: 0.8125rem;
     font-weight: 600;
 }
+.exp-cat-pill {
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 0.45rem;
+    padding: 0.06rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    line-height: 1.55;
+}
+
 .exp-badge-materials { background: #dcfce7; color: #166534; }
 .exp-badge-utilities  { background: #dbeafe; color: #1e40af; }
 .exp-badge-equipment  { background: #fef3c7; color: #92400e; }

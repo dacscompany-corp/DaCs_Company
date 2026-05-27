@@ -367,6 +367,16 @@
 .boq-opt-check { font-size: 0.72rem; color: #6b7280; display: flex; align-items: center; gap: 3px; white-space: nowrap; cursor: pointer; flex-shrink: 0; }
 .boq-opt-check input { margin: 0; }
 
+/* Mobilization expense picker shown under the description while editing a line item */
+.boq-mob-picker {
+    margin-top: 4px;
+    margin-bottom: 0;
+    font-size: 0.72rem;
+    color: #047857;
+    border-color: #6ee7b7;
+    background: #f0fdf4;
+}
+
 /* â”€â”€ Inline label edit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .boq-label-input {
     background: rgba(255,255,255,0.9);

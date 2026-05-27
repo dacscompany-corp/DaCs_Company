@@ -1479,22 +1479,48 @@ function renderExpensesTable() {
         });
     });
 
-    const groups = {};
-    filtered.forEach(e => {
-        const key = e.category || 'Uncategorized';
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(e);
-    });
+    // Render a single expense row. In flat (All Categories) mode we prepend a
+    // small category badge next to the name so mixed categories stay readable.
+    const _renderExpRow = (e, showCategoryBadge) => {
+        const srcProj = expProjects.find(p => p.id === e.projectId);
+        const fundingBadge = (_coverSet.has(e.id) || e.coverExpense) ? _fundingBadgeHTML(null, true) : (srcProj ? _fundingBadgeHTML(srcProj, false) : '');
+        const catBadge = showCategoryBadge ? getCategoryPillHTML(e.category) : '';
+        return `
+        <tr class="exp-group-row">
+            <td>${formatDate(e.dateTime)}</td>
+            <td><strong>${_highlightMatch(e.expenseName || '—', name)}</strong>${catBadge}${fundingBadge}</td>
+            <td class="exp-notes-cell">${e.notes ? '<span class="exp-notes-text">' + e.notes + '</span>' : '<span class="exp-notes-empty">—</span>'}</td>
+            <td>${e.quantity || 1}</td>
+            <td>₱${formatNum(e.amount)}</td>
+            <td>${getReceiptThumbsHTML(e)}</td>
+            <td class="exp-action-cell">
+                <button class="exp-icon-btn exp-icon-btn-edit" title="Edit" onclick="openEditExpenseModal('${e.id}')"><i data-lucide="pencil"></i></button>
+                <button class="exp-icon-btn exp-icon-btn-danger" title="Delete" onclick="deleteExpense('${e.id}')"><i data-lucide="trash-2"></i></button>
+            </td>
+        </tr>`;
+    };
 
     let html = '';
-    Object.entries(groups).forEach(([category, items]) => {
-        const cat = expCategories.find(c => c.name === category);
-        const color = cat ? cat.color : '#9ca3af';
-        const subtotal = items.reduce((s, e) => s + (e.amount || 0), 0);
-        const r = parseInt((color.replace('#','')).substring(0,2),16);
-        const g = parseInt((color.replace('#','')).substring(2,4),16);
-        const b = parseInt((color.replace('#','')).substring(4,6),16);
-        html += `
+    if (!category) {
+        // "All Categories" → flat list, latest first, all categories mixed.
+        const flat = filtered.slice().sort((a, b) => new Date(b.dateTime || 0) - new Date(a.dateTime || 0));
+        flat.forEach(e => { html += _renderExpRow(e, true); });
+    } else {
+        // A specific category is selected → keep the grouped view.
+        const groups = {};
+        filtered.forEach(e => {
+            const key = e.category || 'Uncategorized';
+            if (!groups[key]) groups[key] = [];
+            groups[key].push(e);
+        });
+        Object.entries(groups).forEach(([category, items]) => {
+            const cat = expCategories.find(c => c.name === category);
+            const color = cat ? cat.color : '#9ca3af';
+            const subtotal = items.reduce((s, e) => s + (e.amount || 0), 0);
+            const r = parseInt((color.replace('#','')).substring(0,2),16);
+            const g = parseInt((color.replace('#','')).substring(2,4),16);
+            const b = parseInt((color.replace('#','')).substring(4,6),16);
+            html += `
         <tr class="exp-group-header">
             <td colspan="7">
                 <div class="exp-group-header-inner" style="--cat-color:${color};--cat-bg:rgba(${r},${g},${b},0.08);border-left-color:${color}">
@@ -1505,25 +1531,10 @@ function renderExpensesTable() {
                 </div>
             </td>
         </tr>`;
-        items.sort((a, b) => new Date(b.dateTime || 0) - new Date(a.dateTime || 0));
-        items.forEach(e => {
-            const srcProj = expProjects.find(p => p.id === e.projectId);
-            const fundingBadge = (_coverSet.has(e.id) || e.coverExpense) ? _fundingBadgeHTML(null, true) : (srcProj ? _fundingBadgeHTML(srcProj, false) : '');
-            html += `
-        <tr class="exp-group-row">
-            <td>${formatDate(e.dateTime)}</td>
-            <td><strong>${_highlightMatch(e.expenseName || '—', name)}</strong>${fundingBadge}</td>
-            <td class="exp-notes-cell">${e.notes ? '<span class="exp-notes-text">' + e.notes + '</span>' : '<span class="exp-notes-empty">—</span>'}</td>
-            <td>${e.quantity || 1}</td>
-            <td>₱${formatNum(e.amount)}</td>
-            <td>${getReceiptThumbsHTML(e)}</td>
-            <td class="exp-action-cell">
-                <button class="exp-icon-btn exp-icon-btn-edit" title="Edit" onclick="openEditExpenseModal('${e.id}')"><i data-lucide="pencil"></i></button>
-                <button class="exp-icon-btn exp-icon-btn-danger" title="Delete" onclick="deleteExpense('${e.id}')"><i data-lucide="trash-2"></i></button>
-            </td>
-        </tr>`;
+            items.sort((a, b) => new Date(b.dateTime || 0) - new Date(a.dateTime || 0));
+            items.forEach(e => { html += _renderExpRow(e, false); });
         });
-    });
+    }
     const grandTotal = filtered.reduce((s, e) => s + (e.amount || 0), 0);
     html += `
         <tr class="exp-total-row">
@@ -3744,6 +3755,19 @@ function getCategoryBadgeHTML(category) {
     const g = parseInt(hex.substring(2,4),16);
     const b = parseInt(hex.substring(4,6),16);
     return `<span class="exp-badge" style="background:rgba(${r},${g},${b},0.15);color:${color};border:1px solid rgba(${r},${g},${b},0.3)">${category}</span>`;
+}
+
+// Compact category pill for the flat "All Categories" list — small and subtle
+// so it sits cleanly next to the expense name without bloating the row.
+function getCategoryPillHTML(category) {
+    if (!category) return '';
+    const cat = expCategories.find(c => c.name === category);
+    const color = cat ? cat.color : '#a78bfa';
+    const hex = color.replace('#','');
+    const r = parseInt(hex.substring(0,2),16);
+    const g = parseInt(hex.substring(2,4),16);
+    const b = parseInt(hex.substring(4,6),16);
+    return `<span class="exp-cat-pill" style="color:${color};background:rgba(${r},${g},${b},0.12)">${category}</span>`;
 }
 
 function formatNum(n) {
