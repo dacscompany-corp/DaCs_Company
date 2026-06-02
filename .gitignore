@@ -1,0 +1,46 @@
+# ── Ignore everything by default ──────────────────────────
+*
+
+# ── Allow folders ──────────────────────────────────────────
+!*/
+
+# ── Web project files to include ───────────────────────────
+!*.html
+!*.css
+!*.js
+!*.json
+!*.md
+!*.rules
+!*.png
+!*.jpg
+!*.jpeg
+!*.gif
+!*.svg
+!*.webp
+!*.ico
+!*.mp4
+!*.webm
+!*.ttf
+!*.woff
+!*.woff2
+!.gitignore
+!.gitattributes
+
+# ── Exclude generated/build folders ────────────────────────
+node_modules/
+build/
+.gradle/
+gradle/
+app/
+
+# ── Exclude generated files ─────────────────────────────────
+sw.js
+package.json
+package-lock.json
+*.apk
+*.aab
+*.idsig
+*.keystore
+*.txt
+gradlew
+gradlew.bat

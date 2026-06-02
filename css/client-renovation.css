@@ -1,0 +1,136 @@
+/* ============================================================
+   DACS Client Portal — Renovation
+   Applies the same theme treatment used on admin.html:
+     • Cream / green-tinted page backgrounds → true white
+     • Playfair Display for labels & body text
+     • Barlow for numbers, inputs, tables
+     • Brand green stays as the only accent (untouched)
+     • Green-tinted shadows neutralized to soft gray
+   Loaded AFTER css/client.css so it wins.
+   Used by both client.html and Client Management.html.
+============================================================ */
+
+/* ── 1. Page surfaces: white, not green-tinted cream ─────── */
+#dashboard-page {
+  background: #ffffff !important;
+}
+
+/* Soft green-tint backgrounds that were giving the "cream" cast.
+   Convert to neutral white / very light gray instead. */
+.hero-kpi-card,
+.stat-card,
+.content-panel,
+.notif-dropdown,
+.table-search-wrap,
+.filter-pill {
+  background: #ffffff !important;
+}
+
+.notif-item:hover         { background: #fafafa !important; }
+.notif-item.unread        { background: #fafafa !important; }
+.data-table tbody tr:hover { background: #fafafa !important; }
+
+/* Topbar — drop the green-tinted user pill bg */
+.topbar-user { background: #ffffff !important; }
+.topbar-user:hover { background: #f5f5f5 !important; }
+
+/* Card / panel borders: neutral gray (was light-green #e8f5ee) */
+.stat-card,
+.content-panel,
+.table-search-wrap,
+.filter-pill {
+  border-color: #e5e5e5 !important;
+}
+
+/* ── 2. Shadows: drop the green tint ─────────────────────── */
+.stat-card,
+.content-panel {
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.05),
+    0 4px 12px rgba(0, 0, 0, 0.06) !important;
+}
+.notif-dropdown {
+  box-shadow:
+    0 8px 40px rgba(0, 0, 0, 0.10),
+    0 2px 8px rgba(0, 0, 0, 0.06) !important;
+}
+.topbar {
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.04),
+    0 2px 16px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* ── 3. Typography flip — Playfair for labels, Barlow for numbers ── */
+html, body {
+  font-family: 'Playfair Display', 'Times New Roman', Georgia, serif !important;
+}
+
+/* Inputs, selects, textareas always sans for readable typing */
+input,
+select,
+textarea {
+  font-family: 'Barlow', 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}
+
+/* Tables stay sans so financial figures stay clean */
+table,
+th,
+td {
+  font-family: 'Barlow', 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}
+
+/* Numeric / monetary classes used across the client + Client Management
+   portals — force sans so digits stay legible. Covers stat/kpi/value/amount
+   /total/price/qty/num naming patterns. */
+.stat-value,
+.kpi-value,
+.kpi-num,
+.kpi-amount,
+.kpi-total,
+.kpi-cp-value,
+.kpi-cp-value-amount,
+.kpi-fin-value,
+.kpi-perf-value,
+.kpi-split-amount,
+.kpi-costplus-compact-kpi,
+.bsum-value,
+.boq-total,
+.boq-subtotal,
+.boq-grand-total,
+.boq-total-item-value,
+.cm-price,
+.cm-term-cost-value,
+.cm-term-total,
+.cm-term-total-value,
+.ms-card-num,
+.ms-stat-value,
+.ms-date-val,
+.pf-budget-stat,
+.pf-chart-legend-val,
+.pf-chart-total,
+.pf-chart-total-val,
+.pf-kpi,
+[class*="-value"],
+[class*="-val"],
+[class*="-amt"],
+[class*="-amount"],
+[class*="-num"],
+[class*="-total"],
+[class*="-price"],
+[class*="-qty"],
+[class*="kpi-"][class*="value"],
+[class*="kpi-"][class*="amount"],
+[class*="stat-"][class*="value"] {
+  font-family: 'Barlow', 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Buttons keep sans (they're UI, not display copy) */
+button,
+.btn,
+.modal-btn-cancel,
+.modal-btn-confirm,
+.logout-btn,
+.footer-cta-link {
+  font-family: 'Barlow', 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}

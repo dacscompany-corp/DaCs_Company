@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \":*)",
+      "Bash(python -c \":*)",
+      "Bash(cp styles.css css/)",
+      "Bash(cp admin.css css/)",
+      "Bash(cp expenses-module.css css/)",
+      "Bash(cp expenses-mvp.css css/)",
+      "Bash(cp overhead-module.css css/)",
+      "Bash(cp firebase-config.js js/)",
+      "Bash(cp script.js js/)",
+      "Bash(cp admin.js js/)",
+      "Bash(cp expenses-module.js js/)",
+      "Bash(cp overhead-module.js js/)",
+      "Bash(cp DACS-TRANSPARENT.png assets/images/)",
+      "Bash(cp background.jpg assets/images/)",
+      "Bash(for f:*)",
+      "Bash(do cp:*)",
+      "Bash(done)",
+      "Bash(cp 7.png 9.png 11.png 13.png 14.png 16.png 18.png assets/images/portfolio/)",
+      "Bash(cp 2026-02-10T*.png assets/screenshots/)",
+      "Bash(cp \"Outview of Deluxe Junction.mp4\" assets/video/)",
+      "Bash(cp EXPENSES_README.md docs/)",
+      "Bash(cp OVERHEAD_FIREBASE_SETUP.md docs/)",
+      "Bash(cp STAFF_ACCOUNT_SETUP.md docs/)",
+      "Bash(wc -l \"c:/Users/John Aerol Tapales/Documents/Dacs Web/css/\"*.css)",
+      "Bash(wc -l \"c:/Users/John Aerol Tapales/Documents/Dacs Web/js/\"*.js)",
+      "Read(//c/Users/John Aerol Tapales/.claude/projects/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/memory/**)",
+      "Bash(\"c:/Users/John Aerol:*)",
+      "Bash(find '/c/Users/John Aerol Tapales/Documents/Dacs Web' -type f \\\\\\(-name *.js -o -name *.html -o -name *firebase* -o -name *config* \\\\\\))",
+      "Bash(find '/c/Users/John Aerol Tapales/Documents/Dacs Web' -type f ! -path */node_modules/* ! -path */.claude/* ! -path */.vscode/*)"
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls \"c:\\\\Users\\\\John Aerol Tapales\\\\Documents\\\\Dacs Web\"/*.js)",
+      "Bash(node -e ' *)"
+    ]
+  }
+}

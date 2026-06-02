@@ -1,0 +1,1810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DAC's Client Portal</title>
+  <link rel="icon" href="assets/images/DACS-TRANSPARENT.png" type="image/png"/>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Playfair+Display:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="css/client.css"/>
+  <link rel="stylesheet" href="css/hero-kpis.css"/>
+  <link rel="stylesheet" href="css/payment-requests.css"/>
+  <link rel="stylesheet" href="css/client-management.css"/>
+  <link rel="stylesheet" href="css/client-renovation.css"/>
+</head>
+<body>
+
+<!-- ══════════ LOGIN PAGE ══════════ -->
+<div class="page active" id="login-page">
+  <div class="card" id="auth-card">
+
+    <!-- LOGIN FORM -->
+    <div id="form-login">
+      <div class="login-header">
+        <div class="logo-wrap">
+          <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC Logo"/>
+        </div>
+        <h1>DAC's Client Management</h1>
+        <div class="accent-bar"></div>
+      </div>
+
+      <div class="field">
+        <label for="login-email">Email Address</label>
+        <div class="input-wrap">
+          <input type="email" id="login-email" placeholder="Enter your email" autocomplete="email"/>
+        </div>
+        <div class="field-error" id="err-login-email"></div>
+      </div>
+
+      <div class="field">
+        <label for="login-password">Password</label>
+        <div class="input-wrap">
+          <input type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password"/>
+          <button class="eye-btn" type="button" onclick="togglePassword('login-password','eye-login')" aria-label="Toggle password">
+            <svg id="eye-login" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+        <div class="field-error" id="err-login-password"></div>
+        <div style="text-align:right;margin-top:4px;">
+          <a href="#" id="forgotPasswordLink" onclick="doForgotPassword();return false;"
+             style="font-size:0.8rem;color:#059669;font-weight:600;text-decoration:none;">
+            Forgot Password?
+          </a>
+        </div>
+      </div>
+
+      <div class="login-error" id="login-error">Incorrect email or password. Please try again.</div>
+
+      <button class="btn-signin" id="btn-login" type="button" onclick="doLogin()">Sign In</button>
+
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════ DASHBOARD PAGE ══════════ -->
+<div class="page" id="dashboard-page">
+
+  <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC Logo"/>
+      <div class="sidebar-logo-text">DAC's Building<br/>Design Services</div>
+    </div>
+
+    <nav class="sidebar-nav">
+
+      <div class="nav-label">Navigation</div>
+
+      <a class="nav-item" onclick="showSection('kpi-dashboard')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        Overview
+      </a>
+
+      <a class="nav-item" onclick="showSection('accomplishment')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1"/>
+          <polyline points="9 12 11 14 15 10"/>
+        </svg>
+        Accomplishment Reports
+      </a>
+
+      <a class="nav-item" onclick="showSection('milestones')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+          <line x1="4" y1="22" x2="4" y2="15"/>
+        </svg>
+        Milestone Progress
+        <span id="milestone-active-badge" class="pr-nav-badge" style="display:none;background:#2563eb;margin-left:auto;"></span>
+      </a>
+
+      <a class="nav-item" onclick="showSection('weekly-billing')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="2" width="14" height="20" rx="2"/>
+          <line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/>
+          <line x1="9" y1="15" x2="13" y2="15"/>
+        </svg>
+        Weekly Summary
+        <span id="weekly-overdue-badge" class="pr-nav-badge" style="display:none;background:#ef4444;margin-left:auto;">!</span>
+      </a>
+
+      <a class="nav-item" onclick="showSection('procurement-list')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+          <rect x="9" y="3" width="6" height="4" rx="1"/>
+          <line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>
+        </svg>
+        Materials Procurement
+        <span id="procurement-pending-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;margin-left:auto;">!</span>
+      </a>
+
+      <a class="nav-item" onclick="showSection('revolving-fund')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="7" width="20" height="14" rx="2"/>
+          <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+        </svg>
+        Revolving Fund
+        <span id="rf-low-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;margin-left:auto;">!</span>
+      </a>
+
+      <a class="nav-item" onclick="showSection('billing')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+        </svg>
+        Statement of Account
+        <span id="billing-badge" class="pr-nav-badge" style="display:none;margin-left:auto;">0</span>
+      </a>
+
+      <a class="nav-item" onclick="showSection('notifications')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        Notifications
+        <span id="notif-nav-badge" class="pr-nav-badge" style="display:none;margin-left:auto;">0</span>
+      </a>
+
+      <div class="nav-label">Account</div>
+
+      <a class="nav-item" onclick="showSection('profile')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+        Profile
+      </a>
+
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-user-avatar" id="sidebar-avatar">CL</div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name" id="sidebar-name">Client</div>
+          <div class="sidebar-user-email" id="sidebar-email"></div>
+        </div>
+      </div>
+      <button class="logout-btn" onclick="confirmLogout()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        Sign Out
+      </button>
+    </div>
+  </aside>
+
+  <div class="main-content" id="main-content">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="burger-btn" id="burger" onclick="toggleSidebar()" aria-label="Toggle menu">
+          <span></span><span></span><span></span>
+        </button>
+        <span class="topbar-title" id="topbar-title">Dashboard</span>
+      </div>
+      <div class="topbar-right">
+        <button class="topbar-icon-btn dark-toggle-btn" id="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">
+          <svg id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+          <svg id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" style="display:none">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+        </button>
+        <div class="notif-wrap" id="notif-wrap">
+          <button class="topbar-bell-btn" id="notif-btn" title="Notifications" onclick="toggleNotifications()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+            <span class="topbar-bell-dot" id="notif-dot" style="display:none;"></span>
+          </button>
+          <div class="notif-dropdown" id="notif-dropdown">
+            <div class="notif-header">
+              <span class="notif-title">Notifications</span>
+              <button class="notif-mark-all" onclick="markAllRead()">Mark all read</button>
+            </div>
+            <div class="notif-list" id="notif-list"></div>
+            <div class="notif-footer"><span class="notif-footer-text">DAC Client Portal</span></div>
+          </div>
+        </div>
+        <div class="topbar-divider"></div>
+        <div class="topbar-user" onclick="showSection('profile')" title="My Profile" role="button" tabindex="0"
+             onkeydown="if(event.key==='Enter')showSection('profile')">
+          <div class="topbar-avatar" id="topbar-avatar">CL</div>
+          <span class="topbar-user-name" id="topbar-name">Client</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-body">
+
+      <!-- ── Accomplishment Reports ── -->
+      <div class="sub-page" id="section-accomplishment">
+        <div class="section-title">Accomplishment Reports</div>
+        <div class="section-sub">Periodic progress updates validated by DACS admin before being made visible to you.</div>
+
+        <!-- Progress Summary Bar -->
+        <div id="ar-summary-bar" class="ar-summary-bar" style="display:none;margin-bottom:20px;">
+          <div class="ar-progress-top">
+            <span class="ar-progress-label">Overall Project Progress (latest approved report)</span>
+            <span class="ar-progress-pct">0%</span>
+          </div>
+          <div class="ar-progress-track">
+            <div class="ar-progress-fill" style="width:0%;"></div>
+          </div>
+        </div>
+
+        <div class="content-panel" style="padding:0;overflow:hidden;">
+          <div class="table-toolbar">
+            <div class="table-search-wrap">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" class="table-search" id="report-search" placeholder="Search by title, milestone…" oninput="filterReports()"/>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="reports-table">
+              <thead>
+                <tr>
+                  <th>Report</th>
+                  <th>Date</th>
+                  <th>Milestone</th>
+                  <th>Completed Tasks</th>
+                  <th style="text-align:center;">Progress</th>
+                  <th>Status</th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody id="reports-tbody">
+                <tr><td colspan="7" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">Loading reports…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Milestone Progress Tracking ── -->
+      <div class="sub-page" id="section-milestones">
+        <div class="section-title">Milestone Progress Tracking</div>
+        <div class="section-sub">Project divided into defined milestones. Each milestone is validated by DACS admin.</div>
+
+        <!-- Stats row -->
+        <div id="milestone-stats-row" class="ms-stats-row" style="display:none;margin-bottom:20px;"></div>
+
+        <!-- Empty state -->
+        <div id="milestone-empty" style="display:none;">
+          <div class="content-panel" style="text-align:center;padding:60px 20px;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#b0c8bc" stroke-width="1.5" style="margin-bottom:14px;">
+              <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
+            </svg>
+            <div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:6px;">No Milestones Yet</div>
+            <div style="font-size:13.5px;color:#9ca3af;max-width:340px;margin:0 auto;line-height:1.6;">
+              No milestones have been defined for this project. Contact DACS to set up milestone tracking.
+            </div>
+          </div>
+        </div>
+
+        <!-- Milestones table panel -->
+        <div class="content-panel" id="milestones-panel" style="padding:0;overflow:hidden;display:none;">
+          <div class="table-toolbar">
+            <div class="table-search-wrap">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" class="table-search" id="milestone-search" placeholder="Search milestones…" oninput="cmFilterMilestones()"/>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="milestones-table">
+              <thead>
+                <tr>
+                  <th>Milestone</th>
+                  <th>Phase</th>
+                  <th>Planned Date</th>
+                  <th style="text-align:center;">Accomplishment</th>
+                  <th>Status</th>
+                  <th style="text-align:center;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="milestones-tbody">
+                <tr><td colspan="6" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">Loading milestones…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Billing Periods (SOA) ── -->
+      <div class="sub-page" id="section-billing">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div class="section-title" style="margin-bottom:4px;">Statement of Account (SOA)</div>
+            <div class="section-sub" style="margin-bottom:0;">Your financial transactions — payments, expenses, remaining balance, and billing history.</div>
+          </div>
+          <button onclick="prClientOpenSelfPayModal()" style="display:inline-flex;align-items:center;gap:8px;background:#00a85e;color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,168,94,.25);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            Submit Payment
+          </button>
+        </div>
+
+        <!-- Outstanding Balance Alert -->
+        <div id="outstanding-balance-alert" style="display:none;align-items:center;gap:14px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:12px;padding:14px 18px;margin-bottom:20px;"></div>
+
+        <!-- Summary Cards -->
+        <div class="billing-summary-grid" style="margin-bottom:28px;">
+          <div class="billing-sum-card billing-sum-green">
+            <div class="bsum-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a85e" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <div>
+              <div class="bsum-label">Total Contract</div>
+              <div class="bsum-value" id="bsum-total">&#8369;0</div>
+            </div>
+          </div>
+          <div class="billing-sum-card billing-sum-amber">
+            <div class="bsum-icon bsum-icon-amber">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            </div>
+            <div>
+              <div class="bsum-label">Total Billed</div>
+              <div class="bsum-value" id="bsum-billed">&#8369;0</div>
+            </div>
+          </div>
+          <div class="billing-sum-card billing-sum-blue">
+            <div class="bsum-icon bsum-icon-blue">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div>
+              <div class="bsum-label">Billing Periods</div>
+              <div class="bsum-value" id="bsum-count">0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Payment Requests Panel -->
+        <div class="content-panel" style="padding:0;overflow:hidden;margin-bottom:24px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #f1f5f9;">
+            <div>
+              <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Payment Requests</div>
+              <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Company-issued billing requests for your review.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="billing-badge" id="pr-pending-badge" style="display:none;"></span>
+              <button id="clientRequestSOWABtn" onclick="clientRequestSOWA(this)" style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:1.5px solid #d1fae5;background:#f0fdf4;color:#059669;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="12" y2="16"/><polyline points="14 2 14 8 20 8"/></svg>
+                Request SOWA
+              </button>
+              <button id="clientViewSOWABtn" onclick="clientOpenSOWA()" style="display:none;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:1.5px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;" onmouseover="this.style.background='#dbeafe'" onmouseout="this.style.background='#eff6ff'">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                View SOWA
+              </button>
+            </div>
+          </div>
+          <div id="pr-client-list" style="padding:0;">
+            <div style="color:#9ca3af;font-size:14px;padding:32px;text-align:center;">Loading payment requests…</div>
+          </div>
+        </div>
+
+        <!-- Billing History Panel -->
+        <div class="content-panel" style="padding:0;overflow:hidden;">
+          <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:15px;font-weight:700;color:#1f2937;">Billing History</div>
+            <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Overview of all billing periods from your contract.</div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="billing-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Period</th>
+                  <th>Description</th>
+                  <th>Amount</th>
+                  <th>Type</th>
+                </tr>
+              </thead>
+              <tbody id="billing-tbody">
+                <tr><td colspan="5" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Profile ── -->
+      <div class="sub-page" id="section-profile">
+        <div class="section-title">Profile</div>
+        <div class="section-sub">View and manage your account information.</div>
+        <div class="content-panel">
+          <div class="profile-card">
+            <div class="profile-avatar-lg-wrap">
+              <div class="profile-avatar-lg" id="profile-avatar-lg">CL</div>
+              <button class="profile-avatar-edit-btn" onclick="triggerAvatarUpload()" title="Change profile picture">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              </button>
+              <input type="file" id="avatar-file-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(event)">
+            </div>
+            <div class="profile-info">
+              <div class="profile-name" id="profile-fullname">Client User</div>
+              <div class="profile-email" id="profile-email-display"></div>
+              <span class="profile-role-badge">Client Account</span>
+            </div>
+            <button class="btn-edit-profile" id="btn-edit-profile" onclick="toggleEditProfile()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              Edit Profile
+            </button>
+          </div>
+
+          <div id="profile-view-mode">
+            <div class="profile-fields">
+              <div class="profile-field-row">
+                <div class="profile-field-label">Full Name</div>
+                <div class="profile-field-value" id="pf-name">—</div>
+              </div>
+              <div class="profile-field-row">
+                <div class="profile-field-label">Email Address</div>
+                <div class="profile-field-value" id="pf-email">—</div>
+              </div>
+              <div class="profile-field-row">
+                <div class="profile-field-label">Account Type</div>
+                <div class="profile-field-value">Client</div>
+              </div>
+              <div class="profile-field-row">
+                <div class="profile-field-label">Member Since</div>
+                <div class="profile-field-value" id="pf-since">—</div>
+              </div>
+            </div>
+          </div>
+
+          <div id="profile-edit-mode" style="display:none;">
+            <div class="edit-section-label">Personal Information</div>
+            <div class="signup-row" style="margin-bottom:0;">
+              <div class="field">
+                <label for="edit-firstname">First Name</label>
+                <div class="input-wrap"><input type="text" id="edit-firstname" placeholder="First name"/></div>
+                <div class="field-error" id="err-edit-firstname"></div>
+              </div>
+              <div class="field">
+                <label for="edit-lastname">Last Name</label>
+                <div class="input-wrap"><input type="text" id="edit-lastname" placeholder="Last name"/></div>
+                <div class="field-error" id="err-edit-lastname"></div>
+              </div>
+            </div>
+            <div class="edit-profile-actions">
+              <button class="btn-cancel-edit" onclick="cancelEditProfile()">Cancel</button>
+              <button class="btn-save-profile" onclick="saveProfile()">Save Changes</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="content-panel">
+          <div class="panel-header">
+            <span class="panel-title">Change Password</span>
+            <button class="btn-toggle-pw" id="btn-toggle-pw" onclick="toggleChangePassword()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Change Password
+            </button>
+          </div>
+          <div id="change-pw-form" style="display:none;">
+            <div class="field">
+              <label for="pw-current">Current Password</label>
+              <div class="input-wrap">
+                <input type="password" id="pw-current" placeholder="Enter current password"/>
+                <button class="eye-btn" type="button" onclick="togglePassword('pw-current','eye-cur')">
+                  <svg id="eye-cur" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="field-error" id="err-pw-current"></div>
+            </div>
+            <div class="field">
+              <label for="pw-new">New Password</label>
+              <div class="input-wrap">
+                <input type="password" id="pw-new" placeholder="Min. 8 characters" oninput="updateNewPwStrength()"/>
+                <button class="eye-btn" type="button" onclick="togglePassword('pw-new','eye-new')">
+                  <svg id="eye-new" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="field-error" id="err-pw-new"></div>
+              <div class="pw-strength-wrap" id="new-pw-strength-wrap" style="display:none;">
+                <div class="pw-strength-bar"><div class="pw-strength-fill" id="new-pw-strength-fill"></div></div>
+                <span class="pw-strength-label" id="new-pw-strength-label"></span>
+              </div>
+            </div>
+            <div class="field">
+              <label for="pw-confirm-new">Confirm New Password</label>
+              <div class="input-wrap">
+                <input type="password" id="pw-confirm-new" placeholder="Re-enter new password"/>
+                <button class="eye-btn" type="button" onclick="togglePassword('pw-confirm-new','eye-cnew')">
+                  <svg id="eye-cnew" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="field-error" id="err-pw-confirm-new"></div>
+            </div>
+            <div class="edit-profile-actions">
+              <button class="btn-cancel-edit" onclick="toggleChangePassword()">Cancel</button>
+              <button class="btn-save-profile" onclick="doChangePassword()">Update Password</button>
+            </div>
+          </div>
+          <div id="change-pw-placeholder">
+            <p class="pw-placeholder-text">Keep your account secure by updating your password regularly.</p>
+          </div>
+        </div>
+
+        <!-- ── Termination Zone ── -->
+        <div class="cm-termination-zone">
+          <div class="cm-termination-zone-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            Project Termination
+          </div>
+          <p>If you wish to end this project early, you may submit a termination request. The system will calculate all consumed labor costs, materials used, and the equivalent management fee. Any remaining balance must be settled before the project is officially closed.</p>
+          <button class="cm-termination-request-btn" onclick="cmOpenTerminationModal()" id="cm-term-open-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Request Termination
+          </button>
+          <div id="cm-term-status" class="cm-term-submitted-note" style="display:none;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Termination request submitted — pending admin review. You will be notified once processed.
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Notifications History ── -->
+      <div class="sub-page" id="section-notifications">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div class="section-title" style="margin-bottom:4px;">Notifications</div>
+            <div class="section-sub" style="margin-bottom:0;">Your recent updates and alerts.</div>
+          </div>
+          <button onclick="markAllRead();renderNotifHistory()" style="display:inline-flex;align-items:center;gap:7px;background:#f0fdf4;color:#059669;border:1.5px solid #d1fae5;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Mark All Read
+          </button>
+        </div>
+        <div class="content-panel" style="padding:0;overflow:hidden;">
+          <div id="notif-history-list" style="min-height:120px;">
+            <div style="padding:40px;text-align:center;color:#9ca3af;font-size:14px;">Loading…</div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ══════════ PROJECT DASHBOARD / FOLDER VIEW ══════════ -->
+      <div class="sub-page" id="section-kpi-dashboard">
+
+        <!-- Header -->
+        <div style="margin-bottom:24px;">
+          <div class="section-title" style="margin-bottom:4px;">Project Dashboard</div>
+          <div class="section-sub" style="margin-bottom:0;">All project data, KPIs, and folders organized in one place for full transparency and easy navigation.</div>
+        </div>
+
+        <!-- No Project State -->
+        <div id="kpi-no-data" style="display:none;">
+          <div class="content-panel" style="text-align:center;padding:60px 20px;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#b0c8bc" stroke-width="1.5" style="margin-bottom:14px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            <div style="font-size:16px;font-weight:700;color:#374151;margin-bottom:6px;">No Project Data</div>
+            <div style="font-size:13.5px;color:#9ca3af;">Your account is not yet linked to a construction project.</div>
+          </div>
+        </div>
+
+        <!-- Project Folder View (shown when project data exists) -->
+        <div id="kpi-project-folder" style="display:none;">
+
+          <!-- ── Project Header Card ── -->
+          <div class="pf-project-header" id="pf-project-header">
+            <!-- populated by JS -->
+          </div>
+
+          <!-- ── Cost Distribution Pie Chart ── -->
+          <div id="pf-cost-chart"></div>
+
+          <!-- ── Combined KPI Grid ── -->
+          <div class="pf-kpi-grid" id="pf-kpi-grid">
+            <!-- populated by JS -->
+          </div>
+
+          <!-- ── KPI Alerts ── -->
+          <div id="kpi-alerts-standalone" style="display:none;margin-bottom:20px;"></div>
+
+          <!-- ── Weekly Activity Summary Preview ── -->
+          <div class="content-panel" style="padding:0;overflow:hidden;margin-bottom:24px;">
+            <div class="pm-panel-header">
+              <div>
+                <div class="pm-panel-title">Weekly Activity Summary</div>
+                <div class="pm-panel-sub">Latest billing weeks — labor, materials, and totals.</div>
+              </div>
+              <button onclick="showSection('weekly-billing')" class="pf-view-all-btn">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                View All
+              </button>
+            </div>
+            <div id="pf-weekly-preview"></div>
+          </div>
+
+        </div><!-- /kpi-project-folder -->
+
+      </div><!-- /section-kpi-dashboard -->
+
+      <!-- ══════════ WEEKLY SUMMARY ══════════ -->
+      <div class="sub-page" id="section-weekly-billing">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div class="section-title" style="margin-bottom:4px;">Weekly Summary</div>
+            <div class="section-sub" style="margin-bottom:0;">Cost-Plus model — Direct Costs + 15% Management Fee. Payment due every Friday.</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div class="table-search-wrap" style="width:190px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <select id="wb-week-filter" onchange="filterWeeklyBills()" aria-label="Filter weekly bills by week" style="border:none;background:transparent;font-size:13px;color:#374151;outline:none;cursor:pointer;width:100%;padding:0 4px;">
+                <option value="">All Weeks</option>
+              </select>
+            </div>
+            <button onclick="printWeeklyReport()" class="btn-print-report">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              Print Report
+            </button>
+          </div>
+        </div>
+
+        <!-- Price Variability Disclaimer -->
+        <div class="cm-price-disclaimer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span><strong>Cost Notice:</strong> Prices may vary based on market conditions and material availability. All figures reflect actual recorded costs at the time of billing.</span>
+        </div>
+
+        <!-- Overdue Alert -->
+        <div id="wb-overdue-alert" style="display:none;align-items:center;gap:14px;background:#fef2f2;border:1.5px solid #fca5a5;border-radius:12px;padding:14px 18px;margin-bottom:20px;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <div id="wb-overdue-msg" style="font-size:13.5px;color:#dc2626;font-weight:600;"></div>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="billing-summary-grid" style="margin-bottom:28px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));">
+          <div class="billing-sum-card billing-sum-green">
+            <div class="bsum-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a85e" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <div>
+              <div class="bsum-label">Total Billed</div>
+              <div class="bsum-value" id="wb-sum-billed">&#8369;0</div>
+            </div>
+          </div>
+          <div class="billing-sum-card billing-sum-blue">
+            <div class="bsum-icon bsum-icon-blue">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <div>
+              <div class="bsum-label">Total Paid</div>
+              <div class="bsum-value" id="wb-sum-paid">&#8369;0</div>
+            </div>
+          </div>
+          <div class="billing-sum-card billing-sum-amber">
+            <div class="bsum-icon bsum-icon-amber">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            </div>
+            <div>
+              <div class="bsum-label">Outstanding</div>
+              <div class="bsum-value" id="wb-sum-outstanding">&#8369;0</div>
+            </div>
+          </div>
+          <div class="billing-sum-card" style="border-left:3px solid #8b5cf6;background:linear-gradient(135deg,#faf5ff 0%,#f5f3ff 100%);">
+            <div class="bsum-icon" style="background:#ede9fe;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            </div>
+            <div>
+              <div class="bsum-label">Mgmt Fees (15%)</div>
+              <div class="bsum-value" id="wb-sum-fees" style="color:#7c3aed;">&#8369;0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Weekly Bills Table -->
+        <div class="content-panel" style="padding:0;overflow:hidden;">
+          <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Weekly Billing History</div>
+            <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Permanent audit trail — submitted every Friday. No entries are ever deleted.</div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="wb-table">
+              <thead>
+                <tr>
+                  <th>Week Ending</th>
+                  <th>Labor</th>
+                  <th>Materials</th>
+                  <th>Other Costs</th>
+                  <th>Direct Total</th>
+                  <th>Mgmt Fee (15%)</th>
+                  <th>Total Due</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="wb-tbody">
+                <tr><td colspan="9" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">Loading weekly bills…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ PROGRESS & PHOTOS ══════════ -->
+      <div class="sub-page" id="section-progress">
+        <div style="margin-bottom:24px;">
+          <div class="section-title" style="margin-bottom:4px;">Progress &amp; Photos</div>
+          <div class="section-sub" style="margin-bottom:0;">Daily site updates and construction progress photos shared by your project manager.</div>
+        </div>
+
+        <!-- Daily Logs -->
+        <div class="content-panel" style="padding:0;overflow:hidden;margin-bottom:24px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #f1f5f9;">
+            <div>
+              <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Daily Site Logs</div>
+              <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Work done each day — work done, materials used, and next-day plan.</div>
+            </div>
+            <div class="table-search-wrap" style="width:220px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" class="table-search" id="log-search" placeholder="Search logs…" oninput="filterProgressLogs()"/>
+            </div>
+          </div>
+          <div id="progress-logs-list" style="min-height:120px;">
+            <div style="padding:40px;text-align:center;color:#9ca3af;font-size:14px;">Loading daily logs…</div>
+          </div>
+        </div>
+
+        <!-- Client Walkthrough Log -->
+        <div class="content-panel" style="padding:0;overflow:hidden;margin-bottom:24px;">
+          <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Walkthrough &amp; Milestone Log</div>
+            <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Recorded client walkthroughs — what was discussed and agreed.</div>
+          </div>
+          <div id="walkthrough-list" style="min-height:80px;">
+            <div style="padding:32px;text-align:center;color:#9ca3af;font-size:14px;">Loading walkthroughs…</div>
+          </div>
+        </div>
+
+        <!-- Photo Gallery -->
+        <div class="content-panel" style="padding:0;overflow:hidden;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #f1f5f9;">
+            <div>
+              <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Progress Photos</div>
+              <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Construction site photos marked visible to client by your project manager.</div>
+            </div>
+            <span id="photo-count-badge" class="panel-badge panel-badge-blue">0 Photos</span>
+          </div>
+          <div id="progress-photos-grid" style="padding:20px;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;min-height:120px;">
+            <div style="padding:24px;text-align:center;color:#9ca3af;font-size:14px;grid-column:1/-1;">Loading photos…</div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- ══════════ MATERIALS PROCUREMENT LIST ══════════ -->
+      <div class="sub-page" id="section-procurement-list">
+        <div style="margin-bottom:16px;">
+          <div class="section-title" style="margin-bottom:4px;">Materials Procurement List</div>
+          <div class="section-sub" style="margin-bottom:0;">Items your project manager needs to purchase. You may buy any item yourself — mark it as bought and upload your receipt.</div>
+        </div>
+
+        <!-- Price Variability Disclaimer -->
+        <div class="cm-price-disclaimer">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span><strong>Cost Notice:</strong> Estimated prices are for reference only. Actual purchase prices may vary based on current market conditions and supplier availability.</span>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="pm-stat-grid">
+          <div class="pm-stat-card pm-stat-green">
+            <div class="pm-stat-label">Total Items</div>
+            <div class="pm-stat-value" id="pl-total-items">0</div>
+            <div class="pm-stat-sub">on the procurement list</div>
+          </div>
+          <div class="pm-stat-card pm-stat-amber">
+            <div class="pm-stat-label">Undecided</div>
+            <div class="pm-stat-value" id="pl-pending-items">0</div>
+            <div class="pm-stat-sub">awaiting your decision</div>
+          </div>
+          <div class="pm-stat-card pm-stat-blue">
+            <div class="pm-stat-label">Your Responsibility</div>
+            <div class="pm-stat-value" id="pl-client-items">0</div>
+            <div class="pm-stat-sub">assigned to you or purchased</div>
+          </div>
+          <div class="pm-stat-card pm-stat-purple">
+            <div class="pm-stat-label">Admin Handling</div>
+            <div class="pm-stat-value" id="pl-company-items">0</div>
+            <div class="pm-stat-sub">assigned to or bought by admin</div>
+          </div>
+        </div>
+
+        <!-- Items Table -->
+        <div class="content-panel" style="padding:0;overflow:hidden;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #f1f5f9;flex-wrap:wrap;gap:12px;">
+            <div>
+              <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Procurement Items</div>
+              <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Items listed by your project manager. Mark items you purchased and upload your receipt.</div>
+            </div>
+            <div class="table-search-wrap" style="width:220px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" class="table-search" id="pl-search" placeholder="Search items…" oninput="filterProcurementList()"/>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="pl-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Qty</th>
+                  <th>Est. Price</th>
+                  <th>Status</th>
+                  <th>Actual Amount</th>
+                  <th>Buyer</th>
+                  <th>Receipt</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="pl-tbody">
+                <tr><td colspan="8" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">Loading procurement list…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════ REVOLVING FUND ══════════ -->
+      <div class="sub-page" id="section-revolving-fund">
+
+        <div style="margin-bottom:24px;">
+          <div class="section-title" style="margin-bottom:4px;">Revolving Fund</div>
+          <div class="section-sub" style="margin-bottom:0;">Petty cash fund for minor and urgent site purchases — replenished weekly via receipts you provide.</div>
+        </div>
+
+
+        <!-- Low Balance Alert -->
+        <div id="rf-low-alert" style="display:none;align-items:center;gap:12px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:12px;padding:14px 18px;margin-bottom:20px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div style="font-size:13.5px;color:#b45309;font-weight:600;">Revolving fund balance is below 20% — replenishment needed. Submit receipts to your project manager.</div>
+        </div>
+
+        <!-- Balance Cards -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
+          <div style="background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);border:1.5px solid #bbf7d0;border-radius:14px;padding:20px;">
+            <div style="font-size:12px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Current Balance</div>
+            <div style="font-size:26px;font-weight:700;color:#15803d;font-family:'Playfair Display',serif;" id="rf-balance">&#8369;0</div>
+            <div style="font-size:12px;color:#4ade80;margin-top:4px;" id="rf-balance-pct">0% of fund remaining</div>
+          </div>
+          <div style="background:linear-gradient(135deg,#fff7ed 0%,#fed7aa 100%);border:1.5px solid #fdba74;border-radius:14px;padding:20px;">
+            <div style="font-size:12px;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Total Spent</div>
+            <div style="font-size:26px;font-weight:700;color:#c2410c;font-family:'Playfair Display',serif;" id="rf-spent">&#8369;0</div>
+            <div style="font-size:12px;color:#fb923c;margin-top:4px;">This replenishment period</div>
+          </div>
+          <div style="background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1.5px solid #93c5fd;border-radius:14px;padding:20px;">
+            <div style="font-size:12px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Fund Amount</div>
+            <div style="font-size:26px;font-weight:700;color:#1d4ed8;font-family:'Playfair Display',serif;" id="rf-total">&#8369;0</div>
+            <div style="font-size:12px;color:#60a5fa;margin-top:4px;">Client-provided revolving fund</div>
+          </div>
+        </div>
+
+        <!-- Replenishment History -->
+        <div class="content-panel" style="padding:0;overflow:hidden;margin-bottom:24px;">
+          <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Replenishment History</div>
+            <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Weekly replenishments via submitted receipts.</div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="rf-replenish-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Amount Added</th>
+                  <th>Receipts Submitted</th>
+                  <th>Remarks</th>
+                </tr>
+              </thead>
+              <tbody id="rf-replenish-tbody">
+                <tr><td colspan="4" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">No replenishments yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Expense Log -->
+        <div class="content-panel" style="padding:0;overflow:hidden;">
+          <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Expense Log</div>
+            <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Minor site purchases drawn from the revolving fund, with receipts.</div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="rf-expense-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Item / Description</th>
+                  <th>Amount</th>
+                  <th>Receipt</th>
+                </tr>
+              </thead>
+              <tbody id="rf-expense-tbody">
+                <tr><td colspan="4" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">Loading expenses…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /page-body -->
+  </div><!-- /main-content -->
+</div><!-- /dashboard-page -->
+
+<!-- ══════════ REPORT VIEWER MODAL ══════════ -->
+<div class="modal-overlay" id="report-modal" onclick="closeReportModal(event)">
+  <div class="report-modal-card">
+    <div class="report-modal-header">
+      <div class="report-modal-header-info">
+        <div class="report-modal-logo">
+          <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC Logo"/>
+          <span>DAC's Building Design Services</span>
+        </div>
+        <div class="report-modal-title" id="rmd-title">Accomplishment Report</div>
+        <div class="report-modal-meta" id="rmd-meta"></div>
+      </div>
+      <div class="report-modal-header-right">
+        <span class="badge" id="rmd-status-badge"></span>
+        <button class="report-modal-close" onclick="closeReportModal()" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="report-modal-body" id="rmd-body"></div>
+    <div class="report-modal-footer" id="rmd-footer"></div>
+  </div>
+</div>
+
+<!-- ══════════ MILESTONE DETAIL MODAL ══════════ -->
+<div class="modal-overlay" id="milestone-detail-modal" onclick="cmCloseMilestoneModal(event)">
+  <div class="report-modal-card">
+    <div class="report-modal-header">
+      <div class="report-modal-header-info">
+        <div class="report-modal-logo">
+          <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC Logo"/>
+          <span>DAC's Building Design Services</span>
+        </div>
+        <div class="report-modal-title" id="msd-title">Milestone Report</div>
+        <div class="report-modal-meta" id="msd-meta"></div>
+      </div>
+      <div class="report-modal-header-right">
+        <span class="badge" id="msd-status-badge"></span>
+        <button class="report-modal-close" onclick="cmCloseMilestoneModal()" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="report-modal-body" id="msd-body"></div>
+    <div class="report-modal-footer" id="msd-footer"></div>
+  </div>
+</div>
+
+<!-- ══════════ LOGOUT MODAL ══════════ -->
+<div class="modal-overlay" id="logout-modal" onclick="closeLogoutModal(event)">
+  <div class="modal-card">
+    <div class="modal-icon">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+        <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+      </svg>
+    </div>
+    <h3 class="modal-title">Sign Out?</h3>
+    <p class="modal-desc">Are you sure you want to sign out of your account?</p>
+    <div class="modal-actions">
+      <button class="modal-btn-cancel" onclick="closeLogoutModal()">Cancel</button>
+      <button class="modal-btn-confirm" onclick="doLogout()">Sign Out</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ══════════ MARK AS BOUGHT MODAL ══════════ -->
+<div id="plBuyModal" class="pm-modal-overlay" style="display:none;" onclick="if(event.target===this)plCloseBuyModal()">
+  <div class="pm-modal-card">
+    <div class="pm-modal-header">
+      <div class="pm-modal-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><polyline points="9 12 11 14 15 10"/></svg>
+      </div>
+      <span class="pm-modal-title">Mark Item as Bought</span>
+      <button class="pm-modal-close" onclick="plCloseBuyModal()" aria-label="Close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <div class="pm-modal-body">
+      <input type="hidden" id="plBuyItemId"/>
+
+      <!-- Item info -->
+      <div class="pm-item-info-box">
+        <div class="pm-item-info-label">Item Details</div>
+        <div class="pm-item-info-name" id="plBuyItemName">—</div>
+        <div class="pm-item-info-meta">Qty: <span id="plBuyItemQty">—</span> &nbsp;·&nbsp; Est. Price: <span id="plBuyItemEst">—</span></div>
+      </div>
+
+      <!-- Actual Amount -->
+      <div class="pm-field">
+        <label class="pm-label">Actual Amount Paid <span class="pm-label-required">*</span></label>
+        <div class="pm-input-wrap">
+          <span class="pm-input-prefix">₱</span>
+          <input type="number" class="pm-input" id="plBuyAmount" placeholder="0.00" min="0" step="0.01"/>
+        </div>
+        <div class="pm-field-error" id="err-plBuyAmount"></div>
+      </div>
+
+      <!-- Receipt Upload -->
+      <div class="pm-field">
+        <label class="pm-label">Proof of Receipt <span class="pm-label-required">*</span></label>
+        <div class="pm-upload-zone" id="plReceiptUploadWrap"
+          onclick="document.getElementById('plReceiptFile').click()"
+          ondragover="event.preventDefault();this.classList.add('dragover')"
+          ondragleave="this.classList.remove('dragover')"
+          ondrop="plHandleReceiptDrop(event)">
+          <div class="pm-upload-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          </div>
+          <div class="pm-upload-text">Click to upload or drag &amp; drop</div>
+          <div class="pm-upload-hint">JPG, PNG, PDF &nbsp;·&nbsp; Max 5MB</div>
+        </div>
+        <input type="file" id="plReceiptFile" accept="image/*,application/pdf" style="display:none;" onchange="plPreviewReceipt(event)"/>
+        <div class="pm-receipt-preview" id="plReceiptPreview" style="display:none;"></div>
+        <div class="pm-field-error" id="err-plReceipt"></div>
+      </div>
+
+      <!-- Notes -->
+      <div class="pm-field">
+        <label class="pm-label">Notes <span class="pm-label-optional">(optional)</span></label>
+        <textarea class="pm-textarea" id="plBuyNotes" placeholder="Where you bought it, any remarks…" rows="2"></textarea>
+      </div>
+    </div>
+
+    <div class="pm-modal-footer">
+      <button class="pm-btn-cancel" onclick="plCloseBuyModal()">Cancel</button>
+      <button class="pm-btn-confirm" id="plBuySubmitBtn" onclick="plSubmitBought()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        Confirm Purchase
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ RECEIPT VIEWER MODAL ══════════ -->
+<div id="plReceiptViewModal" class="pm-receipt-modal" style="display:none;" onclick="if(event.target===this)plCloseReceiptView()">
+  <div class="pm-receipt-modal-card">
+    <div class="pm-receipt-modal-header">
+      <span class="pm-receipt-modal-title" id="plReceiptViewTitle">Receipt</span>
+      <button class="pm-receipt-modal-close" onclick="plCloseReceiptView()" aria-label="Close">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="pm-receipt-modal-body">
+      <img id="plReceiptViewImg" src="" alt="Receipt" style="display:none;"/>
+      <iframe id="plReceiptViewPdf" src="" style="width:100%;height:60vh;border:none;border-radius:8px;display:none;"></iframe>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ PROCUREMENT: DECISION MODAL ══════════ -->
+<div id="plDecisionModal" class="pm-modal-overlay" style="display:none;" onclick="if(event.target===this)plCloseDecisionModal()">
+  <div class="pm-modal-card pl-decision-card">
+    <div class="pm-modal-header">
+      <div class="pm-modal-icon pl-decision-modal-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      </div>
+      <span class="pm-modal-title">Purchase Decision</span>
+      <button class="pm-modal-close" onclick="plCloseDecisionModal()" aria-label="Close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="pm-modal-body">
+      <!-- Item info -->
+      <div class="pm-item-info-box">
+        <div class="pm-item-info-label">Item Details</div>
+        <div class="pm-item-info-name" id="plDecItemName">—</div>
+        <div class="pm-item-info-meta">Qty: <span id="plDecItemQty">—</span> &nbsp;·&nbsp; Est. Price: <span id="plDecItemEst">—</span></div>
+        <div class="pm-item-info-notes" id="plDecItemNotes"></div>
+      </div>
+
+      <p class="pl-decision-prompt">This item needs to be purchased. Will you handle the purchase yourself, or should the admin/company take care of it?</p>
+
+      <div class="pl-decision-options">
+        <button id="plDecAcceptBtn" class="pl-decision-option pl-decision-accept" onclick="plClientAcceptItem()">
+          <div class="pl-decision-option-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          </div>
+          <div class="pl-decision-option-text">
+            <div class="pl-decision-option-title">I'll Purchase This</div>
+            <div class="pl-decision-option-sub">You agree to buy this item and submit the receipt</div>
+          </div>
+        </button>
+
+        <button id="plDecDeclineBtn" class="pl-decision-option pl-decision-decline" onclick="plClientDeclineItem()">
+          <div class="pl-decision-option-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+          </div>
+          <div class="pl-decision-option-text">
+            <div class="pl-decision-option-title">Admin Will Handle</div>
+            <div class="pl-decision-option-sub">The company/admin will purchase this item instead</div>
+          </div>
+        </button>
+      </div>
+    </div>
+    <div class="pm-modal-footer">
+      <button class="pm-btn-cancel" onclick="plCloseDecisionModal()">Decide Later</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAYMENT REQUESTS: Pay Modal -->
+<div id="prClientPayModal" class="pr-modal-overlay" style="display:none;" onclick="if(event.target===this)prClientClosePayModal()">
+  <div class="pr-modal-card pr-modal-card-wide">
+    <div class="pr-modal-header">
+      <div class="pr-modal-header-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      </div>
+      <h3 id="prClientPayTitle">Submit Payment</h3>
+      <button class="pr-modal-close" onclick="prClientClosePayModal()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="pr-modal-body">
+      <!-- Payment Method Tabs -->
+      <div id="prMethodTabsWrap" style="display:none;margin-bottom:18px;">
+        <div class="pr-method-tabs">
+          <button class="pr-method-tab active" id="prTabGcash" onclick="prSwitchPayMethod('gcash')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h2v2H9zm0 4h2v2H9zm4-4h2v2h-2zm0 4h2v2h-2z"/></svg>
+            GCash
+          </button>
+          <button class="pr-method-tab" id="prTabBank" onclick="prSwitchPayMethod('bank')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            Bank Transfer
+          </button>
+        </div>
+      </div>
+
+      <!-- QR Code -->
+      <div id="prQRSection" style="text-align:center;margin-bottom:18px;">
+        <div style="font-size:12.5px;color:#6b7280;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Scan to Pay</div>
+        <div class="pr-qr-display">
+          <img id="prClientQRImg" src="" alt="QR Code" style="display:none;">
+        </div>
+        <div style="font-size:15px;font-weight:700;color:#00a85e;margin-top:8px;" id="prClientPayAmount"></div>
+      </div>
+
+      <!-- Self-pay fields -->
+      <div id="prSelfPayDescWrap" style="display:none;">
+        <div class="pr-form-group">
+          <label class="pr-form-label" for="prSelfPayDesc">Payment Description <span class="req">*</span></label>
+          <input id="prSelfPayDesc" class="pr-form-input" type="text" placeholder="e.g. Phase 1 Design Fee">
+        </div>
+        <div class="pr-form-group">
+          <label class="pr-form-label">Month</label>
+          <input id="prSelfPayMonth" class="pr-form-input" type="text" readonly style="background:#f9fafb;color:#6b7280;cursor:default;">
+        </div>
+      </div>
+
+      <!-- Amount to Pay -->
+      <div class="pr-form-group">
+        <label class="pr-form-label" for="prClientAmountInput">Amount to Pay <span class="req">*</span></label>
+        <div style="position:relative;">
+          <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#374151;font-weight:600;font-size:15px;">&#8369;</span>
+          <input id="prClientAmountInput" class="pr-form-input" type="text" inputmode="numeric" placeholder="0.00" style="padding-left:30px;" oninput="this.value=this.value.replace(/[^0-9.]/g,'').replace(/\B(?=(\d{3})+(?!\d))/g,',');prCheckPartialAmount()">
+        </div>
+        <div style="font-size:12px;color:#9ca3af;margin-top:5px;">Requested: <span id="prClientRequestedAmt" style="font-weight:600;color:#6b7280;"></span></div>
+        <div id="prPartialReasonWrap" style="display:none;margin-top:10px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px;">
+          <div style="font-size:12.5px;font-weight:600;color:#d97706;margin-bottom:8px;">&#9888; You are requesting to pay a partial amount &mdash; admin approval is required before you can submit payment</div>
+          <textarea id="prPartialReason" class="pr-form-textarea" placeholder="e.g. Agreed with admin to pay &#8369;400,000 as first installment&hellip;" style="min-height:64px;border-color:#fcd34d;font-size:13px;resize:vertical;"></textarea>
+          <div style="font-size:11.5px;color:#92400e;margin-top:5px;">Your request will be sent to the admin. You can only pay after they approve.</div>
+        </div>
+      </div>
+
+      <!-- Reference Number + Receipt (hidden in partial-request mode) -->
+      <div id="prPaymentProofSection">
+        <div class="pr-form-group">
+          <label class="pr-form-label" for="prClientRefInput">GCash / Bank Reference Number <span class="req">*</span></label>
+          <input id="prClientRefInput" class="pr-form-input" type="text" placeholder="Enter your GCash / bank reference number">
+        </div>
+
+        <!-- Receipt Upload -->
+        <div class="pr-form-group">
+          <label class="pr-form-label">Payment Proof <span style="font-weight:400;color:#6b7280;">(Receipt Screenshot)</span> <span class="req">*</span></label>
+          <div class="pr-upload-zone">
+            <input id="prClientReceiptFile" type="file" accept="image/*" onchange="prClientPreviewReceipt(this)">
+            <div id="prUploadZoneHint">
+              <span class="pr-upload-zone-icon">&#128247;</span>
+              <div class="pr-upload-zone-text">
+                <strong>Click to upload</strong> or drag &amp; drop<br>
+                <span style="font-size:12px;">PNG, JPG up to 10MB</span>
+              </div>
+            </div>
+            <div id="prClientReceiptPreview" class="pr-receipt-preview" style="display:none;">
+              <img src="" alt="Receipt preview">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="prClientPayError" class="pr-error-msg"></div>
+    </div>
+      <!-- Terms & Conditions Agreement -->
+      <div style="margin:12px 22px 0;padding:14px 16px;background:#f0fdf4;border:1.5px solid #a7f3d0;border-radius:10px;">
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <input type="checkbox" id="prTCCheckbox" onchange="prToggleTCSubmit()"
+            style="margin-top:3px;width:16px;height:16px;accent-color:#059669;flex-shrink:0;cursor:pointer;">
+          <label for="prTCCheckbox" style="font-size:13px;color:#374151;line-height:1.5;cursor:pointer;">
+            I have read and agree to the
+            <button type="button" onclick="prOpenTCModal()" style="background:none;border:none;color:#059669;font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline;padding:0;">Terms &amp; Conditions</button>
+            of payment. Payments are non-refundable and subject to admin verification.
+          </label>
+        </div>
+      </div>
+    <div class="pr-modal-footer">
+      <button class="pr-btn-cancel" onclick="prClientClosePayModal()">Cancel</button>
+      <button id="prClientSubmitBtn" class="pr-client-pay-btn" style="width:auto;padding:9px 22px;opacity:0.45;cursor:not-allowed;" onclick="prClientHandlePayment()" disabled>
+        Submit Payment
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- PAYMENT REQUESTS: Client Receipt Viewer -->
+<div id="prClientReceiptViewer" class="pr-receipt-viewer" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="pr-receipt-viewer-inner">
+    <button class="pr-receipt-viewer-close" aria-label="Close" onclick="document.getElementById('prClientReceiptViewer').style.display='none'">&#x2715;</button>
+    <img id="prClientReceiptViewerImg" src="" alt="Receipt">
+  </div>
+</div>
+
+<!-- WEEKLY BILLING: Detail Modal -->
+<div id="wbDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)closeWBDetail()">
+  <div style="background:#fff;border-radius:16px;width:100%;max-width:600px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.25);overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #e5e7eb;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:36px;height:36px;border-radius:10px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="13" y2="15"/></svg>
+        </div>
+        <div>
+          <h3 style="margin:0;font-size:1rem;font-weight:700;color:#111827;">Weekly Bill Detail</h3>
+          <div style="font-size:12px;color:#9ca3af;margin-top:2px;" id="wbDetailSubtitle">Week ending —</div>
+        </div>
+      </div>
+      <button onclick="closeWBDetail()" aria-label="Close" style="background:none;border:none;font-size:1.5rem;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="overflow-y:auto;padding:22px;flex:1;" id="wbDetailBody">
+      <!-- Cost-plus breakdown rendered by JS -->
+    </div>
+    <div style="padding:16px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:10px;">
+      <button onclick="wbPrintDetail()" style="display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border-radius:8px;border:none;background:#059669;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Print / PDF
+      </button>
+      <button onclick="closeWBDetail()" style="padding:9px 18px;border-radius:8px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;font-size:13px;font-weight:600;cursor:pointer;">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROGRESS PHOTOS: Full-Screen Viewer -->
+<div id="photoViewer" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:2000;align-items:center;justify-content:center;flex-direction:column;gap:12px;" onclick="if(event.target===this)closePhotoViewer()">
+  <button onclick="closePhotoViewer()" aria-label="Close" style="position:absolute;top:20px;right:24px;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:1.5rem;cursor:pointer;width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;">&times;</button>
+  <img id="photoViewerImg" src="" alt="Progress photo" style="max-width:90vw;max-height:82vh;border-radius:8px;object-fit:contain;">
+  <div id="photoViewerCaption" style="color:#d1d5db;font-size:13px;text-align:center;max-width:600px;padding:0 16px;"></div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/print-utils.js"></script>
+<script src="js/client-management-app.js"></script>
+
+<!-- Client SOWA Modal -->
+<div id="clientSowaModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:16px;width:95vw;max-width:860px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid #e5e7eb;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;border-radius:10px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;">
+                    <svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='#059669' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><polyline points='14 2 14 8 20 8'/><line x1='16' y1='13' x2='8' y2='13'/><line x1='16' y1='17' x2='8' y2='17'/></svg>
+                </div>
+                <h2 style="margin:0;font-size:1rem;font-weight:700;color:#111827;">Statement of Work Accomplished</h2>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <button onclick="clientPrintSOWA()" title="Opens the browser print dialog &mdash; choose &quot;Save as PDF&quot; as the destination to download a PDF copy." style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:none;background:#059669;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">
+                    <svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 6 2 18 2 18 9'/><path d='M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2'/><rect x='6' y='14' width='12' height='8'/></svg>
+                    Print / Save as PDF
+                </button>
+                <button onclick="clientCloseSOWA()" aria-label="Close" style="width:32px;height:32px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;cursor:pointer;font-size:18px;color:#6b7280;display:flex;align-items:center;justify-content:center;">&times;</button>
+            </div>
+        </div>
+        <div id="clientSowaContent" style="overflow-y:auto;padding:24px;"></div>
+    </div>
+</div>
+
+<script>window._paymentQRDocId = 'cmPaymentQR';</script>
+<script src="js/client-payment.js"></script>
+<script>
+/* ── Weekly Billing helpers ── */
+function closeWBDetail(){
+  var m=document.getElementById('wbDetailModal');
+  m.style.display='none';
+}
+function openWBDetail(bill){
+  var m=document.getElementById('wbDetailModal');
+  var sub=document.getElementById('wbDetailSubtitle');
+  var body=document.getElementById('wbDetailBody');
+  sub.textContent='Week ending '+( bill.weekEndingDate||bill.weekEnding||'—' );
+  var labor=bill.labor||0, materials=bill.materials||0,
+      delivery=bill.delivery||0, consumables=bill.consumables||0,
+      other=bill.other||0;
+  var direct=labor+materials+delivery+consumables+other;
+  var fee=direct*(bill.managementFeeRate||0.15);
+  var total=direct+fee;
+  var fmt=function(n){return '₱'+(n||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});};
+  var statusColor={Paid:'#15803d',Submitted:'#1d4ed8',Overdue:'#dc2626'}[bill.status]||'#6b7280';
+  body.innerHTML=[
+    '<div style="margin-bottom:20px;">',
+    '<span style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:700;background:'+(bill.status==='Paid'?'#dcfce7':bill.status==='Overdue'?'#fee2e2':'#dbeafe')+';color:'+statusColor+';">',bill.status||'—','</span>',
+    bill.submittedAt?'<span style="font-size:12px;color:#9ca3af;margin-left:10px;">Submitted: '+bill.submittedAt+'</span>':'',
+    '</div>',
+    '<table style="width:100%;border-collapse:collapse;font-size:14px;">',
+    '<tbody>',
+    '<tr style="background:#f9fafb;"><td style="padding:10px 14px;color:#6b7280;border-bottom:1px solid #f1f5f9;">Labor Cost</td><td style="padding:10px 14px;text-align:right;font-weight:600;border-bottom:1px solid #f1f5f9;">'+fmt(labor)+'</td></tr>',
+    '<tr><td style="padding:10px 14px;color:#6b7280;border-bottom:1px solid #f1f5f9;">Materials</td><td style="padding:10px 14px;text-align:right;font-weight:600;border-bottom:1px solid #f1f5f9;">'+fmt(materials)+'</td></tr>',
+    delivery?'<tr style="background:#f9fafb;"><td style="padding:10px 14px;color:#6b7280;border-bottom:1px solid #f1f5f9;">Delivery</td><td style="padding:10px 14px;text-align:right;font-weight:600;border-bottom:1px solid #f1f5f9;">'+fmt(delivery)+'</td></tr>':'',
+    consumables?'<tr><td style="padding:10px 14px;color:#6b7280;border-bottom:1px solid #f1f5f9;">Consumables</td><td style="padding:10px 14px;text-align:right;font-weight:600;border-bottom:1px solid #f1f5f9;">'+fmt(consumables)+'</td></tr>':'',
+    other?'<tr style="background:#f9fafb;"><td style="padding:10px 14px;color:#6b7280;border-bottom:1px solid #f1f5f9;">Other</td><td style="padding:10px 14px;text-align:right;font-weight:600;border-bottom:1px solid #f1f5f9;">'+fmt(other)+'</td></tr>':'',
+    '<tr style="background:#f0fdf4;font-size:15px;"><td style="padding:12px 14px;font-weight:700;color:#1f2937;border-bottom:2px solid #bbf7d0;">Direct Cost Total</td><td style="padding:12px 14px;text-align:right;font-weight:700;color:#1f2937;border-bottom:2px solid #bbf7d0;">'+fmt(direct)+'</td></tr>',
+    '<tr><td style="padding:10px 14px;color:#7c3aed;border-bottom:1px solid #f1f5f9;">Management Fee ('+(((bill.managementFeeRate||0.15)*100).toFixed(0))+'%)</td><td style="padding:10px 14px;text-align:right;font-weight:600;color:#7c3aed;border-bottom:1px solid #f1f5f9;">'+fmt(fee)+'</td></tr>',
+    '<tr style="background:#1f2937;"><td style="padding:14px;font-weight:700;color:#fff;font-size:16px;border-radius:0 0 0 8px;">TOTAL DUE</td><td style="padding:14px;text-align:right;font-weight:700;color:#4ade80;font-size:18px;border-radius:0 0 8px 0;">'+fmt(total)+'</td></tr>',
+    '</tbody></table>',
+    bill.paymentDue?'<div style="margin-top:14px;padding:10px 14px;background:#fffbeb;border:1px solid #fcd34d;border-radius:8px;font-size:13px;color:#b45309;font-weight:600;">Payment due by: '+bill.paymentDue+'</div>':'',
+    (bill.remarks||bill.notes)?'<div style="margin-top:12px;padding:10px 14px;background:#f9fafb;border-radius:8px;font-size:13px;color:#6b7280;"><strong>Remarks:</strong> '+(bill.remarks||bill.notes)+'</div>':''
+  ].join('');
+  m.style.display='flex';
+}
+function wbPrintDetail(){
+  window.print();
+}
+
+/* ── Progress Photos helpers ── */
+function openPhotoViewer(src,caption){
+  var v=document.getElementById('photoViewer');
+  document.getElementById('photoViewerImg').src=src;
+  document.getElementById('photoViewerCaption').textContent=caption||'';
+  v.style.display='flex';
+}
+function closePhotoViewer(){
+  document.getElementById('photoViewer').style.display='none';
+}
+function filterProgressLogs(){
+  var q=document.getElementById('log-search').value.toLowerCase();
+  var rows=document.querySelectorAll('#progress-logs-list .progress-log-item');
+  rows.forEach(function(r){ r.style.display=q&&r.textContent.toLowerCase().indexOf(q)<0?'none':''; });
+}
+</script>
+
+<!-- Terms & Conditions Modal -->
+<div id="prTCModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:16px;width:100%;max-width:520px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #e5e7eb;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:36px;height:36px;border-radius:10px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </div>
+        <h3 style="margin:0;font-size:1rem;font-weight:700;color:#111827;">Terms &amp; Conditions</h3>
+      </div>
+      <button onclick="prCloseTCModal()" aria-label="Close" style="background:none;border:none;font-size:1.4rem;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="overflow-y:auto;padding:22px;flex:1;font-size:13.5px;color:#374151;line-height:1.7;">
+      <p style="font-weight:700;color:#111827;margin-bottom:12px;">Payment Terms &amp; Conditions</p>
+      <p style="margin-bottom:10px;">By submitting a payment, you agree to the following terms:</p>
+      <ol style="padding-left:18px;display:flex;flex-direction:column;gap:10px;">
+        <li><strong>Non-Refundable.</strong> All payments submitted are non-refundable once verified by the admin.</li>
+        <li><strong>Verification Process.</strong> Payments are subject to admin review and verification. Submission does not guarantee immediate approval.</li>
+        <li><strong>Accurate Information.</strong> You are responsible for providing accurate reference numbers and valid proof of payment.</li>
+        <li><strong>Pending Status.</strong> Your payment will remain in "Under Review" status until the admin verifies it.</li>
+        <li><strong>Rejection.</strong> Payments may be rejected if the proof of payment is invalid, unclear, or does not match the required amount.</li>
+        <li><strong>Partial Payments.</strong> Partial payment requests require admin approval before submission of proof.</li>
+        <li><strong>Communication.</strong> You will be notified of your payment status through the platform.</li>
+        <li><strong>Disputes.</strong> Any payment disputes must be raised directly with the admin within 7 days of submission.</li>
+      </ol>
+      <p style="margin-top:16px;font-size:12.5px;color:#6b7280;">By checking the agreement box and submitting your payment, you confirm that you have read, understood, and agreed to these terms.</p>
+    </div>
+    <div style="padding:16px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:10px;">
+      <button onclick="prCloseTCModal()" style="padding:9px 20px;border-radius:8px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;font-size:13px;font-weight:600;cursor:pointer;">Close</button>
+      <button onclick="prAcceptTC()" style="padding:9px 20px;border-radius:8px;border:none;background:#059669;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">I Agree</button>
+    </div>
+  </div>
+</div>
+
+<!-- Forgot Password Modal -->
+<div id="forgotPasswordModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:16px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,0.25);overflow:hidden;">
+    <div style="padding:24px 24px 0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <h3 style="margin:0;font-size:1.1rem;font-weight:700;color:#111827;">Reset Password</h3>
+        <button onclick="closeForgotPasswordModal()" aria-label="Close" style="background:none;border:none;font-size:1.4rem;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>
+      </div>
+      <p style="font-size:13.5px;color:#6b7280;margin:0 0 16px;line-height:1.5;">Enter your email address and we'll send you a link to reset your password.</p>
+      <div style="margin-bottom:12px;">
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Email Address</label>
+        <input type="email" id="forgotEmailInput" placeholder="Enter your email"
+          style="width:100%;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:10px;font-size:14px;font-family:inherit;box-sizing:border-box;outline:none;transition:border-color 0.2s;"
+          onfocus="this.style.borderColor='#059669'" onblur="this.style.borderColor='#d1d5db'"
+          onkeydown="if(event.key==='Enter')sendResetEmail()">
+      </div>
+      <div id="forgotPasswordMsg" style="display:none;font-size:13px;padding:10px 14px;border-radius:8px;margin-bottom:12px;"></div>
+    </div>
+    <div style="padding:16px 24px;display:flex;gap:10px;justify-content:flex-end;">
+      <button onclick="closeForgotPasswordModal()" style="padding:9px 18px;border-radius:8px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+      <button id="sendResetBtn" onclick="sendResetEmail()" style="padding:9px 18px;border-radius:8px;border:none;background:#059669;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Send Reset Link</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ COST-PLUS AGREEMENT MODAL ══════════ -->
+<div id="cm-agreement-modal" class="cm-agreement-overlay" style="display:none;">
+  <div class="cm-agreement-card">
+
+    <!-- Header -->
+    <div class="cm-agreement-header">
+      <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo"/>
+      <div class="cm-agreement-badge">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Official Document
+      </div>
+      <div class="cm-agreement-title">Cost-Plus Project Management Agreement</div>
+      <div class="cm-agreement-subtitle">Please read the full agreement carefully before accessing your project portal. Your acceptance is required to proceed.</div>
+    </div>
+
+    <!-- Scrollable Body -->
+    <div class="cm-agreement-body">
+
+      <!-- Section 1 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">1</span> Parties
+        </div>
+        <p>This Cost-Plus Project Management Agreement is entered into between:</p>
+        <ul>
+          <li><strong>Manager:</strong> DAC's Building Design Services — responsible for all construction management activities including labor, procurement, and site supervision.</li>
+          <li><strong>Client:</strong> The registered account holder — responsible for funding all direct costs and the management fee as defined herein.</li>
+        </ul>
+        <p style="margin-top:8px;">Each project must be formally linked to both a Manager and a Client account within the system.</p>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <!-- Section 2 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">2</span> Scope of Services
+        </div>
+        <p>The Manager shall provide the following services on behalf of the Client:</p>
+        <ul>
+          <li><strong>Labor Management:</strong> Adding, assigning, and scheduling workers; tracking daily/weekly labor activities and payroll.</li>
+          <li><strong>Procurement Management:</strong> Recording material requests, supplier canvassing, tracking purchases, delivery status, and quality checks.</li>
+          <li><strong>Site Supervision:</strong> Monitoring project progress; uploading site reports, images, and compliance updates accessible by the Client.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <!-- Section 3 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">3</span> Cost-Plus Fee Structure
+        </div>
+        <p>This agreement operates under a <strong>Cost-Plus Model</strong>:</p>
+        <ul>
+          <li><strong>Direct Costs:</strong> Weekly labor payroll, materials and supplies, delivery, and consumables — all tracked individually in the system.</li>
+          <li><strong>Management Fee:</strong> 15% of the total weekly direct costs, automatically computed and displayed in all billing reports.</li>
+        </ul>
+        <div class="cm-agreement-highlight">Total Weekly Amount = Direct Costs + 15% Management Fee</div>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <!-- Section 4 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">4</span> Payment Terms
+        </div>
+        <ul>
+          <li>The Manager uploads a Weekly Labor &amp; Material Summary every billing period.</li>
+          <li>The Client is notified and must release payment within <strong>24 hours</strong> of submission.</li>
+          <li>Payment covers labor costs, material expenses, and the 15% management fee.</li>
+          <li>The Client may pay suppliers directly or fund the system's revolving fund for petty purchases.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <!-- Section 5 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">5</span> Revolving Fund
+        </div>
+        <p>An optional revolving fund (petty cash) may be established by the Client for minor and urgent site purchases. The system shall:</p>
+        <ul>
+          <li>Track deductions from the revolving fund with receipts as proof.</li>
+          <li>Calculate the remaining balance weekly.</li>
+          <li>Prompt the Client to replenish the fund when the balance falls below the required threshold.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <!-- Section 6 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">6</span> Responsibilities &amp; System Rules
+        </div>
+        <ul>
+          <li><strong>Quality Control:</strong> The Manager logs defective materials; the system records return and replacement actions.</li>
+          <li><strong>Labor Management:</strong> All workers are managed by the Manager. Payroll is funded and approved by the Client.</li>
+          <li><strong>Price Variability:</strong> Material and labor costs are subject to market fluctuations.</li>
+        </ul>
+        <div class="cm-agreement-warn-box">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" flex-shrink="0" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>⚠ Costs may vary based on market price changes. The Client acknowledges that quoted estimates are not guaranteed fixed prices.</span>
+        </div>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <!-- Section 7 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">7</span> Termination
+        </div>
+        <p>Either party may request early project termination through the system. Upon termination:</p>
+        <ul>
+          <li>The system auto-calculates: total consumed labor costs, total materials used, and the equivalent management fee.</li>
+          <li>The final payable balance must be settled in full before the project is officially closed.</li>
+          <li>Termination requests are subject to review and confirmation by the Manager.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <!-- Section 8 -->
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">8</span> Agreement Confirmation
+        </div>
+        <p>By accepting this agreement, the Client confirms that they have fully read, understood, and voluntarily agree to all terms and conditions set forth in this Cost-Plus Project Management Agreement with DAC's Building Design Services.</p>
+        <p>This digital acceptance serves as a binding confirmation equivalent to a written signature.</p>
+      </div>
+
+    </div><!-- /agreement-body -->
+
+    <!-- Footer -->
+    <div class="cm-agreement-footer">
+      <label class="cm-agreement-check-wrap" for="cm-agreement-checkbox">
+        <input type="checkbox" id="cm-agreement-checkbox" onchange="cmToggleAgreementBtn()"/>
+        <span>I have fully read and understood this <strong>Cost-Plus Project Management Agreement</strong> and agree to all its terms and conditions.</span>
+      </label>
+      <button id="cm-agreement-accept-btn" class="cm-agreement-accept-btn" onclick="cmAcceptAgreement()" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>
+        Accept &amp; Continue to Portal
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════ MVP TERMS & FEATURES MODAL ══════════ -->
+<div id="cm-mvp-modal" class="cm-agreement-overlay" style="display:none;" onclick="if(event.target===this)cmCloseMvpModal()">
+  <div class="cm-agreement-card">
+
+    <div class="cm-agreement-header">
+      <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo"/>
+      <div class="cm-agreement-badge">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        MVP Specification
+      </div>
+      <div class="cm-agreement-title">Portal Features &amp; System Specification</div>
+      <div class="cm-agreement-subtitle">DACS Client Portal &amp; KPI Dashboard System — Minimum Viable Product (MVP) Terms &amp; Features</div>
+    </div>
+
+    <div class="cm-agreement-body">
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">1</span> System Overview
+        </div>
+        <p>The system provides a <strong>Client Portal</strong> that enables users to monitor project progress, financial status, and performance metrics through structured modules such as SOA, Accomplishment Reports, Milestone Tracking, and KPI Dashboard. All data presented to the client must be validated by the admin (DACS) prior to visibility.</p>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">2</span> Statement of Account (SOA) Module
+        </div>
+        <p>The SOA feature provides:</p>
+        <ul>
+          <li>All financial transactions including payments, expenses, and remaining balance.</li>
+          <li>Cost breakdown into categories such as labor, materials, and other expenses.</li>
+          <li>A clear and organized financial summary for client review.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">3</span> Accomplishment Reports Module
+        </div>
+        <p>The Accomplishment Reports feature includes:</p>
+        <ul>
+          <li>Periodic updates (weekly or milestone-based).</li>
+          <li>Completed tasks, descriptions, dates, and progress percentages.</li>
+          <li>Serves as the basis for progress tracking and KPI computation.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">4</span> Milestone Progress Tracking with Notifications
+        </div>
+        <p>The Milestone Tracking Module:</p>
+        <ul>
+          <li>Divides the project into defined milestones with corresponding percentages.</li>
+          <li>Tracks completion status per milestone.</li>
+          <li>Sends push notifications when a milestone is updated, completed, or delayed.</li>
+          <li>Notifications are accessible within the client portal.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">5</span> Project Overview Dashboard
+        </div>
+        <p>The Project Overview Dashboard displays:</p>
+        <ul>
+          <li>Total budget, total expenses, and remaining balance.</li>
+          <li>Overall project progress.</li>
+          <li>Milestone status summary and recent updates.</li>
+          <li>Acts as the main entry point for client monitoring.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">6</span> KPI Dashboard — Performance-Based Metrics
+        </div>
+        <p>The KPI Dashboard measures actual project performance using computed indicators. Included KPI metrics:</p>
+        <ul>
+          <li><strong>Project Completion Rate</strong> — (Completed Milestones ÷ Total Milestones) × 100</li>
+          <li><strong>Budget Utilization Rate</strong> — (Total Expenses ÷ Total Budget) × 100</li>
+          <li><strong>Schedule Performance Indicator</strong> — (Actual Progress ÷ Planned Progress) × 100</li>
+          <li><strong>Cost Variance</strong> — Budget − Actual Cost</li>
+          <li><strong>Weekly Progress Growth</strong> — Current Progress − Previous Progress</li>
+        </ul>
+        <div class="cm-agreement-highlight" style="display:flex;gap:18px;flex-wrap:wrap;justify-content:center;">
+          <span style="color:#16a34a;font-weight:700;">● Green = On Track</span>
+          <span style="color:#d97706;font-weight:700;">● Yellow = Warning</span>
+          <span style="color:#dc2626;font-weight:700;">● Red = Critical</span>
+        </div>
+        <p style="margin-top:10px;">KPIs are automatically computed using data from the SOA Module (financial), Accomplishment Reports (progress), and Milestone Tracking (schedule). The dashboard supports filtering by weekly, monthly, or per milestone view.</p>
+        <div class="cm-agreement-warn-box" style="margin-top:10px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>Weekly totals (labor, materials, payments) are <strong>not classified as KPIs</strong> — they remain as supporting reports only.</span>
+        </div>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">6.4</span> KPI Alerts
+        </div>
+        <p>The system generates alerts when:</p>
+        <ul>
+          <li>Budget exceeds defined limits.</li>
+          <li>Project falls behind schedule.</li>
+          <li>No progress updates are recorded within a set timeframe.</li>
+        </ul>
+        <p>Alerts appear in the notification panel.</p>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">7</span> Client Portal Login &amp; Authentication
+        </div>
+        <ul>
+          <li>Secure login using registered credentials.</li>
+          <li>Proper error handling for invalid login and session expiration.</li>
+          <li>Access control — clients can only view their assigned projects.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">8</span> Buyer Identification Requirement
+        </div>
+        <p>Each project must have a registered buyer classified as either:</p>
+        <ul>
+          <li><strong>Individual User</strong>, or</li>
+          <li><strong>Company / Organization</strong></li>
+        </ul>
+        <p>Required buyer details must be completed before any transaction or project activation.</p>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">9</span> DACS Review &amp; Validation
+        </div>
+        <ul>
+          <li>Admin validates SOA entries, reports, and milestone updates.</li>
+          <li>Only approved data becomes visible to the client.</li>
+          <li>Ensures accuracy, transparency, and accountability.</li>
+        </ul>
+      </div>
+      <div class="cm-agreement-divider"></div>
+
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title">
+          <span class="cm-agreement-section-num">10</span> System Scope (MVP Limitation)
+        </div>
+        <p>This MVP is scoped to:</p>
+        <ul>
+          <li>Client-side monitoring and viewing features only.</li>
+          <li>Basic KPI computation — no advanced analytics, forecasting, or automation beyond this.</li>
+          <li>Priority on clarity, usability, and essential tracking functions.</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <div class="cm-agreement-footer" style="justify-content:flex-end;">
+      <button class="cm-agreement-accept-btn" onclick="cmCloseMvpModal()" style="background:linear-gradient(135deg,#059669,#047857);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>
+        Got It — Close
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════ TERMINATION CONFIRMATION MODAL ══════════ -->
+<div id="cm-termination-modal" class="cm-termination-overlay" style="display:none;">
+  <div class="cm-termination-card">
+    <div class="cm-termination-header">
+      <div class="cm-termination-header-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </div>
+      <div class="cm-termination-header-text">
+        <h3>Request Project Termination</h3>
+        <p>Review your calculated final balance before submitting</p>
+      </div>
+    </div>
+    <div class="cm-termination-body">
+      <div id="cm-term-cost-breakdown">
+        <!-- populated by JS -->
+      </div>
+      <div class="cm-term-warn-box">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>This action submits a termination request to the Manager. Your account remains active until the request is reviewed. The final balance must be settled before project closure.</span>
+      </div>
+    </div>
+    <div class="cm-termination-footer">
+      <button class="cm-term-cancel-btn" onclick="cmCloseTerminationModal()">Cancel</button>
+      <button class="cm-term-confirm-btn" onclick="cmConfirmTermination()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:5px;"><polyline points="20 6 9 17 4 12"/></svg>
+        Submit Request
+      </button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

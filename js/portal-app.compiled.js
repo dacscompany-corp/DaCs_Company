@@ -1,0 +1,783 @@
+window.useTweaks = function(defaults) {
+  const [v, setV] = React.useState(defaults);
+  const setT = React.useCallback((k, val) => {
+    setV((prev) => typeof k === "object" ? { ...prev, ...k } : { ...prev, [k]: val });
+  }, []);
+  return [v, setT];
+};
+window.TweaksPanel = function() {
+  return null;
+};
+window.TweakSection = function() {
+  return null;
+};
+window.TweakColor = function() {
+  return null;
+};
+window.TweakToggle = function() {
+  return null;
+};
+window.TweakRadio = function() {
+  return null;
+};
+const peso = (n, opts = {}) => {
+  const { compact = false } = opts;
+  if (compact && Math.abs(n) >= 1e6) return (n / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M";
+  if (compact && Math.abs(n) >= 1e3) return (n / 1e3).toFixed(1).replace(/\.?0+$/, "") + "K";
+  return n.toLocaleString("en-PH", { maximumFractionDigits: 0 });
+};
+const Ico = {
+  search: /* @__PURE__ */ React.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("circle", { cx: "11", cy: "11", r: "8" }), /* @__PURE__ */ React.createElement("path", { d: "m21 21-4.3-4.3" })),
+  bell: /* @__PURE__ */ React.createElement("svg", { width: "18", height: "18", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" }), /* @__PURE__ */ React.createElement("path", { d: "M10.3 21a1.94 1.94 0 0 0 3.4 0" })),
+  chevron: /* @__PURE__ */ React.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "6 9 12 15 18 9" })),
+  arrowR: /* @__PURE__ */ React.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2.2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("line", { x1: "5", y1: "12", x2: "19", y2: "12" }), /* @__PURE__ */ React.createElement("polyline", { points: "12 5 19 12 12 19" })),
+  arrowL: /* @__PURE__ */ React.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2.2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("line", { x1: "19", y1: "12", x2: "5", y2: "12" }), /* @__PURE__ */ React.createElement("polyline", { points: "12 19 5 12 12 5" })),
+  trendUp: /* @__PURE__ */ React.createElement("svg", { width: "11", height: "11", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2.5", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "22 7 13.5 15.5 8.5 10.5 2 17" }), /* @__PURE__ */ React.createElement("polyline", { points: "16 7 22 7 22 13" })),
+  plus: /* @__PURE__ */ React.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2.2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("line", { x1: "12", y1: "5", x2: "12", y2: "19" }), /* @__PURE__ */ React.createElement("line", { x1: "5", y1: "12", x2: "19", y2: "12" })),
+  download: /* @__PURE__ */ React.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }), /* @__PURE__ */ React.createElement("polyline", { points: "7 10 12 15 17 10" }), /* @__PURE__ */ React.createElement("line", { x1: "12", y1: "15", x2: "12", y2: "3" })),
+  calendar: /* @__PURE__ */ React.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })),
+  bldg: /* @__PURE__ */ React.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "4", y: "2", width: "16", height: "20", rx: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "9", y1: "22", x2: "9", y2: "18" }), /* @__PURE__ */ React.createElement("line", { x1: "15", y1: "22", x2: "15", y2: "18" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "7", x2: "10", y2: "7" }), /* @__PURE__ */ React.createElement("line", { x1: "14", y1: "7", x2: "16", y2: "7" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "11", x2: "10", y2: "11" }), /* @__PURE__ */ React.createElement("line", { x1: "14", y1: "11", x2: "16", y2: "11" })),
+  receipt: /* @__PURE__ */ React.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M4 2v20l3-2 3 2 3-2 3 2 3-2 3 2V2H4z" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "9", x2: "16", y2: "9" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "13", x2: "14", y2: "13" })),
+  package: /* @__PURE__ */ React.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M16.5 9.4 7.55 4.24" }), /* @__PURE__ */ React.createElement("path", { d: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" }), /* @__PURE__ */ React.createElement("polyline", { points: "3.27 6.96 12 12.01 20.73 6.96" })),
+  users: /* @__PURE__ */ React.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" }), /* @__PURE__ */ React.createElement("circle", { cx: "9", cy: "7", r: "4" }), /* @__PURE__ */ React.createElement("path", { d: "M22 21v-2a4 4 0 0 0-3-3.87" }), /* @__PURE__ */ React.createElement("path", { d: "M16 3.13a4 4 0 0 1 0 7.75" })),
+  doc: /* @__PURE__ */ React.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" }), /* @__PURE__ */ React.createElement("polyline", { points: "14 2 14 8 20 8" })),
+  chart: /* @__PURE__ */ React.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("line", { x1: "18", y1: "20", x2: "18", y2: "10" }), /* @__PURE__ */ React.createElement("line", { x1: "12", y1: "20", x2: "12", y2: "4" }), /* @__PURE__ */ React.createElement("line", { x1: "6", y1: "20", x2: "6", y2: "14" })),
+  hard: /* @__PURE__ */ React.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M2 18a1 1 0 0 0 1 1h18a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v2zM10 10V5a3 3 0 0 1 4 0v5M4 15v-3a8 8 0 0 1 16 0v3" })),
+  briefcase: /* @__PURE__ */ React.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "2", y: "7", width: "20", height: "14", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("path", { d: "M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" })),
+  pencil: /* @__PURE__ */ React.createElement("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" }), /* @__PURE__ */ React.createElement("path", { d: "M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" })),
+  trash: /* @__PURE__ */ React.createElement("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "3 6 5 6 21 6" }), /* @__PURE__ */ React.createElement("path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" }), /* @__PURE__ */ React.createElement("path", { d: "M10 11v6" }), /* @__PURE__ */ React.createElement("path", { d: "M14 11v6" }), /* @__PURE__ */ React.createElement("path", { d: "M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" }))
+};
+function shortRef(prefix, id) {
+  return id ? `${prefix}-${String(id).slice(0, 6).toUpperCase()}` : "\u2014";
+}
+const LIABILITY_KEYWORDS = ["sss", "philhealth", "pag-ibig", "pagibig", "tax", "liability", "statutory", "contribution", "withholding"];
+const INDIRECT_KEYWORDS = ["supervisor", "manager", "officer", "foreman", "indirect", "overhead", "admin"];
+function classifyLabor(role, name) {
+  const s = ((role || "") + " " + (name || "")).toLowerCase();
+  if (LIABILITY_KEYWORDS.some((k) => s.includes(k))) return "liability";
+  if (INDIRECT_KEYWORDS.some((k) => s.includes(k))) return "indirect";
+  return "direct";
+}
+function mapPayrollDoc(d) {
+  const type = d.laborType === "direct" || d.laborType === "indirect" || d.laborType === "liability" ? d.laborType : classifyLabor(d.role, d.workerName);
+  return {
+    id: d.id,
+    projectId: d.projectId,
+    date: d.paymentDate || "",
+    name: d.workerName || "\u2014",
+    role: d.role || "",
+    type,
+    hours: Number(d.hours) || 0,
+    amount: Number(d.totalSalary) || 0,
+    ref: shortRef("PAY", d.id)
+  };
+}
+function mapExpenseDoc(d) {
+  const date = (d.dateTime || "").toString().slice(0, 10);
+  const docUrls = {
+    po: d.poImageUrl || "",
+    dr: d.deliveryReceiptUrl || "",
+    si: d.supplierInvoiceUrl || "",
+    pay: d.paymentReceiptUrl || ""
+  };
+  const docs = {
+    po: !!docUrls.po,
+    dr: !!docUrls.dr,
+    si: !!docUrls.si,
+    pay: !!docUrls.pay
+  };
+  return {
+    id: d.id,
+    projectId: d.projectId,
+    date,
+    name: d.expenseName || d.description || "\u2014",
+    supplier: d.supplierName || d.vendor || "",
+    amount: Number(d.amount) || 0,
+    docs,
+    docUrls,
+    // General receipt photos (separate from the PO/DR/SI/PR supporting docs).
+    receipts: Array.isArray(d.receiptImages) && d.receiptImages.length ? d.receiptImages : d.receiptURL ? [d.receiptURL] : [],
+    ref: shortRef("EXP", d.id)
+  };
+}
+function mapMonthlyProject(d) {
+  return {
+    id: d.id,
+    folderId: d.folderId,
+    month: d.month || "",
+    year: d.year || "",
+    monthlyBudget: Number(d.monthlyBudget) || 0
+  };
+}
+function buildProject(folder, childMonths, labor, material) {
+  const laborBreakdown = labor.reduce((acc, p) => {
+    acc[p.type] = (acc[p.type] || 0) + p.amount;
+    acc.total += p.amount;
+    return acc;
+  }, { direct: 0, indirect: 0, liability: 0, total: 0 });
+  const docCounts = material.reduce((acc, e) => {
+    if (e.docs.po) acc.po++;
+    if (e.docs.dr) acc.dr++;
+    if (e.docs.si) acc.si++;
+    if (e.docs.pay) acc.pay++;
+    return acc;
+  }, { po: 0, dr: 0, si: 0, pay: 0 });
+  const materialTotal = material.reduce((s, e) => s + e.amount, 0);
+  const contractAmount = folder.totalBudget;
+  const revenue = Number(contractAmount) || 0;
+  const allocated = childMonths.reduce((s, m) => s + m.monthlyBudget, 0);
+  const spent = laborBreakdown.total + materialTotal;
+  return {
+    id: folder.id,
+    name: folder.name || "Untitled Folder",
+    code: shortRef("FLD", folder.id),
+    location: folder.description || "",
+    revenue,
+    revenuePaid: spent,
+    allocated,
+    labor: laborBreakdown.total,
+    laborBreakdown,
+    material: materialTotal,
+    docCounts,
+    fee: 0,
+    monthsCount: childMonths.length,
+    laborCount: labor.length,
+    materialCount: material.length
+  };
+}
+function _billNum(s) {
+  if (s === null || s === void 0 || s === "") return 0;
+  const n = parseFloat(String(s).replace(/,/g, ""));
+  return isNaN(n) ? 0 : n;
+}
+function _billLITotal(li) {
+  const qty = _billNum(li.qty);
+  const mat = li.materialOverride ? 0 : _billNum(li.materialRate);
+  const lab = li.laborOverride ? 0 : _billNum(li.laborRate);
+  return qty * (mat + lab);
+}
+function boqGrandTotal(costItems) {
+  return (costItems || []).reduce((s, ci) => s + (ci.subItems || []).reduce((s2, si) => s2 + (si.lineItems || []).reduce((s3, li) => s3 + _billLITotal(li), 0), 0), 0);
+}
+function boqAccTotal(costItems) {
+  return (costItems || []).reduce((s, ci) => s + (ci.subItems || []).reduce((s2, si) => s2 + (si.lineItems || []).reduce((s3, li) => s3 + _billLITotal(li) * (_billNum(li.percentCompletion) / 100), 0), 0), 0);
+}
+function safePct(n, d) {
+  return d > 0 ? n / d * 100 : 0;
+}
+const fmtDate = (s) => {
+  const d = /* @__PURE__ */ new Date(s + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+};
+const dropdownStyle = {
+  position: "absolute",
+  top: "calc(100% + 6px)",
+  right: 0,
+  minWidth: 280,
+  background: "var(--surface)",
+  border: "1px solid var(--hair)",
+  borderRadius: 12,
+  boxShadow: "var(--shadow-lg)",
+  padding: 6,
+  zIndex: 50
+};
+const itemStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "10px 12px",
+  width: "100%",
+  textAlign: "left",
+  borderRadius: 8,
+  fontSize: 13,
+  color: "var(--ink)"
+};
+function foldersHealth(folder) {
+  if (!(folder.allocated > 0)) return { label: "No budget set", cls: "pc-fld-health-neutral", barClr: "#9CA3AF" };
+  const rem = (folder.allocated - (folder.labor + folder.material)) / folder.allocated * 100;
+  if (rem <= 0) return { label: "OVER", cls: "pc-fld-health-critical", barClr: "#c0392b" };
+  if (rem < 10) return { label: "CRITICAL", cls: "pc-fld-health-critical", barClr: "#c0392b" };
+  if (rem < 20) return { label: "WARNING", cls: "pc-fld-health-warning", barClr: "#A86B00" };
+  return { label: "HEALTHY", cls: "pc-fld-health-healthy", barClr: "#1A5C3A" };
+}
+function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, onPickFolder }) {
+  const openCreate = () => window.openExpModal && window.openExpModal("createFolderModal");
+  const openEdit = (id, ev) => {
+    ev.stopPropagation();
+    window.openEditFolderModal && window.openEditFolderModal(id);
+  };
+  const openDelete = (id, ev) => {
+    ev.stopPropagation();
+    window.confirmDeleteFolder && window.confirmDeleteFolder(id);
+  };
+  const header = /* @__PURE__ */ React.createElement("header", { className: "pc-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-head-text" }, /* @__PURE__ */ React.createElement("div", { className: "pc-head-eyebrow" }, "Project Control"), /* @__PURE__ */ React.createElement("h1", { className: "pc-head-title" }, "Project Folders"), /* @__PURE__ */ React.createElement("div", { className: "pc-head-sub" }, "Manage budgets, billing periods, labor and material per project")), /* @__PURE__ */ React.createElement("div", { className: "pc-head-controls" }, /* @__PURE__ */ React.createElement("button", { className: "pc-btn-primary", onClick: openCreate }, "+ New Project Folder")));
+  if (!folders.length) {
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, header, /* @__PURE__ */ React.createElement("section", { className: "pc-folders-empty" }, /* @__PURE__ */ React.createElement("div", { className: "pc-folders-empty-icon" }, "\u{1F4C1}"), /* @__PURE__ */ React.createElement("h3", { className: "pc-folders-empty-title" }, "No project folders yet"), /* @__PURE__ */ React.createElement("p", { className: "pc-folders-empty-sub" }, "Create your first project folder to start tracking budgets, billing periods, and expenses."), /* @__PURE__ */ React.createElement("button", { className: "pc-btn-primary", onClick: openCreate, style: { marginTop: 12 } }, "+ New Project Folder")));
+  }
+  const cards = folders.map((f) => {
+    const childMonths = monthsRaw.filter((m) => m.folderId === f.id).map(mapMonthlyProject);
+    const childIds = new Set(childMonths.map((m) => m.id));
+    const labor = payrollRaw.filter((p) => childIds.has(p.projectId)).map(mapPayrollDoc);
+    const material = expensesRaw.filter((e) => childIds.has(e.projectId)).map(mapExpenseDoc);
+    const built = buildProject(foldersRaw.find((x) => x.id === f.id) || {}, childMonths, labor, material);
+    const h = foldersHealth(built);
+    const spentPct = built.allocated > 0 ? Math.min((built.labor + built.material) / built.allocated * 100, 100) : 0;
+    const remaining = built.allocated - (built.labor + built.material);
+    return { ...built, h, spentPct, remaining, periodCount: childMonths.length };
+  });
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, header, /* @__PURE__ */ React.createElement("div", { className: "pc-fld-grid" }, cards.map((c) => /* @__PURE__ */ React.createElement("div", { key: c.id, className: "pc-fld-card-wrap" }, /* @__PURE__ */ React.createElement("button", { className: "pc-fld-card", onClick: () => onPickFolder(c.id) }, /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-name" }, c.name), c.location && /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-loc" }, c.location)), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-stats" }, /* @__PURE__ */ React.createElement("div", { className: "pc-fld-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Total Contract"), "            ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(c.revenue))), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Total Fund Allocated"), "      ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(c.allocated))), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Current Fund Spent"), "        ", /* @__PURE__ */ React.createElement("span", { className: "val pc-fld-stat-accent" }, "\u20B1 ", peso(c.labor + c.material))), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Remaining"), "                 ", /* @__PURE__ */ React.createElement("span", { className: "val " + (c.remaining >= 0 ? "pc-fld-stat-accent" : "pc-fld-stat-warn") }, "\u20B1 ", peso(c.remaining)))), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-health" }, /* @__PURE__ */ React.createElement("span", { className: "pc-fld-health-badge " + c.h.cls }, c.h.label), /* @__PURE__ */ React.createElement("span", { className: "pc-fld-card-pct" }, c.spentPct.toFixed(1), "%")), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-progress" }, /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-progress-fill", style: { width: c.spentPct + "%", background: c.h.barClr } })), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-meta" }, c.periodCount, " billing period", c.periodCount !== 1 ? "s" : ""), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-cta" }, "Open Project ", /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 6 } }, "\u2192"))), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-actions" }, /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Edit folder", onClick: (e) => openEdit(c.id, e) }, Ico.pencil), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon pc-row-icon-danger", title: "Delete folder", onClick: (e) => openDelete(c.id, e) }, Ico.trash))))));
+}
+function PageHead({ project, projects, onSelectProject, period, onPeriod, onBackToGrid }) {
+  const [open, setOpen] = React.useState(false);
+  const [pOpen, setPOpen] = React.useState(false);
+  const PERIODS = ["This Month", "Last 30 days", "Quarter to Date", "Year to Date", "All Time"];
+  return /* @__PURE__ */ React.createElement("header", { className: "pc-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-head-text" }, /* @__PURE__ */ React.createElement("div", { className: "pc-head-eyebrow" }, onBackToGrid && /* @__PURE__ */ React.createElement("button", { className: "pc-head-back", onClick: onBackToGrid }, "\u2190 All Folders"), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: onBackToGrid ? 10 : 0 } }, "Project Control")), /* @__PURE__ */ React.createElement("h1", { className: "pc-head-title" }, project.name), /* @__PURE__ */ React.createElement("div", { className: "pc-head-sub" }, /* @__PURE__ */ React.createElement("span", { className: "pc-code" }, project.code), project.location && /* @__PURE__ */ React.createElement("span", null, project.location))), /* @__PURE__ */ React.createElement("div", { className: "pc-head-controls" }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement("button", { className: "pc-pill", onClick: () => setOpen((o) => !o) }, Ico.bldg, /* @__PURE__ */ React.createElement("span", { className: "pc-pill-lbl" }, "Project"), /* @__PURE__ */ React.createElement("span", { className: "pc-pill-val" }, project.name), Ico.chevron), open && /* @__PURE__ */ React.createElement("div", { className: "dropdown", style: dropdownStyle }, projects.map((p) => /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      key: p.id,
+      className: "dropdown-item",
+      style: { ...itemStyle, fontWeight: p.id === project.id ? 600 : 500 },
+      onClick: () => {
+        onSelectProject(p.id);
+        setOpen(false);
+      }
+    },
+    /* @__PURE__ */ React.createElement("span", null, p.name),
+    /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-3)", marginLeft: "auto" } }, p.code)
+  )))), /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement("button", { className: "pc-pill", onClick: () => setPOpen((o) => !o) }, Ico.calendar, /* @__PURE__ */ React.createElement("span", { className: "pc-pill-val" }, period), Ico.chevron), pOpen && /* @__PURE__ */ React.createElement("div", { className: "dropdown", style: dropdownStyle }, PERIODS.map((p) => /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      key: p,
+      className: "dropdown-item",
+      style: itemStyle,
+      onClick: () => {
+        onPeriod(p);
+        setPOpen(false);
+      }
+    },
+    p
+  )))), /* @__PURE__ */ React.createElement("button", { className: "pc-btn-ghost", onClick: () => window.printFullBillingSummary && window.printFullBillingSummary(), title: "Print full billing summary" }, Ico.download, " Print Summary"), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      className: "pc-row-icon",
+      title: "Edit folder",
+      onClick: () => window.openEditFolderModal && window.openEditFolderModal(project.id)
+    },
+    Ico.pencil
+  ), /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      className: "pc-row-icon pc-row-icon-danger",
+      title: "Delete folder",
+      onClick: () => window.confirmDeleteFolder && window.confirmDeleteFolder(project.id)
+    },
+    Ico.trash
+  )));
+}
+function KPIStrip({ project }) {
+  const spent = project.labor + project.material;
+  const profit = project.revenue - spent;
+  const margin = safePct(profit, project.revenue);
+  const used = safePct(project.revenuePaid, project.revenue);
+  const kpis = [
+    { lbl: "Contract", val: "\u20B1 " + peso(project.revenue) },
+    { lbl: "Spent", val: "\u20B1 " + peso(spent) },
+    { lbl: "Gross Profit", val: "\u20B1 " + peso(profit), accent: true },
+    { lbl: "Margin", val: margin.toFixed(1) + "%", warn: margin < 0 },
+    { lbl: "Budget Used", val: used.toFixed(0) + "%" }
+  ];
+  return /* @__PURE__ */ React.createElement("section", { className: "pc-kpi-strip" }, kpis.map((k, i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "pc-kpi" }, /* @__PURE__ */ React.createElement("span", { className: "pc-kpi-lbl" }, k.lbl), /* @__PURE__ */ React.createElement("span", { className: "pc-kpi-val" + (k.accent ? " pc-accent" : "") + (k.warn ? " pc-warn" : "") }, k.val))));
+}
+function FlowCards({ project, onOpen, periodCount }) {
+  const lb = project.laborBreakdown;
+  const dc = project.docCounts;
+  const matCount = project.materialCount || 0;
+  const docsAttached = dc.po + dc.dr + dc.si + dc.pay;
+  const docsExpected = matCount * 4;
+  return /* @__PURE__ */ React.createElement("div", { className: "pc-flow-cards" }, /* @__PURE__ */ React.createElement("button", { className: "pc-flow-card", onClick: () => onOpen("labor") }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon" }, Ico.users), "Labor Cost"), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Transaction History \u2192")), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-amount" }, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-currency" }, "\u20B1"), peso(lb.total)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-sub-label" }, "By Tag"), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-list" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot" }), "Direct"), "    ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(lb.direct))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot b" }), "Indirect"), /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(lb.indirect))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot c" }), "Liability"), /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(lb.liability)))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-total" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Labor Total \xB7 Actual"), /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(lb.total)))), /* @__PURE__ */ React.createElement("button", { className: "pc-flow-card", onClick: () => onOpen("material") }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon pc-icon-amber" }, Ico.package), "Material Cost"), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Transaction History \u2192")), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-amount" }, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-currency" }, "\u20B1"), peso(project.material)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-sub-label" }, "Per-Transaction Files"), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-list" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Transactions"), "          ", /* @__PURE__ */ React.createElement("span", { className: "val" }, matCount)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Files Attached"), "        ", /* @__PURE__ */ React.createElement("span", { className: "val" }, docsAttached, " / ", docsExpected || 0)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item", style: { fontSize: 11.5, color: "var(--text-light)" } }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "PO \xB7 Delivery \xB7 Invoice \xB7 Payment"))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-total" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Material Total \xB7 Actual"), /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(project.material)))), /* @__PURE__ */ React.createElement("button", { className: "pc-flow-card", onClick: () => onOpen("periods") }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon pc-icon-blue" }, Ico.calendar), "Billing Periods"), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Manage Periods \u2192")), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-amount" }, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-currency" }), periodCount), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-sub-label" }, "Allocation by Period"), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-list" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot" }), "Total Allocated"), "  ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(project.allocated))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot b" }), "Total Spent"), "    ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(project.labor + project.material))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot c" }), "Remaining"), "      ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(project.allocated - (project.labor + project.material))))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-total" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Periods \xB7 Count"), /* @__PURE__ */ React.createElement("span", { className: "val" }, periodCount))));
+}
+function Summarize({ project }) {
+  const actualCost = project.labor + project.material;
+  const grossProfit = project.revenue - actualCost;
+  return /* @__PURE__ */ React.createElement("section", { className: "pc-summarize pc-summarize-stacked" }, /* @__PURE__ */ React.createElement("div", { className: "pc-sm-contract" }, /* @__PURE__ */ React.createElement("div", { className: "pc-sm-contract-text" }, /* @__PURE__ */ React.createElement("div", { className: "pc-sm-contract-lbl" }, "Contract Revenue"), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-contract-sub" }, "Total billed to client")), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-contract-val" }, "\u20B1 ", peso(project.revenue))), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-equation" }, /* @__PURE__ */ React.createElement("div", { className: "pc-sm-label" }, "Summarize", /* @__PURE__ */ React.createElement("div", { className: "sub" }, "Labor + Material \xB7 Actual cost")), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-val" }, "\u20B1 ", peso(actualCost)), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-op" }, "="), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-label" }, "Gross Profit", /* @__PURE__ */ React.createElement("div", { className: "sub" }, "Revenue \u2212 Actual cost")), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-val " + (grossProfit < 0 ? "warn" : "accent") }, "\u20B1 ", peso(grossProfit))));
+}
+function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, onBack }) {
+  const openCreate = () => {
+    if (typeof window.openCreateMonthModal === "function") window.openCreateMonthModal(project.id);
+  };
+  const openEdit = (id) => window.openEditProjectModal && window.openEditProjectModal(id);
+  const openDelete = (id) => window.confirmDeleteProject && window.confirmDeleteProject(id);
+  const openDetail = (id) => window.mvpOvOpenPeriodDetail && window.mvpOvOpenPeriodDetail(project.id, id);
+  const FUNDING_LBLS = {
+    mobilization: "Mobilization",
+    downpayment: "Downpayment",
+    progress: "Progress Billing",
+    final: "Final Payment",
+    president: "Cover Expenses"
+  };
+  const cards = childMonths.map((m) => {
+    const mat = expensesRaw.filter((e) => e.projectId === m.id).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const lab = payrollRaw.filter((p) => p.projectId === m.id).reduce((s, p) => s + (Number(p.totalSalary) || 0), 0);
+    const totalCost = mat + lab;
+    const budget = m.monthlyBudget;
+    const noBudget = budget <= 0;
+    const remain = budget - totalCost;
+    const spentPct = budget > 0 ? Math.min(totalCost / budget * 100, 100) : totalCost > 0 ? 100 : 0;
+    const remPct = 100 - spentPct;
+    const expCount = expensesRaw.filter((e) => e.projectId === m.id).length;
+    const payCount = payrollRaw.filter((p) => p.projectId === m.id).length;
+    const fundingLabel = FUNDING_LBLS[m.fundingType] || "Billing Period";
+    let healthCls, healthLabel, barClr;
+    if (noBudget) {
+      if (totalCost > 0) {
+        healthCls = "pc-fld-health-warning";
+        healthLabel = "NO BUDGET";
+        barClr = "#A86B00";
+      } else {
+        healthCls = "pc-fld-health-healthy";
+        healthLabel = "EMPTY";
+        barClr = "#E5E5E5";
+      }
+    } else if (remPct < 0) {
+      healthCls = "pc-fld-health-critical";
+      healthLabel = "OVER";
+      barClr = "#c0392b";
+    } else if (remPct < 20) {
+      healthCls = "pc-fld-health-warning";
+      healthLabel = "WARNING";
+      barClr = "#A86B00";
+    } else {
+      healthCls = "pc-fld-health-healthy";
+      healthLabel = "HEALTHY";
+      barClr = "#1A5C3A";
+    }
+    return { id: m.id, label: `${m.month || ""} ${m.year || ""}`.trim(), fundingLabel, budget, mat, lab, totalCost, remain, noBudget, spentPct, healthCls, healthLabel, barClr, expCount, payCount };
+  }).sort((a, b) => (b.label || "").localeCompare(a.label || ""));
+  const totalAllocated = cards.reduce((s, c) => s + c.budget, 0);
+  const totalSpent = cards.reduce((s, c) => s + c.totalCost, 0);
+  return /* @__PURE__ */ React.createElement("section", { className: "drill" }, /* @__PURE__ */ React.createElement("button", { className: "back-btn", onClick: onBack }, Ico.arrowL, " Back to Project Control"), /* @__PURE__ */ React.createElement("div", { className: "drill-head" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Billing Periods \xB7 Monthly Budgets"), /* @__PURE__ */ React.createElement("h2", null, "Billing Periods"), /* @__PURE__ */ React.createElement("div", { className: "sub" }, project.name, " \xB7 ", project.code)), /* @__PURE__ */ React.createElement("button", { className: "btn-primary", onClick: openCreate }, Ico.plus, " New Billing Period")), /* @__PURE__ */ React.createElement("div", { className: "drill-stats" }, /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Periods"), /* @__PURE__ */ React.createElement("div", { className: "val" }, cards.length)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Total Allocated"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(totalAllocated))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Total Spent"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(totalSpent))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Remaining"), /* @__PURE__ */ React.createElement("div", { className: "val " + (totalAllocated - totalSpent >= 0 ? "total" : "") }, "\u20B1 ", peso(totalAllocated - totalSpent)))), cards.length === 0 ? /* @__PURE__ */ React.createElement("div", { className: "pc-feed-empty", style: { padding: "48px 0" } }, 'No billing periods yet. Click "New Billing Period" to create your first one.') : /* @__PURE__ */ React.createElement("div", { className: "pc-period-grid" }, cards.map((c) => /* @__PURE__ */ React.createElement("div", { key: c.id, className: "pc-period-card" }, /* @__PURE__ */ React.createElement("div", { className: "pc-period-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-period-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-period-name" }, c.label), /* @__PURE__ */ React.createElement("div", { className: "pc-period-funding" }, c.fundingLabel)), /* @__PURE__ */ React.createElement("div", { className: "pc-period-actions" }, /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Edit period", onClick: () => openEdit(c.id) }, Ico.pencil), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon pc-row-icon-danger", title: "Delete period", onClick: () => openDelete(c.id) }, Ico.trash))), /* @__PURE__ */ React.createElement("div", { className: "pc-period-stats" }, /* @__PURE__ */ React.createElement("div", { className: "pc-period-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Period Budget"), " ", /* @__PURE__ */ React.createElement("span", { className: "val" }, c.noBudget ? /* @__PURE__ */ React.createElement("em", { style: { color: "var(--text-light)", fontStyle: "normal", fontSize: 12 } }, "Not set") : "\u20B1 " + peso(c.budget))), /* @__PURE__ */ React.createElement("div", { className: "pc-period-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Materials"), "     ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(c.mat))), /* @__PURE__ */ React.createElement("div", { className: "pc-period-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Labor"), "         ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(c.lab))), /* @__PURE__ */ React.createElement("div", { className: "pc-period-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Spent"), "         ", /* @__PURE__ */ React.createElement("span", { className: "val pc-fld-stat-accent" }, "\u20B1 ", peso(c.totalCost))), !c.noBudget && /* @__PURE__ */ React.createElement("div", { className: "pc-period-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Remaining"), /* @__PURE__ */ React.createElement("span", { className: "val " + (c.remain >= 0 ? "pc-fld-stat-accent" : "pc-fld-stat-warn") }, "\u20B1 ", peso(c.remain)))), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-health" }, /* @__PURE__ */ React.createElement("span", { className: "pc-fld-health-badge " + c.healthCls }, c.healthLabel), /* @__PURE__ */ React.createElement("span", { className: "pc-fld-card-pct" }, c.noBudget ? c.totalCost > 0 ? "No budget" : "Empty" : c.spentPct.toFixed(1) + "% used")), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-progress" }, /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-progress-fill", style: { width: c.spentPct + "%", background: c.barClr } })), /* @__PURE__ */ React.createElement("div", { className: "pc-period-meta" }, c.expCount, " expense", c.expCount !== 1 ? "s" : "", " \xB7 ", c.payCount, " payroll entr", c.payCount !== 1 ? "ies" : "y"), /* @__PURE__ */ React.createElement("button", { className: "pc-fld-card-cta", onClick: () => openDetail(c.id) }, "View Details ", /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 6 } }, "\u2192"))))));
+}
+function RecentEntries({ onOpen, laborTx, materialTx }) {
+  const [tab, setTab] = React.useState("all");
+  const items = [
+    ...laborTx.map((t) => ({ ...t, kind: "labor" })),
+    ...materialTx.map((t) => ({ ...t, kind: "material" }))
+  ].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const filtered = (tab === "all" ? items : items.filter((i) => i.kind === tab)).slice(0, 10);
+  const tabs = [
+    ["all", "All", items.length],
+    ["labor", "Labor", laborTx.length],
+    ["material", "Material", materialTx.length]
+  ];
+  return /* @__PURE__ */ React.createElement("section", { className: "pc-card" }, /* @__PURE__ */ React.createElement("div", { className: "pc-card-head" }, /* @__PURE__ */ React.createElement("h3", null, "Recent Entries"), /* @__PURE__ */ React.createElement("div", { className: "panel-tabs", style: { padding: 3, background: "var(--brand-surface-2)", borderRadius: 8, display: "flex", gap: 2 } }, tabs.map(([k, l, count]) => /* @__PURE__ */ React.createElement(
+    "button",
+    {
+      key: k,
+      onClick: () => setTab(k),
+      style: {
+        padding: "5px 12px",
+        fontSize: 11.5,
+        fontWeight: 600,
+        borderRadius: 6,
+        border: 0,
+        cursor: "pointer",
+        background: tab === k ? "#fff" : "transparent",
+        color: tab === k ? "var(--text-primary)" : "var(--text-light)",
+        boxShadow: tab === k ? "var(--shadow-sm)" : "none",
+        letterSpacing: "0.04em"
+      }
+    },
+    l,
+    " \xB7 ",
+    count
+  )))), /* @__PURE__ */ React.createElement("div", { className: "pc-feed" }, filtered.length === 0 && /* @__PURE__ */ React.createElement("div", { className: "pc-feed-empty" }, "No entries in this period."), filtered.map((t, i) => {
+    const tagClass = t.kind === "labor" ? "pc-tag-labor" : "pc-tag-material";
+    const tagLabel = t.kind === "labor" ? "Labor" : "Material";
+    const name = t.name;
+    const sub = t.kind === "labor" ? t.role : t.supplier;
+    return /* @__PURE__ */ React.createElement("div", { key: t.kind + "-" + (t.id || i), className: "pc-feed-row", onClick: () => onOpen(t.kind) }, /* @__PURE__ */ React.createElement("div", { className: "pc-feed-date" }, fmtDate(t.date)), /* @__PURE__ */ React.createElement("span", { className: "pc-feed-tag " + tagClass }, /* @__PURE__ */ React.createElement("span", { className: "pc-feed-tag-dot" }), tagLabel), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "pc-feed-desc-name" }, name || "\u2014"), sub && /* @__PURE__ */ React.createElement("div", { className: "pc-feed-desc-sub" }, sub)), /* @__PURE__ */ React.createElement("div", { className: "pc-feed-amt" }, "\u20B1 ", peso(t.amount)));
+  })));
+}
+function pickLatestMonth(childMonths) {
+  const sorted = childMonths.slice().sort((a, b) => {
+    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    if ((b.year || 0) !== (a.year || 0)) return (b.year || 0) - (a.year || 0);
+    return months.indexOf(b.month || "") - months.indexOf(a.month || "");
+  });
+  return sorted[0] || null;
+}
+function openAddEntry(kind, childMonths) {
+  const latest = pickLatestMonth(childMonths);
+  if (!latest) {
+    alert("Add a billing period to this folder first via Budget Overview, then return to record entries.");
+    return;
+  }
+  if (typeof window.expCurrentProject !== "undefined" || true) {
+    window.expCurrentProject = { id: latest.id, folderId: latest.folderId, month: latest.month, year: latest.year, monthlyBudget: latest.monthlyBudget };
+  }
+  const modalId = kind === "labor" ? "addPayrollModal" : "addExpenseModal";
+  if (typeof window.openExpModal === "function") window.openExpModal(modalId);
+}
+function LaborDrill({ project, onBack, laborTx, childMonths }) {
+  const [tab, setTab] = React.useState("all");
+  const lb = project.laborBreakdown;
+  const filtered = tab === "all" ? laborTx : laborTx.filter((x) => x.type === tab);
+  return /* @__PURE__ */ React.createElement("section", { className: "drill" }, /* @__PURE__ */ React.createElement("button", { className: "back-btn", onClick: onBack }, Ico.arrowL, " Back to Project Control"), /* @__PURE__ */ React.createElement("div", { className: "drill-head" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Labor Cost \xB7 Transaction History"), /* @__PURE__ */ React.createElement("h2", null, "Labor"), /* @__PURE__ */ React.createElement("div", { className: "sub" }, project.name, " \xB7 ", project.code)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "panel-tabs" }, [["all", "All"], ["direct", "Direct"], ["indirect", "Indirect"], ["liability", "Liability"]].map(
+    ([k, l]) => /* @__PURE__ */ React.createElement("button", { key: k, className: tab === k ? "active" : "", onClick: () => setTab(k) }, l)
+  )), /* @__PURE__ */ React.createElement("button", { className: "btn-primary", onClick: () => openAddEntry("labor", childMonths) }, Ico.plus, " Add Payroll"))), /* @__PURE__ */ React.createElement("div", { className: "drill-stats" }, /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Direct Labor"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(lb.direct))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Indirect Labor"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(lb.indirect))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Liability"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(lb.liability))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Labor Total \xB7 Actual"), /* @__PURE__ */ React.createElement("div", { className: "val total" }, "\u20B1 ", peso(lb.total)))), /* @__PURE__ */ React.createElement("table", { className: "tx-table" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { style: { width: 110 } }, "Date"), /* @__PURE__ */ React.createElement("th", null, "Worker"), /* @__PURE__ */ React.createElement("th", { style: { width: 140 } }, "Category"), /* @__PURE__ */ React.createElement("th", { className: "right", style: { width: 80 } }, "Hours"), /* @__PURE__ */ React.createElement("th", { className: "right", style: { width: 140 } }, "Amount"), /* @__PURE__ */ React.createElement("th", { style: { width: 130 } }, "Actions"))), /* @__PURE__ */ React.createElement("tbody", null, filtered.length === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 6, style: { padding: "24px 12px", textAlign: "center", color: "var(--ink-3)" } }, "No payroll entries in this category.")), filtered.map((row, i) => /* @__PURE__ */ React.createElement("tr", { key: row.id || i, className: "row" }, /* @__PURE__ */ React.createElement("td", null, fmtDate(row.date)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { className: "name" }, row.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-3)", marginTop: 2 } }, row.role)), /* @__PURE__ */ React.createElement("td", null, row.type === "direct" && /* @__PURE__ */ React.createElement("span", { className: "tag green" }, "Direct"), row.type === "indirect" && /* @__PURE__ */ React.createElement("span", { className: "tag" }, "Indirect"), row.type === "liability" && /* @__PURE__ */ React.createElement("span", { className: "tag warn" }, "Liability")), /* @__PURE__ */ React.createElement("td", { className: "right tabular" }, row.hours || "\u2014"), /* @__PURE__ */ React.createElement("td", { className: "right" }, /* @__PURE__ */ React.createElement("span", { className: "amt" }, "\u20B1 ", peso(row.amount))), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon pc-row-icon-invoice", title: "Invoice", onClick: () => window.printSinglePayrollInvoice && window.printSinglePayrollInvoice(row.id) }, Ico.receipt || "🧾"), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Edit", onClick: () => window.openEditPayrollModal && window.openEditPayrollModal(row.id) }, Ico.pencil || "\u270E"), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon pc-row-icon-danger", title: "Delete", onClick: () => window.deletePayroll && window.deletePayroll(row.id) }, Ico.trash || "\u{1F5D1}")))))));
+}
+function DocPill({ m, k, label, title }) {
+  const attached = !!m.docs[k];
+  const onClick = (e) => {
+    e.stopPropagation();
+    if (attached && m.docUrls[k]) {
+      if (window._receiptStore) {
+        window._receiptStore[`docpill_${m.id}_${k}`] = { images: [m.docUrls[k]], name: `${title} \u2014 ${m.name}` };
+        if (typeof window.openLightbox === "function") window.openLightbox(`docpill_${m.id}_${k}`, 0);
+      } else {
+        window.open(m.docUrls[k], "_blank");
+      }
+    } else {
+      if (typeof window.openEditExpenseModal === "function") window.openEditExpenseModal(m.id);
+    }
+  };
+  return /* @__PURE__ */ React.createElement(
+    "span",
+    {
+      className: "pc-doc-pill clickable" + (attached ? " done" : ""),
+      title: attached ? `${title} \u2014 click to view` : `${title} \u2014 click to attach`,
+      onClick,
+      role: "button"
+    },
+    label
+  );
+}
+function openRowSupportingDocs(m) {
+  const order = [
+    { k: "po", label: "Purchase Order" },
+    { k: "dr", label: "Delivery Receipt" },
+    { k: "si", label: "Supplier Invoice" },
+    { k: "pay", label: "Payment Receipt" }
+  ];
+  const receipts = Array.isArray(m.receipts) ? m.receipts : [];
+  const docImgs = order.filter((o) => m.docUrls && m.docUrls[o.k]).map((o) => m.docUrls[o.k]);
+  const images = [...receipts, ...docImgs];
+  if (!images.length) {
+    if (typeof window.showExpNotif === "function") {
+      window.showExpNotif("No images attached yet \u2014 open Edit to add a receipt or PO/DR/SI/PR document.", "info");
+    } else {
+      alert("No images attached yet for this entry.");
+    }
+    return;
+  }
+  if (window._receiptStore && typeof window.openLightbox === "function") {
+    const key = `rowdocs_${m.id}`;
+    window._receiptStore[key] = { images, name: `${m.name} \u2014 Attachments` };
+    window.openLightbox(key, 0);
+  } else {
+    window.open(images[0], "_blank");
+  }
+}
+function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder }) {
+  const printMaterialReceipt = (m) => {
+    const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const amountFmt = "\u20B1 " + peso(m.amount);
+    const dateStr = m.date || "\u2014";
+    const docs = m.docs || {};
+    const supplierBlock = m.supplier ? '<div class="item-supplier">Supplier: ' + esc(m.supplier) + "</div>" : "";
+    const docFlags = [];
+    if (docs.po) docFlags.push(" \u2713 Purchase Order");
+    if (docs.dr) docFlags.push(" \u2713 Delivery Receipt");
+    if (docs.si) docFlags.push(" \u2713 Supplier Invoice");
+    if (docs.pay) docFlags.push(" \u2713 Payment Receipt");
+    const docsLine = docFlags.length ? docFlags.join("") : " (none attached)";
+    const printedOn = (/* @__PURE__ */ new Date()).toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" });
+    const w = window.open("", "_blank");
+    if (!w) {
+      alert("Allow popups for this site to print the material receipt.");
+      return;
+    }
+    const html = "<!DOCTYPE html><html><head><title>Material Receipt \u2014 " + esc(m.name || "") + '</title><style>body{font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#111;padding:36px;max-width:680px;margin:0 auto;}.header{border-bottom:2px solid #1A5C3A;padding-bottom:14px;margin-bottom:22px;}.doc-title{font-size:20px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#1A5C3A;margin:0;}.doc-subtitle{font-size:12px;color:#6b7280;margin-top:4px;}.meta{margin-bottom:20px;font-size:12.5px;}.meta-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;}.meta-label{color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.04em;font-size:11px;}.meta-value{color:#111;font-weight:600;text-align:right;}.item-block{background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:18px 20px;margin-bottom:18px;}.item-name{font-size:18px;font-weight:700;color:#111;margin-bottom:6px;}.item-supplier{font-size:13px;color:#6b7280;}.total-row{display:flex;justify-content:space-between;align-items:center;padding:14px 0;border-top:2px solid #111;margin-top:6px;}.total-label{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;}.total-amount{font-size:22px;font-weight:800;color:#1A5C3A;}.docs{margin-top:18px;font-size:12px;color:#374151;}.docs strong{color:#111;}.signature{margin-top:48px;display:flex;justify-content:space-between;gap:60px;}.sig-line{flex:1;border-top:1px solid #111;padding-top:6px;font-size:11px;text-align:center;color:#6b7280;text-transform:uppercase;letter-spacing:.06em;}.footer{margin-top:28px;padding-top:14px;border-top:1px solid #e5e7eb;font-size:10.5px;color:#9ca3af;text-align:center;}@media print { body { padding:18px; } }</style></head><body><div class="header"><h1 class="doc-title">Material Expense Receipt</h1><div class="doc-subtitle">Internal record \xB7 for cost-tracking purposes only</div></div><div class="meta"><div class="meta-row"><span class="meta-label">Project</span><span class="meta-value">' + esc(project.name || "\u2014") + '</span></div><div class="meta-row"><span class="meta-label">Project Code</span><span class="meta-value">' + esc(project.code || "\u2014") + '</span></div><div class="meta-row"><span class="meta-label">Expense Date</span><span class="meta-value">' + esc(dateStr) + '</span></div><div class="meta-row"><span class="meta-label">Reference</span><span class="meta-value">' + esc(m.ref || m.id || "\u2014") + '</span></div></div><div class="item-block"><div class="item-name">' + esc(m.name || "Material Item") + "</div>" + supplierBlock + '</div><div class="total-row"><span class="total-label">Total Amount</span><span class="total-amount">' + esc(amountFmt) + '</span></div><div class="docs"><strong>Supporting Documents:</strong>' + esc(docsLine) + '</div><div class="signature"><div class="sig-line">Prepared By</div><div class="sig-line">Verified By</div></div><div class="footer">Generated by DAC&#39;s Portal &middot; ' + esc(printedOn) + "</div></body></html>";
+    w.document.write(html);
+    w.document.close();
+    setTimeout(function() {
+      w.print();
+    }, 400);
+  };
+  const dc = project.docCounts;
+  const count = materialTx.length;
+  return /* @__PURE__ */ React.createElement("section", { className: "drill" }, /* @__PURE__ */ React.createElement("button", { className: "back-btn", onClick: onBack }, Ico.arrowL, " Back to Project Control"), /* @__PURE__ */ React.createElement("div", { className: "drill-head" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Material Cost \xB7 Transaction History"), /* @__PURE__ */ React.createElement("h2", null, "Materials"), /* @__PURE__ */ React.createElement("div", { className: "sub" }, project.name, " \xB7 ", project.code)), /* @__PURE__ */ React.createElement("button", { className: "btn-primary", onClick: () => openAddEntry("material", childMonths) }, Ico.plus, " Add Expense")), /* @__PURE__ */ React.createElement("div", { className: "drill-stats" }, /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Purchase Order"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.po, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Delivery Receipt"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.dr, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Supplier Invoice"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.si, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Material Total \xB7 Actual"), /* @__PURE__ */ React.createElement("div", { className: "val total" }, "\u20B1 ", peso(project.material)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", flexWrap: "wrap", gap: "4px 16px", fontSize: 11.5, color: "var(--ink-3)", margin: "10px 4px 6px" } }, /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)" } }, "PO"), " Purchase Order"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)" } }, "DR"), " Delivery Receipt"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)" } }, "SI"), " Supplier Invoice"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)" } }, "PR"), " Payment Receipt")), /* @__PURE__ */ React.createElement("table", { className: "tx-table" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { style: { width: 110 } }, "Date"), /* @__PURE__ */ React.createElement("th", null, "Description"), /* @__PURE__ */ React.createElement("th", null, "Supplier"), /* @__PURE__ */ React.createElement("th", { style: { width: 160 } }, "Documents"), /* @__PURE__ */ React.createElement("th", { className: "right", style: { width: 160 } }, "Amount"), /* @__PURE__ */ React.createElement("th", { style: { width: 140 } }, "Actions"))), /* @__PURE__ */ React.createElement("tbody", null, count === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 6, style: { padding: "24px 12px", textAlign: "center", color: "var(--ink-3)" } }, "No expense entries in this period.")), materialTx.map((m, i) => /* @__PURE__ */ React.createElement("tr", { key: m.id || i, className: "row", onClick: () => openRowSupportingDocs(m), title: "Click to view attached images (receipts & documents)" }, /* @__PURE__ */ React.createElement("td", null, fmtDate(m.date)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { className: "name" }, m.name)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-2)" } }, m.supplier || "\u2014")), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { className: "pc-docs-row", title: "Purchase Order \xB7 Delivery Receipt \xB7 Supplier Invoice \xB7 Payment Receipt" }, /* @__PURE__ */ React.createElement(DocPill, { m, k: "po", label: "PO", title: "Purchase Order" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "dr", label: "DR", title: "Delivery Receipt" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "si", label: "SI", title: "Supplier Invoice" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "pay", label: "PR", title: "Payment Receipt" }))), /* @__PURE__ */ React.createElement("td", { className: "right" }, /* @__PURE__ */ React.createElement("span", { className: "amt" }, "\u20B1 ", peso(m.amount))), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Print receipt for this material expense", onClick: (e) => {
+    e.stopPropagation();
+    printMaterialReceipt(m);
+  } }, Ico.receipt || "\u{1F9FE}"), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Edit", onClick: (e) => {
+    e.stopPropagation();
+    window.openEditExpenseModal && window.openEditExpenseModal(m.id);
+  } }, Ico.pencil || "\u270E"), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon pc-row-icon-danger", title: "Delete", onClick: (e) => {
+    e.stopPropagation();
+    window.deleteExpense && window.deleteExpense(m.id);
+  } }, Ico.trash || "\u{1F5D1}")))))));
+}
+function periodCutoff(period) {
+  const now = /* @__PURE__ */ new Date();
+  if (period === "All Time") return null;
+  if (period === "Last 30 days") {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 30);
+    return d;
+  }
+  if (period === "This Month") {
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+  if (period === "Quarter to Date") {
+    const q = Math.floor(now.getMonth() / 3) * 3;
+    return new Date(now.getFullYear(), q, 1);
+  }
+  if (period === "Year to Date") {
+    return new Date(now.getFullYear(), 0, 1);
+  }
+  return null;
+}
+function filterByPeriod(rows, period) {
+  const cutoff = periodCutoff(period);
+  if (!cutoff) return rows;
+  return rows.filter((r) => {
+    if (!r.date) return false;
+    const d = new Date(r.date.length === 10 ? r.date + "T00:00:00" : r.date);
+    return !isNaN(d) && d >= cutoff;
+  });
+}
+function BillingSummary({ billing }) {
+  const b = billing;
+  if (!b || !b.linked) {
+    return /* @__PURE__ */ React.createElement("section", { className: "pc-summarize", style: { display: "block" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--text-light)", fontWeight: 600, marginBottom: 8 } }, "Billing & Reports"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-3)", lineHeight: 1.6 } }, "No linked billing yet. Create an ", /* @__PURE__ */ React.createElement("b", null, "Accomplishment Report (BOQ)"), " for this project under ", /* @__PURE__ */ React.createElement("b", null, "Billing & Reports"), " to connect Payment Requests and Invoices here."));
+  }
+  const jump = (view) => {
+    if (typeof window.switchView !== "function") return;
+    window.switchView(view);
+    setTimeout(() => {
+      try {
+        if (view === "boqBuilder" && b.folderId && typeof window.boqSelectFolder === "function") {
+          window.boqSelectFolder(b.folderId);
+        } else if (view === "paymentRequests" && b.clientEmail) {
+          const input = document.getElementById("prSearchInput");
+          if (input) {
+            input.value = b.clientEmail;
+            if (typeof window.prFilterRequests === "function") window.prFilterRequests();
+          }
+        }
+      } catch (e) {
+      }
+    }, 80);
+  };
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: "var(--text-light)", fontWeight: 600, margin: "4px 2px 10px" } }, "Billing & Reports", b.clientEmail ? " \xB7 " + b.clientEmail : ""), /* @__PURE__ */ React.createElement("section", { className: "pc-flow-cards" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "pc-flow-card", onClick: () => jump("boqBuilder"), title: "Open the Accomplishment Report (BOQ) for this project" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon pc-icon-blue" }, Ico.doc), "Accomplishment (BOQ)"), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Open \u2192")), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-amount" }, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-currency" }, "\u20B1"), peso(b.boqContract)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-sub-label" }, "Contract value \xB7 ", b.accPct.toFixed(1), "% accomplished"), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-list" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Accomplished"), /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(b.boqAcc))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Remaining"), /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(b.boqContract - b.boqAcc))))), /* @__PURE__ */ React.createElement("button", { type: "button", className: "pc-flow-card", onClick: () => jump("paymentRequests"), title: "Open Payment Requests" + (b.clientEmail ? " (filtered to " + b.clientEmail + ")" : "") }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon" }, Ico.briefcase), "Payment Requests"), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Open \u2192")), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-amount" }, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-currency" }, "\u20B1"), peso(b.prCollected)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-sub-label" }, "Collected of \u20B1 ", peso(b.prRequested), " requested"), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-list" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Requests"), /* @__PURE__ */ React.createElement("span", { className: "val" }, b.prCount)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Pending"), /* @__PURE__ */ React.createElement("span", { className: "val" }, b.prPending)))), /* @__PURE__ */ React.createElement("button", { type: "button", className: "pc-flow-card", onClick: () => jump("invoices"), title: "Open Invoices" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon pc-icon-amber" }, Ico.receipt), "Invoices"), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Open \u2192")), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-amount" }, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-currency" }, "\u20B1"), peso(b.invTotal)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-sub-label" }, "Total invoiced to client"), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-list" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Invoices"), /* @__PURE__ */ React.createElement("span", { className: "val" }, b.invCount)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Issued"), /* @__PURE__ */ React.createElement("span", { className: "val" }, b.invIssued))))));
+}
+function PortalApp() {
+  const [t, setTweak] = window.useTweaks({ accent: "#1A5C3A", dark: false, panelExpanded: true });
+  const [period, setPeriod] = React.useState("All Time");
+  const [view, setView] = React.useState("dashboard");
+  const [foldersRaw, setFoldersRaw] = React.useState([]);
+  const [monthsRaw, setMonthsRaw] = React.useState([]);
+  const [payrollRaw, setPayrollRaw] = React.useState([]);
+  const [expensesRaw, setExpensesRaw] = React.useState([]);
+  const [boqRaw, setBoqRaw] = React.useState([]);
+  const [payReqRaw, setPayReqRaw] = React.useState([]);
+  const [invoicesRaw, setInvoicesRaw] = React.useState([]);
+  const [projectId, setProjectId] = React.useState(null);
+  React.useEffect(() => {
+    window._activeProjectFolderId = projectId || null;
+  }, [projectId]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState(null);
+  const [authUid, setAuthUid] = React.useState(() => firebase.auth().currentUser && firebase.auth().currentUser.uid || null);
+  const [ownerId, setOwnerId] = React.useState(null);
+  React.useEffect(() => {
+    const unsub = firebase.auth().onAuthStateChanged((u) => {
+      setAuthUid(u ? u.uid : null);
+      if (!u) {
+        setOwnerId(null);
+        setLoading(false);
+      }
+    });
+    return () => unsub();
+  }, []);
+  React.useEffect(() => {
+    if (!authUid || typeof db === "undefined") {
+      setOwnerId(null);
+      return;
+    }
+    let cancelled = false;
+    db.collection("users").doc(authUid).get().then((doc) => {
+      if (cancelled) return;
+      const data = doc.exists ? doc.data() : null;
+      const eff = data && data.role === "staff" && data.ownerUid ? data.ownerUid : authUid;
+      window.currentDataUserId = eff;
+      setOwnerId(eff);
+    }).catch(() => {
+      if (!cancelled) setOwnerId(authUid);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [authUid]);
+  React.useEffect(() => {
+    if (!ownerId || typeof db === "undefined") return;
+    setLoading(true);
+    const dataUid = ownerId;
+    let done = 0;
+    const totalNeeded = 4;
+    const onAny = () => {
+      done++;
+      if (done >= totalNeeded) setLoading(false);
+    };
+    const onErr = (e) => setError(e.message || "Failed to load project data");
+    const unsubs = [
+      db.collection("folders").where("userId", "==", dataUid).onSnapshot(
+        (s) => {
+          setFoldersRaw(s.docs.map((d) => ({ id: d.id, ...d.data() })));
+          onAny();
+        },
+        onErr
+      ),
+      db.collection("projects").where("userId", "==", dataUid).onSnapshot(
+        (s) => {
+          setMonthsRaw(s.docs.map((d) => ({ id: d.id, ...d.data() })));
+          onAny();
+        },
+        onErr
+      ),
+      db.collection("expenses").where("userId", "==", dataUid).onSnapshot(
+        (s) => {
+          setExpensesRaw(s.docs.map((d) => ({ id: d.id, ...d.data() })));
+          onAny();
+        },
+        onErr
+      ),
+      db.collection("payroll").where("userId", "==", dataUid).onSnapshot(
+        (s) => {
+          setPayrollRaw(s.docs.map((d) => ({ id: d.id, ...d.data() })));
+          onAny();
+        },
+        onErr
+      )
+    ];
+    return () => unsubs.forEach((u) => u && u());
+  }, [ownerId]);
+  React.useEffect(() => {
+    if (!ownerId || typeof db === "undefined") return;
+    const skip = () => {
+    };
+    const unsubs = [
+      db.collection("boqDocuments").where("userId", "==", ownerId).onSnapshot(
+        (s) => setBoqRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
+        skip
+      ),
+      db.collection("invoices").where("userId", "==", ownerId).onSnapshot(
+        (s) => setInvoicesRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
+        skip
+      ),
+      db.collection("paymentRequests").where("ownerUid", "==", ownerId).onSnapshot(
+        (s) => setPayReqRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
+        skip
+      )
+    ];
+    return () => unsubs.forEach((u) => u && u());
+  }, [ownerId]);
+  React.useEffect(() => {
+    if (projectId) setView("dashboard");
+  }, [projectId]);
+  const activeFolder = foldersRaw.find((f) => f.id === projectId);
+  const childMonths = React.useMemo(
+    () => monthsRaw.filter((m) => m.folderId === projectId).map(mapMonthlyProject),
+    [monthsRaw, projectId]
+  );
+  const childMonthIds = React.useMemo(() => new Set(childMonths.map((m) => m.id)), [childMonths]);
+  const allLaborTx = React.useMemo(
+    () => payrollRaw.filter((p) => childMonthIds.has(p.projectId)).map(mapPayrollDoc).sort((a, b) => (b.date || "").localeCompare(a.date || "")),
+    [payrollRaw, childMonthIds]
+  );
+  const allMaterialTx = React.useMemo(
+    () => expensesRaw.filter((e) => childMonthIds.has(e.projectId)).map(mapExpenseDoc).sort((a, b) => (b.date || "").localeCompare(a.date || "")),
+    [expensesRaw, childMonthIds]
+  );
+  const laborTx = React.useMemo(() => filterByPeriod(allLaborTx, period), [allLaborTx, period]);
+  const materialTx = React.useMemo(() => filterByPeriod(allMaterialTx, period), [allMaterialTx, period]);
+  const projects = React.useMemo(
+    () => foldersRaw.map((f) => buildProject(f, [], [], [])),
+    [foldersRaw]
+  );
+  const project = activeFolder ? buildProject(activeFolder, childMonths, laborTx, materialTx) : null;
+  const billing = React.useMemo(() => {
+    if (!activeFolder) return null;
+    const boqMatches = boqRaw.filter((x) => x.folderId === activeFolder.id);
+    const boqDoc = boqMatches.slice().sort((a, b) => (b.costItems && b.costItems.length || 0) - (a.costItems && a.costItems.length || 0))[0] || null;
+    const boqContract = boqDoc ? boqGrandTotal(boqDoc.costItems) : 0;
+    const boqAcc = boqDoc ? boqAccTotal(boqDoc.costItems) : 0;
+    const clientEmail = boqDoc && boqDoc.clientEmail || "";
+    const projectName = boqDoc && boqDoc.projectName || "";
+    const prMatches = clientEmail ? payReqRaw.filter((r) => r.clientEmail === clientEmail && (!projectName || !r.projectName || r.projectName === projectName)) : [];
+    const prRequested = prMatches.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const prCollected = prMatches.filter((r) => r.status === "verified").reduce((s, r) => s + (r.paidAmount != null ? Number(r.paidAmount) : Number(r.amount) || 0), 0);
+    const prPending = prMatches.filter((r) => r.status !== "verified" && r.status !== "rejected").length;
+    const clientNames = new Set(prMatches.map((r) => (r.clientName || "").trim()).filter(Boolean));
+    const invMatches = invoicesRaw.filter((inv) => clientNames.has((inv.clientName || "").trim()));
+    const invTotal = invMatches.reduce((s, i) => s + (Number(i.totalAmount) || 0), 0);
+    const invIssued = invMatches.filter((i) => i.status === "issued").length;
+    return {
+      linked: !!boqDoc,
+      folderId: activeFolder.id,
+      clientEmail,
+      projectName,
+      boqContract,
+      boqAcc,
+      accPct: boqContract > 0 ? boqAcc / boqContract * 100 : 0,
+      prRequested,
+      prCollected,
+      prPending,
+      prCount: prMatches.length,
+      invTotal,
+      invIssued,
+      invCount: invMatches.length
+    };
+  }, [activeFolder, boqRaw, payReqRaw, invoicesRaw]);
+  if (!authUid) {
+    return /* @__PURE__ */ React.createElement("div", { className: "app" }, /* @__PURE__ */ React.createElement("main", { className: "main" }, /* @__PURE__ */ React.createElement("div", { style: { padding: "80px 0", textAlign: "center", color: "var(--ink-3)" } }, "Sign in to view Project Control.")));
+  }
+  if (loading) {
+    return /* @__PURE__ */ React.createElement("div", { className: "app" }, /* @__PURE__ */ React.createElement("main", { className: "main" }, /* @__PURE__ */ React.createElement("div", { style: { padding: "80px 0", textAlign: "center", color: "var(--ink-3)" } }, "Loading project data\u2026")));
+  }
+  if (error) {
+    return /* @__PURE__ */ React.createElement("div", { className: "app" }, /* @__PURE__ */ React.createElement("main", { className: "main" }, /* @__PURE__ */ React.createElement("div", { style: { padding: "80px 0", textAlign: "center", color: "#c0392b" } }, "Error: ", error)));
+  }
+  if (!project) {
+    return /* @__PURE__ */ React.createElement("div", { className: "app" }, /* @__PURE__ */ React.createElement("main", { className: "main" }, /* @__PURE__ */ React.createElement(
+      FoldersGrid,
+      {
+        folders: projects,
+        foldersRaw,
+        monthsRaw,
+        payrollRaw,
+        expensesRaw,
+        onPickFolder: setProjectId
+      }
+    )));
+  }
+  return /* @__PURE__ */ React.createElement("div", { className: "app" }, /* @__PURE__ */ React.createElement("main", { className: "main" }, /* @__PURE__ */ React.createElement(
+    PageHead,
+    {
+      project,
+      projects,
+      onSelectProject: setProjectId,
+      period,
+      onPeriod: setPeriod,
+      onBackToGrid: () => setProjectId(null)
+    }
+  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, onBack: () => setView("dashboard") })));
+}
+(function() {
+  const mount = document.getElementById("dacsPortalRoot");
+  if (mount && !mount.__dacsMounted) {
+    mount.__dacsMounted = true;
+    ReactDOM.createRoot(mount).render(/* @__PURE__ */ React.createElement(PortalApp, null));
+  }
+})();
+//# sourceMappingURL=portal-app.compiled.js.map

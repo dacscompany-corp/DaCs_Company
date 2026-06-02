@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>DAC's Client Portal</title>
+  <link rel="icon" href="assets/images/DACS-TRANSPARENT.png" type="image/png"/>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&family=Playfair+Display:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="css/client.css"/>
+  <link rel="stylesheet" href="css/payment-requests.css"/>
+  <link rel="stylesheet" href="css/client-renovation.css"/>
+</head>
+<body>
+
+<!-- ══════════ LOGIN PAGE ══════════ -->
+<div class="page active" id="login-page">
+  <div class="card" id="auth-card">
+
+    <!-- LOGIN FORM -->
+    <div id="form-login">
+      <div class="login-header">
+        <div class="logo-wrap">
+          <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC Logo"/>
+        </div>
+        <h1>DAC's Building Design Services<br/>Client Portal</h1>
+        <div class="accent-bar"></div>
+      </div>
+
+      <div class="field">
+        <label for="login-email">Email Address</label>
+        <div class="input-wrap">
+          <input type="email" id="login-email" placeholder="Enter your email" autocomplete="email"/>
+        </div>
+        <div class="field-error" id="err-login-email"></div>
+      </div>
+
+      <div class="field">
+        <label for="login-password">Password</label>
+        <div class="input-wrap">
+          <input type="password" id="login-password" placeholder="Enter your password" autocomplete="current-password"/>
+          <button class="eye-btn" type="button" onclick="togglePassword('login-password','eye-login')" aria-label="Toggle password">
+            <svg id="eye-login" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+        <div class="field-error" id="err-login-password"></div>
+        <div style="text-align:right;margin-top:4px;">
+          <a href="#" id="forgotPasswordLink" onclick="doForgotPassword();return false;"
+             style="font-size:0.8rem;color:#059669;font-weight:600;text-decoration:none;">
+            Forgot Password?
+          </a>
+        </div>
+      </div>
+
+      <div class="login-error" id="login-error">Incorrect email or password. Please try again.</div>
+
+      <button class="btn-signin" id="btn-login" type="button" onclick="doLogin()">Sign In</button>
+
+    </div>
+
+  </div>
+</div>
+
+<!-- ══════════ DASHBOARD PAGE ══════════ -->
+<div class="page" id="dashboard-page">
+
+  <div class="sidebar-overlay" id="overlay" onclick="closeSidebar()"></div>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC Logo"/>
+      <div class="sidebar-logo-text">DAC's Building<br/>Design Services</div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-label">Main</div>
+      <a class="nav-item active" onclick="showSection('dashboard')">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+          <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        Dashboard
+      </a>
+      <a class="nav-item" onclick="showSection('accomplishment')">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+          <polyline points="10 9 9 9 8 9"/>
+        </svg>
+        Accomplishment Reports
+      </a>
+      <a class="nav-item" onclick="showSection('billing')">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+        </svg>
+        Billing Periods
+        <span id="billing-badge" class="pr-nav-badge" style="display:none;">0</span>
+      </a>
+      <a class="nav-item" onclick="showSection('notifications')">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+        Notifications
+        <span id="notif-nav-badge" class="pr-nav-badge" style="display:none;">0</span>
+      </a>
+      <a class="nav-item" onclick="showSection('documents')">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+        Documents
+      </a>
+      <div class="nav-label">Account</div>
+      <a class="nav-item" onclick="showSection('profile')">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+        </svg>
+        Profile
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="sidebar-user-avatar" id="sidebar-avatar">CL</div>
+        <div class="sidebar-user-info">
+          <div class="sidebar-user-name" id="sidebar-name">Client</div>
+          <div class="sidebar-user-email" id="sidebar-email"></div>
+        </div>
+      </div>
+      <button class="logout-btn" onclick="confirmLogout()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+          <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        Sign Out
+      </button>
+    </div>
+  </aside>
+
+  <div class="main-content" id="main-content">
+
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="burger-btn" id="burger" onclick="toggleSidebar()" aria-label="Toggle menu">
+          <span></span><span></span><span></span>
+        </button>
+        <span class="topbar-title" id="topbar-title">Dashboard</span>
+      </div>
+      <div class="topbar-right">
+        <button class="topbar-icon-btn dark-toggle-btn" id="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">
+          <svg id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+          <svg id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" style="display:none">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+        </button>
+        <div class="notif-wrap" id="notif-wrap">
+          <button class="topbar-bell-btn" id="notif-btn" title="Notifications" onclick="toggleNotifications()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+            <span class="topbar-bell-dot" id="notif-dot" style="display:none;"></span>
+          </button>
+          <div class="notif-dropdown" id="notif-dropdown">
+            <div class="notif-header">
+              <span class="notif-title">Notifications</span>
+              <button class="notif-mark-all" onclick="markAllRead()">Mark all read</button>
+            </div>
+            <div class="notif-list" id="notif-list"></div>
+            <div class="notif-footer"><span class="notif-footer-text">DAC Client Portal</span></div>
+          </div>
+        </div>
+        <div class="topbar-divider"></div>
+        <div class="topbar-user" onclick="showSection('profile')" title="My Profile" role="button" tabindex="0"
+             onkeydown="if(event.key==='Enter')showSection('profile')">
+          <div class="topbar-avatar" id="topbar-avatar">CL</div>
+          <span class="topbar-user-name" id="topbar-name">Client</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="page-body">
+
+      <!-- ── Dashboard ── -->
+      <div class="sub-page active" id="section-dashboard">
+        <!-- No project assigned state -->
+        <div id="no-project-state" style="display:none;">
+          <div class="content-panel" style="text-align:center; padding:60px 20px;">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#b0c8bc" stroke-width="1.5" style="margin-bottom:18px;">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+            </svg>
+            <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:var(--text-dark);margin-bottom:8px;">No Project Assigned Yet</div>
+            <p style="font-size:13.5px;color:var(--text-muted);max-width:380px;margin:0 auto;line-height:1.6;">
+              Your account hasn't been linked to a project yet. Please contact DAC's Building Design Services to get access to your project reports.
+            </p>
+          </div>
+        </div>
+
+        <div id="project-content">
+          <div class="section-title" id="dash-project-title">Dashboard</div>
+          <div class="section-sub" id="dash-project-sub">Here's an overview of all your projects.</div>
+
+          <div class="stats-grid">
+            <div class="stat-card budget">
+              <div class="stat-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#00a85e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                </svg>
+              </div>
+              <div class="stat-label">Total Contract Value</div>
+              <div class="stat-value" id="stat-budget">&#8369;0</div>
+              <div class="stat-sub-info" id="stat-budget-sub">Combined across all projects</div>
+            </div>
+            <div class="stat-card usage">
+              <div class="stat-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#e67e22" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+              </div>
+              <div class="stat-label">Total Billed</div>
+              <div class="stat-value" id="stat-usage">0%</div>
+              <div class="stat-sub-info" id="stat-usage-sub">&#8369;0 of &#8369;0 billed</div>
+              <div style="margin-top:14px;">
+                <div class="stat-bar-wrap"><div class="stat-bar" id="bar-usage"></div></div>
+              </div>
+            </div>
+            <div class="stat-card progress">
+              <div class="stat-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="20" x2="18" y2="10"/>
+                  <line x1="12" y1="20" x2="12" y2="4"/>
+                  <line x1="6"  y1="20" x2="6"  y2="14"/>
+                </svg>
+              </div>
+              <div class="stat-label">Design Progress</div>
+              <div class="stat-value" id="stat-progress">0%</div>
+              <div class="stat-sub-info" id="stat-progress-sub">Accomplishment reports</div>
+              <div style="margin-top:14px;">
+                <div class="stat-bar-wrap"><div class="stat-bar stat-bar-blue" id="bar-progress"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="dash-bottom-grid">
+            <div class="content-panel ring-panel">
+              <div class="panel-header">
+                <span class="panel-title">Overall Completion</span>
+                <span class="panel-badge panel-badge-blue" id="overall-badge">In Progress</span>
+              </div>
+              <div class="ring-center-wrap">
+                <svg class="progress-ring" width="160" height="160" viewBox="0 0 160 160">
+                  <circle class="ring-bg" cx="80" cy="80" r="64" fill="none" stroke-width="12"/>
+                  <circle class="ring-fill" id="ring-fill" cx="80" cy="80" r="64" fill="none" stroke-width="12"
+                    stroke-dasharray="402.12" stroke-dashoffset="402.12"
+                    stroke-linecap="round" transform="rotate(-90 80 80)"/>
+                </svg>
+                <div class="ring-label-wrap">
+                  <div class="ring-pct" id="ring-pct">0%</div>
+                  <div class="ring-sub">Complete</div>
+                </div>
+              </div>
+              <div class="ring-legend">
+                <div class="ring-legend-item"><span class="ring-dot ring-dot-green"></span>Approved</div>
+                <div class="ring-legend-item"><span class="ring-dot ring-dot-blue"></span>Submitted / For Review</div>
+                <div class="ring-legend-item"><span class="ring-dot ring-dot-gray"></span>Draft</div>
+              </div>
+            </div>
+
+            <div class="content-panel phase-panel">
+              <div class="panel-header">
+                <span class="panel-title">Report Breakdown</span>
+                <span class="panel-badge panel-badge-green" id="phase-count-badge">0 Reports</span>
+              </div>
+              <div class="phase-list" id="phase-list">
+                <div class="empty-state"><p>No reports yet.</p></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Project Completion Timeline -->
+          <div class="content-panel" style="margin-bottom:20px;">
+            <div class="panel-header">
+              <span class="panel-title">Project Timeline</span>
+              <span class="panel-badge panel-badge-blue" id="timeline-badge" style="display:none;"></span>
+            </div>
+            <div id="project-timeline" style="padding:8px 0 4px;">
+              <div style="color:#9ca3af;font-size:13px;text-align:center;padding:16px 0;">No milestones yet.</div>
+            </div>
+          </div>
+
+
+          <div class="content-panel">
+            <div class="panel-header">
+              <span class="panel-title">Recent Activity</span>
+              <span class="activity-count" id="activity-count"></span>
+            </div>
+            <div class="activity-list" id="activity-list">
+              <div class="empty-state"><p>No recent activity.</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Accomplishment Reports ── -->
+      <div class="sub-page" id="section-accomplishment">
+        <div class="section-title">Accomplishment Reports</div>
+        <div class="section-sub">Track project milestones and deliverables per phase.</div>
+        <div class="content-panel" style="padding:0; overflow:hidden;">
+          <div class="table-toolbar">
+            <div class="table-search-wrap">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" class="table-search" id="report-search" placeholder="Search reports…" oninput="filterReports()"/>
+            </div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="reports-table">
+              <thead>
+                <tr>
+                  <th>Report</th>
+                  <th>Project</th>
+                  <th>Date</th>
+                  <th>Accomplishment</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="reports-tbody">
+                <tr><td colspan="6" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">Loading reports…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Billing Periods ── -->
+      <div class="sub-page" id="section-billing">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div class="section-title" style="margin-bottom:4px;">Billing &amp; Payments</div>
+            <div class="section-sub" style="margin-bottom:0;">Manage your payments and view your billing history.</div>
+          </div>
+          <button onclick="prClientOpenSelfPayModal()" style="display:inline-flex;align-items:center;gap:8px;background:#00a85e;color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,168,94,.25);">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            Submit Payment
+          </button>
+        </div>
+
+        <!-- Outstanding Balance Alert -->
+        <div id="outstanding-balance-alert" style="display:none;align-items:center;gap:14px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:12px;padding:14px 18px;margin-bottom:20px;"></div>
+
+
+        <!-- Summary Cards -->
+        <div class="billing-summary-grid" style="margin-bottom:28px;">
+          <div class="billing-sum-card billing-sum-green">
+            <div class="bsum-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a85e" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <div>
+              <div class="bsum-label">Total Contract</div>
+              <div class="bsum-value" id="bsum-total">&#8369;0</div>
+            </div>
+          </div>
+          <div class="billing-sum-card billing-sum-amber">
+            <div class="bsum-icon bsum-icon-amber">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            </div>
+            <div>
+              <div class="bsum-label">Total Billed</div>
+              <div class="bsum-value" id="bsum-billed">&#8369;0</div>
+            </div>
+          </div>
+          <div class="billing-sum-card billing-sum-blue">
+            <div class="bsum-icon bsum-icon-blue">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <div>
+              <div class="bsum-label">Billing Periods</div>
+              <div class="bsum-value" id="bsum-count">0</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Payment Requests Panel -->
+        <div class="content-panel" style="padding:0;overflow:hidden;margin-bottom:24px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #f1f5f9;">
+            <div>
+              <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Payment Requests</div>
+              <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Company-issued billing requests for your review.</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span class="billing-badge" id="billing-badge" style="display:none;"></span>
+              <button id="clientRequestSOWABtn" onclick="clientRequestSOWA(this)" style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:1.5px solid #d1fae5;background:#f0fdf4;color:#059669;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="12" y2="16"/><polyline points="14 2 14 8 20 8"/></svg>
+                Request SOWA
+              </button>
+              <button id="clientViewSOWABtn" onclick="clientOpenSOWA()" style="display:none;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:1.5px solid #bfdbfe;background:#eff6ff;color:#1d4ed8;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;" onmouseover="this.style.background='#dbeafe'" onmouseout="this.style.background='#eff6ff'">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                View SOWA
+              </button>
+            </div>
+          </div>
+          <div id="pr-client-list" style="padding:0;">
+            <div style="color:#9ca3af;font-size:14px;padding:32px;text-align:center;">Loading payment requests…</div>
+          </div>
+        </div>
+
+
+        <!-- Billing History Panel -->
+        <div class="content-panel" style="padding:0;overflow:hidden;">
+          <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:15px;font-weight:700;color:#1f2937;">Billing History</div>
+            <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Overview of all billing periods from your contract.</div>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table" id="billing-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Period</th>
+                  <th>Description</th>
+                  <th>Amount</th>
+                  <th>Type</th>
+                </tr>
+              </thead>
+              <tbody id="billing-tbody">
+                <tr><td colspan="5" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+
+
+      <!-- ── Profile ── -->
+      <div class="sub-page" id="section-profile">
+        <div class="section-title">Profile</div>
+        <div class="section-sub">View and manage your account information.</div>
+        <div class="content-panel">
+          <div class="profile-card">
+            <div class="profile-avatar-lg-wrap">
+              <div class="profile-avatar-lg" id="profile-avatar-lg">CL</div>
+              <button class="profile-avatar-edit-btn" onclick="triggerAvatarUpload()" title="Change profile picture">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              </button>
+              <input type="file" id="avatar-file-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(event)">
+            </div>
+            <div class="profile-info">
+              <div class="profile-name" id="profile-fullname">Client User</div>
+              <div class="profile-email" id="profile-email-display"></div>
+              <span class="profile-role-badge">Client Account</span>
+            </div>
+            <button class="btn-edit-profile" id="btn-edit-profile" onclick="toggleEditProfile()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              Edit Profile
+            </button>
+          </div>
+
+          <div id="profile-view-mode">
+            <div class="profile-fields">
+              <div class="profile-field-row">
+                <div class="profile-field-label">Full Name</div>
+                <div class="profile-field-value" id="pf-name">—</div>
+              </div>
+              <div class="profile-field-row">
+                <div class="profile-field-label">Email Address</div>
+                <div class="profile-field-value" id="pf-email">—</div>
+              </div>
+              <div class="profile-field-row">
+                <div class="profile-field-label">Account Type</div>
+                <div class="profile-field-value">Client</div>
+              </div>
+              <div class="profile-field-row">
+                <div class="profile-field-label">Member Since</div>
+                <div class="profile-field-value" id="pf-since">—</div>
+              </div>
+            </div>
+          </div>
+
+          <div id="profile-edit-mode" style="display:none;">
+            <div class="edit-section-label">Personal Information</div>
+            <div class="signup-row" style="margin-bottom:0;">
+              <div class="field">
+                <label for="edit-firstname">First Name</label>
+                <div class="input-wrap"><input type="text" id="edit-firstname" placeholder="First name"/></div>
+                <div class="field-error" id="err-edit-firstname"></div>
+              </div>
+              <div class="field">
+                <label for="edit-lastname">Last Name</label>
+                <div class="input-wrap"><input type="text" id="edit-lastname" placeholder="Last name"/></div>
+                <div class="field-error" id="err-edit-lastname"></div>
+              </div>
+            </div>
+            <div class="edit-profile-actions">
+              <button class="btn-cancel-edit" onclick="cancelEditProfile()">Cancel</button>
+              <button class="btn-save-profile" onclick="saveProfile()">Save Changes</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="content-panel">
+          <div class="panel-header">
+            <span class="panel-title">Change Password</span>
+            <button class="btn-toggle-pw" id="btn-toggle-pw" onclick="toggleChangePassword()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Change Password
+            </button>
+          </div>
+          <div id="change-pw-form" style="display:none;">
+            <div class="field">
+              <label for="pw-current">Current Password</label>
+              <div class="input-wrap">
+                <input type="password" id="pw-current" placeholder="Enter current password"/>
+                <button class="eye-btn" type="button" onclick="togglePassword('pw-current','eye-cur')">
+                  <svg id="eye-cur" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="field-error" id="err-pw-current"></div>
+            </div>
+            <div class="field">
+              <label for="pw-new">New Password</label>
+              <div class="input-wrap">
+                <input type="password" id="pw-new" placeholder="Min. 8 characters" oninput="updateNewPwStrength()"/>
+                <button class="eye-btn" type="button" onclick="togglePassword('pw-new','eye-new')">
+                  <svg id="eye-new" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="field-error" id="err-pw-new"></div>
+              <div class="pw-strength-wrap" id="new-pw-strength-wrap" style="display:none;">
+                <div class="pw-strength-bar"><div class="pw-strength-fill" id="new-pw-strength-fill"></div></div>
+                <span class="pw-strength-label" id="new-pw-strength-label"></span>
+              </div>
+            </div>
+            <div class="field">
+              <label for="pw-confirm-new">Confirm New Password</label>
+              <div class="input-wrap">
+                <input type="password" id="pw-confirm-new" placeholder="Re-enter new password"/>
+                <button class="eye-btn" type="button" onclick="togglePassword('pw-confirm-new','eye-cnew')">
+                  <svg id="eye-cnew" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+              </div>
+              <div class="field-error" id="err-pw-confirm-new"></div>
+            </div>
+            <div class="edit-profile-actions">
+              <button class="btn-cancel-edit" onclick="toggleChangePassword()">Cancel</button>
+              <button class="btn-save-profile" onclick="doChangePassword()">Update Password</button>
+            </div>
+          </div>
+          <div id="change-pw-placeholder">
+            <p class="pw-placeholder-text">Keep your account secure by updating your password regularly.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Notifications History ── -->
+      <div class="sub-page" id="section-notifications">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+          <div>
+            <div class="section-title" style="margin-bottom:4px;">Notifications</div>
+            <div class="section-sub" style="margin-bottom:0;">Your recent updates and alerts.</div>
+          </div>
+          <button onclick="markAllRead();renderNotifHistory()" style="display:inline-flex;align-items:center;gap:7px;background:#f0fdf4;color:#059669;border:1.5px solid #d1fae5;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+            Mark All Read
+          </button>
+        </div>
+        <div class="content-panel" style="padding:0;overflow:hidden;">
+          <div id="notif-history-list" style="min-height:120px;">
+            <div style="padding:40px;text-align:center;color:#9ca3af;font-size:14px;">Loading…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Documents ── -->
+      <div class="sub-page" id="section-documents">
+        <div style="margin-bottom:24px;">
+          <div class="section-title" style="margin-bottom:4px;">Documents</div>
+          <div class="section-sub" style="margin-bottom:0;">Download your invoices and statements.</div>
+        </div>
+        <!-- Invoices -->
+        <div class="content-panel" style="padding:0;overflow:hidden;margin-bottom:24px;">
+          <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Invoices</div>
+              <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Auto-generated after each verified payment.</div>
+            </div>
+          </div>
+          <div id="docs-invoice-list" style="min-height:80px;">
+            <div style="padding:32px;text-align:center;color:#9ca3af;font-size:14px;">Loading…</div>
+          </div>
+        </div>
+        <!-- SOWA -->
+        <div class="content-panel" style="padding:0;overflow:hidden;">
+          <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;">
+            <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Statement of Work Accomplished (SOWA)</div>
+            <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Official project accomplishment summary issued by DAC.</div>
+          </div>
+          <div id="docs-sowa-section" style="padding:22px;">
+            <div style="padding:12px 0;text-align:center;color:#9ca3af;font-size:14px;">Loading…</div>
+          </div>
+        </div>
+      </div>
+
+
+    </div><!-- /page-body -->
+  </div><!-- /main-content -->
+</div><!-- /dashboard-page -->
+
+<!-- ══════════ REPORT VIEWER MODAL ══════════ -->
+<div class="modal-overlay" id="report-modal" onclick="closeReportModal(event)">
+  <div class="report-modal-card">
+    <div class="report-modal-header">
+      <div class="report-modal-header-info">
+        <div class="report-modal-logo">
+          <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC Logo"/>
+          <span>DAC's Building Design Services</span>
+        </div>
+        <div class="report-modal-title" id="rmd-title">Accomplishment Report</div>
+        <div class="report-modal-meta" id="rmd-meta"></div>
+      </div>
+      <div class="report-modal-header-right">
+        <span class="badge" id="rmd-status-badge"></span>
+        <button class="report-modal-close" onclick="closeReportModal()" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="report-modal-body" id="rmd-body"></div>
+    <div class="report-modal-footer" id="rmd-footer"></div>
+  </div>
+</div>
+
+<!-- ══════════ LOGOUT MODAL ══════════ -->
+<div class="modal-overlay" id="logout-modal" onclick="closeLogoutModal(event)">
+  <div class="modal-card">
+    <div class="modal-icon">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+        <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+      </svg>
+    </div>
+    <h3 class="modal-title">Sign Out?</h3>
+    <p class="modal-desc">Are you sure you want to sign out of your account?</p>
+    <div class="modal-actions">
+      <button class="modal-btn-cancel" onclick="closeLogoutModal()">Cancel</button>
+      <button class="modal-btn-confirm" onclick="doLogout()">Sign Out</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- PAYMENT REQUESTS: Pay Modal -->
+<div id="prClientPayModal" class="pr-modal-overlay" style="display:none;" onclick="if(event.target===this)prClientClosePayModal()">
+  <div class="pr-modal-card pr-modal-card-wide">
+    <div class="pr-modal-header">
+      <div class="pr-modal-header-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      </div>
+      <h3 id="prClientPayTitle">Submit Payment</h3>
+      <button class="pr-modal-close" onclick="prClientClosePayModal()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="pr-modal-body">
+      <!-- Payment Method Tabs -->
+      <div id="prMethodTabsWrap" style="display:none;margin-bottom:18px;">
+        <div class="pr-method-tabs">
+          <button class="pr-method-tab active" id="prTabGcash" onclick="prSwitchPayMethod('gcash')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h2v2H9zm0 4h2v2H9zm4-4h2v2h-2zm0 4h2v2h-2z"/></svg>
+            GCash
+          </button>
+          <button class="pr-method-tab" id="prTabBank" onclick="prSwitchPayMethod('bank')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            Bank Transfer
+          </button>
+        </div>
+      </div>
+
+      <!-- QR Code -->
+      <div id="prQRSection" style="text-align:center;margin-bottom:18px;">
+        <div style="font-size:12.5px;color:#6b7280;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Scan to Pay</div>
+        <div class="pr-qr-display">
+          <img id="prClientQRImg" src="" alt="QR Code" style="display:none;">
+        </div>
+        <div style="font-size:15px;font-weight:700;color:#00a85e;margin-top:8px;" id="prClientPayAmount"></div>
+      </div>
+
+      <!-- Self-pay fields -->
+      <div id="prSelfPayDescWrap" style="display:none;">
+        <div class="pr-form-group">
+          <label class="pr-form-label" for="prSelfPayDesc">Payment Description <span class="req">*</span></label>
+          <input id="prSelfPayDesc" class="pr-form-input" type="text" placeholder="e.g. Phase 1 Design Fee">
+        </div>
+        <div class="pr-form-group">
+          <label class="pr-form-label">Month</label>
+          <input id="prSelfPayMonth" class="pr-form-input" type="text" readonly style="background:#f9fafb;color:#6b7280;cursor:default;">
+        </div>
+      </div>
+
+      <!-- Amount to Pay -->
+      <div class="pr-form-group">
+        <label class="pr-form-label" for="prClientAmountInput">Amount to Pay <span class="req">*</span></label>
+        <div style="position:relative;">
+          <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#374151;font-weight:600;font-size:15px;">&#8369;</span>
+          <input id="prClientAmountInput" class="pr-form-input" type="text" inputmode="numeric" placeholder="0.00" style="padding-left:30px;" oninput="this.value=this.value.replace(/[^0-9.]/g,'').replace(/\B(?=(\d{3})+(?!\d))/g,',');prCheckPartialAmount()">
+        </div>
+        <div style="font-size:12px;color:#9ca3af;margin-top:5px;">Requested: <span id="prClientRequestedAmt" style="font-weight:600;color:#6b7280;"></span></div>
+        <div id="prPartialReasonWrap" style="display:none;margin-top:10px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;padding:12px;">
+          <div style="font-size:12.5px;font-weight:600;color:#d97706;margin-bottom:8px;">&#9888; You are requesting to pay a partial amount &mdash; admin approval is required before you can submit payment</div>
+          <textarea id="prPartialReason" class="pr-form-textarea" placeholder="e.g. Agreed with admin to pay &#8369;400,000 as first installment&hellip;" style="min-height:64px;border-color:#fcd34d;font-size:13px;resize:vertical;"></textarea>
+          <div style="font-size:11.5px;color:#92400e;margin-top:5px;">Your request will be sent to the admin. You can only pay after they approve.</div>
+        </div>
+      </div>
+
+      <!-- Reference Number + Receipt (hidden in partial-request mode) -->
+      <div id="prPaymentProofSection">
+        <div class="pr-form-group">
+          <label class="pr-form-label" for="prClientRefInput">GCash / Bank Reference Number <span class="req">*</span></label>
+          <input id="prClientRefInput" class="pr-form-input" type="text" placeholder="Enter your GCash / bank reference number">
+        </div>
+
+        <!-- Receipt Upload -->
+        <div class="pr-form-group">
+          <label class="pr-form-label">Payment Proof <span style="font-weight:400;color:#6b7280;">(Receipt Screenshot)</span> <span class="req">*</span></label>
+          <div class="pr-upload-zone">
+            <input id="prClientReceiptFile" type="file" accept="image/*" onchange="prClientPreviewReceipt(this)">
+            <div id="prUploadZoneHint">
+              <span class="pr-upload-zone-icon">&#128247;</span>
+              <div class="pr-upload-zone-text">
+                <strong>Click to upload</strong> or drag &amp; drop<br>
+                <span style="font-size:12px;">PNG, JPG up to 10MB</span>
+              </div>
+            </div>
+            <div id="prClientReceiptPreview" class="pr-receipt-preview" style="display:none;">
+              <img src="" alt="Receipt preview">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="prClientPayError" class="pr-error-msg"></div>
+    </div>
+      <!-- Terms & Conditions Agreement -->
+      <div style="margin:12px 22px 0;padding:14px 16px;background:#f0fdf4;border:1.5px solid #a7f3d0;border-radius:10px;">
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <input type="checkbox" id="prTCCheckbox" onchange="prToggleTCSubmit()"
+            style="margin-top:3px;width:16px;height:16px;accent-color:#059669;flex-shrink:0;cursor:pointer;">
+          <label for="prTCCheckbox" style="font-size:13px;color:#374151;line-height:1.5;cursor:pointer;">
+            I have read and agree to the
+            <button type="button" onclick="prOpenTCModal()" style="background:none;border:none;color:#059669;font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline;padding:0;">Terms &amp; Conditions</button>
+            of payment. Payments are non-refundable and subject to admin verification.
+          </label>
+        </div>
+      </div>
+    <div class="pr-modal-footer">
+      <button class="pr-btn-cancel" onclick="prClientClosePayModal()">Cancel</button>
+      <button id="prClientSubmitBtn" class="pr-client-pay-btn" style="width:auto;padding:9px 22px;opacity:0.45;cursor:not-allowed;" onclick="prClientHandlePayment()" disabled>
+        Submit Payment
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- PAYMENT REQUESTS: Client Receipt Viewer -->
+<div id="prClientReceiptViewer" class="pr-receipt-viewer" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="pr-receipt-viewer-inner">
+    <button class="pr-receipt-viewer-close" aria-label="Close" onclick="document.getElementById('prClientReceiptViewer').style.display='none'">&#x2715;</button>
+    <img id="prClientReceiptViewerImg" src="" alt="Receipt">
+  </div>
+</div>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/client-app.js"></script>
+<!-- Client SOWA Modal -->
+<div id="clientSowaModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+    <div style="background:#fff;border-radius:16px;width:95vw;max-width:860px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid #e5e7eb;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;border-radius:10px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;">
+                    <svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='#059669' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z'/><polyline points='14 2 14 8 20 8'/><line x1='16' y1='13' x2='8' y2='13'/><line x1='16' y1='17' x2='8' y2='17'/></svg>
+                </div>
+                <h2 style="margin:0;font-size:1rem;font-weight:700;color:#111827;">Statement of Work Accomplished</h2>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <button onclick="clientPrintSOWA()" title="Opens the browser print dialog &mdash; choose &quot;Save as PDF&quot; as the destination to download a PDF copy." style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:none;background:#059669;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">
+                    <svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 6 2 18 2 18 9'/><path d='M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2'/><rect x='6' y='14' width='12' height='8'/></svg>
+                    Print / Save as PDF
+                </button>
+                <button onclick="clientCloseSOWA()" aria-label="Close" style="width:32px;height:32px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;cursor:pointer;font-size:18px;color:#6b7280;display:flex;align-items:center;justify-content:center;">&times;</button>
+            </div>
+        </div>
+        <div id="clientSowaContent" style="overflow-y:auto;padding:24px;"></div>
+    </div>
+</div>
+
+<script src="js/client-payment.js"></script>
+
+<!-- Terms & Conditions Modal -->
+<div id="prTCModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:16px;width:100%;max-width:520px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.25);">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #e5e7eb;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:36px;height:36px;border-radius:10px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </div>
+        <h3 style="margin:0;font-size:1rem;font-weight:700;color:#111827;">Terms &amp; Conditions</h3>
+      </div>
+      <button onclick="prCloseTCModal()" aria-label="Close" style="background:none;border:none;font-size:1.4rem;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="overflow-y:auto;padding:22px;flex:1;font-size:13.5px;color:#374151;line-height:1.7;">
+      <p style="font-weight:700;color:#111827;margin-bottom:12px;">Payment Terms &amp; Conditions</p>
+      <p style="margin-bottom:10px;">By submitting a payment, you agree to the following terms:</p>
+      <ol style="padding-left:18px;display:flex;flex-direction:column;gap:10px;">
+        <li><strong>Non-Refundable.</strong> All payments submitted are non-refundable once verified by the admin.</li>
+        <li><strong>Verification Process.</strong> Payments are subject to admin review and verification. Submission does not guarantee immediate approval.</li>
+        <li><strong>Accurate Information.</strong> You are responsible for providing accurate reference numbers and valid proof of payment.</li>
+        <li><strong>Pending Status.</strong> Your payment will remain in "Under Review" status until the admin verifies it.</li>
+        <li><strong>Rejection.</strong> Payments may be rejected if the proof of payment is invalid, unclear, or does not match the required amount.</li>
+        <li><strong>Partial Payments.</strong> Partial payment requests require admin approval before submission of proof.</li>
+        <li><strong>Communication.</strong> You will be notified of your payment status through the platform.</li>
+        <li><strong>Disputes.</strong> Any payment disputes must be raised directly with the admin within 7 days of submission.</li>
+      </ol>
+      <p style="margin-top:16px;font-size:12.5px;color:#6b7280;">By checking the agreement box and submitting your payment, you confirm that you have read, understood, and agreed to these terms.</p>
+    </div>
+    <div style="padding:16px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;gap:10px;">
+      <button onclick="prCloseTCModal()" style="padding:9px 20px;border-radius:8px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;font-size:13px;font-weight:600;cursor:pointer;">Close</button>
+      <button onclick="prAcceptTC()" style="padding:9px 20px;border-radius:8px;border:none;background:#059669;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">I Agree</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- Forgot Password Modal -->
+<div id="forgotPasswordModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:16px;width:100%;max-width:400px;box-shadow:0 20px 60px rgba(0,0,0,0.25);overflow:hidden;">
+    <div style="padding:24px 24px 0;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <h3 style="margin:0;font-size:1.1rem;font-weight:700;color:#111827;">Reset Password</h3>
+        <button onclick="closeForgotPasswordModal()" aria-label="Close" style="background:none;border:none;font-size:1.4rem;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>
+      </div>
+      <p style="font-size:13.5px;color:#6b7280;margin:0 0 16px;line-height:1.5;">Enter your email address and we'll send you a link to reset your password.</p>
+      <div style="margin-bottom:12px;">
+        <label style="display:block;font-size:13px;font-weight:600;color:#374151;margin-bottom:6px;">Email Address</label>
+        <input type="email" id="forgotEmailInput" placeholder="Enter your email"
+          style="width:100%;padding:10px 14px;border:1.5px solid #d1d5db;border-radius:10px;font-size:14px;font-family:inherit;box-sizing:border-box;outline:none;transition:border-color 0.2s;"
+          onfocus="this.style.borderColor='#059669'" onblur="this.style.borderColor='#d1d5db'"
+          onkeydown="if(event.key==='Enter')sendResetEmail()">
+      </div>
+      <div id="forgotPasswordMsg" style="display:none;font-size:13px;padding:10px 14px;border-radius:8px;margin-bottom:12px;"></div>
+    </div>
+    <div style="padding:16px 24px;display:flex;gap:10px;justify-content:flex-end;">
+      <button onclick="closeForgotPasswordModal()" style="padding:9px 18px;border-radius:8px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;font-size:13px;font-weight:600;cursor:pointer;">Cancel</button>
+      <button id="sendResetBtn" onclick="sendResetEmail()" style="padding:9px 18px;border-radius:8px;border:none;background:#059669;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Send Reset Link</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

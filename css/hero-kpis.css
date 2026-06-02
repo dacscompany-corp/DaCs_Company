@@ -1,0 +1,160 @@
+/* ══════════ HERO KPI ROW STYLES ══════════ */
+.hero-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  margin-bottom: 32px;
+  padding: 32px 0;
+  border-bottom: 2px solid #eaf5ef;
+}
+
+.hero-kpi-card {
+  text-align: center;
+  padding: 32px 20px;
+  background: linear-gradient(135deg, #fff 0%, #f8fdfa 100%);
+  border-radius: 24px;
+  border: 1px solid #e8f5ee;
+  transition: all 0.3s cubic-bezier(0.22,1,0.36,1);
+  position: relative;
+  overflow: hidden;
+}
+
+.hero-kpi-card::before {
+  content: '';
+  position: absolute;
+  top: 0; right: 0;
+  width: 100px; height: 100px;
+  border-radius: 0 24px 0 100px;
+  opacity: 0.08;
+}
+
+.hero-kpi-card.design-progress::before { background: #2563eb; }
+.hero-kpi-card.total-billed::before { background: #00a85e; }
+.hero-kpi-card.recent-activity::before { background: #e67e22; }
+
+/* Scope of Services KPI variants */
+.hero-kpi-card.kpi-labor::before { background: #2563eb; }
+.hero-kpi-card.kpi-procurement::before { background: #e67e22; }
+.hero-kpi-card.kpi-site-supervision::before { background: #00a85e; }
+
+.hero-kpi-card.kpi-labor .kpi-main { color: #2563eb; }
+.hero-kpi-card.kpi-procurement .kpi-main { color: #d97706; }
+.hero-kpi-card.kpi-site-supervision .kpi-main { color: #00a85e; }
+
+.hero-kpi-card.kpi-labor {
+  background: linear-gradient(135deg, #fff 0%, #eff6ff 100%);
+  border-color: #bfdbfe;
+}
+.hero-kpi-card.kpi-procurement {
+  background: linear-gradient(135deg, #fff 0%, #fffbeb 100%);
+  border-color: #fde68a;
+}
+.hero-kpi-card.kpi-site-supervision {
+  background: linear-gradient(135deg, #fff 0%, #f0fdf4 100%);
+  border-color: #a7f3d0;
+}
+
+/* Site Supervision derived card — subtle "sum" indicator */
+.hero-kpi-card.kpi-site-supervision .kpi-sub::before {
+  content: '= ';
+  font-weight: 700;
+  color: #00a85e;
+}
+
+/* Scope KPI row always 3 columns */
+.scope-kpis {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.hero-kpi-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 25px 50px rgba(0,168,94,0.15);
+}
+
+.kpi-icon {
+  font-size: 36px;
+  margin-bottom: 16px;
+}
+
+.kpi-main {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 48px;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 12px;
+}
+
+.kpi-label {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-dark);
+  margin-bottom: 6px;
+  letter-spacing: 0.02em;
+}
+
+.kpi-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* Mobile: Stack KPIs */
+@media (max-width: 900px) {
+  .hero-kpi-row {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 24px 0;
+  }
+  
+  .kpi-main {
+    font-size: 36px;
+  }
+  
+  .hero-kpi-card {
+    padding: 24px 16px;
+  }
+}
+
+/* Dark mode */
+body.dark-mode .hero-kpi-card {
+  background: linear-gradient(135deg, #0f2218 0%, #122b1c 100%);
+  border-color: #1e4030;
+}
+body.dark-mode .hero-kpi-card.kpi-labor {
+  background: linear-gradient(135deg, #0d1f3c 0%, #112247 100%);
+  border-color: #1e3a5f;
+}
+body.dark-mode .hero-kpi-card.kpi-procurement {
+  background: linear-gradient(135deg, #2d1a00 0%, #3b2200 100%);
+  border-color: #5c3700;
+}
+body.dark-mode .hero-kpi-card.kpi-site-supervision {
+  background: linear-gradient(135deg, #0a2016 0%, #0f2d1c 100%);
+  border-color: #1a4a2a;
+}
+
+body.dark-mode .hero-kpi-card::before {
+  opacity: 0.12;
+}
+
+body.dark-mode .kpi-label {
+  color: #e8f5ee;
+}
+
+body.dark-mode .kpi-sub {
+  color: #7fb89a;
+}
+
+/* Animations */
+@keyframes kpiFadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.hero-kpi-card {
+  animation: kpiFadeIn 0.6s cubic-bezier(0.22,1,0.36,1) both;
+}
+
+.hero-kpi-card:nth-child(1) { animation-delay: 0.1s; }
+.hero-kpi-card:nth-child(2) { animation-delay: 0.2s; }
+.hero-kpi-card:nth-child(3) { animation-delay: 0.3s; }
