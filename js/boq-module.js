@@ -78,19 +78,25 @@
     window.initBOQModule = function () {
         if (!uid()) return;
         loadBoqFolders();
-        window.addEventListener('beforeunload', e => {
-            if (boq.isDirty) { e.preventDefault(); e.returnValue = ''; }
-        });
-        // Ctrl+S to save the current BOQ document
-        document.addEventListener('keydown', function _boqCtrlS(e) {
-            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-                const view = document.getElementById('boqBuilderView');
-                if (view && view.style.display !== 'none') {
-                    e.preventDefault();
-                    if (typeof boqSave === 'function') boqSave();
+        // Attach global handlers only once — initBOQModule runs on every
+        // boqBuilder view switch, so without this guard Ctrl+S would fire
+        // boqSave() N times and beforeunload guards would stack.
+        if (!window._boqHandlersWired) {
+            window._boqHandlersWired = true;
+            window.addEventListener('beforeunload', e => {
+                if (boq.isDirty) { e.preventDefault(); e.returnValue = ''; }
+            });
+            // Ctrl+S to save the current BOQ document
+            document.addEventListener('keydown', function _boqCtrlS(e) {
+                if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                    const view = document.getElementById('boqBuilderView');
+                    if (view && view.style.display !== 'none') {
+                        e.preventDefault();
+                        if (typeof boqSave === 'function') boqSave();
+                    }
                 }
-            }
-        });
+            });
+        }
     };
 
     // ── Load folders + BOQ docs ────────────────────────────────

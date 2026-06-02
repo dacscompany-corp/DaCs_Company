@@ -444,8 +444,8 @@ function loadUrgentRequests() {
     if (!container) return;
     
     container.innerHTML = '<div class="cons-loading">Loading urgent requests...</div>';
-    
-    db.collection('requests')
+
+    const _unsub = db.collection('requests')
         .where('isUrgent', '==', true)
         .orderBy('createdAt', 'desc')
         .onSnapshot(snapshot => {
@@ -453,6 +453,8 @@ function loadUrgentRequests() {
             renderUrgentRequests();
             _syncUrgentBadge(urgentRequestsData.filter(r => r.status !== 'delivered').length);
         });
+    // Tear down on view switch (matches loadCurrentBatch / loadInventory)
+    if (typeof window.registerViewCleanup === 'function') window.registerViewCleanup(_unsub);
 }
 
 function renderUrgentRequests() {
@@ -671,8 +673,11 @@ function renderBatchHistory(batches) {
 
 function loadNotifications() {
     if (!auth.currentUser) return;
+    // Tear down any prior bell listener — this is called at boot AND on every
+    // construction view switch, so without this the listener stacks each visit.
+    if (window._consNotifUnsub) { window._consNotifUnsub(); window._consNotifUnsub = null; }
 
-    db.collection('notifications')
+    window._consNotifUnsub = db.collection('notifications')
         .doc(auth.currentUser.uid)
         .collection('items')
         .orderBy('createdAt', 'desc')

@@ -47,15 +47,19 @@ service cloud.firestore {
     // ═══════════════════════════════════════════════════════════════════
 
     match /appointments/{appointmentId} {
+      // Public booking form may create; only admins may read/modify/delete.
       allow create: if true;
-      allow read, update, delete: if isAuthenticated();
+      allow read: if isAuthenticated();
+      allow update, delete: if isOwner() || isStaff();
     }
 
     match /testimonials/{testimonialId} {
-      allow create: if true;
+      // Public may submit, but ONLY as pending — they cannot self-publish.
+      allow create: if request.resource.data.get('status', 'pending') == 'pending';
       allow read: if isAuthenticated()
                   || (resource.data.status == 'approved' && resource.data.rating >= 4);
-      allow update, delete: if isAuthenticated();
+      // Only admins may approve/edit/delete (moderation).
+      allow update, delete: if isOwner() || isStaff();
     }
 
     match /stats/{document=**} {
@@ -303,10 +307,15 @@ service cloud.firestore {
       // All subcollections (weeklyBills, procurementList, revolvingFund, etc.)
       match /{document=**} {
         allow read, create, update, delete: if isOwner() || isStaff();
-        // Clients can read subcollection data of their own project
+        // Clients can READ subcollection data of their own project
         allow read: if isAuthenticated()
                     && get(/databases/$(database)/documents/constructionProjects/$(projectId)).data.clientEmail == request.auth.token.email;
-        // Clients can update procurementList items (mark as bought by client)
+      }
+
+      // Clients may UPDATE only their own project's procurement items (accept/decline
+      // an item) — NOT weeklyBills, revolvingFund, payments, etc. (Previously the
+      // recursive {document=**} update let clients edit any subcollection.)
+      match /procurementList/{itemId} {
         allow update: if isAuthenticated()
                       && get(/databases/$(database)/documents/constructionProjects/$(projectId)).data.clientEmail == request.auth.token.email;
       }
