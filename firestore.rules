@@ -138,6 +138,12 @@ service cloud.firestore {
       allow create: if canWriteData(request.resource.data.userId);
     }
 
+    // Labor invoices (ported from salvia) — owner data, staff scoped via ownerUid.
+    match /laborInvoices/{invoiceId} {
+      allow read, update, delete: if canAccessData(resource.data.userId);
+      allow create: if canWriteData(request.resource.data.userId);
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // CONSTRUCTION MANAGEMENT COLLECTIONS
     // ═══════════════════════════════════════════════════════════════════

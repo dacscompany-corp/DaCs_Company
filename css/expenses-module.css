@@ -2055,24 +2055,24 @@ mark.exp-search-highlight {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
-    margin-bottom: 0.6rem;
+    gap: 1rem;
+    margin-bottom: 1rem;
     flex-wrap: wrap;
 }
 .rpt-topbar-left {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 1rem;
     flex-wrap: wrap;
 }
 .rpt-select-wrap {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
+    gap: 0.5rem;
     background: #fff;
     border: 1.5px solid #e5e7eb;
     border-radius: 8px;
-    padding: 0.3rem 0.6rem;
+    padding: 0.45rem 0.9rem;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     transition: border-color 0.2s;
 }
@@ -2096,21 +2096,21 @@ mark.exp-search-highlight {
 /* ── Period Tabs ──────────────────────────────────────────── */
 .rpt-period-tabs {
     display: flex;
-    gap: 0.2rem;
+    gap: 0.3rem;
     background: #f3f4f6;
-    padding: 0.2rem;
-    border-radius: 8px;
+    padding: 0.3rem;
+    border-radius: 10px;
     flex-wrap: wrap;
 }
 .rpt-tab {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
-    padding: 0.35rem 0.7rem;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
     border: none;
     background: transparent;
-    border-radius: 6px;
-    font-size: 0.75rem;
+    border-radius: 7px;
+    font-size: 0.8rem;
     font-weight: 600;
     color: #6b7280;
     cursor: pointer;
@@ -2123,7 +2123,39 @@ mark.exp-search-highlight {
     color: #111827;
     box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
-.rpt-tab-ico { width: 12px; height: 12px; flex-shrink: 0; }
+.rpt-tab-ico { width: 13px; height: 13px; flex-shrink: 0; }
+
+/* ── Company Badge ───────────────────────────────────────── */
+.rpt-company-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.45rem 0.85rem;
+    background: #fff;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.rpt-company-ico { width: 18px; height: 18px; color: #6b7280; flex-shrink: 0; }
+.rpt-company-info { display: flex; flex-direction: column; line-height: 1.3; }
+.rpt-company-name { font-size: 0.8rem; font-weight: 700; color: #111827; }
+.rpt-company-sub  { font-size: 0.72rem; color: #6b7280; }
+
+/* ── Axis Hint ───────────────────────────────────────────── */
+.rpt-axis-hint {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    background: #f8faff;
+    border: 1px solid #dbeafe;
+    border-radius: 8px;
+    padding: 0.65rem 1rem;
+    margin-bottom: 1rem;
+    font-size: 0.8rem;
+    color: #374151;
+    line-height: 1.5;
+}
+.rpt-axis-hint-ico { width: 15px; height: 15px; color: #3b82f6; flex-shrink: 0; }
 
 /* ── KPI Row ─────────────────────────────────────────────── */
 /* ── KPI Grid — matches screenshot 3×3 design ─────────────── */
@@ -2145,14 +2177,15 @@ mark.exp-search-highlight {
 .rpt-kpi-card {
     display: flex;
     flex-direction: column;
-    justify-content: flex-start;
-    padding: 1.5rem 1.6rem 1.4rem;
+    justify-content: center;
+    padding: 2rem 2rem 1.8rem;
     background: #4AC84A;
     border-right: 3px solid #ffffff;
     border-bottom: 3px solid #ffffff;
     transition: background 0.15s ease;
     min-width: 0;
     overflow: hidden;
+    min-height: 130px;
 }
 /* Remove right border on every 3rd card */
 .rpt-kpi-card:nth-child(3n) { border-right: none; }
@@ -2173,6 +2206,8 @@ mark.exp-search-highlight {
     border-top: 3px solid #ffffff;
     display: flex;
     flex-direction: column;
+    padding: 2rem 2rem 1.8rem;
+    justify-content: flex-start;
 }
 
 /* hide icon */
@@ -2182,12 +2217,12 @@ mark.exp-search-highlight {
 
 /* Label */
 .rpt-kpi-label {
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     font-weight: 800;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     color: rgba(255,255,255,0.88);
-    margin-bottom: 0.55rem;
+    margin-bottom: 0.65rem;
     line-height: 1.2;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2196,12 +2231,12 @@ mark.exp-search-highlight {
 }
 /* Big value */
 .rpt-kpi-val {
-    font-size: clamp(1.1rem, 1.6vw, 1.9rem);
+    font-size: clamp(1.4rem, 2vw, 2.3rem);
     font-weight: 900;
     letter-spacing: -0.03em;
     line-height: 1;
     color: #ffffff;
-    margin-bottom: 0.4rem;
+    margin-bottom: 0.6rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2209,10 +2244,10 @@ mark.exp-search-highlight {
 }
 /* Sub text */
 .rpt-kpi-sub {
-    font-size: 0.74rem;
+    font-size: 0.82rem;
     font-weight: 500;
-    color: rgba(255,255,255,0.80);
-    line-height: 1.4;
+    color: rgba(255,255,255,0.85);
+    line-height: 1.5;
     overflow: hidden;
     text-overflow: ellipsis;
     width: 100%;
@@ -2223,19 +2258,19 @@ mark.exp-search-highlight {
 
 /* ── Remaining Allocation inner layout ─────────────────────── */
 .rpt-kpi-label--highlight {
-    font-size: 0.78rem;
+    font-size: 0.82rem;
     font-weight: 900;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: #ffffff;
-    margin-bottom: 0.65rem;
+    margin-bottom: 0.8rem;
 }
 .rpt-variance-rule {
     width: 100%;
     height: 1.5px;
     background: rgba(255,255,255,0.40);
     border-radius: 99px;
-    margin-bottom: 1.1rem;
+    margin-bottom: 1.4rem;
 }
 .rpt-variance-split {
     display: flex;
@@ -2260,43 +2295,43 @@ mark.exp-search-highlight {
     border-radius: 99px;
 }
 .rpt-variance-col-label {
-    font-size: 0.68rem;
+    font-size: 0.72rem;
     font-weight: 800;
     letter-spacing: 0.09em;
     text-transform: uppercase;
     color: rgba(255,255,255,0.78);
-    margin-bottom: 0.3rem;
+    margin-bottom: 0.45rem;
 }
 .rpt-variance-kpi-badge {
     display: inline-flex;
     align-items: center;
-    font-size: 0.68rem;
+    font-size: 0.75rem;
     font-weight: 700;
     letter-spacing: 0.04em;
-    padding: 0.18rem 0.6rem;
+    padding: 0.25rem 0.75rem;
     border-radius: 999px;
-    margin-bottom: 0.45rem;
+    margin-bottom: 0.55rem;
     align-self: flex-start;
 }
 .rpt-variance-kpi-badge--green { background: rgba(255,255,255,0.25); color: #ffffff; }
 .rpt-variance-kpi-badge--red   { background: rgba(239,68,68,0.45);   color: #ffffff; }
 .rpt-variance-col-val {
-    font-size: clamp(1.1rem, 1.5vw, 1.7rem);
+    font-size: clamp(1.4rem, 1.8vw, 2.1rem);
     font-weight: 900;
     letter-spacing: -0.02em;
     line-height: 1.1;
     color: #ffffff;
-    margin-bottom: 0.35rem;
+    margin-bottom: 0.5rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 .rpt-variance-bar-wrap {
-    height: 5px;
+    height: 6px;
     background: rgba(255,255,255,0.20);
     border-radius: 99px;
     overflow: hidden;
-    margin-bottom: 0.35rem;
+    margin-bottom: 0.45rem;
 }
 .rpt-variance-bar-fill {
     height: 100%;
@@ -2305,8 +2340,8 @@ mark.exp-search-highlight {
     min-width: 2px;
 }
 .rpt-variance-col-sub {
-    font-size: 0.72rem;
-    color: rgba(255,255,255,0.80);
+    font-size: 0.82rem;
+    color: rgba(255,255,255,0.85);
     font-weight: 500;
 }
 

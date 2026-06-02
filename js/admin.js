@@ -1981,7 +1981,6 @@ function syncPortalChrome(view) {
     const row = document.getElementById('portalModulesRow');
     if (!row) return;
     row.innerHTML =
-        `<span class="portal-modules-label">${primary.sub}</span>` +
         primary.modules.filter(m => !m.hidden).map(m =>
             `<button class="portal-module-link${m.view === view ? ' active-link' : ''}" data-view="${m.view}">
                 <i data-lucide="${m.icon}" style="width:14px;height:14px;"></i>

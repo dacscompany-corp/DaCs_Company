@@ -283,7 +283,7 @@
         <div class="portal-modules-row" id="portalModulesRow"></div>
 
         <!-- ════════════ DASHBOARD ════════════ -->
-        <div id="dashboardView" class="content-view">
+        <div id="dashboardView" class="content-view" style="display: none;">
             <div class="stats-grid">
                 <div class="stat-card">
                     <div class="stat-icon"><i data-lucide="calendar"></i></div>
@@ -1062,6 +1062,7 @@
 
             <!-- KPI Cards -->
             <div class="ovhd-kpi-row">
+                <div class="ovhd-kpi-card ovhd-kpi-total">
                     <div class="ovhd-kpi-top">
                         <div class="ovhd-kpi-icon-wrap">
                             <i data-lucide="wallet" class="ovhd-kpi-ico"></i>
@@ -1911,6 +1912,15 @@
         <div style="font-size:14px;color:#6b7280;font-weight:500;">Loading invoices…</div>
     </div>
     <div id="invContent"></div>
+</div>
+
+<!-- Labor Invoice View -->
+<div id="laborInvoicesView" class="content-view" style="display:none;">
+    <div id="labInvLoading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:80px 0;">
+        <div class="un-loading-spinner" style="width:36px;height:36px;"></div>
+        <div style="font-size:14px;color:#6b7280;font-weight:500;">Loading labor invoices…</div>
+    </div>
+    <div id="labInvContent"></div>
 </div>
 
 
@@ -3225,6 +3235,7 @@
 <script src="js/payment-requests.js"></script>
 <script src="js/payment-reports.js"></script>
 <script src="js/invoice-module.js"></script>
+<script src="js/labor-invoice-module.js"></script>
 <script src="js/pm-admin.js"></script>
 <script src="js/termination-requests.js"></script>
 
@@ -3622,6 +3633,7 @@
         paymentRequests:  'Payment Requests',
         paymentReports:   'Payment Reports',
         invoices:         'Invoice Receipt',
+        laborInvoices:    'Labor Invoice',
         pmProjects:       'Project Management',
         pmWorkspace:      'Project Workspace',
     };
@@ -3701,6 +3713,7 @@
         if (view === 'paymentRequests' && typeof initSOAModule      === 'function') initSOAModule();
         if (view === 'paymentReports'  && typeof initPaymentReports === 'function') initPaymentReports();
         if (view === 'invoices'        && typeof initInvoiceModule  === 'function') initInvoiceModule();
+        if (view === 'laborInvoices'   && typeof initLaborInvoiceModule === 'function') initLaborInvoiceModule();
         if (PM_VIEWS.includes(view)   && typeof initPMModule       === 'function') initPMModule(view);
 
         if (typeof lucide !== 'undefined') lucide.createIcons();

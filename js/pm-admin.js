@@ -299,7 +299,7 @@ function _pmWeeklyRenderTable(entries) {
     const tbody = document.getElementById('pm-weekly-tbody');
     if (!tbody) return;
     if (!entries.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="pm-empty-row">No weekly entries yet. Click "New Entry" to add one.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="pm-empty-row">No weekly entries yet. Click "New Entry" to add one.</td></tr>';
         return;
     }
     tbody.innerHTML = entries.map(e => {
@@ -317,6 +317,9 @@ function _pmWeeklyRenderTable(entries) {
             <td><strong>${_fmt(e.grandTotal)}</strong></td>
             <td>${statusBadge}</td>
             <td>
+              <button class="pm-tbl-btn pm-tbl-btn-invoice" data-pm-action="invoice"><i data-lucide="file-text" style="width:12px;height:12px;"></i> Invoice</button>
+            </td>
+            <td>
               <button class="pm-tbl-btn pm-tbl-btn-edit" data-pm-action="edit"><i data-lucide="pencil" style="width:12px;height:12px;"></i> Edit</button>
               <button class="pm-tbl-btn pm-tbl-btn-delete" data-pm-action="delete"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>
             </td>
@@ -332,11 +335,29 @@ function _pmWeeklyRenderTable(entries) {
             const id  = tr.getAttribute('data-pm-id');
             const entry = _pmWeeklyEntries.find(x => x.id === id);
             if (!entry) return;
-            if (btn.getAttribute('data-pm-action') === 'edit')   pmEditWeeklyEntry(entry);
-            if (btn.getAttribute('data-pm-action') === 'delete') pmDeleteWeeklyEntry(entry.id);
+            if (btn.getAttribute('data-pm-action') === 'edit')    pmEditWeeklyEntry(entry);
+            if (btn.getAttribute('data-pm-action') === 'delete')  pmDeleteWeeklyEntry(entry.id);
+            if (btn.getAttribute('data-pm-action') === 'invoice') _pmOpenLaborInvoiceForEntry(entry);
         });
     }
     if (window.lucide) lucide.createIcons();
+}
+
+function _pmOpenLaborInvoiceForEntry(entry) {
+    if (typeof switchView !== 'function' || typeof initLaborInvoiceModule !== 'function') {
+        alert('Labor Invoice module is not available.');
+        return;
+    }
+    switchView('laborInvoices');
+    // Wait for the module to initialise then open a pre-filled new form
+    setTimeout(async function () {
+        const proj = _pmActiveProject;
+        if (!proj) return;
+        // Pre-load weekly entries for this project inside the labor invoice module
+        if (typeof window._labInvPreFill === 'function') {
+            window._labInvPreFill(proj, entry);
+        }
+    }, 300);
 }
 
 window.pmOpenWeeklyModal = function() {
