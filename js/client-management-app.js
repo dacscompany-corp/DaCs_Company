@@ -649,19 +649,43 @@ function cmSubscribeNotifications() {
     if (!cmCurrentUser) return;
     if (_cmNotifUnsub) { _cmNotifUnsub(); _cmNotifUnsub = null; }
 
+    // Notifications are nested at notifications/{uid}/items/{notifId} — the
+    // previous top-level `.where('userId','==',...)` query was hitting the
+    // wrong path (no userId field exists on items) and silently returning
+    // nothing, which is why the CM bell never lit up.
     _cmNotifUnsub = db.collection('notifications')
-        .where('userId', '==', cmCurrentUser.uid)
+        .doc(cmCurrentUser.uid)
+        .collection('items')
         .orderBy('createdAt', 'desc')
         .limit(30)
         .onSnapshot(snap => {
             _cmFirestoreNotifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             cmUpdateNotifBadge();
             cmRenderNotifDropdown();
+            // Lazy field migration: any doc with `read` but no `isRead` gets
+            // the canonical field added. Idempotent; runs once per session.
+            _cmMigrateNotifFields(snap.docs);
         }, err => { console.warn('CM notif subscribe:', err.message); });
 }
 
+let _cmNotifMigrationDone = false;
+function _cmMigrateNotifFields(docs) {
+    if (_cmNotifMigrationDone || !cmCurrentUser) return;
+    _cmNotifMigrationDone = true;
+    const fix = docs.filter(d => {
+        const data = d.data();
+        return 'read' in data && !('isRead' in data);
+    });
+    if (!fix.length) return;
+    const batch = db.batch();
+    fix.forEach(d => batch.update(d.ref, { isRead: d.data().read === true }));
+    batch.commit()
+        .then(() => console.log('[notif-migration] CM normalized', fix.length, 'doc(s)'))
+        .catch(e => console.warn('[notif-migration] CM batch error:', e));
+}
+
 function cmUpdateNotifBadge() {
-    const unread = _cmFirestoreNotifs.filter(n => !n.read).length;
+    const unread = _cmFirestoreNotifs.filter(n => !n.isRead && !n.read).length;
     const dot = document.getElementById('notif-dot');
     const navBadge = document.getElementById('notif-nav-badge');
     if (dot)      { dot.style.display      = unread ? '' : 'none'; }
@@ -676,19 +700,36 @@ function cmRenderNotifDropdown() {
         list.innerHTML = '<div style="padding:24px;text-align:center;color:#9ca3af;font-size:13px;">No notifications yet.</div>';
         return;
     }
-    list.innerHTML = notifs.map(n => `
-        <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;${n.read ? '' : 'background:#f0fdf4;'}cursor:pointer;" onclick="cmMarkRead('${n.id}')">
-            <div style="font-size:13px;font-weight:${n.read ? '400' : '600'};color:#1f2937;">${cmEsc(n.message || n.title || '—')}</div>
+    list.innerHTML = notifs.map(n => {
+        // Defensive: accept either field name. Most producers write `isRead`,
+        // a couple of legacy ones use `read`.
+        const isUnread = !n.isRead && !n.read;
+        return `
+        <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;${isUnread ? 'background:#f0fdf4;' : ''}cursor:pointer;" onclick="cmMarkRead('${n.id}')">
+            <div style="font-size:13px;font-weight:${isUnread ? '600' : '400'};color:#1f2937;">${cmEsc(n.message || n.title || '—')}</div>
             <div style="font-size:11.5px;color:#9ca3af;margin-top:3px;">${n.createdAt?.toDate ? n.createdAt.toDate().toLocaleDateString('en-PH') : '—'}</div>
-        </div>`).join('');
+        </div>`;
+    }).join('');
 }
 
 async function cmMarkRead(notifId) {
-    try { await db.collection('notifications').doc(notifId).update({ read: true }); } catch(e) {}
+    // Correct path is notifications/{userId}/items/{notifId} — the previous
+    // version was hitting notifications/{notifId} which silently 404s.
+    // `isRead` is canonical; lazy migration ensures legacy `read`-only docs
+    // have `isRead` written before they can be clicked. Renderer keeps the
+    // defensive read fallback as permanent insurance.
+    if (!cmCurrentUser || !notifId) return;
+    try {
+        await db.collection('notifications')
+            .doc(cmCurrentUser.uid)
+            .collection('items')
+            .doc(notifId)
+            .update({ isRead: true });
+    } catch (e) { console.warn('cmMarkRead error:', e); }
 }
 
 window.markAllRead = async function() {
-    const unread = _cmFirestoreNotifs.filter(n => !n.read);
+    const unread = _cmFirestoreNotifs.filter(n => !n.isRead && !n.read);
     await Promise.all(unread.map(n => cmMarkRead(n.id)));
 };
 
@@ -2515,16 +2556,33 @@ window.cmAcceptAgreement = async function() {
     const btn = document.getElementById('cm-agreement-accept-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
 
+    let saveError = null;
     try {
         if (cmCurrentUser) {
-            await db.collection('clientUsers').doc(cmCurrentUser.uid).update({
+            // Write to the SAME collection the agreement is read from on next
+            // login (cmCurrentProfile is loaded from CM_COLLECTION =
+            // 'constructionClientUsers'). The previous version wrote to
+            // 'clientUsers', which is the design-portal collection — so the
+            // acceptance never registered and the modal re-appeared every
+            // session. user-navigator.js:714 also seeds the field here when
+            // the construction client account is created.
+            await db.collection(CM_COLLECTION).doc(cmCurrentUser.uid).update({
                 agreementAccepted   : true,
                 agreementAcceptedAt : firebase.firestore.FieldValue.serverTimestamp()
             });
         }
         if (cmCurrentProfile) cmCurrentProfile.agreementAccepted = true;
     } catch (e) {
+        saveError = e;
         console.warn('Agreement save error:', e.message);
+    }
+
+    if (saveError) {
+        // Don't let the user past the modal if persistence failed — otherwise
+        // they'll see it again next login and assume the system is broken.
+        if (btn) { btn.disabled = false; btn.textContent = 'Accept Agreement'; }
+        alert('Could not save your acceptance: ' + (saveError.message || saveError) + '\n\nPlease try again, or contact support if this persists.');
+        return;
     }
 
     const modal = document.getElementById('cm-agreement-modal');
@@ -2598,7 +2656,7 @@ window.cmConfirmTermination = async function() {
                 .filter(b => b.status === 'Paid')
                 .reduce((s, b) => s + (b.totalDue || 0), 0);
 
-            await db.collection('terminationRequests').add({
+            const trRef = await db.collection('terminationRequests').add({
                 clientUid        : cmCurrentUser.uid,
                 clientEmail      : cmCurrentUser.email,
                 clientName       : (cmCurrentProfile?.firstName || '') + ' ' + (cmCurrentProfile?.lastName || ''),
@@ -2614,14 +2672,17 @@ window.cmConfirmTermination = async function() {
                 requestedAt      : firebase.firestore.FieldValue.serverTimestamp()
             });
 
-            // Notify admin via notification
+            // Notify admin via notification. `isRead` is canonical (last task)
+            // and `relatedId` lets the admin bell jump straight to this request
+            // in the Termination Requests review screen.
             const ownerUid = cmProjectData.userId || cmProjectData.ownerUid;
             if (ownerUid) {
                 await db.collection('notifications').doc(ownerUid).collection('items').add({
                     title      : 'Termination Request',
                     message    : `Client ${cmCurrentUser.email} has requested project termination for "${cmProjectData.projectName || 'project'}".`,
                     type       : 'termination',
-                    read       : false,
+                    isRead     : false,
+                    relatedId  : trRef.id,
                     createdAt  : firebase.firestore.FieldValue.serverTimestamp()
                 });
             }

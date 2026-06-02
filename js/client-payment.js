@@ -1411,7 +1411,7 @@ ${previewOnly ? `<div class="preview-bar"><span>Print Preview &mdash; Invoice ${
             await db.collection('notifications').doc(adminUid).collection('items').add({
                 type:      'sowa_request',
                 message:   `${user.displayName || user.email} requested a Statement of Work Accomplished (SOWA)`,
-                read:      false,
+                isRead:    false,
                 createdAt: firebase.firestore.Timestamp.fromDate(new Date())
             }).catch(e => console.warn('SOWA notify error:', e));
 
@@ -1595,9 +1595,31 @@ ${previewOnly ? `<div class="preview-bar"><span>Print Preview &mdash; Invoice ${
     };
 
     window.clientPrintSOWA = function () {
-        const content = document.getElementById('clientSowaContent');
+        // Make this callable without first opening the SOWA modal. When the
+        // user clicks Print straight from the Documents tab, the modal-content
+        // div hasn't been populated — so we trigger clientOpenSOWA() to fill
+        // it, then immediately hide the modal again so only the print dialog
+        // is visible. Net result: one click on the Documents-tab Print button
+        // opens the browser print dialog directly, no UI flicker.
+        let content = document.getElementById('clientSowaContent');
+        if (!content || !content.innerHTML.trim()) {
+            if (typeof window.clientOpenSOWA === 'function') {
+                window.clientOpenSOWA();
+                const modal = document.getElementById('clientSowaModal');
+                if (modal) modal.style.display = 'none';
+                content = document.getElementById('clientSowaContent');
+            }
+        }
         if (!content) return;
         const w = window.open('', '_blank');
+        if (!w) {
+            // Popup blocker. Fall back to opening the modal so the user can
+            // see the Print button there and try again with the affordance
+            // they have come to expect.
+            if (typeof window.clientOpenSOWA === 'function') window.clientOpenSOWA();
+            alert('Allow popups for this site to download/print your SOWA, or use the Print button inside the SOWA modal.');
+            return;
+        }
         w.document.write(`<!DOCTYPE html><html><head><title>SOWA</title>
         <style>
             body{font-family:Arial,sans-serif;font-size:13px;color:#111;padding:32px;}

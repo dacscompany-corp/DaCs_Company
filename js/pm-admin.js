@@ -55,8 +55,8 @@ function _pmInitWorkspace() {
     const p = _pmActiveProject;
     _pmSet('ws-client-name', p.clientName || '—');
     _pmSet('ws-project-name', p.projectName || '');
-    const statusBadge = { active:'pm-badge-paid', 'on-hold':'pm-badge-partial', completed:'pm-badge-client' };
-    const statusLabel = { active:'Active', 'on-hold':'On Hold', completed:'Completed' };
+    const statusBadge = { active:'pm-badge-paid', 'on-hold':'pm-badge-partial', completed:'pm-badge-client', terminated:'pm-badge-terminated' };
+    const statusLabel = { active:'Active', 'on-hold':'On Hold', completed:'Completed', terminated:'Terminated' };
     const el = document.getElementById('ws-status-badge');
     if (el) el.innerHTML = `<span class="pm-badge ${statusBadge[p.status]||'pm-badge-paid'}">${statusLabel[p.status]||'Active'}</span>`;
     // Load the active tab's data
@@ -108,21 +108,26 @@ function _pmRenderProjectCards(projects) {
         grid.innerHTML = '<div class="pm-cards-empty"><div class="pm-cards-empty-icon">🏗️</div>No projects yet. Click <strong>Add Project</strong> to create your first one.</div>';
         return;
     }
-    const statusCls   = { active:'pm-badge-paid', 'on-hold':'pm-badge-partial', completed:'pm-badge-client' };
-    const statusLabel = { active:'Active', 'on-hold':'On Hold', completed:'Completed' };
+    const statusCls   = { active:'pm-badge-paid', 'on-hold':'pm-badge-partial', completed:'pm-badge-client', terminated:'pm-badge-terminated' };
+    const statusLabel = { active:'Active', 'on-hold':'On Hold', completed:'Completed', terminated:'Terminated' };
+    // Render uses data-pm-id on the card + data-pm-action on each button.
+    // The previous version interpolated JSON.stringify(p) into inline onclick
+    // handlers — that escaped " but NOT ' or backticks, so a client name like
+    // "O'Brien" or a malicious "'); alert(1); //" would break out. Now the
+    // full project object is fetched from _pmProjects at click-time via the
+    // delegated handler below (attached once via _handlerAttached flag).
     grid.innerHTML = projects.map(p => {
         const badge     = `<span class="pm-badge ${statusCls[p.status]||'pm-badge-paid'}">${statusLabel[p.status]||'Active'}</span>`;
         const startStr  = p.startDate ? new Date(p.startDate+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '—';
-        const pJson     = JSON.stringify(p).replace(/"/g,'&quot;');
-        return `<div class="pm-project-card">
+        return `<div class="pm-project-card" data-pm-id="${_esc(p.id)}">
           <div class="pm-card-top">
             <div class="pm-card-names">
               <div class="pm-card-client">${_esc(p.clientName||'Unnamed Client')}</div>
               <div class="pm-card-project">${_esc(p.projectName||'—')}</div>
             </div>
             <div class="pm-card-actions">
-              <button class="pm-card-icon-btn" onclick='pmEditProject(${pJson})' title="Edit"><i data-lucide="pencil" style="width:13px;height:13px;"></i></button>
-              <button class="pm-card-icon-btn del" onclick="pmDeleteProject('${_esc(p.id)}')" title="Delete"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>
+              <button class="pm-card-icon-btn" data-pm-action="edit" title="Edit"><i data-lucide="pencil" style="width:13px;height:13px;"></i></button>
+              <button class="pm-card-icon-btn del" data-pm-action="delete" title="Delete"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
@@ -139,11 +144,28 @@ function _pmRenderProjectCards(projects) {
               <div class="pm-card-stat-value" style="font-size:12px;font-weight:500;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(p.address||'—')}</div>
             </div>
           </div>
-          <button class="pm-card-open-btn" onclick='pmOpenProject(${pJson})'>
+          <button class="pm-card-open-btn" data-pm-action="open">
             <i data-lucide="arrow-right" style="width:14px;height:14px;"></i> Open Project
           </button>
         </div>`;
     }).join('');
+    if (!grid._handlerAttached) {
+        grid._handlerAttached = true;
+        grid.addEventListener('click', e => {
+            const btn  = e.target.closest('[data-pm-action]');
+            if (!btn) return;
+            const card = btn.closest('[data-pm-id]');
+            if (!card) return;
+            const id   = card.getAttribute('data-pm-id');
+            const p    = _pmProjects.find(x => x.id === id);
+            if (!p) return;
+            switch (btn.getAttribute('data-pm-action')) {
+                case 'edit':   pmEditProject(p);     break;
+                case 'delete': pmDeleteProject(p.id); break;
+                case 'open':   pmOpenProject(p);     break;
+            }
+        });
+    }
     if (window.lucide) lucide.createIcons();
 }
 
@@ -287,7 +309,7 @@ function _pmWeeklyRenderTable(entries) {
             : e.status === 'Partial'
             ? '<span class="pm-badge pm-badge-partial">Partial</span>'
             : '<span class="pm-badge pm-badge-unpaid">Submitted</span>';
-        return `<tr>
+        return `<tr data-pm-id="${_esc(e.id)}">
             <td><strong>${_esc(dateStr)}</strong></td>
             <td>${_fmt(e.labor)}</td>
             <td>${_fmt(e.materials)}</td>
@@ -295,11 +317,25 @@ function _pmWeeklyRenderTable(entries) {
             <td><strong>${_fmt(e.grandTotal)}</strong></td>
             <td>${statusBadge}</td>
             <td>
-              <button class="pm-tbl-btn pm-tbl-btn-edit" onclick="pmEditWeeklyEntry(${JSON.stringify(e).replace(/"/g,'&quot;')})"><i data-lucide="pencil" style="width:12px;height:12px;"></i> Edit</button>
-              <button class="pm-tbl-btn pm-tbl-btn-delete" onclick="pmDeleteWeeklyEntry('${_esc(e.id)}')"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>
+              <button class="pm-tbl-btn pm-tbl-btn-edit" data-pm-action="edit"><i data-lucide="pencil" style="width:12px;height:12px;"></i> Edit</button>
+              <button class="pm-tbl-btn pm-tbl-btn-delete" data-pm-action="delete"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>
             </td>
         </tr>`;
     }).join('');
+    if (!tbody._handlerAttached) {
+        tbody._handlerAttached = true;
+        tbody.addEventListener('click', ev => {
+            const btn = ev.target.closest('[data-pm-action]');
+            if (!btn) return;
+            const tr  = btn.closest('[data-pm-id]');
+            if (!tr) return;
+            const id  = tr.getAttribute('data-pm-id');
+            const entry = _pmWeeklyEntries.find(x => x.id === id);
+            if (!entry) return;
+            if (btn.getAttribute('data-pm-action') === 'edit')   pmEditWeeklyEntry(entry);
+            if (btn.getAttribute('data-pm-action') === 'delete') pmDeleteWeeklyEntry(entry.id);
+        });
+    }
     if (window.lucide) lucide.createIcons();
 }
 
@@ -457,17 +493,17 @@ function _pmProcRenderTable(items) {
                     : '—';
 
         const receiptBtn = it.receiptUrl
-            ? `<button class="pm-tbl-btn pm-tbl-btn-view" onclick="pmViewReceipt('${_esc(it.receiptUrl)}','${_esc(it.item)}')"><i data-lucide="eye" style="width:12px;height:12px;"></i> View</button>`
+            ? `<button class="pm-tbl-btn pm-tbl-btn-view" data-pm-action="receipt"><i data-lucide="eye" style="width:12px;height:12px;"></i> View</button>`
             : '<span style="color:#d1d5db;font-size:12px;">—</span>';
 
         const isUnresolved = ['Pending','Assigned to Client','Assigned to Admin'].includes(it.status);
         const actionBtn = isUnresolved
-            ? `<button class="pm-tbl-btn pm-tbl-btn-buy" onclick='pmOpenCompanyBuyModal(${JSON.stringify(it)})'><i data-lucide="check" style="width:12px;height:12px;"></i> Mark Bought</button>
-               <button class="pm-tbl-btn pm-tbl-btn-edit" onclick='pmEditProcItem(${JSON.stringify(it)})'><i data-lucide="pencil" style="width:12px;height:12px;"></i></button>
-               <button class="pm-tbl-btn pm-tbl-btn-delete" onclick="pmDeleteProcItem('${_esc(it.id)}')"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>`
+            ? `<button class="pm-tbl-btn pm-tbl-btn-buy" data-pm-action="buy"><i data-lucide="check" style="width:12px;height:12px;"></i> Mark Bought</button>
+               <button class="pm-tbl-btn pm-tbl-btn-edit" data-pm-action="edit"><i data-lucide="pencil" style="width:12px;height:12px;"></i></button>
+               <button class="pm-tbl-btn pm-tbl-btn-delete" data-pm-action="delete"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>`
             : `<span style="color:#9ca3af;font-size:12px;font-style:italic;">Done</span>`;
 
-        return `<tr class="${rc}">
+        return `<tr class="${rc}" data-pm-id="${_esc(it.id)}">
             <td><strong>${_esc(it.item||'—')}</strong>${it.notes ? `<div style="font-size:11.5px;color:#6b7280;margin-top:2px;">${_esc(it.notes)}</div>`:''}</td>
             <td style="color:#6b7280;">${_esc(it.qty||'—')}</td>
             <td>${est}</td>
@@ -478,6 +514,23 @@ function _pmProcRenderTable(items) {
             <td>${actionBtn}</td>
         </tr>`;
     }).join('');
+    if (!tbody._handlerAttached) {
+        tbody._handlerAttached = true;
+        tbody.addEventListener('click', ev => {
+            const btn = ev.target.closest('[data-pm-action]');
+            if (!btn) return;
+            const tr  = btn.closest('[data-pm-id]');
+            if (!tr) return;
+            const it  = _pmProcItems.find(x => x.id === tr.getAttribute('data-pm-id'));
+            if (!it) return;
+            switch (btn.getAttribute('data-pm-action')) {
+                case 'receipt': pmViewReceipt(it.receiptUrl, it.item); break;
+                case 'buy':     pmOpenCompanyBuyModal(it); break;
+                case 'edit':    pmEditProcItem(it); break;
+                case 'delete':  pmDeleteProcItem(it.id); break;
+            }
+        });
+    }
     if (window.lucide) lucide.createIcons();
 }
 
@@ -878,7 +931,7 @@ function _pmPayRenderTable(reqs) {
             ? '<span class="pm-badge pm-badge-strict">Strict</span>'
             : '<span style="color:#9ca3af;font-size:12px;">—</span>';
 
-        return `<tr>
+        return `<tr data-pm-id="${_esc(r.id)}">
             <td><strong>${_esc(dateStr)}</strong></td>
             <td>${_fmt(r.amount)}</td>
             <td>${carry}</td>
@@ -886,13 +939,26 @@ function _pmPayRenderTable(reqs) {
             <td>${strictBadge}</td>
             <td>${badge}</td>
             <td>
-              <button class="pm-tbl-btn pm-tbl-btn-edit" onclick='pmEditPayReq(${JSON.stringify(r)})'><i data-lucide="pencil" style="width:12px;height:12px;"></i> Edit</button>
-              <button class="pm-tbl-btn ${r.strict ? 'pm-tbl-btn-delete' : 'pm-tbl-btn-strict'}" onclick="pmToggleStrict('${_esc(r.id)}',${!r.strict})">
+              <button class="pm-tbl-btn pm-tbl-btn-edit" data-pm-action="edit"><i data-lucide="pencil" style="width:12px;height:12px;"></i> Edit</button>
+              <button class="pm-tbl-btn ${r.strict ? 'pm-tbl-btn-delete' : 'pm-tbl-btn-strict'}" data-pm-action="toggle-strict">
                 <i data-lucide="${r.strict ? 'unlock' : 'lock'}" style="width:12px;height:12px;"></i> ${r.strict ? 'Unstrict' : 'Strict'}
               </button>
             </td>
         </tr>`;
     }).join('');
+    if (!tbody._handlerAttached) {
+        tbody._handlerAttached = true;
+        tbody.addEventListener('click', ev => {
+            const btn = ev.target.closest('[data-pm-action]');
+            if (!btn) return;
+            const tr  = btn.closest('[data-pm-id]');
+            if (!tr) return;
+            const r   = _pmPayRequests.find(x => x.id === tr.getAttribute('data-pm-id'));
+            if (!r) return;
+            if (btn.getAttribute('data-pm-action') === 'edit')          pmEditPayReq(r);
+            if (btn.getAttribute('data-pm-action') === 'toggle-strict') pmToggleStrict(r.id, !r.strict);
+        });
+    }
     if (window.lucide) lucide.createIcons();
 }
 

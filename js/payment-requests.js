@@ -165,8 +165,26 @@
         _showLoading(true);
 
         try {
-            // No composite index needed — use client-side sort
-            const snap = await db.collection('paymentRequests').get();
+            // Scope to this owner's data only. Without the ownerUid filter
+            // the query loads every payment request the user has permission
+            // to read — which for owner/staff roles is the WHOLE collection
+            // including other owners' clients. At 10k docs that's a 10k-doc
+            // read on every page-load. The .where filter cuts it to the
+            // owner's own requests (typically <100). Pattern matches the
+            // other queries in this file (e.g. _loadPendingSOWARequests).
+            const uid = window.currentDataUserId || firebase.auth().currentUser?.uid;
+            if (!uid) {
+                _loading = false;
+                _showLoading(false);
+                _allRequests = [];
+                _renderStats(_allRequests);
+                _renderTable(_allRequests);
+                return;
+            }
+            // No composite index needed — single .where + client-side sort.
+            const snap = await db.collection('paymentRequests')
+                .where('ownerUid', '==', uid)
+                .get();
             _allRequests = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
                 .sort((a, b) => _tsToMs(b.createdAt) - _tsToMs(a.createdAt));
 
@@ -1509,7 +1527,7 @@
                 await db.collection('notifications').doc(clientUid).collection('items').add({
                     type:      'sowa_ready',
                     message:   `Your Statement of Work Accomplished (SOWA) has been reviewed and is ready for you to view.`,
-                    read:      false,
+                    isRead:    false,
                     createdAt: firebase.firestore.Timestamp.fromDate(new Date())
                 });
             }

@@ -37,7 +37,20 @@
         _loading = true;
         _showLoading(true);
         try {
-            const snap = await db.collection('paymentRequests').get();
+            // Scope to this owner's data — see payment-requests.js _loadRequests
+            // for the same pattern + reasoning. Without this filter Payment
+            // Reports loaded every paymentRequest doc visible to the user.
+            const uid = window.currentDataUserId || firebase.auth().currentUser?.uid;
+            if (!uid) {
+                _loading = false;
+                _showLoading(false);
+                _allRequests = [];
+                requestAnimationFrame(_render);
+                return;
+            }
+            const snap = await db.collection('paymentRequests')
+                .where('ownerUid', '==', uid)
+                .get();
             _allRequests = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             _loading = false;
             _showLoading(false);

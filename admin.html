@@ -9,6 +9,7 @@
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <link rel="stylesheet" href="css/expenses-module.css">
     <link rel="stylesheet" href="css/expenses-mvp.css">
+    <link rel="stylesheet" href="css/dacs-portal.css">
     <!-- Overhead Module Styles -->
     <link rel="stylesheet" href="css/overhead-module.css">
     <!-- Construction Module Styles -->
@@ -24,7 +25,9 @@
     <link rel="stylesheet" href="css/pm-admin.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Renovation: site-wide design refresh (must load LAST so overrides win) -->
+    <link rel="stylesheet" href="css/admin-renovation.css">
 </head>
 <body>
 
@@ -83,7 +86,7 @@
                 <label for="loginPassword">Password</label>
                 <div class="password-wrapper">
                     <input type="password" id="loginPassword" required placeholder="Enter your password">
-                    <button type="button" class="toggle-password" onclick="togglePasswordVisibility()" tabindex="-1">
+                    <button type="button" class="toggle-password" aria-label="Toggle password visibility" onclick="togglePasswordVisibility()" tabindex="-1">
                         <i data-lucide="eye" id="eyeIcon"></i>
                     </button>
                 </div>
@@ -100,34 +103,13 @@
     <!-- Sidebar -->
     <aside class="sidebar">
         <div class="sidebar-header">
-            <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC's" class="sidebar-logo">
-            <h2>DAC'S</h2>
+            <div class="brand-mark">D</div>
+            <div class="brand-text-block">
+                <h2>DAC'S Portal</h2>
+                <span class="brand-sub">Building Design Services</span>
+            </div>
         </div>
         <nav class="sidebar-nav">
-            <!-- APPOINTMENTS -->
-            <div class="nav-group" id="navGroup-appointments">
-                <button class="nav-group-toggle" data-group="appointments" aria-expanded="true">
-                    <span class="nav-icon-wrap nav-group-icon-wrap"><i data-lucide="calendar" class="nav-icon"></i></span>
-                    <span class="nav-group-title">Appointments</span>
-                    <span id="appt-group-badge" style="display:none;margin-right:4px;" class="pr-nav-badge"></span>
-                    <i data-lucide="chevron-right" class="nav-group-chevron"></i>
-                </button>
-                <div class="nav-group-children">
-                    <a href="#" class="nav-item nav-child active" data-view="dashboard">
-                        <span class="nav-icon-wrap"><i data-lucide="layout-dashboard" class="nav-icon"></i></span><span>Dashboard</span>
-                    </a>
-                    <a href="#" class="nav-item nav-child" data-view="appointments">
-                        <span class="nav-icon-wrap"><i data-lucide="calendar-check" class="nav-icon"></i></span><span>Appointments</span><span id="appt-child-badge" style="display:none;" class="pr-nav-badge"></span>
-                    </a>
-                    <a href="#" class="nav-item nav-child" data-view="analytics">
-                        <span class="nav-icon-wrap"><i data-lucide="bar-chart-2" class="nav-icon"></i></span><span>Analytics</span>
-                    </a>
-                    <a href="#" class="nav-item nav-child" data-view="feedback">
-                        <span class="nav-icon-wrap"><i data-lucide="message-square" class="nav-icon"></i></span><span>Feedback</span><span id="feedback-child-badge" style="display:none;" class="pr-nav-badge"></span>
-                    </a>
-                </div>
-            </div>
-
             <!-- EXPENSES -->
             <div class="nav-group" id="navGroup-expenses">
                 <button class="nav-group-toggle" data-group="expenses" aria-expanded="false">
@@ -136,6 +118,9 @@
                     <i data-lucide="chevron-right" class="nav-group-chevron"></i>
                 </button>
                 <div class="nav-group-children">
+                    <a href="#" class="nav-item nav-child" data-view="dacsPortal">
+                        <span class="nav-icon-wrap"><i data-lucide="line-chart" class="nav-icon"></i></span><span>Project Control</span>
+                    </a>
                     <a href="#" class="nav-item nav-child" data-view="expOverview">
                         <span class="nav-icon-wrap"><i data-lucide="wallet" class="nav-icon"></i></span><span>Budget Overview</span>
                     </a>
@@ -217,6 +202,30 @@
                 </div>
             </div>
 
+            <!-- APPOINTMENTS -->
+            <div class="nav-group" id="navGroup-appointments">
+                <button class="nav-group-toggle" data-group="appointments" aria-expanded="true">
+                    <span class="nav-icon-wrap nav-group-icon-wrap"><i data-lucide="calendar" class="nav-icon"></i></span>
+                    <span class="nav-group-title">Appointments</span>
+                    <span id="appt-group-badge" style="display:none;margin-right:4px;" class="pr-nav-badge"></span>
+                    <i data-lucide="chevron-right" class="nav-group-chevron"></i>
+                </button>
+                <div class="nav-group-children">
+                    <a href="#" class="nav-item nav-child active" data-view="dashboard">
+                        <span class="nav-icon-wrap"><i data-lucide="layout-dashboard" class="nav-icon"></i></span><span>Dashboard</span>
+                    </a>
+                    <a href="#" class="nav-item nav-child" data-view="appointments">
+                        <span class="nav-icon-wrap"><i data-lucide="calendar-check" class="nav-icon"></i></span><span>Appointments</span><span id="appt-child-badge" style="display:none;" class="pr-nav-badge"></span>
+                    </a>
+                    <a href="#" class="nav-item nav-child" data-view="analytics">
+                        <span class="nav-icon-wrap"><i data-lucide="bar-chart-2" class="nav-icon"></i></span><span>Analytics</span>
+                    </a>
+                    <a href="#" class="nav-item nav-child" data-view="feedback">
+                        <span class="nav-icon-wrap"><i data-lucide="message-square" class="nav-icon"></i></span><span>Feedback</span><span id="feedback-child-badge" style="display:none;" class="pr-nav-badge"></span>
+                    </a>
+                </div>
+            </div>
+
             <!-- USERS -->
             <div class="nav-group" id="navGroup-userlogs">
                 <button class="nav-group-toggle" data-group="userlogs" aria-expanded="false">
@@ -243,25 +252,35 @@
     <div class="sidebar-backdrop" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
     <main class="main-content">
-        <header class="dashboard-header">
-            <button class="mobile-sidebar-toggle" id="mobileSidebarToggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">
-                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-            </button>
-            <h1 id="pageTitle">Dashboard</h1>
-            <div class="header-right" style="display: flex; align-items: center; gap: 1rem;">
-                <!-- Construction Notification Bell -->
-                <div class="cons-notification-bell" id="consNotificationBell">
-                    <span class="cons-notif-bell-trigger" onclick="toggleNotificationDropdown(event)">
-                        <i data-lucide="bell"></i>
-                        <div class="cons-notification-badge" id="consNotificationBadge">0</div>
-                    </span>
-                    <div class="cons-notification-dropdown" id="consNotificationDropdown">
-                        <!-- Notifications loaded dynamically -->
-                    </div>
+        <!-- ════════════ PORTAL CHROME: top nav + primary tabs + modules row ════════════ -->
+        <header class="portal-topnav">
+            <div class="portal-brand">
+                <div class="portal-brand-mark">D</div>
+                <div class="portal-brand-text">
+                    <div class="portal-brand-name">DAC's Portal</div>
+                    <div class="portal-brand-sub">Building Design Services</div>
                 </div>
-                <div class="header-user"><span id="userEmail"></span></div>
+            </div>
+            <div class="portal-topnav-spacer"></div>
+            <div class="portal-topnav-tools">
+                <button class="portal-icon-btn" aria-label="Search">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                </button>
+                <div class="cons-notification-bell" id="consNotificationBell">
+                    <button class="portal-icon-btn cons-notif-bell-trigger" aria-label="Notifications" onclick="toggleNotificationDropdown(event)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                        <span class="portal-icon-dot cons-notification-badge" id="consNotificationBadge" style="display:none;">0</span>
+                    </button>
+                    <div class="cons-notification-dropdown" id="consNotificationDropdown"></div>
+                </div>
+                <div class="portal-user-pill"><span id="userEmail"></span></div>
+                <button id="logoutBtnTop" class="portal-icon-btn" aria-label="Logout" title="Logout">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                </button>
             </div>
         </header>
+        <nav class="portal-primary-tabs" id="portalPrimaryTabs"></nav>
+        <div class="portal-modules-row" id="portalModulesRow"></div>
 
         <!-- ════════════ DASHBOARD ════════════ -->
         <div id="dashboardView" class="content-view">
@@ -421,68 +440,53 @@
             </div>
         </div>
 
+        <!-- ════════════ PROJECT CONTROL (DACS Portal — Expenses redesign) ════════════ -->
+        <div id="dacsPortalView" class="content-view" style="display: none;">
+            <div id="dacsPortalRoot" class="dacs-portal-scope"></div>
+        </div>
+
         <!-- ════════════ BUDGET OVERVIEW ════════════ -->
         <div id="expOverviewView" class="content-view" style="display: none;">
 
             <!-- ── STATE 1: FOLDER GRID ── -->
             <div id="mvpOvFolderState">
-                <div class="ov-page-header">
-                    <div class="ov-page-header__left">
-                        <h2 class="ov-page-title">Project Folders</h2>
-                        <p class="ov-page-subtitle">Manage construction and design project budgets</p>
+                <header class="bo-head">
+                    <div>
+                        <div class="bo-head-eyebrow">Budget Overview</div>
+                        <h1 class="bo-head-title">Project Folders</h1>
+                        <p class="bo-head-sub">Manage budgets, billing periods, and receivables per project</p>
                     </div>
-                    <button class="ov-btn-new" onclick="openExpModal('createFolderModal')">
-                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    <button class="bo-btn-primary" onclick="openExpModal('createFolderModal')">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                         New Project Folder
                     </button>
-                </div>
-                <div id="mvpOverviewFolderGrid" class="ov-folder-grid">
-                    <div class="ov-empty-state">
-                        <div class="ov-empty-icon">
-                            <svg viewBox="0 0 80 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M4 12C4 9.79086 5.79086 8 8 8H30L36 16H72C74.2091 16 76 17.7909 76 20V56C76 58.2091 74.2091 60 72 60H8C5.79086 60 4 58.2091 4 56V12Z" stroke="#d1d5db" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-                            </svg>
-                        </div>
-                        <h3 class="ov-empty-title">No project folders yet</h3>
-                        <p class="ov-empty-sub">Create your first project folder to start tracking expenses</p>
-                        <button class="ov-btn-new ov-btn-new--center" onclick="openExpModal('createFolderModal')">
-                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            New Project Folder
-                        </button>
-                    </div>
-                </div>
+                </header>
+                <div id="mvpOverviewFolderGrid" class="bo-fld-grid"></div>
             </div>
 
             <!-- ── STATE 2: FOLDER DETAIL ── -->
             <div id="mvpOvDetailState" style="display:none;">
-                <!-- Top nav bar -->
-                <div class="ov-detail-topbar">
-                    <button class="ov-back-btn" onclick="mvpOvNavigate('folders')">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                        Back to Projects
-                    </button>
-                    <div class="ov-detail-topbar-actions">
-                        <button class="ov-btn-print" onclick="printFullBillingSummary()">
+                <header class="bo-head">
+                    <div>
+                        <button class="bo-head-back" onclick="mvpOvNavigate('folders')">← All Folders</button>
+                        <div class="bo-head-eyebrow" style="margin-top:6px">Budget Overview</div>
+                        <h1 class="bo-head-title" id="mvpOvDetailName">Folder</h1>
+                        <p class="bo-head-sub"><span id="mvpOvDetailDesc"></span> <span id="mvpOvDetailCreated" class="bo-head-meta"></span></p>
+                    </div>
+                    <div class="bo-head-actions">
+                        <button class="bo-btn-ghost" onclick="printFullBillingSummary()">
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                             Print Summary
                         </button>
-                        <button class="ov-btn-new" onclick="openNewBillingPeriodModal()">
-                            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        <button class="bo-btn-primary" onclick="openNewBillingPeriodModal()">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             New Billing Period
                         </button>
                     </div>
-                </div>
+                </header>
 
-                <!-- Folder header info -->
-                <div class="ov-detail-header">
-                    <h2 class="ov-detail-name" id="mvpOvDetailName">Folder</h2>
-                    <p class="ov-detail-desc" id="mvpOvDetailDesc"></p>
-                    <p class="ov-detail-created" id="mvpOvDetailCreated"></p>
-                </div>
-
-                <!-- Budget Overview KPIs -->
-                <div class="ov-detail-section-hdr" id="mvpOvBudgetHdr">
-                    <span class="ov-detail-section-label">Budget Overview</span>
+                <div class="bo-section-head" id="mvpOvBudgetHdr">
+                    <h3 class="bo-section-title">Budget Overview</h3>
                     <span class="mvp-health-badge mvp-health-healthy" id="mvpOvHealthBadge">HEALTHY</span>
                 </div>
 
@@ -629,17 +633,11 @@
                     <span id="mvpOvLegRem"></span>
                 </div>
 
-                <!-- Billing Periods -->
-                <div class="ov-detail-section-hdr" style="margin-top:1.5rem">
-                    <span class="ov-detail-section-label">Billing Periods</span>
-                    <span class="ov-period-count-badge" id="mvpOvPeriodCount">0 periods</span>
+                <div class="bo-section-head" style="margin-top:32px">
+                    <h3 class="bo-section-title">Billing Periods</h3>
+                    <span class="bo-section-count" id="mvpOvPeriodCount">0 periods</span>
                 </div>
-                <div id="mvpOvPeriodGrid" class="ov-period-grid">
-                    <div class="ov-empty-state">
-                        <h3 class="ov-empty-title">No billing periods yet</h3>
-                        <p class="ov-empty-sub">Add a billing period to start tracking expenses.</p>
-                    </div>
-                </div>
+                <div id="mvpOvPeriodGrid" class="bo-period-grid"></div>
             </div>
 
             <!-- Hidden legacy DOM IDs for JS compatibility (dashboard stats hidden for now) -->
@@ -1050,7 +1048,11 @@
             <div class="ovhd-topbar">
                 <div class="ovhd-filter-bar">
                     <label for="ovhdMonthPicker">Month:</label>
+                    <!-- webhint-disable-next-line compat-api/html -->
                     <input type="month" id="ovhdMonthPicker" class="ovhd-month-picker"
+                           placeholder="YYYY-MM"
+                           pattern="\d{4}-(0[1-9]|1[0-2])"
+                           title="Year-month, e.g. 2026-05"
                            onchange="onOverheadMonthChange(this.value)">
                 </div>
                 <button class="exp-btn exp-btn-primary" onclick="openOverheadModal()">
@@ -1060,7 +1062,6 @@
 
             <!-- KPI Cards -->
             <div class="ovhd-kpi-row">
-                <div class="ovhd-kpi-card ovhd-kpi-total">
                     <div class="ovhd-kpi-top">
                         <div class="ovhd-kpi-icon-wrap">
                             <i data-lucide="wallet" class="ovhd-kpi-ico"></i>
@@ -1155,6 +1156,55 @@
             <div class="pm-cards-empty"><div class="pm-cards-empty-icon">🏗️</div>Loading projects…</div>
           </div>
         </div><!-- /pmProjectsView -->
+
+        <!-- TERMINATION REQUESTS — admin review for client-submitted terminations -->
+        <div id="terminationRequestsView" class="content-view" style="display:none;">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px;">
+            <div>
+              <div style="font-size:11.5px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;margin-bottom:6px;">Project Management</div>
+              <h1 style="font-family:'Playfair Display',serif;font-size:34px;font-weight:700;color:#111827;letter-spacing:-0.01em;margin:0 0 6px;">Termination Requests</h1>
+              <div style="font-size:13.5px;color:#6b7280;">Review and act on client-submitted project termination requests.</div>
+            </div>
+            <span id="tr-pending-badge" style="display:none;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;background:#fef3c7;color:#92400e;font-size:12.5px;font-weight:700;">0</span>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-bottom:14px;">
+            <button class="tr-filter-pill tr-filter-active" data-filter="all"      onclick="trFilter('all')"      style="padding:6px 14px;border-radius:99px;border:1.5px solid #e5e7eb;background:#fff;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">All</button>
+            <button class="tr-filter-pill"                  data-filter="pending"  onclick="trFilter('pending')"  style="padding:6px 14px;border-radius:99px;border:1.5px solid #e5e7eb;background:#fff;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">Pending</button>
+            <button class="tr-filter-pill"                  data-filter="approved" onclick="trFilter('approved')" style="padding:6px 14px;border-radius:99px;border:1.5px solid #e5e7eb;background:#fff;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">Approved</button>
+            <button class="tr-filter-pill"                  data-filter="rejected" onclick="trFilter('rejected')" style="padding:6px 14px;border-radius:99px;border:1.5px solid #e5e7eb;background:#fff;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">Rejected</button>
+          </div>
+
+          <div style="background:#fff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead style="background:#f9fafb;">
+                <tr>
+                  <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Requested</th>
+                  <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Client</th>
+                  <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Project</th>
+                  <th style="padding:12px 14px;text-align:right;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Grand Total</th>
+                  <th style="padding:12px 14px;text-align:right;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Balance Due</th>
+                  <th style="padding:12px 14px;text-align:right;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Status</th>
+                </tr>
+              </thead>
+              <tbody id="tr-tbody">
+                <tr><td colspan="6" style="padding:36px 14px;text-align:center;color:#9ca3af;font-size:13.5px;">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Detail modal -->
+          <div id="tr-detail-modal" style="display:none;position:fixed;inset:0;background:rgba(17,24,39,0.55);z-index:1000;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)trCloseDetail()">
+            <div style="background:#fff;border-radius:16px;width:100%;max-width:560px;max-height:90vh;overflow:auto;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);">
+              <div style="padding:20px 24px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;">
+                <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#111827;">Termination Request</div>
+                <button onclick="trCloseDetail()" aria-label="Close" style="background:none;border:none;font-size:22px;line-height:1;color:#6b7280;cursor:pointer;padding:4px 8px;">&times;</button>
+              </div>
+              <div id="tr-detail-body" style="padding:22px 24px;"></div>
+              <div id="tr-detail-footer" style="padding:16px 24px;border-top:1px solid #e5e7eb;display:flex;gap:10px;justify-content:flex-end;background:#fafafa;border-radius:0 0 16px 16px;"></div>
+            </div>
+          </div>
+        </div><!-- /terminationRequestsView -->
 
         <!-- PROJECT WORKSPACE — Tabs -->
         <div id="pmWorkspaceView" class="content-view" style="display:none;">
@@ -1816,7 +1866,7 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                     Print
                 </button>
-                <button onclick="prCloseSOWA()" style="width:32px;height:32px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;cursor:pointer;font-size:18px;color:#6b7280;display:flex;align-items:center;justify-content:center;">&times;</button>
+                <button onclick="prCloseSOWA()" aria-label="Close" style="width:32px;height:32px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;cursor:pointer;font-size:18px;color:#6b7280;display:flex;align-items:center;justify-content:center;">&times;</button>
             </div>
         </div>
         <div id="sowaContent" style="overflow-y:auto;padding:24px;"></div>
@@ -1831,7 +1881,7 @@
                 <h2 style="font-size:1rem;font-weight:700;color:#111827;margin:0;" id="clientReceiptsTitle">Receipts</h2>
                 <div style="font-size:12px;color:#6b7280;margin-top:2px;" id="clientReceiptsEmail"></div>
             </div>
-            <button class="exp-modal-close" onclick="closeExpModal('clientReceiptsModal')">&times;</button>
+            <button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('clientReceiptsModal')">&times;</button>
         </div>
         <div style="overflow-x:auto;">
             <table style="width:100%;border-collapse:collapse;font-size:13px;">
@@ -1875,7 +1925,7 @@
                     <h3 id="unModalName">User Profile</h3>
                     <span id="unModalRoleBadge" class="un-role-badge">—</span>
                 </div>
-                <button class="un-modal-close" onclick="unCloseProfile()"><i data-lucide="x"></i></button>
+                <button class="un-modal-close" aria-label="Close" onclick="unCloseProfile()"><i data-lucide="x"></i></button>
             </div>
             <div id="unProfileBody" class="un-modal-body"></div>
         </div>
@@ -1891,7 +1941,7 @@
                 <h3>Add Employee / Staff</h3>
                 <span class="un-role-badge un-role-staff">New Account</span>
             </div>
-            <button class="un-modal-close" onclick="unCloseAddEmployeeModal()"><i data-lucide="x"></i></button>
+            <button class="un-modal-close" aria-label="Close" onclick="unCloseAddEmployeeModal()"><i data-lucide="x"></i></button>
         </div>
         <div class="un-modal-body" style="padding:20px 24px 24px;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
@@ -1964,7 +2014,7 @@
                 <h3 id="caModalName">Client Profile</h3>
                 <span class="un-role-badge un-role-client">Client</span>
             </div>
-            <button class="un-modal-close" onclick="caCloseProfile()"><i data-lucide="x"></i></button>
+            <button class="un-modal-close" aria-label="Close" onclick="caCloseProfile()"><i data-lucide="x"></i></button>
         </div>
         <div id="caProfileBody" class="un-modal-body"></div>
     </div>
@@ -1979,7 +2029,7 @@
                 <h3>Create Construction Client</h3>
                 <span class="un-role-badge un-role-client">New Account</span>
             </div>
-            <button class="un-modal-close" onclick="caCloseCreateModal()"><i data-lucide="x"></i></button>
+            <button class="un-modal-close" aria-label="Close" onclick="caCloseCreateModal()"><i data-lucide="x"></i></button>
         </div>
         <div class="un-modal-body" style="padding:20px 24px 24px;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
@@ -2051,7 +2101,7 @@
                 <h3>Create Client Portal Account</h3>
                 <span class="un-role-badge un-role-client">New Account</span>
             </div>
-            <button class="un-modal-close" onclick="cpCloseCreateModal()"><i data-lucide="x"></i></button>
+            <button class="un-modal-close" aria-label="Close" onclick="cpCloseCreateModal()"><i data-lucide="x"></i></button>
         </div>
         <div class="un-modal-body" style="padding:20px 24px 24px;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
@@ -2125,7 +2175,7 @@
                 <h3>Edit User</h3>
                 <span id="un-edit-modal-name" style="font-size:12px;color:#6b7280;"></span>
             </div>
-            <button class="un-modal-close" onclick="unCloseEditModal()"><i data-lucide="x"></i></button>
+            <button class="un-modal-close" aria-label="Close" onclick="unCloseEditModal()"><i data-lucide="x"></i></button>
         </div>
         <div class="un-modal-body" style="padding:20px 24px 24px;">
             <div style="margin-bottom:14px;">
@@ -2196,7 +2246,7 @@
                 <h3>Edit Construction Client</h3>
                 <span id="cc-edit-modal-name" style="font-size:12px;color:#6b7280;"></span>
             </div>
-            <button class="un-modal-close" onclick="ccCloseEditModal()"><i data-lucide="x"></i></button>
+            <button class="un-modal-close" aria-label="Close" onclick="ccCloseEditModal()"><i data-lucide="x"></i></button>
         </div>
         <div class="un-modal-body" style="padding:20px 24px 24px;">
             <div style="margin-bottom:14px;">
@@ -2248,7 +2298,7 @@
         <div class="pr-modal-header">
             <div class="pr-modal-header-icon"><i data-lucide="credit-card" style="width:20px;height:20px;"></i></div>
             <h3>New Payment Request</h3>
-            <button class="pr-modal-close" onclick="prCloseCreateModal()"><i data-lucide="x"></i></button>
+            <button class="pr-modal-close" aria-label="Close" onclick="prCloseCreateModal()"><i data-lucide="x"></i></button>
         </div>
         <div class="pr-modal-body">
             <form id="prCreateForm" onsubmit="return false;">
@@ -2297,7 +2347,7 @@
         <div class="pr-modal-header">
             <div class="pr-modal-header-icon"><i data-lucide="file-text" style="width:20px;height:20px;"></i></div>
             <h3>Payment Request — Details & Actions</h3>
-            <button class="pr-modal-close" onclick="prCloseDetailModal()"><i data-lucide="x"></i></button>
+            <button class="pr-modal-close" aria-label="Close" onclick="prCloseDetailModal()"><i data-lucide="x"></i></button>
         </div>
         <div id="prDetailBody" class="pr-modal-body"></div>
         <div class="pr-modal-footer">
@@ -2309,7 +2359,7 @@
 <!-- PAYMENT REQUESTS: Receipt Viewer -->
 <div id="prReceiptViewer" class="pr-receipt-viewer" style="display:none;" onclick="if(event.target===this)prCloseReceiptViewer()">
     <div class="pr-receipt-viewer-inner">
-        <button class="pr-receipt-viewer-close" onclick="prCloseReceiptViewer()">&#x2715;</button>
+        <button class="pr-receipt-viewer-close" aria-label="Close" onclick="prCloseReceiptViewer()">&#x2715;</button>
         <img id="prReceiptViewerImg" src="" alt="Receipt">
     </div>
 </div>
@@ -2320,7 +2370,7 @@
     <div class="pr-modal-card" style="max-width:520px;">
         <div class="pr-modal-header">
             <h3 class="pr-modal-title">Payment QR Code Settings</h3>
-            <button class="pr-modal-close" onclick="prCloseQRSettings()">&#x2715;</button>
+            <button class="pr-modal-close" aria-label="Close" onclick="prCloseQRSettings()">&#x2715;</button>
         </div>
         <div class="pr-modal-body">
             <p style="font-size:13.5px;color:#6b7280;margin-bottom:20px;">These QR codes are shown to all clients when they submit payment. Upload once — updates apply to all payment requests instantly.</p>
@@ -2360,7 +2410,7 @@
     <div class="modal-content">
         <div class="modal-header">
             <h2>Appointment Details</h2>
-            <button class="modal-close" onclick="closeModal()">&times;</button>
+            <button class="modal-close" aria-label="Close" onclick="closeModal()">&times;</button>
         </div>
         <div class="modal-body" id="appointmentDetails"></div>
         <div class="modal-footer">
@@ -2375,7 +2425,7 @@
 <!-- Create Project -->
 <div id="createProjectModal" class="exp-modal">
     <div class="exp-modal-box" style="max-width:420px">
-        <div class="exp-modal-header"><h2>📅 Add Month</h2><button class="exp-modal-close" onclick="closeExpModal('createProjectModal')">&times;</button></div>
+        <div class="exp-modal-header"><h2>📅 Add Month</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('createProjectModal')">&times;</button></div>
         <form id="createProjectForm" onsubmit="handleCreateProject(event)">
             <div class="exp-form-group"><div id="createProjectFolderLabel" style="font-size:0.85rem;font-weight:700;color:#059669;margin-bottom:0.25rem;min-height:1.2rem;"></div></div>
             <!-- Payment Request selector -->
@@ -2388,7 +2438,7 @@
             <div class="exp-form-row">
                 <div class="exp-form-group">
                     <label>Month</label>
-                    <select id="projMonth" required>
+                    <select id="projMonth" aria-label="Month" required>
                         <option value="">Select month…</option>
                         <option>January</option><option>February</option><option>March</option>
                         <option>April</option><option>May</option><option>June</option>
@@ -2450,7 +2500,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             </div>
             <h2 style="font-size:1rem;font-weight:700;color:#111827;margin:0;">Confirm Delete</h2>
-            <button class="exp-modal-close" onclick="_deleteConfirmReject()">&times;</button>
+            <button class="exp-modal-close" aria-label="Close" onclick="_deleteConfirmReject()">&times;</button>
         </div>
         <div style="padding:12px 24px 0;color:#6b7280;font-size:0.875rem;line-height:1.5;" id="deleteConfirmMsg"></div>
         <div class="exp-modal-footer" style="padding-top:16px;">
@@ -2463,13 +2513,13 @@
 <!-- Edit Project -->
 <div id="editProjectModal" class="exp-modal">
     <div class="exp-modal-box">
-        <div class="exp-modal-header"><h2><i data-lucide="pencil" class="modal-icon"></i> Edit Project</h2><button class="exp-modal-close" onclick="closeExpModal('editProjectModal')">&times;</button></div>
+        <div class="exp-modal-header"><h2><i data-lucide="pencil" class="modal-icon"></i> Edit Project</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('editProjectModal')">&times;</button></div>
         <form id="editProjectForm" onsubmit="handleEditProject(event)">
             <input type="hidden" id="editProjectId">
             <div class="exp-form-row">
                 <div class="exp-form-group">
                     <label>Month</label>
-                    <select id="editProjMonth" required>
+                    <select id="editProjMonth" aria-label="Month" required>
                         <option value="">Select month…</option>
                         <option>January</option><option>February</option><option>March</option>
                         <option>April</option><option>May</option><option>June</option>
@@ -2526,7 +2576,7 @@
                     <div class="pd-title" id="pdTitle">—</div>
                     <div class="pd-budget-label">Monthly Budget: <span id="pdBudgetAmt">—</span></div>
                 </div>
-                <button class="pd-close-btn" onclick="mvpClosePeriodDetail()">&times;</button>
+                <button class="pd-close-btn" aria-label="Close" onclick="mvpClosePeriodDetail()">&times;</button>
             </div>
         </div>
         <!-- Body -->
@@ -2567,7 +2617,7 @@
 <!-- Create Folder -->
 <div id="createFolderModal" class="exp-modal">
     <div class="exp-modal-box" style="max-width:460px">
-        <div class="exp-modal-header"><h2>📁 New Project Folder</h2><button class="exp-modal-close" onclick="closeExpModal('createFolderModal')">&times;</button></div>
+        <div class="exp-modal-header"><h2>📁 New Project Folder</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('createFolderModal')">&times;</button></div>
         <form id="createFolderForm" onsubmit="handleCreateFolder(event)">
             <div class="exp-form-group"><label>Project Name</label><input type="text" id="folderName" required placeholder="e.g. Santos Residence, Office Renovation"></div>
             <div class="exp-form-group"><label>Description / Address <small style="font-weight:400;color:#888">(optional)</small></label><input type="text" id="folderDesc" placeholder="e.g. 123 Rizal St., Quezon City"></div>
@@ -2583,7 +2633,7 @@
 <!-- Edit Folder -->
 <div id="editFolderModal" class="exp-modal">
     <div class="exp-modal-box" style="max-width:460px">
-        <div class="exp-modal-header"><h2>✏️ Edit Project Folder</h2><button class="exp-modal-close" onclick="closeExpModal('editFolderModal')">&times;</button></div>
+        <div class="exp-modal-header"><h2>✏️ Edit Project Folder</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('editFolderModal')">&times;</button></div>
         <form id="editFolderForm" onsubmit="handleEditFolder(event)">
             <div class="exp-form-group"><label>Project Name</label><input type="text" id="editFolderName" required placeholder="Project name"></div>
             <div class="exp-form-group"><label>Description / Address <small style="font-weight:400;color:#888">(optional)</small></label><input type="text" id="editFolderDesc" placeholder="e.g. 123 Rizal St."></div>
@@ -2599,7 +2649,7 @@
 <!-- Add Expense -->
 <div id="addExpenseModal" class="exp-modal">
     <div class="exp-modal-box">
-        <div class="exp-modal-header"><h2><i data-lucide="receipt" class="modal-icon"></i> Add Expense</h2><button class="exp-modal-close" onclick="closeExpModal('addExpenseModal')">&times;</button></div>
+        <div class="exp-modal-header"><h2><i data-lucide="receipt" class="modal-icon"></i> Add Expense</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('addExpenseModal')">&times;</button></div>
         <form id="addExpenseForm">
             <div id="expBudgetBanner" style="display:none;"></div>
             <div id="expFundingSourceWrap" style="display:none;margin-bottom:0.75rem;">
@@ -2616,7 +2666,7 @@
                 <div class="exp-form-group"><label>Expense Name</label><input type="text" id="expName" required placeholder="e.g. Tiles, Cement"></div>
                 <div class="exp-form-group">
                     <label>Category <button type="button" onclick="toggleCatManager()" class="exp-cat-mgr-toggle">⚙ Manage</button></label>
-                    <select id="expCategory" required><option value="">Select category…</option></select>
+                    <select id="expCategory" aria-label="Category" required><option value="">Select category…</option></select>
                     <div id="catManagerPanel" style="display:none;margin-top:0.6rem;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:0.75rem;">
                         <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.6rem;">
                             <input type="text" id="catNameInput" placeholder="Category name…" style="flex:1;padding:0.4rem 0.6rem;border:1px solid #d1d5db;border-radius:7px;font-size:0.85rem;" onkeydown="if(event.key==='Enter'){event.preventDefault();addCategory();}">
@@ -2628,22 +2678,58 @@
                 </div>
             </div>
             <div class="exp-form-row">
-                <div class="exp-form-group"><label>Quantity</label><input type="number" id="expQty" value="1" min="0.01" step="any" required></div>
+                <div class="exp-form-group"><label for="expQty">Quantity</label><input type="number" id="expQty" value="1" min="0.01" step="any" required></div>
                 <div class="exp-form-group"><label>Unit Cost (₱)</label><input type="text" inputmode="decimal" id="expUnitCost" placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
             </div>
             <div class="exp-form-group"><label>Total Amount (₱) <small style="font-weight:400;color:#888">(auto-computed)</small></label><input type="text" inputmode="decimal" id="expAmount" required placeholder="0.00"></div>
             <div class="exp-form-group">
+                <label for="expPaymentMethod">Payment Method <small style="font-weight:400;color:#888">(optional)</small></label>
+                <select id="expPaymentMethod" style="width:100%;padding:0.55rem 0.75rem;border:1.5px solid #d1d5db;border-radius:8px;font-size:0.9rem;background:#fff;color:#111827;font-family:inherit;">
+                    <option value="">— Select payment method —</option>
+                    <option value="Cash">Cash</option>
+                    <option value="GCash">GCash</option>
+                    <option value="Maya">Maya</option>
+                    <option value="Lalamove">Lalamove</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="BDO">BDO</option>
+                    <option value="BPI">BPI</option>
+                    <option value="Metrobank">Metrobank</option>
+                    <option value="Cheque">Cheque</option>
+                    <option value="Credit Card">Credit Card</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <div class="exp-form-group">
                 <label>Date <small style="font-weight:400;color:#888">&amp; Time <span style="color:#aaa">(optional)</span></small></label>
                 <div style="display:flex;gap:0.5rem">
-                    <input type="date" id="expDate" required style="flex:1">
-                    <input type="time" id="expTime" style="flex:1" placeholder="(optional)">
+                    <input type="date" id="expDate" aria-label="Date" required style="flex:1">
+                    <input type="time" id="expTime" aria-label="Time (optional)" style="flex:1" placeholder="(optional)">
                 </div>
             </div>
             <div class="exp-form-group">
-                <label>Upload Receipts <small style="font-weight:400;color:#888">(JPG/PNG, optional — select multiple)</small></label>
-                <label for="expReceipt" style="display:flex;align-items:center;gap:0.5rem;padding:0.55rem 0.9rem;background:#f0fdf4;border:2px dashed #059669;border-radius:8px;cursor:pointer;font-size:0.88rem;color:#15803d;font-weight:600;">📎 Choose Images <span style="font-weight:400;color:#888;font-size:0.8rem;">(tap to add more anytime)</span></label>
-                <input type="file" id="expReceipt" accept="image/jpeg,image/png,image/jpg" multiple style="display:none;">
-                <div id="expReceiptGrid"></div>
+                <label>Supporting Documents <small style="font-weight:400;color:#888">— attach one image per type (optional)</small></label>
+                <div class="doc-uploads">
+                    <label class="doc-upload" for="expDocPO">
+                        <span class="doc-upload-icon">PO</span>
+                        <span class="doc-upload-body"><span class="doc-upload-title">Purchase Order</span><span class="doc-upload-state" id="expDocPOState">Tap to attach</span></span>
+                        <input type="file" id="expDocPO" accept="image/*" data-doc-key="po" data-state-id="expDocPOState">
+                    </label>
+                    <label class="doc-upload" for="expDocDR">
+                        <span class="doc-upload-icon">DR</span>
+                        <span class="doc-upload-body"><span class="doc-upload-title">Delivery Receipt</span><span class="doc-upload-state" id="expDocDRState">Tap to attach</span></span>
+                        <input type="file" id="expDocDR" accept="image/*" data-doc-key="dr" data-state-id="expDocDRState">
+                    </label>
+                    <label class="doc-upload" for="expDocSI">
+                        <span class="doc-upload-icon">SI</span>
+                        <span class="doc-upload-body"><span class="doc-upload-title">Supplier Invoice</span><span class="doc-upload-state" id="expDocSIState">Tap to attach</span></span>
+                        <input type="file" id="expDocSI" accept="image/*" data-doc-key="si" data-state-id="expDocSIState">
+                    </label>
+                    <label class="doc-upload" for="expDocPR">
+                        <span class="doc-upload-icon">PR</span>
+                        <span class="doc-upload-body"><span class="doc-upload-title">Payment Receipt</span><span class="doc-upload-state" id="expDocPRState">Tap to attach</span></span>
+                        <input type="file" id="expDocPR" accept="image/*" data-doc-key="pay" data-state-id="expDocPRState">
+                    </label>
+                </div>
             </div>
             <div class="exp-form-group"><label>Notes (optional)</label><textarea id="expNotes" rows="2" placeholder="Additional details…"></textarea></div>
             <div class="exp-modal-footer">
@@ -2657,7 +2743,7 @@
 <!-- Add Payroll -->
 <div id="addPayrollModal" class="exp-modal">
     <div class="exp-modal-box">
-        <div class="exp-modal-header"><h2>👷 Add Payroll Entry</h2><button class="exp-modal-close" onclick="closeExpModal('addPayrollModal')">&times;</button></div>
+        <div class="exp-modal-header"><h2>👷 Add Payroll Entry</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('addPayrollModal')">&times;</button></div>
         <form id="addPayrollForm">
             <div id="payFundingSourceWrap" style="display:none;margin-bottom:0.75rem;">
                 <label style="font-size:0.85rem;font-weight:600;color:#374151;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem;">
@@ -2672,12 +2758,20 @@
                 <div class="exp-form-group"><label>Worker Name</label><input type="text" id="payWorkerName" required placeholder="Full name"></div>
                 <div class="exp-form-group"><label>Role / Position</label><input type="text" id="payRole" placeholder="e.g. Mason, Carpenter"></div>
             </div>
+            <div class="exp-form-group">
+                <label>Labor Category</label>
+                <div class="lt-radio-group">
+                    <label class="lt-radio"><input type="radio" name="payLaborType" value="direct" checked> <span class="lt-tag lt-tag-direct">Direct</span></label>
+                    <label class="lt-radio"><input type="radio" name="payLaborType" value="indirect"> <span class="lt-tag lt-tag-indirect">Indirect</span></label>
+                    <label class="lt-radio"><input type="radio" name="payLaborType" value="liability"> <span class="lt-tag lt-tag-liability">Liability</span></label>
+                </div>
+            </div>
             <div class="exp-form-row">
                 <div class="exp-form-group"><label>Days Worked</label><input type="number" id="payDays" required min="0.5" step="0.5" placeholder="0"></div>
                 <div class="exp-form-group"><label>Daily Rate (₱)</label><input type="text" inputmode="decimal" id="payDailyRate" required placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
             </div>
             <div class="exp-form-group"><label>Total Salary (₱) <small style="font-weight:400;color:#888">(auto-computed)</small></label><input type="text" inputmode="decimal" id="payTotal" readonly placeholder="0.00"></div>
-            <div class="exp-form-group"><label>Payment Date</label><input type="datetime-local" id="payDate" required></div>
+            <div class="exp-form-group"><label for="payDate">Payment Date</label><input type="datetime-local" id="payDate" required></div>
             <div class="exp-form-group">
                 <label>Upload Receipts <small style="font-weight:400;color:#888">(JPG/PNG, optional)</small></label>
                 <label for="payReceipt" style="display:flex;align-items:center;gap:0.5rem;padding:0.55rem 0.9rem;background:#f0fdf4;border:2px dashed #059669;border-radius:8px;cursor:pointer;font-size:0.88rem;color:#15803d;font-weight:600;">📎 Choose Images <span style="font-weight:400;color:#888;font-size:0.8rem;">(tap to add more)</span></label>
@@ -2701,7 +2795,7 @@
                 <i data-lucide="folder-open" class="pm-header-lucide"></i>
                 <div><h2 id="pmTitle">Project</h2><span class="pm-budget-label">Monthly Budget: <strong id="pmBudget">₱0.00</strong></span></div>
             </div>
-            <button class="exp-modal-close" onclick="closeProjectModal()">&times;</button>
+            <button class="exp-modal-close" aria-label="Close" onclick="closeProjectModal()">&times;</button>
         </div>
         <div class="pm-body">
             <div class="pm-stat-row">
@@ -2735,33 +2829,69 @@
 <!-- Edit Expense Modal -->
 <div id="editExpenseModal" class="exp-modal">
     <div class="exp-modal-box">
-        <div class="exp-modal-header"><h2><i data-lucide="pencil" class="modal-icon"></i> Edit Expense</h2><button class="exp-modal-close" onclick="closeExpModal('editExpenseModal')">&times;</button></div>
+        <div class="exp-modal-header"><h2><i data-lucide="pencil" class="modal-icon"></i> Edit Expense</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('editExpenseModal')">&times;</button></div>
         <form id="editExpenseForm">
             <div class="exp-form-group">
                 <label>Funding Source (Billing Period)</label>
-                <select id="editExpFundingSource" style="width:100%;padding:0.55rem 0.75rem;border:1.5px solid #d1d5db;border-radius:8px;font-size:0.9rem;background:#fff;color:#111827;"></select>
+                <select id="editExpFundingSource" aria-label="Funding source" style="width:100%;padding:0.55rem 0.75rem;border:1.5px solid #d1d5db;border-radius:8px;font-size:0.9rem;background:#fff;color:#111827;"></select>
             </div>
             <div class="exp-form-row">
                 <div class="exp-form-group"><label>Expense Name</label><input type="text" id="editExpName" required placeholder="e.g. Tiles, Cement"></div>
-                <div class="exp-form-group"><label>Category</label><select id="editExpCategory" required><option value="">Select category…</option></select></div>
+                <div class="exp-form-group"><label for="editExpCategory">Category</label><select id="editExpCategory" required><option value="">Select category…</option></select></div>
             </div>
             <div class="exp-form-row">
-                <div class="exp-form-group"><label>Quantity</label><input type="number" id="editExpQty" min="0.01" step="any" required></div>
+                <div class="exp-form-group"><label for="editExpQty">Quantity</label><input type="number" id="editExpQty" min="0.01" step="any" required></div>
                 <div class="exp-form-group"><label>Unit Cost (₱)</label><input type="text" inputmode="decimal" id="editExpUnitCost" placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
             </div>
-            <div class="exp-form-group"><label>Total Amount (₱) <small style="font-weight:400;color:#888">(auto-computed)</small></label><input type="text" inputmode="decimal" id="editExpAmount" required></div>
+            <div class="exp-form-group"><label for="editExpAmount">Total Amount (₱) <small style="font-weight:400;color:#888">(auto-computed)</small></label><input type="text" inputmode="decimal" id="editExpAmount" required></div>
+            <div class="exp-form-group">
+                <label for="editExpPaymentMethod">Payment Method <small style="font-weight:400;color:#888">(optional)</small></label>
+                <select id="editExpPaymentMethod" style="width:100%;padding:0.55rem 0.75rem;border:1.5px solid #d1d5db;border-radius:8px;font-size:0.9rem;background:#fff;color:#111827;font-family:inherit;">
+                    <option value="">— Select payment method —</option>
+                    <option value="Cash">Cash</option>
+                    <option value="GCash">GCash</option>
+                    <option value="Maya">Maya</option>
+                    <option value="Lalamove">Lalamove</option>
+                    <option value="Bank Transfer">Bank Transfer</option>
+                    <option value="BDO">BDO</option>
+                    <option value="BPI">BPI</option>
+                    <option value="Metrobank">Metrobank</option>
+                    <option value="Cheque">Cheque</option>
+                    <option value="Credit Card">Credit Card</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
             <div class="exp-form-group">
                 <label>Date <small style="font-weight:400;color:#888">&amp; Time <span style="color:#aaa">(optional)</span></small></label>
                 <div style="display:flex;gap:0.5rem">
-                    <input type="date" id="editExpDate" required style="flex:1">
-                    <input type="time" id="editExpTime" style="flex:1" placeholder="(optional)">
+                    <input type="date" id="editExpDate" aria-label="Date" required style="flex:1">
+                    <input type="time" id="editExpTime" aria-label="Time (optional)" style="flex:1" placeholder="(optional)">
                 </div>
             </div>
             <div class="exp-form-group">
-                <label>Receipts <small style="font-weight:400;color:#888">— remove or add images</small></label>
-                <div id="editExpReceiptGrid" class="exp-receipt-grid" style="display:none;margin-bottom:0.5rem;"></div>
-                <label for="editExpReceiptInput" style="display:flex;align-items:center;gap:0.5rem;padding:0.55rem 0.9rem;background:#f0fdf4;border:2px dashed #059669;border-radius:8px;cursor:pointer;font-size:0.88rem;color:#15803d;font-weight:600;">📎 Add More Images</label>
-                <input type="file" id="editExpReceiptInput" accept="image/jpeg,image/png,image/jpg" multiple style="display:none;">
+                <label>Supporting Documents <small style="font-weight:400;color:#888">— attach or replace one image per type</small></label>
+                <div class="doc-uploads">
+                    <label class="doc-upload" for="editExpDocPO">
+                        <span class="doc-upload-icon">PO</span>
+                        <span class="doc-upload-body"><span class="doc-upload-title">Purchase Order</span><span class="doc-upload-state" id="editExpDocPOState">Tap to attach</span></span>
+                        <input type="file" id="editExpDocPO" accept="image/*" data-doc-key="po" data-state-id="editExpDocPOState">
+                    </label>
+                    <label class="doc-upload" for="editExpDocDR">
+                        <span class="doc-upload-icon">DR</span>
+                        <span class="doc-upload-body"><span class="doc-upload-title">Delivery Receipt</span><span class="doc-upload-state" id="editExpDocDRState">Tap to attach</span></span>
+                        <input type="file" id="editExpDocDR" accept="image/*" data-doc-key="dr" data-state-id="editExpDocDRState">
+                    </label>
+                    <label class="doc-upload" for="editExpDocSI">
+                        <span class="doc-upload-icon">SI</span>
+                        <span class="doc-upload-body"><span class="doc-upload-title">Supplier Invoice</span><span class="doc-upload-state" id="editExpDocSIState">Tap to attach</span></span>
+                        <input type="file" id="editExpDocSI" accept="image/*" data-doc-key="si" data-state-id="editExpDocSIState">
+                    </label>
+                    <label class="doc-upload" for="editExpDocPR">
+                        <span class="doc-upload-icon">PR</span>
+                        <span class="doc-upload-body"><span class="doc-upload-title">Payment Receipt</span><span class="doc-upload-state" id="editExpDocPRState">Tap to attach</span></span>
+                        <input type="file" id="editExpDocPR" accept="image/*" data-doc-key="pay" data-state-id="editExpDocPRState">
+                    </label>
+                </div>
             </div>
             <div class="exp-form-group"><label>Notes (optional)</label><textarea id="editExpNotes" rows="2" placeholder="Additional details…"></textarea></div>
             <div class="exp-modal-footer">
@@ -2775,18 +2905,26 @@
 <!-- Edit Payroll Modal -->
 <div id="editPayrollModal" class="exp-modal">
     <div class="exp-modal-box">
-        <div class="exp-modal-header"><h2><i data-lucide="pencil" class="modal-icon"></i> Edit Payroll Entry</h2><button class="exp-modal-close" onclick="closeExpModal('editPayrollModal')">&times;</button></div>
+        <div class="exp-modal-header"><h2><i data-lucide="pencil" class="modal-icon"></i> Edit Payroll Entry</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('editPayrollModal')">&times;</button></div>
         <form id="editPayrollForm">
             <div class="exp-form-row">
                 <div class="exp-form-group"><label>Worker Name</label><input type="text" id="editPayWorkerName" required placeholder="Full name"></div>
                 <div class="exp-form-group"><label>Role / Position</label><input type="text" id="editPayRole" placeholder="e.g. Mason, Carpenter"></div>
+            </div>
+            <div class="exp-form-group">
+                <label>Labor Category</label>
+                <div class="lt-radio-group">
+                    <label class="lt-radio"><input type="radio" name="editPayLaborType" value="direct" checked> <span class="lt-tag lt-tag-direct">Direct</span></label>
+                    <label class="lt-radio"><input type="radio" name="editPayLaborType" value="indirect"> <span class="lt-tag lt-tag-indirect">Indirect</span></label>
+                    <label class="lt-radio"><input type="radio" name="editPayLaborType" value="liability"> <span class="lt-tag lt-tag-liability">Liability</span></label>
+                </div>
             </div>
             <div class="exp-form-row">
                 <div class="exp-form-group"><label>Days Worked</label><input type="number" id="editPayDays" required min="0.5" step="0.5" placeholder="0"></div>
                 <div class="exp-form-group"><label>Daily Rate (₱)</label><input type="text" inputmode="decimal" id="editPayDailyRate" required placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
             </div>
             <div class="exp-form-group"><label>Total Salary (₱) <small style="font-weight:400;color:#888">(auto-computed)</small></label><input type="text" inputmode="decimal" id="editPayTotal" readonly placeholder="0.00"></div>
-            <div class="exp-form-group"><label>Payment Date</label><input type="datetime-local" id="editPayDate" required></div>
+            <div class="exp-form-group"><label for="editPayDate">Payment Date</label><input type="datetime-local" id="editPayDate" required></div>
             <div class="exp-form-group">
                 <label>Receipts <small style="font-weight:400;color:#888">— remove or add images</small></label>
                 <div id="editPayReceiptGrid" class="exp-receipt-grid" style="display:none;margin-bottom:0.5rem;"></div>
@@ -2805,12 +2943,12 @@
 <!-- Move To Folder Modal -->
 <div id="moveToFolderModal" class="exp-modal">
     <div class="exp-modal-box" style="max-width:400px">
-        <div class="exp-modal-header"><h2>📂 Move to Folder</h2><button class="exp-modal-close" onclick="closeExpModal('moveToFolderModal')">&times;</button></div>
+        <div class="exp-modal-header"><h2>📂 Move to Folder</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('moveToFolderModal')">&times;</button></div>
         <form id="moveToFolderForm" onsubmit="handleMoveToFolder(event)">
             <div class="exp-form-group"><label>Moving: <strong id="moveProjectLabel"></strong></label></div>
             <div class="exp-form-group">
                 <label>Select Project Folder</label>
-                <select id="moveFolderSelect" required style="width:100%;padding:0.6rem 0.75rem;border:1.5px solid #e5e7eb;border-radius:8px;font-size:0.9rem;"><option value="">— Select folder —</option></select>
+                <select id="moveFolderSelect" aria-label="Move to folder" required style="width:100%;padding:0.6rem 0.75rem;border:1.5px solid #e5e7eb;border-radius:8px;font-size:0.9rem;"><option value="">— Select folder —</option></select>
             </div>
             <div class="exp-modal-footer">
                 <button type="button" class="exp-btn exp-btn-secondary" onclick="closeExpModal('moveToFolderModal')">Cancel</button>
@@ -2827,7 +2965,7 @@
     <div class="cons-modal-content">
         <div class="cons-modal-header">
             <h3>Request Details</h3>
-            <button class="cons-modal-close" onclick="closeConsModal('consRequestDetailModal')"><i data-lucide="x"></i></button>
+            <button class="cons-modal-close" aria-label="Close" onclick="closeConsModal('consRequestDetailModal')"><i data-lucide="x"></i></button>
         </div>
         <div class="cons-modal-body" id="consRequestDetailContent"></div>
     </div>
@@ -2838,7 +2976,7 @@
     <div class="cons-modal-content" style="max-width: 800px;">
         <div class="cons-modal-header">
             <h3 id="consImageModalTitle">Image</h3>
-            <button class="cons-modal-close" onclick="closeConsModal('consImageModal')"><i data-lucide="x"></i></button>
+            <button class="cons-modal-close" aria-label="Close" onclick="closeConsModal('consImageModal')"><i data-lucide="x"></i></button>
         </div>
         <div class="cons-modal-body">
             <img id="consModalImage" src="" alt="Item" style="width: 100%; border-radius: 8px;">
@@ -2851,16 +2989,16 @@
     <div class="cons-modal-content">
         <div class="cons-modal-header">
             <h3>Create New Batch</h3>
-            <button class="cons-modal-close" onclick="closeConsModal('consCreateBatchModal')"><i data-lucide="x"></i></button>
+            <button class="cons-modal-close" aria-label="Close" onclick="closeConsModal('consCreateBatchModal')"><i data-lucide="x"></i></button>
         </div>
         <div class="cons-modal-body">
             <div style="margin-bottom:1rem;">
                 <label style="display:block;font-weight:600;margin-bottom:0.4rem;font-size:0.9rem;">Delivery Date <span style="color:#EF4444">*</span></label>
-                <input type="date" id="batchDeliveryDate" style="width:100%;padding:0.625rem;border:1px solid #E5E7EB;border-radius:8px;font-size:0.9375rem;">
+                <input type="date" id="batchDeliveryDate" aria-label="Delivery date" style="width:100%;padding:0.625rem;border:1px solid #E5E7EB;border-radius:8px;font-size:0.9375rem;">
             </div>
             <div>
                 <label style="display:block;font-weight:600;margin-bottom:0.4rem;font-size:0.9rem;">Cutoff Date (optional)</label>
-                <input type="date" id="batchCutoffDate" style="width:100%;padding:0.625rem;border:1px solid #E5E7EB;border-radius:8px;font-size:0.9375rem;">
+                <input type="date" id="batchCutoffDate" aria-label="Cutoff date" style="width:100%;padding:0.625rem;border:1px solid #E5E7EB;border-radius:8px;font-size:0.9375rem;">
             </div>
         </div>
         <div class="cons-modal-footer" style="padding:1rem 1.5rem;border-top:1px solid #E5E7EB;display:flex;gap:0.75rem;justify-content:flex-end;">
@@ -2875,7 +3013,7 @@
     <div class="cons-modal-content">
         <div class="cons-modal-header">
             <h3>Close Current Batch</h3>
-            <button class="cons-modal-close" onclick="closeConsModal('consCloseBatchModal')"><i data-lucide="x"></i></button>
+            <button class="cons-modal-close" aria-label="Close" onclick="closeConsModal('consCloseBatchModal')"><i data-lucide="x"></i></button>
         </div>
         <div class="cons-modal-body">
             <p style="color:#6B7280;margin:0;">Are you sure you want to close this batch? No new requests can be added after closing.</p>
@@ -2892,7 +3030,7 @@
     <div class="cons-modal-content">
         <div class="cons-modal-header">
             <h3>Add Inventory Item</h3>
-            <button class="cons-modal-close" onclick="closeConsModal('consAddInventoryModal')"><i data-lucide="x"></i></button>
+            <button class="cons-modal-close" aria-label="Close" onclick="closeConsModal('consAddInventoryModal')"><i data-lucide="x"></i></button>
         </div>
         <div class="cons-modal-body">
             <div class="cons-form-group">
@@ -2906,7 +3044,7 @@
                 </div>
                 <div class="cons-form-group" style="margin-bottom:0;">
                     <label>Unit *</label>
-                    <select id="invUnit" class="cons-input">
+                    <select id="invUnit" class="cons-input" aria-label="Unit">
                         <option value="">Select unit</option>
                         <option value="pcs">pcs</option>
                         <option value="bags">bags</option>
@@ -2942,7 +3080,7 @@
     <div class="cons-modal-content">
         <div class="cons-modal-header">
             <h3>Adjust Stock</h3>
-            <button class="cons-modal-close" onclick="closeConsModal('consAdjustStockModal')"><i data-lucide="x"></i></button>
+            <button class="cons-modal-close" aria-label="Close" onclick="closeConsModal('consAdjustStockModal')"><i data-lucide="x"></i></button>
         </div>
         <div class="cons-modal-body">
             <div id="adjItemInfo" class="cons-adj-item-info"></div>
@@ -2974,7 +3112,7 @@
     <div class="cons-modal-content" style="max-width:680px;">
         <div class="cons-modal-header">
             <h3>Batch Details</h3>
-            <button class="cons-modal-close" onclick="closeConsModal('consBatchDetailsModal')"><i data-lucide="x"></i></button>
+            <button class="cons-modal-close" aria-label="Close" onclick="closeConsModal('consBatchDetailsModal')"><i data-lucide="x"></i></button>
         </div>
         <div class="cons-modal-body" id="batchDetailsContent" style="max-height:60vh;overflow-y:auto;">
         </div>
@@ -2993,7 +3131,7 @@
     <div class="ovhd-modal-box exp-modal-box" style="max-width:560px;">
         <div class="ovhd-modal-header exp-modal-header">
             <h2 id="ovhdCatDetailTitle" style="padding-left:10px;"></h2>
-            <button class="ovhd-modal-close exp-modal-close" onclick="closeCategoryDetail()">&#x2715;</button>
+            <button class="ovhd-modal-close exp-modal-close" aria-label="Close" onclick="closeCategoryDetail()">&#x2715;</button>
         </div>
         <div style="padding:1.2rem 1.5rem 0;">
             <!-- All-time summary strip -->
@@ -3023,7 +3161,7 @@
     <div class="ovhd-modal-box exp-modal-box">
         <div class="ovhd-modal-header exp-modal-header">
             <h2>Add Overhead Expense</h2>
-            <button class="ovhd-modal-close exp-modal-close" onclick="closeOverheadModal()">&#x2715;</button>
+            <button class="ovhd-modal-close exp-modal-close" aria-label="Close" onclick="closeOverheadModal()">&#x2715;</button>
         </div>
         <form id="overheadExpenseForm" onsubmit="handleAddOverheadExpense(event)">
             <div class="ovhd-modal-body">
@@ -3088,6 +3226,16 @@
 <script src="js/payment-reports.js"></script>
 <script src="js/invoice-module.js"></script>
 <script src="js/pm-admin.js"></script>
+<script src="js/termination-requests.js"></script>
+
+<!-- ════════════ DACS PORTAL (Project Control) — React via CDN ════════════
+     React + ReactDOM are loaded from CDN; the Project Control React app
+     itself is in src/portal-app.jsx, precompiled to js/portal-app.compiled.js
+     by `npm run build` (esbuild). Babel-standalone is no longer needed —
+     this fixes the live-server / inline-Babel parsing quirks. -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="js/portal-app.compiled.js" defer></script>
 
 <!-- ════════════ PROJECT MANAGEMENT MODALS ════════════ -->
 
@@ -3096,7 +3244,7 @@
   <div class="pm-modal-box">
     <div class="pm-modal-header">
       <h3 id="pmProjectModalTitle">Add Construction Project</h3>
-      <button class="pm-modal-close" onclick="pmCloseModal('pmProjectModal')"><i data-lucide="x"></i></button>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmProjectModal')"><i data-lucide="x"></i></button>
     </div>
     <div class="pm-modal-body">
       <input type="hidden" id="pmProjectId">
@@ -3149,7 +3297,7 @@
   <div class="pm-modal-box">
     <div class="pm-modal-header">
       <h3 id="pmWeeklyModalTitle">New Weekly Entry</h3>
-      <button class="pm-modal-close" onclick="pmCloseModal('pmWeeklyModal')"><i data-lucide="x"></i></button>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmWeeklyModal')"><i data-lucide="x"></i></button>
     </div>
     <div class="pm-modal-body">
       <input type="hidden" id="pmWeeklyEntryId">
@@ -3196,7 +3344,7 @@
   <div class="pm-modal-box">
     <div class="pm-modal-header">
       <h3 id="pmAddItemTitle">Add Procurement Item</h3>
-      <button class="pm-modal-close" onclick="pmCloseModal('pmAddItemModal')"><i data-lucide="x"></i></button>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmAddItemModal')"><i data-lucide="x"></i></button>
     </div>
     <div class="pm-modal-body">
       <input type="hidden" id="pmAddItemId">
@@ -3235,7 +3383,7 @@
   <div class="pm-modal-box">
     <div class="pm-modal-header">
       <h3>Mark as Bought by Company</h3>
-      <button class="pm-modal-close" onclick="pmCloseModal('pmCompanyBuyModal')"><i data-lucide="x"></i></button>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmCompanyBuyModal')"><i data-lucide="x"></i></button>
     </div>
     <div class="pm-modal-body">
       <input type="hidden" id="pmCompanyBuyItemId">
@@ -3284,7 +3432,7 @@
   <div class="pm-modal-box pm-modal-sm">
     <div class="pm-modal-header">
       <h3>Set Initial Fund</h3>
-      <button class="pm-modal-close" onclick="pmCloseModal('pmSetFundModal')"><i data-lucide="x"></i></button>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmSetFundModal')"><i data-lucide="x"></i></button>
     </div>
     <div class="pm-modal-body">
       <div class="pm-form-group">
@@ -3311,7 +3459,7 @@
   <div class="pm-modal-box pm-modal-sm">
     <div class="pm-modal-header">
       <h3>Record Expense</h3>
-      <button class="pm-modal-close" onclick="pmCloseModal('pmExpenseModal')"><i data-lucide="x"></i></button>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmExpenseModal')"><i data-lucide="x"></i></button>
     </div>
     <div class="pm-modal-body">
       <div class="pm-form-row pm-two-col">
@@ -3350,7 +3498,7 @@
   <div class="pm-modal-box pm-modal-sm">
     <div class="pm-modal-header">
       <h3>Record Replenishment</h3>
-      <button class="pm-modal-close" onclick="pmCloseModal('pmReplenishModal')"><i data-lucide="x"></i></button>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmReplenishModal')"><i data-lucide="x"></i></button>
     </div>
     <div class="pm-modal-body">
       <div class="pm-form-row pm-two-col">
@@ -3384,7 +3532,7 @@
   <div class="pm-modal-box">
     <div class="pm-modal-header">
       <h3>Send Payment Request</h3>
-      <button class="pm-modal-close" onclick="pmCloseModal('pmPaymentRequestModal')"><i data-lucide="x"></i></button>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmPaymentRequestModal')"><i data-lucide="x"></i></button>
     </div>
     <div class="pm-modal-body">
       <input type="hidden" id="pmPayReqId">
@@ -3431,7 +3579,7 @@
   <div class="pm-modal-box">
     <div class="pm-modal-header">
       <h3 id="pmReceiptViewTitle">Receipt</h3>
-      <button class="pm-modal-close" onclick="pmCloseModal('pmReceiptViewModal')"><i data-lucide="x"></i></button>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmReceiptViewModal')"><i data-lucide="x"></i></button>
     </div>
     <div class="pm-modal-body" style="text-align:center;">
       <div id="pmReceiptViewContent"></div>
@@ -3479,6 +3627,14 @@
     };
 
     window.switchView = function(view) {
+        // Tear down any view-scoped listeners registered by the OUTGOING view
+        // before switching. Modules use window.registerViewCleanup(fn) to opt
+        // in (boq-module, construction-module, termination-requests). This is
+        // what prevents zombie Firestore listeners from accumulating across a
+        // long session. Note: this lives in admin.html (not admin.js) because
+        // this switchView OVERRIDES the one defined in admin.js.
+        if (typeof window.runViewCleanups === 'function') window.runViewCleanups();
+
         // Role guard
         if (typeof currentUserRole !== 'undefined' && currentUserRole !== null) {
             if (currentUserRole === 'staff') {
@@ -3494,7 +3650,10 @@
             item.classList.remove('active');
             if (item.dataset.view === view) item.classList.add('active');
         });
-        document.getElementById('pageTitle').textContent = TITLES[view] || view;
+        const _pt = document.getElementById('pageTitle');
+        if (_pt) _pt.textContent = TITLES[view] || view;
+        // Refresh the top-nav secondary modules row (Project Control / Budget Overview / Expenses / Reports / Overhead)
+        if (typeof syncPortalChrome === 'function') syncPortalChrome(view);
         document.querySelectorAll('.content-view').forEach(v => v.style.display = 'none');
         const el = document.getElementById(view + 'View');
         if (el) el.style.display = 'block';
@@ -3520,6 +3679,19 @@
         if (view === 'expReports'   && typeof initReportsDashboard  === 'function') initReportsDashboard();
         if (view === 'expOverhead'  && typeof initOverheadModule     === 'function') initOverheadModule();
         if (CONS_VIEWS.includes(view) && typeof initConstructionModule === 'function') initConstructionModule(view);
+        // Cross-module project context: if a folder is open in Project Control,
+        // auto-open the same folder's BOQ instead of dropping the user on the
+        // grid. We call boqSelectFolder BEFORE initBOQModule so that:
+        //   (a) boq.currentFolderId is set synchronously, which makes the
+        //       guarded folders/docs snapshots in loadBoqFolders skip the
+        //       grid render — no more visible flicker.
+        //   (b) boqSelectFolder's built-in Firestore fallback fetches the
+        //       BOQ doc directly when boq.allDocs is empty, so this works
+        //       even though initBOQModule hasn't run yet.
+        if (view === 'boqBuilder' && window._activeProjectFolderId
+            && typeof window.boqSelectFolder === 'function') {
+            window.boqSelectFolder(window._activeProjectFolderId);
+        }
         if (BOQ_VIEWS.includes(view)  && typeof initBOQModule          === 'function') initBOQModule();
         if (view === 'userNavigator'  && typeof initUserNavigator      === 'function') initUserNavigator();
         if (view === 'clientAccounts' && typeof initClientAccounts     === 'function') initClientAccounts();
@@ -3554,7 +3726,7 @@
                     </div>
                 </div>
             </div>
-            <button class="exp-modal-close" onclick="closeExpModal('workerSummaryModal')">&times;</button>
+            <button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('workerSummaryModal')">&times;</button>
         </div>
         <div class="wrs-total-bar">
             <span class="wrs-total-label">Total Paid</span>
@@ -3582,9 +3754,9 @@
             <button class="lb-close" onclick="closeLightbox()">✕</button>
         </div>
         <div class="lb-img-wrap" id="lbImgWrap">
-            <button id="lbPrev" class="lb-nav lb-nav-prev" onclick="lbPrev()">&#8249;</button>
-            <img id="lbMainImg" src="" alt="Receipt" class="lb-main-img">
-            <button id="lbNext" class="lb-nav lb-nav-next" onclick="lbNext()">&#8250;</button>
+            <button id="lbPrev" class="lb-nav lb-nav-prev" aria-label="Previous image" onclick="lbPrev()">&#8249;</button>
+            <img id="lbMainImg" src="" alt="Receipt" class="lb-main-img" draggable="false">
+            <button id="lbNext" class="lb-nav lb-nav-next" aria-label="Next image" onclick="lbNext()">&#8250;</button>
         </div>
         <div id="lbThumbs" class="lb-thumbs"></div>
     </div>

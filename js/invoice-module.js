@@ -899,6 +899,23 @@
             }
             if (status === 'issued') {
                 _doPrint({ id: _editId, ...data });
+                // Notify the client IF the invoice carries a clientUid.
+                // The manual `_collectForm` doesn't capture clientUid, so this
+                // only fires when re-issuing an existing invoice that was
+                // originally generated from a payment request (which has it).
+                // For purely manual invoices the client isn't in the portal
+                // anyway — the printed copy is the delivery medium.
+                const cached = _invoices.find(i => i.id === _editId);
+                const clientUid = (cached && cached.clientUid) || data.clientUid || '';
+                if (clientUid) {
+                    db.collection('notifications').doc(clientUid).collection('items').add({
+                        type:      'invoice_issued',
+                        message:   `Invoice ${data.invoiceNo} (₱${(Number(data.totalAmount) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) has been issued.`,
+                        isRead:    false,
+                        relatedId: _editId,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }).catch(e => console.warn('invoice notify error:', e));
+                }
             }
             _renderList();
         } catch (e) {
@@ -957,9 +974,95 @@
             // Keep local cache in sync
             _invoices.unshift({ id: ref.id, ...data });
 
+            // Notify the client that an invoice is available. Auto-generated
+            // invoices follow a verified payment request, so we already have
+            // the client's uid — direct write to their notification inbox.
+            // The client also receives a `payment_verified` notification from
+            // payment-requests.js; the two are intentionally distinct events.
+            if (req.clientUid) {
+                db.collection('notifications').doc(req.clientUid).collection('items').add({
+                    type:      'invoice_issued',
+                    message:   `Invoice ${data.invoiceNo} for ${desc || 'your payment'} (₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) is now available.`,
+                    isRead:    false,
+                    relatedId: ref.id,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                }).catch(e => console.warn('invoice notify error:', e));
+            }
+
             return ref.id;
         } catch (e) {
             console.error('InvoiceModule: auto-generate error', e);
+            return null;
+        }
+    };
+
+    // ══════════════════════════════════════════════════════
+    // AUTO-GENERATE INVOICE FROM APPROVED TERMINATION REQUEST
+    // ══════════════════════════════════════════════════════
+    // Called from termination-requests.js when an admin approves a
+    // termination. Mirrors invGenerateFromPaymentRequest but the line item
+    // describes the unpaid balance owed at project termination. Carries
+    // `terminationRequestId` for audit trail.
+
+    window.invGenerateFromTermination = async function (req) {
+        try {
+            if (!_ownerUid) await _resolveOwnerUid();
+            if (!_defaults || !Object.keys(_defaults).length) await _loadDefaults();
+
+            const invoiceNo = await _generateInvoiceNo();
+            const amount    = Number(req.remainingBalance) || 0;
+            if (amount <= 0) return null;
+            const pd        = _defaults.paymentDetails || {};
+            const desc      = `Final balance — Project terminated: ${req.projectName || 'Untitled'}`;
+
+            const data = {
+                userId:          _ownerUid,
+                invoiceNo,
+                date:            _todayStr(),
+                businessName:    _defaults.businessName    || '',
+                businessTin:     _defaults.businessTin     || '',
+                businessAddress: _defaults.businessAddress || '',
+                clientName:      req.clientName || req.clientEmail || '',
+                clientTin:       '',
+                clientAddress:   '',
+                items: [{ description: desc, qty: 1, unitPrice: amount, discount: 0, amount }],
+                subtotal:        amount,
+                totalAmount:     amount,
+                paymentDetails:  { ...pd },
+                notes:           'Final invoice issued upon termination of construction project. Please settle the remaining balance.',
+                status:          'issued',
+                terminationRequestId: req.id || '',
+                clientEmail:     req.clientEmail || '',
+                clientUid:       req.clientUid   || ''
+            };
+
+            const now = firebase.firestore.FieldValue.serverTimestamp();
+            const ref = await db.collection('invoices').add({
+                ...data,
+                createdAt: now,
+                updatedAt: now,
+                createdBy: firebase.auth().currentUser?.uid || ''
+            });
+
+            _invoices.unshift({ id: ref.id, ...data });
+
+            // Notify the client. They're already getting a termination_approved
+            // notification from termination-requests.js; this is the matching
+            // "and here's what you owe" message. Two distinct events, two
+            // notifications, both navigate to different sections.
+            if (req.clientUid) {
+                db.collection('notifications').doc(req.clientUid).collection('items').add({
+                    type:      'invoice_issued',
+                    message:   `Final invoice ${data.invoiceNo} (₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) has been issued for the terminated project "${req.projectName || ''}".`,
+                    isRead:    false,
+                    relatedId: ref.id,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                }).catch(e => console.warn('termination invoice notify error:', e));
+            }
+
+            return ref.id;
+        } catch (e) {
+            console.error('InvoiceModule: termination auto-generate error', e);
             return null;
         }
     };

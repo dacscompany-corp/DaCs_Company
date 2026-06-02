@@ -76,7 +76,29 @@ function initExpensesModule() {
     setupEditExpenseFormListeners();
     setupEditPayrollFormListeners();
     loadCategories();
+    setupDocUploadListeners();
+}
 
+// Wire all .doc-upload inputs (Add + Edit expense modals) so the state label
+// reflects the selected filename. Also adds the `attached` class for styling.
+function setupDocUploadListeners() {
+    document.querySelectorAll('.doc-upload input[type="file"][data-state-id]').forEach(input => {
+        if (input.dataset.docWired === '1') return;
+        input.dataset.docWired = '1';
+        input.addEventListener('change', () => {
+            const stateEl = document.getElementById(input.dataset.stateId);
+            const file = input.files?.[0];
+            if (!stateEl) return;
+            if (file) {
+                const niceName = file.name.length > 24 ? file.name.slice(0, 21) + '…' : file.name;
+                stateEl.textContent = '✓ ' + niceName;
+                input.parentElement?.classList.add('attached');
+            } else {
+                stateEl.textContent = 'Tap to attach';
+                input.parentElement?.classList.remove('attached');
+            }
+        });
+    });
 }
 
 // ════════════════════════════════════════════════════════════
@@ -2059,64 +2081,9 @@ function setupExpenseFormListeners() {
     qty?.addEventListener('input', recalc);
     cost?.addEventListener('input', recalc);
     form.addEventListener('submit', handleAddExpense);
-
-    const receiptInput = document.getElementById('expReceipt');
-    receiptInput?.addEventListener('change', (ev) => {
-        const files = Array.from(ev.target.files);
-        files.forEach(file => {
-            if (file.size > 5 * 1024 * 1024) {
-                showExpNotif(`"${file.name}" is over 5 MB and was skipped.`, 'error');
-                return;
-            }
-            addReceiptPreviewItem(file);
-        });
-        ev.target.value = '';
-    });
 }
 
-let _stagedReceipts = [];
 let _stagedPayReceipts = [];
-
-function addReceiptPreviewItem(file) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        const dataURL = e.target.result;
-        const index = _stagedReceipts.length;
-        _stagedReceipts.push({ file, dataURL });
-
-        const grid = document.getElementById('expReceiptGrid');
-        if (!grid) return;
-        grid.style.display = 'grid';
-
-        const item = document.createElement('div');
-        item.className = 'exp-receipt-thumb';
-        item.dataset.index = index;
-        item.innerHTML = `
-            <img src="${dataURL}" alt="Receipt ${index + 1}">
-            <button type="button" class="exp-receipt-remove" onclick="removeReceiptPreview(${index})">✕</button>
-            <span class="exp-receipt-num">${index + 1}</span>`;
-        grid.appendChild(item);
-    };
-    reader.readAsDataURL(file);
-}
-
-function removeReceiptPreview(index) {
-    _stagedReceipts[index] = null;
-    const grid = document.getElementById('expReceiptGrid');
-    if (!grid) return;
-    const item = grid.querySelector(`[data-index="${index}"]`);
-    if (item) item.remove();
-    const remaining = _stagedReceipts.filter(r => r !== null);
-    if (!remaining.length) grid.style.display = 'none';
-}
-
-function clearReceiptPreview() {
-    _stagedReceipts = [];
-    const grid = document.getElementById('expReceiptGrid');
-    if (grid) { grid.innerHTML = ''; grid.style.display = 'none'; }
-    const input = document.getElementById('expReceipt');
-    if (input) input.value = '';
-}
 
 function compressImageToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -2165,6 +2132,16 @@ async function handleAddExpense(e) {
     const qty        = parseFloat(document.getElementById('expQty').value) || 1;
     const dateTime   = _buildDateTime('expDate', 'expTime');
     const notes      = document.getElementById('expNotes').value.trim();
+    const paymentMethod = (document.getElementById('expPaymentMethod')?.value || '').trim();
+    // Supporting docs (PO/DR/SI/PR) — compress only those the user selected
+    const _docMap = { po: 'expDocPO', dr: 'expDocDR', si: 'expDocSI', pay: 'expDocPR' };
+    const docUrls = {};
+    for (const [key, inputId] of Object.entries(_docMap)) {
+        const file = document.getElementById(inputId)?.files?.[0];
+        if (file) {
+            try { docUrls[key] = await compressImageToBase64(file); } catch (_) {}
+        }
+    }
 
     // Priority split: lowest remaining first; true overflow → Cover Expenses record
     const sortedSources = [...checkedSources].sort((a, b) => a.remain - b.remain);
@@ -2185,9 +2162,6 @@ async function handleAddExpense(e) {
 
     try {
         showExpLoading('addExpenseBtn', true);
-        const validReceipts = _stagedReceipts.filter(r => r !== null);
-        const receiptImages = [];
-        for (const item of validReceipts) receiptImages.push(await compressImageToBase64(item.file));
 
         const batch = db.batch();
         splits.forEach((sp, idx) => {
@@ -2201,8 +2175,13 @@ async function handleAddExpense(e) {
                 amount:        sp.amount,
                 dateTime,
                 notes,
-                receiptURL:    receiptImages[0] || '',
-                receiptImages: idx === 0 ? receiptImages : [],
+                ...(paymentMethod ? { paymentMethod } : {}),
+                // Supporting documents (PO/DR/SI/PR) attached only to the first split record.
+                // Payment Receipt (PR) is the single proof-of-payment field — multi-image receipts removed.
+                ...(idx === 0 && docUrls.po  ? { poImageUrl:         docUrls.po  } : {}),
+                ...(idx === 0 && docUrls.dr  ? { deliveryReceiptUrl: docUrls.dr  } : {}),
+                ...(idx === 0 && docUrls.si  ? { supplierInvoiceUrl: docUrls.si  } : {}),
+                ...(idx === 0 && docUrls.pay ? { paymentReceiptUrl:  docUrls.pay } : {}),
                 createdAt:     firebase.firestore.FieldValue.serverTimestamp(),
                 ...(sp.coverExpense && { coverExpense: true }),
                 ...(splits.length > 1 && { splitGroup: dateTime + '_' + expName, splitIndex: idx + 1, splitTotal: splits.length })
@@ -2212,13 +2191,12 @@ async function handleAddExpense(e) {
 
         const msg = splits.length > 1
             ? `Split into ${splits.length} records across funding sources ✓`
-            : (receiptImages.length > 0 ? `Expense + ${receiptImages.length} receipt(s) saved! ✓` : 'Expense added! ✓');
+            : 'Expense added! ✓';
         showExpNotif(msg, 'success');
         refreshOvAllData();
 
         document.getElementById('addExpenseForm').reset();
         document.getElementById('expSplitPreview').style.display = 'none';
-        clearReceiptPreview();
         closeExpModal('addExpenseModal');
     } catch (err) {
         showExpNotif('Error saving expense: ' + err.message, 'error');
@@ -2398,6 +2376,7 @@ async function handleAddPayroll(e) {
     const role        = document.getElementById('payRole').value.trim();
     const paymentDate = document.getElementById('payDate').value;
     const notes       = document.getElementById('payNotes').value.trim();
+    const laborType   = (document.querySelector('input[name="payLaborType"]:checked') || {}).value || 'direct';
 
     // Priority split: lowest remaining first; overflow → Cover Expenses
     const sortedSources = [...checkedSources].sort((a, b) => a.remain - b.remain);
@@ -2426,7 +2405,7 @@ async function handleAddPayroll(e) {
             const ref = db.collection('payroll').doc();
             batch.set(ref, {
                 projectId: sp.projectId, userId: _uid(),
-                workerName, role,
+                workerName, role, laborType,
                 daysWorked: splits.length > 1 ? 0 : d, dailyRate: r,
                 totalSalary: sp.amount,
                 paymentDate, notes,
@@ -2873,6 +2852,9 @@ function getReceiptThumbsHTML(e) {
 }
 
 const _receiptStore = {};
+// Expose on window so the React portal (admin.html) can stage images for the
+// shared lightbox — `const` does not auto-attach to window like a function decl does.
+window._receiptStore = _receiptStore;
 
 // ── Worker Receipt Summary Modal ──────────────────────────────
 function openWorkerSummaryModal(workerName) {
@@ -3350,14 +3332,20 @@ function viewReceipt(expenseId) {
 // ════════════════════════════════════════════════════════════
 // EDIT EXPENSE
 // ════════════════════════════════════════════════════════════
-let _editingExpenseId   = null;
-let _editStagedReceipts = [];
-let _editKeptImages     = [];
+let _editingExpenseId = null;
 
-function openEditExpenseModal(id) {
-    const e = expExpenses.find(x => x.id === id);
-    if (!e) return;
-    _editingExpenseId = id; _editStagedReceipts = []; _editKeptImages = [];
+async function openEditExpenseModal(id) {
+    // Try the in-memory cache first; if missing (e.g. user came from Project Control
+    // without ever opening the standalone Expenses module), fetch from Firestore.
+    let e = expExpenses.find(x => x.id === id);
+    if (!e) {
+        try {
+            const snap = await db.collection('expenses').doc(id).get();
+            if (snap.exists) e = { id: snap.id, ...snap.data() };
+        } catch (err) { console.error('openEditExpenseModal fetch:', err); }
+    }
+    if (!e) { showExpNotif('Expense not found.', 'error'); return; }
+    _editingExpenseId = id;
 
     // Populate funding source dropdown (with remaining budget like Add Expense)
     const fsSel = document.getElementById('editExpFundingSource');
@@ -3388,45 +3376,35 @@ function openEditExpenseModal(id) {
     document.getElementById('editExpUnitCost').value = fmtBudgetVal(_unitCost);
     document.getElementById('editExpAmount').value   = fmtBudgetVal(e.amount || 0);
     document.getElementById('editExpNotes').value    = e.notes  || '';
+    const _editPmEl = document.getElementById('editExpPaymentMethod');
+    if (_editPmEl) _editPmEl.value = e.paymentMethod || '';
     const sel = document.getElementById('editExpCategory');
     sel.innerHTML = '<option value="">Select category…</option>' +
         expCategories.map(c =>
             `<option value="${c.name}" ${c.name === e.category ? 'selected' : ''}>${c.name}</option>`
         ).join('');
-    const imgs = e.receiptImages?.length ? e.receiptImages : (e.receiptURL ? [e.receiptURL] : []);
-    _editKeptImages = [...imgs];
-    _renderEditExpGrid();
+    // Pre-populate Supporting Documents state labels (PO / DR / SI / PR)
+    const _editDocFields = {
+        editExpDocPOState: e.poImageUrl,
+        editExpDocDRState: e.deliveryReceiptUrl,
+        editExpDocSIState: e.supplierInvoiceUrl,
+        editExpDocPRState: e.paymentReceiptUrl,
+    };
+    Object.entries(_editDocFields).forEach(([stateId, url]) => {
+        const stateEl = document.getElementById(stateId);
+        if (stateEl) {
+            stateEl.textContent = url ? '✓ Attached — tap to replace' : 'Tap to attach';
+            stateEl.parentElement?.parentElement?.classList?.toggle('attached', !!url);
+        }
+    });
+    // Clear any previously-selected file inputs so old picks don't sneak in
+    ['editExpDocPO','editExpDocDR','editExpDocSI','editExpDocPR'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+
     openExpModal('editExpenseModal');
 }
-
-function _renderEditExpGrid() {
-    const grid = document.getElementById('editExpReceiptGrid');
-    if (!grid) return;
-    grid.innerHTML = '';
-    let count = 0;
-    _editKeptImages.forEach((src, i) => {
-        count++;
-        const d = document.createElement('div');
-        d.className = 'exp-receipt-thumb';
-        d.innerHTML = `<img src="${src}" alt="Receipt ${count}">
-            <button type="button" class="exp-receipt-remove" onclick="_removeEditExpKept(${i})">✕</button>
-            <span class="exp-receipt-num">${count}</span>`;
-        grid.appendChild(d);
-    });
-    _editStagedReceipts.forEach((item, i) => {
-        if (!item) return; count++;
-        const d = document.createElement('div');
-        d.className = 'exp-receipt-thumb exp-receipt-thumb-new';
-        d.innerHTML = `<img src="${item.dataURL}" alt="New ${count}">
-            <button type="button" class="exp-receipt-remove" onclick="_removeEditExpStaged(${i})">✕</button>
-            <span class="exp-receipt-num">${count}</span>
-            <span class="exp-receipt-new-badge">NEW</span>`;
-        grid.appendChild(d);
-    });
-    grid.style.display = count > 0 ? 'grid' : 'none';
-}
-function _removeEditExpKept(i)   { _editKeptImages.splice(i, 1);  _renderEditExpGrid(); }
-function _removeEditExpStaged(i) { _editStagedReceipts[i] = null; _renderEditExpGrid(); }
 
 function setupEditExpenseFormListeners() {
     const form = document.getElementById('editExpenseForm');
@@ -3439,14 +3417,6 @@ function setupEditExpenseFormListeners() {
     };
     qty?.addEventListener('input', recalc);
     cost?.addEventListener('input', recalc);
-    document.getElementById('editExpReceiptInput')?.addEventListener('change', ev => {
-        Array.from(ev.target.files).forEach(file => {
-            const reader = new FileReader();
-            reader.onload = e => { _editStagedReceipts.push({ file, dataURL: e.target.result }); _renderEditExpGrid(); };
-            reader.readAsDataURL(file);
-        });
-        ev.target.value = '';
-    });
     form.addEventListener('submit', handleEditExpense);
 }
 
@@ -3455,10 +3425,6 @@ async function handleEditExpense(ev) {
     if (!_editingExpenseId) return;
     try {
         showExpLoading('editExpenseBtn', true);
-        const newImgs = [];
-        for (const item of _editStagedReceipts.filter(x => x !== null))
-            newImgs.push(await compressImageToBase64(item.file));
-        const finalImages = [..._editKeptImages, ...newImgs];
         const editFsSel = document.getElementById('editExpFundingSource');
         const newProjectId = editFsSel && editFsSel.value ? editFsSel.value : null;
         const updateData = {
@@ -3468,15 +3434,29 @@ async function handleEditExpense(ev) {
             amount:        parseFloat((document.getElementById('editExpAmount').value || '').replace(/,/g, '')) || 0,
             dateTime:      _buildDateTime('editExpDate', 'editExpTime'),
             notes:         document.getElementById('editExpNotes').value.trim(),
-            receiptURL:    finalImages[0] || '',
-            receiptImages: finalImages,
+            paymentMethod: (document.getElementById('editExpPaymentMethod')?.value || '').trim(),
         };
         if (newProjectId) updateData.projectId = newProjectId;
+
+        // Supporting docs: only overwrite the fields the user re-attached
+        const _editDocMap = {
+            poImageUrl:         'editExpDocPO',
+            deliveryReceiptUrl: 'editExpDocDR',
+            supplierInvoiceUrl: 'editExpDocSI',
+            paymentReceiptUrl:  'editExpDocPR',
+        };
+        for (const [field, inputId] of Object.entries(_editDocMap)) {
+            const file = document.getElementById(inputId)?.files?.[0];
+            if (file) {
+                try { updateData[field] = await compressImageToBase64(file); } catch (_) {}
+            }
+        }
+
         await db.collection('expenses').doc(_editingExpenseId).update(updateData);
         showExpNotif('Expense updated! ✓', 'success');
         refreshOvAllData();
         closeExpModal('editExpenseModal');
-        _editingExpenseId = null; _editStagedReceipts = []; _editKeptImages = [];
+        _editingExpenseId = null;
     } catch (err) { showExpNotif('Error: ' + err.message, 'error'); console.error(err); }
     finally { showExpLoading('editExpenseBtn', false); }
 }
@@ -3488,12 +3468,21 @@ let _editingPayrollId = null;
 let _editPayStaged    = [];
 let _editPayKept      = [];
 
-function openEditPayrollModal(id) {
-    const p = expPayroll.find(x => x.id === id);
-    if (!p) return;
+async function openEditPayrollModal(id) {
+    let p = expPayroll.find(x => x.id === id);
+    if (!p) {
+        try {
+            const snap = await db.collection('payroll').doc(id).get();
+            if (snap.exists) p = { id: snap.id, ...snap.data() };
+        } catch (err) { console.error('openEditPayrollModal fetch:', err); }
+    }
+    if (!p) { showExpNotif('Payroll entry not found.', 'error'); return; }
     _editingPayrollId = id; _editPayStaged = []; _editPayKept = [];
     document.getElementById('editPayWorkerName').value = p.workerName  || '';
     document.getElementById('editPayRole').value       = p.role        || '';
+    const _laborType = p.laborType || 'direct';
+    const _radio = document.querySelector('input[name="editPayLaborType"][value="' + _laborType + '"]');
+    if (_radio) _radio.checked = true;
     document.getElementById('editPayDays').value       = p.daysWorked  || '';
     document.getElementById('editPayDailyRate').value  = p.dailyRate   || '';
     document.getElementById('editPayTotal').value      = p.totalSalary || '';
@@ -3569,9 +3558,11 @@ async function handleEditPayroll(ev) {
         for (const item of _editPayStaged.filter(x => x !== null))
             newImgs.push(await compressImageToBase64(item.file));
         const finalImages = [..._editPayKept, ...newImgs];
+        const laborType = (document.querySelector('input[name="editPayLaborType"]:checked') || {}).value || 'direct';
         await db.collection('payroll').doc(_editingPayrollId).update({
             workerName:    document.getElementById('editPayWorkerName').value.trim(),
             role:          document.getElementById('editPayRole').value.trim(),
+            laborType,
             daysWorked:    d, dailyRate: r, totalSalary: d * r,
             paymentDate:   document.getElementById('editPayDate').value,
             notes:         document.getElementById('editPayNotes').value.trim(),
@@ -6150,37 +6141,18 @@ function mvpRenderOverviewFolderGrid() {
 
     if (expFolders.length === 0) {
         grid.innerHTML =
-            '<div class="ov-empty-state">'
-            + '<div class="ov-empty-icon">'
-            +   '<svg viewBox="0 0 80 64" fill="none" xmlns="http://www.w3.org/2000/svg">'
-            +     '<path d="M4 12C4 9.79086 5.79086 8 8 8H30L36 16H72C74.2091 16 76 17.7909 76 20V56C76 58.2091 74.2091 60 72 60H8C5.79086 60 4 58.2091 4 56V12Z" stroke="#d1d5db" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'
-            +   '</svg>'
-            + '</div>'
-            + '<h3 class="ov-empty-title">No project folders yet</h3>'
-            + '<p class="ov-empty-sub">Create your first project folder to start tracking expenses</p>'
-            + '<button class="ov-btn-new ov-btn-new--center" onclick="openExpModal(\'createFolderModal\')">'
-            +   '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
-            +   ' New Project Folder'
-            + '</button>'
+            '<div class="bo-empty">'
+            + '<div class="bo-empty-icon">📁</div>'
+            + '<h3 class="bo-empty-title">No project folders yet</h3>'
+            + '<p class="bo-empty-sub">Create your first project folder to start tracking budgets, billing periods, and receivables.</p>'
+            + '<button class="bo-btn-primary" onclick="openExpModal(\'createFolderModal\')">+ New Project Folder</button>'
             + '</div>';
         return;
     }
 
-    const progressColor = function(remPct) {
-        if (remPct <= 0) return '#ef4444';
-        if (remPct < 10) return '#f97316';
-        if (remPct < 20) return '#f59e0b';
-        return '#10b981';
-    };
-
-    // Format with 2 decimal places for the folder card
     const fmtD = function(n) {
-        const abs = Math.abs(n);
-        const str = abs.toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
-        return '&#8369;' + str;
+        return '₱ ' + (n || 0).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
     };
-
-    // Format a Firestore timestamp or date string to "MMM DD, YYYY"
     const fmtDate = function(ts) {
         if (!ts) return null;
         var d;
@@ -6191,7 +6163,6 @@ function mvpRenderOverviewFolderGrid() {
         return d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
     };
 
-    // Use the global all-expenses cache when available for accurate live totals
     var _useOvCache = _ovAllExpenses.length > 0 || _ovAllPayroll.length > 0;
 
     grid.innerHTML = expFolders.map(function(folder) {
@@ -6210,55 +6181,50 @@ function mvpRenderOverviewFolderGrid() {
         const spentPct      = budgetReceived > 0 ? Math.min((totalCost / budgetReceived) * 100, 100) : 0;
         const hClass        = _mvpHealthClass(remPct);
         const hLabel        = _mvpHealthLabel(remPct);
-        const barClr        = progressColor(remPct);
         const fid           = folder.id;
-        const desc          = folder.description || 'No description';
+        const desc          = folder.description || '';
         const createdStr    = fmtDate(folder.createdAt);
         const footerMeta    = fProjs.length + ' billing period' + (fProjs.length !== 1 ? 's' : '')
-                            + (createdStr ? ' &bull; Created ' + createdStr : '');
-        const varClass      = variance >= 0 ? 'ov-folder-card__stat-value--positive' : 'ov-folder-card__stat-value--negative';
+                            + (createdStr ? ' · Created ' + createdStr : '');
+        const varClass      = variance >= 0 ? 'bo-fld-stat-accent' : 'bo-fld-stat-warn';
         const _cPresPIds    = fProjs.filter(function(p) { return p.fundingType === 'president'; }).map(function(p) { return p.id; });
         const coverCost     = _useOvCache
             ? _ovAllExpenses.filter(function(x) { return fProjs.some(function(p){ return p.id === x.projectId; }) && (x.coverExpense || _cPresPIds.indexOf(x.projectId) !== -1); }).reduce(function(s,x){ return s+(parseFloat(x.amount)||0); }, 0)
               + _ovAllPayroll.filter(function(x) { return _cPresPIds.indexOf(x.projectId) !== -1; }).reduce(function(s,x){ return s+(parseFloat(x.totalSalary)||0); }, 0)
             : 0;
+        var barClr = remPct <= 0 ? '#c0392b' : (remPct < 10 ? '#c0392b' : (remPct < 20 ? '#A86B00' : '#1A5C3A'));
+        var isStaff = window.currentUserRole === 'staff';
 
-        return '<div class="ov-folder-card">'
-            // Title row
-            + '<div class="ov-folder-card__title-row">'
-            +   '<div class="ov-folder-card__name">' + _mvpEsc(folder.name || 'Unnamed') + '</div>'
-            +   '<div style="display:flex;gap:0.35rem;align-items:center;">'
-            +     '<button class="ov-folder-card__edit-icon" onclick="openEditFolderModal(\'' + fid + '\')" title="Edit folder">'
-            +       '<svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
+        return '<div class="bo-fld-card">'
+            + '<div class="bo-fld-card-head">'
+            +   '<div class="bo-fld-card-title">'
+            +     '<div class="bo-fld-card-name">' + _mvpEsc(folder.name || 'Unnamed') + '</div>'
+            +     (desc ? '<div class="bo-fld-card-desc">' + _mvpEsc(desc) + '</div>' : '')
+            +   '</div>'
+            +   '<div class="bo-fld-card-actions">'
+            +     '<button class="bo-icon-btn" onclick="event.stopPropagation();openEditFolderModal(\'' + fid + '\')" title="Edit folder">'
+            +       '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
             +     '</button>'
-            +     '<button class="ov-folder-card__del-icon" onclick="confirmDeleteFolder(\'' + fid + '\')" title="Delete folder">'
-            +       '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>'
+            +     '<button class="bo-icon-btn bo-icon-btn-danger" onclick="event.stopPropagation();confirmDeleteFolder(\'' + fid + '\')" title="Delete folder">'
+            +       '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>'
             +     '</button>'
             +   '</div>'
             + '</div>'
-            // Description
-            + '<div class="ov-folder-card__desc">' + _mvpEsc(desc) + '</div>'
-            // Stat list
-            + '<div class="ov-folder-card__stat-list">'
-            + (window.currentUserRole !== 'staff' ? '<div class="ov-folder-card__stat-row"><span class="ov-folder-card__stat-label">Total Contract</span><span class="ov-folder-card__stat-value">' + fmtD(contract) + '</span></div>' : '')
-            + (window.currentUserRole !== 'staff' ? '<div class="ov-folder-card__stat-row"><span class="ov-folder-card__stat-label">Total Fund Allocated</span><span class="ov-folder-card__stat-value">' + fmtD(budgetReceived) + '</span></div>' : '')
-            + (window.currentUserRole === 'staff' ? '<div class="ov-folder-card__stat-row"><span class="ov-folder-card__stat-label">Cover Expenses</span><span class="ov-folder-card__stat-value">' + fmtD(coverCost) + '</span></div>' : '')
-            +   '<div class="ov-folder-card__stat-row"><span class="ov-folder-card__stat-label">Current Fund Spent</span><span class="ov-folder-card__stat-value ov-folder-card__stat-value--positive">' + fmtD(totalCost) + '</span></div>'
-            + (window.currentUserRole !== 'staff' ? '<div class="ov-folder-card__stat-row"><span class="ov-folder-card__stat-label">Total Fund Allocated Remaining</span><span class="ov-folder-card__stat-value ' + varClass + '">' + fmtD(variance) + '</span></div>' : '')
+            + '<div class="bo-fld-card-stats">'
+            + (!isStaff ? '<div class="bo-fld-stat"><span class="lbl">Total Contract</span><span class="val">' + fmtD(contract) + '</span></div>' : '')
+            + (!isStaff ? '<div class="bo-fld-stat"><span class="lbl">Total Fund Allocated</span><span class="val">' + fmtD(budgetReceived) + '</span></div>' : '')
+            + (isStaff ? '<div class="bo-fld-stat"><span class="lbl">Cover Expenses</span><span class="val">' + fmtD(coverCost) + '</span></div>' : '')
+            +   '<div class="bo-fld-stat"><span class="lbl">Current Fund Spent</span><span class="val bo-fld-stat-accent">' + fmtD(totalCost) + '</span></div>'
+            + (!isStaff ? '<div class="bo-fld-stat"><span class="lbl">Remaining</span><span class="val ' + varClass + '">' + fmtD(variance) + '</span></div>' : '')
             + '</div>'
-            // Health + percentage
-            + '<div class="ov-folder-card__health-row">'
+            + '<div class="bo-fld-card-health">'
             +   '<span class="mvp-health-badge ' + hClass + '">' + hLabel + '</span>'
-            +   '<span class="ov-folder-card__pct">' + spentPct.toFixed(1) + '%</span>'
+            +   '<span class="bo-fld-card-pct">' + spentPct.toFixed(1) + '% used</span>'
             + '</div>'
-            // Progress bar
-            + '<div class="ov-folder-card__progress"><div class="ov-folder-card__progress-fill" style="width:' + spentPct.toFixed(1) + '%;background:' + barClr + '"></div></div>'
-            // Footer meta
-            + '<div class="ov-folder-card__footer-meta">' + footerMeta + '</div>'
-            // View Details button
-            + '<button class="ov-folder-card__view-btn" onclick="mvpOvNavigate(\'detail\',\'' + fid + '\')">'
-            +   'View Details'
-            +   '<svg viewBox="0 0 24 24"><path d="M5 12h14"/><polyline points="12 5 19 12 12 19"/></svg>'
+            + '<div class="bo-fld-card-progress"><div class="bo-fld-card-progress-fill" style="width:' + spentPct.toFixed(1) + '%;background:' + barClr + '"></div></div>'
+            + '<div class="bo-fld-card-meta">' + footerMeta + '</div>'
+            + '<button class="bo-fld-card-cta" onclick="mvpOvNavigate(\'detail\',\'' + fid + '\')">'
+            +   'Open Project <span style="margin-left:6px">→</span>'
             + '</button>'
             + '</div>';
     }).join('');
@@ -6498,15 +6464,15 @@ function mvpRenderOvBillingPeriods(folderId) {
     setText('mvpOvPeriodCount', fProjs.length + ' period' + (fProjs.length !== 1 ? 's' : ''));
 
     if (!fProjs.length) {
-        grid.innerHTML = '<div class="ov-empty-state">'
-            + '<h3 class="ov-empty-title">No billing periods yet</h3>'
-            + '<p class="ov-empty-sub">Add a billing period to start tracking expenses.</p>'
+        grid.innerHTML = '<div class="bo-empty bo-empty-compact">'
+            + '<h3 class="bo-empty-title">No billing periods yet</h3>'
+            + '<p class="bo-empty-sub">Add a billing period to start tracking expenses.</p>'
             + '</div>';
         return;
     }
 
     function fmtD(n) {
-        return '₱' + (n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return '₱ ' + (n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
 
     grid.innerHTML = fProjs.map(function(proj) {
@@ -6522,7 +6488,6 @@ function mvpRenderOvBillingPeriods(folderId) {
         var remain     = budget - totalCost;
         var spentPct   = budget > 0 ? Math.min((totalCost / budget) * 100, 100) : (totalCost > 0 ? 100 : 0);
         var remPct     = 100 - spentPct;
-        // For zero-budget periods: derive badge from whether there are any entries
         var hClass, hLabel;
         if (noBudget) {
             if (totalCost > 0) { hClass = 'mvp-health-warning'; hLabel = 'NO BUDGET'; }
@@ -6531,47 +6496,47 @@ function mvpRenderOvBillingPeriods(folderId) {
             hClass = _mvpHealthClass(remPct);
             hLabel = _mvpHealthLabel(remPct);
         }
-        var barClr   = noBudget ? (totalCost > 0 ? '#f59e0b' : '#d1d5db')
-                                : (remPct < 0 ? '#ef4444' : remPct === 0 ? '#f97316' : remPct < 10 ? '#f97316' : remPct < 20 ? '#f59e0b' : '#10b981');
-        var remClass = remain >= 0 ? 'ov-period-card__stat-value--positive' : 'ov-period-card__stat-value--negative';
+        var barClr = noBudget ? (totalCost > 0 ? '#A86B00' : '#E8E2D9')
+                              : (remPct < 0 ? '#c0392b' : remPct < 20 ? '#A86B00' : '#1A5C3A');
+        var remClass = remain >= 0 ? 'bo-fld-stat-accent' : 'bo-fld-stat-warn';
         var expCount   = expExpenses.filter(function(e) { return e.projectId === pid; }).length;
         var payCount   = expPayroll.filter(function(p)  { return p.projectId === pid; }).length;
-        var entriesTxt = expCount + ' expense' + (expCount !== 1 ? 's' : '') + ' + ' + payCount + ' payroll entr' + (payCount !== 1 ? 'ies' : 'y');
-        // Funding source label
+        var entriesTxt = expCount + ' expense' + (expCount !== 1 ? 's' : '') + ' · ' + payCount + ' payroll entr' + (payCount !== 1 ? 'ies' : 'y');
         var fundingLabels = { mobilization:'Mobilization', downpayment:'Downpayment',
             progress:'Progress Billing', final:'Final Payment', president:'Cover Expenses' };
         var fundingLabel = fundingLabels[proj.fundingType] || 'Billing Period';
-        // Stat rows — hide Remaining row when no budget set
-        var statRows = '<div class="ov-period-card__stat-row"><span class="ov-period-card__stat-label">Period Budget</span><span class="ov-period-card__stat-value">' + (noBudget ? '<em style="color:#9ca3af;font-style:normal;font-size:0.78rem">Not set</em>' : fmtD(budget)) + '</span></div>'
-            + '<div class="ov-period-card__stat-row"><span class="ov-period-card__stat-label">Materials</span><span class="ov-period-card__stat-value">' + fmtD(matCost) + '</span></div>'
-            + '<div class="ov-period-card__stat-row"><span class="ov-period-card__stat-label">Labor</span><span class="ov-period-card__stat-value">' + fmtD(labCost) + '</span></div>'
-            + '<div class="ov-period-card__stat-row"><span class="ov-period-card__stat-label">Current Fund Spent</span><span class="ov-period-card__stat-value" style="font-weight:700">' + fmtD(totalCost) + '</span></div>'
-            + (!noBudget ? '<div class="ov-period-card__stat-row"><span class="ov-period-card__stat-label">Remaining</span><span class="ov-period-card__stat-value ' + remClass + '">' + fmtD(remain) + '</span></div>' : '');
         var pctTxt = noBudget ? (totalCost > 0 ? fmtD(totalCost) + ' spent' : 'No entries') : spentPct.toFixed(1) + '% used';
 
-        return '<div class="ov-period-card">'
-            + '<div class="ov-period-card__title-row">'
-            +   '<div class="ov-period-card__name">' + _mvpEsc(pName.trim()) + '</div>'
-            +   '<div style="display:flex;gap:0.3rem;align-items:center;">'
-            +     '<button class="ov-folder-card__edit-icon" onclick="openEditProjectModal(\'' + pid + '\')" title="Edit period">'
-            +       '<svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
+        return '<div class="bo-period-card">'
+            + '<div class="bo-period-card-head">'
+            +   '<div class="bo-period-card-title">'
+            +     '<div class="bo-period-card-name">' + _mvpEsc(pName.trim()) + '</div>'
+            +     '<div class="bo-period-card-funding">' + fundingLabel + '</div>'
+            +   '</div>'
+            +   '<div class="bo-fld-card-actions">'
+            +     '<button class="bo-icon-btn" onclick="openEditProjectModal(\'' + pid + '\')" title="Edit period">'
+            +       '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
             +     '</button>'
-            +     '<button class="ov-period-card__del-btn" onclick="confirmDeleteProject(\'' + pid + '\')" title="Delete period">'
-            +       '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>'
+            +     '<button class="bo-icon-btn bo-icon-btn-danger" onclick="confirmDeleteProject(\'' + pid + '\')" title="Delete period">'
+            +       '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>'
             +     '</button>'
             +   '</div>'
             + '</div>'
-            + '<div class="ov-period-card__subtitle">' + fundingLabel + '</div>'
-            + '<div class="ov-period-card__stat-list">' + statRows + '</div>'
-            + '<div class="ov-period-card__health-row">'
-            +   '<span class="mvp-health-badge ' + hClass + '">' + hLabel + '</span>'
-            +   '<span class="ov-period-card__pct">' + pctTxt + '</span>'
+            + '<div class="bo-fld-card-stats">'
+            +   '<div class="bo-fld-stat"><span class="lbl">Period Budget</span><span class="val">' + (noBudget ? '<em style="color:#A1A1A6;font-style:normal;font-size:12px">Not set</em>' : fmtD(budget)) + '</span></div>'
+            +   '<div class="bo-fld-stat"><span class="lbl">Materials</span><span class="val">' + fmtD(matCost) + '</span></div>'
+            +   '<div class="bo-fld-stat"><span class="lbl">Labor</span><span class="val">' + fmtD(labCost) + '</span></div>'
+            +   '<div class="bo-fld-stat"><span class="lbl">Current Fund Spent</span><span class="val bo-fld-stat-accent">' + fmtD(totalCost) + '</span></div>'
+            +   (!noBudget ? '<div class="bo-fld-stat"><span class="lbl">Remaining</span><span class="val ' + remClass + '">' + fmtD(remain) + '</span></div>' : '')
             + '</div>'
-            + '<div class="ov-period-card__progress"><div class="ov-period-card__progress-fill" style="width:' + spentPct.toFixed(1) + '%;background:' + barClr + '"></div></div>'
-            + '<div class="ov-period-card__entries">' + entriesTxt + '</div>'
-            + '<button class="ov-period-card__view-btn" onclick="mvpOvOpenPeriodDetail(\'' + fid + '\',\'' + pid + '\')">'
-            +   'View Details'
-            +   '<svg viewBox="0 0 24 24"><path d="M5 12h14"/><polyline points="12 5 19 12 12 19"/></svg>'
+            + '<div class="bo-fld-card-health">'
+            +   '<span class="mvp-health-badge ' + hClass + '">' + hLabel + '</span>'
+            +   '<span class="bo-fld-card-pct">' + pctTxt + '</span>'
+            + '</div>'
+            + '<div class="bo-fld-card-progress"><div class="bo-fld-card-progress-fill" style="width:' + spentPct.toFixed(1) + '%;background:' + barClr + '"></div></div>'
+            + '<div class="bo-fld-card-meta">' + entriesTxt + '</div>'
+            + '<button class="bo-fld-card-cta" onclick="mvpOvOpenPeriodDetail(\'' + fid + '\',\'' + pid + '\')">'
+            +   'View Details <span style="margin-left:6px">→</span>'
             + '</button>'
             + '</div>';
     }).join('');
@@ -6584,8 +6549,6 @@ async function _ovRenderPayments(folder) {
     if (!listEl) return;
 
     var clientEmail = folder ? folder.clientEmail : null;
-    _ovPayFolderId    = folder ? folder.id    : null;
-    _ovPayFolderEmail = clientEmail || null;
 
     if (!clientEmail) {
         listEl.innerHTML = '<div style="color:#9ca3af;font-size:13px;padding:16px 0;">No client assigned to this project folder.</div>';
@@ -6650,30 +6613,6 @@ async function _ovRenderPayments(folder) {
         listEl.innerHTML = '<div style="color:#b91c1c;font-size:13px;padding:16px 0;">Could not load payments: ' + e.message + '</div>';
     }
 }
-
-// Opens the payment request create modal with the current folder's client pre-selected
-window.prOpenCreateModalForFolder = async function () {
-    if (typeof window.prOpenCreateModal !== 'function') return;
-    await window.prOpenCreateModal();
-
-    // Pre-fill client if folder has clientEmail
-    var email = _ovPayFolderEmail;
-    if (!email) return;
-
-    var select = document.getElementById('prClientSelect');
-    if (!select) return;
-
-    // Wait a tick for the dropdown to finish populating if needed
-    setTimeout(function () {
-        for (var i = 0; i < select.options.length; i++) {
-            if (select.options[i].dataset.email === email) {
-                select.options[i].selected = true;
-                select.dispatchEvent(new Event('change'));
-                break;
-            }
-        }
-    }, 100);
-};
 
 // ─── Billing Period Detail Modal ─────────────────────────────────────────────
 var _pdDonutChart = null;

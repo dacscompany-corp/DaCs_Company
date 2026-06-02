@@ -790,6 +790,8 @@ td .exp-icon-btn { opacity: 1; }
 .exp-notification.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
 .exp-notification.success { background: #059669; }
 .exp-notification.error   { background: #dc2626; }
+/* Neutral info toast (was unstyled → rendered as an empty white box) */
+.exp-notification.info    { background: #1f2937; }
 /* ── Budget Overview clickable rows ─────────────────────── */
 .exp-proj-row-clickable { border: 2px solid #e5e7eb; background: #fff; transition: all 0.2s; }
 .exp-proj-row-clickable:hover { background: #f0fdf4; border-color: #059669; box-shadow: 0 2px 10px rgba(5,150,105,0.1); }
@@ -983,6 +985,9 @@ td .exp-icon-btn { opacity: 1; }
     cursor: pointer;
     border: 2px solid transparent;
     transition: all 0.15s ease;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
     user-select: none;
 }
 .cat-pill:hover {
@@ -1180,8 +1185,12 @@ td .exp-icon-btn { opacity: 1; }
     transition: transform 0.1s ease;
     transform-origin: center center;
     will-change: transform;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
     user-select: none;
-    -webkit-user-drag: none;
+    /* Drag prevention handled by HTML draggable="false" on #lbMainImg
+       (works in all browsers; -webkit-user-drag was WebKit-only). */
 }
 .lb-nav {
     position: absolute;
@@ -1645,6 +1654,9 @@ mark.exp-search-highlight {
     font-weight: 600;
     cursor: pointer;
     transition: all 0.15s;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
     user-select: none;
     white-space: nowrap;
 }
@@ -1733,7 +1745,7 @@ mark.exp-search-highlight {
 
     /* Tables scroll horizontally */
     .exp-table-wrap,
-    .section-card .table-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .section-card .table-container { overflow-x: auto; }
 
     /* Budget cards 1-col */
     .exp-budget-cards { grid-template-columns: 1fr 1fr; }
@@ -1846,6 +1858,9 @@ mark.exp-search-highlight {
     padding: 0.75rem 0.85rem 0.65rem;
     cursor: pointer;
     background: #fff;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
     user-select: none;
     transition: background 0.15s;
     gap: 0.45rem;

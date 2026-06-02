@@ -122,8 +122,11 @@ function applyRoleBasedUI() {
 
         // Default landing view for workers
         setTimeout(() => switchView('consBatch'), 100);
+    } else {
+        // 'owner' sees everything — no restrictions
+        // Default landing view for owner/admin: Expenses → Project Control
+        setTimeout(() => switchView('dacsPortal'), 100);
     }
-    // 'owner' sees everything — no restrictions
 
     // Auto-hide any group toggle whose all children are hidden
     document.querySelectorAll('.nav-group').forEach(group => {
@@ -371,9 +374,39 @@ async function handleLogout() {
 }
 
 // Switch views
+/* ═════════════════════════════════════════════════════════════
+   VIEW-CLEANUP REGISTRY
+   View-scoped Firestore listeners (or any other cleanup needing
+   to run on view exit) should register their unsubscribe callback
+   via window.registerViewCleanup(fn). switchView() runs every
+   registered cleanup before changing views, so listeners don't
+   accumulate over a long session.
+
+   GLOBAL listeners (notification bell, urgent-request badge, the
+   foundational data listeners loaded at boot) should NOT register
+   here — they're intentionally long-lived.
+═════════════════════════════════════════════════════════════ */
+window._viewCleanups = window._viewCleanups || [];
+window.registerViewCleanup = function (fn) {
+    if (typeof fn === 'function') window._viewCleanups.push(fn);
+};
+window.runViewCleanups = function () {
+    const list = window._viewCleanups;
+    window._viewCleanups = [];
+    list.forEach(fn => {
+        try { fn(); } catch (e) { console.warn('view cleanup error:', e); }
+    });
+};
+
+// NOTE: This switchView function is OVERRIDDEN by the window.switchView
+// definition in admin.html (loaded after this file). The overriding version
+// is the one actually called from the UI. The cleanup hook (runViewCleanups)
+// and BOQ auto-select branch are wired in the admin.html version — see there.
+// This function is retained for any code that still calls switchView() before
+// admin.html's <script> block executes (rare; primarily during boot).
 function switchView(view) {
     currentView = view;
-    
+
     // Update navigation
     document.querySelectorAll('.nav-item').forEach(item => {
         item.classList.remove('active');
@@ -400,6 +433,7 @@ function switchView(view) {
         appointments:     'Appointments',
         analytics:        'Analytics',
         feedback:         'Feedback',
+        dacsPortal:       'Project Control',
         expOverview:      'Budget Overview',
         expExpenses:      'Expenses',
         expReports:       'Reports',
@@ -414,14 +448,19 @@ function switchView(view) {
         consBatchHistory: 'Batch History',
         consInventory:    'Inventory',
         userNavigator:    'User Navigator',
+        terminationRequests: 'Termination Requests',
     };
-    document.getElementById('pageTitle').textContent = titles[view] || view;
-    
+    const _pt = document.getElementById('pageTitle');
+    if (_pt) _pt.textContent = titles[view] || view;
+
+    // Sync the portal chrome (active primary tab + module pills)
+    if (typeof syncPortalChrome === 'function') syncPortalChrome(view);
+
     // Hide all views
     document.querySelectorAll('.content-view').forEach(v => {
         v.style.display = 'none';
     });
-    
+
     // Show selected view
     const vEl = document.getElementById(`${view}View`);
     if (vEl) vEl.style.display = 'block';
@@ -1811,3 +1850,120 @@ async function deleteFeedback(feedbackId) {
 window.displayAllFeedback = displayAllFeedback;
 window.updateFeedbackStatus = updateFeedbackStatus;
 window.deleteFeedback = deleteFeedback;
+
+/* ════════════════════════════════════════════════════════════
+   PORTAL CHROME — top-nav driven navigation
+   Data-driven primary tabs + secondary modules row that mirror
+   the old left-sidebar groups. Each module routes to switchView.
+═════════════════════════════════════════════════════════════ */
+const PRIMARY_NAV = [
+    { id: 'expenses', label: 'Project Control', sub: 'Monitoring · Billing · Reports', defaultView: 'dacsPortal',
+      modules: [
+        { view: 'dacsPortal',  label: 'Overview',         icon: 'line-chart' },
+        { view: 'expReports',  label: 'Reports',          icon: 'file-bar-chart' },
+        { view: 'expOverhead', label: 'Overhead',         icon: 'building-2' },
+        // Merged from the former standalone "Billing & Reports" module — these
+        // are the full editors (create/edit BOQ, payments, invoices), not copies.
+        { view: 'boqBuilder',      label: 'Accomplishment',   icon: 'file-spreadsheet' },
+        { view: 'clientAccounts',  label: 'Clients',          icon: 'user-circle' },
+        { view: 'paymentRequests', label: 'Payment Requests', icon: 'credit-card' },
+        { view: 'paymentReports',  label: 'Payment Reports',  icon: 'bar-chart-2' },
+        { view: 'invoices',        label: 'Invoice Receipt',  icon: 'receipt-text' },
+      ]
+    },
+    { id: 'construction', label: 'Construction', sub: 'Materials & Orders', defaultView: 'consBatch',
+      modules: [
+        { view: 'consBatch',        label: 'Current Batch',   icon: 'package' },
+        { view: 'consUrgent',       label: 'Urgent Requests', icon: 'alert-circle' },
+        { view: 'consBatchHistory', label: 'Batch History',   icon: 'calendar' },
+        { view: 'consInventory',    label: 'Inventory',       icon: 'box' },
+      ]
+    },
+    { id: 'pm', label: 'Project Management', sub: 'Projects', defaultView: 'pmProjects',
+      modules: [
+        { view: 'pmProjects',          label: 'Projects',             icon: 'folder-open' },
+        { view: 'terminationRequests', label: 'Termination Requests', icon: 'alert-triangle' },
+      ]
+    },
+    { id: 'appointments', label: 'Appointments', sub: 'Workflow', defaultView: 'dashboard',
+      modules: [
+        // Dashboard is the primary's default landing — clicking the "Appointments"
+        // tab already takes you here, so keep it as a route target but hide it
+        // from the secondary row to avoid the duplicated label.
+        { view: 'dashboard',    label: 'Dashboard',    icon: 'layout-dashboard', hidden: true },
+        { view: 'appointments', label: 'Appointments', icon: 'calendar-check' },
+        { view: 'analytics',    label: 'Analytics',    icon: 'bar-chart-2' },
+        { view: 'feedback',     label: 'Feedback',     icon: 'message-square' },
+      ]
+    },
+    { id: 'users', label: 'Users', sub: 'People', defaultView: 'userNavigator',
+      modules: [
+        { view: 'userNavigator', label: 'Navigator', icon: 'user-round' },
+      ]
+    },
+];
+
+function findPrimaryForView(view) {
+    for (const p of PRIMARY_NAV) {
+        if (p.modules.find(m => m.view === view)) return p;
+    }
+    return null;
+}
+
+function renderPortalChrome() {
+    const tabs = document.getElementById('portalPrimaryTabs');
+    if (!tabs || tabs.dataset.rendered === '1') return;
+
+    tabs.innerHTML = PRIMARY_NAV.map(p =>
+        `<button class="portal-ptab" data-primary="${p.id}">${p.label}</button>`
+    ).join('');
+    tabs.dataset.rendered = '1';
+
+    tabs.querySelectorAll('.portal-ptab').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.primary;
+            const primary = PRIMARY_NAV.find(p => p.id === id);
+            if (primary) switchView(primary.defaultView);
+        });
+    });
+
+    // Top-nav logout button mirrors sidebar logout
+    const topLogout = document.getElementById('logoutBtnTop');
+    if (topLogout) {
+        topLogout.addEventListener('click', () => {
+            const modal = document.getElementById('logoutModal');
+            if (modal) modal.style.display = 'flex';
+        });
+    }
+}
+
+function syncPortalChrome(view) {
+    const primary = findPrimaryForView(view);
+    if (!primary) return;
+
+    document.querySelectorAll('.portal-ptab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.primary === primary.id);
+    });
+
+    const row = document.getElementById('portalModulesRow');
+    if (!row) return;
+    row.innerHTML =
+        `<span class="portal-modules-label">${primary.sub}</span>` +
+        primary.modules.filter(m => !m.hidden).map(m =>
+            `<button class="portal-module-link${m.view === view ? ' active-link' : ''}" data-view="${m.view}">
+                <i data-lucide="${m.icon}" style="width:14px;height:14px;"></i>
+                <span>${m.label}</span>
+            </button>`
+        ).join('');
+
+    row.querySelectorAll('.portal-module-link').forEach(btn => {
+        btn.addEventListener('click', () => switchView(btn.dataset.view));
+    });
+
+    if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+
+    // Hide the duplicate page-title block on Project Control (which renders its own title)
+    document.body.classList.toggle('dacs-portal-active', view === 'dacsPortal');
+}
+
+document.addEventListener('DOMContentLoaded', renderPortalChrome);

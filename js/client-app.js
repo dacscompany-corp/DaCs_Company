@@ -1055,15 +1055,34 @@ function subscribeToNotifications(uid) {
                     type:    _mapNotifType(data.type),
                     msg:     data.message || '',
                     time:    formatTimestamp(data.createdAt),
-                    read:    data.isRead || false
+                    // Accept either field — two SOWA producers used to write `read`,
+                    // everyone else writes `isRead`. Defensive forever as cheap insurance.
+                    read:    data.isRead === true || data.read === true
                 };
             });
             populateNotifications();
+            _clientMigrateNotifFields(uid, snap.docs);
         }, err => console.warn('Notifications listener error:', err));
 }
 
+let _clientNotifMigrationDone = false;
+function _clientMigrateNotifFields(uid, docs) {
+    if (_clientNotifMigrationDone || !uid) return;
+    _clientNotifMigrationDone = true;
+    const fix = docs.filter(d => {
+        const data = d.data();
+        return 'read' in data && !('isRead' in data);
+    });
+    if (!fix.length) return;
+    const batch = db.batch();
+    fix.forEach(d => batch.update(d.ref, { isRead: d.data().read === true }));
+    batch.commit()
+        .then(() => console.log('[notif-migration] client normalized', fix.length, 'doc(s)'))
+        .catch(e => console.warn('[notif-migration] client batch error:', e));
+}
+
 function _mapNotifType(type) {
-    if (['payment_verified', 'report_approved', 'partial_approved'].includes(type)) return 'green';
+    if (['payment_verified', 'report_approved', 'partial_approved', 'report_shared', 'invoice_issued'].includes(type)) return 'green';
     if (['payment_rejected', 'partial_declined'].includes(type)) return 'amber';
     return 'blue';
 }
@@ -1093,7 +1112,9 @@ function populateNotifications() {
     const _notifNavMap = {
         payment_verified: 'billing', payment_rejected: 'billing',
         partial_approved: 'billing', partial_declined: 'billing', sowa_ready: 'billing',
+        invoice_issued:   'billing',
         report_approved: 'accomplishment', report_submitted: 'accomplishment', report_updated: 'accomplishment',
+        report_shared:    'accomplishment',
     };
 
     list.innerHTML = display.map((n, i) => {
@@ -1436,18 +1457,24 @@ function _renderDocSOWA() {
     const sowaVisible = sowaBtn && sowaBtn.style.display !== 'none';
     if (sowaVisible) {
         el.innerHTML = `
-            <div style="display:flex;align-items:center;gap:14px;">
+            <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
                 <div style="width:38px;height:38px;border-radius:10px;background:#eff6ff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                 </div>
-                <div style="flex:1;">
+                <div style="flex:1;min-width:200px;">
                     <div style="font-size:14px;font-weight:700;color:#1f2937;">Statement of Work Accomplished</div>
-                    <div style="font-size:12px;color:#9ca3af;margin-top:2px;">Your SOWA is ready to view.</div>
+                    <div style="font-size:12px;color:#9ca3af;margin-top:2px;">Your SOWA is ready to view, print, or save as PDF.</div>
                 </div>
-                <button onclick="clientOpenSOWA()" style="display:inline-flex;align-items:center;gap:6px;background:#eff6ff;color:#1d4ed8;border:1.5px solid #bfdbfe;border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                    View SOWA
-                </button>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button onclick="clientOpenSOWA()" style="display:inline-flex;align-items:center;gap:6px;background:#eff6ff;color:#1d4ed8;border:1.5px solid #bfdbfe;border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        View SOWA
+                    </button>
+                    <button onclick="clientPrintSOWA()" style="display:inline-flex;align-items:center;gap:6px;background:#f0fdf4;color:#059669;border:1.5px solid #d1fae5;border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;" title="Opens the browser print dialog — choose &quot;Save as PDF&quot; as the destination to download a PDF.">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                        Print / Save as PDF
+                    </button>
+                </div>
             </div>`;
     } else {
         el.innerHTML = `<div style="color:#9ca3af;font-size:13.5px;">No SOWA available yet. You can request one from the Billing Periods section.</div>`;

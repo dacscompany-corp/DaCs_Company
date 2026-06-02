@@ -100,7 +100,12 @@
             .where('userId', '==', uid())
             .onSnapshot(snap => {
                 boq.folders = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                renderGridPage();
+                // Only re-render the grid if we're on it. If a folder is open
+                // (currentFolderId set — e.g., from the Project Control auto-
+                // select hand-off), this snapshot would otherwise clobber the
+                // folder's BOQ editor with the grid. Matches the docs-snapshot
+                // guard below.
+                if (!boq.currentFolderId) renderGridPage();
             }, err => console.error('BOQ folder load error:', err));
 
         if (boq.docsUnsub) { boq.docsUnsub(); boq.docsUnsub = null; }
@@ -111,6 +116,16 @@
                 // Re-render grid if currently on grid view
                 if (!boq.currentFolderId) renderGridPage();
             }, err => console.error('BOQ docs load error:', err));
+
+        // Register both unsubs with the switchView cleanup hook so leaving
+        // the Accomplishment Report (BOQ) view tears down the listeners
+        // until the user returns.
+        if (typeof window.registerViewCleanup === 'function') {
+            window.registerViewCleanup(() => {
+                if (boq.unsub)     { boq.unsub();     boq.unsub = null; }
+                if (boq.docsUnsub) { boq.docsUnsub(); boq.docsUnsub = null; }
+            });
+        }
     }
 
     // ── Grid page (card layout matching Budget Overview) ───────
@@ -235,14 +250,33 @@
         if (root) root.innerHTML = '<div class="boq-loading" style="padding:3rem;text-align:center;">Loading report...</div>';
 
         try {
-            const snap = await db.collection('boqDocuments')
-                .where('userId', '==', uid())
-                .where('folderId', '==', folderId)
-                .limit(1)
-                .get();
+            // Some folders may have multiple boqDocuments due to past save bugs.
+            // Pick the "best" one: most costItems → most recently updated.
+            const matches = boq.allDocs.filter(x => x.folderId === folderId);
+            let d = null;
+            if (matches.length) {
+                d = matches.slice().sort((a, b) => {
+                    const ac = (a.costItems || []).length;
+                    const bc = (b.costItems || []).length;
+                    if (ac !== bc) return bc - ac;
+                    const at = a.updatedAt && a.updatedAt.toMillis ? a.updatedAt.toMillis() : 0;
+                    const bt = b.updatedAt && b.updatedAt.toMillis ? b.updatedAt.toMillis() : 0;
+                    return bt - at;
+                })[0];
+                if (matches.length > 1) {
+                    console.warn(`[BOQ] Found ${matches.length} duplicate docs for folder ${folderId}. Using ${d.id} (${(d.costItems||[]).length} items). Other ids:`, matches.filter(m => m.id !== d.id).map(m => `${m.id} (${(m.costItems||[]).length} items)`));
+                }
+            }
+            if (!d) {
+                const snap = await db.collection('boqDocuments')
+                    .where('userId', '==', uid())
+                    .where('folderId', '==', folderId)
+                    .limit(1)
+                    .get();
+                if (!snap.empty) d = { id: snap.docs[0].id, ...snap.docs[0].data() };
+            }
 
-            if (!snap.empty) {
-                const d = { id: snap.docs[0].id, ...snap.docs[0].data() };
+            if (d) {
                 boq.doc = d;
                 boq.header = {
                     date:        d.date        || '',
@@ -1387,6 +1421,11 @@
             }
         }
 
+        // Capture BEFORE the save: was this a freshly-shared BOQ?
+        // (No prior clientEmail, now has one → first-time share with client.)
+        const _prevClientEmail = boq.doc?.clientEmail || '';
+        const _isFirstShare    = !_prevClientEmail && !!boq.clientEmail;
+
         const btn = el('boqSaveBtn');
         if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2"></i> Saving...'; }
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -1442,7 +1481,13 @@
                             submitted: { type: 'report_submitted', message: `Your report "${reportName}" has been submitted and is now awaiting approval.` },
                             draft:     { type: 'report_updated',   message: `Your report "${reportName}" has been updated.` },
                         };
-                        const n = notifMap[boq.status] || notifMap.draft;
+                        // First time this BOQ is shared with the client → use
+                        // a distinct welcoming notification instead of the
+                        // generic "report updated" one. Status messages still
+                        // apply for subsequent saves.
+                        const n = _isFirstShare
+                            ? { type: 'report_shared', message: `Your accomplishment report "${reportName}" is now available for you to view.` }
+                            : (notifMap[boq.status] || notifMap.draft);
                         await db.collection('notifications').doc(clientUid).collection('items').add({
                             type:      n.type,
                             message:   n.message,

@@ -14,6 +14,19 @@ function _consEsc(s) {
     return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Delegated click handler for image thumbnails across the construction module.
+// Replaces former inline onclick="openImageModal('${url}','${name}')" attributes
+// which interpolated user-controlled strings directly into JS source — that was
+// the XSS vector. Now the URL and name live in escaped data-attributes and the
+// click handler reads them at click time. Attached once on document load.
+document.addEventListener('click', e => {
+    const img = e.target.closest('[data-cons-img]');
+    if (!img) return;
+    const url  = img.getAttribute('data-cons-img');
+    const name = img.getAttribute('data-cons-name') || '';
+    if (typeof openImageModal === 'function') openImageModal(url, name);
+});
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INITIALIZATION
@@ -70,13 +83,18 @@ function loadCurrentBatch() {
             const batchDoc = snapshot.docs[0];
             currentBatchData = { id: batchDoc.id, ...batchDoc.data() };
             
-            // Load requests for this batch
-            db.collection('requests')
+            // Load requests for this batch. View-scoped: register cleanup so
+            // re-entering Current Batch doesn't stack a new listener on top
+            // of the previous one.
+            const _batchRequestsUnsub = db.collection('requests')
                 .where('batchId', '==', currentBatchData.id)
                 .orderBy('createdAt', 'desc')
                 .onSnapshot(requestsSnapshot => {
                     renderCurrentBatch(requestsSnapshot.docs);
                 });
+            if (typeof window.registerViewCleanup === 'function') {
+                window.registerViewCleanup(_batchRequestsUnsub);
+            }
         })
         .catch(error => {
             console.error('Error loading batch:', error);
@@ -237,17 +255,27 @@ function renderRequestCard(request) {
     
     items.forEach((item) => {
         const itemStatusClass = `cons-status-${item.status}`;
-        const imageThumb = item.imageUrl 
-            ? `<img src="${item.imageUrl}" alt="${item.name}" class="cons-item-image" onclick="openImageModal('${item.imageUrl}', '${item.name}')">` 
+        // Escape every user-controlled string before injecting into HTML.
+        // Worker-supplied item.name / item.notes could contain HTML or quote
+        // characters that would otherwise break out of the surrounding context.
+        // The image thumb uses data-attributes + delegated click (see
+        // _attachItemImageHandler below) instead of inline onclick so the URL
+        // and name can be safely escaped as plain attribute values.
+        const safeName  = _consEsc(item.name  || '');
+        const safeUnit  = _consEsc(item.unit  || '');
+        const safeNotes = _consEsc(item.notes || '');
+        const safeUrl   = _consEsc(item.imageUrl || '');
+        const imageThumb = item.imageUrl
+            ? `<img src="${safeUrl}" alt="${safeName}" class="cons-item-image" data-cons-img="${safeUrl}" data-cons-name="${safeName}">`
             : '<div class="cons-item-image-placeholder"><i data-lucide="image-off"></i></div>';
-        
+
         html += `
             <div class="cons-item-row">
                 ${imageThumb}
                 <div class="cons-item-details">
-                    <div class="cons-item-name">${item.name}</div>
-                    <div class="cons-item-qty">${item.quantity} ${item.unit}</div>
-                    ${item.notes ? `<div class="cons-item-notes">${item.notes}</div>` : ''}
+                    <div class="cons-item-name">${safeName}</div>
+                    <div class="cons-item-qty">${item.quantity} ${safeUnit}</div>
+                    ${item.notes ? `<div class="cons-item-notes">${safeNotes}</div>` : ''}
                 </div>
                 <div class="cons-item-actions">
                     <span class="cons-status-badge ${itemStatusClass}">${item.status}</span>
@@ -486,12 +514,17 @@ function loadInventory() {
     
     container.innerHTML = '<div class="cons-loading">Loading inventory...</div>';
     
-    db.collection('inventory')
+    // View-scoped: register cleanup so re-entering Inventory doesn't stack
+    // a new listener each time.
+    const _inventoryUnsub = db.collection('inventory')
         .orderBy('itemName', 'asc')
         .onSnapshot(snapshot => {
             inventoryData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             renderInventory();
         });
+    if (typeof window.registerViewCleanup === 'function') {
+        window.registerViewCleanup(_inventoryUnsub);
+    }
 }
 
 function renderInventory() {
@@ -647,16 +680,43 @@ function loadNotifications() {
         .onSnapshot(snapshot => {
             notificationsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             updateNotificationBell();
+            // Lazy field migration: docs missing `isRead` get it written so
+            // future reads can rely on a single canonical field. Idempotent;
+            // runs once per session. Older history beyond the latest 30 is
+            // migrated by running window.migrateNotifications() in devtools.
+            _adminMigrateNotifFields(snapshot.docs);
         });
 }
+
+let _adminNotifMigrationDone = false;
+function _adminMigrateNotifFields(docs) {
+    if (_adminNotifMigrationDone || !auth.currentUser) return;
+    _adminNotifMigrationDone = true;
+    const fix = docs.filter(d => {
+        const data = d.data();
+        return 'read' in data && !('isRead' in data);
+    });
+    if (!fix.length) return;
+    const batch = db.batch();
+    fix.forEach(d => batch.update(d.ref, { isRead: d.data().read === true }));
+    batch.commit()
+        .then(() => console.log('[notif-migration] admin normalized', fix.length, 'doc(s)'))
+        .catch(e => console.warn('[notif-migration] admin batch error:', e));
+}
+
+// A notification counts as unread when EITHER `isRead` or legacy `read` is falsy.
+// Two producers (SOWA flows) still write `read:` so we accept either field here
+// and update both when we mark-read further down. Once those producers are
+// migrated this can simplify to `!n.isRead`.
+function _notifUnread(n) { return !n.isRead && !n.read; }
 
 function updateNotificationBell() {
     const bell = document.getElementById('consNotificationBell');
     const badge = document.getElementById('consNotificationBadge');
-    
+
     if (!bell || !badge) return;
-    
-    const unreadCount = notificationsData.filter(n => !n.isRead).length;
+
+    const unreadCount = notificationsData.filter(_notifUnread).length;
     
     if (unreadCount > 0) {
         badge.textContent = unreadCount;
@@ -692,13 +752,21 @@ const _NOTIF_META = {
     'report_updated':    { icon: 'edit',          label: 'Report Updated',            color: 'blue',  dest: 'boq'     },
     'new_request':       { icon: 'inbox',         label: 'New Request',               color: 'blue',  dest: 'request' },
     'urgent_request':    { icon: 'alert-circle',  label: 'Urgent Request',            color: 'red',   dest: 'request' },
+    // SOWA & termination types — were rendering as generic "Notification" because
+    // they weren't in this map. dest 'payment' lands on Payment Requests where the
+    // SOWA modal is launched; termination has no admin view yet so dest is blank.
+    'sowa_request':      { icon: 'clipboard',     label: 'SOWA Requested',            color: 'amber', dest: 'payment' },
+    'sowa_ready':        { icon: 'clipboard-check', label: 'SOWA Ready',              color: 'green', dest: 'payment' },
+    'termination':          { icon: 'alert-triangle', label: 'Termination Request',     color: 'red',   dest: 'termination' },
+    'termination_approved': { icon: 'check-circle',   label: 'Termination Approved',    color: 'green', dest: '' },
+    'termination_rejected': { icon: 'x-circle',       label: 'Termination Rejected',    color: 'red',   dest: '' },
 };
 
 function renderNotificationDropdown() {
     const dropdown = document.getElementById('consNotificationDropdown');
     if (!dropdown) return;
 
-    const hasUnread = notificationsData.some(n => !n.isRead);
+    const hasUnread = notificationsData.some(_notifUnread);
     let html = `
         <div class="cons-notif-header">
             <span>Notifications</span>
@@ -721,7 +789,7 @@ function renderNotificationDropdown() {
             const safeType  = (notif.type    || '').replace(/'/g, '');
 
             html += `
-                <div class="cons-notif-item cons-notif-color-${meta.color} ${notif.isRead ? '' : 'unread'}"
+                <div class="cons-notif-item cons-notif-color-${meta.color} ${_notifUnread(notif) ? 'unread' : ''}"
                      onclick="handleNotificationClick(event,'${safeId}','${safeRel}','${safeType}')">
                     <div class="cons-notif-icon-wrap cons-notif-icon-${meta.color}">
                         <i data-lucide="${meta.icon}"></i>
@@ -732,7 +800,7 @@ function renderNotificationDropdown() {
                         <div class="cons-notif-time">${timeAgo}</div>
                     </div>
                     <div class="cons-notif-arrow">
-                        ${notif.isRead ? '' : '<span class="cons-notif-dot"></span>'}
+                        ${_notifUnread(notif) ? '<span class="cons-notif-dot"></span>' : ''}
                         <i data-lucide="chevron-right" class="cons-notif-chevron"></i>
                     </div>
                 </div>`;
@@ -746,7 +814,10 @@ function renderNotificationDropdown() {
 function handleNotificationClick(event, notifId, relatedId, type) {
     if (event) event.stopPropagation();
 
-    // Mark as read in Firestore
+    // Mark as read in Firestore. `isRead` is canonical; the lazy migration
+    // ensures legacy `read`-only docs have `isRead` written before they can
+    // be clicked. Renderer keeps a defensive `!isRead && !read` fallback as
+    // permanent insurance.
     if (notifId && auth.currentUser) {
         db.collection('notifications')
             .doc(auth.currentUser.uid)
@@ -756,9 +827,10 @@ function handleNotificationClick(event, notifId, relatedId, type) {
             .catch(e => console.warn('handleNotificationClick mark-read error:', e));
     }
 
-    // Optimistic local update
+    // Optimistic local update — set both flags so any defensive read sees it
+    // as read instantly, before the snapshot round-trip.
     const notif = notificationsData.find(n => n.id === notifId);
-    if (notif) notif.isRead = true;
+    if (notif) { notif.isRead = true; notif.read = true; }
     updateNotificationBell();
 
     // Close dropdown
@@ -789,6 +861,11 @@ function handleNotificationClick(event, notifId, relatedId, type) {
                 } catch (e) { console.warn('BOQ notif nav error:', e); }
             }, 450);
         }
+    } else if (meta.dest === 'termination') {
+        switchView('terminationRequests');
+        if (relatedId) {
+            setTimeout(() => { if (typeof trView === 'function') trView(relatedId); }, 450);
+        }
     } else if (meta.dest === 'request' && relatedId) {
         viewRequestDetails(relatedId);
     }
@@ -798,15 +875,16 @@ function consMarkAllNotificationsRead(event) {
     if (event) event.stopPropagation();
     if (!auth.currentUser) return;
 
-    const unread = notificationsData.filter(n => !n.isRead);
+    const unread = notificationsData.filter(_notifUnread);
     if (!unread.length) return;
 
-    // Optimistic local update
-    notificationsData.forEach(n => { n.isRead = true; });
+    // Optimistic local update — set both flags so the defensive read sees
+    // them as read regardless of which field was originally stored.
+    notificationsData.forEach(n => { n.isRead = true; n.read = true; });
     updateNotificationBell();
     renderNotificationDropdown();
 
-    // Batch persist to Firestore
+    // Batch persist — `isRead` is canonical after migration.
     const batch = db.batch();
     unread.forEach(n => {
         batch.update(
@@ -848,8 +926,12 @@ function showRequestDetailModal(request) {
     let itemsHtml = '';
     items.forEach(item => {
         const itemStatusClass = `cons-status-${item.status}`;
-        const imageDisplay = item.imageUrl 
-            ? `<img src="${item.imageUrl}" alt="${item.name}" class="cons-detail-item-image" onclick="openImageModal('${item.imageUrl}', '${item.name}')">` 
+        // Same escape + data-attribute pattern as renderRequestItems above —
+        // see _attachItemImageHandler for the delegated click listener.
+        const safeName = _consEsc(item.name || '');
+        const safeUrl  = _consEsc(item.imageUrl || '');
+        const imageDisplay = item.imageUrl
+            ? `<img src="${safeUrl}" alt="${safeName}" class="cons-detail-item-image" data-cons-img="${safeUrl}" data-cons-name="${safeName}">`
             : '<div class="cons-detail-item-image-placeholder"><i data-lucide="image-off"></i></div>';
         
         itemsHtml += `

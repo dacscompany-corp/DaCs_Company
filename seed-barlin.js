@@ -10,7 +10,7 @@
 
     const gid = () => '_' + Math.random().toString(36).slice(2, 10);
     const ts  = firebase.firestore.FieldValue.serverTimestamp();
-    const FOLDER_ID = '98ImRXJEWfcBB91gJv4z';
+    const FOLDER_ID = 'XhQlZSk3dIq0zuPjd62g';
 
     // Delete existing boqDocuments for this folder
     const existing = await db.collection('boqDocuments').where('folderId', '==', FOLDER_ID).get();
@@ -123,8 +123,6 @@
                 li('', 'Main Door (Back side) & CR Door (Both side) - Refinish',           2, 'set/s', 0,     5000, 10000, { matOverride: '-' }),
                 // Glass & mirrors header
                 li('', 'Supply and Installation of Glass and Mirrors including accessories', 0, '', 0, 0, 0, { matOverride: '-', labOverride: '-' }),
-                // Shower Enclosure Curtain — no cost
-                li('', 'Shower Enclosure Curtain',                                          1, 'set/s', 0, 0, 0, { matOverride: '-', labOverride: '-' }),
                 // Vanity Mirror  1 × (10,000+2,000) = 12,000
                 li('', 'Custom Vanity Mirror at Toilet & Bath',                             1, 'set/s', 10000, 2000, 12000),
             ]},
@@ -141,11 +139,7 @@
                 li('B-01', 'SHOE RACK',                      1, 'set/s', 24948,    16632,    41580),
                 li('B-02', 'CABINET STORAGE',                1, 'set/s', 27459,    18306,    45765),
                 li('B-03', 'KITCHEN CABINET WITH POCKET DOOR', 1, 'set/s', 31849.20, 21232.80, 53082),
-                // ── KITCHEN AREA ──
-                li('',     'KITCHEN AREA',                   0, '', 0, 0, 0, { matOverride: '-', labOverride: '-' }),
                 li('B-04', 'CABINET',                        1, 'set/s', 22453.20, 14968.80, 37422),
-                // ── LIVING AREA ──
-                li('',     'LIVING AREA',                    0, '', 0, 0, 0, { matOverride: '-', labOverride: '-' }),
                 li('B-05', 'TV CONSOLE & DISPLAY CAB/SHELF', 1, 'set/s', 27621,    18414,    46035),
                 li('B-06', 'CABINET WITH SHELF',             1, 'set/s', 22477.50, 14985,    37462.50),
                 // ── BEDROOM 1 & 2 ──
@@ -221,17 +215,8 @@
         // ══════════════════════════════════════════════════════════════
         { id: gid(), label: 'PLUMBING WORKS', subItems: [
             { id: gid(), label: 'Plumbing Fixtures', lineItems: [
-                li('', 'KITCHEN',       0, '', 0, 0, 0, { matOverride: '-', labOverride: '-' }),
-                li('', 'Kitchen Sink',  1, 'set/s', 0, 0, 0, { matOverride: '-', labOverride: '-' }),
-                li('', 'Faucet',        1, 'set/s', 0, 0, 0, { matOverride: '-', labOverride: '-' }),
-                li('', 'BATHROOM',      0, '', 0, 0, 0, { matOverride: '-', labOverride: '-' }),
-                li('', 'Lavatory',        1, 'set/s', 0, 0, 0, { matOverride: '-', labOverride: '-' }),
-                li('', 'Lavatory Faucet', 1, 'set/s', 0, 0, 0, { matOverride: '-', labOverride: '-' }),
                 // 1 × (1,000+400) = 1,400
                 li('', 'Towel Holder',    1, 'set/s', 1000, 400, 1400),
-                li('', 'Shower Set',      1, 'set/s', 0, 0, 0, { matOverride: '-', labOverride: '-' }),
-                li('', 'Water Closet',    1, 'set/s', 0, 0, 0, { matOverride: '-', labOverride: '-' }),
-                li('', 'Bidet',           1, 'set/s', 0, 0, 0, { matOverride: '-', labOverride: '-' }),
             ]},
         ]},
 
@@ -247,12 +232,12 @@
     const docRef = await db.collection('boqDocuments').add({
         folderId:    FOLDER_ID,
         userId:      uid,
-        date:        '2025-08-18',
+        date:        '2026-04-07',
         projectName: 'Barlin Residence',
         area:        '45',
-        ownerName:   'Barlin',
+        ownerName:   'GERALYN BARLIN',
         location:    'Mandaluyong City',
-        subject:     'Project Proposal',
+        subject:     'Accomplishment Report',
         discount:    7235,
         clientEmail: '',
         status:      'draft',
