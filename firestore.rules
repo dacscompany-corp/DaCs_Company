@@ -100,6 +100,24 @@ service cloud.firestore {
       );
     }
 
+    // ── Confidential financials, split out of folders/projects ──────────
+    // Contract value (folderBudgets.totalBudget) and fund allocated
+    // (projectBudgets.monthlyBudget) are stored here, keyed by the parent
+    // doc id, so STAFF — who can read folders/projects — cannot read them.
+    // Single-owner system: isOwner() is the only admin path; staff are
+    // intentionally excluded. The assigned client may read their own.
+    match /folderBudgets/{folderId} {
+      allow read, write: if isOwner();
+      allow read: if isAuthenticated()
+                  && get(/databases/$(database)/documents/folders/$(folderId)).data.get('clientEmail', '') == request.auth.token.email;
+    }
+
+    match /projectBudgets/{projectId} {
+      allow read, write: if isOwner();
+      allow read: if isAuthenticated()
+                  && get(/databases/$(database)/documents/folders/$(get(/databases/$(database)/documents/projects/$(projectId)).data.folderId)).data.get('clientEmail', '') == request.auth.token.email;
+    }
+
     match /expenses/{expenseId} {
       allow read, update, delete: if canAccessData(resource.data.userId);
       allow create: if canWriteData(request.resource.data.userId);

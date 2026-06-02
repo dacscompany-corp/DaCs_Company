@@ -847,6 +847,9 @@ function PortalApp() {
   const [monthsRaw, setMonthsRaw] = React.useState([]);
   const [payrollRaw, setPayrollRaw] = React.useState([]);
   const [expensesRaw, setExpensesRaw] = React.useState([]);
+  const folderBudgetRef = React.useRef({});
+  const projectBudgetRef = React.useRef({});
+  const [isStaff, setIsStaff] = React.useState(false);
   const [boqRaw, setBoqRaw] = React.useState([]);
   const [payReqRaw, setPayReqRaw] = React.useState([]);
   const [invoicesRaw, setInvoicesRaw] = React.useState([]);
@@ -879,6 +882,7 @@ function PortalApp() {
       const data = doc.exists ? doc.data() : null;
       const eff = data && data.role === "staff" && data.ownerUid ? data.ownerUid : authUid;
       window.currentDataUserId = eff;
+      setIsStaff(!!(data && data.role === "staff"));
       setOwnerId(eff);
     }).catch(() => {
       if (!cancelled) setOwnerId(authUid);
@@ -901,14 +905,14 @@ function PortalApp() {
     const unsubs = [
       db.collection("folders").where("userId", "==", dataUid).onSnapshot(
         (s) => {
-          setFoldersRaw(s.docs.map((d) => ({ id: d.id, ...d.data() })));
+          setFoldersRaw(s.docs.map((d) => ({ id: d.id, ...d.data(), totalBudget: folderBudgetRef.current[d.id] || 0 })));
           onAny();
         },
         onErr
       ),
       db.collection("projects").where("userId", "==", dataUid).onSnapshot(
         (s) => {
-          setMonthsRaw(s.docs.map((d) => ({ id: d.id, ...d.data() })));
+          setMonthsRaw(s.docs.map((d) => ({ id: d.id, ...d.data(), monthlyBudget: projectBudgetRef.current[d.id] || 0 })));
           onAny();
         },
         onErr
@@ -930,6 +934,31 @@ function PortalApp() {
     ];
     return () => unsubs.forEach((u) => u && u());
   }, [ownerId]);
+  React.useEffect(() => {
+    if (!ownerId || isStaff || typeof db === "undefined") return;
+    const dataUid = ownerId;
+    const unsubs = [
+      db.collection("folderBudgets").where("userId", "==", dataUid).onSnapshot((s) => {
+        const m = {};
+        s.docs.forEach((d) => {
+          m[d.id] = d.data().totalBudget || 0;
+        });
+        folderBudgetRef.current = m;
+        setFoldersRaw((prev) => prev.map((f) => ({ ...f, totalBudget: m[f.id] || 0 })));
+      }, () => {
+      }),
+      db.collection("projectBudgets").where("userId", "==", dataUid).onSnapshot((s) => {
+        const m = {};
+        s.docs.forEach((d) => {
+          m[d.id] = d.data().monthlyBudget || 0;
+        });
+        projectBudgetRef.current = m;
+        setMonthsRaw((prev) => prev.map((p) => ({ ...p, monthlyBudget: m[p.id] || 0 })));
+      }, () => {
+      })
+    ];
+    return () => unsubs.forEach((u) => u && u());
+  }, [ownerId, isStaff]);
   React.useEffect(() => {
     if (!ownerId || typeof db === "undefined") return;
     const skip = () => {

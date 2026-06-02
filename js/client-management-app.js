@@ -6,6 +6,22 @@
 
 'use strict';
 
+// Send an admin-side notification to the owner AND every staff account under
+// that owner (each in their own inbox). Use only for staff-accessible modules.
+async function cmNotifyOwnerAndStaff(ownerUid, payload) {
+    if (!ownerUid) return;
+    const writes = [db.collection('notifications').doc(ownerUid).collection('items').add(payload)];
+    try {
+        const staff = await db.collection('users').where('ownerUid', '==', ownerUid).get();
+        staff.forEach(d => {
+            if (d.data().role === 'staff') {
+                writes.push(db.collection('notifications').doc(d.id).collection('items').add(payload));
+            }
+        });
+    } catch (e) { console.warn('staff notify lookup failed:', e); }
+    await Promise.allSettled(writes);
+}
+
 // ── State ────────────────────────────────────────────────────────
 let cmCurrentUser          = null;
 let cmCurrentProfile       = null;
@@ -2677,7 +2693,7 @@ window.cmConfirmTermination = async function() {
             // in the Termination Requests review screen.
             const ownerUid = cmProjectData.userId || cmProjectData.ownerUid;
             if (ownerUid) {
-                await db.collection('notifications').doc(ownerUid).collection('items').add({
+                await cmNotifyOwnerAndStaff(ownerUid, {
                     title      : 'Termination Request',
                     message    : `Client ${cmCurrentUser.email} has requested project termination for "${cmProjectData.projectName || 'project'}".`,
                     type       : 'termination',

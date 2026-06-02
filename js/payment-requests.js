@@ -426,7 +426,9 @@
                 status:    'pending',
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 createdBy,
-                ownerUid:  auth.currentUser?.uid || '',
+                // Scope to the OWNER's uid so staff-created requests stay visible
+                // to the owner (and to the staff, whose list filters by ownerUid).
+                ownerUid:  window.currentDataUserId || auth.currentUser?.uid || '',
                 proofBase64:     null,
                 referenceNumber: null,
                 submittedAt:     null,

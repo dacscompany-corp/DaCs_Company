@@ -3638,10 +3638,12 @@
         // Role guard
         if (typeof currentUserRole !== 'undefined' && currentUserRole !== null) {
             if (currentUserRole === 'staff') {
-                // Staff can access all expense views including Overhead
-                // No views are blocked for staff
+                // Staff can access all expense/construction views, but NOT the
+                // admin-only User Navigator or Client Accounts pages.
+                const blocked = ['userNavigator', 'clientAccounts'];
+                if (blocked.includes(view)) view = 'dashboard';
             } else if (currentUserRole === 'worker' || currentUserRole === 'teamLeader') {
-                const allowed = ['consBatch','consUrgent','consBatchHistory','consInventory'];
+                const allowed = ['consBatch','consUrgent','consBatchHistory'];
                 if (!allowed.includes(view)) view = 'consBatch';
             }
         }

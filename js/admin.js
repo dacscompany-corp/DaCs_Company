@@ -84,6 +84,10 @@ function showLoginError(message) {
 
 // Apply nav and view restrictions based on role
 function applyRoleBasedUI() {
+    // Re-render the top portal tabs now that the role is known, so role-hidden
+    // primaries (e.g. Users for staff) and modules (e.g. Clients) disappear.
+    if (typeof renderPortalChrome === 'function') renderPortalChrome();
+
     // ── Reset: restore all nav items and groups before applying role restrictions ──
     document.querySelectorAll('.nav-item').forEach(el => el.style.display = '');
     document.querySelectorAll('.nav-group').forEach(el => el.style.display = '');
@@ -92,8 +96,12 @@ function applyRoleBasedUI() {
     _resetCards.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
 
     if (currentUserRole === 'staff') {
-        // Staff can access all expense views including Overhead
-        // No views are hidden for staff
+        // Staff can access all expense + construction views, but NOT the
+        // admin-only User Navigator or Client Accounts pages.
+        ['userNavigator', 'clientAccounts'].forEach(view => {
+            const el = document.querySelector(`.nav-item[data-view="${view}"]`);
+            if (el) el.style.display = 'none';
+        });
 
         // Hide specific KPI cards not relevant to staff
         const hiddenCards = ['mvpDetailBudgetCard'];
@@ -102,8 +110,8 @@ function applyRoleBasedUI() {
             if (el) el.style.display = 'none';
         });
 
-        // Default landing view for staff
-        setTimeout(() => switchView('dashboard'), 100);
+        // Default landing view for staff: Project Control → Overview
+        setTimeout(() => switchView('dacsPortal'), 100);
 
     } else if (currentUserRole === 'worker' || currentUserRole === 'teamLeader') {
         // Workers only see Construction — hide all other groups entirely
@@ -115,6 +123,11 @@ function applyRoleBasedUI() {
         // Also hide userNavigator inside userlogs (already covered above, but be explicit)
         const uvItem = document.querySelector('.nav-item[data-view="userNavigator"]');
         if (uvItem) uvItem.style.display = 'none';
+
+        // Hide Inventory — Firestore rules only allow owner/staff to read inventory,
+        // so workers must not be offered a view that would fail with permission-denied.
+        const invItem = document.querySelector('.nav-item[data-view="consInventory"]');
+        if (invItem) invItem.style.display = 'none';
 
         // Open construction group by default for workers
         const consGroup = document.getElementById('navGroup-construction');
@@ -1903,8 +1916,26 @@ const PRIMARY_NAV = [
     },
 ];
 
+// Role-filtered view of PRIMARY_NAV. Staff lose the Users tab and the Clients
+// module; workers/teamLeaders see only Construction. Owner sees everything.
+function _visibleNav() {
+    const role = currentUserRole;
+    return PRIMARY_NAV
+        .filter(p => {
+            if (role === 'staff') return p.id !== 'users';
+            if (role === 'worker' || role === 'teamLeader') return p.id === 'construction';
+            return true;
+        })
+        .map(p => {
+            if (role === 'staff' && p.id === 'expenses') {
+                return { ...p, modules: p.modules.filter(m => m.view !== 'clientAccounts') };
+            }
+            return p;
+        });
+}
+
 function findPrimaryForView(view) {
-    for (const p of PRIMARY_NAV) {
+    for (const p of _visibleNav()) {
         if (p.modules.find(m => m.view === view)) return p;
     }
     return null;
@@ -1912,9 +1943,11 @@ function findPrimaryForView(view) {
 
 function renderPortalChrome() {
     const tabs = document.getElementById('portalPrimaryTabs');
-    if (!tabs || tabs.dataset.rendered === '1') return;
+    if (!tabs) return;
 
-    tabs.innerHTML = PRIMARY_NAV.map(p =>
+    // Always rebuild so the tab set reflects the current role (this runs once on
+    // DOMContentLoaded before the role is known, then again from applyRoleBasedUI).
+    tabs.innerHTML = _visibleNav().map(p =>
         `<button class="portal-ptab" data-primary="${p.id}">${p.label}</button>`
     ).join('');
     tabs.dataset.rendered = '1';

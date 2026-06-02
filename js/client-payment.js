@@ -24,6 +24,25 @@
         return window._clientOwnerUid || null;
     }
 
+    // Send an admin-side notification to the owner AND to every staff account
+    // under that owner (each in their own separate inbox). Use this only for
+    // events in modules staff can access (Payment Requests, Accomplishment/SOWA,
+    // Termination). For admin-only modules (Users, Clients), notify the owner
+    // directly instead. Staff are found via users where ownerUid == owner.
+    async function _notifyOwnerAndStaff(ownerUid, payload) {
+        if (!ownerUid) return;
+        const writes = [db.collection('notifications').doc(ownerUid).collection('items').add(payload)];
+        try {
+            const staff = await db.collection('users').where('ownerUid', '==', ownerUid).get();
+            staff.forEach(d => {
+                if (d.data().role === 'staff') {
+                    writes.push(db.collection('notifications').doc(d.id).collection('items').add(payload));
+                }
+            });
+        } catch (e) { console.warn('staff notify lookup failed:', e); }
+        await Promise.allSettled(writes);
+    }
+
     // ══════════════════════════════════════════════════════
     // PUBLIC ENTRY POINT
     // ══════════════════════════════════════════════════════
@@ -577,7 +596,7 @@
             if (_partialAdminUid) {
                 const _partialReq  = _requests.find(x => x.id === _currentId) || {};
                 const _clientEmail = (typeof currentUser !== 'undefined' && currentUser?.email) || '';
-                db.collection('notifications').doc(_partialAdminUid).collection('items').add({
+                _notifyOwnerAndStaff(_partialAdminUid, {
                     type:      'partial_request',
                     message:   `${_clientEmail || 'A client'} requested a partial payment of ₱${paidAmount.toLocaleString('en-PH')}${_partialReq.billingPeriod ? ' for "' + _partialReq.billingPeriod + '"' : ''}`,
                     isRead:    false,
@@ -840,7 +859,7 @@
                 : (_requests.find(x => x.id === _currentId)?.billingPeriod || '');
             if (_adminUid) {
                 const _clientEmail = (typeof currentUser !== 'undefined' && currentUser?.email) || '';
-                db.collection('notifications').doc(_adminUid).collection('items').add({
+                _notifyOwnerAndStaff(_adminUid, {
                     type:      'payment_submitted',
                     message:   `${_clientEmail || 'A client'} submitted payment${_payBillingPeriod ? ' for "' + _payBillingPeriod + '"' : ''} — ₱${paidAmount.toLocaleString('en-PH')}`,
                     isRead:    false,
@@ -1408,7 +1427,7 @@ ${previewOnly ? `<div class="preview-bar"><span>Print Preview &mdash; Invoice ${
                 requestedAt: firebase.firestore.Timestamp.fromDate(new Date())
             });
 
-            await db.collection('notifications').doc(adminUid).collection('items').add({
+            await _notifyOwnerAndStaff(adminUid, {
                 type:      'sowa_request',
                 message:   `${user.displayName || user.email} requested a Statement of Work Accomplished (SOWA)`,
                 isRead:    false,

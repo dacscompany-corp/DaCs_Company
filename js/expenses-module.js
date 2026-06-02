@@ -33,6 +33,14 @@ function fmtBudgetVal(num) {
 // ── Global State ─────────────────────────────────────────────
 let expProjects       = [];
 let expFolders        = [];   // { id, name, description, totalBudget }
+// Confidential financials live in separate owner-only collections
+// (folderBudgets / projectBudgets) so staff cannot read them. These maps
+// hold the merged values for owner sessions; for staff they stay empty,
+// so totalBudget / monthlyBudget resolve to 0 everywhere.
+let _folderBudgetMap  = {};   // folderId  -> totalBudget
+let _projectBudgetMap = {};   // projectId -> monthlyBudget
+let _folderBudgetsUnsub  = null;
+let _projectBudgetsUnsub = null;
 let _foldersUnsub     = null;
 let _expandedFolders  = new Set(); // folder ids currently expanded
 let expCurrentProject = null;
@@ -206,15 +214,40 @@ function loadProjects() {
     // Cancel previous listeners
     if (_projectsUnsub) { _projectsUnsub(); _projectsUnsub = null; }
     if (_foldersUnsub)  { _foldersUnsub();  _foldersUnsub  = null; }
+    if (_folderBudgetsUnsub)  { _folderBudgetsUnsub();  _folderBudgetsUnsub  = null; }
+    if (_projectBudgetsUnsub) { _projectBudgetsUnsub(); _projectBudgetsUnsub = null; }
     // Start global overview subscription
     subscribeOvAllData();
+
+    // Confidential financials are owner-only. Subscribe to them only when the
+    // current user is NOT staff; staff sessions keep empty maps so contract
+    // value / fund allocated read as 0 (and are hidden in the UI).
+    if (window.currentUserRole !== 'staff') {
+        _folderBudgetsUnsub = db.collection('folderBudgets')
+            .where('userId', '==', _uid())
+            .onSnapshot(snap => {
+                _folderBudgetMap = {};
+                snap.docs.forEach(d => { _folderBudgetMap[d.id] = d.data().totalBudget || 0; });
+                expFolders.forEach(f => { f.totalBudget = _folderBudgetMap[f.id] || 0; });
+                _renderAllPanels();
+            }, err => console.error('folderBudgets listener:', err));
+
+        _projectBudgetsUnsub = db.collection('projectBudgets')
+            .where('userId', '==', _uid())
+            .onSnapshot(snap => {
+                _projectBudgetMap = {};
+                snap.docs.forEach(d => { _projectBudgetMap[d.id] = d.data().monthlyBudget || 0; });
+                expProjects.forEach(p => { p.monthlyBudget = _projectBudgetMap[p.id] || 0; });
+                _renderAllPanels();
+            }, err => console.error('projectBudgets listener:', err));
+    }
 
     // Listen to folders
     _foldersUnsub = db.collection('folders')
         .where('userId', '==', _uid())
         .onSnapshot(snap => {
             expFolders = snap.docs
-                .map(d => ({ id: d.id, ...d.data() }))
+                .map(d => ({ id: d.id, ...d.data(), totalBudget: _folderBudgetMap[d.id] || 0 }))
                 .sort((a, b) => (a.createdAt?.toMillis?.() || 0) - (b.createdAt?.toMillis?.() || 0));
             _renderAllPanels();
         }, err => console.error('folders listener:', err));
@@ -224,7 +257,7 @@ function loadProjects() {
         .where('userId', '==', _uid())
         .onSnapshot(snap => {
             expProjects = snap.docs
-                .map(d => ({ id: d.id, ...d.data() }))
+                .map(d => ({ id: d.id, ...d.data(), monthlyBudget: _projectBudgetMap[d.id] || 0 }))
                 .sort((a, b) => {
                     const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
                     if (b.year !== a.year) return (b.year||0) - (a.year||0);
@@ -633,9 +666,14 @@ async function handleEditProject(e) {
     try {
         showExpLoading('editProjectBtn', true);
         await db.collection('projects').doc(id).update({
-            month, year, monthlyBudget: budget, fundingType: funding,
+            month, year, fundingType: funding,
             isPresident: isPresident
         });
+        // Update confidential fund allocated in the owner-only collection.
+        if (window.currentUserRole !== 'staff') {
+            await db.collection('projectBudgets').doc(id)
+                .set({ userId: _uid(), monthlyBudget: budget }, { merge: true });
+        }
         showExpNotif('Project updated! ✓', 'success');
         closeExpModal('editProjectModal');
     } catch(err) {
@@ -1933,13 +1971,17 @@ async function handleCreateProject(e) {
         showExpLoading('createProjectBtn', true);
         const data = {
             userId: _uid(), month, year,
-            monthlyBudget: budget,
             fundingType: fundingType,
             ...(billingNumber !== null && { billingNumber }),
             folderId: folderId || null,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         };
         const ref = await db.collection('projects').add(data);
+        // Fund allocated is confidential — stored in the owner-only
+        // projectBudgets collection, never on the staff-readable project doc.
+        if (window.currentUserRole !== 'staff' && budget > 0) {
+            await db.collection('projectBudgets').doc(ref.id).set({ userId: _uid(), monthlyBudget: budget });
+        }
         if (folderId) _expandedFolders.add(folderId);
         showExpNotif('Month added!', 'success');
         document.getElementById('createProjectForm').reset();
@@ -1966,9 +2008,13 @@ async function handleCreateFolder(e) {
         showExpLoading('createFolderBtn', true);
         const ref = await db.collection('folders').add({
             userId: _uid(), name, description: desc,
-            totalBudget: budget,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
+        // Contract value is confidential — stored in the owner-only folderBudgets
+        // collection, never on the staff-readable folder doc.
+        if (window.currentUserRole !== 'staff' && budget > 0) {
+            await db.collection('folderBudgets').doc(ref.id).set({ userId: _uid(), totalBudget: budget });
+        }
         _expandedFolders.add(ref.id);
         showExpNotif('Project folder created!', 'success');
         document.getElementById('createFolderForm').reset();
@@ -2000,8 +2046,13 @@ async function handleEditFolder(e) {
     try {
         showExpLoading('editFolderBtn', true);
         await db.collection('folders').doc(_editingFolderId).update({
-            name, description: desc, totalBudget: budget
+            name, description: desc
         });
+        // Update confidential contract value in the owner-only collection.
+        if (window.currentUserRole !== 'staff') {
+            await db.collection('folderBudgets').doc(_editingFolderId)
+                .set({ userId: _uid(), totalBudget: budget }, { merge: true });
+        }
         showExpNotif('Folder updated!', 'success');
         closeExpModal('editFolderModal');
         _editingFolderId = null;
@@ -2031,9 +2082,14 @@ async function deleteFolder(id) {
             eSnap.docs.forEach(d => batch.delete(d.ref));
             paySnap.docs.forEach(d => batch.delete(d.ref));
             batch.delete(db.collection('projects').doc(p.id));
+            // Confidential budget doc is owner-only — only the owner can delete it.
+            if (window.currentUserRole !== 'staff') batch.delete(db.collection('projectBudgets').doc(p.id));
             await batch.commit();
         }
         await db.collection('folders').doc(id).delete();
+        if (window.currentUserRole !== 'staff') {
+            await db.collection('folderBudgets').doc(id).delete().catch(() => {});
+        }
         _expandedFolders.delete(id);
         if (expCurrentProject && expProjects.find(p => p.id === expCurrentProject.id)?.folderId === id) {
             expCurrentProject = null;
@@ -2057,6 +2113,8 @@ async function deleteProject(id) {
         eSnap.docs.forEach(d => batch.delete(d.ref));
         pSnap.docs.forEach(d => batch.delete(d.ref));
         batch.delete(db.collection('projects').doc(id));
+        // Confidential budget doc is owner-only — only the owner can delete it.
+        if (window.currentUserRole !== 'staff') batch.delete(db.collection('projectBudgets').doc(id));
         await batch.commit();
         if (expCurrentProject?.id === id) {
             expCurrentProject = null; expExpenses = []; expPayroll = [];
