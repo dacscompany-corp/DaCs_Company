@@ -725,7 +725,8 @@ button.btn-primary:hover,
 /* KPI strip */
 .dacs-portal-scope .pc-kpi-strip {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   background: #fff;
   border: 1px solid var(--brand-hair);
   border-radius: 16px;
@@ -737,8 +738,9 @@ button.btn-primary:hover,
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 4px 28px;
+  padding: 4px 20px;
   border-right: 1px solid var(--brand-hair);
+  min-width: 0;
 }
 .dacs-portal-scope .pc-kpi:last-child { border-right: 0; }
 .dacs-portal-scope .pc-kpi-lbl {
@@ -751,14 +753,30 @@ button.btn-primary:hover,
 }
 .dacs-portal-scope .pc-kpi-val {
   font-family: var(--serif);
-  font-size: 26px;
+  font-size: 23px;
   font-weight: 600;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
+  white-space: nowrap;
 }
 .dacs-portal-scope .pc-kpi-val.pc-accent { color: var(--brand-green); }
 .dacs-portal-scope .pc-kpi-val.pc-warn   { color: #b85b00; }
+.dacs-portal-scope .pc-kpi-val.pc-danger { color: #c0392b; }
+.dacs-portal-scope .pc-over-badge {
+  align-self: flex-start;
+  margin-top: 5px;
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c0392b;
+  background: #fdecea;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
 .dacs-portal-scope .pc-kpi-sub {
   font-family: var(--sans);
   font-size: 11px;
@@ -767,7 +785,7 @@ button.btn-primary:hover,
 }
 
 @media (max-width: 1100px) {
-  .dacs-portal-scope .pc-kpi-strip { grid-template-columns: repeat(2, 1fr); padding: 0; }
+  .dacs-portal-scope .pc-kpi-strip { grid-auto-flow: row; grid-template-columns: repeat(2, 1fr); padding: 0; }
   .dacs-portal-scope .pc-kpi { padding: 18px 22px; border-right: 1px solid var(--brand-hair); border-bottom: 1px solid var(--brand-hair); }
   .dacs-portal-scope .pc-kpi:nth-child(2n) { border-right: 0; }
   .dacs-portal-scope .pc-kpi:nth-last-child(-n+2) { border-bottom: 0; }
@@ -1284,6 +1302,33 @@ button.btn-primary:hover,
   font-weight: 700;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+.dacs-portal-scope .pc-sm-hero-figures {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+.dacs-portal-scope .pc-sm-hero-margin {
+  text-align: center;
+  padding-left: 26px;
+  border-left: 1px solid rgba(255, 255, 255, 0.28);
+}
+.dacs-portal-scope .pc-sm-hero-margin-val {
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.dacs-portal-scope .pc-sm-hero-margin-lbl {
+  font-size: 11px;
+  opacity: 0.85;
+  margin-top: 4px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+@media (max-width: 720px) {
+  .dacs-portal-scope .pc-sm-hero-figures { width: 100%; justify-content: space-between; gap: 14px; }
+  .dacs-portal-scope .pc-sm-hero-margin { padding-left: 14px; }
 }
 .dacs-portal-scope .pc-summarize-stacked .pc-sm-equation {
   display: flex;
