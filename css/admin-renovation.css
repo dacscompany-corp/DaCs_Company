@@ -721,6 +721,47 @@ button.btn-primary:hover,
   transition: filter .15s;
 }
 .dacs-portal-scope .pc-btn-primary:hover { filter: brightness(1.08); }
+/* AI reminder banner — minimalist: white card, thin colored accent + icon */
+.dacs-portal-scope .pc-reminder {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  text-align: left;
+  margin: 2px 0 22px;
+  padding: 13px 18px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid var(--brand-hair);
+  border-left: 3px solid var(--text-light);
+  cursor: pointer;
+  font-family: var(--sans);
+  transition: box-shadow .15s, border-color .15s;
+}
+.dacs-portal-scope .pc-reminder:hover { box-shadow: var(--shadow-sm); }
+.dacs-portal-scope .pc-reminder-icon { flex: none; display: inline-flex; }
+.dacs-portal-scope .pc-reminder-icon svg { width: 20px; height: 20px; }
+.dacs-portal-scope .pc-reminder-text { flex: 1; font-size: 14px; color: #4b5563; line-height: 1.45; }
+.dacs-portal-scope .pc-reminder-text strong { font-weight: 700; }
+.dacs-portal-scope .pc-reminder-cta {
+  flex: none; font-size: 13px; font-weight: 600; white-space: nowrap; opacity: 0.9;
+}
+.dacs-portal-scope .pc-reminder-ok   { background: #f3f8f5; border-color: #cfe6da; border-left-color: #1A5C3A; }
+.dacs-portal-scope .pc-reminder-ok   .pc-reminder-icon,
+.dacs-portal-scope .pc-reminder-ok   .pc-reminder-text strong,
+.dacs-portal-scope .pc-reminder-ok   .pc-reminder-cta { color: #1A5C3A; }
+.dacs-portal-scope .pc-reminder-warn { background: #fbf6ea; border-color: #f1e2bf; border-left-color: #A86B00; }
+.dacs-portal-scope .pc-reminder-warn .pc-reminder-icon,
+.dacs-portal-scope .pc-reminder-warn .pc-reminder-text strong,
+.dacs-portal-scope .pc-reminder-warn .pc-reminder-cta { color: #A86B00; }
+.dacs-portal-scope .pc-reminder-risk { background: #fdeeec; border-color: #f3cfc9; border-left-color: #c0392b; }
+.dacs-portal-scope .pc-reminder-risk .pc-reminder-icon,
+.dacs-portal-scope .pc-reminder-risk .pc-reminder-text strong,
+.dacs-portal-scope .pc-reminder-risk .pc-reminder-cta { color: #c0392b; }
+@media (max-width: 720px) {
+  .dacs-portal-scope .pc-reminder { flex-wrap: wrap; }
+  .dacs-portal-scope .pc-reminder-cta { width: 100%; }
+}
 
 /* KPI strip */
 .dacs-portal-scope .pc-kpi-strip {

@@ -50,7 +50,7 @@
       '.ai-sum-overlay{position:fixed;inset:0;z-index:1200;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(17,24,39,.55);}',
       '.ai-sum-overlay.active{display:flex;animation:aiSumFade .15s ease;}',
       '@keyframes aiSumFade{from{opacity:0}to{opacity:1}}',
-      '.ai-sum-box{font-family:inherit;background:#fff;width:100%;max-width:520px;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.28);overflow:hidden;animation:aiSumRise .18s ease;}',
+      ".ai-sum-box{font-family:'Barlow',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;width:100%;max-width:520px;border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.28);overflow:hidden;animation:aiSumRise .18s ease;}",
       '@keyframes aiSumRise{from{transform:translateY(10px);opacity:0}to{transform:translateY(0);opacity:1}}',
       '.ai-sum-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:22px 24px 14px;}',
       '.ai-sum-eyebrow{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#1A5C3A;}',
