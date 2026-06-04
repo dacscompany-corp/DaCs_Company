@@ -1379,7 +1379,7 @@ button.btn-primary:hover,
   margin-top: 2px;
 }
 .dacs-portal-scope .pc-sm-contract-val {
-  font-size: 30px;
+  font-size: 24px;
   font-weight: 700;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -1395,7 +1395,7 @@ button.btn-primary:hover,
   border-left: 1px solid rgba(255, 255, 255, 0.28);
 }
 .dacs-portal-scope .pc-sm-hero-margin-val {
-  font-size: 36px;
+  font-size: 26px;
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -3093,6 +3093,25 @@ body .doc-upload.attached .doc-upload-state {
   .dacs-portal-scope .pcf-stat:nth-child(2) { border-right:none; }
   .dacs-portal-scope .pcf-stat:nth-child(1), .dacs-portal-scope .pcf-stat:nth-child(2) { border-bottom:1px solid #EAE7E1; }
 }
+
+/* Worker Statement (SOA) picker */
+.dacs-portal-scope .pcf-soa-trigger { display:inline-flex; align-items:center; gap:7px; padding:8px 15px; border-radius:9px; border:1.5px solid #CDE7D8; background:#F0FAF4; color:#1A5C3F; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; transition:background .15s, border-color .15s; }
+.dacs-portal-scope .pcf-soa-trigger:hover { background:#E6F4EC; border-color:#9FD3B6; }
+.dacs-portal-scope .pcf-soa-trigger.open { background:#E6F4EC; border-color:#1A5C3F; }
+.dacs-portal-scope .pcf-soa-trigger svg { width:15px; height:15px; }
+.dacs-portal-scope .pcf-soa-pop { position:absolute; top:calc(100% + 8px); right:0; z-index:50; background:#fff; border:1px solid #EAE7E1; border-radius:14px; box-shadow:0 16px 44px -14px rgba(28,27,25,.30); width:300px; overflow:hidden; }
+.dacs-portal-scope .pcf-soa-head { padding:13px 16px 11px; border-bottom:1px solid #F1EFEA; }
+.dacs-portal-scope .pcf-soa-head .t { font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase; font-weight:700; color:#2C7A57; }
+.dacs-portal-scope .pcf-soa-head .s { font-size:12px; color:#908A81; margin-top:3px; }
+.dacs-portal-scope .pcf-soa-list { max-height:300px; overflow-y:auto; padding:6px; }
+.dacs-portal-scope .pcf-soa-item { width:100%; display:flex; align-items:center; gap:11px; padding:9px 10px; border:0; background:transparent; border-radius:10px; cursor:pointer; text-align:left; transition:background .12s; }
+.dacs-portal-scope .pcf-soa-item:hover { background:#F4F8F5; }
+.dacs-portal-scope .pcf-soa-av { width:34px; height:34px; border-radius:50%; flex:none; display:grid; place-items:center; background:#E7F2EC; color:#1A5C3F; font-weight:700; font-size:13px; font-family:var(--serif); }
+.dacs-portal-scope .pcf-soa-info { min-width:0; flex:1; display:flex; flex-direction:column; }
+.dacs-portal-scope .pcf-soa-name { font-size:13.5px; font-weight:600; color:#1B1A18; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dacs-portal-scope .pcf-soa-sub { font-size:11.5px; color:#908A81; margin-top:1px; }
+.dacs-portal-scope .pcf-soa-amt { font-size:13px; font-weight:700; color:#1A5C3F; white-space:nowrap; }
+.dacs-portal-scope .pcf-soa-empty { padding:18px 16px; text-align:center; color:#908A81; font-size:13px; }
 
 /* Clickable state for done doc-pills in the materials table */
 .dacs-portal-scope .pc-doc-pill.clickable {

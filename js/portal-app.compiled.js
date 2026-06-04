@@ -250,11 +250,11 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
   }, [comboOpen]);
   const openCreate = () => window.openExpModal && window.openExpModal("createFolderModal");
   const openEdit = (id, ev) => {
-    ev.stopPropagation();
+    if (ev) ev.stopPropagation();
     window.openEditFolderModal && window.openEditFolderModal(id);
   };
   const openDelete = (id, ev) => {
-    ev.stopPropagation();
+    if (ev) ev.stopPropagation();
     window.confirmDeleteFolder && window.confirmDeleteFolder(id);
   };
   const cards = folders.map((f) => {
@@ -282,6 +282,22 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
   });
   const _fldMs = (t) => t && t.toMillis ? t.toMillis() : (t && t.seconds ? t.seconds * 1000 : 0);
   cards.sort((a, b) => _fldMs(b.createdAt) - _fldMs(a.createdAt));
+  // Remember the last-selected project across reloads. The very first load (no
+  // saved choice yet) still shows "Select a project"; after that it restores.
+  const _restoredRef = React.useRef(false);
+  React.useEffect(() => {
+    if (_restoredRef.current || !cards.length) return;
+    _restoredRef.current = true;
+    try {
+      const saved = localStorage.getItem("pcfSelectedFolder");
+      if (saved) { const i = cards.findIndex((c) => c.id === saved); if (i >= 0) setCurrent(i); }
+    } catch (e) {}
+  });
+  React.useEffect(() => {
+    try {
+      if (current !== null && cards[current]) localStorage.setItem("pcfSelectedFolder", cards[current].id);
+    } catch (e) {}
+  }, [current]);
   const runHealthCheck = () => {
     if (typeof window.aiHealthCheck !== "function") return;
     window.aiHealthCheck(cards.map((c) => ({
@@ -642,6 +658,19 @@ function openAddEntry(kind, childMonths) {
 function LaborDrill({ project, onBack, laborTx, childMonths }) {
   const [tab, setTab] = React.useState("all");
   const [searchQuery, setSearchQuery] = React.useState("");
+  const [soaOpen, setSoaOpen] = React.useState(false);
+  const soaRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!soaOpen) return;
+    const onDoc = (e) => { if (soaRef.current && !soaRef.current.contains(e.target)) setSoaOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [soaOpen]);
+  const workers = React.useMemo(() => {
+    const m = {};
+    laborTx.forEach((t) => { const n = t.name || "—"; if (!m[n]) m[n] = { name: n, role: t.role || "", total: 0, count: 0 }; m[n].total += t.amount || 0; m[n].count++; });
+    return Object.values(m).sort((a, b) => b.total - a.total);
+  }, [laborTx]);
   const lb = project.laborBreakdown;
   const billingByProjectId = React.useMemo(() => {
     const monthNum = (m) => {
@@ -692,7 +721,7 @@ function LaborDrill({ project, onBack, laborTx, childMonths }) {
   };
   return /* @__PURE__ */ React.createElement("section", { className: "drill" }, /* @__PURE__ */ React.createElement("button", { className: "back-btn", onClick: onBack }, Ico.arrowL, " Back to Project Control"), /* @__PURE__ */ React.createElement("div", { className: "drill-head" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Labor Cost \xB7 Transaction History"), /* @__PURE__ */ React.createElement("h2", null, "Labor"), /* @__PURE__ */ React.createElement("div", { className: "sub" }, project.name, " \xB7 ", project.code)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "panel-tabs" }, [["all", "All"], ["direct", "Direct"], ["indirect", "Indirect"], ["liability", "Liability"]].map(
     ([k, l]) => /* @__PURE__ */ React.createElement("button", { key: k, className: tab === k ? "active" : "", onClick: () => setTab(k) }, l)
-  )), /* @__PURE__ */ React.createElement("button", { className: "btn-primary", onClick: () => openAddEntry("labor", childMonths) }, Ico.plus, " Add Payroll"))), /* @__PURE__ */ React.createElement("div", { className: "drill-stats" }, /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Direct Labor"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(lb.direct))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Indirect Labor"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(lb.indirect))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Liability"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(lb.liability))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Labor Total \xB7 Actual"), /* @__PURE__ */ React.createElement("div", { className: "val total" }, "\u20B1 ", peso(lb.total)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "14px 4px 10px" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", flex: "1 1 220px", minWidth: 200, maxWidth: 380 } }, /* @__PURE__ */ React.createElement(
+  )), /* @__PURE__ */ React.createElement("div", { ref: soaRef, style: { position: "relative" } }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "pcf-soa-trigger" + (soaOpen ? " open" : ""), onClick: () => setSoaOpen((o) => !o), title: "Generate a worker's Statement of Account (all entries in this project)" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" }), /* @__PURE__ */ React.createElement("polyline", { points: "14 2 14 8 20 8" }), /* @__PURE__ */ React.createElement("line", { x1: 16, y1: 13, x2: 8, y2: 13 }), /* @__PURE__ */ React.createElement("line", { x1: 16, y1: 17, x2: 8, y2: 17 })), " Worker Statement"), soaOpen && /* @__PURE__ */ React.createElement("div", { className: "pcf-soa-pop" }, /* @__PURE__ */ React.createElement("div", { className: "pcf-soa-head" }, /* @__PURE__ */ React.createElement("div", { className: "t" }, "Worker Statement"), /* @__PURE__ */ React.createElement("div", { className: "s" }, "Select a worker to generate their SOA")), /* @__PURE__ */ React.createElement("div", { className: "pcf-soa-list" }, workers.length === 0 ? /* @__PURE__ */ React.createElement("div", { className: "pcf-soa-empty" }, "No workers yet.") : workers.map((wk) => /* @__PURE__ */ React.createElement("button", { key: wk.name, type: "button", className: "pcf-soa-item", onClick: () => { setSoaOpen(false); window.printWorkerLaborSOA && window.printWorkerLaborSOA(wk.name, project.id); } }, /* @__PURE__ */ React.createElement("span", { className: "pcf-soa-av" }, (wk.name || "?").trim().charAt(0).toUpperCase() || "?"), /* @__PURE__ */ React.createElement("span", { className: "pcf-soa-info" }, /* @__PURE__ */ React.createElement("span", { className: "pcf-soa-name" }, wk.name), /* @__PURE__ */ React.createElement("span", { className: "pcf-soa-sub" }, (wk.role || "—") + " \xB7 " + wk.count + " " + (wk.count === 1 ? "entry" : "entries"))), /* @__PURE__ */ React.createElement("span", { className: "pcf-soa-amt" }, "₱ ", peso(wk.total))))))), /* @__PURE__ */ React.createElement("button", { className: "btn-primary", onClick: () => openAddEntry("labor", childMonths) }, Ico.plus, " Add Payroll"))), /* @__PURE__ */ React.createElement("div", { className: "drill-stats" }, /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Direct Labor"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(lb.direct))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Indirect Labor"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(lb.indirect))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Liability"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(lb.liability))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Labor Total \xB7 Actual"), /* @__PURE__ */ React.createElement("div", { className: "val total" }, "\u20B1 ", peso(lb.total)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "14px 4px 10px" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", flex: "1 1 220px", minWidth: 200, maxWidth: 380 } }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",

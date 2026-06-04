@@ -1630,6 +1630,185 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
     };
 
     // ══════════════════════════════════════════════════════
+    // WORKER STATEMENT OF ACCOUNT — all of ONE worker's labor
+    // entries within a single project folder (all-time).
+    // ══════════════════════════════════════════════════════
+
+    window.printWorkerLaborSOA = async function (workerName, folderId) {
+        if (!_ownerUid) await _resolveOwnerUid();
+        if (!_defaults || !Object.keys(_defaults).length) await _loadDefaults();
+
+        const _allPay  = (typeof _ovAllPayroll !== 'undefined' && _ovAllPayroll.length)
+                         ? _ovAllPayroll
+                         : (typeof expPayroll !== 'undefined' ? expPayroll : []);
+        const _projs   = (typeof expProjects !== 'undefined' ? expProjects : []);
+        const _folders = (typeof expFolders  !== 'undefined' ? expFolders  : []);
+
+        const folder      = _folders.find(f => f.id === folderId) || null;
+        const projectName = folder ? folder.name : 'Labor & Payroll';
+        const periodIds   = new Set(_projs.filter(p => p.folderId === folderId).map(p => p.id));
+
+        let entries = _allPay
+            .filter(p => (p.workerName || '') === workerName && periodIds.has(p.projectId))
+            .sort((a, b) => new Date(a.paymentDate || 0) - new Date(b.paymentDate || 0));
+        if (!entries.length) { alert('No labor entries found for ' + workerName + ' in this project.'); return; }
+
+        const role    = (entries.find(e => e.role) || {}).role || '—';
+        const bizName = _defaults.businessName    || "DAC's Building Design Services";
+        const bizTin  = _defaults.businessTin     || '—';
+        const bizAddr = _defaults.businessAddress || '—';
+        const pd      = _defaults.paymentDetails  || {};
+
+        const fmt     = n => '&#8369;&nbsp;' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const esc     = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        const fmtDate = d => { if (!d) return '—'; try { return new Date(d).toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'}); } catch(e){ return d; } };
+        const cap     = s => { s = String(s || ''); return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—'; };
+
+        let itemRows = '', rowNum = 0, grandTotal = 0;
+        entries.forEach(p => {
+            rowNum++;
+            grandTotal += (p.totalSalary || 0);
+            itemRows += `<tr>
+                <td style="text-align:center;">${rowNum}</td>
+                <td style="text-align:center;">${fmtDate(p.paymentDate)}</td>
+                <td>${esc(cap(p.laborType || 'direct'))}</td>
+                <td style="text-align:center;">${p.daysWorked || 0}</td>
+                <td style="text-align:right;">${fmt(p.dailyRate)}</td>
+                <td style="text-align:right;font-weight:600;">${fmt(p.totalSalary)}</td>
+            </tr>`;
+        });
+
+        const firstDate = fmtDate(entries[0].paymentDate);
+        const lastDate  = fmtDate(entries[entries.length - 1].paymentDate);
+        const rangeLbl  = firstDate === lastDate ? firstDate : (firstDate + ' – ' + lastDate);
+
+        const payBlock = pd.method === 'gcash'
+            ? `<div><span class="lbl">Payment Via: </span><span class="val">GCash</span></div>
+               <div><span class="lbl">GCash No.: </span><span class="val">${esc(pd.gcashNumber||'—')}</span></div>
+               <div><span class="lbl">Account Name: </span><span class="val">${esc(pd.gcashName||'—')}</span></div>`
+            : `<div><span class="lbl">Payment Via: </span><span class="val">Bank Transfer</span></div>
+               <div><span class="lbl">Bank: </span><span class="val">${esc(pd.bank||'—')}</span></div>
+               <div><span class="lbl">Account No.: </span><span class="val">${esc(pd.accountNo||'—')}</span></div>
+               <div><span class="lbl">Account Name: </span><span class="val">${esc(pd.accountName||'—')}</span></div>
+               <div><span class="lbl">Branch: </span><span class="val">${esc(pd.branch||'—')}</span></div>`;
+
+        const invoiceNo = await _generateInvoiceNo();
+        const today     = new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'});
+        const logoHtml  = _buildLogoHtml(_defaults.logos);
+
+        const w = window.open('','_blank','width=870,height=1100');
+        if (!w) { alert('Please allow pop-ups to print the statement.'); return; }
+
+        w.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Statement of Account — ${esc(workerName)}</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:Arial,Helvetica,sans-serif; font-size:13px; color:#111; background:#f5f5f5; }
+.page { width:210mm; min-height:297mm; margin:20px auto; padding:18mm 16mm 14mm; background:#fff; box-shadow:0 2px 12px rgba(0,0,0,.12); }
+.inv-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
+.inv-biz h1 { font-size:20px; font-weight:800; color:#1a1a2e; }
+.inv-biz p  { font-size:12px; color:#555; margin-top:4px; line-height:1.5; }
+.inv-title-block { text-align:right; }
+.inv-title-block h2 { font-size:22px; font-weight:800; color:#1e3a5f; letter-spacing:2px; }
+.inv-title-block .inv-sub { font-size:13px; font-weight:600; color:#7c3aed; margin-top:4px; }
+.inv-meta { margin-top:8px; font-size:12px; color:#444; line-height:1.8; }
+.inv-meta strong { color:#111; }
+.bill-row { display:flex; gap:32px; margin-bottom:18px; padding:14px 0; border-top:2.5px solid #1e3a5f; border-bottom:1px solid #e5e7eb; }
+.bill-to h4 { font-size:10px; font-weight:700; color:#6b7280; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:6px; }
+.bill-to .name { font-size:15px; font-weight:700; color:#1a1a2e; margin-bottom:3px; }
+.bill-to p { font-size:12px; color:#555; line-height:1.5; }
+table.items { width:100%; border-collapse:collapse; margin-bottom:14px; }
+table.items thead tr { background:#1e3a5f; color:#fff; }
+table.items thead th { padding:9px 10px; font-size:11px; font-weight:700; text-align:left; letter-spacing:.4px; }
+table.items tbody tr:nth-child(even) { background:#f8fafc; }
+table.items tbody td { padding:8px 10px; border-bottom:1px solid #e9ecef; vertical-align:top; font-size:12px; }
+.totals-wrap { display:flex; justify-content:flex-end; margin-bottom:20px; }
+table.totals { width:300px; border-collapse:collapse; font-size:13px; }
+table.totals td { padding:6px 10px; }
+table.totals td:first-child { color:#555; }
+table.totals td:last-child { text-align:right; font-weight:600; color:#111; }
+table.totals tr.grand td { font-size:15px; font-weight:800; color:#fff; background:#1e3a5f; padding:10px 12px; }
+.pay-box { background:#f1f5f9; border-radius:8px; padding:13px 16px; margin-bottom:18px; }
+.pay-box h4 { font-size:10px; font-weight:700; color:#6b7280; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:10px; }
+.pay-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px 24px; font-size:12px; }
+.pay-grid .lbl { color:#6b7280; }
+.pay-grid .val { font-weight:600; color:#111; }
+.sig-row { display:flex; justify-content:space-between; margin-top:36px; }
+.sig-block { text-align:center; width:180px; }
+.sig-line { border-top:1px solid #374151; padding-top:6px; font-size:11px; color:#6b7280; }
+.footer { text-align:center; margin-top:24px; font-size:10px; color:#9ca3af; border-top:1px solid #e5e7eb; padding-top:10px; }
+@media print { body{background:#fff;} .page{margin:0;box-shadow:none;padding:10mm 10mm;width:100%;} @page{size:A4 portrait;margin:8mm;} }
+</style>
+</head>
+<body>
+<div class="page">
+  ${logoHtml}
+  <div class="inv-header">
+    <div class="inv-biz">
+      <h1>${esc(bizName)}</h1>
+      <p>Business Tax Id: ${esc(bizTin)}<br>${esc(bizAddr)}</p>
+    </div>
+    <div class="inv-title-block">
+      <h2>STATEMENT OF ACCOUNT</h2>
+      <div class="inv-sub">Labor &amp; Payroll</div>
+      <div class="inv-meta">
+        SOA No: <strong>${esc(invoiceNo)}</strong><br>
+        Date: <strong>${esc(today)}</strong>
+      </div>
+    </div>
+  </div>
+  <div class="bill-row">
+    <div class="bill-to">
+      <h4>Worker</h4>
+      <div class="name">${esc(workerName)}</div>
+      <p>${esc(role)}</p>
+    </div>
+    <div class="bill-to">
+      <h4>Project</h4>
+      <div class="name" style="font-size:13px;">${esc(projectName)}</div>
+      <p>Period covered: ${esc(rangeLbl)}</p>
+    </div>
+  </div>
+  <table class="items">
+    <thead>
+      <tr>
+        <th style="width:28px;">#</th>
+        <th style="width:110px;text-align:center;">Date</th>
+        <th>Category</th>
+        <th style="width:55px;text-align:center;">Days</th>
+        <th style="width:120px;text-align:right;">Daily Rate</th>
+        <th style="width:130px;text-align:right;">Amount</th>
+      </tr>
+    </thead>
+    <tbody>${itemRows}</tbody>
+  </table>
+  <div class="totals-wrap">
+    <table class="totals">
+      <tr><td>Total Entries</td><td>${entries.length}</td></tr>
+      <tr class="grand"><td>TOTAL AMOUNT</td><td>${fmt(grandTotal)}</td></tr>
+    </table>
+  </div>
+  <div class="pay-box">
+    <h4>Payment Details</h4>
+    <div class="pay-grid">${payBlock}</div>
+  </div>
+  <div class="sig-row">
+    <div class="sig-block"><div class="sig-line">Prepared by</div></div>
+    <div class="sig-block"><div class="sig-line">Received by — ${esc(workerName)}</div></div>
+    <div class="sig-block"><div class="sig-line">Approved by</div></div>
+  </div>
+  <div class="footer">${esc(bizName)} &bull; ${esc(bizAddr)}</div>
+</div>
+<script>window.onload=function(){window.print();};<\/script>
+</body>
+</html>`);
+        w.document.close();
+    };
+
+    // ══════════════════════════════════════════════════════
     // PAYROLL INVOICE — Print from Labor/Payroll tab
     // ══════════════════════════════════════════════════════
 

@@ -1545,10 +1545,11 @@ function renderExpensesTable() {
         const srcProj = expProjects.find(p => p.id === e.projectId);
         const fundingBadge = (_coverSet.has(e.id) || e.coverExpense) ? _fundingBadgeHTML(null, true) : (srcProj ? _fundingBadgeHTML(srcProj, false) : '');
         const catBadge = showCategoryBadge ? getCategoryPillHTML(e.category) : '';
+        const invBadge = e.inInventory ? '<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;border-radius:999px;background:#ecfdf5;color:#15803d;font-size:10.5px;font-weight:700;border:1px solid #a7f3d0;">📦 In Inventory</span>' : '';
         return `
         <tr class="exp-group-row">
             <td>${formatDate(e.dateTime)}</td>
-            <td><strong>${_highlightMatch(e.expenseName || '—', name)}</strong>${catBadge}${fundingBadge}</td>
+            <td><strong>${_highlightMatch(e.expenseName || '—', name)}</strong>${catBadge}${fundingBadge}${invBadge}</td>
             <td class="exp-notes-cell">${e.notes ? '<span class="exp-notes-text">' + e.notes + '</span>' : '<span class="exp-notes-empty">—</span>'}</td>
             <td>${e.quantity || 1}</td>
             <td>₱${formatNum(e.amount)}</td>
@@ -2191,6 +2192,10 @@ async function handleAddExpense(e) {
     const dateTime   = _buildDateTime('expDate', 'expTime');
     const notes      = document.getElementById('expNotes').value.trim();
     const paymentMethod = (document.getElementById('expPaymentMethod')?.value || '').trim();
+    // Inventory toggle — when on, this material is also tracked as a stock item.
+    const toInventory = !!document.getElementById('expToInventory')?.checked;
+    const invUnit     = document.getElementById('expInvUnit')?.value || 'pcs';
+    const invMinStock = parseFloat(document.getElementById('expInvMinStock')?.value) || 0;
     // Supporting docs (PO/DR/SI/PR) — compress only those the user selected
     const _docMap = { po: 'expDocPO', dr: 'expDocDR', si: 'expDocSI', pay: 'expDocPR' };
     const docUrls = {};
@@ -2241,20 +2246,30 @@ async function handleAddExpense(e) {
                 ...(idx === 0 && docUrls.si  ? { supplierInvoiceUrl: docUrls.si  } : {}),
                 ...(idx === 0 && docUrls.pay ? { paymentReceiptUrl:  docUrls.pay } : {}),
                 createdAt:     firebase.firestore.FieldValue.serverTimestamp(),
+                ...(toInventory ? { inInventory: true } : {}),
                 ...(sp.coverExpense && { coverExpense: true }),
                 ...(splits.length > 1 && { splitGroup: dateTime + '_' + expName, splitIndex: idx + 1, splitTotal: splits.length })
             });
         });
         await batch.commit();
 
-        const msg = splits.length > 1
-            ? `Split into ${splits.length} records across funding sources ✓`
-            : 'Expense added! ✓';
+        // Mirror to the shared Construction inventory when flagged as a stock item.
+        if (toInventory && expName) {
+            try { await _addExpenseToInventory(expName, qty, invUnit, invMinStock, notes); }
+            catch (e) { console.warn('Inventory sync failed:', e); showExpNotif('Saved, but inventory sync failed: ' + e.message, 'error'); }
+        }
+
+        const msg = toInventory
+            ? 'Expense added & sent to inventory ✓'
+            : (splits.length > 1
+                ? `Split into ${splits.length} records across funding sources ✓`
+                : 'Expense added! ✓');
         showExpNotif(msg, 'success');
         refreshOvAllData();
 
         document.getElementById('addExpenseForm').reset();
         document.getElementById('expSplitPreview').style.display = 'none';
+        if (typeof window.expToggleInventoryFields === 'function') window.expToggleInventoryFields();
         closeExpModal('addExpenseModal');
     } catch (err) {
         showExpNotif('Error saving expense: ' + err.message, 'error');
@@ -2268,6 +2283,39 @@ async function deleteExpense(id) {
     if (!await showDeleteConfirm('Delete this expense?')) return;
     try { await db.collection('expenses').doc(id).delete(); showExpNotif('Deleted.', 'success'); refreshOvAllData(); }
     catch (err) { showExpNotif('Error: ' + err.message, 'error'); }
+}
+
+// Show/hide the Unit + Min Stock fields based on the "Add to Inventory" toggle.
+window.expToggleInventoryFields = function () {
+    const on  = !!document.getElementById('expToInventory')?.checked;
+    const box = document.getElementById('expInventoryFields');
+    if (box) box.style.display = on ? 'block' : 'none';
+};
+
+// Stock-in to the shared Construction inventory. If an item with the same name
+// already exists, the quantity is added to its current stock; otherwise a new
+// inventory item is created. (The expense itself still lives in Materials.)
+async function _addExpenseToInventory(itemName, qty, unit, minStock, notes) {
+    const now = firebase.firestore.FieldValue.serverTimestamp();
+    const by  = (firebase.auth().currentUser || {}).uid || null;
+    const addQty = parseFloat(qty) || 0;
+    const snap = await db.collection('inventory').where('itemName', '==', itemName).limit(1).get();
+    if (!snap.empty) {
+        const doc = snap.docs[0];
+        const cur = parseFloat(doc.data().currentStock) || 0;
+        await doc.ref.update({ currentStock: cur + addQty, lastUpdated: now, lastAdjustedBy: by });
+    } else {
+        await db.collection('inventory').add({
+            itemName,
+            unit:         unit || 'pcs',
+            currentStock: addQty,
+            minStock:     parseFloat(minStock) || 0,
+            notes:        notes || null,
+            lastUpdated:    now,
+            lastAdjustedBy: by,
+            createdAt:      now
+        });
+    }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -3669,6 +3717,12 @@ function closeExpModal(id) {
     if (m) m.classList.remove('active');
     // Clear staged payroll receipts when closing that modal
     if (id === 'addPayrollModal') clearPayReceiptPreview();
+    // Reset the inventory toggle so it doesn't stay on for the next expense
+    if (id === 'addExpenseModal') {
+        const cb = document.getElementById('expToInventory');
+        if (cb) cb.checked = false;
+        if (typeof window.expToggleInventoryFields === 'function') window.expToggleInventoryFields();
+    }
 }
 function guardExpModal(modalId) {
     if (!expCurrentProject && !expCurrentFolder) { showExpNotif('Please select a project first.', 'error'); return; }
