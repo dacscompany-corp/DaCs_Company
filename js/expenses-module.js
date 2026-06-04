@@ -2358,8 +2358,11 @@ function _updatePayBudgetBanner() {
         fsWrap.style.display = visibleSources.length ? 'block' : 'none';
         const list = document.getElementById('payFundingCheckList');
         if (list) {
+            // If the active period isn't among the fundable sources, default to the first
+            // one so a source is always selected (otherwise the save has nothing to charge).
+            const pMatches = p && visibleSources.some(s => s.id === p.id);
             list.innerHTML = visibleSources.map((s, i) => {
-                const isChecked = (p ? s.id === p.id : i === 0);
+                const isChecked = pMatches ? s.id === p.id : i === 0;
                 const remClass  = s.remain < s.budget * 0.1 ? 'is-low' : '';
                 return '<label class="exp-funding-check-item' + (isChecked ? ' is-checked' : '') + '">'
                     + '<input type="checkbox" name="payFundingSrc" value="' + s.id + '"'
@@ -3638,7 +3641,29 @@ async function handleEditPayroll(ev) {
 // ════════════════════════════════════════════════════════════
 // MODAL HELPERS
 // ════════════════════════════════════════════════════════════
-function openExpModal(id)  { const m = document.getElementById(id); if (m) m.classList.add('active'); }
+// True only while the legacy Expenses-tab "guard" path is opening a modal.
+// Lets openExpModal tell apart a legacy open (uses the file-scoped current
+// project) from a React Project-Control open (provides window.expCurrentProject).
+let _legacyModalOpen = false;
+
+function openExpModal(id)  {
+    // The React "Add Payroll / Add Expense" buttons live in portal-app and set the
+    // chosen billing period on window.expCurrentProject — a DIFFERENT binding from the
+    // file-scoped expCurrentProject that the save handlers read. Sync it here so the
+    // entry is charged to the period the user is actually viewing (otherwise it falls
+    // back to a stale period and silently never appears in that folder's list).
+    if (!_legacyModalOpen && (id === 'addPayrollModal' || id === 'addExpenseModal')
+        && window.expCurrentProject && window.expCurrentProject.id) {
+        expCurrentProject = window.expCurrentProject;
+        expCurrentFolder  = null;
+        // Rebuild the funding-source list for THIS period (same as the legacy guard path),
+        // so the save has a valid source to charge instead of erroring or using a stale one.
+        if (id === 'addPayrollModal') _updatePayBudgetBanner();
+        else                          _updateExpBudgetBanner();
+    }
+    _legacyModalOpen = false;
+    const m = document.getElementById(id); if (m) m.classList.add('active');
+}
 function closeExpModal(id) {
     const m = document.getElementById(id);
     if (m) m.classList.remove('active');
@@ -3649,6 +3674,7 @@ function guardExpModal(modalId) {
     if (!expCurrentProject && !expCurrentFolder) { showExpNotif('Please select a project first.', 'error'); return; }
     if (modalId === 'addExpenseModal') _updateExpBudgetBanner();
     if (modalId === 'addPayrollModal') _updatePayBudgetBanner();
+    _legacyModalOpen = true;   // legacy path: keep the file-scoped current project
     openExpModal(modalId);
 }
 
@@ -3698,8 +3724,11 @@ function _updateExpBudgetBanner() {
         const list = document.getElementById('expFundingCheckList');
         if (list) {
             const visibleSources = _expSources.filter(s => s.remain > 0);
+            // If the active period isn't among the fundable sources, default to the first
+            // one so a source is always selected (otherwise the save has nothing to charge).
+            const pMatches = p && visibleSources.some(s => s.id === p.id);
             list.innerHTML = visibleSources.map((s, i) => {
-                const isChecked = (p ? s.id === p.id : i === 0);
+                const isChecked = pMatches ? s.id === p.id : i === 0;
                 const remClass  = s.remain < s.budget * 0.1 ? 'is-low' : '';
                 return '<label class="exp-funding-check-item' + (isChecked ? ' is-checked' : '') + '">'
                     + '<input type="checkbox" name="expFundingSrc" value="' + s.id + '"'
