@@ -1941,16 +1941,23 @@ function findPrimaryForView(view) {
     return null;
 }
 
-function renderPortalChrome() {
+// Shared expand state for both bars
+const _portalState = { tabsExpanded: false, modulesExpanded: false };
+
+function _buildTabsBar(activePrimaryId) {
     const tabs = document.getElementById('portalPrimaryTabs');
     if (!tabs) return;
 
-    // Always rebuild so the tab set reflects the current role (this runs once on
-    // DOMContentLoaded before the role is known, then again from applyRoleBasedUI).
-    tabs.innerHTML = _visibleNav().map(p =>
-        `<button class="portal-ptab" data-primary="${p.id}">${p.label}</button>`
-    ).join('');
-    tabs.dataset.rendered = '1';
+    const nav = _visibleNav();
+    const active = nav.find(p => p.id === activePrimaryId) || nav[0];
+    const toShow = _portalState.tabsExpanded ? nav : [active];
+
+    tabs.innerHTML =
+        toShow.map((p) => {
+            const isActive = p.id === activePrimaryId;
+            return `<button class="portal-ptab${isActive ? ' active' : ''}" data-primary="${p.id}">${p.label}</button>`;
+        }).join('') +
+        `<button class="portal-tabs-toggle" id="portalTabsToggle" title="${_portalState.tabsExpanded ? 'Collapse menu' : 'See other sections'}">${_portalState.tabsExpanded ? '&#8249;' : '&#8250;'}</button>`;
 
     tabs.querySelectorAll('.portal-ptab').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -1959,6 +1966,15 @@ function renderPortalChrome() {
             if (primary) switchView(primary.defaultView);
         });
     });
+
+    document.getElementById('portalTabsToggle').addEventListener('click', () => {
+        _portalState.tabsExpanded = !_portalState.tabsExpanded;
+        _buildTabsBar(activePrimaryId);
+    });
+}
+
+function renderPortalChrome() {
+    _buildTabsBar(null);
 
     // Top-nav logout button mirrors sidebar logout
     const topLogout = document.getElementById('logoutBtnTop');
@@ -1974,22 +1990,33 @@ function syncPortalChrome(view) {
     const primary = findPrimaryForView(view);
     if (!primary) return;
 
-    document.querySelectorAll('.portal-ptab').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.primary === primary.id);
-    });
+    // Rebuild tabs bar with correct active state
+    _buildTabsBar(primary.id);
 
     const row = document.getElementById('portalModulesRow');
     if (!row) return;
+
+    const visibleModules = primary.modules.filter(m => !m.hidden);
+    const activeModule   = visibleModules.find(m => m.view === view) || visibleModules[0];
+    const modulesToShow  = _portalState.modulesExpanded ? visibleModules : [activeModule];
+
     row.innerHTML =
-        primary.modules.filter(m => !m.hidden).map(m =>
-            `<button class="portal-module-link${m.view === view ? ' active-link' : ''}" data-view="${m.view}">
+        modulesToShow.map((m) => {
+            const isActive = m.view === view;
+            return `<button class="portal-module-link${isActive ? ' active-link' : ''}" data-view="${m.view}">
                 <i data-lucide="${m.icon}" style="width:14px;height:14px;"></i>
                 <span>${m.label}</span>
-            </button>`
-        ).join('');
+            </button>`;
+        }).join('') +
+        `<button class="portal-modules-toggle" id="portalModulesToggle" title="${_portalState.modulesExpanded ? 'Collapse menu' : 'See other modules in this section'}">${_portalState.modulesExpanded ? '&#8249;' : '&#8250;'}</button>`;
 
     row.querySelectorAll('.portal-module-link').forEach(btn => {
         btn.addEventListener('click', () => switchView(btn.dataset.view));
+    });
+
+    document.getElementById('portalModulesToggle').addEventListener('click', () => {
+        _portalState.modulesExpanded = !_portalState.modulesExpanded;
+        syncPortalChrome(view);
     });
 
     if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
