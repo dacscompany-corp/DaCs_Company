@@ -1081,6 +1081,7 @@ button.btn-primary:hover,
   grid-template-columns: repeat(3, 1fr);
   gap: 18px;
   margin-bottom: 20px;
+  align-items: start;   /* don't stretch cards to equal height, so a collapsed card can shrink */
 }
 @media (max-width: 1100px) {
   .dacs-portal-scope .pc-flow-cards { grid-template-columns: 1fr; }
@@ -1100,6 +1101,10 @@ button.btn-primary:hover,
   text-align: left;
   font: inherit;
   color: inherit;
+}
+/* Collapsed Labor card: shrink to fit (header + total) instead of staying tall */
+.dacs-portal-scope .pc-flow-card--collapsed {
+  min-height: 0;
 }
 .dacs-portal-scope .pc-flow-card:hover {
   border-color: var(--brand-green-light);
@@ -1210,7 +1215,7 @@ button.btn-primary:hover,
   align-items: baseline;
   padding-top: 14px;
   border-top: 1px solid var(--brand-hair);
-  margin-top: 14px;
+  margin-top: auto;   /* stick the total to the bottom so collapsed cards aren't top-heavy */
 }
 .dacs-portal-scope .pc-flow-total .lbl {
   font-family: var(--sans);
