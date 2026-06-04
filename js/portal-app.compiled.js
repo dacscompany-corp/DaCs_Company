@@ -236,6 +236,18 @@ function foldersHealth(folder) {
 }
 function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, onPickFolder }) {
   const [openCards, setOpenCards] = React.useState({});
+  const rc = React.createElement;
+  const [current, setCurrent] = React.useState(null);
+  const [comboOpen, setComboOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [panelOpen, setPanelOpen] = React.useState(false);
+  const comboRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!comboOpen) return;
+    const onDoc = (e) => { if (comboRef.current && !comboRef.current.contains(e.target)) setComboOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [comboOpen]);
   const openCreate = () => window.openExpModal && window.openExpModal("createFolderModal");
   const openEdit = (id, ev) => {
     ev.stopPropagation();
@@ -250,12 +262,26 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
     const childIds = new Set(childMonths.map((m) => m.id));
     const labor = payrollRaw.filter((p) => childIds.has(p.projectId)).map(mapPayrollDoc);
     const material = expensesRaw.filter((e) => childIds.has(e.projectId)).map(mapExpenseDoc);
-    const built = buildProject(foldersRaw.find((x) => x.id === f.id) || {}, childMonths, labor, material);
+    const _raw = foldersRaw.find((x) => x.id === f.id) || {};
+    const built = buildProject(_raw, childMonths, labor, material);
     const h = foldersHealth(built);
-    const spentPct = built.allocated > 0 ? Math.min((built.labor + built.material) / built.allocated * 100, 100) : 0;
-    const remaining = built.allocated - (built.labor + built.material);
-    return { ...built, h, spentPct, remaining, periodCount: childMonths.length };
+    const spent = built.labor + built.material;
+    const spentPct = built.allocated > 0 ? Math.min(spent / built.allocated * 100, 100) : 0;
+    const remaining = built.allocated - spent;
+    const periodCount = childMonths.length;
+    let status = "track";
+    if (periodCount === 0 && spent === 0) status = "new";
+    else if (remaining < 0 || (built.coverCost || 0) > COVER_LIMIT) status = "attn";
+    let note = "";
+    if (status === "attn") {
+      note = remaining < 0
+        ? "This project is over budget by ₱" + peso(Math.abs(remaining)) + ". Review the latest cost summary before approving payouts."
+        : "Cover expenses exceed ₱" + peso(COVER_LIMIT) + " this billing period. Review the latest cost summary before approving payouts.";
+    }
+    return { ...built, h, spent, spentPct, remaining, periodCount, status, note, createdAt: _raw.createdAt };
   });
+  const _fldMs = (t) => t && t.toMillis ? t.toMillis() : (t && t.seconds ? t.seconds * 1000 : 0);
+  cards.sort((a, b) => _fldMs(b.createdAt) - _fldMs(a.createdAt));
   const runHealthCheck = () => {
     if (typeof window.aiHealthCheck !== "function") return;
     window.aiHealthCheck(cards.map((c) => ({
@@ -313,10 +339,89 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
     warn: /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" }), /* @__PURE__ */ React.createElement("line", { x1: "12", y1: "9", x2: "12", y2: "13" }), /* @__PURE__ */ React.createElement("line", { x1: "12", y1: "17", x2: "12.01", y2: "17" })),
     risk: /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polygon", { points: "7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2" }), /* @__PURE__ */ React.createElement("line", { x1: "12", y1: "8", x2: "12", y2: "12" }), /* @__PURE__ */ React.createElement("line", { x1: "12", y1: "16", x2: "12.01", y2: "16" }))
   };
-  const header = /* @__PURE__ */ React.createElement("header", { className: "pc-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-head-text" }, /* @__PURE__ */ React.createElement("div", { className: "pc-head-eyebrow" }, "Project Control"), /* @__PURE__ */ React.createElement("h1", { className: "pc-head-title" }, "Project Folders"), /* @__PURE__ */ React.createElement("div", { className: "pc-head-sub" }, "Manage budgets, billing periods, labor and material per project")), /* @__PURE__ */ React.createElement("div", { className: "pc-head-controls" }, /* @__PURE__ */ React.createElement("button", { className: "pc-btn-primary", onClick: openCreate }, "+ New Project Folder")));
+  const header = rc("header", { className: "pcf-head" }, rc("div", null, rc("p", { className: "pcf-eyebrow" }, "Project Control"), rc("h1", { className: "pcf-title" }, "Project Folders"), rc("p", { className: "pcf-sub" }, "Select a project to manage its budget, billing periods, labor and materials.")), rc("button", { className: "pcf-btn-primary", onClick: openCreate }, rc("svg", { viewBox: "0 0 24 24", width: 16, height: 16, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" }, rc("line", { x1: 12, y1: 5, x2: 12, y2: 19 }), rc("line", { x1: 5, y1: 12, x2: 19, y2: 12 })), " New Project Folder"));
   if (!folders.length) {
     return /* @__PURE__ */ React.createElement(React.Fragment, null, header, /* @__PURE__ */ React.createElement("section", { className: "pc-folders-empty" }, /* @__PURE__ */ React.createElement("div", { className: "pc-folders-empty-icon" }, "\u{1F4C1}"), /* @__PURE__ */ React.createElement("h3", { className: "pc-folders-empty-title" }, "No project folders yet"), /* @__PURE__ */ React.createElement("p", { className: "pc-folders-empty-sub" }, "Create your first project folder to start tracking budgets, billing periods, and expenses."), /* @__PURE__ */ React.createElement("button", { className: "pc-btn-primary", onClick: openCreate, style: { marginTop: 12 } }, "+ New Project Folder")));
   }
+  return (() => {
+    const hasSel = current !== null && current >= 0 && current < cards.length;
+    const idx = hasSel ? current : -1;
+    const c = hasSel ? cards[idx] : null;
+    const STATUS = { track: { cls: "st-track", label: "On track" }, attn: { cls: "st-attn", label: "Needs attention" }, "new": { cls: "st-new", label: "Not started" } };
+    const st = c ? (STATUS[c.status] || STATUS.track) : STATUS.track;
+    const DOT = { track: "#3D8A63", attn: "#C9871A", "new": "#B8B2A8" };
+    const q = query.trim().toLowerCase();
+    const filtered = cards.map((cc, i) => ({ cc, i })).filter((o) => !q || o.cc.name.toLowerCase().includes(q) || (o.cc.location && o.cc.location.toLowerCase().includes(q)));
+    const SEGN = 6;
+    const segs = c ? Array.from({ length: SEGN }, (_, i) => rc("span", { key: i, className: "pcf-seg" + (i < c.periodCount ? " on" : "") })) : [];
+    const cur = (v) => v > 0 ? rc(React.Fragment, null, rc("span", { className: "pcf-cur" }, "₱"), peso(v)) : rc("span", { style: { color: "#908A81" } }, "—");
+    const pinSvg = rc("svg", { viewBox: "0 0 24 24", width: 14, height: 14, fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" }, rc("path", { d: "M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" }), rc("circle", { cx: 12, cy: 10, r: 2.5 }));
+    const warnSvg = rc("svg", { viewBox: "0 0 24 24", width: 17, height: 17, fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" }, rc("path", { d: "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" }), rc("line", { x1: 12, y1: 9, x2: 12, y2: 13 }), rc("line", { x1: 12, y1: 17, x2: 12.01, y2: 17 }));
+    const chevSvg = rc("svg", { viewBox: "0 0 24 24", width: 18, height: 18, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }));
+    return rc(React.Fragment, null,
+      header,
+      rc("div", { className: "pcf-switch" },
+        rc("div", { className: "pcf-combo" + (comboOpen ? " open" : ""), ref: comboRef },
+          rc("button", { className: "pcf-combo-btn", onClick: () => setComboOpen((o) => !o) },
+            rc("span", { className: "pcf-combo-icon" }, Ico.bldg),
+            rc("span", { className: "pcf-combo-label" }, rc("span", { className: "pcf-combo-cap" }, "Active project"), rc("span", { className: "pcf-combo-name", style: c ? void 0 : { color: "#908A81", fontStyle: "italic" } }, c ? c.name : "Select a project…")),
+            rc("span", { className: "pcf-combo-chev" }, chevSvg)
+          ),
+          comboOpen && rc("div", { className: "pcf-combo-pop" },
+            rc("div", { className: "pcf-combo-search" },
+              rc("svg", { viewBox: "0 0 24 24", width: 16, height: 16, fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" }, rc("circle", { cx: 11, cy: 11, r: 7 }), rc("line", { x1: 21, y1: 21, x2: 16.65, y2: 16.65 })),
+              rc("input", { type: "text", placeholder: "Search projects…", value: query, autoFocus: true, onChange: (e) => setQuery(e.target.value) })
+            ),
+            rc("div", { className: "pcf-combo-list" },
+              filtered.length === 0
+                ? rc("div", { className: "pcf-combo-empty" }, "No projects match.")
+                : filtered.map((o) => rc("button", { key: o.cc.id, className: "pcf-combo-item" + (o.i === idx ? " selected" : ""), onClick: () => { setCurrent(o.i); setComboOpen(false); setQuery(""); } },
+                    rc("span", { className: "pcf-ci-dot", style: { background: DOT[o.cc.status] || "#B8B2A8" } }),
+                    rc("span", { style: { minWidth: 0 } }, rc("span", { className: "pcf-ci-name" }, o.cc.name), rc("span", { className: "pcf-ci-meta" }, (o.cc.location ? o.cc.location + " · " : "") + (o.cc.periodCount === 1 ? "1 billing period" : o.cc.periodCount + " billing periods"))),
+                    o.i === idx ? rc("span", { className: "pcf-ci-check" }, "✓") : null
+                  ))
+            )
+          )
+        ),
+        rc("div", { className: "pcf-stepper" },
+          rc("button", { className: "pcf-step-btn", title: "Previous", onClick: () => setCurrent(hasSel ? (idx - 1 + cards.length) % cards.length : cards.length - 1) }, rc("svg", { viewBox: "0 0 24 24", width: 18, height: 18, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "15 18 9 12 15 6" }))),
+          rc("button", { className: "pcf-step-btn", title: "Next", onClick: () => setCurrent(hasSel ? (idx + 1) % cards.length : 0) }, rc("svg", { viewBox: "0 0 24 24", width: 18, height: 18, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "9 18 15 12 9 6" })))
+        )
+      ),
+      rc("p", { className: "pcf-count" }, hasSel ? rc(React.Fragment, null, "Showing ", rc("b", null, idx + 1), " of ", rc("b", null, cards.length), " projects · use the selector or arrows to switch") : rc(React.Fragment, null, rc("b", null, cards.length), " projects · choose one from the selector or arrows above")),
+      !c && rc("section", { className: "pcf-panel pcf-empty" }, rc("h3", null, "No project selected"), rc("p", null, "Choose a project from the selector or arrows above to view its budget, billing periods, labor and materials.")),
+      c && rc("section", { className: "pcf-panel" },
+        rc("div", { className: "pcf-panel-head" },
+          rc("div", { className: "pcf-ph-left" },
+            rc("h2", { className: "pcf-ph-title" }, c.name),
+            rc("div", { className: "pcf-ph-loc" + (c.location ? "" : " muted") }, pinSvg, c.location || "No location set"),
+            rc("div", null, rc("span", { className: "pcf-status-chip " + st.cls }, rc("span", { className: "pcf-dot" }), st.label))
+          ),
+          rc("div", { className: "pcf-ph-actions" },
+            rc("button", { className: "pcf-act-btn", title: panelOpen ? "Collapse details" : "Expand details", onClick: () => setPanelOpen((o) => !o), style: { transition: "transform .15s ease", transform: panelOpen ? "rotate(180deg)" : "rotate(0deg)" } }, rc("svg", { viewBox: "0 0 24 24", width: 16, height: 16, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }))),
+            rc("button", { className: "pcf-act-btn", title: "AI budget summary", onClick: () => window.aiSummarizeFolder && window.aiSummarizeFolder({ name: c.name, location: c.location, revenue: c.revenue, allocated: c.allocated, labor: c.labor, material: c.material, coverCost: c.coverCost, remaining: c.remaining, spentPct: c.spentPct, periodCount: c.periodCount, statusLabel: st.label }) }, Ico.sparkles),
+            rc("button", { className: "pcf-act-btn", title: "Edit folder", onClick: () => openEdit(c.id) }, Ico.pencil),
+            rc("button", { className: "pcf-act-btn danger", title: "Delete folder", onClick: () => openDelete(c.id) }, Ico.trash)
+          )
+        ),
+        panelOpen && rc("div", { className: "pcf-stats" },
+          rc("div", { className: "pcf-stat" }, rc("div", { className: "pcf-stat-label" }, "Contract Budget"), rc("div", { className: "pcf-stat-value" }, _staff() ? rc("span", { style: { color: "#908A81" } }, "—") : cur(c.revenue))),
+          rc("div", { className: "pcf-stat" }, rc("div", { className: "pcf-stat-label" }, "Billing Periods"), rc("div", { className: "pcf-stat-value" }, c.periodCount), rc("div", { className: "pcf-stat-note" }, (c.periodCount === 1 ? "1 period" : c.periodCount + " periods") + " recorded")),
+          rc("div", { className: "pcf-stat" }, rc("div", { className: "pcf-stat-label" }, "Labor"), rc("div", { className: "pcf-stat-value" }, cur(c.labor))),
+          rc("div", { className: "pcf-stat" }, rc("div", { className: "pcf-stat-label" }, "Materials"), rc("div", { className: "pcf-stat-value" }, cur(c.material)))
+        ),
+        panelOpen && rc("div", { className: "pcf-periods" },
+          rc("div", { className: "pcf-periods-top" }, rc("span", { className: "pcf-periods-label" }, "Billing periods"), rc("span", { className: "pcf-periods-count" }, c.periodCount > 0 ? c.periodCount + " of " + SEGN + " recorded" : "None yet")),
+          c.periodCount > 0 ? rc("div", { className: "pcf-seg-row" }, segs) : rc("p", { className: "pcf-periods-empty" }, "No billing periods recorded. Add the first period to begin tracking labor and materials.")
+        ),
+        panelOpen && c.status === "attn" && c.note ? rc("div", { className: "pcf-attn" }, warnSvg, rc("div", null, rc("b", null, "Needs attention. "), c.note)) : null,
+        rc("div", { className: "pcf-panel-foot" },
+          rc("span", { className: "pcf-foot-meta" }, "Folder " + String(idx + 1).padStart(2, "0") + " of " + cards.length),
+          rc("button", { className: "pcf-open-btn", onClick: () => onPickFolder(c.id) }, "Open Project ", rc("svg", { viewBox: "0 0 24 24", width: 16, height: 16, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("line", { x1: 5, y1: 12, x2: 19, y2: 12 }), rc("polyline", { points: "12 5 19 12 12 19" })))
+        )
+      )
+    );
+  })();
   return /* @__PURE__ */ React.createElement(React.Fragment, null, header, !_staff() && /* @__PURE__ */ React.createElement("button", { className: "pc-reminder pc-reminder-" + _hcKind, onClick: runHealthCheck, title: "Click for the full AI briefing" }, /* @__PURE__ */ React.createElement("span", { className: "pc-reminder-icon" }, _hcIconSvg[_hcKind]), /* @__PURE__ */ React.createElement("span", { className: "pc-reminder-text" }, /* @__PURE__ */ React.createElement("strong", null, _hcTitle), " ", _hcMsg), /* @__PURE__ */ React.createElement("span", { className: "pc-reminder-cta" }, "View details \u2192")), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-grid" }, cards.map((c) => /* @__PURE__ */ React.createElement("div", { key: c.id, className: "pc-fld-card-wrap" }, /* @__PURE__ */ React.createElement("button", { className: "pc-fld-card", onClick: () => onPickFolder(c.id) }, /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-name", style: { display: "flex", alignItems: "center", gap: 8 } }, c.name, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-expand", role: "button", "aria-label": openCards[c.id] ? "Collapse" : "Expand", onClick: (e) => { e.stopPropagation(); setOpenCards((s) => ({ ...s, [c.id]: !s[c.id] })); }, style: { cursor: "pointer", display: "inline-flex", alignItems: "center", color: "var(--brand-green)", transition: "transform .15s ease", transform: openCards[c.id] ? "rotate(180deg)" : "rotate(0deg)" } }, /* @__PURE__ */ React.createElement("svg", { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.5, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "6 9 12 15 18 9" })))), c.location && /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-loc" }, c.location)), openCards[c.id] && /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-stats" }, !_staff() && /* @__PURE__ */ React.createElement("div", { className: "pc-fld-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Total Contract"), "            ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(c.revenue))), !_staff() && /* @__PURE__ */ React.createElement("div", { className: "pc-fld-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Total Fund Allocated"), "      ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(c.allocated))), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Current Fund Spent"), "        ", /* @__PURE__ */ React.createElement("span", { className: "val pc-fld-stat-accent" }, "\u20B1 ", peso(c.labor + c.material))), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Cover Expenses"), "            ", /* @__PURE__ */ React.createElement("span", { className: "val" + (c.coverCost > COVER_LIMIT ? " pc-fld-stat-warn" : "") }, "\u20B1 ", peso(c.coverCost))), !_staff() && /* @__PURE__ */ React.createElement("div", { className: "pc-fld-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Remaining"), "                 ", /* @__PURE__ */ React.createElement("span", { className: "val " + (c.remaining >= 0 ? "pc-fld-stat-accent" : "pc-fld-stat-warn") }, "\u20B1 ", peso(c.remaining)))), openCards[c.id] && !_staff() && /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-health" }, /* @__PURE__ */ React.createElement("span", { className: "pc-fld-health-badge " + c.h.cls }, c.h.label), /* @__PURE__ */ React.createElement("span", { className: "pc-fld-card-pct" }, c.spentPct.toFixed(1), "%")), openCards[c.id] && !_staff() && /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-progress" }, /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-progress-fill", style: { width: c.spentPct + "%", background: c.h.barClr } })), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-meta" }, c.periodCount, " billing period", c.periodCount !== 1 ? "s" : ""), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-cta" }, "Open Project ", /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 6 } }, "\u2192"))), /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-actions" }, /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "AI budget summary", onClick: (e) => {
     e.stopPropagation();
     window.aiSummarizeFolder && window.aiSummarizeFolder({ name: c.name, location: c.location, revenue: c.revenue, allocated: c.allocated, labor: c.labor, material: c.material, coverCost: c.coverCost, remaining: c.remaining, spentPct: c.spentPct, periodCount: c.periodCount, statusLabel: c.h.label });

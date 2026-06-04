@@ -2957,6 +2957,108 @@ body .doc-upload.attached .doc-upload-state {
   font-weight: 600;
 }
 
+/* ============================================================ */
+/* Project Folders — switcher + focused panel (pcf-)            */
+/* ============================================================ */
+.dacs-portal-scope .pcf-head { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:30px; }
+.dacs-portal-scope .pcf-eyebrow { font-size:11px; font-weight:600; letter-spacing:2.2px; text-transform:uppercase; color:#2C7A57; margin:0 0 10px; }
+.dacs-portal-scope .pcf-title { font-family:var(--serif); font-weight:600; font-size:34px; line-height:1.05; margin:0; letter-spacing:-.4px; color:#1B1A18; }
+.dacs-portal-scope .pcf-sub { margin:9px 0 0; font-size:14px; color:#57534E; }
+.dacs-portal-scope .pcf-btn-primary { display:inline-flex; align-items:center; gap:8px; padding:11px 18px; border-radius:10px; background:#1A5C3F; color:#fff; border:none; font-size:13.5px; font-weight:600; white-space:nowrap; box-shadow:var(--shadow-sm); transition:background .15s; cursor:pointer; }
+.dacs-portal-scope .pcf-btn-primary:hover { background:#0F3A28; }
+.dacs-portal-scope .pcf-btn-primary svg { width:16px; height:16px; }
+
+.dacs-portal-scope .pcf-switch { display:flex; align-items:stretch; gap:12px; margin-bottom:22px; }
+.dacs-portal-scope .pcf-combo { position:relative; flex:1; }
+.dacs-portal-scope .pcf-combo-btn { width:100%; display:flex; align-items:center; gap:14px; padding:14px 16px; border-radius:12px; background:#fff; border:1px solid #DBD7CF; text-align:left; box-shadow:var(--shadow-sm); transition:border-color .15s, box-shadow .15s; cursor:pointer; }
+.dacs-portal-scope .pcf-combo-btn:hover { border-color:#C9C4BB; }
+.dacs-portal-scope .pcf-combo.open .pcf-combo-btn { border-color:#226B4A; box-shadow:0 0 0 3px rgba(34,107,74,.12); }
+.dacs-portal-scope .pcf-combo-icon { width:38px; height:38px; border-radius:9px; flex:none; background:#F6F4F0; color:#1A5C3F; display:grid; place-items:center; }
+.dacs-portal-scope .pcf-combo-icon svg { width:19px; height:19px; }
+.dacs-portal-scope .pcf-combo-label { flex:1; min-width:0; }
+.dacs-portal-scope .pcf-combo-cap { font-size:10.5px; letter-spacing:1.6px; text-transform:uppercase; color:#908A81; font-weight:600; display:block; }
+.dacs-portal-scope .pcf-combo-name { font-family:var(--serif); font-weight:600; font-size:18px; color:#1B1A18; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }
+.dacs-portal-scope .pcf-combo-chev { flex:none; color:#908A81; transition:transform .18s; display:inline-flex; }
+.dacs-portal-scope .pcf-combo.open .pcf-combo-chev { transform:rotate(180deg); }
+.dacs-portal-scope .pcf-combo-pop { position:absolute; top:calc(100% + 8px); left:0; right:0; background:#fff; border:1px solid #DBD7CF; border-radius:12px; box-shadow:var(--shadow-md); z-index:40; overflow:hidden; }
+.dacs-portal-scope .pcf-combo-search { display:flex; align-items:center; gap:9px; padding:12px 14px; border-bottom:1px solid #EAE7E1; }
+.dacs-portal-scope .pcf-combo-search svg { width:16px; height:16px; color:#908A81; flex:none; }
+.dacs-portal-scope .pcf-combo-search input { flex:1; border:none; outline:none; background:transparent; font-family:var(--sans); font-size:14px; color:#1B1A18; }
+.dacs-portal-scope .pcf-combo-list { max-height:320px; overflow-y:auto; padding:6px; }
+.dacs-portal-scope .pcf-combo-item { width:100%; display:flex; align-items:center; gap:12px; padding:10px 11px; border-radius:9px; border:none; background:transparent; text-align:left; cursor:pointer; transition:background .12s; }
+.dacs-portal-scope .pcf-combo-item:hover { background:#F6F4F0; }
+.dacs-portal-scope .pcf-combo-item.selected { background:rgba(34,107,74,.07); }
+.dacs-portal-scope .pcf-ci-dot { width:7px; height:7px; border-radius:50%; flex:none; }
+.dacs-portal-scope .pcf-ci-name { font-weight:600; font-size:14px; color:#1B1A18; display:block; }
+.dacs-portal-scope .pcf-ci-meta { font-size:12px; color:#908A81; margin-top:2px; display:block; }
+.dacs-portal-scope .pcf-ci-check { margin-left:auto; color:#226B4A; font-weight:700; }
+.dacs-portal-scope .pcf-combo-empty { padding:26px 14px; text-align:center; color:#908A81; font-size:13px; }
+.dacs-portal-scope .pcf-stepper { display:flex; gap:8px; flex:none; }
+.dacs-portal-scope .pcf-step-btn { width:50px; border-radius:12px; background:#fff; border:1px solid #DBD7CF; color:#57534E; display:grid; place-items:center; box-shadow:var(--shadow-sm); cursor:pointer; transition:background .15s, color .15s, border-color .15s; }
+.dacs-portal-scope .pcf-step-btn:hover { background:#F6F4F0; color:#1B1A18; border-color:#C9C4BB; }
+.dacs-portal-scope .pcf-step-btn svg { width:18px; height:18px; }
+.dacs-portal-scope .pcf-count { font-size:12.5px; color:#908A81; margin:0 2px 26px; }
+.dacs-portal-scope .pcf-count b { color:#57534E; font-weight:600; }
+
+.dacs-portal-scope .pcf-panel { background:#fff; border:1px solid #EAE7E1; border-radius:18px; box-shadow:var(--shadow-md); overflow:hidden; }
+.dacs-portal-scope .pcf-panel-head { display:flex; align-items:flex-start; gap:20px; padding:26px 28px 24px; border-bottom:1px solid #EAE7E1; }
+.dacs-portal-scope .pcf-ph-left { flex:1; min-width:0; }
+.dacs-portal-scope .pcf-ph-title { font-family:var(--serif); font-weight:600; font-size:27px; line-height:1.1; margin:0; color:#1B1A18; letter-spacing:-.3px; }
+.dacs-portal-scope .pcf-ph-loc { display:flex; align-items:center; gap:7px; margin-top:9px; font-size:13.5px; color:#57534E; }
+.dacs-portal-scope .pcf-ph-loc.muted { color:#908A81; }
+.dacs-portal-scope .pcf-ph-loc svg { width:14px; height:14px; color:#908A81; flex:none; }
+.dacs-portal-scope .pcf-status-chip { display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:999px; font-size:12px; font-weight:600; margin-top:14px; }
+.dacs-portal-scope .pcf-status-chip .pcf-dot { width:7px; height:7px; border-radius:50%; }
+.dacs-portal-scope .pcf-status-chip.st-track { background:rgba(34,107,74,.10); color:#1A5C3F; }
+.dacs-portal-scope .pcf-status-chip.st-track .pcf-dot { background:#226B4A; }
+.dacs-portal-scope .pcf-status-chip.st-attn { background:#FBF1DD; color:#92500B; }
+.dacs-portal-scope .pcf-status-chip.st-attn .pcf-dot { background:#C9871A; }
+.dacs-portal-scope .pcf-status-chip.st-new { background:#F6F4F0; color:#57534E; }
+.dacs-portal-scope .pcf-status-chip.st-new .pcf-dot { background:#908A81; }
+.dacs-portal-scope .pcf-ph-actions { display:flex; gap:6px; flex:none; }
+.dacs-portal-scope .pcf-act-btn { width:36px; height:36px; border-radius:9px; background:#fff; border:1px solid #EAE7E1; color:#57534E; display:grid; place-items:center; cursor:pointer; transition:background .15s, color .15s, border-color .15s; }
+.dacs-portal-scope .pcf-act-btn:hover { background:#F6F4F0; color:#1B1A18; border-color:#DBD7CF; }
+.dacs-portal-scope .pcf-act-btn.danger:hover { background:#FBEDED; color:#B4453D; border-color:#EFCFCB; }
+.dacs-portal-scope .pcf-act-btn svg { width:16px; height:16px; }
+
+.dacs-portal-scope .pcf-stats { display:grid; grid-template-columns:repeat(4,1fr); border-bottom:1px solid #EAE7E1; }
+.dacs-portal-scope .pcf-stat { padding:22px 24px; border-right:1px solid #EAE7E1; }
+.dacs-portal-scope .pcf-stat:last-child { border-right:none; }
+.dacs-portal-scope .pcf-stat-label { font-size:11px; letter-spacing:1.2px; text-transform:uppercase; color:#908A81; font-weight:600; }
+.dacs-portal-scope .pcf-stat-value { font-family:var(--serif); font-weight:600; font-size:23px; color:#1B1A18; margin-top:9px; letter-spacing:-.2px; }
+.dacs-portal-scope .pcf-cur { font-size:14px; color:#908A81; margin-right:1px; font-family:var(--sans); font-weight:600; }
+.dacs-portal-scope .pcf-stat-note { font-size:11.5px; color:#908A81; margin-top:4px; }
+
+.dacs-portal-scope .pcf-periods { padding:22px 28px; border-bottom:1px solid #EAE7E1; }
+.dacs-portal-scope .pcf-periods-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:13px; }
+.dacs-portal-scope .pcf-periods-label { font-size:13px; font-weight:600; color:#1B1A18; }
+.dacs-portal-scope .pcf-periods-count { font-size:12.5px; color:#908A81; }
+.dacs-portal-scope .pcf-seg-row { display:flex; gap:6px; }
+.dacs-portal-scope .pcf-seg { height:7px; flex:1; border-radius:4px; background:#F6F4F0; }
+.dacs-portal-scope .pcf-seg.on { background:#226B4A; }
+.dacs-portal-scope .pcf-periods-empty { font-size:13px; color:#908A81; margin:0; }
+
+.dacs-portal-scope .pcf-attn { display:flex; align-items:flex-start; gap:11px; margin:0; padding:16px 28px; background:#FBF1DD; border-bottom:1px solid #F0DCAE; color:#92500B; font-size:13px; line-height:1.5; }
+.dacs-portal-scope .pcf-attn svg { width:17px; height:17px; flex:none; margin-top:1px; }
+.dacs-portal-scope .pcf-attn b { font-weight:600; }
+
+.dacs-portal-scope .pcf-panel-foot { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 28px; }
+.dacs-portal-scope .pcf-foot-meta { font-size:12.5px; color:#908A81; }
+.dacs-portal-scope .pcf-open-btn { display:inline-flex; align-items:center; gap:9px; padding:12px 22px; border-radius:10px; background:#1A5C3F; color:#fff; border:none; font-size:14px; font-weight:600; box-shadow:var(--shadow-sm); cursor:pointer; transition:background .15s, gap .15s; }
+.dacs-portal-scope .pcf-open-btn:hover { background:#0F3A28; gap:13px; }
+.dacs-portal-scope .pcf-open-btn svg { width:16px; height:16px; }
+
+.dacs-portal-scope .pcf-empty { text-align:center; padding:60px 20px; color:#908A81; }
+.dacs-portal-scope .pcf-empty-icon { font-size:40px; }
+.dacs-portal-scope .pcf-empty h3 { font-family:var(--serif); color:#1B1A18; margin:12px 0 6px; }
+
+@media (max-width:720px) {
+  .dacs-portal-scope .pcf-head { flex-direction:column; align-items:stretch; }
+  .dacs-portal-scope .pcf-stats { grid-template-columns:repeat(2,1fr); }
+  .dacs-portal-scope .pcf-stat:nth-child(2) { border-right:none; }
+  .dacs-portal-scope .pcf-stat:nth-child(1), .dacs-portal-scope .pcf-stat:nth-child(2) { border-bottom:1px solid #EAE7E1; }
+}
+
 /* Clickable state for done doc-pills in the materials table */
 .dacs-portal-scope .pc-doc-pill.clickable {
   cursor: pointer;
