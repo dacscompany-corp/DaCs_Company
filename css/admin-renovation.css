@@ -447,7 +447,9 @@ button.btn-primary:hover,
   align-items: flex-end;
   gap: 4px;
   border-bottom: 1px solid var(--brand-hair);
-  overflow-x: auto;
+  overflow: hidden;
+  min-height: 52px;
+  flex-wrap: nowrap;
   /* Thin scrollbar for Firefox and Chrome 121+; older WebKit (Safari,
      older Chrome, Samsung Internet) uses the ::-webkit-scrollbar
      pseudo-elements below for the same visual effect. */
@@ -483,6 +485,7 @@ button.btn-primary:hover,
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .portal-ptab:hover { color: var(--text-primary); }
 .portal-ptab.active {
@@ -499,15 +502,17 @@ button.btn-primary:hover,
   letter-spacing: 0;
 }
 
+
 /* ── Modules row ── */
 .portal-modules-row {
-  background: var(--brand-cream);
-  padding: 14px 40px;
+  background: #ffffff;
+  padding: 8px 40px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
   border-bottom: 1px solid var(--brand-hair);
-  flex-wrap: wrap;
+  overflow: hidden;
+  min-height: 52px;
 }
 .portal-modules-label {
   font-family: var(--sans);
@@ -520,8 +525,10 @@ button.btn-primary:hover,
   border-right: 1px solid var(--brand-hair);
   margin-right: 8px;
 }
+
+/* active item — no animation, always stable */
 .portal-module-link {
-  padding: 9px 18px;
+  padding: 8px 18px;
   font-family: var(--sans);
   font-size: 13px;
   color: var(--text-secondary);
@@ -529,21 +536,21 @@ button.btn-primary:hover,
   border: 1px solid transparent;
   background: transparent;
   cursor: pointer;
-  transition: background .2s, color .2s, border-color .2s, box-shadow .2s, transform .15s;
+  transition: background .18s, color .18s, border-color .18s, box-shadow .18s;
   display: flex;
   align-items: center;
   gap: 7px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .portal-module-link:hover {
   background: var(--bg-white);
   color: var(--brand-green);
   border-color: var(--brand-hair);
-  box-shadow: 0 2px 8px rgba(26, 92, 58, 0.12);
-  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(26, 92, 58, 0.10);
 }
 .portal-module-link:hover svg { color: var(--brand-green); }
-.portal-module-link svg { color: var(--text-light); flex-shrink: 0; transition: color .2s; }
+.portal-module-link svg { color: var(--text-light); flex-shrink: 0; transition: color .18s; }
 .portal-module-link.active-link {
   background: var(--bg-white);
   color: var(--brand-green);
@@ -552,6 +559,34 @@ button.btn-primary:hover,
   box-shadow: var(--shadow-sm);
 }
 .portal-module-link.active-link svg { color: var(--brand-green); }
+
+/* ── Shared toggle button style (tabs + modules) ── */
+.portal-modules-toggle,
+.portal-tabs-toggle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 26px;
+  height: 26px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--brand-green);
+  background: rgba(26, 92, 58, 0.07);
+  border: 1.5px solid rgba(26, 92, 58, 0.3);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+  margin-left: 8px;
+}
+.portal-modules-toggle:hover,
+.portal-tabs-toggle:hover {
+  color: #fff;
+  border-color: var(--brand-green);
+  background: var(--brand-green);
+}
 
 /* ── Restyle dashboard-header now that it's the page title strip ── */
 .dashboard-header {
