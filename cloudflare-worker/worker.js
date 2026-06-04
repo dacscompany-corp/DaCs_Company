@@ -13,7 +13,8 @@
 const ALLOWED_ORIGINS = [
   'http://127.0.0.1:5501',
   'http://localhost:5501',
-  // 'https://your-app.web.app',     // ← add your Firebase Hosting URL here
+  'https://dacs-company.vercel.app',   // production (Vercel)
+  // 'https://your-app.web.app',       // ← add your Firebase Hosting URL here too if used
 ];
 
 // Workers AI model. Swap to '@cf/meta/llama-3.3-70b-instruct-fp8-fast' for
@@ -21,7 +22,9 @@ const ALLOWED_ORIGINS = [
 const MODEL = '@cf/meta/llama-3.1-8b-instruct';
 
 function corsHeaders(origin) {
-  const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
+  // Allow the explicit list plus any Vercel deployment (production + previews).
+  const ok = ALLOWED_ORIGINS.includes(origin) || /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
+  const allow = ok ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allow,
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
