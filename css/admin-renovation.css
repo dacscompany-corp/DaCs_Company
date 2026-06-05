@@ -447,7 +447,9 @@ button.btn-primary:hover,
   align-items: flex-end;
   gap: 4px;
   border-bottom: 1px solid var(--brand-hair);
-  overflow-x: auto;
+  overflow: hidden;
+  min-height: 52px;
+  flex-wrap: nowrap;
   /* Thin scrollbar for Firefox and Chrome 121+; older WebKit (Safari,
      older Chrome, Samsung Internet) uses the ::-webkit-scrollbar
      pseudo-elements below for the same visual effect. */
@@ -483,6 +485,7 @@ button.btn-primary:hover,
   align-items: center;
   gap: 8px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .portal-ptab:hover { color: var(--text-primary); }
 .portal-ptab.active {
@@ -499,15 +502,17 @@ button.btn-primary:hover,
   letter-spacing: 0;
 }
 
+
 /* ── Modules row ── */
 .portal-modules-row {
-  background: var(--brand-cream);
-  padding: 14px 40px;
+  background: #ffffff;
+  padding: 8px 40px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
   border-bottom: 1px solid var(--brand-hair);
-  flex-wrap: wrap;
+  overflow: hidden;
+  min-height: 52px;
 }
 .portal-modules-label {
   font-family: var(--sans);
@@ -520,8 +525,10 @@ button.btn-primary:hover,
   border-right: 1px solid var(--brand-hair);
   margin-right: 8px;
 }
+
+/* active item — no animation, always stable */
 .portal-module-link {
-  padding: 9px 18px;
+  padding: 8px 18px;
   font-family: var(--sans);
   font-size: 13px;
   color: var(--text-secondary);
@@ -529,21 +536,21 @@ button.btn-primary:hover,
   border: 1px solid transparent;
   background: transparent;
   cursor: pointer;
-  transition: background .2s, color .2s, border-color .2s, box-shadow .2s, transform .15s;
+  transition: background .18s, color .18s, border-color .18s, box-shadow .18s;
   display: flex;
   align-items: center;
   gap: 7px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .portal-module-link:hover {
   background: var(--bg-white);
   color: var(--brand-green);
   border-color: var(--brand-hair);
-  box-shadow: 0 2px 8px rgba(26, 92, 58, 0.12);
-  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(26, 92, 58, 0.10);
 }
 .portal-module-link:hover svg { color: var(--brand-green); }
-.portal-module-link svg { color: var(--text-light); flex-shrink: 0; transition: color .2s; }
+.portal-module-link svg { color: var(--text-light); flex-shrink: 0; transition: color .18s; }
 .portal-module-link.active-link {
   background: var(--bg-white);
   color: var(--brand-green);
@@ -552,6 +559,34 @@ button.btn-primary:hover,
   box-shadow: var(--shadow-sm);
 }
 .portal-module-link.active-link svg { color: var(--brand-green); }
+
+/* ── Shared toggle button style (tabs + modules) ── */
+.portal-modules-toggle,
+.portal-tabs-toggle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  width: 26px;
+  height: 26px;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--brand-green);
+  background: rgba(26, 92, 58, 0.07);
+  border: 1.5px solid rgba(26, 92, 58, 0.3);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+  margin-left: 8px;
+}
+.portal-modules-toggle:hover,
+.portal-tabs-toggle:hover {
+  color: #fff;
+  border-color: var(--brand-green);
+  background: var(--brand-green);
+}
 
 /* ── Restyle dashboard-header now that it's the page title strip ── */
 .dashboard-header {
@@ -721,11 +756,53 @@ button.btn-primary:hover,
   transition: filter .15s;
 }
 .dacs-portal-scope .pc-btn-primary:hover { filter: brightness(1.08); }
+/* AI reminder banner — minimalist: white card, thin colored accent + icon */
+.dacs-portal-scope .pc-reminder {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  text-align: left;
+  margin: 2px 0 22px;
+  padding: 13px 18px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid var(--brand-hair);
+  border-left: 3px solid var(--text-light);
+  cursor: pointer;
+  font-family: var(--sans);
+  transition: box-shadow .15s, border-color .15s;
+}
+.dacs-portal-scope .pc-reminder:hover { box-shadow: var(--shadow-sm); }
+.dacs-portal-scope .pc-reminder-icon { flex: none; display: inline-flex; }
+.dacs-portal-scope .pc-reminder-icon svg { width: 20px; height: 20px; }
+.dacs-portal-scope .pc-reminder-text { flex: 1; font-size: 14px; color: #4b5563; line-height: 1.45; }
+.dacs-portal-scope .pc-reminder-text strong { font-weight: 700; }
+.dacs-portal-scope .pc-reminder-cta {
+  flex: none; font-size: 13px; font-weight: 600; white-space: nowrap; opacity: 0.9;
+}
+.dacs-portal-scope .pc-reminder-ok   { background: #f3f8f5; border-color: #cfe6da; border-left-color: #1A5C3A; }
+.dacs-portal-scope .pc-reminder-ok   .pc-reminder-icon,
+.dacs-portal-scope .pc-reminder-ok   .pc-reminder-text strong,
+.dacs-portal-scope .pc-reminder-ok   .pc-reminder-cta { color: #1A5C3A; }
+.dacs-portal-scope .pc-reminder-warn { background: #fbf6ea; border-color: #f1e2bf; border-left-color: #A86B00; }
+.dacs-portal-scope .pc-reminder-warn .pc-reminder-icon,
+.dacs-portal-scope .pc-reminder-warn .pc-reminder-text strong,
+.dacs-portal-scope .pc-reminder-warn .pc-reminder-cta { color: #A86B00; }
+.dacs-portal-scope .pc-reminder-risk { background: #fdeeec; border-color: #f3cfc9; border-left-color: #c0392b; }
+.dacs-portal-scope .pc-reminder-risk .pc-reminder-icon,
+.dacs-portal-scope .pc-reminder-risk .pc-reminder-text strong,
+.dacs-portal-scope .pc-reminder-risk .pc-reminder-cta { color: #c0392b; }
+@media (max-width: 720px) {
+  .dacs-portal-scope .pc-reminder { flex-wrap: wrap; }
+  .dacs-portal-scope .pc-reminder-cta { width: 100%; }
+}
 
 /* KPI strip */
 .dacs-portal-scope .pc-kpi-strip {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   background: #fff;
   border: 1px solid var(--brand-hair);
   border-radius: 16px;
@@ -737,8 +814,9 @@ button.btn-primary:hover,
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 4px 28px;
+  padding: 4px 20px;
   border-right: 1px solid var(--brand-hair);
+  min-width: 0;
 }
 .dacs-portal-scope .pc-kpi:last-child { border-right: 0; }
 .dacs-portal-scope .pc-kpi-lbl {
@@ -751,14 +829,30 @@ button.btn-primary:hover,
 }
 .dacs-portal-scope .pc-kpi-val {
   font-family: var(--serif);
-  font-size: 26px;
+  font-size: 23px;
   font-weight: 600;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
+  white-space: nowrap;
 }
 .dacs-portal-scope .pc-kpi-val.pc-accent { color: var(--brand-green); }
 .dacs-portal-scope .pc-kpi-val.pc-warn   { color: #b85b00; }
+.dacs-portal-scope .pc-kpi-val.pc-danger { color: #c0392b; }
+.dacs-portal-scope .pc-over-badge {
+  align-self: flex-start;
+  margin-top: 5px;
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #c0392b;
+  background: #fdecea;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
 .dacs-portal-scope .pc-kpi-sub {
   font-family: var(--sans);
   font-size: 11px;
@@ -767,7 +861,7 @@ button.btn-primary:hover,
 }
 
 @media (max-width: 1100px) {
-  .dacs-portal-scope .pc-kpi-strip { grid-template-columns: repeat(2, 1fr); padding: 0; }
+  .dacs-portal-scope .pc-kpi-strip { grid-auto-flow: row; grid-template-columns: repeat(2, 1fr); padding: 0; }
   .dacs-portal-scope .pc-kpi { padding: 18px 22px; border-right: 1px solid var(--brand-hair); border-bottom: 1px solid var(--brand-hair); }
   .dacs-portal-scope .pc-kpi:nth-child(2n) { border-right: 0; }
   .dacs-portal-scope .pc-kpi:nth-last-child(-n+2) { border-bottom: 0; }
@@ -1022,6 +1116,7 @@ button.btn-primary:hover,
   grid-template-columns: repeat(3, 1fr);
   gap: 18px;
   margin-bottom: 20px;
+  align-items: start;   /* don't stretch cards to equal height, so a collapsed card can shrink */
 }
 @media (max-width: 1100px) {
   .dacs-portal-scope .pc-flow-cards { grid-template-columns: 1fr; }
@@ -1041,6 +1136,10 @@ button.btn-primary:hover,
   text-align: left;
   font: inherit;
   color: inherit;
+}
+/* Collapsed Labor card: shrink to fit (header + total) instead of staying tall */
+.dacs-portal-scope .pc-flow-card--collapsed {
+  min-height: 0;
 }
 .dacs-portal-scope .pc-flow-card:hover {
   border-color: var(--brand-green-light);
@@ -1151,7 +1250,7 @@ button.btn-primary:hover,
   align-items: baseline;
   padding-top: 14px;
   border-top: 1px solid var(--brand-hair);
-  margin-top: 14px;
+  margin-top: auto;   /* stick the total to the bottom so collapsed cards aren't top-heavy */
 }
 .dacs-portal-scope .pc-flow-total .lbl {
   font-family: var(--sans);
@@ -1280,10 +1379,37 @@ button.btn-primary:hover,
   margin-top: 2px;
 }
 .dacs-portal-scope .pc-sm-contract-val {
-  font-size: 30px;
+  font-size: 24px;
   font-weight: 700;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+.dacs-portal-scope .pc-sm-hero-figures {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+}
+.dacs-portal-scope .pc-sm-hero-margin {
+  text-align: center;
+  padding-left: 26px;
+  border-left: 1px solid rgba(255, 255, 255, 0.28);
+}
+.dacs-portal-scope .pc-sm-hero-margin-val {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.dacs-portal-scope .pc-sm-hero-margin-lbl {
+  font-size: 11px;
+  opacity: 0.85;
+  margin-top: 4px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+@media (max-width: 720px) {
+  .dacs-portal-scope .pc-sm-hero-figures { width: 100%; justify-content: space-between; gap: 14px; }
+  .dacs-portal-scope .pc-sm-hero-margin { padding-left: 14px; }
 }
 .dacs-portal-scope .pc-summarize-stacked .pc-sm-equation {
   display: flex;
@@ -2865,6 +2991,127 @@ body .doc-upload.attached .doc-upload-state {
   color: #1A5C3A;
   font-weight: 600;
 }
+
+/* ============================================================ */
+/* Project Folders — switcher + focused panel (pcf-)            */
+/* ============================================================ */
+.dacs-portal-scope .pcf-head { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:30px; }
+.dacs-portal-scope .pcf-eyebrow { font-size:11px; font-weight:600; letter-spacing:2.2px; text-transform:uppercase; color:#2C7A57; margin:0 0 10px; }
+.dacs-portal-scope .pcf-title { font-family:var(--serif); font-weight:600; font-size:34px; line-height:1.05; margin:0; letter-spacing:-.4px; color:#1B1A18; }
+.dacs-portal-scope .pcf-sub { margin:9px 0 0; font-size:14px; color:#57534E; }
+.dacs-portal-scope .pcf-btn-primary { display:inline-flex; align-items:center; gap:8px; padding:11px 18px; border-radius:10px; background:#1A5C3F; color:#fff; border:none; font-size:13.5px; font-weight:600; white-space:nowrap; box-shadow:var(--shadow-sm); transition:background .15s; cursor:pointer; }
+.dacs-portal-scope .pcf-btn-primary:hover { background:#0F3A28; }
+.dacs-portal-scope .pcf-btn-primary svg { width:16px; height:16px; }
+
+.dacs-portal-scope .pcf-switch { display:flex; align-items:stretch; gap:12px; margin-bottom:22px; }
+.dacs-portal-scope .pcf-combo { position:relative; flex:1; }
+.dacs-portal-scope .pcf-combo-btn { width:100%; display:flex; align-items:center; gap:14px; padding:14px 16px; border-radius:12px; background:#fff; border:1px solid #DBD7CF; text-align:left; box-shadow:var(--shadow-sm); transition:border-color .15s, box-shadow .15s; cursor:pointer; }
+.dacs-portal-scope .pcf-combo-btn:hover { border-color:#C9C4BB; }
+.dacs-portal-scope .pcf-combo.open .pcf-combo-btn { border-color:#226B4A; box-shadow:0 0 0 3px rgba(34,107,74,.12); }
+.dacs-portal-scope .pcf-combo-icon { width:38px; height:38px; border-radius:9px; flex:none; background:#F6F4F0; color:#1A5C3F; display:grid; place-items:center; }
+.dacs-portal-scope .pcf-combo-icon svg { width:19px; height:19px; }
+.dacs-portal-scope .pcf-combo-label { flex:1; min-width:0; }
+.dacs-portal-scope .pcf-combo-cap { font-size:10.5px; letter-spacing:1.6px; text-transform:uppercase; color:#908A81; font-weight:600; display:block; }
+.dacs-portal-scope .pcf-combo-name { font-family:var(--serif); font-weight:600; font-size:18px; color:#1B1A18; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; }
+.dacs-portal-scope .pcf-combo-chev { flex:none; color:#908A81; transition:transform .18s; display:inline-flex; }
+.dacs-portal-scope .pcf-combo.open .pcf-combo-chev { transform:rotate(180deg); }
+.dacs-portal-scope .pcf-combo-pop { position:absolute; top:calc(100% + 8px); left:0; right:0; background:#fff; border:1px solid #DBD7CF; border-radius:12px; box-shadow:var(--shadow-md); z-index:40; overflow:hidden; }
+.dacs-portal-scope .pcf-combo-search { display:flex; align-items:center; gap:9px; padding:12px 14px; border-bottom:1px solid #EAE7E1; }
+.dacs-portal-scope .pcf-combo-search svg { width:16px; height:16px; color:#908A81; flex:none; }
+.dacs-portal-scope .pcf-combo-search input { flex:1; border:none; outline:none; background:transparent; font-family:var(--sans); font-size:14px; color:#1B1A18; }
+.dacs-portal-scope .pcf-combo-list { max-height:320px; overflow-y:auto; padding:6px; }
+.dacs-portal-scope .pcf-combo-item { width:100%; display:flex; align-items:center; gap:12px; padding:10px 11px; border-radius:9px; border:none; background:transparent; text-align:left; cursor:pointer; transition:background .12s; }
+.dacs-portal-scope .pcf-combo-item:hover { background:#F6F4F0; }
+.dacs-portal-scope .pcf-combo-item.selected { background:rgba(34,107,74,.07); }
+.dacs-portal-scope .pcf-ci-dot { width:7px; height:7px; border-radius:50%; flex:none; }
+.dacs-portal-scope .pcf-ci-name { font-weight:600; font-size:14px; color:#1B1A18; display:block; }
+.dacs-portal-scope .pcf-ci-meta { font-size:12px; color:#908A81; margin-top:2px; display:block; }
+.dacs-portal-scope .pcf-ci-check { margin-left:auto; color:#226B4A; font-weight:700; }
+.dacs-portal-scope .pcf-combo-empty { padding:26px 14px; text-align:center; color:#908A81; font-size:13px; }
+.dacs-portal-scope .pcf-stepper { display:flex; gap:8px; flex:none; }
+.dacs-portal-scope .pcf-step-btn { width:50px; border-radius:12px; background:#fff; border:1px solid #DBD7CF; color:#57534E; display:grid; place-items:center; box-shadow:var(--shadow-sm); cursor:pointer; transition:background .15s, color .15s, border-color .15s; }
+.dacs-portal-scope .pcf-step-btn:hover { background:#F6F4F0; color:#1B1A18; border-color:#C9C4BB; }
+.dacs-portal-scope .pcf-step-btn svg { width:18px; height:18px; }
+.dacs-portal-scope .pcf-count { font-size:12.5px; color:#908A81; margin:0 2px 26px; }
+.dacs-portal-scope .pcf-count b { color:#57534E; font-weight:600; }
+
+.dacs-portal-scope .pcf-panel { background:#fff; border:1px solid #EAE7E1; border-radius:18px; box-shadow:var(--shadow-md); overflow:hidden; }
+.dacs-portal-scope .pcf-panel-head { display:flex; align-items:flex-start; gap:20px; padding:26px 28px 24px; border-bottom:1px solid #EAE7E1; }
+.dacs-portal-scope .pcf-ph-left { flex:1; min-width:0; }
+.dacs-portal-scope .pcf-ph-title { font-family:var(--serif); font-weight:600; font-size:27px; line-height:1.1; margin:0; color:#1B1A18; letter-spacing:-.3px; }
+.dacs-portal-scope .pcf-ph-loc { display:flex; align-items:center; gap:7px; margin-top:9px; font-size:13.5px; color:#57534E; }
+.dacs-portal-scope .pcf-ph-loc.muted { color:#908A81; }
+.dacs-portal-scope .pcf-ph-loc svg { width:14px; height:14px; color:#908A81; flex:none; }
+.dacs-portal-scope .pcf-status-chip { display:inline-flex; align-items:center; gap:7px; padding:5px 11px; border-radius:999px; font-size:12px; font-weight:600; margin-top:14px; }
+.dacs-portal-scope .pcf-status-chip .pcf-dot { width:7px; height:7px; border-radius:50%; }
+.dacs-portal-scope .pcf-status-chip.st-track { background:rgba(34,107,74,.10); color:#1A5C3F; }
+.dacs-portal-scope .pcf-status-chip.st-track .pcf-dot { background:#226B4A; }
+.dacs-portal-scope .pcf-status-chip.st-attn { background:#FBF1DD; color:#92500B; }
+.dacs-portal-scope .pcf-status-chip.st-attn .pcf-dot { background:#C9871A; }
+.dacs-portal-scope .pcf-status-chip.st-new { background:#F6F4F0; color:#57534E; }
+.dacs-portal-scope .pcf-status-chip.st-new .pcf-dot { background:#908A81; }
+.dacs-portal-scope .pcf-ph-actions { display:flex; gap:6px; flex:none; }
+.dacs-portal-scope .pcf-act-btn { width:36px; height:36px; border-radius:9px; background:#fff; border:1px solid #EAE7E1; color:#57534E; display:grid; place-items:center; cursor:pointer; transition:background .15s, color .15s, border-color .15s; }
+.dacs-portal-scope .pcf-act-btn:hover { background:#F6F4F0; color:#1B1A18; border-color:#DBD7CF; }
+.dacs-portal-scope .pcf-act-btn.danger:hover { background:#FBEDED; color:#B4453D; border-color:#EFCFCB; }
+.dacs-portal-scope .pcf-act-btn svg { width:16px; height:16px; }
+
+.dacs-portal-scope .pcf-stats { display:grid; grid-template-columns:repeat(4,1fr); border-bottom:1px solid #EAE7E1; }
+.dacs-portal-scope .pcf-stat { padding:22px 24px; border-right:1px solid #EAE7E1; }
+.dacs-portal-scope .pcf-stat:last-child { border-right:none; }
+.dacs-portal-scope .pcf-stat-label { font-size:11px; letter-spacing:1.2px; text-transform:uppercase; color:#908A81; font-weight:600; }
+.dacs-portal-scope .pcf-stat-value { font-family:var(--serif); font-weight:600; font-size:23px; color:#1B1A18; margin-top:9px; letter-spacing:-.2px; }
+.dacs-portal-scope .pcf-cur { font-size:14px; color:#908A81; margin-right:1px; font-family:var(--sans); font-weight:600; }
+.dacs-portal-scope .pcf-stat-note { font-size:11.5px; color:#908A81; margin-top:4px; }
+
+.dacs-portal-scope .pcf-periods { padding:22px 28px; border-bottom:1px solid #EAE7E1; }
+.dacs-portal-scope .pcf-periods-top { display:flex; align-items:center; justify-content:space-between; margin-bottom:13px; }
+.dacs-portal-scope .pcf-periods-label { font-size:13px; font-weight:600; color:#1B1A18; }
+.dacs-portal-scope .pcf-periods-count { font-size:12.5px; color:#908A81; }
+.dacs-portal-scope .pcf-seg-row { display:flex; gap:6px; }
+.dacs-portal-scope .pcf-seg { height:7px; flex:1; border-radius:4px; background:#F6F4F0; }
+.dacs-portal-scope .pcf-seg.on { background:#226B4A; }
+.dacs-portal-scope .pcf-periods-empty { font-size:13px; color:#908A81; margin:0; }
+
+.dacs-portal-scope .pcf-attn { display:flex; align-items:flex-start; gap:11px; margin:0; padding:16px 28px; background:#FBF1DD; border-bottom:1px solid #F0DCAE; color:#92500B; font-size:13px; line-height:1.5; }
+.dacs-portal-scope .pcf-attn svg { width:17px; height:17px; flex:none; margin-top:1px; }
+.dacs-portal-scope .pcf-attn b { font-weight:600; }
+
+.dacs-portal-scope .pcf-panel-foot { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:18px 28px; }
+.dacs-portal-scope .pcf-foot-meta { font-size:12.5px; color:#908A81; }
+.dacs-portal-scope .pcf-open-btn { display:inline-flex; align-items:center; gap:9px; padding:12px 22px; border-radius:10px; background:#1A5C3F; color:#fff; border:none; font-size:14px; font-weight:600; box-shadow:var(--shadow-sm); cursor:pointer; transition:background .15s, gap .15s; }
+.dacs-portal-scope .pcf-open-btn:hover { background:#0F3A28; gap:13px; }
+.dacs-portal-scope .pcf-open-btn svg { width:16px; height:16px; }
+
+.dacs-portal-scope .pcf-empty { text-align:center; padding:60px 20px; color:#908A81; }
+.dacs-portal-scope .pcf-empty-icon { font-size:40px; }
+.dacs-portal-scope .pcf-empty h3 { font-family:var(--serif); color:#1B1A18; margin:12px 0 6px; }
+
+@media (max-width:720px) {
+  .dacs-portal-scope .pcf-head { flex-direction:column; align-items:stretch; }
+  .dacs-portal-scope .pcf-stats { grid-template-columns:repeat(2,1fr); }
+  .dacs-portal-scope .pcf-stat:nth-child(2) { border-right:none; }
+  .dacs-portal-scope .pcf-stat:nth-child(1), .dacs-portal-scope .pcf-stat:nth-child(2) { border-bottom:1px solid #EAE7E1; }
+}
+
+/* Worker Statement (SOA) picker */
+.dacs-portal-scope .pcf-soa-trigger { display:inline-flex; align-items:center; gap:7px; padding:8px 15px; border-radius:9px; border:1.5px solid #CDE7D8; background:#F0FAF4; color:#1A5C3F; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; transition:background .15s, border-color .15s; }
+.dacs-portal-scope .pcf-soa-trigger:hover { background:#E6F4EC; border-color:#9FD3B6; }
+.dacs-portal-scope .pcf-soa-trigger.open { background:#E6F4EC; border-color:#1A5C3F; }
+.dacs-portal-scope .pcf-soa-trigger svg { width:15px; height:15px; }
+.dacs-portal-scope .pcf-soa-pop { position:absolute; top:calc(100% + 8px); right:0; z-index:50; background:#fff; border:1px solid #EAE7E1; border-radius:14px; box-shadow:0 16px 44px -14px rgba(28,27,25,.30); width:300px; overflow:hidden; }
+.dacs-portal-scope .pcf-soa-head { padding:13px 16px 11px; border-bottom:1px solid #F1EFEA; }
+.dacs-portal-scope .pcf-soa-head .t { font-size:10.5px; letter-spacing:1.5px; text-transform:uppercase; font-weight:700; color:#2C7A57; }
+.dacs-portal-scope .pcf-soa-head .s { font-size:12px; color:#908A81; margin-top:3px; }
+.dacs-portal-scope .pcf-soa-list { max-height:300px; overflow-y:auto; padding:6px; }
+.dacs-portal-scope .pcf-soa-item { width:100%; display:flex; align-items:center; gap:11px; padding:9px 10px; border:0; background:transparent; border-radius:10px; cursor:pointer; text-align:left; transition:background .12s; }
+.dacs-portal-scope .pcf-soa-item:hover { background:#F4F8F5; }
+.dacs-portal-scope .pcf-soa-av { width:34px; height:34px; border-radius:50%; flex:none; display:grid; place-items:center; background:#E7F2EC; color:#1A5C3F; font-weight:700; font-size:13px; font-family:var(--serif); }
+.dacs-portal-scope .pcf-soa-info { min-width:0; flex:1; display:flex; flex-direction:column; }
+.dacs-portal-scope .pcf-soa-name { font-size:13.5px; font-weight:600; color:#1B1A18; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dacs-portal-scope .pcf-soa-sub { font-size:11.5px; color:#908A81; margin-top:1px; }
+.dacs-portal-scope .pcf-soa-amt { font-size:13px; font-weight:700; color:#1A5C3F; white-space:nowrap; }
+.dacs-portal-scope .pcf-soa-empty { padding:18px 16px; text-align:center; color:#908A81; font-size:13px; }
 
 /* Clickable state for done doc-pills in the materials table */
 .dacs-portal-scope .pc-doc-pill.clickable {

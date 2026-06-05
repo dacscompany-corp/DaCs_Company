@@ -20,6 +20,8 @@ This guide walks you through creating a **staff** account that only sees the **E
 | Construction — Urgent Requests  | ✅  | ✅  |
 | Construction — Batch History    | ✅  | ✅  |
 | Construction — Inventory        | ✅  | ✅  |
+| **User Navigator**     | ✅  | ❌  |
+| **Client Accounts**    | ✅  | ❌  |
 
 Staff KPIs visible (inside Expenses module):
 - Contract Value ❌
@@ -27,6 +29,12 @@ Staff KPIs visible (inside Expenses module):
 - Cover Expenses
 - Period Budget 
 - Budget Status (Healthy / On Track / Near Limit / Over Budget)
+
+> **Contract Value / Total Budget Received are confidential, not just hidden.**
+> These values are stored in owner-only Firestore collections (`folderBudgets`,
+> `projectBudgets`) — staff cannot read them even via the API/console, not merely
+> hidden in the UI. See **Confidential financials** below. User Navigator and
+> Client Accounts are hidden from the staff navigation and blocked in `switchView`.
 
 ---
 
@@ -307,3 +315,54 @@ Staff manages their own expenses independently from admin. Both use the same mod
 | `worker` | Firestore `/users/{uid}.role` | Construction requests only |
 | `teamLeader` | Firestore `/users/{uid}.role` | Same as worker |
 | *(none)* | — | Public website only |
+
+---
+
+## Confidential financials (enforced, not just hidden)
+
+Staff share the owner's `folders` and `projects` data, so hiding contract value
+and fund-allocated in the UI alone is **not** enough — a staff user could read the
+raw documents via the API/console. To make these values genuinely confidential,
+they live in two **owner-only** collections:
+
+| Value | Old location (staff-readable) | New location (owner-only) |
+|-------|-------------------------------|---------------------------|
+| Contract Value | `folders/{id}.totalBudget` | `folderBudgets/{folderId}.totalBudget` |
+| Fund Allocated | `projects/{id}.monthlyBudget` | `projectBudgets/{projectId}.monthlyBudget` |
+
+Security rules (already in `firestore.rules`):
+
+```js
+match /folderBudgets/{folderId} {
+  allow read, write: if isOwner();                 // staff intentionally excluded
+  allow read: if isAuthenticated()
+              && get(/databases/$(database)/documents/folders/$(folderId))
+                   .data.get('clientEmail', '') == request.auth.token.email;
+}
+match /projectBudgets/{projectId} {
+  allow read, write: if isOwner();
+  allow read: if isAuthenticated()
+              && get(/databases/$(database)/documents/folders/$(
+                   get(/databases/$(database)/documents/projects/$(projectId)).data.folderId))
+                   .data.get('clientEmail', '') == request.auth.token.email;
+}
+```
+
+The app reads these through a merge-on-load: `loadProjects()` (admin) and the
+client portal fetch the budget docs and attach `totalBudget` / `monthlyBudget`
+back onto the in-memory folder/project objects, so all existing UI code is
+unchanged. For staff sessions the budget listeners are skipped, so both values
+resolve to `0` (and remain hidden in the UI).
+
+### Migrating existing data
+
+Existing folders/projects still carry the old fields. After deploying the rules,
+run the one-time migration **as the owner** (see `tools/migrate-budgets.js`):
+
+1. Deploy `firestore.rules`.
+2. Log into `admin.html` as the **owner**, open the DevTools console.
+3. Paste `tools/migrate-budgets.js` → it does a **dry run** first.
+4. Apply with `migrateBudgets({ dryRun: false })`.
+
+This copies each value into the new collection and deletes the field from the
+original staff-readable document.

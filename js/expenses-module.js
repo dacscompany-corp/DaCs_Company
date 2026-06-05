@@ -33,6 +33,14 @@ function fmtBudgetVal(num) {
 // ── Global State ─────────────────────────────────────────────
 let expProjects       = [];
 let expFolders        = [];   // { id, name, description, totalBudget }
+// Confidential financials live in separate owner-only collections
+// (folderBudgets / projectBudgets) so staff cannot read them. These maps
+// hold the merged values for owner sessions; for staff they stay empty,
+// so totalBudget / monthlyBudget resolve to 0 everywhere.
+let _folderBudgetMap  = {};   // folderId  -> totalBudget
+let _projectBudgetMap = {};   // projectId -> monthlyBudget
+let _folderBudgetsUnsub  = null;
+let _projectBudgetsUnsub = null;
 let _foldersUnsub     = null;
 let _expandedFolders  = new Set(); // folder ids currently expanded
 let expCurrentProject = null;
@@ -206,15 +214,40 @@ function loadProjects() {
     // Cancel previous listeners
     if (_projectsUnsub) { _projectsUnsub(); _projectsUnsub = null; }
     if (_foldersUnsub)  { _foldersUnsub();  _foldersUnsub  = null; }
+    if (_folderBudgetsUnsub)  { _folderBudgetsUnsub();  _folderBudgetsUnsub  = null; }
+    if (_projectBudgetsUnsub) { _projectBudgetsUnsub(); _projectBudgetsUnsub = null; }
     // Start global overview subscription
     subscribeOvAllData();
+
+    // Confidential financials are owner-only. Subscribe to them only when the
+    // current user is NOT staff; staff sessions keep empty maps so contract
+    // value / fund allocated read as 0 (and are hidden in the UI).
+    if (window.currentUserRole !== 'staff') {
+        _folderBudgetsUnsub = db.collection('folderBudgets')
+            .where('userId', '==', _uid())
+            .onSnapshot(snap => {
+                _folderBudgetMap = {};
+                snap.docs.forEach(d => { _folderBudgetMap[d.id] = d.data().totalBudget || 0; });
+                expFolders.forEach(f => { f.totalBudget = _folderBudgetMap[f.id] || 0; });
+                _renderAllPanels();
+            }, err => console.error('folderBudgets listener:', err));
+
+        _projectBudgetsUnsub = db.collection('projectBudgets')
+            .where('userId', '==', _uid())
+            .onSnapshot(snap => {
+                _projectBudgetMap = {};
+                snap.docs.forEach(d => { _projectBudgetMap[d.id] = d.data().monthlyBudget || 0; });
+                expProjects.forEach(p => { p.monthlyBudget = _projectBudgetMap[p.id] || 0; });
+                _renderAllPanels();
+            }, err => console.error('projectBudgets listener:', err));
+    }
 
     // Listen to folders
     _foldersUnsub = db.collection('folders')
         .where('userId', '==', _uid())
         .onSnapshot(snap => {
             expFolders = snap.docs
-                .map(d => ({ id: d.id, ...d.data() }))
+                .map(d => ({ id: d.id, ...d.data(), totalBudget: _folderBudgetMap[d.id] || 0 }))
                 .sort((a, b) => (a.createdAt?.toMillis?.() || 0) - (b.createdAt?.toMillis?.() || 0));
             _renderAllPanels();
         }, err => console.error('folders listener:', err));
@@ -224,7 +257,7 @@ function loadProjects() {
         .where('userId', '==', _uid())
         .onSnapshot(snap => {
             expProjects = snap.docs
-                .map(d => ({ id: d.id, ...d.data() }))
+                .map(d => ({ id: d.id, ...d.data(), monthlyBudget: _projectBudgetMap[d.id] || 0 }))
                 .sort((a, b) => {
                     const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
                     if (b.year !== a.year) return (b.year||0) - (a.year||0);
@@ -633,9 +666,14 @@ async function handleEditProject(e) {
     try {
         showExpLoading('editProjectBtn', true);
         await db.collection('projects').doc(id).update({
-            month, year, monthlyBudget: budget, fundingType: funding,
+            month, year, fundingType: funding,
             isPresident: isPresident
         });
+        // Update confidential fund allocated in the owner-only collection.
+        if (window.currentUserRole !== 'staff') {
+            await db.collection('projectBudgets').doc(id)
+                .set({ userId: _uid(), monthlyBudget: budget }, { merge: true });
+        }
         showExpNotif('Project updated! ✓', 'success');
         closeExpModal('editProjectModal');
     } catch(err) {
@@ -1507,10 +1545,11 @@ function renderExpensesTable() {
         const srcProj = expProjects.find(p => p.id === e.projectId);
         const fundingBadge = (_coverSet.has(e.id) || e.coverExpense) ? _fundingBadgeHTML(null, true) : (srcProj ? _fundingBadgeHTML(srcProj, false) : '');
         const catBadge = showCategoryBadge ? getCategoryPillHTML(e.category) : '';
+        const invBadge = e.inInventory ? '<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;border-radius:999px;background:#ecfdf5;color:#15803d;font-size:10.5px;font-weight:700;border:1px solid #a7f3d0;">📦 In Inventory</span>' : '';
         return `
         <tr class="exp-group-row">
             <td>${formatDate(e.dateTime)}</td>
-            <td><strong>${_highlightMatch(e.expenseName || '—', name)}</strong>${catBadge}${fundingBadge}</td>
+            <td><strong>${_highlightMatch(e.expenseName || '—', name)}</strong>${catBadge}${fundingBadge}${invBadge}</td>
             <td class="exp-notes-cell">${e.notes ? '<span class="exp-notes-text">' + e.notes + '</span>' : '<span class="exp-notes-empty">—</span>'}</td>
             <td>${e.quantity || 1}</td>
             <td>₱${formatNum(e.amount)}</td>
@@ -1933,13 +1972,17 @@ async function handleCreateProject(e) {
         showExpLoading('createProjectBtn', true);
         const data = {
             userId: _uid(), month, year,
-            monthlyBudget: budget,
             fundingType: fundingType,
             ...(billingNumber !== null && { billingNumber }),
             folderId: folderId || null,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         };
         const ref = await db.collection('projects').add(data);
+        // Fund allocated is confidential — stored in the owner-only
+        // projectBudgets collection, never on the staff-readable project doc.
+        if (window.currentUserRole !== 'staff' && budget > 0) {
+            await db.collection('projectBudgets').doc(ref.id).set({ userId: _uid(), monthlyBudget: budget });
+        }
         if (folderId) _expandedFolders.add(folderId);
         showExpNotif('Month added!', 'success');
         document.getElementById('createProjectForm').reset();
@@ -1966,9 +2009,13 @@ async function handleCreateFolder(e) {
         showExpLoading('createFolderBtn', true);
         const ref = await db.collection('folders').add({
             userId: _uid(), name, description: desc,
-            totalBudget: budget,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
+        // Contract value is confidential — stored in the owner-only folderBudgets
+        // collection, never on the staff-readable folder doc.
+        if (window.currentUserRole !== 'staff' && budget > 0) {
+            await db.collection('folderBudgets').doc(ref.id).set({ userId: _uid(), totalBudget: budget });
+        }
         _expandedFolders.add(ref.id);
         showExpNotif('Project folder created!', 'success');
         document.getElementById('createFolderForm').reset();
@@ -2000,8 +2047,13 @@ async function handleEditFolder(e) {
     try {
         showExpLoading('editFolderBtn', true);
         await db.collection('folders').doc(_editingFolderId).update({
-            name, description: desc, totalBudget: budget
+            name, description: desc
         });
+        // Update confidential contract value in the owner-only collection.
+        if (window.currentUserRole !== 'staff') {
+            await db.collection('folderBudgets').doc(_editingFolderId)
+                .set({ userId: _uid(), totalBudget: budget }, { merge: true });
+        }
         showExpNotif('Folder updated!', 'success');
         closeExpModal('editFolderModal');
         _editingFolderId = null;
@@ -2031,9 +2083,14 @@ async function deleteFolder(id) {
             eSnap.docs.forEach(d => batch.delete(d.ref));
             paySnap.docs.forEach(d => batch.delete(d.ref));
             batch.delete(db.collection('projects').doc(p.id));
+            // Confidential budget doc is owner-only — only the owner can delete it.
+            if (window.currentUserRole !== 'staff') batch.delete(db.collection('projectBudgets').doc(p.id));
             await batch.commit();
         }
         await db.collection('folders').doc(id).delete();
+        if (window.currentUserRole !== 'staff') {
+            await db.collection('folderBudgets').doc(id).delete().catch(() => {});
+        }
         _expandedFolders.delete(id);
         if (expCurrentProject && expProjects.find(p => p.id === expCurrentProject.id)?.folderId === id) {
             expCurrentProject = null;
@@ -2057,6 +2114,8 @@ async function deleteProject(id) {
         eSnap.docs.forEach(d => batch.delete(d.ref));
         pSnap.docs.forEach(d => batch.delete(d.ref));
         batch.delete(db.collection('projects').doc(id));
+        // Confidential budget doc is owner-only — only the owner can delete it.
+        if (window.currentUserRole !== 'staff') batch.delete(db.collection('projectBudgets').doc(id));
         await batch.commit();
         if (expCurrentProject?.id === id) {
             expCurrentProject = null; expExpenses = []; expPayroll = [];
@@ -2081,64 +2140,9 @@ function setupExpenseFormListeners() {
     qty?.addEventListener('input', recalc);
     cost?.addEventListener('input', recalc);
     form.addEventListener('submit', handleAddExpense);
-
-    const receiptInput = document.getElementById('expReceipt');
-    receiptInput?.addEventListener('change', (ev) => {
-        const files = Array.from(ev.target.files);
-        files.forEach(file => {
-            if (file.size > 5 * 1024 * 1024) {
-                showExpNotif(`"${file.name}" is over 5 MB and was skipped.`, 'error');
-                return;
-            }
-            addReceiptPreviewItem(file);
-        });
-        ev.target.value = '';
-    });
 }
 
-let _stagedReceipts = [];
 let _stagedPayReceipts = [];
-
-function addReceiptPreviewItem(file) {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        const dataURL = e.target.result;
-        const index = _stagedReceipts.length;
-        _stagedReceipts.push({ file, dataURL });
-
-        const grid = document.getElementById('expReceiptGrid');
-        if (!grid) return;
-        grid.style.display = 'grid';
-
-        const item = document.createElement('div');
-        item.className = 'exp-receipt-thumb';
-        item.dataset.index = index;
-        item.innerHTML = `
-            <img src="${dataURL}" alt="Receipt ${index + 1}">
-            <button type="button" class="exp-receipt-remove" onclick="removeReceiptPreview(${index})">✕</button>
-            <span class="exp-receipt-num">${index + 1}</span>`;
-        grid.appendChild(item);
-    };
-    reader.readAsDataURL(file);
-}
-
-function removeReceiptPreview(index) {
-    _stagedReceipts[index] = null;
-    const grid = document.getElementById('expReceiptGrid');
-    if (!grid) return;
-    const item = grid.querySelector(`[data-index="${index}"]`);
-    if (item) item.remove();
-    const remaining = _stagedReceipts.filter(r => r !== null);
-    if (!remaining.length) grid.style.display = 'none';
-}
-
-function clearReceiptPreview() {
-    _stagedReceipts = [];
-    const grid = document.getElementById('expReceiptGrid');
-    if (grid) { grid.innerHTML = ''; grid.style.display = 'none'; }
-    const input = document.getElementById('expReceipt');
-    if (input) input.value = '';
-}
 
 function compressImageToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -2187,6 +2191,11 @@ async function handleAddExpense(e) {
     const qty        = parseFloat(document.getElementById('expQty').value) || 1;
     const dateTime   = _buildDateTime('expDate', 'expTime');
     const notes      = document.getElementById('expNotes').value.trim();
+    const paymentMethod = (document.getElementById('expPaymentMethod')?.value || '').trim();
+    // Inventory toggle — when on, this material is also tracked as a stock item.
+    const toInventory = !!document.getElementById('expToInventory')?.checked;
+    const invUnit     = document.getElementById('expInvUnit')?.value || 'pcs';
+    const invMinStock = parseFloat(document.getElementById('expInvMinStock')?.value) || 0;
     // Supporting docs (PO/DR/SI/PR) — compress only those the user selected
     const _docMap = { po: 'expDocPO', dr: 'expDocDR', si: 'expDocSI', pay: 'expDocPR' };
     const docUrls = {};
@@ -2216,9 +2225,6 @@ async function handleAddExpense(e) {
 
     try {
         showExpLoading('addExpenseBtn', true);
-        const validReceipts = _stagedReceipts.filter(r => r !== null);
-        const receiptImages = [];
-        for (const item of validReceipts) receiptImages.push(await compressImageToBase64(item.file));
 
         const batch = db.batch();
         splits.forEach((sp, idx) => {
@@ -2232,29 +2238,38 @@ async function handleAddExpense(e) {
                 amount:        sp.amount,
                 dateTime,
                 notes,
-                receiptURL:    receiptImages[0] || '',
-                receiptImages: idx === 0 ? receiptImages : [],
-                // Supporting documents attached only to the first split record
+                ...(paymentMethod ? { paymentMethod } : {}),
+                // Supporting documents (PO/DR/SI/PR) attached only to the first split record.
+                // Payment Receipt (PR) is the single proof-of-payment field — multi-image receipts removed.
                 ...(idx === 0 && docUrls.po  ? { poImageUrl:         docUrls.po  } : {}),
                 ...(idx === 0 && docUrls.dr  ? { deliveryReceiptUrl: docUrls.dr  } : {}),
                 ...(idx === 0 && docUrls.si  ? { supplierInvoiceUrl: docUrls.si  } : {}),
                 ...(idx === 0 && docUrls.pay ? { paymentReceiptUrl:  docUrls.pay } : {}),
                 createdAt:     firebase.firestore.FieldValue.serverTimestamp(),
+                ...(toInventory ? { inInventory: true } : {}),
                 ...(sp.coverExpense && { coverExpense: true }),
                 ...(splits.length > 1 && { splitGroup: dateTime + '_' + expName, splitIndex: idx + 1, splitTotal: splits.length })
             });
         });
         await batch.commit();
 
-        const msg = splits.length > 1
-            ? `Split into ${splits.length} records across funding sources ✓`
-            : (receiptImages.length > 0 ? `Expense + ${receiptImages.length} receipt(s) saved! ✓` : 'Expense added! ✓');
+        // Mirror to the shared Construction inventory when flagged as a stock item.
+        if (toInventory && expName) {
+            try { await _addExpenseToInventory(expName, qty, invUnit, invMinStock, notes); }
+            catch (e) { console.warn('Inventory sync failed:', e); showExpNotif('Saved, but inventory sync failed: ' + e.message, 'error'); }
+        }
+
+        const msg = toInventory
+            ? 'Expense added & sent to inventory ✓'
+            : (splits.length > 1
+                ? `Split into ${splits.length} records across funding sources ✓`
+                : 'Expense added! ✓');
         showExpNotif(msg, 'success');
         refreshOvAllData();
 
         document.getElementById('addExpenseForm').reset();
         document.getElementById('expSplitPreview').style.display = 'none';
-        clearReceiptPreview();
+        if (typeof window.expToggleInventoryFields === 'function') window.expToggleInventoryFields();
         closeExpModal('addExpenseModal');
     } catch (err) {
         showExpNotif('Error saving expense: ' + err.message, 'error');
@@ -2268,6 +2283,39 @@ async function deleteExpense(id) {
     if (!await showDeleteConfirm('Delete this expense?')) return;
     try { await db.collection('expenses').doc(id).delete(); showExpNotif('Deleted.', 'success'); refreshOvAllData(); }
     catch (err) { showExpNotif('Error: ' + err.message, 'error'); }
+}
+
+// Show/hide the Unit + Min Stock fields based on the "Add to Inventory" toggle.
+window.expToggleInventoryFields = function () {
+    const on  = !!document.getElementById('expToInventory')?.checked;
+    const box = document.getElementById('expInventoryFields');
+    if (box) box.style.display = on ? 'block' : 'none';
+};
+
+// Stock-in to the shared Construction inventory. If an item with the same name
+// already exists, the quantity is added to its current stock; otherwise a new
+// inventory item is created. (The expense itself still lives in Materials.)
+async function _addExpenseToInventory(itemName, qty, unit, minStock, notes) {
+    const now = firebase.firestore.FieldValue.serverTimestamp();
+    const by  = (firebase.auth().currentUser || {}).uid || null;
+    const addQty = parseFloat(qty) || 0;
+    const snap = await db.collection('inventory').where('itemName', '==', itemName).limit(1).get();
+    if (!snap.empty) {
+        const doc = snap.docs[0];
+        const cur = parseFloat(doc.data().currentStock) || 0;
+        await doc.ref.update({ currentStock: cur + addQty, lastUpdated: now, lastAdjustedBy: by });
+    } else {
+        await db.collection('inventory').add({
+            itemName,
+            unit:         unit || 'pcs',
+            currentStock: addQty,
+            minStock:     parseFloat(minStock) || 0,
+            notes:        notes || null,
+            lastUpdated:    now,
+            lastAdjustedBy: by,
+            createdAt:      now
+        });
+    }
 }
 
 // ════════════════════════════════════════════════════════════
@@ -2358,8 +2406,11 @@ function _updatePayBudgetBanner() {
         fsWrap.style.display = visibleSources.length ? 'block' : 'none';
         const list = document.getElementById('payFundingCheckList');
         if (list) {
+            // If the active period isn't among the fundable sources, default to the first
+            // one so a source is always selected (otherwise the save has nothing to charge).
+            const pMatches = p && visibleSources.some(s => s.id === p.id);
             list.innerHTML = visibleSources.map((s, i) => {
-                const isChecked = (p ? s.id === p.id : i === 0);
+                const isChecked = pMatches ? s.id === p.id : i === 0;
                 const remClass  = s.remain < s.budget * 0.1 ? 'is-low' : '';
                 return '<label class="exp-funding-check-item' + (isChecked ? ' is-checked' : '') + '">'
                     + '<input type="checkbox" name="payFundingSrc" value="' + s.id + '"'
@@ -3390,9 +3441,7 @@ function viewReceipt(expenseId) {
 // ════════════════════════════════════════════════════════════
 // EDIT EXPENSE
 // ════════════════════════════════════════════════════════════
-let _editingExpenseId   = null;
-let _editStagedReceipts = [];
-let _editKeptImages     = [];
+let _editingExpenseId = null;
 
 async function openEditExpenseModal(id) {
     // Try the in-memory cache first; if missing (e.g. user came from Project Control
@@ -3405,7 +3454,7 @@ async function openEditExpenseModal(id) {
         } catch (err) { console.error('openEditExpenseModal fetch:', err); }
     }
     if (!e) { showExpNotif('Expense not found.', 'error'); return; }
-    _editingExpenseId = id; _editStagedReceipts = []; _editKeptImages = [];
+    _editingExpenseId = id;
 
     // Populate funding source dropdown (with remaining budget like Add Expense)
     const fsSel = document.getElementById('editExpFundingSource');
@@ -3436,15 +3485,13 @@ async function openEditExpenseModal(id) {
     document.getElementById('editExpUnitCost').value = fmtBudgetVal(_unitCost);
     document.getElementById('editExpAmount').value   = fmtBudgetVal(e.amount || 0);
     document.getElementById('editExpNotes').value    = e.notes  || '';
+    const _editPmEl = document.getElementById('editExpPaymentMethod');
+    if (_editPmEl) _editPmEl.value = e.paymentMethod || '';
     const sel = document.getElementById('editExpCategory');
     sel.innerHTML = '<option value="">Select category…</option>' +
         expCategories.map(c =>
             `<option value="${c.name}" ${c.name === e.category ? 'selected' : ''}>${c.name}</option>`
         ).join('');
-    const imgs = e.receiptImages?.length ? e.receiptImages : (e.receiptURL ? [e.receiptURL] : []);
-    _editKeptImages = [...imgs];
-    _renderEditExpGrid();
-
     // Pre-populate Supporting Documents state labels (PO / DR / SI / PR)
     const _editDocFields = {
         editExpDocPOState: e.poImageUrl,
@@ -3468,35 +3515,6 @@ async function openEditExpenseModal(id) {
     openExpModal('editExpenseModal');
 }
 
-function _renderEditExpGrid() {
-    const grid = document.getElementById('editExpReceiptGrid');
-    if (!grid) return;
-    grid.innerHTML = '';
-    let count = 0;
-    _editKeptImages.forEach((src, i) => {
-        count++;
-        const d = document.createElement('div');
-        d.className = 'exp-receipt-thumb';
-        d.innerHTML = `<img src="${src}" alt="Receipt ${count}">
-            <button type="button" class="exp-receipt-remove" onclick="_removeEditExpKept(${i})">✕</button>
-            <span class="exp-receipt-num">${count}</span>`;
-        grid.appendChild(d);
-    });
-    _editStagedReceipts.forEach((item, i) => {
-        if (!item) return; count++;
-        const d = document.createElement('div');
-        d.className = 'exp-receipt-thumb exp-receipt-thumb-new';
-        d.innerHTML = `<img src="${item.dataURL}" alt="New ${count}">
-            <button type="button" class="exp-receipt-remove" onclick="_removeEditExpStaged(${i})">✕</button>
-            <span class="exp-receipt-num">${count}</span>
-            <span class="exp-receipt-new-badge">NEW</span>`;
-        grid.appendChild(d);
-    });
-    grid.style.display = count > 0 ? 'grid' : 'none';
-}
-function _removeEditExpKept(i)   { _editKeptImages.splice(i, 1);  _renderEditExpGrid(); }
-function _removeEditExpStaged(i) { _editStagedReceipts[i] = null; _renderEditExpGrid(); }
-
 function setupEditExpenseFormListeners() {
     const form = document.getElementById('editExpenseForm');
     if (!form) return;
@@ -3508,14 +3526,6 @@ function setupEditExpenseFormListeners() {
     };
     qty?.addEventListener('input', recalc);
     cost?.addEventListener('input', recalc);
-    document.getElementById('editExpReceiptInput')?.addEventListener('change', ev => {
-        Array.from(ev.target.files).forEach(file => {
-            const reader = new FileReader();
-            reader.onload = e => { _editStagedReceipts.push({ file, dataURL: e.target.result }); _renderEditExpGrid(); };
-            reader.readAsDataURL(file);
-        });
-        ev.target.value = '';
-    });
     form.addEventListener('submit', handleEditExpense);
 }
 
@@ -3524,10 +3534,6 @@ async function handleEditExpense(ev) {
     if (!_editingExpenseId) return;
     try {
         showExpLoading('editExpenseBtn', true);
-        const newImgs = [];
-        for (const item of _editStagedReceipts.filter(x => x !== null))
-            newImgs.push(await compressImageToBase64(item.file));
-        const finalImages = [..._editKeptImages, ...newImgs];
         const editFsSel = document.getElementById('editExpFundingSource');
         const newProjectId = editFsSel && editFsSel.value ? editFsSel.value : null;
         const updateData = {
@@ -3537,8 +3543,7 @@ async function handleEditExpense(ev) {
             amount:        parseFloat((document.getElementById('editExpAmount').value || '').replace(/,/g, '')) || 0,
             dateTime:      _buildDateTime('editExpDate', 'editExpTime'),
             notes:         document.getElementById('editExpNotes').value.trim(),
-            receiptURL:    finalImages[0] || '',
-            receiptImages: finalImages,
+            paymentMethod: (document.getElementById('editExpPaymentMethod')?.value || '').trim(),
         };
         if (newProjectId) updateData.projectId = newProjectId;
 
@@ -3560,7 +3565,7 @@ async function handleEditExpense(ev) {
         showExpNotif('Expense updated! ✓', 'success');
         refreshOvAllData();
         closeExpModal('editExpenseModal');
-        _editingExpenseId = null; _editStagedReceipts = []; _editKeptImages = [];
+        _editingExpenseId = null;
     } catch (err) { showExpNotif('Error: ' + err.message, 'error'); console.error(err); }
     finally { showExpLoading('editExpenseBtn', false); }
 }
@@ -3684,17 +3689,46 @@ async function handleEditPayroll(ev) {
 // ════════════════════════════════════════════════════════════
 // MODAL HELPERS
 // ════════════════════════════════════════════════════════════
-function openExpModal(id)  { const m = document.getElementById(id); if (m) m.classList.add('active'); }
+// True only while the legacy Expenses-tab "guard" path is opening a modal.
+// Lets openExpModal tell apart a legacy open (uses the file-scoped current
+// project) from a React Project-Control open (provides window.expCurrentProject).
+let _legacyModalOpen = false;
+
+function openExpModal(id)  {
+    // The React "Add Payroll / Add Expense" buttons live in portal-app and set the
+    // chosen billing period on window.expCurrentProject — a DIFFERENT binding from the
+    // file-scoped expCurrentProject that the save handlers read. Sync it here so the
+    // entry is charged to the period the user is actually viewing (otherwise it falls
+    // back to a stale period and silently never appears in that folder's list).
+    if (!_legacyModalOpen && (id === 'addPayrollModal' || id === 'addExpenseModal')
+        && window.expCurrentProject && window.expCurrentProject.id) {
+        expCurrentProject = window.expCurrentProject;
+        expCurrentFolder  = null;
+        // Rebuild the funding-source list for THIS period (same as the legacy guard path),
+        // so the save has a valid source to charge instead of erroring or using a stale one.
+        if (id === 'addPayrollModal') _updatePayBudgetBanner();
+        else                          _updateExpBudgetBanner();
+    }
+    _legacyModalOpen = false;
+    const m = document.getElementById(id); if (m) m.classList.add('active');
+}
 function closeExpModal(id) {
     const m = document.getElementById(id);
     if (m) m.classList.remove('active');
     // Clear staged payroll receipts when closing that modal
     if (id === 'addPayrollModal') clearPayReceiptPreview();
+    // Reset the inventory toggle so it doesn't stay on for the next expense
+    if (id === 'addExpenseModal') {
+        const cb = document.getElementById('expToInventory');
+        if (cb) cb.checked = false;
+        if (typeof window.expToggleInventoryFields === 'function') window.expToggleInventoryFields();
+    }
 }
 function guardExpModal(modalId) {
     if (!expCurrentProject && !expCurrentFolder) { showExpNotif('Please select a project first.', 'error'); return; }
     if (modalId === 'addExpenseModal') _updateExpBudgetBanner();
     if (modalId === 'addPayrollModal') _updatePayBudgetBanner();
+    _legacyModalOpen = true;   // legacy path: keep the file-scoped current project
     openExpModal(modalId);
 }
 
@@ -3744,8 +3778,11 @@ function _updateExpBudgetBanner() {
         const list = document.getElementById('expFundingCheckList');
         if (list) {
             const visibleSources = _expSources.filter(s => s.remain > 0);
+            // If the active period isn't among the fundable sources, default to the first
+            // one so a source is always selected (otherwise the save has nothing to charge).
+            const pMatches = p && visibleSources.some(s => s.id === p.id);
             list.innerHTML = visibleSources.map((s, i) => {
-                const isChecked = (p ? s.id === p.id : i === 0);
+                const isChecked = pMatches ? s.id === p.id : i === 0;
                 const remClass  = s.remain < s.budget * 0.1 ? 'is-low' : '';
                 return '<label class="exp-funding-check-item' + (isChecked ? ' is-checked' : '') + '">'
                     + '<input type="checkbox" name="expFundingSrc" value="' + s.id + '"'

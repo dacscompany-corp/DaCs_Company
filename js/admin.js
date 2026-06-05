@@ -84,6 +84,10 @@ function showLoginError(message) {
 
 // Apply nav and view restrictions based on role
 function applyRoleBasedUI() {
+    // Re-render the top portal tabs now that the role is known, so role-hidden
+    // primaries (e.g. Users for staff) and modules (e.g. Clients) disappear.
+    if (typeof renderPortalChrome === 'function') renderPortalChrome();
+
     // ── Reset: restore all nav items and groups before applying role restrictions ──
     document.querySelectorAll('.nav-item').forEach(el => el.style.display = '');
     document.querySelectorAll('.nav-group').forEach(el => el.style.display = '');
@@ -92,8 +96,12 @@ function applyRoleBasedUI() {
     _resetCards.forEach(id => { const el = document.getElementById(id); if (el) el.style.display = ''; });
 
     if (currentUserRole === 'staff') {
-        // Staff can access all expense views including Overhead
-        // No views are hidden for staff
+        // Staff can access all expense + construction views, but NOT the
+        // admin-only User Navigator or Client Accounts pages.
+        ['userNavigator', 'clientAccounts'].forEach(view => {
+            const el = document.querySelector(`.nav-item[data-view="${view}"]`);
+            if (el) el.style.display = 'none';
+        });
 
         // Hide specific KPI cards not relevant to staff
         const hiddenCards = ['mvpDetailBudgetCard'];
@@ -102,8 +110,8 @@ function applyRoleBasedUI() {
             if (el) el.style.display = 'none';
         });
 
-        // Default landing view for staff
-        setTimeout(() => switchView('dashboard'), 100);
+        // Default landing view for staff: Project Control → Overview
+        setTimeout(() => switchView('dacsPortal'), 100);
 
     } else if (currentUserRole === 'worker' || currentUserRole === 'teamLeader') {
         // Workers only see Construction — hide all other groups entirely
@@ -115,6 +123,11 @@ function applyRoleBasedUI() {
         // Also hide userNavigator inside userlogs (already covered above, but be explicit)
         const uvItem = document.querySelector('.nav-item[data-view="userNavigator"]');
         if (uvItem) uvItem.style.display = 'none';
+
+        // Hide Inventory — Firestore rules only allow owner/staff to read inventory,
+        // so workers must not be offered a view that would fail with permission-denied.
+        const invItem = document.querySelector('.nav-item[data-view="consInventory"]');
+        if (invItem) invItem.style.display = 'none';
 
         // Open construction group by default for workers
         const consGroup = document.getElementById('navGroup-construction');
@@ -443,7 +456,6 @@ function switchView(view) {
         paymentRequests:  'Payment Requests',
         paymentReports:   'Payment Reports',
         invoices:         'Invoice Receipt',
-        laborInvoices:    'Labor Invoice',
         consBatch:        'Current Batch',
         consUrgent:       'Urgent Requests',
         consBatchHistory: 'Batch History',
@@ -1904,21 +1916,48 @@ const PRIMARY_NAV = [
     },
 ];
 
+// Role-filtered view of PRIMARY_NAV. Staff lose the Users tab and the Clients
+// module; workers/teamLeaders see only Construction. Owner sees everything.
+function _visibleNav() {
+    const role = currentUserRole;
+    return PRIMARY_NAV
+        .filter(p => {
+            if (role === 'staff') return p.id !== 'users';
+            if (role === 'worker' || role === 'teamLeader') return p.id === 'construction';
+            return true;
+        })
+        .map(p => {
+            if (role === 'staff' && p.id === 'expenses') {
+                return { ...p, modules: p.modules.filter(m => m.view !== 'clientAccounts') };
+            }
+            return p;
+        });
+}
+
 function findPrimaryForView(view) {
-    for (const p of PRIMARY_NAV) {
+    for (const p of _visibleNav()) {
         if (p.modules.find(m => m.view === view)) return p;
     }
     return null;
 }
 
-function renderPortalChrome() {
-    const tabs = document.getElementById('portalPrimaryTabs');
-    if (!tabs || tabs.dataset.rendered === '1') return;
+// Shared expand state for both bars
+const _portalState = { tabsExpanded: false, modulesExpanded: false };
 
-    tabs.innerHTML = PRIMARY_NAV.map(p =>
-        `<button class="portal-ptab" data-primary="${p.id}">${p.label}</button>`
-    ).join('');
-    tabs.dataset.rendered = '1';
+function _buildTabsBar(activePrimaryId) {
+    const tabs = document.getElementById('portalPrimaryTabs');
+    if (!tabs) return;
+
+    const nav = _visibleNav();
+    const active = nav.find(p => p.id === activePrimaryId) || nav[0];
+    const toShow = _portalState.tabsExpanded ? nav : [active];
+
+    tabs.innerHTML =
+        toShow.map((p) => {
+            const isActive = p.id === activePrimaryId;
+            return `<button class="portal-ptab${isActive ? ' active' : ''}" data-primary="${p.id}">${p.label}</button>`;
+        }).join('') +
+        `<button class="portal-tabs-toggle" id="portalTabsToggle" title="${_portalState.tabsExpanded ? 'Collapse menu' : 'See other sections'}">${_portalState.tabsExpanded ? '&#8249;' : '&#8250;'}</button>`;
 
     tabs.querySelectorAll('.portal-ptab').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -1927,6 +1966,15 @@ function renderPortalChrome() {
             if (primary) switchView(primary.defaultView);
         });
     });
+
+    document.getElementById('portalTabsToggle').addEventListener('click', () => {
+        _portalState.tabsExpanded = !_portalState.tabsExpanded;
+        _buildTabsBar(activePrimaryId);
+    });
+}
+
+function renderPortalChrome() {
+    _buildTabsBar(null);
 
     // Top-nav logout button mirrors sidebar logout
     const topLogout = document.getElementById('logoutBtnTop');
@@ -1942,22 +1990,33 @@ function syncPortalChrome(view) {
     const primary = findPrimaryForView(view);
     if (!primary) return;
 
-    document.querySelectorAll('.portal-ptab').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.primary === primary.id);
-    });
+    // Rebuild tabs bar with correct active state
+    _buildTabsBar(primary.id);
 
     const row = document.getElementById('portalModulesRow');
     if (!row) return;
+
+    const visibleModules = primary.modules.filter(m => !m.hidden);
+    const activeModule   = visibleModules.find(m => m.view === view) || visibleModules[0];
+    const modulesToShow  = _portalState.modulesExpanded ? visibleModules : [activeModule];
+
     row.innerHTML =
-        primary.modules.filter(m => !m.hidden).map(m =>
-            `<button class="portal-module-link${m.view === view ? ' active-link' : ''}" data-view="${m.view}">
+        modulesToShow.map((m) => {
+            const isActive = m.view === view;
+            return `<button class="portal-module-link${isActive ? ' active-link' : ''}" data-view="${m.view}">
                 <i data-lucide="${m.icon}" style="width:14px;height:14px;"></i>
                 <span>${m.label}</span>
-            </button>`
-        ).join('');
+            </button>`;
+        }).join('') +
+        `<button class="portal-modules-toggle" id="portalModulesToggle" title="${_portalState.modulesExpanded ? 'Collapse menu' : 'See other modules in this section'}">${_portalState.modulesExpanded ? '&#8249;' : '&#8250;'}</button>`;
 
     row.querySelectorAll('.portal-module-link').forEach(btn => {
         btn.addEventListener('click', () => switchView(btn.dataset.view));
+    });
+
+    document.getElementById('portalModulesToggle').addEventListener('click', () => {
+        _portalState.modulesExpanded = !_portalState.modulesExpanded;
+        syncPortalChrome(view);
     });
 
     if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();

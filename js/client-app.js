@@ -265,6 +265,14 @@ function loadClientData(user) {
                             folderIds.map(fid => db.collection('folders').doc(fid).get())
                         );
                         currentFolders = folderDocs.filter(d => d.exists).map(d => ({ id: d.id, ...d.data() }));
+                        // Contract value lives in the owner-only folderBudgets collection;
+                        // the assigned client is allowed to read their own folder's budget.
+                        const fbDocs = await Promise.all(
+                            currentFolders.map(f => db.collection('folderBudgets').doc(f.id).get().catch(() => null))
+                        );
+                        const fbMap = {};
+                        fbDocs.forEach(d => { if (d && d.exists) fbMap[d.id] = d.data().totalBudget || 0; });
+                        currentFolders.forEach(f => { f.totalBudget = fbMap[f.id] || 0; });
                         currentFolder  = currentFolders[0] || null;
                     } catch (e) { console.warn('Folder fetch:', e.message); }
 
@@ -281,6 +289,14 @@ function loadClientData(user) {
                                 if ((a.year||0) !== (b.year||0)) return (a.year||0) - (b.year||0);
                                 return MONTHS.indexOf(a.month) - MONTHS.indexOf(b.month);
                             });
+                        // Fund allocated lives in the owner-only projectBudgets collection;
+                        // the assigned client may read budgets for their folder's projects.
+                        const pbDocs = await Promise.all(
+                            currentProjects.map(p => db.collection('projectBudgets').doc(p.id).get().catch(() => null))
+                        );
+                        const pbMap = {};
+                        pbDocs.forEach(d => { if (d && d.exists) pbMap[d.id] = d.data().monthlyBudget || 0; });
+                        currentProjects.forEach(p => { p.monthlyBudget = pbMap[p.id] || 0; });
                     } catch (e) { console.warn('Projects fetch:', e.message); }
                 }
 
