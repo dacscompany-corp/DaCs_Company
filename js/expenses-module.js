@@ -4368,6 +4368,7 @@ function _fmtDateShort(d) {
 function _rptRenderKPIs(_groups) {
     const row = document.getElementById('rptKpiRow');
     if (!row) return;
+    if (window.currentUserRole === 'staff') { row.style.display = 'none'; return; }
 
     const contract = _rptState.folderId
         ? (expFolders.find(f => f.id === _rptState.folderId)?.totalBudget || 0)

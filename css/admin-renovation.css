@@ -860,6 +860,38 @@ button.btn-primary:hover,
   font-weight: 500;
 }
 
+/* ── Staff: single Cover Expenses KPI — maximized ── */
+@keyframes staff-kpi-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.7; transform: scale(1.04); }
+}
+@keyframes staff-kpi-slidein {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.dacs-portal-scope .staff-kpi-single {
+  padding: 32px 0 !important;
+}
+.dacs-portal-scope .staff-kpi-single .pc-kpi {
+  padding: 8px 48px;
+  border-right: 0;
+  animation: staff-kpi-slidein 0.4s ease both;
+}
+.dacs-portal-scope .staff-kpi-single .pc-kpi-lbl {
+  font-size: 13px;
+  letter-spacing: 0.18em;
+}
+.dacs-portal-scope .staff-kpi-single .pc-kpi-val {
+  font-size: 42px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.dacs-portal-scope .staff-kpi-single .pc-over-badge {
+  font-size: 12px;
+  padding: 4px 14px;
+  animation: staff-kpi-pulse 2s ease-in-out infinite;
+}
+
 @media (max-width: 1100px) {
   .dacs-portal-scope .pc-kpi-strip { grid-auto-flow: row; grid-template-columns: repeat(2, 1fr); padding: 0; }
   .dacs-portal-scope .pc-kpi { padding: 18px 22px; border-right: 1px solid var(--brand-hair); border-bottom: 1px solid var(--brand-hair); }
@@ -1250,7 +1282,16 @@ button.btn-primary:hover,
   align-items: baseline;
   padding-top: 14px;
   border-top: 1px solid var(--brand-hair);
-  margin-top: auto;   /* stick the total to the bottom so collapsed cards aren't top-heavy */
+  margin-top: auto;
+}
+
+/* Staff: flow cards have no body — give the footer breathing room */
+.dacs-portal-scope .pc-flow-card.staff-flow-empty {
+  min-height: 140px;
+  justify-content: flex-end;
+}
+.dacs-portal-scope .pc-flow-card.staff-flow-empty .pc-flow-total {
+  padding-top: 0;
 }
 .dacs-portal-scope .pc-flow-total .lbl {
   font-family: var(--sans);
@@ -1453,6 +1494,49 @@ button.btn-primary:hover,
   border-color: rgba(26, 92, 58, 0.45);
   box-shadow: 0 2px 10px rgba(26, 92, 58, 0.15);
   transform: translateX(-2px);
+}
+
+/* Tooltip on ALL FOLDERS button */
+.dacs-portal-scope .pc-head-back {
+  position: relative;
+}
+.dacs-portal-scope .pc-head-back::after {
+  content: attr(title);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.9);
+  background: #111827;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: none;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s, transform .15s;
+  z-index: 99;
+}
+.dacs-portal-scope .pc-head-back::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.9);
+  border: 5px solid transparent;
+  border-top-color: #111827;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s, transform .15s;
+  z-index: 99;
+}
+.dacs-portal-scope .pc-head-back:hover::after,
+.dacs-portal-scope .pc-head-back:hover::before {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
 }
 
 .dacs-portal-scope .pc-fld-grid {

@@ -891,6 +891,10 @@
   border-bottom: 1px solid var(--hair);
   margin-bottom: 36px;
 }
+.dacs-portal-scope .drill-stats:has(.drill-stat:nth-child(3):last-child) {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 80px;
+}
 .drill-stat .lbl {
   font-size: 11px;
   letter-spacing: 0.16em;
@@ -910,28 +914,72 @@
 }
 .drill-stat .val.total { color: var(--accent); }
 
-.back-btn {
+.back-btn,
+.dacs-portal-scope .back-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #1A5C3A;
+  color: #374151 !important;
   margin-bottom: 22px;
-  padding: 8px 16px 8px 12px;
-  border-radius: 8px;
-  border: 1.5px solid rgba(26, 92, 58, 0.30);
-  background: rgba(26, 92, 58, 0.08);
+  padding: 7px 16px 7px 12px;
+  border-radius: 999px;
+  border: 1.5px solid #d1d5db !important;
+  background: transparent !important;
   cursor: pointer;
-  transition: background .2s, border-color .2s, box-shadow .2s, transform .15s;
+  transition: background .15s, border-color .15s;
+  text-decoration: none;
 }
-.back-btn:hover {
-  background: rgba(26, 92, 58, 0.14);
-  border-color: rgba(26, 92, 58, 0.45);
-  box-shadow: 0 2px 10px rgba(26, 92, 58, 0.15);
-  transform: translateX(-2px);
+.back-btn:hover,
+.dacs-portal-scope .back-btn:hover {
+  background: #f3f4f6 !important;
+  border-color: #9ca3af !important;
+}
+
+/* Tooltip on back-btn */
+.back-btn {
+  position: relative;
+}
+.back-btn::after {
+  content: attr(title);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.9);
+  background: #111827;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  text-transform: none;
+  white-space: nowrap;
+  padding: 5px 10px;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s, transform .15s;
+  z-index: 99;
+}
+.back-btn::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.9);
+  border: 5px solid transparent;
+  border-top-color: #111827;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s, transform .15s;
+  z-index: 99;
+}
+.back-btn:hover::after,
+.back-btn:hover::before {
+  opacity: 1;
+  transform: translateX(-50%) scale(1);
 }
 
 /* ============ RESPONSIVE ============ */

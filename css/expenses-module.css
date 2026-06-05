@@ -2160,6 +2160,7 @@ mark.exp-search-highlight {
 /* ── KPI Row ─────────────────────────────────────────────── */
 /* ── KPI Grid — matches screenshot 3×3 design ─────────────── */
 /* ── Reports KPI Grid ─────────────────────────────────────── */
+.rpt-kpi-row[style*="display: none"] { margin-bottom: 0 !important; }
 .rpt-kpi-row {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2197,6 +2198,32 @@ mark.exp-search-highlight {
 .rpt-kpi-card--bad:hover  { background: #b91c1c !important; }
 .rpt-kpi-card--warn { background: #d97706 !important; }
 .rpt-kpi-card--warn:hover { background: #b45309 !important; }
+
+/* Staff: single Cover Expenses card — full width, maximized */
+.rpt-kpi-staff-cover {
+    grid-column: 1 / -1 !important;
+    border-right: none !important;
+    border-bottom: none !important;
+    padding: 3rem 3rem !important;
+    min-height: 160px !important;
+    justify-content: center;
+    align-items: flex-start;
+}
+.rpt-kpi-staff-cover .rpt-kpi-label {
+    font-size: 0.75rem !important;
+    letter-spacing: 0.14em !important;
+    margin-bottom: 0.75rem;
+}
+.rpt-kpi-val--cover {
+    font-size: 2.8rem !important;
+    font-weight: 800 !important;
+    letter-spacing: -0.02em !important;
+    margin-bottom: 0.5rem;
+}
+.rpt-kpi-staff-cover .rpt-kpi-sub {
+    font-size: 0.85rem !important;
+    opacity: 0.85;
+}
 
 /* Remaining Allocation — spans all 3 columns, always last */
 .rpt-kpi-variance-wide {
