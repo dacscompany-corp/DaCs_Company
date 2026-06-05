@@ -154,9 +154,6 @@
                     <a href="#" class="nav-item nav-child" data-view="paymentRequests">
                         <span class="nav-icon-wrap"><i data-lucide="credit-card" class="nav-icon"></i></span><span>Payment Requests</span><span id="pr-admin-badge" style="display:none;" class="pr-nav-badge"></span>
                     </a>
-                    <a href="#" class="nav-item nav-child" data-view="paymentReports">
-                        <span class="nav-icon-wrap"><i data-lucide="bar-chart-2" class="nav-icon"></i></span><span>Payment Reports</span>
-                    </a>
                     <a href="#" class="nav-item nav-child" data-view="invoices">
                         <span class="nav-icon-wrap"><i data-lucide="receipt-text" class="nav-icon"></i></span><span>Invoice Receipt</span>
                     </a>
@@ -990,24 +987,6 @@
                 <div class="card-header"><div><h2>Budget vs Actual</h2><p class="card-subtitle">Allocated budget vs real spend per period</p></div></div>
                 <div class="chart-wrapper" style="height:260px"><canvas id="rptBudgetVsActualChart"></canvas></div>
             </div>
-            <!-- PERIOD BREAKDOWN TABLE -->
-            <div class="section-card rpt-table-card">
-                <div class="card-header">
-                    <div><h2 id="rptTableTitle">Period Breakdown</h2><p class="card-subtitle" id="rptTableSubtitle">Detailed budget vs actual by period</p></div>
-                    <div style="display:flex;gap:0.5rem;align-items:center;">
-                        <button class="btn-secondary btn-sm rpt-export-btn" onclick="exportRptTable()"><i data-lucide="download" class="btn-icon"></i> Export CSV</button>
-                        <button class="btn-secondary btn-sm rpt-export-btn" onclick="printReportsDashboard()" style="background:#f0fdf4;border-color:#a7f3d0;color:#059669;"><i data-lucide="printer" class="btn-icon"></i> Print Report</button>
-                    </div>
-                </div>
-                <div class="table-container">
-                    <table class="appointments-table rpt-summary-table">
-                        <thead>
-                            <tr><th>Period</th><th>Budget Allocated</th><th>Materials &amp; Costs</th><th>Labor &amp; Payroll</th><th>Current Fund Spent</th><th>Remaining</th><th>% Utilized</th><th>Status</th></tr>
-                        </thead>
-                        <tbody id="rptSummaryTbody"><tr><td colspan="8" class="exp-empty-row">Select a project folder to see reports.</td></tr></tbody>
-                    </table>
-                </div>
-            </div>
             <!-- EXPENSE DETAIL TABLE -->
             <div class="section-card rpt-table-card" id="rptExpDetailCard" style="display:none">
                 <div class="card-header">
@@ -1726,123 +1705,6 @@
             </div>
 
         </div>
-
-
-<!-- Payment Reports View -->
-<div id="paymentReportsView" class="content-view" style="display:none;">
-    <div id="rptLoading" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:80px 0;">
-        <div class="un-loading-spinner" style="width:36px;height:36px;"></div>
-        <div style="font-size:14px;color:#6b7280;font-weight:500;">Loading payment data…</div>
-        <div style="font-size:12px;color:#9ca3af;">Fetching all payment requests</div>
-    </div>
-    <div id="rptContent" style="display:none;">
-
-        <!-- Page Header -->
-        <div class="rpt-page-header">
-            <div>
-                <div class="rpt-page-title">Payment Reports</div>
-                <div class="rpt-page-sub">Collection summary, trends &amp; per-client breakdown</div>
-            </div>
-            <div class="rpt-header-actions">
-                <select id="rptMonthFilter" class="rpt-month-select" onchange="window.rptOnMonthChange(this.value)">
-                    <option value="">All Months</option>
-                </select>
-                <button class="rpt-btn-refresh" onclick="prRefreshReports()">
-                    <i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Refresh
-                </button>
-                <button class="rpt-btn-export" onclick="prExportReportCSV()">
-                    <i data-lucide="download" style="width:14px;height:14px;"></i> Export CSV
-                </button>
-            </div>
-        </div>
-
-        <!-- KPI Cards -->
-        <div class="rpt-kpi-grid5">
-            <div class="rpt-kpi-cell">
-                <div class="rpt-kpi-cell__label">Total Billed</div>
-                <div class="rpt-kpi-cell__amt" id="rptTotalBilled">₱ 0.00</div>
-                <div class="rpt-kpi-cell__sub">All payment requests</div>
-            </div>
-            <div class="rpt-kpi-cell">
-                <div class="rpt-kpi-cell__label">Total Collected</div>
-                <div class="rpt-kpi-cell__amt" id="rptTotalCollected">₱ 0.00</div>
-                <div class="rpt-kpi-cell__sub">Verified payments</div>
-            </div>
-            <div class="rpt-kpi-cell">
-                <div class="rpt-kpi-cell__label">Outstanding</div>
-                <div class="rpt-kpi-cell__amt" id="rptOutstanding">₱ 0.00</div>
-                <div class="rpt-kpi-cell__sub">Pending collection</div>
-            </div>
-            <div class="rpt-kpi-cell" id="rptOverdueCard">
-                <div class="rpt-kpi-cell__label">Overdue</div>
-                <div class="rpt-kpi-cell__amt" id="rptOverdue">₱ 0.00</div>
-                <div class="rpt-kpi-cell__sub">Past due date</div>
-            </div>
-            <div class="rpt-kpi-cell">
-                <div class="rpt-kpi-cell__label">Collection Rate</div>
-                <div class="rpt-kpi-cell__amt" id="rptCollectionRate">0.0%</div>
-                <div class="rpt-kpi-cell__sub">Collected / Billed</div>
-            </div>
-        </div>
-
-        <!-- Remaining Allocation + Expense Coverage -->
-        <div class="rpt-remaining-card">
-            <div class="rpt-remaining-inner">
-                <div class="rpt-remaining-section">
-                    <div class="rpt-remaining-label">Remaining Allocation</div>
-                    <div class="rpt-remaining-amt" id="rptRemainingAmt">₱ 0.00</div>
-                    <div class="rpt-remaining-sub">Total Billed &minus; Total Collected</div>
-                </div>
-                <div class="rpt-remaining-divider"></div>
-                <div class="rpt-remaining-section">
-                    <div class="rpt-remaining-label">Expense Coverage</div>
-                    <div class="rpt-remaining-amt" id="rptExpenseCoverage">0.0%</div>
-                    <div class="rpt-remaining-sub">Collected &divide; Billed &times; 100</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Charts Row -->
-        <div class="rpt-charts-row">
-            <div class="rpt-chart-card">
-                <div class="rpt-chart-title">Monthly Collection Trend</div>
-                <div class="rpt-chart-wrap"><canvas id="prTrendChart" height="240"></canvas></div>
-            </div>
-            <div class="rpt-chart-card">
-                <div class="rpt-chart-title">Payment Status Breakdown</div>
-                <div class="rpt-chart-wrap"><canvas id="rptStatusChart" height="240"></canvas></div>
-            </div>
-        </div>
-
-        <!-- Per-Client Summary Table -->
-        <div class="rpt-table-card">
-            <div class="rpt-table-header">
-                <div>
-                    <div class="rpt-table-title">Client Payment Summary</div>
-                    <div class="rpt-table-sub">Aggregated totals per client across all payment requests</div>
-                </div>
-            </div>
-            <div class="rpt-table-wrap">
-                <table class="rpt-table">
-                    <thead><tr>
-                        <th>Client</th>
-                        <th style="text-align:center;"># Requests</th>
-                        <th>Total Billed</th>
-                        <th>Total Collected</th>
-                        <th>Outstanding</th>
-                        <th style="text-align:center;">Overdue</th>
-                        <th>Last Activity</th>
-                        <th style="text-align:center;">Action</th>
-                    </tr></thead>
-                    <tbody id="rptClientTbody">
-                        <tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:28px;">Loading…</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-    </div>
-</div>
 
 
 <!-- SOWA Modal -->
@@ -3255,7 +3117,6 @@
 <script src="js/user-navigator.js"></script>
 <script src="js/client-accounts.js"></script>
 <script src="js/payment-requests.js"></script>
-<script src="js/payment-reports.js"></script>
 <script src="js/invoice-module.js"></script>
 <script src="js/labor-invoice-module.js"></script>
 <script src="js/pm-admin.js"></script>
@@ -3655,7 +3516,6 @@
         clientAccounts:   'Client Accounts',
         userNavigator:    'User Navigator',
         paymentRequests:  'Payment Requests',
-        paymentReports:   'Payment Reports',
         invoices:         'Invoice Receipt',
         laborInvoices:    'Labor Invoice',
         pmProjects:       'Project Management',
@@ -3735,7 +3595,6 @@
         if (view === 'clientAccounts' && typeof initClientAccounts     === 'function') initClientAccounts();
         if (view === 'paymentRequests' && typeof initPaymentRequests === 'function') initPaymentRequests();
         if (view === 'paymentRequests' && typeof initSOAModule      === 'function') initSOAModule();
-        if (view === 'paymentReports'  && typeof initPaymentReports === 'function') initPaymentReports();
         if (view === 'invoices'        && typeof initInvoiceModule  === 'function') initInvoiceModule();
         if (view === 'laborInvoices'   && typeof initLaborInvoiceModule === 'function') initLaborInvoiceModule();
         if (PM_VIEWS.includes(view)   && typeof initPMModule       === 'function') initPMModule(view);
