@@ -375,27 +375,13 @@
         const btn = document.getElementById('emp-create-submit-btn');
         if (btn) { btn.disabled = true; btn.innerHTML = '<div class="un-loading-spinner" style="width:14px;height:14px;border-width:2px;margin-right:6px;display:inline-block;"></div>Creating…'; }
 
-        let secondaryApp = null;
         try {
-            // Create Firebase Auth user via secondary app — current admin stays logged in
-            const config = firebase.apps[0].options;
-            secondaryApp = firebase.initializeApp(config, 'EmpCreate_' + Date.now());
-            const secAuth = secondaryApp.auth();
-
-            const cred = await secAuth.createUserWithEmailAndPassword(email, password);
-            const uid  = cred.user.uid;
-            await secAuth.signOut();
-
-            // Get ownerUid for shared data access
+            // Create the auth user + profile via the admin Edge Function — the current
+            // admin's session stays intact and the service_role key stays server-side.
             const ownerUid = window.currentDataUserId || auth.currentUser?.uid || '';
-
-            await db.collection('users').doc(uid).set({
-                displayName: firstName + ' ' + lastName,
-                email,
-                role,
-                status    : 'active',
-                ownerUid,
-                createdAt : firebase.firestore.FieldValue.serverTimestamp()
+            const { uid } = await adminCreateUser({
+                email, password, kind: 'admin', role, ownerUid,
+                firstName, lastName, displayName: firstName + ' ' + lastName,
             });
 
             // Add to local state and refresh table
@@ -417,13 +403,12 @@
         } catch (err) {
             console.error('unSubmitAddEmployee:', err);
             let msg = 'Something went wrong. Please try again.';
-            if (err.code === 'auth/email-already-in-use') msg = 'An account with this email already exists.';
-            if (err.code === 'auth/weak-password')        msg = 'Password is too weak. Use at least 8 characters.';
+            if (err.code === 'auth/email-already-in-use' || /exists|already/i.test(err.message || '')) msg = 'An account with this email already exists.';
+            if (err.code === 'auth/weak-password' || /password/i.test(err.message || '')) msg = 'Password is too weak. Use at least 8 characters.';
             if (err.code === 'auth/invalid-email')        msg = 'The email address is not valid.';
             const errEl = document.getElementById('emp-create-general-err');
             if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
         } finally {
-            if (secondaryApp) { try { await secondaryApp.delete(); } catch (_) {} }
             if (btn) {
                 btn.disabled = false;
                 btn.innerHTML = '<i data-lucide="user-plus" style="width:14px;height:14px;"></i> Add Employee';
@@ -684,41 +669,12 @@
         const btn = document.getElementById('cc-create-submit-btn');
         if (btn) { btn.disabled = true; btn.innerHTML = '<div class="un-loading-spinner" style="width:14px;height:14px;border-width:2px;margin-right:6px;display:inline-block;"></div>Creating…'; }
 
-        let secondaryApp = null;
         try {
-            const config = firebase.apps[0].options;
-            secondaryApp = firebase.initializeApp(config, 'CcCreate_' + Date.now());
-            const secAuth = secondaryApp.auth();
-
-            let uid;
-            try {
-                // Try creating a new Firebase Auth account
-                const cred = await secAuth.createUserWithEmailAndPassword(email, password);
-                uid = cred.user.uid;
-            } catch (authErr) {
-                if (authErr.code === 'auth/email-already-in-use') {
-                    // Email exists in another system — sign in to reuse the same UID
-                    const existing = await secAuth.signInWithEmailAndPassword(email, password);
-                    uid = existing.user.uid;
-                    // Check if already a construction client
-                    const alreadyExists = await db.collection('constructionClientUsers').doc(uid).get();
-                    if (alreadyExists.exists) {
-                        throw new Error('ALREADY_CLIENT');
-                    }
-                } else {
-                    throw authErr;
-                }
-            }
-            await secAuth.signOut();
-
-            await db.collection('constructionClientUsers').doc(uid).set({
-                firstName,
-                lastName,
-                email,
-                role             : 'client',
-                status           : 'active',
-                createdAt        : firebase.firestore.FieldValue.serverTimestamp(),
-                agreementAccepted: false
+            // Edge Function creates the auth user (reusing the uid if the email already
+            // exists) and upserts the construction_client profile. Admin session intact.
+            const { uid } = await adminCreateUser({
+                email, password, kind: 'construction_client', role: 'client',
+                firstName, lastName, displayName: firstName + ' ' + lastName,
             });
 
             if (projectId) {
@@ -747,19 +703,16 @@
         } catch (err) {
             console.error('caSubmitCreateClient:', err);
             let msg = 'Something went wrong. Please try again.';
-            if (err.message === 'ALREADY_CLIENT') {
-                msg = 'This email is already registered as a Construction Management client.';
-            } else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-                msg = 'This email already has an account in another system. The password you entered does not match their existing account. Please enter their correct password.';
-            } else if (err.code === 'auth/weak-password') {
+            if (/weak|password too/i.test(err.message || '')) {
                 msg = 'Password is too weak. Use at least 8 characters with mixed characters.';
-            } else if (err.code === 'auth/invalid-email') {
+            } else if (/invalid.*email/i.test(err.message || '')) {
                 msg = 'The email address is not valid.';
+            } else if (err.message) {
+                msg = err.message;
             }
             const errEl = document.getElementById('cc-create-general-err');
             if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
         } finally {
-            if (secondaryApp) { try { await secondaryApp.delete(); } catch (_) {} }
             if (btn) {
                 btn.disabled = false;
                 btn.innerHTML = '<i data-lucide="user-plus" style="width:14px;height:14px;"></i> Create Account';
@@ -1102,39 +1055,12 @@
         const btn = document.getElementById('cp-create-submit-btn');
         if (btn) { btn.disabled = true; btn.innerHTML = '<div class="un-loading-spinner" style="width:14px;height:14px;border-width:2px;margin-right:6px;display:inline-block;"></div>Creating…'; }
 
-        let secondaryApp = null;
         try {
-            const config = firebase.apps[0].options;
-            secondaryApp = firebase.initializeApp(config, 'CpCreate_' + Date.now());
-            const secAuth = secondaryApp.auth();
-
-            let uid;
-            try {
-                const cred = await secAuth.createUserWithEmailAndPassword(email, password);
-                uid = cred.user.uid;
-            } catch (authErr) {
-                if (authErr.code === 'auth/email-already-in-use') {
-                    // Email exists in another system — sign in to reuse the same UID
-                    const existing = await secAuth.signInWithEmailAndPassword(email, password);
-                    uid = existing.user.uid;
-                    // Check if already a client portal user
-                    const alreadyExists = await db.collection('clientUsers').doc(uid).get();
-                    if (alreadyExists.exists) {
-                        throw new Error('ALREADY_CLIENT');
-                    }
-                } else {
-                    throw authErr;
-                }
-            }
-            await secAuth.signOut();
-
-            await db.collection('clientUsers').doc(uid).set({
-                firstName,
-                lastName,
-                email,
-                role     : 'client',
-                status   : 'active',
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            // Edge Function creates the auth user (reusing the uid if the email already
+            // exists) and upserts the client profile. Admin session intact.
+            const { uid } = await adminCreateUser({
+                email, password, kind: 'client', role: 'client',
+                firstName, lastName, displayName: firstName + ' ' + lastName,
             });
 
             if (projectId) {
@@ -1163,19 +1089,16 @@
         } catch (err) {
             console.error('cpSubmitCreateClient:', err);
             let msg = 'Something went wrong. Please try again.';
-            if (err.message === 'ALREADY_CLIENT') {
-                msg = 'This email is already registered as a Client Portal user.';
-            } else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-                msg = 'This email already has an account in another system. The password you entered does not match their existing account. Please enter their correct password.';
-            } else if (err.code === 'auth/weak-password') {
+            if (/weak|password too/i.test(err.message || '')) {
                 msg = 'Password is too weak. Use at least 8 characters.';
-            } else if (err.code === 'auth/invalid-email') {
+            } else if (/invalid.*email/i.test(err.message || '')) {
                 msg = 'The email address is not valid.';
+            } else if (err.message) {
+                msg = err.message;
             }
             const errEl = document.getElementById('cp-create-general-err');
             if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
         } finally {
-            if (secondaryApp) { try { await secondaryApp.delete(); } catch (_) {} }
             if (btn) {
                 btn.disabled = false;
                 btn.innerHTML = '<i data-lucide="user-plus" style="width:14px;height:14px;"></i> Create Account';

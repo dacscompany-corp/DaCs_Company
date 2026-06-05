@@ -1031,6 +1031,7 @@ window.pmSavePaymentRequest = async function() {
             await col.doc(reqId).update(data);
         } else {
             data.createdAt           = firebase.firestore.FieldValue.serverTimestamp();
+            data.kind                = 'construction';
             data.status              = 'unpaid';
             data.amountPaid          = 0;
             data.source              = 'pm-admin';

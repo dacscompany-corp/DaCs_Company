@@ -806,6 +806,7 @@
                 const monthVal = (document.getElementById('prSelfPayMonth')?.value || '').trim();
                 if (!descVal) { if (btn) { btn.disabled = false; btn.textContent = 'Submit Payment'; } return showErr('Please enter a payment description.'); }
                 const newReq  = {
+                    kind:            'cost_plus',
                     clientUid:       user.uid          || '',
                     clientEmail:     user.email        || '',
                     clientName:      (profile.firstName ? profile.firstName + ' ' + (profile.lastName || '') : user.email || '').trim(),

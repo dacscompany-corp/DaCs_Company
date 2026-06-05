@@ -1,0 +1,480 @@
+// ════════════════════════════════════════════════════════════════════
+// DAC's — Supabase config + Firestore-compatibility shim
+// Replaces js/firebase-config.js. Exposes the SAME globals the app uses:
+//   db    — Firestore-like (collection/doc/where/orderBy/onSnapshot/batch…)
+//   auth  — Firebase-Auth-like (onAuthStateChanged/signIn/signOut/currentUser…)
+//   firebase.firestore.FieldValue.serverTimestamp() / firebase.firestore.Timestamp
+//   storage — minimal Supabase Storage wrapper
+// so existing modules keep working with only the nested-write sites hand-edited.
+//
+// Requires the supabase-js v2 UMD bundle loaded BEFORE this file.
+// ════════════════════════════════════════════════════════════════════
+
+/* eslint-disable no-var */
+
+// ── 1. Client ────────────────────────────────────────────────────────
+const SUPABASE_URL      = 'https://hqbgduyonlbbsvjuapre.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxYmdkdXlvbmxiYnN2anVhcHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Mjc3NDEsImV4cCI6MjA5NjIwMzc0MX0.sDKSroNIm-1Lip6ueq2lN1VTsvO1g4mT7Rf_WZ5AxWo';
+const ADMIN_CREATE_USER_FN = SUPABASE_URL + '/functions/v1/admin-create-user';
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true },
+});
+window.sbClient = sb;
+window.ADMIN_CREATE_USER_FN = ADMIN_CREATE_USER_FN;
+
+// ── 2. camel ↔ snake helpers ─────────────────────────────────────────
+const camelToSnake = (s) => s.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase());
+const snakeToCamel = (s) => s.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+
+// ── 3. Timestamp + FieldValue sentinels ──────────────────────────────
+const SERVER_TS = Symbol('serverTimestamp');
+class TS {
+  constructor(ms) { this._ms = ms; this.seconds = Math.floor(ms / 1000);
+                    this.nanoseconds = (ms % 1000) * 1e6; }
+  toDate()   { return new Date(this._ms); }
+  toMillis() { return this._ms; }
+  valueOf()  { return this._ms; }
+  static now()        { return new TS(Date.now()); }
+  static fromDate(d)  { return new TS(d.getTime()); }
+  static fromMillis(m){ return new TS(m); }
+}
+function wrapTs(v) {
+  if (v == null) return v;
+  if (v instanceof TS) return v;
+  const d = (v instanceof Date) ? v : new Date(v);
+  return isNaN(d.getTime()) ? v : new TS(d.getTime());
+}
+function tsToISO(v) {
+  if (v === SERVER_TS) return new Date().toISOString();
+  if (v instanceof TS)   return v.toDate().toISOString();
+  if (v instanceof Date) return v.toISOString();
+  return v;
+}
+
+// ── 4. Collection registry ───────────────────────────────────────────
+// table     : Postgres table
+// rename    : { camelField: snake_column }  (overrides for divergent names)
+// ts        : camel fields that are timestamps (wrapped on read, ISO on write)
+// json      : camel fields stored as jsonb (passed through as-is)
+// kind      : fixed `kind` filter/inject (profiles split)
+// idField   : PK column when the doc id is NOT `id` (e.g. folder_budgets.folder_id)
+// kv        : key/value table — doc data lives in `value` jsonb, doc id = `key`
+// children  : { camelArr: { table, fk, orderBy?, rename?, idCol? } }
+const OWNER = { userId: 'owner_id' };
+const REG = {
+  users:                    { table: 'profiles', kind: 'admin',               rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt'] },
+  clientUsers:              { table: 'profiles', kind: 'client',              rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt'] },
+  constructionClientUsers:  { table: 'profiles', kind: 'construction_client', rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt'] },
+
+  folders:        { table: 'folders',        rename: OWNER, ts: ['createdAt', 'updatedAt'] },
+  folderBudgets:  { table: 'folder_budgets', rename: OWNER, idField: 'folder_id' },
+  projects:       { table: 'projects',       rename: OWNER, ts: ['createdAt', 'updatedAt'] },
+  projectBudgets: { table: 'project_budgets',rename: OWNER, idField: 'project_id' },
+  expenses:       { table: 'expenses',       rename: OWNER, ts: ['createdAt', 'updatedAt'] },
+  payroll:        { table: 'payroll',        rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['receiptImages'] },
+  categories:     { table: 'categories',     rename: OWNER, ts: ['createdAt'] },
+  overheadExpenses:{ table: 'overhead_expenses', rename: OWNER, ts: ['createdAt'] },
+
+  boqDocuments:   { table: 'boq_documents', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['costItems', 'terms'] },
+  boqTemplates:   { table: 'boq_templates', rename: OWNER, ts: ['createdAt'], json: ['costItems'] },
+
+  invoices:       { table: 'invoices', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['paymentDetails'],
+                    children: { items: { table: 'invoice_items', fk: 'invoice_id', orderBy: 'position', rename: { unitPrice: 'unit_price' } } } },
+  laborInvoices:  { table: 'labor_invoices', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['paymentDetails'],
+                    children: { items: { table: 'labor_invoice_items', fk: 'labor_invoice_id', orderBy: 'position', rename: { unitPrice: 'unit_price' } } } },
+
+  paymentRequests:{ table: 'payment_requests', rename: { ownerUid: 'owner_id' },
+                    ts: ['createdAt', 'updatedAt', 'submittedAt', 'verifiedAt', 'rejectedAt',
+                         'partialRequestedAt', 'partialApprovedAt', 'dueDate'],
+                    json: ['invoiceSnapshot'] },
+
+  constructionProjects: { table: 'construction_projects', ts: ['createdAt', 'updatedAt'] },
+
+  requests:       { table: 'requests', rename: { requestedBy: 'requested_by', batchId: 'batch_id', isUrgent: 'is_urgent', isEditable: 'is_editable' },
+                    ts: ['createdAt', 'updatedAt'],
+                    children: { items: { table: 'request_items', fk: 'request_id', orderBy: 'position', idCol: 'legacy_item_id',
+                                         rename: { purchasedDate: 'purchased_date', deliveredDate: 'delivered_date' } } } },
+  batches:        { table: 'batches', rename: { deliveryDate: 'delivery_date', cutoffDate: 'cutoff_date', createdBy: 'created_by', totalItems: 'total_items', closedAt: 'closed_at', closedBy: 'closed_by' },
+                    ts: ['deliveryDate', 'cutoffDate', 'createdAt', 'closedAt', 'updatedAt'] },
+  inventory:      { table: 'inventory', rename: { itemName: 'item_name', currentStock: 'current_stock', minStock: 'min_stock', lastUpdated: 'last_updated', lastAdjustedBy: 'last_adjusted_by' },
+                    ts: ['lastUpdated', 'createdAt'] },
+
+  sowaRequests:        { table: 'sowa_requests', ts: ['requestedAt'] },
+  terminationRequests: { table: 'termination_requests', ts: ['requestedAt'] },
+
+  notifications:  { table: 'notifications', ts: ['createdAt'] },  // only via /items subpath
+  appointments:   { table: 'appointments', ts: ['createdAt', 'updatedAt'] },
+  testimonials:   { table: 'testimonials', ts: ['createdAt'] },
+  settings:       { table: 'settings', kv: true },
+  stats:          { table: 'stats', kv: true },
+};
+// Subcollections keyed by `${parent}/${sub}` → table + parent FK column
+const SUBREG = {
+  'constructionProjects/weeklyBills':       { table: 'weekly_bills',      parentField: 'project_id', ts: ['createdAt', 'updatedAt'] },
+  'constructionProjects/procurementList':   { table: 'procurement_items', parentField: 'project_id', ts: ['createdAt', 'updatedAt'] },
+  'constructionProjects/revolvingFund':     { table: 'revolving_funds',   parentField: 'project_id', singleton: true },
+  'constructionProjects/revolvingFundExpenses':      { table: 'revolving_fund_expenses',       parentField: 'project_id', ts: ['createdAt'] },
+  'constructionProjects/revolvingFundReplenishments':{ table: 'revolving_fund_replenishments', parentField: 'project_id', ts: ['createdAt'] },
+  'constructionProjects/dailyLogs':            { table: 'daily_logs',            parentField: 'project_id', ts: ['createdAt', 'updatedAt'] },
+  'constructionProjects/milestones':           { table: 'milestones',            parentField: 'project_id', ts: ['createdAt', 'updatedAt'] },
+  'constructionProjects/accomplishmentReports':{ table: 'accomplishment_reports',parentField: 'project_id', ts: ['createdAt', 'updatedAt'] },
+  'constructionProjects/walkthroughs':         { table: 'walkthroughs',          parentField: 'project_id', ts: ['createdAt', 'updatedAt'] },
+  'notifications/items':                        { table: 'notifications',         parentField: 'user_id',    ts: ['createdAt'] },
+};
+
+// ── 5. Row <-> doc conversion ────────────────────────────────────────
+function fieldToCol(cfg, field) { return (cfg.rename && cfg.rename[field]) || camelToSnake(field); }
+function buildReverse(cfg) {
+  const rev = {};
+  if (cfg.rename) for (const k in cfg.rename) rev[cfg.rename[k]] = k;
+  return rev;
+}
+// doc data (camel) → row (snake), converting ts/json/sentinels
+function toRow(cfg, data) {
+  if (cfg.kv) return null; // handled specially by caller
+  const tsSet = new Set(cfg.ts || []);
+  const row = {};
+  for (const k in data) {
+    if (cfg.children && cfg.children[k]) continue;           // children handled separately
+    const col = fieldToCol(cfg, k);
+    let v = data[k];
+    if (tsSet.has(k)) v = tsToISO(v);
+    else if (v === SERVER_TS) v = new Date().toISOString();
+    row[col] = v;
+  }
+  if (cfg.kind) row.kind = cfg.kind;
+  return row;
+}
+// row (snake) → doc data (camel), wrapping ts + mapping children
+function fromRow(cfg, row) {
+  const rev = buildReverse(cfg);
+  const tsCols = new Set((cfg.ts || []).map((f) => fieldToCol(cfg, f)));
+  const out = {};
+  for (const col in row) {
+    if (col === 'legacy_id' || col === 'kind') continue;
+    if (cfg.children && Object.values(cfg.children).some((c) => col === c.table)) continue;
+    const camel = rev[col] || snakeToCamel(col);
+    out[camel] = tsCols.has(col) ? wrapTs(row[col]) : row[col];
+  }
+  // children → arrays
+  if (cfg.children) {
+    for (const arrName in cfg.children) {
+      const c = cfg.children[arrName];
+      const rows = row[c.table] || [];
+      const crev = {}; if (c.rename) for (const k in c.rename) crev[c.rename[k]] = k;
+      out[arrName] = rows
+        .slice()
+        .sort((a, b) => (a.position || 0) - (b.position || 0))
+        .map((r) => {
+          const o = {};
+          for (const col in r) {
+            if (col === c.fk || col === 'position') continue;
+            if (col === 'id') { o.id = (c.idCol && r[c.idCol]) ? r[c.idCol] : r.id; continue; }
+            if (col === c.idCol) continue;
+            o[crev[col] || snakeToCamel(col)] = r[col];
+          }
+          if (!('id' in o)) o.id = r.id;
+          return o;
+        });
+    }
+  }
+  return out;
+}
+
+// ── 6. Snapshot wrappers ─────────────────────────────────────────────
+function docSnap(cfg, id, row) {
+  return { id, exists: !!row, data: () => (row ? fromRow(cfg, row) : undefined), ref: null };
+}
+function querySnap(cfg, rows) {
+  const docs = rows.map((r) => ({ id: r.id ?? r[cfg.idField], data: () => fromRow(cfg, r), exists: true, ref: null }));
+  return { docs, empty: docs.length === 0, size: docs.length, forEach: (fn) => docs.forEach(fn) };
+}
+
+// ── 7. Query / Collection / Doc refs ─────────────────────────────────
+const OPMAP = { '==': 'eq', '!=': 'neq', '>': 'gt', '>=': 'gte', '<': 'lt', '<=': 'lte' };
+
+class Query {
+  constructor(cfg, ctx) { this.cfg = cfg; this.ctx = ctx; this._w = []; this._o = []; this._lim = null; }
+  _clone() { const q = new Query(this.cfg, this.ctx); q._w = [...this._w]; q._o = [...this._o]; q._lim = this._lim; return q; }
+  where(f, op, v) { const q = this._clone(); q._w.push([f, op, v]); return q; }
+  orderBy(f, dir) { const q = this._clone(); q._o.push([f, dir || 'asc']); return q; }
+  limit(n) { const q = this._clone(); q._lim = n; return q; }
+
+  _select() {
+    const c = this.cfg;
+    let sel = '*';
+    if (c.children) sel = '*, ' + Object.values(c.children).map((x) => `${x.table}(*)`).join(', ');
+    let qb = sb.from(c.table).select(sel);
+    if (c.kind) qb = qb.eq('kind', c.kind);
+    if (this.ctx) qb = qb.eq(this.ctx.col, this.ctx.val);     // subcollection parent filter
+    for (const [f, op, v] of this._w) {
+      const col = fieldToCol(c, f);
+      if (op === 'in') qb = qb.in(col, v);
+      else if (op === '==' && v === null) qb = qb.is(col, null);
+      else qb = qb[OPMAP[op] || 'eq'](col, v);
+    }
+    for (const [f, dir] of this._o) qb = qb.order(fieldToCol(c, f), { ascending: dir !== 'desc' });
+    if (this._lim != null) qb = qb.limit(this._lim);
+    return qb;
+  }
+  async get() {
+    const { data, error } = await this._select();
+    if (error) throw error;
+    return querySnap(this.cfg, data || []);
+  }
+  onSnapshot(onNext, onErr) {
+    let cancelled = false;
+    const run = () => this.get().then((s) => { if (!cancelled) onNext(s); }).catch((e) => onErr && onErr(e));
+    run();
+    const chan = sb.channel('rt_' + this.cfg.table + '_' + Math.random().toString(36).slice(2))
+      .on('postgres_changes', { event: '*', schema: 'public', table: this.cfg.table }, run)
+      .subscribe();
+    return () => { cancelled = true; sb.removeChannel(chan); };
+  }
+}
+
+class CollectionRef extends Query {
+  constructor(cfg, ctx) { super(cfg, ctx); }
+  doc(id) { return new DocRef(this.cfg, id ?? null, this.ctx); }
+  async add(data) {
+    const c = this.cfg;
+    const row = toRow(c, data);
+    if (this.ctx) row[this.ctx.col] = this.ctx.val;
+    const { data: ins, error } = await sb.from(c.table).insert(row).select().single();
+    if (error) throw error;
+    if (c.children) await writeChildren(c, ins.id, data);
+    return new DocRef(c, ins.id, this.ctx, ins);
+  }
+}
+
+class DocRef {
+  constructor(cfg, id, ctx, preload) { this.cfg = cfg; this.id = id; this.ctx = ctx; this._pre = preload; }
+  collection(sub) {
+    const key = invName(this.cfg.table) + '/' + sub;
+    const scfg = SUBREG[key];
+    if (!scfg) throw new Error('Unknown subcollection: ' + key);
+    return new CollectionRef(scfg, { col: scfg.parentField, val: this.id });
+  }
+  // Key column/value for row lookups. Singleton subcollections (revolvingFund/summary)
+  // are keyed by their parent FK, not an `id` column; the doc id ('summary') is ignored.
+  _keyCol() { return this.cfg.singleton ? this.cfg.parentField : (this.cfg.idField || 'id'); }
+  _keyVal() { return this.cfg.singleton ? this.ctx.val : this.id; }
+  _applyCtx(qb) { return (this.ctx && !this.cfg.singleton) ? qb.eq(this.ctx.col, this.ctx.val) : qb; }
+
+  async get() {
+    const c = this.cfg;
+    if (c.kv) {
+      const { data, error } = await sb.from(c.table).select('value').eq('key', this.id).maybeSingle();
+      if (error) throw error;
+      return { id: this.id, exists: !!data, data: () => (data ? data.value : undefined) };
+    }
+    let sel = '*';
+    if (c.children) sel = '*, ' + Object.values(c.children).map((x) => `${x.table}(*)`).join(', ');
+    let qb = sb.from(c.table).select(sel).eq(this._keyCol(), this._keyVal());
+    qb = this._applyCtx(qb);
+    const { data, error } = await qb.maybeSingle();
+    if (error) throw error;
+    return docSnap(c, this.id, data || null);
+  }
+
+  async set(data, opts) {
+    const c = this.cfg;
+    if (c.kv) {
+      const { error } = await sb.from(c.table).upsert({ key: this.id, value: data, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      if (error) throw error; return;
+    }
+    const row = toRow(c, data);
+    row[this._keyCol()] = this._keyVal();
+    if (this.ctx && !c.singleton) row[this.ctx.col] = this.ctx.val;
+    const { error } = await sb.from(c.table).upsert(row, { onConflict: this._keyCol() });
+    if (error) throw error;
+    if (c.children) await writeChildren(c, this._keyVal(), data, true);
+  }
+
+  async update(data) {
+    const c = this.cfg;
+    const row = toRow(c, data);
+    let qb = sb.from(c.table).update(row).eq(this._keyCol(), this._keyVal());
+    qb = this._applyCtx(qb);
+    const { error } = await qb;
+    if (error) throw error;
+    if (c.children) await writeChildren(c, this._keyVal(), data, true);
+  }
+
+  async delete() {
+    let qb = sb.from(this.cfg.table).delete().eq(this._keyCol(), this._keyVal());
+    qb = this._applyCtx(qb);
+    const { error } = await qb;
+    if (error) throw error;
+  }
+
+  onSnapshot(onNext, onErr) {
+    let cancelled = false;
+    const run = () => this.get().then((s) => { if (!cancelled) onNext(s); }).catch((e) => onErr && onErr(e));
+    run();
+    const chan = sb.channel('rtd_' + this.cfg.table + '_' + Math.random().toString(36).slice(2))
+      .on('postgres_changes', { event: '*', schema: 'public', table: this.cfg.table, filter: `${this._pk()}=eq.${this.id}` }, run)
+      .subscribe();
+    return () => { cancelled = true; sb.removeChannel(chan); };
+  }
+}
+
+// child-table write helper (insert parent already done; here we (re)write children)
+async function writeChildren(cfg, parentId, data, replace) {
+  for (const arrName in cfg.children) {
+    if (!(arrName in data)) continue;
+    const c = cfg.children[arrName];
+    if (replace) await sb.from(c.table).delete().eq(c.fk, parentId);
+    const arr = data[arrName] || [];
+    if (!arr.length) continue;
+    const rows = arr.map((it, i) => {
+      const r = { [c.fk]: parentId, position: i };
+      for (const k in it) {
+        if (k === 'id') { if (c.idCol) r[c.idCol] = it.id; continue; }
+        r[(c.rename && c.rename[k]) || camelToSnake(k)] = it[k];
+      }
+      return r;
+    });
+    const { error } = await sb.from(c.table).insert(rows);
+    if (error) throw error;
+  }
+}
+
+// reverse table→collectionName (for subcollection path key)
+function invName(table) {
+  for (const n in REG) if (REG[n].table === table) return n;
+  return table;
+}
+
+// ── 8. db facade + batch ─────────────────────────────────────────────
+const db = {
+  collection(name) {
+    const cfg = REG[name];
+    if (!cfg) throw new Error('Unknown collection: ' + name);
+    return new CollectionRef(cfg, null);
+  },
+  batch() {
+    const ops = [];
+    return {
+      set(ref, data, opts) { ops.push(['set', ref, data, opts]); return this; },
+      update(ref, data)    { ops.push(['update', ref, data]);    return this; },
+      delete(ref)          { ops.push(['delete', ref]);          return this; },
+      async commit() {
+        for (const [op, ref, data, opts] of ops) {
+          if (op === 'set') {
+            if (ref.id == null) { await new CollectionRef(ref.cfg, ref.ctx).add(data); }
+            else await ref.set(data, opts);
+          } else if (op === 'update') await ref.update(data);
+          else await ref.delete();
+        }
+      },
+    };
+  },
+};
+
+// ── 9. auth facade ───────────────────────────────────────────────────
+function mapUser(u) {
+  if (!u) return null;
+  return {
+    uid: u.id,
+    email: u.email,
+    displayName: u.user_metadata?.display_name || u.user_metadata?.full_name || null,
+    emailVerified: !!u.email_confirmed_at,
+    async getIdToken() { const { data } = await sb.auth.getSession(); return data.session?.access_token || null; },
+    // change-password flow: verify current password by re-signing in
+    async reauthenticateWithCredential(cred) {
+      const { error } = await sb.auth.signInWithPassword({ email: cred.email || u.email, password: cred.password });
+      if (error) { error.code = 'auth/wrong-password'; throw error; }
+    },
+    async updatePassword(newPassword) {
+      const { error } = await sb.auth.updateUser({ password: newPassword });
+      if (error) { error.code = mapAuthCode(error); throw error; }
+    },
+  };
+}
+const auth = {
+  currentUser: null,
+  onAuthStateChanged(cb) {
+    sb.auth.getSession().then(({ data }) => { auth.currentUser = mapUser(data.session?.user); cb(auth.currentUser); });
+    const { data: sub } = sb.auth.onAuthStateChange((_e, session) => {
+      auth.currentUser = mapUser(session?.user); cb(auth.currentUser);
+    });
+    return () => sub.subscription.unsubscribe();
+  },
+  async signInWithEmailAndPassword(email, password) {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+    if (error) { error.code = mapAuthCode(error); throw error; }
+    auth.currentUser = mapUser(data.user);
+    return { user: auth.currentUser };
+  },
+  async createUserWithEmailAndPassword(email, password) {
+    const { data, error } = await sb.auth.signUp({ email, password });
+    if (error) { error.code = mapAuthCode(error); throw error; }
+    auth.currentUser = mapUser(data.user);
+    return { user: auth.currentUser };
+  },
+  async signOut() { await sb.auth.signOut(); auth.currentUser = null; },
+  // Supabase manages session persistence via the client config — accept & ignore.
+  async setPersistence(_p) { return; },
+  async sendPasswordResetEmail(email) { const { error } = await sb.auth.resetPasswordForEmail(email); if (error) throw error; },
+};
+function mapAuthCode(error) {
+  const m = (error.message || '').toLowerCase();
+  if (m.includes('already registered')) return 'auth/email-already-in-use';
+  if (m.includes('invalid login'))      return 'auth/wrong-password';
+  if (m.includes('password'))           return 'auth/weak-password';
+  return 'auth/error';
+}
+
+// Admin-creates-user (replaces the secondary-app pattern) — calls the Edge Function.
+async function adminCreateUser(payload) {
+  const { data: { session } } = await sb.auth.getSession();
+  const res = await fetch(ADMIN_CREATE_USER_FN, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session?.access_token || '') },
+    body: JSON.stringify(payload),
+  });
+  const out = await res.json();
+  if (!res.ok) throw new Error(out.error || 'create user failed');
+  return out; // { uid, reused }
+}
+window.adminCreateUser = adminCreateUser;
+
+// ── 10. firebase.* compatibility surface ─────────────────────────────
+const firebase = {
+  firestore: Object.assign(() => db, {
+    FieldValue: { serverTimestamp: () => SERVER_TS, delete: () => null },
+    Timestamp: TS,
+  }),
+  auth: Object.assign(() => auth, {
+    EmailAuthProvider: { credential: (email, password) => ({ email, password }) },
+    Auth: { Persistence: { LOCAL: 'local', SESSION: 'session', NONE: 'none' } },
+  }),
+  apps: [{ options: { url: SUPABASE_URL } }],
+  initializeApp: () => ({ auth: () => auth, firestore: () => db, delete: async () => {} }),
+};
+
+// ── 11. minimal Storage wrapper (most images are base64; this covers refs) ──
+const storage = {
+  ref(path) {
+    return {
+      _path: path || ('uploads/' + Date.now()),
+      async put(file) {
+        const { error } = await sb.storage.from('uploads').upload(this._path, file, { upsert: true });
+        if (error) throw error;
+        return { ref: this };
+      },
+      async getDownloadURL() {
+        const { data } = sb.storage.from('uploads').getPublicUrl(this._path);
+        return data.publicUrl;
+      },
+      child(p) { return storage.ref((this._path + '/' + p).replace(/\/+/g, '/')); },
+    };
+  },
+};
+
+// ── 12. expose globals (mirror old firebase-config.js) ───────────────
+window.db = db; window.auth = auth; window.storage = storage; window.firebase = firebase;
+console.log('✅ Supabase initialized (Firestore-compat shim active)');
+console.log('📁 Project URL:', SUPABASE_URL);
