@@ -454,7 +454,6 @@ function switchView(view) {
         boqBuilder:       'Accomplishment Report',
         clientAccounts:   'Client Accounts',
         paymentRequests:  'Payment Requests',
-        paymentReports:   'Payment Reports',
         invoices:         'Invoice Receipt',
         consBatch:        'Current Batch',
         consUrgent:       'Urgent Requests',
@@ -1880,7 +1879,6 @@ const PRIMARY_NAV = [
         { view: 'boqBuilder',      label: 'Accomplishment',   icon: 'file-spreadsheet' },
         { view: 'clientAccounts',  label: 'Clients',          icon: 'user-circle' },
         { view: 'paymentRequests', label: 'Payment Requests', icon: 'credit-card' },
-        { view: 'paymentReports',  label: 'Payment Reports',  icon: 'bar-chart-2' },
         { view: 'invoices',        label: 'Invoice Receipt',  icon: 'receipt-text' },
       ]
     },
