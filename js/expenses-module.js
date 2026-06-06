@@ -6677,9 +6677,6 @@ function mvpRenderOvBillingPeriods(folderId) {
             + '</div>'
             + '<div class="bo-fld-card-progress"><div class="bo-fld-card-progress-fill" style="width:' + spentPct.toFixed(1) + '%;background:' + barClr + '"></div></div>'
             + '<div class="bo-fld-card-meta">' + entriesTxt + '</div>'
-            + '<button class="bo-fld-card-cta" onclick="mvpOvOpenPeriodDetail(\'' + fid + '\',\'' + pid + '\')">'
-            +   'View Details <span style="margin-left:6px">→</span>'
-            + '</button>'
             + '</div>';
     }).join('');
 }
