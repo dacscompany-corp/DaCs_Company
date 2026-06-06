@@ -870,19 +870,19 @@ button.btn-primary:hover,
   to   { opacity: 1; transform: translateY(0); }
 }
 .dacs-portal-scope .staff-kpi-single {
-  padding: 32px 0 !important;
+  padding: 6px 0 !important;
 }
 .dacs-portal-scope .staff-kpi-single .pc-kpi {
-  padding: 8px 48px;
+  padding: 6px 32px;
   border-right: 0;
   animation: staff-kpi-slidein 0.4s ease both;
 }
 .dacs-portal-scope .staff-kpi-single .pc-kpi-lbl {
-  font-size: 13px;
-  letter-spacing: 0.18em;
+  font-size: 12px;
+  letter-spacing: 0.16em;
 }
 .dacs-portal-scope .staff-kpi-single .pc-kpi-val {
-  font-size: 42px;
+  font-size: 26px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -1278,7 +1278,7 @@ button.btn-primary:hover,
 
 .dacs-portal-scope .pc-flow-total {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: baseline;
   padding-top: 14px;
   border-top: 1px solid var(--brand-hair);
@@ -1294,12 +1294,7 @@ button.btn-primary:hover,
   padding-top: 0;
 }
 .dacs-portal-scope .pc-flow-total .lbl {
-  font-family: var(--sans);
-  font-size: 11px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--text-light);
-  font-weight: 600;
+  display: none;
 }
 .dacs-portal-scope .pc-flow-total .val {
   font-family: var(--serif);
