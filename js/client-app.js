@@ -1238,6 +1238,21 @@ async function saveProfile() {
     }
 }
 
+// ── Change-password captcha (Cloudflare Turnstile, rendered on demand) ──
+const CPW_SITEKEY = '0x4AAAAAADgIAGT-ZrooN5eY';
+let _cpwWidgetId = null;
+function _cpwRenderOrReset() {
+    if (!window.turnstile) return;
+    try {
+        if (_cpwWidgetId === null) _cpwWidgetId = turnstile.render('#cpw-captcha', { sitekey: CPW_SITEKEY });
+        else turnstile.reset(_cpwWidgetId);
+    } catch (e) {}
+}
+function _cpwToken() {
+    try { return (window.turnstile && _cpwWidgetId !== null) ? (turnstile.getResponse(_cpwWidgetId) || undefined) : undefined; }
+    catch (e) { return undefined; }
+}
+
 function toggleChangePassword() {
     const form  = document.getElementById('change-pw-form');
     const ph    = document.getElementById('change-pw-placeholder');
@@ -1252,6 +1267,9 @@ function toggleChangePassword() {
         ['err-pw-current','err-pw-new','err-pw-confirm-new'].forEach(id => setError(id, ''));
         const wrap = document.getElementById('new-pw-strength-wrap');
         if (wrap) wrap.style.display = 'none';
+    } else {
+        // Opening → render/refresh the captcha so a fresh token is ready on submit
+        _cpwRenderOrReset();
     }
 }
 
@@ -1295,11 +1313,13 @@ async function doChangePassword() {
 
     try {
         const cred = firebase.auth.EmailAuthProvider.credential(currentUser.email, cur);
+        cred.captchaToken = _cpwToken();
         await currentUser.reauthenticateWithCredential(cred);
         await currentUser.updatePassword(nw);
         toggleChangePassword();
         showToast('Password updated successfully ✓');
     } catch (err) {
+        _cpwRenderOrReset(); // refresh captcha so a retry gets a fresh token
         if (err.code === 'auth/wrong-password') setError('err-pw-current', 'Incorrect current password.');
         else showToast('Error: ' + err.message);
     }

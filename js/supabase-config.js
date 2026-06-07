@@ -374,6 +374,36 @@ const db = {
 };
 
 // ── 9. auth facade ───────────────────────────────────────────────────
+
+// ── Cloudflare Turnstile captcha (verified server-side by Supabase) ──
+// FLIP THIS TO true ONLY AFTER you have:
+//   1. Created a Turnstile widget in Cloudflare and put its SITE key in the
+//      data-sitekey of the .cf-turnstile div on each login page.
+//   2. Enabled Captcha (Turnstile) in Supabase → Auth → Bot & Abuse Protection
+//      and pasted the matching SECRET key there.
+// While false, login works exactly as before (no token is sent).
+const CAPTCHA_ENABLED = true;
+
+// Read the token from a Turnstile widget on the page (optionally a specific one).
+function _captchaToken(widgetId) {
+  try {
+    if (window.turnstile && typeof turnstile.getResponse === 'function') {
+      return turnstile.getResponse(widgetId) || undefined;
+    }
+  } catch (e) {}
+  return undefined;
+}
+// Reset a widget so the next attempt gets a fresh, single-use token.
+function _captchaReset(widgetId) {
+  try { if (window.turnstile && typeof turnstile.reset === 'function') turnstile.reset(widgetId); } catch (e) {}
+}
+// Options object Supabase expects — only when captcha is on and a token exists.
+function _captchaOpts(token) {
+  if (!CAPTCHA_ENABLED) return undefined;
+  const t = token || _captchaToken();
+  return t ? { captchaToken: t } : undefined;
+}
+
 function mapUser(u) {
   if (!u) return null;
   return {
@@ -384,7 +414,8 @@ function mapUser(u) {
     async getIdToken() { const { data } = await sb.auth.getSession(); return data.session?.access_token || null; },
     // change-password flow: verify current password by re-signing in
     async reauthenticateWithCredential(cred) {
-      const { error } = await sb.auth.signInWithPassword({ email: cred.email || u.email, password: cred.password });
+      const { error } = await sb.auth.signInWithPassword({ email: cred.email || u.email, password: cred.password, options: _captchaOpts(cred.captchaToken) });
+      _captchaReset();
       if (error) { error.code = 'auth/wrong-password'; throw error; }
     },
     async updatePassword(newPassword) {
@@ -402,14 +433,16 @@ const auth = {
     });
     return () => sub.subscription.unsubscribe();
   },
-  async signInWithEmailAndPassword(email, password) {
-    const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  async signInWithEmailAndPassword(email, password, captchaToken) {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password, options: _captchaOpts(captchaToken) });
+    _captchaReset();
     if (error) { error.code = mapAuthCode(error); throw error; }
     auth.currentUser = mapUser(data.user);
     return { user: auth.currentUser };
   },
-  async createUserWithEmailAndPassword(email, password) {
-    const { data, error } = await sb.auth.signUp({ email, password });
+  async createUserWithEmailAndPassword(email, password, captchaToken) {
+    const { data, error } = await sb.auth.signUp({ email, password, options: _captchaOpts(captchaToken) });
+    _captchaReset();
     if (error) { error.code = mapAuthCode(error); throw error; }
     auth.currentUser = mapUser(data.user);
     return { user: auth.currentUser };
@@ -417,7 +450,7 @@ const auth = {
   async signOut() { await sb.auth.signOut(); auth.currentUser = null; },
   // Supabase manages session persistence via the client config — accept & ignore.
   async setPersistence(_p) { return; },
-  async sendPasswordResetEmail(email) { const { error } = await sb.auth.resetPasswordForEmail(email); if (error) throw error; },
+  async sendPasswordResetEmail(email, captchaToken) { const { error } = await sb.auth.resetPasswordForEmail(email, _captchaOpts(captchaToken)); _captchaReset(); if (error) throw error; },
 };
 function mapAuthCode(error) {
   const m = (error.message || '').toLowerCase();

@@ -7,6 +7,8 @@
     <link rel="icon" href="assets/images/DACS-TRANSPARENT.png" type="image/png">
     <link rel="stylesheet" href="css/admin.css">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <!-- Cloudflare Turnstile (captcha) -->
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     <link rel="stylesheet" href="css/expenses-module.css">
     <link rel="stylesheet" href="css/expenses-mvp.css">
     <link rel="stylesheet" href="css/dacs-portal.css">
@@ -91,6 +93,8 @@
                     </button>
                 </div>
             </div>
+            <!-- Cloudflare Turnstile captcha (DACS Login widget) -->
+            <div class="cf-turnstile" data-sitekey="0x4AAAAAADgIAGT-ZrooN5eY" data-theme="light" style="margin:0 0 14px;display:flex;justify-content:center;"></div>
             <button type="submit" class="btn-login" id="loginBtn">Sign In</button>
             <div id="loginError" class="error-message"></div>
         </form>

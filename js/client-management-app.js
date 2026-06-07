@@ -850,12 +850,29 @@ window.handleAvatarUpload  = function(event) {
 };
 
 // ── Change Password ───────────────────────────────────────────────
+// Cloudflare Turnstile widget for the change-password form (rendered on demand)
+const CM_CPW_SITEKEY = '0x4AAAAAADgIAGT-ZrooN5eY';
+let _cmCpwWidgetId = null;
+function _cmCpwRenderOrReset() {
+    if (!window.turnstile) return;
+    try {
+        if (_cmCpwWidgetId === null) _cmCpwWidgetId = turnstile.render('#cpw-captcha', { sitekey: CM_CPW_SITEKEY });
+        else turnstile.reset(_cmCpwWidgetId);
+    } catch (e) {}
+}
+function _cmCpwToken() {
+    try { return (window.turnstile && _cmCpwWidgetId !== null) ? (turnstile.getResponse(_cmCpwWidgetId) || undefined) : undefined; }
+    catch (e) { return undefined; }
+}
+
 window.toggleChangePassword = function() {
     const form  = document.getElementById('change-pw-form');
     const ph    = document.getElementById('change-pw-placeholder');
     const open  = form && form.style.display !== 'none';
     if (form) form.style.display  = open ? 'none' : '';
     if (ph)   ph.style.display    = open ? '' : 'none';
+    // Opening → render/refresh the captcha so a fresh token is ready on submit
+    if (!open) _cmCpwRenderOrReset();
 };
 
 window.doChangePassword = async function() {
@@ -868,11 +885,13 @@ window.doChangePassword = async function() {
     if (nw !== conf)       { cmErr('err-pw-confirm-new','Passwords don\'t match.');               return; }
     try {
         const cred = firebase.auth.EmailAuthProvider.credential(cmCurrentUser.email, cur);
+        cred.captchaToken = _cmCpwToken();
         await cmCurrentUser.reauthenticateWithCredential(cred);
         await cmCurrentUser.updatePassword(nw);
         cmShowToast('Password changed ✓');
         window.toggleChangePassword();
     } catch (err) {
+        _cmCpwRenderOrReset(); // refresh captcha so a retry gets a fresh token
         if (err.code === 'auth/wrong-password') cmErr('err-pw-current', 'Current password is incorrect.');
         else cmShowToast('Error changing password: ' + err.message);
     }

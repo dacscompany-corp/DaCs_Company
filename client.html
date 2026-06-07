@@ -55,6 +55,9 @@
 
       <div class="login-error" id="login-error">Incorrect email or password. Please try again.</div>
 
+      <!-- Cloudflare Turnstile captcha (DACS Login widget) -->
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAADgIAGT-ZrooN5eY" data-theme="light" style="margin:0 0 14px;display:flex;justify-content:center;"></div>
+
       <button class="btn-signin" id="btn-login" type="button" onclick="doLogin()">Sign In</button>
 
     </div>
@@ -551,6 +554,8 @@
               </div>
               <div class="field-error" id="err-pw-confirm-new"></div>
             </div>
+            <!-- Cloudflare Turnstile captcha (rendered on demand by toggleChangePassword) -->
+            <div id="cpw-captcha" style="margin:4px 0 12px;display:flex;justify-content:center;"></div>
             <div class="edit-profile-actions">
               <button class="btn-cancel-edit" onclick="toggleChangePassword()">Cancel</button>
               <button class="btn-save-profile" onclick="doChangePassword()">Update Password</button>
@@ -780,6 +785,8 @@
   </div>
 </div>
 
+<!-- Cloudflare Turnstile (captcha) -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <!-- Firebase -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-config.js"></script>
