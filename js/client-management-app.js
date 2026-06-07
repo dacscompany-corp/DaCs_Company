@@ -946,6 +946,20 @@ function cmShowToast(msg, duration) {
 window.showToast = cmShowToast;
 
 // ── Forgot Password ───────────────────────────────────────────────
+// Cloudflare Turnstile widget for the forgot-password modal (rendered on demand)
+let _cmFpWidgetId = null;
+function _cmFpRenderOrReset() {
+    if (!window.turnstile) return;
+    try {
+        if (_cmFpWidgetId === null) _cmFpWidgetId = turnstile.render('#fp-captcha', { sitekey: '0x4AAAAAADgIAGT-ZrooN5eY' });
+        else turnstile.reset(_cmFpWidgetId);
+    } catch (e) {}
+}
+function _cmFpToken() {
+    try { return (window.turnstile && _cmFpWidgetId !== null) ? (turnstile.getResponse(_cmFpWidgetId) || undefined) : undefined; }
+    catch (e) { return undefined; }
+}
+
 window.doForgotPassword = function() {
     const modal = document.getElementById('forgotPasswordModal');
     const input = document.getElementById('forgotEmailInput');
@@ -954,6 +968,7 @@ window.doForgotPassword = function() {
     if (input) input.value = loginEmail;
     if (msg)   { msg.style.display = 'none'; }
     if (modal) modal.style.display = 'flex';
+    _cmFpRenderOrReset(); // fresh captcha each time the modal opens
 };
 window.closeForgotPasswordModal = function() {
     const m = document.getElementById('forgotPasswordModal'); if (m) m.style.display = 'none';
@@ -973,11 +988,12 @@ window.sendResetEmail = async function() {
     if (!email) { show('Please enter your email.', true); return; }
     if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
     try {
-        await firebase.auth().sendPasswordResetEmail(email);
+        await firebase.auth().sendPasswordResetEmail(email, _cmFpToken());
         show('Reset link sent! Check your inbox.', false);
         if (input) input.value = '';
         setTimeout(window.closeForgotPasswordModal, 3000);
     } catch (e) {
+        _cmFpRenderOrReset(); // refresh captcha so a retry gets a fresh token
         show(e.code === 'auth/user-not-found' ? 'No account found.' : 'Failed to send email.', true);
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Send Reset Link'; }
@@ -1663,11 +1679,11 @@ window.plSubmitBought = async function() {
         const notes  = document.getElementById('plBuyNotes').value.trim();
         let receiptUrl = null;
 
-        // Upload receipt to Firebase Storage
+        // Upload receipt to Supabase Storage (via the storage shim — same pattern as pm-admin.js)
         if (_plReceiptFile && cmCurrentUser) {
             const ext  = _plReceiptFile.name.split('.').pop();
             const path = `procurementReceipts/${cmProjectData.id}/${itemId}_client_${Date.now()}.${ext}`;
-            const ref  = firebase.storage().ref(path);
+            const ref  = storage.ref(path);
             await ref.put(_plReceiptFile);
             receiptUrl = await ref.getDownloadURL();
         }

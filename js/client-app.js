@@ -1,5 +1,19 @@
 
 // ── Forgot Password ──────────────────────────────────────────
+// Cloudflare Turnstile widget for the forgot-password modal (rendered on demand)
+let _fpWidgetId = null;
+function _fpRenderOrReset() {
+    if (!window.turnstile) return;
+    try {
+        if (_fpWidgetId === null) _fpWidgetId = turnstile.render('#fp-captcha', { sitekey: '0x4AAAAAADgIAGT-ZrooN5eY' });
+        else turnstile.reset(_fpWidgetId);
+    } catch (e) {}
+}
+function _fpToken() {
+    try { return (window.turnstile && _fpWidgetId !== null) ? (turnstile.getResponse(_fpWidgetId) || undefined) : undefined; }
+    catch (e) { return undefined; }
+}
+
 window.doForgotPassword = function () {
     var modal = document.getElementById('forgotPasswordModal');
     var input = document.getElementById('forgotEmailInput');
@@ -9,6 +23,7 @@ window.doForgotPassword = function () {
     if (input) input.value = loginEmail;
     if (msg)   { msg.style.display = 'none'; msg.textContent = ''; }
     if (modal) modal.style.display = 'flex';
+    _fpRenderOrReset(); // fresh captcha each time the modal opens
     setTimeout(function() { if (input) input.focus(); }, 100);
 };
 
@@ -37,11 +52,12 @@ window.sendResetEmail = async function () {
 
     if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
     try {
-        await firebase.auth().sendPasswordResetEmail(email);
+        await firebase.auth().sendPasswordResetEmail(email, _fpToken());
         showMsg('Reset link sent! Check your email inbox (and spam folder).', false);
         if (input) input.value = '';
         setTimeout(function() { window.closeForgotPasswordModal(); }, 3000);
     } catch (e) {
+        _fpRenderOrReset(); // refresh captcha so a retry gets a fresh token
         var errMsg = 'Failed to send reset email.';
         if (e.code === 'auth/user-not-found')    errMsg = 'No account found with this email address.';
         else if (e.code === 'auth/invalid-email') errMsg = 'Invalid email address.';

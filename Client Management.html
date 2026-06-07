@@ -1447,6 +1447,8 @@ function filterProgressLogs(){
           onfocus="this.style.borderColor='#059669'" onblur="this.style.borderColor='#d1d5db'"
           onkeydown="if(event.key==='Enter')sendResetEmail()">
       </div>
+      <!-- Cloudflare Turnstile captcha (rendered on demand by doForgotPassword) -->
+      <div id="fp-captcha" style="margin:0 0 12px;display:flex;justify-content:center;"></div>
       <div id="forgotPasswordMsg" style="display:none;font-size:13px;padding:10px 14px;border-radius:8px;margin-bottom:12px;"></div>
     </div>
     <div style="padding:16px 24px;display:flex;gap:10px;justify-content:flex-end;">
