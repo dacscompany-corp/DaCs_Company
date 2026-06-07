@@ -17,6 +17,9 @@ const SUPABASE_URL      = 'https://hqbgduyonlbbsvjuapre.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxYmdkdXlvbmxiYnN2anVhcHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Mjc3NDEsImV4cCI6MjA5NjIwMzc0MX0.sDKSroNIm-1Lip6ueq2lN1VTsvO1g4mT7Rf_WZ5AxWo';
 const ADMIN_CREATE_USER_FN = SUPABASE_URL + '/functions/v1/admin-create-user';
 
+// persistSession:true → the session is kept in localStorage and survives browser
+// restarts (users stay logged in by design). The legacy auth.setPersistence(SESSION)
+// calls in the login handlers are intentionally no-ops and have been removed.
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true },
 });
@@ -416,7 +419,7 @@ function mapUser(u) {
     async reauthenticateWithCredential(cred) {
       const { error } = await sb.auth.signInWithPassword({ email: cred.email || u.email, password: cred.password, options: _captchaOpts(cred.captchaToken) });
       _captchaReset();
-      if (error) { error.code = 'auth/wrong-password'; throw error; }
+      if (error) { error.code = (error.message || '').toLowerCase().includes('captcha') ? 'auth/captcha-failed' : 'auth/wrong-password'; throw error; }
     },
     async updatePassword(newPassword) {
       const { error } = await sb.auth.updateUser({ password: newPassword });
@@ -427,9 +430,22 @@ function mapUser(u) {
 const auth = {
   currentUser: null,
   onAuthStateChanged(cb) {
-    sb.auth.getSession().then(({ data }) => { auth.currentUser = mapUser(data.session?.user); cb(auth.currentUser); });
+    // Supabase fires auth events on EVERY token refresh / tab-focus re-validation
+    // (autoRefreshToken). Firing the app callback each time re-runs the whole
+    // login/render flow → the page "refreshes" on alt-tab. Dedupe so the app is
+    // only notified when the signed-in user actually changes (first load / login /
+    // logout), not on token refreshes.
+    let _firedOnce = false;
+    let _lastUid;
+    const emit = (u) => {
+      const uid = u ? u.uid : null;
+      if (_firedOnce && uid === _lastUid) return; // same user → ignore (token refresh, focus)
+      _firedOnce = true; _lastUid = uid;
+      cb(u);
+    };
+    sb.auth.getSession().then(({ data }) => { auth.currentUser = mapUser(data.session?.user); emit(auth.currentUser); });
     const { data: sub } = sb.auth.onAuthStateChange((_e, session) => {
-      auth.currentUser = mapUser(session?.user); cb(auth.currentUser);
+      auth.currentUser = mapUser(session?.user); emit(auth.currentUser);
     });
     return () => sub.subscription.unsubscribe();
   },
@@ -454,6 +470,7 @@ const auth = {
 };
 function mapAuthCode(error) {
   const m = (error.message || '').toLowerCase();
+  if (m.includes('captcha'))            return 'auth/captcha-failed';
   if (m.includes('already registered')) return 'auth/email-already-in-use';
   if (m.includes('invalid login'))      return 'auth/wrong-password';
   if (m.includes('password'))           return 'auth/weak-password';

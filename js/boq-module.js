@@ -478,7 +478,7 @@
                 </div>
             </div>
 
-            <div class="boq-totals-card" id="boqTotalsCard"${window.currentUserRole === 'staff' ? ' style="display:none"' : ''}>
+            <div class="boq-totals-card" id="boqTotalsCard">
                 ${renderTotals()}
             </div>
         </div></div>`;
@@ -697,8 +697,6 @@
 
     // ── Render totals ──────────────────────────────────────────
     function renderTotals() {
-        // Staff must not see project cost / accomplishment figures
-        if (window.currentUserRole === 'staff') return '';
         const grand      = calcGrandTotal();
         const disc       = boq.discount || 0;
         const discounted = Math.max(0, grand - disc);

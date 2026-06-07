@@ -128,12 +128,12 @@ window.doLogin = async function() {
     btn.disabled = true; btn.textContent = 'Signing in…';
 
     try {
-        await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
         await auth.signInWithEmailAndPassword(email, pass);
         // onAuthStateChanged handles the rest
     } catch (err) {
         const el = document.getElementById('login-error');
-        if (err.code === 'auth/user-not-found')      el.textContent = 'No account found with that email.';
+        if (err.code === 'auth/captcha-failed')      el.textContent = 'Please complete the verification below and try again.';
+        else if (err.code === 'auth/user-not-found')  el.textContent = 'No account found with that email.';
         else if (err.code === 'auth/wrong-password')  el.textContent = 'Wrong password. Please try again.';
         else if (err.code === 'auth/too-many-requests') el.textContent = 'Too many failed attempts. Please wait.';
         else if (err.code === 'auth/invalid-credential') el.textContent = 'Incorrect email or password. Please try again.';

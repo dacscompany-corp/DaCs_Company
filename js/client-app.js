@@ -150,12 +150,12 @@ async function doLogin() {
     btn.disabled = true; btn.textContent = 'Signing in…';
 
     try {
-        await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
         await auth.signInWithEmailAndPassword(email, pass);
         // onAuthStateChanged handles the rest
     } catch (err) {
         const loginErr = document.getElementById('login-error');
-        if (err.code === 'auth/user-not-found')      loginErr.textContent = 'No account found with that email. Check for typos or create an account.';
+        if (err.code === 'auth/captcha-failed')      loginErr.textContent = 'Please complete the verification below and try again.';
+        else if (err.code === 'auth/user-not-found')  loginErr.textContent = 'No account found with that email. Check for typos or create an account.';
         else if (err.code === 'auth/wrong-password')  loginErr.textContent = 'Wrong password. Please check and try again.';
         else if (err.code === 'auth/too-many-requests') loginErr.textContent = 'Too many failed attempts. Please wait a moment before trying again.';
         else if (err.code === 'auth/user-disabled')   loginErr.textContent = 'This account has been disabled. Please contact support.';

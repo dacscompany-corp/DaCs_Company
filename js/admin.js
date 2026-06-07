@@ -330,13 +330,14 @@ async function handleLogin(e) {
     _loginViaForm = true;
 
     try {
-        await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
         await auth.signInWithEmailAndPassword(email, password);
         errorDiv.classList.remove('show');
         // Toast is shown in checkAuthState after role is verified
     } catch (error) {
         console.error('Login error:', error);
-        errorDiv.textContent = 'Invalid email or password. Please try again.';
+        errorDiv.textContent = error.code === 'auth/captcha-failed'
+            ? 'Please complete the verification below and try again.'
+            : 'Invalid email or password. Please try again.';
         errorDiv.classList.add('show');
         // Hide overlay and restore button on error
         overlay.style.display = 'none';
