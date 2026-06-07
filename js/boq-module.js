@@ -478,7 +478,7 @@
                 </div>
             </div>
 
-            <div class="boq-totals-card" id="boqTotalsCard">
+            <div class="boq-totals-card" id="boqTotalsCard"${window.currentUserRole === 'staff' ? ' style="display:none"' : ''}>
                 ${renderTotals()}
             </div>
         </div></div>`;
@@ -697,6 +697,8 @@
 
     // ── Render totals ──────────────────────────────────────────
     function renderTotals() {
+        // Staff must not see project cost / accomplishment figures
+        if (window.currentUserRole === 'staff') return '';
         const grand      = calcGrandTotal();
         const disc       = boq.discount || 0;
         const discounted = Math.max(0, grand - disc);
@@ -1711,14 +1713,17 @@
         const disc     = boq.discount || 0;
         const totalAcc = calcTotalAccomplishment();
         const grandPct = grand > 0 ? (totalAcc / grand * 100).toFixed(0) + '%' : '';
-        rows.push(['', '', '', { content: 'TOTAL PROJECT COST (VAT EXCLUSIVE)', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } }, fmt(grand), grandPct, fmt(totalAcc)]);
-        styles.push('grand');
-        rows.push(['', '', '', { content: 'DISCOUNT', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } }, fmt(disc), '', '']);
-        styles.push('discount');
-        rows.push(['', '', '', { content: 'DISCOUNTED TOTAL PROJECT COST (VAT EXCLUSIVE)', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } }, fmt(Math.max(0, grand - disc)), '', '']);
-        styles.push('grandFinal');
-        rows.push(['', '', '', { content: 'TOTAL ACCOMPLISHMENT TO DATE', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } }, fmt(totalAcc)]);
-        styles.push('acc');
+        // Staff must not see the project cost / accomplishment totals (matches the on-screen Summary hide).
+        if (window.currentUserRole !== 'staff') {
+            rows.push(['', '', '', { content: 'TOTAL PROJECT COST (VAT EXCLUSIVE)', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } }, fmt(grand), grandPct, fmt(totalAcc)]);
+            styles.push('grand');
+            rows.push(['', '', '', { content: 'DISCOUNT', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } }, fmt(disc), '', '']);
+            styles.push('discount');
+            rows.push(['', '', '', { content: 'DISCOUNTED TOTAL PROJECT COST (VAT EXCLUSIVE)', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } }, fmt(Math.max(0, grand - disc)), '', '']);
+            styles.push('grandFinal');
+            rows.push(['', '', '', { content: 'TOTAL ACCOMPLISHMENT TO DATE', colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } }, fmt(totalAcc)]);
+            styles.push('acc');
+        }
 
         // ── Draw table with two-row merged header ─────────────
         doc.autoTable({
@@ -2246,6 +2251,7 @@
     </thead>
     <tbody>
       ${tableRows}
+      ${window.currentUserRole === 'staff' ? '' : `
       <tr class="pr-grand">
         <td class="pr-transparent"></td>
         <td class="pr-transparent"></td>
@@ -2277,7 +2283,7 @@
         <td class="pr-transparent"></td>
         <td colspan="5" style="text-align:right;font-weight:900">TOTAL ACCOMPLISHMENT TO DATE</td>
         <td class="c-amt">₱ ${fmt(totalAcc)}</td>
-      </tr>
+      </tr>`}
     </tbody>
   </table>
 
