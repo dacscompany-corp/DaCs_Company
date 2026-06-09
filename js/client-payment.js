@@ -26,7 +26,7 @@
 
     // Send an admin-side notification to the owner AND to every staff account
     // under that owner (each in their own separate inbox). Use this only for
-    // events in modules staff can access (Payment Requests, Accomplishment/SOWA,
+    // events in modules staff can access (Payment Requests, Accomplishment/SOA,
     // Termination). For admin-only modules (Users, Clients), notify the owner
     // directly instead. Staff are found via users where ownerUid == owner.
     async function _notifyOwnerAndStaff(ownerUid, payload) {
@@ -1391,7 +1391,7 @@ ${previewOnly ? `<div class="preview-bar"><span>Print Preview &mdash; Invoice ${
     window.clientPreviewInvoice = function (inv) { _doClientPrint(inv, true);  };
 
     // ══════════════════════════════════════════════════════
-    // SOWA REQUEST (client → admin)
+    // SOA REQUEST (client → admin)
     // ══════════════════════════════════════════════════════
 
     window.clientRequestSOWA = async function (btn) {
@@ -1430,16 +1430,16 @@ ${previewOnly ? `<div class="preview-bar"><span>Print Preview &mdash; Invoice ${
 
             await _notifyOwnerAndStaff(adminUid, {
                 type:      'sowa_request',
-                message:   `${user.displayName || user.email} requested a Statement of Work Accomplished (SOWA)`,
+                message:   `${user.displayName || user.email} requested a Statement of Work Accomplished (SOA)`,
                 isRead:    false,
                 createdAt: firebase.firestore.Timestamp.fromDate(new Date())
-            }).catch(e => console.warn('SOWA notify error:', e));
+            }).catch(e => console.warn('SOA notify error:', e));
 
             _setSOWABtnPending(btn);
         } catch (e) {
-            console.error('SOWA request error:', e);
-            if (btn) { btn.disabled = false; btn.innerHTML = 'Request SOWA'; }
-            alert('Error sending SOWA request. Please try again.');
+            console.error('SOA request error:', e);
+            if (btn) { btn.disabled = false; btn.innerHTML = 'Request SOA'; }
+            alert('Error sending SOA request. Please try again.');
         }
     };
 
@@ -1476,7 +1476,7 @@ ${previewOnly ? `<div class="preview-bar"><span>Print Preview &mdash; Invoice ${
             });
 
             if (latest.status === 'shared') {
-                // Admin has shared — show View SOWA, hide Request SOWA
+                // Admin has shared — show View SOA, hide Request SOA
                 requestBtn.style.display = 'none';
                 if (viewBtn) viewBtn.style.display = 'inline-flex';
             } else if (latest.status === 'pending' || latest.status === 'viewed') {
@@ -1486,7 +1486,7 @@ ${previewOnly ? `<div class="preview-bar"><span>Print Preview &mdash; Invoice ${
     }
 
     // ══════════════════════════════════════════════════════
-    // CLIENT SOWA
+    // CLIENT SOA
     // ══════════════════════════════════════════════════════
 
     window.clientOpenSOWA = function () {
@@ -1615,7 +1615,7 @@ ${previewOnly ? `<div class="preview-bar"><span>Print Preview &mdash; Invoice ${
     };
 
     window.clientPrintSOWA = function () {
-        // Make this callable without first opening the SOWA modal. When the
+        // Make this callable without first opening the SOA modal. When the
         // user clicks Print straight from the Documents tab, the modal-content
         // div hasn't been populated — so we trigger clientOpenSOWA() to fill
         // it, then immediately hide the modal again so only the print dialog
@@ -1637,10 +1637,10 @@ ${previewOnly ? `<div class="preview-bar"><span>Print Preview &mdash; Invoice ${
             // see the Print button there and try again with the affordance
             // they have come to expect.
             if (typeof window.clientOpenSOWA === 'function') window.clientOpenSOWA();
-            alert('Allow popups for this site to download/print your SOWA, or use the Print button inside the SOWA modal.');
+            alert('Allow popups for this site to download/print your SOA, or use the Print button inside the SOA modal.');
             return;
         }
-        w.document.write(`<!DOCTYPE html><html><head><title>SOWA</title>
+        w.document.write(`<!DOCTYPE html><html><head><title>SOA</title>
         <style>
             body{font-family:Arial,sans-serif;font-size:13px;color:#111;padding:32px;}
             .sowa-company{font-size:18px;font-weight:700;color:#059669;}

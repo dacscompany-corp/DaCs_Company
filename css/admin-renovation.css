@@ -1309,7 +1309,7 @@ button.btn-primary:hover,
 
 .dacs-portal-scope .pc-flow-total {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-items: baseline;
   padding-top: 14px;
   border-top: 1px solid var(--brand-hair);
@@ -1333,6 +1333,13 @@ button.btn-primary:hover,
   font-weight: 600;
   color: var(--brand-green);
   font-variant-numeric: tabular-nums;
+}
+/* Staff cards: percentage on the left, transaction count pushed to the right */
+.dacs-portal-scope .pc-flow-total .val.val-split {
+  display: flex;
+  flex: 1;
+  align-items: baseline;
+  justify-content: space-between;
 }
 
 /* Doc-pill badges (PO / DR / SI / PR) */

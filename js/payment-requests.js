@@ -10,9 +10,9 @@
     let _loading           = false;
     let _currentId         = null;   // id in detail modal
     let _qrSettings        = null;   // cached global QR from settings/paymentQR
-    let _pendingSOWAEmails = new Set(); // client emails with pending SOWA requests
-    let _sowaClientEmail   = null;   // client email for currently open SOWA modal
-    let _sowaClientName    = null;   // client name for currently open SOWA modal
+    let _pendingSOWAEmails = new Set(); // client emails with pending SOA requests
+    let _sowaClientEmail   = null;   // client email for currently open SOA modal
+    let _sowaClientName    = null;   // client name for currently open SOA modal
 
     // ══════════════════════════════════════════════════════
     // PUBLIC ENTRY POINT
@@ -26,7 +26,7 @@
     };
 
     // ══════════════════════════════════════════════════════
-    // PENDING SOWA REQUESTS
+    // PENDING SOA REQUESTS
     // ══════════════════════════════════════════════════════
 
     async function _loadPendingSOWARequests() {
@@ -40,7 +40,7 @@
             _pendingSOWAEmails.clear();
             snap.forEach(doc => _pendingSOWAEmails.add(doc.data().clientEmail));
         } catch (e) {
-            console.warn('PaymentRequests: could not load SOWA requests', e);
+            console.warn('PaymentRequests: could not load SOA requests', e);
         }
     }
 
@@ -294,7 +294,7 @@
                             : ''}
                     </button>
                     <button class="un-btn-sowa" onclick="prOpenSOWA('${_esc(r.clientEmail)}','${_esc(r.clientName || _nameFromEmail(r.clientEmail))}','${_esc(r.projectName || '')}')">
-                        <i data-lucide="file-text" style="width:13px;height:13px;"></i> SOWA
+                        <i data-lucide="file-text" style="width:13px;height:13px;"></i> SOA
                         ${_pendingSOWAEmails.has(r.clientEmail) ? '<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#ef4444;color:#fff;font-size:9px;font-weight:800;margin-left:2px;">!</span>' : ''}
                     </button>
                     <button class="un-btn-toggle un-btn-deactivate" onclick="prDeleteRequest('${r.id}')">
@@ -1310,7 +1310,7 @@
     }
 
     // ══════════════════════════════════════════════════════
-    // SOWA — Statement of Work Accomplished
+    // SOA — Statement of Work Accomplished
     // ══════════════════════════════════════════════════════
 
     window.prOpenSOWA = function (clientEmail, clientName, projectName) {
@@ -1459,10 +1459,10 @@
 
         modal.style.display = 'flex';
 
-        // Mark any pending SOWA requests from this client as viewed
+        // Mark any pending SOA requests from this client as viewed
         if (_pendingSOWAEmails.has(clientEmail)) {
             _pendingSOWAEmails.delete(clientEmail);
-            // Remove the badge dot from all SOWA buttons for this client in the DOM
+            // Remove the badge dot from all SOA buttons for this client in the DOM
             document.querySelectorAll('.un-btn-sowa').forEach(btn => {
                 if (btn.getAttribute('onclick') && btn.getAttribute('onclick').includes(_esc(clientEmail))) {
                     btn.querySelectorAll('span').forEach(s => s.remove());
@@ -1478,7 +1478,7 @@
                     status:   'viewed',
                     viewedAt: firebase.firestore.Timestamp.fromDate(new Date())
                 })))
-                .catch(e => console.warn('SOWA request update error:', e));
+                .catch(e => console.warn('SOA request update error:', e));
         }
     };
 
@@ -1486,7 +1486,7 @@
         const content = document.getElementById('sowaContent');
         if (!content) return;
         const w = window.open('', '_blank');
-        w.document.write(`<!DOCTYPE html><html><head><title>SOWA</title>
+        w.document.write(`<!DOCTYPE html><html><head><title>SOA</title>
         <style>
             body { font-family: Arial, sans-serif; font-size: 13px; color: #111; padding: 32px; }
             .sowa-company { font-size: 18px; font-weight: 700; color: #059669; }
@@ -1528,7 +1528,7 @@
             if (clientUid) {
                 await db.collection('notifications').doc(clientUid).collection('items').add({
                     type:      'sowa_ready',
-                    message:   `Your Statement of Work Accomplished (SOWA) has been reviewed and is ready for you to view.`,
+                    message:   `Your Statement of Work Accomplished (SOA) has been reviewed and is ready for you to view.`,
                     isRead:    false,
                     createdAt: firebase.firestore.Timestamp.fromDate(new Date())
                 });
@@ -1565,7 +1565,7 @@
                 btn.style.color       = '#1d4ed8';
                 btn.style.cursor      = 'pointer';
             }
-            alert('Error sending SOWA to client. Please try again.');
+            alert('Error sending SOA to client. Please try again.');
         }
     };
 

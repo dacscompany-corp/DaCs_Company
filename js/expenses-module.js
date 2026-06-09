@@ -1776,7 +1776,7 @@ function renderPayrollTable() {
             <td>${p.role || '—'}</td>
             <td class="exp-notes-cell">${p.notes ? '<span class="exp-notes-text">' + p.notes + '</span>' : '<span class="exp-notes-empty">—</span>'}</td>
             <td>${p.daysWorked || 0}</td>
-            <td>₱${formatNum(p.dailyRate)}</td>
+            <td>${_payRecIsLamsam(p) ? 'Lump Sum' : '₱'+formatNum(p.dailyRate)}</td>
             <td>₱${formatNum(p.totalSalary)}</td>
             <td>${getReceiptThumbsHTML(p)}</td>
             <td class="exp-action-cell">
@@ -2321,15 +2321,57 @@ async function _addExpenseToInventory(itemName, qty, unit, minStock, notes) {
 // ════════════════════════════════════════════════════════════
 // PAYROLL FORM
 // ════════════════════════════════════════════════════════════
+// ── Lamsam (lump-sum) payroll ──────────────────────────────
+// A lamsam entry is paid as a fixed total with NO daily rate. It is stored as
+// dailyRate = 0 + a manually-entered total (no DB column needed — a real
+// daily-rate entry always has a rate > 0, so dailyRate==0 marks a lamsam).
+function _payIsLamsam()     { return ((document.querySelector('input[name="payMode"]:checked')     || {}).value) === 'lamsam'; }
+function _editPayIsLamsam() { return ((document.querySelector('input[name="editPayMode"]:checked') || {}).value) === 'lamsam'; }
+function _payRecIsLamsam(p) { return p && !parseFloat(p.dailyRate) && (parseFloat(p.totalSalary) || 0) > 0; }
+
+// Sync the form UI to the selected mode. UI only — never recomputes the total
+// (so opening an existing entry preserves its saved total, incl. split rows).
+function _applyPayMode(isLamsam, ids) {
+    const rateGroup = document.getElementById(ids.rateGroup);
+    const rate      = document.getElementById(ids.rate);
+    const tot       = document.getElementById(ids.total);
+    const hint      = document.getElementById(ids.hint);
+    if (rateGroup) rateGroup.style.display = isLamsam ? 'none' : '';
+    if (rate)      { rate.required = !isLamsam; if (isLamsam) rate.value = ''; }
+    if (tot)       tot.readOnly = !isLamsam;
+    if (hint)      hint.textContent = isLamsam ? '' : '(auto-computed)';
+}
+function _recomputePayTotal(ids) {
+    const tot = document.getElementById(ids.total);
+    if (!tot) return;
+    const d = parseFloat((document.getElementById(ids.days) || {}).value) || 0;
+    const r = parseFloat(((document.getElementById(ids.rate) || {}).value || '').replace(/,/g, '')) || 0;
+    tot.value = fmtBudgetVal(d * r);
+}
+window.payToggleMode = function () {
+    const ids = { rateGroup: 'payRateGroup', rate: 'payDailyRate', total: 'payTotal', hint: 'payTotalHint', days: 'payDays' };
+    const lam = _payIsLamsam();
+    _applyPayMode(lam, ids);
+    if (!lam) _recomputePayTotal(ids);          // user switched back to Daily Rate
+    if (typeof _updatePaySplitPreview === 'function') _updatePaySplitPreview();
+};
+window.editPayToggleMode = function () {
+    const ids = { rateGroup: 'editPayRateGroup', rate: 'editPayDailyRate', total: 'editPayTotal', hint: 'editPayTotalHint', days: 'editPayDays' };
+    const lam = _editPayIsLamsam();
+    _applyPayMode(lam, ids);
+    if (!lam) _recomputePayTotal(ids);
+};
+
 function setupPayrollFormListeners() {
     const form = document.getElementById('addPayrollForm');
     if (!form) return;
     const days = document.getElementById('payDays');
     const rate = document.getElementById('payDailyRate');
     const tot  = document.getElementById('payTotal');
-    const recalc = () => { if (tot) { tot.value = fmtBudgetVal((parseFloat(days?.value) || 0) * (parseFloat((rate?.value||'').replace(/,/g,'')) || 0)); _updatePaySplitPreview(); } };
+    const recalc = () => { if (_payIsLamsam()) { _updatePaySplitPreview(); return; } if (tot) { tot.value = fmtBudgetVal((parseFloat(days?.value) || 0) * (parseFloat((rate?.value||'').replace(/,/g,'')) || 0)); _updatePaySplitPreview(); } };
     days?.addEventListener('input', recalc);
     rate?.addEventListener('input', recalc);
+    tot?.addEventListener('input', () => { if (_payIsLamsam()) _updatePaySplitPreview(); });
     form.addEventListener('submit', handleAddPayroll);
 
     // Wire up receipt image picker
@@ -2478,9 +2520,13 @@ async function handleAddPayroll(e) {
         checkedSources.push({ id: expCurrentProject.id, remain: Infinity, label: 'Current Period' });
     }
 
+    const _payLamsam = _payIsLamsam();
     const d = parseFloat(document.getElementById('payDays').value) || 0;
-    const r = parseFloat((document.getElementById('payDailyRate').value || '').replace(/,/g, '')) || 0;
-    const totalSalary = d * r;
+    const r = _payLamsam ? 0 : (parseFloat((document.getElementById('payDailyRate').value || '').replace(/,/g, '')) || 0);
+    const totalSalary = _payLamsam
+        ? (parseFloat((document.getElementById('payTotal').value || '').replace(/,/g, '')) || 0)
+        : (d * r);
+    if (totalSalary <= 0) { showExpNotif(_payLamsam ? 'Enter the lump-sum total amount.' : 'Enter days worked and daily rate.', 'error'); return; }
     const workerName  = document.getElementById('payWorkerName').value.trim();
     const role        = document.getElementById('payRole').value.trim();
     const paymentDate = document.getElementById('payDate').value;
@@ -2530,6 +2576,7 @@ async function handleAddPayroll(e) {
         showExpNotif(msg, 'success');
         refreshOvAllData();
         document.getElementById('addPayrollForm').reset();
+        if (typeof payToggleMode === 'function') payToggleMode(); // reset Daily/Lamsam UI to default
         document.getElementById('paySplitPreview').style.display = 'none';
         clearPayReceiptPreview();
         closeExpModal('addPayrollModal');
@@ -2876,7 +2923,7 @@ function _pmRenderPayTable() {
             <td><strong>${p.workerName||'—'}</strong></td>
             <td>${p.role||'—'}</td>
             <td class="exp-notes-cell">${p.notes ? '<span class="exp-notes-text">'+p.notes+'</span>' : '<span class="exp-notes-empty">—</span>'}</td>
-            <td>${p.daysWorked||0} days × ₱${formatNum(p.dailyRate)}</td>
+            <td>${_payRecIsLamsam(p) ? ('Lump Sum' + ((p.daysWorked||0) ? ' · '+(p.daysWorked||0)+'d' : '')) : (p.daysWorked||0)+' days × ₱'+formatNum(p.dailyRate)}</td>
             <td>₱${formatNum(p.totalSalary)}</td>
             <td>${getReceiptThumbsHTML(p)}</td>
         </tr>`;
@@ -3050,12 +3097,12 @@ function openWorkerSummaryModal(workerName) {
                     </div>
                     <div class="wrs-entry-info-cell">
                         <span class="wrs-info-label">Daily Rate</span>
-                        <span class="wrs-info-value">${fmtAmt(p.dailyRate)}</span>
+                        <span class="wrs-info-value">${_payRecIsLamsam(p) ? 'Lump Sum' : fmtAmt(p.dailyRate)}</span>
                     </div>
                 </div>
                 ${p.notes ? `<div class="wrs-entry-notes-row"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>${esc(p.notes)}</div>` : ''}
                 <div class="wrs-entry-total-row">
-                    <span class="wrs-entry-total-formula">${p.daysWorked||0} days × ${fmtAmt(p.dailyRate)}/day</span>
+                    <span class="wrs-entry-total-formula">${_payRecIsLamsam(p) ? ('Lump Sum' + ((p.daysWorked||0) ? ' · '+(p.daysWorked||0)+' days' : '')) : (p.daysWorked||0)+' days × '+fmtAmt(p.dailyRate)+'/day'}</span>
                     <span class="wrs-entry-total-amt">${fmtAmt(p.totalSalary)}</span>
                 </div>
             </div>
@@ -3595,6 +3642,11 @@ async function openEditPayrollModal(id) {
     document.getElementById('editPayDays').value       = p.daysWorked  || '';
     document.getElementById('editPayDailyRate').value  = p.dailyRate   || '';
     document.getElementById('editPayTotal').value      = p.totalSalary || '';
+    // Set Payment Type from the record (lamsam = no daily rate) — UI only, keep the saved total.
+    const _eLam = _payRecIsLamsam(p);
+    const _eModeRadio = document.querySelector('input[name="editPayMode"][value="' + (_eLam ? 'lamsam' : 'daily') + '"]');
+    if (_eModeRadio) _eModeRadio.checked = true;
+    _applyPayMode(_eLam, { rateGroup: 'editPayRateGroup', rate: 'editPayDailyRate', total: 'editPayTotal', hint: 'editPayTotalHint', days: 'editPayDays' });
     // Ensure paymentDate is in datetime-local format (YYYY-MM-DDTHH:mm)
     const _payDt = p.paymentDate || '';
     document.getElementById('editPayDate').value = _payDt.includes('T') ? _payDt : (_payDt ? _payDt + 'T00:00' : '');
@@ -3641,6 +3693,7 @@ function setupEditPayrollFormListeners() {
     const rate = document.getElementById('editPayDailyRate');
     const tot  = document.getElementById('editPayTotal');
     const recalc = () => {
+        if (_editPayIsLamsam()) return;
         if (tot) tot.value = fmtBudgetVal((parseFloat(days?.value) || 0) * (parseFloat((rate?.value||'').replace(/,/g,'')) || 0));
     };
     days?.addEventListener('input', recalc);
@@ -3661,8 +3714,10 @@ async function handleEditPayroll(ev) {
     if (!_editingPayrollId) return;
     try {
         showExpLoading('editPayrollBtn', true);
+        const _eLamsam = _editPayIsLamsam();
         const d = parseFloat(document.getElementById('editPayDays').value) || 0;
-        const r = parseFloat(document.getElementById('editPayDailyRate').value) || 0;
+        const r = _eLamsam ? 0 : (parseFloat((document.getElementById('editPayDailyRate').value||'').replace(/,/g,'')) || 0);
+        const eTotal = _eLamsam ? (parseFloat((document.getElementById('editPayTotal').value||'').replace(/,/g,'')) || 0) : (d * r);
         const newImgs = [];
         for (const item of _editPayStaged.filter(x => x !== null))
             newImgs.push(await compressImageToBase64(item.file));
@@ -3672,7 +3727,7 @@ async function handleEditPayroll(ev) {
             workerName:    document.getElementById('editPayWorkerName').value.trim(),
             role:          document.getElementById('editPayRole').value.trim(),
             laborType,
-            daysWorked:    d, dailyRate: r, totalSalary: d * r,
+            daysWorked:    d, dailyRate: r, totalSalary: eTotal,
             paymentDate:   document.getElementById('editPayDate').value,
             notes:         document.getElementById('editPayNotes').value.trim(),
             receiptURL:    finalImages[0] || '',
@@ -3710,6 +3765,7 @@ function openExpModal(id)  {
         else                          _updateExpBudgetBanner();
     }
     _legacyModalOpen = false;
+    if (id === 'addPayrollModal' && typeof payToggleMode === 'function') payToggleMode(); // sync Daily/Lamsam UI
     const m = document.getElementById(id); if (m) m.classList.add('active');
 }
 function closeExpModal(id) {
@@ -5262,7 +5318,7 @@ function printBillingSummaryReceipt(projectId) {
             <tr>
                 <td style="padding:7px 10px;font-size:0.82rem;color:#374151;border-bottom:1px solid #f3f4f6">${p.paymentDate ? new Date(p.paymentDate).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '—'}</td>
                 <td style="padding:7px 10px;font-size:0.82rem;color:#1a1a1a;border-bottom:1px solid #f3f4f6"><strong>${p.workerName || '—'}</strong></td>
-                <td style="padding:7px 10px;font-size:0.82rem;color:#6b7280;border-bottom:1px solid #f3f4f6">${p.daysWorked || 0}d × ₱${formatNum(p.dailyRate)}</td>
+                <td style="padding:7px 10px;font-size:0.82rem;color:#6b7280;border-bottom:1px solid #f3f4f6">${_payRecIsLamsam(p) ? ('Lump Sum' + ((p.daysWorked||0) ? ' · '+(p.daysWorked||0)+'d' : '')) : (p.daysWorked || 0)+'d × ₱'+formatNum(p.dailyRate)}</td>
                 <td style="padding:7px 10px;font-size:0.82rem;color:#1a1a1a;text-align:right;border-bottom:1px solid #f3f4f6">₱${formatNum(p.totalSalary)}</td>
             </tr>`).join('')
         : '<tr><td colspan="4" style="padding:10px;text-align:center;color:#9ca3af;font-size:0.82rem">No payroll entries</td></tr>';
@@ -5487,7 +5543,7 @@ function _rptRenderDetailTables() {
                 <td><strong>${p.workerName || '—'}</strong></td>
                 <td>${p.role || '—'}</td>
                 <td>${p.daysWorked || 0}</td>
-                <td>₱${formatNum(p.dailyRate)}</td>
+                <td>${_payRecIsLamsam(p) ? 'Lump Sum' : '₱'+formatNum(p.dailyRate)}</td>
                 <td>₱${formatNum(p.totalSalary)}</td>
             </tr>`;
         }).join('');
@@ -5678,7 +5734,7 @@ function printReportsDashboard() {
                 <td><strong>${p.workerName || '—'}</strong></td>
                 <td>${p.role || '—'}</td>
                 <td style="text-align:center">${p.daysWorked || 0}</td>
-                <td style="text-align:right">₱${formatNum(p.dailyRate)}</td>
+                <td style="text-align:right">${_payRecIsLamsam(p) ? 'Lump Sum' : '₱'+formatNum(p.dailyRate)}</td>
                 <td style="text-align:right">₱${formatNum(p.totalSalary)}</td>
             </tr>`;
         }).join('') + `<tr style="background:#f8fafc;font-weight:800">

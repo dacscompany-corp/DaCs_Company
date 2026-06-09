@@ -710,7 +710,7 @@ function _adminMigrateNotifFields(docs) {
 }
 
 // A notification counts as unread when EITHER `isRead` or legacy `read` is falsy.
-// Two producers (SOWA flows) still write `read:` so we accept either field here
+// Two producers (SOA flows) still write `read:` so we accept either field here
 // and update both when we mark-read further down. Once those producers are
 // migrated this can simplify to `!n.isRead`.
 function _notifUnread(n) { return !n.isRead && !n.read; }
@@ -757,11 +757,11 @@ const _NOTIF_META = {
     'report_updated':    { icon: 'edit',          label: 'Report Updated',            color: 'blue',  dest: 'boq'     },
     'new_request':       { icon: 'inbox',         label: 'New Request',               color: 'blue',  dest: 'request' },
     'urgent_request':    { icon: 'alert-circle',  label: 'Urgent Request',            color: 'red',   dest: 'request' },
-    // SOWA & termination types — were rendering as generic "Notification" because
+    // SOA & termination types — were rendering as generic "Notification" because
     // they weren't in this map. dest 'payment' lands on Payment Requests where the
-    // SOWA modal is launched; termination has no admin view yet so dest is blank.
-    'sowa_request':      { icon: 'clipboard',     label: 'SOWA Requested',            color: 'amber', dest: 'payment' },
-    'sowa_ready':        { icon: 'clipboard-check', label: 'SOWA Ready',              color: 'green', dest: 'payment' },
+    // SOA modal is launched; termination has no admin view yet so dest is blank.
+    'sowa_request':      { icon: 'clipboard',     label: 'SOA Requested',            color: 'amber', dest: 'payment' },
+    'sowa_ready':        { icon: 'clipboard-check', label: 'SOA Ready',              color: 'green', dest: 'payment' },
     'termination':          { icon: 'alert-triangle', label: 'Termination Request',     color: 'red',   dest: 'termination' },
     'termination_approved': { icon: 'check-circle',   label: 'Termination Approved',    color: 'green', dest: '' },
     'termination_rejected': { icon: 'x-circle',       label: 'Termination Rejected',    color: 'red',   dest: '' },
