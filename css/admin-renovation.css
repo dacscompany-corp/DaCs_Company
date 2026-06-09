@@ -1162,7 +1162,7 @@ button.btn-primary:hover,
   box-shadow: var(--shadow-sm);
   display: flex;
   flex-direction: column;
-  min-height: 280px;
+  min-height: 0;
   transition: border-color .2s, transform .2s, box-shadow .2s;
   cursor: pointer;
   text-align: left;
@@ -1182,7 +1182,7 @@ button.btn-primary:hover,
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
+  margin-bottom: 0;
 }
 .dacs-portal-scope .pc-flow-card-title {
   font-family: var(--serif);
@@ -1204,6 +1204,37 @@ button.btn-primary:hover,
 }
 .dacs-portal-scope .pc-flow-card-title-icon.pc-icon-amber { background: #F4EBD9; color: #8B6914; }
 .dacs-portal-scope .pc-flow-card-title-icon.pc-icon-blue  { background: #E3EEF6; color: #1E5582; }
+
+.dacs-portal-scope .pc-help-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #059669, #047857);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  font-family: var(--sans);
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  top: -1px;
+  box-shadow: 0 2px 6px rgba(5,150,105,0.35);
+  transition: background .2s, box-shadow .2s, transform .15s;
+}
+.dacs-portal-scope .pc-help-tip:hover {
+  background: linear-gradient(135deg, #047857, #065f46);
+  box-shadow: 0 4px 12px rgba(5,150,105,0.45);
+  transform: scale(1.15);
+}
+.dacs-portal-scope .pc-help-tip::after,
+.dacs-portal-scope .pc-help-tip::before {
+  display: none;
+}
+
+/* tip-down uses the global fixed tooltip — no pseudo overrides needed */
 
 .dacs-portal-scope .pc-flow-link {
   font-family: var(--sans);
@@ -3114,8 +3145,10 @@ body .doc-upload.attached .doc-upload-state {
 .dacs-portal-scope .pcf-count { font-size:12.5px; color:#908A81; margin:0 2px 26px; }
 .dacs-portal-scope .pcf-count b { color:#57534E; font-weight:600; }
 
-.dacs-portal-scope .pcf-panel { background:#fff; border:1px solid #EAE7E1; border-radius:18px; box-shadow:var(--shadow-md); overflow:hidden; }
-.dacs-portal-scope .pcf-panel-head { display:flex; align-items:flex-start; gap:20px; padding:26px 28px 24px; border-bottom:1px solid #EAE7E1; }
+.dacs-portal-scope .pcf-panel { background:#fff; border:1px solid #EAE7E1; border-radius:18px; box-shadow:var(--shadow-md); overflow:visible; }
+.dacs-portal-scope .pcf-panel > *:first-child { border-radius:18px 18px 0 0; overflow:hidden; }
+.dacs-portal-scope .pcf-panel > *:last-child { border-radius:0 0 18px 18px; overflow:hidden; }
+.dacs-portal-scope .pcf-panel-head { display:flex; align-items:flex-start; gap:20px; padding:26px 28px 24px; border-bottom:1px solid #EAE7E1; overflow:visible; }
 .dacs-portal-scope .pcf-ph-left { flex:1; min-width:0; }
 .dacs-portal-scope .pcf-ph-title { font-family:var(--serif); font-weight:600; font-size:27px; line-height:1.1; margin:0; color:#1B1A18; letter-spacing:-.3px; }
 .dacs-portal-scope .pcf-ph-loc { display:flex; align-items:center; gap:7px; margin-top:9px; font-size:13.5px; color:#57534E; }
