@@ -1205,6 +1205,7 @@ button.btn-primary:hover,
 .dacs-portal-scope .pc-flow-card-title-icon.pc-icon-amber { background: #F4EBD9; color: #8B6914; }
 .dacs-portal-scope .pc-flow-card-title-icon.pc-icon-blue  { background: #E3EEF6; color: #1E5582; }
 
+.pc-help-tip,
 .dacs-portal-scope .pc-help-tip {
   display: inline-flex;
   align-items: center;
@@ -1224,11 +1225,14 @@ button.btn-primary:hover,
   box-shadow: 0 2px 6px rgba(5,150,105,0.35);
   transition: background .2s, box-shadow .2s, transform .15s;
 }
+.pc-help-tip:hover,
 .dacs-portal-scope .pc-help-tip:hover {
   background: linear-gradient(135deg, #047857, #065f46);
   box-shadow: 0 4px 12px rgba(5,150,105,0.45);
   transform: scale(1.15);
 }
+.pc-help-tip::after,
+.pc-help-tip::before,
 .dacs-portal-scope .pc-help-tip::after,
 .dacs-portal-scope .pc-help-tip::before {
   display: none;

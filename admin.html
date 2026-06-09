@@ -977,18 +977,40 @@
             <!-- MONTH SPENDING TREND -->
             <div class="section-card" style="margin-top:1rem;">
                 <div class="card-header">
-                    <div><h2 id="rptTrendTitle">Monthly Spending Trend</h2><p class="card-subtitle" id="rptTrendSubtitle">Materials vs Labor · dashed line = allocated budget</p></div>
+                    <div>
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <h2 id="rptTrendTitle" style="margin:0;">Monthly Spending Trend</h2>
+                        <span class="pc-help-tip" data-tip="This chart shows how much was spent each month on Materials & Costs vs Labor & Payroll. The dashed green line represents the budget allocated for each period. Bars above the dashed line mean spending exceeded the budget.">?</span>
+                      </div>
+                      <p class="card-subtitle" id="rptTrendSubtitle">Materials vs Labor · dashed line = allocated budget</p>
+                    </div>
                 </div>
                 <div class="chart-wrapper" style="height:260px"><canvas id="rptTrendChart"></canvas></div>
             </div>
             <!-- DATA ANALYTICS: CATEGORY BREAKDOWN -->
             <div class="section-card" style="margin-top:1rem;">
-                <div class="card-header"><div><h2>Category Breakdown</h2><p class="card-subtitle">Distribution including payroll</p></div></div>
+                <div class="card-header">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      <h2 style="margin:0;">Category Breakdown</h2>
+                      <span class="pc-help-tip" data-tip="This donut chart shows how total spending is split across expense categories (e.g. Materials, Labor, Cash, GCash, Bank). Each slice represents a category's share of the total. Hover over a slice to see the exact amount.">?</span>
+                    </div>
+                    <p class="card-subtitle">Distribution including payroll</p>
+                  </div>
+                </div>
                 <div class="chart-wrapper" style="height:260px"><canvas id="expCategoryChart"></canvas></div>
             </div>
             <!-- BUDGET VS ACTUAL -->
             <div class="section-card" style="margin-top:1rem;">
-                <div class="card-header"><div><h2>Budget vs Actual</h2><p class="card-subtitle">Allocated budget vs real spend per period</p></div></div>
+                <div class="card-header">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      <h2 style="margin:0;">Budget vs Actual</h2>
+                      <span class="pc-help-tip" data-tip="This chart compares the budget allocated for each billing period (green) against what was actually spent (red). If the red bar exceeds the green, spending went over budget for that period.">?</span>
+                    </div>
+                    <p class="card-subtitle">Allocated budget vs real spend per period</p>
+                  </div>
+                </div>
                 <div class="chart-wrapper" style="height:260px"><canvas id="rptBudgetVsActualChart"></canvas></div>
             </div>
             <!-- EXPENSE DETAIL TABLE -->
