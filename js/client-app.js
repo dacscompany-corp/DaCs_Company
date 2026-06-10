@@ -1087,7 +1087,7 @@ function subscribeToNotifications(uid) {
                     type:    _mapNotifType(data.type),
                     msg:     data.message || '',
                     time:    formatTimestamp(data.createdAt),
-                    // Accept either field — two SOWA producers used to write `read`,
+                    // Accept either field — two SOA producers used to write `read`,
                     // everyone else writes `isRead`. Defensive forever as cheap insurance.
                     read:    data.isRead === true || data.read === true
                 };
@@ -1515,12 +1515,12 @@ function _renderDocSOWA() {
                 </div>
                 <div style="flex:1;min-width:200px;">
                     <div style="font-size:14px;font-weight:700;color:#1f2937;">Statement of Work Accomplished</div>
-                    <div style="font-size:12px;color:#9ca3af;margin-top:2px;">Your SOWA is ready to view, print, or save as PDF.</div>
+                    <div style="font-size:12px;color:#9ca3af;margin-top:2px;">Your SOA is ready to view, print, or save as PDF.</div>
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                     <button onclick="clientOpenSOWA()" style="display:inline-flex;align-items:center;gap:6px;background:#eff6ff;color:#1d4ed8;border:1.5px solid #bfdbfe;border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        View SOWA
+                        View SOA
                     </button>
                     <button onclick="clientPrintSOWA()" style="display:inline-flex;align-items:center;gap:6px;background:#f0fdf4;color:#059669;border:1.5px solid #d1fae5;border-radius:8px;padding:7px 14px;font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap;" title="Opens the browser print dialog — choose &quot;Save as PDF&quot; as the destination to download a PDF.">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
@@ -1529,7 +1529,7 @@ function _renderDocSOWA() {
                 </div>
             </div>`;
     } else {
-        el.innerHTML = `<div style="color:#9ca3af;font-size:13.5px;">No SOWA available yet. You can request one from the Billing Periods section.</div>`;
+        el.innerHTML = `<div style="color:#9ca3af;font-size:13.5px;">No SOA available yet. You can request one from the Billing Periods section.</div>`;
     }
 }
 
