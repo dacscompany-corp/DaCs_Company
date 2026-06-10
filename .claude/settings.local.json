@@ -4,7 +4,9 @@
       "Bash(ls \"c:\\\\Users\\\\John Aerol Tapales\\\\Documents\\\\Dacs Web\"/*.js)",
       "Bash(node -e ' *)",
       "Bash(node)",
-      "Bash(git checkout *)"
+      "Bash(git checkout *)",
+      "Bash(node -e *)",
+      "Bash(node --check js/portal-app.compiled.js)"
     ]
   }
 }

@@ -977,18 +977,40 @@
             <!-- MONTH SPENDING TREND -->
             <div class="section-card" style="margin-top:1rem;">
                 <div class="card-header">
-                    <div><h2 id="rptTrendTitle">Monthly Spending Trend</h2><p class="card-subtitle" id="rptTrendSubtitle">Materials vs Labor · dashed line = allocated budget</p></div>
+                    <div>
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <h2 id="rptTrendTitle" style="margin:0;">Monthly Spending Trend</h2>
+                        <span class="pc-help-tip" data-tip="This chart shows how much was spent each month on Materials & Costs vs Labor & Payroll. The dashed green line represents the budget allocated for each period. Bars above the dashed line mean spending exceeded the budget.">?</span>
+                      </div>
+                      <p class="card-subtitle" id="rptTrendSubtitle">Materials vs Labor · dashed line = allocated budget</p>
+                    </div>
                 </div>
                 <div class="chart-wrapper" style="height:260px"><canvas id="rptTrendChart"></canvas></div>
             </div>
             <!-- DATA ANALYTICS: CATEGORY BREAKDOWN -->
             <div class="section-card" style="margin-top:1rem;">
-                <div class="card-header"><div><h2>Category Breakdown</h2><p class="card-subtitle">Distribution including payroll</p></div></div>
+                <div class="card-header">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      <h2 style="margin:0;">Category Breakdown</h2>
+                      <span class="pc-help-tip" data-tip="This donut chart shows how total spending is split across expense categories (e.g. Materials, Labor, Cash, GCash, Bank). Each slice represents a category's share of the total. Hover over a slice to see the exact amount.">?</span>
+                    </div>
+                    <p class="card-subtitle">Distribution including payroll</p>
+                  </div>
+                </div>
                 <div class="chart-wrapper" style="height:260px"><canvas id="expCategoryChart"></canvas></div>
             </div>
             <!-- BUDGET VS ACTUAL -->
             <div class="section-card" style="margin-top:1rem;">
-                <div class="card-header"><div><h2>Budget vs Actual</h2><p class="card-subtitle">Allocated budget vs real spend per period</p></div></div>
+                <div class="card-header">
+                  <div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      <h2 style="margin:0;">Budget vs Actual</h2>
+                      <span class="pc-help-tip" data-tip="This chart compares the budget allocated for each billing period (green) against what was actually spent (red). If the red bar exceeds the green, spending went over budget for that period.">?</span>
+                    </div>
+                    <p class="card-subtitle">Allocated budget vs real spend per period</p>
+                  </div>
+                </div>
                 <div class="chart-wrapper" style="height:260px"><canvas id="rptBudgetVsActualChart"></canvas></div>
             </div>
             <!-- EXPENSE DETAIL TABLE -->
@@ -1035,9 +1057,69 @@
                            title="Year-month, e.g. 2026-05"
                            onchange="onOverheadMonthChange(this.value)">
                 </div>
-                <button class="exp-btn exp-btn-primary" onclick="openOverheadModal()">
-                    <i data-lucide="plus" style="width:15px;height:15px;stroke:#fff;flex-shrink:0;"></i> Add Expense
-                </button>
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <button class="ovhd-guide-btn" onclick="document.getElementById('ovhdGuideModal').style.display='flex'" title="Learn how Overhead Expenses works">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        Guide me
+                    </button>
+                    <button class="exp-btn exp-btn-primary" onclick="openOverheadModal()">
+                        <i data-lucide="plus" style="width:15px;height:15px;stroke:#fff;flex-shrink:0;"></i> Add Expense
+                    </button>
+                </div>
+            </div>
+
+            <!-- Overhead Guide Modal -->
+            <div id="ovhdGuideModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)this.style.display='none'">
+                <div style="background:#fff;border-radius:16px;width:100%;max-width:500px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.25);overflow:hidden;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #e5e7eb;">
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <div style="width:36px;height:36px;border-radius:10px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </div>
+                            <h3 style="margin:0;font-size:1rem;font-weight:700;color:#111827;">Overhead Expenses — Guide</h3>
+                        </div>
+                        <button onclick="document.getElementById('ovhdGuideModal').style.display='none'" aria-label="Close" style="background:none;border:none;font-size:1.4rem;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>
+                    </div>
+                    <div style="overflow-y:auto;padding:22px;flex:1;font-size:13.5px;color:#374151;line-height:1.7;">
+                        <p style="font-weight:700;color:#111827;margin-bottom:12px;">What is Overhead Expenses?</p>
+                        <p style="margin-bottom:14px;">This module tracks your company's recurring operational costs that are <strong>not tied to a specific project</strong> — such as electricity, water, internet, rent, and office supplies.</p>
+                        <div style="display:flex;flex-direction:column;gap:12px;">
+                            <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                                <div style="width:32px;height:32px;border-radius:8px;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                                </div>
+                                <div><strong style="color:#111827;">Month Filter</strong><br>Use the <em>Month</em> picker at the top to view expenses for any specific month. Only entries recorded in that month will appear.</div>
+                            </div>
+                            <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                                <div style="width:32px;height:32px;border-radius:8px;background:#dbeafe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                </div>
+                                <div><strong style="color:#111827;">Add Expense</strong><br>Click <em>+ Add Expense</em> to record a new overhead cost. Fill in the date, category (e.g. Water, Electricity), amount, and an optional description.</div>
+                            </div>
+                            <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                                <div style="width:32px;height:32px;border-radius:8px;background:#fef9c3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                                </div>
+                                <div><strong style="color:#111827;">KPI Cards</strong><br>The three cards at the top show your <em>Total Overhead</em>, <em>Total Entries</em>, and <em>Average per Entry</em> for the selected month at a glance.</div>
+                            </div>
+                            <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                                <div style="width:32px;height:32px;border-radius:8px;background:#fce7f3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#db2777" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                                </div>
+                                <div><strong style="color:#111827;">By Category</strong><br>Expenses are automatically grouped by category so you can see which area costs the most. Click <em>View Details</em> on any category card to drill down into its entries.</div>
+                            </div>
+                            <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                                <div style="width:32px;height:32px;border-radius:8px;background:#fee2e2;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                                </div>
+                                <div><strong style="color:#111827;">Delete Entry</strong><br>To remove an incorrect entry, click the red trash icon on the right side of any row in the <em>Expense Records</em> table.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="padding:16px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;">
+                        <button onclick="document.getElementById('ovhdGuideModal').style.display='none'" style="padding:9px 22px;border-radius:8px;border:none;background:#059669;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Got it!</button>
+                    </div>
+                </div>
             </div>
 
             <!-- KPI Cards -->
@@ -1103,7 +1185,83 @@
 
         </div><!-- /expOverheadView -->
 
-        <!-- ════════���═══ CONSTRUCTION VIEWS ════════════ -->
+        <!-- ════════════ BOQ ACCOMPLISHMENT GUIDE MODAL ════════════ -->
+        <div id="boqGuideModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)this.style.display='none'">
+            <div style="background:#fff;border-radius:16px;width:100%;max-width:520px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.25);overflow:hidden;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #e5e7eb;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div style="width:36px;height:36px;border-radius:10px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        </div>
+                        <h3 style="margin:0;font-size:1rem;font-weight:700;color:#111827;">Accomplishment Reports — Guide</h3>
+                    </div>
+                    <button onclick="document.getElementById('boqGuideModal').style.display='none'" aria-label="Close" style="background:none;border:none;font-size:1.4rem;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>
+                </div>
+                <div style="overflow-y:auto;padding:22px;flex:1;font-size:13.5px;color:#374151;line-height:1.7;">
+                    <p style="font-weight:700;color:#111827;margin-bottom:12px;">What are Accomplishment Reports?</p>
+                    <p style="margin-bottom:14px;">Accomplishment Reports summarize the work completed and costs incurred per project. Each report is linked to a <strong>project folder</strong> and can be shared with the client for review and approval.</p>
+
+                    <!-- Section: Project Grid -->
+                    <p style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;">Project Grid</p>
+                    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px;">
+                        <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                            <div style="width:32px;height:32px;border-radius:8px;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                            </div>
+                            <div><strong style="color:#111827;">Project Cards</strong><br>Each card is one project folder. <em>BOQ Saved</em> means a report exists; <em>No Report Yet</em> means one needs to be created. Click <em>Create / Open Report →</em> to enter the editor.</div>
+                        </div>
+                        <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                            <div style="width:32px;height:32px;border-radius:8px;background:#fce7f3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#db2777" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                            </div>
+                            <div><strong style="color:#111827;">Card Summary</strong><br>Each card shows <em>Total Project Cost</em> (sum of all line items) and <em>Total Accomplishment</em> (billed amount based on % complete) for a quick progress overview.</div>
+                        </div>
+                    </div>
+
+                    <!-- Section: Report Editor -->
+                    <p style="font-size:12px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px;">Inside the Report Editor</p>
+                    <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px;">
+                        <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                            <div style="width:32px;height:32px;border-radius:8px;background:#dbeafe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            </div>
+                            <div><strong style="color:#111827;">Document Info</strong><br>Fill in the <em>Date</em>, <em>Project Name</em>, <em>Area (sqm)</em>, <em>Owner Name</em>, and <em>Location</em>. These fields appear in the printed / exported PDF header.</div>
+                        </div>
+                        <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                            <div style="width:32px;height:32px;border-radius:8px;background:#fef9c3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                            </div>
+                            <div><strong style="color:#111827;">Terms &amp; Conditions</strong><br>Check <em>I. Terms of Payment</em>, <em>II. Exclusions</em>, and/or <em>III. Duration</em> to include those sections in the PDF. Edit the text inside each box to match the project's agreed terms.</div>
+                        </div>
+                        <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                            <div style="width:32px;height:32px;border-radius:8px;background:#ede9fe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            </div>
+                            <div><strong style="color:#111827;">Status Workflow</strong><br>Use the <em>Draft → Submit → Approve</em> buttons in the top bar to advance the report stage. <em>Draft</em> = in progress, <em>Submitted</em> = sent to client, <em>Approved</em> = client confirmed.</div>
+                        </div>
+                        <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                            <div style="width:32px;height:32px;border-radius:8px;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                            </div>
+                            <div><strong style="color:#111827;">Print / Export PDF</strong><br>Click <em>Print</em> to open the browser print dialog (choose "Save as PDF") or <em>Export PDF</em> to download a formatted copy to share with the client. Always <em>Save</em> first before printing.</div>
+                        </div>
+                        <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                            <div style="width:32px;height:32px;border-radius:8px;background:#fee2e2;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v14a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                            </div>
+                            <div><strong style="color:#111827;">Save</strong><br>Click <em>Save</em> (or press <kbd style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:4px;padding:1px 5px;font-size:11px;">Ctrl+S</kbd>) to store all changes. Unsaved changes are indicated by a warning when navigating away.</div>
+                        </div>
+                    </div>
+
+                    <p style="font-size:12.5px;color:#6b7280;">Project folders must be created in the <strong>Expenses</strong> module first before an Accomplishment Report can be built for them.</p>
+                </div>
+                <div style="padding:16px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;">
+                    <button onclick="document.getElementById('boqGuideModal').style.display='none'" style="padding:9px 22px;border-radius:8px;border:none;background:#059669;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Got it!</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════════════ CONSTRUCTION VIEWS ════════════ -->
         <div id="consBatchView" class="content-view cons-view" style="display: none;">
             <div id="currentBatchContainer"></div>
         </div>
@@ -1671,9 +1829,68 @@
                 </button>
                 <button class="pr-btn-qrsettings" onclick="prOpenQRSettings()" title="Manage global QR codes">
                     <i data-lucide="qr-code" style="width:16px;height:16px;"></i> QR Settings
-                </button><button class="pr-btn-create" onclick="prOpenCreateModal()">
+                </button>
+                <button class="ovhd-guide-btn" onclick="document.getElementById('prGuideModal').style.display='flex'" title="Learn how Payment Requests works">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    Guide me
+                </button>
+                <button class="pr-btn-create" onclick="prOpenCreateModal()">
                     <i data-lucide="plus" style="width:16px;height:16px;"></i> New Payment Request
                 </button>
+            </div>
+
+            <!-- Payment Requests Guide Modal -->
+            <div id="prGuideModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)this.style.display='none'">
+                <div style="background:#fff;border-radius:16px;width:100%;max-width:520px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.25);overflow:hidden;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #e5e7eb;">
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <div style="width:36px;height:36px;border-radius:10px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </div>
+                            <h3 style="margin:0;font-size:1rem;font-weight:700;color:#111827;">Payment Requests — Guide</h3>
+                        </div>
+                        <button onclick="document.getElementById('prGuideModal').style.display='none'" aria-label="Close" style="background:none;border:none;font-size:1.4rem;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>
+                    </div>
+                    <div style="overflow-y:auto;padding:22px;flex:1;font-size:13.5px;color:#374151;line-height:1.7;">
+                        <p style="font-weight:700;color:#111827;margin-bottom:12px;">What are Payment Requests?</p>
+                        <p style="margin-bottom:14px;">Payment Requests are company-issued billing notices sent to clients. You can create, track, and manage all payment requests from this module.</p>
+                        <div style="display:flex;flex-direction:column;gap:12px;">
+                            <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                                <div style="width:32px;height:32px;border-radius:8px;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                </div>
+                                <div><strong style="color:#111827;">New Payment Request</strong><br>Click <em>+ New Payment Request</em> to create a billing notice for a client. Fill in the client, project, billing period, amount, and due date.</div>
+                            </div>
+                            <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                                <div style="width:32px;height:32px;border-radius:8px;background:#fef9c3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                </div>
+                                <div><strong style="color:#111827;">Status Tracking</strong><br>Each request has a status: <em>Pending</em> (awaiting client action), <em>Approval Pending</em> (client submitted proof), <em>Submitted</em>, or <em>Verified / Paid</em>. The stat cards at the top show counts per status.</div>
+                            </div>
+                            <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                                <div style="width:32px;height:32px;border-radius:8px;background:#dbeafe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                </div>
+                                <div><strong style="color:#111827;">Search &amp; Filter</strong><br>Use the search bar to find requests by client name, project, or billing period. Use the <em>All Statuses</em> dropdown to narrow down by a specific status.</div>
+                            </div>
+                            <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                                <div style="width:32px;height:32px;border-radius:8px;background:#fce7f3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#db2777" stroke-width="2.5"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4z"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+                                </div>
+                                <div><strong style="color:#111827;">SOA (Statement of Account)</strong><br>Click <em>SOA</em> on any row to generate and view the Statement of Account for that billing request.</div>
+                            </div>
+                            <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                                <div style="width:32px;height:32px;border-radius:8px;background:#e0e7ff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                                </div>
+                                <div><strong style="color:#111827;">QR Settings</strong><br>Use <em>QR Settings</em> to manage the QR codes attached to payment requests, so clients can scan to pay or view details easily.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="padding:16px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;">
+                        <button onclick="document.getElementById('prGuideModal').style.display='none'" style="padding:9px 22px;border-radius:8px;border:none;background:#059669;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Got it!</button>
+                    </div>
+                </div>
             </div>
 
             <!-- Loading State -->
@@ -1711,7 +1928,7 @@
         </div>
 
 
-<!-- SOA Modal -->
+<!-- SOWA Modal -->
 <div id="sowaModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
     <div style="background:#fff;border-radius:16px;width:95vw;max-width:860px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.2);">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid #e5e7eb;">
@@ -1775,6 +1992,60 @@
         <div style="font-size:14px;color:#6b7280;font-weight:500;">Loading invoices…</div>
     </div>
     <div id="invContent"></div>
+</div>
+
+<!-- Invoice Receipt Guide Modal -->
+<div id="invGuideModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:9999;align-items:center;justify-content:center;padding:16px;" onclick="if(event.target===this)this.style.display='none'">
+    <div style="background:#fff;border-radius:16px;width:100%;max-width:520px;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.25);overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid #e5e7eb;">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;border-radius:10px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                </div>
+                <h3 style="margin:0;font-size:1rem;font-weight:700;color:#111827;">Invoice Receipt — Guide</h3>
+            </div>
+            <button onclick="document.getElementById('invGuideModal').style.display='none'" aria-label="Close" style="background:none;border:none;font-size:1.4rem;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>
+        </div>
+        <div style="overflow-y:auto;padding:22px;flex:1;font-size:13.5px;color:#374151;line-height:1.7;">
+            <p style="font-weight:700;color:#111827;margin-bottom:12px;">What is Invoice Receipt?</p>
+            <p style="margin-bottom:14px;">This module lets you create, manage, and track official invoice receipts issued to clients. All invoices are grouped by client for easy reference.</p>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                    <div style="width:32px;height:32px;border-radius:8px;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </div>
+                    <div><strong style="color:#111827;">New Invoice</strong><br>Click <em>+ New Invoice</em> to create an invoice receipt for a client. Fill in the client details, items, amounts, and dates.</div>
+                </div>
+                <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                    <div style="width:32px;height:32px;border-radius:8px;background:#dbeafe;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                    </div>
+                    <div><strong style="color:#111827;">Invoice Listing</strong><br>All invoices are grouped by client. Click a client row to expand and see each individual receipt with its invoice number, date, amount, TIN, and status.</div>
+                </div>
+                <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                    <div style="width:32px;height:32px;border-radius:8px;background:#fef9c3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    </div>
+                    <div><strong style="color:#111827;">KPI Cards</strong><br>The four cards at the top show <em>Total Invoices</em>, <em>Total Billed</em> (lifetime), <em>This Month</em> billing amount, and total <em>Issued</em> finalized invoices at a glance.</div>
+                </div>
+                <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                    <div style="width:32px;height:32px;border-radius:8px;background:#fce7f3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#db2777" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    </div>
+                    <div><strong style="color:#111827;">Export CSV</strong><br>Click <em>Export CSV</em> to download all invoice records as a spreadsheet file for reporting or accounting purposes.</div>
+                </div>
+                <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
+                    <div style="width:32px;height:32px;border-radius:8px;background:#e0e7ff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+                    </div>
+                    <div><strong style="color:#111827;">Business Settings</strong><br>Use <em>Business Settings</em> to configure your company's name, address, TIN, and other details that appear printed on every invoice.</div>
+                </div>
+            </div>
+        </div>
+        <div style="padding:16px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;">
+            <button onclick="document.getElementById('invGuideModal').style.display='none'" style="padding:9px 22px;border-radius:8px;border:none;background:#059669;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Got it!</button>
+        </div>
+    </div>
 </div>
 
 <!-- Labor Invoice View -->
@@ -2660,25 +2931,30 @@
                 <div class="exp-form-group"><label>Role / Position</label><input type="text" id="payRole" placeholder="e.g. Mason, Carpenter"></div>
             </div>
             <div class="exp-form-group">
-                <label>Labor Category</label>
-                <div class="lt-radio-group">
-                    <label class="lt-radio"><input type="radio" name="payLaborType" value="direct" checked> <span class="lt-tag lt-tag-direct">Direct</span></label>
-                    <label class="lt-radio"><input type="radio" name="payLaborType" value="indirect"> <span class="lt-tag lt-tag-indirect">Indirect</span></label>
-                    <label class="lt-radio"><input type="radio" name="payLaborType" value="liability"> <span class="lt-tag lt-tag-liability">Liability</span></label>
-                </div>
-            </div>
-            <div class="exp-form-group">
-                <label>Payment Type</label>
-                <div class="lt-radio-group">
-                    <label class="lt-radio"><input type="radio" name="payMode" value="daily" checked onchange="payToggleMode()"> <span class="lt-tag lt-tag-direct">Daily Rate</span></label>
-                    <label class="lt-radio"><input type="radio" name="payMode" value="lamsam" onchange="payToggleMode()"> <span class="lt-tag lt-tag-liability">Lump Sum</span></label>
+                <label>Labor Category <small style="font-weight:400;color:#6b7280;">— determines where this amount is counted</small></label>
+                <div class="lt-radio-group lt-radio-group-detailed">
+                    <label class="lt-radio lt-radio-card">
+                        <input type="radio" name="payLaborType" value="direct" checked>
+                        <span class="lt-tag lt-tag-direct">D &nbsp;Direct</span>
+                        <span class="lt-radio-hint">On-site workers (mason, carpenter, laborer, painter, etc.)</span>
+                    </label>
+                    <label class="lt-radio lt-radio-card">
+                        <input type="radio" name="payLaborType" value="indirect">
+                        <span class="lt-tag lt-tag-indirect">I &nbsp;Indirect</span>
+                        <span class="lt-radio-hint">Support roles (supervisor, foreman, admin, engineer, etc.)</span>
+                    </label>
+                    <label class="lt-radio lt-radio-card">
+                        <input type="radio" name="payLaborType" value="liability">
+                        <span class="lt-tag lt-tag-liability">L &nbsp;Liability</span>
+                        <span class="lt-radio-hint">Gov't contributions (SSS, PhilHealth, Pag-IBIG, withholding tax, etc.)</span>
+                    </label>
                 </div>
             </div>
             <div class="exp-form-row">
                 <div class="exp-form-group"><label>Days Worked</label><input type="number" id="payDays" required min="0.5" step="0.5" placeholder="0"></div>
-                <div class="exp-form-group" id="payRateGroup"><label>Daily Rate (₱)</label><input type="text" inputmode="decimal" id="payDailyRate" required placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
+                <div class="exp-form-group"><label>Daily Rate (₱)</label><input type="text" inputmode="decimal" id="payDailyRate" required placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
             </div>
-            <div class="exp-form-group"><label>Total Salary (₱) <small id="payTotalHint" style="font-weight:400;color:#888">(auto-computed)</small></label><input type="text" inputmode="decimal" id="payTotal" readonly placeholder="0.00"></div>
+            <div class="exp-form-group"><label>Total Salary (₱) <small style="font-weight:400;color:#888">(auto-computed)</small></label><input type="text" inputmode="decimal" id="payTotal" readonly placeholder="0.00"></div>
             <div class="exp-form-group"><label for="payDate">Payment Date</label><input type="datetime-local" id="payDate" required></div>
             <div class="exp-form-group">
                 <label>Upload Receipts <small style="font-weight:400;color:#888">(JPG/PNG, optional)</small></label>
@@ -2820,25 +3096,30 @@
                 <div class="exp-form-group"><label>Role / Position</label><input type="text" id="editPayRole" placeholder="e.g. Mason, Carpenter"></div>
             </div>
             <div class="exp-form-group">
-                <label>Labor Category</label>
-                <div class="lt-radio-group">
-                    <label class="lt-radio"><input type="radio" name="editPayLaborType" value="direct" checked> <span class="lt-tag lt-tag-direct">Direct</span></label>
-                    <label class="lt-radio"><input type="radio" name="editPayLaborType" value="indirect"> <span class="lt-tag lt-tag-indirect">Indirect</span></label>
-                    <label class="lt-radio"><input type="radio" name="editPayLaborType" value="liability"> <span class="lt-tag lt-tag-liability">Liability</span></label>
-                </div>
-            </div>
-            <div class="exp-form-group">
-                <label>Payment Type</label>
-                <div class="lt-radio-group">
-                    <label class="lt-radio"><input type="radio" name="editPayMode" value="daily" checked onchange="editPayToggleMode()"> <span class="lt-tag lt-tag-direct">Daily Rate</span></label>
-                    <label class="lt-radio"><input type="radio" name="editPayMode" value="lamsam" onchange="editPayToggleMode()"> <span class="lt-tag lt-tag-liability">Lump Sum</span></label>
+                <label>Labor Category <small style="font-weight:400;color:#6b7280;">— determines where this amount is counted</small></label>
+                <div class="lt-radio-group lt-radio-group-detailed">
+                    <label class="lt-radio lt-radio-card">
+                        <input type="radio" name="editPayLaborType" value="direct" checked>
+                        <span class="lt-tag lt-tag-direct">D &nbsp;Direct</span>
+                        <span class="lt-radio-hint">On-site workers (mason, carpenter, laborer, painter, etc.)</span>
+                    </label>
+                    <label class="lt-radio lt-radio-card">
+                        <input type="radio" name="editPayLaborType" value="indirect">
+                        <span class="lt-tag lt-tag-indirect">I &nbsp;Indirect</span>
+                        <span class="lt-radio-hint">Support roles (supervisor, foreman, admin, engineer, etc.)</span>
+                    </label>
+                    <label class="lt-radio lt-radio-card">
+                        <input type="radio" name="editPayLaborType" value="liability">
+                        <span class="lt-tag lt-tag-liability">L &nbsp;Liability</span>
+                        <span class="lt-radio-hint">Gov't contributions (SSS, PhilHealth, Pag-IBIG, withholding tax, etc.)</span>
+                    </label>
                 </div>
             </div>
             <div class="exp-form-row">
                 <div class="exp-form-group"><label>Days Worked</label><input type="number" id="editPayDays" required min="0.5" step="0.5" placeholder="0"></div>
-                <div class="exp-form-group" id="editPayRateGroup"><label>Daily Rate (₱)</label><input type="text" inputmode="decimal" id="editPayDailyRate" required placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
+                <div class="exp-form-group"><label>Daily Rate (₱)</label><input type="text" inputmode="decimal" id="editPayDailyRate" required placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
             </div>
-            <div class="exp-form-group"><label>Total Salary (₱) <small id="editPayTotalHint" style="font-weight:400;color:#888">(auto-computed)</small></label><input type="text" inputmode="decimal" id="editPayTotal" readonly placeholder="0.00"></div>
+            <div class="exp-form-group"><label>Total Salary (₱) <small style="font-weight:400;color:#888">(auto-computed)</small></label><input type="text" inputmode="decimal" id="editPayTotal" readonly placeholder="0.00"></div>
             <div class="exp-form-group"><label for="editPayDate">Payment Date</label><input type="datetime-local" id="editPayDate" required></div>
             <div class="exp-form-group">
                 <label>Receipts <small style="font-weight:400;color:#888">— remove or add images</small></label>
@@ -3699,4 +3980,3 @@
     }
 </script>
 </body>
-</html>

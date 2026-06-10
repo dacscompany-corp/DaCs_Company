@@ -146,6 +146,10 @@
                     <h2 class="boq-grid-title">Accomplishment Reports</h2>
                     <p class="boq-grid-sub">Accomplishment Reports per project</p>
                 </div>
+                <button class="ovhd-guide-btn" onclick="document.getElementById('boqGuideModal').style.display='flex'" title="Learn how Accomplishment Reports work">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                    Guide me
+                </button>
             </div>
             <div class="ov-empty-state" style="margin-top:1rem;">
                 <div class="ov-empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="64" height="56" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
@@ -206,6 +210,10 @@
                 <h2 class="boq-grid-title">Accomplishment Reports</h2>
                 <p class="boq-grid-sub">Accomplishment Reports per project</p>
             </div>
+            <button class="ovhd-guide-btn" onclick="document.getElementById('boqGuideModal').style.display='flex'" title="Learn how Accomplishment Reports work">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Guide me
+            </button>
         </div>
         <div class="ov-folder-grid">${cards}</div>`;
 
@@ -370,6 +378,10 @@
                 </div>
                 <div class="boq-toolbar-right">
                     ${boqStatusBadgeHtml(boq.status)}
+                    <button class="ovhd-guide-btn" onclick="document.getElementById('boqGuideModal').style.display='flex'" title="Learn how to use the Report Editor">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        Guide me
+                    </button>
                     <button class="boq-btn boq-btn-outline" onclick="boqPrintReport()">
                         <i data-lucide="printer"></i> Print
                     </button>
