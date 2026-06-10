@@ -5785,7 +5785,9 @@ function printReportsDashboard() {
   .kpi-card--bad { background:#dc2626 !important; border-color:rgba(255,255,255,0.55) !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   .kpi-card-head { margin-bottom:4px; }
   .kpi-card-label { font-size:0.58rem; font-weight:800; letter-spacing:0.07em; text-transform:uppercase; color:#ffffff; }
-  .kpi-card-val { font-size:1rem; font-weight:800; margin-bottom:2px; color:#ffffff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .kpi-card-val { font-size:1rem; font-weight:800; margin-bottom:2px; color:#ffffff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:baseline; gap:3px; }
+  .kpi-peso { font-family:sans-serif; font-size:0.7em; font-weight:700; opacity:0.9; line-height:1; }
+  .kpi-num { font-size:1.15em; font-weight:800; letter-spacing:-0.01em; line-height:1; }
   .kpi-card-sub { font-size:0.63rem; color:rgba(255,255,255,0.80); }
   .variance-card { grid-column:1/-1; margin:8px 28px 0; background:#4AC84A; border:1px solid transparent; border-radius:10px; padding:12px 18px; box-shadow:0 1px 4px rgba(0,0,0,0.06); -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact; }
   .variance-card--danger { border-left:4px solid rgba(239,68,68,0.7); }
@@ -5793,7 +5795,7 @@ function printReportsDashboard() {
   .variance-cols { display:flex; gap:20px; align-items:flex-start; }
   .variance-col { flex:1; min-width:0; }
   .variance-col-label { font-size:0.58rem; font-weight:700; letter-spacing:0.07em; text-transform:uppercase; color:rgba(255,255,255,0.75); margin-bottom:3px; }
-  .variance-col-val { font-size:1rem; font-weight:800; margin-bottom:4px; color:#ffffff; }
+  .variance-col-val { font-size:1rem; font-weight:800; margin-bottom:4px; color:#ffffff; display:flex; align-items:baseline; gap:3px; }
   .variance-bar-wrap { background:rgba(255,255,255,0.25); border-radius:4px; height:4px; width:100%; margin-bottom:3px; }
   .variance-bar-fill { height:4px; border-radius:4px; }
   .variance-col-sub { font-size:0.63rem; color:rgba(255,255,255,0.80); }
@@ -5848,32 +5850,32 @@ function printReportsDashboard() {
     ${window.currentUserRole !== 'staff' ? `
     <div class="kpi-card">
       <div class="kpi-card-head"><span class="kpi-card-label">CONTRACT VALUE</span></div>
-      <div class="kpi-card-val">₱${formatNum(contract)}</div>
+      <div class="kpi-card-val"><span class="kpi-peso">₱</span><span class="kpi-num">${formatNum(contract)}</span></div>
       <div class="kpi-card-sub">${reportTitle} · ${_rptState.year}</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-card-head"><span class="kpi-card-label">FUND ALLOCATED</span></div>
-      <div class="kpi-card-val">₱${formatNum(totReceived)}</div>
+      <div class="kpi-card-val"><span class="kpi-peso">₱</span><span class="kpi-num">${formatNum(totReceived)}</span></div>
       <div class="kpi-card-sub">${prtActivePeriods} billing period${prtActivePeriods!==1?'s':''} · ${rcvOfContract.toFixed(1)}% of contract</div>
     </div>` : ''}
     <div class="kpi-card">
       <div class="kpi-card-head"><span class="kpi-card-label">MATERIALS &amp; COSTS</span></div>
-      <div class="kpi-card-val">₱${formatNum(totMats)}</div>
+      <div class="kpi-card-val"><span class="kpi-peso">₱</span><span class="kpi-num">${formatNum(totMats)}</span></div>
       <div class="kpi-card-sub">${matPctOfRcv.toFixed(1)}% of allocated budget</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-card-head"><span class="kpi-card-label">LABOR &amp; PAYROLL</span></div>
-      <div class="kpi-card-val">₱${formatNum(totLabor)}</div>
+      <div class="kpi-card-val"><span class="kpi-peso">₱</span><span class="kpi-num">${formatNum(totLabor)}</span></div>
       <div class="kpi-card-sub">${labPctOfRcv.toFixed(1)}% of allocated budget</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-card-head"><span class="kpi-card-label">TOTAL FUND SPENT</span></div>
-      <div class="kpi-card-val">₱${formatNum(totSpent)}</div>
+      <div class="kpi-card-val"><span class="kpi-peso">₱</span><span class="kpi-num">${formatNum(totSpent)}</span></div>
       <div class="kpi-card-sub">${utilizedPct.toFixed(1)}% utilized · ${contractPct.toFixed(1)}% of contract</div>
     </div>
     <div class="kpi-card${coverPctOfBudget >= 5 && totCoverPrt > 0 ? ' kpi-card--bad' : ''}">
       <div class="kpi-card-head"><span class="kpi-card-label">COVER EXPENSES</span></div>
-      <div class="kpi-card-val">₱${formatNum(totCoverPrt)}</div>
+      <div class="kpi-card-val"><span class="kpi-peso">₱</span><span class="kpi-num">${formatNum(totCoverPrt)}</span></div>
       <div class="kpi-card-sub">${totCoverPrt <= 0 ? 'No cover expenses' : coverPctOfBudget.toFixed(1) + '% of allocated budget · ' + (coverPctOfBudget >= 5 ? 'BAD' : coverPctOfBudget >= 2 ? 'WARNING' : 'HEALTHY')}</div>
     </div>
   </div>
@@ -5884,14 +5886,14 @@ function printReportsDashboard() {
     <div class="variance-cols">
       <div class="variance-col">
         <div class="variance-col-label">RECEIVABLE BALANCE</div>
-        <div class="variance-col-val">${periodVariance<0?'-':''}₱${formatNum(Math.abs(periodVariance))}</div>
+        <div class="variance-col-val"><span class="kpi-peso">${periodVariance<0?'-':''}₱</span><span class="kpi-num">${formatNum(Math.abs(periodVariance))}</span></div>
         <div class="variance-bar-wrap"><div class="variance-bar-fill" style="width:${Math.max(Math.min(Math.abs(periodRemPct),100),2).toFixed(1)}%;background:${periodVariance<0?'rgba(239,68,68,0.8)':'rgba(255,255,255,0.6)'}"></div></div>
         <div class="variance-col-sub">${periodRemPct.toFixed(1)}% of contract · ${periodVariance<0?'over-billed':'pending billing'}</div>
       </div>
       <div class="variance-divider"></div>
       <div class="variance-col">
         <div class="variance-col-label">BUDGET REMAINING</div>
-        <div class="variance-col-val">${contractVariance<0?'-':''}₱${formatNum(Math.abs(contractVariance))}</div>
+        <div class="variance-col-val"><span class="kpi-peso">${contractVariance<0?'-':''}₱</span><span class="kpi-num">${formatNum(Math.abs(contractVariance))}</span></div>
         <div class="variance-bar-wrap"><div class="variance-bar-fill" style="width:${Math.max(Math.min(Math.abs(contractRemPct),100),2).toFixed(1)}%;background:${contractVariance<0?'rgba(239,68,68,0.8)':'rgba(255,255,255,0.6)'}"></div></div>
         <div class="variance-col-sub">${contract > 0 ? contractRemPct.toFixed(1) + '% of contract · ' + (contractVariance<0?'over budget':'available') : 'No contract set'}</div>
       </div>

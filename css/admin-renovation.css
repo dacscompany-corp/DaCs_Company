@@ -1313,11 +1313,63 @@ button.btn-primary:hover,
 
 .dacs-portal-scope .pc-flow-total {
   display: flex;
+  flex-direction: column;
   justify-content: flex-start;
-  align-items: baseline;
+  align-items: flex-start;
   padding-top: 14px;
   border-top: 1px solid var(--brand-hair);
   margin-top: auto;
+}
+
+.dacs-portal-scope .pc-labor-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  color: var(--brand-green);
+  white-space: nowrap;
+}
+
+.dacs-portal-scope .pc-labor-currency {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-green);
+  margin-right: 1px;
+}
+
+.dacs-portal-scope .pc-labor-amount {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--brand-green);
+  font-variant-numeric: tabular-nums;
+  margin-right: 4px;
+}
+
+.dacs-portal-scope .pc-labor-pct {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--brand-green);
+  background: rgba(26, 90, 58, 0.10);
+  padding: 2px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.dacs-portal-scope .pc-labor-formula {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 500;
+  color: #059669;
+  background: #d1fae5;
+  border: 1px solid #6ee7b7;
+  border-radius: 6px;
+  padding: 2px 8px;
+  white-space: nowrap;
 }
 
 /* Staff: flow cards have no body — give the footer breathing room */
@@ -1332,6 +1384,7 @@ button.btn-primary:hover,
   display: none;
 }
 .dacs-portal-scope .pc-flow-total .val {
+  display: block;
   font-family: var(--serif);
   font-size: 18px;
   font-weight: 600;
@@ -1340,10 +1393,7 @@ button.btn-primary:hover,
 }
 /* Staff cards: percentage on the left, transaction count pushed to the right */
 .dacs-portal-scope .pc-flow-total .val.val-split {
-  display: flex;
-  flex: 1;
-  align-items: baseline;
-  justify-content: space-between;
+  display: block;
 }
 
 /* Doc-pill badges (PO / DR / SI / PR) */
@@ -1444,6 +1494,10 @@ button.btn-primary:hover,
   padding: 20px 28px;
   background: linear-gradient(135deg, var(--brand-green) 0%, var(--brand-green-light) 100%);
   color: #fff;
+}
+
+.dacs-portal-scope .pc-sm-contract--danger {
+  background: linear-gradient(135deg, #b00020 0%, #d64545 100%);
 }
 .dacs-portal-scope .pc-sm-contract-lbl {
   font-family: var(--serif);
@@ -3032,6 +3086,42 @@ body .lt-radio input[type="radio"]:checked + .lt-tag.lt-tag-liability {
 body .lt-radio input[type="radio"]:focus-visible + .lt-tag {
   outline: 2px solid #1A5C3A;
   outline-offset: 2px;
+}
+
+/* ── Detailed card-style radio group (Labor Category) ── */
+body .lt-radio-group-detailed {
+  flex-direction: column;
+  gap: 6px;
+}
+body .lt-radio-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fafafa;
+  transition: border-color .15s, background .15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+body .lt-radio-card:hover {
+  border-color: #d1d5db;
+  background: #f3f4f6;
+}
+body .lt-radio-card:has(input[type="radio"]:checked) {
+  border-color: currentColor;
+  background: #fff;
+}
+body .lt-radio-card:has(input[type="radio"][value="direct"]:checked)   { border-color: rgba(26,92,58,.35);  background: #f0fdf4; }
+body .lt-radio-card:has(input[type="radio"][value="indirect"]:checked) { border-color: rgba(139,105,20,.35); background: #fefce8; }
+body .lt-radio-card:has(input[type="radio"][value="liability"]:checked){ border-color: rgba(192,57,43,.35);  background: #fff5f5; }
+body .lt-radio-hint {
+  font-size: 11.5px;
+  color: #6b7280;
+  font-weight: 400;
+  line-height: 1.4;
+  flex: 1;
 }
 
 /* Supporting Documents upload tiles (Add + Edit Expense modals) */
