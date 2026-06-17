@@ -40,6 +40,7 @@
 | `role` | string | `'client'` |
 | `status` | string | `'active'` |
 | `agreementAccepted` | bool | starts `false` |
+| `agreementAcceptedAt` | ts | set when the client accepts the Cost-Plus agreement |
 | `createdAt` | ts | |
 
 ---

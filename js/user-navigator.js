@@ -608,6 +608,13 @@
             const el = document.getElementById(id);
             if (el) { el.style.display = 'none'; el.textContent = ''; }
         });
+        // Always reopen with passwords hidden + eye icons reset.
+        [['cc-create-password','cc-create-password-eye'],
+         ['cc-create-confirm','cc-create-confirm-eye']].forEach(([inp, ic]) => {
+            const i = document.getElementById(inp), e = document.getElementById(ic);
+            if (i) i.type = 'password';
+            if (e) e.setAttribute('data-lucide', 'eye');
+        });
 
         modal.style.display = 'flex';
         if (typeof lucide !== 'undefined') lucide.createIcons();

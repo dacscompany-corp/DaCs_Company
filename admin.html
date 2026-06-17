@@ -2199,14 +2199,26 @@
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
                 <div>
                     <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Password <span style="color:#ef4444;">*</span></label>
-                    <input type="password" id="cc-create-password" placeholder="Min. 8 characters"
-                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div style="position:relative;">
+                        <input type="password" id="cc-create-password" placeholder="Min. 8 characters" oninput="ccValidatePwMatch()"
+                            style="width:100%;box-sizing:border-box;padding:9px 38px 9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                        <button type="button" tabindex="-1" aria-label="Toggle password visibility" onclick="dacsTogglePw('cc-create-password','cc-create-password-eye')"
+                            style="position:absolute;top:50%;right:10px;transform:translateY(-50%);background:none;border:none;padding:0;cursor:pointer;color:#9ca3af;display:flex;align-items:center;">
+                            <i data-lucide="eye" id="cc-create-password-eye" style="width:15px;height:15px;"></i>
+                        </button>
+                    </div>
                     <div id="err-cc-password" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
                 </div>
                 <div>
                     <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Confirm Password <span style="color:#ef4444;">*</span></label>
-                    <input type="password" id="cc-create-confirm" placeholder="Re-enter password"
-                        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                    <div style="position:relative;">
+                        <input type="password" id="cc-create-confirm" placeholder="Re-enter password" oninput="ccValidatePwMatch()"
+                            style="width:100%;box-sizing:border-box;padding:9px 38px 9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;">
+                        <button type="button" tabindex="-1" aria-label="Toggle password visibility" onclick="dacsTogglePw('cc-create-confirm','cc-create-confirm-eye')"
+                            style="position:absolute;top:50%;right:10px;transform:translateY(-50%);background:none;border:none;padding:0;cursor:pointer;color:#9ca3af;display:flex;align-items:center;">
+                            <i data-lucide="eye" id="cc-create-confirm-eye" style="width:15px;height:15px;"></i>
+                        </button>
+                    </div>
                     <div id="err-cc-confirm" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
                 </div>
             </div>
@@ -3978,5 +3990,38 @@
         }
         lucide.createIcons();
     }
+
+    // Reusable show/hide toggle for any password field + its eye icon.
+    window.dacsTogglePw = function(inputId, iconId) {
+        const input = document.getElementById(inputId);
+        const icon  = document.getElementById(iconId);
+        if (!input || !icon) return;
+        if (input.type === 'password') { input.type = 'text';     icon.setAttribute('data-lucide', 'eye-off'); }
+        else                           { input.type = 'password'; icon.setAttribute('data-lucide', 'eye'); }
+        if (window.lucide) lucide.createIcons();
+    };
+
+    // Live validation for the Create Construction Client password fields:
+    // min-length hint + match feedback (red mismatch / green match) as the user types.
+    window.ccValidatePwMatch = function() {
+        const pw    = document.getElementById('cc-create-password');
+        const cf    = document.getElementById('cc-create-confirm');
+        const pwErr = document.getElementById('err-cc-password');
+        const cfErr = document.getElementById('err-cc-confirm');
+        if (!pw || !cf) return;
+        if (pwErr) {
+            if (pw.value && pw.value.length < 8) {
+                pwErr.textContent = 'Minimum 8 characters.'; pwErr.style.color = '#ef4444'; pwErr.style.display = 'block';
+            } else { pwErr.style.display = 'none'; }
+        }
+        if (cfErr) {
+            if (!cf.value) { cfErr.style.display = 'none'; }
+            else if (cf.value !== pw.value) {
+                cfErr.textContent = "Passwords don't match."; cfErr.style.color = '#ef4444'; cfErr.style.display = 'block';
+            } else {
+                cfErr.textContent = 'Passwords match ✓';      cfErr.style.color = '#16a34a'; cfErr.style.display = 'block';
+            }
+        }
+    };
 </script>
 </body>
