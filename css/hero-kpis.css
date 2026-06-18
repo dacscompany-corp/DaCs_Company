@@ -145,6 +145,17 @@ body.dark-mode .kpi-sub {
   color: #7fb89a;
 }
 
+/* Light divider line under the KPI row */
+body.dark-mode .hero-kpi-row {
+  border-bottom-color: #2c3d35;
+}
+
+/* Brighten accent numbers so they read on dark cards */
+body.dark-mode .hero-kpi-card.kpi-labor .kpi-main           { color: #93c5fd; }
+body.dark-mode .hero-kpi-card.kpi-procurement .kpi-main     { color: #fbbf24; }
+body.dark-mode .hero-kpi-card.kpi-site-supervision .kpi-main { color: #52c47a; }
+body.dark-mode .hero-kpi-card.kpi-site-supervision .kpi-sub::before { color: #52c47a; }
+
 /* Animations */
 @keyframes kpiFadeIn {
   from { opacity: 0; transform: translateY(20px); }

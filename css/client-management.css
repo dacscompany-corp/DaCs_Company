@@ -3405,6 +3405,26 @@ body.dark-mode .pm-card-note { background: rgba(255,255,255,0.03); }
 body.dark-mode .pm-contact-btn-value { color: #e5e7eb; }
 body.dark-mode .pm-card-name { color: #f9fafb; }
 
+/* ── DARK MODE — additional gap fixes ──────────────────────
+   Form labels and a modal footer that stayed light/dark-text
+   on a dark surface in the Client Management views. */
+
+/* Mark-as-Bought modal: dark form labels on dark modal */
+body.dark-mode .pm-label,
+body.dark-mode .pm-upload-text       { color: #d4e4dc; }
+body.dark-mode .pm-upload-hint,
+body.dark-mode .pm-label-optional,
+body.dark-mode .pm-item-info-label   { color: #7d9a8c; }
+
+/* Bright hairline border on dark panels */
+body.dark-mode .pm-panel-header      { border-bottom-color: #2c3d35; }
+
+/* Milestone detail modal footer (was light mint) */
+body.dark-mode #milestone-detail-modal .report-modal-footer {
+  background: #141c19;
+  border-top-color: #2c3d35;
+}
+
 @media (max-width: 480px) {
   .pm-card-inner { flex-wrap: wrap; padding: 18px 18px 14px; }
   .pm-card-badge { position: static; margin-top: 8px; }
