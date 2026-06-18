@@ -6,7 +6,12 @@
       "Bash(node)",
       "Bash(git checkout *)",
       "Bash(node -e *)",
-      "Bash(node --check js/portal-app.compiled.js)"
+      "Bash(node --check js/portal-app.compiled.js)",
+      "Bash(cp \"c:/Users/yuich/DaCs_Company/Client Management.html\" \"c:/Users/yuich/DaCs_Company/Dacs Partnership.html\" && echo done)",
+      "Bash(node --check js/client-management-app.js)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\yuich\\DaCs_Company"
     ]
   }
 }

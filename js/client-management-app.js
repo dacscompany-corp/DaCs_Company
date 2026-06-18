@@ -519,7 +519,7 @@ function cmPopulateWeeklyBilling() {
             <td style="color:#7c3aed;font-weight:600;">${cmFmt(mgmtFee)}</td>
             <td><strong style="font-size:15px;">${cmFmt(totalDue)}</strong></td>
             <td><span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:700;background:${ss.bg};color:${ss.color};">${cmEsc(b.status)}</span></td>
-            <td><button onclick="openWBDetail(${JSON.stringify(b).replace(/'/g,'&#39;')})" style="padding:5px 12px;border-radius:7px;border:1.5px solid #d1fae5;background:#f0fdf4;color:#059669;font-size:12px;font-weight:600;cursor:pointer;">View</button></td>
+            <td><button onclick="openWBDetail(${JSON.stringify(b).replace(/"/g,'&quot;').replace(/'/g,'&#39;')})" style="padding:5px 12px;border-radius:7px;border:1.5px solid #d1fae5;background:#f0fdf4;color:#059669;font-size:12px;font-weight:600;cursor:pointer;">View</button></td>
         </tr>`;
     }).join('');
 }
@@ -1068,7 +1068,7 @@ function cmRenderAccomplishmentTable(reports) {
             <td style="font-size:12.5px;color:#374151;max-width:200px;">${taskText}</td>
             <td style="text-align:center;"><span style="font-weight:700;font-size:14px;color:${pctColor};">${pct}</span></td>
             <td><span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:700;background:${ss.bg};color:${ss.color};">${ss.label}</span></td>
-            <td><button onclick="cmViewAccomplishmentReport(${JSON.stringify(r).replace(/'/g,'&#39;').replace(/</g,'&lt;')})" style="padding:5px 12px;border-radius:7px;border:1.5px solid #d1fae5;background:#f0fdf4;color:#059669;font-size:12px;font-weight:600;cursor:pointer;">View</button></td>
+            <td><button onclick="cmViewAccomplishmentReport(${JSON.stringify(r).replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;')})" style="padding:5px 12px;border-radius:7px;border:1.5px solid #d1fae5;background:#f0fdf4;color:#059669;font-size:12px;font-weight:600;cursor:pointer;">View</button></td>
         </tr>`;
     }).join('');
 }
@@ -1864,7 +1864,7 @@ window.filterWeeklyBills = function() {
             <td style="color:#7c3aed;font-weight:600;">${cmFmt(mgmtFee)}</td>
             <td><strong style="font-size:15px;">${cmFmt(totalDue)}</strong></td>
             <td><span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:700;background:${ss.bg};color:${ss.color};">${cmEsc(b.status)}</span></td>
-            <td><button onclick="openWBDetail(${JSON.stringify(b).replace(/'/g,'&#39;')})" style="padding:5px 12px;border-radius:7px;border:1.5px solid #d1fae5;background:#f0fdf4;color:#059669;font-size:12px;font-weight:600;cursor:pointer;">View</button></td>
+            <td><button onclick="openWBDetail(${JSON.stringify(b).replace(/"/g,'&quot;').replace(/'/g,'&#39;')})" style="padding:5px 12px;border-radius:7px;border:1.5px solid #d1fae5;background:#f0fdf4;color:#059669;font-size:12px;font-weight:600;cursor:pointer;">View</button></td>
         </tr>`;
     }).join('');
 };

@@ -1,0 +1,308 @@
+/* ════════════════════════════════════════════════════════════════════
+   DAC's Partnership — dark-mode overrides
+   Fixes "areas that stay light" in dark mode. Many panels in the markup
+   use inline style="..." colors (white backgrounds, #1f2937 text, light
+   border lines) that the class-based dark theme can't reach. These rules
+   override those inline styles via attribute selectors. !important is
+   required to beat element-level inline styles.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Page surfaces: undo client-renovation.css's forced whites in dark mode ──
+   client-renovation.css sets #dashboard-page / .content-panel / cards to
+   `#ffffff !important` unconditionally. That `!important` beats the dark theme
+   in client.css, leaving a white page behind dark-ish panels. Because this
+   file loads LAST, re-asserting !important here wins and restores dark mode. */
+body.dark-mode #dashboard-page {
+  background: #171f1c !important;
+}
+body.dark-mode .content-panel,
+body.dark-mode .stat-card,
+body.dark-mode .hero-kpi-card,
+body.dark-mode .billing-sum-card {
+  background: #1e2822 !important;
+}
+body.dark-mode .notif-dropdown,
+body.dark-mode .table-search-wrap,
+body.dark-mode .topbar-user {
+  background: #1e2822 !important;
+}
+body.dark-mode .topbar {
+  background: rgba(20, 28, 24, 0.97) !important;
+}
+body.dark-mode .filter-pill {
+  background: #141c19 !important;
+}
+/* renovation forces light card borders (#e5e5e5 !important) → dark */
+body.dark-mode .stat-card,
+body.dark-mode .content-panel,
+body.dark-mode .table-search-wrap,
+body.dark-mode .hero-kpi-card,
+body.dark-mode .billing-sum-card,
+body.dark-mode .notif-dropdown {
+  border-color: #2c3d35 !important;
+}
+body.dark-mode .notif-item:hover,
+body.dark-mode .notif-item.unread,
+body.dark-mode .data-table tbody tr:hover {
+  background: #252f2a !important;
+}
+body.dark-mode .topbar-user:hover {
+  background: #252f2a !important;
+}
+
+/* Section heading + subtitle use var(--text-dark/muted), which client.css
+   already remaps in dark mode — but make it explicit in case a stray inline
+   or renovation rule overrides them. */
+body.dark-mode .section-title { color: #d4e4dc !important; }
+body.dark-mode .section-sub   { color: #7d9a8c !important; }
+
+/* ── Panel header bars: light hairline borders → dark ── */
+body.dark-mode [style*="border-bottom:1px solid #f1f5f9"],
+body.dark-mode [style*="border-bottom: 1px solid #f1f5f9"] {
+  border-bottom-color: #1a3325 !important;
+}
+body.dark-mode [style*="border-top:1px solid #f1f5f9"],
+body.dark-mode [style*="border-top: 1px solid #f1f5f9"] {
+  border-top-color: #1a3325 !important;
+}
+
+/* ── Panel titles / headings: dark slate text → light ── */
+body.dark-mode [style*="color:#1f2937"],
+body.dark-mode [style*="color: #1f2937"],
+body.dark-mode [style*="color:#111827"],
+body.dark-mode [style*="color: #111827"],
+body.dark-mode [style*="color:#374151"],
+body.dark-mode [style*="color: #374151"] {
+  color: #e8f5ee !important;
+}
+
+/* ── White / near-white inline backgrounds → dark panel ── */
+body.dark-mode [style*="background:#fff"],
+body.dark-mode [style*="background: #fff"],
+body.dark-mode [style*="background:#ffffff"],
+body.dark-mode [style*="background: #ffffff"],
+body.dark-mode [style*="background:#f9fafb"],
+body.dark-mode [style*="background: #f9fafb"] {
+  background: #0f2218 !important;
+}
+
+/* ── Tinted alert / info boxes: keep the accent, darken the fill ── */
+body.dark-mode [style*="background:#fffbeb"],
+body.dark-mode [style*="background: #fffbeb"] {
+  background: rgba(245, 158, 11, 0.12) !important;
+}
+body.dark-mode [style*="background:#f0fdf4"],
+body.dark-mode [style*="background: #f0fdf4"] {
+  background: rgba(34, 197, 94, 0.12) !important;
+}
+body.dark-mode [style*="background:#eff6ff"],
+body.dark-mode [style*="background: #eff6ff"] {
+  background: rgba(59, 130, 246, 0.12) !important;
+}
+body.dark-mode [style*="background:#faf5ff"],
+body.dark-mode [style*="background: #faf5ff"] {
+  background: rgba(139, 92, 246, 0.12) !important;
+}
+
+/* ── Light borders on those boxes → softer dark variants ── */
+body.dark-mode [style*="border:1px solid #d1d5db"],
+body.dark-mode [style*="border: 1px solid #d1d5db"],
+body.dark-mode [style*="border:1px solid #e5e7eb"],
+body.dark-mode [style*="border: 1px solid #e5e7eb"],
+body.dark-mode [style*="border:1.5px solid #d1d5db"],
+body.dark-mode [style*="border: 1.5px solid #d1d5db"] {
+  border-color: #1e4030 !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   BUTTONS — make every button respond to dark mode.
+   Two groups: (1) class-based buttons with no dark rule in the base CSS;
+   (2) inline-styled buttons (Cancel / Close / secondary) that hardcode
+   light fills + dark text. Brand-green / gradient buttons are left alone
+   (they read fine on dark), but their dark text is lightened where set.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* (1) Class-based neutral / secondary buttons that lack a dark rule.
+   (Brand-green buttons — .btn-signin, .btn-save-profile — already have a
+   green gradient + white text, and .logout-btn is intentionally transparent
+   with a coral accent, so none of those are touched here.) */
+body.dark-mode .btn-cancel-edit,
+body.dark-mode .modal-btn-cancel,
+body.dark-mode .cm-term-cancel-btn {
+  background: #141c19 !important;
+  border-color: #2c3d35 !important;
+  color: #d4e4dc !important;
+}
+body.dark-mode .btn-cancel-edit:hover,
+body.dark-mode .modal-btn-cancel:hover,
+body.dark-mode .cm-term-cancel-btn:hover {
+  background: #252f2a !important;
+}
+
+/* (2) Inline-styled light buttons:
+   - Light grey fill (#f9fafb) Cancel/Close buttons → dark neutral
+   - Light tinted action buttons (#f0fdf4 green, #eff6ff blue) get their
+     fill darkened by the background rules above; here we also fix borders. */
+body.dark-mode button[style*="background:#f9fafb"],
+body.dark-mode button[style*="background: #f9fafb"] {
+  background: #141c19 !important;
+  border-color: #2c3d35 !important;
+  color: #d4e4dc !important;
+}
+body.dark-mode button[style*="border:1.5px solid #d1fae5"],
+body.dark-mode button[style*="border: 1.5px solid #d1fae5"] {
+  border-color: rgba(34, 197, 94, 0.35) !important;
+}
+body.dark-mode button[style*="border:1.5px solid #bfdbfe"],
+body.dark-mode button[style*="border: 1.5px solid #bfdbfe"] {
+  border-color: rgba(59, 130, 246, 0.35) !important;
+}
+
+/* JS-rendered table action buttons (e.g. "View" in Weekly Billing /
+   Milestones / Accomplishment Reports) hardcode a green fill + dark-green
+   text. The faint-tint background above makes them nearly invisible, so give
+   these green buttons a defined dark-green pill with bright, readable text. */
+body.dark-mode button[style*="color:#059669"],
+body.dark-mode button[style*="color: #059669"] {
+  background: rgba(34, 197, 94, 0.18) !important;
+  border-color: rgba(34, 197, 94, 0.45) !important;
+  color: #4ade80 !important;
+}
+body.dark-mode button[style*="color:#059669"]:hover,
+body.dark-mode button[style*="color: #059669"]:hover {
+  background: rgba(34, 197, 94, 0.28) !important;
+}
+/* Blue "View SOA" variant */
+body.dark-mode button[style*="color:#1d4ed8"],
+body.dark-mode button[style*="color: #1d4ed8"] {
+  background: rgba(59, 130, 246, 0.18) !important;
+  border-color: rgba(59, 130, 246, 0.45) !important;
+  color: #93c5fd !important;
+}
+
+/* Bare close "×" buttons (background:none) — only the glyph color matters;
+   it's already a muted grey that reads on dark. Nudge it brighter. */
+body.dark-mode button[aria-label="Close"][style*="background:none"] {
+  color: #9fb3a8 !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   WEEKLY BILL DETAIL MODAL (#wbDetailModal)
+   The body is rendered by JS with semantic .wbd-* classes. Base styles
+   below give a clean light-mode look; the dark-mode block re-themes them
+   so labels/figures stay high-contrast and readable.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Base (light) ── */
+.wbd-status-line { margin-bottom: 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wbd-status {
+  display: inline-block; padding: 4px 14px; border-radius: 20px;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.02em;
+}
+.wbd-status-paid      { background: #dcfce7; color: #15803d; }
+.wbd-status-submitted { background: #dbeafe; color: #1d4ed8; }
+.wbd-status-overdue   { background: #fee2e2; color: #dc2626; }
+.wbd-status-default   { background: #f3f4f6; color: #6b7280; }
+.wbd-submitted { font-size: 12px; color: #9ca3af; }
+
+.wbd-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.wbd-row .wbd-cell-label,
+.wbd-row .wbd-cell-val { padding: 11px 14px; border-bottom: 1px solid #f1f5f9; }
+.wbd-cell-label { color: #6b7280; text-align: left; }
+.wbd-cell-val   { text-align: right; font-weight: 600; color: #1f2937; }
+.wbd-row:nth-child(odd) { background: #fafbfc; }
+
+.wbd-row-direct .wbd-cell-label,
+.wbd-row-direct .wbd-cell-val {
+  background: #f0fdf4; font-weight: 700; color: #166534;
+  border-bottom: 2px solid #bbf7d0; font-size: 15px;
+}
+.wbd-row-fee .wbd-cell-label,
+.wbd-row-fee .wbd-cell-val { color: #7c3aed; font-weight: 600; }
+.wbd-row-total .wbd-cell-label,
+.wbd-row-total .wbd-cell-val { background: #1f2937; color: #fff; padding: 14px; font-weight: 700; font-size: 16px; }
+.wbd-row-total .wbd-cell-label { border-radius: 0 0 0 8px; }
+.wbd-row-total .wbd-cell-val   { border-radius: 0 0 8px 0; color: #4ade80; text-align: right; font-size: 18px; }
+
+.wbd-note { margin-top: 14px; padding: 11px 14px; border-radius: 8px; font-size: 13px; }
+.wbd-note-due     { background: #fffbeb; border: 1px solid #fcd34d; color: #b45309; font-weight: 600; }
+.wbd-note-remarks { background: #f9fafb; color: #6b7280; }
+
+/* ── Dark mode ── */
+body.dark-mode #wbDetailModal > div {            /* the modal card */
+  background: #161e1a !important;
+}
+body.dark-mode #wbDetailModal h3 { color: #e8f5ee !important; }   /* "Weekly Bill Detail" */
+body.dark-mode #wbDetailSubtitle { color: #8aa99b !important; }
+
+body.dark-mode .wbd-submitted { color: #8aa99b; }
+body.dark-mode .wbd-status-paid      { background: rgba(34,197,94,0.18);  color: #4ade80; }
+body.dark-mode .wbd-status-submitted { background: rgba(59,130,246,0.20); color: #93c5fd; }
+body.dark-mode .wbd-status-overdue   { background: rgba(239,68,68,0.18);  color: #fca5a5; }
+body.dark-mode .wbd-status-default   { background: rgba(255,255,255,0.08); color: #9fb3a8; }
+
+body.dark-mode .wbd-row:nth-child(odd) { background: rgba(255,255,255,0.02); }
+body.dark-mode .wbd-row .wbd-cell-label,
+body.dark-mode .wbd-row .wbd-cell-val { border-bottom-color: #1f2d26; }
+body.dark-mode .wbd-cell-label { color: #9fb3a8; }
+body.dark-mode .wbd-cell-val   { color: #e8f5ee; }
+
+body.dark-mode .wbd-row-direct .wbd-cell-label,
+body.dark-mode .wbd-row-direct .wbd-cell-val {
+  background: rgba(34,197,94,0.12); color: #6ee7b7; border-bottom-color: rgba(34,197,94,0.35);
+}
+body.dark-mode .wbd-row-fee .wbd-cell-label,
+body.dark-mode .wbd-row-fee .wbd-cell-val { color: #c4b5fd; }
+body.dark-mode .wbd-row-total .wbd-cell-label,
+body.dark-mode .wbd-row-total .wbd-cell-val { background: #0d1713; color: #fff; }
+body.dark-mode .wbd-row-total .wbd-cell-val { color: #4ade80; }
+
+body.dark-mode .wbd-note-due {
+  background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.4); color: #fcd34d;
+}
+body.dark-mode .wbd-note-remarks { background: rgba(255,255,255,0.04); color: #9fb3a8; }
+
+/* Modal footer Close/Print buttons + header border in dark */
+body.dark-mode #wbDetailModal [style*="border-bottom:1px solid #e5e7eb"],
+body.dark-mode #wbDetailModal [style*="border-top:1px solid #e5e7eb"] {
+  border-color: #1f2d26 !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   "Week" filter <select> (#wb-week-filter)
+   Inline style sets color:#374151 (dark grey) which is unreadable on dark,
+   and the native option popup defaults to light. Theme both the closed
+   control and the open option list for dark mode.
+   ════════════════════════════════════════════════════════════════════ */
+body.dark-mode #wb-week-filter {
+  color: #e8f5ee !important;
+  background: transparent !important;
+}
+/* The open option list is OS-rendered; set explicit dark bg + light text so
+   the highlighted and non-highlighted options are both readable. */
+body.dark-mode #wb-week-filter option {
+  background: #161e1a !important;
+  color: #e8f5ee !important;
+}
+/* Make the wrapper pill (calendar icon + select) read as dark, not light */
+body.dark-mode #wb-week-filter,
+body.dark-mode .table-search-wrap:has(#wb-week-filter) {
+  color: #e8f5ee !important;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Topbar notification bell (#notif-btn / .topbar-bell-btn)
+   client.css only added a dark-mode hover override for .topbar-icon-btn,
+   not the bell — so the bell flashed a light mint (#edf7f2) background on
+   hover/active, standing out white against the dark topbar. Theme it to
+   match the dark-mode toggle button beside it.
+   ════════════════════════════════════════════════════════════════════ */
+body.dark-mode .topbar-bell-btn {
+  background: none !important;
+  color: #7d9a8c !important;
+}
+body.dark-mode .topbar-bell-btn:hover,
+body.dark-mode .topbar-bell-btn:focus {
+  background: #252f2a !important;
+  color: #00e5a0 !important;
+}
