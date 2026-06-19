@@ -31,6 +31,7 @@ let cmProgressLogs         = [];
 let cmRevolvingFund        = null;
 let cmMilestones           = [];
 let cmAccomplishmentReports= [];
+let cmRenderedReports      = [];   // current (possibly filtered) report list shown in the table
 let _cmNotifUnsub          = null;
 let _cmBillUnsub           = null;
 let _cmNotifications       = [];
@@ -40,6 +41,10 @@ let cmSidebarOpen          = true;
 const CM_COLLECTION = 'constructionClientUsers';
 
 // ── Helpers ──────────────────────────────────────────────────────
+// Portal audience: 'partner' = monitoring/viewing only (no 15% mgmt fee,
+// no payments); 'client' = full (fee + payments). Set per-HTML-file via
+// window.CM_PORTAL_MODE before this script loads; defaults to client.
+function cmIsPartner() { return (typeof window !== 'undefined' && window.CM_PORTAL_MODE === 'partner'); }
 function cmFmt(n) {
     return '₱' + (Number(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -201,15 +206,18 @@ async function cmLoadProjectData(user) {
                 .get();
             cmRevolvingFund = rfSnap.empty ? null : rfSnap.docs[0].data();
 
-            // Load progress logs visible to client
-            const logSnap = await db.collection('constructionProjects')
-                .doc(cmProjectData.id)
-                .collection('dailyLogs')
-                .where('visibleToClient', '==', true)
-                .orderBy('date', 'desc')
-                .limit(30)
-                .get();
-            cmProgressLogs = logSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // Load progress logs visible to client (own try/catch so a failure
+            // here never aborts the milestone/report loads that follow)
+            try {
+                const logSnap = await db.collection('constructionProjects')
+                    .doc(cmProjectData.id)
+                    .collection('dailyLogs')
+                    .where('visibleToClient', '==', true)
+                    .orderBy('date', 'desc')
+                    .limit(30)
+                    .get();
+                cmProgressLogs = logSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            } catch (e) { cmProgressLogs = []; }
 
             // Load milestones
             try {
@@ -243,6 +251,8 @@ async function cmLoadProjectData(user) {
 function cmEnterDashboard() {
     document.getElementById('login-page').classList.remove('active');
     document.getElementById('dashboard-page').classList.add('active');
+    // Tag the body so partner-only CSS/JS can hide client-only bits (15% fee, payments).
+    document.body.classList.toggle('cm-partner', cmIsPartner());
 
     cmRefreshUserDisplay();
 
@@ -301,6 +311,10 @@ function cmRefreshUserDisplay() {
     if (folderNameEl) {
         folderNameEl.textContent = cmProjectData?.projectName || 'My Project';
     }
+
+    // Topbar project switcher pill + date (redesign)
+    cmSet('topbar-project-name', cmProjectData?.projectName || 'My Project');
+    cmSet('topbar-date', new Date().toLocaleDateString('en-PH', { weekday:'long', month:'short', day:'numeric' }));
 
     const since = p.createdAt?.toDate
         ? p.createdAt.toDate().toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' })
@@ -423,16 +437,20 @@ function cmPopulateDashboard() {
         if (!cmWeeklyBills.length) {
             actList.innerHTML = '<div class="empty-state"><p>No activity yet.</p></div>';
         } else {
+            const partner = cmIsPartner();
             actList.innerHTML = cmWeeklyBills.slice(0, 5).map(b => {
                 const statusColor = b.status === 'Paid' ? '#15803d' : b.status === 'Overdue' ? '#dc2626' : '#2563eb';
+                const directTotal = b.directCostTotal || ((b.labor||0) + (b.materials||0) + (b.delivery||0) + (b.consumables||0) + (b.other||0));
+                const subLabel = partner ? 'Labor + materials' : 'Direct costs + 15% mgmt fee';
+                const amount   = partner ? directTotal : (b.totalDue || 0);
                 return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f1f5f9;">
                     <div>
                         <div style="font-weight:600;font-size:14px;color:#1f2937;">Week ending ${cmEsc(b.weekEndingDate || '—')}</div>
-                        <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Direct costs + 15% mgmt fee</div>
+                        <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">${subLabel}</div>
                     </div>
                     <div style="text-align:right;">
-                        <div style="font-weight:700;color:#1f2937;">${cmFmt(b.totalDue || 0)}</div>
-                        <span style="font-size:11px;font-weight:700;color:${statusColor};">${cmEsc(b.status || '—')}</span>
+                        <div style="font-weight:700;color:#1f2937;">${cmFmt(amount)}</div>
+                        ${partner ? '' : `<span style="font-size:11px;font-weight:700;color:${statusColor};">${cmEsc(b.status || '—')}</span>`}
                     </div>
                 </div>`;
             }).join('');
@@ -441,7 +459,8 @@ function cmPopulateDashboard() {
 }
 
 // ── Weekly Billing ────────────────────────────────────────────────
-function cmPopulateWeeklyBilling() {
+function cmPopulateWeeklyBilling() { cmRenderWeekly(); }
+function _cmWeeklyLegacy() {
     if (!cmProjectData) {
         cmSet('wb-sum-billed', '₱0');
         cmSet('wb-sum-paid', '₱0');
@@ -516,8 +535,8 @@ function cmPopulateWeeklyBilling() {
             <td>${cmFmt(materials)}</td>
             <td>${cmFmt(otherCosts)}</td>
             <td><strong>${cmFmt(directTotal)}</strong></td>
-            <td style="color:#7c3aed;font-weight:600;">${cmFmt(mgmtFee)}</td>
-            <td><strong style="font-size:15px;">${cmFmt(totalDue)}</strong></td>
+            <td class="cm-client-only" style="color:#7c3aed;font-weight:600;">${cmFmt(mgmtFee)}</td>
+            <td class="cm-client-only"><strong style="font-size:15px;">${cmFmt(totalDue)}</strong></td>
             <td><span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:700;background:${ss.bg};color:${ss.color};">${cmEsc(b.status)}</span></td>
             <td><button onclick="openWBDetail(${JSON.stringify(b).replace(/"/g,'&quot;').replace(/'/g,'&#39;')})" style="padding:5px 12px;border-radius:7px;border:1.5px solid #d1fae5;background:#f0fdf4;color:#059669;font-size:12px;font-weight:600;cursor:pointer;">View</button></td>
         </tr>`;
@@ -587,7 +606,8 @@ function cmPopulateProgress() {
 }
 
 // ── Revolving Fund ────────────────────────────────────────────────
-function cmPopulateRevolvingFund() {
+function cmPopulateRevolvingFund() { cmRenderRevolving(); }
+function _cmRevolvingLegacy() {
     const rf = cmRevolvingFund;
     const fundTotal   = rf ? (rf.fundAmount || 0) : 0;
     const spent       = rf ? (rf.totalSpent || 0) : 0;
@@ -678,6 +698,7 @@ function cmSubscribeNotifications() {
             _cmFirestoreNotifs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             cmUpdateNotifBadge();
             cmRenderNotifDropdown();
+            if (document.getElementById('section-notifications')?.classList.contains('active')) cmRenderNotifPage();
             // Lazy field migration: any doc with `read` but no `isRead` gets
             // the canonical field added. Idempotent; runs once per session.
             _cmMigrateNotifFields(snap.docs);
@@ -749,19 +770,62 @@ window.markAllRead = async function() {
     await Promise.all(unread.map(n => cmMarkRead(n.id)));
 };
 
-window.renderNotifHistory = function cmRenderNotifHistory() {
-    const el = document.getElementById('notif-history-list');
-    if (!el) return;
-    if (!_cmFirestoreNotifs.length) {
-        el.innerHTML = '<div style="padding:48px;text-align:center;color:#9ca3af;"><div style="font-size:32px;margin-bottom:10px;">🔔</div><div style="font-weight:600;font-size:14px;">No notifications yet.</div></div>';
-        return;
-    }
-    el.innerHTML = _cmFirestoreNotifs.map(n => `
-        <div style="padding:16px 22px;border-bottom:1px solid #f1f5f9;${n.read ? '' : 'background:#f0fdf4;'}">
-            <div style="font-size:13.5px;font-weight:${n.read ? '400' : '700'};color:#1f2937;">${cmEsc(n.message || n.title || '—')}</div>
-            <div style="font-size:12px;color:#9ca3af;margin-top:4px;">${n.createdAt?.toDate ? n.createdAt.toDate().toLocaleDateString('en-PH', {year:'numeric',month:'long',day:'numeric'}) : '—'}</div>
-        </div>`).join('');
-};
+window.renderNotifHistory = function cmRenderNotifHistory() { cmRenderNotifPage(); };
+
+// ── Notifications page (redesign: activity rows with icon chips) ──
+function cmRelTime(ts) {
+    const ms = ts && ts.toMillis ? ts.toMillis() : (ts ? new Date(ts).getTime() : 0);
+    if (!ms || isNaN(ms)) return '';
+    const diff = Date.now() - ms;
+    const m = Math.floor(diff/60000), h = Math.floor(m/60), d = Math.floor(h/24);
+    return d > 0 ? d+'d ago' : h > 0 ? h+'h ago' : m > 0 ? m+'m ago' : 'just now';
+}
+
+function _cmNotifIcon(text) {
+    const t = (text || '').toLowerCase();
+    if (t.includes('paid') || t.includes('payment received') || t.includes('replenish'))
+        return ['#e7f5ed', '#3f9960', '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>'];
+    if (t.includes('milestone') || t.includes('complete') || t.includes('approved') || t.includes('validated'))
+        return ['#e7f5ed', '#3f9960', '<polyline points="20 6 9 17 4 12"/>'];
+    if (t.includes('bought') || t.includes('procure') || t.includes('material'))
+        return ['#eef1fd', '#5b5bd6', '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>'];
+    if (t.includes('reminder'))
+        return ['#fdf3e3', '#b4892a', '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>'];
+    if (t.includes('payment request') || t.includes('bill') || t.includes('due'))
+        return ['#eeeefb', '#5b5bd6', '<rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>'];
+    return ['#eeeefb', '#5b5bd6', '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>'];
+}
+
+function cmRenderNotifPage() {
+    const host = document.getElementById('section-notifications');
+    if (!host) return;
+    const card = 'background:#fff;border-radius:20px;box-shadow:0 1px 3px rgba(20,25,40,0.06);';
+    const notifs = _cmFirestoreNotifs || [];
+    const anyUnread = notifs.some(n => !n.isRead && !n.read);
+
+    const rows = notifs.map(n => {
+        const unread = !n.isRead && !n.read;
+        const [bg, fg, path] = _cmNotifIcon(n.message || n.title);
+        const title = n.title || n.message || '—';
+        const sub   = (n.title && n.message && n.title !== n.message) ? n.message : '';
+        return `
+        <div onclick="cmMarkRead('${n.id}');" style="display:flex;gap:14px;align-items:flex-start;padding:16px;border-radius:14px;${unread?'background:#f7f7fd;':''}cursor:pointer;">
+            <div style="width:38px;height:38px;border-radius:11px;background:${bg};flex:none;display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${fg}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${path}</svg></div>
+            <div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:700;color:#1a1d24;">${cmEsc(title)}</div>${sub?`<div style="font-size:13px;color:#8b91a0;margin-top:2px;">${cmEsc(sub)}</div>`:''}</div>
+            <div style="display:flex;align-items:center;gap:10px;flex:none;"><span style="font-size:12px;color:#aeb4c2;">${cmRelTime(n.createdAt)}</span>${unread?'<span style="width:8px;height:8px;background:#5b5bd6;border-radius:50%;"></span>':''}</div>
+        </div>`;
+    }).join('') || `<div style="padding:48px 20px;text-align:center;color:#aeb4c2;font-size:13px;">No notifications yet.</div>`;
+
+    host.innerHTML = `
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px;gap:14px;flex-wrap:wrap;">
+        <div>
+            <div style="font-size:28px;font-weight:800;letter-spacing:-0.02em;color:#1a1d24;">Notifications</div>
+            <div style="font-size:14px;color:#8b91a0;margin-top:3px;">Recent updates across payments, procurement, and progress.</div>
+        </div>
+        ${anyUnread ? `<button onclick="markAllRead()" style="border:1.5px solid #e3e5ec;background:#fff;color:#1a1d24;font-size:13px;font-weight:700;padding:10px 16px;border-radius:12px;cursor:pointer;">Mark all read</button>` : ''}
+    </div>
+    <div style="${card}padding:8px 10px;display:flex;flex-direction:column;gap:2px;">${rows}</div>`;
+}
 
 // ── Sidebar / Topbar ──────────────────────────────────────────────
 window.toggleSidebar = function() {
@@ -1013,17 +1077,67 @@ document.addEventListener('click', function(e) {
 // ACCOMPLISHMENT REPORTS
 // ══════════════════════════════════════════════════════════════════
 
-function cmPopulateAccomplishmentReports() {
+function cmPopulateAccomplishmentReports() { cmRenderAccomplishment(); }
+
+// ── Accomplishment Reports (redesign: stacked progress cards) ──
+function cmRenderAccomplishment() {
+    const host = document.getElementById('section-accomplishment');
+    if (!host) return;
+    const card = 'background:#fff;border-radius:20px;padding:24px 26px;box-shadow:0 1px 3px rgba(20,25,40,0.06);';
+
+    if (!cmProjectData) {
+        host.innerHTML = `<div style="${card}text-align:center;color:#aeb4c2;padding:60px 20px;">No project assigned yet.</div>`;
+        return;
+    }
+
+    const reports = (cmAccomplishmentReports || []).slice()
+        .sort((a, b) => (cmTsMillis(b.updatedAt) - cmTsMillis(a.updatedAt)));
+    cmRenderedReports = reports;  // so cmViewAccomplishmentReport(idx) resolves
+
+    const badge = st => st === 'approved'
+        ? '<span style="font-size:11px;font-weight:700;background:#e7f5ed;color:#3f9960;padding:3px 10px;border-radius:20px;">PUBLISHED</span>'
+        : st === 'submitted'
+        ? '<span style="font-size:11px;font-weight:700;background:#eef1fd;color:#5b5bd6;padding:3px 10px;border-radius:20px;">FOR REVIEW</span>'
+        : '<span style="font-size:11px;font-weight:700;background:#fdf3e3;color:#b4892a;padding:3px 10px;border-radius:20px;">DRAFT</span>';
+
+    const cards = reports.map((r, idx) => {
+        const pct   = r.progressPercentage != null ? r.progressPercentage : cmBoqPct(r);
+        const title = r.subject || r.projectName || 'Accomplishment Report';
+        const nItems = Array.isArray(r.costItems) ? r.costItems.length : 0;
+        const sub = [r.date, nItems ? nItems + ' cost item' + (nItems===1?'':'s') : ''].filter(Boolean).join(' · ');
+        return `
+        <div onclick="cmViewAccomplishmentReport(${idx})" style="${card}display:flex;align-items:center;gap:24px;cursor:pointer;">
+            <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><span style="font-size:16px;font-weight:800;color:#1a1d24;">${cmEsc(title)}</span>${badge(r.status)}</div>
+                <div style="font-size:13px;color:#8b91a0;margin-top:5px;">${cmEsc(sub || '—')}</div>
+            </div>
+            <div style="width:200px;flex:none;">
+                <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;"><span style="color:#8b91a0;font-weight:600;">Progress</span><span style="font-weight:700;color:#1a1d24;">${pct}%</span></div>
+                <div style="height:7px;background:#eceef3;border-radius:4px;overflow:hidden;"><div style="width:${Math.min(100,pct)}%;height:100%;background:#5b5bd6;"></div></div>
+            </div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#b6bcc9" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>`;
+    }).join('') || `<div style="${card}text-align:center;color:#aeb4c2;padding:48px 20px;">No accomplishment reports published yet.</div>`;
+
+    host.innerHTML = `
+    <div style="margin-bottom:26px;">
+        <div style="font-size:28px;font-weight:800;letter-spacing:-0.02em;color:#1a1d24;">Accomplishment Reports</div>
+        <div style="font-size:14px;color:#8b91a0;margin-top:3px;">Periodic progress updates validated by DACS. Tap a report to view its full work breakdown.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:16px;">${cards}</div>`;
+}
+
+function _cmAccomplishmentLegacy() {
     const tbody = document.getElementById('reports-tbody');
     if (!cmProjectData) {
         if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">No project assigned yet.</td></tr>';
         return;
     }
 
-    // Progress summary bar
+    // Progress summary bar — latest approved report's overall %
     const approved   = cmAccomplishmentReports.filter(r => r.status === 'approved');
-    const latest     = [...approved].sort((a,b) => (b.date||'').localeCompare(a.date||''))[0];
-    const overallPct = latest?.progressPercentage ?? 0;
+    const latest     = [...approved].sort((a,b) => (cmTsMillis(b.updatedAt) - cmTsMillis(a.updatedAt)))[0];
+    const overallPct = latest ? (latest.progressPercentage != null ? latest.progressPercentage : cmBoqPct(latest)) : 0;
     const summaryEl  = document.getElementById('ar-summary-bar');
     if (summaryEl) {
         summaryEl.style.display = '';
@@ -1050,75 +1164,128 @@ function cmRenderAccomplishmentTable(reports) {
         submitted: { bg:'#dbeafe', color:'#1d4ed8', label:'For Review' },
         draft:     { bg:'#f3f4f6', color:'#6b7280', label:'Draft' }
     };
-    tbody.innerHTML = reports.map(r => {
-        const ss    = SS[r.status] || SS.draft;
-        const tasks = Array.isArray(r.completedTasks) ? r.completedTasks : (r.completedTasks ? [r.completedTasks] : []);
-        const taskText = tasks.length
-            ? tasks.slice(0,2).map(t => cmEsc(t)).join('; ') + (tasks.length > 2 ? ` <em>+${tasks.length-2} more</em>` : '')
-            : '<em style="color:#9ca3af;">No tasks listed</em>';
-        const pct      = r.progressPercentage != null ? r.progressPercentage + '%' : '—';
-        const pctColor = r.progressPercentage >= 80 ? '#15803d' : r.progressPercentage >= 50 ? '#d97706' : '#374151';
+    tbody.innerHTML = reports.map((r, idx) => {
+        const ss     = SS[r.status] || SS.draft;
+        const grand  = cmBoqGrand(r.costItems);
+        const acc    = cmBoqAcc(r.costItems);
+        const pctNum = r.progressPercentage != null ? r.progressPercentage : cmBoqPct(r);
+        const pctColor = pctNum >= 80 ? '#15803d' : pctNum >= 50 ? '#d97706' : '#374151';
+        const title  = r.subject || r.projectName || r.title || 'Accomplishment Report';
         return `<tr>
             <td>
-                <div style="font-weight:600;color:#1f2937;font-size:13.5px;">${cmEsc(r.title || 'Report')}</div>
+                <div style="font-weight:600;color:#1f2937;font-size:13.5px;">${cmEsc(title)}</div>
                 ${r.approvedBy ? `<div style="font-size:11px;color:#059669;margin-top:2px;">✓ Validated by ${cmEsc(r.approvedBy)}</div>` : '<div style="font-size:11px;color:#9ca3af;margin-top:2px;">Pending validation</div>'}
             </td>
             <td style="font-size:13px;color:#374151;white-space:nowrap;">${cmEsc(r.date || '—')}</td>
-            <td style="font-size:12.5px;color:#6b7280;">${cmEsc(r.milestone || '—')}</td>
-            <td style="font-size:12.5px;color:#374151;max-width:200px;">${taskText}</td>
-            <td style="text-align:center;"><span style="font-weight:700;font-size:14px;color:${pctColor};">${pct}</span></td>
+            <td style="font-size:13px;color:#374151;text-align:right;white-space:nowrap;">${cmFmt(grand)}</td>
+            <td style="font-size:13px;color:#059669;font-weight:600;text-align:right;white-space:nowrap;">${cmFmt(acc)}</td>
+            <td style="text-align:center;"><span style="font-weight:700;font-size:14px;color:${pctColor};">${pctNum}%</span></td>
             <td><span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:700;background:${ss.bg};color:${ss.color};">${ss.label}</span></td>
-            <td><button onclick="cmViewAccomplishmentReport(${JSON.stringify(r).replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;')})" style="padding:5px 12px;border-radius:7px;border:1.5px solid #d1fae5;background:#f0fdf4;color:#059669;font-size:12px;font-weight:600;cursor:pointer;">View</button></td>
+            <td><button onclick="cmViewAccomplishmentReport(${idx})" style="padding:5px 12px;border-radius:7px;border:1.5px solid #d1fae5;background:#f0fdf4;color:#059669;font-size:12px;font-weight:600;cursor:pointer;">View</button></td>
         </tr>`;
     }).join('');
+    cmRenderedReports = reports;
 }
 
 window.filterReports = function() {
     const q = (document.getElementById('report-search')?.value || '').toLowerCase().trim();
     const filtered = !q ? cmAccomplishmentReports
         : cmAccomplishmentReports.filter(r =>
-            (r.title     ||'').toLowerCase().includes(q) ||
-            (r.milestone ||'').toLowerCase().includes(q) ||
-            (r.notes     ||'').toLowerCase().includes(q)
+            (r.subject     ||'').toLowerCase().includes(q) ||
+            (r.projectName ||'').toLowerCase().includes(q) ||
+            (r.date        ||'').toLowerCase().includes(q)
         );
     cmRenderAccomplishmentTable(filtered);
 };
 
-window.cmViewAccomplishmentReport = function(r) {
+window.cmViewAccomplishmentReport = function(idx) {
+    const r = cmRenderedReports[idx];
+    if (!r) return;
     const modal   = document.getElementById('report-modal');
     if (!modal) return;
     const titleEl = document.getElementById('rmd-title');
     const metaEl  = document.getElementById('rmd-meta');
     const bodyEl  = document.getElementById('rmd-body');
     const footerEl= document.getElementById('rmd-footer');
-    if (titleEl) titleEl.textContent = r.title || 'Accomplishment Report';
-    if (metaEl)  metaEl.textContent  = (r.date || '') + (r.milestone ? '  ·  ' + r.milestone : '');
-    const tasks = Array.isArray(r.completedTasks) ? r.completedTasks : (r.completedTasks ? [r.completedTasks] : []);
-    const SM    = { approved:{label:'Approved by DACS',color:'#15803d'}, submitted:{label:'For Admin Review',color:'#1d4ed8'}, draft:{label:'Draft',color:'#6b7280'} };
-    const ss    = SM[r.status] || SM.draft;
+
+    const grand  = cmBoqGrand(r.costItems);
+    const acc    = cmBoqAcc(r.costItems);
+    const pctNum = r.progressPercentage != null ? r.progressPercentage : cmBoqPct(r);
+    const SM     = { approved:{label:'Approved by DACS',color:'#15803d'}, submitted:{label:'For Admin Review',color:'#1d4ed8'}, draft:{label:'Draft',color:'#6b7280'} };
+    const ss     = SM[r.status] || SM.draft;
+
+    if (titleEl) titleEl.textContent = r.subject || r.projectName || 'Accomplishment Report';
+    if (metaEl)  metaEl.textContent  = [r.date, r.location].filter(Boolean).join('  ·  ');
+
+    // Document info chips
+    const infoChips = [
+        ['Date', r.date], ['Area', r.area], ['Owner', r.ownerName], ['Location', r.location]
+    ].filter(([, v]) => v).map(([label, v]) => `
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 14px;">
+            <div style="font-size:11px;color:#9ca3af;margin-bottom:2px;text-transform:uppercase;letter-spacing:.4px;">${label}</div>
+            <div style="font-size:13px;font-weight:600;color:#374151;">${cmEsc(v)}</div>
+        </div>`).join('');
+
+    // Read-only BOQ breakdown
+    const items = Array.isArray(r.costItems) ? r.costItems : [];
+    const breakdown = !items.length
+        ? '<div style="font-size:13px;color:#9ca3af;font-style:italic;padding:8px 0;">No cost items recorded for this report.</div>'
+        : items.map((ci, ci2) => `
+            <div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
+                    <div style="font-weight:700;color:#1f2937;font-size:13.5px;">${ci2 + 1}. ${cmEsc(ci.name || 'Cost Item')}</div>
+                    <div style="font-size:12px;color:#374151;white-space:nowrap;">${cmFmt(cmBoqCiSub(ci))} · <span style="color:#059669;">${cmFmt(cmBoqCiAcc(ci))}</span></div>
+                </div>
+                ${(ci.subItems || []).map(si => `
+                    <div style="margin:6px 0 6px 10px;">
+                        ${si.name ? `<div style="font-size:12.5px;font-weight:600;color:#475569;margin-bottom:4px;">${cmEsc(si.name)}</div>` : ''}
+                        <div style="overflow-x:auto;">
+                        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                            <thead><tr style="color:#9ca3af;text-align:left;">
+                                <th style="padding:4px 6px;font-weight:600;">Description</th>
+                                <th style="padding:4px 6px;font-weight:600;text-align:right;">Qty</th>
+                                <th style="padding:4px 6px;font-weight:600;text-align:right;">Total</th>
+                                <th style="padding:4px 6px;font-weight:600;text-align:center;">% Done</th>
+                                <th style="padding:4px 6px;font-weight:600;text-align:right;">Accomplishment</th>
+                            </tr></thead>
+                            <tbody>
+                            ${(si.lineItems || []).map(li => `
+                                <tr style="border-top:1px solid #f1f5f9;">
+                                    <td style="padding:4px 6px;color:#374151;">${cmEsc(li.description || '—')}${li.unit ? ` <span style="color:#9ca3af;">(${cmEsc(li.unit)})</span>` : ''}</td>
+                                    <td style="padding:4px 6px;text-align:right;color:#6b7280;">${cmEsc(li.qty != null ? String(li.qty) : '—')}</td>
+                                    <td style="padding:4px 6px;text-align:right;color:#374151;">${cmFmt(cmBoqLiTotal(li))}</td>
+                                    <td style="padding:4px 6px;text-align:center;font-weight:600;color:#374151;">${cmBoqNum(li.percentCompletion)}%</td>
+                                    <td style="padding:4px 6px;text-align:right;font-weight:600;color:#059669;">${cmFmt(cmBoqLiTotal(li) * (cmBoqNum(li.percentCompletion)/100))}</td>
+                                </tr>`).join('')}
+                            </tbody>
+                        </table>
+                        </div>
+                    </div>`).join('')}
+            </div>`).join('');
+
     if (bodyEl) bodyEl.innerHTML = `
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
-            ${r.progressPercentage != null ? `<div style="display:flex;align-items:center;gap:8px;background:#f0fdf4;border:1px solid #a7f3d0;border-radius:8px;padding:8px 14px;">
-                <div style="font-size:24px;font-weight:800;color:#059669;">${r.progressPercentage}%</div>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:8px;background:#f0fdf4;border:1px solid #a7f3d0;border-radius:8px;padding:8px 14px;">
+                <div style="font-size:24px;font-weight:800;color:#059669;">${pctNum}%</div>
                 <div style="font-size:12px;color:#065f46;line-height:1.3;">Overall<br>Progress</div>
-            </div>` : ''}
+            </div>
             <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 14px;">
                 <div style="font-size:11px;color:#9ca3af;margin-bottom:2px;text-transform:uppercase;letter-spacing:.4px;">Status</div>
                 <div style="font-size:13px;font-weight:700;color:${ss.color};">${ss.label}</div>
             </div>
-            ${r.milestone ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 14px;">
-                <div style="font-size:11px;color:#9ca3af;margin-bottom:2px;text-transform:uppercase;letter-spacing:.4px;">Milestone</div>
-                <div style="font-size:13px;font-weight:600;color:#374151;">${cmEsc(r.milestone)}</div>
-            </div>` : ''}
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 14px;">
+                <div style="font-size:11px;color:#9ca3af;margin-bottom:2px;text-transform:uppercase;letter-spacing:.4px;">Total Project Cost</div>
+                <div style="font-size:13px;font-weight:700;color:#374151;">${cmFmt(grand)}</div>
+            </div>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px 14px;">
+                <div style="font-size:11px;color:#9ca3af;margin-bottom:2px;text-transform:uppercase;letter-spacing:.4px;">Total Accomplishment</div>
+                <div style="font-size:13px;font-weight:700;color:#059669;">${cmFmt(acc)}</div>
+            </div>
         </div>
-        ${tasks.length ? `<div style="margin-bottom:18px;">
-            <div style="font-weight:700;font-size:13px;color:#1f2937;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">Completed Tasks</div>
-            <ul style="margin:0;padding-left:20px;">${tasks.map(t=>`<li style="font-size:13.5px;color:#374151;margin-bottom:6px;">${cmEsc(t)}</li>`).join('')}</ul>
-        </div>` : ''}
-        ${r.notes ? `<div style="background:#f8fafc;border-radius:8px;padding:14px;border:1px solid #e2e8f0;">
-            <div style="font-weight:700;font-size:11.5px;color:#9ca3af;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px;">Notes</div>
-            <div style="font-size:13.5px;color:#374151;line-height:1.6;">${cmEsc(r.notes)}</div>
-        </div>` : ''}`;
+        ${infoChips ? `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;">${infoChips}</div>` : ''}
+        <div style="font-weight:700;font-size:13px;color:#1f2937;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;">Work Breakdown</div>
+        ${breakdown}`;
+
     if (footerEl) footerEl.innerHTML = r.approvedBy
         ? `<div style="font-size:12.5px;color:#059669;">✓ Validated and approved by ${cmEsc(r.approvedBy)} — visible to client</div>`
         : `<div style="font-size:12.5px;color:#9ca3af;">Pending admin validation before final approval.</div>`;
@@ -1141,7 +1308,85 @@ const MS_SC = {
     pending   : { label:'Pending',     dot:'#9ca3af', bg:'#f3f4f6', color:'#6b7280', barColor:'#d1d5db' }
 };
 
-function cmPopulateMilestones() {
+function cmPopulateMilestones() { cmRenderMilestones(); }
+
+// ── Milestone Progress (redesign: completion hero + vertical timeline) ──
+function cmRenderMilestones() {
+    const host = document.getElementById('section-milestones');
+    if (!host) return;
+    const card = 'background:#fff;border-radius:20px;padding:30px 32px;box-shadow:0 1px 3px rgba(20,25,40,0.06);';
+
+    if (!cmProjectData) {
+        host.innerHTML = `<div style="${card}text-align:center;color:#aeb4c2;padding:60px 20px;">No project assigned yet.</div>`;
+        return;
+    }
+
+    const ms = (cmMilestones || []).slice().sort((a,b) => (Number(a.order)||0) - (Number(b.order)||0));
+    const total     = ms.length;
+    const completed = ms.filter(m => m.status === 'completed').length;
+    const inProg    = ms.filter(m => m.status === 'in_progress').length;
+    const overall   = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    const mb = document.getElementById('milestone-active-badge');
+    if (mb) { mb.textContent = inProg; mb.style.display = inProg ? '' : 'none'; }
+
+    const SB = {
+        completed:   ['COMPLETE',    '#e7f5ed', '#3f9960'],
+        in_progress: ['IN PROGRESS', '#eef1fd', '#5b5bd6'],
+        pending:     ['PENDING',     '#f0f1f5', '#8b91a0']
+    };
+
+    const rows = ms.map((m, i) => {
+        const st = m.status || 'pending';
+        const last = i === ms.length - 1;
+        const connector = last ? '' : `<div style="width:2px;flex:1;min-height:46px;background:${st==='completed'?'#e7f5ed':'#eceef3'};"></div>`;
+        const dot = st === 'completed'
+            ? `<div style="width:30px;height:30px;border-radius:50%;background:#3f9960;display:flex;align-items:center;justify-content:center;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>`
+            : st === 'in_progress'
+            ? `<div style="width:30px;height:30px;border-radius:50%;background:#5b5bd6;border:4px solid #d7d7f6;box-sizing:border-box;"></div>`
+            : `<div style="width:30px;height:30px;border-radius:50%;background:#eef0f4;border:2px solid #dfe2ea;box-sizing:border-box;"></div>`;
+        const [lbl, bg, fg] = SB[st] || SB.pending;
+        const muted = st === 'pending';
+        const desc = m.description || (m.plannedDate ? 'Planned ' + cmEsc(m.plannedDate) : '');
+        const weightBar = (st === 'in_progress' && m.percentage)
+            ? `<div style="height:6px;background:#eceef3;border-radius:4px;overflow:hidden;margin-top:10px;max-width:340px;"><div style="width:${Math.min(100, Number(m.percentage)||0)}%;height:100%;background:#5b5bd6;"></div></div>` : '';
+        return `
+        <div style="display:flex;gap:16px;align-items:flex-start;">
+            <div style="display:flex;flex-direction:column;align-items:center;">${dot}${connector}</div>
+            <div style="padding-bottom:${last?'0':'30px'};flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span style="font-size:16px;font-weight:800;color:${muted?'#8b91a0':'#1a1d24'};">${cmEsc(m.name || 'Milestone')}</span>
+                    <span style="font-size:11px;font-weight:700;background:${bg};color:${fg};padding:3px 10px;border-radius:20px;">${lbl}</span>
+                </div>
+                ${desc ? `<div style="font-size:13px;color:${muted?'#aeb4c2':'#8b91a0'};margin-top:4px;">${desc}</div>` : ''}
+                ${weightBar}
+            </div>
+        </div>`;
+    }).join('');
+
+    const timeline = ms.length
+        ? `<div style="${card}">${rows}</div>`
+        : `<div style="${card}text-align:center;color:#aeb4c2;padding:48px 20px;">No milestones defined yet.</div>`;
+
+    host.innerHTML = `
+    <div style="margin-bottom:24px;">
+        <div style="font-size:28px;font-weight:800;letter-spacing:-0.02em;color:#1a1d24;">Milestone Progress</div>
+        <div style="font-size:14px;color:#8b91a0;margin-top:3px;">The project broken into defined milestones. Each is validated by DACS before it's marked complete.</div>
+    </div>
+    <div style="background:#5b5bd6;border-radius:20px;padding:26px 30px;color:#fff;box-shadow:0 18px 36px -18px rgba(91,91,214,0.5);margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:30px;flex-wrap:wrap;">
+        <div>
+            <div style="font-size:13px;opacity:0.85;font-weight:600;">Overall completion</div>
+            <div style="font-size:40px;font-weight:800;letter-spacing:-0.02em;margin-top:4px;">${overall}%</div>
+        </div>
+        <div style="flex:1;min-width:240px;max-width:520px;">
+            <div style="height:10px;background:rgba(255,255,255,0.22);border-radius:6px;overflow:hidden;"><div style="width:${overall}%;height:100%;background:#fff;border-radius:6px;"></div></div>
+            <div style="font-size:12.5px;opacity:0.85;margin-top:9px;">${completed} of ${total} milestone${total===1?'':'s'} complete</div>
+        </div>
+    </div>
+    ${timeline}`;
+}
+
+function _cmMilestonesLegacy() {
     const panel = document.getElementById('milestones-panel');
     const empty  = document.getElementById('milestone-empty');
     const stats  = document.getElementById('milestone-stats-row');
@@ -1492,12 +1737,7 @@ let _plBuyItemData = null;
 let _plReceiptFile = null;
 
 async function cmPopulateProcurementList() {
-    if (!cmProjectData) {
-        const tbody = document.getElementById('pl-tbody');
-        if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">No project assigned yet.</td></tr>';
-        return;
-    }
-
+    if (!cmProjectData) { cmRenderMaterials(); return; }
     try {
         const snap = await db.collection('constructionProjects')
             .doc(cmProjectData.id)
@@ -1505,13 +1745,87 @@ async function cmPopulateProcurementList() {
             .orderBy('createdAt', 'desc')
             .get();
         _plItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        plRenderTable(_plItems);
-        plUpdateSummary(_plItems);
+        cmRenderMaterials();
+        // Refresh the Overview "To purchase" card if it's the active screen.
+        if (document.getElementById('section-kpi-dashboard')?.classList.contains('active')) cmRenderOverview();
     } catch (err) {
         console.warn('Procurement list load:', err.message);
-        const tbody = document.getElementById('pl-tbody');
-        if (tbody) tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">Unable to load items.</td></tr>';
+        cmRenderMaterials();
     }
+}
+
+// ── Materials Procurement (redesign: filter pills + items table) ──
+let _cmMatFilter = 'all';
+window.cmMatSetFilter = function(f) { _cmMatFilter = f; cmRenderMaterials(); };
+
+function _cmMatClass(it) {
+    if (it.boughtBy === 'client'  || it.status === 'Bought by Client'  || it.status === 'Assigned to Client') return 'client';
+    if (it.boughtBy === 'company' || it.status === 'Bought by Company' || it.status === 'Assigned to Admin')  return 'company';
+    return 'pending';
+}
+
+function cmRenderMaterials() {
+    const host = document.getElementById('section-procurement-list');
+    if (!host) return;
+    const card = 'background:#fff;border-radius:20px;box-shadow:0 1px 3px rgba(20,25,40,0.06);';
+
+    const items = _plItems || [];
+    const nAll     = items.length;
+    const nPending = items.filter(i => _cmMatClass(i) === 'pending').length;
+    const nClient  = items.filter(i => _cmMatClass(i) === 'client').length;
+    const nCompany = items.filter(i => _cmMatClass(i) === 'company').length;
+
+    const pb = document.getElementById('procurement-pending-badge');
+    if (pb) { pb.textContent = nPending; pb.style.display = nPending ? '' : 'none'; }
+
+    const shown = items.filter(i => _cmMatFilter === 'all' || _cmMatClass(i) === _cmMatFilter);
+
+    const pill = (key, label, n) => {
+        const on = _cmMatFilter === key;
+        return `<span onclick="cmMatSetFilter('${key}')" style="font-size:13px;font-weight:${on?'700':'600'};background:${on?'#5b5bd6':'#fff'};color:${on?'#fff':'#6b7180'};padding:8px 16px;border-radius:20px;cursor:pointer;${on?'':'box-shadow:0 1px 3px rgba(20,25,40,0.05);'}">${label} · ${n}</span>`;
+    };
+
+    const badge = it => {
+        const c = _cmMatClass(it);
+        if (c === 'client')  return '<span style="font-size:11px;font-weight:700;background:#e7f5ed;color:#3f9960;padding:3px 10px;border-radius:20px;">BY CLIENT</span>';
+        if (c === 'company') return '<span style="font-size:11px;font-weight:700;background:#eef1fd;color:#5b5bd6;padding:3px 10px;border-radius:20px;">BY COMPANY</span>';
+        return '<span style="font-size:11px;font-weight:700;background:#fdf3e3;color:#b4892a;padding:3px 10px;border-radius:20px;">PENDING</span>';
+    };
+    const receipt = it => it.receiptUrl
+        ? `<svg onclick="window.open('${cmEsc(it.receiptUrl)}','_blank')" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#5b5bd6" stroke-width="1.8" style="cursor:pointer;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`
+        : '<span style="color:#c4c9d4;">—</span>';
+
+    const rows = shown.map(it => `
+        <tr style="border-top:1px solid #f0f1f5;">
+            <td style="padding:15px 0;font-weight:600;">${cmEsc(it.item || it.name || 'Item')}</td>
+            <td style="padding:15px 0;text-align:right;color:#6b7180;">${cmEsc(it.qty || '—')}</td>
+            <td style="padding:15px 0;text-align:right;color:#6b7180;">${it.estPrice ? cmFmt(it.estPrice) : '—'}</td>
+            <td style="padding:15px 0;text-align:right;${it.actualAmount?'font-weight:700;':'color:#c4c9d4;'}">${it.actualAmount ? cmFmt(it.actualAmount) : '—'}</td>
+            <td style="padding:15px 0;text-align:center;">${receipt(it)}</td>
+            <td style="padding:15px 0;text-align:right;">${badge(it)}</td>
+        </tr>`).join('') || `<tr><td colspan="6" style="padding:20px 0;color:#aeb4c2;font-size:13px;text-align:center;">No items${_cmMatFilter!=='all'?' in this filter':' yet'}.</td></tr>`;
+
+    host.innerHTML = `
+    <div style="margin-bottom:24px;">
+        <div style="font-size:28px;font-weight:800;letter-spacing:-0.02em;color:#1a1d24;">Materials Procurement</div>
+        <div style="font-size:14px;color:#8b91a0;margin-top:3px;">Items to purchase. Each is marked bought by client or company, with the actual amount and receipt for transparency.</div>
+    </div>
+    <div style="display:flex;gap:9px;margin-bottom:18px;flex-wrap:wrap;">
+        ${pill('all','All',nAll)}${pill('pending','Pending',nPending)}${pill('client','Bought by client',nClient)}${pill('company','Bought by company',nCompany)}
+    </div>
+    <div style="${card}padding:8px 24px;">
+        <table style="width:100%;border-collapse:collapse;">
+            <thead><tr style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#aeb4c2;font-weight:700;">
+                <th style="text-align:left;padding:14px 0;">Item</th>
+                <th style="text-align:right;padding:14px 0;">Qty</th>
+                <th style="text-align:right;padding:14px 0;">Est. price</th>
+                <th style="text-align:right;padding:14px 0;">Actual paid</th>
+                <th style="text-align:center;padding:14px 0;">Receipt</th>
+                <th style="text-align:right;padding:14px 0;">Status</th>
+            </tr></thead>
+            <tbody style="font-size:14px;color:#1a1d24;">${rows}</tbody>
+        </table>
+    </div>`;
 }
 
 function plUpdateSummary(items) {
@@ -1861,8 +2175,8 @@ window.filterWeeklyBills = function() {
             <td>${cmFmt(materials)}</td>
             <td>${cmFmt(otherCosts)}</td>
             <td><strong>${cmFmt(directTotal)}</strong></td>
-            <td style="color:#7c3aed;font-weight:600;">${cmFmt(mgmtFee)}</td>
-            <td><strong style="font-size:15px;">${cmFmt(totalDue)}</strong></td>
+            <td class="cm-client-only" style="color:#7c3aed;font-weight:600;">${cmFmt(mgmtFee)}</td>
+            <td class="cm-client-only"><strong style="font-size:15px;">${cmFmt(totalDue)}</strong></td>
             <td><span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:700;background:${ss.bg};color:${ss.color};">${cmEsc(b.status)}</span></td>
             <td><button onclick="openWBDetail(${JSON.stringify(b).replace(/"/g,'&quot;').replace(/'/g,'&#39;')})" style="padding:5px 12px;border-radius:7px;border:1.5px solid #d1fae5;background:#f0fdf4;color:#059669;font-size:12px;font-weight:600;cursor:pointer;">View</button></td>
         </tr>`;
@@ -2009,9 +2323,47 @@ window.printWeeklyReport = function() {
 // KPI PERFORMANCE INDICATORS
 // ══════════════════════════════════════════════════════════════════
 
+// ── BOQ progress helpers (mirror the admin BOQ module's math) ──────
+function cmTsMillis(ts) {
+    if (!ts) return 0;
+    if (typeof ts.toMillis === 'function') return ts.toMillis();
+    if (typeof ts.toDate === 'function')   return ts.toDate().getTime();
+    const t = new Date(ts).getTime();
+    return isNaN(t) ? 0 : t;
+}
+function cmBoqNum(v) { return Number(String(v == null ? '' : v).replace(/,/g, '')) || 0; }
+function cmBoqLiTotal(li) {
+    const qty = cmBoqNum(li.qty);
+    const mat = li.materialOverride ? 0 : cmBoqNum(li.materialRate);
+    const lab = li.laborOverride    ? 0 : cmBoqNum(li.laborRate);
+    return qty * (mat + lab);
+}
+function cmBoqGrand(costItems) {
+    return (costItems || []).reduce((s, ci) =>
+        s + (ci.subItems || []).reduce((s2, si) =>
+            s2 + (si.lineItems || []).reduce((s3, li) => s3 + cmBoqLiTotal(li), 0), 0), 0);
+}
+function cmBoqAcc(costItems) {
+    return (costItems || []).reduce((s, ci) =>
+        s + (ci.subItems || []).reduce((s2, si) =>
+            s2 + (si.lineItems || []).reduce((s3, li) => s3 + cmBoqLiTotal(li) * (cmBoqNum(li.percentCompletion) / 100), 0), 0), 0);
+}
+function cmBoqPct(doc) {
+    const grand = cmBoqGrand(doc.costItems);
+    if (grand <= 0) return 0;
+    return Math.round((cmBoqAcc(doc.costItems) / grand) * 100);
+}
+function cmBoqCiSub(ci) { return (ci.subItems || []).reduce((s, si) => s + (si.lineItems || []).reduce((s2, li) => s2 + cmBoqLiTotal(li), 0), 0); }
+function cmBoqCiAcc(ci) { return (ci.subItems || []).reduce((s, si) => s + (si.lineItems || []).reduce((s2, li) => s2 + cmBoqLiTotal(li) * (cmBoqNum(li.percentCompletion) / 100), 0), 0); }
+
 function cmComputeKPIs() {
     const budget       = Number(cmProjectData?.budget) || 0;
-    const totalExpenses= cmWeeklyBills.reduce((s, b) => s + (b.totalDue || 0), 0);
+    // Partners see direct costs only (no 15% mgmt fee); clients see the
+    // fee-inclusive total due.
+    const totalExpenses= cmWeeklyBills.reduce((s, b) => {
+        const direct = b.directCostTotal || ((b.labor||0) + (b.materials||0) + (b.delivery||0) + (b.consumables||0) + (b.other||0));
+        return s + (cmIsPartner() ? direct : (b.totalDue || direct));
+    }, 0);
 
     // 1. Project Completion Rate
     const totalMs     = cmMilestones.length;
@@ -2022,12 +2374,19 @@ function cmComputeKPIs() {
     const budgetUtilization = budget > 0 ? Math.round((totalExpenses / budget) * 100) : null;
 
     // 3. Schedule Performance Indicator
+    // Actual progress = the latest APPROVED accomplishment report's overall %
+    // (BOQ-style: accomplishment ÷ grand total). The admin caches that as
+    // progressPercentage on save; if missing we recompute it from costItems.
     const approvedReports = cmAccomplishmentReports
-        .filter(r => r.status === 'approved' && r.progressPercentage != null)
-        .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    const actualProgress  = approvedReports[0]?.progressPercentage ?? 0;
+        .filter(r => r.status === 'approved')
+        .sort((a, b) => (cmTsMillis(b.updatedAt) - cmTsMillis(a.updatedAt)));
+    const latestReport    = approvedReports[0];
+    const actualProgress  = latestReport
+        ? (latestReport.progressPercentage != null ? latestReport.progressPercentage : cmBoqPct(latestReport))
+        : 0;
     const plannedProgress = cmEstimatePlannedProgress();
-    const spi = plannedProgress > 0 ? Math.round((actualProgress / plannedProgress) * 100) : null;
+    const spi = (latestReport && plannedProgress > 0)
+        ? Math.round((actualProgress / plannedProgress) * 100) : null;
 
     // 4. Cost Variance
     const costVariance = budget > 0 ? budget - totalExpenses : null;
@@ -2175,10 +2534,340 @@ function cmPopulateKPIDashboard() {
     // Keep sidebar folder name in sync after project data loads
     const folderNameEl = document.getElementById('sidebar-folder-name');
     if (folderNameEl) folderNameEl.textContent = cmProjectData.projectName || 'My Project';
-    cmRenderProjectFolderHeader();
-    cmRenderCostChart();
-    cmRenderFinancialKPIs();
-    cmRenderWeeklyPreview();
+    cmRenderOverview();
+}
+
+// ── Overview (redesign: bill hero + revolving fund + to-purchase + cadence + recent weeks) ──
+function cmWeekRange(end) {
+    if (!end) return '—';
+    const e = new Date(end);
+    if (isNaN(e.getTime())) return cmEsc(String(end));
+    const s = new Date(e); s.setDate(s.getDate() - 6);
+    const M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return s.getMonth() === e.getMonth()
+        ? `${M[s.getMonth()]} ${s.getDate()}–${e.getDate()}`
+        : `${M[s.getMonth()]} ${s.getDate()}–${M[e.getMonth()]} ${e.getDate()}`;
+}
+
+function cmRenderOverview() {
+    const host = document.getElementById('kpi-project-folder');
+    if (!host) return;
+
+    const bills  = cmWeeklyBills || [];
+    const latest = bills[0] || null;
+
+    const first = (cmCurrentProfile && (cmCurrentProfile.firstName ||
+        (cmCurrentProfile.fullName || '').split(' ')[0])) || 'there';
+
+    const partner = cmIsPartner();   // monitoring/view-only: no 15% fee, no payments
+
+    // Latest bill figures
+    const labor     = latest ? (latest.labor || 0) : 0;
+    const materials = latest ? ((latest.materials||0)+(latest.delivery||0)+(latest.consumables||0)+(latest.other||0)) : 0;
+    const direct    = latest ? (latest.directCostTotal || (labor + materials)) : 0;
+    const fee       = latest ? (latest.managementFee || direct * (latest.managementFeeRate || 0.15)) : 0;
+    const total     = latest ? (latest.totalDue || (direct + fee)) : 0;
+    const range     = latest ? cmWeekRange(latest.weekEndingDate) : '';
+    const status    = latest ? (latest.status || 'Submitted') : '';
+    const duePill   = status === 'Paid' ? 'PAID' : status === 'Overdue' ? 'OVERDUE' : 'DUE';
+
+    // Revolving fund
+    const rf      = cmRevolvingFund;
+    const rfTotal = rf ? (rf.fundAmount || 0) : 0;
+    const rfSpent = rf ? (rf.totalSpent || 0) : 0;
+    const rfBal   = rf ? (rf.currentBalance !== undefined ? rf.currentBalance : rfTotal - rfSpent) : 0;
+    const rfPct   = rfTotal > 0 ? Math.max(0, Math.min(100, Math.round((rfBal / rfTotal) * 100))) : 0;
+
+    // To purchase (unresolved procurement)
+    const pend = (_plItems || []).filter(i =>
+        ['Pending','Assigned to Client','Assigned to Admin'].includes(i.status) ||
+        (!i.boughtBy && !['Bought by Company','Bought by Client'].includes(i.status)));
+    const pill = it => {
+        if (it.boughtBy === 'client' || it.status === 'Assigned to Client') return ['CLIENT', '#3f9960'];
+        if (it.boughtBy === 'company' || it.status === 'Assigned to Admin')  return ['COMPANY', '#5b5bd6'];
+        return ['PENDING', '#b4892a'];
+    };
+    const buyRows = pend.slice(0, 4).map(it => {
+        const [lbl, col] = pill(it);
+        return `<div style="display:flex;justify-content:space-between;align-items:center;">
+            <span>${cmEsc(it.item || it.name || 'Item')}</span>
+            <span style="font-size:11px;font-weight:700;color:${col};">${lbl}</span>
+        </div>`;
+    }).join('') || '<div style="font-size:13px;color:#aeb4c2;">Nothing pending — all materials sorted.</div>';
+
+    // Cadence (derived from latest bill status)
+    const paid = status === 'Paid';
+    const dot = (c, ring) => `<div style="width:11px;height:11px;border-radius:50%;background:${c};${ring?'border:3px solid #d7d7f6;':''}"></div>`;
+    const conn = `<div style="width:2px;height:32px;background:#eceef3;"></div>`;
+    const cadence = latest ? `
+        <div style="display:flex;gap:14px;align-items:flex-start;">
+            <div style="display:flex;flex-direction:column;align-items:center;">${dot('#5b5bd6')}${conn}</div>
+            <div style="margin-top:-3px;"><div style="font-size:13.5px;font-weight:700;">Weekly summary submitted</div><div style="font-size:12px;color:#8b91a0;">Week of ${cmEsc(range)}</div></div>
+        </div>
+        <div style="display:flex;gap:14px;align-items:flex-start;">
+            <div style="display:flex;flex-direction:column;align-items:center;">${dot(paid?'#5b5bd6':'#5b5bd6', !paid)}${conn}</div>
+            <div style="margin-top:-3px;"><div style="font-size:13.5px;font-weight:700;">Payment request ${paid?'':'<span style="color:#5b5bd6;">(current)</span>'}</div><div style="font-size:12px;color:#8b91a0;">${cmFmt(total)} due</div></div>
+        </div>
+        <div style="display:flex;gap:14px;align-items:flex-start;">
+            <div style="display:flex;flex-direction:column;align-items:center;">${dot(paid?'#5b5bd6':'#dfe2ea')}</div>
+            <div style="margin-top:-3px;"><div style="font-size:13.5px;font-weight:700;color:${paid?'#1a1d24':'#aeb4c2'};">Paid + fund replenished</div><div style="font-size:12px;color:${paid?'#8b91a0':'#c4c9d4'};">${paid?'Settled':'Awaiting client'}</div></div>
+        </div>` : '<div style="font-size:13px;color:#aeb4c2;">No billing activity yet.</div>';
+
+    // Recent weeks (partner = direct totals, no payment status)
+    const recent = bills.slice(0, 4).map(b => {
+        const st = b.status === 'Paid' ? ['PAID','#3f9960','#e7f5ed']
+                 : b.status === 'Overdue' ? ['OVERDUE','#b91c1c','#fef2f2']
+                 : ['SUBMITTED','#5b5bd6','#eef1fd'];
+        const bDirect = b.directCostTotal || ((b.labor||0)+(b.materials||0)+(b.delivery||0)+(b.consumables||0)+(b.other||0));
+        const amt = partner ? bDirect : (b.totalDue || 0);
+        return `<tr style="border-top:1px solid #f0f1f5;">
+            <td style="padding:13px 0;">${cmEsc(cmWeekRange(b.weekEndingDate))}</td>
+            <td style="padding:13px 0;text-align:right;font-weight:700;">${cmFmt(amt)}</td>
+            ${partner ? '' : `<td style="padding:13px 0;text-align:right;"><span style="font-size:11px;font-weight:700;background:${st[2]};color:${st[1]};padding:3px 10px;border-radius:20px;">${st[0]}</span></td>`}
+        </tr>`;
+    }).join('') || `<tr><td colspan="${partner?2:3}" style="padding:18px 0;color:#aeb4c2;font-size:13px;">No weekly records yet.</td></tr>`;
+
+    const card = 'background:#fff;border-radius:20px;padding:24px;box-shadow:0 1px 3px rgba(20,25,40,0.06);';
+
+    host.innerHTML = `
+    <div style="margin-bottom:26px;">
+        <div style="font-size:28px;font-weight:800;letter-spacing:-0.02em;color:#1a1d24;">Overview</div>
+        <div style="font-size:14px;color:#8b91a0;margin-top:3px;">Hello, ${cmEsc(first)}. Here's where the project stands today.</div>
+    </div>
+
+    <div class="cm-ov-row1" style="display:grid;grid-template-columns:1.55fr 1fr;gap:24px;">
+        <!-- Hero bill -->
+        <div style="background:#5b5bd6;border-radius:20px;padding:22px 24px;color:#fff;box-shadow:0 18px 36px -16px rgba(91,91,214,0.5);">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span style="font-size:12.5px;font-weight:600;opacity:0.88;">${partner ? "This week's cost" : "This week's bill"}</span>
+                ${(latest && !partner) ? `<span style="font-size:10.5px;font-weight:700;background:rgba(255,255,255,0.2);padding:4px 11px;border-radius:20px;">${duePill}</span>` : ''}
+            </div>
+            <div style="font-size:40px;font-weight:800;letter-spacing:-0.02em;margin-top:10px;">${cmFmt(partner ? direct : total)}</div>
+            <div style="font-size:12.5px;opacity:0.85;margin-top:4px;">${latest ? 'Week of ' + cmEsc(range) + (partner ? ' · labor + materials' : ' · direct costs + 15% fee') : 'No bill submitted yet'}</div>
+            <div style="display:flex;gap:24px;margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.18);">
+                <div><div style="font-size:11px;opacity:0.78;">Labor</div><div style="font-size:15px;font-weight:700;margin-top:2px;">${cmFmt(labor)}</div></div>
+                <div><div style="font-size:11px;opacity:0.78;">Materials</div><div style="font-size:15px;font-weight:700;margin-top:2px;">${cmFmt(materials)}</div></div>
+                ${partner ? '' : `<div><div style="font-size:11px;opacity:0.78;">Fee · 15%</div><div style="font-size:15px;font-weight:700;margin-top:2px;">${cmFmt(fee)}</div></div>`}
+            </div>
+            <div style="display:flex;gap:10px;margin-top:18px;">
+                <button onclick="showSection('weekly-billing')" style="flex:1;border:none;background:#fff;color:#5b5bd6;font-size:13.5px;font-weight:700;padding:12px;border-radius:12px;cursor:pointer;">View Weekly Summary</button>
+                ${partner ? '' : `<button onclick="showSection('billing')" style="border:1px solid rgba(255,255,255,0.4);background:none;color:#fff;font-size:13.5px;font-weight:700;padding:12px 20px;border-radius:12px;cursor:pointer;">Payments</button>`}
+            </div>
+        </div>
+        <!-- Right stack -->
+        <div style="display:flex;flex-direction:column;gap:24px;">
+            ${partner ? '' : `<div style="${card}">
+                <div style="font-size:13px;color:#8b91a0;font-weight:600;">Revolving fund</div>
+                <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:#1a1d24;">${cmFmt(rfBal)}</div>
+                <div style="height:6px;background:#eceef3;border-radius:3px;margin-top:12px;overflow:hidden;"><div style="width:${rfPct}%;height:100%;background:#5b5bd6;"></div></div>
+                <div style="font-size:12px;color:#8b91a0;margin-top:9px;">${cmFmt(rfSpent)} spent of ${cmFmt(rfTotal)}</div>
+            </div>`}
+            <div style="${card}">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <span style="font-size:13px;color:#8b91a0;font-weight:600;">To purchase</span>
+                    <span style="font-size:11px;font-weight:700;background:#eeeefb;color:#5b5bd6;padding:3px 10px;border-radius:20px;">${pend.length} ITEM${pend.length===1?'':'S'}</span>
+                </div>
+                <div style="margin-top:14px;display:flex;flex-direction:column;gap:12px;font-size:13.5px;color:#1a1d24;">${buyRows}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="cm-ov-row2" style="display:grid;grid-template-columns:${partner ? '1fr' : '1fr 1.2fr'};gap:24px;margin-top:24px;">
+        ${partner ? '' : `<div style="${card}">
+            <div style="font-size:14px;font-weight:700;margin-bottom:18px;color:#1a1d24;">This week's cadence</div>
+            <div style="display:flex;flex-direction:column;">${cadence}</div>
+        </div>`}
+        <div style="${card}">
+            <div style="font-size:14px;font-weight:700;margin-bottom:6px;color:#1a1d24;">Recent weeks</div>
+            <table style="width:100%;border-collapse:collapse;">
+                <thead><tr style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#aeb4c2;font-weight:700;">
+                    <th style="text-align:left;padding:10px 0;">Week</th>
+                    <th style="text-align:right;padding:10px 0;">Total</th>
+                    ${partner ? '' : '<th style="text-align:right;padding:10px 0;">Status</th>'}
+                </tr></thead>
+                <tbody style="font-size:14px;color:#1a1d24;">${recent}</tbody>
+            </table>
+        </div>
+    </div>`;
+}
+
+// ── Revolving Fund (redesign: 3 KPI cards + expense ledger + replenishment) ──
+async function cmRenderRevolving() {
+    const host = document.getElementById('section-revolving-fund');
+    if (!host) return;
+    const card = 'background:#fff;border-radius:20px;padding:24px;box-shadow:0 1px 3px rgba(20,25,40,0.06);';
+
+    const rf      = cmRevolvingFund;
+    const initial = rf ? (rf.fundAmount || 0) : 0;
+    const spent   = rf ? (rf.totalSpent || 0) : 0;
+    const balance = rf ? (rf.currentBalance !== undefined ? rf.currentBalance : initial - spent) : 0;
+    const pct     = initial > 0 ? Math.max(0, Math.min(100, Math.round((balance / initial) * 100))) : 0;
+    const topup   = Math.max(0, initial - balance);
+
+    // Expense ledger (with running balance, newest first)
+    let ledger = '<tr><td colspan="4" style="padding:18px 0;color:#aeb4c2;font-size:13px;">No expenses recorded yet.</td></tr>';
+    if (cmProjectData) {
+        try {
+            const snap = await db.collection('constructionProjects').doc(cmProjectData.id)
+                .collection('revolvingFundExpenses').orderBy('date','desc').get();
+            const exps = snap.docs.map(d => d.data());
+            if (exps.length) {
+                let running = balance;
+                ledger = exps.map(e => {
+                    const bal = running;
+                    running += (e.amount || 0);
+                    return `<tr style="border-top:1px solid #f0f1f5;">
+                        <td style="padding:13px 0;color:#6b7180;">${cmEsc(e.date || '—')}</td>
+                        <td style="padding:13px 0;font-weight:600;">${cmEsc(e.item || e.description || '—')}</td>
+                        <td style="padding:13px 0;text-align:right;color:#b4892a;font-weight:700;">−${cmFmt(e.amount || 0)}</td>
+                        <td style="padding:13px 0;text-align:right;">${cmFmt(bal)}</td>
+                    </tr>`;
+                }).join('');
+            }
+        } catch (e) { /* keep empty ledger */ }
+    }
+
+    host.innerHTML = `
+    <div style="margin-bottom:24px;">
+        <div style="font-size:28px;font-weight:800;letter-spacing:-0.02em;color:#1a1d24;">Revolving Fund</div>
+        <div style="font-size:14px;color:#8b91a0;margin-top:3px;">Petty cash for minor and urgent site purchases — replenished every Friday with the weekly payment.</div>
+    </div>
+
+    <div class="cm-rf-kpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;">
+        <div style="${card}">
+            <div style="font-size:13px;color:#8b91a0;font-weight:600;">Initial fund</div>
+            <div style="font-size:28px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:#1a1d24;">${cmFmt(initial)}</div>
+        </div>
+        <div style="${card}">
+            <div style="font-size:13px;color:#8b91a0;font-weight:600;">Total spent</div>
+            <div style="font-size:28px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:#b4892a;">${cmFmt(spent)}</div>
+        </div>
+        <div style="background:#5b5bd6;border-radius:20px;padding:24px;box-shadow:0 12px 26px -14px rgba(91,91,214,0.5);color:#fff;">
+            <div style="font-size:13px;opacity:0.85;font-weight:600;">Remaining balance</div>
+            <div style="font-size:28px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;">${cmFmt(balance)}</div>
+        </div>
+    </div>
+
+    <div class="cm-rf-row" style="display:grid;grid-template-columns:1.5fr 1fr;gap:24px;margin-top:24px;">
+        <div style="${card.replace('padding:24px','padding:24px 24px 8px')}">
+            <div style="font-size:14px;font-weight:800;margin-bottom:6px;color:#1a1d24;">Expense ledger</div>
+            <table style="width:100%;border-collapse:collapse;">
+                <thead><tr style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#aeb4c2;font-weight:700;">
+                    <th style="text-align:left;padding:11px 0;">Date</th>
+                    <th style="text-align:left;padding:11px 0;">Description</th>
+                    <th style="text-align:right;padding:11px 0;">Amount</th>
+                    <th style="text-align:right;padding:11px 0;">Balance</th>
+                </tr></thead>
+                <tbody style="font-size:14px;color:#1a1d24;">${ledger}</tbody>
+            </table>
+        </div>
+        <div style="${card}height:fit-content;">
+            <div style="font-size:14px;font-weight:800;margin-bottom:14px;color:#1a1d24;">Replenishment</div>
+            <div style="background:#f7f8fb;border-radius:15px;padding:18px;">
+                <div style="font-size:12.5px;color:#8b91a0;">This Friday's top-up</div>
+                <div style="font-size:26px;font-weight:800;margin-top:4px;letter-spacing:-0.01em;color:#1a1d24;">${cmFmt(topup)}</div>
+                <div style="font-size:12px;color:#8b91a0;margin-top:6px;line-height:1.5;">Restores the fund back to ${cmFmt(initial)}, billed alongside the weekly payment.</div>
+            </div>
+            <div style="height:7px;background:#eceef3;border-radius:4px;margin-top:18px;overflow:hidden;"><div style="width:${pct}%;height:100%;background:#5b5bd6;"></div></div>
+            <div style="font-size:12px;color:#8b91a0;margin-top:8px;">${pct}% of fund remaining</div>
+        </div>
+    </div>`;
+}
+
+// ── Weekly Summary (redesign: read-only current week + computed + submitted weeks) ──
+function cmRenderWeekly() {
+    const host = document.getElementById('section-weekly-billing');
+    if (!host) return;
+    const card = 'background:#fff;border-radius:20px;padding:24px;box-shadow:0 1px 3px rgba(20,25,40,0.06);';
+
+    if (!cmProjectData) {
+        host.innerHTML = `<div style="${card}text-align:center;color:#aeb4c2;padding:60px 20px;">No project assigned yet.</div>`;
+        return;
+    }
+
+    const bills  = cmWeeklyBills || [];
+    const latest = bills[0] || null;
+    const labor     = latest ? (latest.labor || 0) : 0;
+    const materials = latest ? ((latest.materials||0)+(latest.delivery||0)+(latest.consumables||0)+(latest.other||0)) : 0;
+    const direct    = latest ? (latest.directCostTotal || (labor + materials)) : 0;
+    const fee       = latest ? (latest.managementFee || direct * (latest.managementFeeRate || 0.15)) : 0;
+    const total     = latest ? (latest.totalDue || (direct + fee)) : 0;
+    const range     = latest ? cmWeekRange(latest.weekEndingDate) : '—';
+    const status    = latest ? (latest.status || 'Submitted') : '';
+    const partner   = cmIsPartner();   // monitoring/view-only: no 15% fee
+
+    const rows = bills.map(b => {
+        const lab = b.labor || 0;
+        const mat = (b.materials||0)+(b.delivery||0)+(b.consumables||0)+(b.other||0);
+        const dir = b.directCostTotal || (lab + mat);
+        const f   = b.managementFee || dir * (b.managementFeeRate || 0.15);
+        const t   = b.totalDue || (dir + f);
+        const st  = b.status === 'Paid' ? ['PAID','#3f9960','#e7f5ed']
+                  : b.status === 'Overdue' ? ['OVERDUE','#b91c1c','#fef2f2']
+                  : ['DUE','#5b5bd6','#eef1fd'];
+        return `<tr style="border-top:1px solid #f0f1f5;">
+            <td style="padding:14px 0;font-weight:600;">${cmEsc(cmWeekRange(b.weekEndingDate))}</td>
+            <td style="padding:14px 0;text-align:right;">${cmFmt(lab)}</td>
+            <td style="padding:14px 0;text-align:right;">${cmFmt(mat)}</td>
+            ${partner ? '' : `<td style="padding:14px 0;text-align:right;color:#5b5bd6;">${cmFmt(f)}</td>`}
+            <td style="padding:14px 0;text-align:right;font-weight:700;">${cmFmt(partner ? dir : t)}</td>
+            <td style="padding:14px 0;text-align:right;"><span style="font-size:11px;font-weight:700;background:${st[2]};color:${st[1]};padding:3px 10px;border-radius:20px;">${st[0]}</span></td>
+        </tr>`;
+    }).join('') || `<tr><td colspan="${partner?5:6}" style="padding:18px 0;color:#aeb4c2;font-size:13px;">No weekly records yet.</td></tr>`;
+
+    host.innerHTML = `
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:26px;flex-wrap:wrap;gap:14px;">
+        <div>
+            <div style="font-size:28px;font-weight:800;letter-spacing:-0.02em;color:#1a1d24;">Weekly Summary</div>
+            <div style="font-size:14px;color:#8b91a0;margin-top:3px;">${partner ? 'Total labor and materials recorded each week.' : 'Total labor and materials per week. The 15% management fee and grand total are computed automatically.'}</div>
+        </div>
+        ${latest ? `<div style="background:#fff;border-radius:12px;padding:9px 14px;display:flex;align-items:center;gap:9px;box-shadow:0 1px 3px rgba(20,25,40,0.06);font-size:13.5px;font-weight:700;color:#1a1d24;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5b5bd6" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Week of ${cmEsc(range)}
+        </div>` : ''}
+    </div>
+
+    <div class="cm-wk-row" style="display:grid;grid-template-columns:1.4fr 1fr;gap:24px;">
+        <div style="${card.replace('padding:24px','padding:28px')}">
+            <div style="font-size:15px;font-weight:800;color:#1a1d24;">This week</div>
+            <div style="font-size:12.5px;color:#8b91a0;margin-top:2px;margin-bottom:22px;">${latest ? 'Week of ' + cmEsc(range) : 'No bill submitted yet'}</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+                <div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">Total labor</div><div style="font-size:22px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${cmFmt(labor)}</div></div>
+                <div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">Total materials</div><div style="font-size:22px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${cmFmt(materials)}</div></div>
+            </div>
+            <div style="margin-top:22px;background:#f7f8fb;border-radius:15px;padding:20px 22px;">
+                <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;"><span style="color:#6b7180;">${partner ? 'Labor' : 'Direct costs'}</span><span style="font-weight:700;">${cmFmt(partner ? labor : direct)}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;border-top:1px solid #ebedf2;"><span style="color:#6b7180;">${partner ? 'Materials' : 'Management fee · 15%'}</span><span style="font-weight:700;${partner?'':'color:#5b5bd6;'}">${cmFmt(partner ? materials : fee)}</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:13px 0 4px;font-size:14px;border-top:1px solid #ebedf2;margin-top:4px;"><span style="font-weight:700;">${partner ? 'Total cost' : 'Grand total'}</span><span style="font-weight:800;font-size:24px;letter-spacing:-0.01em;">${cmFmt(partner ? direct : total)}</span></div>
+            </div>
+            ${latest ? `<div style="margin-top:18px;font-size:12.5px;color:#8b91a0;">Status: <strong style="color:${status==='Paid'?'#3f9960':status==='Overdue'?'#b91c1c':'#5b5bd6'};">${cmEsc(status)}</strong> · submitted every Friday</div>` : ''}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:20px;">
+            ${partner ? '' : `<div style="${card}">
+                <div style="font-size:14px;font-weight:800;margin-bottom:12px;color:#1a1d24;">How it's computed</div>
+                <div style="font-family:'Space Mono',monospace;font-size:12.5px;color:#6b7180;background:#f7f8fb;border-radius:12px;padding:14px;line-height:1.7;">(Labor + Materials)<br/>&nbsp;&nbsp;× 15% = <span style="color:#5b5bd6;">Fee</span><br/>Direct + Fee = <span style="font-weight:700;color:#1a1d24;">Total</span></div>
+            </div>`}
+            <div style="${card}">
+                <div style="font-size:14px;font-weight:800;margin-bottom:8px;color:#1a1d24;">Cost notice</div>
+                <div style="font-size:12.5px;color:#8b91a0;line-height:1.55;">Prices may vary with market conditions and material availability. All figures reflect actual recorded costs at billing time.</div>
+            </div>
+        </div>
+    </div>
+
+    <div style="${card.replace('padding:24px','padding:24px 24px 8px')}margin-top:24px;">
+        <div style="font-size:14px;font-weight:800;margin-bottom:6px;color:#1a1d24;">Submitted weeks</div>
+        <table style="width:100%;border-collapse:collapse;">
+            <thead><tr style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#aeb4c2;font-weight:700;">
+                <th style="text-align:left;padding:11px 0;">Week</th>
+                <th style="text-align:right;padding:11px 0;">Labor</th>
+                <th style="text-align:right;padding:11px 0;">Materials</th>
+                ${partner ? '' : '<th style="text-align:right;padding:11px 0;">Fee</th>'}
+                <th style="text-align:right;padding:11px 0;">Total</th>
+                <th style="text-align:right;padding:11px 0;">Status</th>
+            </tr></thead>
+            <tbody style="font-size:14px;color:#1a1d24;">${rows}</tbody>
+        </table>
+    </div>`;
 }
 
 // ── Project Folder Header ─────────────────────────────────────────
@@ -2518,7 +3207,9 @@ function cmRenderFolderCards() {
         }
     ];
 
-    grid.innerHTML = folders.map(f => `
+    // Partners don't get Payments (billing / statement of account).
+    const visibleFolders = cmIsPartner() ? folders.filter(f => f.id !== 'billing') : folders;
+    grid.innerHTML = visibleFolders.map(f => `
         <div class="pf-folder-card" onclick="showSection('${f.id}')" style="border-color:${f.border};">
             <div class="pf-folder-icon-wrap" style="background:${f.bg};color:${f.color};">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${f.icon}</svg>
@@ -2547,24 +3238,27 @@ function cmRenderWeeklyPreview() {
         Overdue:   { bg:'#fee2e2', color:'#dc2626' }
     };
 
+    const partner = cmIsPartner();
     el.innerHTML = `<div class="table-scroll"><table class="data-table">
         <thead><tr>
             <th>Week Ending</th>
             <th>Labor</th>
             <th>Materials</th>
-            <th>Total Due</th>
-            <th>Status</th>
+            <th>${partner ? 'Direct Total' : 'Total Due'}</th>
+            ${partner ? '' : '<th>Status</th>'}
         </tr></thead>
         <tbody>
             ${bills.map(b => {
                 const ss = statusStyles[b.status] || { bg:'#f3f4f6', color:'#6b7280' };
                 const matCost = (b.materials || 0) + (b.delivery || 0) + (b.consumables || 0) + (b.other || 0);
+                const directTotal = b.directCostTotal || ((b.labor || 0) + matCost);
+                const amount = partner ? directTotal : (b.totalDue || 0);
                 return `<tr>
                     <td><strong>${cmEsc(b.weekEndingDate || '—')}</strong></td>
                     <td>${cmFmt(b.labor || 0)}</td>
                     <td>${cmFmt(matCost)}</td>
-                    <td><strong>${cmFmt(b.totalDue || 0)}</strong></td>
-                    <td><span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:700;background:${ss.bg};color:${ss.color};">${cmEsc(b.status)}</span></td>
+                    <td><strong>${cmFmt(amount)}</strong></td>
+                    ${partner ? '' : `<td><span style="display:inline-block;padding:3px 10px;border-radius:20px;font-size:11.5px;font-weight:700;background:${ss.bg};color:${ss.color};">${cmEsc(b.status)}</span></td>`}
                 </tr>`;
             }).join('')}
         </tbody>
@@ -2576,6 +3270,9 @@ function cmRenderWeeklyPreview() {
 // ══════════════════════════════════════════════════════════════════
 
 function cmCheckAgreement() {
+    // Partners are monitoring-only and are not a billing party — they never see
+    // the Cost-Plus (15% fee / payment) agreement; go straight to the dashboard.
+    if (cmIsPartner()) { cmEnterDashboard(); return; }
     const accepted = cmCurrentProfile?.agreementAccepted === true;
     if (accepted) {
         cmEnterDashboard();

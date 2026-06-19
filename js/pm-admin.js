@@ -11,6 +11,8 @@ let _pmProjects       = [];   // { id, clientName, projectName, ... }
 let _pmActiveProject  = null;
 let _pmWeeklyEntries  = [];
 let _pmProcItems      = [];
+let _pmMilestones     = [];
+let _pmReports        = [];
 let _pmRevolvingData  = null;
 let _pmExpenses       = [];
 let _pmPayRequests    = [];
@@ -77,6 +79,8 @@ function _pmLoadWsPanel(panelId) {
     switch(panelId) {
         case 'ws-panel-weekly':      _pmLoadWeeklyEntries(); break;
         case 'ws-panel-procurement': _pmLoadProcItems();     break;
+        case 'ws-panel-milestones':  _pmLoadMilestones();    break;
+        case 'ws-panel-reports':     _pmLoadReports();       break;
         case 'ws-panel-revolving':   _pmLoadRevolving();     break;
         case 'ws-panel-payment':     _pmLoadPayments();      break;
     }
@@ -187,6 +191,8 @@ window.pmOpenProjectModal = function() {
     document.getElementById('pmProjectStatus').value     = 'active';
     document.getElementById('pmProjectStartDate').value  = '';
     document.getElementById('pmProjectAddress').value    = '';
+    document.getElementById('pmProjectBudget').value     = '';
+    document.getElementById('pmProjectEndDate').value    = '';
     ['err-pmProjectClientName','err-pmProjectName'].forEach(_pmClearErr);
     document.getElementById('pmProjectModal').style.display = 'flex';
     if (window.lucide) lucide.createIcons();
@@ -201,6 +207,8 @@ window.pmEditProject = function(p) {
     document.getElementById('pmProjectStatus').value     = p.status      || 'active';
     document.getElementById('pmProjectStartDate').value  = p.startDate   || '';
     document.getElementById('pmProjectAddress').value    = p.address     || '';
+    document.getElementById('pmProjectBudget').value     = (p.budget != null ? p.budget : '');
+    document.getElementById('pmProjectEndDate').value    = p.plannedEndDate || '';
     ['err-pmProjectClientName','err-pmProjectName'].forEach(_pmClearErr);
     document.getElementById('pmProjectModal').style.display = 'flex';
     if (window.lucide) lucide.createIcons();
@@ -214,13 +222,16 @@ window.pmSaveProject = async function() {
     const status     = document.getElementById('pmProjectStatus').value;
     const startDate  = document.getElementById('pmProjectStartDate').value;
     const address    = document.getElementById('pmProjectAddress').value.trim();
+    const budgetRaw  = document.getElementById('pmProjectBudget').value.trim();
+    const budget     = budgetRaw === '' ? 0 : Number(budgetRaw);
+    const plannedEndDate = document.getElementById('pmProjectEndDate').value || null;
 
     let valid = true;
     if (!clientName)  { _pmShowErr('err-pmProjectClientName','Client name is required.'); valid = false; }
     if (!projectName) { _pmShowErr('err-pmProjectName','Project name is required.');      valid = false; }
     if (!valid) return;
 
-    const data = { clientName, projectName, clientEmail, status, startDate, address,
+    const data = { clientName, projectName, clientEmail, status, startDate, address, budget, plannedEndDate,
                    updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
 
     const btn = document.querySelector('#pmProjectModal .pm-btn-primary');
@@ -734,6 +745,545 @@ window.pmViewReceipt = function(url, itemName) {
     }
     document.getElementById('pmReceiptViewModal').style.display = 'flex';
     if (window.lucide) lucide.createIcons();
+};
+
+// ══════════════════════════════════════════════════════════
+// 2b. MILESTONES
+//   Writes constructionProjects/{id}/milestones — the exact
+//   subcollection the partner portal reads for its Project
+//   Completion KPI (status==='completed' ÷ total).
+// ══════════════════════════════════════════════════════════
+
+async function _pmLoadMilestones() {
+    const tbody = document.getElementById('pm-ms-tbody');
+    if (!tbody) return;
+    if (!_pmActiveProject) {
+        tbody.innerHTML = '<tr><td colspan="6" class="pm-empty-row">Select a client project above.</td></tr>';
+        _pmMsUpdateStats([]);
+        return;
+    }
+    tbody.innerHTML = '<tr><td colspan="6" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr>';
+    try {
+        const snap = await db.collection('constructionProjects')
+            .doc(_pmActiveProject.id)
+            .collection('milestones')
+            .orderBy('order','asc')
+            .get();
+        _pmMilestones = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        _pmMsRenderTable(_pmMilestones);
+        _pmMsUpdateStats(_pmMilestones);
+    } catch(e) {
+        tbody.innerHTML = `<tr><td colspan="6" class="pm-empty-row">Error: ${_esc(e.message)}</td></tr>`;
+    }
+}
+
+function _pmMsUpdateStats(items) {
+    _pmSet('pm-ms-completed', items.filter(m => m.status === 'completed').length);
+    _pmSet('pm-ms-progress',  items.filter(m => m.status === 'in_progress').length);
+    _pmSet('pm-ms-pending',   items.filter(m => !m.status || m.status === 'pending').length);
+    _pmSet('pm-ms-total',     items.length);
+}
+
+function _pmMsRenderTable(items) {
+    const tbody = document.getElementById('pm-ms-tbody');
+    if (!tbody) return;
+    if (!items.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="pm-empty-row">No milestones yet. Click "Add Milestone" to define the project phases.</td></tr>';
+        return;
+    }
+    const badgeClass = {
+        completed:   'pm-badge pm-badge-paid',
+        in_progress: 'pm-badge pm-badge-partial',
+        pending:     'pm-badge pm-badge-pending'
+    };
+    const statusLabel = { completed:'Completed', in_progress:'In Progress', pending:'Pending' };
+
+    tbody.innerHTML = items.map(m => {
+        const st = m.status || 'pending';
+        const bc = badgeClass[st] || 'pm-badge pm-badge-pending';
+        const completeBtn = st !== 'completed'
+            ? `<button class="pm-tbl-btn pm-tbl-btn-buy" data-pm-action="complete"><i data-lucide="check" style="width:12px;height:12px;"></i> Mark Done</button>`
+            : '';
+        return `<tr data-pm-id="${_esc(m.id)}">
+            <td style="color:#6b7280;white-space:nowrap;">Phase ${_esc(String(m.order || '—'))}</td>
+            <td><strong>${_esc(m.name||'—')}</strong>${m.description ? `<div style="font-size:11.5px;color:#6b7280;margin-top:2px;">${_esc(m.description)}</div>`:''}</td>
+            <td style="color:#374151;white-space:nowrap;">${_esc(m.plannedDate||'—')}</td>
+            <td style="font-weight:600;">${m.percentage != null && m.percentage !== '' ? _esc(String(m.percentage)) + '%' : '—'}</td>
+            <td><span class="${bc}">${_esc(statusLabel[st]||'Pending')}</span></td>
+            <td>
+                ${completeBtn}
+                <button class="pm-tbl-btn pm-tbl-btn-edit" data-pm-action="edit"><i data-lucide="pencil" style="width:12px;height:12px;"></i></button>
+                <button class="pm-tbl-btn pm-tbl-btn-delete" data-pm-action="delete"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>
+            </td>
+        </tr>`;
+    }).join('');
+    if (!tbody._handlerAttached) {
+        tbody._handlerAttached = true;
+        tbody.addEventListener('click', ev => {
+            const btn = ev.target.closest('[data-pm-action]');
+            if (!btn) return;
+            const tr  = btn.closest('[data-pm-id]');
+            if (!tr) return;
+            const m   = _pmMilestones.find(x => x.id === tr.getAttribute('data-pm-id'));
+            if (!m) return;
+            switch (btn.getAttribute('data-pm-action')) {
+                case 'complete': pmCompleteMilestone(m.id); break;
+                case 'edit':     pmEditMilestone(m); break;
+                case 'delete':   pmDeleteMilestone(m.id); break;
+            }
+        });
+    }
+    if (window.lucide) lucide.createIcons();
+}
+
+window.pmOpenMilestoneModal = function() {
+    if (!_pmActiveProject) { alert('Please select a client project first.'); return; }
+    document.getElementById('pmMilestoneTitle').textContent = 'Add Milestone';
+    document.getElementById('pmMilestoneId').value     = '';
+    document.getElementById('pmMilestoneName').value   = '';
+    document.getElementById('pmMilestoneOrder').value  = (_pmMilestones.length + 1);
+    document.getElementById('pmMilestonePct').value    = '';
+    document.getElementById('pmMilestoneStatus').value = 'pending';
+    document.getElementById('pmMilestoneDate').value   = '';
+    document.getElementById('pmMilestoneDesc').value   = '';
+    ['err-pmMilestoneName','err-pmMilestoneOrder'].forEach(_pmClearErr);
+    document.getElementById('pmMilestoneModal').style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+};
+
+window.pmEditMilestone = function(m) {
+    document.getElementById('pmMilestoneTitle').textContent = 'Edit Milestone';
+    document.getElementById('pmMilestoneId').value     = m.id;
+    document.getElementById('pmMilestoneName').value   = m.name || '';
+    document.getElementById('pmMilestoneOrder').value  = (m.order != null ? m.order : '');
+    document.getElementById('pmMilestonePct').value    = (m.percentage != null ? m.percentage : '');
+    document.getElementById('pmMilestoneStatus').value = m.status || 'pending';
+    document.getElementById('pmMilestoneDate').value   = m.plannedDate || '';
+    document.getElementById('pmMilestoneDesc').value   = m.description || '';
+    ['err-pmMilestoneName','err-pmMilestoneOrder'].forEach(_pmClearErr);
+    document.getElementById('pmMilestoneModal').style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+};
+
+window.pmSaveMilestone = async function() {
+    const id     = document.getElementById('pmMilestoneId').value;
+    const name   = document.getElementById('pmMilestoneName').value.trim();
+    const orderV = document.getElementById('pmMilestoneOrder').value.trim();
+    const pctRaw = document.getElementById('pmMilestonePct').value.trim();
+    const status = document.getElementById('pmMilestoneStatus').value;
+    const date   = document.getElementById('pmMilestoneDate').value;
+    const desc   = document.getElementById('pmMilestoneDesc').value.trim();
+
+    let valid = true;
+    if (!name)   { _pmShowErr('err-pmMilestoneName','Milestone name is required.'); valid = false; }
+    if (!orderV) { _pmShowErr('err-pmMilestoneOrder','Phase / order is required.'); valid = false; }
+    if (!valid) return;
+
+    const data = {
+        name,
+        order: Number(orderV),
+        percentage: pctRaw === '' ? 0 : Number(pctRaw),
+        status,
+        plannedDate: date || null,
+        description: desc,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    const btn = document.querySelector('#pmMilestoneModal .pm-btn-primary');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+        const col = db.collection('constructionProjects').doc(_pmActiveProject.id).collection('milestones');
+        if (id) {
+            await col.doc(id).update(data);
+        } else {
+            data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            await col.add(data);
+        }
+        pmCloseModal('pmMilestoneModal');
+        _pmLoadMilestones();
+    } catch(e) {
+        alert('Save failed: ' + e.message);
+    } finally {
+        btn.disabled = false; btn.innerHTML = '<i data-lucide="save" style="width:14px;height:14px;"></i> Save Milestone';
+        if (window.lucide) lucide.createIcons();
+    }
+};
+
+window.pmCompleteMilestone = async function(id) {
+    if (!_pmActiveProject) return;
+    try {
+        await db.collection('constructionProjects').doc(_pmActiveProject.id)
+            .collection('milestones').doc(id)
+            .update({ status: 'completed', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        _pmLoadMilestones();
+    } catch(e) { alert('Update failed: ' + e.message); }
+};
+
+window.pmDeleteMilestone = async function(id) {
+    if (!confirm('Delete this milestone?')) return;
+    try {
+        await db.collection('constructionProjects').doc(_pmActiveProject.id)
+            .collection('milestones').doc(id).delete();
+        _pmLoadMilestones();
+    } catch(e) { alert('Delete failed: ' + e.message); }
+};
+
+// ══════════════════════════════════════════════════════════
+// 2c. ACCOMPLISHMENT REPORTS — self-contained BOQ-style builder
+//   A copy of the BOQ's design + workflow (cost items → sub-items
+//   → line items, each with % completion + live totals), but its
+//   own feature with its own data stored under the construction
+//   project (constructionProjects/{id}/accomplishmentReports).
+//   A report's overall % (accomplishment ÷ grand total) feeds the
+//   partner portal's Schedule Performance KPI.
+// ══════════════════════════════════════════════════════════
+
+let _pmRpDoc = null;   // the report currently open in the builder
+
+// ── BOQ progress math (mirrors boq-module's stateless helpers) ──
+function _pmNum(v) { return Number(String(v == null ? '' : v).replace(/,/g,'')) || 0; }
+function _pmLiTotal(li) { return _pmNum(li.qty) * (_pmNum(li.materialRate) + _pmNum(li.laborRate)); }
+function _pmLiAcc(li)   { return _pmLiTotal(li) * (_pmNum(li.percentCompletion) / 100); }
+function _pmBoqGrand(costItems) {
+    return (costItems || []).reduce((s, ci) =>
+        s + (ci.subItems || []).reduce((s2, si) =>
+            s2 + (si.lineItems || []).reduce((s3, li) => s3 + _pmLiTotal(li), 0), 0), 0);
+}
+function _pmBoqAcc(costItems) {
+    return (costItems || []).reduce((s, ci) =>
+        s + (ci.subItems || []).reduce((s2, si) =>
+            s2 + (si.lineItems || []).reduce((s3, li) => s3 + _pmLiAcc(li), 0), 0), 0);
+}
+function _pmBoqPct(doc) {
+    const grand = _pmBoqGrand(doc.costItems);
+    if (grand <= 0) return 0;
+    return Math.round((_pmBoqAcc(doc.costItems) / grand) * 100);
+}
+function _pmCiSub(ci) { return (ci.subItems || []).reduce((s, si) => s + (si.lineItems || []).reduce((s2, li) => s2 + _pmLiTotal(li), 0), 0); }
+function _pmCiAcc(ci) { return (ci.subItems || []).reduce((s, si) => s + (si.lineItems || []).reduce((s2, li) => s2 + _pmLiAcc(li), 0), 0); }
+
+function _pmTsDateStr(ts) {
+    const ms = ts && ts.toMillis ? ts.toMillis() : (ts ? new Date(ts).getTime() : 0);
+    if (!ms || isNaN(ms)) return '—';
+    return new Date(ms).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' });
+}
+function _pmUid(p) { return p + Math.random().toString(36).slice(2, 9); }
+
+// ── List view ──────────────────────────────────────────────
+function _pmRpShowList()    { const l=document.getElementById('pm-rp-list'), b=document.getElementById('pm-rp-builder'); if(l)l.style.display=''; if(b){b.style.display='none'; b.innerHTML='';} }
+function _pmRpShowBuilder() { const l=document.getElementById('pm-rp-list'), b=document.getElementById('pm-rp-builder'); if(l)l.style.display='none'; if(b)b.style.display=''; }
+
+async function _pmLoadReports() {
+    _pmRpShowList();
+    const wrap = document.getElementById('pm-rp-cards');
+    if (!wrap) return;
+    if (!_pmActiveProject) {
+        wrap.innerHTML = '<div class="pm-empty-row" style="color:#9ca3af;">Select a client project above.</div>';
+        _pmSet('pm-rp-count', 0); _pmSet('pm-rp-latest', '0%');
+        return;
+    }
+    wrap.innerHTML = '<div class="pm-empty-row" style="color:#9ca3af;">Loading…</div>';
+    try {
+        const snap = await db.collection('constructionProjects').doc(_pmActiveProject.id)
+            .collection('accomplishmentReports').orderBy('updatedAt','desc').get();
+        _pmReports = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        _pmRpRenderCards(_pmReports);
+        _pmRpStats(_pmReports);
+    } catch(e) {
+        wrap.innerHTML = `<div class="pm-empty-row">Error: ${_esc(e.message)}</div>`;
+    }
+}
+
+function _pmRpStats(items) {
+    _pmSet('pm-rp-count', items.length);
+    _pmSet('pm-rp-approved', items.filter(r => r.status === 'approved').length);
+    const latest = items[0]; // newest-first
+    _pmSet('pm-rp-latest', (latest ? _pmBoqPct(latest) : 0) + '%');
+    _pmSet('pm-rp-cost',   _fmt(latest ? _pmBoqGrand(latest.costItems) : 0));
+}
+
+function _pmRpRenderCards(items) {
+    const wrap = document.getElementById('pm-rp-cards');
+    if (!wrap) return;
+    if (!items.length) {
+        wrap.innerHTML = '<div class="pm-empty-row" style="color:#9ca3af;">No accomplishment report yet. Click "New Report" to create one.</div>';
+        return;
+    }
+    wrap.innerHTML = items.map(d => {
+        const grand = _pmBoqGrand(d.costItems);
+        const acc   = _pmBoqAcc(d.costItems);
+        const pct   = _pmBoqPct(d);
+        const subject = d.subject || d.projectName || 'Accomplishment Report';
+        const statusBadge = d.status === 'approved'
+            ? '<span class="boq-status-badge boq-status-saved">Approved</span>'
+            : '<span class="boq-status-badge boq-status-new">Draft</span>';
+        return `
+        <div class="ov-folder-card boq-proj-card" data-pm-id="${_esc(d.id)}" style="cursor:pointer;">
+            <div class="ov-folder-card__title-row">
+                <div class="ov-folder-card__name">${_esc(subject)}</div>
+                ${statusBadge}
+            </div>
+            <div class="ov-folder-card__desc">${_esc(d.date || '')}</div>
+            <div class="ov-folder-card__stat-list" style="margin-top:0.9rem;">
+                <div class="ov-folder-card__stat-row"><span class="ov-folder-card__stat-label">Total Project Cost</span><span class="ov-folder-card__stat-value">${_fmt(grand)}</span></div>
+                <div class="ov-folder-card__stat-row"><span class="ov-folder-card__stat-label">Total Accomplishment</span><span class="ov-folder-card__stat-value ov-folder-card__stat-value--positive">${_fmt(acc)}</span></div>
+                <div class="ov-folder-card__stat-row"><span class="ov-folder-card__stat-label">Progress</span><span class="ov-folder-card__stat-value">${pct}%</span></div>
+                <div class="ov-folder-card__stat-row"><span class="ov-folder-card__stat-label">Last Updated</span><span class="ov-folder-card__stat-value">${_pmTsDateStr(d.updatedAt)}</span></div>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:1.1rem;">
+                <button class="ov-folder-card__view-btn" data-pm-action="open" style="flex:1;">Open Report &rarr;</button>
+                <button class="pm-tbl-btn pm-tbl-btn-delete" data-pm-action="delete" title="Delete"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>
+            </div>
+        </div>`;
+    }).join('');
+    if (!wrap._handlerAttached) {
+        wrap._handlerAttached = true;
+        wrap.addEventListener('click', ev => {
+            const btn  = ev.target.closest('[data-pm-action]');
+            const card = ev.target.closest('[data-pm-id]');
+            if (!card) return;
+            const id = card.getAttribute('data-pm-id');
+            const action = btn ? btn.getAttribute('data-pm-action') : 'open';
+            if (action === 'delete') pmRpDelete(id);
+            else pmRpOpen(id);
+        });
+    }
+    if (window.lucide) lucide.createIcons();
+}
+
+window.pmRpDelete = async function(id) {
+    if (!confirm('Delete this accomplishment report?')) return;
+    try {
+        await db.collection('constructionProjects').doc(_pmActiveProject.id)
+            .collection('accomplishmentReports').doc(id).delete();
+        _pmLoadReports();
+    } catch(e) { alert('Delete failed: ' + e.message); }
+};
+
+// ── Builder ────────────────────────────────────────────────
+window.pmRpNew = function() {
+    if (!_pmActiveProject) { alert('Please select a client project first.'); return; }
+    _pmRpDoc = {
+        id: null,
+        date: new Date().toISOString().slice(0,10),
+        projectName: _pmActiveProject.projectName || '',
+        area: '', ownerName: _pmActiveProject.clientName || '', location: _pmActiveProject.address || '',
+        subject: 'Accomplishment Report',
+        status: 'draft',
+        costItems: []
+    };
+    _pmRpRenderBuilder();
+};
+
+window.pmRpOpen = function(id) {
+    const d = _pmReports.find(r => r.id === id);
+    if (!d) return;
+    // Deep clone so edits aren't applied to the list copy until saved.
+    _pmRpDoc = JSON.parse(JSON.stringify({
+        id: d.id,
+        date: d.date || '', projectName: d.projectName || '', area: d.area || '',
+        ownerName: d.ownerName || '', location: d.location || '', subject: d.subject || 'Accomplishment Report',
+        status: d.status || 'draft',
+        costItems: d.costItems || []
+    }));
+    _pmRpRenderBuilder();
+};
+
+function _pmRpRenderBuilder() {
+    const root = document.getElementById('pm-rp-builder');
+    if (!root || !_pmRpDoc) return;
+    _pmRpShowBuilder();
+    const d = _pmRpDoc;
+    const isSaved = !!d.id;
+    root.innerHTML = `
+    <div class="boq-builder">
+      <div class="boq-toolbar">
+        <div class="boq-toolbar-left">
+          <button class="boq-back-btn" onclick="pmRpBack()"><i data-lucide="arrow-left"></i> Reports</button>
+          <span class="boq-breadcrumb-sep">/</span>
+          <h3 class="boq-project-title">${_esc(d.projectName || 'Accomplishment Report')}</h3>
+          <span class="boq-badge ${isSaved ? 'boq-badge-saved' : 'boq-badge-new'}">${isSaved ? 'Saved' : 'New'}</span>
+        </div>
+        <div class="boq-toolbar-right">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#374151;">
+            Status
+            <select id="rp-status" class="pm-select" style="width:auto;">
+              <option value="draft" ${d.status!=='approved'?'selected':''}>Draft</option>
+              <option value="approved" ${d.status==='approved'?'selected':''}>Approved (visible to partner)</option>
+            </select>
+          </label>
+          <button class="pm-btn pm-btn-primary" onclick="pmRpSave()"><i data-lucide="save" style="width:14px;height:14px;"></i> Save Report</button>
+        </div>
+      </div>
+
+      <div class="boq-header-form">
+        <div class="boq-section-title">Document Info</div>
+        <div class="boq-form-grid">
+          <div class="boq-form-group"><label>Date</label><input type="date" id="rp-date" value="${_esc(d.date)}"></div>
+          <div class="boq-form-group"><label>Project Name</label><input type="text" id="rp-projectName" value="${_esc(d.projectName)}" placeholder="Project name"></div>
+          <div class="boq-form-group"><label>Area (sqm)</label><input type="text" id="rp-area" value="${_esc(d.area)}" placeholder="e.g. 120"></div>
+          <div class="boq-form-group"><label>Owner Name</label><input type="text" id="rp-ownerName" value="${_esc(d.ownerName)}" placeholder="Owner / client"></div>
+          <div class="boq-form-group"><label>Location</label><input type="text" id="rp-location" value="${_esc(d.location)}" placeholder="Project location"></div>
+          <div class="boq-form-group"><label>Subject</label><input type="text" id="rp-subject" value="${_esc(d.subject)}" placeholder="Subject"></div>
+        </div>
+      </div>
+
+      <div id="rp-costitems">${_pmRpCostItemsHtml(d)}</div>
+
+      <div style="margin-top:14px;">
+        <button class="pm-btn pm-btn-secondary" onclick="pmRpAddCost()"><i data-lucide="plus" style="width:14px;height:14px;"></i> Add Cost Item</button>
+      </div>
+
+      <div class="pm-kpi-row" style="margin-top:18px;">
+        <div class="pm-kpi-card"><div class="pm-kpi-body"><div class="pm-kpi-label">Total Project Cost</div><div class="pm-kpi-value" id="rp-grand">₱0.00</div></div></div>
+        <div class="pm-kpi-card"><div class="pm-kpi-body"><div class="pm-kpi-label">Total Accomplishment</div><div class="pm-kpi-value" id="rp-acc">₱0.00</div></div></div>
+        <div class="pm-kpi-card pm-kpi-total"><div class="pm-kpi-body"><div class="pm-kpi-label">Overall Progress</div><div class="pm-kpi-value" id="rp-pct">0%</div></div></div>
+      </div>
+    </div>`;
+    _pmRpRefreshTotals();
+    if (window.lucide) lucide.createIcons();
+}
+
+function _pmRpCostItemsHtml(d) {
+    if (!d.costItems.length) {
+        return '<div class="pm-empty-row" style="color:#9ca3af;border:1px dashed #e5e7eb;border-radius:10px;margin-top:14px;">No cost items yet. Click "Add Cost Item" to start building the report.</div>';
+    }
+    return d.costItems.map((ci, ciIdx) => `
+      <div class="boq-cost-item" style="border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-top:14px;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <strong style="color:#6b7280;white-space:nowrap;">${ciIdx + 1}.</strong>
+          <input type="text" class="pm-input" style="font-weight:600;" placeholder="Cost item name (e.g. Civil Works)" value="${_esc(ci.name || '')}" oninput="pmRpSet('ci','${ci.id}','name',this.value)">
+          <button class="pm-tbl-btn pm-tbl-btn-delete" onclick="pmRpDelCost('${ci.id}')" title="Remove cost item"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>
+        </div>
+        ${(ci.subItems || []).map(si => `
+          <div style="margin:8px 0 8px 18px;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+              <input type="text" class="pm-input" style="font-size:13px;" placeholder="Sub-item name (e.g. Earthworks)" value="${_esc(si.name || '')}" oninput="pmRpSet('si','${si.id}','name',this.value)">
+              <button class="pm-tbl-btn pm-tbl-btn-delete" onclick="pmRpDelSub('${ci.id}','${si.id}')" title="Remove sub-item"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>
+            </div>
+            <div class="pm-table-wrap">
+              <table class="pm-table">
+                <thead><tr><th>Description</th><th>Unit</th><th>Qty</th><th>Material Rate</th><th>Labor Rate</th><th>Total</th><th>% Done</th><th>Accomplishment</th><th></th></tr></thead>
+                <tbody>
+                  ${(si.lineItems || []).map(li => `
+                    <tr>
+                      <td><input type="text" class="pm-input" value="${_esc(li.description || '')}" placeholder="Description" oninput="pmRpSet('li','${li.id}','description',this.value)"></td>
+                      <td><input type="text" class="pm-input" style="width:64px;" value="${_esc(li.unit || '')}" placeholder="unit" oninput="pmRpSet('li','${li.id}','unit',this.value)"></td>
+                      <td><input type="number" class="pm-input" style="width:72px;" value="${_esc(li.qty != null ? li.qty : '')}" min="0" step="any" oninput="pmRpSet('li','${li.id}','qty',this.value)"></td>
+                      <td><input type="number" class="pm-input" style="width:96px;" value="${_esc(li.materialRate != null ? li.materialRate : '')}" min="0" step="any" oninput="pmRpSet('li','${li.id}','materialRate',this.value)"></td>
+                      <td><input type="number" class="pm-input" style="width:96px;" value="${_esc(li.laborRate != null ? li.laborRate : '')}" min="0" step="any" oninput="pmRpSet('li','${li.id}','laborRate',this.value)"></td>
+                      <td style="white-space:nowrap;font-weight:600;" id="rp-li-total-${li.id}">₱0.00</td>
+                      <td><input type="number" class="pm-input" style="width:64px;" value="${_esc(li.percentCompletion != null ? li.percentCompletion : '')}" min="0" max="100" step="any" oninput="pmRpSet('li','${li.id}','percentCompletion',this.value)"></td>
+                      <td style="white-space:nowrap;font-weight:600;color:#059669;" id="rp-li-acc-${li.id}">₱0.00</td>
+                      <td><button class="pm-tbl-btn pm-tbl-btn-delete" onclick="pmRpDelLine('${ci.id}','${si.id}','${li.id}')"><i data-lucide="x" style="width:12px;height:12px;"></i></button></td>
+                    </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+            <button class="pm-btn pm-btn-secondary" style="margin-top:6px;" onclick="pmRpAddLine('${ci.id}','${si.id}')"><i data-lucide="plus" style="width:13px;height:13px;"></i> Add Line</button>
+          </div>
+        `).join('')}
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;margin-left:18px;">
+          <button class="pm-btn pm-btn-secondary" onclick="pmRpAddSub('${ci.id}')"><i data-lucide="plus" style="width:13px;height:13px;"></i> Add Sub-item</button>
+          <div style="font-size:13px;color:#374151;">Subtotal: <strong id="rp-ci-sub-${ci.id}">₱0.00</strong> · Accomplished: <strong id="rp-ci-acc-${ci.id}" style="color:#059669;">₱0.00</strong></div>
+        </div>
+      </div>`).join('');
+}
+
+// ── Model lookups + mutations ──────────────────────────────
+function _pmRpFindCost(id) { return _pmRpDoc.costItems.find(ci => ci.id === id); }
+function _pmRpFindSub(id)  { for (const ci of _pmRpDoc.costItems) { const si = (ci.subItems||[]).find(s => s.id === id); if (si) return si; } return null; }
+function _pmRpFindLine(id) { for (const ci of _pmRpDoc.costItems) for (const si of (ci.subItems||[])) { const li = (si.lineItems||[]).find(l => l.id === id); if (li) return li; } return null; }
+
+window.pmRpSet = function(kind, id, field, value) {
+    const obj = kind === 'ci' ? _pmRpFindCost(id) : kind === 'si' ? _pmRpFindSub(id) : _pmRpFindLine(id);
+    if (!obj) return;
+    obj[field] = value;
+    // Numeric fields affect totals — refresh without re-rendering (keeps focus).
+    if (kind === 'li' && ['qty','materialRate','laborRate','percentCompletion'].includes(field)) _pmRpRefreshTotals();
+};
+
+window.pmRpAddCost = function() { _pmRpDoc.costItems.push({ id: _pmUid('ci_'), name: '', subItems: [] }); _pmRpRerenderItems(); };
+window.pmRpDelCost = function(id) { _pmRpDoc.costItems = _pmRpDoc.costItems.filter(ci => ci.id !== id); _pmRpRerenderItems(); };
+window.pmRpAddSub = function(ciId) { const ci = _pmRpFindCost(ciId); if (!ci) return; (ci.subItems = ci.subItems || []).push({ id: _pmUid('si_'), name: '', lineItems: [] }); _pmRpRerenderItems(); };
+window.pmRpDelSub = function(ciId, siId) { const ci = _pmRpFindCost(ciId); if (!ci) return; ci.subItems = (ci.subItems||[]).filter(si => si.id !== siId); _pmRpRerenderItems(); };
+window.pmRpAddLine = function(ciId, siId) { const si = _pmRpFindSub(siId); if (!si) return; (si.lineItems = si.lineItems || []).push({ id: _pmUid('li_'), description: '', unit: '', qty: '', materialRate: '', laborRate: '', percentCompletion: '' }); _pmRpRerenderItems(); };
+window.pmRpDelLine = function(ciId, siId, liId) { const si = _pmRpFindSub(siId); if (!si) return; si.lineItems = (si.lineItems||[]).filter(li => li.id !== liId); _pmRpRerenderItems(); };
+
+// Re-render just the cost-items area (preserves header input values in the DOM).
+function _pmRpRerenderItems() {
+    _pmRpSyncHeaderFromDom();
+    const host = document.getElementById('rp-costitems');
+    if (host) host.innerHTML = _pmRpCostItemsHtml(_pmRpDoc);
+    _pmRpRefreshTotals();
+    if (window.lucide) lucide.createIcons();
+}
+
+function _pmRpRefreshTotals() {
+    const d = _pmRpDoc;
+    d.costItems.forEach(ci => {
+        (ci.subItems||[]).forEach(si => (si.lineItems||[]).forEach(li => {
+            _pmSet('rp-li-total-' + li.id, _fmt(_pmLiTotal(li)));
+            _pmSet('rp-li-acc-' + li.id,   _fmt(_pmLiAcc(li)));
+        }));
+        _pmSet('rp-ci-sub-' + ci.id, _fmt(_pmCiSub(ci)));
+        _pmSet('rp-ci-acc-' + ci.id, _fmt(_pmCiAcc(ci)));
+    });
+    _pmSet('rp-grand', _fmt(_pmBoqGrand(d.costItems)));
+    _pmSet('rp-acc',   _fmt(_pmBoqAcc(d.costItems)));
+    _pmSet('rp-pct',   _pmBoqPct(d) + '%');
+}
+
+function _pmRpSyncHeaderFromDom() {
+    const g = id => { const el = document.getElementById(id); return el ? el.value : undefined; };
+    const d = _pmRpDoc;
+    if (g('rp-date')        !== undefined) d.date        = g('rp-date');
+    if (g('rp-projectName') !== undefined) d.projectName = g('rp-projectName');
+    if (g('rp-area')        !== undefined) d.area        = g('rp-area');
+    if (g('rp-ownerName')   !== undefined) d.ownerName   = g('rp-ownerName');
+    if (g('rp-location')    !== undefined) d.location    = g('rp-location');
+    if (g('rp-subject')     !== undefined) d.subject     = g('rp-subject');
+    if (g('rp-status')      !== undefined) d.status      = g('rp-status');
+}
+
+window.pmRpBack = function() {
+    if (_pmRpDoc) { _pmRpSyncHeaderFromDom(); }
+    _pmRpDoc = null;
+    _pmLoadReports();
+};
+
+window.pmRpSave = async function() {
+    if (!_pmActiveProject || !_pmRpDoc) return;
+    _pmRpSyncHeaderFromDom();
+    const d = _pmRpDoc;
+    const adminEmail = (firebase.auth().currentUser && firebase.auth().currentUser.email) || 'DACS Admin';
+    const payload = {
+        date: d.date || '', projectName: d.projectName || '', area: d.area || '',
+        ownerName: d.ownerName || '', location: d.location || '', subject: d.subject || 'Accomplishment Report',
+        status: d.status || 'draft',
+        costItems: d.costItems || [],
+        // Cached overall progress so the partner KPI / list don't have to recompute.
+        progressPercentage: _pmBoqPct(d),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    if (d.status === 'approved') { payload.approvedBy = adminEmail; payload.approvedAt = firebase.firestore.FieldValue.serverTimestamp(); }
+
+    const btn = document.querySelector('#pm-rp-builder .pm-btn-primary');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+        const col = db.collection('constructionProjects').doc(_pmActiveProject.id).collection('accomplishmentReports');
+        if (d.id) {
+            await col.doc(d.id).update(payload);
+        } else {
+            payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            const ref = await col.add(payload);
+            d.id = ref.id;
+        }
+        _pmRpDoc = null;
+        _pmLoadReports();
+    } catch(e) {
+        alert('Save failed: ' + e.message);
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="save" style="width:14px;height:14px;"></i> Save Report'; if (window.lucide) lucide.createIcons(); }
+    }
 };
 
 // ══════════════════════════════════════════════════════════

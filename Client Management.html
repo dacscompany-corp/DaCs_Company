@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="css/payment-requests.css"/>
   <link rel="stylesheet" href="css/client-management.css"/>
   <link rel="stylesheet" href="css/client-renovation.css"/>
+  <link rel="stylesheet" href="css/dacs-redesign.css"/>
 </head>
 <body>
 
@@ -80,7 +81,7 @@
 
     <nav class="sidebar-nav">
 
-      <div class="nav-label">Navigation</div>
+      <div class="nav-label">Project</div>
 
       <a class="nav-item" onclick="showSection('kpi-dashboard')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -117,25 +118,6 @@
         <span id="weekly-overdue-badge" class="pr-nav-badge" style="display:none;background:#ef4444;margin-left:auto;">!</span>
       </a>
 
-      <a class="nav-item" onclick="showSection('procurement-list')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
-          <rect x="9" y="3" width="6" height="4" rx="1"/>
-          <line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>
-        </svg>
-        Materials Procurement
-        <span id="procurement-pending-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;margin-left:auto;">!</span>
-      </a>
-
-      <a class="nav-item" onclick="showSection('revolving-fund')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="7" width="20" height="14" rx="2"/>
-          <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
-        </svg>
-        Revolving Fund
-        <span id="rf-low-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;margin-left:auto;">!</span>
-      </a>
-
       <a class="nav-item" onclick="showSection('billing')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
@@ -143,6 +125,27 @@
         Statement of Account
         <span id="billing-badge" class="pr-nav-badge" style="display:none;margin-left:auto;">0</span>
       </a>
+
+      <div class="nav-label">Procurement</div>
+
+      <a class="nav-item" onclick="showSection('procurement-list')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+          <path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>
+        </svg>
+        Materials Procurement
+        <span id="procurement-pending-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;margin-left:auto;">!</span>
+      </a>
+
+      <a class="nav-item" onclick="showSection('revolving-fund')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+        </svg>
+        Revolving Fund
+        <span id="rf-low-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;margin-left:auto;">!</span>
+      </a>
+
+      <div class="nav-label">Account</div>
 
       <a class="nav-item" onclick="showSection('notifications')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -152,8 +155,6 @@
         Notifications
         <span id="notif-nav-badge" class="pr-nav-badge" style="display:none;margin-left:auto;">0</span>
       </a>
-
-      <div class="nav-label">Account</div>
 
       <a class="nav-item" onclick="showSection('profile')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -189,9 +190,16 @@
         <button class="burger-btn" id="burger" onclick="toggleSidebar()" aria-label="Toggle menu">
           <span></span><span></span><span></span>
         </button>
-        <span class="topbar-title" id="topbar-title">Dashboard</span>
+        <div class="cm-project-pill">
+          <span class="cm-project-pill-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+          </span>
+          <span class="cm-project-pill-name" id="topbar-project-name">Project</span>
+          <span class="cm-project-pill-sub" id="topbar-title">Cost-Plus</span>
+        </div>
       </div>
       <div class="topbar-right">
+        <span class="cm-topbar-date" id="topbar-date"></span>
         <button class="topbar-icon-btn dark-toggle-btn" id="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">
           <svg id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -252,7 +260,7 @@
           <div class="table-toolbar">
             <div class="table-search-wrap">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" class="table-search" id="report-search" placeholder="Search by title, milestone…" oninput="filterReports()"/>
+              <input type="text" class="table-search" id="report-search" placeholder="Search by report or date…" oninput="filterReports()"/>
             </div>
           </div>
           <div class="table-scroll">
@@ -261,8 +269,8 @@
                 <tr>
                   <th>Report</th>
                   <th>Date</th>
-                  <th>Milestone</th>
-                  <th>Completed Tasks</th>
+                  <th style="text-align:right;">Total Cost</th>
+                  <th style="text-align:right;">Accomplishment</th>
                   <th style="text-align:center;">Progress</th>
                   <th>Status</th>
                   <th>Details</th>
@@ -327,48 +335,33 @@
 
       <!-- ── Billing Periods (SOA) ── -->
       <div class="sub-page" id="section-billing">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
           <div>
-            <div class="section-title" style="margin-bottom:4px;">Statement of Account (SOA)</div>
-            <div class="section-sub" style="margin-bottom:0;">Your financial transactions — payments, expenses, remaining balance, and billing history.</div>
+            <div style="font-size:28px;font-weight:800;letter-spacing:-0.02em;color:#1a1d24;">Statement of Account</div>
+            <div style="font-size:14px;color:#8b91a0;margin-top:3px;">Your billing history, payment requests, and remaining balance.</div>
           </div>
-          <button onclick="prClientOpenSelfPayModal()" style="display:inline-flex;align-items:center;gap:8px;background:#00a85e;color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,168,94,.25);">
+          <button onclick="prClientOpenSelfPayModal()" style="display:inline-flex;align-items:center;gap:8px;background:#5b5bd6;color:#fff;border:none;border-radius:13px;padding:12px 20px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 10px 22px -12px rgba(91,91,214,0.6);">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
             Submit Payment
           </button>
         </div>
 
         <!-- Outstanding Balance Alert -->
-        <div id="outstanding-balance-alert" style="display:none;align-items:center;gap:14px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:12px;padding:14px 18px;margin-bottom:20px;"></div>
+        <div id="outstanding-balance-alert" style="display:none;align-items:center;gap:14px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:12px;padding:14px 18px;margin-bottom:24px;"></div>
 
-        <!-- Summary Cards -->
-        <div class="billing-summary-grid" style="margin-bottom:28px;">
-          <div class="billing-sum-card billing-sum-green">
-            <div class="bsum-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a85e" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            </div>
-            <div>
-              <div class="bsum-label">Total Contract</div>
-              <div class="bsum-value" id="bsum-total">&#8369;0</div>
-            </div>
+        <!-- Summary KPI cards (design style) -->
+        <div class="cm-soa-kpis" style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:24px;">
+          <div style="background:#fff;border-radius:20px;padding:24px;box-shadow:0 1px 3px rgba(20,25,40,0.06);">
+            <div style="font-size:13px;color:#8b91a0;font-weight:600;">Total Contract</div>
+            <div style="font-size:28px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:#1a1d24;" id="bsum-total">&#8369;0</div>
           </div>
-          <div class="billing-sum-card billing-sum-amber">
-            <div class="bsum-icon bsum-icon-amber">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-            </div>
-            <div>
-              <div class="bsum-label">Total Billed</div>
-              <div class="bsum-value" id="bsum-billed">&#8369;0</div>
-            </div>
+          <div style="background:#5b5bd6;border-radius:20px;padding:24px;box-shadow:0 12px 26px -14px rgba(91,91,214,0.5);color:#fff;">
+            <div style="font-size:13px;opacity:0.85;font-weight:600;">Total Billed</div>
+            <div style="font-size:28px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;" id="bsum-billed">&#8369;0</div>
           </div>
-          <div class="billing-sum-card billing-sum-blue">
-            <div class="bsum-icon bsum-icon-blue">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            </div>
-            <div>
-              <div class="bsum-label">Billing Periods</div>
-              <div class="bsum-value" id="bsum-count">0</div>
-            </div>
+          <div style="background:#fff;border-radius:20px;padding:24px;box-shadow:0 1px 3px rgba(20,25,40,0.06);">
+            <div style="font-size:13px;color:#8b91a0;font-weight:600;">Billing Periods</div>
+            <div style="font-size:28px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:#1a1d24;" id="bsum-count">0</div>
           </div>
         </div>
 
@@ -381,7 +374,7 @@
             </div>
             <div style="display:flex;align-items:center;gap:10px;">
               <span class="billing-badge" id="pr-pending-badge" style="display:none;"></span>
-              <button id="clientRequestSOWABtn" onclick="clientRequestSOWA(this)" style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:1.5px solid #d1fae5;background:#f0fdf4;color:#059669;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;">
+              <button id="clientRequestSOWABtn" onclick="clientRequestSOWA(this)" style="display:inline-flex;align-items:center;gap:6px;padding:7px 16px;border-radius:8px;border:1.5px solid #d7d7f6;background:#eeeefb;color:#5b5bd6;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="12" y2="16"/><polyline points="14 2 14 8 20 8"/></svg>
                 Request SOA
               </button>
@@ -423,27 +416,36 @@
 
       <!-- ── Profile ── -->
       <div class="sub-page" id="section-profile">
-        <div class="section-title">Profile</div>
-        <div class="section-sub">View and manage your account information.</div>
-        <div class="content-panel">
-          <div class="profile-card">
-            <div class="profile-avatar-lg-wrap">
+        <div style="margin-bottom:24px;">
+          <div class="section-title" style="margin-bottom:4px;">Profile</div>
+          <div class="section-sub" style="margin-bottom:0;">Your account details and security.</div>
+        </div>
+        <div class="cm-profile-grid" style="display:grid;grid-template-columns:1fr 1.6fr;gap:24px;align-items:start;">
+          <!-- LEFT: avatar card -->
+          <div class="content-panel" style="text-align:center;">
+            <div class="profile-avatar-lg-wrap" style="position:relative;display:inline-block;">
               <div class="profile-avatar-lg" id="profile-avatar-lg">CL</div>
               <button class="profile-avatar-edit-btn" onclick="triggerAvatarUpload()" title="Change profile picture">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
               </button>
               <input type="file" id="avatar-file-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(event)">
             </div>
-            <div class="profile-info">
+            <div class="profile-info" style="margin-top:16px;">
               <div class="profile-name" id="profile-fullname">Client User</div>
               <div class="profile-email" id="profile-email-display"></div>
               <span class="profile-role-badge">Client Account</span>
             </div>
-            <button class="btn-edit-profile" id="btn-edit-profile" onclick="toggleEditProfile()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              Edit Profile
-            </button>
           </div>
+          <!-- RIGHT: account info + security -->
+          <div class="cm-profile-right" style="display:flex;flex-direction:column;gap:24px;">
+          <div class="content-panel">
+            <div class="panel-header">
+              <span class="panel-title">Account Information</span>
+              <button class="btn-edit-profile" id="btn-edit-profile" onclick="toggleEditProfile()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Edit Profile
+              </button>
+            </div>
 
           <div id="profile-view-mode">
             <div class="profile-fields">
@@ -541,6 +543,8 @@
             <p class="pw-placeholder-text">Keep your account secure by updating your password regularly.</p>
           </div>
         </div>
+          </div><!-- /cm-profile-right -->
+        </div><!-- /cm-profile-grid -->
 
         <!-- ── Termination Zone ── -->
         <div class="cm-termination-zone">
@@ -583,11 +587,6 @@
       <!-- ══════════ PROJECT DASHBOARD / FOLDER VIEW ══════════ -->
       <div class="sub-page" id="section-kpi-dashboard">
 
-        <!-- Header -->
-        <div style="margin-bottom:24px;">
-          <div class="section-title" style="margin-bottom:4px;">Project Dashboard</div>
-          <div class="section-sub" style="margin-bottom:0;">All project data, KPIs, and folders organized in one place for full transparency and easy navigation.</div>
-        </div>
 
         <!-- No Project State -->
         <div id="kpi-no-data" style="display:none;">
@@ -1161,29 +1160,10 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-    <div class="pr-modal-body">
-      <!-- Payment Method Tabs -->
-      <div id="prMethodTabsWrap" style="display:none;margin-bottom:18px;">
-        <div class="pr-method-tabs">
-          <button class="pr-method-tab active" id="prTabGcash" onclick="prSwitchPayMethod('gcash')">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h2v2H9zm0 4h2v2H9zm4-4h2v2h-2zm0 4h2v2h-2z"/></svg>
-            GCash
-          </button>
-          <button class="pr-method-tab" id="prTabBank" onclick="prSwitchPayMethod('bank')">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-            Bank Transfer
-          </button>
-        </div>
-      </div>
-
-      <!-- QR Code -->
-      <div id="prQRSection" style="text-align:center;margin-bottom:18px;">
-        <div style="font-size:12.5px;color:#6b7280;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Scan to Pay</div>
-        <div class="pr-qr-display">
-          <img id="prClientQRImg" src="" alt="QR Code" style="display:none;">
-        </div>
-        <div style="font-size:15px;font-weight:700;color:#00a85e;margin-top:8px;" id="prClientPayAmount"></div>
-      </div>
+    <div class="pr-modal-body" id="prPayModalBody">
+      <!-- STEP 1: details + terms -->
+      <div id="prPayStep1">
+      <div style="font-size:12px;font-weight:700;color:#5b5bd6;text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;">Step 1 of 3 · Details</div>
 
       <!-- Self-pay fields -->
       <div id="prSelfPayDescWrap" style="display:none;">
@@ -1212,6 +1192,55 @@
         </div>
       </div>
 
+      <!-- Terms & Conditions Agreement -->
+      <div id="prTCAgreeBox" style="margin:6px 0 0;padding:14px 16px;background:#eeeefb;border:1.5px solid #d7d7f6;border-radius:10px;">
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <input type="checkbox" id="prTCCheckbox" onchange="prToggleTCSubmit()"
+            style="margin-top:3px;width:16px;height:16px;accent-color:#5b5bd6;flex-shrink:0;cursor:pointer;">
+          <label for="prTCCheckbox" style="font-size:13px;color:#374151;line-height:1.5;cursor:pointer;">
+            I have read and agree to the
+            <button type="button" onclick="prOpenTCModal()" style="background:none;border:none;color:#5b5bd6;font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline;padding:0;">Terms &amp; Conditions</button>
+            of payment. Payments are non-refundable and subject to admin verification.
+          </label>
+        </div>
+      </div>
+      </div><!-- /prPayStep1 -->
+
+      <!-- STEP 2: select method + scan QR -->
+      <div id="prPayStep2" style="display:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:700;color:#5b5bd6;text-transform:uppercase;letter-spacing:.5px;">Step 2 of 3 · Pay</div>
+        <button type="button" onclick="prSelfPayGoStep(1)" style="background:none;border:none;color:#8b91a0;font-weight:700;font-size:13px;cursor:pointer;padding:0;">&larr; Back</button>
+      </div>
+      <!-- Payment Method Tabs -->
+      <div id="prMethodTabsWrap" style="display:none;margin-bottom:18px;">
+        <div class="pr-method-tabs">
+          <button class="pr-method-tab active" id="prTabGcash" onclick="prSwitchPayMethod('gcash')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h2v2H9zm0 4h2v2H9zm4-4h2v2h-2zm0 4h2v2h-2z"/></svg>
+            GCash
+          </button>
+          <button class="pr-method-tab" id="prTabBank" onclick="prSwitchPayMethod('bank')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            Bank Transfer
+          </button>
+        </div>
+      </div>
+      <!-- QR Code -->
+      <div id="prQRSection" style="text-align:center;margin-bottom:18px;">
+        <div style="font-size:12.5px;color:#6b7280;margin-bottom:8px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;">Scan to Pay</div>
+        <div class="pr-qr-display">
+          <img id="prClientQRImg" src="" alt="QR Code" style="display:none;">
+        </div>
+        <div style="font-size:15px;font-weight:700;color:#5b5bd6;margin-top:8px;" id="prClientPayAmount"></div>
+      </div>
+      </div><!-- /prPayStep2 -->
+
+      <!-- STEP 3: reference + receipt -->
+      <div id="prPayStep3" style="display:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:700;color:#5b5bd6;text-transform:uppercase;letter-spacing:.5px;">Step 3 of 3 · Proof</div>
+        <button type="button" onclick="prSelfPayGoStep(2)" style="background:none;border:none;color:#8b91a0;font-weight:700;font-size:13px;cursor:pointer;padding:0;">&larr; Back</button>
+      </div>
       <!-- Reference Number + Receipt (hidden in partial-request mode) -->
       <div id="prPaymentProofSection">
         <div class="pr-form-group">
@@ -1237,24 +1266,15 @@
           </div>
         </div>
       </div>
+      </div><!-- /prPayStep3 -->
 
       <div id="prClientPayError" class="pr-error-msg"></div>
     </div>
-      <!-- Terms & Conditions Agreement -->
-      <div style="margin:12px 22px 0;padding:14px 16px;background:#f0fdf4;border:1.5px solid #a7f3d0;border-radius:10px;">
-        <div style="display:flex;align-items:flex-start;gap:10px;">
-          <input type="checkbox" id="prTCCheckbox" onchange="prToggleTCSubmit()"
-            style="margin-top:3px;width:16px;height:16px;accent-color:#059669;flex-shrink:0;cursor:pointer;">
-          <label for="prTCCheckbox" style="font-size:13px;color:#374151;line-height:1.5;cursor:pointer;">
-            I have read and agree to the
-            <button type="button" onclick="prOpenTCModal()" style="background:none;border:none;color:#059669;font-weight:700;font-size:13px;cursor:pointer;text-decoration:underline;padding:0;">Terms &amp; Conditions</button>
-            of payment. Payments are non-refundable and subject to admin verification.
-          </label>
-        </div>
-      </div>
     <div class="pr-modal-footer">
       <button class="pr-btn-cancel" onclick="prClientClosePayModal()">Cancel</button>
-      <button id="prClientSubmitBtn" class="pr-client-pay-btn" style="width:auto;padding:9px 22px;opacity:0.45;cursor:not-allowed;" onclick="prClientHandlePayment()" disabled>
+      <button id="prStep1NextBtn" class="pr-client-pay-btn" style="width:auto;padding:9px 22px;" onclick="prStep1Next()">Continue &rarr;</button>
+      <button id="prStep2NextBtn" class="pr-client-pay-btn" style="width:auto;padding:9px 22px;display:none;" onclick="prStep2Next()">Continue &rarr;</button>
+      <button id="prClientSubmitBtn" class="pr-client-pay-btn" style="width:auto;padding:9px 22px;display:none;opacity:0.45;cursor:not-allowed;" onclick="prClientHandlePayment()" disabled>
         Submit Payment
       </button>
     </div>
@@ -1310,6 +1330,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-config.js"></script>
 <script src="js/print-utils.js"></script>
+<script>window.CM_PORTAL_MODE = 'client';</script>
 <script src="js/client-management-app.js"></script>
 
 <!-- Client SOA Modal -->
@@ -1334,7 +1355,7 @@
     </div>
 </div>
 
-<script>window._paymentQRDocId = 'cmPaymentQR';</script>
+<script>window._paymentQRDocId = 'paymentQR';</script>
 <script src="js/client-payment.js"></script>
 <script>
 /* ── Weekly Billing helpers ── */

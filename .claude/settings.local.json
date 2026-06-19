@@ -8,7 +8,18 @@
       "Bash(node -e *)",
       "Bash(node --check js/portal-app.compiled.js)",
       "Bash(cp \"c:/Users/yuich/DaCs_Company/Client Management.html\" \"c:/Users/yuich/DaCs_Company/Dacs Partnership.html\" && echo done)",
-      "Bash(node --check js/client-management-app.js)"
+      "Bash(node --check js/client-management-app.js)",
+      "Bash(node --check js/pm-admin.js)",
+      "Bash(node --check js/supabase-config.js)",
+      "Bash(curl -s -o /dev/null -w \"5501 HTTP %{http_code}\\\\n\" http://127.0.0.1:5501/admin.html)",
+      "Bash(npx --no-install playwright --version)",
+      "mcp__claude_design__get_project",
+      "mcp__claude_design__list_files",
+      "mcp__claude_design__read_file",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"open braces:\", o, \"close braces:\", c}' css/dacs-redesign.css)",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"open:\", o, \"close:\", c}' css/dacs-redesign.css)",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"css braces:\", o, c}' css/dacs-redesign.css)",
+      "Bash(node --check js/client-payment.js)"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company"

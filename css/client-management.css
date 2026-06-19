@@ -3,6 +3,15 @@
    Complements client.css with PM-specific and enhanced components
 ════════════════════════════════════════════════════════════════ */
 
+/* Partner portal = monitoring/viewing only. The partner HTML sets
+   window.CM_PORTAL_MODE='partner', which adds body.cm-partner on login.
+   Anything marked .cm-client-only (15% management fee, payments) is then
+   hidden for partners but stays visible for clients. */
+body.cm-partner .cm-client-only { display: none !important; }
+/* Inverse: only shown to partners (a cost-focused replacement for client-only text). */
+.cm-partner-only { display: none !important; }
+body.cm-partner .cm-partner-only { display: block !important; }
+
 /* ══════════════════════════════
    NAV — Project Management Parent
 ══════════════════════════════ */

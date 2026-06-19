@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="css/client-management.css"/>
   <link rel="stylesheet" href="css/client-renovation.css"/>
   <link rel="stylesheet" href="css/partnership-dark.css"/>
+  <link rel="stylesheet" href="css/dacs-redesign.css"/>
 </head>
 <body>
 
@@ -81,7 +82,7 @@
 
     <nav class="sidebar-nav">
 
-      <div class="nav-label">Navigation</div>
+      <div class="nav-label">Project</div>
 
       <a class="nav-item" onclick="showSection('kpi-dashboard')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -118,15 +119,26 @@
         <span id="weekly-overdue-badge" class="pr-nav-badge" style="display:none;background:#ef4444;margin-left:auto;">!</span>
       </a>
 
+      <div class="nav-label">Procurement</div>
+
       <a class="nav-item" onclick="showSection('procurement-list')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
-          <rect x="9" y="3" width="6" height="4" rx="1"/>
-          <line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/>
+          <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+          <path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>
         </svg>
         Materials Procurement
         <span id="procurement-pending-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;margin-left:auto;">!</span>
       </a>
+
+      <a class="nav-item cm-client-only" onclick="showSection('revolving-fund')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+        </svg>
+        Revolving Fund
+        <span id="rf-low-badge" class="pr-nav-badge" style="display:none;background:#ef4444;margin-left:auto;">!</span>
+      </a>
+
+      <div class="nav-label">Account</div>
 
       <a class="nav-item" onclick="showSection('notifications')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -136,8 +148,6 @@
         Notifications
         <span id="notif-nav-badge" class="pr-nav-badge" style="display:none;margin-left:auto;">0</span>
       </a>
-
-      <div class="nav-label">Account</div>
 
       <a class="nav-item" onclick="showSection('profile')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -173,9 +183,16 @@
         <button class="burger-btn" id="burger" onclick="toggleSidebar()" aria-label="Toggle menu">
           <span></span><span></span><span></span>
         </button>
-        <span class="topbar-title" id="topbar-title">Dashboard</span>
+        <div class="cm-project-pill">
+          <span class="cm-project-pill-icon">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+          </span>
+          <span class="cm-project-pill-name" id="topbar-project-name">Project</span>
+          <span class="cm-project-pill-sub" id="topbar-title">Cost-Plus</span>
+        </div>
       </div>
       <div class="topbar-right">
+        <span class="cm-topbar-date" id="topbar-date"></span>
         <button class="topbar-icon-btn dark-toggle-btn" id="dark-toggle" onclick="toggleDarkMode()" title="Toggle dark mode">
           <svg id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -236,7 +253,7 @@
           <div class="table-toolbar">
             <div class="table-search-wrap">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-              <input type="text" class="table-search" id="report-search" placeholder="Search by title, milestone…" oninput="filterReports()"/>
+              <input type="text" class="table-search" id="report-search" placeholder="Search by report or date…" oninput="filterReports()"/>
             </div>
           </div>
           <div class="table-scroll">
@@ -245,8 +262,8 @@
                 <tr>
                   <th>Report</th>
                   <th>Date</th>
-                  <th>Milestone</th>
-                  <th>Completed Tasks</th>
+                  <th style="text-align:right;">Total Cost</th>
+                  <th style="text-align:right;">Accomplishment</th>
                   <th style="text-align:center;">Progress</th>
                   <th>Status</th>
                   <th>Details</th>
@@ -407,27 +424,36 @@
 
       <!-- ── Profile ── -->
       <div class="sub-page" id="section-profile">
-        <div class="section-title">Profile</div>
-        <div class="section-sub">View and manage your account information.</div>
-        <div class="content-panel">
-          <div class="profile-card">
-            <div class="profile-avatar-lg-wrap">
+        <div style="margin-bottom:24px;">
+          <div class="section-title" style="margin-bottom:4px;">Profile</div>
+          <div class="section-sub" style="margin-bottom:0;">Your account details and security.</div>
+        </div>
+        <div class="cm-profile-grid" style="display:grid;grid-template-columns:1fr 1.6fr;gap:24px;align-items:start;">
+          <!-- LEFT: avatar card -->
+          <div class="content-panel" style="text-align:center;">
+            <div class="profile-avatar-lg-wrap" style="position:relative;display:inline-block;">
               <div class="profile-avatar-lg" id="profile-avatar-lg">CL</div>
               <button class="profile-avatar-edit-btn" onclick="triggerAvatarUpload()" title="Change profile picture">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
               </button>
               <input type="file" id="avatar-file-input" accept="image/*" style="display:none" onchange="handleAvatarUpload(event)">
             </div>
-            <div class="profile-info">
+            <div class="profile-info" style="margin-top:16px;">
               <div class="profile-name" id="profile-fullname">Client User</div>
               <div class="profile-email" id="profile-email-display"></div>
               <span class="profile-role-badge">Client Account</span>
             </div>
-            <button class="btn-edit-profile" id="btn-edit-profile" onclick="toggleEditProfile()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              Edit Profile
-            </button>
           </div>
+          <!-- RIGHT: account info + security -->
+          <div class="cm-profile-right" style="display:flex;flex-direction:column;gap:24px;">
+          <div class="content-panel">
+            <div class="panel-header">
+              <span class="panel-title">Account Information</span>
+              <button class="btn-edit-profile" id="btn-edit-profile" onclick="toggleEditProfile()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Edit Profile
+              </button>
+            </div>
 
           <div id="profile-view-mode">
             <div class="profile-fields">
@@ -525,6 +551,8 @@
             <p class="pw-placeholder-text">Keep your account secure by updating your password regularly.</p>
           </div>
         </div>
+          </div><!-- /cm-profile-right -->
+        </div><!-- /cm-profile-grid -->
 
         <!-- ── Termination Zone ── -->
         <div class="cm-termination-zone">
@@ -567,11 +595,6 @@
       <!-- ══════════ PROJECT DASHBOARD / FOLDER VIEW ══════════ -->
       <div class="sub-page" id="section-kpi-dashboard">
 
-        <!-- Header -->
-        <div style="margin-bottom:24px;">
-          <div class="section-title" style="margin-bottom:4px;">Project Dashboard</div>
-          <div class="section-sub" style="margin-bottom:0;">All project data, KPIs, and folders organized in one place for full transparency and easy navigation.</div>
-        </div>
 
         <!-- No Project State -->
         <div id="kpi-no-data" style="display:none;">
@@ -625,7 +648,8 @@
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
           <div>
             <div class="section-title" style="margin-bottom:4px;">Weekly Summary</div>
-            <div class="section-sub" style="margin-bottom:0;">Cost-Plus model — Direct Costs + 15% Management Fee. Payment due every Friday.</div>
+            <div class="section-sub cm-client-only" style="margin-bottom:0;">Cost-Plus model — Direct Costs + 15% Management Fee. Payment due every Friday.</div>
+            <div class="section-sub cm-partner-only" style="margin-bottom:0;">Weekly direct cost summary — labor and materials recorded each week.</div>
           </div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
             <div class="table-search-wrap" style="width:190px;">
@@ -647,14 +671,14 @@
           <span><strong>Cost Notice:</strong> Prices may vary based on market conditions and material availability. All figures reflect actual recorded costs at the time of billing.</span>
         </div>
 
-        <!-- Overdue Alert -->
-        <div id="wb-overdue-alert" style="display:none;align-items:center;gap:14px;background:#fef2f2;border:1.5px solid #fca5a5;border-radius:12px;padding:14px 18px;margin-bottom:20px;">
+        <!-- Overdue Alert (payment concept — client only) -->
+        <div id="wb-overdue-alert" class="cm-client-only" style="display:none;align-items:center;gap:14px;background:#fef2f2;border:1.5px solid #fca5a5;border-radius:12px;padding:14px 18px;margin-bottom:20px;">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
           <div id="wb-overdue-msg" style="font-size:13.5px;color:#dc2626;font-weight:600;"></div>
         </div>
 
-        <!-- Summary Cards -->
-        <div class="billing-summary-grid" style="margin-bottom:28px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));">
+        <!-- Summary Cards (billing/fee totals — client only) -->
+        <div class="billing-summary-grid cm-client-only" style="margin-bottom:28px;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));">
           <div class="billing-sum-card billing-sum-green">
             <div class="bsum-icon">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00a85e" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -708,8 +732,8 @@
                   <th>Materials</th>
                   <th>Other Costs</th>
                   <th>Direct Total</th>
-                  <th>Mgmt Fee (15%)</th>
-                  <th>Total Due</th>
+                  <th class="cm-client-only">Mgmt Fee (15%)</th>
+                  <th class="cm-client-only">Total Due</th>
                   <th>Status</th>
                   <th>Action</th>
                 </tr>
@@ -1294,6 +1318,9 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-config.js"></script>
 <script src="js/print-utils.js"></script>
+<!-- Partner = monitoring/view-only: hides the 15% management fee + Payments.
+     Set to 'client' to show the full billing view (same as Client Management). -->
+<script>window.CM_PORTAL_MODE = 'partner';</script>
 <script src="js/client-management-app.js"></script>
 
 <!-- Client SOA Modal -->
@@ -1318,7 +1345,7 @@
     </div>
 </div>
 
-<script>window._paymentQRDocId = 'cmPaymentQR';</script>
+<script>window._paymentQRDocId = 'paymentQR';</script>
 <script src="js/client-payment.js"></script>
 <script>
 /* ── Weekly Billing helpers ── */
@@ -1342,6 +1369,7 @@ function openWBDetail(bill){
   var fmt=function(n){return '₱'+(n||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});};
   var statusClass={Paid:'wbd-status-paid',Submitted:'wbd-status-submitted',Overdue:'wbd-status-overdue'}[bill.status]||'wbd-status-default';
   var feePct=((bill.managementFeeRate||0.15)*100).toFixed(0);
+  var isP=(window.CM_PORTAL_MODE==='partner');  // partner = monitoring: no fee, no payment
   var row=function(label,val){return '<tr class="wbd-row"><td class="wbd-cell-label">'+label+'</td><td class="wbd-cell-val">'+fmt(val)+'</td></tr>';};
   body.innerHTML=[
     '<div class="wbd-status-line">',
@@ -1354,11 +1382,13 @@ function openWBDetail(bill){
     delivery?row('Delivery',delivery):'',
     consumables?row('Consumables',consumables):'',
     other?row('Other',other):'',
-    '<tr class="wbd-row wbd-row-direct"><td class="wbd-cell-label">Direct Cost Total</td><td class="wbd-cell-val">'+fmt(direct)+'</td></tr>',
-    '<tr class="wbd-row wbd-row-fee"><td class="wbd-cell-label">Management Fee ('+feePct+'%)</td><td class="wbd-cell-val">'+fmt(fee)+'</td></tr>',
-    '<tr class="wbd-row-total"><td class="wbd-cell-label">TOTAL DUE</td><td class="wbd-cell-val">'+fmt(total)+'</td></tr>',
+    isP
+      ? '<tr class="wbd-row-total"><td class="wbd-cell-label">DIRECT TOTAL</td><td class="wbd-cell-val">'+fmt(direct)+'</td></tr>'
+      : '<tr class="wbd-row wbd-row-direct"><td class="wbd-cell-label">Direct Cost Total</td><td class="wbd-cell-val">'+fmt(direct)+'</td></tr>'
+        +'<tr class="wbd-row wbd-row-fee"><td class="wbd-cell-label">Management Fee ('+feePct+'%)</td><td class="wbd-cell-val">'+fmt(fee)+'</td></tr>'
+        +'<tr class="wbd-row-total"><td class="wbd-cell-label">TOTAL DUE</td><td class="wbd-cell-val">'+fmt(total)+'</td></tr>',
     '</tbody></table>',
-    bill.paymentDue?'<div class="wbd-note wbd-note-due">Payment due by: '+bill.paymentDue+'</div>':'',
+    (!isP && bill.paymentDue)?'<div class="wbd-note wbd-note-due">Payment due by: '+bill.paymentDue+'</div>':'',
     (bill.remarks||bill.notes)?'<div class="wbd-note wbd-note-remarks"><strong>Remarks:</strong> '+(bill.remarks||bill.notes)+'</div>':''
   ].join('');
   m.style.display='flex';
@@ -1402,9 +1432,11 @@ function wbPrintDetail(){
     +(delivery?row('Delivery',delivery):'')
     +(consumables?row('Consumables',consumables):'')
     +(other?row('Other',other):'')
-    +'<tr class="direct"><td style="padding:11px 14px;">Direct Cost Total</td><td style="padding:11px 14px;text-align:right;">'+fmt(direct)+'</td></tr>'
-    +'<tr class="fee"><td style="padding:9px 14px;border-bottom:1px solid #e5e7eb;">Management Fee ('+feePct+'%)</td><td style="padding:9px 14px;border-bottom:1px solid #e5e7eb;text-align:right;">'+fmt(fee)+'</td></tr>'
-    +'<tr class="total"><td>TOTAL DUE</td><td>'+fmt(total)+'</td></tr>'
+    +((window.CM_PORTAL_MODE==='partner')
+        ? '<tr class="total"><td>DIRECT TOTAL</td><td>'+fmt(direct)+'</td></tr>'
+        : '<tr class="direct"><td style="padding:11px 14px;">Direct Cost Total</td><td style="padding:11px 14px;text-align:right;">'+fmt(direct)+'</td></tr>'
+          +'<tr class="fee"><td style="padding:9px 14px;border-bottom:1px solid #e5e7eb;">Management Fee ('+feePct+'%)</td><td style="padding:9px 14px;border-bottom:1px solid #e5e7eb;text-align:right;">'+fmt(fee)+'</td></tr>'
+          +'<tr class="total"><td>TOTAL DUE</td><td>'+fmt(total)+'</td></tr>')
     +'<\/tbody><\/table>'
     +(bill.remarks||bill.notes?'<div style="margin-top:16px;padding:11px 14px;background:#f9fafb;border-radius:8px;font-size:13px;color:#374151;"><strong>Remarks:</strong> '+(bill.remarks||bill.notes)+'</div>':'')
     +'<div class="footer"><span>DAC\'s Building Design Services — Confidential Billing Document</span><span>Printed: '+today+'</span></div>'
