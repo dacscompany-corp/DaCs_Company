@@ -45,6 +45,24 @@ const CM_COLLECTION = 'constructionClientUsers';
 // no payments); 'client' = full (fee + payments). Set per-HTML-file via
 // window.CM_PORTAL_MODE before this script loads; defaults to client.
 function cmIsPartner() { return (typeof window !== 'undefined' && window.CM_PORTAL_MODE === 'partner'); }
+// Project's management fee % (set by the admin, defaults to 15). Used for labels
+// and as the fallback rate when a bill has no stored fee. cmFeeRate() = decimal form.
+function cmFeePct() {
+    const v = cmProjectData && cmProjectData.managementFeePct;
+    return (v == null || v === '' || isNaN(v)) ? 15 : Number(v);
+}
+function cmFeeRate() { return cmFeePct() / 100; }
+// A specific bill's effective fee % — derived from the bill itself (a snapshot),
+// so it stays correct even if the project's rate changed after the bill was issued.
+function cmBillPct(b) {
+    if (!b) return cmFeePct();
+    const direct = b.directCostTotal || ((b.labor||0) + (b.materials||0) + (b.delivery||0) + (b.consumables||0) + (b.other||0));
+    const fee = b.managementFee != null ? b.managementFee
+              : (b.managementFeeRate != null ? direct * b.managementFeeRate : direct * cmFeeRate());
+    if (direct > 0) return Math.round(fee / direct * 100);
+    if (b.managementFeeRate != null) return Math.round(b.managementFeeRate * 100);
+    return cmFeePct();
+}
 function cmFmt(n) {
     return '₱' + (Number(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -180,6 +198,11 @@ async function cmLoadProjectData(user) {
             .limit(1)
             .get();
         cmProjectData = snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+
+        // Expose the owning admin UID so the shared client-payment.js can stamp
+        // owner_id on self-initiated payments (else they're orphaned and no admin
+        // sees them). Mirrors window._clientOwnerUid set by the cost-plus portal.
+        window._clientOwnerUid = cmProjectData ? (cmProjectData.userId || cmProjectData.ownerUid || null) : null;
 
         if (cmProjectData) {
             // Load weekly bills (exclude drafts)
@@ -441,7 +464,7 @@ function cmPopulateDashboard() {
             actList.innerHTML = cmWeeklyBills.slice(0, 5).map(b => {
                 const statusColor = b.status === 'Paid' ? '#15803d' : b.status === 'Overdue' ? '#dc2626' : '#2563eb';
                 const directTotal = b.directCostTotal || ((b.labor||0) + (b.materials||0) + (b.delivery||0) + (b.consumables||0) + (b.other||0));
-                const subLabel = partner ? 'Labor + materials' : 'Direct costs + 15% mgmt fee';
+                const subLabel = partner ? 'Labor + materials' : `Direct costs + ${cmBillPct(b)}% mgmt fee`;
                 const amount   = partner ? directTotal : (b.totalDue || 0);
                 return `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #f1f5f9;">
                     <div>
@@ -526,7 +549,7 @@ function _cmWeeklyLegacy() {
         const materials   = b.materials   || 0;
         const otherCosts  = (b.delivery   || 0) + (b.consumables || 0) + (b.other || 0);
         const directTotal = b.directCostTotal || (labor + materials + otherCosts);
-        const mgmtFee     = b.managementFee   || (directTotal * (b.managementFeeRate || 0.15));
+        const mgmtFee     = b.managementFee   || (directTotal * (b.managementFeeRate || cmFeeRate()));
         const totalDue    = b.totalDue         || (directTotal + mgmtFee);
 
         return `<tr>
@@ -1648,7 +1671,7 @@ function populateBilling() {
                 <tr>
                     <td>${cmWeeklyBills.length - i}</td>
                     <td>${cmEsc(b.weekEndingDate || '—')}</td>
-                    <td>Labor + Materials + 15% Fee</td>
+                    <td>Labor + Materials + ${cmBillPct(b)}% Fee</td>
                     <td>${cmFmt(b.totalDue || 0)}</td>
                     <td><span style="display:inline-block;padding:2px 10px;border-radius:20px;font-size:11.5px;font-weight:700;background:${b.status==='Paid'?'#dcfce7':b.status==='Overdue'?'#fee2e2':'#dbeafe'};color:${b.status==='Paid'?'#15803d':b.status==='Overdue'?'#dc2626':'#1d4ed8'};">${cmEsc(b.status||'—')}</span></td>
                 </tr>`).join('');
@@ -2167,7 +2190,7 @@ window.filterWeeklyBills = function() {
         const materials = b.materials   || 0;
         const otherCosts= (b.delivery||0) + (b.consumables||0) + (b.other||0);
         const directTotal = b.directCostTotal || (labor + materials + otherCosts);
-        const mgmtFee   = b.managementFee    || (directTotal * (b.managementFeeRate || 0.15));
+        const mgmtFee   = b.managementFee    || (directTotal * (b.managementFeeRate || cmFeeRate()));
         const totalDue  = b.totalDue          || (directTotal + mgmtFee);
         return `<tr>
             <td><strong>${cmEsc(b.weekEndingDate || '—')}</strong><div style="font-size:11px;color:#9ca3af;">Week ${bills.length - i}</div></td>
@@ -2206,6 +2229,9 @@ window.printWeeklyReport = function() {
     const totalPaid     = bills.filter(b => b.status === 'Paid').reduce((s, b) => s + (b.totalDue || 0), 0);
     const outstanding   = totalBilled - totalPaid;
     const totalFees     = bills.reduce((s, b) => s + (b.managementFee  || 0), 0);
+    // Blended fee % across the listed bills (handles weeks billed at different rates).
+    const totalDirect   = totalBilled - totalFees;
+    const blendedFeePct = totalDirect > 0 ? Math.round(totalFees / totalDirect * 100) : cmFeePct();
 
     const statusColor = s => s === 'Paid' ? '#15803d' : s === 'Overdue' ? '#dc2626' : '#1d4ed8';
     const statusBg    = s => s === 'Paid' ? '#dcfce7' : s === 'Overdue' ? '#fee2e2' : '#dbeafe';
@@ -2215,7 +2241,7 @@ window.printWeeklyReport = function() {
         const materials = b.materials   || 0;
         const other     = (b.delivery||0) + (b.consumables||0) + (b.other||0);
         const direct    = b.directCostTotal  || (labor + materials + other);
-        const fee       = b.managementFee    || (direct * (b.managementFeeRate || 0.15));
+        const fee       = b.managementFee    || (direct * (b.managementFeeRate || cmFeeRate()));
         const total     = b.totalDue          || (direct + fee);
         const status    = b.status || '—';
         const sc        = statusColor(status);
@@ -2273,7 +2299,7 @@ window.printWeeklyReport = function() {
     <div class="info-item"><div class="label">Project Name</div><div class="value">${projectName}</div></div>
     <div class="info-item"><div class="label">Project Address</div><div class="value">${address}</div></div>
     <div class="info-item"><div class="label">Start Date</div><div class="value">${startDate}</div></div>
-    <div class="info-item"><div class="label">Billing Model</div><div class="value">Cost-Plus — Direct Costs + 15% Management Fee</div></div>
+    <div class="info-item"><div class="label">Billing Model</div><div class="value">Cost-Plus — Direct Costs + ${cmFeePct()}% Management Fee</div></div>
     <div class="info-item"><div class="label">Total Weeks</div><div class="value">${bills.length} week(s)</div></div>
   </div>
 
@@ -2281,7 +2307,7 @@ window.printWeeklyReport = function() {
     <div class="sum-card sum-green"><div class="sum-label">Total Billed</div><div class="sum-value">${fmt(totalBilled)}</div></div>
     <div class="sum-card sum-blue"><div class="sum-label">Total Paid</div><div class="sum-value">${fmt(totalPaid)}</div></div>
     <div class="sum-card sum-amber"><div class="sum-label">Outstanding</div><div class="sum-value">${fmt(outstanding)}</div></div>
-    <div class="sum-card sum-purple"><div class="sum-label">Mgmt Fees (15%)</div><div class="sum-value">${fmt(totalFees)}</div></div>
+    <div class="sum-card sum-purple"><div class="sum-label">Mgmt Fees (${blendedFeePct}%)</div><div class="sum-value">${fmt(totalFees)}</div></div>
   </div>
 
   ${bills.length ? `
@@ -2293,7 +2319,7 @@ window.printWeeklyReport = function() {
         <th style="text-align:right;">Materials</th>
         <th style="text-align:right;">Other</th>
         <th style="text-align:right;">Direct Total</th>
-        <th style="text-align:right;">Mgmt Fee (15%)</th>
+        <th style="text-align:right;">Mgmt Fee (${blendedFeePct}%)</th>
         <th style="text-align:right;">Total Due</th>
         <th style="text-align:center;">Status</th>
       </tr>
@@ -2565,7 +2591,7 @@ function cmRenderOverview() {
     const labor     = latest ? (latest.labor || 0) : 0;
     const materials = latest ? ((latest.materials||0)+(latest.delivery||0)+(latest.consumables||0)+(latest.other||0)) : 0;
     const direct    = latest ? (latest.directCostTotal || (labor + materials)) : 0;
-    const fee       = latest ? (latest.managementFee || direct * (latest.managementFeeRate || 0.15)) : 0;
+    const fee       = latest ? (latest.managementFee || direct * (latest.managementFeeRate || cmFeeRate())) : 0;
     const total     = latest ? (latest.totalDue || (direct + fee)) : 0;
     const range     = latest ? cmWeekRange(latest.weekEndingDate) : '';
     const status    = latest ? (latest.status || 'Submitted') : '';
@@ -2643,11 +2669,11 @@ function cmRenderOverview() {
                 ${(latest && !partner) ? `<span style="font-size:10.5px;font-weight:700;background:rgba(255,255,255,0.2);padding:4px 11px;border-radius:20px;">${duePill}</span>` : ''}
             </div>
             <div style="font-size:40px;font-weight:800;letter-spacing:-0.02em;margin-top:10px;">${cmFmt(partner ? direct : total)}</div>
-            <div style="font-size:12.5px;opacity:0.85;margin-top:4px;">${latest ? 'Week of ' + cmEsc(range) + (partner ? ' · labor + materials' : ' · direct costs + 15% fee') : 'No bill submitted yet'}</div>
+            <div style="font-size:12.5px;opacity:0.85;margin-top:4px;">${latest ? 'Week of ' + cmEsc(range) + (partner ? ' · labor + materials' : ' · direct costs + ' + cmBillPct(latest) + '% fee') : 'No bill submitted yet'}</div>
             <div style="display:flex;gap:24px;margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.18);">
                 <div><div style="font-size:11px;opacity:0.78;">Labor</div><div style="font-size:15px;font-weight:700;margin-top:2px;">${cmFmt(labor)}</div></div>
                 <div><div style="font-size:11px;opacity:0.78;">Materials</div><div style="font-size:15px;font-weight:700;margin-top:2px;">${cmFmt(materials)}</div></div>
-                ${partner ? '' : `<div><div style="font-size:11px;opacity:0.78;">Fee · 15%</div><div style="font-size:15px;font-weight:700;margin-top:2px;">${cmFmt(fee)}</div></div>`}
+                ${partner ? '' : `<div><div style="font-size:11px;opacity:0.78;">Fee · ${cmBillPct(latest)}%</div><div style="font-size:15px;font-weight:700;margin-top:2px;">${cmFmt(fee)}</div></div>`}
             </div>
             <div style="display:flex;gap:10px;margin-top:18px;">
                 <button onclick="showSection('weekly-billing')" style="flex:1;border:none;background:#fff;color:#5b5bd6;font-size:13.5px;font-weight:700;padding:12px;border-radius:12px;cursor:pointer;">View Weekly Summary</button>
@@ -2790,7 +2816,7 @@ function cmRenderWeekly() {
     const labor     = latest ? (latest.labor || 0) : 0;
     const materials = latest ? ((latest.materials||0)+(latest.delivery||0)+(latest.consumables||0)+(latest.other||0)) : 0;
     const direct    = latest ? (latest.directCostTotal || (labor + materials)) : 0;
-    const fee       = latest ? (latest.managementFee || direct * (latest.managementFeeRate || 0.15)) : 0;
+    const fee       = latest ? (latest.managementFee || direct * (latest.managementFeeRate || cmFeeRate())) : 0;
     const total     = latest ? (latest.totalDue || (direct + fee)) : 0;
     const range     = latest ? cmWeekRange(latest.weekEndingDate) : '—';
     const status    = latest ? (latest.status || 'Submitted') : '';
@@ -2800,7 +2826,7 @@ function cmRenderWeekly() {
         const lab = b.labor || 0;
         const mat = (b.materials||0)+(b.delivery||0)+(b.consumables||0)+(b.other||0);
         const dir = b.directCostTotal || (lab + mat);
-        const f   = b.managementFee || dir * (b.managementFeeRate || 0.15);
+        const f   = b.managementFee || dir * (b.managementFeeRate || cmFeeRate());
         const t   = b.totalDue || (dir + f);
         const st  = b.status === 'Paid' ? ['PAID','#3f9960','#e7f5ed']
                   : b.status === 'Overdue' ? ['OVERDUE','#b91c1c','#fef2f2']
@@ -2819,7 +2845,7 @@ function cmRenderWeekly() {
     <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:26px;flex-wrap:wrap;gap:14px;">
         <div>
             <div style="font-size:28px;font-weight:800;letter-spacing:-0.02em;color:#1a1d24;">Weekly Summary</div>
-            <div style="font-size:14px;color:#8b91a0;margin-top:3px;">${partner ? 'Total labor and materials recorded each week.' : 'Total labor and materials per week. The 15% management fee and grand total are computed automatically.'}</div>
+            <div style="font-size:14px;color:#8b91a0;margin-top:3px;">${partner ? 'Total labor and materials recorded each week.' : 'Total labor and materials per week. The ' + cmFeePct() + '% management fee and grand total are computed automatically.'}</div>
         </div>
         ${latest ? `<div style="background:#fff;border-radius:12px;padding:9px 14px;display:flex;align-items:center;gap:9px;box-shadow:0 1px 3px rgba(20,25,40,0.06);font-size:13.5px;font-weight:700;color:#1a1d24;">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5b5bd6" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -2837,7 +2863,7 @@ function cmRenderWeekly() {
             </div>
             <div style="margin-top:22px;background:#f7f8fb;border-radius:15px;padding:20px 22px;">
                 <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;"><span style="color:#6b7180;">${partner ? 'Labor' : 'Direct costs'}</span><span style="font-weight:700;">${cmFmt(partner ? labor : direct)}</span></div>
-                <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;border-top:1px solid #ebedf2;"><span style="color:#6b7180;">${partner ? 'Materials' : 'Management fee · 15%'}</span><span style="font-weight:700;${partner?'':'color:#5b5bd6;'}">${cmFmt(partner ? materials : fee)}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;border-top:1px solid #ebedf2;"><span style="color:#6b7180;">${partner ? 'Materials' : 'Management fee · ' + cmBillPct(latest) + '%'}</span><span style="font-weight:700;${partner?'':'color:#5b5bd6;'}">${cmFmt(partner ? materials : fee)}</span></div>
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:13px 0 4px;font-size:14px;border-top:1px solid #ebedf2;margin-top:4px;"><span style="font-weight:700;">${partner ? 'Total cost' : 'Grand total'}</span><span style="font-weight:800;font-size:24px;letter-spacing:-0.01em;">${cmFmt(partner ? direct : total)}</span></div>
             </div>
             ${latest ? `<div style="margin-top:18px;font-size:12.5px;color:#8b91a0;">Status: <strong style="color:${status==='Paid'?'#3f9960':status==='Overdue'?'#b91c1c':'#5b5bd6'};">${cmEsc(status)}</strong> · submitted every Friday</div>` : ''}
@@ -2845,7 +2871,7 @@ function cmRenderWeekly() {
         <div style="display:flex;flex-direction:column;gap:20px;">
             ${partner ? '' : `<div style="${card}">
                 <div style="font-size:14px;font-weight:800;margin-bottom:12px;color:#1a1d24;">How it's computed</div>
-                <div style="font-family:'Space Mono',monospace;font-size:12.5px;color:#6b7180;background:#f7f8fb;border-radius:12px;padding:14px;line-height:1.7;">(Labor + Materials)<br/>&nbsp;&nbsp;× 15% = <span style="color:#5b5bd6;">Fee</span><br/>Direct + Fee = <span style="font-weight:700;color:#1a1d24;">Total</span></div>
+                <div style="font-family:'Space Mono',monospace;font-size:12.5px;color:#6b7180;background:#f7f8fb;border-radius:12px;padding:14px;line-height:1.7;">(Labor + Materials)<br/>&nbsp;&nbsp;× ${cmBillPct(latest)}% = <span style="color:#5b5bd6;">Fee</span><br/>Direct + Fee = <span style="font-weight:700;color:#1a1d24;">Total</span></div>
             </div>`}
             <div style="${card}">
                 <div style="font-size:14px;font-weight:800;margin-bottom:8px;color:#1a1d24;">Cost notice</div>
@@ -3347,7 +3373,7 @@ window.cmOpenTerminationModal = function() {
     const totalMaterials = cmWeeklyBills.reduce((s, b) =>
         s + (b.materials || 0) + (b.delivery || 0) + (b.consumables || 0) + (b.other || 0), 0);
     const directCosts    = totalLabor + totalMaterials;
-    const mgmtFee        = directCosts * 0.15;
+    const mgmtFee        = directCosts * cmFeeRate();
     const grandTotal     = directCosts + mgmtFee;
     const totalPaid      = cmWeeklyBills
         .filter(b => b.status === 'Paid')
@@ -3366,7 +3392,7 @@ window.cmOpenTerminationModal = function() {
                 <span class="cm-term-cost-value">${cmFmt(totalMaterials)}</span>
             </div>
             <div class="cm-term-cost-row">
-                <span class="cm-term-cost-label">Management Fee (15%)</span>
+                <span class="cm-term-cost-label">Management Fee (${cmFeePct()}%)</span>
                 <span class="cm-term-cost-value">${cmFmt(mgmtFee)}</span>
             </div>
             <div class="cm-term-cost-row">
@@ -3398,7 +3424,7 @@ window.cmConfirmTermination = async function() {
             const totalMaterials = cmWeeklyBills.reduce((s, b) =>
                 s + (b.materials || 0) + (b.delivery || 0) + (b.consumables || 0) + (b.other || 0), 0);
             const directCosts    = totalLabor + totalMaterials;
-            const mgmtFee        = directCosts * 0.15;
+            const mgmtFee        = directCosts * cmFeeRate();
             const grandTotal     = directCosts + mgmtFee;
             const totalPaid      = cmWeeklyBills
                 .filter(b => b.status === 'Paid')

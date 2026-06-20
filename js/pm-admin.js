@@ -18,6 +18,12 @@ let _pmExpenses       = [];
 let _pmPayRequests    = [];
 let _pmCompanyBuyItemData = null;
 let _pmCompanyReceiptFile = null;
+let _pmProcFilter     = 'all';   // materials status filter: all | pending | bought
+// ── This-week inline bill builder ──
+let _pmWeekBills      = [];       // all weeklyBills docs for the active project
+let _pmWeekEntries    = [];       // current draft line entries {id,type,details,amount}
+let _pmWeekDate       = null;     // selected Friday (YYYY-MM-DD)
+let _pmWeekEditingId  = null;     // doc id when the selected week already has a saved bill
 
 // ── Init ────────────────────────────────────────────────
 window.initPMModule = async function(view) {
@@ -70,19 +76,18 @@ function _pmInitWorkspace() {
 window.pmWsTab = function(tab, btn) {
     document.querySelectorAll('.pm-ws-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.pm-ws-panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
+    if (btn) btn.classList.add('active');
     const panel = document.getElementById('ws-panel-' + tab);
     if (panel) { panel.classList.add('active'); _pmLoadWsPanel(panel.id); }
 };
 
+// The redesigned workspace groups the six functional areas under four tabs.
 function _pmLoadWsPanel(panelId) {
     switch(panelId) {
-        case 'ws-panel-weekly':      _pmLoadWeeklyEntries(); break;
-        case 'ws-panel-procurement': _pmLoadProcItems();     break;
-        case 'ws-panel-milestones':  _pmLoadMilestones();    break;
-        case 'ws-panel-reports':     _pmLoadReports();       break;
-        case 'ws-panel-revolving':   _pmLoadRevolving();     break;
-        case 'ws-panel-payment':     _pmLoadPayments();      break;
+        case 'ws-panel-week':      _pmLoadWeekBuilder();                  break;
+        case 'ws-panel-materials': _pmLoadProcItems();                    break;
+        case 'ws-panel-progress':  _pmLoadMilestones(); _pmLoadReports(); break;
+        case 'ws-panel-money':     _pmLoadPayments();   _pmLoadRevolving(); break;
     }
 }
 
@@ -99,10 +104,55 @@ async function _pmLoadProjectsList() {
     try {
         const snap = await db.collection('constructionProjects').orderBy('clientName').get();
         _pmProjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Enrich each card with real progress / balance / cadence before rendering.
+        await Promise.all(_pmProjects.map(_pmComputeProjectMetrics));
         _pmRenderProjectCards(_pmProjects);
     } catch(e) {
         grid.innerHTML = `<div class="pm-cards-empty">Error loading projects: ${_esc(e.message)}</div>`;
     }
+}
+
+// Compute card metrics (progress %, balance due, this Friday, cadence) from the
+// project's milestones + payment requests. Mutates the project object with `_m`.
+// Any failure falls back to safe zeros so one bad project never blanks the grid.
+async function _pmComputeProjectMetrics(p) {
+    const m = { progressPct: 0, balanceDue: 0, thisFriday: 0, cadence: 'ontrack' };
+    p._m = m;
+    try {
+        const [msSnap, paySnap] = await Promise.all([
+            db.collection('constructionProjects').doc(p.id).collection('milestones').get(),
+            db.collection('paymentRequests').where('constructionProjectId', '==', p.id).get()
+        ]);
+
+        // Progress: weighted by `percentage` of completed milestones; fall back to count.
+        const ms = msSnap.docs.map(d => d.data());
+        if (ms.length) {
+            const hasPct = ms.some(x => x.percentage != null && x.percentage !== '' && !isNaN(x.percentage));
+            if (hasPct) {
+                m.progressPct = ms.filter(x => x.status === 'completed')
+                    .reduce((s, x) => s + (Number(x.percentage) || 0), 0);
+            } else {
+                const done = ms.filter(x => x.status === 'completed').length;
+                m.progressPct = Math.round(done / ms.length * 100);
+            }
+            m.progressPct = Math.max(0, Math.min(100, Math.round(m.progressPct)));
+        }
+
+        // Balance + this Friday + cadence from payment requests (mirrors _pmPayUpdateKPIs).
+        const reqs = paySnap.docs.map(d => d.data());
+        const open = reqs.filter(r => r.status === 'unpaid' || r.status === 'partial');
+        m.balanceDue = open.reduce((s, r) => s + ((r.totalAmount || r.amount || 0) - (r.amountPaid || 0)), 0);
+        const next = open.slice().sort((a, b) => (a.weekEndingDate || '').localeCompare(b.weekEndingDate || ''))[0];
+        m.thisFriday = next ? (next.totalAmount || next.amount || 0) : 0;
+
+        const today = new Date().toISOString().slice(0, 10);
+        if (reqs.some(r => r.status === 'partial')) m.cadence = 'partial';
+        else if (open.some(r => r.status === 'unpaid' && r.weekEndingDate && r.weekEndingDate < today)) m.cadence = 'overdue';
+        else m.cadence = 'ontrack';
+    } catch(e) {
+        console.warn('PM: metrics failed for', p.id, e.message);
+    }
+    return p;
 }
 
 function _pmRenderProjectCards(projects) {
@@ -112,42 +162,44 @@ function _pmRenderProjectCards(projects) {
         grid.innerHTML = '<div class="pm-cards-empty"><div class="pm-cards-empty-icon">🏗️</div>No projects yet. Click <strong>Add Project</strong> to create your first one.</div>';
         return;
     }
-    const statusCls   = { active:'pm-badge-paid', 'on-hold':'pm-badge-partial', completed:'pm-badge-client', terminated:'pm-badge-terminated' };
-    const statusLabel = { active:'Active', 'on-hold':'On Hold', completed:'Completed', terminated:'Terminated' };
     // Render uses data-pm-id on the card + data-pm-action on each button.
     // The previous version interpolated JSON.stringify(p) into inline onclick
     // handlers — that escaped " but NOT ' or backticks, so a client name like
     // "O'Brien" or a malicious "'); alert(1); //" would break out. Now the
     // full project object is fetched from _pmProjects at click-time via the
     // delegated handler below (attached once via _handlerAttached flag).
+    const cadenceBadge = {
+        ontrack:  '<span class="pm-badge pm-badge-paid">On track</span>',
+        partial:  '<span class="pm-badge pm-badge-partial">Partial last week</span>',
+        overdue:  '<span class="pm-badge pm-badge-strict">Overdue</span>',
+    };
     grid.innerHTML = projects.map(p => {
-        const badge     = `<span class="pm-badge ${statusCls[p.status]||'pm-badge-paid'}">${statusLabel[p.status]||'Active'}</span>`;
-        const startStr  = p.startDate ? new Date(p.startDate+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '—';
+        const m       = p._m || { progressPct: 0, balanceDue: 0, thisFriday: 0, cadence: 'ontrack' };
+        const balCls  = m.balanceDue > 0 ? 'color:var(--pm-danger);' : '';
         return `<div class="pm-project-card" data-pm-id="${_esc(p.id)}">
           <div class="pm-card-top">
             <div class="pm-card-names">
               <div class="pm-card-client">${_esc(p.clientName||'Unnamed Client')}</div>
-              <div class="pm-card-project">${_esc(p.projectName||'—')}</div>
+              <div class="pm-card-project">${_esc(p.projectName||'—')}${p.address ? ' · ' + _esc(p.address) : ''}</div>
             </div>
             <div class="pm-card-actions">
               <button class="pm-card-icon-btn" data-pm-action="edit" title="Edit"><i data-lucide="pencil" style="width:13px;height:13px;"></i></button>
               <button class="pm-card-icon-btn del" data-pm-action="delete" title="Delete"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>
             </div>
           </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            ${badge}
-            <span style="font-size:12px;color:#9ca3af;">Started ${startStr}</span>
-          </div>
+          <div class="pm-card-progress"><div class="pm-card-progress-fill" style="width:${m.progressPct}%;"></div></div>
+          <div class="pm-card-progress-pct">${m.progressPct}% complete</div>
           <div class="pm-card-stats">
             <div class="pm-card-stat">
-              <div class="pm-card-stat-label">Client Email</div>
-              <div class="pm-card-stat-value" style="font-size:12px;font-weight:500;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(p.clientEmail||'—')}</div>
+              <div class="pm-card-stat-label">Balance due</div>
+              <div class="pm-card-stat-value num" style="${balCls}">${_fmt(m.balanceDue)}</div>
             </div>
             <div class="pm-card-stat">
-              <div class="pm-card-stat-label">Location</div>
-              <div class="pm-card-stat-value" style="font-size:12px;font-weight:500;color:#6b7280;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(p.address||'—')}</div>
+              <div class="pm-card-stat-label">This Friday</div>
+              <div class="pm-card-stat-value num">${_fmt(m.thisFriday)}</div>
             </div>
           </div>
+          <div style="margin-top:13px;">${cadenceBadge[m.cadence] || cadenceBadge.ontrack}</div>
           <button class="pm-card-open-btn" data-pm-action="open">
             <i data-lucide="arrow-right" style="width:14px;height:14px;"></i> Open Project
           </button>
@@ -176,6 +228,8 @@ function _pmRenderProjectCards(projects) {
 window.pmOpenProject = function(p) {
     _pmActiveProject = _pmProjects.find(pr => pr.id === p.id) || p;
     localStorage.setItem('pm_selected_project', p.id);
+    // Fresh "This Week" draft for the newly opened project.
+    _pmWeekDate = null; _pmWeekBills = []; _pmWeekEntries = []; _pmWeekEditingId = null;
     // Reset workspace to weekly tab
     document.querySelectorAll('.pm-ws-tab').forEach((t,i)  => t.classList.toggle('active', i===0));
     document.querySelectorAll('.pm-ws-panel').forEach((pn,i) => pn.classList.toggle('active', i===0));
@@ -193,6 +247,7 @@ window.pmOpenProjectModal = function() {
     document.getElementById('pmProjectAddress').value    = '';
     document.getElementById('pmProjectBudget').value     = '';
     document.getElementById('pmProjectEndDate').value    = '';
+    document.getElementById('pmProjectFeePct').value     = '15';
     ['err-pmProjectClientName','err-pmProjectName'].forEach(_pmClearErr);
     document.getElementById('pmProjectModal').style.display = 'flex';
     if (window.lucide) lucide.createIcons();
@@ -209,6 +264,7 @@ window.pmEditProject = function(p) {
     document.getElementById('pmProjectAddress').value    = p.address     || '';
     document.getElementById('pmProjectBudget').value     = (p.budget != null ? p.budget : '');
     document.getElementById('pmProjectEndDate').value    = p.plannedEndDate || '';
+    document.getElementById('pmProjectFeePct').value     = (p.managementFeePct != null ? p.managementFeePct : 15);
     ['err-pmProjectClientName','err-pmProjectName'].forEach(_pmClearErr);
     document.getElementById('pmProjectModal').style.display = 'flex';
     if (window.lucide) lucide.createIcons();
@@ -225,35 +281,81 @@ window.pmSaveProject = async function() {
     const budgetRaw  = document.getElementById('pmProjectBudget').value.trim();
     const budget     = budgetRaw === '' ? 0 : Number(budgetRaw);
     const plannedEndDate = document.getElementById('pmProjectEndDate').value || null;
+    const feePctRaw  = document.getElementById('pmProjectFeePct').value.trim();
+    let   managementFeePct = feePctRaw === '' ? 15 : Number(feePctRaw);
+    if (isNaN(managementFeePct) || managementFeePct < 0) managementFeePct = 15;
+    if (managementFeePct > 100) managementFeePct = 100;
 
     let valid = true;
     if (!clientName)  { _pmShowErr('err-pmProjectClientName','Client name is required.'); valid = false; }
     if (!projectName) { _pmShowErr('err-pmProjectName','Project name is required.');      valid = false; }
     if (!valid) return;
 
-    const data = { clientName, projectName, clientEmail, status, startDate, address, budget, plannedEndDate,
+    const data = { clientName, projectName, clientEmail, status, startDate, address, budget, plannedEndDate, managementFeePct,
                    updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+
+    // Detect a fee-rate change so we can re-bill unpaid weeks at the new rate.
+    const existing  = projectId ? _pmProjects.find(p => p.id === projectId) : null;
+    const oldFeePct = existing ? (existing.managementFeePct != null ? Number(existing.managementFeePct) : 15) : null;
+    const feeChanged = projectId && oldFeePct !== managementFeePct;
 
     const btn = document.querySelector('#pmProjectModal .pm-btn-primary');
     btn.disabled = true; btn.textContent = 'Saving…';
     try {
         if (projectId) {
             await db.collection('constructionProjects').doc(projectId).update(data);
+            // Keep the active-project copy in sync so This Week uses the new rate.
+            if (_pmActiveProject && _pmActiveProject.id === projectId) _pmActiveProject.managementFeePct = managementFeePct;
+            let reBilled = 0;
+            if (feeChanged) {
+                try { reBilled = await _pmRecomputeUnpaidBills(projectId, managementFeePct); }
+                catch(e) { console.warn('PM: re-bill unpaid weeks failed', e.message); }
+            }
+            if (feeChanged && reBilled > 0) _pmToast(`Fee set to ${managementFeePct}% · re-billed ${reBilled} unpaid week${reBilled > 1 ? 's' : ''}`);
+            else _pmToast('Project saved');
         } else {
             data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
             await db.collection('constructionProjects').add(data);
+            _pmToast('Project created');
         }
         _pmProjects = [];
         pmCloseModal('pmProjectModal');
         _pmLoadProjectsList();
     } catch(e) {
-        alert('Save failed: ' + e.message);
+        _pmToast('Save failed: ' + e.message, true);
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<i data-lucide="save" style="width:14px;height:14px;"></i> Save Project';
         if (window.lucide) lucide.createIcons();
     }
 };
+
+// Re-bill a project's UNPAID weekly bills at a new management-fee rate.
+// Skips anything already paid or partially paid (status Paid / Partial) so money
+// already collected is never altered. Only writes columns that exist on weekly_bills
+// (management_fee, grand_total). Returns the number of bills updated.
+async function _pmRecomputeUnpaidBills(projectId, ratePct) {
+    const rate = (Number(ratePct) || 0) / 100;
+    const col  = db.collection('constructionProjects').doc(projectId).collection('weeklyBills');
+    const snap = await col.get();
+    const writes = [];
+    snap.docs.forEach(d => {
+        const b = d.data();
+        if (b.status === 'Paid' || b.status === 'Partial') return;   // leave settled money alone
+        const direct = (b.labor || 0) + (b.materials || 0);
+        const fee    = direct * rate;
+        const grand  = direct + fee;
+        if (Math.round(b.managementFee || 0) === Math.round(fee) &&
+            Math.round(b.grandTotal   || 0) === Math.round(grand)) return;   // already current
+        writes.push(col.doc(d.id).update({
+            managementFee: fee,
+            grandTotal:    grand,
+            updatedAt:     firebase.firestore.FieldValue.serverTimestamp()
+        }));
+    });
+    await Promise.all(writes);
+    return writes.length;
+}
 
 window.pmDeleteProject = async function(id) {
     if (!confirm('Delete this project? This removes the project from the list but does NOT delete subcollection data (weekly bills, procurement, etc.).')) return;
@@ -402,8 +504,10 @@ window.pmEditWeeklyEntry = function(entry) {
 window.pmWeeklyCompute = function() {
     const labor     = parseFloat(document.getElementById('pmWeeklyLabor')?.value)     || 0;
     const materials = parseFloat(document.getElementById('pmWeeklyMaterials')?.value) || 0;
-    const fee   = (labor + materials) * 0.15;
+    const fee   = (labor + materials) * (_pmFeePct()/100);
     const total = labor + materials + fee;
+    const feeLabel = document.getElementById('pm-calc-fee-label');
+    if (feeLabel) feeLabel.textContent = `Management Fee (${_pmFeePct()}%)`;
     document.getElementById('pm-calc-fee').textContent   = '₱' + fee.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
     document.getElementById('pm-calc-total').textContent = '₱' + total.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});
 };
@@ -420,7 +524,7 @@ window.pmSaveWeeklyEntry = async function() {
     if (labor <= 0 && materials <= 0) { _pmShowErr('err-pmWeeklyLabor','Enter labor or materials amount.'); valid = false; }
     if (!valid) return;
 
-    const managementFee = (labor + materials) * 0.15;
+    const managementFee = (labor + materials) * (_pmFeePct()/100);
     const grandTotal    = labor + materials + managementFee;
     const data = { weekEndingDate, labor, materials, managementFee, grandTotal, notes,
                    updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
@@ -450,9 +554,240 @@ window.pmDeleteWeeklyEntry = async function(id) {
     if (!confirm('Delete this weekly entry? This cannot be undone.')) return;
     try {
         await db.collection('constructionProjects').doc(_pmActiveProject.id).collection('weeklyBills').doc(id).delete();
-        _pmLoadWeeklyEntries();
+        _pmLoadWeekBuilder();
     } catch(e) { alert('Delete failed: ' + e.message); }
 };
+
+// ══════════════════════════════════════════════════════════
+// 1b. THIS WEEK — inline bill builder
+//   Builds one weeklyBills doc per Friday from labor/materials
+//   line entries. Sums into the existing labor/materials/fee/
+//   grandTotal schema (+ a new `entries` array) so the partner
+//   portal KPIs, Money tab and labor-invoice prefill keep
+//   reading exactly what they read before.
+// ══════════════════════════════════════════════════════════
+const PM_FEE_PCT = 15;   // management fee — default; editable per project
+
+// Active project's management fee %, falling back to the 15% default.
+function _pmFeePct() {
+    const v = _pmActiveProject && _pmActiveProject.managementFeePct;
+    return (v == null || v === '' || isNaN(v)) ? PM_FEE_PCT : Number(v);
+}
+
+function _pmPeso(n) { return '₱' + Math.round(Number(n) || 0).toLocaleString('en-US'); }
+function _pmFriLabel(dateStr) {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d)) return '—';
+    return d.toLocaleDateString('en-PH', { weekday:'short', month:'short', day:'numeric' });
+}
+function _pmShortDate(dateStr) {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d)) return '—';
+    return d.toLocaleDateString('en-PH', { month:'short', day:'numeric' });
+}
+function _pmShiftDateStr(dateStr, days) {
+    const d = new Date((dateStr || _nextFriday()) + 'T00:00:00');
+    d.setDate(d.getDate() + days);
+    return d.toISOString().slice(0,10);
+}
+
+async function _pmLoadWeekBuilder() {
+    if (!_pmActiveProject) {
+        _pmWeekBills = []; _pmWeekEntries = []; _pmWeekEditingId = null;
+        _pmSet('pm-week-date', '—');
+        _pmWeekRenderEntries(); _pmWeekRecompute();
+        const hist = document.getElementById('pm-week-history');
+        if (hist) hist.innerHTML = '<div class="pm-week-empty">Select a project first.</div>';
+        return;
+    }
+    if (!_pmWeekDate) _pmWeekDate = _nextFriday();
+    try {
+        const snap = await db.collection('constructionProjects')
+            .doc(_pmActiveProject.id)
+            .collection('weeklyBills')
+            .orderBy('weekEndingDate', 'desc')
+            .get();
+        _pmWeekBills = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch(e) {
+        console.warn('PM week load:', e.message);
+        _pmWeekBills = [];
+    }
+    _pmWeekSyncDraft();
+    _pmWeekRenderHistory();
+}
+
+// Load the saved bill for the selected Friday into the draft (or start empty).
+function _pmWeekSyncDraft() {
+    const bill = _pmWeekBills.find(b => b.weekEndingDate === _pmWeekDate);
+    if (bill) {
+        _pmWeekEditingId = bill.id;
+        if (Array.isArray(bill.entries) && bill.entries.length) {
+            _pmWeekEntries = bill.entries.map(e => ({
+                id: _pmUid('we_'),
+                type: e.type === 'materials' ? 'materials' : 'labor',
+                details: e.details || '',
+                amount: Number(e.amount) || 0
+            }));
+        } else {
+            // Legacy doc with only labor/materials totals — synthesize two lines.
+            _pmWeekEntries = [];
+            if (bill.labor)     _pmWeekEntries.push({ id:_pmUid('we_'), type:'labor',     details:'Labor total',     amount:Number(bill.labor)     });
+            if (bill.materials) _pmWeekEntries.push({ id:_pmUid('we_'), type:'materials', details:'Materials total', amount:Number(bill.materials) });
+        }
+    } else {
+        _pmWeekEditingId = null;
+        _pmWeekEntries = [];
+    }
+    _pmSet('pm-week-date', _pmFriLabel(_pmWeekDate));
+    const saveBtn = document.getElementById('pm-week-save-btn');
+    if (saveBtn) saveBtn.textContent = _pmWeekEditingId ? "Update this week's bill" : 'Save & send to client →';
+    _pmWeekRenderEntries();
+    _pmWeekRecompute();
+}
+
+window.pmWeekShift = function(delta) {
+    _pmWeekDate = _pmShiftDateStr(_pmWeekDate, delta * 7);
+    _pmWeekSyncDraft();
+};
+
+window.pmWeekLoadBill = function(id) {
+    const bill = _pmWeekBills.find(b => b.id === id);
+    if (!bill) return;
+    _pmWeekDate = bill.weekEndingDate || _pmWeekDate;
+    _pmWeekSyncDraft();
+};
+
+window.pmWeekAddEntry = function() {
+    const typeEl = document.getElementById('pm-week-type');
+    const detEl  = document.getElementById('pm-week-details');
+    const amtEl  = document.getElementById('pm-week-amount');
+    const type   = typeEl && typeEl.value === 'materials' ? 'materials' : 'labor';
+    const details= (detEl ? detEl.value : '').trim();
+    const amount = amtEl ? (parseInt(String(amtEl.value).replace(/[^0-9]/g,''), 10) || 0) : 0;
+    if (amount <= 0) { if (amtEl) amtEl.focus(); return; }
+    _pmWeekEntries.push({ id:_pmUid('we_'), type, details: details || (type==='labor' ? 'Labor cost' : 'Materials'), amount });
+    if (detEl) detEl.value = '';
+    if (amtEl) amtEl.value = '';
+    _pmWeekRenderEntries();
+    _pmWeekRecompute();
+    if (detEl) detEl.focus();
+};
+
+window.pmWeekRemoveEntry = function(id) {
+    _pmWeekEntries = _pmWeekEntries.filter(e => e.id !== id);
+    _pmWeekRenderEntries();
+    _pmWeekRecompute();
+};
+
+function _pmWeekRenderEntries() {
+    const host = document.getElementById('pm-week-entries');
+    if (!host) return;
+    if (!_pmWeekEntries.length) {
+        host.innerHTML = '<div class="pm-week-empty">No entries yet — add labor or materials above.</div>';
+        return;
+    }
+    host.innerHTML = _pmWeekEntries.map(e => {
+        const tag = e.type === 'materials'
+            ? '<span class="pm-week-entry-tag mat">Material</span>'
+            : '<span class="pm-week-entry-tag labor">Labor</span>';
+        return `<div class="pm-week-entry">
+            ${tag}
+            <span class="pm-week-entry-details">${_esc(e.details)}</span>
+            <span class="pm-week-entry-amt num">${_pmPeso(e.amount)}</span>
+            <button class="pm-week-entry-del" aria-label="Remove" onclick="pmWeekRemoveEntry('${e.id}')">×</button>
+        </div>`;
+    }).join('');
+}
+
+function _pmWeekTotals() {
+    const labor = _pmWeekEntries.filter(e=>e.type==='labor').reduce((s,e)=>s+e.amount,0);
+    const mats  = _pmWeekEntries.filter(e=>e.type==='materials').reduce((s,e)=>s+e.amount,0);
+    const direct = labor + mats;
+    const fee = direct * (_pmFeePct()/100);
+    return { labor, mats, direct, fee, grand: direct + fee };
+}
+
+function _pmWeekRecompute() {
+    const t = _pmWeekTotals();
+    _pmSet('pm-week-labor',     _pmPeso(t.labor));
+    _pmSet('pm-week-materials', _pmPeso(t.mats));
+    _pmSet('pm-week-direct',    _pmPeso(t.direct));
+    _pmSet('pm-week-fee-amt',   _pmPeso(t.fee));
+    _pmSet('pm-week-grand',     _pmPeso(t.grand));
+    // Show the active project's fee rate (read-only — set in Add/Edit Project).
+    _pmSet('pm-week-fee-pct', _pmFeePct());
+}
+
+function _pmWeekRenderHistory() {
+    const host = document.getElementById('pm-week-history');
+    if (!host) return;
+    const bills = _pmWeekBills.slice().sort((a,b) => (b.weekEndingDate||'').localeCompare(a.weekEndingDate||''));
+    if (!bills.length) {
+        host.innerHTML = '<div class="pm-week-empty">No past weeks yet.</div>';
+        return;
+    }
+    const badge = (st) => st === 'Paid'
+        ? '<span class="pm-badge pm-badge-paid">Paid</span>'
+        : st === 'Partial'
+        ? '<span class="pm-badge pm-badge-partial">Partial</span>'
+        : '<span class="pm-badge pm-badge-unpaid">Submitted</span>';
+    host.innerHTML = bills.map(b => `
+        <div class="pm-past-row" onclick="pmWeekLoadBill('${_esc(b.id)}')">
+          <div>
+            <div class="pm-past-date">${_pmShortDate(b.weekEndingDate)}</div>
+            <div class="pm-past-amt num">${_pmPeso(b.grandTotal || 0)}</div>
+          </div>
+          ${badge(b.status)}
+        </div>`).join('');
+}
+
+window.pmWeekSave = async function() {
+    if (!_pmActiveProject) { alert('Please select a client project first.'); return; }
+    if (!_pmWeekEntries.length) { alert('Add at least one labor or materials line first.'); return; }
+    const t = _pmWeekTotals();
+    const data = {
+        weekEndingDate: _pmWeekDate,
+        labor: t.labor,
+        materials: t.mats,
+        managementFee: t.fee,
+        grandTotal: t.grand,
+        entries: _pmWeekEntries.map(e => ({ type:e.type, details:e.details, amount:e.amount })),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+    const btn = document.getElementById('pm-week-save-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+        const col = db.collection('constructionProjects').doc(_pmActiveProject.id).collection('weeklyBills');
+        if (_pmWeekEditingId) {
+            await col.doc(_pmWeekEditingId).update(data);
+        } else {
+            data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            data.status = 'Submitted';
+            await col.add(data);
+        }
+        const wasEdit = !!_pmWeekEditingId;
+        await _pmLoadWeekBuilder();
+        _pmToast(wasEdit ? 'Weekly bill updated' : 'Weekly bill saved & sent to client');
+    } catch(e) {
+        _pmToast('Save failed: ' + e.message, true);
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+};
+
+// Minimalist toast — white card, thin accent, soft shadow (matches the PM design).
+function _pmToast(msg, isError = false) {
+    const color = isError ? 'var(--pm-danger, #b4453a)' : 'var(--pm-green, #157a52)';
+    const t = document.createElement('div');
+    t.className = 'pm-toast';
+    t.innerHTML = `<span style="color:${color};font-weight:700;">${isError ? '✕' : '✓'}</span><span>${_esc(msg)}</span>`;
+    t.style.borderLeftColor = isError ? '#b4453a' : '#157a52';
+    document.body.appendChild(t);
+    requestAnimationFrame(() => t.classList.add('show'));
+    setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 220); }, 2400);
+}
 
 // ══════════════════════════════════════════════════════════
 // 2. MATERIALS PROCUREMENT LIST
@@ -474,7 +809,7 @@ async function _pmLoadProcItems() {
             .orderBy('createdAt','desc')
             .get();
         _pmProcItems = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        _pmProcRenderTable(_pmProcItems);
+        _pmProcApplyFilters();
         _pmProcUpdateStats(_pmProcItems);
     } catch(e) {
         tbody.innerHTML = `<tr><td colspan="8" class="pm-empty-row">Error: ${_esc(e.message)}</td></tr>`;
@@ -566,9 +901,24 @@ function _pmProcRenderTable(items) {
     if (window.lucide) lucide.createIcons();
 }
 
-window.pmProcFilter = function() {
+// Combine the status pill (all/pending/bought) with the free-text search.
+function _pmProcApplyFilters() {
     const q = (document.getElementById('pm-proc-search')?.value || '').toLowerCase();
-    _pmProcRenderTable(_pmProcItems.filter(i => (i.item||'').toLowerCase().includes(q)));
+    const pendingSet = ['Pending','Assigned to Client','Assigned to Admin'];
+    const boughtSet  = ['Bought by Company','Bought by Client'];
+    const rows = _pmProcItems.filter(it => {
+        if (_pmProcFilter === 'pending' && !pendingSet.includes(it.status)) return false;
+        if (_pmProcFilter === 'bought'  && !boughtSet.includes(it.status))  return false;
+        return (it.item || '').toLowerCase().includes(q);
+    });
+    _pmProcRenderTable(rows);
+}
+window.pmProcFilter = function() { _pmProcApplyFilters(); };
+window.pmProcSetFilter = function(f, btn) {
+    _pmProcFilter = f;
+    document.querySelectorAll('#ws-panel-materials .pm-filter-pill').forEach(p => p.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    _pmProcApplyFilters();
 };
 
 window.pmOpenAddItemModal = function() {
@@ -1005,7 +1355,7 @@ function _pmRpRenderCards(items) {
     const wrap = document.getElementById('pm-rp-cards');
     if (!wrap) return;
     if (!items.length) {
-        wrap.innerHTML = '<div class="pm-empty-row" style="color:#9ca3af;">No accomplishment report yet. Click "New Report" to create one.</div>';
+        wrap.innerHTML = '<div class="pm-empty-row" style="grid-column:1/-1;text-align:center;color:#9ca3af;">No accomplishment report yet. Click "New Report" to create one.</div>';
         return;
     }
     wrap.innerHTML = items.map(d => {
@@ -1470,7 +1820,12 @@ async function _pmLoadPayments() {
 function _pmPayUpdateKPIs(reqs) {
     const outstanding = reqs.filter(r => r.status === 'unpaid' || r.status === 'partial')
         .reduce((s,r) => s + ((r.totalAmount || 0) - (r.amountPaid || 0)), 0);
-    const paid = reqs.reduce((s,r) => s + (r.amountPaid || 0), 0);
+    // Approved client self-payments ('verified') count toward Total Paid even if
+    // amount_paid wasn't backfilled, using the client-entered paidAmount/totalAmount.
+    const paid = reqs.reduce((s,r) => {
+        if (r.status === 'verified') return s + (r.amountPaid || r.paidAmount || r.totalAmount || 0);
+        return s + (r.amountPaid || 0);
+    }, 0);
     const strictCount = reqs.filter(r => r.strict).length;
     const nextUnpaid = reqs.find(r => r.status === 'unpaid' || r.status === 'partial');
     _pmSet('pm-pay-outstanding', _fmt(outstanding));
@@ -1489,32 +1844,43 @@ function _pmPayRenderTable(reqs) {
         return;
     }
     const statusBadge = {
-        paid:    '<span class="pm-badge pm-badge-paid">Paid</span>',
-        partial: '<span class="pm-badge pm-badge-partial">Partial</span>',
-        unpaid:  '<span class="pm-badge pm-badge-unpaid">Unpaid</span>',
+        paid:     '<span class="pm-badge pm-badge-paid">Paid</span>',
+        verified: '<span class="pm-badge pm-badge-paid">Paid</span>',
+        partial:  '<span class="pm-badge pm-badge-partial">Partial</span>',
+        unpaid:   '<span class="pm-badge pm-badge-unpaid">Unpaid</span>',
+        submitted:'<span class="pm-badge pm-badge-partial">Pending review</span>',
+        rejected: '<span class="pm-badge pm-badge-unpaid">Rejected</span>',
     };
     tbody.innerHTML = reqs.map(r => {
+        const isSelfPay = r.source === 'self_payment';
         const dateStr = r.weekEndingDate ? new Date(r.weekEndingDate+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '—';
         const carry   = r.carryover ? _fmt(r.carryover) : '₱0';
         const total   = _fmt(r.totalAmount || ((r.amount||0)+(r.carryover||0)));
         const badge   = statusBadge[r.status] || `<span class="pm-badge pm-badge-unpaid">${_esc(r.status||'—')}</span>`;
-        const strictBadge = r.strict
-            ? '<span class="pm-badge pm-badge-strict">Strict</span>'
-            : '<span style="color:#9ca3af;font-size:12px;">—</span>';
+        // Self-payments are client-initiated and stand-alone — the "Strict" concept
+        // (admin-issued weekly bills) doesn't apply, so flag them instead.
+        const strictBadge = isSelfPay
+            ? '<span class="pm-badge pm-badge-partial">Client paid</span>'
+            : (r.strict
+                ? '<span class="pm-badge pm-badge-strict">Strict</span>'
+                : '<span style="color:#9ca3af;font-size:12px;">—</span>');
+        // Self-pay rows get a Review action (see receipt → approve/reject); admin-issued
+        // bills keep Edit + Strict.
+        const actions = isSelfPay
+            ? `<button class="pm-tbl-btn pm-tbl-btn-edit" data-pm-action="review"><i data-lucide="receipt" style="width:12px;height:12px;"></i> ${r.status === 'submitted' ? 'Review' : 'View'}</button>`
+            : `<button class="pm-tbl-btn pm-tbl-btn-edit" data-pm-action="edit"><i data-lucide="pencil" style="width:12px;height:12px;"></i> Edit</button>
+               <button class="pm-tbl-btn ${r.strict ? 'pm-tbl-btn-delete' : 'pm-tbl-btn-strict'}" data-pm-action="toggle-strict">
+                 <i data-lucide="${r.strict ? 'unlock' : 'lock'}" style="width:12px;height:12px;"></i> ${r.strict ? 'Unstrict' : 'Strict'}
+               </button>`;
 
         return `<tr data-pm-id="${_esc(r.id)}">
-            <td><strong>${_esc(dateStr)}</strong></td>
+            <td><strong>${_esc(dateStr)}</strong>${isSelfPay ? '<div style="font-size:11px;color:#6b7280;">Self payment</div>' : ''}</td>
             <td>${_fmt(r.amount)}</td>
             <td>${carry}</td>
             <td><strong>${total}</strong></td>
             <td>${strictBadge}</td>
             <td>${badge}</td>
-            <td>
-              <button class="pm-tbl-btn pm-tbl-btn-edit" data-pm-action="edit"><i data-lucide="pencil" style="width:12px;height:12px;"></i> Edit</button>
-              <button class="pm-tbl-btn ${r.strict ? 'pm-tbl-btn-delete' : 'pm-tbl-btn-strict'}" data-pm-action="toggle-strict">
-                <i data-lucide="${r.strict ? 'unlock' : 'lock'}" style="width:12px;height:12px;"></i> ${r.strict ? 'Unstrict' : 'Strict'}
-              </button>
-            </td>
+            <td>${actions}</td>
         </tr>`;
     }).join('');
     if (!tbody._handlerAttached) {
@@ -1528,6 +1894,7 @@ function _pmPayRenderTable(reqs) {
             if (!r) return;
             if (btn.getAttribute('data-pm-action') === 'edit')          pmEditPayReq(r);
             if (btn.getAttribute('data-pm-action') === 'toggle-strict') pmToggleStrict(r.id, !r.strict);
+            if (btn.getAttribute('data-pm-action') === 'review')        pmReviewSelfPay(r);
         });
     }
     if (window.lucide) lucide.createIcons();
@@ -1609,6 +1976,112 @@ window.pmToggleStrict = async function(id, makeStrict) {
         _pmLoadPayments();
     } catch(e) { alert('Error: ' + e.message); }
 };
+
+// ── Client self-payment review (receipt verify) ───────────────────────────
+let _pmReviewReq = null;
+
+window.pmReviewSelfPay = function(r) {
+    _pmReviewReq = r;
+    const setTxt = (id, v) => { const e = document.getElementById(id); if (e) e.textContent = v; };
+    setTxt('pmSelfPayClient', r.clientName || r.clientEmail || '—');
+    setTxt('pmSelfPayAmount', _fmt(r.paidAmount || r.amount || r.totalAmount || 0));
+    setTxt('pmSelfPayRef',    r.referenceNumber || '—');
+    setTxt('pmSelfPayPeriod', r.billingPeriod || '—');
+    const dt = r.submittedAt?.toDate?.() || (r.weekEndingDate ? new Date(r.weekEndingDate + 'T00:00:00') : null);
+    setTxt('pmSelfPayDate', dt ? dt.toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' }) : '—');
+
+    const img = document.getElementById('pmSelfPayImg');
+    if (img) { img.src = r.proofBase64 || ''; img.style.display = r.proofBase64 ? 'block' : 'none'; }
+    const noImg = document.getElementById('pmSelfPayNoImg');
+    if (noImg) noImg.style.display = r.proofBase64 ? 'none' : 'block';
+
+    const pending = r.status === 'submitted';
+    const actions = document.getElementById('pmSelfPayActions');
+    if (actions) actions.style.display = pending ? 'flex' : 'none';
+    const note = document.getElementById('pmSelfPayStatusNote');
+    if (note) {
+        if (pending) { note.style.display = 'none'; }
+        else {
+            note.style.display = 'block';
+            note.textContent = r.status === 'verified'
+                ? '✓ Approved — recorded as paid.'
+                : (r.status === 'rejected'
+                    ? ('✕ Rejected' + (r.rejectedReason ? ': ' + r.rejectedReason : ''))
+                    : '');
+            note.style.color = r.status === 'verified' ? '#15803d' : '#dc2626';
+        }
+    }
+    const rw = document.getElementById('pmSelfPayRejectWrap'); if (rw) rw.style.display = 'none';
+    const rt = document.getElementById('pmSelfPayRejectReason'); if (rt) rt.value = '';
+
+    document.getElementById('pmSelfPayReviewModal').style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+};
+
+window.pmApproveSelfPay = async function() {
+    if (!_pmReviewReq) return;
+    const r = _pmReviewReq;
+    const btn = document.getElementById('pmSelfPayApproveBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Approving…'; }
+    try {
+        const amt = r.paidAmount || r.amount || r.totalAmount || 0;
+        await db.collection('paymentRequests').doc(r.id).update({
+            status:      'verified',
+            amountPaid:  amt,
+            totalAmount: r.totalAmount || amt,
+            verifiedAt:  firebase.firestore.FieldValue.serverTimestamp(),
+            verifiedBy:  (firebase.auth().currentUser && firebase.auth().currentUser.email) || '',
+            updatedAt:   firebase.firestore.FieldValue.serverTimestamp()
+        });
+        _pmNotifyClientSelfPay(r, true, '');
+        pmCloseModal('pmSelfPayReviewModal');
+        _pmLoadPayments();
+    } catch(e) { alert('Approve failed: ' + e.message); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = 'Approve & Mark Paid'; } }
+};
+
+window.pmShowRejectSelfPay = function() {
+    const w = document.getElementById('pmSelfPayRejectWrap');
+    if (w) w.style.display = 'block';
+    document.getElementById('pmSelfPayRejectReason')?.focus();
+};
+
+window.pmRejectSelfPay = async function() {
+    if (!_pmReviewReq) return;
+    const r = _pmReviewReq;
+    const reason = (document.getElementById('pmSelfPayRejectReason')?.value || '').trim();
+    if (!reason) { alert('Please enter a reason for rejection.'); return; }
+    const btn = document.getElementById('pmSelfPayRejectConfirmBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Rejecting…'; }
+    try {
+        await db.collection('paymentRequests').doc(r.id).update({
+            status:         'rejected',
+            rejectedReason: reason,
+            rejectedAt:     firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt:      firebase.firestore.FieldValue.serverTimestamp()
+        });
+        _pmNotifyClientSelfPay(r, false, reason);
+        pmCloseModal('pmSelfPayReviewModal');
+        _pmLoadPayments();
+    } catch(e) { alert('Reject failed: ' + e.message); }
+    finally { if (btn) { btn.disabled = false; btn.textContent = 'Confirm Reject'; } }
+};
+
+async function _pmNotifyClientSelfPay(r, approved, reason) {
+    try {
+        if (!r.clientUid) return;
+        const amt = (r.paidAmount || r.amount || 0).toLocaleString('en-PH');
+        await db.collection('notifications').doc(r.clientUid).collection('items').add({
+            type:      approved ? 'payment_verified' : 'payment_rejected',
+            message:   approved
+                ? `Your payment${r.billingPeriod ? ' for "' + r.billingPeriod + '"' : ''} of ₱${amt} has been verified.`
+                : `Your payment${r.billingPeriod ? ' for "' + r.billingPeriod + '"' : ''} was rejected${reason ? ': ' + reason : ''}.`,
+            isRead:    false,
+            relatedId: r.id || '',
+            createdAt: firebase.firestore.Timestamp.fromDate(new Date())
+        });
+    } catch(e) { console.warn('PM: client notify failed', e); }
+}
 
 // ══════════════════════════════════════════════════════════
 // Utilities

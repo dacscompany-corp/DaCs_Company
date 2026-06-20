@@ -27,7 +27,7 @@
     <link rel="stylesheet" href="css/pm-admin.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Renovation: site-wide design refresh (must load LAST so overrides win) -->
     <link rel="stylesheet" href="css/admin-renovation.css">
 </head>
@@ -1154,16 +1154,17 @@
                 </div>
             </div>
 
-            <!-- Category Breakdown Cards -->
-            <div class="ovhd-panel" style="margin-bottom:1rem;">
+            <div class="ovhd-cols">
+              <!-- Category Breakdown -->
+              <div class="ovhd-panel ovhd-col-cats">
                 <div class="ovhd-panel-header">By Category</div>
                 <div class="ovhd-breakdown-body" id="ovhdBreakdownList">
                     <p class="ovhd-empty-row">No expenses for this month.</p>
                 </div>
-            </div>
+              </div>
 
-            <!-- Expenses Table (full width) -->
-            <div class="ovhd-panel">
+              <!-- Expense Records -->
+              <div class="ovhd-panel ovhd-col-table">
                 <div class="ovhd-panel-header">Expense Records</div>
                 <div class="ovhd-table-wrap">
                     <table class="ovhd-table">
@@ -1181,7 +1182,8 @@
                         </tbody>
                     </table>
                 </div>
-            </div>
+              </div>
+            </div><!-- /ovhd-cols -->
 
         </div><!-- /expOverheadView -->
 
@@ -1284,12 +1286,14 @@
               <div class="pm-admin-title">Construction Projects</div>
               <div class="pm-admin-sub">Select a project to manage its weekly billing, procurement, revolving fund, and payments.</div>
             </div>
-            <button class="pm-btn" onclick="prOpenQRSettings()" style="margin-right:8px;background:#fff;border:1.5px solid #d1d5db;color:#374151;">
-              <i data-lucide="qr-code" style="width:14px;height:14px;"></i> QR Settings
-            </button>
-            <button class="pm-btn pm-btn-primary" onclick="pmOpenProjectModal()">
-              <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Project
-            </button>
+            <div class="pm-admin-actions">
+              <button class="pm-btn pm-btn-secondary" onclick="prOpenQRSettings()">
+                <i data-lucide="qr-code" style="width:14px;height:14px;"></i> QR Settings
+              </button>
+              <button class="pm-btn pm-btn-primary" onclick="pmOpenProjectModal()">
+                <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Project
+              </button>
+            </div>
           </div>
           <div class="pm-cards-grid" id="pm-cards-grid">
             <div class="pm-cards-empty"><div class="pm-cards-empty-icon">🏗️</div>Loading projects…</div>
@@ -1351,105 +1355,101 @@
           <!-- Top bar: back + project info -->
           <div class="pm-workspace-topbar">
             <button class="pm-workspace-back" onclick="switchView('pmProjects')">
-              <i data-lucide="arrow-left" style="width:14px;height:14px;"></i> Projects
+              <i data-lucide="arrow-left" style="width:13px;height:13px;"></i> Projects
             </button>
+            <div class="pm-workspace-divider"></div>
             <div class="pm-workspace-info">
               <div class="pm-workspace-client" id="ws-client-name">—</div>
               <div class="pm-workspace-project" id="ws-project-name">—</div>
             </div>
-            <div id="ws-status-badge"></div>
+            <div class="pm-workspace-status" id="ws-status-badge"></div>
           </div>
 
           <!-- Tab bar -->
           <div class="pm-ws-tabs">
-            <button class="pm-ws-tab active" onclick="pmWsTab('weekly',this)">
-              <i data-lucide="calendar-days" style="width:14px;height:14px;"></i> Weekly Summary
-            </button>
-            <button class="pm-ws-tab" onclick="pmWsTab('procurement',this)">
-              <i data-lucide="shopping-cart" style="width:14px;height:14px;"></i> Procurement
-            </button>
-            <button class="pm-ws-tab" onclick="pmWsTab('milestones',this)">
-              <i data-lucide="flag" style="width:14px;height:14px;"></i> Milestones
-            </button>
-            <button class="pm-ws-tab" onclick="pmWsTab('reports',this)">
-              <i data-lucide="clipboard-check" style="width:14px;height:14px;"></i> Reports
-            </button>
-            <button class="pm-ws-tab" onclick="pmWsTab('revolving',this)">
-              <i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Revolving Fund
-            </button>
-            <button class="pm-ws-tab" onclick="pmWsTab('payment',this)">
-              <i data-lucide="banknote" style="width:14px;height:14px;"></i> Payment
-            </button>
+            <button class="pm-ws-tab active" onclick="pmWsTab('week',this)">This Week</button>
+            <button class="pm-ws-tab" onclick="pmWsTab('materials',this)">Materials</button>
+            <button class="pm-ws-tab" onclick="pmWsTab('progress',this)">Progress</button>
+            <button class="pm-ws-tab" onclick="pmWsTab('money',this)">Money</button>
           </div>
 
-          <!-- ── Weekly Summary Panel ── -->
-          <div class="pm-ws-panel active" id="ws-panel-weekly">
-            <div class="pm-ws-panel-header">
-              <div>
-                <div class="pm-ws-panel-title">Weekly Summary</div>
-                <div class="pm-ws-panel-sub">Input weekly labor and materials totals. The 15% management fee is computed automatically.</div>
-              </div>
-              <button class="pm-btn pm-btn-primary" onclick="pmOpenWeeklyModal()">
-                <i data-lucide="plus" style="width:14px;height:14px;"></i> New Entry
-              </button>
-            </div>
-            <div class="pm-kpi-row">
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#e0f2fe;"><i data-lucide="hard-hat" style="color:#0284c7;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Total Labor (All Weeks)</div><div class="pm-kpi-value" id="pm-kpi-labor">₱0</div></div>
-              </div>
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#fef3c7;"><i data-lucide="package" style="color:#d97706;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Total Materials (All Weeks)</div><div class="pm-kpi-value" id="pm-kpi-materials">₱0</div></div>
-              </div>
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#ede9fe;"><i data-lucide="percent" style="color:#7c3aed;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Total Management Fee (15%)</div><div class="pm-kpi-value" id="pm-kpi-fee">₱0</div></div>
-              </div>
-              <div class="pm-kpi-card pm-kpi-total">
-                <div class="pm-kpi-icon" style="background:#d1fae5;"><i data-lucide="circle-dollar-sign" style="color:#059669;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Grand Total</div><div class="pm-kpi-value" id="pm-kpi-grand">₱0</div></div>
-              </div>
-            </div>
-            <div class="pm-table-wrap">
-              <table class="pm-table">
-                <thead><tr><th>Week Of (Friday)</th><th>Labor</th><th>Materials</th><th>Mgmt Fee (15%)</th><th>Grand Total</th><th>Status</th><th>Actions</th></tr></thead>
-                <tbody id="pm-weekly-tbody"><tr><td colspan="7" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr></tbody>
-              </table>
-            </div>
-          </div><!-- /ws-panel-weekly -->
+          <!-- ── This Week Panel (inline bill builder) ── -->
+          <div class="pm-ws-panel active" id="ws-panel-week">
+            <div class="pm-week-grid">
+              <!-- main: build this week's bill -->
+              <div class="pm-week-main">
+                <div class="pm-week-head">
+                  <div class="pm-card-title">This week's bill</div>
+                  <div class="pm-week-nav">
+                    <button onclick="pmWeekShift(-1)" aria-label="Previous week">←</button>
+                    <span id="pm-week-date" class="num">—</span>
+                    <button onclick="pmWeekShift(1)" aria-label="Next week">→</button>
+                  </div>
+                </div>
+                <div class="pm-week-intro">Add each cost as Labor or Materials with details. The subtotals, 15% fee and grand total update by themselves.</div>
 
-          <!-- ── Procurement Panel ── -->
-          <div class="pm-ws-panel" id="ws-panel-procurement">
-            <div class="pm-ws-panel-header">
-              <div>
-                <div class="pm-ws-panel-title">Materials Procurement</div>
-                <div class="pm-ws-panel-sub">Manage items to be purchased. Mark company purchases with amount and receipt for full transparency.</div>
+                <!-- add entry -->
+                <div class="pm-week-addbox">
+                  <div class="pm-week-addrow">
+                    <select class="pm-wf pm-wf-type" id="pm-week-type">
+                      <option value="labor">Labor</option>
+                      <option value="materials">Materials</option>
+                    </select>
+                    <input class="pm-wf pm-wf-details" id="pm-week-details" placeholder="Details — e.g. 6 masons × 5 days">
+                    <div class="pm-wf-amount-wrap">
+                      <span class="pm-wf-peso">₱</span>
+                      <input class="pm-wf-amount num" id="pm-week-amount" inputmode="numeric" placeholder="0" onkeydown="if(event.key==='Enter')pmWeekAddEntry()">
+                    </div>
+                    <button class="pm-wf-add" onclick="pmWeekAddEntry()">+ Add</button>
+                  </div>
+                </div>
+
+                <!-- entries (rendered by JS) -->
+                <div id="pm-week-entries"></div>
+
+                <!-- totals -->
+                <div class="pm-week-line"><span>Total labor</span><span class="num" id="pm-week-labor">₱0</span></div>
+                <div class="pm-week-line"><span>Total materials</span><span class="num" id="pm-week-materials">₱0</span></div>
+                <div class="pm-week-direct"><span>Direct cost</span><span class="num" id="pm-week-direct">₱0</span></div>
+                <div class="pm-week-fee">
+                  <div>
+                    <div class="pm-week-fee-title">Management fee · <span id="pm-week-fee-pct">15</span>%</div>
+                    <div class="pm-week-fee-note">set on the project — edit in Add/Edit Project</div>
+                  </div>
+                  <span class="num" id="pm-week-fee-amt">₱0</span>
+                </div>
+                <div class="pm-week-grand"><span>Grand total</span><span class="num" id="pm-week-grand">₱0</span></div>
+                <button class="pm-week-save" id="pm-week-save-btn" onclick="pmWeekSave()">Save &amp; send to client →</button>
               </div>
-              <button class="pm-btn pm-btn-primary" onclick="pmOpenAddItemModal()">
-                <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Item
-              </button>
+
+              <!-- side: past weeks -->
+              <div class="pm-week-side">
+                <div class="pm-week-side-title">Past weeks</div>
+                <div id="pm-week-history"><div class="pm-week-empty">Loading…</div></div>
+              </div>
             </div>
-            <div class="pm-kpi-row">
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#dbeafe;"><i data-lucide="package" style="color:#2563eb;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Total Items</div><div class="pm-kpi-value" id="pm-proc-total">0</div></div>
-              </div>
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#fef3c7;"><i data-lucide="clock" style="color:#d97706;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Pending</div><div class="pm-kpi-value" id="pm-proc-pending">0</div></div>
-              </div>
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#d1fae5;"><i data-lucide="building-2" style="color:#059669;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Bought by Company</div><div class="pm-kpi-value" id="pm-proc-company">0</div></div>
-              </div>
-              <div class="pm-kpi-card pm-kpi-total">
-                <div class="pm-kpi-icon" style="background:#ede9fe;"><i data-lucide="user" style="color:#7c3aed;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Bought by Client</div><div class="pm-kpi-value" id="pm-proc-client">0</div></div>
-              </div>
+          </div><!-- /ws-panel-week -->
+
+          <!-- ── Materials Panel ── -->
+          <div class="pm-ws-panel" id="ws-panel-materials">
+            <div class="pm-stat-grid">
+              <div class="pm-stat"><div class="pm-stat-label">Total items</div><div class="pm-stat-value num" id="pm-proc-total">0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">Pending</div><div class="pm-stat-value is-danger num" id="pm-proc-pending">0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">By company</div><div class="pm-stat-value num" id="pm-proc-company">0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">By client</div><div class="pm-stat-value num" id="pm-proc-client">0</div></div>
             </div>
-            <div style="margin:14px 0;">
-              <input type="text" id="pm-proc-search" class="pm-input" placeholder="Search items…" oninput="pmProcFilter()" style="max-width:320px;">
+            <div class="pm-ws-panel-header" style="margin-bottom:14px;">
+              <div class="pm-filter-pills">
+                <button class="pm-filter-pill active" id="pm-proc-pill-all" onclick="pmProcSetFilter('all',this)">All</button>
+                <button class="pm-filter-pill" id="pm-proc-pill-pending" onclick="pmProcSetFilter('pending',this)">Pending</button>
+                <button class="pm-filter-pill" id="pm-proc-pill-bought" onclick="pmProcSetFilter('bought',this)">Bought</button>
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input type="text" id="pm-proc-search" class="pm-input" placeholder="Search items…" oninput="pmProcFilter()" style="width:200px;">
+                <button class="pm-btn pm-btn-primary" onclick="pmOpenAddItemModal()">
+                  <i data-lucide="plus" style="width:14px;height:14px;"></i> Add item
+                </button>
+              </div>
             </div>
             <div class="pm-table-wrap">
               <table class="pm-table">
@@ -1457,36 +1457,26 @@
                 <tbody id="pm-proc-tbody"><tr><td colspan="8" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr></tbody>
               </table>
             </div>
-          </div><!-- /ws-panel-procurement -->
+          </div><!-- /ws-panel-materials -->
 
-          <!-- ── Milestones Panel ── -->
-          <div class="pm-ws-panel" id="ws-panel-milestones">
+          <!-- ── Progress Panel (Milestones + Accomplishment Reports) ── -->
+          <div class="pm-ws-panel" id="ws-panel-progress">
+            <!-- Milestones section -->
+            <div class="pm-ws-section">
             <div class="pm-ws-panel-header">
               <div>
-                <div class="pm-ws-panel-title">Project Milestones</div>
+                <div class="pm-ws-panel-title">Milestones</div>
                 <div class="pm-ws-panel-sub">Define project phases. Marking milestones completed drives the partner portal's Project Completion KPI.</div>
               </div>
               <button class="pm-btn pm-btn-primary" onclick="pmOpenMilestoneModal()">
                 <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Milestone
               </button>
             </div>
-            <div class="pm-kpi-row">
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#d1fae5;"><i data-lucide="check-circle" style="color:#059669;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Completed</div><div class="pm-kpi-value" id="pm-ms-completed">0</div></div>
-              </div>
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#dbeafe;"><i data-lucide="loader" style="color:#2563eb;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">In Progress</div><div class="pm-kpi-value" id="pm-ms-progress">0</div></div>
-              </div>
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#fef3c7;"><i data-lucide="clock" style="color:#d97706;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Pending</div><div class="pm-kpi-value" id="pm-ms-pending">0</div></div>
-              </div>
-              <div class="pm-kpi-card pm-kpi-total">
-                <div class="pm-kpi-icon" style="background:#ede9fe;"><i data-lucide="flag" style="color:#7c3aed;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Total Milestones</div><div class="pm-kpi-value" id="pm-ms-total">0</div></div>
-              </div>
+            <div class="pm-stat-grid">
+              <div class="pm-stat"><div class="pm-stat-label">Completed</div><div class="pm-stat-value is-green num" id="pm-ms-completed">0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">In progress</div><div class="pm-stat-value num" id="pm-ms-progress">0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">Pending</div><div class="pm-stat-value num" id="pm-ms-pending">0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">Total milestones</div><div class="pm-stat-value num" id="pm-ms-total">0</div></div>
             </div>
             <div class="pm-table-wrap">
               <table class="pm-table">
@@ -1494,10 +1484,10 @@
                 <tbody id="pm-ms-tbody"><tr><td colspan="6" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr></tbody>
               </table>
             </div>
-          </div><!-- /ws-panel-milestones -->
+            </div><!-- /milestones section -->
 
-          <!-- ── Accomplishment Reports Panel (BOQ-style, own data) ── -->
-          <div class="pm-ws-panel" id="ws-panel-reports">
+            <!-- Accomplishment Reports section (BOQ-style, own data) -->
+            <div class="pm-ws-section">
             <!-- LIST VIEW -->
             <div id="pm-rp-list">
               <div class="pm-ws-panel-header">
@@ -1509,23 +1499,11 @@
                   <i data-lucide="plus" style="width:14px;height:14px;"></i> New Report
                 </button>
               </div>
-              <div class="pm-kpi-row">
-                <div class="pm-kpi-card">
-                  <div class="pm-kpi-icon" style="background:#dbeafe;"><i data-lucide="clipboard-list" style="color:#2563eb;width:20px;height:20px;"></i></div>
-                  <div class="pm-kpi-body"><div class="pm-kpi-label">Reports</div><div class="pm-kpi-value" id="pm-rp-count">0</div></div>
-                </div>
-                <div class="pm-kpi-card">
-                  <div class="pm-kpi-icon" style="background:#d1fae5;"><i data-lucide="check-circle" style="color:#059669;width:20px;height:20px;"></i></div>
-                  <div class="pm-kpi-body"><div class="pm-kpi-label">Approved</div><div class="pm-kpi-value" id="pm-rp-approved">0</div></div>
-                </div>
-                <div class="pm-kpi-card">
-                  <div class="pm-kpi-icon" style="background:#ede9fe;"><i data-lucide="trending-up" style="color:#7c3aed;width:20px;height:20px;"></i></div>
-                  <div class="pm-kpi-body"><div class="pm-kpi-label">Latest Progress</div><div class="pm-kpi-value" id="pm-rp-latest">0%</div></div>
-                </div>
-                <div class="pm-kpi-card pm-kpi-total">
-                  <div class="pm-kpi-icon" style="background:#d1fae5;"><i data-lucide="circle-dollar-sign" style="color:#059669;width:20px;height:20px;"></i></div>
-                  <div class="pm-kpi-body"><div class="pm-kpi-label">Latest Report Cost</div><div class="pm-kpi-value" id="pm-rp-cost">₱0.00</div></div>
-                </div>
+              <div class="pm-stat-grid">
+                <div class="pm-stat"><div class="pm-stat-label">Reports</div><div class="pm-stat-value num" id="pm-rp-count">0</div></div>
+                <div class="pm-stat"><div class="pm-stat-label">Approved</div><div class="pm-stat-value is-green num" id="pm-rp-approved">0</div></div>
+                <div class="pm-stat"><div class="pm-stat-label">Latest progress</div><div class="pm-stat-value num" id="pm-rp-latest">0%</div></div>
+                <div class="pm-stat"><div class="pm-stat-label">Latest report cost</div><div class="pm-stat-value num" id="pm-rp-cost">₱0.00</div></div>
               </div>
               <div id="pm-rp-cards" class="ov-folder-grid" style="margin-top:14px;">
                 <div class="pm-empty-row" style="color:#9ca3af;">Loading…</div>
@@ -1533,10 +1511,13 @@
             </div>
             <!-- BUILDER VIEW (rendered by pm-admin.js) -->
             <div id="pm-rp-builder" style="display:none;"></div>
-          </div><!-- /ws-panel-reports -->
+            </div><!-- /reports section -->
+          </div><!-- /ws-panel-progress -->
 
-          <!-- ── Revolving Fund Panel ── -->
-          <div class="pm-ws-panel" id="ws-panel-revolving">
+          <!-- ── Money Panel (Payment + Revolving Fund) ── -->
+          <div class="pm-ws-panel" id="ws-panel-money">
+            <!-- Revolving fund section -->
+            <div class="pm-ws-section">
             <div class="pm-ws-panel-header">
               <div>
                 <div class="pm-ws-panel-title">Revolving Fund</div>
@@ -1546,23 +1527,11 @@
                 <i data-lucide="plus" style="width:14px;height:14px;"></i> Record Expense
               </button>
             </div>
-            <div class="pm-kpi-row">
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#d1fae5;"><i data-lucide="wallet" style="color:#059669;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Initial Fund</div><div class="pm-kpi-value" id="pm-rev-initial">₱0</div></div>
-              </div>
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#fee2e2;"><i data-lucide="trending-down" style="color:#dc2626;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Total Spent</div><div class="pm-kpi-value" id="pm-rev-spent">₱0</div></div>
-              </div>
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#fef3c7;"><i data-lucide="coins" style="color:#d97706;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Remaining Balance</div><div class="pm-kpi-value" id="pm-rev-balance">₱0</div></div>
-              </div>
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#ede9fe;"><i data-lucide="refresh-cw" style="color:#7c3aed;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">To Replenish (Friday)</div><div class="pm-kpi-value" id="pm-rev-replenish">₱0</div></div>
-              </div>
+            <div class="pm-stat-grid">
+              <div class="pm-stat"><div class="pm-stat-label">Initial fund</div><div class="pm-stat-value num" id="pm-rev-initial">₱0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">Total spent</div><div class="pm-stat-value is-danger num" id="pm-rev-spent">₱0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">Remaining balance</div><div class="pm-stat-value is-green num" id="pm-rev-balance">₱0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">To replenish (Friday)</div><div class="pm-stat-value num" id="pm-rev-replenish">₱0</div></div>
             </div>
             <div style="display:flex;gap:10px;margin-bottom:16px;">
               <button class="pm-btn pm-btn-secondary" onclick="pmOpenSetFundModal()"><i data-lucide="settings" style="width:14px;height:14px;"></i> Set Initial Fund</button>
@@ -1574,10 +1543,10 @@
                 <tbody id="pm-rev-tbody"><tr><td colspan="5" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr></tbody>
               </table>
             </div>
-          </div><!-- /ws-panel-revolving -->
+            </div><!-- /revolving section -->
 
-          <!-- ── Payment Panel ── -->
-          <div class="pm-ws-panel" id="ws-panel-payment">
+            <!-- Payment section -->
+            <div class="pm-ws-section">
             <div class="pm-ws-panel-header">
               <div>
                 <div class="pm-ws-panel-title">Payment</div>
@@ -1587,23 +1556,11 @@
                 <i data-lucide="send" style="width:14px;height:14px;"></i> Send Payment Request
               </button>
             </div>
-            <div class="pm-kpi-row">
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#fee2e2;"><i data-lucide="alert-circle" style="color:#dc2626;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Outstanding Balance</div><div class="pm-kpi-value" id="pm-pay-outstanding">₱0</div></div>
-              </div>
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#d1fae5;"><i data-lucide="check-circle" style="color:#059669;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Total Paid</div><div class="pm-kpi-value" id="pm-pay-total-paid">₱0</div></div>
-              </div>
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#fef3c7;"><i data-lucide="clock" style="color:#d97706;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Next Payment Due</div><div class="pm-kpi-value" id="pm-pay-next-due">—</div></div>
-              </div>
-              <div class="pm-kpi-card">
-                <div class="pm-kpi-icon" style="background:#ede9fe;"><i data-lucide="shield-alert" style="color:#7c3aed;width:20px;height:20px;"></i></div>
-                <div class="pm-kpi-body"><div class="pm-kpi-label">Strict Weeks</div><div class="pm-kpi-value" id="pm-pay-strict-count">0</div></div>
-              </div>
+            <div class="pm-stat-grid">
+              <div class="pm-stat"><div class="pm-stat-label">Outstanding balance</div><div class="pm-stat-value is-danger num" id="pm-pay-outstanding">₱0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">Total paid</div><div class="pm-stat-value is-green num" id="pm-pay-total-paid">₱0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">Next payment due</div><div class="pm-stat-value" id="pm-pay-next-due">—</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">Strict weeks</div><div class="pm-stat-value num" id="pm-pay-strict-count">0</div></div>
             </div>
             <div class="pm-table-wrap">
               <table class="pm-table">
@@ -1611,7 +1568,8 @@
                 <tbody id="pm-pay-tbody"><tr><td colspan="7" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr></tbody>
               </table>
             </div>
-          </div><!-- /ws-panel-payment -->
+            </div><!-- /payment section -->
+          </div><!-- /ws-panel-money -->
 
         </div><!-- /pmWorkspaceView -->
 
@@ -1840,11 +1798,12 @@
                     <i data-lucide="search" class="un-search-icon"></i>
                     <input type="text" id="caSearchInput" class="un-search-input" placeholder="Search by name or email…" oninput="caFilterClients()">
                 </div>
-                <select id="caStatusFilter" class="un-filter-select" onchange="caFilterClients()">
-                    <option value="">All Status</option>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                </select>
+                <div class="ca-seg">
+                    <button type="button" class="ca-seg-btn active" data-val="" onclick="caSetFilter('', this)">All</button>
+                    <button type="button" class="ca-seg-btn" data-val="active" onclick="caSetFilter('active', this)">Active</button>
+                    <button type="button" class="ca-seg-btn" data-val="inactive" onclick="caSetFilter('inactive', this)">Inactive</button>
+                </div>
+                <input type="hidden" id="caStatusFilter" value="">
             </div>
             <!-- Table -->
             <div class="un-table-wrap">
@@ -1872,35 +1831,43 @@
         <!-- PAYMENT REQUESTS VIEW -->
         <div id="paymentRequestsView" class="content-view" style="display: none;">
 
+            <!-- Collected hero -->
+            <div class="pr-hero">
+                <div class="pr-hero-top">
+                    <div>
+                        <div class="pr-hero-label">Collected this year</div>
+                        <div class="pr-hero-collected num" id="prHeroCollected">₱0</div>
+                        <div class="pr-hero-sub">of <span class="num" id="prHeroBilled">₱0</span> billed · <span id="prHeroPct">0</span>% collected</div>
+                    </div>
+                    <div class="pr-hero-out-wrap">
+                        <div class="pr-hero-out-label">Outstanding</div>
+                        <div class="pr-hero-out num" id="prHeroOutstanding">₱0</div>
+                    </div>
+                </div>
+                <div class="pr-hero-bar"><div class="pr-hero-fill" id="prHeroFill" style="width:0%;"></div></div>
+            </div>
+
             <!-- Stats Row -->
             <div class="pr-stats-row">
                 <div class="pr-stat-card">
-                    <div class="pr-stat-icon pr-icon-pending"><i data-lucide="clock" style="width:22px;height:22px;"></i></div>
-                    <div class="pr-stat-info">
-                        <h3 id="prPendingCount">0</h3>
-                        <p>Pending</p>
-                    </div>
+                    <div class="pr-stat-head"><span class="pr-stat-dot pr-dot-pending"></span><span class="pr-stat-label">Pending</span></div>
+                    <div class="pr-stat-num" id="prPendingCount">0</div>
+                    <div class="pr-stat-amt num" id="prPendingAmt">₱0</div>
                 </div>
                 <div class="pr-stat-card">
-                    <div class="pr-stat-icon pr-icon-partial"><i data-lucide="help-circle" style="width:22px;height:22px;"></i></div>
-                    <div class="pr-stat-info">
-                        <h3 id="prPartialCount">0</h3>
-                        <p>Approval Pending</p>
-                    </div>
+                    <div class="pr-stat-head"><span class="pr-stat-dot pr-dot-partial"></span><span class="pr-stat-label">Approval Pending</span></div>
+                    <div class="pr-stat-num" id="prPartialCount">0</div>
+                    <div class="pr-stat-amt num" id="prPartialAmt">₱0</div>
                 </div>
                 <div class="pr-stat-card">
-                    <div class="pr-stat-icon pr-icon-submitted"><i data-lucide="upload" style="width:22px;height:22px;"></i></div>
-                    <div class="pr-stat-info">
-                        <h3 id="prSubmittedCount">0</h3>
-                        <p>Submitted</p>
-                    </div>
+                    <div class="pr-stat-head"><span class="pr-stat-dot pr-dot-submitted"></span><span class="pr-stat-label">Under Review</span></div>
+                    <div class="pr-stat-num" id="prSubmittedCount">0</div>
+                    <div class="pr-stat-amt num" id="prSubmittedAmt">₱0</div>
                 </div>
                 <div class="pr-stat-card">
-                    <div class="pr-stat-icon pr-icon-verified"><i data-lucide="check-circle" style="width:22px;height:22px;"></i></div>
-                    <div class="pr-stat-info">
-                        <h3 id="prVerifiedCount">0</h3>
-                        <p>Verified / Paid</p>
-                    </div>
+                    <div class="pr-stat-head"><span class="pr-stat-dot pr-dot-verified"></span><span class="pr-stat-label">Paid</span></div>
+                    <div class="pr-stat-num" id="prVerifiedCount">0</div>
+                    <div class="pr-stat-amt num" id="prVerifiedAmt">₱0</div>
                 </div>
             </div>
 
@@ -1910,14 +1877,13 @@
                     <i data-lucide="search" class="pr-search-icon"></i>
                     <input id="prSearchInput" class="pr-search-input" type="text" placeholder="Search client, project, period…" oninput="prFilterRequests()">
                 </div>
-                <select id="prStatusFilter" class="pr-filter-select" onchange="prFilterRequests()">
-                    <option value="">All Statuses</option>
-                    <option value="pending">Pending</option>
-                    <option value="submitted">Submitted</option>
-                    <option value="verified">Verified</option>
-                    <option value="partial_pending">Approval Pending</option>
-                    <option value="rejected">Rejected</option>
-                </select>
+                <div class="pr-seg">
+                    <button type="button" class="pr-seg-btn active" onclick="prSetFilter('', this)">All</button>
+                    <button type="button" class="pr-seg-btn" onclick="prSetFilter('pending', this)">Pending</button>
+                    <button type="button" class="pr-seg-btn" onclick="prSetFilter('review', this)">Under review</button>
+                    <button type="button" class="pr-seg-btn" onclick="prSetFilter('paid', this)">Paid</button>
+                </div>
+                <input type="hidden" id="prStatusFilter" value="">
                 <button class="pr-btn-qrsettings" onclick="prPrintAllRequests()" title="Print all payment requests">
                     <i data-lucide="printer" style="width:16px;height:16px;"></i> Print
                 </button>
@@ -2244,17 +2210,13 @@
 </div>
 
 <!-- ════ CLIENT ACCOUNTS: Profile Modal ════ -->
-<div id="caProfileModal" class="un-modal-overlay" style="display:none;" onclick="if(event.target===this)caCloseProfile()">
-    <div class="un-modal-card">
-        <div class="un-modal-header">
-            <div class="un-modal-avatar un-avatar-client" id="caModalAvatar">C</div>
-            <div class="un-modal-title-block">
-                <h3 id="caModalName">Client Profile</h3>
-                <span class="un-role-badge un-role-client">Client</span>
-            </div>
-            <button class="un-modal-close" aria-label="Close" onclick="caCloseProfile()"><i data-lucide="x"></i></button>
+<div id="caProfileModal" class="un-modal-overlay ca-drawer" style="display:none;" onclick="if(event.target===this)caCloseProfile()">
+    <div class="un-modal-card ca-drawer-card">
+        <div class="ca-drawer-header">
+            <h3>Client profile</h3>
+            <button class="ca-drawer-close" aria-label="Close" onclick="caCloseProfile()">&times;</button>
         </div>
-        <div id="caProfileBody" class="un-modal-body"></div>
+        <div id="caProfileBody" class="ca-drawer-body"></div>
     </div>
 </div>
 
@@ -2616,41 +2578,48 @@
 
 
 <!-- ══════════ QR Settings Modal ══════════ -->
-<div id="prQRSettingsModal" class="pr-modal-overlay" style="display:none;" onclick="if(event.target===this)prCloseQRSettings()">
-    <div class="pr-modal-card" style="max-width:520px;">
-        <div class="pr-modal-header">
-            <h3 class="pr-modal-title">Payment QR Code Settings</h3>
-            <button class="pr-modal-close" aria-label="Close" onclick="prCloseQRSettings()">&#x2715;</button>
+<div id="prQRSettingsModal" class="pm-modal-overlay" style="display:none;" onclick="if(event.target===this)prCloseQRSettings()">
+    <div class="pm-modal-box">
+        <div class="pm-modal-header">
+            <div class="pm-modal-htitle">
+                <span class="pm-modal-hicon"><i data-lucide="qr-code" style="width:16px;height:16px;"></i></span>
+                <h3>Payment QR Code Settings</h3>
+            </div>
+            <button class="pm-modal-close" aria-label="Close" onclick="prCloseQRSettings()"><i data-lucide="x"></i></button>
         </div>
-        <div class="pr-modal-body">
-            <p style="font-size:13.5px;color:#6b7280;margin-bottom:20px;">These QR codes are shown to all clients when they submit payment. Upload once — updates apply to all payment requests instantly.</p>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
-                <div>
-                    <div class="pr-form-label" style="margin-bottom:8px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;">GCash QR</div>
-                    <div style="text-align:center;margin-bottom:10px;">
-                        <img id="prQSGcashCurrent" src="" alt="" style="display:none;width:120px;height:120px;object-fit:contain;border-radius:8px;border:1px solid #e5e7eb;">
-                        <div id="prQSGcashNone" style="display:none;font-size:12px;color:#9ca3af;">None set</div>
+        <div class="pm-modal-body">
+            <p class="pm-modal-intro">These QR codes are shown to all clients when they submit payment. Upload once — updates apply to every payment request instantly.</p>
+            <div class="pm-qr-grid">
+                <div class="pm-qr-card">
+                    <div class="pm-qr-card-label">GCash QR</div>
+                    <div class="pm-qr-preview">
+                        <img id="prQSGcashCurrent" src="" alt="" style="display:none;">
+                        <div id="prQSGcashNone" class="pm-qr-none" style="display:none;"><i data-lucide="qr-code" style="width:22px;height:22px;"></i><span>No QR yet</span></div>
                     </div>
-                    <div style="font-size:11.5px;color:#9ca3af;margin-bottom:6px;">Upload new:</div>
-                    <input type="file" id="prQSGcashFile" accept="image/*" style="font-size:12.5px;width:100%;" onchange="prPreviewQRNew(this,'prQSGcashNewPreview')">
-                    <img id="prQSGcashNewPreview" src="" alt="" style="display:none;margin-top:8px;width:100%;max-width:120px;border-radius:8px;border:1px solid #d1d5db;">
+                    <label class="pm-qr-upload">
+                        <i data-lucide="upload" style="width:13px;height:13px;"></i> Upload / replace
+                        <input type="file" id="prQSGcashFile" accept="image/*" onchange="prPreviewQRNew(this,'prQSGcashNewPreview')" hidden>
+                    </label>
+                    <img id="prQSGcashNewPreview" src="" alt="" class="pm-qr-newpreview" style="display:none;">
                 </div>
-                <div>
-                    <div class="pr-form-label" style="margin-bottom:8px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;">Bank Transfer QR</div>
-                    <div style="text-align:center;margin-bottom:10px;">
-                        <img id="prQSBankCurrent" src="" alt="" style="display:none;width:120px;height:120px;object-fit:contain;border-radius:8px;border:1px solid #e5e7eb;">
-                        <div id="prQSBankNone" style="display:none;font-size:12px;color:#9ca3af;">None set</div>
+                <div class="pm-qr-card">
+                    <div class="pm-qr-card-label">Bank Transfer QR</div>
+                    <div class="pm-qr-preview">
+                        <img id="prQSBankCurrent" src="" alt="" style="display:none;">
+                        <div id="prQSBankNone" class="pm-qr-none" style="display:none;"><i data-lucide="qr-code" style="width:22px;height:22px;"></i><span>No QR yet</span></div>
                     </div>
-                    <div style="font-size:11.5px;color:#9ca3af;margin-bottom:6px;">Upload new:</div>
-                    <input type="file" id="prQSBankFile" accept="image/*" style="font-size:12.5px;width:100%;" onchange="prPreviewQRNew(this,'prQSBankNewPreview')">
-                    <img id="prQSBankNewPreview" src="" alt="" style="display:none;margin-top:8px;width:100%;max-width:120px;border-radius:8px;border:1px solid #d1d5db;">
+                    <label class="pm-qr-upload">
+                        <i data-lucide="upload" style="width:13px;height:13px;"></i> Upload / replace
+                        <input type="file" id="prQSBankFile" accept="image/*" onchange="prPreviewQRNew(this,'prQSBankNewPreview')" hidden>
+                    </label>
+                    <img id="prQSBankNewPreview" src="" alt="" class="pm-qr-newpreview" style="display:none;">
                 </div>
             </div>
-            <div id="prQSError" style="display:none;color:#b91c1c;font-size:13px;margin-top:14px;"></div>
+            <div id="prQSError" class="pm-qr-error" style="display:none;"></div>
         </div>
-        <div class="pr-modal-footer">
-            <button class="pr-btn-cancel" onclick="prCloseQRSettings()">Cancel</button>
-            <button id="prQSSaveBtn" class="pr-btn-submit" onclick="prSaveQRSettings()">Save QR Codes</button>
+        <div class="pm-modal-footer">
+            <button class="pm-btn pm-btn-secondary" onclick="prCloseQRSettings()">Cancel</button>
+            <button id="prQSSaveBtn" class="pm-btn pm-btn-primary" onclick="prSaveQRSettings()"><i data-lucide="save" style="width:14px;height:14px;"></i> Save QR Codes</button>
         </div>
     </div>
 </div>
@@ -3544,12 +3513,17 @@
 <div id="pmProjectModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmProjectModal')" style="display:none;">
   <div class="pm-modal-box">
     <div class="pm-modal-header">
-      <h3 id="pmProjectModalTitle">Add Construction Project</h3>
+      <div class="pm-modal-htitle">
+        <span class="pm-modal-hicon"><i data-lucide="building-2" style="width:16px;height:16px;"></i></span>
+        <h3 id="pmProjectModalTitle">Add Construction Project</h3>
+      </div>
       <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmProjectModal')"><i data-lucide="x"></i></button>
     </div>
     <div class="pm-modal-body">
       <input type="hidden" id="pmProjectId">
-      <div class="pm-form-row">
+
+      <div class="pm-form-section pm-form-section-first">Client &amp; Project</div>
+      <div class="pm-form-row pm-two-col">
         <div class="pm-form-group">
           <label class="pm-field-label">Client Name <span class="pm-req">*</span></label>
           <input type="text" id="pmProjectClientName" class="pm-input" placeholder="e.g. Juan dela Cruz">
@@ -3565,7 +3539,9 @@
         <label class="pm-field-label">Client Email <span style="color:#9ca3af;font-weight:400;">(used to link with client app)</span></label>
         <input type="email" id="pmProjectEmail" class="pm-input" placeholder="client@email.com">
       </div>
-      <div class="pm-form-row">
+
+      <div class="pm-form-section">Timeline &amp; Location</div>
+      <div class="pm-form-row pm-two-col">
         <div class="pm-form-group">
           <label class="pm-field-label">Status</label>
           <select id="pmProjectStatus" class="pm-select">
@@ -3579,18 +3555,30 @@
           <input type="date" id="pmProjectStartDate" class="pm-input">
         </div>
       </div>
-      <div class="pm-form-group">
-        <label class="pm-field-label">Address / Location</label>
-        <input type="text" id="pmProjectAddress" class="pm-input" placeholder="e.g. Brgy. Poblacion, Lipa City">
-      </div>
       <div class="pm-form-row pm-two-col">
         <div class="pm-form-group">
-          <label class="pm-field-label">Project Budget <span style="color:#9ca3af;font-weight:400;">(₱)</span></label>
-          <input type="number" id="pmProjectBudget" class="pm-input" min="0" step="0.01" placeholder="e.g. 500000">
+          <label class="pm-field-label">Target Completion <span style="color:#9ca3af;font-weight:400;">(Schedule Performance)</span></label>
+          <input type="date" id="pmProjectEndDate" class="pm-input">
         </div>
         <div class="pm-form-group">
-          <label class="pm-field-label">Target Completion <span style="color:#9ca3af;font-weight:400;">(drives Schedule Performance)</span></label>
-          <input type="date" id="pmProjectEndDate" class="pm-input">
+          <label class="pm-field-label">Address / Location</label>
+          <input type="text" id="pmProjectAddress" class="pm-input" placeholder="e.g. Brgy. Poblacion, Lipa City">
+        </div>
+      </div>
+
+      <div class="pm-form-section">Billing</div>
+      <div class="pm-form-group">
+        <label class="pm-field-label">Project Budget <span style="color:#9ca3af;font-weight:400;">(₱)</span></label>
+        <input type="number" id="pmProjectBudget" class="pm-input" min="0" step="0.01" placeholder="e.g. 500000">
+      </div>
+      <div class="pm-fee-highlight">
+        <div class="pm-fee-highlight-text">
+          <div class="pm-fee-highlight-title">Management fee</div>
+          <div class="pm-fee-highlight-note">Applies to all weekly bills for this project</div>
+        </div>
+        <div class="pm-fee-highlight-input">
+          <input type="number" id="pmProjectFeePct" min="0" max="100" step="0.5" placeholder="15" value="15">
+          <span>%</span>
         </div>
       </div>
     </div>
@@ -3633,7 +3621,7 @@
       </div>
       <!-- Auto-computed summary -->
       <div class="pm-compute-box">
-        <div class="pm-compute-row"><span>Management Fee (15%)</span><strong id="pm-calc-fee">₱0.00</strong></div>
+        <div class="pm-compute-row"><span id="pm-calc-fee-label">Management Fee (15%)</span><strong id="pm-calc-fee">₱0.00</strong></div>
         <div class="pm-compute-row pm-compute-total"><span>Grand Total</span><strong id="pm-calc-total">₱0.00</strong></div>
       </div>
       <div class="pm-form-group">
@@ -3933,6 +3921,63 @@
       <button class="pm-btn pm-btn-secondary" onclick="pmCloseModal('pmPaymentRequestModal')">Cancel</button>
       <button class="pm-btn pm-btn-primary" onclick="pmSavePaymentRequest()">
         <i data-lucide="send" style="width:14px;height:14px;"></i> Send Request
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Client Self-Payment Review Modal (PM) -->
+<div id="pmSelfPayReviewModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmSelfPayReviewModal')" style="display:none;">
+  <div class="pm-modal-box">
+    <div class="pm-modal-header">
+      <h3>Review Client Payment</h3>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmSelfPayReviewModal')"><i data-lucide="x"></i></button>
+    </div>
+    <div class="pm-modal-body">
+      <div class="pm-form-row pm-two-col">
+        <div class="pm-form-group">
+          <label class="pm-field-label">Client</label>
+          <div id="pmSelfPayClient" style="font-weight:600;color:#111827;">—</div>
+        </div>
+        <div class="pm-form-group">
+          <label class="pm-field-label">Amount Paid</label>
+          <div id="pmSelfPayAmount" style="font-weight:700;color:#15803d;">—</div>
+        </div>
+      </div>
+      <div class="pm-form-row pm-two-col">
+        <div class="pm-form-group">
+          <label class="pm-field-label">Reference Number</label>
+          <div id="pmSelfPayRef" style="font-weight:600;color:#111827;word-break:break-all;">—</div>
+        </div>
+        <div class="pm-form-group">
+          <label class="pm-field-label">Submitted</label>
+          <div id="pmSelfPayDate" style="color:#374151;">—</div>
+        </div>
+      </div>
+      <div class="pm-form-group">
+        <label class="pm-field-label">Description</label>
+        <div id="pmSelfPayPeriod" style="color:#374151;">—</div>
+      </div>
+      <div class="pm-form-group">
+        <label class="pm-field-label">Receipt</label>
+        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:8px;text-align:center;background:#f9fafb;">
+          <img id="pmSelfPayImg" src="" alt="Receipt" style="max-width:100%;max-height:360px;border-radius:6px;display:none;">
+          <div id="pmSelfPayNoImg" style="color:#9ca3af;font-size:13px;padding:24px 0;display:none;">No receipt image attached.</div>
+        </div>
+      </div>
+      <div id="pmSelfPayStatusNote" style="display:none;font-weight:600;font-size:13px;margin-top:6px;"></div>
+      <div id="pmSelfPayRejectWrap" style="display:none;margin-top:10px;">
+        <label class="pm-field-label">Reason for rejection <span class="pm-req">*</span></label>
+        <textarea id="pmSelfPayRejectReason" class="pm-input pm-textarea" rows="2" placeholder="Tell the client why this payment was rejected…"></textarea>
+        <button id="pmSelfPayRejectConfirmBtn" class="pm-btn pm-btn-danger" style="margin-top:8px;" onclick="pmRejectSelfPay()">Confirm Reject</button>
+      </div>
+    </div>
+    <div class="pm-modal-footer" id="pmSelfPayActions" style="display:none;">
+      <button class="pm-btn pm-btn-secondary" onclick="pmShowRejectSelfPay()">
+        <i data-lucide="x-circle" style="width:14px;height:14px;"></i> Reject
+      </button>
+      <button id="pmSelfPayApproveBtn" class="pm-btn pm-btn-primary" onclick="pmApproveSelfPay()">
+        <i data-lucide="check-circle" style="width:14px;height:14px;"></i> Approve &amp; Mark Paid
       </button>
     </div>
   </div>

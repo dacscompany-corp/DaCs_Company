@@ -750,65 +750,52 @@
 }
 @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
 
-/* ── Reports KPI Grid ─────────────────────────────────────── */
+/* ── Reports KPI Grid (redesign — white bordered cards) ─────── */
 .rpt-kpi-row {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    border-radius: 18px;
-    overflow: hidden;
-    margin-bottom: 1.5rem;
+    gap: 12px;
+    margin-bottom: 1rem;
     position: relative;
-    background: #4AC84A;
-    border: 1.5px solid rgba(255,255,255,0.50);
-    box-shadow: 0 2px 12px rgba(0,0,0,0.10);
 }
 
 /* Standard KPI card */
 .rpt-kpi-card {
-    padding: 1.4rem 1.6rem 1.3rem;
+    padding: 16px 17px;
     display: flex;
     flex-direction: column;
-    background: #4AC84A;
-    transition: background 0.15s ease;
+    background: #fff;
+    border: 1px solid #e7e6e2;
+    border-radius: 13px;
+    transition: border-color 0.15s ease;
     min-width: 0;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
 }
-.rpt-kpi-card:hover { background: #3db83d; }
-
-/* Vertical divider — right edge, skip last column */
-.rpt-kpi-card:not(:nth-child(3n))::after {
-    content: '';
-    position: absolute;
-    top: 0; bottom: 0; right: 0;
-    width: 1px;
-    background: rgba(255,255,255,1);
-}
-
-/* Horizontal divider — bottom edge, skip last row */
-.rpt-kpi-card:not(:nth-child(n+4)):not(.rpt-kpi-variance-wide)::before {
-    content: '';
-    position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 1px;
-    background: rgba(255,255,255,1);
-}
+.rpt-kpi-card:hover { border-color: #d8d6cf; }
+/* Kill the old white separators */
+.rpt-kpi-card::after,
+.rpt-kpi-card::before { content: none !important; }
+/* Cover Expenses — accent the value, not the whole card */
+.rpt-kpi-card--bad  .rpt-kpi-val { color: #b4453a; }
+.rpt-kpi-card--warn .rpt-kpi-val { color: #9a6b1f; }
 
 /* Label */
 .rpt-kpi-label {
-    font-size: 0.65rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: #ffffff;
-    margin-bottom: 0.55rem;
+    color: #9b9a94;
+    margin-bottom: 0.4rem;
 }
 
 /* Big value */
 .rpt-kpi-val {
-    font-size: 1.65rem;
-    font-weight: 800;
-    letter-spacing: -0.03em;
-    color: #ffffff;
-    margin-bottom: 0.3rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: #1c1c1a;
+    margin-bottom: 0.2rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -816,26 +803,30 @@
 
 /* Sub text */
 .rpt-kpi-sub {
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: rgba(255,255,255,0.85);
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: #8a8983;
 }
 
-/* Remaining Allocation — full width card */
+/* Remaining Allocation — green-tint panel spanning all columns */
 .rpt-kpi-variance-wide {
     grid-column: 1 / -1 !important;
     display: flex;
     flex-direction: column;
+    background: #f3faf6 !important;
+    border: 1px solid #cfe5da !important;
+    border-radius: 14px;
+    padding: 18px 20px;
 }
 
 /* Variance badges */
-.rpt-variance-kpi-badge--green { background: rgba(255,255,255,0.25); color: #ffffff; }
-.rpt-variance-kpi-badge--red   { background: rgba(239,68,68,0.45);   color: #ffffff; }
+.rpt-variance-kpi-badge--green { background: #fff; border: 1px solid #cfe5da; color: #157a52; }
+.rpt-variance-kpi-badge--red   { background: #fff; border: 1px solid #f0d3cf; color: #b4453a; }
 
 /* Responsive */
 @media (max-width: 768px) {
     .rpt-kpi-row { grid-template-columns: repeat(2, 1fr); }
-    .rpt-kpi-val { font-size: 1.3rem; }
+    .rpt-kpi-val { font-size: 1.35rem; }
 }
 @media (max-width: 480px) {
     .rpt-kpi-row { grid-template-columns: 1fr; }

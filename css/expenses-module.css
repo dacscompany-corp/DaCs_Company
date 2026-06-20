@@ -2076,7 +2076,8 @@ mark.exp-search-highlight {
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
     transition: border-color 0.2s;
 }
-.rpt-select-wrap:focus-within { border-color: #2563eb; }
+.rpt-select-wrap:focus-within { border-color: #157a52; }
+#expReportsView { font-family: 'IBM Plex Sans', system-ui, sans-serif; }
 .rpt-sel-ico { width: 13px; height: 13px; color: #6b7280; flex-shrink: 0; }
 .rpt-select-wrap select {
     border: none;
@@ -2097,7 +2098,7 @@ mark.exp-search-highlight {
 .rpt-period-tabs {
     display: flex;
     gap: 0.3rem;
-    background: #f3f4f6;
+    background: #f1f0ed;
     padding: 0.3rem;
     border-radius: 10px;
     flex-wrap: wrap;
@@ -2112,16 +2113,16 @@ mark.exp-search-highlight {
     border-radius: 7px;
     font-size: 0.8rem;
     font-weight: 600;
-    color: #6b7280;
+    color: #5b5a55;
     cursor: pointer;
     transition: all 0.18s ease;
     white-space: nowrap;
 }
-.rpt-tab:hover { background: #e5e7eb; color: #374151; }
+.rpt-tab:hover { color: #1c1c1a; }
 .rpt-tab.active {
     background: #fff;
-    color: #111827;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    color: #1c1c1a;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.10);
 }
 .rpt-tab-ico { width: 13px; height: 13px; flex-shrink: 0; }
 
@@ -2136,26 +2137,26 @@ mark.exp-search-highlight {
     border-radius: 8px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
 }
-.rpt-company-ico { width: 18px; height: 18px; color: #6b7280; flex-shrink: 0; }
+.rpt-company-ico { width: 18px; height: 18px; color: #157a52; flex-shrink: 0; }
 .rpt-company-info { display: flex; flex-direction: column; line-height: 1.3; }
-.rpt-company-name { font-size: 0.8rem; font-weight: 700; color: #111827; }
-.rpt-company-sub  { font-size: 0.72rem; color: #6b7280; }
+.rpt-company-name { font-size: 0.8rem; font-weight: 700; color: #1c1c1a; }
+.rpt-company-sub  { font-size: 0.72rem; color: #9b9a94; }
 
 /* ── Axis Hint ───────────────────────────────────────────── */
 .rpt-axis-hint {
     display: flex;
     align-items: center;
     gap: 0.6rem;
-    background: #f8faff;
-    border: 1px solid #dbeafe;
+    background: #f3faf6;
+    border: 1px solid #cfe5da;
     border-radius: 8px;
     padding: 0.65rem 1rem;
     margin-bottom: 1rem;
     font-size: 0.8rem;
-    color: #374151;
+    color: #3a3a36;
     line-height: 1.5;
 }
-.rpt-axis-hint-ico { width: 15px; height: 15px; color: #3b82f6; flex-shrink: 0; }
+.rpt-axis-hint-ico { width: 15px; height: 15px; color: #157a52; flex-shrink: 0; }
 
 /* ── KPI Row ─────────────────────────────────────────────── */
 /* ── KPI Grid — matches screenshot 3×3 design ─────────────── */
@@ -2164,40 +2165,31 @@ mark.exp-search-highlight {
 .rpt-kpi-row {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0;
-    margin-bottom: 1.5rem;
-    border-radius: 16px;
-    overflow: hidden;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    gap: 12px;
+    margin-bottom: 1rem;
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
 }
 
-/* Standard card */
+/* Standard card — white, bordered (mockup) */
 .rpt-kpi-card {
     display: flex;
     flex-direction: column;
     justify-content: center;
-    padding: 2rem 2rem 1.8rem;
-    background: #4AC84A;
-    border-right: 3px solid #ffffff;
-    border-bottom: 3px solid #ffffff;
-    transition: background 0.15s ease;
+    padding: 16px 17px;
+    background: #fff;
+    border: 1px solid #e7e6e2;
+    border-radius: 13px;
+    transition: border-color 0.15s ease;
     min-width: 0;
     overflow: hidden;
-    min-height: 130px;
 }
-/* Remove right border on every 3rd card */
-.rpt-kpi-card:nth-child(3n) { border-right: none; }
-/* Remove bottom border on the last row of 3-col cards (cards 4-6) */
-.rpt-kpi-card:nth-child(n+4):not(.rpt-kpi-variance-wide) { border-bottom: none; }
-.rpt-kpi-card:hover { background: #3db83d; }
-/* Cover Expenses — red when BAD, yellow when WARNING */
-.rpt-kpi-card--bad  { background: #dc2626 !important; }
-.rpt-kpi-card--bad:hover  { background: #b91c1c !important; }
-.rpt-kpi-card--warn { background: #d97706 !important; }
-.rpt-kpi-card--warn:hover { background: #b45309 !important; }
+.rpt-kpi-card:nth-child(3n) { border-right: 1px solid #e7e6e2; }
+.rpt-kpi-card:hover { border-color: #d8d6cf; }
+/* Cover Expenses — accent the value instead of flooding the card */
+.rpt-kpi-card--bad  .rpt-kpi-val { color: #b4453a; }
+.rpt-kpi-card--warn .rpt-kpi-val { color: #9a6b1f; }
 
 /* Staff: single Cover Expenses card — full width, maximized */
 .rpt-kpi-staff-cover {
@@ -2225,15 +2217,15 @@ mark.exp-search-highlight {
     opacity: 0.85;
 }
 
-/* Remaining Allocation — spans all 3 columns, always last */
+/* Remaining Allocation — green-tint panel spanning all 3 columns (mockup) */
 .rpt-kpi-variance-wide {
     grid-column: 1 / -1 !important;
-    border-right: none !important;
-    border-bottom: none !important;
-    border-top: 3px solid #ffffff;
+    border: 1px solid #cfe5da !important;
+    border-radius: 14px;
+    background: #f3faf6;
     display: flex;
     flex-direction: column;
-    padding: 2rem 2rem 1.8rem;
+    padding: 18px 20px;
     justify-content: flex-start;
 }
 
@@ -2244,12 +2236,12 @@ mark.exp-search-highlight {
 
 /* Label */
 .rpt-kpi-label {
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.12em;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.88);
-    margin-bottom: 0.65rem;
+    color: #9b9a94;
+    margin-bottom: 0.4rem;
     line-height: 1.2;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2258,12 +2250,12 @@ mark.exp-search-highlight {
 }
 /* Big value */
 .rpt-kpi-val {
-    font-size: clamp(1.4rem, 2vw, 2.3rem);
-    font-weight: 900;
-    letter-spacing: -0.03em;
-    line-height: 1;
-    color: #ffffff;
-    margin-bottom: 0.6rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.1;
+    color: #1c1c1a;
+    margin-bottom: 0.2rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2271,10 +2263,10 @@ mark.exp-search-highlight {
 }
 /* Sub text */
 .rpt-kpi-sub {
-    font-size: 0.82rem;
-    font-weight: 500;
-    color: rgba(255,255,255,0.85);
-    line-height: 1.5;
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: #8a8983;
+    line-height: 1.45;
     overflow: hidden;
     text-overflow: ellipsis;
     width: 100%;
@@ -2285,19 +2277,19 @@ mark.exp-search-highlight {
 
 /* ── Remaining Allocation inner layout ─────────────────────── */
 .rpt-kpi-label--highlight {
-    font-size: 0.82rem;
-    font-weight: 900;
-    letter-spacing: 0.12em;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: #ffffff;
-    margin-bottom: 0.8rem;
+    color: #157a52;
+    margin-bottom: 0.85rem;
 }
 .rpt-variance-rule {
     width: 100%;
-    height: 1.5px;
-    background: rgba(255,255,255,0.40);
+    height: 1px;
+    background: #d4e7dd;
     border-radius: 99px;
-    margin-bottom: 1.4rem;
+    margin-bottom: 1.1rem;
 }
 .rpt-variance-split {
     display: flex;
@@ -2315,50 +2307,48 @@ mark.exp-search-highlight {
 }
 .rpt-variance-col:last-child { padding: 0 0 0 2.5rem; }
 .rpt-variance-divider {
-    width: 1.5px;
-    background: rgba(255,255,255,0.38);
+    width: 1px;
+    background: #d4e7dd;
     align-self: stretch;
     flex-shrink: 0;
     border-radius: 99px;
 }
 .rpt-variance-col-label {
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: rgba(255,255,255,0.78);
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: #3a3a36;
     margin-bottom: 0.45rem;
 }
 .rpt-variance-kpi-badge {
     display: inline-flex;
     align-items: center;
-    font-size: 0.75rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    padding: 0.25rem 0.75rem;
-    border-radius: 999px;
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 0.2rem 0.55rem;
+    border-radius: 6px;
     margin-bottom: 0.55rem;
     align-self: flex-start;
 }
-.rpt-variance-kpi-badge--green { background: rgba(255,255,255,0.25); color: #ffffff; }
-.rpt-variance-kpi-badge--red   { background: rgba(239,68,68,0.45);   color: #ffffff; }
+.rpt-variance-kpi-badge--green { background: #fff; border: 1px solid #cfe5da; color: #157a52; }
+.rpt-variance-kpi-badge--red   { background: #fff; border: 1px solid #f0d3cf; color: #b4453a; }
 .rpt-variance-col-val {
-    font-size: clamp(1.4rem, 1.8vw, 2.1rem);
-    font-weight: 900;
-    letter-spacing: -0.02em;
+    font-size: 1.375rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
     line-height: 1.1;
-    color: #ffffff;
+    color: #1c1c1a;
     margin-bottom: 0.5rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 .rpt-variance-bar-wrap {
-    height: 6px;
-    background: rgba(255,255,255,0.20);
+    height: 7px;
+    background: #dcebe3;
     border-radius: 99px;
     overflow: hidden;
-    margin-bottom: 0.45rem;
+    margin-bottom: 0.4rem;
 }
 .rpt-variance-bar-fill {
     height: 100%;
@@ -2367,20 +2357,17 @@ mark.exp-search-highlight {
     min-width: 2px;
 }
 .rpt-variance-col-sub {
-    font-size: 0.82rem;
-    color: rgba(255,255,255,0.85);
-    font-weight: 500;
+    font-size: 0.72rem;
+    color: #5e9d80;
+    font-weight: 400;
 }
 
 /* Responsive */
 @media (max-width: 768px) {
-    .rpt-kpi-row { grid-template-columns: repeat(2, 1fr); border-radius: 12px; }
-    .rpt-kpi-card:nth-child(3n)  { border-right: 3px solid #ffffff; }
-    .rpt-kpi-card:nth-child(2n)  { border-right: none; }
-    .rpt-kpi-card:nth-child(n+4):not(.rpt-kpi-variance-wide) { border-bottom: 3px solid #ffffff; }
-    .rpt-kpi-card:nth-last-child(-n+2):not(.rpt-kpi-variance-wide) { border-bottom: none; }
-    .rpt-kpi-val { font-size: 1.4rem; }
-    .rpt-kpi-card { padding: 1.1rem 1.2rem; }
+    .rpt-kpi-row { grid-template-columns: repeat(2, 1fr); }
+    .rpt-kpi-card:nth-child(3n)  { border-right: 1px solid #e7e6e2; }
+    .rpt-kpi-val { font-size: 1.35rem; }
+    .rpt-kpi-card { padding: 14px 15px; }
     .rpt-variance-col { padding: 0 1rem 0 0; }
     .rpt-variance-col:last-child { padding: 0 0 0 1rem; }
     .rpt-variance-col-val { font-size: 1.2rem; }
@@ -2461,3 +2448,23 @@ mark.exp-search-highlight {
     color: #d1d5db;
     font-size: 0.8125rem;
 }
+
+/* ════════════════════════════════════════════════════════════
+   Reports detail tables (Expense / Payroll) — green/IBM Plex,
+   scoped to #expReportsView so the Expenses Overview is untouched
+   ════════════════════════════════════════════════════════════ */
+#expReportsView .rpt-table-card { background:#fff; border:1px solid #e7e6e2; border-radius:14px; box-shadow:none; overflow:hidden; font-family:'IBM Plex Sans', system-ui, sans-serif; }
+#expReportsView .rpt-table-card .card-header { padding:16px 20px 12px; border:none; background:#fff; }
+#expReportsView .rpt-table-card .card-header h2 { font:600 14px 'IBM Plex Sans'; color:#1c1c1a; margin:0; }
+#expReportsView .rpt-table-card .card-subtitle { font:400 11.5px 'IBM Plex Sans'; color:#9b9a94; margin-top:2px; }
+#expReportsView .rpt-table-card .table-container { overflow-x:auto; }
+#expReportsView .rpt-table-card .appointments-table { width:100%; border-collapse:collapse; }
+#expReportsView .rpt-table-card .appointments-table thead th { background:#fafaf8; font:600 10.5px 'IBM Plex Sans'; color:#9b9a94; text-transform:uppercase; letter-spacing:.05em; text-align:left; padding:10px 16px; border-top:1px solid #ededea; border-bottom:1px solid #ededea; white-space:nowrap; }
+#expReportsView .rpt-table-card .appointments-table thead th:last-child { text-align:right; }
+#expReportsView .rpt-table-card .appointments-table tbody td { padding:11px 16px; border-bottom:1px solid #f3f2ef; font:500 12.5px 'IBM Plex Sans'; color:#3a3a36; }
+#expReportsView .rpt-table-card .appointments-table tbody td strong { color:#1c1c1a; font-weight:600; }
+#expReportsView .rpt-table-card .exp-group-row td:last-child { text-align:right; font-weight:600; color:#1c1c1a; }
+#expReportsView .rpt-table-card .exp-group-header-inner { font-family:'IBM Plex Sans', system-ui, sans-serif; }
+#expReportsView .rpt-table-card .exp-total-row td { background:#eaf4ef; border-top:1px solid #c6e6d5; border-bottom:none; }
+#expReportsView .rpt-table-card .exp-total-label { font:700 11px 'IBM Plex Sans'; color:#0f6342; text-align:right; text-transform:uppercase; letter-spacing:.05em; }
+#expReportsView .rpt-table-card .exp-total-value { font:700 13px 'IBM Plex Sans'; color:#0f6342; text-align:right; }

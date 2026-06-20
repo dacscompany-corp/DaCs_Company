@@ -4463,14 +4463,11 @@ function _rptRenderKPIs(_groups) {
     const txCount          = _srcExp.filter(e => _kpiProjIdSet.has(e.projectId)).length;
     const workerCount      = new Set(_srcPay.filter(p => _kpiProjIdSet.has(p.projectId)).map(p => p.workerName || p.id)).size;
 
-    // Build a standard KPI card: label / big value / sub / optional extra class
+    // Build a standard KPI card: label / big value / sub / optional extra class.
+    // White card design — BAD/WARNING are conveyed by the value color (CSS) +
+    // the status word in the sub, not by flooding the whole card.
     function _card(label, val, sub, cls) {
-        const isBad  = cls === 'rpt-kpi-card--bad';
-        const isWarn = cls === 'rpt-kpi-card--warn';
-        const style  = isBad  ? ' style="background:#dc2626!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;"'
-                     : isWarn ? ' style="background:#d97706!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;"'
-                     : '';
-        return '<div class="rpt-kpi-card' + (cls ? ' ' + cls : '') + '"' + style + '>'
+        return '<div class="rpt-kpi-card' + (cls ? ' ' + cls : '') + '">'
             + '<div class="rpt-kpi-label">' + label + '</div>'
             + '<div class="rpt-kpi-val">'   + val   + '</div>'
             + '<div class="rpt-kpi-sub">'   + sub   + '</div>'
@@ -4507,7 +4504,7 @@ function _rptRenderKPIs(_groups) {
             +     '<div class="rpt-variance-col-label">Receivable Balance</div>'
             +     '<div class="rpt-variance-kpi-badge ' + varClass + '">' + periodAllocPct.toFixed(1) + '% of contract</div>'
             +     '<div class="rpt-variance-col-val">' + (periodAlloc < 0 ? '-' : '') + '&#8369;' + formatNum(Math.abs(periodAlloc)) + '</div>'
-            +     '<div class="rpt-variance-bar-wrap"><div class="rpt-variance-bar-fill" style="width:' + Math.max(Math.min(Math.abs(periodAllocPct), 100), 2).toFixed(1) + '%;background:' + (periodAlloc < 0 ? 'rgba(239,68,68,0.8)' : 'rgba(255,255,255,0.6)') + '"></div></div>'
+            +     '<div class="rpt-variance-bar-wrap"><div class="rpt-variance-bar-fill" style="width:' + Math.max(Math.min(Math.abs(periodAllocPct), 100), 2).toFixed(1) + '%;background:' + (periodAlloc < 0 ? '#b4453a' : '#157a52') + '"></div></div>'
             +     '<div class="rpt-variance-col-sub">' + (periodAlloc < 0 ? 'over-billed' : 'pending billing') + '</div>'
             +   '</div>'
             +   '<div class="rpt-variance-divider"></div>'
@@ -4515,7 +4512,7 @@ function _rptRenderKPIs(_groups) {
             +     '<div class="rpt-variance-col-label">Budget Remaining</div>'
             +     '<div class="rpt-variance-kpi-badge ' + remClass + '">' + (contract > 0 ? contractRemPct.toFixed(1) + '% of contract' : 'No contract set') + '</div>'
             +     '<div class="rpt-variance-col-val">' + (contractRem < 0 ? '-' : '') + '&#8369;' + formatNum(Math.abs(contractRem)) + '</div>'
-            +     '<div class="rpt-variance-bar-wrap"><div class="rpt-variance-bar-fill" style="width:' + Math.max(Math.min(Math.abs(contractRemPct), 100), 2).toFixed(1) + '%;background:' + (contractRem < 0 ? '#ef4444' : '#4ade80') + '"></div></div>'
+            +     '<div class="rpt-variance-bar-wrap"><div class="rpt-variance-bar-fill" style="width:' + Math.max(Math.min(Math.abs(contractRemPct), 100), 2).toFixed(1) + '%;background:' + (contractRem < 0 ? '#b4453a' : '#157a52') + '"></div></div>'
             +     '<div class="rpt-variance-col-sub">' + (contract > 0 ? (contractRem < 0 ? 'over budget' : 'available') : 'no contract set') + '</div>'
             +   '</div>'
             + '</div>'
@@ -4549,28 +4546,29 @@ function _rptRenderTrendChart(groups) {
             labels,
             datasets: [
                 { label:'Materials & Costs', data:matsData,
-                  backgroundColor:'rgba(59,130,246,0.7)', borderColor:'#3b82f6',
-                  borderWidth:1, borderRadius:4, stack:'spend' },
+                  backgroundColor:'#157a52', borderWidth:0,
+                  borderRadius:5, stack:'spend' },
                 { label:'Labor & Payroll',   data:laborData,
-                  backgroundColor:'rgba(245,158,11,0.7)', borderColor:'#f59e0b',
-                  borderWidth:1, borderRadius:4, stack:'spend' },
+                  backgroundColor:'#7f9cb0', borderWidth:0,
+                  borderRadius:5, stack:'spend' },
                 { label:'Budget Allocated',  data:budgetData, type:'line',
-                  borderColor:'#059669', backgroundColor:'transparent',
-                  borderWidth:2, borderDash:[6,4], pointBackgroundColor:'#059669',
+                  borderColor:'#c39e8b', backgroundColor:'transparent',
+                  borderWidth:2, borderDash:[6,4], pointBackgroundColor:'#c39e8b',
                   pointRadius:3, tension:0.35 }
             ]
         },
         options: {
             responsive:true, maintainAspectRatio:false,
+            font:{ family:"'IBM Plex Sans', system-ui, sans-serif" },
             plugins: {
-                legend:{ position:'bottom', labels:{ font:{size:11}, padding:12 }},
+                legend:{ position:'bottom', labels:{ font:{size:11}, padding:12, usePointStyle:true, pointStyle:'rectRounded' }},
                 tooltip:{ callbacks:{ label: c => ` ${c.dataset.label}: ₱${formatNum(c.parsed.y)}` }}
             },
             scales: {
-                x:{ stacked:true, grid:{display:false} },
+                x:{ stacked:true, grid:{display:false}, ticks:{ font:{size:11}, color:'#9b9a94' } },
                 y:{ stacked:false, beginAtZero:true,
-                    ticks:{ callback: v => '₱'+formatNum(v), font:{size:10} },
-                    grid:{ color:'rgba(0,0,0,0.05)' }}
+                    ticks:{ callback: v => '₱'+formatNum(v), font:{size:10}, color:'#9b9a94' },
+                    grid:{ color:'rgba(0,0,0,0.04)' }, border:{display:false} }
             }
         }
     });
@@ -4588,19 +4586,17 @@ function _rptRenderCompositionChart() {
     cats['Payroll'] = _rptState.allPayroll.reduce((s,p) => s+(p.totalSalary||0), 0);
     const labels = Object.keys(cats).filter(k => cats[k] > 0);
     const data   = labels.map(k => cats[k]);
-    const colors = labels.map(k => {
-        if (k==='Payroll') return '#f97316cc';
-        const cat = expCategories.find(c => c.name===k);
-        return cat ? cat.color+'cc' : '#a78bfacc';
-    });
+    const RPT_DONUT = ['#157a52','#7f9cb0','#c8a45a','#9fb98a','#d3cdc2','#b0907f','#a8a79f'];
+    const colors = labels.map((k,i) => k==='Payroll' ? '#7f9cb0' : RPT_DONUT[i % RPT_DONUT.length]);
     if (_rptCharts.comp) _rptCharts.comp.destroy();
     _rptCharts.comp = new Chart(ctx, {
         type:'doughnut',
-        data:{ labels, datasets:[{ data, backgroundColor:colors, borderWidth:2, borderColor:'#fff' }]},
+        data:{ labels, datasets:[{ data, backgroundColor:colors, borderWidth:3, borderColor:'#fff' }]},
         options:{
-            responsive:true, maintainAspectRatio:false,
+            responsive:true, maintainAspectRatio:false, cutout:'64%',
+            font:{ family:"'IBM Plex Sans', system-ui, sans-serif" },
             plugins:{
-                legend:{position:'bottom',labels:{font:{size:11},padding:10}},
+                legend:{position:'bottom',labels:{font:{size:11},padding:10,usePointStyle:true,pointStyle:'rectRounded'}},
                 tooltip:{callbacks:{label:c=>` ₱${formatNum(c.parsed)} (${((c.parsed/c.chart.getDatasetMeta(0).total)*100).toFixed(1)}%)`}}
             }
         }
@@ -4618,23 +4614,22 @@ function _rptRenderBvaChart(groups) {
             labels: filtered.map(g => g.shortLabel),
             datasets:[
                 { label:'Budget',       data:filtered.map(g => g.budget),
-                  backgroundColor:'rgba(5,150,105,0.18)', borderColor:'#059669',
-                  borderWidth:2, borderRadius:5 },
+                  backgroundColor:'#cdd7cf', borderWidth:0, borderRadius:4 },
                 { label:'Actual Spend', data:filtered.map(g => g.totalSpent),
-                  backgroundColor:filtered.map(g => g.totalSpent > g.budget ? 'rgba(239,68,68,0.18)' : 'rgba(79,172,254,0.18)'),
-                  borderColor:filtered.map(g => g.totalSpent > g.budget ? '#ef4444' : '#4facfe'),
-                  borderWidth:2, borderRadius:5 }
+                  backgroundColor:filtered.map(g => g.totalSpent > g.budget ? '#c0564a' : '#157a52'),
+                  borderWidth:0, borderRadius:4 }
             ]
         },
         options:{
             responsive:true, maintainAspectRatio:false,
+            font:{ family:"'IBM Plex Sans', system-ui, sans-serif" },
             plugins:{
-                legend:{position:'bottom',labels:{font:{size:11},padding:12}},
+                legend:{position:'bottom',labels:{font:{size:11},padding:12,usePointStyle:true,pointStyle:'rectRounded'}},
                 tooltip:{callbacks:{label:c=>` ${c.dataset.label}: ₱${formatNum(c.parsed.y)}`}}
             },
             scales:{
-                x:{grid:{display:false}},
-                y:{beginAtZero:true, ticks:{callback:v=>'₱'+formatNum(v),font:{size:10}}, grid:{color:'rgba(0,0,0,0.05)'}}
+                x:{grid:{display:false}, ticks:{font:{size:11},color:'#9b9a94'}},
+                y:{beginAtZero:true, ticks:{callback:v=>'₱'+formatNum(v),font:{size:10},color:'#9b9a94'}, grid:{color:'rgba(0,0,0,0.04)'}, border:{display:false}}
             }
         }
     });
@@ -4654,19 +4649,17 @@ function _rptRenderCategoryChart() {
     cats['Payroll'] = _rptState.allPayroll.reduce((s,p) => s+(p.totalSalary||0), 0);
     const labels = Object.keys(cats).filter(k => cats[k] > 0);
     const data   = labels.map(k => cats[k]);
-    const bgColors = labels.map(k => {
-        if (k==='Payroll') return '#f97316';
-        const cat = expCategories.find(c => c.name===k);
-        return cat ? cat.color+'cc' : '#a78bfa';
-    });
+    const RPT_DONUT = ['#157a52','#7f9cb0','#c8a45a','#9fb98a','#d3cdc2','#b0907f','#a8a79f'];
+    const bgColors = labels.map((k,i) => k==='Payroll' ? '#7f9cb0' : RPT_DONUT[i % RPT_DONUT.length]);
     if (expCharts.pie) expCharts.pie.destroy();
     expCharts.pie = new Chart(ctx, {
         type:'doughnut',
-        data:{ labels, datasets:[{ data, backgroundColor:bgColors, borderWidth:2, borderColor:'#fff' }]},
+        data:{ labels, datasets:[{ data, backgroundColor:bgColors, borderWidth:3, borderColor:'#fff' }]},
         options:{
-            responsive:true, maintainAspectRatio:false,
+            responsive:true, maintainAspectRatio:false, cutout:'64%',
+            font:{ family:"'IBM Plex Sans', system-ui, sans-serif" },
             plugins:{
-                legend:{position:'bottom',labels:{font:{size:11},padding:12}},
+                legend:{position:'bottom',labels:{font:{size:11},padding:12,usePointStyle:true,pointStyle:'rectRounded'}},
                 tooltip:{callbacks:{label:c=>` ₱${formatNum(c.parsed)} (${((c.parsed/c.chart.getDatasetMeta(0).total)*100).toFixed(1)}%)`}}
             }
         }

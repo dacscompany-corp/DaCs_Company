@@ -19,10 +19,21 @@
       "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"open braces:\", o, \"close braces:\", c}' css/dacs-redesign.css)",
       "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"open:\", o, \"close:\", c}' css/dacs-redesign.css)",
       "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"css braces:\", o, c}' css/dacs-redesign.css)",
-      "Bash(node --check js/client-payment.js)"
+      "Bash(node --check js/client-payment.js)",
+      "Bash(echo \"=== payment_requests for Vincent ===\")",
+      "Bash(curl -s 'https://hqbgduyonlbbsvjuapre.supabase.co/rest/v1/payment_requests?client_email=eq.projectconstruct10@gmail.com&select=id,kind,client_email,client_uid,owner_id,status,amount,paid_amount,billing_period,created_at' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxYmdkdXlvbmxiYnN2anVhcHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Mjc3NDEsImV4cCI6MjA5NjIwMzc0MX0.sDKSroNIm-1Lip6ueq2lN1VTsvO1g4mT7Rf_WZ5AxWo' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxYmdkdXlvbmxiYnN2anVhcHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Mjc3NDEsImV4cCI6MjA5NjIwMzc0MX0.sDKSroNIm-1Lip6ueq2lN1VTsvO1g4mT7Rf_WZ5AxWo')",
+      "Bash(echo \"\")",
+      "Bash(echo \"=== profiles for Vincent ===\")",
+      "Bash(curl -s 'https://hqbgduyonlbbsvjuapre.supabase.co/rest/v1/profiles?email=eq.projectconstruct10@gmail.com&select=id,email,role,kind,owner_id' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxYmdkdXlvbmxiYnN2anVhcHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Mjc3NDEsImV4cCI6MjA5NjIwMzc0MX0.sDKSroNIm-1Lip6ueq2lN1VTsvO1g4mT7Rf_WZ5AxWo' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxYmdkdXlvbmxiYnN2anVhcHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Mjc3NDEsImV4cCI6MjA5NjIwMzc0MX0.sDKSroNIm-1Lip6ueq2lN1VTsvO1g4mT7Rf_WZ5AxWo')",
+      "Bash(node --check js/overhead-module.js)",
+      "Bash(grep -n \"clientAccountsView\\\\|clientAccounts\\\\|id=\\\\\"ca-\\\\|class=\\\\\"ca-\\\\|caTable\\\\|caSearch\\\\|caClientsList\\\\|Client Accounts</\\\\|clientsTable\\\\|clientRow\" admin.html)",
+      "Bash(node --check js/client-accounts.js)",
+      "Bash(node --check js/payment-requests.js)",
+      "Bash(node --check js/invoice-module.js)"
     ],
     "additionalDirectories": [
-      "c:\\Users\\yuich\\DaCs_Company"
+      "c:\\Users\\yuich\\DaCs_Company",
+      "c:\\Users\\John Aerol Tapales\\.claude\\projects\\c--Users-John-Aerol-Tapales-Documents-Dacs-Web\\memory"
     ]
   }
 }

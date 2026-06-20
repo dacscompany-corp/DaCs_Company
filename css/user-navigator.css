@@ -521,3 +521,96 @@
     font-weight: 500;
     white-space: nowrap;
 }
+
+/* ════════════════════════════════════════════════════════════
+   Client Accounts reskin — PM Clients.dc.html (scoped, leaves
+   the shared User Navigator module untouched)
+   ════════════════════════════════════════════════════════════ */
+#clientAccountsView, #caProfileModal.ca-drawer { font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+
+/* Stats */
+#clientAccountsView .un-stats-row { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px; }
+#clientAccountsView .un-stat-card { background:#fff; border:1px solid #e7e6e2; border-radius:13px; padding:16px 18px; display:flex; align-items:center; gap:14px; box-shadow:none; }
+/* Tinted stat cards (Lively): Total=blue, Active=green, Inactive=cream */
+#clientAccountsView .un-stats-row .un-stat-card:nth-child(1) { background:#eef2fb; border-color:#d6e0f4; }
+#clientAccountsView .un-stats-row .un-stat-card:nth-child(2) { background:#eaf4ef; border-color:#c6e6d5; }
+#clientAccountsView .un-stats-row .un-stat-card:nth-child(3) { background:#f6f5f1; border-color:#e6e3da; }
+#clientAccountsView .un-stat-icon { width:40px; height:40px; border-radius:11px; background:#eaf4ef; color:#157a52; display:flex; align-items:center; justify-content:center; flex:none; }
+#clientAccountsView .un-stat-icon i, #clientAccountsView .un-stat-icon svg { width:18px; height:18px; }
+#clientAccountsView .un-icon-inactive { background:#f3f2ef; color:#9b9a94; }
+#clientAccountsView .un-stat-info h3 { font:700 24px 'IBM Plex Sans'; color:#1c1c1a; margin:0; line-height:1; }
+#clientAccountsView .un-stat-info p { font:500 12px 'IBM Plex Sans'; color:#8a8983; margin:3px 0 0; }
+
+/* Toolbar */
+#clientAccountsView .un-toolbar { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+#clientAccountsView .un-search-wrap { flex:1; min-width:240px; max-width:380px; display:flex; align-items:center; gap:9px; border:1px solid #e2e1dc; border-radius:9px; background:#fff; padding:0 12px; }
+#clientAccountsView .un-search-wrap:focus-within { border-color:#157a52; }
+#clientAccountsView .un-search-icon { width:14px; height:14px; color:#b3b1a8; flex:none; }
+#clientAccountsView .un-search-input { flex:1; border:none; background:transparent; font:500 13px 'IBM Plex Sans'; color:#1c1c1a; padding:10px 0; outline:none; }
+#clientAccountsView .ca-seg { display:flex; background:#eceae5; border-radius:9px; padding:3px; gap:2px; }
+#clientAccountsView .ca-seg-btn { background:none; border:none; cursor:pointer; border-radius:6px; padding:7px 14px; font:600 12px 'IBM Plex Sans'; color:#5b5a55; }
+#clientAccountsView .ca-seg-btn.active { background:#fff; color:#1c1c1a; box-shadow:0 1px 2px rgba(0,0,0,0.10); }
+
+/* Table */
+#clientAccountsView .un-table-wrap { border:1px solid #e7e6e2; border-radius:14px; background:#fff; overflow:hidden; }
+#clientAccountsView .un-table { width:100%; border-collapse:collapse; }
+#clientAccountsView .un-table thead th { background:#fafaf8; font:600 10.5px 'IBM Plex Sans'; color:#9b9a94; text-transform:uppercase; letter-spacing:.05em; text-align:left; padding:11px 20px; border-bottom:1px solid #ededea; white-space:nowrap; }
+#clientAccountsView .un-table thead th:last-child { text-align:right; }
+#clientAccountsView .un-table tbody td { padding:13px 20px; border-bottom:1px solid #f3f2ef; font:500 12.5px 'IBM Plex Sans'; color:#3a3a36; vertical-align:middle; }
+#clientAccountsView .un-table tbody tr:last-child td { border-bottom:none; }
+#clientAccountsView .un-table tbody tr:hover { background:#fafaf8; }
+#clientAccountsView .ca-user-cell { display:flex; align-items:center; gap:10px; min-width:0; }
+#clientAccountsView .ca-avatar { width:32px; height:32px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font:600 12.5px 'IBM Plex Sans'; overflow:hidden; }
+#clientAccountsView .ca-user-name { color:#1c1c1a; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#clientAccountsView .ca-email { color:#6f6e69; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#clientAccountsView .ca-reg { color:#6f6e69; font-variant-numeric:tabular-nums; }
+#clientAccountsView .ca-project-tag { display:inline-flex; align-items:center; gap:6px; max-width:100%; font:600 11px 'IBM Plex Sans'; padding:3px 10px; border-radius:99px; background:#eef0f3; color:#5b6b7e; border:1px solid #d8dee6; vertical-align:bottom; }
+#clientAccountsView .ca-project-dot { width:6px; height:6px; border-radius:50%; background:#7f9cb0; flex:none; }
+#clientAccountsView .ca-project-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#clientAccountsView .ca-project-more { font:600 11px 'IBM Plex Sans'; color:#9b9a94; margin-left:4px; }
+#clientAccountsView .ca-no-project { font:400 11.5px 'IBM Plex Sans'; color:#c4bfb3; }
+#clientAccountsView .ca-status { display:inline-flex; align-items:center; gap:6px; font:700 10.5px 'IBM Plex Sans'; padding:4px 11px; border-radius:99px; border:1px solid transparent; }
+#clientAccountsView .ca-status-active { background:#eaf4ef; color:#0f6342; border-color:#c6e6d5; }
+#clientAccountsView .ca-status-inactive { background:#f3f2ef; color:#6f6e69; border-color:#e2e1dc; }
+#clientAccountsView .ca-status-active .ca-status-dot { background:#157a52; }
+#clientAccountsView .ca-status-inactive .ca-status-dot { background:#9b9a94; }
+#clientAccountsView .ca-status .ca-status-dot { width:6px; height:6px; border-radius:50%; flex:none; }
+#clientAccountsView .ca-actions { display:flex; justify-content:flex-end; gap:6px; }
+#clientAccountsView .ca-icon-btn { width:32px; height:32px; display:inline-flex; align-items:center; justify-content:center; background:#fff; border:1px solid #d9d8d3; border-radius:8px; cursor:pointer; color:#5b5a55; transition:border-color .15s, color .15s, background .15s; }
+#clientAccountsView .ca-icon-btn i, #clientAccountsView .ca-icon-btn svg { width:15px; height:15px; }
+#clientAccountsView .ca-icon-btn:hover { border-color:#157a52; color:#157a52; background:#fafdfb; }
+#clientAccountsView .ca-icon-danger:hover { border-color:#b4453a; color:#b4453a; background:#fdf6f5; }
+
+/* Profile drawer */
+#caProfileModal.ca-drawer { align-items:stretch; justify-content:flex-end; background:rgba(28,28,26,0.42); }
+#caProfileModal .ca-drawer-card { width:380px; max-width:92vw; height:100%; max-height:100%; border-radius:0; background:#fff; box-shadow:-12px 0 40px rgba(0,0,0,0.18); overflow-y:auto; display:flex; flex-direction:column; animation:caDrawerIn .22s ease; }
+@keyframes caDrawerIn { from { transform:translateX(100%); } to { transform:translateX(0); } }
+#caProfileModal .ca-drawer-header { padding:22px 24px; border-bottom:1px solid #ededea; display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+#caProfileModal .ca-drawer-header h3 { font:700 16px 'IBM Plex Sans'; color:#1c1c1a; margin:0; }
+#caProfileModal .ca-drawer-close { background:none; border:none; cursor:pointer; color:#9b9a94; font:400 22px 'IBM Plex Sans'; line-height:1; padding:2px 6px; }
+#caProfileModal .ca-drawer-close:hover { color:#1c1c1a; }
+#caProfileModal .ca-drawer-body { padding:24px; }
+#caProfileModal .ca-d-head { display:flex; flex-direction:column; align-items:center; text-align:center; margin-bottom:24px; }
+#caProfileModal .ca-d-avatar { width:72px; height:72px; border-radius:50%; display:flex; align-items:center; justify-content:center; font:600 28px 'IBM Plex Sans'; margin-bottom:12px; overflow:hidden; }
+#caProfileModal .ca-d-name { font:700 17px 'IBM Plex Sans'; color:#1c1c1a; }
+#caProfileModal .ca-d-email { font:400 12.5px 'IBM Plex Sans'; color:#8a8983; margin-top:2px; }
+#caProfileModal .ca-d-statuswrap { margin-top:10px; }
+#caProfileModal .ca-d-status { display:inline-flex; align-items:center; gap:6px; font:600 11px 'IBM Plex Sans'; padding:4px 11px; border-radius:7px; }
+#caProfileModal .ca-d-status .ca-status-dot { width:7px; height:7px; border-radius:50%; background:currentColor; flex:none; }
+#caProfileModal .ca-d-status-active { background:#eaf4ef; color:#157a52; }
+#caProfileModal .ca-d-status-inactive { background:#f3f2ef; color:#9b9a94; }
+#caProfileModal .ca-d-rows { display:flex; flex-direction:column; gap:2px; }
+#caProfileModal .ca-d-row { display:flex; justify-content:space-between; align-items:center; padding:13px 0; border-bottom:1px solid #f3f2ef; }
+#caProfileModal .ca-d-label { font:500 12px 'IBM Plex Sans'; color:#9b9a94; }
+#caProfileModal .ca-d-val { font:600 12.5px 'IBM Plex Sans'; color:#1c1c1a; }
+#caProfileModal .ca-d-projblock { padding:13px 0; }
+#caProfileModal .ca-d-projects { display:flex; flex-direction:column; gap:8px; }
+#caProfileModal .ca-d-project { display:flex; align-items:center; gap:10px; border:1px solid #e7e6e2; border-radius:9px; padding:10px 12px; font:600 12.5px 'IBM Plex Sans'; color:#1c1c1a; }
+#caProfileModal .ca-d-project-dot { width:8px; height:8px; border-radius:2px; background:#7f9cb0; flex:none; }
+#caProfileModal .ca-d-noproject { font:400 12px 'IBM Plex Sans'; color:#c4bfb3; border:1px dashed #e0ded7; border-radius:9px; padding:14px; text-align:center; }
+#caProfileModal .ca-d-actions { display:flex; gap:10px; margin-top:16px; }
+#caProfileModal .ca-d-toggle { flex:1; background:#fff; border:1px solid #bfe0cf; border-radius:9px; padding:11px; font:600 12.5px 'IBM Plex Sans'; cursor:pointer; }
+#caProfileModal .ca-d-toggle-off { border-color:#eccfca; color:#b4453a; }
+#caProfileModal .ca-d-toggle-on { border-color:#bfe0cf; color:#157a52; }
+#caProfileModal .ca-d-done { flex:1; background:#157a52; border:none; border-radius:9px; padding:11px; font:600 12.5px 'IBM Plex Sans'; color:#fff; cursor:pointer; }
+#caProfileModal .ca-d-done:hover { background:#11653f; }

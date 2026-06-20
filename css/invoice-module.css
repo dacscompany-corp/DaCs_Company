@@ -457,3 +457,114 @@
     gap: 14px;
     padding: 80px 0;
 }
+
+/* ════════════════════════════════════════════════════════════
+   Invoice list reskin — PM Invoice Receipt.dc.html (scoped,
+   appended last so it wins over the legacy .inv- rules above)
+   ════════════════════════════════════════════════════════════ */
+#invoicesView { font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+
+#invoicesView .inv-topbar { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+#invoicesView .inv-title { font:700 22px 'IBM Plex Sans'; color:#1c1c1a; }
+#invoicesView .inv-subtitle { font:400 13px 'IBM Plex Sans'; color:#6f6e69; margin-top:4px; }
+#invoicesView .inv-topbar-actions { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+
+/* Buttons */
+#invoicesView .inv-btn { display:inline-flex; align-items:center; gap:6px; border-radius:9px; padding:9px 14px; font:600 12.5px 'IBM Plex Sans'; cursor:pointer; border:1px solid transparent; }
+#invoicesView .inv-btn i, #invoicesView .inv-btn svg { width:15px; height:15px; }
+#invoicesView .inv-btn-outline { background:#fff; border-color:#d9d8d3; color:#3a3a36; }
+#invoicesView .inv-btn-outline:hover { border-color:#157a52; color:#157a52; }
+#invoicesView .inv-btn-primary { background:#157a52; color:#fff; border:none; }
+#invoicesView .inv-btn-primary:hover { background:#11653f; }
+
+/* KPI cards (tinted) */
+#invoicesView .inv-stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
+@media (max-width:900px){ #invoicesView .inv-stats-grid { grid-template-columns:repeat(2,1fr); } }
+#invoicesView .inv-stat-card { border:1px solid #e7e6e2; border-radius:13px; padding:15px 17px; background:#fff; color:#1c1c1a; }
+#invoicesView .inv-stats-grid .inv-stat-card:nth-child(1){ background:#eef2fb; border-color:#d6e0f4; }
+#invoicesView .inv-stats-grid .inv-stat-card:nth-child(2){ background:#eaf4ef; border-color:#c6e6d5; }
+#invoicesView .inv-stats-grid .inv-stat-card:nth-child(3){ background:#f2eef5; border-color:#ddd0e6; }
+#invoicesView .inv-stats-grid .inv-stat-card:nth-child(4){ background:#fbf3e2; border-color:#f0e2c5; }
+#invoicesView .inv-stat-label { font:600 10.5px 'IBM Plex Sans'; color:#7c7b75; text-transform:uppercase; letter-spacing:.04em; opacity:1; margin:0; }
+#invoicesView .inv-stat-value { font:700 25px 'IBM Plex Sans'; color:#1c1c1a; margin-top:7px; }
+
+/* Search */
+#invoicesView .inv-search { display:flex; align-items:center; gap:9px; border:1px solid #e2e1dc; border-radius:9px; background:#fff; padding:0 12px; margin-bottom:14px; max-width:380px; }
+#invoicesView .inv-search:focus-within { border-color:#157a52; }
+#invoicesView .inv-search i, #invoicesView .inv-search svg { width:14px; height:14px; color:#b3b1a8; flex:none; }
+#invoicesView .inv-search input { flex:1; border:none; background:transparent; font:500 13px 'IBM Plex Sans'; color:#1c1c1a; padding:10px 0; outline:none; }
+
+/* Grouped client cards */
+#invoicesView .inv-list { display:flex; flex-direction:column; gap:12px; }
+#invoicesView .inv-gcard { border:1px solid #e7e6e2; border-radius:14px; background:#fff; overflow:hidden; }
+#invoicesView .inv-ghead { display:flex; align-items:center; gap:13px; padding:15px 18px; cursor:pointer; }
+#invoicesView .inv-ghead:hover { background:#fafaf8; }
+#invoicesView .inv-gavatar { width:36px; height:36px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font:600 13px 'IBM Plex Sans'; }
+#invoicesView .inv-gmeta { flex:1; min-width:0; }
+#invoicesView .inv-gname { font:600 13.5px 'IBM Plex Sans'; color:#1c1c1a; }
+#invoicesView .inv-gsub { font:400 11.5px 'IBM Plex Sans'; color:#9b9a94; margin-top:1px; }
+#invoicesView .inv-chip { font:700 10.5px 'IBM Plex Sans'; padding:4px 11px; border-radius:99px; border:1px solid transparent; white-space:nowrap; }
+#invoicesView .inv-chip-issued { background:#eaf4ef; color:#0f6342; border-color:#c6e6d5; }
+#invoicesView .inv-chip-draft  { background:#f6f3ec; color:#7c6a45; border-color:#e6ddcb; }
+#invoicesView .inv-gcaret { font:400 16px 'IBM Plex Sans'; color:#b3b1a8; transition:transform .15s; }
+#invoicesView .inv-gcaret.open { transform:rotate(180deg); }
+
+/* Inner invoice grid */
+#invoicesView .inv-inner { border-top:1px solid #f0efec; }
+#invoicesView .inv-ihead, #invoicesView .inv-irow { display:grid; grid-template-columns:1.4fr 1fr 1fr 1.1fr 1.5fr; gap:10px; align-items:center; }
+#invoicesView .inv-ihead { padding:10px 18px; background:#fafaf8; font:600 10px 'IBM Plex Sans'; color:#9b9a94; text-transform:uppercase; letter-spacing:.05em; border-bottom:1px solid #ededea; }
+#invoicesView .inv-irow { padding:12px 18px; font:500 12.5px 'IBM Plex Sans'; border-bottom:1px solid #f3f2ef; }
+#invoicesView .inv-irow:last-child { border-bottom:none; }
+#invoicesView .inv-ihead .ta-r, #invoicesView .inv-iamt, #invoicesView .inv-iactions { text-align:right; }
+#invoicesView .inv-ihead .ta-c, #invoicesView .inv-ipill { text-align:center; }
+#invoicesView .inv-ino { font-weight:600; color:#1c1c1a; }
+#invoicesView .inv-idate { color:#6f6e69; }
+#invoicesView .inv-iamt { font-weight:600; color:#1c1c1a; }
+#invoicesView .inv-iactions { display:flex; justify-content:flex-end; gap:4px; flex-wrap:nowrap; }
+
+/* Status pills */
+#invoicesView .inv-pill { display:inline-flex; align-items:center; gap:6px; font:700 10.5px 'IBM Plex Sans'; padding:4px 11px; border-radius:99px; border:1px solid transparent; }
+#invoicesView .inv-pill .inv-pill-dot { width:6px; height:6px; border-radius:50%; }
+#invoicesView .inv-pill-issued { background:#eaf4ef; color:#0f6342; border-color:#c6e6d5; }
+#invoicesView .inv-pill-issued .inv-pill-dot { background:#157a52; }
+#invoicesView .inv-pill-draft { background:#f6f3ec; color:#7c6a45; border-color:#e6ddcb; }
+#invoicesView .inv-pill-draft .inv-pill-dot { background:#9a8a6b; }
+
+/* Icon action buttons */
+#invoicesView .inv-icon-btn { width:28px; height:28px; flex:none; display:inline-flex; align-items:center; justify-content:center; background:#fff; border:1px solid #d9d8d3; border-radius:7px; cursor:pointer; color:#5b5a55; transition:border-color .15s, color .15s, background .15s; padding:0; }
+#invoicesView .inv-icon-btn i, #invoicesView .inv-icon-btn svg { width:13px; height:13px; }
+#invoicesView .inv-icon-btn:hover { border-color:#157a52; color:#157a52; background:#fafdfb; }
+#invoicesView .inv-icon-danger:hover { border-color:#b4453a; color:#b4453a; background:#fdf6f5; }
+
+/* Empty */
+#invoicesView .inv-empty-card { border:1px solid #e7e6e2; border-radius:14px; background:#fff; padding:50px 20px; text-align:center; }
+#invoicesView .inv-empty-title { font:600 13.5px 'IBM Plex Sans'; color:#1c1c1a; }
+#invoicesView .inv-empty-sub { font:400 12px 'IBM Plex Sans'; color:#8a8983; margin-top:4px; }
+
+/* ── New / Edit invoice form (reskinned, features kept) ── */
+#invoicesView .inv-form-header { display:flex; align-items:center; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+#invoicesView .inv-form-header .inv-page-title { font:700 20px 'IBM Plex Sans'; color:#1c1c1a; }
+#invoicesView .inv-form-card { background:#fff; border:1px solid #e7e6e2; border-radius:14px; padding:22px 24px; box-shadow:none; }
+#invoicesView .inv-section-title { font:600 11px 'IBM Plex Sans'; text-transform:uppercase; letter-spacing:.05em; color:#157a52; margin:0 0 12px; }
+#invoicesView .inv-field label { font:600 12px 'IBM Plex Sans'; color:#3a3a36; margin-bottom:6px; display:block; }
+#invoicesView .inv-input, #invoicesView .inv-textarea, #invoicesView select.inv-input {
+    width:100%; border:1px solid #e2e1dc; border-radius:9px; background:#fff;
+    font:500 13px 'IBM Plex Sans'; color:#1c1c1a; padding:10px 12px; outline:none; }
+#invoicesView .inv-input:focus, #invoicesView .inv-textarea:focus, #invoicesView select.inv-input:focus { border-color:#157a52; }
+#invoicesView .inv-input--sm { padding:8px 10px; font-size:12.5px; }
+#invoicesView .inv-items-table { width:100%; border-collapse:collapse; }
+#invoicesView .inv-items-table thead th { font:600 10px 'IBM Plex Sans'; text-transform:uppercase; letter-spacing:.05em; color:#9b9a94; text-align:left; padding:8px; border-bottom:1px solid #ededea; }
+#invoicesView .inv-items-table tbody td { padding:6px 8px; border-bottom:1px solid #f3f2ef; }
+#invoicesView .inv-item-amt { font:600 12.5px 'IBM Plex Sans'; color:#1c1c1a; }
+#invoicesView .inv-add-item-btn { display:inline-flex; align-items:center; gap:6px; background:#f3faf6; border:1px solid #cfe5da; color:#157a52; border-radius:8px; padding:8px 13px; font:600 12.5px 'IBM Plex Sans'; cursor:pointer; margin-top:10px; }
+#invoicesView .inv-add-item-btn:hover { background:#eaf4ef; }
+#invoicesView .inv-del-row-btn { background:none; border:1px solid #e2e1dc; border-radius:7px; color:#9b9a94; cursor:pointer; padding:5px 7px; }
+#invoicesView .inv-del-row-btn:hover { border-color:#b4453a; color:#b4453a; }
+#invoicesView .inv-totals-wrap { margin-top:16px; display:flex; flex-direction:column; align-items:flex-end; }
+#invoicesView .inv-totals-row { display:flex; justify-content:space-between; gap:40px; padding:6px 0; font:500 13px 'IBM Plex Sans'; color:#6f6e69; min-width:260px; }
+#invoicesView .inv-totals-row--total { background:#eaf4ef; border-radius:10px; padding:12px 14px; margin-top:8px; font:700 14px 'IBM Plex Sans'; color:#0f6342; }
+#invoicesView .inv-btn-secondary { background:#fff; border:1px solid #d9d8d3; color:#3a3a36; }
+#invoicesView .inv-btn-secondary:hover { border-color:#157a52; color:#157a52; }
+#invoicesView .inv-btn-ghost { background:#fff; border:1px solid #d9d8d3; color:#3a3a36; }
+#invoicesView .inv-btn-ghost:hover { border-color:#157a52; color:#157a52; }
+#invoicesView .inv-save-defaults-label { display:flex; align-items:center; gap:8px; font:500 12.5px 'IBM Plex Sans'; color:#6f6e69; margin-top:16px; }

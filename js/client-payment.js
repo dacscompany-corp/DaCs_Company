@@ -21,7 +21,8 @@
         }
         const anyReq = _requests.find(r => r.ownerUid);
         if (anyReq) return anyReq.ownerUid;
-        return window._clientOwnerUid || null;
+        const profileOwner = (typeof currentProfile !== 'undefined' && currentProfile?.ownerUid) || null;
+        return window._clientOwnerUid || profileOwner || null;
     }
 
     // Send an admin-side notification to the owner AND to every staff account
@@ -847,14 +848,26 @@
 
             if (_selfPayData !== null) {
                 // Self-initiated: create a new payment request
-                const profile  = typeof currentProfile !== 'undefined' ? currentProfile : {};
+                // currentProfile is the cost-plus portal's global; cmCurrentProfile is
+                // the construction portal's. Use whichever this page defines.
+                const profile  = (typeof currentProfile   !== 'undefined' && currentProfile)   ? currentProfile
+                               : (typeof cmCurrentProfile !== 'undefined' && cmCurrentProfile) ? cmCurrentProfile
+                               : {};
                 const user     = typeof currentUser    !== 'undefined' ? currentUser    : {};
                 const descVal  = (document.getElementById('prSelfPayDesc')?.value  || '').trim();
                 const monthVal = (document.getElementById('prSelfPayMonth')?.value || '').trim();
                 if (!descVal) { if (btn) { btn.disabled = false; btn.textContent = 'Submit Payment'; } return showErr('Please enter a payment description.'); }
+                // client_uid + owner_id are uuid columns — must be null (not '') when unknown.
+                // Owner falls back to the client's own profile owner so the payment isn't orphaned.
+                const _ownerUid = window._clientOwnerUid || profile.ownerUid || null;
+                // Construction portal (client-management-app.js defines cmProjectData):
+                // link the self-payment to the project so it surfaces — and gets verified —
+                // in the admin's Money → Payment table. The cost-plus portal leaves these unset.
+                const _consProj       = (typeof cmProjectData !== 'undefined' && cmProjectData) ? cmProjectData : null;
+                const _isConstruction = !!_consProj;
                 const newReq  = {
-                    kind:            'cost_plus',
-                    clientUid:       user.uid          || '',
+                    kind:            _isConstruction ? 'construction' : 'cost_plus',
+                    clientUid:       user.uid          || null,
                     clientEmail:     user.email        || '',
                     clientName:      (profile.firstName ? profile.firstName + ' ' + (profile.lastName || '') : user.email || '').trim(),
                     billingPeriod:   monthVal ? `${descVal} – ${monthVal}` : descVal,
@@ -865,7 +878,7 @@
                     status:          'submitted',
                     createdAt:       now,
                     createdBy:       user.email || '',
-                    ownerUid:        window._clientOwnerUid || '',
+                    ownerUid:        _ownerUid,
                     proofBase64,
                     referenceNumber,
                     paidAmount,
@@ -874,7 +887,18 @@
                     verifiedAt:      null,
                     verifiedBy:      null,
                     rejectedReason:  null,
-                    rejectedAt:      null
+                    rejectedAt:      null,
+                    // Construction-only: surface in the project's Money → Payment table.
+                    // weekEndingDate gives the row a date + sort key (stand-alone, not tied
+                    // to a weekly bill); amountPaid stays 0 until the admin approves the receipt.
+                    ...(_isConstruction ? {
+                        constructionProjectId: _consProj.id,
+                        source:                'self_payment',
+                        weekEndingDate:        new Date().toISOString().slice(0, 10),
+                        totalAmount:           paidAmount,
+                        amountPaid:            0,
+                        carryover:             0
+                    } : {})
                 };
                 const ref = await db.collection('paymentRequests').add(newReq);
                 _requests.unshift({ id: ref.id, ...newReq });
