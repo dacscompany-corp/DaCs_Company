@@ -1367,14 +1367,20 @@
 
           <!-- Tab bar -->
           <div class="pm-ws-tabs">
-            <button class="pm-ws-tab active" onclick="pmWsTab('week',this)">This Week</button>
-            <button class="pm-ws-tab" onclick="pmWsTab('materials',this)">Materials</button>
-            <button class="pm-ws-tab" onclick="pmWsTab('progress',this)">Progress</button>
-            <button class="pm-ws-tab" onclick="pmWsTab('money',this)">Money</button>
+            <button class="pm-ws-tab active" id="pm-ws-tab-overview"  onclick="pmWsTab('overview',this)">Overview</button>
+            <button class="pm-ws-tab"        id="pm-ws-tab-week"      onclick="pmWsTab('week',this)">This Week</button>
+            <button class="pm-ws-tab"        id="pm-ws-tab-materials" onclick="pmWsTab('materials',this)">Materials</button>
+            <button class="pm-ws-tab"        id="pm-ws-tab-progress"  onclick="pmWsTab('progress',this)">Progress</button>
+            <button class="pm-ws-tab"        id="pm-ws-tab-money"     onclick="pmWsTab('money',this)">Money</button>
           </div>
 
+          <!-- ── Overview Panel (per-project dashboard) — rendered by pm-admin.js ── -->
+          <div class="pm-ws-panel active" id="ws-panel-overview">
+            <div id="pm-ov-root"><div class="pm-empty-row" style="color:#9b9a94;padding:40px 0;text-align:center;">Loading…</div></div>
+          </div><!-- /ws-panel-overview -->
+
           <!-- ── This Week Panel (inline bill builder) ── -->
-          <div class="pm-ws-panel active" id="ws-panel-week">
+          <div class="pm-ws-panel" id="ws-panel-week">
             <div class="pm-week-grid">
               <!-- main: build this week's bill -->
               <div class="pm-week-main">
@@ -1394,6 +1400,7 @@
                     <select class="pm-wf pm-wf-type" id="pm-week-type">
                       <option value="labor">Labor</option>
                       <option value="materials">Materials</option>
+                      <option value="both">Materials &amp; Labor</option>
                     </select>
                     <input class="pm-wf pm-wf-details" id="pm-week-details" placeholder="Details — e.g. 6 masons × 5 days">
                     <div class="pm-wf-amount-wrap">

@@ -81,9 +81,10 @@ window.pmWsTab = function(tab, btn) {
     if (panel) { panel.classList.add('active'); _pmLoadWsPanel(panel.id); }
 };
 
-// The redesigned workspace groups the six functional areas under four tabs.
+// The redesigned workspace groups the six functional areas under five tabs.
 function _pmLoadWsPanel(panelId) {
     switch(panelId) {
+        case 'ws-panel-overview':  _pmLoadOverview();                    break;
         case 'ws-panel-week':      _pmLoadWeekBuilder();                  break;
         case 'ws-panel-materials': _pmLoadProcItems();                    break;
         case 'ws-panel-progress':  _pmLoadMilestones(); _pmLoadReports(); break;
@@ -92,6 +93,270 @@ function _pmLoadWsPanel(panelId) {
 }
 
 
+// ══════════════════════════════════════════════════════════
+// 0a. OVERVIEW — per-project dashboard (default workspace tab)
+//   Lively redesign (from the PM Workspace design): gradient hero
+//   with a progress ring, 5 KPI tiles, a CSS bar chart + donut,
+//   and pill-badged milestone / payment-request lists. Rendered
+//   as one self-contained HTML string into #pm-ov-root.
+// ══════════════════════════════════════════════════════════
+
+const _PM_OV_PILLS = {
+    green:   { bg: '#eaf4ef', color: '#0f6342', border: '#c6e6d5', dot: '#157a52' },
+    yellow:  { bg: '#fbf3e2', color: '#8a6310', border: '#f0e2c5', dot: '#c79024' },
+    red:     { bg: '#f8ecea', color: '#8f352c', border: '#f0cdc8', dot: '#b4453a' },
+    neutral: { bg: '#f3f2ef', color: '#6f6e69', border: '#e2e1dc', dot: '#b3b1a8' },
+};
+function _pmOvPill(tone, label) {
+    const p = _PM_OV_PILLS[tone] || _PM_OV_PILLS.neutral;
+    return `<span style="display:inline-flex;align-items:center;gap:6px;font:700 10px 'IBM Plex Sans';padding:4px 11px;border-radius:99px;background:${p.bg};color:${p.color};border:1px solid ${p.border};"><span style="width:6px;height:6px;border-radius:50%;background:${p.dot};"></span>${label}</span>`;
+}
+// Compact peso (₱1.2M / ₱94k / ₱500) for chart labels & subtitles.
+function _pmOvShort(n) {
+    n = Number(n) || 0; const sign = n < 0 ? '-' : ''; n = Math.abs(n);
+    if (n >= 1000000) return sign + '₱' + (n / 1000000).toFixed(n % 1000000 ? 1 : 0) + 'M';
+    if (n >= 1000)    return sign + '₱' + Math.round(n / 1000) + 'k';
+    return sign + '₱' + Math.round(n);
+}
+
+async function _pmLoadOverview() {
+    if (!_pmActiveProject) { switchView('pmProjects'); return; }
+    const root = document.getElementById('pm-ov-root');
+    if (!root || typeof db === 'undefined') return;
+    const pid = _pmActiveProject.id;
+    try {
+        const base = db.collection('constructionProjects').doc(pid);
+        const [msSnap, billsSnap, paySnap] = await Promise.all([
+            base.collection('milestones').get(),
+            base.collection('weeklyBills').get(),
+            db.collection('paymentRequests').where('constructionProjectId', '==', pid).get(),
+        ]);
+        const ms    = msSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const bills = billsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const reqs  = paySnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        root.innerHTML = _pmOvHtml(_pmActiveProject, ms, bills, reqs);
+    } catch(e) {
+        console.warn('PM: overview load failed', e.message);
+        root.innerHTML = `<div class="pm-empty-row" style="color:#9b9a94;padding:40px 0;text-align:center;">Could not load overview: ${_esc(e.message)}</div>`;
+    }
+    if (window.lucide) lucide.createIcons();
+}
+
+// Progress % — weighted by completed milestone `percentage`, else completed/total.
+function _pmOvProgress(ms) {
+    if (!ms.length) return 0;
+    const hasPct = ms.some(x => x.percentage != null && x.percentage !== '' && !isNaN(x.percentage));
+    let pct;
+    if (hasPct) pct = ms.filter(x => x.status === 'completed').reduce((s, x) => s + (Number(x.percentage) || 0), 0);
+    else        pct = Math.round(ms.filter(x => x.status === 'completed').length / ms.length * 100);
+    return Math.max(0, Math.min(100, Math.round(pct)));
+}
+function _pmOvOutstanding(reqs) {
+    return reqs.filter(r => r.status === 'unpaid' || r.status === 'partial')
+        .reduce((s, r) => s + ((r.totalAmount || 0) - (r.amountPaid || 0)), 0);
+}
+function _pmOvPaid(reqs) {
+    return reqs.reduce((s, r) => {
+        if (r.status === 'verified') return s + (r.amountPaid || r.paidAmount || r.totalAmount || 0);
+        return s + (r.amountPaid || 0);
+    }, 0);
+}
+
+function _pmOvHtml(p, ms, bills, reqs) {
+    // ── metrics ──
+    const progress    = _pmOvProgress(ms);
+    const outstanding = _pmOvOutstanding(reqs);
+    const paid        = _pmOvPaid(reqs);
+    const payTotal    = paid + outstanding;
+    const paidPct     = payTotal > 0 ? Math.round(paid / payTotal * 100) : 0;
+
+    const open = reqs.filter(r => r.status === 'unpaid' || r.status === 'partial');
+    const next = open.slice().sort((a, b) => (a.weekEndingDate || '').localeCompare(b.weekEndingDate || ''))[0];
+    const today = new Date().toISOString().slice(0, 10);
+    let cadence = 'ontrack';
+    if (reqs.some(r => r.status === 'partial')) cadence = 'partial';
+    else if (open.some(r => r.status === 'unpaid' && r.weekEndingDate && r.weekEndingDate < today)) cadence = 'overdue';
+    const cadenceLabel = { ontrack: 'On track', partial: 'Partial last week', overdue: 'Overdue' }[cadence];
+
+    // Direct cost = cumulative labor + materials across all weekly bills
+    // (the grand total before the management fee). Falls back to
+    // grandTotal − managementFee for older bills missing the split.
+    const directCost = bills.reduce((s, b) => {
+        if (b.labor != null || b.materials != null) return s + (b.labor || 0) + (b.materials || 0);
+        return s + ((b.grandTotal || 0) - (b.managementFee || 0));
+    }, 0);
+    const feeTotal = bills.reduce((s, b) => s + (b.managementFee || 0), 0);
+
+    // Net cash = what the client has paid minus what's actually been spent
+    // on labor + materials (direct cost). Positive = cash buffer in hand;
+    // negative = costs have outrun collections (real exposure).
+    const netCash  = paid - directCost;
+    const netColor = netCash >= 0 ? '#0f6342' : '#8f352c';
+    const netSub   = netCash >= 0 ? 'paid over direct cost' : 'over by ' + _pmOvShort(-netCash);
+
+    const initial = (p.clientName || p.projectName || '?').trim().charAt(0).toUpperCase() || '?';
+    const subBits = [p.projectName, (p.budget ? _pmOvShort(p.budget) + ' contract' : '')].filter(Boolean);
+
+    // ── hero ──
+    const hero = `
+    <div style="position:relative;border-radius:18px;background:linear-gradient(120deg,#0f5d3d 0%,#157a52 48%,#1f9d63 100%);padding:22px 26px;margin-bottom:16px;overflow:hidden;box-shadow:0 12px 30px rgba(21,122,82,0.24);">
+      <div style="position:absolute;top:-40px;right:-30px;width:200px;height:200px;border-radius:50%;background:rgba(255,255,255,0.07);"></div>
+      <div style="position:absolute;bottom:-60px;right:90px;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,0.05);"></div>
+      <div style="position:relative;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;">
+        <div style="display:flex;align-items:center;gap:16px;">
+          <div style="width:54px;height:54px;border-radius:15px;flex:none;background:rgba(255,255,255,0.16);box-shadow:inset 0 0 0 1.5px rgba(255,255,255,0.3);display:flex;align-items:center;justify-content:center;font:700 22px 'IBM Plex Sans';color:#fff;">${_esc(initial)}</div>
+          <div>
+            <div style="font:700 21px 'IBM Plex Sans';color:#fff;line-height:1.1;">${_esc(p.clientName || p.projectName || 'Project')}</div>
+            <div style="font:400 12.5px 'IBM Plex Sans';color:rgba(255,255,255,0.85);margin-top:3px;">${_esc(subBits.join(' · ') || '—')}</div>
+            <div style="display:inline-flex;align-items:center;gap:6px;margin-top:9px;font:700 10.5px 'IBM Plex Sans';padding:4px 11px;border-radius:99px;background:rgba(255,255,255,0.18);color:#fff;"><span style="width:6px;height:6px;border-radius:50%;background:#aef0cd;"></span>${cadenceLabel}</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:24px;">
+          <div style="text-align:right;">
+            <div style="font:600 10px 'IBM Plex Sans';color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:.06em;">Total paid</div>
+            <div class="num" style="font:700 19px 'IBM Plex Sans';color:#fff;margin-top:3px;">${_fmt(paid)}</div>
+          </div>
+          <div style="width:1px;height:46px;background:rgba(255,255,255,0.22);"></div>
+          <div style="position:relative;width:84px;height:84px;flex:none;">
+            <div style="position:absolute;inset:0;border-radius:50%;background:conic-gradient(#fff 0% ${progress}%, rgba(255,255,255,0.22) ${progress}% 100%);"></div>
+            <div style="position:absolute;inset:9px;border-radius:50%;background:#157a52;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+              <span class="num" style="font:700 20px 'IBM Plex Sans';color:#fff;line-height:1;">${progress}%</span>
+              <span style="font:500 8px 'IBM Plex Sans';color:rgba(255,255,255,0.8);text-transform:uppercase;letter-spacing:.06em;margin-top:2px;">complete</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+    // ── KPI tiles ──
+    const tile = (border, bg, label, valColor, val, sub, bar) => `
+      <div style="border:1px solid ${border};border-radius:14px;padding:16px 18px;background:${bg};min-width:0;">
+        <div style="font:600 10.5px 'IBM Plex Sans';color:#7c7b75;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</div>
+        <div class="num" style="font:700 20px 'IBM Plex Sans';margin-top:8px;color:${valColor};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${val}</div>
+        ${bar != null
+            ? `<div style="height:6px;background:#d8ebe0;border-radius:99px;overflow:hidden;margin-top:10px;"><div style="height:100%;border-radius:99px;width:${bar}%;background:#1f8a5b;"></div></div>`
+            : `<div style="font:400 11px 'IBM Plex Sans';color:#8a8983;margin-top:3px;">${sub}</div>`}
+      </div>`;
+    const nextDueDate = next?.weekEndingDate
+        ? new Date(next.weekEndingDate + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+        : 'None scheduled';
+    const nextDueSub = next ? _pmOvShort(next.totalAmount || next.amount || 0) + ' due' : 'all settled';
+    const tiles = `
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px;">
+      ${tile('#c6e6d5', '#eaf4ef', 'Progress', '#0f6342', progress + '%', '', progress)}
+      ${tile('#d6dde4', '#eef0f3', 'Direct cost', '#44525f', _fmt(directCost), (feeTotal > 0 ? _pmOvShort(feeTotal) + ' fee on top' : 'labor + materials'), null)}
+      ${tile('#f0cdc8', '#f8ecea', 'Outstanding balance', '#8f352c', _fmt(outstanding), 'client still owes', null)}
+      ${tile('#c6e6d5', '#eaf4ef', 'Total paid', '#0f6342', _fmt(paid), 'collected to date', null)}
+      ${tile('#f0e2c5', '#fbf3e2', 'Net cash', netColor, _fmt(netCash), netSub, null)}
+      <div style="border:1px solid #d6e0f4;border-radius:14px;padding:16px 18px;background:#eef2fb;min-width:0;">
+        <div style="font:600 10.5px 'IBM Plex Sans';color:#7c7b75;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Next payment due</div>
+        <div style="font:700 16px 'IBM Plex Sans';margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(nextDueDate)}</div>
+        <div style="font:400 11px 'IBM Plex Sans';color:#8a8983;margin-top:3px;">${nextDueSub}</div>
+      </div>
+    </div>`;
+
+    // ── charts: weekly billing trend (bars) + payment-status donut ──
+    const weeks = bills.filter(b => b.weekEndingDate)
+        .sort((a, b) => a.weekEndingDate.localeCompare(b.weekEndingDate))
+        .slice(-8);
+    const maxAmt = Math.max(1, ...weeks.map(w => w.grandTotal || 0));
+    const bars = weeks.length
+        ? weeks.map(w => {
+            const amt = w.grandTotal || 0;
+            const h = Math.max(6, Math.round(amt / maxAmt * 118));
+            return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;height:100%;justify-content:flex-end;">
+              <span class="num" style="font:600 9.5px 'IBM Plex Sans';color:#9b9a94;">${_pmOvShort(amt)}</span>
+              <div title="${_fmt(amt)}" style="width:100%;max-width:30px;height:${h}px;border-radius:6px 6px 0 0;background:#157a52;"></div>
+              <span style="font:500 10px 'IBM Plex Sans';color:#9b9a94;">${_esc(_pmShortDate(w.weekEndingDate))}</span>
+            </div>`;
+          }).join('')
+        : '<div style="flex:1;text-align:center;align-self:center;font:400 12px \'IBM Plex Sans\';color:#a8a79f;">No weekly bills yet.</div>';
+
+    const donutBg = payTotal > 0
+        ? `conic-gradient(#157a52 0% ${paidPct}%, #b4453a ${paidPct}% 100%)`
+        : '#eeede9';
+    const charts = `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;margin-bottom:16px;">
+      <div style="flex:1.6;min-width:360px;border:1px solid #e7e6e2;border-radius:16px;background:#fff;padding:18px 20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
+          <div style="font:600 14px 'IBM Plex Sans';">Weekly billing trend</div>
+          <span style="font:400 11.5px 'IBM Plex Sans';color:#9b9a94;">Grand total per week</span>
+        </div>
+        <div style="font:400 11.5px 'IBM Plex Sans';color:#9b9a94;margin-bottom:18px;">Last ${weeks.length} billing period${weeks.length === 1 ? '' : 's'}</div>
+        <div style="display:flex;align-items:flex-end;gap:10px;height:140px;padding-bottom:2px;">${bars}</div>
+      </div>
+      <div style="flex:1;min-width:260px;border:1px solid #e7e6e2;border-radius:16px;background:#fff;padding:18px 20px;">
+        <div style="font:600 14px 'IBM Plex Sans';margin-bottom:2px;">Payment status</div>
+        <div style="font:400 11.5px 'IBM Plex Sans';color:#9b9a94;margin-bottom:14px;">Paid vs outstanding</div>
+        <div style="display:flex;align-items:center;gap:18px;">
+          <div style="position:relative;width:118px;height:118px;flex:none;">
+            <div style="position:absolute;inset:0;border-radius:50%;background:${donutBg};"></div>
+            <div style="position:absolute;inset:17px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+              <span class="num" style="font:700 19px 'IBM Plex Sans';color:#0f6342;">${paidPct}%</span>
+              <span style="font:500 9px 'IBM Plex Sans';color:#9b9a94;text-transform:uppercase;letter-spacing:.04em;">paid</span>
+            </div>
+          </div>
+          <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:11px;">
+              <span style="width:11px;height:11px;border-radius:3px;background:#157a52;flex:none;"></span>
+              <div style="flex:1;"><div style="font:500 11.5px 'IBM Plex Sans';color:#3a3a36;">Paid</div><div class="num" style="font:700 13px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(paid)}</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="width:11px;height:11px;border-radius:3px;background:#b4453a;flex:none;"></span>
+              <div style="flex:1;"><div style="font:500 11.5px 'IBM Plex Sans';color:#3a3a36;">Outstanding</div><div class="num" style="font:700 13px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(outstanding)}</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+    // ── milestones + recent requests ──
+    const msTone = { completed: 'green', 'in-progress': 'yellow', pending: 'neutral' };
+    const msLabel = { completed: 'Done', 'in-progress': 'In progress', pending: 'Pending' };
+    const msRows = ms.length
+        ? ms.slice().sort((a, b) => (a.order || 0) - (b.order || 0)).slice(0, 5).map(m => `
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 20px;border-bottom:1px solid #f3f2ef;">
+            <div style="flex:1;min-width:0;">
+              <div style="font:600 12.5px 'IBM Plex Sans';color:#1c1c1a;">${_esc(m.name || 'Milestone')}</div>
+              <div style="font:400 11px 'IBM Plex Sans';color:#9b9a94;margin-top:1px;">${(m.percentage != null && m.percentage !== '') ? _esc(m.percentage) + '% weight' : '—'}</div>
+            </div>
+            ${_pmOvPill(msTone[m.status] || 'neutral', msLabel[m.status] || _esc(m.status || '—'))}
+          </div>`).join('')
+        : '<div style="padding:24px 20px;text-align:center;font:400 12px \'IBM Plex Sans\';color:#a8a79f;">No milestones yet.</div>';
+
+    const reqTone = { paid: 'green', verified: 'green', partial: 'red', unpaid: 'yellow', submitted: 'yellow', rejected: 'red' };
+    const reqLabel = { paid: 'Paid', verified: 'Paid', partial: 'Partial', unpaid: 'Unpaid', submitted: 'Pending', rejected: 'Rejected' };
+    const reqSorted = reqs.slice().sort((a, b) => (b.weekEndingDate || '').localeCompare(a.weekEndingDate || '')).slice(0, 5);
+    const reqRows = reqSorted.length
+        ? reqSorted.map(r => `
+          <div style="display:flex;align-items:center;gap:12px;padding:13px 20px;border-bottom:1px solid #f3f2ef;">
+            <div style="flex:1;min-width:0;">
+              <div style="font:600 12.5px 'IBM Plex Sans';color:#1c1c1a;">Week of ${_esc(r.weekEndingDate ? _pmShortDate(r.weekEndingDate) : '—')}</div>
+              <div class="num" style="font:400 11px 'IBM Plex Sans';color:#9b9a94;margin-top:1px;">${_fmt(r.totalAmount || ((r.amount || 0) + (r.carryover || 0)))}</div>
+            </div>
+            ${_pmOvPill(reqTone[r.status] || 'neutral', reqLabel[r.status] || _esc(r.status || '—'))}
+          </div>`).join('')
+        : '<div style="padding:24px 20px;text-align:center;font:400 12px \'IBM Plex Sans\';color:#a8a79f;">No payment requests yet.</div>';
+
+    const vall = (tab, tabBtnId) => `<button onclick="pmWsTab('${tab}', document.getElementById('${tabBtnId}'))" class="pm-ov-vall" style="background:#fff;border:1px solid #e2e1dc;border-radius:8px;padding:6px 12px;font:600 11.5px 'IBM Plex Sans';color:#5b5a55;cursor:pointer;">View all</button>`;
+    const lists = `
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+      <div style="flex:1;min-width:320px;border:1px solid #e7e6e2;border-radius:16px;background:#fff;overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:17px 20px 13px;">
+          <div style="font:600 14px 'IBM Plex Sans';">Milestones</div>${vall('progress', 'pm-ws-tab-progress')}
+        </div>
+        <div style="border-top:1px solid #f0efec;">${msRows}</div>
+      </div>
+      <div style="flex:1;min-width:320px;border:1px solid #e7e6e2;border-radius:16px;background:#fff;overflow:hidden;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:17px 20px 13px;">
+          <div style="font:600 14px 'IBM Plex Sans';">Recent payment requests</div>${vall('money', 'pm-ws-tab-money')}
+        </div>
+        <div style="border-top:1px solid #f0efec;">${reqRows}</div>
+      </div>
+    </div>`;
+
+    return hero + tiles + charts + lists;
+}
 
 // ══════════════════════════════════════════════════════════
 // 0. CONSTRUCTION PROJECTS (CRUD)
@@ -626,7 +891,7 @@ function _pmWeekSyncDraft() {
         if (Array.isArray(bill.entries) && bill.entries.length) {
             _pmWeekEntries = bill.entries.map(e => ({
                 id: _pmUid('we_'),
-                type: e.type === 'materials' ? 'materials' : 'labor',
+                type: (e.type === 'materials' || e.type === 'both') ? e.type : 'labor',
                 details: e.details || '',
                 amount: Number(e.amount) || 0
             }));
@@ -663,11 +928,13 @@ window.pmWeekAddEntry = function() {
     const typeEl = document.getElementById('pm-week-type');
     const detEl  = document.getElementById('pm-week-details');
     const amtEl  = document.getElementById('pm-week-amount');
-    const type   = typeEl && typeEl.value === 'materials' ? 'materials' : 'labor';
+    const raw    = typeEl ? typeEl.value : 'labor';
+    const type   = (raw === 'materials' || raw === 'both') ? raw : 'labor';
     const details= (detEl ? detEl.value : '').trim();
     const amount = amtEl ? (parseInt(String(amtEl.value).replace(/[^0-9]/g,''), 10) || 0) : 0;
     if (amount <= 0) { if (amtEl) amtEl.focus(); return; }
-    _pmWeekEntries.push({ id:_pmUid('we_'), type, details: details || (type==='labor' ? 'Labor cost' : 'Materials'), amount });
+    const fallbackDetails = type === 'labor' ? 'Labor cost' : type === 'both' ? 'Materials & labor' : 'Materials';
+    _pmWeekEntries.push({ id:_pmUid('we_'), type, details: details || fallbackDetails, amount });
     if (detEl) detEl.value = '';
     if (amtEl) amtEl.value = '';
     _pmWeekRenderEntries();
@@ -689,7 +956,9 @@ function _pmWeekRenderEntries() {
         return;
     }
     host.innerHTML = _pmWeekEntries.map(e => {
-        const tag = e.type === 'materials'
+        const tag = e.type === 'both'
+            ? '<span class="pm-week-entry-tag both">Mat + Labor</span>'
+            : e.type === 'materials'
             ? '<span class="pm-week-entry-tag mat">Material</span>'
             : '<span class="pm-week-entry-tag labor">Labor</span>';
         return `<div class="pm-week-entry">
@@ -703,7 +972,9 @@ function _pmWeekRenderEntries() {
 
 function _pmWeekTotals() {
     const labor = _pmWeekEntries.filter(e=>e.type==='labor').reduce((s,e)=>s+e.amount,0);
-    const mats  = _pmWeekEntries.filter(e=>e.type==='materials').reduce((s,e)=>s+e.amount,0);
+    // 'both' (supply & install) folds into materials so the saved labor/materials
+    // fields still sum to direct cost everywhere downstream reads them.
+    const mats  = _pmWeekEntries.filter(e=>e.type==='materials'||e.type==='both').reduce((s,e)=>s+e.amount,0);
     const direct = labor + mats;
     const fee = direct * (_pmFeePct()/100);
     return { labor, mats, direct, fee, grand: direct + fee };

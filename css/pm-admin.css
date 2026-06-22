@@ -41,6 +41,11 @@
 #pmProjectsView .num,
 #pmWorkspaceView .num { font-variant-numeric: tabular-nums; }
 
+/* ── Overview tab (per-project dashboard, redesigned) ── */
+/* Markup is rendered inline by pm-admin.js (_pmOvHtml); only the
+   "View all" hover needs a real CSS rule. */
+.pm-ov-vall:hover { border-color: #157a52 !important; color: #157a52 !important; }
+
 /* ── Header ── */
 .pm-admin-header {
   display: flex;
@@ -872,6 +877,7 @@
 }
 .pm-week-entry-tag.labor { background: var(--pm-tint); color: var(--pm-green); }
 .pm-week-entry-tag.mat   { background: var(--pm-mat-bg); color: var(--pm-mat); }
+.pm-week-entry-tag.both  { background: #ece7f6; color: #6b4ea8; }
 .pm-week-entry-details {
   flex: 1; min-width: 0; font: 500 12.5px 'IBM Plex Sans'; color: var(--pm-ink-2);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
