@@ -19,6 +19,7 @@ let _pmPayRequests    = [];
 let _pmCompanyBuyItemData = null;
 let _pmCompanyReceiptFile = null;
 let _pmProcFilter     = 'all';   // materials status filter: all | pending | bought
+let _pmOvBills        = [];       // weekly bills for the active project (overview date filter)
 // ── This-week inline bill builder ──
 let _pmWeekBills      = [];       // all weeklyBills docs for the active project
 let _pmWeekEntries    = [];       // current draft line entries {id,type,details,amount}
@@ -134,6 +135,7 @@ async function _pmLoadOverview() {
         const ms    = msSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const bills = billsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const reqs  = paySnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        _pmOvBills = bills;
         root.innerHTML = _pmOvHtml(_pmActiveProject, ms, bills, reqs);
     } catch(e) {
         console.warn('PM: overview load failed', e.message);
@@ -182,10 +184,16 @@ function _pmOvHtml(p, ms, bills, reqs) {
     // (the grand total before the management fee). Falls back to
     // grandTotal − managementFee for older bills missing the split.
     const directCost = bills.reduce((s, b) => {
+        if (b.directCostTotal != null) return s + b.directCostTotal;
         if (b.labor != null || b.materials != null) return s + (b.labor || 0) + (b.materials || 0);
         return s + ((b.grandTotal || 0) - (b.managementFee || 0));
     }, 0);
     const feeTotal = bills.reduce((s, b) => s + (b.managementFee || 0), 0);
+
+    // Direct-cost breakdown. The stored `materials` field is client-facing and
+    // already includes any 'Materials & Labor' (supply & install) amount, so the
+    // pure materials figure subtracts the separately-tracked `combined` bucket.
+    const bd = _pmOvBreakdown(bills);
 
     // Net cash = what the client has paid minus what's actually been spent
     // on labor + materials (direct cost). Positive = cash buffer in hand;
@@ -355,8 +363,139 @@ function _pmOvHtml(p, ms, bills, reqs) {
       </div>
     </div>`;
 
-    return hero + tiles + charts + lists;
+    // ── direct-cost breakdown (segmented bar + legend boxes) + date filter ──
+    const selStyle  = "font:600 11.5px 'IBM Plex Sans';color:#3a3a36;border:1px solid #d8ded8;border-radius:8px;padding:6px 10px;background:#fff;cursor:pointer;";
+    const _ovWeeks = bills.filter(b => b.weekEndingDate)
+        .slice().sort((a, b) => b.weekEndingDate.localeCompare(a.weekEndingDate));
+    const _ovWeekOpts = _ovWeeks.map(b =>
+        `<option value="${_esc(b.weekEndingDate)}">Week ending ${_esc(_pmOvWeekLabel(b.weekEndingDate))}</option>`).join('');
+    const legendBox = (label, swatch, amtColor, bg, border, subColor, amtId, pctId, val, pct) => `
+      <div style="flex:1;min-width:200px;display:flex;align-items:center;gap:13px;padding:14px 16px;background:${bg};border:1px solid ${border};border-radius:13px;">
+        <span style="width:11px;height:11px;border-radius:3px;background:${swatch};flex:none;"></span>
+        <div style="flex:1;min-width:0;">
+          <div style="font:600 12.5px 'IBM Plex Sans';color:#1c1c1a;">${label}</div>
+          <div style="font:400 10.5px 'IBM Plex Sans';color:${subColor};margin-top:1px;"><span id="${pctId}">${pct}</span>% of direct cost</div>
+        </div>
+        <div style="text-align:right;">
+          <div class="num" id="${amtId}" style="font:700 16px 'IBM Plex Sans';color:${amtColor};line-height:1;white-space:nowrap;">${_fmt(val)}</div>
+        </div>
+      </div>`;
+    const breakdown = `
+    <div style="border:1px solid #e7e6e2;border-radius:16px;background:#fff;padding:20px 22px;margin-bottom:16px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;">
+        <div>
+          <div style="font:600 14.5px 'IBM Plex Sans';">Direct cost breakdown</div>
+          <div id="pm-ov-range-note" style="font:400 11.5px 'IBM Plex Sans';color:#9b9a94;margin-top:2px;">All time · ${bills.length} week${bills.length === 1 ? '' : 's'} · management fee excluded</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:11px;">
+          <div style="display:flex;align-items:baseline;gap:7px;">
+            <span class="num" id="pm-ov-direct" style="font:700 21px 'IBM Plex Sans';color:#1c1c1a;line-height:1;white-space:nowrap;">${_fmt(bd.direct)}</span>
+            <span style="font:600 11px 'IBM Plex Sans';color:#9b9a94;">total</span>
+          </div>
+          <select id="pm-ov-range" onchange="pmOvApplyRange()" style="${selStyle}">
+            <option value="all">All time</option>
+            <option value="month">This month</option>
+            <option value="latest">Latest week</option>
+            <option value="last4">Last 4 weeks</option>
+            ${_ovWeeks.length ? '<option disabled>──────────</option>' + _ovWeekOpts : ''}
+          </select>
+        </div>
+      </div>
+
+      <!-- segmented proportion bar -->
+      <div style="display:flex;height:16px;gap:3px;margin-bottom:16px;">
+        <div id="pm-ov-seg-labor"     style="width:${bd.laborPct}%;background:#157a52;border-radius:99px;${bd.labor    > 0 ? 'min-width:6px;' : ''}transition:width .25s ease;"></div>
+        <div id="pm-ov-seg-materials" style="width:${bd.matPct}%;background:#c79024;border-radius:99px;${bd.materials > 0 ? 'min-width:6px;' : ''}transition:width .25s ease;"></div>
+        <div id="pm-ov-seg-combined"  style="width:${bd.combinedPct}%;background:#8b6fc4;border-radius:99px;${bd.combined > 0 ? 'min-width:6px;' : ''}transition:width .25s ease;"></div>
+      </div>
+
+      <!-- legend stat boxes -->
+      <div style="display:flex;gap:13px;flex-wrap:wrap;">
+        ${legendBox('Labor',             '#157a52', '#0f6342', '#f3faf6', '#d8ebe0', '#7c9d8b', 'pm-ov-labor',     'pm-ov-labor-pct',     bd.labor,     bd.laborPct)}
+        ${legendBox('Materials',         '#c79024', '#8a6310', '#fdf8ec', '#f0e2c5', '#a98f5f', 'pm-ov-materials', 'pm-ov-materials-pct', bd.materials, bd.matPct)}
+        ${legendBox('Materials + labor', '#8b6fc4', '#6b4ea8', '#f5f2fc', '#ddd5ef', '#9a86c4', 'pm-ov-combined',  'pm-ov-combined-pct',  bd.combined,  bd.combinedPct)}
+      </div>
+    </div>`;
+
+    return hero + tiles + breakdown + charts + lists;
 }
+
+// Sum a bill list into the direct-cost breakdown buckets. `materials` is stored
+// client-inclusive of any combined (supply & install) amount, so pure materials
+// = materials − combined; the combined bucket is reported on its own.
+function _pmOvBreakdown(bills) {
+    let labor = 0, materials = 0, combined = 0;
+    bills.forEach(b => {
+        // Prefer the stored `combined` field; for bills saved before it existed,
+        // derive it from the 'both' line entries (the stored `materials` folds it in).
+        let c = b.combined;
+        if (c == null && Array.isArray(b.entries)) {
+            c = b.entries.filter(e => e.type === 'both').reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        }
+        c = c || 0;
+        labor     += b.labor || 0;
+        combined  += c;
+        materials += Math.max(0, (b.materials || 0) - c);
+    });
+    const direct = labor + materials + combined;
+    const pct = v => direct > 0 ? Math.round(v / direct * 100) : 0;
+    return { labor, materials, combined, direct,
+             laborPct: pct(labor), matPct: pct(materials), combinedPct: pct(combined) };
+}
+
+// Format a week-ending date for the breakdown filter, e.g. "Jun 26, 2026".
+function _pmOvWeekLabel(dateStr) {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr + 'T00:00:00');
+    return isNaN(d) ? dateStr : d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Filter the stored bills by the selected billing-week mode.
+function _pmOvFilterBills(mode) {
+    if (mode === 'all') return _pmOvBills;
+    if (mode === 'month') {
+        const now = new Date();
+        const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        return _pmOvBills.filter(b => (b.weekEndingDate || '').startsWith(ym));
+    }
+    const dated = _pmOvBills.filter(b => b.weekEndingDate)
+        .slice().sort((a, b) => b.weekEndingDate.localeCompare(a.weekEndingDate));
+    if (mode === 'latest') return dated.slice(0, 1);
+    if (mode === 'last4')  return dated.slice(0, 4);
+    return _pmOvBills.filter(b => b.weekEndingDate === mode);   // a specific week
+}
+
+// Recompute the breakdown tiles for the selected date range.
+window.pmOvApplyRange = function() {
+    const sel = document.getElementById('pm-ov-range');
+    if (!sel) return;
+    const mode = sel.value;
+    const bills = _pmOvFilterBills(mode);
+    const bd = _pmOvBreakdown(bills);
+    const setAmt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = _fmt(val); };
+    const setSeg = (id, pct, show) => { const el = document.getElementById(id); if (el) { el.style.width = pct + '%'; el.style.minWidth = show ? '6px' : '0'; } };
+    setAmt('pm-ov-direct',    bd.direct);
+    setAmt('pm-ov-labor',     bd.labor);
+    setAmt('pm-ov-materials', bd.materials);
+    setAmt('pm-ov-combined',  bd.combined);
+    _pmSet('pm-ov-labor-pct',     String(bd.laborPct));
+    _pmSet('pm-ov-materials-pct', String(bd.matPct));
+    _pmSet('pm-ov-combined-pct',  String(bd.combinedPct));
+    setSeg('pm-ov-seg-labor',     bd.laborPct,    bd.labor > 0);
+    setSeg('pm-ov-seg-materials', bd.matPct,      bd.materials > 0);
+    setSeg('pm-ov-seg-combined',  bd.combinedPct, bd.combined > 0);
+
+    const note = document.getElementById('pm-ov-range-note');
+    if (note) {
+        const wk = bills.length + ' week' + (bills.length === 1 ? '' : 's');
+        const label = mode === 'all'    ? 'All time'
+            : mode === 'month'  ? 'This month'
+            : mode === 'latest' ? 'Latest week'
+            : mode === 'last4'  ? 'Last 4 weeks'
+            : 'Week ending ' + _pmOvWeekLabel(mode);
+        note.textContent = label + ' · ' + wk + ' · management fee excluded';
+    }
+};
 
 // ══════════════════════════════════════════════════════════
 // 0. CONSTRUCTION PROJECTS (CRUD)
@@ -971,19 +1110,23 @@ function _pmWeekRenderEntries() {
 }
 
 function _pmWeekTotals() {
-    const labor = _pmWeekEntries.filter(e=>e.type==='labor').reduce((s,e)=>s+e.amount,0);
-    // 'both' (supply & install) folds into materials so the saved labor/materials
-    // fields still sum to direct cost everywhere downstream reads them.
-    const mats  = _pmWeekEntries.filter(e=>e.type==='materials'||e.type==='both').reduce((s,e)=>s+e.amount,0);
+    const labor    = _pmWeekEntries.filter(e=>e.type==='labor').reduce((s,e)=>s+e.amount,0);
+    const matsPure = _pmWeekEntries.filter(e=>e.type==='materials').reduce((s,e)=>s+e.amount,0);
+    const combined = _pmWeekEntries.filter(e=>e.type==='both').reduce((s,e)=>s+e.amount,0);
+    // `mats` is the client-facing materials figure and folds in combined (supply &
+    // install) so all client/billing code stays correct. The admin overview reads
+    // the separate `combined` field to report pure materials vs combined.
+    const mats   = matsPure + combined;
     const direct = labor + mats;
     const fee = direct * (_pmFeePct()/100);
-    return { labor, mats, direct, fee, grand: direct + fee };
+    return { labor, matsPure, combined, mats, direct, fee, grand: direct + fee };
 }
 
 function _pmWeekRecompute() {
     const t = _pmWeekTotals();
     _pmSet('pm-week-labor',     _pmPeso(t.labor));
-    _pmSet('pm-week-materials', _pmPeso(t.mats));
+    _pmSet('pm-week-materials', _pmPeso(t.matsPure));
+    _pmSet('pm-week-combined',  _pmPeso(t.combined));
     _pmSet('pm-week-direct',    _pmPeso(t.direct));
     _pmSet('pm-week-fee-amt',   _pmPeso(t.fee));
     _pmSet('pm-week-grand',     _pmPeso(t.grand));
@@ -1021,7 +1164,9 @@ window.pmWeekSave = async function() {
     const data = {
         weekEndingDate: _pmWeekDate,
         labor: t.labor,
-        materials: t.mats,
+        materials: t.mats,              // client-facing, includes combined
+        combined: t.combined,          // supply & install portion (admin breakdown)
+        directCostTotal: t.direct,     // labor + materials; client prefers this field
         managementFee: t.fee,
         grandTotal: t.grand,
         entries: _pmWeekEntries.map(e => ({ type:e.type, details:e.details, amount:e.amount })),
