@@ -36,12 +36,16 @@
       "Bash(cd \"/c/Users/John Aerol Tapales/Documents/Dacs Web\" && grep -n \"Overview Panel \\(per-project dashboard\\)\\\\|/ws-panel-overview\\\\|This Week Panel \\(inline bill builder\\)\" admin.html)",
       "Read(//c/c/Users/John Aerol Tapales/Documents/Dacs Web/**)",
       "Bash(cd \"/c/Users/John Aerol Tapales/Documents/Dacs Web\" && sed -i '98,286d' js/pm-admin.js && sed -n '95,101p' js/pm-admin.js)",
-      "Bash(node -c js/client-management-app.js)"
+      "Bash(cd \"/c/Users/John Aerol Tapales/Documents/Dacs Web\" && sed -i '98,286d' js/pm-admin.js && sed -n '95,101p' js/pm-admin.js)",
+      "Bash(node -c js/client-management-app.js)",
+      "Bash(cd \"/c/Users/John Aerol Tapales/Documents/Dacs Web\" && node --check js/pm-admin.js && echo \"JS OK\" && rm -f .design-pm-workspace.html && echo \"temp removed\")"
     ],
+
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
       "c:\\Users\\John Aerol Tapales\\.claude\\projects\\c--Users-John-Aerol-Tapales-Documents-Dacs-Web\\memory",
-      "c:\\c\\Users\\John Aerol Tapales\\Documents\\Dacs Web\\js"
+      "c:\\c\\Users\\John Aerol Tapales\\Documents\\Dacs Web\\js",
+      "c:\\c\\Users\\John Aerol Tapales\\Documents\\Dacs Web"
     ]
   }
 }
