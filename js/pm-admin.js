@@ -28,6 +28,8 @@ let _pmWeekEditingId  = null;     // doc id when the selected week already has a
 let _pmWeekCat        = 'labor';  // active category tab: 'labor' | 'materials' | 'both'
 let _pmWeekStagedReceipt = null;  // { file, dataUrl } staged in the add-row, attached to the next line
 let _pmWeekEditEntryId   = null;  // id of the entry currently loaded into the add-row for editing
+let _pmWeekViewFilter    = 'all'; // entry list view filter: 'all' | 'labor' | 'materials'
+let _pmWeekViewDay       = null;  // null = editable builder; a bill id = read-only past view
 
 // ── Init ────────────────────────────────────────────────
 window.initPMModule = async function(view) {
@@ -78,11 +80,17 @@ function _pmInitWorkspace() {
 }
 
 window.pmWsTab = function(tab, btn) {
-    document.querySelectorAll('.pm-ws-tab').forEach(t => t.classList.remove('active'));
+    // Sync the active highlight on BOTH the desktop top tabs and the mobile bottom nav.
+    document.querySelectorAll('.pm-ws-tab, .pm-mnav-item').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.pm-ws-panel').forEach(p => p.classList.remove('active'));
-    if (btn) btn.classList.add('active');
+    const top = document.getElementById('pm-ws-tab-' + tab);
+    const mnav = document.getElementById('pm-mnav-' + tab);
+    if (top) top.classList.add('active');
+    if (mnav) mnav.classList.add('active');
     const panel = document.getElementById('ws-panel-' + tab);
     if (panel) { panel.classList.add('active'); _pmLoadWsPanel(panel.id); }
+    // On mobile, jump back to the top of the panel when switching tabs.
+    if (window.innerWidth <= 700) window.scrollTo({ top: 0, behavior: 'auto' });
 };
 
 // The redesigned workspace groups the six functional areas under five tabs.
@@ -186,10 +194,14 @@ function _pmOvHtml(p, ms, bills, reqs) {
     // Direct cost = cumulative labor + materials across all weekly bills
     // (the grand total before the management fee). Falls back to
     // grandTotal − managementFee for older bills missing the split.
+    // Treat 0 as "missing" too: a `default 0` column or the legacy weekly-entry
+    // modal can leave directCostTotal at 0 on bills that really have labor/materials.
     const directCost = bills.reduce((s, b) => {
-        if (b.directCostTotal != null) return s + b.directCostTotal;
-        if (b.labor != null || b.materials != null) return s + (b.labor || 0) + (b.materials || 0);
-        return s + ((b.grandTotal || 0) - (b.managementFee || 0));
+        const dct = Number(b.directCostTotal) || 0;
+        if (dct) return s + dct;
+        const lm = (Number(b.labor) || 0) + (Number(b.materials) || 0);
+        if (lm) return s + lm;
+        return s + ((Number(b.grandTotal) || 0) - (Number(b.managementFee) || 0));
     }, 0);
     const feeTotal = bills.reduce((s, b) => s + (b.managementFee || 0), 0);
 
@@ -431,8 +443,10 @@ function _pmOvBreakdown(bills) {
     bills.forEach(b => {
         // Prefer the stored `combined` field; for bills saved before it existed,
         // derive it from the 'both' line entries (the stored `materials` folds it in).
-        let c = b.combined;
-        if (c == null && Array.isArray(b.entries)) {
+        // 0 is treated as "missing" (a `default 0` column leaves old bills at 0),
+        // so we still derive the supply & install portion from the 'both' entries.
+        let c = Number(b.combined) || 0;
+        if (!c && Array.isArray(b.entries)) {
             c = b.entries.filter(e => e.type === 'both').reduce((s, e) => s + (Number(e.amount) || 0), 0);
         }
         c = c || 0;
@@ -636,7 +650,7 @@ window.pmOpenProject = function(p) {
     _pmActiveProject = _pmProjects.find(pr => pr.id === p.id) || p;
     localStorage.setItem('pm_selected_project', p.id);
     // Fresh "This Week" draft for the newly opened project.
-    _pmWeekDate = null; _pmWeekBills = []; _pmWeekEntries = []; _pmWeekEditingId = null; _pmWeekCat = 'labor'; _pmWeekStagedReceipt = null; _pmWeekEditEntryId = null;
+    _pmWeekDate = null; _pmWeekBills = []; _pmWeekEntries = []; _pmWeekEditingId = null; _pmWeekCat = 'labor'; _pmWeekStagedReceipt = null; _pmWeekEditEntryId = null; _pmWeekViewFilter = 'all'; _pmWeekViewDay = null;
     // Reset workspace to weekly tab
     document.querySelectorAll('.pm-ws-tab').forEach((t,i)  => t.classList.toggle('active', i===0));
     document.querySelectorAll('.pm-ws-panel').forEach((pn,i) => pn.classList.toggle('active', i===0));
@@ -1015,10 +1029,12 @@ async function _pmLoadWeekBuilder() {
         _pmSet('pm-week-date', '—');
         _pmWeekRecompute();
         const hist = document.getElementById('pm-week-history');
-        if (hist) hist.innerHTML = '<div class="pm-week-empty">Select a project first.</div>';
+        if (hist) hist.innerHTML = '<div class="pmw-empty">Select a project first.</div>';
+        _pmWeekShowBuilder(true);
         _pmWeekApplyCat();
         return;
     }
+    _pmWeekViewDay = null;            // always land on the editable builder
     if (!_pmWeekDate) _pmWeekDate = _pmToday();
     try {
         const snap = await db.collection('constructionProjects')
@@ -1034,6 +1050,7 @@ async function _pmLoadWeekBuilder() {
     _pmWeekSyncDraft();
     _pmWeekRenderHistory();
     _pmWeekApplyCat();
+    _pmWeekShowBuilder(true);
 }
 
 // Load the saved bill for the selected Friday into the draft (or start empty).
@@ -1075,15 +1092,46 @@ function _pmWeekSyncDraft() {
 }
 
 window.pmWeekShift = function(delta) {
+    _pmWeekViewDay = null;               // day nav returns to the editable builder
+    _pmWeekShowBuilder(true);
     _pmWeekDate = _pmShiftDateStr(_pmWeekDate, delta);
     _pmWeekSyncDraft();
+    _pmWeekRenderHistory();
 };
 
-window.pmWeekLoadBill = function(id) {
+// Toggle between the editable builder and the read-only past-bill view.
+function _pmWeekShowBuilder(show) {
+    const b = document.getElementById('pmw-build');
+    const r = document.getElementById('pmw-readonly');
+    if (b) b.style.display = show ? '' : 'none';
+    if (r) r.style.display = show ? 'none' : '';
+}
+
+// Open a past saved bill read-only (from the History sidebar).
+window.pmWeekViewBill = function(id) {
     const bill = _pmWeekBills.find(b => b.id === id);
     if (!bill) return;
-    _pmWeekDate = bill.weekEndingDate || _pmWeekDate;
-    _pmWeekSyncDraft();
+    _pmWeekViewDay = id;
+    _pmWeekViewFilter = 'all';          // open a past bill showing everything
+    _pmWeekShowBuilder(false);
+    _pmWeekRenderReadonly(bill);
+    _pmWeekRenderHistory();
+};
+
+window.pmWeekBackToToday = function() {
+    _pmWeekViewDay = null;
+    _pmWeekViewFilter = 'all';
+    _pmWeekShowBuilder(true);
+    _pmWeekRenderEntries();
+    _pmWeekRenderHistory();
+};
+
+// Open a receipt stored on a past (read-only) bill entry.
+window.pmWeekViewPastReceipt = function(billId, idx) {
+    const bill = _pmWeekBills.find(b => b.id === billId);
+    if (!bill || !Array.isArray(bill.entries)) return;
+    const e = bill.entries[idx];
+    if (e && e.receiptUrl) pmViewReceipt(e.receiptUrl, e.details);
 };
 
 window.pmWeekAddEntry = function() {
@@ -1092,7 +1140,7 @@ window.pmWeekAddEntry = function() {
     const daysEl = document.getElementById('pm-week-days');
     const qtyEl  = document.getElementById('pm-week-qty');
     const unitEl = document.getElementById('pm-week-unit');
-    const type   = _pmWeekCat;   // category comes from the active tab
+    const type   = (_pmWeekCat === 'materials' || _pmWeekCat === 'both') ? _pmWeekCat : 'labor';   // from the segmented control
     const details= (detEl ? detEl.value : '').trim();
     const amount = amtEl ? (parseInt(String(amtEl.value).replace(/[^0-9]/g,''), 10) || 0) : 0;
     // Days is Labor-only; quantity + unit is Materials-only. Both are purely
@@ -1133,11 +1181,14 @@ window.pmWeekRemoveEntry = function(id) {
     _pmWeekRecompute();
 };
 
-function _pmWeekCatLabel(cat) {
-    return cat === 'both' ? 'Mat + Labor' : cat === 'materials' ? 'Materials' : 'Labor';
+// Meta line for an entry: "6 days" (labor) or "50 bags" (materials).
+function _pmWeekMeta(e) {
+    if (e.type === 'labor') return e.days ? (e.days + (e.days === 1 ? ' day' : ' days')) : '';
+    const q = e.qty ? String(e.qty) : '';
+    return q + (e.qty && e.unit ? ' ' + e.unit : (e.unit || ''));
 }
 
-// Switch the active category tab (click handler).
+// Switch the active category in the segmented control (Labor / Materials / Mat + Labor).
 window.pmWeekSetCat = function(cat) {
     _pmWeekCat = (cat === 'materials' || cat === 'both') ? cat : 'labor';
     _pmWeekApplyCat();
@@ -1145,23 +1196,47 @@ window.pmWeekSetCat = function(cat) {
     if (det) det.focus();
 };
 
-// Reflect _pmWeekCat in the UI (tab highlight, intro, lists) — no focus side-effect.
+// Reflect _pmWeekCat in the UI (segmented highlight, prompt, adaptive fields).
 function _pmWeekApplyCat() {
-    document.querySelectorAll('.pm-week-cattab').forEach(b => b.classList.remove('active'));
-    const tab = document.getElementById('pm-week-cattab-' + _pmWeekCat);
-    if (tab) tab.classList.add('active');
-    const intro = document.getElementById('pm-week-intro');
-    if (intro) intro.innerHTML =
-        `Adding <strong>${_pmWeekCatLabel(_pmWeekCat)}</strong> lines — switch tabs for other categories. Totals below combine all three.`;
-    // Days input is Labor-only; quantity + unit is Materials-only.
+    const cat = _pmWeekCat;
+    [['labor', 'pmw-seg-labor'], ['materials', 'pmw-seg-materials'], ['both', 'pmw-seg-both']].forEach(([c, id]) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('active', cat === c);
+    });
+    const prompt = document.getElementById('pmw-add-prompt');
+    if (prompt) prompt.textContent = cat === 'labor' ? 'What labor did you pay for?'
+        : cat === 'both' ? 'What supply & install did you pay for?'
+        : 'What materials did you buy?';
+    const det = document.getElementById('pm-week-details');
+    if (det) det.placeholder = cat === 'labor' ? 'e.g. Masonry crew'
+        : cat === 'both' ? 'e.g. Aluminum windows (supply & install)'
+        : 'e.g. Cement';
+    // Days is Labor-only; quantity + unit is Materials-only; Mat + Labor has neither.
     const daysWrap = document.getElementById('pm-week-days-wrap');
-    if (daysWrap) daysWrap.style.display = (_pmWeekCat === 'labor') ? '' : 'none';
+    if (daysWrap) daysWrap.style.display = cat === 'labor' ? '' : 'none';
     const qtyWrap = document.getElementById('pm-week-qty-wrap');
-    if (qtyWrap) qtyWrap.style.display = (_pmWeekCat === 'materials') ? '' : 'none';
+    if (qtyWrap) qtyWrap.style.display = cat === 'materials' ? '' : 'none';
     _pmWeekRenderEntries();
-    _pmWeekRenderCatHistory();
     _pmWeekRenderAttach();
 }
+
+// Highlight the active view-filter pill (All / Labor / Materials / Mat + Labor).
+function _pmWeekApplyViewFilter() {
+    ['all', 'labor', 'materials', 'both'].forEach(f => {
+        const b = document.getElementById('pmw-vf-' + f);
+        if (b) b.classList.toggle('active', _pmWeekViewFilter === f);
+    });
+}
+
+window.pmWeekViewFilter = function(f) {
+    _pmWeekViewFilter = (f === 'labor' || f === 'materials' || f === 'both') ? f : 'all';
+    if (_pmWeekViewDay) {
+        const bill = _pmWeekBills.find(b => b.id === _pmWeekViewDay);
+        if (bill) _pmWeekRenderReadonly(bill);
+    } else {
+        _pmWeekRenderEntries();
+    }
+};
 
 // ── per-line receipt image (Labor / Materials / Mat + Labor all support it) ──
 
@@ -1184,19 +1259,20 @@ window.pmWeekClearReceipt = function() {
 
 function _pmWeekRenderAttach() {
     const btn   = document.getElementById('pm-week-attach-btn');
+    const label = document.getElementById('pmw-receipt-label');
     const thumb = document.getElementById('pm-week-attach-thumb');
-    if (!btn || !thumb) return;
-    if (_pmWeekStagedReceipt) {
-        btn.style.display = 'none';
-        thumb.style.display = 'flex';
-        thumb.innerHTML = `<img src="${_pmWeekStagedReceipt.dataUrl}" alt="receipt">
-            <button type="button" class="pm-wf-attach-x" title="Remove receipt" onclick="pmWeekClearReceipt()">×</button>`;
-    } else {
-        btn.style.display = '';
-        thumb.style.display = 'none';
-        thumb.innerHTML = '';
+    const has = !!_pmWeekStagedReceipt;
+    if (btn) btn.classList.toggle('attached', has);
+    if (label) label.textContent = has ? 'Receipt attached' : 'Attach receipt';
+    if (thumb) {
+        if (has) {
+            thumb.style.display = 'flex';
+            thumb.innerHTML = `<img src="${_pmWeekStagedReceipt.dataUrl}" alt="receipt"><button type="button" class="pmw-attach-x" title="Remove receipt" onclick="pmWeekClearReceipt()">×</button>`;
+        } else {
+            thumb.style.display = 'none';
+            thumb.innerHTML = '';
+        }
     }
-    if (window.lucide) lucide.createIcons();
 }
 
 // View an entry's receipt (works for both not-yet-saved data URLs and saved URLs).
@@ -1223,7 +1299,7 @@ function _receiptFromStaged(s) {
 function _pmWeekSyncAddBtn() {
     const addBtn = document.getElementById('pm-week-add-btn');
     const cancel = document.getElementById('pm-week-cancel-btn');
-    if (addBtn) addBtn.textContent = _pmWeekEditEntryId ? 'Save' : '+ Add';
+    if (addBtn) addBtn.textContent = _pmWeekEditEntryId ? 'Save changes' : '+ Add to bill';
     if (cancel) cancel.style.display = _pmWeekEditEntryId ? '' : 'none';
 }
 
@@ -1255,34 +1331,64 @@ window.pmWeekCancelEdit = function() {
     _pmWeekSyncAddBtn();
 };
 
+// Per-category visual tokens for the grouped entry list (header chip + row accent).
+function _pmWeekCatStyle(type) {
+    if (type === 'materials') return { name: 'MATERIALS',   tag: 'MATERIAL',  accent: '#5b6b7e', headBg: '#eef0f3', headBorder: '#d8dee6', text: '#3f4d5e', count: '#7e8a98' };
+    if (type === 'both')      return { name: 'MAT + LABOR', tag: 'MAT+LABOR', accent: '#7a5bb5', headBg: '#efeaf8', headBorder: '#e0d5f3', text: '#5b3f96', count: '#9882bd' };
+    return { name: 'LABOR', tag: 'LABOR', accent: '#157a52', headBg: '#eaf4ef', headBorder: '#c6e6d5', text: '#0f6342', count: '#5e9d80' };
+}
+
+const _PMW_GROUP_TYPES = ['labor', 'materials', 'both'];
+
+function _pmWeekEntryRow(e) {
+    const st = _pmWeekCatStyle(e.type);
+    const meta = _pmWeekMeta(e);
+    const metaHtml = meta ? `<div class="pmw-entry-meta">${_esc(meta)}</div>` : '';
+    const rcpt = (e.receiptDataUrl || e.receiptUrl)
+        ? `<button class="pmw-entry-rcpt" title="View receipt" onclick="pmWeekViewEntryReceipt('${e.id}')"><img src="${_esc(e.receiptDataUrl || e.receiptUrl)}" alt="receipt"></button>`
+        : '';
+    return `<div class="pmw-entry" style="border-left:3px solid ${st.accent};">
+        <div class="pmw-entry-main">
+          <div class="pmw-entry-titlerow"><span class="pmw-entry-tag" style="background:${st.headBg};color:${st.text};">${st.tag}</span><span class="pmw-entry-details">${_esc(e.details)}</span></div>
+          ${metaHtml}
+        </div>
+        ${rcpt}
+        <span class="pmw-entry-amt num">${_pmPeso(e.amount)}</span>
+        <button class="pmw-entry-edit" aria-label="Edit" title="Edit" onclick="pmWeekEditEntry('${e.id}')"><i data-lucide="pencil" style="width:13px;height:13px;"></i></button>
+        <button class="pmw-entry-del" aria-label="Remove" title="Remove" onclick="pmWeekRemoveEntry('${e.id}')">×</button>
+      </div>`;
+}
+
+function _pmWeekGroupHead(type, count, sum, topGap) {
+    const st = _pmWeekCatStyle(type);
+    const cnt = count != null ? `<span class="pmw-grp-count" style="color:${st.count};">${count} item${count === 1 ? '' : 's'}</span>` : '';
+    const style = `background:${st.headBg};border-color:${st.headBorder};${topGap ? 'margin-top:16px;' : ''}`;
+    return `<div class="pmw-grp-head" style="${style}">
+        <div class="pmw-grp-left"><span class="pmw-grp-label" style="color:${st.text};"><span class="pmw-grp-dot" style="background:${st.accent};"></span>${st.name}</span>${cnt}</div>
+        <span class="pmw-grp-sum" style="color:${st.text};">${_pmPeso(sum)}</span>
+      </div>`;
+}
+
 function _pmWeekRenderEntries() {
+    _pmWeekApplyViewFilter();
     const host = document.getElementById('pm-week-entries');
     if (!host) return;
-    const list = _pmWeekEntries.filter(e => e.type === _pmWeekCat);
-    if (!list.length) {
-        host.innerHTML = `<div class="pm-week-empty">No ${_pmWeekCatLabel(_pmWeekCat).toLowerCase()} entries yet — add one above.</div>`;
+    if (!_pmWeekEntries.length) {
+        host.innerHTML = '<div class="pmw-empty-box">Nothing logged yet — add your first labor or materials cost above.</div>';
         return;
     }
-    host.innerHTML = list.map(e => {
-        const tag = e.type === 'both'
-            ? '<span class="pm-week-entry-tag both">Mat + Labor</span>'
-            : e.type === 'materials'
-            ? '<span class="pm-week-entry-tag mat">Material</span>'
-            : '<span class="pm-week-entry-tag labor">Labor</span>';
-        const daysChip = e.days ? `<span class="pm-week-entry-days">${e.days} day${e.days === 1 ? '' : 's'}</span>` : '';
-        const qtyChip  = e.qty  ? `<span class="pm-week-entry-days">${e.qty} ${_esc(e.unit || 'pcs')}</span>` : '';
-        const rcpt     = (e.receiptDataUrl || e.receiptUrl)
-            ? `<button class="pm-week-entry-rcpt" title="View receipt" onclick="pmWeekViewEntryReceipt('${e.id}')"><img src="${_esc(e.receiptDataUrl || e.receiptUrl)}" alt="receipt"></button>`
-            : '';
-        return `<div class="pm-week-entry">
-            ${tag}
-            <span class="pm-week-entry-details">${_esc(e.details)}</span>
-            ${daysChip}${qtyChip}${rcpt}
-            <span class="pm-week-entry-amt num">${_pmPeso(e.amount)}</span>
-            <button class="pm-week-entry-edit" aria-label="Edit" title="Edit" onclick="pmWeekEditEntry('${e.id}')"><i data-lucide="pencil" style="width:14px;height:14px;"></i></button>
-            <button class="pm-week-entry-del" aria-label="Remove" title="Remove" onclick="pmWeekRemoveEntry('${e.id}')">×</button>
-        </div>`;
-    }).join('');
+    const f = _pmWeekViewFilter;
+    let html = '', first = true;
+    _PMW_GROUP_TYPES.forEach(type => {
+        const list = _pmWeekEntries.filter(e => e.type === type);
+        if (!list.length || (f !== 'all' && f !== type)) return;
+        const sum = list.reduce((s, e) => s + e.amount, 0);
+        html += _pmWeekGroupHead(type, list.length, sum, !first);
+        html += list.map(_pmWeekEntryRow).join('');
+        first = false;
+    });
+    if (!html) html = '<div class="pmw-empty-box">No entries in this view.</div>';
+    host.innerHTML = html;
     if (window.lucide) lucide.createIcons();
 }
 
@@ -1301,67 +1407,111 @@ function _pmWeekTotals() {
 
 function _pmWeekRecompute() {
     const t = _pmWeekTotals();
-    _pmSet('pm-week-labor',     _pmPeso(t.labor));
-    _pmSet('pm-week-materials', _pmPeso(t.matsPure));
-    _pmSet('pm-week-combined',  _pmPeso(t.combined));
-    _pmSet('pm-week-direct',    _pmPeso(t.direct));
-    _pmSet('pm-week-fee-amt',   _pmPeso(t.fee));
-    _pmSet('pm-week-grand',     _pmPeso(t.grand));
-    // Show the active project's fee rate (read-only — set in Add/Edit Project).
+    _pmSet('pm-week-direct',  _pmPeso(t.direct));
+    _pmSet('pm-week-fee-amt', _pmPeso(t.fee));
+    _pmSet('pm-week-grand',   _pmPeso(t.grand));
     _pmSet('pm-week-fee-pct', _pmFeePct());
+    // "Today so far" sidebar summary (Materials shown pure; combined gets its own row).
+    _pmSet('pmw-today-labor',     _pmPeso(t.labor));
+    _pmSet('pmw-today-materials', _pmPeso(t.matsPure));
+    _pmSet('pmw-today-both',      _pmPeso(t.combined));
+    _pmSet('pmw-today-grand',     _pmPeso(t.grand));
+    const bothRow = document.getElementById('pmw-today-both-row');
+    if (bothRow) bothRow.style.display = t.combined > 0 ? '' : 'none';
+}
+
+function _pmWeekStatusMeta(status) {
+    if (status === 'Paid')    return { label: 'Paid',    bg: '#eaf4ef', color: '#0f6342', border: '#c6e6d5', dot: '#157a52' };
+    if (status === 'Partial') return { label: 'Partial', bg: '#f8ecea', color: '#8f352c', border: '#f0cdc8', dot: '#b4453a' };
+    return { label: 'Sent', bg: '#f6f3ec', color: '#7c6a45', border: '#e6ddcb', dot: '#9a8a6b' };
 }
 
 function _pmWeekRenderHistory() {
     const host = document.getElementById('pm-week-history');
+    const countEl = document.getElementById('pmw-hist-count');
+    const monthEl = document.getElementById('pmw-month-total');
     if (!host) return;
-    const bills = _pmWeekBills.slice().sort((a,b) => (b.weekEndingDate||'').localeCompare(a.weekEndingDate||''));
-    if (!bills.length) {
-        host.innerHTML = '<div class="pm-week-empty">No past days yet.</div>';
-        return;
-    }
-    const badge = (st) => st === 'Paid'
-        ? '<span class="pm-badge pm-badge-paid">Paid</span>'
-        : st === 'Partial'
-        ? '<span class="pm-badge pm-badge-partial">Partial</span>'
-        : '<span class="pm-badge pm-badge-unpaid">Submitted</span>';
-    host.innerHTML = bills.map(b => `
-        <div class="pm-past-row" onclick="pmWeekLoadBill('${_esc(b.id)}')">
-          <div>
-            <div class="pm-past-date">${_pmShortDate(b.weekEndingDate)}</div>
-            <div class="pm-past-amt num">${_pmPeso(b.grandTotal || 0)}</div>
-          </div>
-          ${badge(b.status)}
-        </div>`).join('');
+    const bills = _pmWeekBills.slice().sort((a, b) => (b.weekEndingDate || '').localeCompare(a.weekEndingDate || ''));
+    if (countEl) countEl.textContent = bills.length + ' bill' + (bills.length === 1 ? '' : 's');
+    if (monthEl) monthEl.textContent = _pmPeso(bills.reduce((s, b) => s + (Number(b.grandTotal) || 0), 0));
+    if (!bills.length) { host.innerHTML = '<div class="pmw-empty">No bills sent yet.</div>'; return; }
+    host.innerHTML = bills.map(b => {
+        const m = _pmWeekStatusMeta(b.status);
+        const n = Array.isArray(b.entries) ? b.entries.length : 0;
+        const active = _pmWeekViewDay === b.id;
+        return `<button class="pmw-hist-row${active ? ' active' : ''}" onclick="pmWeekViewBill('${_esc(b.id)}')">
+            <div class="pmw-hist-main">
+              <div class="pmw-hist-date">${_esc(_pmFriLabel(b.weekEndingDate))}</div>
+              <div class="pmw-hist-sub num">${_pmPeso(b.grandTotal || 0)} · ${n} item${n === 1 ? '' : 's'}</div>
+            </div>
+            <span class="pmw-hist-pill" style="background:${m.bg};color:${m.color};border-color:${m.border};"><span class="pmw-hist-dot" style="background:${m.dot};"></span>${m.label}</span>
+            <span class="pmw-hist-chev">›</span>
+          </button>`;
+    }).join('');
 }
 
-// Per-category log: every entry of the active category pulled from saved bills,
-// newest week first. Reads bill.entries[]; legacy bills with only labor/materials
-// totals (no entries array) don't contribute line-level history.
-function _pmWeekRenderCatHistory() {
-    const titleEl = document.getElementById('pm-week-cathist-title');
-    if (titleEl) titleEl.textContent = 'Past ' + _pmWeekCatLabel(_pmWeekCat) + ' entries';
-    const host = document.getElementById('pm-week-cathist');
+// Read-only render of a past, already-sent bill.
+function _pmWeekRoRow(e, billId, idx) {
+    const st = _pmWeekCatStyle(e.type);
+    const meta = _pmWeekMeta(e);
+    const metaHtml = meta ? `<div class="pmw-entry-meta">${_esc(meta)}</div>` : '';
+    const rcpt = e.receiptUrl
+        ? `<button class="pmw-entry-rcpt" title="View receipt" onclick="pmWeekViewPastReceipt('${_esc(billId)}',${idx})"><img src="${_esc(e.receiptUrl)}" alt="receipt"></button>`
+        : '';
+    return `<div class="pmw-entry ro" style="border-left:3px solid ${st.accent};">
+        <div class="pmw-entry-main">
+          <div class="pmw-entry-titlerow"><span class="pmw-entry-tag" style="background:${st.headBg};color:${st.text};">${st.tag}</span><span class="pmw-entry-details">${_esc(e.details)}</span></div>
+          ${metaHtml}
+        </div>
+        ${rcpt}
+        <span class="pmw-entry-amt num">${_pmPeso(e.amount)}</span>
+      </div>`;
+}
+
+function _pmWeekRenderReadonly(bill) {
+    const host = document.getElementById('pmw-readonly');
     if (!host) return;
-    const rows = [];
-    _pmWeekBills.slice()
-        .sort((a, b) => (b.weekEndingDate || '').localeCompare(a.weekEndingDate || ''))
-        .forEach(b => {
-            (Array.isArray(b.entries) ? b.entries : []).forEach(e => {
-                if (e.type === _pmWeekCat) rows.push({ date: b.weekEndingDate, details: e.details, amount: e.amount, days: Number(e.days) || 0, qty: Number(e.qty) || 0, unit: e.unit || '' });
-            });
-        });
-    if (!rows.length) {
-        host.innerHTML = `<div class="pm-week-empty">No past ${_pmWeekCatLabel(_pmWeekCat).toLowerCase()} entries.</div>`;
-        return;
+    const entries = Array.isArray(bill.entries) ? bill.entries : [];
+    const entriesSum = entries.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const fee = Number(bill.managementFee) || 0;
+    const direct = Number(bill.directCostTotal) || entriesSum || ((Number(bill.grandTotal) || 0) - fee);
+    const grand = Number(bill.grandTotal) || (direct + fee);
+    const feePct = direct > 0 ? Math.round(fee / direct * 100) : _pmFeePct();
+    const m = _pmWeekStatusMeta(bill.status);
+    let html = `<div class="pmw-ro-head">
+        <button class="pmw-ro-back" onclick="pmWeekBackToToday()">← Back to today</button>
+        <span class="pmw-hist-pill" style="background:${m.bg};color:${m.color};border-color:${m.border};"><span class="pmw-hist-dot" style="background:${m.dot};"></span>${m.label}</span>
+      </div>
+      <div class="pmw-title" style="margin-bottom:2px;">${_esc(_pmFriLabel(bill.weekEndingDate))}</div>
+      <div class="pmw-intro">Bill already sent to the client — view only.</div>`;
+    // category filter tabs (same behaviour as the editable view)
+    if (entries.length) {
+        const tabs = [['all', 'All'], ['labor', 'Labor'], ['materials', 'Materials'], ['both', 'Mat + Labor']];
+        const tcol = { all: '#1c1c1a', labor: '#0f6342', materials: '#3f4d5e', both: '#5b3f96' };
+        html += '<div class="pmw-viewtabs" style="margin:4px 0 14px;">' + tabs.map(([f, l]) => {
+            const a = _pmWeekViewFilter === f;
+            return `<button class="${a ? 'active' : ''}"${a ? ` style="color:${tcol[f]};"` : ''} onclick="pmWeekViewFilter('${f}')">${l}</button>`;
+        }).join('') + '</div>';
     }
-    host.innerHTML = rows.map(r => `
-        <div class="pm-catlog-row">
-          <div class="pm-catlog-main">
-            <div class="pm-catlog-details">${_esc(r.details || '—')}</div>
-            <div class="pm-catlog-date">${_pmShortDate(r.date)}${r.days ? ' · ' + r.days + ' day' + (r.days === 1 ? '' : 's') : ''}${r.qty ? ' · ' + r.qty + ' ' + _esc(r.unit || 'pcs') : ''}</div>
-          </div>
-          <span class="pm-catlog-amt num">${_pmPeso(r.amount)}</span>
-        </div>`).join('');
+    let first = true, shown = 0;
+    _PMW_GROUP_TYPES.forEach(type => {
+        const list = entries.map((e, i) => ({ e, i })).filter(x => x.e.type === type);
+        if (!list.length || (_pmWeekViewFilter !== 'all' && _pmWeekViewFilter !== type)) return;
+        const sum = list.reduce((s, x) => s + (Number(x.e.amount) || 0), 0);
+        html += _pmWeekGroupHead(type, null, sum, !first);
+        html += list.map(x => _pmWeekRoRow(x.e, bill.id, x.i)).join('');
+        first = false; shown++;
+    });
+    if (entries.length && !shown) html += '<div class="pmw-empty-box">No entries in this view.</div>';
+    if (!entries.length) {  // legacy bill without an entries[] array
+        if (bill.labor)     { html += _pmWeekGroupHead('labor', null, Number(bill.labor) || 0, false) + `<div class="pmw-entry ro" style="border-left:3px solid #157a52;"><div class="pmw-entry-main"><div class="pmw-entry-details">Labor total</div></div><span class="pmw-entry-amt num">${_pmPeso(bill.labor)}</span></div>`; }
+        if (bill.materials) { html += _pmWeekGroupHead('materials', null, Number(bill.materials) || 0, !!bill.labor) + `<div class="pmw-entry ro" style="border-left:3px solid #5b6b7e;"><div class="pmw-entry-main"><div class="pmw-entry-details">Materials total</div></div><span class="pmw-entry-amt num">${_pmPeso(bill.materials)}</span></div>`; }
+    }
+    html += `<div class="pmw-total-row"><span>Direct cost</span><span class="num">${_pmPeso(direct)}</span></div>
+      <div class="pmw-fee ro"><div class="pmw-fee-title" style="color:#5b6b7e;">Management fee · ${feePct}%</div><span class="num" style="color:#5b6b7e;font-weight:700;">${_pmPeso(fee)}</span></div>
+      <div class="pmw-grand"><span>Grand total</span><span class="num">${_pmPeso(grand)}</span></div>
+      <button class="pmw-print" onclick="window.print()">Print this bill</button>`;
+    host.innerHTML = html;
 }
 
 window.pmWeekSave = async function() {
