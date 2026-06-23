@@ -1368,7 +1368,7 @@
           <!-- Tab bar -->
           <div class="pm-ws-tabs">
             <button class="pm-ws-tab active" id="pm-ws-tab-overview"  onclick="pmWsTab('overview',this)">Overview</button>
-            <button class="pm-ws-tab"        id="pm-ws-tab-week"      onclick="pmWsTab('week',this)">This Week</button>
+            <button class="pm-ws-tab"        id="pm-ws-tab-week"      onclick="pmWsTab('week',this)">Daily</button>
             <button class="pm-ws-tab"        id="pm-ws-tab-materials" onclick="pmWsTab('materials',this)">Materials</button>
             <button class="pm-ws-tab"        id="pm-ws-tab-progress"  onclick="pmWsTab('progress',this)">Progress</button>
             <button class="pm-ws-tab"        id="pm-ws-tab-money"     onclick="pmWsTab('money',this)">Money</button>
@@ -1382,32 +1382,66 @@
           <!-- ── This Week Panel (inline bill builder) ── -->
           <div class="pm-ws-panel" id="ws-panel-week">
             <div class="pm-week-grid">
-              <!-- main: build this week's bill -->
+              <!-- main: build the daily bill -->
               <div class="pm-week-main">
                 <div class="pm-week-head">
-                  <div class="pm-card-title">This week's bill</div>
+                  <div class="pm-card-title">Daily bill</div>
                   <div class="pm-week-nav">
-                    <button onclick="pmWeekShift(-1)" aria-label="Previous week">←</button>
+                    <button onclick="pmWeekShift(-1)" aria-label="Previous day">←</button>
                     <span id="pm-week-date" class="num">—</span>
-                    <button onclick="pmWeekShift(1)" aria-label="Next week">→</button>
+                    <button onclick="pmWeekShift(1)" aria-label="Next day">→</button>
                   </div>
                 </div>
-                <div class="pm-week-intro">Add each cost as Labor or Materials with details. The subtotals, 15% fee and grand total update by themselves.</div>
+                <!-- category tabs -->
+                <div class="pm-week-cattabs">
+                  <button class="pm-week-cattab active" id="pm-week-cattab-labor"     onclick="pmWeekSetCat('labor')">Labor</button>
+                  <button class="pm-week-cattab"        id="pm-week-cattab-materials" onclick="pmWeekSetCat('materials')">Materials</button>
+                  <button class="pm-week-cattab"        id="pm-week-cattab-both"      onclick="pmWeekSetCat('both')">Mat + Labor</button>
+                </div>
+                <div class="pm-week-intro" id="pm-week-intro">Adding <strong>Labor</strong> lines — switch tabs for other categories. Totals below combine all three.</div>
 
-                <!-- add entry -->
+                <!-- add entry (category set by the active tab above) -->
                 <div class="pm-week-addbox">
                   <div class="pm-week-addrow">
-                    <select class="pm-wf pm-wf-type" id="pm-week-type">
-                      <option value="labor">Labor</option>
-                      <option value="materials">Materials</option>
-                      <option value="both">Materials &amp; Labor</option>
-                    </select>
-                    <input class="pm-wf pm-wf-details" id="pm-week-details" placeholder="Details — e.g. 6 masons × 5 days">
+                    <input class="pm-wf pm-wf-details" id="pm-week-details" placeholder="Details — e.g. 6 masons">
+                    <div class="pm-wf-days-wrap" id="pm-week-days-wrap">
+                      <input class="pm-wf-days num" id="pm-week-days" inputmode="numeric" placeholder="0" onkeydown="if(event.key==='Enter')pmWeekAddEntry()">
+                      <span class="pm-wf-days-label">days</span>
+                    </div>
+                    <div class="pm-wf-qty-wrap" id="pm-week-qty-wrap">
+                      <input class="pm-wf-qty num" id="pm-week-qty" inputmode="numeric" placeholder="0" onkeydown="if(event.key==='Enter')pmWeekAddEntry()">
+                      <select class="pm-wf-unit" id="pm-week-unit" aria-label="Unit">
+                        <option value="pcs">pcs</option>
+                        <option value="set">set</option>
+                        <option value="lot">lot</option>
+                        <option value="bag">bag</option>
+                        <option value="sack">sack</option>
+                        <option value="kg">kg</option>
+                        <option value="lbs">lbs</option>
+                        <option value="m">m</option>
+                        <option value="ft">ft</option>
+                        <option value="sq.m">sq.m</option>
+                        <option value="cu.m">cu.m</option>
+                        <option value="L">L</option>
+                        <option value="gal">gal</option>
+                        <option value="roll">roll</option>
+                        <option value="sheet">sheet</option>
+                        <option value="can">can</option>
+                        <option value="box">box</option>
+                        <option value="bundle">bundle</option>
+                      </select>
+                    </div>
                     <div class="pm-wf-amount-wrap">
                       <span class="pm-wf-peso">₱</span>
                       <input class="pm-wf-amount num" id="pm-week-amount" inputmode="numeric" placeholder="0" onkeydown="if(event.key==='Enter')pmWeekAddEntry()">
                     </div>
-                    <button class="pm-wf-add" onclick="pmWeekAddEntry()">+ Add</button>
+                    <input type="file" id="pm-week-receipt-input" accept="image/*" style="display:none" onchange="pmWeekStageReceipt(this)">
+                    <button class="pm-wf-attach" id="pm-week-attach-btn" type="button" title="Attach receipt image" onclick="document.getElementById('pm-week-receipt-input').click()">
+                      <i data-lucide="paperclip" style="width:14px;height:14px;"></i> Receipt
+                    </button>
+                    <div class="pm-wf-attach-thumb" id="pm-week-attach-thumb" style="display:none"></div>
+                    <button class="pm-wf-add" id="pm-week-add-btn" onclick="pmWeekAddEntry()">+ Add</button>
+                    <button class="pm-wf-cancel" id="pm-week-cancel-btn" type="button" style="display:none" onclick="pmWeekCancelEdit()">Cancel</button>
                   </div>
                 </div>
 
@@ -1430,10 +1464,12 @@
                 <button class="pm-week-save" id="pm-week-save-btn" onclick="pmWeekSave()">Save &amp; send to client →</button>
               </div>
 
-              <!-- side: past weeks -->
+              <!-- side: past days -->
               <div class="pm-week-side">
-                <div class="pm-week-side-title">Past weeks</div>
+                <div class="pm-week-side-title">Past days</div>
                 <div id="pm-week-history"><div class="pm-week-empty">Loading…</div></div>
+                <div class="pm-week-side-title" id="pm-week-cathist-title" style="margin-top:22px;">Past Labor entries</div>
+                <div id="pm-week-cathist"><div class="pm-week-empty">—</div></div>
               </div>
             </div>
           </div><!-- /ws-panel-week -->

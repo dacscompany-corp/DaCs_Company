@@ -25,6 +25,9 @@ let _pmWeekBills      = [];       // all weeklyBills docs for the active project
 let _pmWeekEntries    = [];       // current draft line entries {id,type,details,amount}
 let _pmWeekDate       = null;     // selected Friday (YYYY-MM-DD)
 let _pmWeekEditingId  = null;     // doc id when the selected week already has a saved bill
+let _pmWeekCat        = 'labor';  // active category tab: 'labor' | 'materials' | 'both'
+let _pmWeekStagedReceipt = null;  // { file, dataUrl } staged in the add-row, attached to the next line
+let _pmWeekEditEntryId   = null;  // id of the entry currently loaded into the add-row for editing
 
 // ── Init ────────────────────────────────────────────────
 window.initPMModule = async function(view) {
@@ -633,7 +636,7 @@ window.pmOpenProject = function(p) {
     _pmActiveProject = _pmProjects.find(pr => pr.id === p.id) || p;
     localStorage.setItem('pm_selected_project', p.id);
     // Fresh "This Week" draft for the newly opened project.
-    _pmWeekDate = null; _pmWeekBills = []; _pmWeekEntries = []; _pmWeekEditingId = null;
+    _pmWeekDate = null; _pmWeekBills = []; _pmWeekEntries = []; _pmWeekEditingId = null; _pmWeekCat = 'labor'; _pmWeekStagedReceipt = null; _pmWeekEditEntryId = null;
     // Reset workspace to weekly tab
     document.querySelectorAll('.pm-ws-tab').forEach((t,i)  => t.classList.toggle('active', i===0));
     document.querySelectorAll('.pm-ws-panel').forEach((pn,i) => pn.classList.toggle('active', i===0));
@@ -991,22 +994,32 @@ function _pmShortDate(dateStr) {
     if (isNaN(d)) return '—';
     return d.toLocaleDateString('en-PH', { month:'short', day:'numeric' });
 }
+function _pmDateStr(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+function _pmToday() {
+    return _pmDateStr(new Date());
+}
 function _pmShiftDateStr(dateStr, days) {
-    const d = new Date((dateStr || _nextFriday()) + 'T00:00:00');
+    const d = new Date((dateStr || _pmToday()) + 'T00:00:00');
     d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0,10);
+    return _pmDateStr(d);
 }
 
 async function _pmLoadWeekBuilder() {
     if (!_pmActiveProject) {
         _pmWeekBills = []; _pmWeekEntries = []; _pmWeekEditingId = null;
         _pmSet('pm-week-date', '—');
-        _pmWeekRenderEntries(); _pmWeekRecompute();
+        _pmWeekRecompute();
         const hist = document.getElementById('pm-week-history');
         if (hist) hist.innerHTML = '<div class="pm-week-empty">Select a project first.</div>';
+        _pmWeekApplyCat();
         return;
     }
-    if (!_pmWeekDate) _pmWeekDate = _nextFriday();
+    if (!_pmWeekDate) _pmWeekDate = _pmToday();
     try {
         const snap = await db.collection('constructionProjects')
             .doc(_pmActiveProject.id)
@@ -1020,10 +1033,14 @@ async function _pmLoadWeekBuilder() {
     }
     _pmWeekSyncDraft();
     _pmWeekRenderHistory();
+    _pmWeekApplyCat();
 }
 
 // Load the saved bill for the selected Friday into the draft (or start empty).
 function _pmWeekSyncDraft() {
+    // Switching the loaded bill cancels any in-progress line edit.
+    _pmWeekEditEntryId = null; _pmWeekStagedReceipt = null;
+    _pmWeekSyncAddBtn();
     const bill = _pmWeekBills.find(b => b.weekEndingDate === _pmWeekDate);
     if (bill) {
         _pmWeekEditingId = bill.id;
@@ -1032,7 +1049,13 @@ function _pmWeekSyncDraft() {
                 id: _pmUid('we_'),
                 type: (e.type === 'materials' || e.type === 'both') ? e.type : 'labor',
                 details: e.details || '',
-                amount: Number(e.amount) || 0
+                amount: Number(e.amount) || 0,
+                days: Number(e.days) || 0,
+                qty: Number(e.qty) || 0,
+                unit: e.unit || '',
+                receiptUrl: e.receiptUrl || '',
+                receiptDataUrl: '',
+                receiptFile: null
             }));
         } else {
             // Legacy doc with only labor/materials totals — synthesize two lines.
@@ -1046,13 +1069,13 @@ function _pmWeekSyncDraft() {
     }
     _pmSet('pm-week-date', _pmFriLabel(_pmWeekDate));
     const saveBtn = document.getElementById('pm-week-save-btn');
-    if (saveBtn) saveBtn.textContent = _pmWeekEditingId ? "Update this week's bill" : 'Save & send to client →';
+    if (saveBtn) saveBtn.textContent = _pmWeekEditingId ? 'Update daily bill' : 'Save & send to client →';
     _pmWeekRenderEntries();
     _pmWeekRecompute();
 }
 
 window.pmWeekShift = function(delta) {
-    _pmWeekDate = _pmShiftDateStr(_pmWeekDate, delta * 7);
+    _pmWeekDate = _pmShiftDateStr(_pmWeekDate, delta);
     _pmWeekSyncDraft();
 };
 
@@ -1064,49 +1087,203 @@ window.pmWeekLoadBill = function(id) {
 };
 
 window.pmWeekAddEntry = function() {
-    const typeEl = document.getElementById('pm-week-type');
     const detEl  = document.getElementById('pm-week-details');
     const amtEl  = document.getElementById('pm-week-amount');
-    const raw    = typeEl ? typeEl.value : 'labor';
-    const type   = (raw === 'materials' || raw === 'both') ? raw : 'labor';
+    const daysEl = document.getElementById('pm-week-days');
+    const qtyEl  = document.getElementById('pm-week-qty');
+    const unitEl = document.getElementById('pm-week-unit');
+    const type   = _pmWeekCat;   // category comes from the active tab
     const details= (detEl ? detEl.value : '').trim();
     const amount = amtEl ? (parseInt(String(amtEl.value).replace(/[^0-9]/g,''), 10) || 0) : 0;
+    // Days is Labor-only; quantity + unit is Materials-only. Both are purely
+    // informational and don't affect the amount/totals.
+    const days   = (type === 'labor' && daysEl) ? (parseInt(String(daysEl.value).replace(/[^0-9]/g,''), 10) || 0) : 0;
+    const qty    = (type === 'materials' && qtyEl) ? (parseInt(String(qtyEl.value).replace(/[^0-9]/g,''), 10) || 0) : 0;
+    const unit   = (type === 'materials' && unitEl) ? unitEl.value : '';
     if (amount <= 0) { if (amtEl) amtEl.focus(); return; }
     const fallbackDetails = type === 'labor' ? 'Labor cost' : type === 'both' ? 'Materials & labor' : 'Materials';
-    _pmWeekEntries.push({ id:_pmUid('we_'), type, details: details || fallbackDetails, amount });
-    if (detEl) detEl.value = '';
-    if (amtEl) amtEl.value = '';
+    const rc = _receiptFromStaged(_pmWeekStagedReceipt);
+    if (_pmWeekEditEntryId) {
+        // Update the line in place.
+        const en = _pmWeekEntries.find(e => e.id === _pmWeekEditEntryId);
+        if (en) {
+            en.type = type; en.details = details || fallbackDetails; en.amount = amount;
+            en.days = days; en.qty = qty; en.unit = unit;
+            en.receiptFile = rc.receiptFile; en.receiptDataUrl = rc.receiptDataUrl; en.receiptUrl = rc.receiptUrl;
+        }
+        _pmWeekEditEntryId = null;
+    } else {
+        _pmWeekEntries.push({ id:_pmUid('we_'), type, details: details || fallbackDetails, amount, days, qty, unit, ...rc });
+    }
+    if (detEl)  detEl.value = '';
+    if (amtEl)  amtEl.value = '';
+    if (daysEl) daysEl.value = '';
+    if (qtyEl)  qtyEl.value = '';
+    pmWeekClearReceipt();
+    _pmWeekSyncAddBtn();
     _pmWeekRenderEntries();
     _pmWeekRecompute();
     if (detEl) detEl.focus();
 };
 
 window.pmWeekRemoveEntry = function(id) {
+    if (id === _pmWeekEditEntryId) pmWeekCancelEdit();  // abort edit if we're deleting that line
     _pmWeekEntries = _pmWeekEntries.filter(e => e.id !== id);
     _pmWeekRenderEntries();
     _pmWeekRecompute();
 };
 
+function _pmWeekCatLabel(cat) {
+    return cat === 'both' ? 'Mat + Labor' : cat === 'materials' ? 'Materials' : 'Labor';
+}
+
+// Switch the active category tab (click handler).
+window.pmWeekSetCat = function(cat) {
+    _pmWeekCat = (cat === 'materials' || cat === 'both') ? cat : 'labor';
+    _pmWeekApplyCat();
+    const det = document.getElementById('pm-week-details');
+    if (det) det.focus();
+};
+
+// Reflect _pmWeekCat in the UI (tab highlight, intro, lists) — no focus side-effect.
+function _pmWeekApplyCat() {
+    document.querySelectorAll('.pm-week-cattab').forEach(b => b.classList.remove('active'));
+    const tab = document.getElementById('pm-week-cattab-' + _pmWeekCat);
+    if (tab) tab.classList.add('active');
+    const intro = document.getElementById('pm-week-intro');
+    if (intro) intro.innerHTML =
+        `Adding <strong>${_pmWeekCatLabel(_pmWeekCat)}</strong> lines — switch tabs for other categories. Totals below combine all three.`;
+    // Days input is Labor-only; quantity + unit is Materials-only.
+    const daysWrap = document.getElementById('pm-week-days-wrap');
+    if (daysWrap) daysWrap.style.display = (_pmWeekCat === 'labor') ? '' : 'none';
+    const qtyWrap = document.getElementById('pm-week-qty-wrap');
+    if (qtyWrap) qtyWrap.style.display = (_pmWeekCat === 'materials') ? '' : 'none';
+    _pmWeekRenderEntries();
+    _pmWeekRenderCatHistory();
+    _pmWeekRenderAttach();
+}
+
+// ── per-line receipt image (Labor / Materials / Mat + Labor all support it) ──
+
+// Stage the chosen image in the add-row; it gets attached to the next line added.
+window.pmWeekStageReceipt = function(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { _pmToast('Please choose an image file.', true); input.value = ''; return; }
+    const reader = new FileReader();
+    reader.onload = e => { _pmWeekStagedReceipt = { file, dataUrl: e.target.result }; _pmWeekRenderAttach(); };
+    reader.readAsDataURL(file);
+};
+
+window.pmWeekClearReceipt = function() {
+    _pmWeekStagedReceipt = null;
+    const input = document.getElementById('pm-week-receipt-input');
+    if (input) input.value = '';
+    _pmWeekRenderAttach();
+};
+
+function _pmWeekRenderAttach() {
+    const btn   = document.getElementById('pm-week-attach-btn');
+    const thumb = document.getElementById('pm-week-attach-thumb');
+    if (!btn || !thumb) return;
+    if (_pmWeekStagedReceipt) {
+        btn.style.display = 'none';
+        thumb.style.display = 'flex';
+        thumb.innerHTML = `<img src="${_pmWeekStagedReceipt.dataUrl}" alt="receipt">
+            <button type="button" class="pm-wf-attach-x" title="Remove receipt" onclick="pmWeekClearReceipt()">×</button>`;
+    } else {
+        btn.style.display = '';
+        thumb.style.display = 'none';
+        thumb.innerHTML = '';
+    }
+    if (window.lucide) lucide.createIcons();
+}
+
+// View an entry's receipt (works for both not-yet-saved data URLs and saved URLs).
+window.pmWeekViewEntryReceipt = function(id) {
+    const e = _pmWeekEntries.find(x => x.id === id);
+    if (!e) return;
+    const src = e.receiptDataUrl || e.receiptUrl;
+    if (src) pmViewReceipt(src, e.details);
+};
+
+// Resolve the staged add-row receipt into an entry's three receipt fields.
+function _receiptFromStaged(s) {
+    if (!s) return { receiptFile: null, receiptDataUrl: '', receiptUrl: '' };
+    if (s.file) return { receiptFile: s.file, receiptDataUrl: s.dataUrl, receiptUrl: '' };
+    // No new file chosen — keep whatever the line already had.
+    return {
+        receiptFile:    s.existingFile || null,
+        receiptDataUrl: s.existingFile ? s.dataUrl : '',
+        receiptUrl:     s.existingUrl || ''
+    };
+}
+
+// Reflect add/edit mode on the action button (+ Add ↔ Save) and the Cancel button.
+function _pmWeekSyncAddBtn() {
+    const addBtn = document.getElementById('pm-week-add-btn');
+    const cancel = document.getElementById('pm-week-cancel-btn');
+    if (addBtn) addBtn.textContent = _pmWeekEditEntryId ? 'Save' : '+ Add';
+    if (cancel) cancel.style.display = _pmWeekEditEntryId ? '' : 'none';
+}
+
+// Load an existing line back into the add-row for editing.
+window.pmWeekEditEntry = function(id) {
+    const en = _pmWeekEntries.find(e => e.id === id);
+    if (!en) return;
+    _pmWeekEditEntryId = id;
+    _pmWeekCat = (en.type === 'materials' || en.type === 'both') ? en.type : 'labor';
+    _pmWeekStagedReceipt = (en.receiptUrl || en.receiptDataUrl || en.receiptFile)
+        ? { file: null, dataUrl: en.receiptDataUrl || en.receiptUrl, existingUrl: en.receiptUrl || '', existingFile: en.receiptFile || null }
+        : null;
+    _pmWeekApplyCat();   // tab highlight, field visibility, list, attach thumb
+    const detEl  = document.getElementById('pm-week-details'); if (detEl)  detEl.value  = en.details || '';
+    const amtEl  = document.getElementById('pm-week-amount');  if (amtEl)  amtEl.value  = en.amount || '';
+    const daysEl = document.getElementById('pm-week-days');    if (daysEl) daysEl.value = en.days || '';
+    const qtyEl  = document.getElementById('pm-week-qty');     if (qtyEl)  qtyEl.value  = en.qty || '';
+    const unitEl = document.getElementById('pm-week-unit');    if (unitEl && en.unit) unitEl.value = en.unit;
+    _pmWeekSyncAddBtn();
+    if (detEl) { detEl.focus(); detEl.scrollIntoView({ block: 'nearest' }); }
+};
+
+window.pmWeekCancelEdit = function() {
+    _pmWeekEditEntryId = null;
+    ['pm-week-details','pm-week-amount','pm-week-days','pm-week-qty'].forEach(id => {
+        const el = document.getElementById(id); if (el) el.value = '';
+    });
+    pmWeekClearReceipt();   // clears staged + re-renders the attach control
+    _pmWeekSyncAddBtn();
+};
+
 function _pmWeekRenderEntries() {
     const host = document.getElementById('pm-week-entries');
     if (!host) return;
-    if (!_pmWeekEntries.length) {
-        host.innerHTML = '<div class="pm-week-empty">No entries yet — add labor or materials above.</div>';
+    const list = _pmWeekEntries.filter(e => e.type === _pmWeekCat);
+    if (!list.length) {
+        host.innerHTML = `<div class="pm-week-empty">No ${_pmWeekCatLabel(_pmWeekCat).toLowerCase()} entries yet — add one above.</div>`;
         return;
     }
-    host.innerHTML = _pmWeekEntries.map(e => {
+    host.innerHTML = list.map(e => {
         const tag = e.type === 'both'
             ? '<span class="pm-week-entry-tag both">Mat + Labor</span>'
             : e.type === 'materials'
             ? '<span class="pm-week-entry-tag mat">Material</span>'
             : '<span class="pm-week-entry-tag labor">Labor</span>';
+        const daysChip = e.days ? `<span class="pm-week-entry-days">${e.days} day${e.days === 1 ? '' : 's'}</span>` : '';
+        const qtyChip  = e.qty  ? `<span class="pm-week-entry-days">${e.qty} ${_esc(e.unit || 'pcs')}</span>` : '';
+        const rcpt     = (e.receiptDataUrl || e.receiptUrl)
+            ? `<button class="pm-week-entry-rcpt" title="View receipt" onclick="pmWeekViewEntryReceipt('${e.id}')"><img src="${_esc(e.receiptDataUrl || e.receiptUrl)}" alt="receipt"></button>`
+            : '';
         return `<div class="pm-week-entry">
             ${tag}
             <span class="pm-week-entry-details">${_esc(e.details)}</span>
+            ${daysChip}${qtyChip}${rcpt}
             <span class="pm-week-entry-amt num">${_pmPeso(e.amount)}</span>
-            <button class="pm-week-entry-del" aria-label="Remove" onclick="pmWeekRemoveEntry('${e.id}')">×</button>
+            <button class="pm-week-entry-edit" aria-label="Edit" title="Edit" onclick="pmWeekEditEntry('${e.id}')"><i data-lucide="pencil" style="width:14px;height:14px;"></i></button>
+            <button class="pm-week-entry-del" aria-label="Remove" title="Remove" onclick="pmWeekRemoveEntry('${e.id}')">×</button>
         </div>`;
     }).join('');
+    if (window.lucide) lucide.createIcons();
 }
 
 function _pmWeekTotals() {
@@ -1139,7 +1316,7 @@ function _pmWeekRenderHistory() {
     if (!host) return;
     const bills = _pmWeekBills.slice().sort((a,b) => (b.weekEndingDate||'').localeCompare(a.weekEndingDate||''));
     if (!bills.length) {
-        host.innerHTML = '<div class="pm-week-empty">No past weeks yet.</div>';
+        host.innerHTML = '<div class="pm-week-empty">No past days yet.</div>';
         return;
     }
     const badge = (st) => st === 'Paid'
@@ -1157,24 +1334,79 @@ function _pmWeekRenderHistory() {
         </div>`).join('');
 }
 
+// Per-category log: every entry of the active category pulled from saved bills,
+// newest week first. Reads bill.entries[]; legacy bills with only labor/materials
+// totals (no entries array) don't contribute line-level history.
+function _pmWeekRenderCatHistory() {
+    const titleEl = document.getElementById('pm-week-cathist-title');
+    if (titleEl) titleEl.textContent = 'Past ' + _pmWeekCatLabel(_pmWeekCat) + ' entries';
+    const host = document.getElementById('pm-week-cathist');
+    if (!host) return;
+    const rows = [];
+    _pmWeekBills.slice()
+        .sort((a, b) => (b.weekEndingDate || '').localeCompare(a.weekEndingDate || ''))
+        .forEach(b => {
+            (Array.isArray(b.entries) ? b.entries : []).forEach(e => {
+                if (e.type === _pmWeekCat) rows.push({ date: b.weekEndingDate, details: e.details, amount: e.amount, days: Number(e.days) || 0, qty: Number(e.qty) || 0, unit: e.unit || '' });
+            });
+        });
+    if (!rows.length) {
+        host.innerHTML = `<div class="pm-week-empty">No past ${_pmWeekCatLabel(_pmWeekCat).toLowerCase()} entries.</div>`;
+        return;
+    }
+    host.innerHTML = rows.map(r => `
+        <div class="pm-catlog-row">
+          <div class="pm-catlog-main">
+            <div class="pm-catlog-details">${_esc(r.details || '—')}</div>
+            <div class="pm-catlog-date">${_pmShortDate(r.date)}${r.days ? ' · ' + r.days + ' day' + (r.days === 1 ? '' : 's') : ''}${r.qty ? ' · ' + r.qty + ' ' + _esc(r.unit || 'pcs') : ''}</div>
+          </div>
+          <span class="pm-catlog-amt num">${_pmPeso(r.amount)}</span>
+        </div>`).join('');
+}
+
 window.pmWeekSave = async function() {
     if (!_pmActiveProject) { alert('Please select a client project first.'); return; }
     if (!_pmWeekEntries.length) { alert('Add at least one labor or materials line first.'); return; }
-    const t = _pmWeekTotals();
-    const data = {
-        weekEndingDate: _pmWeekDate,
-        labor: t.labor,
-        materials: t.mats,              // client-facing, includes combined
-        combined: t.combined,          // supply & install portion (admin breakdown)
-        directCostTotal: t.direct,     // labor + materials; client prefers this field
-        managementFee: t.fee,
-        grandTotal: t.grand,
-        entries: _pmWeekEntries.map(e => ({ type:e.type, details:e.details, amount:e.amount })),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
     const btn = document.getElementById('pm-week-save-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    const pending = _pmWeekEntries.filter(e => e.receiptFile && !e.receiptUrl).length;
+    if (btn) { btn.disabled = true; btn.textContent = pending ? 'Uploading receipts…' : 'Saving…'; }
+    let rcptFails = 0;
     try {
+        // Upload any newly-attached receipt images to storage, fill in their URLs.
+        // A failed upload must NOT abort the save — the bill (line data) is what
+        // matters most, so we skip the failed image and warn afterward.
+        if (pending && typeof storage !== 'undefined') {
+            for (let i = 0; i < _pmWeekEntries.length; i++) {
+                const en = _pmWeekEntries[i];
+                if (en.receiptFile && !en.receiptUrl) {
+                    try {
+                        const ext = (en.receiptFile.name.split('.').pop() || 'jpg').toLowerCase();
+                        const path = `weeklyBillReceipts/${_pmActiveProject.id}/${_pmWeekDate}_${i}_${Date.now()}.${ext}`;
+                        const ref = storage.ref(path);
+                        await ref.put(en.receiptFile);
+                        en.receiptUrl = await ref.getDownloadURL();
+                    } catch (upErr) {
+                        console.warn('Receipt upload failed for line', i, '—', upErr.message);
+                        rcptFails++;
+                    }
+                }
+            }
+        }
+        const t = _pmWeekTotals();
+        const data = {
+            weekEndingDate: _pmWeekDate,
+            labor: t.labor,
+            materials: t.mats,              // client-facing, includes combined
+            combined: t.combined,          // supply & install portion (admin breakdown)
+            directCostTotal: t.direct,     // labor + materials; client prefers this field
+            managementFee: t.fee,
+            grandTotal: t.grand,
+            entries: _pmWeekEntries.map(e => ({ type:e.type, details:e.details, amount:e.amount,
+                ...(e.days ? { days:e.days } : {}),
+                ...(e.qty  ? { qty:e.qty, unit:e.unit || 'pcs' } : {}),
+                ...(e.receiptUrl ? { receiptUrl:e.receiptUrl } : {}) })),
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
         const col = db.collection('constructionProjects').doc(_pmActiveProject.id).collection('weeklyBills');
         if (_pmWeekEditingId) {
             await col.doc(_pmWeekEditingId).update(data);
@@ -1185,7 +1417,11 @@ window.pmWeekSave = async function() {
         }
         const wasEdit = !!_pmWeekEditingId;
         await _pmLoadWeekBuilder();
-        _pmToast(wasEdit ? 'Weekly bill updated' : 'Weekly bill saved & sent to client');
+        if (rcptFails) {
+            _pmToast(`Bill saved — but ${rcptFails} receipt${rcptFails === 1 ? '' : 's'} couldn't upload (storage permissions). Line data is safe.`, true);
+        } else {
+            _pmToast(wasEdit ? 'Daily bill updated' : 'Daily bill saved & sent to client');
+        }
     } catch(e) {
         _pmToast('Save failed: ' + e.message, true);
     } finally {
