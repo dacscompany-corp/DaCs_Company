@@ -1589,6 +1589,40 @@ body.dark-mode .rpt-kpi-grid5 {
     box-shadow: 0 2px 10px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.25);
 }
 
+<<<<<<< HEAD
+/* ============================================================
+   DARK MODE — additional gap fixes
+   Light pastel badges, action buttons, borders, and image
+   frames that previously stayed light when dark mode is on.
+============================================================ */
+
+/* Status badges (on every table row) */
+body.dark-mode .pr-status-pending   { background: rgba(245,158,11,0.15); color: #f0b95e; }
+body.dark-mode .pr-status-partial   { background: rgba(234,88,12,0.15);  color: #f0935e; }
+body.dark-mode .pr-status-submitted { background: rgba(59,130,246,0.15); color: #93c5fd; }
+body.dark-mode .pr-status-verified  { background: rgba(82,196,138,0.15); color: #5cbf88; }
+body.dark-mode .pr-status-rejected  { background: rgba(201,112,112,0.15); color: #c97878; }
+
+/* Reject / delete action buttons (were light red) */
+body.dark-mode .pr-btn-reject       { background: rgba(201,112,112,0.12); color: #c97878; }
+body.dark-mode .pr-btn-reject:hover { background: rgba(201,112,112,0.20); }
+body.dark-mode .pr-btn-delete       { background: rgba(201,112,112,0.08); border-color: rgba(201,112,112,0.28); color: #c97878; }
+body.dark-mode .pr-btn-delete:hover { background: rgba(201,112,112,0.16); border-color: rgba(201,112,112,0.40); }
+
+/* View button in reports table (was light mint) */
+body.dark-mode .rpt-view-btn        { background: rgba(82,196,138,0.10); border-color: rgba(82,196,138,0.28); color: #5cbf88; }
+body.dark-mode .rpt-view-btn:hover  { background: rgba(82,196,138,0.18); border-color: #00a85e; }
+
+/* Light borders / dividers */
+body.dark-mode .pr-table-wrap          { border-color: #2c3d35; }
+body.dark-mode .pr-detail-section-title { color: #7d9a8c; border-color: #2c3d35; }
+body.dark-mode .pr-detail-row          { border-color: #222d28; }
+
+/* Image / QR frames (were light gray borders) */
+body.dark-mode .pr-qr-preview-img,
+body.dark-mode .pr-qr-display img,
+body.dark-mode .pr-receipt-thumb       { border-color: #2c3d35; }
+=======
 /* ════════════════════════════════════════════════════════════
    Payment Requests reskin — PM Payment Requests.dc.html (scoped,
    appended last so it wins over the legacy .pr- rules above)
@@ -1672,3 +1706,4 @@ body.dark-mode .rpt-kpi-grid5 {
 #paymentRequestsView .pr-icon-danger:hover { border-color:#b4453a; color:#b4453a; background:#fdf6f5; }
 #paymentRequestsView .pr-attn-dot { position:absolute; top:-4px; right:-4px; width:9px; height:9px; border-radius:50%; background:#b4453a; border:2px solid #fff; }
 #paymentRequestsView .pr-attn-bang { position:absolute; top:-5px; right:-5px; width:15px; height:15px; border-radius:50%; background:#b4453a; color:#fff; font:800 9px 'IBM Plex Sans'; display:inline-flex; align-items:center; justify-content:center; }
+>>>>>>> 5e8c58babd0e42eb7461aceced3ec6056926e010

@@ -797,6 +797,44 @@ body.dark-mode .panel-badge-green   { background:rgba(0,168,94,0.12); }
 body.dark-mode .panel-badge-blue    { background:rgba(37,99,235,0.13); color:#93c5fd; }
 body.dark-mode .profile-role-badge  { background:rgba(0,168,94,0.13); color:#52c47a; }
 
+/* ── DARK MODE — additional gap fixes ──────────────────────
+   Light pastel icon tiles, status tags, error states and
+   dark-on-dark text that stayed light when dark mode is on. */
+
+/* Colored icon chips (activity / notification / stat / billing / kpi) */
+body.dark-mode .activity-dot-green, body.dark-mode .notif-icon-green,
+body.dark-mode .stat-card.budget .stat-icon, body.dark-mode .bsum-icon,
+body.dark-mode .kpi-icon                       { background:rgba(0,168,94,0.13); }
+body.dark-mode .activity-dot-blue,  body.dark-mode .notif-icon-blue,
+body.dark-mode .stat-card.progress .stat-icon, body.dark-mode .bsum-icon-blue,
+body.dark-mode .hero-kpi-card.design-progress .kpi-icon { background:rgba(37,99,235,0.13); }
+body.dark-mode .activity-dot-amber, body.dark-mode .notif-icon-amber,
+body.dark-mode .stat-card.usage .stat-icon, body.dark-mode .bsum-icon-amber,
+body.dark-mode .hero-kpi-card.recent-activity .kpi-icon { background:rgba(217,119,6,0.15); }
+
+/* Phase status tags (mirror the badge overrides) */
+body.dark-mode .phase-status-approved  { background:rgba(0,168,94,0.13);   color:#52c47a; }
+body.dark-mode .phase-status-submitted { background:rgba(37,99,235,0.13);  color:#93c5fd; }
+body.dark-mode .phase-status-draft     { background:rgba(107,114,128,0.15);color:#8fa89a; }
+
+/* Modal / BOQ inner elements */
+body.dark-mode .modal-icon          { background:rgba(231,76,60,0.15); }
+body.dark-mode .boq-view-photo-btn       { background:rgba(79,70,229,0.18); color:#a5b4fc; }
+body.dark-mode .boq-view-photo-btn:hover { background:rgba(79,70,229,0.30); }
+
+/* Dark-gray text on now-dark stat cards */
+body.dark-mode .stat-sub-info,
+body.dark-mode .stat-sub-amount     { color:#d4e4dc; }
+body.dark-mode .stat-sub-of         { color:#7d9a8c; }
+
+/* Inputs: stop the white flash on focus + invalid state */
+body.dark-mode input:focus          { background:#1a2420; }
+body.dark-mode input.input-invalid  { background:rgba(229,62,62,0.12) !important; }
+
+/* Error / login alert blocks */
+body.dark-mode .field-error,
+body.dark-mode .login-error         { background:rgba(229,62,62,0.10); color:#f08a8a; border-color:rgba(229,62,62,0.4); }
+
 /* ══════════════════════════════
    RESPONSIVE
 ══════════════════════════════ */

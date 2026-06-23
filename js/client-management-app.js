@@ -205,21 +205,30 @@ async function cmLoadProjectData(user) {
         window._clientOwnerUid = cmProjectData ? (cmProjectData.userId || cmProjectData.ownerUid || null) : null;
 
         if (cmProjectData) {
-            // Load weekly bills (exclude drafts)
+            // Load weekly bills. Read every bill (matching the admin overview, which
+            // applies no status filter) so the direct-cost breakdown — including the
+            // "Materials + labor" combined bucket — is identical to the admin's.
+            // Genuine drafts (status 'Draft'/'draft') are still excluded client-side.
             const billSnap = await db.collection('constructionProjects')
                 .doc(cmProjectData.id)
                 .collection('weeklyBills')
-                .where('status', 'in', ['Submitted', 'Paid', 'Overdue', 'Partial'])
                 .get();
             cmWeeklyBills = billSnap.docs.map(d => {
                 const data = { id: d.id, ...d.data() };
                 if (!data.totalDue && data.grandTotal) data.totalDue = data.grandTotal;
                 return data;
+            }).filter(b => {
+                const st = (b.status || '').toLowerCase();
+                return st !== 'draft';
             }).sort((a, b) => {
                 const ta = a.weekEndingDate?.toMillis?.() ?? (a.weekEndingDate ? new Date(a.weekEndingDate).getTime() : 0);
                 const tb = b.weekEndingDate?.toMillis?.() ?? (b.weekEndingDate ? new Date(b.weekEndingDate).getTime() : 0);
                 return tb - ta;
             });
+            // TEMP DIAGNOSTIC — verify combined data is loading. Remove once confirmed.
+            console.log('[partnership] project:', cmProjectData.id, cmProjectData.projectName || cmProjectData.clientName,
+                '| bills loaded:', cmWeeklyBills.length,
+                '| per-bill:', cmWeeklyBills.map(b => ({ week: b.weekEndingDate, status: b.status, labor: b.labor, materials: b.materials, combined: b.combined, hasEntries: Array.isArray(b.entries), bothEntries: Array.isArray(b.entries) ? b.entries.filter(e => e.type === 'both') : null })));
 
             // Load revolving fund
             const rfSnap = await db.collection('constructionProjects')
@@ -2575,6 +2584,86 @@ function cmWeekRange(end) {
         : `${M[s.getMonth()]} ${s.getDate()}–${M[e.getMonth()]} ${e.getDate()}`;
 }
 
+// ── Direct-cost breakdown (admin parity) ──────────────────────────────
+// IDENTICAL to the admin's _pmOvBreakdown so the partnership shows the exact
+// same Labor / Materials / "Materials + labor" figures. `materials` is stored
+// client-inclusive of any combined (supply & install) amount, so pure
+// materials = materials − combined; the combined bucket is reported on its own.
+function cmOvBreakdown(bills) {
+    let labor = 0, materials = 0, combined = 0;
+    (bills || []).forEach(b => {
+        // Prefer the stored `combined` field; for bills saved before it existed,
+        // derive it from the 'both' line entries (the stored `materials` folds it in).
+        let c = b.combined;
+        if (c == null && Array.isArray(b.entries)) {
+            c = b.entries.filter(e => e.type === 'both').reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        }
+        c = c || 0;
+        labor     += b.labor || 0;
+        combined  += c;
+        materials += Math.max(0, (b.materials || 0) - c);
+    });
+    const direct = labor + materials + combined;
+    const pct = v => direct > 0 ? Math.round(v / direct * 100) : 0;
+    return { labor, materials, combined, direct,
+             laborPct: pct(labor), matPct: pct(materials), combinedPct: pct(combined) };
+}
+
+function cmOvWeekLabel(dateStr) {
+    if (!dateStr) return '—';
+    const d = new Date(dateStr + 'T00:00:00');
+    return isNaN(d) ? dateStr : d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Filter the stored weekly bills by the selected billing-week mode.
+function cmOvFilterBills(mode) {
+    const all = cmWeeklyBills || [];
+    if (mode === 'all') return all;
+    if (mode === 'month') {
+        const now = new Date();
+        const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        return all.filter(b => (b.weekEndingDate || '').startsWith(ym));
+    }
+    const dated = all.filter(b => b.weekEndingDate)
+        .slice().sort((a, b) => b.weekEndingDate.localeCompare(a.weekEndingDate));
+    if (mode === 'latest') return dated.slice(0, 1);
+    if (mode === 'last4')  return dated.slice(0, 4);
+    return all.filter(b => b.weekEndingDate === mode);   // a specific week
+}
+
+// Recompute the breakdown card for the selected date range (no full re-render).
+window.cmOvApplyRange = function() {
+    const sel = document.getElementById('cm-ov-range');
+    if (!sel) return;
+    const mode  = sel.value;
+    const bills = cmOvFilterBills(mode);
+    const bd    = cmOvBreakdown(bills);
+    const setAmt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = cmFmt(val); };
+    const setPct = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = String(val); };
+    const setSeg = (id, pct, show) => { const el = document.getElementById(id); if (el) { el.style.width = pct + '%'; el.style.minWidth = show ? '6px' : '0'; } };
+    setAmt('cm-ov-direct',    bd.direct);
+    setAmt('cm-ov-labor',     bd.labor);
+    setAmt('cm-ov-materials', bd.materials);
+    setAmt('cm-ov-combined',  bd.combined);
+    setPct('cm-ov-labor-pct',     bd.laborPct);
+    setPct('cm-ov-materials-pct', bd.matPct);
+    setPct('cm-ov-combined-pct',  bd.combinedPct);
+    setSeg('cm-ov-seg-labor',     bd.laborPct,    bd.labor > 0);
+    setSeg('cm-ov-seg-materials', bd.matPct,      bd.materials > 0);
+    setSeg('cm-ov-seg-combined',  bd.combinedPct, bd.combined > 0);
+
+    const note = document.getElementById('cm-ov-range-note');
+    if (note) {
+        const wk = bills.length + ' week' + (bills.length === 1 ? '' : 's');
+        const label = mode === 'all'    ? 'All time'
+            : mode === 'month'  ? 'This month'
+            : mode === 'latest' ? 'Latest week'
+            : mode === 'last4'  ? 'Last 4 weeks'
+            : 'Week ending ' + cmOvWeekLabel(mode);
+        note.textContent = label + ' · ' + wk;
+    }
+};
+
 function cmRenderOverview() {
     const host = document.getElementById('kpi-project-folder');
     if (!host) return;
@@ -2596,6 +2685,13 @@ function cmRenderOverview() {
     const range     = latest ? cmWeekRange(latest.weekEndingDate) : '';
     const status    = latest ? (latest.status || 'Submitted') : '';
     const duePill   = status === 'Paid' ? 'PAID' : status === 'Overdue' ? 'OVERDUE' : 'DUE';
+
+    // Direct-cost breakdown (admin parity) — all-time across every weekly bill
+    const ovBd      = cmOvBreakdown(cmWeeklyBills);
+    const ovWeeks   = (cmWeeklyBills || []).filter(b => b.weekEndingDate)
+        .slice().sort((a, b) => b.weekEndingDate.localeCompare(a.weekEndingDate));
+    const ovWeekOpts = ovWeeks.map(b =>
+        `<option value="${cmEsc(b.weekEndingDate)}">Week ending ${cmEsc(cmOvWeekLabel(b.weekEndingDate))}</option>`).join('');
 
     // Revolving fund
     const rf      = cmRevolvingFund;
@@ -2655,31 +2751,76 @@ function cmRenderOverview() {
 
     const card = 'background:#fff;border-radius:20px;padding:24px;box-shadow:0 1px 3px rgba(20,25,40,0.06);';
 
+    // ── Direct cost breakdown card (purple hero theme: period selector + proportion bar + 3 split boxes) ──
+    const ovSelStyle = "font-size:12px !important;font-weight:700 !important;color:#5b5bd6 !important;border:none !important;border-radius:10px !important;padding:8px 32px 8px 14px !important;background-color:#fff !important;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235b5bd6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\") !important;background-repeat:no-repeat !important;background-position:right 12px center !important;-webkit-appearance:none !important;-moz-appearance:none !important;appearance:none !important;cursor:pointer;box-shadow:0 2px 6px rgba(20,25,40,0.12);";
+    const ovLegendBox = (label, swatch, amtId, pctId, val, pct) => `
+        <div style="flex:1 1 160px;min-width:0;display:flex;flex-direction:column;gap:8px;padding:14px 16px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);border-radius:13px;">
+            <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+                <span style="width:10px;height:10px;border-radius:3px;background:${swatch};flex:none;"></span>
+                <span style="font-size:12px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</span>
+            </div>
+            <div id="${amtId}" style="font-size:18px;font-weight:800;color:#fff;line-height:1;letter-spacing:-0.01em;white-space:nowrap;">${cmFmt(val)}</div>
+            <div style="font-size:10.5px;color:rgba(255,255,255,0.72);white-space:nowrap;"><span id="${pctId}">${pct}</span>% of direct cost</div>
+        </div>`;
+    const breakdownCard = `
+    <div style="background:#5b5bd6;border-radius:20px;padding:24px;color:#fff;box-shadow:0 18px 36px -16px rgba(91,91,214,0.5);">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;">
+            <div>
+                <div style="font-size:16px;font-weight:800;color:#fff;">Direct cost breakdown</div>
+                <div id="cm-ov-range-note" style="font-size:11.5px;color:rgba(255,255,255,0.8);margin-top:2px;">All time · ${(cmWeeklyBills||[]).length} week${(cmWeeklyBills||[]).length === 1 ? '' : 's'}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:11px;">
+                <div style="display:flex;align-items:baseline;gap:7px;">
+                    <span id="cm-ov-direct" style="font-size:21px;font-weight:800;color:#fff;line-height:1;white-space:nowrap;">${cmFmt(ovBd.direct)}</span>
+                    <span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.8);">total</span>
+                </div>
+                <select id="cm-ov-range" onchange="cmOvApplyRange()" style="${ovSelStyle}">
+                    <option value="all" style="color:#1a1d24;">All time</option>
+                    <option value="month" style="color:#1a1d24;">This month</option>
+                    <option value="latest" style="color:#1a1d24;">Latest week</option>
+                    <option value="last4" style="color:#1a1d24;">Last 4 weeks</option>
+                    ${ovWeeks.length ? '<option disabled>──────────</option>' + ovWeekOpts.replace(/<option /g, '<option style="color:#1a1d24;" ') : ''}
+                </select>
+            </div>
+        </div>
+        <div style="display:flex;height:16px;gap:3px;margin-bottom:16px;background:rgba(255,255,255,0.15);border-radius:99px;padding:0;">
+            <div id="cm-ov-seg-labor"     style="width:${ovBd.laborPct}%;background:#5fd0a0;border-radius:99px;${ovBd.labor    > 0 ? 'min-width:6px;' : ''}transition:width .25s ease;"></div>
+            <div id="cm-ov-seg-materials" style="width:${ovBd.matPct}%;background:#f5c560;border-radius:99px;${ovBd.materials > 0 ? 'min-width:6px;' : ''}transition:width .25s ease;"></div>
+            <div id="cm-ov-seg-combined"  style="width:${ovBd.combinedPct}%;background:#c3adf0;border-radius:99px;${ovBd.combined > 0 ? 'min-width:6px;' : ''}transition:width .25s ease;"></div>
+        </div>
+        <div style="display:flex;gap:13px;flex-wrap:wrap;">
+            ${ovLegendBox('Labor',             '#5fd0a0', 'cm-ov-labor',     'cm-ov-labor-pct',     ovBd.labor,     ovBd.laborPct)}
+            ${ovLegendBox('Materials',         '#f5c560', 'cm-ov-materials', 'cm-ov-materials-pct', ovBd.materials, ovBd.matPct)}
+            ${ovLegendBox('Materials + labor', '#c3adf0', 'cm-ov-combined',  'cm-ov-combined-pct',  ovBd.combined,  ovBd.combinedPct)}
+        </div>
+    </div>`;
+
     host.innerHTML = `
     <div style="margin-bottom:26px;">
         <div style="font-size:28px;font-weight:800;letter-spacing:-0.02em;color:#1a1d24;">Overview</div>
         <div style="font-size:14px;color:#8b91a0;margin-top:3px;">Hello, ${cmEsc(first)}. Here's where the project stands today.</div>
     </div>
 
-    <div class="cm-ov-row1" style="display:grid;grid-template-columns:1.55fr 1fr;gap:24px;">
-        <!-- Hero bill -->
+    <div class="cm-ov-row1" style="display:grid;grid-template-columns:1.55fr 1fr;gap:24px;align-items:start;">
+        <!-- Hero: partner → direct cost breakdown · client → weekly bill -->
+        ${partner ? breakdownCard : `
         <div style="background:#5b5bd6;border-radius:20px;padding:22px 24px;color:#fff;box-shadow:0 18px 36px -16px rgba(91,91,214,0.5);">
             <div style="display:flex;align-items:center;justify-content:space-between;">
-                <span style="font-size:12.5px;font-weight:600;opacity:0.88;">${partner ? "This week's cost" : "This week's bill"}</span>
-                ${(latest && !partner) ? `<span style="font-size:10.5px;font-weight:700;background:rgba(255,255,255,0.2);padding:4px 11px;border-radius:20px;">${duePill}</span>` : ''}
+                <span style="font-size:12.5px;font-weight:600;opacity:0.88;">This week's bill</span>
+                ${latest ? `<span style="font-size:10.5px;font-weight:700;background:rgba(255,255,255,0.2);padding:4px 11px;border-radius:20px;">${duePill}</span>` : ''}
             </div>
-            <div style="font-size:40px;font-weight:800;letter-spacing:-0.02em;margin-top:10px;">${cmFmt(partner ? direct : total)}</div>
-            <div style="font-size:12.5px;opacity:0.85;margin-top:4px;">${latest ? 'Week of ' + cmEsc(range) + (partner ? ' · labor + materials' : ' · direct costs + ' + cmBillPct(latest) + '% fee') : 'No bill submitted yet'}</div>
+            <div style="font-size:40px;font-weight:800;letter-spacing:-0.02em;margin-top:10px;">${cmFmt(total)}</div>
+            <div style="font-size:12.5px;opacity:0.85;margin-top:4px;">${latest ? 'Week of ' + cmEsc(range) + ' · direct costs + ' + cmBillPct(latest) + '% fee' : 'No bill submitted yet'}</div>
             <div style="display:flex;gap:24px;margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,0.18);">
                 <div><div style="font-size:11px;opacity:0.78;">Labor</div><div style="font-size:15px;font-weight:700;margin-top:2px;">${cmFmt(labor)}</div></div>
                 <div><div style="font-size:11px;opacity:0.78;">Materials</div><div style="font-size:15px;font-weight:700;margin-top:2px;">${cmFmt(materials)}</div></div>
-                ${partner ? '' : `<div><div style="font-size:11px;opacity:0.78;">Fee · ${cmBillPct(latest)}%</div><div style="font-size:15px;font-weight:700;margin-top:2px;">${cmFmt(fee)}</div></div>`}
+                <div><div style="font-size:11px;opacity:0.78;">Fee · ${cmBillPct(latest)}%</div><div style="font-size:15px;font-weight:700;margin-top:2px;">${cmFmt(fee)}</div></div>
             </div>
             <div style="display:flex;gap:10px;margin-top:18px;">
                 <button onclick="showSection('weekly-billing')" style="flex:1;border:none;background:#fff;color:#5b5bd6;font-size:13.5px;font-weight:700;padding:12px;border-radius:12px;cursor:pointer;">View Weekly Summary</button>
-                ${partner ? '' : `<button onclick="showSection('billing')" style="border:1px solid rgba(255,255,255,0.4);background:none;color:#fff;font-size:13.5px;font-weight:700;padding:12px 20px;border-radius:12px;cursor:pointer;">Payments</button>`}
+                <button onclick="showSection('billing')" style="border:1px solid rgba(255,255,255,0.4);background:none;color:#fff;font-size:13.5px;font-weight:700;padding:12px 20px;border-radius:12px;cursor:pointer;">Payments</button>
             </div>
-        </div>
+        </div>`}
         <!-- Right stack -->
         <div style="display:flex;flex-direction:column;gap:24px;">
             ${partner ? '' : `<div style="${card}">
@@ -2697,6 +2838,8 @@ function cmRenderOverview() {
             </div>
         </div>
     </div>
+
+    ${partner ? '' : `<div style="margin-top:24px;">${breakdownCard}</div>`}
 
     <div class="cm-ov-row2" style="display:grid;grid-template-columns:${partner ? '1fr' : '1fr 1.2fr'};gap:24px;margin-top:24px;">
         ${partner ? '' : `<div style="${card}">
