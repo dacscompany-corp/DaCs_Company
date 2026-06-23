@@ -164,78 +164,39 @@ function _ovhdSetKpiTrend(elId, current, prev) {
 }
 
 // ── Category breakdown ─────────────────────────────────────────
+// Deterministic per-category color (consistent between the breakdown + the table).
+const _OVHD_PALETTE = ['#157a52','#c8a45a','#7f9cb0','#9fb98a','#b0907f','#8a7fb0','#5e9d80','#c0564a'];
+function _ovhdCatColor(name) {
+    let h = 0;
+    const s = String(name || '');
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return _OVHD_PALETTE[h % _OVHD_PALETTE.length];
+}
+
 function _ovhdRenderBreakdown(totals, grandTotal, prevTotals) {
     const container = document.getElementById('ovhdBreakdownList');
     if (!container) return;
 
-    // Build per-category counts from the current month's filtered expenses
-    const filtered = _ovhdExpenses.filter(ex => ex.date && String(ex.date).startsWith(_ovhdMonth));
-    const counts = {};
-    filtered.forEach(ex => {
-        const cat = ex.category || 'Uncategorized';
-        counts[cat] = (counts[cat] || 0) + 1;
-    });
-
     const cats = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
     if (!cats.length) {
-        container.innerHTML = '<p class="exp-empty-row">No expenses for this month.</p>';
+        container.innerHTML = '<p class="ovhd-empty-row">No expenses for this month.</p>';
         return;
     }
 
-    const COLORS = [
-        { border: '#059669', ico: '#059669', bg: '#ecfdf5', mini: '#059669' },
-        { border: '#2563eb', ico: '#2563eb', bg: '#eff6ff', mini: '#3b82f6' },
-        { border: '#7c3aed', ico: '#7c3aed', bg: '#f5f3ff', mini: '#a78bfa' },
-        { border: '#d97706', ico: '#d97706', bg: '#fffbeb', mini: '#fbbf24' },
-        { border: '#dc2626', ico: '#dc2626', bg: '#fef2f2', mini: '#f87171' },
-        { border: '#0891b2', ico: '#0891b2', bg: '#ecfeff', mini: '#22d3ee' },
-        { border: '#db2777', ico: '#db2777', bg: '#fdf2f8', mini: '#f472b6' },
-        { border: '#65a30d', ico: '#65a30d', bg: '#f7fee7', mini: '#a3e635' },
-    ];
-
-    const prevT = prevTotals || {};
-    container.innerHTML = `<div class="ovhd-cat-grid">${cats.map((cat, i) => {
-        const amt     = totals[cat];
-        const prev    = prevT[cat] || 0;
-        const pct     = grandTotal > 0 ? ((amt / grandTotal) * 100).toFixed(1) : '0.0';
-        const c       = COLORS[i % COLORS.length];
-        const trend   = _ovhdTrendHTML(amt, prev);
-        const count   = counts[cat] || 0;
-        const avg     = count > 0 ? amt / count : 0;
-        const prevLbl = prev > 0
-            ? `<span class="ovhd-prev-amt">vs ${_fmtAmt(prev)} last month</span>`
-            : `<span class="ovhd-prev-amt">No data last month</span>`;
+    // Simple bar list (PM Overhead.dc.html). Each row stays clickable → detail modal.
+    container.innerHTML = `<div class="ovhd-breakdown-list">${cats.map(cat => {
+        const amt    = totals[cat];
+        const pct    = grandTotal > 0 ? (amt / grandTotal) * 100 : 0;
+        const pctStr = pct.toFixed(1);
+        const color  = _ovhdCatColor(cat);
         return `
-        <div class="exp-cost-card ovhd-cat-card" style="border-left:3px solid ${c.border}">
-            <div class="exp-cost-head">
-                <span class="exp-cost-dot" style="width:10px;height:10px;border-radius:3px;background:${c.border};display:inline-block;flex-shrink:0;"></span>
-                <span class="exp-cost-tag">${_esc(cat)}</span>
+        <div class="ovhd-bd-row" onclick="openCategoryDetail('${_esc(cat)}','${color}')" title="View ${_esc(cat)} details">
+            <div class="ovhd-bd-top">
+                <span class="ovhd-bd-name"><span class="ovhd-bd-dot" style="background:${color}"></span>${_esc(cat)}</span>
+                <span class="ovhd-bd-amt">${_fmtAmt(amt)}</span>
             </div>
-            <div class="ovhd-cat-kpi-row">
-                <div class="ovhd-cat-kpi">
-                    <span class="ovhd-cat-kpi-label">Total Overhead</span>
-                    <span class="ovhd-cat-kpi-val" style="color:${c.border}">${_fmtAmt(amt)}</span>
-                </div>
-                <div class="ovhd-cat-kpi">
-                    <span class="ovhd-cat-kpi-label">Total Entries</span>
-                    <span class="ovhd-cat-kpi-val">${count}</span>
-                </div>
-                <div class="ovhd-cat-kpi">
-                    <span class="ovhd-cat-kpi-label">Average per Entry</span>
-                    <span class="ovhd-cat-kpi-val">${_fmtAmt(avg)}</span>
-                </div>
-            </div>
-            <div class="ovhd-trend-row">
-                ${trend}
-                ${prevLbl}
-            </div>
-            <div class="exp-cost-meta">${pct}% of total</div>
-            <div class="exp-cost-minibar">
-                <div class="exp-mini-fill" style="width:${pct}%;background:${c.mini}"></div>
-            </div>
-            <button class="ovhd-view-detail-btn" onclick="openCategoryDetail('${_esc(cat)}','${c.border}')">
-                View Details
-            </button>
+            <div class="ovhd-bd-track"><div class="ovhd-bd-fill" style="width:${pctStr}%;background:${color}"></div></div>
+            <div class="ovhd-bd-pct">${pctStr}% of total</div>
         </div>`;
     }).join('')}</div>`;
 }
@@ -258,7 +219,7 @@ function _ovhdRenderTable(filtered) {
         return `
         <tr>
             <td>${_esc(dateStr)}</td>
-            <td><span class="ovhd-cat-badge">${_esc(ex.category || 'Uncategorized')}</span></td>
+            <td><span class="ovhd-cat-badge" style="--ovhd-dot:${_ovhdCatColor(ex.category || 'Uncategorized')}">${_esc(ex.category || 'Uncategorized')}</span></td>
             <td>${_esc(ex.description || '—')}</td>
             <td class="ovhd-amt-cell">${_fmtAmt(parseFloat(ex.amount || 0))}</td>
             <td>

@@ -21,7 +21,8 @@
         }
         const anyReq = _requests.find(r => r.ownerUid);
         if (anyReq) return anyReq.ownerUid;
-        return window._clientOwnerUid || null;
+        const profileOwner = (typeof currentProfile !== 'undefined' && currentProfile?.ownerUid) || null;
+        return window._clientOwnerUid || profileOwner || null;
     }
 
     // Send an admin-side notification to the owner AND to every staff account
@@ -485,8 +486,10 @@
         // Ensure QR and proof sections are visible (they may have been hidden in partial-request mode)
         const qrSection    = document.getElementById('prQRSection');
         const proofSection = document.getElementById('prPaymentProofSection');
-        if (qrSection)    qrSection.style.display    = '';
+        if (qrSection)    qrSection.style.display    = (hasGcash || hasBank) ? '' : 'none';
         if (proofSection) proofSection.style.display  = '';
+        // Always start on Step 1 (details + terms).
+        prSelfPaySetStep(1);
 
         // Reset form
         const refInput = document.getElementById('prClientRefInput');
@@ -523,6 +526,46 @@
         document.getElementById('prTabGcash')?.classList.toggle('active', method === 'gcash');
         document.getElementById('prTabBank')?.classList.toggle('active',  method === 'bank');
     };
+
+    // ── Pay modal wizard: Step 1 (pay via QR) → Step 2 (details + submit) ──
+    // 3 steps: 1 = details + terms, 2 = pay (method + QR), 3 = proof (ref + receipt)
+    function prSelfPaySetStep(n) {
+        const set = (id, show) => { const e = document.getElementById(id); if (e) e.style.display = show ? '' : 'none'; };
+        set('prPayStep1',        n === 1);
+        set('prPayStep2',        n === 2);
+        set('prPayStep3',        n === 3);
+        set('prStep1NextBtn',    n === 1);   // footer: Continue (step 1)
+        set('prStep2NextBtn',    n === 2);   // footer: Continue (step 2)
+        set('prClientSubmitBtn', n === 3);   // footer: Submit Payment (step 3, gated by terms)
+    }
+    window.prSelfPayGoStep = function (n) { prSelfPaySetStep(n); };
+
+    // Step 1 → 2: validate details + require the Terms agreement.
+    // (A partial-approval request submits directly from step 1 — no QR/proof/terms.)
+    window.prStep1Next = function () {
+        const submitBtn = document.getElementById('prClientSubmitBtn');
+        if (submitBtn && submitBtn.dataset.mode === 'partial') { prClientHandlePayment(); return; }
+        const errDiv  = document.getElementById('prClientPayError');
+        const mark    = (id, on) => { const e = document.getElementById(id); if (e) e.style.borderColor = on ? '#dc2626' : ''; };
+        const showErr = (m, id) => { if (errDiv) { errDiv.textContent = m; errDiv.style.display = 'block'; } if (id) { mark(id, true); document.getElementById(id)?.focus?.(); } };
+        // reset error state each attempt
+        if (errDiv) errDiv.style.display = 'none';
+        mark('prClientAmountInput', false); mark('prSelfPayDesc', false); mark('prTCAgreeBox', false);
+
+        const amtRaw = (document.getElementById('prClientAmountInput')?.value || '').trim().replace(/,/g, '');
+        const amt    = parseFloat(amtRaw);
+        if (!amtRaw || isNaN(amt) || amt <= 0) return showErr('Please enter a valid payment amount.', 'prClientAmountInput');
+        const descWrap = document.getElementById('prSelfPayDescWrap');
+        if (descWrap && descWrap.style.display !== 'none') {
+            const desc = (document.getElementById('prSelfPayDesc')?.value || '').trim();
+            if (!desc) return showErr('Please enter a payment description.', 'prSelfPayDesc');
+        }
+        const cb = document.getElementById('prTCCheckbox');
+        if (!cb || !cb.checked) return showErr('Please agree to the Terms & Conditions to continue.', 'prTCAgreeBox');
+        prSelfPaySetStep(2);
+    };
+    // Step 2 → 3
+    window.prStep2Next = function () { prSelfPaySetStep(3); };
 
     window.prCheckPartialAmount = function () {
         const input        = document.getElementById('prClientAmountInput');
@@ -697,8 +740,13 @@
         if (errDiv) errDiv.style.display = 'none';
         const qrSection    = document.getElementById('prQRSection');
         const proofSection = document.getElementById('prPaymentProofSection');
-        if (qrSection)    qrSection.style.display    = '';
+        // Only show the "Scan to Pay" QR block when a company QR is configured;
+        // otherwise it's just an empty label.
+        if (qrSection)    qrSection.style.display    = (hasGcash || hasBank) ? '' : 'none';
         if (proofSection) proofSection.style.display  = '';
+
+        // Always start on Step 1 (details + terms).
+        prSelfPaySetStep(1);
 
         modal.style.display = 'flex';
     };
@@ -800,14 +848,26 @@
 
             if (_selfPayData !== null) {
                 // Self-initiated: create a new payment request
-                const profile  = typeof currentProfile !== 'undefined' ? currentProfile : {};
+                // currentProfile is the cost-plus portal's global; cmCurrentProfile is
+                // the construction portal's. Use whichever this page defines.
+                const profile  = (typeof currentProfile   !== 'undefined' && currentProfile)   ? currentProfile
+                               : (typeof cmCurrentProfile !== 'undefined' && cmCurrentProfile) ? cmCurrentProfile
+                               : {};
                 const user     = typeof currentUser    !== 'undefined' ? currentUser    : {};
                 const descVal  = (document.getElementById('prSelfPayDesc')?.value  || '').trim();
                 const monthVal = (document.getElementById('prSelfPayMonth')?.value || '').trim();
                 if (!descVal) { if (btn) { btn.disabled = false; btn.textContent = 'Submit Payment'; } return showErr('Please enter a payment description.'); }
+                // client_uid + owner_id are uuid columns — must be null (not '') when unknown.
+                // Owner falls back to the client's own profile owner so the payment isn't orphaned.
+                const _ownerUid = window._clientOwnerUid || profile.ownerUid || null;
+                // Construction portal (client-management-app.js defines cmProjectData):
+                // link the self-payment to the project so it surfaces — and gets verified —
+                // in the admin's Money → Payment table. The cost-plus portal leaves these unset.
+                const _consProj       = (typeof cmProjectData !== 'undefined' && cmProjectData) ? cmProjectData : null;
+                const _isConstruction = !!_consProj;
                 const newReq  = {
-                    kind:            'cost_plus',
-                    clientUid:       user.uid          || '',
+                    kind:            _isConstruction ? 'construction' : 'cost_plus',
+                    clientUid:       user.uid          || null,
                     clientEmail:     user.email        || '',
                     clientName:      (profile.firstName ? profile.firstName + ' ' + (profile.lastName || '') : user.email || '').trim(),
                     billingPeriod:   monthVal ? `${descVal} – ${monthVal}` : descVal,
@@ -818,7 +878,7 @@
                     status:          'submitted',
                     createdAt:       now,
                     createdBy:       user.email || '',
-                    ownerUid:        window._clientOwnerUid || '',
+                    ownerUid:        _ownerUid,
                     proofBase64,
                     referenceNumber,
                     paidAmount,
@@ -827,7 +887,18 @@
                     verifiedAt:      null,
                     verifiedBy:      null,
                     rejectedReason:  null,
-                    rejectedAt:      null
+                    rejectedAt:      null,
+                    // Construction-only: surface in the project's Money → Payment table.
+                    // weekEndingDate gives the row a date + sort key (stand-alone, not tied
+                    // to a weekly bill); amountPaid stays 0 until the admin approves the receipt.
+                    ...(_isConstruction ? {
+                        constructionProjectId: _consProj.id,
+                        source:                'self_payment',
+                        weekEndingDate:        new Date().toISOString().slice(0, 10),
+                        totalAmount:           paidAmount,
+                        amountPaid:            0,
+                        carryover:             0
+                    } : {})
                 };
                 const ref = await db.collection('paymentRequests').add(newReq);
                 _requests.unshift({ id: ref.id, ...newReq });
@@ -1676,6 +1747,8 @@ ${previewOnly ? `<div class="preview-bar"><span>Print Preview &mdash; Invoice ${
     window.prToggleTCSubmit = function () {
         const cb  = document.getElementById('prTCCheckbox');
         const btn = document.getElementById('prClientSubmitBtn');
+        const tcBox = document.getElementById('prTCAgreeBox');
+        if (tcBox && cb && cb.checked) tcBox.style.borderColor = '';   // clear the red highlight on agree
         if (!btn) return;
         const agreed = cb && cb.checked;
         btn.disabled       = !agreed;

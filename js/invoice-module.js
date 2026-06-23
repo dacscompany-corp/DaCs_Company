@@ -116,33 +116,39 @@
         _renderList();
     });
 
+    // Search state + avatar palette (PM Invoice Receipt.dc.html)
+    let _invSearch = '';
+    let _invSearchFocused = false;
+    function _invAvatar(i) {
+        const p = [['#eaf4ef','#157a52'],['#eef0f3','#5b6b7e'],['#f6efe0','#9a6b1f'],['#f2eef5','#7a5b95']];
+        return p[((i % p.length) + p.length) % p.length];
+    }
+    window.invFilter = function () {
+        const el = document.getElementById('invSearch');
+        _invSearch = el ? el.value : '';
+        _invSearchFocused = true;
+        _renderList();
+    };
+
+    // Inner invoice row inside an expanded client card (grid layout).
     function _invoiceRow(inv) {
+        const issued = inv.status === 'issued';
+        const pill = issued
+            ? `<span class="inv-pill inv-pill-issued"><span class="inv-pill-dot"></span>Issued</span>`
+            : `<span class="inv-pill inv-pill-draft"><span class="inv-pill-dot"></span>Draft</span>`;
         return `
-        <tr>
-            <td><span class="inv-no">${_esc(inv.invoiceNo || '—')}</span></td>
-            <td style="white-space:nowrap;">${inv.date ? _fmtDate(inv.date) : '—'}</td>
-            <td class="inv-amt">${_fmt(inv.totalAmount || 0)}</td>
-            <td>${_esc(inv.clientName || '—')}</td>
-            <td style="font-family:monospace;font-size:12px;">${_esc(inv.clientTin || '—')}</td>
-            <td class="inv-addr">${_esc(inv.clientAddress || '—')}</td>
-            <td><span class="inv-status inv-status--${inv.status || 'draft'}">${inv.status === 'issued' ? 'Issued' : 'Draft'}</span></td>
-            <td>
-                <div class="inv-actions">
-                    <button class="inv-action-btn" title="Print Preview" onclick="window.invPreview('${inv.id}')">
-                        <i data-lucide="eye" style="width:14px;height:14px;"></i>
-                    </button>
-                    <button class="inv-action-btn" title="Print" onclick="window.invPrint('${inv.id}')">
-                        <i data-lucide="printer" style="width:14px;height:14px;"></i>
-                    </button>
-                    <button class="inv-action-btn" title="Edit" onclick="window.invShowForm('${inv.id}')">
-                        <i data-lucide="pencil" style="width:14px;height:14px;"></i>
-                    </button>
-                    <button class="inv-action-btn inv-action-btn--danger" title="Delete" onclick="window.invDelete('${inv.id}')">
-                        <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
-                    </button>
-                </div>
-            </td>
-        </tr>`;
+        <div class="inv-irow">
+            <div class="inv-ino num">${_esc(inv.invoiceNo || '—')}</div>
+            <div class="inv-idate num">${inv.date ? _fmtDate(inv.date) : '—'}</div>
+            <div class="inv-iamt num">${_fmt(inv.totalAmount || 0)}</div>
+            <div class="inv-ipill">${pill}</div>
+            <div class="inv-iactions">
+                <button class="inv-icon-btn" title="View receipt" onclick="window.invPreview('${inv.id}')"><i data-lucide="eye"></i></button>
+                <button class="inv-icon-btn" title="Print" onclick="window.invPrint('${inv.id}')"><i data-lucide="printer"></i></button>
+                <button class="inv-icon-btn" title="Edit" onclick="window.invShowForm('${inv.id}')"><i data-lucide="pencil"></i></button>
+                <button class="inv-icon-btn inv-icon-danger" title="Delete" onclick="window.invDelete('${inv.id}')"><i data-lucide="trash-2"></i></button>
+            </div>
+        </div>`;
     }
 
     function _renderList() {
@@ -166,105 +172,82 @@
             groups[key].push(inv);
         });
 
-        let rows = '';
+        const q = (_invSearch || '').trim().toLowerCase();
+        const entries = Object.entries(groups).filter(([name, list]) =>
+            !q || name.toLowerCase().includes(q) || list.some(i => (i.invoiceNo || '').toLowerCase().includes(q)));
+
+        let cards = '';
         if (_invoices.length === 0) {
-            rows = `<tr><td colspan="8" class="inv-empty">No invoices yet. Click <strong>New Invoice</strong> to create one.</td></tr>`;
+            cards = `<div class="inv-empty-card"><div class="inv-empty-title">No invoices yet</div><div class="inv-empty-sub">Click <strong>New invoice</strong> to create one.</div></div>`;
+        } else if (entries.length === 0) {
+            cards = `<div class="inv-empty-card"><div class="inv-empty-title">No invoices found</div><div class="inv-empty-sub">Try a different search.</div></div>`;
         } else {
-            Object.entries(groups).forEach(([clientName, invList]) => {
-                if (invList.length === 1) {
-                    // Single receipt — show normal row
-                    rows += _invoiceRow(invList[0]);
-                } else {
-                    // Multiple receipts — show collapsible group
-                    const key      = _esc(clientName);
-                    const expanded = _expandedGroups.has(clientName);
-                    const groupTotal = invList.reduce((s, i) => s + (i.totalAmount || 0), 0);
-                    const chevron  = expanded
-                        ? `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>`
-                        : `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
-                    rows += `
-                    <tr class="inv-group-row inv-group-toggle" data-group-key="${key}" style="cursor:pointer;">
-                        <td colspan="2">
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <span style="color:#059669;">${chevron}</span>
-                                <span style="font-weight:700;color:#111827;">${key}</span>
-                                <span class="inv-group-badge">${invList.length} receipts</span>
-                            </div>
-                        </td>
-                        <td class="inv-amt" style="font-weight:700;">${_fmt(groupTotal)}</td>
-                        <td colspan="5" style="color:#6b7280;font-size:12px;">${expanded ? 'Click to collapse' : 'Click to view receipts'}</td>
-                    </tr>`;
-                    if (expanded) {
-                        invList.forEach(inv => { rows += _invoiceRow(inv); });
-                    }
-                }
+            entries.forEach(([clientName, list], idx) => {
+                const key      = _esc(clientName);
+                const expanded = _expandedGroups.has(clientName);
+                const total    = list.reduce((s, i) => s + (i.totalAmount || 0), 0);
+                const drafts   = list.filter(i => i.status !== 'issued').length;
+                const [aBg, aCol] = _invAvatar(idx);
+                const initial  = (clientName[0] || 'C').toUpperCase();
+                const chip = drafts > 0
+                    ? `<span class="inv-chip inv-chip-draft">${drafts} draft</span>`
+                    : `<span class="inv-chip inv-chip-issued">All issued</span>`;
+                const inner = expanded ? `
+                    <div class="inv-inner">
+                        <div class="inv-ihead">
+                            <div>Invoice no.</div><div>Date</div><div class="ta-r">Amount</div><div class="ta-c">Status</div><div class="ta-r">View</div>
+                        </div>
+                        ${list.map(_invoiceRow).join('')}
+                    </div>` : '';
+                cards += `
+                <div class="inv-gcard">
+                    <div class="inv-ghead inv-group-toggle" data-group-key="${key}">
+                        <div class="inv-gavatar" style="background:${aBg};color:${aCol};box-shadow:0 0 0 2px #fff,0 0 0 3px ${aCol}40;">${initial}</div>
+                        <div class="inv-gmeta">
+                            <div class="inv-gname">${key}</div>
+                            <div class="inv-gsub">${list.length} ${list.length === 1 ? 'invoice' : 'invoices'} · ${_fmt(total)} billed</div>
+                        </div>
+                        ${chip}
+                        <span class="inv-gcaret${expanded ? ' open' : ''}">⌄</span>
+                    </div>
+                    ${inner}
+                </div>`;
             });
         }
 
         _setContent(`
-        <div style="display:flex;justify-content:flex-end;margin-bottom:1rem;gap:8px;">
-            <button class="inv-btn inv-btn-outline" onclick="window.invExportCSV()">
-                <i data-lucide="download" style="width:15px;height:15px;"></i> Export CSV
-            </button>
-            <button class="inv-btn inv-btn-ghost" onclick="window.invOpenSettings()">
-                <i data-lucide="settings" style="width:15px;height:15px;"></i> Business Settings
-            </button>
-            <button class="ovhd-guide-btn" onclick="document.getElementById('invGuideModal').style.display='flex'" title="Learn how Invoice Receipt works">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                Guide me
-            </button>
-            <button class="inv-btn inv-btn-primary" onclick="window.invShowForm(null)">
-                <i data-lucide="plus" style="width:15px;height:15px;"></i> New Invoice
-            </button>
+        <div class="inv-topbar">
+            <div>
+                <div class="inv-title">Invoice receipt</div>
+                <div class="inv-subtitle">Official receipts issued to clients, grouped by client.</div>
+            </div>
+            <div class="inv-topbar-actions">
+                <button class="inv-btn inv-btn-outline" onclick="window.invExportCSV()"><i data-lucide="download"></i> Export CSV</button>
+                <button class="inv-btn inv-btn-outline" onclick="window.invOpenSettings()"><i data-lucide="settings"></i> Business settings</button>
+                <button class="inv-btn inv-btn-outline" onclick="document.getElementById('invGuideModal').style.display='flex'" title="Learn how Invoice Receipt works"><i data-lucide="help-circle"></i> Guide</button>
+                <button class="inv-btn inv-btn-primary" onclick="window.invShowForm(null)"><i data-lucide="plus"></i> New invoice</button>
+            </div>
         </div>
 
         <div class="inv-stats-grid">
-            <div class="inv-stat-card">
-                <div class="inv-stat-label">Total Invoices</div>
-                <div class="inv-stat-value">${_invoices.length}</div>
-                <div class="inv-stat-sub">All records</div>
-            </div>
-            <div class="inv-stat-card">
-                <div class="inv-stat-label">Total Billed</div>
-                <div class="inv-stat-value">${_fmt(totalAmt)}</div>
-                <div class="inv-stat-sub">Lifetime</div>
-            </div>
-            <div class="inv-stat-card">
-                <div class="inv-stat-label">This Month</div>
-                <div class="inv-stat-value">${_fmt(monthAmt)}</div>
-                <div class="inv-stat-sub">Current billing period</div>
-            </div>
-            <div class="inv-stat-card">
-                <div class="inv-stat-label">Issued</div>
-                <div class="inv-stat-value">${issuedCount}</div>
-                <div class="inv-stat-sub">Finalized invoices</div>
-            </div>
+            <div class="inv-stat-card"><div class="inv-stat-label">Total invoices</div><div class="inv-stat-value">${_invoices.length}</div></div>
+            <div class="inv-stat-card"><div class="inv-stat-label">Total billed</div><div class="inv-stat-value num">${_fmt(totalAmt)}</div></div>
+            <div class="inv-stat-card"><div class="inv-stat-label">This month</div><div class="inv-stat-value num">${_fmt(monthAmt)}</div></div>
+            <div class="inv-stat-card"><div class="inv-stat-label">Issued</div><div class="inv-stat-value">${issuedCount}</div></div>
         </div>
 
-        <div class="inv-table-card">
-            <div class="inv-table-header">
-                <div class="inv-table-title">Invoice Listing</div>
-                <div class="inv-total-badge">Total Invoices: <strong>${_invoices.length}</strong></div>
-            </div>
-            <div class="inv-table-wrap">
-                <table class="inv-table">
-                    <thead>
-                        <tr>
-                            <th>Invoice No.</th>
-                            <th>Invoice Date</th>
-                            <th>Total Amount</th>
-                            <th>Client Name</th>
-                            <th>TIN No.</th>
-                            <th>Business Address</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
-        </div>`);
+        <div class="inv-search">
+            <i data-lucide="search"></i>
+            <input id="invSearch" type="text" value="${_esc(_invSearch || '')}" placeholder="Search client or invoice no…" oninput="window.invFilter()">
+        </div>
 
+        <div class="inv-list">${cards}</div>`);
+
+        if (_invSearchFocused) {
+            const el = document.getElementById('invSearch');
+            if (el) { el.focus(); const v = el.value; el.setSelectionRange(v.length, v.length); }
+            _invSearchFocused = false;
+        }
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
@@ -1158,35 +1141,37 @@
 <head>
 <meta charset="utf-8">
 <title>${previewOnly ? 'Preview' : 'Print'} — Invoice ${_pEsc(inv.invoiceNo || '')}</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #111; background: #f5f5f5; }
+body { font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif; font-size: 13px; color: #1c1c1a; background: #f1f0ed; }
 .page { width: 210mm; min-height: 297mm; margin: 20px auto; padding: 18mm 16mm 14mm; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
 
 /* Header */
 .inv-header  { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
-.inv-biz h1  { font-size:20px; font-weight:800; color:#1a1a2e; }
-.inv-biz p   { font-size:12px; color:#555; margin-top:4px; line-height:1.5; }
+.inv-biz h1  { font-size:20px; font-weight:700; color:#1c1c1a; }
+.inv-biz p   { font-size:12px; color:#6f6e69; margin-top:4px; line-height:1.5; }
 .inv-title-block { text-align:right; }
-.inv-title-block h2 { font-size:26px; font-weight:800; color:#1e3a5f; letter-spacing:2px; }
+.inv-title-block h2 { font-size:22px; font-weight:700; color:#157a52; letter-spacing:2px; }
 .inv-meta    { margin-top:8px; font-size:12px; color:#444; line-height:1.8; }
 .inv-meta strong { color:#111; }
 
 /* Bill To */
 .bill-row { display:flex; gap:32px; margin-bottom:18px; padding:14px 0;
-            border-top:2.5px solid #1e3a5f; border-bottom:1px solid #e5e7eb; }
-.bill-to h4 { font-size:10px; font-weight:700; color:#6b7280; letter-spacing:1.5px;
+            border-top:2px solid #1c1c1a; border-bottom:1px solid #ededea; }
+.bill-to h4 { font-size:10px; font-weight:600; color:#9b9a94; letter-spacing:1.5px;
               text-transform:uppercase; margin-bottom:6px; }
-.bill-to .name { font-size:15px; font-weight:700; color:#1a1a2e; margin-bottom:3px; }
-.bill-to p { font-size:12px; color:#555; line-height:1.5; }
+.bill-to .name { font-size:15px; font-weight:700; color:#1c1c1a; margin-bottom:3px; }
+.bill-to p { font-size:12px; color:#6f6e69; line-height:1.5; }
 
 /* Items Table */
-table.items { width:100%; border-collapse:collapse; margin-bottom:14px; }
-table.items thead tr { background:#1e3a5f; color:#fff; }
-table.items thead th { padding:9px 10px; font-size:11px; font-weight:700;
-                       text-align:left; letter-spacing:.4px; }
-table.items tbody tr:nth-child(even) { background:#f8fafc; }
-table.items tbody td { padding:8px 10px; border-bottom:1px solid #e9ecef;
+table.items { width:100%; border-collapse:collapse; margin-bottom:14px;
+              border:1px solid #ededea; border-radius:10px; overflow:hidden; }
+table.items thead tr { background:#fafaf8; color:#9b9a94; }
+table.items thead th { padding:10px; font-size:10px; font-weight:600;
+                       text-align:left; letter-spacing:.5px; text-transform:uppercase;
+                       border-bottom:1px solid #ededea; }
+table.items tbody td { padding:9px 10px; border-bottom:1px solid #f3f2ef;
                        vertical-align:top; font-size:12px; }
 
 /* Totals */
@@ -1195,12 +1180,14 @@ table.totals { width:280px; border-collapse:collapse; font-size:13px; }
 table.totals td { padding:6px 10px; }
 table.totals td:first-child { color:#555; }
 table.totals td:last-child { text-align:right; font-weight:600; color:#111; }
-table.totals tr.grand td { font-size:15px; font-weight:800; color:#fff;
-                            background:#1e3a5f; padding:10px 12px; }
+table.totals tr.grand td { font-size:15px; font-weight:700; color:#0f6342;
+                            background:#eaf4ef; padding:11px 13px; }
+table.totals tr.grand td:first-child { color:#0f6342; border-radius:9px 0 0 9px; }
+table.totals tr.grand td:last-child { border-radius:0 9px 9px 0; }
 
 /* Payment Details */
-.pay-box { background:#f1f5f9; border-radius:8px; padding:13px 16px; margin-bottom:18px; }
-.pay-box h4 { font-size:10px; font-weight:700; color:#6b7280; letter-spacing:1.5px;
+.pay-box { background:#fafaf8; border:1px solid #ededea; border-radius:10px; padding:13px 16px; margin-bottom:18px; }
+.pay-box h4 { font-size:10px; font-weight:600; color:#9b9a94; letter-spacing:1.5px;
               text-transform:uppercase; margin-bottom:10px; }
 .pay-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px 24px; font-size:12px; }
 .pay-grid .lbl { color:#6b7280; }
@@ -1221,11 +1208,12 @@ table.totals tr.grand td { font-size:15px; font-weight:800; color:#fff;
 
 /* Preview toolbar — hidden when printing */
 .preview-bar { display:flex; align-items:center; justify-content:space-between;
-               background:#1e3a5f; color:#fff; padding:10px 20px;
-               font-family:Arial,sans-serif; font-size:13px; }
-.preview-bar button { background:#4AC84A; color:#fff; border:none; border-radius:6px;
-                      padding:7px 18px; font-size:13px; font-weight:700; cursor:pointer; }
-.preview-bar button:hover { background:#3ab53a; }
+               background:#fff; color:#1c1c1a; padding:11px 20px;
+               border-bottom:1px solid #ededea;
+               font-family:'IBM Plex Sans',Arial,sans-serif; font-size:13px; font-weight:600; }
+.preview-bar button { background:#157a52; color:#fff; border:none; border-radius:8px;
+                      padding:8px 18px; font-size:12.5px; font-weight:600; cursor:pointer; }
+.preview-bar button:hover { background:#11653f; }
 
 @media print {
   body { background:#fff; }

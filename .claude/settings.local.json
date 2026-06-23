@@ -8,10 +8,40 @@
       "Bash(node -e *)",
       "Bash(node --check js/portal-app.compiled.js)",
       "Bash(cp \"c:/Users/yuich/DaCs_Company/Client Management.html\" \"c:/Users/yuich/DaCs_Company/Dacs Partnership.html\" && echo done)",
-      "Bash(node --check js/client-management-app.js)"
+      "Bash(node --check js/client-management-app.js)",
+      "Bash(node --check js/pm-admin.js)",
+      "Bash(node --check js/supabase-config.js)",
+      "Bash(curl -s -o /dev/null -w \"5501 HTTP %{http_code}\\\\n\" http://127.0.0.1:5501/admin.html)",
+      "Bash(npx --no-install playwright --version)",
+      "mcp__claude_design__get_project",
+      "mcp__claude_design__list_files",
+      "mcp__claude_design__read_file",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"open braces:\", o, \"close braces:\", c}' css/dacs-redesign.css)",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"open:\", o, \"close:\", c}' css/dacs-redesign.css)",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"css braces:\", o, c}' css/dacs-redesign.css)",
+      "Bash(node --check js/client-payment.js)",
+      "Bash(echo \"=== payment_requests for Vincent ===\")",
+      "Bash(curl -s 'https://hqbgduyonlbbsvjuapre.supabase.co/rest/v1/payment_requests?client_email=eq.projectconstruct10@gmail.com&select=id,kind,client_email,client_uid,owner_id,status,amount,paid_amount,billing_period,created_at' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxYmdkdXlvbmxiYnN2anVhcHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Mjc3NDEsImV4cCI6MjA5NjIwMzc0MX0.sDKSroNIm-1Lip6ueq2lN1VTsvO1g4mT7Rf_WZ5AxWo' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxYmdkdXlvbmxiYnN2anVhcHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Mjc3NDEsImV4cCI6MjA5NjIwMzc0MX0.sDKSroNIm-1Lip6ueq2lN1VTsvO1g4mT7Rf_WZ5AxWo')",
+      "Bash(echo \"\")",
+      "Bash(echo \"=== profiles for Vincent ===\")",
+      "Bash(curl -s 'https://hqbgduyonlbbsvjuapre.supabase.co/rest/v1/profiles?email=eq.projectconstruct10@gmail.com&select=id,email,role,kind,owner_id' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxYmdkdXlvbmxiYnN2anVhcHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Mjc3NDEsImV4cCI6MjA5NjIwMzc0MX0.sDKSroNIm-1Lip6ueq2lN1VTsvO1g4mT7Rf_WZ5AxWo' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxYmdkdXlvbmxiYnN2anVhcHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Mjc3NDEsImV4cCI6MjA5NjIwMzc0MX0.sDKSroNIm-1Lip6ueq2lN1VTsvO1g4mT7Rf_WZ5AxWo')",
+      "Bash(node --check js/overhead-module.js)",
+      "Bash(grep -n \"clientAccountsView\\\\|clientAccounts\\\\|id=\\\\\"ca-\\\\|class=\\\\\"ca-\\\\|caTable\\\\|caSearch\\\\|caClientsList\\\\|Client Accounts</\\\\|clientsTable\\\\|clientRow\" admin.html)",
+      "Bash(node --check js/client-accounts.js)",
+      "Bash(node --check js/payment-requests.js)",
+      "Bash(node --check js/invoice-module.js)",
+      "Bash(cd \"/c/Users/John Aerol Tapales/Documents/Dacs Web\" && grep -n \"_pmLoadPayments\\\\|_pmPayUpdateKPIs\\\\|_pmLoadMilestones\\\\b\\\\|_pmLoadReports\\\\b\\\\|function _pmLoadWeekBuilder\\\\|_pmMilestones =\\\\|_pmPayRequests =\\\\|_pmWeekBills =\" js/pm-admin.js | head -40)",
+      "Read(//c/c/Users/John Aerol Tapales/Documents/Dacs Web/js/**)",
+      "Bash(cd \"/c/Users/John Aerol Tapales/Documents/Dacs Web\" && sed -i '161,369d' js/pm-admin.js && node --check js/pm-admin.js && echo OK)",
+      "Bash(cd \"/c/Users/John Aerol Tapales/Documents/Dacs Web\" && grep -n \"Overview Panel \\(per-project dashboard\\)\\\\|/ws-panel-overview\\\\|This Week Panel \\(inline bill builder\\)\" admin.html)",
+      "Read(//c/c/Users/John Aerol Tapales/Documents/Dacs Web/**)",
+      "Bash(cd \"/c/Users/John Aerol Tapales/Documents/Dacs Web\" && sed -i '98,286d' js/pm-admin.js && sed -n '95,101p' js/pm-admin.js)",
+      "Bash(node -c js/client-management-app.js)"
     ],
     "additionalDirectories": [
-      "c:\\Users\\yuich\\DaCs_Company"
+      "c:\\Users\\yuich\\DaCs_Company",
+      "c:\\Users\\John Aerol Tapales\\.claude\\projects\\c--Users-John-Aerol-Tapales-Documents-Dacs-Web\\memory",
+      "c:\\c\\Users\\John Aerol Tapales\\Documents\\Dacs Web\\js"
     ]
   }
 }

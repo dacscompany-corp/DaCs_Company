@@ -1,0 +1,329 @@
+/* ════════════════════════════════════════════════════════════════════
+   DAC'S — Minimalist redesign (from "DAC'S Admin" design)
+   A light, indigo-accented reskin applied on top of the existing portal
+   markup. Loaded LAST so it overrides client.css / client-renovation.css.
+   Applies to the default (light) state; dark-mode toggle keeps its own theme.
+   ════════════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+
+:root {
+  --dx-accent:       #5b5bd6;
+  --dx-accent-tint:  #eeeefb;
+  --dx-accent-info:  #eef1fd;
+  --dx-bg:           #f3f4f8;
+  --dx-card:         #ffffff;
+  --dx-text:         #1a1d24;
+  --dx-muted:        #8b91a0;
+  --dx-label:        #6b7180;
+  --dx-faint:        #aeb4c2;
+  --dx-border:       #ebedf2;
+  --dx-row-border:   #f0f1f5;
+  --dx-input-border: #e3e5ec;
+  --dx-inset:        #fafbfc;
+  --dx-ok:           #3f9960;
+  --dx-ok-bg:        #e7f5ed;
+  --dx-warn:         #b4892a;
+  --dx-warn-bg:      #fdf3e3;
+  --dx-radius:       20px;
+  --dx-radius-sm:    12px;
+  --dx-shadow:       0 1px 3px rgba(20,25,40,0.06);
+  --dx-shadow-btn:   0 10px 22px -10px rgba(91,91,214,0.6);
+}
+
+/* ── Typography (beat client-renovation.css's forced fonts) ───────── */
+body:not(.dark-mode),
+body:not(.dark-mode) .nav-item,
+body:not(.dark-mode) .topbar-title,
+body:not(.dark-mode) .section-title,
+body:not(.dark-mode) .section-sub,
+body:not(.dark-mode) .data-table,
+body:not(.dark-mode) .content-panel,
+body:not(.dark-mode) button,
+body:not(.dark-mode) input,
+body:not(.dark-mode) select,
+body:not(.dark-mode) textarea,
+body:not(.dark-mode) h1,
+body:not(.dark-mode) h2,
+body:not(.dark-mode) h3 {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}
+
+/* ── App shell ───────────────────────────────────────────────────── */
+body:not(.dark-mode) #dashboard-page { background: var(--dx-bg) !important; }
+body:not(.dark-mode) .main-content   { background: var(--dx-bg) !important; }
+
+/* ── Sidebar → white with indigo accent ──────────────────────────── */
+body:not(.dark-mode) .sidebar {
+  background: var(--dx-card) !important;
+  border-right: 1px solid var(--dx-border) !important;
+}
+body:not(.dark-mode) .sidebar-logo-text { color: var(--dx-text) !important; }
+body:not(.dark-mode) .nav-label {
+  color: var(--dx-faint) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+body:not(.dark-mode) .nav-item {
+  color: var(--dx-label) !important;
+  font-weight: 500;
+  border-radius: 11px;
+  gap: 11px;
+  padding: 10px 12px;
+}
+body:not(.dark-mode) .nav-item:hover { background: var(--dx-inset) !important; color: var(--dx-text) !important; }
+body:not(.dark-mode) .nav-item.active {
+  background: var(--dx-accent-tint) !important;
+  color: var(--dx-accent) !important;
+  font-weight: 700;
+}
+body:not(.dark-mode) .sidebar-footer   { border-top: 1px solid var(--dx-border) !important; }
+body:not(.dark-mode) .sidebar-user-avatar,
+body:not(.dark-mode) .topbar-avatar {
+  background: var(--dx-accent) !important;
+  color: #fff !important;
+}
+body:not(.dark-mode) .sidebar-user-name { color: var(--dx-text) !important; }
+body:not(.dark-mode) .sidebar-user-email { color: var(--dx-muted) !important; }
+body:not(.dark-mode) .logout-btn { color: var(--dx-label) !important; }
+
+/* ── Top bar ─────────────────────────────────────────────────────── */
+body:not(.dark-mode) .topbar {
+  background: rgba(243,244,248,0.92) !important;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--dx-border) !important;
+  box-shadow: none !important;
+}
+body:not(.dark-mode) .topbar-title {
+  color: var(--dx-text) !important;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+body:not(.dark-mode) .topbar-icon-btn,
+body:not(.dark-mode) .topbar-bell-btn,
+body:not(.dark-mode) .topbar-user {
+  background: var(--dx-card) !important;
+  border: 1px solid var(--dx-border) !important;
+  border-radius: var(--dx-radius-sm) !important;
+  box-shadow: var(--dx-shadow) !important;
+  color: var(--dx-accent) !important;
+}
+body:not(.dark-mode) .topbar-user-name { color: var(--dx-text) !important; }
+
+/* ── Headings ────────────────────────────────────────────────────── */
+body:not(.dark-mode) .section-title {
+  color: var(--dx-text) !important;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+body:not(.dark-mode) .section-sub { color: var(--dx-muted) !important; }
+
+/* ── Cards / panels ──────────────────────────────────────────────── */
+body:not(.dark-mode) .content-panel,
+body:not(.dark-mode) .stat-card,
+body:not(.dark-mode) .hero-kpi-card,
+body:not(.dark-mode) .billing-sum-card,
+body:not(.dark-mode) .pf-folder-card,
+body:not(.dark-mode) .ms-stat-card {
+  background: var(--dx-card) !important;
+  border: 1px solid var(--dx-border) !important;
+  border-radius: var(--dx-radius) !important;
+  box-shadow: var(--dx-shadow) !important;
+}
+body:not(.dark-mode) .pf-folder-card:hover,
+body:not(.dark-mode) .billing-sum-card:hover {
+  border-color: #d7d7f6 !important;
+  box-shadow: 0 8px 20px -12px rgba(91,91,214,0.45) !important;
+}
+
+/* Card icon chips → indigo tint */
+body:not(.dark-mode) .pf-folder-icon-wrap,
+body:not(.dark-mode) .bsum-icon {
+  background: var(--dx-accent-tint) !important;
+  color: var(--dx-accent) !important;
+}
+
+/* ── Tables ──────────────────────────────────────────────────────── */
+body:not(.dark-mode) .data-table th {
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--dx-faint) !important;
+  font-weight: 700;
+  border-bottom: 1px solid var(--dx-border) !important;
+}
+body:not(.dark-mode) .data-table td { border-top: 1px solid var(--dx-row-border) !important; }
+body:not(.dark-mode) .data-table tbody tr:hover { background: var(--dx-inset) !important; }
+
+/* ── Buttons ─────────────────────────────────────────────────────── */
+body:not(.dark-mode) .btn-signin,
+body:not(.dark-mode) .pf-view-all-btn,
+body:not(.dark-mode) .ov-folder-card__view-btn {
+  background: var(--dx-accent) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 13px !important;
+  font-weight: 700 !important;
+  box-shadow: var(--dx-shadow-btn) !important;
+}
+body:not(.dark-mode) .btn-print-report,
+body:not(.dark-mode) .notif-mark-all {
+  border: 1.5px solid var(--dx-input-border) !important;
+  background: var(--dx-card) !important;
+  color: var(--dx-text) !important;
+  border-radius: var(--dx-radius-sm) !important;
+  font-weight: 700 !important;
+}
+
+/* ── Inputs / search ─────────────────────────────────────────────── */
+body:not(.dark-mode) .table-search-wrap,
+body:not(.dark-mode) input:not([type=checkbox]):not([type=radio]),
+body:not(.dark-mode) select,
+body:not(.dark-mode) textarea {
+  background: var(--dx-inset) !important;
+  border: 1.5px solid var(--dx-input-border) !important;
+  border-radius: var(--dx-radius-sm) !important;
+}
+body:not(.dark-mode) input:focus,
+body:not(.dark-mode) select:focus,
+body:not(.dark-mode) textarea:focus { border-color: var(--dx-accent) !important; }
+
+/* ── KPI values / accents ────────────────────────────────────────── */
+body:not(.dark-mode) .hero-kpi-value,
+body:not(.dark-mode) .stat-value {
+  color: var(--dx-text) !important;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+/* ── Notifications dropdown ───────────────────────────────────────── */
+body:not(.dark-mode) .notif-dropdown {
+  background: var(--dx-card) !important;
+  border: 1px solid var(--dx-border) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 18px 40px -20px rgba(20,25,40,0.25) !important;
+}
+
+/* ── Progress bars / KPI alert ───────────────────────────────────── */
+body:not(.dark-mode) .bar-track { background: #eceef3 !important; }
+body:not(.dark-mode) .bar-usage,
+body:not(.dark-mode) .ar-progress-fill { background: var(--dx-accent) !important; }
+
+/* ── Project header banner → indigo hero card ────────────────────── */
+body:not(.dark-mode) .pf-project-header {
+  background: var(--dx-accent) !important;
+  border-radius: 22px !important;
+  box-shadow: 0 18px 36px -16px rgba(91,91,214,0.5) !important;
+}
+body:not(.dark-mode) .pf-project-header::before { background: rgba(255,255,255,0.08) !important; }
+body:not(.dark-mode) .pf-header-icon,
+body:not(.dark-mode) .pf-header-icon--photo,
+body:not(.dark-mode) .pf-header-icon-fallback {
+  background: rgba(255,255,255,0.15) !important;
+  color: #fff !important;
+}
+/* header name/meta/id text already light → keep readable on indigo */
+
+/* ── Cost distribution → white card ──────────────────────────────── */
+body:not(.dark-mode) .pf-cost-chart-card {
+  background: var(--dx-card) !important;
+  border: 1px solid var(--dx-border) !important;
+  border-radius: var(--dx-radius) !important;
+  box-shadow: var(--dx-shadow) !important;
+}
+body:not(.dark-mode) .pf-cost-chart-card::before { background: rgba(91,91,214,0.05) !important; }
+body:not(.dark-mode) .pf-chart-title       { color: var(--dx-text) !important; }
+body:not(.dark-mode) .pf-chart-sub         { color: var(--dx-muted) !important; }
+body:not(.dark-mode) .pf-chart-legend-name { color: var(--dx-label) !important; }
+body:not(.dark-mode) .pf-chart-legend-val  { color: var(--dx-text) !important; }
+body:not(.dark-mode) .pf-chart-legend-val em { color: var(--dx-faint) !important; }
+body:not(.dark-mode) .pf-chart-total-row   { border-top-color: var(--dx-border) !important; color: var(--dx-label) !important; }
+body:not(.dark-mode) .pf-chart-total-val   { color: var(--dx-accent) !important; }
+
+/* ── KPI tiles (pf-kpi-grid) → calm white cards (bg/icon set inline in JS) ── */
+body:not(.dark-mode) .pf-kpi-card {
+  background: var(--dx-card) !important;
+  border: 1px solid var(--dx-border) !important;
+  border-radius: var(--dx-radius) !important;
+  box-shadow: var(--dx-shadow) !important;
+}
+body:not(.dark-mode) .pf-kpi-card::after { background: rgba(91,91,214,0.05) !important; }
+body:not(.dark-mode) .pf-kpi-value { color: var(--dx-text) !important; }
+
+/* ── Section/panel headers used on the dashboard ─────────────────── */
+body:not(.dark-mode) .pm-panel-title { color: var(--dx-text) !important; font-weight: 800; }
+body:not(.dark-mode) .pm-panel-sub   { color: var(--dx-muted) !important; }
+
+/* ── Topbar project-switcher pill + date (redesign) ──────────────── */
+body:not(.dark-mode) .cm-project-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--dx-card);
+  border: 1px solid var(--dx-border);
+  border-radius: 12px;
+  padding: 8px 14px;
+  box-shadow: var(--dx-shadow);
+}
+body:not(.dark-mode) .cm-project-pill-icon {
+  width: 26px; height: 26px;
+  border-radius: 8px;
+  background: var(--dx-accent-tint);
+  color: var(--dx-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+body:not(.dark-mode) .cm-project-pill-name { font-size: 14px; font-weight: 700; color: var(--dx-text); }
+body:not(.dark-mode) .cm-project-pill-sub  { font-size: 12px; color: var(--dx-muted); }
+body:not(.dark-mode) .cm-topbar-date       { font-size: 13px; color: var(--dx-muted); font-weight: 600; }
+@media (max-width: 640px) {
+  .cm-project-pill-sub, .cm-topbar-date { display: none; }
+}
+
+/* ── Overview redesign grids: stack on narrow screens ────────────── */
+@media (max-width: 980px) {
+  .cm-ov-row1, .cm-ov-row2, .cm-wk-row, .cm-rf-row, .cm-profile-grid { grid-template-columns: 1fr !important; }
+  .cm-rf-kpis, .cm-soa-kpis { grid-template-columns: 1fr !important; }
+}
+
+/* ── Profile (kept functional; just theme the avatar + role badge) ── */
+body:not(.dark-mode) .profile-avatar-lg { background: var(--dx-accent) !important; color: #fff !important; }
+body:not(.dark-mode) .profile-role-badge { background: var(--dx-accent-tint) !important; color: var(--dx-accent) !important; }
+body:not(.dark-mode) .profile-name { color: var(--dx-text) !important; font-weight: 800; }
+body:not(.dark-mode) .btn-save-profile,
+body:not(.dark-mode) .btn-edit-profile { background: var(--dx-accent) !important; color: #fff !important; border: none !important; }
+
+/* ── Payment / Self-Payment modal → indigo (client portal) ───────── */
+body:not(.dark-mode) .pr-modal-header-icon { background: var(--dx-accent) !important; }
+body:not(.dark-mode) .pr-client-pay-btn    { background: var(--dx-accent) !important; }
+body:not(.dark-mode) .pr-method-tab.active { background: var(--dx-accent-tint) !important; color: var(--dx-accent) !important; border-color: var(--dx-accent) !important; }
+body:not(.dark-mode) .pr-method-tab:hover  { border-color: var(--dx-accent) !important; color: var(--dx-accent) !important; }
+body:not(.dark-mode) .pr-form-input:focus,
+body:not(.dark-mode) .pr-form-select:focus,
+body:not(.dark-mode) .pr-form-textarea:focus { border-color: var(--dx-accent) !important; box-shadow: 0 0 0 3px rgba(91,91,214,.12) !important; }
+
+/* ── Payment QR — show larger so the code is easy to scan ────────── */
+#prClientQRImg { max-width: 300px !important; max-height: 460px !important; width: 100%; }
+.pr-qr-display { max-width: 320px; margin-left: auto; margin-right: auto; }
+
+/* ── Mobile: stack panel headers so the action button doesn't overlap ── */
+@media (max-width: 768px) {
+  .panel-header { flex-direction: column; align-items: stretch !important; gap: 12px; }
+  .panel-header .btn-edit-profile,
+  .panel-header .btn-toggle-pw { width: 100%; justify-content: center; margin-left: 0; }
+}
+
+/* ── Very small phones: keep dense tables readable, no sideways overflow ── */
+@media (max-width: 480px) {
+  .page-body table { font-size: 12.5px; }
+  .page-body table th, .page-body table td { padding-left: 2px; padding-right: 2px; }
+  .page-body { overflow-x: hidden; }
+}
+
+/* ── Login page polish ───────────────────────────────────────────── */
+body:not(.dark-mode) #login-page { background: var(--dx-bg) !important; }

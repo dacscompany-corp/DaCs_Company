@@ -186,6 +186,9 @@
                 .where('ownerUid', '==', uid)
                 .get();
             _allRequests = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+                // Construction-linked requests are managed in the project's Money → Payment
+                // tab (pm-admin), not this cost-plus view — exclude them to avoid double-listing.
+                .filter(r => !r.constructionProjectId)
                 .sort((a, b) => _tsToMs(b.createdAt) - _tsToMs(a.createdAt));
 
             _loading = false;
@@ -205,18 +208,54 @@
     // ══════════════════════════════════════════════════════
 
     function _renderStats(requests) {
-        const pending  = requests.filter(r => r.status === 'pending').length;
-        const partial  = requests.filter(r => r.status === 'partial_pending').length;
+        const sumAmt = (pred) => requests.filter(pred).reduce((a, r) => a + (Number(r.amount) || 0), 0);
+        const pending   = requests.filter(r => r.status === 'pending').length;
+        const partial   = requests.filter(r => r.status === 'partial_pending').length;
         const submitted = requests.filter(r => r.status === 'submitted').length;
         const verified  = requests.filter(r => r.status === 'verified').length;
         _setText('prPendingCount',   pending);
         _setText('prPartialCount',   partial);
         _setText('prSubmittedCount', submitted);
         _setText('prVerifiedCount',  verified);
+        _setText('prPendingAmt',   _formatAmount(sumAmt(r => r.status === 'pending')));
+        _setText('prPartialAmt',   _formatAmount(sumAmt(r => r.status === 'partial_pending')));
+        _setText('prSubmittedAmt', _formatAmount(sumAmt(r => r.status === 'submitted')));
+        _setText('prVerifiedAmt',  _formatAmount(sumAmt(r => r.status === 'verified')));
+
+        // Collected hero
+        const billed      = sumAmt(() => true);
+        const collected   = requests.filter(r => r.status === 'verified')
+            .reduce((a, r) => a + (Number(r.paidAmount != null ? r.paidAmount : r.amount) || 0), 0);
+        const outstanding = billed - collected;
+        const pct         = billed > 0 ? Math.round(collected / billed * 100) : 0;
+        _setText('prHeroCollected',   _formatAmount(collected));
+        _setText('prHeroBilled',      _formatAmount(billed));
+        _setText('prHeroPct',         pct);
+        _setText('prHeroOutstanding', _formatAmount(outstanding));
+        const fill = document.getElementById('prHeroFill');
+        if (fill) fill.style.width = pct + '%';
+
         const actionable = requests.filter(r =>
             r.status === 'submitted' || r.status === 'partial_pending'
         ).length;
         _updateAdminBadge(actionable);
+    }
+
+    // Deterministic avatar [bg, fg] + overdue check (PM Payment Requests.dc.html).
+    function _prAvatar(key) {
+        const p = [['#eaf4ef','#157a52'],['#eef0f3','#5b6b7e'],['#f6efe0','#9a6b1f'],
+                   ['#f2eef5','#7a5b95'],['#eef3ec','#5b7a4a'],['#f7eceb','#b4453a']];
+        let h = 0; const s = String(key || '');
+        for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+        return p[h % p.length];
+    }
+    function _prIsOverdue(dueDate) {
+        if (!dueDate) return false;
+        const ms = dueDate?.toMillis?.()
+            ?? (dueDate?.seconds ? dueDate.seconds * 1000
+            : (typeof dueDate === 'string' ? Date.parse(dueDate)
+            : (dueDate instanceof Date ? dueDate.getTime() : NaN)));
+        return !isNaN(ms) && ms < Date.now();
     }
 
     function _updateAdminBadge(urgentCount) {
@@ -262,43 +301,45 @@
         const email    = _esc(r.clientEmail || '');
         const period   = _esc(r.billingPeriod || '—');
         const project  = _esc(r.projectName  || '—');
-        const isPartial = r.paidAmount && r.paidAmount < r.amount;
+        const [aBg, aCol] = _prAvatar(r.clientEmail || r.id || name);
+        const isVerified = r.status === 'verified';
+        const overdue    = !isVerified && _prIsOverdue(r.dueDate);
+        const isPartial  = r.paidAmount && r.paidAmount < r.amount;
         const amount   = isPartial
-            ? `${_formatAmount(r.paidAmount)} <span style="font-size:11px;font-weight:600;color:#d97706;background:#fffbeb;border:1px solid #fde68a;border-radius:99px;padding:1px 7px;">Partial</span><br><span style="font-size:11px;color:#9ca3af;font-weight:400;">of ${_formatAmount(r.amount)}</span>`
+            ? `${_formatAmount(r.paidAmount)} <span class="pr-amt-partial">Partial</span> <span class="pr-amt-of">of ${_formatAmount(r.amount)}</span>`
             : _formatAmount(r.amount);
+        const amtColor = isVerified ? '#157a52' : (overdue ? '#b4453a' : '#1c1c1a');
         const due      = _formatDate(r.dueDate);
-        const statusBadge = _statusBadge(r.status);
+        const needsAttn = r.status === 'submitted' || r.status === 'partial_pending';
 
         return `
         <tr data-id="${r.id}">
             <td>
-                <div class="un-user-cell">
-                    <div class="un-avatar un-avatar-client">${(name[0] || 'C').toUpperCase()}</div>
-                    <div>
-                        <div class="un-user-name">${name}</div>
-                        <div class="un-user-email-sub">${email}</div>
+                <div class="pr-user-cell">
+                    <div class="pr-avatar" style="background:${aBg};color:${aCol};">${(name[0] || 'C').toUpperCase()}</div>
+                    <div class="pr-user-meta">
+                        <div class="pr-user-name">${name}</div>
+                        <div class="pr-user-email">${email}</div>
                     </div>
                 </div>
             </td>
-            <td style="font-size:13px;">${period}</td>
-            <td style="font-size:13px;">${project}</td>
-            <td style="font-weight:600;color:#00a85e;">${amount}</td>
-            <td style="font-size:13px;color:#6b7280;">${due}</td>
-            <td>${statusBadge}</td>
+            <td class="pr-period num">${period}</td>
+            <td class="pr-project">${project}</td>
+            <td class="pr-amount num" style="color:${amtColor};">${amount}</td>
+            <td><span class="pr-due${overdue ? ' pr-due-over' : ''}">${overdue ? '<span class="pr-overdue-dot"></span>' : ''}${due}</span></td>
+            <td>${_statusBadge(r.status)}</td>
             <td>
-                <div class="un-actions">
-                    <button class="un-btn-view" onclick="prViewRequest('${r.id}')" style="position:relative;">
-                        <i data-lucide="eye" style="width:13px;height:13px;"></i> View
-                        ${(r.status === 'submitted' || r.status === 'partial_pending')
-                            ? '<span style="position:absolute;top:-5px;right:-5px;width:10px;height:10px;border-radius:50%;background:#ef4444;border:2px solid #fff;"></span>'
-                            : ''}
+                <div class="pr-actions">
+                    <button class="pr-icon-btn" title="View / verify" onclick="prViewRequest('${r.id}')">
+                        <i data-lucide="eye"></i>
+                        ${needsAttn ? '<span class="pr-attn-dot"></span>' : ''}
                     </button>
-                    <button class="un-btn-sowa" onclick="prOpenSOWA('${_esc(r.clientEmail)}','${_esc(r.clientName || _nameFromEmail(r.clientEmail))}','${_esc(r.projectName || '')}')">
-                        <i data-lucide="file-text" style="width:13px;height:13px;"></i> SOA
-                        ${_pendingSOWAEmails.has(r.clientEmail) ? '<span style="display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:#ef4444;color:#fff;font-size:9px;font-weight:800;margin-left:2px;">!</span>' : ''}
+                    <button class="pr-icon-btn" title="Statement of Account" onclick="prOpenSOWA('${_esc(r.clientEmail)}','${_esc(r.clientName || _nameFromEmail(r.clientEmail))}','${_esc(r.projectName || '')}')">
+                        <i data-lucide="file-text"></i>
+                        ${_pendingSOWAEmails.has(r.clientEmail) ? '<span class="pr-attn-bang">!</span>' : ''}
                     </button>
-                    <button class="un-btn-toggle un-btn-deactivate" onclick="prDeleteRequest('${r.id}')">
-                        <i data-lucide="trash-2" style="width:13px;height:13px;"></i> Delete
+                    <button class="pr-icon-btn pr-icon-danger" title="Delete" onclick="prDeleteRequest('${r.id}')">
+                        <i data-lucide="trash-2"></i>
                     </button>
                 </div>
             </td>
@@ -309,9 +350,27 @@
     // FILTER
     // ══════════════════════════════════════════════════════
 
+    // Segmented status filter (All / Pending / Under review / Paid). Pending groups
+    // pending + awaiting-approval + rejected; review = submitted; paid = verified.
+    window.prSetFilter = function (group, btn) {
+        const hidden = document.getElementById('prStatusFilter');
+        if (hidden) hidden.value = group;
+        document.querySelectorAll('#paymentRequestsView .pr-seg-btn').forEach(b => b.classList.remove('active'));
+        if (btn) btn.classList.add('active');
+        prFilterRequests();
+    };
+
+    function _prGroupMatch(group, status) {
+        if (!group) return true;
+        if (group === 'pending') return status === 'pending' || status === 'partial_pending' || status === 'rejected';
+        if (group === 'review')  return status === 'submitted';
+        if (group === 'paid')    return status === 'verified';
+        return status === group;
+    }
+
     window.prFilterRequests = function () {
-        const q      = (document.getElementById('prSearchInput')?.value  || '').toLowerCase().trim();
-        const status = (document.getElementById('prStatusFilter')?.value || '');
+        const q     = (document.getElementById('prSearchInput')?.value  || '').toLowerCase().trim();
+        const group = (document.getElementById('prStatusFilter')?.value || '');
 
         const filtered = _allRequests.filter(r => {
             const name    = (r.clientName || _nameFromEmail(r.clientEmail)).toLowerCase();
@@ -319,8 +378,7 @@
             const period  = (r.billingPeriod || '').toLowerCase();
             const project = (r.projectName   || '').toLowerCase();
             const matchQ  = !q || name.includes(q) || email.includes(q) || period.includes(q) || project.includes(q);
-            const matchS  = !status || r.status === status;
-            return matchQ && matchS;
+            return matchQ && _prGroupMatch(group, r.status);
         });
 
         _renderTable(filtered);

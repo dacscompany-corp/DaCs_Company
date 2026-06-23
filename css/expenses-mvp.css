@@ -574,16 +574,16 @@
 â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 .rpt-tab.active {
-    background: var(--mvp-primary) !important;
-    color: #fff !important;
-    box-shadow: 0 1px 4px rgba(59,130,246,0.3) !important;
+    background: #fff !important;
+    color: #1c1c1a !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.10) !important;
 }
 .rpt-tab.active .rpt-tab-ico {
-    stroke: #fff !important;
+    stroke: #157a52 !important;
 }
 .rpt-tab:hover:not(.active) {
-    background: #dbeafe !important;
-    color: var(--mvp-primary-dark) !important;
+    background: transparent !important;
+    color: #1c1c1a !important;
 }
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•

@@ -119,10 +119,10 @@ const SUBREG = {
   'constructionProjects/revolvingFund':     { table: 'revolving_funds',   parentField: 'project_id', singleton: true },
   'constructionProjects/revolvingFundExpenses':      { table: 'revolving_fund_expenses',       parentField: 'project_id', ts: ['createdAt'] },
   'constructionProjects/revolvingFundReplenishments':{ table: 'revolving_fund_replenishments', parentField: 'project_id', ts: ['createdAt'] },
-  'constructionProjects/dailyLogs':            { table: 'daily_logs',            parentField: 'project_id', ts: ['createdAt', 'updatedAt'] },
-  'constructionProjects/milestones':           { table: 'milestones',            parentField: 'project_id', ts: ['createdAt', 'updatedAt'] },
-  'constructionProjects/accomplishmentReports':{ table: 'accomplishment_reports',parentField: 'project_id', ts: ['createdAt', 'updatedAt'] },
-  'constructionProjects/walkthroughs':         { table: 'walkthroughs',          parentField: 'project_id', ts: ['createdAt', 'updatedAt'] },
+  'constructionProjects/dailyLogs':            { table: 'daily_logs',            parentField: 'project_id', ts: ['createdAt', 'updatedAt'], jsonbData: true },
+  'constructionProjects/milestones':           { table: 'milestones',            parentField: 'project_id', ts: ['createdAt', 'updatedAt'], jsonbData: true },
+  'constructionProjects/accomplishmentReports':{ table: 'accomplishment_reports',parentField: 'project_id', ts: ['createdAt', 'updatedAt'], jsonbData: true },
+  'constructionProjects/walkthroughs':         { table: 'walkthroughs',          parentField: 'project_id', ts: ['createdAt', 'updatedAt'], jsonbData: true },
   'notifications/items':                        { table: 'notifications',         parentField: 'user_id',    ts: ['createdAt'] },
 };
 
@@ -137,6 +137,21 @@ function buildReverse(cfg) {
 function toRow(cfg, data) {
   if (cfg.kv) return null; // handled specially by caller
   const tsSet = new Set(cfg.ts || []);
+  // jsonb-blob tables (milestones, accomplishment_reports): all non-system
+  // fields live in a single `data` jsonb column; only ts fields are real columns.
+  if (cfg.jsonbData) {
+    const row = {};
+    const blob = {};
+    for (const k in data) {
+      if (k === 'id') continue;
+      let v = data[k];
+      if (tsSet.has(k)) { row[camelToSnake(k)] = tsToISO(v); continue; }
+      if (v === SERVER_TS) v = new Date().toISOString();
+      blob[k] = v;
+    }
+    row.data = blob;
+    return row;
+  }
   const row = {};
   for (const k in data) {
     if (cfg.children && cfg.children[k]) continue;           // children handled separately
@@ -151,6 +166,15 @@ function toRow(cfg, data) {
 }
 // row (snake) → doc data (camel), wrapping ts + mapping children
 function fromRow(cfg, row) {
+  // jsonb-blob tables: spread `data`, then wrap timestamp columns.
+  if (cfg.jsonbData) {
+    const out = { ...(row.data || {}) };
+    for (const f of (cfg.ts || [])) {
+      const col = camelToSnake(f);
+      if (col in row) out[f] = wrapTs(row[col]);
+    }
+    return out;
+  }
   const rev = buildReverse(cfg);
   const tsCols = new Set((cfg.ts || []).map((f) => fieldToCol(cfg, f)));
   const out = {};
@@ -197,6 +221,30 @@ function querySnap(cfg, rows) {
 // ── 7. Query / Collection / Doc refs ─────────────────────────────────
 const OPMAP = { '==': 'eq', '!=': 'neq', '>': 'gt', '>=': 'gte', '<': 'lt', '<=': 'lte' };
 
+// Client-side where/order for jsonb-blob tables (filtering/sorting on jsonb
+// paths in PostgREST is brittle; these collections are small per-project, so
+// we fetch by parent and filter/sort in JS).
+function _jbUnwrap(v) { return (v && typeof v.toMillis === 'function') ? v.toMillis() : v; }
+function _jbCmp(a, op, b) {
+  a = _jbUnwrap(a); b = _jbUnwrap(b);
+  switch (op) {
+    case '==': return b === null ? (a === null || a === undefined) : a === b;
+    case '!=': return a !== b;
+    case '>':  return a > b;
+    case '>=': return a >= b;
+    case '<':  return a < b;
+    case '<=': return a <= b;
+    case 'in': return Array.isArray(b) && b.includes(a);
+    default:   return a === b;
+  }
+}
+function _jbOrd(a, b) {
+  a = _jbUnwrap(a); b = _jbUnwrap(b);
+  const na = Number(a), nb = Number(b);
+  if (a != null && b != null && !isNaN(na) && !isNaN(nb)) return na - nb;
+  return String(a == null ? '' : a).localeCompare(String(b == null ? '' : b));
+}
+
 class Query {
   constructor(cfg, ctx) { this.cfg = cfg; this.ctx = ctx; this._w = []; this._o = []; this._lim = null; }
   _clone() { const q = new Query(this.cfg, this.ctx); q._w = [...this._w]; q._o = [...this._o]; q._lim = this._lim; return q; }
@@ -222,6 +270,24 @@ class Query {
     return qb;
   }
   async get() {
+    const c = this.cfg;
+    if (c.jsonbData) {
+      let qb = sb.from(c.table).select('*');
+      if (c.kind) qb = qb.eq('kind', c.kind);
+      if (this.ctx) qb = qb.eq(this.ctx.col, this.ctx.val);
+      const { data, error } = await qb;
+      if (error) throw error;
+      let items = (data || []).map((r) => ({ id: r.id ?? r[c.idField], _d: fromRow(c, r) }));
+      for (const [f, op, v] of this._w) items = items.filter((it) => _jbCmp(it._d[f], op, v));
+      for (let i = this._o.length - 1; i >= 0; i--) {
+        const [f, dir] = this._o[i];
+        const mul = dir === 'desc' ? -1 : 1;
+        items.sort((a, b) => _jbOrd(a._d[f], b._d[f]) * mul);
+      }
+      if (this._lim != null) items = items.slice(0, this._lim);
+      const docs = items.map((it) => ({ id: it.id, data: () => it._d, exists: true, ref: null }));
+      return { docs, empty: docs.length === 0, size: docs.length, forEach: (fn) => docs.forEach(fn) };
+    }
     const { data, error } = await this._select();
     if (error) throw error;
     return querySnap(this.cfg, data || []);
@@ -297,6 +363,30 @@ class DocRef {
 
   async update(data) {
     const c = this.cfg;
+    if (c.jsonbData) {
+      // Read-modify-write: merge incoming fields into the existing `data` blob
+      // so a partial update (e.g. {status}) doesn't clobber the rest.
+      let selq = sb.from(c.table).select('data').eq(this._keyCol(), this._keyVal());
+      selq = this._applyCtx(selq);
+      const { data: cur, error: selErr } = await selq.maybeSingle();
+      if (selErr) throw selErr;
+      const tsSet = new Set(c.ts || []);
+      const merged = { ...((cur && cur.data) || {}) };
+      const row = {};
+      for (const k in data) {
+        if (k === 'id') continue;
+        let v = data[k];
+        if (tsSet.has(k)) { row[camelToSnake(k)] = tsToISO(v); continue; }
+        if (v === SERVER_TS) v = new Date().toISOString();
+        merged[k] = v;
+      }
+      row.data = merged;
+      let upq = sb.from(c.table).update(row).eq(this._keyCol(), this._keyVal());
+      upq = this._applyCtx(upq);
+      const { error } = await upq;
+      if (error) throw error;
+      return;
+    }
     const row = toRow(c, data);
     let qb = sb.from(c.table).update(row).eq(this._keyCol(), this._keyVal());
     qb = this._applyCtx(qb);

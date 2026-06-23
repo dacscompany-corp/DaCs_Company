@@ -1589,6 +1589,7 @@ body.dark-mode .rpt-kpi-grid5 {
     box-shadow: 0 2px 10px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.25);
 }
 
+<<<<<<< HEAD
 /* ============================================================
    DARK MODE — additional gap fixes
    Light pastel badges, action buttons, borders, and image
@@ -1621,3 +1622,88 @@ body.dark-mode .pr-detail-row          { border-color: #222d28; }
 body.dark-mode .pr-qr-preview-img,
 body.dark-mode .pr-qr-display img,
 body.dark-mode .pr-receipt-thumb       { border-color: #2c3d35; }
+=======
+/* ════════════════════════════════════════════════════════════
+   Payment Requests reskin — PM Payment Requests.dc.html (scoped,
+   appended last so it wins over the legacy .pr- rules above)
+   ════════════════════════════════════════════════════════════ */
+#paymentRequestsView { font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+
+/* Collected hero */
+#paymentRequestsView .pr-hero { border-radius:16px; background:linear-gradient(120deg,#136b49 0%,#188a5b 55%,#1fa169 100%); padding:22px 24px; margin-bottom:14px; color:#fff; box-shadow:0 10px 28px rgba(21,122,82,0.22); }
+#paymentRequestsView .pr-hero-top { display:flex; align-items:flex-end; justify-content:space-between; gap:18px; flex-wrap:wrap; }
+#paymentRequestsView .pr-hero-label { font:600 11.5px 'IBM Plex Sans'; text-transform:uppercase; letter-spacing:.06em; opacity:.85; }
+#paymentRequestsView .pr-hero-collected { font:700 34px 'IBM Plex Sans'; line-height:1.05; margin-top:5px; }
+#paymentRequestsView .pr-hero-sub { font:500 12px 'IBM Plex Sans'; opacity:.9; margin-top:4px; }
+#paymentRequestsView .pr-hero-out-wrap { text-align:right; }
+#paymentRequestsView .pr-hero-out-label { font:600 11.5px 'IBM Plex Sans'; opacity:.85; }
+#paymentRequestsView .pr-hero-out { font:700 22px 'IBM Plex Sans'; margin-top:3px; }
+#paymentRequestsView .pr-hero-bar { height:8px; background:rgba(255,255,255,0.25); border-radius:99px; overflow:hidden; margin-top:16px; }
+#paymentRequestsView .pr-hero-fill { height:100%; border-radius:99px; background:#fff; transition:width .4s ease; }
+
+/* Stat cards */
+#paymentRequestsView .pr-stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
+#paymentRequestsView .pr-stat-card { background:#fff; border:1px solid #e7e6e2; border-radius:13px; padding:15px 16px; box-shadow:none; display:block; }
+#paymentRequestsView .pr-stat-head { display:flex; align-items:center; gap:9px; }
+#paymentRequestsView .pr-stat-dot { width:10px; height:10px; border-radius:3px; flex:none; }
+#paymentRequestsView .pr-dot-pending  { background:#c79024; }
+#paymentRequestsView .pr-dot-partial   { background:#c2611f; }
+#paymentRequestsView .pr-dot-submitted { background:#2f6bb0; }
+#paymentRequestsView .pr-dot-verified  { background:#157a52; }
+#paymentRequestsView .pr-stat-label { font:600 10.5px 'IBM Plex Sans'; color:#7c7b75; text-transform:uppercase; letter-spacing:.04em; }
+#paymentRequestsView .pr-stat-num { font:700 26px 'IBM Plex Sans'; color:#1c1c1a; margin-top:9px; }
+#paymentRequestsView .pr-stat-amt { font:500 11.5px 'IBM Plex Sans'; color:#8a8983; margin-top:2px; }
+
+/* Toolbar */
+#paymentRequestsView .pr-toolbar { display:flex; align-items:center; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
+#paymentRequestsView .pr-search-wrap { flex:1; min-width:230px; max-width:360px; display:flex; align-items:center; gap:9px; border:1px solid #e2e1dc; border-radius:9px; background:#fff; padding:0 12px; }
+#paymentRequestsView .pr-search-wrap:focus-within { border-color:#157a52; }
+#paymentRequestsView .pr-search-icon { width:14px; height:14px; color:#b3b1a8; flex:none; }
+#paymentRequestsView .pr-search-input { flex:1; border:none; background:transparent; font:500 13px 'IBM Plex Sans'; color:#1c1c1a; padding:10px 0; outline:none; }
+#paymentRequestsView .pr-seg { display:flex; background:#eceae5; border-radius:9px; padding:3px; gap:2px; flex-wrap:wrap; }
+#paymentRequestsView .pr-seg-btn { background:none; border:none; cursor:pointer; border-radius:6px; padding:7px 12px; font:600 11.5px 'IBM Plex Sans'; color:#5b5a55; }
+#paymentRequestsView .pr-seg-btn.active { background:#fff; color:#1c1c1a; box-shadow:0 1px 2px rgba(0,0,0,0.10); }
+#paymentRequestsView .pr-btn-qrsettings, #paymentRequestsView .ovhd-guide-btn { font-family:'IBM Plex Sans'; }
+#paymentRequestsView .pr-btn-create { background:#157a52; border:none; border-radius:9px; padding:9px 15px; font:600 12.5px 'IBM Plex Sans'; color:#fff; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+#paymentRequestsView .pr-btn-create:hover { background:#11653f; }
+
+/* Table */
+#paymentRequestsView .pr-table-wrap { border:1px solid #e7e6e2; border-radius:14px; background:#fff; overflow:hidden; box-shadow:none; }
+#paymentRequestsView .pr-table { width:100%; border-collapse:collapse; }
+#paymentRequestsView .pr-table thead th { background:#fafaf8; font:600 10.5px 'IBM Plex Sans'; color:#9b9a94; text-transform:uppercase; letter-spacing:.05em; text-align:left; padding:11px 20px; border-bottom:1px solid #ededea; white-space:nowrap; }
+#paymentRequestsView .pr-table thead th:nth-child(4), #paymentRequestsView .pr-table thead th:last-child { text-align:right; }
+#paymentRequestsView .pr-table tbody td { padding:14px 20px; border-bottom:1px solid #f3f2ef; font:500 12.5px 'IBM Plex Sans'; color:#6f6e69; vertical-align:middle; }
+#paymentRequestsView .pr-table tbody tr:last-child td { border-bottom:none; }
+#paymentRequestsView .pr-table tbody tr:hover { background:#fafaf8; }
+#paymentRequestsView .pr-user-cell { display:flex; align-items:center; gap:10px; min-width:0; }
+#paymentRequestsView .pr-avatar { width:32px; height:32px; border-radius:50%; flex:none; display:flex; align-items:center; justify-content:center; font:600 12.5px 'IBM Plex Sans'; }
+#paymentRequestsView .pr-user-meta { min-width:0; }
+#paymentRequestsView .pr-user-name { font:600 12.5px 'IBM Plex Sans'; color:#1c1c1a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#paymentRequestsView .pr-user-email { font:400 11px 'IBM Plex Sans'; color:#9b9a94; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#paymentRequestsView .pr-project { color:#6f6e69; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#paymentRequestsView td.pr-amount { text-align:right; font-weight:700; font-variant-numeric:tabular-nums; }
+#paymentRequestsView .pr-amt-partial { font:600 10px 'IBM Plex Sans'; color:#8f4716; background:#fbeee3; border:1px solid #f1d8c5; border-radius:99px; padding:1px 7px; }
+#paymentRequestsView .pr-amt-of { font:400 10.5px 'IBM Plex Sans'; color:#9b9a94; }
+#paymentRequestsView .pr-due { display:inline-flex; align-items:center; gap:7px; color:#6f6e69; font-variant-numeric:tabular-nums; }
+#paymentRequestsView .pr-due-over { color:#b4453a; font-weight:600; }
+#paymentRequestsView .pr-overdue-dot { width:8px; height:8px; border-radius:50%; background:#b4453a; flex:none; animation:prPulse 1.6s infinite; }
+@keyframes prPulse { 0%,100% { box-shadow:0 0 0 0 rgba(180,69,58,0.45); } 50% { box-shadow:0 0 0 5px rgba(180,69,58,0); } }
+
+/* Status pills (recolor to mockup) */
+#paymentRequestsView .pr-status { display:inline-flex; align-items:center; gap:6px; font:700 10.5px 'IBM Plex Sans'; padding:4px 11px; border-radius:99px; border:1px solid transparent; }
+#paymentRequestsView .pr-status .pr-status-dot { width:6px; height:6px; border-radius:50%; background:currentColor; flex:none; }
+#paymentRequestsView .pr-status-pending   { background:#fbf3e2; color:#8a6310; border-color:#f0e2c5; }
+#paymentRequestsView .pr-status-partial    { background:#fbeee3; color:#8f4716; border-color:#f1d8c5; }
+#paymentRequestsView .pr-status-submitted  { background:#e9f1fa; color:#27548a; border-color:#cfe0f2; }
+#paymentRequestsView .pr-status-verified   { background:#eaf4ef; color:#0f6342; border-color:#c6e6d5; }
+#paymentRequestsView .pr-status-rejected   { background:#f8ecea; color:#8f352c; border-color:#f0cdc8; }
+
+/* Icon action buttons */
+#paymentRequestsView .pr-actions { display:flex; justify-content:flex-end; gap:6px; }
+#paymentRequestsView .pr-icon-btn { position:relative; width:31px; height:31px; display:inline-flex; align-items:center; justify-content:center; background:#fff; border:1px solid #d9d8d3; border-radius:8px; cursor:pointer; color:#5b5a55; transition:border-color .15s, color .15s, background .15s; }
+#paymentRequestsView .pr-icon-btn i, #paymentRequestsView .pr-icon-btn svg { width:14px; height:14px; }
+#paymentRequestsView .pr-icon-btn:hover { border-color:#157a52; color:#157a52; background:#fafdfb; }
+#paymentRequestsView .pr-icon-danger:hover { border-color:#b4453a; color:#b4453a; background:#fdf6f5; }
+#paymentRequestsView .pr-attn-dot { position:absolute; top:-4px; right:-4px; width:9px; height:9px; border-radius:50%; background:#b4453a; border:2px solid #fff; }
+#paymentRequestsView .pr-attn-bang { position:absolute; top:-5px; right:-5px; width:15px; height:15px; border-radius:50%; background:#b4453a; color:#fff; font:800 9px 'IBM Plex Sans'; display:inline-flex; align-items:center; justify-content:center; }
+>>>>>>> 5e8c58babd0e42eb7461aceced3ec6056926e010
