@@ -686,52 +686,65 @@
 /* ══════════════════════════════════════════════════════
    PROJECT WORKSPACE
 ══════════════════════════════════════════════════════ */
+/* ── Workspace chrome — redesigned to the desktop design (brand green) ──
+   Breadcrumb topbar card + clean tab-bar card; applies across all five tabs. */
 .pm-workspace-topbar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 11px;
   flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid var(--pm-border);
+  border-radius: 14px;
+  padding: 13px 20px;
+  margin-bottom: 12px;
 }
 .pm-workspace-back {
-  display: flex; align-items: center; gap: 5px;
-  font: 600 12.5px 'IBM Plex Sans', sans-serif; color: var(--pm-muted-2);
+  display: inline-flex; align-items: center; gap: 5px;
+  font: 600 13px 'IBM Plex Sans', sans-serif; color: var(--pm-muted-2);
   background: none; border: none;
   padding: 0; cursor: pointer;
   transition: color .15s;
   flex-shrink: 0;
 }
-.pm-workspace-back:hover { color: var(--pm-ink); }
-.pm-workspace-divider { height: 16px; width: 1px; background: #dcdbd6; }
-.pm-workspace-info { min-width: 0; }
+.pm-workspace-back:hover { color: var(--pm-green); }
+.pm-workspace-back i, .pm-workspace-back svg { display: none; }   /* breadcrumb root — no back arrow */
+.pm-workspace-divider { width: auto; height: auto; background: none; }
+.pm-workspace-divider::before { content: '\203A'; color: #c4c2ba; font-size: 16px; line-height: 1; }
+.pm-workspace-info { min-width: 0; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .pm-workspace-client {
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 15.5px;
+  font-weight: 800;
   color: var(--pm-ink);
   line-height: 1.1;
   letter-spacing: -0.01em;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .pm-workspace-project {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--pm-muted-2);
-  margin-top: 2px;
+  margin-top: 0;
 }
+.pm-workspace-project::before { content: '\00B7\00A0'; color: #c4c2ba; }
 .pm-workspace-status { margin-left: auto; }
-.pm-workspace-status .pm-badge { padding: 6px 13px; font-size: 12px; border-radius: 7px; }
+.pm-workspace-status .pm-badge { padding: 5px 11px; font-size: 11px; border-radius: 7px; }
 
 .pm-ws-tabs {
   display: flex;
-  gap: 30px;
-  border-bottom: 1px solid var(--pm-border);
-  margin: 16px 0 0;
+  gap: 2px;
+  background: #fff;
+  border: 1px solid var(--pm-border);
+  border-radius: 14px;
+  margin: 0 0 18px;
+  padding: 0 12px;
   overflow-x: auto;
 }
 .pm-ws-tab {
   position: relative;
-  padding: 0 0 12px;
-  font-size: 14px;
+  padding: 14px 16px;
+  font-size: 13.5px;
   font-weight: 600;
-  color: var(--pm-muted-3);
+  color: var(--pm-muted-2);
   cursor: pointer;
   border: none;
   background: none;
@@ -740,12 +753,12 @@
   white-space: nowrap;
 }
 .pm-ws-tab:hover { color: var(--pm-ink-2); }
-.pm-ws-tab.active { color: var(--pm-ink); }
+.pm-ws-tab.active { color: var(--pm-green); font-weight: 700; }
 .pm-ws-tab.active::after {
   content: "";
   position: absolute;
-  left: 0; right: 0; bottom: -1px;
-  height: 2px;
+  left: 16px; right: 16px; bottom: -1px;
+  height: 2.5px; border-radius: 2px;
   background: var(--pm-green);
 }
 
@@ -904,6 +917,66 @@
 .pmw-add { background: #157a52; border: none; border-radius: 9px; padding: 11px 20px; font: 600 13px 'IBM Plex Sans'; color: #fff; cursor: pointer; white-space: nowrap; transition: background .15s; }
 .pmw-add:hover { background: #11653f; }
 
+/* single-row add box (design) */
+.pmw-addrow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pmw-details { flex: 2; min-width: 200px; }
+.pmw-mid { flex: none; width: 92px; }
+.pmw-mid .pmw-input { width: 100%; }
+.pmw-mid-qty { flex: none; display: flex; gap: 6px; }
+.pmw-mid-qty .pmw-input { width: 68px; }
+.pmw-amtbox { flex: 1; min-width: 130px; }
+.pmw-amtbox .pmw-amount { text-align: left; padding-left: 4px; }
+.pmw-receipt-icon { flex: none; width: 40px; height: 40px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--pm-border-2, #e2e1dc); border-radius: 9px; background: #fff; color: #5b5a55; cursor: pointer; transition: border-color .15s, color .15s, background .15s; }
+.pmw-receipt-icon:hover { border-color: #157a52; color: #0f6342; }
+.pmw-receipt-icon.attached { border-color: #157a52; color: #0f6342; background: #f7faf8; }
+
+/* Overview date-range — custom dropdown (styled menu, not a native select) */
+.pmw-dd { position: relative; }
+.pmw-dd-btn {
+  display: inline-flex; align-items: center; gap: 12px; min-width: 150px; justify-content: space-between;
+  font: 600 12.5px 'IBM Plex Sans', sans-serif; color: #3a3a36;
+  border: 1px solid var(--pm-border, #e7e6e2); border-radius: 11px; padding: 9px 14px;
+  background: #fff; cursor: pointer; transition: border-color .15s, box-shadow .15s;
+}
+.pmw-dd-btn:hover { border-color: #157a52; }
+.pmw-dd.open .pmw-dd-btn { border-color: #157a52; box-shadow: 0 0 0 3px rgba(21,122,82,0.10); }
+.pmw-dd-btn svg { color: #157a52; flex: none; transition: transform .15s; }
+.pmw-dd.open .pmw-dd-btn svg { transform: rotate(180deg); }
+.pmw-dd-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; min-width: 234px;
+  background: #fff; border: 1px solid #ebedf2; border-radius: 14px;
+  box-shadow: 0 18px 44px -14px rgba(20,25,40,0.28); padding: 7px; z-index: 60;
+}
+.pmw-dd-opt {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; text-align: left;
+  background: none; border: none; cursor: pointer; border-radius: 9px; padding: 10px 12px;
+  font: 500 13px 'IBM Plex Sans', sans-serif; color: #3a3a36; transition: background .12s;
+}
+.pmw-dd-opt:hover { background: #f5f4f1; }
+.pmw-dd-opt.active { background: var(--pm-tint, #eaf4ef); color: #0f6342; font-weight: 700; }
+.pmw-dd-opt .num { color: #1c1c1a; font-weight: 700; white-space: nowrap; }
+.pmw-dd-opt .pmw-dd-check { color: #157a52; font-weight: 700; opacity: 0; }
+.pmw-dd-opt.active .pmw-dd-check { opacity: 1; }
+.pmw-dd-sep { height: 1px; background: #f0efec; margin: 6px 8px; }
+
+/* header right group: day nav · status badge · print bill (design) */
+.pmw-head-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pmw-status-badge { font: 700 10px 'IBM Plex Sans', sans-serif; letter-spacing: .04em; padding: 4px 9px; border-radius: 7px; background: #fdf3e3; color: #8a6418; }
+.pmw-status-badge.sent { background: #eaf4ef; color: #0f6342; }
+.pmw-print-btn { background: #fff; color: #1c1c1a; border: 1px solid var(--pm-border-2, #e2e1dc); border-radius: 11px; padding: 9px 15px; font: 700 12.5px 'IBM Plex Sans', sans-serif; cursor: pointer; transition: border-color .15s, color .15s; }
+.pmw-print-btn:hover { border-color: #157a52; color: #157a52; }
+
+/* grouped entries — header line above a bordered card (design) */
+.pmw-grp-line { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 7px; }
+.pmw-grp-tag { font: 700 10.5px 'IBM Plex Sans', sans-serif; letter-spacing: .1em; text-transform: uppercase; }
+.pmw-grp-card { background: #fff; border: 1px solid var(--pm-border, #e7e6e2); border-radius: 16px; overflow: hidden; margin-bottom: 16px; }
+.pmw-grp-card .pmw-entry { padding: 12px 16px 12px 13px; margin-left: 0; border-bottom: 1px solid #f0f1f5; }
+.pmw-grp-card .pmw-entry:last-child { border-bottom: none; }
+.pmw-entry-edit-txt { flex: none; background: none; border: none; cursor: pointer; color: #aeb4c2; font: 600 12.5px 'IBM Plex Sans', sans-serif; padding: 0 2px; transition: color .15s; }
+.pmw-entry-edit-txt:hover { color: #157a52; }
+.pmw-rcpt-txt { color: #0f6342; font-weight: 600; cursor: pointer; }
+.pmw-rcpt-txt:hover { text-decoration: underline; }
+
 /* view-by-category filter */
 .pmw-viewbar { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 9px; flex-wrap: wrap; }
 .pmw-viewbar-title { font: 600 13px 'IBM Plex Sans'; color: #1c1c1a; }
@@ -992,6 +1065,17 @@
 .pmw-today-grand { display: flex; justify-content: space-between; align-items: center; padding-top: 10px; border-top: 1px solid #ededea; }
 .pmw-today-grand span:first-child { font: 600 12.5px 'IBM Plex Sans'; color: #1c1c1a; }
 .pmw-today-grand .num { font: 700 15px 'IBM Plex Sans'; color: #157a52; }
+
+/* per-category Statement of Account rows (accent · total · Generate) */
+.pmw-soa { display: flex; flex-direction: column; margin-top: 6px; border: 1px solid var(--pm-border, #e7e6e2); border-radius: 12px; overflow: hidden; }
+.pmw-soa-row { display: flex; align-items: center; gap: 11px; padding: 11px 13px; border-bottom: 1px solid var(--pm-line, #f0efec); }
+.pmw-soa-row:last-child { border-bottom: none; }
+.pmw-soa-bar { width: 6px; height: 30px; border-radius: 3px; flex: none; }
+.pmw-soa-main { flex: 1; min-width: 0; }
+.pmw-soa-label { font: 700 12.5px 'IBM Plex Sans', sans-serif; color: var(--pm-ink, #1c1c1a); }
+.pmw-soa-total { font: 400 10.5px 'IBM Plex Sans', sans-serif; color: var(--pm-muted-3, #8a8983); margin-top: 2px; }
+.pmw-soa-gen { background: var(--pm-tint, #eaf4ef); color: var(--pm-green, #157a52); border: none; border-radius: 7px; padding: 6px 12px; font: 700 11px 'IBM Plex Sans', sans-serif; cursor: pointer; white-space: nowrap; transition: background .15s; }
+.pmw-soa-gen:hover { background: #d8ebe0; }
 
 .pm-week-addbox {
   background: #fafaf8;
@@ -1218,6 +1302,52 @@ body.dark-mode .pm-modal-box {
   background: #14201a; color: #e8f0ec;
 }
 body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
+
+/* ════════════════════════════════════════════════════════════
+   Desktop design layout — panel components (brand green)
+   ════════════════════════════════════════════════════════════ */
+/* "Big-number" stat cards (Money · Procurements · Progress share .pm-stat) */
+.pm-stat {
+  background: #fff;
+  border: 1px solid var(--pm-border, #e7e6e2);
+  border-radius: 16px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column-reverse;   /* value on top, label below — matches design */
+  gap: 2px;
+}
+.pm-stat-label { font: 600 12px 'IBM Plex Sans', sans-serif; color: #8b91a0; }
+.pm-stat-value { font: 700 24px 'IBM Plex Sans', sans-serif; color: var(--pm-ink, #1a1d24); line-height: 1.1; }
+.pm-stat-value.is-danger { color: #b4453a; }
+.pm-stat-value.is-green  { color: #0f6342; }
+.pm-stat-grid { gap: 12px; }
+
+/* Section cards (Revolving / Payment / Progress) — soft white panels */
+.pm-ws-section {
+  background: #fff;
+  border: 1px solid var(--pm-border, #e7e6e2);
+  border-radius: 16px;
+  padding: 20px 22px;
+  margin-bottom: 16px;
+}
+.pm-ws-section .pm-stat { background: #fafaf8; }
+
+/* Dark "Next payment due" banner (Money) */
+.pm-pay-banner {
+  background: #1c1c1a; border-radius: 16px; padding: 22px 24px; color: #fff;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  flex-wrap: wrap; margin-bottom: 16px;
+}
+.pm-pay-banner-top { display: flex; align-items: center; gap: 10px; }
+.pm-pay-banner-label { font: 700 10.5px 'IBM Plex Sans', sans-serif; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.6); }
+.pm-pay-banner-strict { background: #b4892a; color: #fff; font: 700 10px 'IBM Plex Sans', sans-serif; padding: 3px 9px; border-radius: 6px; letter-spacing: .04em; }
+.pm-pay-banner-amt { font: 700 34px 'IBM Plex Sans', sans-serif; letter-spacing: -.02em; margin-top: 8px; line-height: 1; }
+.pm-pay-banner-sub { font: 400 12px 'IBM Plex Sans', sans-serif; color: rgba(255,255,255,.6); margin-top: 9px; }
+.pm-pay-banner-actions { display: flex; gap: 10px; }
+.pm-pay-banner-send { background: var(--pm-green, #157a52); color: #fff; border: none; border-radius: 11px; padding: 13px 22px; font: 700 13px 'IBM Plex Sans', sans-serif; cursor: pointer; }
+.pm-pay-banner-send:hover { background: var(--pm-green-hover, #11653f); }
+.pm-pay-banner-edit { background: rgba(255,255,255,.12); color: #fff; border: none; border-radius: 11px; padding: 13px 20px; font: 700 13px 'IBM Plex Sans', sans-serif; cursor: pointer; }
+.pm-pay-banner-edit:hover { background: rgba(255,255,255,.2); }
 
 /* ════════════════════════════════════════════════════════════
    MOBILE — Project Management workspace (responsive, brand-green)

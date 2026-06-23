@@ -1388,14 +1388,18 @@
                 <!-- editable builder -->
                 <div id="pmw-build">
                   <div class="pmw-head">
-                    <div class="pmw-title">Daily bill</div>
-                    <div class="pmw-daynav">
-                      <button onclick="pmWeekShift(-1)" aria-label="Previous day">←</button>
-                      <span id="pm-week-date">—</span>
-                      <button onclick="pmWeekShift(1)" aria-label="Next day">→</button>
+                    <div class="pmw-title">Daily Expenses</div>
+                    <div class="pmw-head-right">
+                      <div class="pmw-daynav">
+                        <button onclick="pmWeekShift(-1)" aria-label="Previous day">←</button>
+                        <span id="pm-week-date">—</span>
+                        <button onclick="pmWeekShift(1)" aria-label="Next day">→</button>
+                      </div>
+                      <span class="pmw-status-badge" id="pmw-status-badge">DRAFT</span>
+                      <button class="pmw-print-btn" onclick="window.print()">Print bill</button>
                     </div>
                   </div>
-                  <div class="pmw-intro">Log what you spent today. Pick <strong>Labor</strong> or <strong>Materials</strong>, fill the boxes, and the totals add up for you.</div>
+                  <div class="pmw-intro">Log what you spent today. Pick <strong>Labor</strong>, <strong>Materials</strong> or <strong>Mat + Labor</strong>, fill the boxes, and the totals add up for you.</div>
 
                   <!-- category segmented control -->
                   <div class="pmw-seg">
@@ -1410,54 +1414,39 @@
                     </button>
                   </div>
 
-                  <!-- add entry — adaptive fields -->
+                  <!-- add entry — single adaptive row (design) -->
                   <div class="pmw-addbox">
-                    <div class="pmw-add-prompt" id="pmw-add-prompt">What labor did you pay for?</div>
-                    <input class="pmw-input" id="pm-week-details" placeholder="e.g. Masonry crew">
-                    <div class="pmw-add-fields">
-                      <div class="pmw-field" id="pm-week-days-wrap">
-                        <div class="pmw-field-label">No. of days</div>
-                        <div class="pmw-inline">
-                          <input class="pmw-inline-input num" id="pm-week-days" inputmode="numeric" placeholder="0" onkeydown="if(event.key==='Enter')pmWeekAddEntry()">
-                          <span class="pmw-inline-suffix">days</span>
-                        </div>
+                    <div class="pmw-addrow">
+                      <input class="pmw-input pmw-details" id="pm-week-details" placeholder="Labor details (e.g. Masonry crew)">
+                      <div class="pmw-mid" id="pm-week-days-wrap">
+                        <input class="pmw-input num" id="pm-week-days" inputmode="numeric" placeholder="Days" onkeydown="if(event.key==='Enter')pmWeekAddEntry()">
                       </div>
-                      <div class="pmw-field pmw-field-qty" id="pm-week-qty-wrap" style="display:none;">
-                        <div class="pmw-field-label">Quantity</div>
-                        <div class="pmw-qtyrow">
-                          <input class="pmw-input num" id="pm-week-qty" inputmode="numeric" placeholder="0" onkeydown="if(event.key==='Enter')pmWeekAddEntry()">
-                          <select class="pmw-unit" id="pm-week-unit" aria-label="Unit">
-                            <option value="pcs">pcs</option>
-                            <option value="bags">bags</option>
-                            <option value="sack">sack</option>
-                            <option value="kg">kg</option>
-                            <option value="cu.m">cu.m</option>
-                            <option value="sq.m">sq.m</option>
-                            <option value="lot">lot</option>
-                            <option value="set">set</option>
-                            <option value="sheet">sheet</option>
-                            <option value="roll">roll</option>
-                          </select>
-                        </div>
+                      <div class="pmw-mid-qty" id="pm-week-qty-wrap" style="display:none;">
+                        <input class="pmw-input num" id="pm-week-qty" inputmode="numeric" placeholder="Qty" onkeydown="if(event.key==='Enter')pmWeekAddEntry()">
+                        <select class="pmw-unit" id="pm-week-unit" aria-label="Unit">
+                          <option value="pcs">pcs</option>
+                          <option value="bags">bags</option>
+                          <option value="sack">sack</option>
+                          <option value="kg">kg</option>
+                          <option value="cu.m">cu.m</option>
+                          <option value="sq.m">sq.m</option>
+                          <option value="lot">lot</option>
+                          <option value="set">set</option>
+                          <option value="sheet">sheet</option>
+                          <option value="roll">roll</option>
+                        </select>
                       </div>
-                      <div class="pmw-field">
-                        <div class="pmw-field-label">Amount paid</div>
-                        <div class="pmw-inline">
-                          <span class="pmw-peso">₱</span>
-                          <input class="pmw-amount num" id="pm-week-amount" inputmode="numeric" placeholder="0" onkeydown="if(event.key==='Enter')pmWeekAddEntry()">
-                        </div>
+                      <div class="pmw-inline pmw-amtbox">
+                        <span class="pmw-peso">₱</span>
+                        <input class="pmw-amount num" id="pm-week-amount" inputmode="numeric" placeholder="Amount" onkeydown="if(event.key==='Enter')pmWeekAddEntry()">
                       </div>
-                    </div>
-                    <div class="pmw-add-actions">
                       <input type="file" id="pm-week-receipt-input" accept="image/*" style="display:none" onchange="pmWeekStageReceipt(this)">
-                      <button class="pmw-receipt-btn" id="pm-week-attach-btn" type="button" onclick="document.getElementById('pm-week-receipt-input').click()">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                        <span id="pmw-receipt-label">Attach receipt</span>
+                      <button class="pmw-receipt-icon" id="pm-week-attach-btn" type="button" title="Attach receipt" onclick="document.getElementById('pm-week-receipt-input').click()">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                       </button>
                       <div class="pmw-attach-thumb" id="pm-week-attach-thumb" style="display:none"></div>
-                      <div style="flex:1;"></div>
                       <button class="pmw-cancel" id="pm-week-cancel-btn" type="button" style="display:none" onclick="pmWeekCancelEdit()">Cancel</button>
-                      <button class="pmw-add" id="pm-week-add-btn" onclick="pmWeekAddEntry()">+ Add to bill</button>
+                      <button class="pmw-add" id="pm-week-add-btn" onclick="pmWeekAddEntry()">Add</button>
                     </div>
                   </div>
 
@@ -1493,22 +1482,42 @@
                 <div id="pmw-readonly" style="display:none;"></div>
               </div>
 
-              <!-- RIGHT: history + today so far -->
+              <!-- RIGHT: today so far · sent this month · recent bills · SOA -->
               <div class="pmw-side">
-                <div class="pmw-side-head">
-                  <div class="pmw-side-title">History</div>
-                  <span class="pmw-side-count" id="pmw-hist-count">—</span>
-                </div>
-                <div class="pmw-side-sub">Bills already sent — tap to view</div>
-                <div id="pm-week-history"><div class="pmw-empty">Loading…</div></div>
-                <div class="pmw-month"><span>Sent this month</span><span class="num" id="pmw-month-total">₱0</span></div>
-
-                <div class="pmw-side-title" style="margin-top:20px;">Today so far</div>
+                <div class="pmw-side-head"><div class="pmw-side-title">Today so far</div></div>
                 <div class="pmw-today">
                   <div class="pmw-today-row"><span>Labor</span><span class="num" id="pmw-today-labor">₱0</span></div>
                   <div class="pmw-today-row"><span>Materials</span><span class="num" id="pmw-today-materials">₱0</span></div>
                   <div class="pmw-today-row" id="pmw-today-both-row"><span>Mat + Labor</span><span class="num" id="pmw-today-both">₱0</span></div>
                   <div class="pmw-today-grand"><span>Grand total</span><span class="num" id="pmw-today-grand">₱0</span></div>
+                </div>
+
+                <div class="pmw-month"><span>Sent this month</span><span class="num" id="pmw-month-total">₱0</span></div>
+
+                <div class="pmw-side-head" style="margin-top:20px;">
+                  <div class="pmw-side-title">Recent bills</div>
+                  <span class="pmw-side-count" id="pmw-hist-count">—</span>
+                </div>
+                <div class="pmw-side-sub">Tap a bill to view it</div>
+                <div id="pm-week-history"><div class="pmw-empty">Loading…</div></div>
+
+                <div class="pmw-side-title" style="margin-top:20px;">Statements of account · PDF</div>
+                <div class="pmw-soa">
+                  <div class="pmw-soa-row">
+                    <span class="pmw-soa-bar" style="background:#157a52;"></span>
+                    <div class="pmw-soa-main"><div class="pmw-soa-label">Labor</div><div class="pmw-soa-total"><span class="num" id="pmw-soa-labor">₱0</span> · all bills</div></div>
+                    <button class="pmw-soa-gen" onclick="pmCatSOA('labor')">Generate</button>
+                  </div>
+                  <div class="pmw-soa-row">
+                    <span class="pmw-soa-bar" style="background:#5b6b7e;"></span>
+                    <div class="pmw-soa-main"><div class="pmw-soa-label">Materials</div><div class="pmw-soa-total"><span class="num" id="pmw-soa-materials">₱0</span> · all bills</div></div>
+                    <button class="pmw-soa-gen" onclick="pmCatSOA('materials')">Generate</button>
+                  </div>
+                  <div class="pmw-soa-row">
+                    <span class="pmw-soa-bar" style="background:#7a5bb5;"></span>
+                    <div class="pmw-soa-main"><div class="pmw-soa-label">Mat + Labor</div><div class="pmw-soa-total"><span class="num" id="pmw-soa-both">₱0</span> · all bills</div></div>
+                    <button class="pmw-soa-gen" onclick="pmCatSOA('both')">Generate</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1600,6 +1609,22 @@
 
           <!-- ── Money Panel (Payment + Revolving Fund) ── -->
           <div class="pm-ws-panel" id="ws-panel-money">
+            <!-- design: next payment due banner -->
+            <div class="pm-pay-banner" id="pm-pay-banner" style="display:none;">
+              <div>
+                <div class="pm-pay-banner-top">
+                  <span class="pm-pay-banner-label" id="pm-pay-banner-when">Next payment due</span>
+                  <span class="pm-pay-banner-strict" id="pm-pay-banner-strict" style="display:none;">STRICT</span>
+                </div>
+                <div class="pm-pay-banner-amt num" id="pm-pay-banner-amt">₱0</div>
+                <div class="pm-pay-banner-sub" id="pm-pay-banner-sub">—</div>
+              </div>
+              <div class="pm-pay-banner-actions">
+                <button class="pm-pay-banner-send" onclick="pmOpenPaymentRequestModal()">Send request</button>
+                <button class="pm-pay-banner-edit" onclick="pmOpenPaymentRequestModal()">Edit amount</button>
+              </div>
+            </div>
+
             <!-- Revolving fund section -->
             <div class="pm-ws-section">
             <div class="pm-ws-panel-header">

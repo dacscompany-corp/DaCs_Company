@@ -8,6 +8,11 @@ Each construction project opens into a **workspace** with five tabs (below). Thi
 reflects the **current** workflow; the original spec had a weekly total-only summary,
 which has since been replaced by the itemized **Daily Expenses** builder.
 
+> **🆕 Recently added:** per-category **Statements of Account** (Daily Expenses) with PDF
+> download · **mobile-responsive** workspace (bottom tab bar) · **client/partner portal
+> parity** (Materials + Labor split · Net cash · tap to view past weeks). Items below
+> tagged **🆕 New** are part of this batch.
+
 ---
 
 ## Navigation Structure
@@ -58,6 +63,11 @@ itemized** (not a single weekly labor/materials total).
 - **History sidebar:** past bills (status pills **Sent / Partial / Paid**, tap to open
   read-only), a **"Sent this month"** total, and a **"Today so far"** summary
   (Labor / Materials / Mat + Labor / Grand total).
+- **🆕 Statements of Account (per category):** from the sidebar, generate a **separate SOA**
+  for **Labor**, **Materials**, or **Mat + Labor** — a project-wide statement listing every
+  entry of that category across all bills, with a category total. Opens in the house style
+  (green company name, dark-green header + total row) with **Print** and **Download PDF**
+  (jsPDF; PDF amounts shown as `PHP …`).
 
 **Management fee:** **per project & editable** (default **15%**, can be **0%**). Changing a
 project's rate **re-bills its unpaid bills** at the new rate.
@@ -112,6 +122,26 @@ Houses the **Revolving Fund** and the **Payment System**.
 #### Payment Reminders
 - **Wednesday** — reminder notification sent to client (payment is coming Friday).
 - **Friday** — automatic payment request generated.
+
+---
+
+## 🆕 Mobile view (responsive)
+On phones (≤ 700px) the workspace switches to a mobile layout (desktop unchanged):
+- A fixed **bottom tab bar** — **Overview · Expenses · Procure · Progress · Money** — replaces
+  the top tabs and stays in sync with them.
+- Panels stack into a single column; the **Daily Expenses** builder and its sidebar stack;
+  Overview KPI tiles reflow to 2-up; the Procurements table scrolls horizontally.
+- Keeps the brand-green theme.
+
+---
+
+## 🆕 Client & Partner Portal parity
+The Dacs Partnership / Client portal mirrors the admin figures (shared portal JS):
+- **Direct-cost breakdown** shows the same **Labor / Materials / Materials + Labor** split
+  (combined amount no longer hidden inside Materials).
+- **Net cash** KPI (paid − direct cost) on the partner overview, matching the admin.
+- **Weekly Summary** splits out **Mat + Labor** (own KPI + table column) and lets you
+  **tap any submitted week** to view its detail, with **← Back to latest**.
 
 ---
 
