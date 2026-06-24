@@ -30,6 +30,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Renovation: site-wide design refresh (must load LAST so overrides win) -->
     <link rel="stylesheet" href="css/admin-renovation.css">
+    <!-- Mobile (iOS/Android) responsiveness layer — loads AFTER everything so it overrides module grids at phone widths -->
+    <link rel="stylesheet" href="css/admin-mobile.css">
 </head>
 <body>
 
@@ -255,6 +257,9 @@
     <main class="main-content">
         <!-- ════════════ PORTAL CHROME: top nav + primary tabs + modules row ════════════ -->
         <header class="portal-topnav">
+            <button class="mobile-sidebar-toggle" aria-label="Open menu" onclick="toggleSidebar()">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
             <div class="portal-brand">
                 <div class="portal-brand-mark">D</div>
                 <div class="portal-brand-text">

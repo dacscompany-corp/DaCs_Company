@@ -2754,7 +2754,7 @@ function cmRenderOverview() {
     // ── Direct cost breakdown card (purple hero theme: period selector + proportion bar + 3 split boxes) ──
     const ovSelStyle = "font-size:12px !important;font-weight:700 !important;color:#5b5bd6 !important;border:none !important;border-radius:10px !important;padding:8px 32px 8px 14px !important;background-color:#fff !important;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235b5bd6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\") !important;background-repeat:no-repeat !important;background-position:right 12px center !important;-webkit-appearance:none !important;-moz-appearance:none !important;appearance:none !important;cursor:pointer;box-shadow:0 2px 6px rgba(20,25,40,0.12);";
     const ovLegendBox = (label, swatch, amtId, pctId, val, pct) => `
-        <div style="flex:1 1 160px;min-width:0;display:flex;flex-direction:column;gap:8px;padding:14px 16px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);border-radius:13px;">
+        <div class="cm-bd-box" style="flex:1 1 160px;min-width:0;display:flex;flex-direction:column;gap:8px;padding:14px 16px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);border-radius:13px;">
             <div style="display:flex;align-items:center;gap:8px;min-width:0;">
                 <span style="width:10px;height:10px;border-radius:3px;background:${swatch};flex:none;"></span>
                 <span style="font-size:12px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</span>
@@ -2763,13 +2763,13 @@ function cmRenderOverview() {
             <div style="font-size:10.5px;color:rgba(255,255,255,0.72);white-space:nowrap;"><span id="${pctId}">${pct}</span>% of direct cost</div>
         </div>`;
     const breakdownCard = `
-    <div style="background:#5b5bd6;border-radius:20px;padding:24px;color:#fff;box-shadow:0 18px 36px -16px rgba(91,91,214,0.5);">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;">
+    <div class="cm-bd-card" style="background:#5b5bd6;border-radius:20px;padding:24px;color:#fff;box-shadow:0 18px 36px -16px rgba(91,91,214,0.5);">
+        <div class="cm-bd-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;">
             <div>
                 <div style="font-size:16px;font-weight:800;color:#fff;">Direct cost breakdown</div>
                 <div id="cm-ov-range-note" style="font-size:11.5px;color:rgba(255,255,255,0.8);margin-top:2px;">All time · ${(cmWeeklyBills||[]).length} week${(cmWeeklyBills||[]).length === 1 ? '' : 's'}</div>
             </div>
-            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:11px;">
+            <div class="cm-bd-head-right" style="display:flex;flex-direction:column;align-items:flex-end;gap:11px;">
                 <div style="display:flex;align-items:baseline;gap:7px;">
                     <span id="cm-ov-direct" style="font-size:21px;font-weight:800;color:#fff;line-height:1;white-space:nowrap;">${cmFmt(ovBd.direct)}</span>
                     <span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.8);">total</span>
@@ -2788,7 +2788,7 @@ function cmRenderOverview() {
             <div id="cm-ov-seg-materials" style="width:${ovBd.matPct}%;background:#f5c560;border-radius:99px;${ovBd.materials > 0 ? 'min-width:6px;' : ''}transition:width .25s ease;"></div>
             <div id="cm-ov-seg-combined"  style="width:${ovBd.combinedPct}%;background:#c3adf0;border-radius:99px;${ovBd.combined > 0 ? 'min-width:6px;' : ''}transition:width .25s ease;"></div>
         </div>
-        <div style="display:flex;gap:13px;flex-wrap:wrap;">
+        <div class="cm-bd-legend" style="display:flex;gap:13px;flex-wrap:wrap;">
             ${ovLegendBox('Labor',             '#5fd0a0', 'cm-ov-labor',     'cm-ov-labor-pct',     ovBd.labor,     ovBd.laborPct)}
             ${ovLegendBox('Materials',         '#f5c560', 'cm-ov-materials', 'cm-ov-materials-pct', ovBd.materials, ovBd.matPct)}
             ${ovLegendBox('Materials + labor', '#c3adf0', 'cm-ov-combined',  'cm-ov-combined-pct',  ovBd.combined,  ovBd.combinedPct)}

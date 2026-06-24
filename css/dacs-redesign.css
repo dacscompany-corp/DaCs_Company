@@ -291,6 +291,26 @@ body:not(.dark-mode) .cm-topbar-date       { font-size: 13px; color: var(--dx-mu
   .cm-rf-kpis, .cm-soa-kpis { grid-template-columns: 1fr !important; }
 }
 
+/* ── Direct cost breakdown card: responsive for phones (iOS / Android) ── */
+/* On a phone the breakdown card header should stack (title, then total +
+   full-width period dropdown) and the three legend boxes drop to one column. */
+@media (max-width: 680px) {
+  .cm-bd-card { padding: 20px 18px !important; }
+  /* Header stacks: title block, then the total/selector block left-aligned */
+  .cm-bd-head { flex-direction: column !important; align-items: stretch !important; gap: 14px !important; }
+  .cm-bd-head-right { align-items: stretch !important; }
+  .cm-bd-head-right > div:first-child { justify-content: flex-start !important; }
+  /* Make the period dropdown easy to tap — full width */
+  #cm-ov-range { width: 100% !important; box-sizing: border-box !important; }
+  /* Two legend boxes per row on small tablets / large phones */
+  .cm-bd-legend .cm-bd-box { flex: 1 1 calc(50% - 13px) !important; }
+}
+@media (max-width: 460px) {
+  /* One legend box per row on phones so nothing truncates */
+  .cm-bd-legend { flex-direction: column !important; }
+  .cm-bd-legend .cm-bd-box { flex: 1 1 auto !important; width: 100% !important; }
+}
+
 /* ── Profile (kept functional; just theme the avatar + role badge) ── */
 body:not(.dark-mode) .profile-avatar-lg { background: var(--dx-accent) !important; color: #fff !important; }
 body:not(.dark-mode) .profile-role-badge { background: var(--dx-accent-tint) !important; color: var(--dx-accent) !important; }

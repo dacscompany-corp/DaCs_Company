@@ -38,9 +38,21 @@
       "Bash(cd \"/c/Users/John Aerol Tapales/Documents/Dacs Web\" && sed -i '98,286d' js/pm-admin.js && sed -n '95,101p' js/pm-admin.js)",
       "Bash(cd \"/c/Users/John Aerol Tapales/Documents/Dacs Web\" && sed -i '98,286d' js/pm-admin.js && sed -n '95,101p' js/pm-admin.js)",
       "Bash(node -c js/client-management-app.js)",
-      "Bash(cd \"/c/Users/John Aerol Tapales/Documents/Dacs Web\" && node --check js/pm-admin.js && echo \"JS OK\" && rm -f .design-pm-workspace.html && echo \"temp removed\")"
+      "Bash(cd \"/c/Users/John Aerol Tapales/Documents/Dacs Web\" && node --check js/pm-admin.js && echo \"JS OK\" && rm -f .design-pm-workspace.html && echo \"temp removed\")",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"open=\"o\" close=\"c}' css/pm-admin.css)",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"dacs-redesign.css open=\"o\" close=\"c}' css/dacs-redesign.css)",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"pm-admin.css open=\"o\" close=\"c}' css/pm-admin.css)",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"admin-mobile.css open=\"o\" close=\"c}' css/admin-mobile.css)",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"admin-mobile.css open=\"o\" close=\"c\"  -> \"\\(o==c?\"BALANCED\":\"MISMATCH\"\\)}' css/admin-mobile.css)",
+      "Bash(grep -oE \"className:\\\\\"[^\\\\\"]*\\\\\"[^}]{0,40}\" js/portal-app.compiled.js)",
+      "Bash(grep -oE \"ACTIVE[^\\\\\"]{0,200}\" js/portal-app.compiled.js)",
+      "Bash(grep -oE \"pc-help-tip[^}]{0,80}\" js/portal-app.compiled.js)",
+      "Bash(grep -oE \"\\(button|span|div\\)[^>]{0,60}pc-help-tip\" js/portal-app.compiled.js)",
+      "Bash(grep -oE \"pc-fld-card-head.{0,300}\" js/portal-app.compiled.js)",
+      "Bash(git pull *)",
+      "Bash(git add *)",
+      "Bash(GIT_EDITOR=true git rebase --continue)"
     ],
-
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
       "c:\\Users\\John Aerol Tapales\\.claude\\projects\\c--Users-John-Aerol-Tapales-Documents-Dacs-Web\\memory",

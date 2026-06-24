@@ -1281,3 +1281,87 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
   /* Projects card grid → single column */
   .pm-cards-grid { grid-template-columns: 1fr; }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   RESPONSIVE — PM Admin overview for phones (iOS / Android)
+   The overview KPI strip, charts, lists and direct-cost breakdown are
+   built with inline styles; these rules reflow them on small screens.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Tablets / large phones: 6-tile KPI strip → 3 columns; charts/lists stack */
+@media (max-width: 1024px) {
+  .pm-ov-kpis { grid-template-columns: repeat(3, 1fr) !important; }
+}
+@media (max-width: 820px) {
+  .pm-ov-charts > div,
+  .pm-ov-lists  > div { min-width: 0 !important; flex: 1 1 100% !important; }
+}
+
+/* Phones */
+@media (max-width: 680px) {
+  .pm-ov-kpis { grid-template-columns: repeat(2, 1fr) !important; gap: 10px !important; }
+
+  /* Direct-cost breakdown: header stacks, dropdown full-width, boxes wrap to 2 */
+  .pm-bd-card { padding: 18px 16px !important; }
+  .pm-bd-head { flex-direction: column !important; align-items: stretch !important; gap: 14px !important; }
+  .pm-bd-head-right { align-items: stretch !important; }
+  .pm-bd-head-right > div:first-child { justify-content: flex-start !important; }
+  #pm-ov-range { width: 100% !important; box-sizing: border-box !important; }
+  .pm-bd-box { min-width: 0 !important; flex: 1 1 calc(50% - 13px) !important; }
+}
+
+/* Small phones */
+@media (max-width: 440px) {
+  .pm-ov-kpis { grid-template-columns: 1fr !important; }
+  .pm-bd-legend { flex-direction: column !important; }
+  .pm-bd-box { flex: 1 1 auto !important; width: 100% !important; }
+}
+
+/* ── Daily-bill builder: fit phones, stack the add-row inputs ───────── */
+@media (max-width: 680px) {
+  .pm-week-main { min-width: 0 !important; padding: 18px 16px !important; }
+  .pm-week-side { padding: 16px !important; }
+  /* Stack the add-line inputs so each is full-width and easy to tap */
+  .pm-week-addrow { flex-direction: column !important; align-items: stretch !important; }
+  .pm-week-addrow .pm-wf,
+  .pm-week-addrow .pm-wf-details,
+  .pm-week-addrow .pm-wf-amount-wrap { width: 100% !important; min-width: 0 !important; box-sizing: border-box !important; }
+  /* Totals rows: keep label/value on one line but allow shrink */
+  .pm-week-cattabs .pm-week-cattab { flex: 1 1 auto !important; text-align: center !important; }
+}
+
+/* ── PM module shell: projects list, workspace header/tabs, modals ──── */
+@media (max-width: 680px) {
+  /* Projects-list header: title block + actions stack, buttons go full-width */
+  .pm-admin-actions { width: 100% !important; flex: 1 1 100% !important; }
+  .pm-admin-actions .pm-btn { flex: 1 1 auto !important; justify-content: center !important; }
+  .pm-admin-title { font-size: 19px !important; }
+
+  /* Project cards: one per row so stats/labels never cramp */
+  .pm-cards-grid { grid-template-columns: 1fr !important; }
+
+  /* Workspace (project detail) header: status badge drops below the name */
+  .pm-workspace-topbar { gap: 10px !important; }
+  .pm-workspace-status { margin-left: 0 !important; }
+  .pm-workspace-client { font-size: 18px !important; white-space: normal !important; }
+
+  /* Panel header (title + action) stacks; action button full-width */
+  .pm-ws-panel-header { flex-direction: column !important; align-items: stretch !important; }
+  .pm-ws-panel-header > button,
+  .pm-ws-panel-header .pm-btn { width: 100% !important; justify-content: center !important; }
+
+  /* Search inputs that were given a fixed inline width shouldn't overflow */
+  #pm-proc-search { width: 100% !important; box-sizing: border-box !important; }
+
+  /* Modals: tighter gutters, footer buttons stack full-width */
+  .pm-modal-overlay { padding: 12px !important; }
+  .pm-modal-box { max-height: 92vh !important; }
+  .pm-modal-footer { flex-direction: column-reverse !important; }
+  .pm-modal-footer .pm-btn { width: 100% !important; justify-content: center !important; }
+}
+
+/* Compress the workspace tabs a touch on phones (they already scroll-x) */
+@media (max-width: 480px) {
+  .pm-ws-tabs { gap: 18px !important; }
+  .pm-ws-tab { font-size: 13px !important; }
+}
