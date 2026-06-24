@@ -265,7 +265,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
         : 'None scheduled';
     const nextDueSub = next ? _pmOvShort(next.totalAmount || next.amount || 0) + ' due' : 'all settled';
     const tiles = `
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px;">
+    <div class="pm-ov-kpis" style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px;">
       ${tile('#c6e6d5', '#eaf4ef', 'Progress', '#0f6342', progress + '%', '', progress)}
       ${tile('#d6dde4', '#eef0f3', 'Direct cost', '#44525f', _fmt(directCost), (feeTotal > 0 ? _pmOvShort(feeTotal) + ' fee on top' : 'labor + materials'), null)}
       ${tile('#f0cdc8', '#f8ecea', 'Outstanding balance', '#8f352c', _fmt(outstanding), 'client still owes', null)}
@@ -299,7 +299,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
         ? `conic-gradient(#157a52 0% ${paidPct}%, #b4453a ${paidPct}% 100%)`
         : '#eeede9';
     const charts = `
-    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;margin-bottom:16px;">
+    <div class="pm-ov-charts" style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;margin-bottom:16px;">
       <div style="flex:1.6;min-width:360px;border:1px solid #e7e6e2;border-radius:16px;background:#fff;padding:18px 20px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
           <div style="font:600 14px 'IBM Plex Sans';">Weekly billing trend</div>
@@ -363,7 +363,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
 
     const vall = (tab, tabBtnId) => `<button onclick="pmWsTab('${tab}', document.getElementById('${tabBtnId}'))" class="pm-ov-vall" style="background:#fff;border:1px solid #e2e1dc;border-radius:8px;padding:6px 12px;font:600 11.5px 'IBM Plex Sans';color:#5b5a55;cursor:pointer;">View all</button>`;
     const lists = `
-    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+    <div class="pm-ov-lists" style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
       <div style="flex:1;min-width:320px;border:1px solid #e7e6e2;border-radius:16px;background:#fff;overflow:hidden;">
         <div style="display:flex;align-items:center;justify-content:space-between;padding:17px 20px 13px;">
           <div style="font:600 14px 'IBM Plex Sans';">Milestones</div>${vall('progress', 'pm-ws-tab-progress')}
@@ -385,7 +385,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
     const _ovWeekOpts = _ovWeeks.map(b =>
         `<option value="${_esc(b.weekEndingDate)}">Week ending ${_esc(_pmOvWeekLabel(b.weekEndingDate))}</option>`).join('');
     const legendBox = (label, swatch, amtColor, bg, border, subColor, amtId, pctId, val, pct) => `
-      <div style="flex:1;min-width:200px;display:flex;align-items:center;gap:13px;padding:14px 16px;background:${bg};border:1px solid ${border};border-radius:13px;">
+      <div class="pm-bd-box" style="flex:1;min-width:200px;display:flex;align-items:center;gap:13px;padding:14px 16px;background:${bg};border:1px solid ${border};border-radius:13px;">
         <span style="width:11px;height:11px;border-radius:3px;background:${swatch};flex:none;"></span>
         <div style="flex:1;min-width:0;">
           <div style="font:600 12.5px 'IBM Plex Sans';color:#1c1c1a;">${label}</div>
@@ -396,13 +396,13 @@ function _pmOvHtml(p, ms, bills, reqs) {
         </div>
       </div>`;
     const breakdown = `
-    <div style="border:1px solid #e7e6e2;border-radius:16px;background:#fff;padding:20px 22px;margin-bottom:16px;">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;">
+    <div class="pm-bd-card" style="border:1px solid #e7e6e2;border-radius:16px;background:#fff;padding:20px 22px;margin-bottom:16px;">
+      <div class="pm-bd-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;">
         <div>
           <div style="font:600 14.5px 'IBM Plex Sans';">Direct cost breakdown</div>
           <div id="pm-ov-range-note" style="font:400 11.5px 'IBM Plex Sans';color:#9b9a94;margin-top:2px;">All time · ${bills.length} week${bills.length === 1 ? '' : 's'} · management fee excluded</div>
         </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:11px;">
+        <div class="pm-bd-head-right" style="display:flex;flex-direction:column;align-items:flex-end;gap:11px;">
           <div style="display:flex;align-items:baseline;gap:7px;">
             <span class="num" id="pm-ov-direct" style="font:700 21px 'IBM Plex Sans';color:#1c1c1a;line-height:1;white-space:nowrap;">${_fmt(bd.direct)}</span>
             <span style="font:600 11px 'IBM Plex Sans';color:#9b9a94;">total</span>
@@ -425,7 +425,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
       </div>
 
       <!-- legend stat boxes -->
-      <div style="display:flex;gap:13px;flex-wrap:wrap;">
+      <div class="pm-bd-legend" style="display:flex;gap:13px;flex-wrap:wrap;">
         ${legendBox('Labor',             '#157a52', '#0f6342', '#f3faf6', '#d8ebe0', '#7c9d8b', 'pm-ov-labor',     'pm-ov-labor-pct',     bd.labor,     bd.laborPct)}
         ${legendBox('Materials',         '#c79024', '#8a6310', '#fdf8ec', '#f0e2c5', '#a98f5f', 'pm-ov-materials', 'pm-ov-materials-pct', bd.materials, bd.matPct)}
         ${legendBox('Materials + labor', '#8b6fc4', '#6b4ea8', '#f5f2fc', '#ddd5ef', '#9a86c4', 'pm-ov-combined',  'pm-ov-combined-pct',  bd.combined,  bd.combinedPct)}

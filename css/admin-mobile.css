@@ -1,0 +1,337 @@
+/* ════════════════════════════════════════════════════════════════════
+   admin-mobile.css — global mobile (iOS / Android) responsiveness layer
+   ────────────────────────────────────────────────────────────────────
+   Loaded LAST in admin.html so it overrides per-module styles. It fills
+   the sub-640px / sub-480px gaps the individual module stylesheets miss:
+   multi-column grids collapse, fixed-width panels go fluid, wide tables
+   scroll horizontally, and modals fit the viewport.
+
+   Scope is intentionally broad but safe: it only changes layout at phone
+   widths (≤640px and ≤480px). Desktop/tablet rendering is untouched.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ─────────────────────────────────────────────────────────────────────
+   ≤ 640px — large phones / small tablets
+   ───────────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+
+  /* Prevent any sideways page scroll from stray fixed widths */
+  html, body { max-width: 100%; overflow-x: hidden; }
+
+  /* ── Root layout: stop the flex column from overflowing the viewport ──
+     A flex child (.main-content) defaults to min-width:auto, so it refuses
+     to shrink below its content's intrinsic width — that is what pushes the
+     page wider than the phone screen. Force it to shrink and clip. */
+  .dashboard-screen { width: 100%; max-width: 100vw; overflow-x: hidden; }
+  .main-content {
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+    width: auto !important;
+    max-width: 100% !important;
+    margin-left: 0 !important;
+    overflow-x: hidden !important;
+  }
+
+  /* ── Reclaim horizontal space: trim the big 40px page gutters ──────── */
+  .content-view        { padding-left: 14px !important; padding-right: 14px !important; max-width: 100% !important; }
+  .portal-primary-tabs,
+  .portal-modules-row  { padding-left: 12px !important; padding-right: 12px !important; }
+
+  /* ── DACS Portal (Project Control — React app in #dacsPortalRoot) ──── */
+  /* The React content is NOT in .content-view, so it needs its own rules.
+     Give the scope side padding and force every descendant to stay within
+     the viewport (box-sizing + max-width) so nothing clips off the right. */
+  #dacsPortalRoot.dacs-portal-scope { padding: 14px !important; overflow-x: hidden !important; }
+  /* Keep everything inside the viewport, but DON'T force min-width:0 on every
+     node (that made text wrap one letter per line). box-sizing + max-width is
+     enough to stop overflow without squashing text. */
+  .dacs-portal-scope,
+  .dacs-portal-scope * { box-sizing: border-box !important; max-width: 100% !important; }
+  /* Allow only flex/grid CONTAINERS to shrink (this is where min-width:auto
+     causes overflow) — not text-bearing leaf elements. */
+  .dacs-portal-scope [class*="-grid"],
+  .dacs-portal-scope [class*="-row"],
+  .dacs-portal-scope [class*="-head"],
+  .dacs-portal-scope [class*="-card"],
+  .dacs-portal-scope [class*="-strip"],
+  .dacs-portal-scope [class*="-list"] { min-width: 0 !important; }
+  /* Folder / card grids in the portal: one column on phones */
+  .dacs-portal-scope .pc-fld-grid,
+  .dacs-portal-scope .pc-period-grid,
+  .dacs-portal-scope .pc-flow-cards { grid-template-columns: 1fr !important; }
+  /* Status pills/badges keep their shape — never squashed into a circle */
+  .dacs-portal-scope .pc-pill,
+  .dacs-portal-scope .pc-over-badge,
+  .dacs-portal-scope [class*="health"],
+  .dacs-portal-scope [class*="-tag"],
+  .dacs-portal-scope [class*="-badge"] {
+    width: auto !important;
+    flex: none !important;
+    white-space: nowrap !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+  }
+
+  /* Help-tip "?" stays a fixed 20px circle and never stretches/collides */
+  .dacs-portal-scope .pc-help-tip {
+    width: 20px !important;
+    height: 20px !important;
+    min-width: 20px !important;
+    min-height: 20px !important;
+    flex: none !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+  }
+  /* Card titles wrap normally between words, not mid-word */
+  .dacs-portal-scope .pc-fld-card-title,
+  .dacs-portal-scope [class*="card-title"],
+  .dacs-portal-scope [class*="-name"] { overflow-wrap: normal !important; word-break: normal !important; }
+
+  /* ── BUTTONS: make them finger-friendly and stop them crowding content ── */
+
+  /* Folder-card action icons (dropdown + edit/copy/delete): drop the absolute
+     positioning so they sit in normal flow and never overlap the title; let
+     them wrap and give the title back its full width. */
+  .dacs-portal-scope .pc-fld-card-wrap { flex-direction: column !important; }
+  .dacs-portal-scope .pc-fld-card-wrap > .pc-fld-card { padding-right: 16px !important; }
+  /* Actions sit on their OWN row at the top of the card (in normal flow) so
+     they never overlap the title or the help-tip "?". */
+  .dacs-portal-scope .pc-fld-card-wrap > .pc-fld-card-actions {
+    position: static !important;
+    order: -1 !important;
+    align-self: stretch !important;
+    justify-content: flex-end !important;
+    flex-wrap: wrap !important;
+    margin: 0 0 4px 0 !important;
+  }
+  /* Title row: keep the name and its "?" help-tip together, with breathing
+     room from the action buttons above. */
+  .dacs-portal-scope .pc-fld-card-head {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex-wrap: wrap !important;
+  }
+
+  /* The active-project selector + ‹ › arrows: wrap and fill the row */
+  .dacs-portal-scope .pc-head-controls { width: 100% !important; }
+  .dacs-portal-scope .pc-head-controls > * { flex: 1 1 auto !important; }
+
+  /* Primary CTAs ("New Project Folder", "Open Project") go full-width & centered */
+  .dacs-portal-scope .pc-btn-primary,
+  .dacs-portal-scope .pc-fld-card-cta {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Icon buttons get a comfortable minimum tap target (~36px) */
+  .dacs-portal-scope .pc-fld-card-actions button,
+  .dacs-portal-scope .pc-row-icon,
+  .dacs-portal-scope .pc-icon-amber,
+  .dacs-portal-scope .pc-icon-blue {
+    min-width: 36px !important;
+    min-height: 36px !important;
+  }
+
+  /* Period card actions row wraps too */
+  .dacs-portal-scope .pc-period-actions { flex-wrap: wrap !important; }
+  .dacs-portal-scope .pc-period-actions > * { flex: 1 1 auto !important; }
+  /* Portal page heading scales down so it doesn't force width */
+  .dacs-portal-scope .pc-head-title,
+  .dacs-portal-scope .pcf-title { font-size: 24px !important; }
+  /* Headers that were a space-between flex row → stack on phones */
+  .dacs-portal-scope .pc-head,
+  .dacs-portal-scope .pcf-head { flex-direction: column !important; align-items: stretch !important; gap: 14px !important; }
+  .dacs-portal-scope .pc-head-controls { width: 100% !important; }
+
+  /* ── Multi-column grids → 2 columns (KPI/stat strips stay scannable) ── */
+  .stats-grid,
+  .cons-stats-grid,
+  .pm-stat-grid,
+  .pm-kpi-row,
+  .pr-stats-row,
+  .un-stats-row,
+  .ovhd-kpi-row,
+  .rpt-kpi-row,
+  .rpt-kpi-grid5,
+  .inv-stats-grid,
+  .mvp-summary-row,
+  .mvp-dash-grid,
+  .drill-stats,
+  .exp-bs-stats {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  /* ── Two-column form/content grids → single column ── */
+  .cons-form-row,
+  .boq-terms-grid,
+  .boq-form-grid,
+  .pr-qr-tab-upload,
+  .pr-form-row,
+  .inv-form-grid--2,
+  .inv-form-grid--3,
+  .pm-two-col,
+  .pm-qr-grid,
+  .pc-grid-2,
+  .exp-cost-row,
+  .pm-stat-row {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* ── Multi-column "card/flow/module" grids → single column ── */
+  .module-cards,
+  .pc-flow-cards,
+  .pc-summarize,
+  .pc-kpi-strip,
+  .summary-strip,
+  .subtabs,
+  .hero-grid,
+  .dashboard-compact-grid,
+  .dashboard-bottom-charts,
+  .analytics-grid,
+  .analytics-summary,
+  .rpt-charts-row,
+  .mvp-folder-grid,
+  .ov-folder-grid,
+  .mvp-project-grid {
+    grid-template-columns: 1fr !important;
+    grid-auto-flow: row !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  /* ── Fixed-width side panels / columns → fluid full width ── */
+  .exp-page-layout,
+  .ovhd-cols {
+    flex-direction: column !important;
+  }
+  .exp-proj-panel,
+  .ovhd-col-cats,
+  .ovhd-col-table,
+  .exp-side,
+  .pm-week-side,
+  .pm-week-main {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    flex: 1 1 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* ── Wide tables: never break layout — scroll inside their wrapper ── */
+  .boq-table,
+  .inv-items-table {
+    display: block !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    max-width: 100% !important;
+  }
+
+  /* Generic safety: tables inside content views get a horizontal scroll
+     rather than forcing the page wider than the screen. */
+  .content-view table,
+  .pm-ws-panel table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+
+  /* ── Modals: tighter gutters, fit the viewport, stack footer buttons ── */
+  .exp-modal-box,
+  .cons-modal-content,
+  .un-modal-card,
+  .pm-modal-box {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 92vh !important;
+    box-sizing: border-box !important;
+  }
+  .pm-modal-overlay,
+  .exp-modal-overlay { padding: 12px !important; }
+
+  /* ── Inputs that were given fixed inline/px widths shouldn't overflow ── */
+  .content-view input[type="text"],
+  .content-view input[type="search"],
+  .content-view select {
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* Toolbars / page headers that lay buttons out in a row → wrap & fill */
+  .filters-bar,
+  .pm-admin-actions { flex-wrap: wrap !important; }
+
+  /* Hamburger sits at the start of the top nav, vertically centered */
+  .mobile-sidebar-toggle { align-items: center; justify-content: center; margin-right: 4px; }
+
+  /* ── Portal top nav: tighten for phones, keep it on one row ── */
+  .portal-topnav { padding: 12px 16px !important; gap: 12px !important; }
+  .portal-topnav-tools { gap: 8px !important; }
+  /* Long emails shouldn't blow out the row — cap and ellipsize */
+  .portal-user-pill { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Primary tabs + modules row scroll horizontally instead of wrapping wide */
+  .portal-primary-tabs,
+  .portal-modules-row { overflow-x: auto !important; -webkit-overflow-scrolling: touch; flex-wrap: nowrap !important; }
+
+  /* ── General buttons across the admin: finger-friendly tap targets ──── */
+  .content-view .pm-btn,
+  .content-view .btn,
+  .content-view button:not(.pm-week-cattab):not(.pc-flow-expand):not(.mobile-sidebar-toggle),
+  .exp-modal .pm-btn,
+  .pm-modal-footer .pm-btn { min-height: 40px; }
+
+  /* Header action button clusters wrap and each button fills the row */
+  .pm-admin-actions .pm-btn,
+  .pm-ws-panel-header .pm-btn,
+  .pm-ws-panel-header > button { flex: 1 1 auto !important; justify-content: center !important; }
+
+  /* Full-width primary action buttons in module page headers */
+  .pm-admin-actions { width: 100% !important; }
+}
+
+/* On the smallest phones reclaim space: hide the brand tagline + user pill
+   (the email is still on the profile/menu; the logout button stays). */
+@media (max-width: 460px) {
+  .portal-brand-sub { display: none !important; }
+  .portal-user-pill { display: none !important; }
+  .portal-topnav { padding: 10px 12px !important; }
+}
+
+/* Hamburger toggle appears on phones+tablets that use the drawer (≤768px).
+   admin.css already flips it to display:flex at 768px; this just guarantees
+   it stays hidden above that width even with the mobile layer loaded. */
+@media (min-width: 769px) {
+  .mobile-sidebar-toggle { display: none !important; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   ≤ 480px — phones: drop the 2-column KPI strips to a single column
+   ───────────────────────────────────────────────────────────────────── */
+@media (max-width: 480px) {
+  .stats-grid,
+  .cons-stats-grid,
+  .pm-stat-grid,
+  .pm-kpi-row,
+  .pr-stats-row,
+  .un-stats-row,
+  .ovhd-kpi-row,
+  .rpt-kpi-row,
+  .rpt-kpi-grid5,
+  .inv-stats-grid,
+  .mvp-summary-row,
+  .mvp-dash-grid,
+  .drill-stats,
+  .exp-bs-stats {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Headings scale down a touch so they don't wrap awkwardly */
+  .dashboard-header h1,
+  .pm-admin-title,
+  .section-card h2 { font-size: 19px !important; }
+
+  /* Content padding tightens to reclaim width on small screens */
+  .content-view { padding: 12px !important; }
+}
