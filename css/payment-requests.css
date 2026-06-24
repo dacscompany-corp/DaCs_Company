@@ -1270,7 +1270,7 @@
 .sowa-meta { display: flex; gap: 32px; font-size: 13px; color: #374151; flex-wrap: wrap; }
 .sowa-meta-label { color: #9ca3af; margin-right: 4px; }
 
-.sowa-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sowa-table { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 13px; }
 
 /* Yellow header */
 .sowa-thead-row th {

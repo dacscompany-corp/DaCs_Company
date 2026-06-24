@@ -2861,6 +2861,19 @@ body.dark-mode .ms-progress-label { color: #7d9a8c; }
 @media (max-width: 600px) {
   .pf-kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
 }
+@media (max-width: 380px) {
+  /* On the narrowest phones, large peso values wrap awkwardly two-up — stack them. */
+  .pf-kpi-grid { grid-template-columns: 1fr; }
+}
+
+/* Direct-cost-breakdown card header: total + "All time" range button.
+   Right-aligned on desktop (sits top-right beside the title); on phones the
+   block wraps to the left, so left-align it too — otherwise the narrow button
+   right-aligns to the number's width and looks awkwardly centered. */
+.cm-ov-head-right { align-items: flex-end; }
+@media (max-width: 600px) {
+  .cm-ov-head-right { align-items: flex-start; }
+}
 /* ── KPI Cards ── */
 .pf-kpi-card {
   border-radius: 16px;

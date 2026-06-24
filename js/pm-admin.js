@@ -1167,6 +1167,7 @@ function _pmShiftDateStr(dateStr, days) {
 }
 
 async function _pmLoadWeekBuilder() {
+    _pmStatementShow(false);   // re-entering the tab always shows the builder, not a stale statement
     if (!_pmActiveProject) {
         _pmWeekBills = []; _pmWeekEntries = []; _pmWeekEditingId = null;
         _pmSet('pm-week-date', '—');
@@ -1252,9 +1253,23 @@ window.pmWeekShift = function(delta) {
 function _pmWeekShowBuilder(show) {
     const b = document.getElementById('pmw-build');
     const r = document.getElementById('pmw-readonly');
+    // The rail's grand total + Save belong to the editable draft; a past bill
+    // renders its own totals in the read-only view, so hide the rail action then.
+    const action = document.getElementById('pmw-rail-action');
     if (b) b.style.display = show ? '' : 'none';
     if (r) r.style.display = show ? 'none' : '';
+    if (action) action.style.display = show ? '' : 'none';
 }
+
+// Collapse / expand a summary-rail section ('bills' or 'soa').
+window.pmRailToggle = function(which) {
+    const body = document.getElementById('pmw-rail-' + which + '-body');
+    const chev = document.getElementById('pmw-rail-' + which + '-chev');
+    if (!body) return;
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    if (chev) chev.classList.toggle('open', !open);
+};
 
 // Open a past saved bill read-only (from the History sidebar).
 window.pmWeekViewBill = function(id) {
@@ -1356,6 +1371,13 @@ function _pmWeekApplyCat() {
     if (det) det.placeholder = cat === 'labor' ? 'Labor details (e.g. Masonry crew)'
         : cat === 'both' ? 'Supply & install (e.g. Aluminum windows)'
         : 'Materials details (e.g. Cement)';
+    // Add-card header reflects the active category (label + colored dot).
+    const addLabel = document.getElementById('pmw-addcard-label');
+    if (addLabel) addLabel.textContent = cat === 'both' ? 'New mat + labor entry'
+        : cat === 'materials' ? 'New materials entry' : 'New labor entry';
+    const addDot = document.getElementById('pmw-addcard-dot');
+    if (addDot) addDot.style.background = cat === 'both' ? '#7a5bb5'
+        : cat === 'materials' ? '#5b6b7e' : '#157a52';
     // Days is Labor-only; quantity + unit is Materials-only; Mat + Labor has neither.
     const daysWrap = document.getElementById('pm-week-days-wrap');
     if (daysWrap) daysWrap.style.display = cat === 'labor' ? '' : 'none';
@@ -1630,12 +1652,20 @@ function _pmWeekRenderReadonly(bill) {
     const grand = Number(bill.grandTotal) || (direct + fee);
     const feePct = direct > 0 ? Math.round(fee / direct * 100) : _pmFeePct();
     const m = _pmWeekStatusMeta(bill.status);
-    let html = `<div class="pmw-ro-head">
-        <button class="pmw-ro-back" onclick="pmWeekBackToToday()">← Back to today</button>
+    let html = `<div class="pmw-ro-bar">
+        <button class="pmw-ro-back" onclick="pmWeekBackToToday()" aria-label="Back to today"><span style="font-size:18px;line-height:1;">‹</span></button>
+        <div class="pmw-ro-bar-main">
+          <div class="pmw-ro-bar-title">${_esc(_pmFriLabel(bill.weekEndingDate))}</div>
+          <div class="pmw-ro-bar-sub">Bill already sent — view only</div>
+        </div>
         <span class="pmw-hist-pill" style="background:${m.bg};color:${m.color};border-color:${m.border};"><span class="pmw-hist-dot" style="background:${m.dot};"></span>${m.label}</span>
       </div>
-      <div class="pmw-title" style="margin-bottom:2px;">${_esc(_pmFriLabel(bill.weekEndingDate))}</div>
-      <div class="pmw-intro">Bill already sent to the client — view only.</div>`;
+      <div class="pmw-ro-total">
+        <div class="pmw-ro-total-label">Grand total · ${m.label}</div>
+        <div class="pmw-ro-total-amt num">${_pmPeso(grand)}</div>
+        <div class="pmw-ro-total-sub">Direct ${_pmPeso(direct)} · Fee ${_pmPeso(fee)}</div>
+      </div>
+      <div class="pmw-ro-body">`;
     // category filter tabs (same behaviour as the editable view)
     if (entries.length) {
         const tabs = [['all', 'All'], ['labor', 'Labor'], ['materials', 'Materials'], ['both', 'Mat + Labor']];
@@ -1659,10 +1689,7 @@ function _pmWeekRenderReadonly(bill) {
         if (bill.labor)     { html += _pmWeekGroupHead('labor', null, Number(bill.labor) || 0, false) + `<div class="pmw-entry ro" style="border-left:3px solid #157a52;"><div class="pmw-entry-main"><div class="pmw-entry-details">Labor total</div></div><span class="pmw-entry-amt num">${_pmPeso(bill.labor)}</span></div>`; }
         if (bill.materials) { html += _pmWeekGroupHead('materials', null, Number(bill.materials) || 0, !!bill.labor) + `<div class="pmw-entry ro" style="border-left:3px solid #5b6b7e;"><div class="pmw-entry-main"><div class="pmw-entry-details">Materials total</div></div><span class="pmw-entry-amt num">${_pmPeso(bill.materials)}</span></div>`; }
     }
-    html += `<div class="pmw-total-row"><span>Direct cost</span><span class="num">${_pmPeso(direct)}</span></div>
-      <div class="pmw-fee ro"><div class="pmw-fee-title" style="color:#5b6b7e;">Management fee · ${feePct}%</div><span class="num" style="color:#5b6b7e;font-weight:700;">${_pmPeso(fee)}</span></div>
-      <div class="pmw-grand"><span>Grand total</span><span class="num">${_pmPeso(grand)}</span></div>
-      <button class="pmw-print" onclick="window.print()">Print this bill</button>`;
+    html += `<button class="pmw-print" onclick="window.print()">Print this bill</button></div>`;
     host.innerHTML = html;
 }
 
@@ -1687,6 +1714,103 @@ function _pmCatRows(type) {
         });
     return rows;
 }
+
+// View every entry that makes up a category's Statement-of-Account total.
+// Opens a modal listing each Labor / Materials / Mat+Labor entry across all the
+// project's daily bills (date · details · qty/days · amount), with a shortcut to
+// still generate the PDF. Triggered by clicking a Statement-of-account row.
+// Toggle the full-page statement view against the Daily Expenses builder.
+function _pmStatementShow(show) {
+    const panel = document.getElementById('ws-panel-week');
+    if (!panel) return;
+    const head = panel.querySelector('.pmw-pagehead');
+    const grid = panel.querySelector('.pmw-grid');
+    const stmt = document.getElementById('pmw-statement');
+    if (head) head.style.display = show ? 'none' : '';
+    if (grid) grid.style.display = show ? 'none' : '';
+    if (stmt) stmt.style.display = show ? '' : 'none';
+}
+window.pmCatViewClose = function() {
+    _pmStatementShow(false);
+    if (window.innerWidth <= 700) window.scrollTo({ top: 0, behavior: 'auto' });
+};
+
+window.pmCatView = function(type) {
+    if (!_pmActiveProject) { alert('Select a project first.'); return; }
+    const host = document.getElementById('pmw-statement');
+    if (!host) return;
+    const t      = (type === 'materials' || type === 'both') ? type : 'labor';
+    const label  = t === 'both' ? 'Materials + Labor' : t === 'materials' ? 'Materials' : 'Labor';
+    const accent = t === 'both' ? '#7a5bb5' : t === 'materials' ? '#5b6b7e' : '#157a52';
+    const code   = t === 'both' ? 'MLB' : t === 'materials' ? 'MAT' : 'LAB';
+    const rows   = _pmCatRows(t);
+    const total  = rows.reduce((s, r) => s + r.amount, 0);
+
+    // Period (earliest–latest entry date) for the summary band.
+    const dates  = rows.map(r => r.date).filter(Boolean).slice().sort();
+    const period = dates.length
+        ? (dates[0] === dates[dates.length - 1]
+            ? _pmShortDate(dates[0])
+            : _pmShortDate(dates[0]) + ' – ' + _pmShortDate(dates[dates.length - 1]))
+        : '—';
+
+    // Split a YYYY-MM-DD date into a day-number + month badge.
+    const badge = (d) => {
+        const dt = d ? new Date(d + 'T00:00:00') : null;
+        if (!dt || isNaN(dt.getTime())) return { day: '–', mon: '' };
+        return { day: dt.getDate(), mon: dt.toLocaleDateString('en-US', { month: 'short' }) };
+    };
+
+    const list = rows.length ? rows.map(r => {
+        const b = badge(r.date);
+        const meta = r.days ? `${r.days} day${r.days === 1 ? '' : 's'}`
+                   : (r.qty ? `${r.qty}${r.unit ? ' ' + _esc(r.unit) : ''}`
+                   : `Daily bill · ${_esc(_pmShortDate(r.date))}`);
+        return `<div class="pmcv-row">
+            <div class="pmcv-date"><div class="pmcv-date-day">${b.day}</div><div class="pmcv-date-mon">${_esc(b.mon)}</div></div>
+            <div class="pmcv-main"><div class="pmcv-title">${_esc(r.details || '—')}</div><div class="pmcv-sub">${meta}</div></div>
+            <div class="pmcv-amt num">${_pmPeso(r.amount)}</div>
+        </div>`;
+    }).join('') : `<div class="pmcv-empty">No ${label.toLowerCase()} entries recorded yet.</div>`;
+
+    const _pdfIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>';
+
+    host.innerHTML = `
+      <div class="pmst-card">
+        <div class="pmst-head">
+          <div class="pmst-head-left">
+            <button class="pmst-back" type="button" onclick="pmCatViewClose()"><span class="pmst-back-ico">‹</span><span class="pmst-back-txt">Back to Daily Expenses</span></button>
+            <div class="pmst-head-title"><span class="pmst-dot" style="background:${accent};"></span><span>${label} — all entries</span></div>
+          </div>
+          <button class="pmst-pdf" type="button" onclick="pmCatSOA('${t}')">${_pdfIcon} Generate PDF</button>
+        </div>
+        <!-- desktop summary: 4 tiles -->
+        <div class="pmst-summary">
+          <div class="pmst-tile"><div class="pmst-tile-label">Total · ${label}</div><div class="pmst-tile-val num" style="color:${accent};">${_pmPeso(total)}</div></div>
+          <div class="pmst-tile"><div class="pmst-tile-label">Entries</div><div class="pmst-tile-val num">${rows.length}</div></div>
+          <div class="pmst-tile"><div class="pmst-tile-label">Period</div><div class="pmst-tile-val2">${_esc(period)}</div></div>
+          <div class="pmst-tile"><div class="pmst-tile-label">Reference</div><div class="pmst-tile-val2">SOA-${code}</div></div>
+        </div>
+        <!-- mobile summary: total leads + pills -->
+        <div class="pmst-summary-m">
+          <div class="pmst-m-label">Total · ${label}</div>
+          <div class="pmst-m-val num" style="color:${accent};">${_pmPeso(total)}</div>
+          <div class="pmst-m-pills">
+            <span class="pmst-pill">${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}</span>
+            <span class="pmst-pill">${_esc(period)}</span>
+            <span class="pmst-pill">SOA-${code}</span>
+          </div>
+        </div>
+        <div class="pmst-list">
+          <div class="pmst-listhead"><span class="pmst-c-date">Date</span><span class="pmst-c-details">Details</span><span class="pmst-c-amt">Amount</span></div>
+          ${list}
+        </div>
+        <div class="pmst-total"><span>Total · ${label}</span><span class="num" style="color:${accent};">${_pmPeso(total)}</span></div>
+      </div>
+      <button class="pmst-foot-pdf" type="button" onclick="pmCatSOA('${t}')">${_pdfIcon} Generate PDF</button>`;
+    _pmStatementShow(true);
+    if (window.innerWidth <= 700) window.scrollTo({ top: 0, behavior: 'auto' });
+};
 
 window.pmCatSOA = function(type) {
     if (!_pmActiveProject) { alert('Select a project first.'); return; }

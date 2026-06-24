@@ -1152,8 +1152,8 @@ function cmRenderAccomplishment() {
         const nItems = Array.isArray(r.costItems) ? r.costItems.length : 0;
         const sub = [r.date, nItems ? nItems + ' cost item' + (nItems===1?'':'s') : ''].filter(Boolean).join(' · ');
         return `
-        <div onclick="cmViewAccomplishmentReport(${idx})" style="${card}display:flex;align-items:center;gap:24px;cursor:pointer;">
-            <div style="flex:1;min-width:0;">
+        <div onclick="cmViewAccomplishmentReport(${idx})" style="${card}display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap;cursor:pointer;">
+            <div style="flex:1;min-width:180px;">
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><span style="font-size:16px;font-weight:800;color:#1a1d24;">${cmEsc(title)}</span>${badge(r.status)}</div>
                 <div style="font-size:13px;color:#8b91a0;margin-top:5px;">${cmEsc(sub || '—')}</div>
             </div>
@@ -1860,7 +1860,8 @@ function cmRenderMaterials() {
         ${pill('all','All',nAll)}${pill('pending','Pending',nPending)}${pill('client','Bought by client',nClient)}${pill('company','Bought by company',nCompany)}
     </div>
     <div style="${card}padding:8px 24px;">
-        <table style="width:100%;border-collapse:collapse;">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        <table style="width:100%;min-width:560px;border-collapse:collapse;">
             <thead><tr style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#aeb4c2;font-weight:700;">
                 <th style="text-align:left;padding:14px 0;">Item</th>
                 <th style="text-align:right;padding:14px 0;">Qty</th>
@@ -1871,6 +1872,7 @@ function cmRenderMaterials() {
             </tr></thead>
             <tbody style="font-size:14px;color:#1a1d24;">${rows}</tbody>
         </table>
+      </div>
     </div>`;
 }
 
@@ -2666,7 +2668,10 @@ function cmEnsureDdStyle() {
       .cm-dd-wk{color:#1a1d24;font-weight:700;font-family:'Space Mono',monospace;white-space:nowrap;}
       .cm-dd-check{color:#5b5bd6;font-weight:700;opacity:0;}
       .cm-dd-opt.active .cm-dd-check{opacity:1;}
-      .cm-dd-sep{height:1px;background:#f0efec;margin:6px 8px;}`;
+      .cm-dd-sep{height:1px;background:#f0efec;margin:6px 8px;}
+      /* Mobile: the Overview range button is left-aligned, so right:0 throws the
+         menu off the left edge (clipped). Anchor it left and clamp to viewport. */
+      @media (max-width:600px){#cm-ov-dd-menu{left:0;right:auto;min-width:0;max-width:calc(100vw - 40px);max-height:60vh;overflow-y:auto;}}`;
     document.head.appendChild(s);
 }
 // Generic open/close for a custom dropdown by container id.
@@ -2846,7 +2851,7 @@ function cmRenderOverview() {
                 <div style="font-size:16px;font-weight:800;color:#fff;">Direct cost breakdown</div>
                 <div id="cm-ov-range-note" style="font-size:11.5px;color:rgba(255,255,255,0.8);margin-top:2px;">All time · ${(cmWeeklyBills||[]).length} week${(cmWeeklyBills||[]).length === 1 ? '' : 's'}</div>
             </div>
-            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:11px;">
+            <div class="cm-ov-head-right" style="display:flex;flex-direction:column;gap:11px;">
                 <div style="display:flex;align-items:baseline;gap:7px;">
                     <span id="cm-ov-direct" style="font-size:21px;font-weight:800;color:#fff;line-height:1;white-space:nowrap;">${cmFmt(ovBd.direct)}</span>
                     <span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.8);">total</span>
@@ -3000,7 +3005,8 @@ async function cmRenderRevolving() {
     <div class="cm-rf-row" style="display:grid;grid-template-columns:1.5fr 1fr;gap:24px;margin-top:24px;">
         <div style="${card.replace('padding:24px','padding:24px 24px 8px')}">
             <div style="font-size:14px;font-weight:800;margin-bottom:6px;color:#1a1d24;">Expense ledger</div>
-            <table style="width:100%;border-collapse:collapse;">
+            <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+            <table style="width:100%;min-width:480px;border-collapse:collapse;">
                 <thead><tr style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#aeb4c2;font-weight:700;">
                     <th style="text-align:left;padding:11px 0;">Date</th>
                     <th style="text-align:left;padding:11px 0;">Description</th>
@@ -3009,6 +3015,7 @@ async function cmRenderRevolving() {
                 </tr></thead>
                 <tbody style="font-size:14px;color:#1a1d24;">${ledger}</tbody>
             </table>
+            </div>
         </div>
         <div style="${card}height:fit-content;">
             <div style="font-size:14px;font-weight:800;margin-bottom:14px;color:#1a1d24;">Replenishment</div>
@@ -3167,7 +3174,8 @@ function cmRenderWeekly() {
             <div style="font-size:14px;font-weight:800;color:#1a1d24;">Submitted weeks</div>
             <div style="font-size:11.5px;color:#aeb4c2;">Tap a week to view its details above</div>
         </div>
-        <table style="width:100%;border-collapse:collapse;">
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        <table style="width:100%;min-width:620px;border-collapse:collapse;">
             <thead><tr style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#aeb4c2;font-weight:700;">
                 <th style="text-align:left;padding:11px 0;">Week</th>
                 <th style="text-align:right;padding:11px 0;">Labor</th>
@@ -3179,6 +3187,7 @@ function cmRenderWeekly() {
             </tr></thead>
             <tbody style="font-size:14px;color:#1a1d24;">${rows}</tbody>
         </table>
+        </div>
     </div>
 
     <div style="${card}margin-top:24px;">
