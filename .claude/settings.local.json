@@ -51,7 +51,9 @@
       "Bash(grep -oE \"pc-fld-card-head.{0,300}\" js/portal-app.compiled.js)",
       "Bash(git pull *)",
       "Bash(git add *)",
-      "Bash(GIT_EDITOR=true git rebase --continue)"
+      "Bash(GIT_EDITOR=true git rebase --continue)",
+      "Bash(git push *)",
+      "Bash(git stash *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
