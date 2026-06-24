@@ -1622,7 +1622,7 @@ body.dark-mode .pr-detail-row          { border-color: #222d28; }
 body.dark-mode .pr-qr-preview-img,
 body.dark-mode .pr-qr-display img,
 body.dark-mode .pr-receipt-thumb       { border-color: #2c3d35; }
-=======
+
 /* ════════════════════════════════════════════════════════════
    Payment Requests reskin — PM Payment Requests.dc.html (scoped,
    appended last so it wins over the legacy .pr- rules above)
