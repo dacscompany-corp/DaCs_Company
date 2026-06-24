@@ -432,7 +432,125 @@ function _pmOvHtml(p, ms, bills, reqs) {
       </div>
     </div>`;
 
-    return hero + tiles + breakdown + charts + lists;
+    // ════════════════════════════════════════════════════════════
+    // Redesigned Overview layout (desktop design · brand green)
+    // 5 KPI tiles → breakdown bars + payment donut → billing trend + next-due card.
+    // Reuses the existing data + the #pm-ov-* IDs so pmOvApplyRange keeps working.
+    // ════════════════════════════════════════════════════════════
+    // Custom date-range dropdown (native <select> can't style its option list).
+    const _ddChevron = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+    const _ddFixed = [['all', 'All time'], ['month', 'This month'], ['latest', 'Latest week'], ['last4', 'Last 4 weeks']]
+        .map(([v, l], i) => `<button class="pmw-dd-opt${i === 0 ? ' active' : ''}" onclick="pmOvPickRange(this,'${v}','${l}')"><span>${l}</span><span class="pmw-dd-check">✓</span></button>`).join('');
+    const _ddWeeks = _ovWeeks.map(b => {
+        const l = _pmOvWeekLabel(b.weekEndingDate);
+        return `<button class="pmw-dd-opt" onclick="pmOvPickRange(this,'${_esc(b.weekEndingDate)}','${_esc(l)}')"><span>Week ending</span><span class="num">${_esc(l)}</span></button>`;
+    }).join('');
+    const ovHeader = `
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px;">
+      <div>
+        <div style="font:800 23px 'IBM Plex Sans';letter-spacing:-.02em;color:#1c1c1a;">Overview</div>
+        <div style="font:400 13px 'IBM Plex Sans';color:#8a8983;margin-top:3px;">Cost-Plus contract · ${_pmFeePct()}% management fee</div>
+      </div>
+      <div class="pmw-dd" id="pm-ov-dd">
+        <button class="pmw-dd-btn" onclick="pmOvToggleRange(event)"><span id="pm-ov-dd-label">All time</span>${_ddChevron}</button>
+        <div class="pmw-dd-menu" id="pm-ov-dd-menu" style="display:none;">
+          ${_ddFixed}
+          ${_ddWeeks ? '<div class="pmw-dd-sep"></div>' + _ddWeeks : ''}
+        </div>
+        <input type="hidden" id="pm-ov-range" value="all">
+      </div>
+    </div>`;
+
+    // New design layout, but the ORIGINAL tinted KPI colors (bg / border / value).
+    const kpi = (label, val, valColor, bg, border) => `
+      <div style="flex:1;min-width:150px;background:${bg};border:1px solid ${border};border-radius:16px;padding:15px 17px;">
+        <div style="font:600 11.5px 'IBM Plex Sans';color:#7c7b75;">${label}</div>
+        <div class="num" style="font:700 22px 'IBM Plex Sans';color:${valColor};margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${val}</div>
+      </div>`;
+    const ovTiles = `
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+      ${kpi('Progress', progress + '%', '#0f6342', '#eaf4ef', '#c6e6d5')}
+      ${kpi('Direct cost', _fmt(directCost), '#44525f', '#eef0f3', '#d6dde4')}
+      ${kpi('Total paid', _fmt(paid), '#0f6342', '#eaf4ef', '#c6e6d5')}
+      ${kpi('Outstanding', _fmt(outstanding), '#8f352c', '#f8ecea', '#f0cdc8')}
+      ${kpi('Net cash', (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), netColor, '#fbf3e2', '#f0e2c5')}
+    </div>`;
+
+    // Direct-cost breakdown — one bar per category (keeps the #pm-ov-* IDs).
+    const bdRow = (label, color, amtId, pctId, segId, val, pct) => `
+      <div style="margin-bottom:13px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <span style="font:600 12.5px 'IBM Plex Sans';color:#3a3a36;">${label}</span>
+          <span class="num" id="${amtId}" style="font:700 12.5px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(val)}</span>
+        </div>
+        <div style="height:9px;background:#f0efec;border-radius:99px;overflow:hidden;">
+          <div id="${segId}" style="width:${pct}%;${val > 0 ? 'min-width:6px;' : ''}height:100%;background:${color};border-radius:99px;transition:width .25s ease;"></div>
+        </div>
+        <span id="${pctId}" style="display:none;">${pct}</span>
+      </div>`;
+    const ovBreakdown = `
+    <div style="flex:1.6;min-width:340px;border:1px solid #e7e6e2;border-radius:16px;background:#fff;padding:20px 22px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div style="font:600 14.5px 'IBM Plex Sans';">Direct-cost breakdown</div>
+        <span id="pm-ov-range-note" style="font:400 11px 'IBM Plex Sans';color:#9b9a94;">All time · ${bills.length} week${bills.length === 1 ? '' : 's'}</span>
+      </div>
+      ${bdRow('Labor', '#157a52', 'pm-ov-labor', 'pm-ov-labor-pct', 'pm-ov-seg-labor', bd.labor, bd.laborPct)}
+      ${bdRow('Materials', '#c79024', 'pm-ov-materials', 'pm-ov-materials-pct', 'pm-ov-seg-materials', bd.materials, bd.matPct)}
+      ${bdRow('Materials + Labor', '#8b6fc4', 'pm-ov-combined', 'pm-ov-combined-pct', 'pm-ov-seg-combined', bd.combined, bd.combinedPct)}
+      <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #f0efec;margin-top:4px;padding-top:13px;">
+        <span style="font:600 12.5px 'IBM Plex Sans';color:#3a3a36;">Direct cost total</span>
+        <span class="num" id="pm-ov-direct" style="font:800 16px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(bd.direct)}</span>
+      </div>
+    </div>`;
+
+    const ovDonutBg = payTotal > 0 ? `conic-gradient(#157a52 0% ${paidPct}%, #e6c878 ${paidPct}% 100%)` : '#eeede9';
+    const ovDonut = `
+    <div style="flex:1;min-width:240px;border:1px solid #e7e6e2;border-radius:16px;background:#fff;padding:20px 22px;">
+      <div style="font:600 14.5px 'IBM Plex Sans';margin-bottom:16px;">Payment status</div>
+      <div style="display:flex;align-items:center;gap:18px;">
+        <div style="position:relative;width:104px;height:104px;flex:none;">
+          <div style="position:absolute;inset:0;border-radius:50%;background:${ovDonutBg};"></div>
+          <div style="position:absolute;inset:15px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+            <span class="num" style="font:700 18px 'IBM Plex Sans';color:#0f6342;">${paidPct}%</span>
+            <span style="font:500 8.5px 'IBM Plex Sans';color:#9b9a94;text-transform:uppercase;letter-spacing:.04em;">paid</span>
+          </div>
+        </div>
+        <div style="flex:1;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><span style="width:10px;height:10px;border-radius:3px;background:#157a52;flex:none;"></span><div><div style="font:500 11px 'IBM Plex Sans';color:#3a3a36;">Paid</div><div class="num" style="font:700 12.5px 'IBM Plex Sans';">${_fmt(paid)}</div></div></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="width:10px;height:10px;border-radius:3px;background:#c79024;flex:none;"></span><div><div style="font:500 11px 'IBM Plex Sans';color:#3a3a36;">Outstanding</div><div class="num" style="font:700 12.5px 'IBM Plex Sans';">${_fmt(outstanding)}</div></div></div>
+        </div>
+      </div>
+    </div>`;
+
+    const ovTrend = `
+    <div style="flex:1.6;min-width:340px;border:1px solid #e7e6e2;border-radius:16px;background:#fff;padding:20px 22px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+        <div style="font:600 14.5px 'IBM Plex Sans';">Billing trend</div>
+        <span style="font:400 11px 'IBM Plex Sans';color:#9b9a94;">last ${weeks.length} week${weeks.length === 1 ? '' : 's'}</span>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:10px;height:130px;">${bars}</div>
+    </div>`;
+
+    const nextAmt  = next ? (next.totalAmount || next.amount || 0) : 0;
+    const isStrict = !!(next && (next.strict || next.isStrict || next.mode === 'strict'));
+    const ovNextDue = `
+    <div style="flex:1;min-width:240px;border-radius:16px;background:#1c1c1a;color:#fff;padding:20px 22px;display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+        <span style="font:700 10px 'IBM Plex Sans';letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.55);">Next payment due</span>
+        ${isStrict ? '<span style="font:700 9.5px \'IBM Plex Sans\';background:#b4892a;color:#fff;padding:3px 9px;border-radius:6px;letter-spacing:.04em;">STRICT</span>' : ''}
+      </div>
+      <div class="num" style="font:800 30px 'IBM Plex Sans';margin-top:10px;letter-spacing:-.01em;">${next ? _fmt(nextAmt) : '—'}</div>
+      <div style="font:400 12px 'IBM Plex Sans';color:rgba(255,255,255,.6);margin-top:5px;">${next ? _esc(nextDueDate) + ' · ' + _esc(nextDueSub) : 'No payment scheduled'}</div>
+      <div style="display:flex;gap:9px;margin-top:auto;padding-top:18px;">
+        <button onclick="pmWsTab('money')" style="flex:1;background:#157a52;border:none;border-radius:11px;padding:11px;font:700 12.5px 'IBM Plex Sans';color:#fff;cursor:pointer;">Send request</button>
+        <button onclick="pmWsTab('money')" style="background:rgba(255,255,255,.12);border:none;border-radius:11px;padding:11px 16px;font:700 12.5px 'IBM Plex Sans';color:#fff;cursor:pointer;">Edit</button>
+      </div>
+    </div>`;
+
+    return ovHeader + ovTiles
+        + `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;margin-bottom:14px;">${ovBreakdown}${ovDonut}</div>`
+        + `<div style="display:flex;gap:14px;flex-wrap:wrap;align-items:stretch;margin-bottom:16px;">${ovTrend}${ovNextDue}</div>`
+        + lists;
 }
 
 // Sum a bill list into the direct-cost breakdown buckets. `materials` is stored
@@ -481,6 +599,31 @@ function _pmOvFilterBills(mode) {
     if (mode === 'last4')  return dated.slice(0, 4);
     return _pmOvBills.filter(b => b.weekEndingDate === mode);   // a specific week
 }
+
+// Custom date-range dropdown (Overview) — open/close + pick.
+window.pmOvToggleRange = function(ev) {
+    if (ev) ev.stopPropagation();
+    const dd = document.getElementById('pm-ov-dd');
+    const menu = document.getElementById('pm-ov-dd-menu');
+    if (!dd || !menu) return;
+    if (menu.style.display !== 'none') { menu.style.display = 'none'; dd.classList.remove('open'); return; }
+    menu.style.display = 'block'; dd.classList.add('open');
+    const close = (e) => { if (!dd.contains(e.target)) { menu.style.display = 'none'; dd.classList.remove('open'); document.removeEventListener('click', close); } };
+    setTimeout(() => document.addEventListener('click', close), 0);
+};
+window.pmOvPickRange = function(el, val, label) {
+    const input = document.getElementById('pm-ov-range');
+    if (input) input.value = val;
+    const lbl = document.getElementById('pm-ov-dd-label');
+    if (lbl) lbl.textContent = label;
+    document.querySelectorAll('#pm-ov-dd-menu .pmw-dd-opt').forEach(o => o.classList.remove('active'));
+    if (el) el.classList.add('active');
+    const menu = document.getElementById('pm-ov-dd-menu');
+    const dd = document.getElementById('pm-ov-dd');
+    if (menu) menu.style.display = 'none';
+    if (dd) dd.classList.remove('open');
+    pmOvApplyRange();
+};
 
 // Recompute the breakdown tiles for the selected date range.
 window.pmOvApplyRange = function() {
@@ -1024,6 +1167,7 @@ function _pmShiftDateStr(dateStr, days) {
 }
 
 async function _pmLoadWeekBuilder() {
+    _pmStatementShow(false);   // re-entering the tab always shows the builder, not a stale statement
     if (!_pmActiveProject) {
         _pmWeekBills = []; _pmWeekEntries = []; _pmWeekEditingId = null;
         _pmSet('pm-week-date', '—');
@@ -1087,6 +1231,12 @@ function _pmWeekSyncDraft() {
     _pmSet('pm-week-date', _pmFriLabel(_pmWeekDate));
     const saveBtn = document.getElementById('pm-week-save-btn');
     if (saveBtn) saveBtn.textContent = _pmWeekEditingId ? 'Update daily bill' : 'Save & send to client →';
+    const badge = document.getElementById('pmw-status-badge');
+    if (badge) {
+        const sent = !!_pmWeekEditingId;
+        badge.textContent = sent ? 'SENT' : 'DRAFT';
+        badge.classList.toggle('sent', sent);
+    }
     _pmWeekRenderEntries();
     _pmWeekRecompute();
 }
@@ -1103,9 +1253,23 @@ window.pmWeekShift = function(delta) {
 function _pmWeekShowBuilder(show) {
     const b = document.getElementById('pmw-build');
     const r = document.getElementById('pmw-readonly');
+    // The rail's grand total + Save belong to the editable draft; a past bill
+    // renders its own totals in the read-only view, so hide the rail action then.
+    const action = document.getElementById('pmw-rail-action');
     if (b) b.style.display = show ? '' : 'none';
     if (r) r.style.display = show ? 'none' : '';
+    if (action) action.style.display = show ? '' : 'none';
 }
+
+// Collapse / expand a summary-rail section ('bills' or 'soa').
+window.pmRailToggle = function(which) {
+    const body = document.getElementById('pmw-rail-' + which + '-body');
+    const chev = document.getElementById('pmw-rail-' + which + '-chev');
+    if (!body) return;
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    if (chev) chev.classList.toggle('open', !open);
+};
 
 // Open a past saved bill read-only (from the History sidebar).
 window.pmWeekViewBill = function(id) {
@@ -1203,14 +1367,17 @@ function _pmWeekApplyCat() {
         const el = document.getElementById(id);
         if (el) el.classList.toggle('active', cat === c);
     });
-    const prompt = document.getElementById('pmw-add-prompt');
-    if (prompt) prompt.textContent = cat === 'labor' ? 'What labor did you pay for?'
-        : cat === 'both' ? 'What supply & install did you pay for?'
-        : 'What materials did you buy?';
     const det = document.getElementById('pm-week-details');
-    if (det) det.placeholder = cat === 'labor' ? 'e.g. Masonry crew'
-        : cat === 'both' ? 'e.g. Aluminum windows (supply & install)'
-        : 'e.g. Cement';
+    if (det) det.placeholder = cat === 'labor' ? 'Labor details (e.g. Masonry crew)'
+        : cat === 'both' ? 'Supply & install (e.g. Aluminum windows)'
+        : 'Materials details (e.g. Cement)';
+    // Add-card header reflects the active category (label + colored dot).
+    const addLabel = document.getElementById('pmw-addcard-label');
+    if (addLabel) addLabel.textContent = cat === 'both' ? 'New mat + labor entry'
+        : cat === 'materials' ? 'New materials entry' : 'New labor entry';
+    const addDot = document.getElementById('pmw-addcard-dot');
+    if (addDot) addDot.style.background = cat === 'both' ? '#7a5bb5'
+        : cat === 'materials' ? '#5b6b7e' : '#157a52';
     // Days is Labor-only; quantity + unit is Materials-only; Mat + Labor has neither.
     const daysWrap = document.getElementById('pm-week-days-wrap');
     if (daysWrap) daysWrap.style.display = cat === 'labor' ? '' : 'none';
@@ -1343,29 +1510,28 @@ const _PMW_GROUP_TYPES = ['labor', 'materials', 'both'];
 function _pmWeekEntryRow(e) {
     const st = _pmWeekCatStyle(e.type);
     const meta = _pmWeekMeta(e);
-    const metaHtml = meta ? `<div class="pmw-entry-meta">${_esc(meta)}</div>` : '';
     const rcpt = (e.receiptDataUrl || e.receiptUrl)
-        ? `<button class="pmw-entry-rcpt" title="View receipt" onclick="pmWeekViewEntryReceipt('${e.id}')"><img src="${_esc(e.receiptDataUrl || e.receiptUrl)}" alt="receipt"></button>`
+        ? `${meta ? ' · ' : ''}<span class="pmw-rcpt-txt" onclick="pmWeekViewEntryReceipt('${e.id}')">RCPT ✓</span>`
         : '';
+    const metaHtml = (meta || rcpt) ? `<div class="pmw-entry-meta">${meta ? _esc(meta) : ''}${rcpt}</div>` : '';
     return `<div class="pmw-entry" style="border-left:3px solid ${st.accent};">
         <div class="pmw-entry-main">
-          <div class="pmw-entry-titlerow"><span class="pmw-entry-tag" style="background:${st.headBg};color:${st.text};">${st.tag}</span><span class="pmw-entry-details">${_esc(e.details)}</span></div>
+          <div class="pmw-entry-details">${_esc(e.details)}</div>
           ${metaHtml}
         </div>
-        ${rcpt}
         <span class="pmw-entry-amt num">${_pmPeso(e.amount)}</span>
-        <button class="pmw-entry-edit" aria-label="Edit" title="Edit" onclick="pmWeekEditEntry('${e.id}')"><i data-lucide="pencil" style="width:13px;height:13px;"></i></button>
+        <button class="pmw-entry-edit-txt" onclick="pmWeekEditEntry('${e.id}')">Edit</button>
         <button class="pmw-entry-del" aria-label="Remove" title="Remove" onclick="pmWeekRemoveEntry('${e.id}')">×</button>
       </div>`;
 }
 
+// Group header line above a category card: "LABOR · 2 lines" + subtotal (design style).
 function _pmWeekGroupHead(type, count, sum, topGap) {
     const st = _pmWeekCatStyle(type);
-    const cnt = count != null ? `<span class="pmw-grp-count" style="color:${st.count};">${count} item${count === 1 ? '' : 's'}</span>` : '';
-    const style = `background:${st.headBg};border-color:${st.headBorder};${topGap ? 'margin-top:16px;' : ''}`;
-    return `<div class="pmw-grp-head" style="${style}">
-        <div class="pmw-grp-left"><span class="pmw-grp-label" style="color:${st.text};"><span class="pmw-grp-dot" style="background:${st.accent};"></span>${st.name}</span>${cnt}</div>
-        <span class="pmw-grp-sum" style="color:${st.text};">${_pmPeso(sum)}</span>
+    const cnt = count != null ? ' · ' + count + ' line' + (count === 1 ? '' : 's') : '';
+    return `<div class="pmw-grp-line"${topGap ? ' style="margin-top:16px;"' : ''}>
+        <span class="pmw-grp-tag" style="color:${st.text};">${st.name}${cnt}</span>
+        <span class="pmw-grp-sum num">${_pmPeso(sum)}</span>
       </div>`;
 }
 
@@ -1384,12 +1550,11 @@ function _pmWeekRenderEntries() {
         if (!list.length || (f !== 'all' && f !== type)) return;
         const sum = list.reduce((s, e) => s + e.amount, 0);
         html += _pmWeekGroupHead(type, list.length, sum, !first);
-        html += list.map(_pmWeekEntryRow).join('');
+        html += `<div class="pmw-grp-card">${list.map(_pmWeekEntryRow).join('')}</div>`;
         first = false;
     });
     if (!html) html = '<div class="pmw-empty-box">No entries in this view.</div>';
     host.innerHTML = html;
-    if (window.lucide) lucide.createIcons();
 }
 
 function _pmWeekTotals() {
@@ -1434,6 +1599,7 @@ function _pmWeekRenderHistory() {
     const bills = _pmWeekBills.slice().sort((a, b) => (b.weekEndingDate || '').localeCompare(a.weekEndingDate || ''));
     if (countEl) countEl.textContent = bills.length + ' bill' + (bills.length === 1 ? '' : 's');
     if (monthEl) monthEl.textContent = _pmPeso(bills.reduce((s, b) => s + (Number(b.grandTotal) || 0), 0));
+    _pmWeekRenderSOATotals();
     if (!bills.length) { host.innerHTML = '<div class="pmw-empty">No bills sent yet.</div>'; return; }
     host.innerHTML = bills.map(b => {
         const m = _pmWeekStatusMeta(b.status);
@@ -1448,6 +1614,14 @@ function _pmWeekRenderHistory() {
             <span class="pmw-hist-chev">›</span>
           </button>`;
     }).join('');
+}
+
+// Per-category all-bills totals shown beside each Statement of Account row.
+function _pmWeekRenderSOATotals() {
+    [['labor', 'pmw-soa-labor'], ['materials', 'pmw-soa-materials'], ['both', 'pmw-soa-both']].forEach(([t, id]) => {
+        const total = _pmCatRows(t).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+        _pmSet(id, _pmPeso(total));
+    });
 }
 
 // Read-only render of a past, already-sent bill.
@@ -1478,12 +1652,20 @@ function _pmWeekRenderReadonly(bill) {
     const grand = Number(bill.grandTotal) || (direct + fee);
     const feePct = direct > 0 ? Math.round(fee / direct * 100) : _pmFeePct();
     const m = _pmWeekStatusMeta(bill.status);
-    let html = `<div class="pmw-ro-head">
-        <button class="pmw-ro-back" onclick="pmWeekBackToToday()">← Back to today</button>
+    let html = `<div class="pmw-ro-bar">
+        <button class="pmw-ro-back" onclick="pmWeekBackToToday()" aria-label="Back to today"><span style="font-size:18px;line-height:1;">‹</span></button>
+        <div class="pmw-ro-bar-main">
+          <div class="pmw-ro-bar-title">${_esc(_pmFriLabel(bill.weekEndingDate))}</div>
+          <div class="pmw-ro-bar-sub">Bill already sent — view only</div>
+        </div>
         <span class="pmw-hist-pill" style="background:${m.bg};color:${m.color};border-color:${m.border};"><span class="pmw-hist-dot" style="background:${m.dot};"></span>${m.label}</span>
       </div>
-      <div class="pmw-title" style="margin-bottom:2px;">${_esc(_pmFriLabel(bill.weekEndingDate))}</div>
-      <div class="pmw-intro">Bill already sent to the client — view only.</div>`;
+      <div class="pmw-ro-total">
+        <div class="pmw-ro-total-label">Grand total · ${m.label}</div>
+        <div class="pmw-ro-total-amt num">${_pmPeso(grand)}</div>
+        <div class="pmw-ro-total-sub">Direct ${_pmPeso(direct)} · Fee ${_pmPeso(fee)}</div>
+      </div>
+      <div class="pmw-ro-body">`;
     // category filter tabs (same behaviour as the editable view)
     if (entries.length) {
         const tabs = [['all', 'All'], ['labor', 'Labor'], ['materials', 'Materials'], ['both', 'Mat + Labor']];
@@ -1507,12 +1689,271 @@ function _pmWeekRenderReadonly(bill) {
         if (bill.labor)     { html += _pmWeekGroupHead('labor', null, Number(bill.labor) || 0, false) + `<div class="pmw-entry ro" style="border-left:3px solid #157a52;"><div class="pmw-entry-main"><div class="pmw-entry-details">Labor total</div></div><span class="pmw-entry-amt num">${_pmPeso(bill.labor)}</span></div>`; }
         if (bill.materials) { html += _pmWeekGroupHead('materials', null, Number(bill.materials) || 0, !!bill.labor) + `<div class="pmw-entry ro" style="border-left:3px solid #5b6b7e;"><div class="pmw-entry-main"><div class="pmw-entry-details">Materials total</div></div><span class="pmw-entry-amt num">${_pmPeso(bill.materials)}</span></div>`; }
     }
-    html += `<div class="pmw-total-row"><span>Direct cost</span><span class="num">${_pmPeso(direct)}</span></div>
-      <div class="pmw-fee ro"><div class="pmw-fee-title" style="color:#5b6b7e;">Management fee · ${feePct}%</div><span class="num" style="color:#5b6b7e;font-weight:700;">${_pmPeso(fee)}</span></div>
-      <div class="pmw-grand"><span>Grand total</span><span class="num">${_pmPeso(grand)}</span></div>
-      <button class="pmw-print" onclick="window.print()">Print this bill</button>`;
+    html += `<button class="pmw-print" onclick="window.print()">Print this bill</button></div>`;
     host.innerHTML = html;
 }
+
+// ── Per-category Statement of Account (project-wide) ──────────────────
+// Gathers every entry of one category across all the project's bills.
+function _pmCatRows(type) {
+    const rows = [];
+    (_pmWeekBills || []).slice()
+        .sort((a, b) => (a.weekEndingDate || '').localeCompare(b.weekEndingDate || ''))
+        .forEach(b => {
+            if (Array.isArray(b.entries) && b.entries.length) {
+                b.entries.filter(e => e.type === type).forEach(e => rows.push({
+                    date: b.weekEndingDate, details: e.details, amount: Number(e.amount) || 0,
+                    days: Number(e.days) || 0, qty: Number(e.qty) || 0, unit: e.unit || ''
+                }));
+            } else {
+                // Legacy bill without an entries[] array — synthesize from totals.
+                if (type === 'labor' && b.labor)         rows.push({ date: b.weekEndingDate, details: 'Labor total',     amount: Number(b.labor) || 0 });
+                else if (type === 'materials' && b.materials) rows.push({ date: b.weekEndingDate, details: 'Materials total', amount: Number(b.materials) || 0 });
+                else if (type === 'both' && b.combined)  rows.push({ date: b.weekEndingDate, details: 'Materials & labor', amount: Number(b.combined) || 0 });
+            }
+        });
+    return rows;
+}
+
+// View every entry that makes up a category's Statement-of-Account total.
+// Opens a modal listing each Labor / Materials / Mat+Labor entry across all the
+// project's daily bills (date · details · qty/days · amount), with a shortcut to
+// still generate the PDF. Triggered by clicking a Statement-of-account row.
+// Toggle the full-page statement view against the Daily Expenses builder.
+function _pmStatementShow(show) {
+    const panel = document.getElementById('ws-panel-week');
+    if (!panel) return;
+    const head = panel.querySelector('.pmw-pagehead');
+    const grid = panel.querySelector('.pmw-grid');
+    const stmt = document.getElementById('pmw-statement');
+    if (head) head.style.display = show ? 'none' : '';
+    if (grid) grid.style.display = show ? 'none' : '';
+    if (stmt) stmt.style.display = show ? '' : 'none';
+}
+window.pmCatViewClose = function() {
+    _pmStatementShow(false);
+    if (window.innerWidth <= 700) window.scrollTo({ top: 0, behavior: 'auto' });
+};
+
+window.pmCatView = function(type) {
+    if (!_pmActiveProject) { alert('Select a project first.'); return; }
+    const host = document.getElementById('pmw-statement');
+    if (!host) return;
+    const t      = (type === 'materials' || type === 'both') ? type : 'labor';
+    const label  = t === 'both' ? 'Materials + Labor' : t === 'materials' ? 'Materials' : 'Labor';
+    const accent = t === 'both' ? '#7a5bb5' : t === 'materials' ? '#5b6b7e' : '#157a52';
+    const code   = t === 'both' ? 'MLB' : t === 'materials' ? 'MAT' : 'LAB';
+    const rows   = _pmCatRows(t);
+    const total  = rows.reduce((s, r) => s + r.amount, 0);
+
+    // Period (earliest–latest entry date) for the summary band.
+    const dates  = rows.map(r => r.date).filter(Boolean).slice().sort();
+    const period = dates.length
+        ? (dates[0] === dates[dates.length - 1]
+            ? _pmShortDate(dates[0])
+            : _pmShortDate(dates[0]) + ' – ' + _pmShortDate(dates[dates.length - 1]))
+        : '—';
+
+    // Split a YYYY-MM-DD date into a day-number + month badge.
+    const badge = (d) => {
+        const dt = d ? new Date(d + 'T00:00:00') : null;
+        if (!dt || isNaN(dt.getTime())) return { day: '–', mon: '' };
+        return { day: dt.getDate(), mon: dt.toLocaleDateString('en-US', { month: 'short' }) };
+    };
+
+    const list = rows.length ? rows.map(r => {
+        const b = badge(r.date);
+        const meta = r.days ? `${r.days} day${r.days === 1 ? '' : 's'}`
+                   : (r.qty ? `${r.qty}${r.unit ? ' ' + _esc(r.unit) : ''}`
+                   : `Daily bill · ${_esc(_pmShortDate(r.date))}`);
+        return `<div class="pmcv-row">
+            <div class="pmcv-date"><div class="pmcv-date-day">${b.day}</div><div class="pmcv-date-mon">${_esc(b.mon)}</div></div>
+            <div class="pmcv-main"><div class="pmcv-title">${_esc(r.details || '—')}</div><div class="pmcv-sub">${meta}</div></div>
+            <div class="pmcv-amt num">${_pmPeso(r.amount)}</div>
+        </div>`;
+    }).join('') : `<div class="pmcv-empty">No ${label.toLowerCase()} entries recorded yet.</div>`;
+
+    const _pdfIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>';
+
+    host.innerHTML = `
+      <div class="pmst-card">
+        <div class="pmst-head">
+          <div class="pmst-head-left">
+            <button class="pmst-back" type="button" onclick="pmCatViewClose()"><span class="pmst-back-ico">‹</span><span class="pmst-back-txt">Back to Daily Expenses</span></button>
+            <div class="pmst-head-title"><span class="pmst-dot" style="background:${accent};"></span><span>${label} — all entries</span></div>
+          </div>
+          <button class="pmst-pdf" type="button" onclick="pmCatSOA('${t}')">${_pdfIcon} Generate PDF</button>
+        </div>
+        <!-- desktop summary: 4 tiles -->
+        <div class="pmst-summary">
+          <div class="pmst-tile"><div class="pmst-tile-label">Total · ${label}</div><div class="pmst-tile-val num" style="color:${accent};">${_pmPeso(total)}</div></div>
+          <div class="pmst-tile"><div class="pmst-tile-label">Entries</div><div class="pmst-tile-val num">${rows.length}</div></div>
+          <div class="pmst-tile"><div class="pmst-tile-label">Period</div><div class="pmst-tile-val2">${_esc(period)}</div></div>
+          <div class="pmst-tile"><div class="pmst-tile-label">Reference</div><div class="pmst-tile-val2">SOA-${code}</div></div>
+        </div>
+        <!-- mobile summary: total leads + pills -->
+        <div class="pmst-summary-m">
+          <div class="pmst-m-label">Total · ${label}</div>
+          <div class="pmst-m-val num" style="color:${accent};">${_pmPeso(total)}</div>
+          <div class="pmst-m-pills">
+            <span class="pmst-pill">${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}</span>
+            <span class="pmst-pill">${_esc(period)}</span>
+            <span class="pmst-pill">SOA-${code}</span>
+          </div>
+        </div>
+        <div class="pmst-list">
+          <div class="pmst-listhead"><span class="pmst-c-date">Date</span><span class="pmst-c-details">Details</span><span class="pmst-c-amt">Amount</span></div>
+          ${list}
+        </div>
+        <div class="pmst-total"><span>Total · ${label}</span><span class="num" style="color:${accent};">${_pmPeso(total)}</span></div>
+      </div>
+      <button class="pmst-foot-pdf" type="button" onclick="pmCatSOA('${t}')">${_pdfIcon} Generate PDF</button>`;
+    _pmStatementShow(true);
+    if (window.innerWidth <= 700) window.scrollTo({ top: 0, behavior: 'auto' });
+};
+
+window.pmCatSOA = function(type) {
+    if (!_pmActiveProject) { alert('Select a project first.'); return; }
+    const t = (type === 'materials' || type === 'both') ? type : 'labor';
+    const label = t === 'both' ? 'Materials + Labor' : t === 'materials' ? 'Materials' : 'Labor';
+    const code  = t === 'both' ? 'MLB' : t === 'materials' ? 'MAT' : 'LAB';
+    const rows = _pmCatRows(t);
+    const total = rows.reduce((s, r) => s + r.amount, 0);
+    const client  = _pmActiveProject.clientName || _pmActiveProject.projectName || '—';
+    const project = _pmActiveProject.projectName || '—';
+    const location = _pmActiveProject.location || _pmActiveProject.address || '';
+    const today = new Date().toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+    const fmtDate = d => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }); } catch (e) { return d || '—'; } };
+    const metaOf = r => t === 'labor' ? (r.days ? r.days + (r.days === 1 ? ' day' : ' days') : '')
+        : t === 'materials' ? (r.qty ? r.qty + ' ' + (r.unit || 'pcs') : '')
+        : 'supply & install';
+    const descOf = r => (r.details || '—') + (metaOf(r) ? ' · ' + metaOf(r) : '');
+    const fmtN = n => Math.round(Number(n) || 0).toLocaleString('en-US');
+    const dates = rows.map(r => r.date).filter(Boolean).sort();
+    const period = dates.length
+        ? new Date(dates[0] + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }) + ' – ' +
+          new Date(dates[dates.length - 1] + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+        : 'All bills';
+    const ref = 'SOA-' + code + '-' + String(rows.length).padStart(3, '0');
+
+    const rowsHtml = rows.length
+        ? rows.map((r, i) => `<tr style="background:${i % 2 ? '#f4f8f5' : '#fff'};">
+            <td class="d">${_esc(fmtDate(r.date))}</td>
+            <td class="desc">${_esc(descOf(r))}</td>
+            <td class="amt">${fmtN(r.amount)}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="3" style="text-align:center;color:#9aa8a0;padding:26px;">No ${label.toLowerCase()} entries yet.</td></tr>`;
+
+    const pdfData = {
+        label, client, project, location, today, period, ref,
+        body: rows.map(r => [fmtDate(r.date), descOf(r), fmtN(r.amount)]),
+        total: fmtN(total),
+        fname: `${ref}-${(String(project).replace(/[^A-Za-z0-9]+/g, '') || 'project')}.pdf`
+    };
+    const pdfJson = JSON.stringify(pdfData).replace(/</g, '\\u003c');
+
+    const w = window.open('', '_blank');
+    if (!w) { alert('Please allow pop-ups to open the statement.'); return; }
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${_esc(ref)} — ${_esc(label)} — ${_esc(client)}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"><\/script>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:Arial,Helvetica,sans-serif;color:#1a2620;background:#e9ece9;padding:32px;}
+      .sheet{max-width:720px;margin:0 auto;background:#fff;border-radius:8px;box-shadow:0 20px 60px -20px rgba(0,0,0,.3);overflow:hidden;}
+      .body{padding:34px 44px;}
+      .head{text-align:center;border-bottom:2px solid #14532d;padding-bottom:18px;}
+      .company{font-size:21px;font-weight:800;color:#15803d;letter-spacing:.01em;}
+      .subtitle{font-size:11px;color:#7b8a82;margin-top:4px;letter-spacing:.04em;}
+      .doctitle{font-size:15px;font-weight:700;color:#14532d;letter-spacing:.1em;margin-top:18px;}
+      .docsub{font-size:12px;color:#7b8a82;margin-top:3px;}
+      .meta{display:flex;flex-wrap:wrap;padding:18px 0;border-bottom:1px solid #e6ece8;}
+      .meta>div{width:50%;margin-bottom:14px;}
+      .meta-l{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#a3b0a8;}
+      .meta-v{font-size:13px;font-weight:700;color:#1a2620;margin-top:3px;}
+      .meta-v.mono{font-family:'Courier New',monospace;}
+      table{width:100%;border-collapse:collapse;margin-top:18px;}
+      thead th{background:#14532d;color:#fff;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:11px 8px;text-align:left;}
+      thead th.r{text-align:right;padding-right:16px;} thead th:first-child{padding-left:16px;}
+      tbody td{font-size:12.5px;color:#26342c;padding:11px 8px;border-bottom:1px solid #eef3f0;}
+      td.d{width:90px;padding-left:16px;color:#5b6b62;font-family:'Courier New',monospace;}
+      td.amt{width:130px;text-align:right;padding-right:16px;font-family:'Courier New',monospace;font-weight:700;}
+      tfoot td{background:#14532d;color:#fff;font-weight:700;}
+      tfoot .lbl{padding:14px 8px 14px 16px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;}
+      tfoot .tot{text-align:right;padding:14px 16px;font-family:'Courier New',monospace;font-size:17px;}
+      .note{padding:16px 0 0;font-size:10px;color:#a3b0a8;line-height:1.6;}
+      .foot{border-top:1px solid #e6ece8;background:#f6f8f7;padding:14px 44px;display:flex;justify-content:flex-end;gap:12px;}
+      .btn-print{background:#fff;color:#14532d;border:1.5px solid #14532d;border-radius:11px;padding:12px 22px;font:700 13px Arial;cursor:pointer;}
+      .btn-pdf{background:#15803d;color:#fff;border:none;border-radius:11px;padding:12px 26px;font:700 13px Arial;cursor:pointer;}
+      @media print{body{background:#fff;padding:0;}.sheet{box-shadow:none;border-radius:0;max-width:none;}.foot{display:none;}}
+    </style></head><body>
+      <div class="sheet">
+        <div class="body">
+          <div class="head">
+            <div class="company">DAC'S BUILDING DESIGN SERVICES</div>
+            <div class="subtitle">Building Design &middot; Construction Management${location ? ' &middot; ' + _esc(location) : ''}</div>
+            <div class="doctitle">STATEMENT OF ACCOUNT</div>
+            <div class="docsub">${_esc(label)} &middot; project-wide</div>
+          </div>
+          <div class="meta">
+            <div><div class="meta-l">Project</div><div class="meta-v">${_esc(project)}</div></div>
+            <div><div class="meta-l">Client</div><div class="meta-v">${_esc(client)}</div></div>
+            <div><div class="meta-l">Period</div><div class="meta-v">${_esc(period)}</div></div>
+            <div><div class="meta-l">Ref no.</div><div class="meta-v mono">${_esc(ref)}</div></div>
+          </div>
+          <table>
+            <thead><tr><th>Date</th><th>Description</th><th class="r">Amount</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+            <tfoot><tr><td class="lbl" colspan="2">Total (PHP)</td><td class="tot">${fmtN(total)}</td></tr></tfoot>
+          </table>
+          <div class="note">Amounts in PHP. This statement lists every ${_esc(label)} entry across all daily bills for the period. Generated ${_esc(today)} &middot; DAC'S admin portal.</div>
+        </div>
+        <div class="foot">
+          <button class="btn-print" onclick="window.print()">Print</button>
+          <button class="btn-pdf" onclick="downloadPDF()">Download PDF</button>
+        </div>
+      </div>
+      <script>
+        var D = ${pdfJson};
+        function downloadPDF(){
+          if(!window.jspdf || !window.jspdf.jsPDF){ alert('PDF library still loading — try again in a moment.'); return; }
+          var doc = new window.jspdf.jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+          var pw = doc.internal.pageSize.getWidth();
+          doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(21,128,61);
+          doc.text("DAC'S BUILDING DESIGN SERVICES", pw/2, 18, {align:'center'});
+          doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(123,138,130);
+          doc.text("Building Design - Construction Management" + (D.location ? " - " + D.location : ""), pw/2, 24, {align:'center'});
+          doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(20,83,45);
+          doc.text("STATEMENT OF ACCOUNT", pw/2, 33, {align:'center'});
+          doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(123,138,130);
+          doc.text(D.label + " - project-wide", pw/2, 38, {align:'center'});
+          doc.setFontSize(7.5); doc.setTextColor(150,160,152);
+          doc.text("PROJECT", 14, 50); doc.text("CLIENT", pw/2, 50);
+          doc.text("PERIOD", 14, 63); doc.text("REF NO.", pw/2, 63);
+          doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(26,38,32);
+          doc.text(String(D.project), 14, 56); doc.text(String(D.client), pw/2, 56);
+          doc.text(String(D.period), 14, 69); doc.text(String(D.ref), pw/2, 69);
+          doc.autoTable({
+            startY: 76,
+            head: [['DATE','DESCRIPTION','AMOUNT']],
+            body: D.body,
+            foot: [[ {content:'TOTAL (PHP)', colSpan:2, styles:{halign:'left'}}, {content:D.total, styles:{halign:'right'}} ]],
+            theme:'grid',
+            headStyles:{ fillColor:[20,83,45], textColor:255, fontStyle:'bold', fontSize:8.5 },
+            footStyles:{ fillColor:[20,83,45], textColor:255, fontStyle:'bold', fontSize:11 },
+            styles:{ fontSize:9, cellPadding:2.6, textColor:[38,52,44], lineColor:[238,243,240], lineWidth:0.1 },
+            alternateRowStyles:{ fillColor:[244,248,245] },
+            columnStyles:{ 0:{cellWidth:28}, 2:{halign:'right',cellWidth:36,fontStyle:'bold'} }
+          });
+          var fy = doc.lastAutoTable.finalY + 8;
+          doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,160,152);
+          doc.text(doc.splitTextToSize("Amounts in PHP. This statement lists every " + D.label + " entry across all daily bills for the period. Generated " + D.today + " - DAC'S admin portal.", pw - 28), 14, fy);
+          doc.save(D.fname);
+        }
+      <\/script>
+    </body></html>`);
+    w.document.close();
+};
 
 window.pmWeekSave = async function() {
     if (!_pmActiveProject) { alert('Please select a client project first.'); return; }
@@ -2636,6 +3077,27 @@ function _pmPayUpdateKPIs(reqs) {
     _pmSet('pm-pay-next-due', nextUnpaid?.weekEndingDate
         ? new Date(nextUnpaid.weekEndingDate+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})
         : '—');
+
+    // Dark "next payment due" banner (design)
+    const banner = document.getElementById('pm-pay-banner');
+    if (banner) {
+        if (nextUnpaid) {
+            const due = nextUnpaid.weekEndingDate
+                ? new Date(nextUnpaid.weekEndingDate+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'})
+                : '—';
+            const bal = (nextUnpaid.totalAmount || 0) - (nextUnpaid.amountPaid || 0);
+            _pmSet('pm-pay-banner-when', 'Friday request · due ' + due);
+            _pmSet('pm-pay-banner-amt', _fmt(bal));
+            _pmSet('pm-pay-banner-sub', nextUnpaid.strict
+                ? 'Exact amount · partial blocked (strict)'
+                : 'Partial allowed up to ₱5,000 short');
+            const strictEl = document.getElementById('pm-pay-banner-strict');
+            if (strictEl) strictEl.style.display = nextUnpaid.strict ? '' : 'none';
+            banner.style.display = '';
+        } else {
+            banner.style.display = 'none';
+        }
+    }
 }
 
 function _pmPayRenderTable(reqs) {

@@ -8,16 +8,37 @@ Each construction project opens into a **workspace** with five tabs (below). Thi
 reflects the **current** workflow; the original spec had a weekly total-only summary,
 which has since been replaced by the itemized **Daily Expenses** builder.
 
+> **🆕 Recently added:** per-category **Statements of Account** (Daily Expenses) — **click a
+> category to view all its entries** on screen, plus PDF download · **module-focused accounts**
+> (scope a login to a single module) · **mobile-responsive** workspace (bottom tab bar) ·
+> **client/partner portal parity** (Materials + Labor split · Net cash · tap to view past weeks)
+> with **dark-mode** coverage. Items below tagged **🆕 New** are part of this batch.
+
 ---
 
 ## Navigation Structure
 
-**Parent Menu:** Project Management → pick a project → workspace tabs:
+**Parent Menu: Project Management** has two sections:
+1. **Projects** — the projects home (card grid) → open a project → workspace tabs.
+2. **🆕 Termination Requests** — review client-submitted project terminations.
+
+**Project workspace tabs** (after opening a project):
 - Dashboard Overview
 - Daily Expenses
 - Procurements
 - Progress
 - Money
+
+---
+
+## Projects home (card grid)
+The Project Management landing lists every construction project as a card. Each card shows the
+**client / project**, **% complete**, **Balance due**, **This Friday**'s amount, an
+on-track / overdue status, and an **Open Project** button into the workspace. Header + card actions:
+- **Add Project** — create a project (client & project name, location, **management-fee %**, …).
+- Per card: **Edit** and **Delete**.
+- **QR Settings** — upload the **payment QR codes** (e.g. GCash / bank) shown to clients in the
+  payment flow.
 
 ---
 
@@ -58,6 +79,14 @@ itemized** (not a single weekly labor/materials total).
 - **History sidebar:** past bills (status pills **Sent / Partial / Paid**, tap to open
   read-only), a **"Sent this month"** total, and a **"Today so far"** summary
   (Labor / Materials / Mat + Labor / Grand total).
+- **🆕 Statements of Account (per category):** the sidebar lists **Labor**, **Materials**, and
+  **Mat + Labor**, each with its project-wide total across all bills.
+  - **🆕 Click a category row** to open an **on-screen breakdown** — a modal listing **every
+    entry** of that category (week · details · qty/days · amount), with the entry count and
+    category total. (The **Generate** button still triggers the PDF directly.)
+  - **Generate** (or the modal's **Generate PDF**) produces the printable **SOA** in the house
+    style (green company name, dark-green header + total row) with **Print** and **Download PDF**
+    (jsPDF; PDF amounts shown as `PHP …`).
 
 **Management fee:** **per project & editable** (default **15%**, can be **0%**). Changing a
 project's rate **re-bills its unpaid bills** at the new rate.
@@ -79,7 +108,10 @@ project's rate **re-bills its unpaid bills** at the new rate.
 ### 4. Progress
 - **Milestones** — phases with a weight and status (`pending` | `in_progress` |
   `completed`); drives the project Completion KPI.
-- **Accomplishment Reports** — periodic progress reports tied to the project.
+- **Accomplishment Reports** — a hierarchical **report builder**: **Cost Items → Sub-items →
+  Line items** (description · unit · qty · material rate · labor rate · **% completion**) with
+  auto-rolled totals. Saved per project and **Print / Export-to-PDF** to share with the client.
+  (Project folders must exist in the Expenses module first.)
 
 ---
 
@@ -115,6 +147,61 @@ Houses the **Revolving Fund** and the **Payment System**.
 
 ---
 
+## 🆕 Termination Requests
+The admin counterpart to client-submitted project terminations (clients request from their own
+portal). Lists requests with filter pills (**All / Pending / Approved / Rejected**). Opening one
+shows the **final settlement breakdown** — total labor, total materials, management fee, grand
+total, **already paid**, and **final balance due**. Admin can:
+- **Approve Termination** → marks it **approved**, flips the project to **terminated**, and (if a
+  balance remains) **auto-generates a final invoice**.
+- **Reject** → marks it **rejected** with a **reason** shown back to the client.
+
+---
+
+## Design & layout
+The workspace follows one **"PM Workspace" design system** (consistent across all tabs):
+- **Typography:** IBM Plex Sans; tabular figures for amounts.
+- **Color:** brand green `#157a52`, warm `#f1f0ed` canvas, rounded **white cards** with hairline
+  borders; per-category accents — **Labor** green · **Materials** slate · **Mat + Labor** purple.
+- **Components:** status pills, segmented controls, custom range dropdown, modal sheets, and a
+  card → section → mini-stat elevation hierarchy.
+- **🆕 Dark mode:** workspace, modals, and tables re-theme to a dark palette (page → card → inner
+  elevation) via the topbar toggle.
+- **🆕 Responsive:** collapses to a single column with a bottom tab bar on phones (see below).
+
+---
+
+## 🆕 Mobile view (responsive)
+On phones (≤ 700px) the workspace switches to a mobile layout (desktop unchanged):
+- A fixed **bottom tab bar** — **Overview · Expenses · Procure · Progress · Money** — replaces
+  the top tabs and stays in sync with them.
+- Panels stack into a single column; the **Daily Expenses** builder and its sidebar stack;
+  Overview KPI tiles reflow to 2-up; the Procurements table scrolls horizontally.
+- Keeps the brand-green theme.
+
+---
+
+## 🆕 Client & Partner Portal parity
+The Dacs Partnership / Client portal mirrors the admin figures (shared portal JS):
+- **Direct-cost breakdown** shows the same **Labor / Materials / Materials + Labor** split
+  (combined amount no longer hidden inside Materials).
+- **Net cash** KPI (paid − direct cost) on the partner overview, matching the admin.
+- **Weekly Summary** splits out **Mat + Labor** (own KPI + table column) and lets you
+  **tap any submitted week** to view its detail, with **← Back to latest**.
+
+---
+
+## 🆕 Module-focused accounts
+Any admin account can be **scoped to one or more modules** via a `profiles.allowed_modules`
+list (PRIMARY_NAV section ids, e.g. `["pm"]`). A scoped account sees **only** those sections in
+the portal navigation, on **every screen size** (desktop + mobile); an empty/unset list = full
+access. Example: the `admin-pm@dacsbuilding.com` owner account is set to `["pm"]`, so it opens
+straight into **Project Management** and sees nothing else. This is a navigation/focus filter,
+not a data-security boundary. Set it per account in the database (a checkbox UI in the Add/Edit
+forms is the planned next step).
+
+---
+
 ## Access Control
 
 | Feature | Admin | Client |
@@ -133,6 +220,11 @@ Houses the **Revolving Fund** and the **Payment System**.
 | Self-pay | No | Yes |
 | Mark week as strict | Yes | No |
 | View payment history | Yes | Yes |
+| Add / edit / delete a project | Yes | No |
+| Manage payment QR settings | Yes | No |
+| Build accomplishment reports | Yes | No |
+| Request project termination | No | Yes |
+| Approve / reject termination | Yes | No |
 
 ---
 

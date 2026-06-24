@@ -27,6 +27,8 @@ let cmCurrentUser          = null;
 let cmCurrentProfile       = null;
 let cmProjectData          = null;   // linked construction project
 let cmWeeklyBills          = [];
+let cmPayRequests          = [];
+let cmWeekSelId            = null;   // Weekly Summary: which bill is shown in the detail card (null = latest)
 let cmProgressLogs         = [];
 let cmRevolvingFund        = null;
 let cmMilestones           = [];
@@ -120,7 +122,7 @@ function cmShowLogin() {
     if (_cmBillUnsub)   { _cmBillUnsub();   _cmBillUnsub   = null; }
     if (_cmNotifUnsub)  { _cmNotifUnsub();  _cmNotifUnsub  = null; }
     cmCurrentUser = null; cmCurrentProfile = null; cmProjectData = null;
-    cmWeeklyBills = []; cmProgressLogs = []; cmMilestones = []; cmAccomplishmentReports = [];
+    cmWeeklyBills = []; cmPayRequests = []; cmWeekSelId = null; cmProgressLogs = []; cmMilestones = []; cmAccomplishmentReports = [];
 }
 
 function cmShowLoginError(msg) {
@@ -229,6 +231,18 @@ async function cmLoadProjectData(user) {
             console.log('[partnership] project:', cmProjectData.id, cmProjectData.projectName || cmProjectData.clientName,
                 '| bills loaded:', cmWeeklyBills.length,
                 '| per-bill:', cmWeeklyBills.map(b => ({ week: b.weekEndingDate, status: b.status, labor: b.labor, materials: b.materials, combined: b.combined, hasEntries: Array.isArray(b.entries), bothEntries: Array.isArray(b.entries) ? b.entries.filter(e => e.type === 'both') : null })));
+
+            // Load this project's payment requests (for the Net cash KPI — paid to date).
+            // Own try/catch so an RLS denial never aborts the rest of the dashboard.
+            try {
+                const prSnap = await db.collection('paymentRequests')
+                    .where('constructionProjectId', '==', cmProjectData.id)
+                    .get();
+                cmPayRequests = prSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            } catch (e) {
+                console.warn('Payment requests load (net cash):', e.message);
+                cmPayRequests = [];
+            }
 
             // Load revolving fund
             const rfSnap = await db.collection('constructionProjects')
@@ -1138,8 +1152,8 @@ function cmRenderAccomplishment() {
         const nItems = Array.isArray(r.costItems) ? r.costItems.length : 0;
         const sub = [r.date, nItems ? nItems + ' cost item' + (nItems===1?'':'s') : ''].filter(Boolean).join(' · ');
         return `
-        <div onclick="cmViewAccomplishmentReport(${idx})" style="${card}display:flex;align-items:center;gap:24px;cursor:pointer;">
-            <div style="flex:1;min-width:0;">
+        <div onclick="cmViewAccomplishmentReport(${idx})" style="${card}display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap;cursor:pointer;">
+            <div style="flex:1;min-width:180px;">
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;"><span style="font-size:16px;font-weight:800;color:#1a1d24;">${cmEsc(title)}</span>${badge(r.status)}</div>
                 <div style="font-size:13px;color:#8b91a0;margin-top:5px;">${cmEsc(sub || '—')}</div>
             </div>
@@ -1846,7 +1860,8 @@ function cmRenderMaterials() {
         ${pill('all','All',nAll)}${pill('pending','Pending',nPending)}${pill('client','Bought by client',nClient)}${pill('company','Bought by company',nCompany)}
     </div>
     <div style="${card}padding:8px 24px;">
-        <table style="width:100%;border-collapse:collapse;">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        <table style="width:100%;min-width:560px;border-collapse:collapse;">
             <thead><tr style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#aeb4c2;font-weight:700;">
                 <th style="text-align:left;padding:14px 0;">Item</th>
                 <th style="text-align:right;padding:14px 0;">Qty</th>
@@ -1857,6 +1872,7 @@ function cmRenderMaterials() {
             </tr></thead>
             <tbody style="font-size:14px;color:#1a1d24;">${rows}</tbody>
         </table>
+      </div>
     </div>`;
 }
 
@@ -2592,10 +2608,11 @@ function cmWeekRange(end) {
 function cmOvBreakdown(bills) {
     let labor = 0, materials = 0, combined = 0;
     (bills || []).forEach(b => {
-        // Prefer the stored `combined` field; for bills saved before it existed,
-        // derive it from the 'both' line entries (the stored `materials` folds it in).
-        let c = b.combined;
-        if (c == null && Array.isArray(b.entries)) {
+        // Prefer the stored `combined` field; 0 is treated as "missing" too (a
+        // `default 0` column leaves old bills at 0), so we still derive the supply &
+        // install portion from the 'both' line entries (the stored `materials` folds it in).
+        let c = Number(b.combined) || 0;
+        if (!c && Array.isArray(b.entries)) {
             c = b.entries.filter(e => e.type === 'both').reduce((s, e) => s + (Number(e.amount) || 0), 0);
         }
         c = c || 0;
@@ -2630,6 +2647,56 @@ function cmOvFilterBills(mode) {
     if (mode === 'last4')  return dated.slice(0, 4);
     return all.filter(b => b.weekEndingDate === mode);   // a specific week
 }
+
+// Inject the custom range-dropdown styles once (purple portal theme).
+function cmEnsureDdStyle() {
+    if (document.getElementById('cm-dd-style')) return;
+    const s = document.createElement('style');
+    s.id = 'cm-dd-style';
+    s.textContent = `
+      .cm-dd-btn{display:inline-flex;align-items:center;gap:10px;background:rgba(255,255,255,0.16);border:1px solid rgba(255,255,255,0.3);border-radius:10px;padding:8px 13px;color:#fff;font:700 12px inherit;cursor:pointer;}
+      .cm-dd-btn:hover{background:rgba(255,255,255,0.26);}
+      .cm-dd-btn .cm-dd-chev{transition:transform .15s;}
+      .cm-dd.open .cm-dd-btn .cm-dd-chev{transform:rotate(180deg);}
+      .cm-dd-btn-light{background:#fff;border:1px solid #ebedf2;color:#1a1d24;box-shadow:0 1px 3px rgba(20,25,40,0.06);}
+      .cm-dd-btn-light:hover{background:#fafbff;border-color:#c7c8f0;}
+      .cm-dd-menu{display:none;position:absolute;top:calc(100% + 6px);right:0;min-width:232px;background:#fff;border:1px solid #ebedf2;border-radius:14px;box-shadow:0 18px 44px -14px rgba(20,25,40,0.3);padding:7px;z-index:60;}
+      .cm-dd.open .cm-dd-menu{display:block;}
+      .cm-dd-opt{display:flex;align-items:center;justify-content:space-between;gap:14px;width:100%;text-align:left;background:none;border:none;cursor:pointer;border-radius:9px;padding:10px 12px;font:500 13px inherit;color:#3a3a36;}
+      .cm-dd-opt:hover{background:#f5f5fb;}
+      .cm-dd-opt.active{background:#eeeefb;color:#4b4bc4;font-weight:700;}
+      .cm-dd-wk{color:#1a1d24;font-weight:700;font-family:'Space Mono',monospace;white-space:nowrap;}
+      .cm-dd-check{color:#5b5bd6;font-weight:700;opacity:0;}
+      .cm-dd-opt.active .cm-dd-check{opacity:1;}
+      .cm-dd-sep{height:1px;background:#f0efec;margin:6px 8px;}
+      /* Mobile: the Overview range button is left-aligned, so right:0 throws the
+         menu off the left edge (clipped). Anchor it left and clamp to viewport. */
+      @media (max-width:600px){#cm-ov-dd-menu{left:0;right:auto;min-width:0;max-width:calc(100vw - 40px);max-height:60vh;overflow-y:auto;}}`;
+    document.head.appendChild(s);
+}
+// Generic open/close for a custom dropdown by container id.
+window.cmDdToggle = function(id, ev) {
+    if (ev) ev.stopPropagation();
+    cmEnsureDdStyle();
+    const dd = document.getElementById(id);
+    if (!dd) return;
+    if (dd.classList.contains('open')) { dd.classList.remove('open'); return; }
+    dd.classList.add('open');
+    const close = (e) => { if (!dd.contains(e.target)) { dd.classList.remove('open'); document.removeEventListener('click', close); } };
+    setTimeout(() => document.addEventListener('click', close), 0);
+};
+window.cmOvToggleRange = function(ev) { cmDdToggle('cm-ov-dd', ev); };
+window.cmOvPickRange = function(el, val, label) {
+    const input = document.getElementById('cm-ov-range');
+    if (input) input.value = val;
+    const lbl = document.getElementById('cm-ov-dd-label');
+    if (lbl) lbl.textContent = label;
+    document.querySelectorAll('#cm-ov-dd-menu .cm-dd-opt').forEach(o => o.classList.remove('active'));
+    if (el) el.classList.add('active');
+    const dd = document.getElementById('cm-ov-dd');
+    if (dd) dd.classList.remove('open');
+    cmOvApplyRange();
+};
 
 // Recompute the breakdown card for the selected date range (no full re-render).
 window.cmOvApplyRange = function() {
@@ -2667,6 +2734,7 @@ window.cmOvApplyRange = function() {
 function cmRenderOverview() {
     const host = document.getElementById('kpi-project-folder');
     if (!host) return;
+    cmEnsureDdStyle();   // dropdown styles must exist before the menu renders (else it shows unstyled)
 
     const bills  = cmWeeklyBills || [];
     const latest = bills[0] || null;
@@ -2688,10 +2756,24 @@ function cmRenderOverview() {
 
     // Direct-cost breakdown (admin parity) — all-time across every weekly bill
     const ovBd      = cmOvBreakdown(cmWeeklyBills);
+    // Net cash = what the client has paid minus the direct cost spent so far.
+    // Paid is summed from payment requests using the admin's exact formula so the
+    // KPI matches the admin overview (verified → amountPaid/paidAmount/totalAmount).
+    const ovPaid    = (cmPayRequests || []).reduce((s, r) =>
+        s + (r.status === 'verified' ? (r.amountPaid || r.paidAmount || r.totalAmount || 0) : (r.amountPaid || 0)), 0);
+    const ovNet     = ovPaid - ovBd.direct;
     const ovWeeks   = (cmWeeklyBills || []).filter(b => b.weekEndingDate)
         .slice().sort((a, b) => b.weekEndingDate.localeCompare(a.weekEndingDate));
     const ovWeekOpts = ovWeeks.map(b =>
         `<option value="${cmEsc(b.weekEndingDate)}">Week ending ${cmEsc(cmOvWeekLabel(b.weekEndingDate))}</option>`).join('');
+    // Custom range-dropdown option buttons (native <select> can't style its list)
+    const ovDdChevron = '<svg class="cm-dd-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+    const ovDdFixed = [['all', 'All time'], ['month', 'This month'], ['latest', 'Latest week'], ['last4', 'Last 4 weeks']]
+        .map(([v, l], i) => `<button class="cm-dd-opt${i === 0 ? ' active' : ''}" onclick="cmOvPickRange(this,'${v}','${l}')"><span>${l}</span><span class="cm-dd-check">✓</span></button>`).join('');
+    const ovDdWeeks = ovWeeks.map(b => {
+        const l = cmOvWeekLabel(b.weekEndingDate);
+        return `<button class="cm-dd-opt" onclick="cmOvPickRange(this,'${cmEsc(b.weekEndingDate)}','${cmEsc(l)}')"><span>Week ending</span><span class="cm-dd-wk">${cmEsc(l)}</span></button>`;
+    }).join('');
 
     // Revolving fund
     const rf      = cmRevolvingFund;
@@ -2769,18 +2851,17 @@ function cmRenderOverview() {
                 <div style="font-size:16px;font-weight:800;color:#fff;">Direct cost breakdown</div>
                 <div id="cm-ov-range-note" style="font-size:11.5px;color:rgba(255,255,255,0.8);margin-top:2px;">All time · ${(cmWeeklyBills||[]).length} week${(cmWeeklyBills||[]).length === 1 ? '' : 's'}</div>
             </div>
-            <div class="cm-bd-head-right" style="display:flex;flex-direction:column;align-items:flex-end;gap:11px;">
+            <div class="cm-ov-head-right cm-bd-head-right" style="display:flex;flex-direction:column;gap:11px;">
+
                 <div style="display:flex;align-items:baseline;gap:7px;">
                     <span id="cm-ov-direct" style="font-size:21px;font-weight:800;color:#fff;line-height:1;white-space:nowrap;">${cmFmt(ovBd.direct)}</span>
                     <span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.8);">total</span>
                 </div>
-                <select id="cm-ov-range" onchange="cmOvApplyRange()" style="${ovSelStyle}">
-                    <option value="all" style="color:#1a1d24;">All time</option>
-                    <option value="month" style="color:#1a1d24;">This month</option>
-                    <option value="latest" style="color:#1a1d24;">Latest week</option>
-                    <option value="last4" style="color:#1a1d24;">Last 4 weeks</option>
-                    ${ovWeeks.length ? '<option disabled>──────────</option>' + ovWeekOpts.replace(/<option /g, '<option style="color:#1a1d24;" ') : ''}
-                </select>
+                <div class="cm-dd" id="cm-ov-dd" style="position:relative;">
+                    <button type="button" class="cm-dd-btn" onclick="cmOvToggleRange(event)"><span id="cm-ov-dd-label">All time</span>${ovDdChevron}</button>
+                    <div class="cm-dd-menu" id="cm-ov-dd-menu">${ovDdFixed}${ovDdWeeks ? '<div class="cm-dd-sep"></div>' + ovDdWeeks : ''}</div>
+                    <input type="hidden" id="cm-ov-range" value="all">
+                </div>
             </div>
         </div>
         <div style="display:flex;height:16px;gap:3px;margin-bottom:16px;background:rgba(255,255,255,0.15);border-radius:99px;padding:0;">
@@ -2823,6 +2904,11 @@ function cmRenderOverview() {
         </div>`}
         <!-- Right stack -->
         <div style="display:flex;flex-direction:column;gap:24px;">
+            ${partner ? `<div style="${card}">
+                <div style="font-size:13px;color:#8b91a0;font-weight:600;">Net cash</div>
+                <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:${ovNet >= 0 ? '#3f9960' : '#b91c1c'};">${ovNet < 0 ? '−' : ''}${cmFmt(Math.abs(ovNet))}</div>
+                <div style="font-size:12px;color:#8b91a0;margin-top:6px;">${ovNet >= 0 ? 'paid over direct cost' : 'direct cost over collections'}</div>
+            </div>` : ''}
             ${partner ? '' : `<div style="${card}">
                 <div style="font-size:13px;color:#8b91a0;font-weight:600;">Revolving fund</div>
                 <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:#1a1d24;">${cmFmt(rfBal)}</div>
@@ -2920,7 +3006,8 @@ async function cmRenderRevolving() {
     <div class="cm-rf-row" style="display:grid;grid-template-columns:1.5fr 1fr;gap:24px;margin-top:24px;">
         <div style="${card.replace('padding:24px','padding:24px 24px 8px')}">
             <div style="font-size:14px;font-weight:800;margin-bottom:6px;color:#1a1d24;">Expense ledger</div>
-            <table style="width:100%;border-collapse:collapse;">
+            <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+            <table style="width:100%;min-width:480px;border-collapse:collapse;">
                 <thead><tr style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#aeb4c2;font-weight:700;">
                     <th style="text-align:left;padding:11px 0;">Date</th>
                     <th style="text-align:left;padding:11px 0;">Description</th>
@@ -2929,6 +3016,7 @@ async function cmRenderRevolving() {
                 </tr></thead>
                 <tbody style="font-size:14px;color:#1a1d24;">${ledger}</tbody>
             </table>
+            </div>
         </div>
         <div style="${card}height:fit-content;">
             <div style="font-size:14px;font-weight:800;margin-bottom:14px;color:#1a1d24;">Replenishment</div>
@@ -2943,10 +3031,30 @@ async function cmRenderRevolving() {
     </div>`;
 }
 
+// Supply & install (Materials + Labor) amount for one bill. Prefers the stored
+// `combined` field; 0 is treated as missing (default-0 column), so it falls back to
+// the 'both' line entries — same rule as cmOvBreakdown.
+function cmBillCombined(b) {
+    let c = Number(b && b.combined) || 0;
+    if (!c && Array.isArray(b && b.entries)) {
+        c = b.entries.filter(e => e.type === 'both').reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    }
+    return c || 0;
+}
+
+// Pick which submitted week to show in the Weekly Summary detail card.
+window.cmWeekSelect = function(id) {
+    cmWeekSelId = id;
+    cmRenderWeekly();
+    const host = document.getElementById('section-weekly-billing');
+    if (host && window.innerWidth <= 700) host.scrollIntoView({ behavior: 'smooth', block: 'start' });
+};
+
 // ── Weekly Summary (redesign: read-only current week + computed + submitted weeks) ──
 function cmRenderWeekly() {
     const host = document.getElementById('section-weekly-billing');
     if (!host) return;
+    cmEnsureDdStyle();   // dropdown styles must exist before the menu renders (else it shows unstyled)
     const card = 'background:#fff;border-radius:20px;padding:24px;box-shadow:0 1px 3px rgba(20,25,40,0.06);';
 
     if (!cmProjectData) {
@@ -2955,34 +3063,64 @@ function cmRenderWeekly() {
     }
 
     const bills  = cmWeeklyBills || [];
-    const latest = bills[0] || null;
+    const mostRecent = bills[0] || null;
+    // The detail card shows the selected week (clicked from the table), else the latest.
+    const latest = (cmWeekSelId && bills.find(b => b.id === cmWeekSelId)) || mostRecent;
+    const isLatest = !!(latest && mostRecent && latest.id === mostRecent.id);
     const labor     = latest ? (latest.labor || 0) : 0;
     const materials = latest ? ((latest.materials||0)+(latest.delivery||0)+(latest.consumables||0)+(latest.other||0)) : 0;
+    const combined  = latest ? cmBillCombined(latest) : 0;            // Materials + Labor (supply & install)
+    const matPure   = Math.max(0, materials - combined);             // materials without the combined amount
     const direct    = latest ? (latest.directCostTotal || (labor + materials)) : 0;
     const fee       = latest ? (latest.managementFee || direct * (latest.managementFeeRate || cmFeeRate())) : 0;
     const total     = latest ? (latest.totalDue || (direct + fee)) : 0;
     const range     = latest ? cmWeekRange(latest.weekEndingDate) : '—';
     const status    = latest ? (latest.status || 'Submitted') : '';
     const partner   = cmIsPartner();   // monitoring/view-only: no 15% fee
+    // Week-picker dropdown options (newest first) — selecting one shows that week above.
+    const wkOpts = bills.map(b => {
+        const a = latest && b.id === latest.id;
+        return `<button class="cm-dd-opt${a ? ' active' : ''}" onclick="cmWeekSelect('${b.id}')"><span>${cmEsc(cmWeekRange(b.weekEndingDate))}</span><span class="cm-dd-check">✓</span></button>`;
+    }).join('');
 
     const rows = bills.map(b => {
         const lab = b.labor || 0;
         const mat = (b.materials||0)+(b.delivery||0)+(b.consumables||0)+(b.other||0);
+        const cmb = cmBillCombined(b);                    // Materials + Labor (combined)
+        const matP = Math.max(0, mat - cmb);              // pure materials
         const dir = b.directCostTotal || (lab + mat);
         const f   = b.managementFee || dir * (b.managementFeeRate || cmFeeRate());
         const t   = b.totalDue || (dir + f);
         const st  = b.status === 'Paid' ? ['PAID','#3f9960','#e7f5ed']
                   : b.status === 'Overdue' ? ['OVERDUE','#b91c1c','#fef2f2']
                   : ['DUE','#5b5bd6','#eef1fd'];
-        return `<tr style="border-top:1px solid #f0f1f5;">
+        const sel = latest && b.id === latest.id;
+        return `<tr onclick="cmWeekSelect('${cmEsc(b.id)}')" style="border-top:1px solid #f0f1f5;cursor:pointer;background:${sel ? '#f1f1fb' : 'transparent'};">
             <td style="padding:14px 0;font-weight:600;">${cmEsc(cmWeekRange(b.weekEndingDate))}</td>
             <td style="padding:14px 0;text-align:right;">${cmFmt(lab)}</td>
-            <td style="padding:14px 0;text-align:right;">${cmFmt(mat)}</td>
+            <td style="padding:14px 0;text-align:right;">${cmFmt(matP)}</td>
+            <td style="padding:14px 0;text-align:right;">${cmb ? cmFmt(cmb) : '<span style="color:#c4c9d4;">—</span>'}</td>
             ${partner ? '' : `<td style="padding:14px 0;text-align:right;color:#5b5bd6;">${cmFmt(f)}</td>`}
             <td style="padding:14px 0;text-align:right;font-weight:700;">${cmFmt(partner ? dir : t)}</td>
             <td style="padding:14px 0;text-align:right;"><span style="font-size:11px;font-weight:700;background:${st[2]};color:${st[1]};padding:3px 10px;border-radius:20px;">${st[0]}</span></td>
         </tr>`;
-    }).join('') || `<tr><td colspan="${partner?5:6}" style="padding:18px 0;color:#aeb4c2;font-size:13px;">No weekly records yet.</td></tr>`;
+    }).join('') || `<tr><td colspan="${partner?6:7}" style="padding:18px 0;color:#aeb4c2;font-size:13px;">No weekly records yet.</td></tr>`;
+
+    // Per-week Statement of Account rows (one Generate button per submitted week).
+    const soaRows = bills.map(b => {
+        const lab = b.labor || 0;
+        const mat = (b.materials||0)+(b.delivery||0)+(b.consumables||0)+(b.other||0);
+        const dir = b.directCostTotal || (lab + mat);
+        const tot = partner ? dir : (b.totalDue || (dir + (b.managementFee || dir * (b.managementFeeRate || cmFeeRate()))));
+        return `<div style="display:flex;align-items:center;gap:12px;padding:14px 0;border-top:1px solid #f0f1f5;">
+            <span style="width:4px;height:30px;border-radius:3px;background:#5b5bd6;flex:none;"></span>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:14px;font-weight:700;color:#1a1d24;">Week of ${cmEsc(cmWeekRange(b.weekEndingDate))}</div>
+                <div style="font-size:12px;color:#aeb4c2;">${cmFmt(tot)} · ${cmEsc(b.status || 'Submitted')}</div>
+            </div>
+            <button onclick="cmWeekSOA('${cmEsc(b.id)}')" style="font-size:12.5px;font-weight:700;color:#fff;background:#5b5bd6;border:none;border-radius:9px;padding:9px 16px;cursor:pointer;flex:none;">Generate</button>
+        </div>`;
+    }).join('') || `<div style="padding:18px 0;color:#aeb4c2;font-size:13px;border-top:1px solid #f0f1f5;">No submitted weeks yet.</div>`;
 
     host.innerHTML = `
     <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:26px;flex-wrap:wrap;gap:14px;">
@@ -2990,26 +3128,35 @@ function cmRenderWeekly() {
             <div style="font-size:28px;font-weight:800;letter-spacing:-0.02em;color:#1a1d24;">Weekly Summary</div>
             <div style="font-size:14px;color:#8b91a0;margin-top:3px;">${partner ? 'Total labor and materials recorded each week.' : 'Total labor and materials per week. The ' + cmFeePct() + '% management fee and grand total are computed automatically.'}</div>
         </div>
-        ${latest ? `<div style="background:#fff;border-radius:12px;padding:9px 14px;display:flex;align-items:center;gap:9px;box-shadow:0 1px 3px rgba(20,25,40,0.06);font-size:13.5px;font-weight:700;color:#1a1d24;">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5b5bd6" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            Week of ${cmEsc(range)}
+        ${latest ? `<div class="cm-dd" id="cm-wk-dd" style="position:relative;">
+            <button type="button" class="cm-dd-btn cm-dd-btn-light" onclick="cmDdToggle('cm-wk-dd',event)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#5b5bd6" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              <span>Week of ${cmEsc(range)}</span>
+              <svg class="cm-dd-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="cm-dd-menu" id="cm-wk-dd-menu">${wkOpts}</div>
         </div>` : ''}
     </div>
 
     <div class="cm-wk-row" style="display:grid;grid-template-columns:1.4fr 1fr;gap:24px;">
         <div style="${card.replace('padding:24px','padding:28px')}">
-            <div style="font-size:15px;font-weight:800;color:#1a1d24;">This week</div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <div style="font-size:15px;font-weight:800;color:#1a1d24;">${isLatest ? 'This week' : 'Selected week'}</div>
+                ${isLatest ? '' : `<button onclick="cmWeekSelect(null)" style="font-size:11.5px;font-weight:700;color:#5b5bd6;background:#eef1fd;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;">← Back to latest</button>`}
+            </div>
             <div style="font-size:12.5px;color:#8b91a0;margin-top:2px;margin-bottom:22px;">${latest ? 'Week of ' + cmEsc(range) : 'No bill submitted yet'}</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
-                <div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">Total labor</div><div style="font-size:22px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${cmFmt(labor)}</div></div>
-                <div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">Total materials</div><div style="font-size:22px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${cmFmt(materials)}</div></div>
+            <div style="display:grid;grid-template-columns:${combined > 0 ? 'repeat(3,1fr)' : '1fr 1fr'};gap:18px;">
+                <div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">Total labor</div><div style="font-size:21px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${cmFmt(labor)}</div></div>
+                <div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">Total materials</div><div style="font-size:21px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${cmFmt(matPure)}</div></div>
+                ${combined > 0 ? `<div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">Mat + Labor</div><div style="font-size:21px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${cmFmt(combined)}</div></div>` : ''}
             </div>
             <div style="margin-top:22px;background:#f7f8fb;border-radius:15px;padding:20px 22px;">
                 <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;"><span style="color:#6b7180;">${partner ? 'Labor' : 'Direct costs'}</span><span style="font-weight:700;">${cmFmt(partner ? labor : direct)}</span></div>
-                <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;border-top:1px solid #ebedf2;"><span style="color:#6b7180;">${partner ? 'Materials' : 'Management fee · ' + cmBillPct(latest) + '%'}</span><span style="font-weight:700;${partner?'':'color:#5b5bd6;'}">${cmFmt(partner ? materials : fee)}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;border-top:1px solid #ebedf2;"><span style="color:#6b7180;">${partner ? 'Materials' : 'Management fee · ' + cmBillPct(latest) + '%'}</span><span style="font-weight:700;${partner?'':'color:#5b5bd6;'}">${cmFmt(partner ? matPure : fee)}</span></div>
+                ${partner && combined > 0 ? `<div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;border-top:1px solid #ebedf2;"><span style="color:#6b7180;">Materials + Labor</span><span style="font-weight:700;">${cmFmt(combined)}</span></div>` : ''}
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:13px 0 4px;font-size:14px;border-top:1px solid #ebedf2;margin-top:4px;"><span style="font-weight:700;">${partner ? 'Total cost' : 'Grand total'}</span><span style="font-weight:800;font-size:24px;letter-spacing:-0.01em;">${cmFmt(partner ? direct : total)}</span></div>
             </div>
-            ${latest ? `<div style="margin-top:18px;font-size:12.5px;color:#8b91a0;">Status: <strong style="color:${status==='Paid'?'#3f9960':status==='Overdue'?'#b91c1c':'#5b5bd6'};">${cmEsc(status)}</strong> · submitted every Friday</div>` : ''}
+            ${latest ? `<div style="margin-top:18px;font-size:12.5px;color:#8b91a0;">Status: <strong style="color:${status==='Paid'?'#3f9960':status==='Overdue'?'#b91c1c':'#5b5bd6'};">${cmEsc(status)}</strong> · recorded daily</div>` : ''}
         </div>
         <div style="display:flex;flex-direction:column;gap:20px;">
             ${partner ? '' : `<div style="${card}">
@@ -3024,20 +3171,197 @@ function cmRenderWeekly() {
     </div>
 
     <div style="${card.replace('padding:24px','padding:24px 24px 8px')}margin-top:24px;">
-        <div style="font-size:14px;font-weight:800;margin-bottom:6px;color:#1a1d24;">Submitted weeks</div>
-        <table style="width:100%;border-collapse:collapse;">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+            <div style="font-size:14px;font-weight:800;color:#1a1d24;">Submitted weeks</div>
+            <div style="font-size:11.5px;color:#aeb4c2;">Tap a week to view its details above</div>
+        </div>
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+        <table style="width:100%;min-width:620px;border-collapse:collapse;">
             <thead><tr style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#aeb4c2;font-weight:700;">
                 <th style="text-align:left;padding:11px 0;">Week</th>
                 <th style="text-align:right;padding:11px 0;">Labor</th>
                 <th style="text-align:right;padding:11px 0;">Materials</th>
+                <th style="text-align:right;padding:11px 0;">Mat + Labor</th>
                 ${partner ? '' : '<th style="text-align:right;padding:11px 0;">Fee</th>'}
                 <th style="text-align:right;padding:11px 0;">Total</th>
                 <th style="text-align:right;padding:11px 0;">Status</th>
             </tr></thead>
             <tbody style="font-size:14px;color:#1a1d24;">${rows}</tbody>
         </table>
+        </div>
+    </div>
+
+    <div style="${card}margin-top:24px;">
+        <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px;">
+            <div style="font-size:14px;font-weight:800;color:#1a1d24;">Statements of account</div>
+            <div style="font-size:11.5px;color:#aeb4c2;">Per week · all categories · PDF</div>
+        </div>
+        ${soaRows}
     </div>`;
 }
+
+// ── Statement of Account (per week, all categories) ───────────────
+// Collect every line entry in one week's bill (labor / materials / mat+labor).
+function _cmWeekRows(b) {
+    const out = [];
+    const catName = t => t === 'both' ? 'Mat + Labor' : t === 'materials' ? 'Materials' : 'Labor';
+    const metaOf = (t, e) => t === 'labor' ? (Number(e.days) ? Number(e.days) + (Number(e.days) === 1 ? ' day' : ' days') : '')
+        : t === 'materials' ? (Number(e.qty) ? Number(e.qty) + ' ' + (e.unit || 'pcs') : '')
+        : 'supply & install';
+    if (Array.isArray(b.entries) && b.entries.length) {
+        ['labor', 'materials', 'both'].forEach(t => {
+            b.entries.filter(e => e.type === t).forEach(e => {
+                const m = metaOf(t, e);
+                out.push({ date: b.weekEndingDate, desc: catName(t) + ' · ' + (e.details || '—') + (m ? ' · ' + m : ''), amount: Number(e.amount) || 0 });
+            });
+        });
+    } else {
+        // Legacy bill without an entries[] array — synthesize from totals.
+        const c = cmBillCombined(b);
+        const matPure = Math.max(0, ((b.materials||0)+(b.delivery||0)+(b.consumables||0)+(b.other||0)) - c);
+        if (b.labor) out.push({ date: b.weekEndingDate, desc: 'Labor · total', amount: Number(b.labor) || 0 });
+        if (matPure) out.push({ date: b.weekEndingDate, desc: 'Materials · total', amount: matPure });
+        if (c)       out.push({ date: b.weekEndingDate, desc: 'Mat + Labor · supply & install', amount: c });
+    }
+    return out;
+}
+
+window.cmWeekSOA = function(billId) {
+    if (!cmProjectData) { alert('No project assigned yet.'); return; }
+    const bill = (cmWeeklyBills || []).find(b => b.id === billId);
+    if (!bill) { alert('Week not found.'); return; }
+    const rangeLabel = cmWeekRange(bill.weekEndingDate);
+    const label = 'Week of ' + rangeLabel;
+    const rows = _cmWeekRows(bill);
+    const total = rows.reduce((s, r) => s + r.amount, 0);
+    const client   = cmProjectData.clientName || cmProjectData.projectName || '—';
+    const project  = cmProjectData.projectName || '—';
+    const location = cmProjectData.location || cmProjectData.address || '';
+    const today = new Date().toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+    const fmtDate = d => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }); } catch (e) { return d || '—'; } };
+    const descOf = r => r.desc;
+    const fmtN = n => Math.round(Number(n) || 0).toLocaleString('en-US');
+    const period = rangeLabel;
+    const ref = 'SOA-WK-' + (bill.weekEndingDate ? String(bill.weekEndingDate).replace(/-/g, '') : String(rows.length).padStart(3, '0'));
+
+    const rowsHtml = rows.length
+        ? rows.map((r, i) => `<tr style="background:${i % 2 ? '#f4f8f5' : '#fff'};">
+            <td class="d">${cmEsc(fmtDate(r.date))}</td>
+            <td class="desc">${cmEsc(descOf(r))}</td>
+            <td class="amt">${fmtN(r.amount)}</td>
+          </tr>`).join('')
+        : `<tr><td colspan="3" style="text-align:center;color:#9aa8a0;padding:26px;">No entries recorded for this week.</td></tr>`;
+
+    const pdfData = {
+        label, client, project, location, today, period, ref,
+        body: rows.map(r => [fmtDate(r.date), descOf(r), fmtN(r.amount)]),
+        total: fmtN(total),
+        fname: `${ref}-${(String(project).replace(/[^A-Za-z0-9]+/g, '') || 'project')}.pdf`
+    };
+    const pdfJson = JSON.stringify(pdfData).replace(/</g, '\\u003c');
+
+    const w = window.open('', '_blank');
+    if (!w) { alert('Please allow pop-ups to open the statement.'); return; }
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${cmEsc(ref)} — ${cmEsc(label)} — ${cmEsc(client)}</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"><\/script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"><\/script>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:Arial,Helvetica,sans-serif;color:#1a2620;background:#e9ece9;padding:32px;}
+      .sheet{max-width:720px;margin:0 auto;background:#fff;border-radius:8px;box-shadow:0 20px 60px -20px rgba(0,0,0,.3);overflow:hidden;}
+      .body{padding:34px 44px;}
+      .head{text-align:center;border-bottom:2px solid #14532d;padding-bottom:18px;}
+      .company{font-size:21px;font-weight:800;color:#15803d;letter-spacing:.01em;}
+      .subtitle{font-size:11px;color:#7b8a82;margin-top:4px;letter-spacing:.04em;}
+      .doctitle{font-size:15px;font-weight:700;color:#14532d;letter-spacing:.1em;margin-top:18px;}
+      .docsub{font-size:12px;color:#7b8a82;margin-top:3px;}
+      .meta{display:flex;flex-wrap:wrap;padding:18px 0;border-bottom:1px solid #e6ece8;}
+      .meta>div{width:50%;margin-bottom:14px;}
+      .meta-l{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#a3b0a8;}
+      .meta-v{font-size:13px;font-weight:700;color:#1a2620;margin-top:3px;}
+      .meta-v.mono{font-family:'Courier New',monospace;}
+      table{width:100%;border-collapse:collapse;margin-top:18px;}
+      thead th{background:#14532d;color:#fff;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:11px 8px;text-align:left;}
+      thead th.r{text-align:right;padding-right:16px;} thead th:first-child{padding-left:16px;}
+      tbody td{font-size:12.5px;color:#26342c;padding:11px 8px;border-bottom:1px solid #eef3f0;}
+      td.d{width:90px;padding-left:16px;color:#5b6b62;font-family:'Courier New',monospace;}
+      td.amt{width:130px;text-align:right;padding-right:16px;font-family:'Courier New',monospace;font-weight:700;}
+      tfoot td{background:#14532d;color:#fff;font-weight:700;}
+      tfoot .lbl{padding:14px 8px 14px 16px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;}
+      tfoot .tot{text-align:right;padding:14px 16px;font-family:'Courier New',monospace;font-size:17px;}
+      .note{padding:16px 0 0;font-size:10px;color:#a3b0a8;line-height:1.6;}
+      .foot{border-top:1px solid #e6ece8;background:#f6f8f7;padding:14px 44px;display:flex;justify-content:flex-end;gap:12px;}
+      .btn-print{background:#fff;color:#14532d;border:1.5px solid #14532d;border-radius:11px;padding:12px 22px;font:700 13px Arial;cursor:pointer;}
+      .btn-pdf{background:#15803d;color:#fff;border:none;border-radius:11px;padding:12px 26px;font:700 13px Arial;cursor:pointer;}
+      @media print{body{background:#fff;padding:0;}.sheet{box-shadow:none;border-radius:0;max-width:none;}.foot{display:none;}}
+    </style></head><body>
+      <div class="sheet">
+        <div class="body">
+          <div class="head">
+            <div class="company">DAC'S BUILDING DESIGN SERVICES</div>
+            <div class="subtitle">Building Design &middot; Construction Management${location ? ' &middot; ' + cmEsc(location) : ''}</div>
+            <div class="doctitle">STATEMENT OF ACCOUNT</div>
+            <div class="docsub">${cmEsc(label)} &middot; weekly statement</div>
+          </div>
+          <div class="meta">
+            <div><div class="meta-l">Project</div><div class="meta-v">${cmEsc(project)}</div></div>
+            <div><div class="meta-l">Client</div><div class="meta-v">${cmEsc(client)}</div></div>
+            <div><div class="meta-l">Period</div><div class="meta-v">${cmEsc(period)}</div></div>
+            <div><div class="meta-l">Ref no.</div><div class="meta-v mono">${cmEsc(ref)}</div></div>
+          </div>
+          <table>
+            <thead><tr><th>Date</th><th>Description</th><th class="r">Amount</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+            <tfoot><tr><td class="lbl" colspan="2">Total (PHP)</td><td class="tot">${fmtN(total)}</td></tr></tfoot>
+          </table>
+          <div class="note">Amounts in PHP. This statement lists every recorded entry for the ${cmEsc(label.toLowerCase())}. Generated ${cmEsc(today)} &middot; DAC'S client portal.</div>
+        </div>
+        <div class="foot">
+          <button class="btn-print" onclick="window.print()">Print</button>
+          <button class="btn-pdf" onclick="downloadPDF()">Download PDF</button>
+        </div>
+      </div>
+      <script>
+        var D = ${pdfJson};
+        function downloadPDF(){
+          if(!window.jspdf || !window.jspdf.jsPDF){ alert('PDF library still loading — try again in a moment.'); return; }
+          var doc = new window.jspdf.jsPDF({ orientation:'portrait', unit:'mm', format:'a4' });
+          var pw = doc.internal.pageSize.getWidth();
+          doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(21,128,61);
+          doc.text("DAC'S BUILDING DESIGN SERVICES", pw/2, 18, {align:'center'});
+          doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(123,138,130);
+          doc.text("Building Design - Construction Management" + (D.location ? " - " + D.location : ""), pw/2, 24, {align:'center'});
+          doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(20,83,45);
+          doc.text("STATEMENT OF ACCOUNT", pw/2, 33, {align:'center'});
+          doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(123,138,130);
+          doc.text(D.label + " - weekly statement", pw/2, 38, {align:'center'});
+          doc.setFontSize(7.5); doc.setTextColor(150,160,152);
+          doc.text("PROJECT", 14, 50); doc.text("CLIENT", pw/2, 50);
+          doc.text("PERIOD", 14, 63); doc.text("REF NO.", pw/2, 63);
+          doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(26,38,32);
+          doc.text(String(D.project), 14, 56); doc.text(String(D.client), pw/2, 56);
+          doc.text(String(D.period), 14, 69); doc.text(String(D.ref), pw/2, 69);
+          doc.autoTable({
+            startY: 76,
+            head: [['DATE','DESCRIPTION','AMOUNT']],
+            body: D.body,
+            foot: [[ {content:'TOTAL (PHP)', colSpan:2, styles:{halign:'left'}}, {content:D.total, styles:{halign:'right'}} ]],
+            theme:'grid',
+            headStyles:{ fillColor:[20,83,45], textColor:255, fontStyle:'bold', fontSize:8.5 },
+            footStyles:{ fillColor:[20,83,45], textColor:255, fontStyle:'bold', fontSize:11 },
+            styles:{ fontSize:9, cellPadding:2.6, textColor:[38,52,44], lineColor:[238,243,240], lineWidth:0.1 },
+            alternateRowStyles:{ fillColor:[244,248,245] },
+            columnStyles:{ 0:{cellWidth:28}, 2:{halign:'right',cellWidth:36,fontStyle:'bold'} }
+          });
+          var fy = doc.lastAutoTable.finalY + 8;
+          doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,160,152);
+          doc.text(doc.splitTextToSize("Amounts in PHP. This statement lists every recorded entry for the " + D.label.toLowerCase() + ". Generated " + D.today + " - DAC'S client portal.", pw - 28), 14, fy);
+          doc.save(D.fname);
+        }
+      <\/script>
+    </body></html>`);
+    w.document.close();
+};
 
 // ── Project Folder Header ─────────────────────────────────────────
 function cmRenderProjectFolderHeader() {

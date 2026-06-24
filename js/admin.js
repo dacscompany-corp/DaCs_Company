@@ -2,6 +2,7 @@
 let _loginViaForm   = false;   // true only when user clicked Sign In
 let currentUser     = null;
 let currentUserRole = null;   // 'owner' | 'staff' | 'worker' | 'teamLeader'
+let currentAllowedModules = null;  // e.g. ['pm'] — when set, this account is "focused" to these PRIMARY_NAV sections on every screen (desktop + mobile). null/empty = full access.
 let currentView     = 'dashboard';
 let appointments = [];
 let currentAppointment = null;
@@ -53,6 +54,11 @@ function checkAuthState() {
                 window.currentDataUserId = (currentUserRole === 'staff' && data.ownerUid)
                     ? data.ownerUid
                     : user.uid;
+
+                // Module-focus: PRIMARY_NAV ids this account is narrowed to on
+                // every screen (desktop + mobile). Empty/missing = full access.
+                currentAllowedModules = Array.isArray(data.allowedModules) ? data.allowedModules : null;
+                window.currentAllowedModules = currentAllowedModules;
             } catch (e) {
                 console.warn('Could not fetch user role:', e);
                 await auth.signOut();
@@ -146,6 +152,14 @@ function applyRoleBasedUI() {
         const visibleChildren = [...group.querySelectorAll('.nav-item')].filter(el => el.style.display !== 'none');
         if (visibleChildren.length === 0) group.style.display = 'none';
     });
+
+    // Module-focus: a flagged account lands directly inside its focused module,
+    // overriding the role-based default landing above. Fires last (larger
+    // timeout) so it wins over the role default switchView calls.
+    if (Array.isArray(currentAllowedModules) && currentAllowedModules.length) {
+        const _fv = window.focusDefaultView();
+        if (_fv) setTimeout(() => switchView(_fv), 160);
+    }
 }
 
 // Refresh analytics - can be called manually
@@ -1915,11 +1929,43 @@ const PRIMARY_NAV = [
     },
 ];
 
+// When an account is flagged with allowed_modules, it is "focused" to those
+// PRIMARY_NAV sections on EVERY screen size (desktop + mobile alike).
+function _activeFocus() {
+    return (Array.isArray(currentAllowedModules) && currentAllowedModules.length)
+        ? currentAllowedModules : null;
+}
+// Sub-views reachable *inside* a section but not shown as their own nav button
+// (e.g. opening a project drills from pmProjects → pmWorkspace). Keep in sync
+// with the *_VIEWS groups in admin.html's switchView so the focus guard doesn't
+// block a legitimate drill-down. Keyed by PRIMARY_NAV section id.
+const _FOCUS_SUBVIEWS = {
+    pm:       ['pmWorkspace'],
+    expenses: ['expOverview', 'expExpenses', 'laborInvoices'],
+};
+// All views reachable inside the focused module(s) — used by the switchView guard.
+window.focusAllowedViews = function () {
+    if (!Array.isArray(currentAllowedModules) || !currentAllowedModules.length) return [];
+    const views = [];
+    PRIMARY_NAV.forEach(p => {
+        if (!currentAllowedModules.includes(p.id)) return;
+        p.modules.forEach(m => views.push(m.view));
+        (_FOCUS_SUBVIEWS[p.id] || []).forEach(v => views.push(v));
+    });
+    return views;
+};
+// Landing view for the first focused module (e.g. 'pm' → 'pmProjects').
+window.focusDefaultView = function () {
+    if (!Array.isArray(currentAllowedModules) || !currentAllowedModules.length) return null;
+    const p = PRIMARY_NAV.find(x => currentAllowedModules.includes(x.id));
+    return p ? p.defaultView : null;
+};
+
 // Role-filtered view of PRIMARY_NAV. Staff lose the Users tab and the Clients
 // module; workers/teamLeaders see only Construction. Owner sees everything.
 function _visibleNav() {
     const role = currentUserRole;
-    return PRIMARY_NAV
+    let nav = PRIMARY_NAV
         .filter(p => {
             if (role === 'staff') return p.id !== 'users';
             if (role === 'worker' || role === 'teamLeader') return p.id === 'construction';
@@ -1931,6 +1977,16 @@ function _visibleNav() {
             }
             return p;
         });
+
+    // Module-focus: an account flagged with allowed_modules sees ONLY those
+    // sections, on every screen size. Falls back to the full nav if the focus
+    // list matches nothing (avoids an empty menu).
+    const focus = _activeFocus();
+    if (focus) {
+        const narrowed = nav.filter(p => focus.includes(p.id));
+        if (narrowed.length) nav = narrowed;
+    }
+    return nav;
 }
 
 function findPrimaryForView(view) {
@@ -1951,12 +2007,19 @@ function _buildTabsBar(activePrimaryId) {
     const active = nav.find(p => p.id === activePrimaryId) || nav[0];
     const toShow = _portalState.tabsExpanded ? nav : [active];
 
+    // Only show the expand/collapse (›) toggle when there's more than one section
+    // to switch between. A focused account (e.g. allowed_modules ['pm']) has a
+    // single section, so the toggle would do nothing — hide it.
+    const showToggle = nav.length > 1;
+
     tabs.innerHTML =
         toShow.map((p) => {
             const isActive = p.id === activePrimaryId;
             return `<button class="portal-ptab${isActive ? ' active' : ''}" data-primary="${p.id}">${p.label}</button>`;
         }).join('') +
-        `<button class="portal-tabs-toggle" id="portalTabsToggle" title="${_portalState.tabsExpanded ? 'Collapse menu' : 'See other sections'}">${_portalState.tabsExpanded ? '&#8249;' : '&#8250;'}</button>`;
+        (showToggle
+            ? `<button class="portal-tabs-toggle" id="portalTabsToggle" title="${_portalState.tabsExpanded ? 'Collapse menu' : 'See other sections'}">${_portalState.tabsExpanded ? '&#8249;' : '&#8250;'}</button>`
+            : '');
 
     tabs.querySelectorAll('.portal-ptab').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -1966,10 +2029,13 @@ function _buildTabsBar(activePrimaryId) {
         });
     });
 
-    document.getElementById('portalTabsToggle').addEventListener('click', () => {
-        _portalState.tabsExpanded = !_portalState.tabsExpanded;
-        _buildTabsBar(activePrimaryId);
-    });
+    const toggleBtn = document.getElementById('portalTabsToggle');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+            _portalState.tabsExpanded = !_portalState.tabsExpanded;
+            _buildTabsBar(activePrimaryId);
+        });
+    }
 }
 
 function renderPortalChrome() {

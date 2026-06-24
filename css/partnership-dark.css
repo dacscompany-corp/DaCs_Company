@@ -76,14 +76,16 @@ body.dark-mode [style*="color: #374151"] {
   color: #e8f5ee !important;
 }
 
-/* ── White / near-white inline backgrounds → dark panel ── */
+/* ── White inline card backgrounds → raised card surface ──
+   Must match the base theme's card colour (#1e2822, lighter than the
+   #171f1c page) so cards read as RAISED, not as dark holes. (#f9fafb is a
+   nested/inner light grey — handled in the redesign block lower down as a
+   lighter third elevation level.) */
 body.dark-mode [style*="background:#fff"],
 body.dark-mode [style*="background: #fff"],
 body.dark-mode [style*="background:#ffffff"],
-body.dark-mode [style*="background: #ffffff"],
-body.dark-mode [style*="background:#f9fafb"],
-body.dark-mode [style*="background: #f9fafb"] {
-  background: #0f2218 !important;
+body.dark-mode [style*="background: #ffffff"] {
+  background: #1e2822 !important;
 }
 
 /* ── Tinted alert / info boxes: keep the accent, darken the fill ── */
@@ -306,3 +308,55 @@ body.dark-mode .topbar-bell-btn:focus {
   background: #252f2a !important;
   color: #00e5a0 !important;
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   REDESIGNED MODULES (cm-* renderers) — dark palette coverage.
+   The overview / materials / weekly / milestones / accomplishment views
+   use a NEWER light palette (ink #1a1d24, neutral mini-cards #f7f8fb /
+   #eceef3 / #f8fafc …) that the rules above — written for the older
+   #1f2937 palette — never reach. Without these, dark mode shows dark text
+   on dark cards and white inner boxes. Same attribute-selector + !important
+   technique to beat the inline styles.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Primary ink text → light */
+body.dark-mode [style*="color:#1a1d24"],
+body.dark-mode [style*="color: #1a1d24"] { color: #e8f5ee !important; }
+/* Secondary slate text (e.g. range-dropdown options) → light */
+body.dark-mode [style*="color:#3a3a36"],
+body.dark-mode [style*="color: #3a3a36"] { color: #cdd9d2 !important; }
+
+/* Neutral light inner surfaces (mini stat cards, progress tracks, row
+   stripes, hovers) → a third elevation level, LIGHTER than the #1e2822
+   card so the inner boxes stay visible on top of it. */
+body.dark-mode [style*="background:#f9fafb"],
+body.dark-mode [style*="background: #f9fafb"],
+body.dark-mode [style*="background:#f7f8fb"],
+body.dark-mode [style*="background:#f7f7fb"],
+body.dark-mode [style*="background:#eceef3"],
+body.dark-mode [style*="background:#eef1f6"],
+body.dark-mode [style*="background:#eef0f3"],
+body.dark-mode [style*="background:#f8fafc"],
+body.dark-mode [style*="background:#f1f5f9"],
+body.dark-mode [style*="background:#f5f5fb"],
+body.dark-mode [style*="background:#fafbff"],
+body.dark-mode [style*="background:#f3f4f6"],
+body.dark-mode [style*="background:#e9ecef"],
+body.dark-mode [style*="background:#f6f8fa"] { background: #28332c !important; }
+
+/* Selected/active option (light purple) → keep the purple cue, darken fill */
+body.dark-mode [style*="background:#eeeefb"] { background: rgba(91,91,214,0.22) !important; }
+
+/* Light neutral borders used by the redesign → dark hairlines */
+body.dark-mode [style*="solid #e3e5ec"],
+body.dark-mode [style*="solid #ebedf2"],
+body.dark-mode [style*="solid #eceef3"] { border-color: #2c3d35 !important; }
+
+/* The injected custom range dropdown (.cm-dd-menu) is CLASS-styled, not
+   inline, so the attribute rules can't reach it — theme it directly. */
+body.dark-mode .cm-dd-menu { background: #161e1a !important; border-color: #2c3d35 !important; }
+body.dark-mode .cm-dd-opt { color: #cdd9d2 !important; }
+body.dark-mode .cm-dd-opt:hover { background: #222c27 !important; }
+body.dark-mode .cm-dd-opt.active { background: rgba(91,91,214,0.22) !important; color: #c7c8f0 !important; }
+body.dark-mode .cm-dd-wk { color: #e8f5ee !important; }
+body.dark-mode .cm-dd-sep { background: #243029 !important; }
