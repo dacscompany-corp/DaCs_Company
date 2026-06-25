@@ -20,6 +20,9 @@ let _pmCompanyBuyItemData = null;
 let _pmCompanyReceiptFile = null;
 let _pmProcFilter     = 'all';   // materials status filter: all | pending | bought
 let _pmOvBills        = [];       // weekly bills for the active project (overview date filter)
+let _pmOvReqs         = [];       // payment requests for the active project (overview date filter)
+let _pmOvContractVal  = 0;        // contract value (range-independent) for the KPI refresh
+let _pmOvProgressVal  = 0;        // milestone progress % (range-independent) for the KPI refresh
 // ── This-week inline bill builder ──
 let _pmWeekBills      = [];       // all weeklyBills docs for the active project
 let _pmWeekEntries    = [];       // current draft line entries {id,type,details,amount}
@@ -147,6 +150,9 @@ async function _pmLoadOverview() {
         const bills = billsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const reqs  = paySnap.docs.map(d => ({ id: d.id, ...d.data() }));
         _pmOvBills = bills;
+        _pmOvReqs  = reqs;
+        _pmOvContractVal = Number(_pmActiveProject.budget) || 0;
+        _pmOvProgressVal = _pmOvProgress(ms);
         root.innerHTML = _pmOvHtml(_pmActiveProject, ms, bills, reqs);
     } catch(e) {
         console.warn('PM: overview load failed', e.message);
@@ -236,7 +242,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
         </div>
         <div style="display:flex;align-items:center;gap:24px;">
           <div style="text-align:right;">
-            <div style="font:600 10px 'IBM Plex Sans';color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:.06em;">Total paid</div>
+            <div style="font:600 10px 'IBM Plex Sans';color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:.06em;">Total cash recite</div>
             <div class="num" style="font:700 19px 'IBM Plex Sans';color:#fff;margin-top:3px;">${_fmt(paid)}</div>
           </div>
           <div style="width:1px;height:46px;background:rgba(255,255,255,0.22);"></div>
@@ -269,8 +275,8 @@ function _pmOvHtml(p, ms, bills, reqs) {
       ${tile('#c6e6d5', '#eaf4ef', 'Progress', '#0f6342', progress + '%', '', progress)}
       ${tile('#d6dde4', '#eef0f3', 'Direct cost', '#44525f', _fmt(directCost), (feeTotal > 0 ? _pmOvShort(feeTotal) + ' fee on top' : 'labor + materials'), null)}
       ${tile('#f0cdc8', '#f8ecea', 'Outstanding balance', '#8f352c', _fmt(outstanding), 'client still owes', null)}
-      ${tile('#c6e6d5', '#eaf4ef', 'Total paid', '#0f6342', _fmt(paid), 'collected to date', null)}
-      ${tile('#f0e2c5', '#fbf3e2', 'Net cash', netColor, _fmt(netCash), netSub, null)}
+      ${tile('#c6e6d5', '#eaf4ef', 'Total cash recite', '#0f6342', _fmt(paid), 'collected to date', null)}
+      ${tile('#f0e2c5', '#fbf3e2', 'Remaining cash recite', netColor, _fmt(netCash), netSub, null)}
       <div style="border:1px solid #d6e0f4;border-radius:14px;padding:16px 18px;background:#eef2fb;min-width:0;">
         <div style="font:600 10.5px 'IBM Plex Sans';color:#7c7b75;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Next payment due</div>
         <div style="font:700 16px 'IBM Plex Sans';margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(nextDueDate)}</div>
@@ -428,7 +434,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
       <div class="pm-bd-legend" style="display:flex;gap:13px;flex-wrap:wrap;">
         ${legendBox('Labor',             '#157a52', '#0f6342', '#f3faf6', '#d8ebe0', '#7c9d8b', 'pm-ov-labor',     'pm-ov-labor-pct',     bd.labor,     bd.laborPct)}
         ${legendBox('Materials',         '#c79024', '#8a6310', '#fdf8ec', '#f0e2c5', '#a98f5f', 'pm-ov-materials', 'pm-ov-materials-pct', bd.materials, bd.matPct)}
-        ${legendBox('Materials + labor', '#8b6fc4', '#6b4ea8', '#f5f2fc', '#ddd5ef', '#9a86c4', 'pm-ov-combined',  'pm-ov-combined-pct',  bd.combined,  bd.combinedPct)}
+        ${legendBox('Out Source', '#8b6fc4', '#6b4ea8', '#f5f2fc', '#ddd5ef', '#9a86c4', 'pm-ov-combined',  'pm-ov-combined-pct',  bd.combined,  bd.combinedPct)}
       </div>
     </div>`;
 
@@ -462,18 +468,21 @@ function _pmOvHtml(p, ms, bills, reqs) {
     </div>`;
 
     // New design layout, but the ORIGINAL tinted KPI colors (bg / border / value).
-    const kpi = (label, val, valColor, bg, border) => `
+    // `valId` lets pmOvApplyRange() update the value when the date range changes.
+    const kpi = (label, val, valColor, bg, border, valId) => `
       <div style="flex:1;min-width:150px;background:${bg};border:1px solid ${border};border-radius:16px;padding:15px 17px;">
         <div style="font:600 11.5px 'IBM Plex Sans';color:#7c7b75;">${label}</div>
-        <div class="num" style="font:700 22px 'IBM Plex Sans';color:${valColor};margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${val}</div>
+        <div class="num"${valId ? ` id="${valId}"` : ''} style="font:700 22px 'IBM Plex Sans';color:${valColor};margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${val}</div>
       </div>`;
+    // Contract value (confidential) lives on the construction-project doc itself.
+    const contractValue = Number(p.budget) || 0;
     const ovTiles = `
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
-      ${kpi('Progress', progress + '%', '#0f6342', '#eaf4ef', '#c6e6d5')}
-      ${kpi('Direct cost', _fmt(directCost), '#44525f', '#eef0f3', '#d6dde4')}
-      ${kpi('Total paid', _fmt(paid), '#0f6342', '#eaf4ef', '#c6e6d5')}
-      ${kpi('Outstanding', _fmt(outstanding), '#8f352c', '#f8ecea', '#f0cdc8')}
-      ${kpi('Net cash', (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), netColor, '#fbf3e2', '#f0e2c5')}
+      ${kpi('Contract Value', contractValue > 0 ? _fmt(contractValue) : '—', '#0f6342', '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-contract')}
+      ${kpi('Progress', progress + '%', '#0f6342', '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-progress')}
+      ${kpi('Direct cost', _fmt(directCost), '#44525f', '#eef0f3', '#d6dde4', 'pm-ov-kpi-direct')}
+      ${kpi('Total cash recite', _fmt(paid), '#0f6342', '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-paid')}
+      ${kpi('Remaining cash recite', (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), netColor, '#fbf3e2', '#f0e2c5', 'pm-ov-kpi-net')}
     </div>`;
 
     // Direct-cost breakdown — one bar per category (keeps the #pm-ov-* IDs).
@@ -496,7 +505,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
       </div>
       ${bdRow('Labor', '#157a52', 'pm-ov-labor', 'pm-ov-labor-pct', 'pm-ov-seg-labor', bd.labor, bd.laborPct)}
       ${bdRow('Materials', '#c79024', 'pm-ov-materials', 'pm-ov-materials-pct', 'pm-ov-seg-materials', bd.materials, bd.matPct)}
-      ${bdRow('Materials + Labor', '#8b6fc4', 'pm-ov-combined', 'pm-ov-combined-pct', 'pm-ov-seg-combined', bd.combined, bd.combinedPct)}
+      ${bdRow('Out Source', '#8b6fc4', 'pm-ov-combined', 'pm-ov-combined-pct', 'pm-ov-seg-combined', bd.combined, bd.combinedPct)}
       <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #f0efec;margin-top:4px;padding-top:13px;">
         <span style="font:600 12.5px 'IBM Plex Sans';color:#3a3a36;">Direct cost total</span>
         <span class="num" id="pm-ov-direct" style="font:800 16px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(bd.direct)}</span>
@@ -600,6 +609,23 @@ function _pmOvFilterBills(mode) {
     return _pmOvBills.filter(b => b.weekEndingDate === mode);   // a specific week
 }
 
+// Filter payment requests by the same billing-week range (keyed on weekEndingDate),
+// so the cash KPIs match the selected period. For 'latest' / 'last4' we reuse the
+// bills' week set so requests align with the same weeks shown in the breakdown.
+function _pmOvFilterReqs(mode) {
+    if (mode === 'all') return _pmOvReqs;
+    if (mode === 'month') {
+        const now = new Date();
+        const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        return _pmOvReqs.filter(r => (r.weekEndingDate || '').startsWith(ym));
+    }
+    if (mode === 'latest' || mode === 'last4') {
+        const weeks = new Set(_pmOvFilterBills(mode).map(b => b.weekEndingDate).filter(Boolean));
+        return _pmOvReqs.filter(r => weeks.has(r.weekEndingDate));
+    }
+    return _pmOvReqs.filter(r => r.weekEndingDate === mode);    // a specific week
+}
+
 // Custom date-range dropdown (Overview) — open/close + pick.
 window.pmOvToggleRange = function(ev) {
     if (ev) ev.stopPropagation();
@@ -631,9 +657,36 @@ window.pmOvApplyRange = function() {
     if (!sel) return;
     const mode = sel.value;
     const bills = _pmOvFilterBills(mode);
+    const reqs  = _pmOvFilterReqs(mode);
     const bd = _pmOvBreakdown(bills);
     const setAmt = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = _fmt(val); };
     const setSeg = (id, pct, show) => { const el = document.getElementById(id); if (el) { el.style.width = pct + '%'; el.style.minWidth = show ? '6px' : '0'; } };
+
+    // ── Top KPI cards (recomputed for the selected range) ──
+    // Direct cost = labor + materials for the bills in range (matches the breakdown).
+    const directCost = bills.reduce((s, b) => {
+        const dct = Number(b.directCostTotal) || 0;
+        if (dct) return s + dct;
+        const lm = (Number(b.labor) || 0) + (Number(b.materials) || 0);
+        if (lm) return s + lm;
+        return s + ((Number(b.grandTotal) || 0) - (Number(b.managementFee) || 0));
+    }, 0);
+    const paid    = _pmOvPaid(reqs);
+    const netCash = paid - directCost;
+    const netColor = netCash >= 0 ? '#0f6342' : '#8f352c';
+    // Contract value & progress are range-independent — re-set so they stay correct.
+    const cv = document.getElementById('pm-ov-kpi-contract');
+    if (cv) cv.textContent = _pmOvContractVal > 0 ? _fmt(_pmOvContractVal) : '—';
+    const pr = document.getElementById('pm-ov-kpi-progress');
+    if (pr) pr.textContent = _pmOvProgressVal + '%';
+    setAmt('pm-ov-kpi-direct', directCost);
+    setAmt('pm-ov-kpi-paid',   paid);
+    const netEl = document.getElementById('pm-ov-kpi-net');
+    if (netEl) {
+        netEl.textContent = (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash));
+        netEl.style.color = netColor;
+    }
+
     setAmt('pm-ov-direct',    bd.direct);
     setAmt('pm-ov-labor',     bd.labor);
     setAmt('pm-ov-materials', bd.materials);
@@ -740,6 +793,7 @@ function _pmRenderProjectCards(projects) {
     grid.innerHTML = projects.map(p => {
         const m       = p._m || { progressPct: 0, balanceDue: 0, thisFriday: 0, cadence: 'ontrack' };
         const balCls  = m.balanceDue > 0 ? 'color:var(--pm-danger);' : '';
+        const contractVal = Number(p.budget) || 0;
         return `<div class="pm-project-card" data-pm-id="${_esc(p.id)}">
           <div class="pm-card-top">
             <div class="pm-card-names">
@@ -753,6 +807,10 @@ function _pmRenderProjectCards(projects) {
           </div>
           <div class="pm-card-progress"><div class="pm-card-progress-fill" style="width:${m.progressPct}%;"></div></div>
           <div class="pm-card-progress-pct">${m.progressPct}% complete</div>
+          <div class="pm-card-contract">
+            <span class="pm-card-contract-label">Contract Value</span>
+            <span class="pm-card-contract-value num">${contractVal > 0 ? _fmt(contractVal) : '—'}</span>
+          </div>
           <div class="pm-card-stats">
             <div class="pm-card-stat">
               <div class="pm-card-stat-label">Balance due</div>
@@ -1373,7 +1431,7 @@ function _pmWeekApplyCat() {
         : 'Materials details (e.g. Cement)';
     // Add-card header reflects the active category (label + colored dot).
     const addLabel = document.getElementById('pmw-addcard-label');
-    if (addLabel) addLabel.textContent = cat === 'both' ? 'New mat + labor entry'
+    if (addLabel) addLabel.textContent = cat === 'both' ? 'New out source entry'
         : cat === 'materials' ? 'New materials entry' : 'New labor entry';
     const addDot = document.getElementById('pmw-addcard-dot');
     if (addDot) addDot.style.background = cat === 'both' ? '#7a5bb5'
@@ -1501,7 +1559,7 @@ window.pmWeekCancelEdit = function() {
 // Per-category visual tokens for the grouped entry list (header chip + row accent).
 function _pmWeekCatStyle(type) {
     if (type === 'materials') return { name: 'MATERIALS',   tag: 'MATERIAL',  accent: '#5b6b7e', headBg: '#eef0f3', headBorder: '#d8dee6', text: '#3f4d5e', count: '#7e8a98' };
-    if (type === 'both')      return { name: 'MAT + LABOR', tag: 'MAT+LABOR', accent: '#7a5bb5', headBg: '#efeaf8', headBorder: '#e0d5f3', text: '#5b3f96', count: '#9882bd' };
+    if (type === 'both')      return { name: 'OUT SOURCE', tag: 'OUTSOURCE', accent: '#7a5bb5', headBg: '#efeaf8', headBorder: '#e0d5f3', text: '#5b3f96', count: '#9882bd' };
     return { name: 'LABOR', tag: 'LABOR', accent: '#157a52', headBg: '#eaf4ef', headBorder: '#c6e6d5', text: '#0f6342', count: '#5e9d80' };
 }
 
@@ -1550,11 +1608,56 @@ function _pmWeekRenderEntries() {
         if (!list.length || (f !== 'all' && f !== type)) return;
         const sum = list.reduce((s, e) => s + e.amount, 0);
         html += _pmWeekGroupHead(type, list.length, sum, !first);
-        html += `<div class="pmw-grp-card">${list.map(_pmWeekEntryRow).join('')}</div>`;
+        // Per-category search box — only when there's enough to search (2+ lines).
+        if (list.length > 1) html += _pmWeekGroupSearch(type);
+        html += `<div class="pmw-grp-card" data-pmw-grp="${type}">${list.map(_pmWeekEntryRow).join('')}</div>`;
         first = false;
     });
     if (!html) html = '<div class="pmw-empty-box">No entries in this view.</div>';
     host.innerHTML = html;
+    _pmWeekWireGroupSearch(host);
+}
+
+// Per-category search box shown under a group header. `data-pmw-search`
+// identifies which group card it filters.
+function _pmWeekGroupSearch(type) {
+    const noun = type === 'both' ? 'out source' : type;
+    return `<div class="pmw-grp-search">
+        <svg class="pmw-grp-search-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" class="pmw-grp-search-input" data-pmw-search="${type}" placeholder="Search ${_esc(noun)}…" aria-label="Search ${_esc(noun)} entries" autocomplete="off">
+      </div>`;
+}
+
+// Wire each per-category search box to filter its group's rows by name/details.
+function _pmWeekWireGroupSearch(host) {
+    host.querySelectorAll('.pmw-grp-search-input').forEach(input => {
+        const type = input.getAttribute('data-pmw-search');
+        const card = host.querySelector(`.pmw-grp-card[data-pmw-grp="${type}"]`);
+        if (!card) return;
+        const rows = [...card.querySelectorAll('.pmw-entry')];
+        input.addEventListener('input', () => {
+            const q = input.value.trim().toLowerCase();
+            let shown = 0;
+            rows.forEach(row => {
+                const name = (row.querySelector('.pmw-entry-details')?.textContent || '').toLowerCase();
+                const hit = !q || name.includes(q);
+                row.style.display = hit ? '' : 'none';
+                if (hit) shown++;
+            });
+            let empty = card.querySelector('.pmw-grp-noresult');
+            if (shown === 0) {
+                if (!empty) {
+                    empty = document.createElement('div');
+                    empty.className = 'pmw-grp-noresult';
+                    empty.textContent = 'No matching entries.';
+                    card.appendChild(empty);
+                }
+                empty.style.display = '';
+            } else if (empty) {
+                empty.style.display = 'none';
+            }
+        });
+    });
 }
 
 function _pmWeekTotals() {
@@ -1668,7 +1771,7 @@ function _pmWeekRenderReadonly(bill) {
       <div class="pmw-ro-body">`;
     // category filter tabs (same behaviour as the editable view)
     if (entries.length) {
-        const tabs = [['all', 'All'], ['labor', 'Labor'], ['materials', 'Materials'], ['both', 'Mat + Labor']];
+        const tabs = [['all', 'All'], ['labor', 'Labor'], ['materials', 'Materials'], ['both', 'Out Source']];
         const tcol = { all: '#1c1c1a', labor: '#0f6342', materials: '#3f4d5e', both: '#5b3f96' };
         html += '<div class="pmw-viewtabs" style="margin:4px 0 14px;">' + tabs.map(([f, l]) => {
             const a = _pmWeekViewFilter === f;
@@ -1740,7 +1843,7 @@ window.pmCatView = function(type) {
     const host = document.getElementById('pmw-statement');
     if (!host) return;
     const t      = (type === 'materials' || type === 'both') ? type : 'labor';
-    const label  = t === 'both' ? 'Materials + Labor' : t === 'materials' ? 'Materials' : 'Labor';
+    const label  = t === 'both' ? 'Out Source' : t === 'materials' ? 'Materials' : 'Labor';
     const accent = t === 'both' ? '#7a5bb5' : t === 'materials' ? '#5b6b7e' : '#157a52';
     const code   = t === 'both' ? 'MLB' : t === 'materials' ? 'MAT' : 'LAB';
     const rows   = _pmCatRows(t);
@@ -1766,12 +1869,15 @@ window.pmCatView = function(type) {
         const meta = r.days ? `${r.days} day${r.days === 1 ? '' : 's'}`
                    : (r.qty ? `${r.qty}${r.unit ? ' ' + _esc(r.unit) : ''}`
                    : `Daily bill · ${_esc(_pmShortDate(r.date))}`);
-        return `<div class="pmcv-row">
+        const search = `${r.details || ''} ${_pmShortDate(r.date)}`.toLowerCase();
+        return `<div class="pmcv-row" data-pmcv-search="${_esc(search)}">
             <div class="pmcv-date"><div class="pmcv-date-day">${b.day}</div><div class="pmcv-date-mon">${_esc(b.mon)}</div></div>
             <div class="pmcv-main"><div class="pmcv-title">${_esc(r.details || '—')}</div><div class="pmcv-sub">${meta}</div></div>
             <div class="pmcv-amt num">${_pmPeso(r.amount)}</div>
         </div>`;
     }).join('') : `<div class="pmcv-empty">No ${label.toLowerCase()} entries recorded yet.</div>`;
+
+    const noun = t === 'both' ? 'out source' : t === 'materials' ? 'materials' : 'labor';
 
     const _pdfIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>';
 
@@ -1801,23 +1907,261 @@ window.pmCatView = function(type) {
             <span class="pmst-pill">SOA-${code}</span>
           </div>
         </div>
+        ${rows.length > 1 ? `<div class="pmst-search">
+          <svg class="pmst-search-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="pmcv-search" class="pmst-search-input" placeholder="Search ${_esc(noun)} entries…" aria-label="Search ${_esc(noun)} entries" autocomplete="off">
+        </div>` : ''}
         <div class="pmst-list">
           <div class="pmst-listhead"><span class="pmst-c-date">Date</span><span class="pmst-c-details">Details</span><span class="pmst-c-amt">Amount</span></div>
           ${list}
+          <div class="pmcv-noresult" style="display:none;">No matching entries.</div>
         </div>
         <div class="pmst-total"><span>Total · ${label}</span><span class="num" style="color:${accent};">${_pmPeso(total)}</span></div>
       </div>
       <button class="pmst-foot-pdf" type="button" onclick="pmCatSOA('${t}')">${_pdfIcon} Generate PDF</button>`;
+
+    // Live search: filter the entry rows by name / date.
+    const search = host.querySelector('#pmcv-search');
+    if (search) {
+        const rowEls = [...host.querySelectorAll('.pmcv-row')];
+        const noRes  = host.querySelector('.pmcv-noresult');
+        search.addEventListener('input', () => {
+            const q = search.value.trim().toLowerCase();
+            let shown = 0;
+            rowEls.forEach(row => {
+                const hit = !q || (row.getAttribute('data-pmcv-search') || '').includes(q);
+                row.style.display = hit ? '' : 'none';
+                if (hit) shown++;
+            });
+            if (noRes) noRes.style.display = (q && shown === 0) ? '' : 'none';
+        });
+    }
+
     _pmStatementShow(true);
     if (window.innerWidth <= 700) window.scrollTo({ top: 0, behavior: 'auto' });
 };
 
-window.pmCatSOA = function(type) {
+// Normalize a labor name for fuzzy comparison: lowercase, trim, collapse inner
+// whitespace, drop punctuation. 'Francis ' / 'francis' / 'Francis.' all match.
+function _pmNameKey(name) {
+    return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+// Levenshtein edit distance — used to catch typo variants like Franics/Francis.
+function _pmEditDistance(a, b) {
+    a = a || ''; b = b || '';
+    if (a === b) return 0;
+    if (!a.length) return b.length;
+    if (!b.length) return a.length;
+    let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+        let cur = [i];
+        for (let j = 1; j <= b.length; j++) {
+            const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+            cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+        }
+        prev = cur;
+    }
+    return prev[b.length];
+}
+
+// Two names are "the same person" when their normalized keys are within a small
+// edit distance (scaled to length) — merges typos like Franics ≈ Francis while
+// keeping clearly different names (Francis vs Danilo) apart.
+function _pmNamesSimilar(a, b) {
+    const ka = _pmNameKey(a), kb = _pmNameKey(b);
+    if (!ka || !kb) return ka === kb;
+    if (ka === kb) return true;
+    const d = _pmEditDistance(ka, kb);
+    const maxLen = Math.max(ka.length, kb.length);
+    // Allow 1 typo for short names, ~15% of length for longer ones; require a
+    // shared first letter so unrelated short names don't collapse together.
+    const threshold = maxLen <= 5 ? 1 : Math.max(2, Math.round(maxLen * 0.15));
+    return d <= threshold && ka[0] === kb[0];
+}
+
+// Group a project's labor rows into one entry per person, merging fuzzy name
+// variants. Returns [{ canonical, variants:[names], total, count }] where
+// `canonical` is the most-used (then longest) spelling — the display + filter key.
+function _pmLaborNameGroups(rows) {
+    // First, exact aggregate per raw name (preserves per-spelling totals/counts).
+    const exact = new Map();
+    rows.forEach(r => {
+        const name = (r.details || '').trim() || 'Labor cost';
+        const cur = exact.get(name) || { name, total: 0, count: 0 };
+        cur.total += Number(r.amount) || 0; cur.count += 1;
+        exact.set(name, cur);
+    });
+
+    // Then cluster those raw names by fuzzy similarity.
+    const groups = [];
+    [...exact.values()].forEach(item => {
+        const g = groups.find(grp => grp.variants.some(v => _pmNamesSimilar(v.name, item.name)));
+        if (g) { g.variants.push(item); g.total += item.total; g.count += item.count; }
+        else   { groups.push({ variants: [item], total: item.total, count: item.count }); }
+    });
+
+    // Canonical spelling = highest count, tie-break by longest string.
+    groups.forEach(g => {
+        const best = g.variants.slice().sort((a, b) =>
+            (b.count - a.count) || (b.name.length - a.name.length))[0];
+        g.canonical = best.name;
+        g.names = g.variants.map(v => v.name);
+    });
+    return groups;
+}
+
+// Group rows by EXACT label (case/space-insensitive) — used for materials,
+// where similar names (Pipe 1in vs Pipe 2in) are genuinely different items.
+// Same return shape as _pmLaborNameGroups so the picker can use either.
+function _pmExactNameGroups(rows, blankLabel) {
+    const map = new Map();
+    rows.forEach(r => {
+        const name = (r.details || '').trim() || blankLabel;
+        const k = _pmNameKey(name);
+        const cur = map.get(k) || { canonical: name, names: [name], total: 0, count: 0 };
+        // Keep the most-used spelling as canonical; collect any case variants.
+        if (!cur.names.includes(name)) cur.names.push(name);
+        cur.total += Number(r.amount) || 0; cur.count += 1;
+        map.set(k, cur);
+    });
+    return [...map.values()];
+}
+
+// Per-type config for the SOA picker.
+function _pmSOAPickCfg(type) {
+    if (type === 'materials')
+        return { title: 'Materials Statement of Account', desc: 'Choose a material label to print, or all labels.',
+            aria: 'Choose material label for statement', allLabel: 'All labels', blank: 'Materials', noun: 'material',
+            groupsOf: rows => _pmExactNameGroups(rows, 'Materials') };
+    if (type === 'both')
+        return { title: 'Out Source Statement of Account', desc: 'Choose an out source label to print, or all labels.',
+            aria: 'Choose out source label for statement', allLabel: 'All labels', blank: 'Materials & labor', noun: 'out source',
+            groupsOf: rows => _pmExactNameGroups(rows, 'Materials & labor') };
+    return { title: 'Labor Statement of Account', desc: 'Choose a worker / crew name to print, or all names.',
+        aria: 'Choose worker for Labor statement', allLabel: 'All names', blank: 'Labor cost', noun: 'labor',
+        groupsOf: rows => _pmLaborNameGroups(rows) };
+}
+
+// Name/label-picker overlay for the Labor or Materials SOA. Lists one entry per
+// distinct name (labor: fuzzy-merged; materials: exact) with the combined total,
+// plus an "All" option. Picking one calls pmCatSOA(type, canonicalName).
+function _pmSOAPicker(type) {
+    const t = (type === 'materials' || type === 'both') ? type : 'labor';
+    const cfg = _pmSOAPickCfg(t);
+    const rows = _pmCatRows(t);
+    if (!rows.length) { alert(`No ${cfg.noun} entries recorded yet.`); return; }
+
+    const groups = cfg.groupsOf(rows);
+    const grandTotal = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+    // Only one name on this project — skip the picker and print it directly.
+    if (groups.length === 1) { pmCatSOA(t, groups[0].canonical); return; }
+
+    // Remove any stale picker first.
+    const old = document.getElementById('pmLaborSOAPicker');
+    if (old) old.remove();
+
+    // data-soa-search holds the lowercased canonical + any merged spellings, so
+    // typing a typo variant still surfaces the row.
+    const optBtn = (val, title, sub, search) => `
+        <button type="button" class="pm-soa-pick-opt" data-soa-name="${_esc(val)}" data-soa-search="${_esc(search || '')}">
+          <span class="pm-soa-pick-name">${_esc(title)}</span>
+          <span class="pm-soa-pick-sub">${sub}</span>
+        </button>`;
+
+    const allOpt = optBtn('__all__', cfg.allLabel,
+        `${rows.length} entr${rows.length === 1 ? 'y' : 'ies'} · ${_pmPeso(grandTotal)}`, '');
+    const nameOpts = groups.map(g => {
+        // Note any merged alternate spellings so the merge is transparent.
+        const alts = (g.names || []).filter(n => n !== g.canonical);
+        const altNote = alts.length ? ` · incl. ${_esc(alts.join(', '))}` : '';
+        const search = (g.names || [g.canonical]).join(' ').toLowerCase();
+        return optBtn(g.canonical, g.canonical,
+            `${g.count} entr${g.count === 1 ? 'y' : 'ies'} · ${_pmPeso(g.total)}${altNote}`, search);
+    }).join('');
+
+    const ov = document.createElement('div');
+    ov.id = 'pmLaborSOAPicker';
+    ov.className = 'pm-soa-pick-overlay';
+    ov.innerHTML = `
+      <div class="pm-soa-pick-card" role="dialog" aria-modal="true" aria-label="${_esc(cfg.aria)}">
+        <div class="pm-soa-pick-head">
+          <div>
+            <div class="pm-soa-pick-title">${_esc(cfg.title)}</div>
+            <div class="pm-soa-pick-desc">${_esc(cfg.desc)}</div>
+          </div>
+          <button type="button" class="pm-soa-pick-x" aria-label="Close">×</button>
+        </div>
+        <div class="pm-soa-pick-search">
+          <svg class="pm-soa-pick-search-ico" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" class="pm-soa-pick-input" placeholder="Search ${_esc(cfg.noun)}…" aria-label="Search ${_esc(cfg.noun)}" autocomplete="off">
+        </div>
+        <div class="pm-soa-pick-list">
+          ${allOpt}
+          ${nameOpts}
+          <div class="pm-soa-pick-empty" style="display:none;">No matches.</div>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+
+    const close = () => ov.remove();
+    ov.addEventListener('click', e => {
+        if (e.target === ov) { close(); return; }                 // click backdrop
+        if (e.target.closest('.pm-soa-pick-x')) { close(); return; }
+        const opt = e.target.closest('.pm-soa-pick-opt');
+        if (!opt) return;
+        const name = opt.getAttribute('data-soa-name');
+        close();
+        pmCatSOA(t, name);
+    });
+
+    // Live search: filter the named options; the "All" row always stays.
+    const input = ov.querySelector('.pm-soa-pick-input');
+    const emptyEl = ov.querySelector('.pm-soa-pick-empty');
+    const nameBtns = [...ov.querySelectorAll('.pm-soa-pick-opt[data-soa-name]:not([data-soa-name="__all__"])')];
+    if (input) {
+        input.addEventListener('input', () => {
+            const q = input.value.trim().toLowerCase();
+            let shown = 0;
+            nameBtns.forEach(btn => {
+                const hit = !q || (btn.getAttribute('data-soa-search') || '').includes(q);
+                btn.style.display = hit ? '' : 'none';
+                if (hit) shown++;
+            });
+            if (emptyEl) emptyEl.style.display = (q && shown === 0) ? '' : 'none';
+        });
+        // Focus the search as the picker opens.
+        setTimeout(() => input.focus(), 0);
+    }
+
+    document.addEventListener('keydown', function esc(e) {
+        if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+    });
+}
+// Back-compat alias.
+function _pmLaborSOAPicker() { return _pmSOAPicker('labor'); }
+
+// Labor, Materials & Out Source SOAs get a name/label-picker first: choose one
+// worker / material / out-source label (or all) before printing.
+window.pmCatSOA = function(type, nameFilter) {
     if (!_pmActiveProject) { alert('Select a project first.'); return; }
     const t = (type === 'materials' || type === 'both') ? type : 'labor';
-    const label = t === 'both' ? 'Materials + Labor' : t === 'materials' ? 'Materials' : 'Labor';
+    if (nameFilter === undefined) { _pmSOAPicker(t); return; }
+    const label = t === 'both' ? 'Out Source' : t === 'materials' ? 'Materials' : 'Labor';
     const code  = t === 'both' ? 'MLB' : t === 'materials' ? 'MAT' : 'LAB';
-    const rows = _pmCatRows(t);
+    const blank = t === 'both' ? 'Materials & labor' : t === 'materials' ? 'Materials' : 'Labor cost';
+    let rows = _pmCatRows(t);
+    // A specific name/label was chosen — keep its entries. For labor this merges
+    // fuzzy spelling variants (Franics ≈ Francis); for materials / out source it's
+    // exact label. Blank details normalize to the picker's fallback label.
+    const picked = (nameFilter && nameFilter !== '__all__') ? String(nameFilter) : '';
+    if (picked) {
+        const grp = (t === 'labor') ? _pmLaborNameGroups(rows).find(g => g.canonical === picked || g.names.includes(picked))
+                                    : _pmExactNameGroups(rows, blank).find(g => g.canonical === picked || g.names.includes(picked));
+        const variants = grp ? grp.names : [picked];
+        rows = rows.filter(r => variants.includes((r.details || '').trim() || blank));
+    }
     const total = rows.reduce((s, r) => s + r.amount, 0);
     const client  = _pmActiveProject.clientName || _pmActiveProject.projectName || '—';
     const project = _pmActiveProject.projectName || '—';
@@ -1827,7 +2171,10 @@ window.pmCatSOA = function(type) {
     const metaOf = r => t === 'labor' ? (r.days ? r.days + (r.days === 1 ? ' day' : ' days') : '')
         : t === 'materials' ? (r.qty ? r.qty + ' ' + (r.unit || 'pcs') : '')
         : 'supply & install';
-    const descOf = r => (r.details || '—') + (metaOf(r) ? ' · ' + metaOf(r) : '');
+    // When a single worker is printed, show the canonical name on every row so
+    // merged spellings (Franics/Francis) all read the same on the statement.
+    const nameOf = r => picked ? picked : (r.details || '—');
+    const descOf = r => nameOf(r) + (metaOf(r) ? ' · ' + metaOf(r) : '');
     const fmtN = n => Math.round(Number(n) || 0).toLocaleString('en-US');
     const dates = rows.map(r => r.date).filter(Boolean).sort();
     const period = dates.length
@@ -1835,6 +2182,8 @@ window.pmCatSOA = function(type) {
           new Date(dates[dates.length - 1] + 'T00:00:00').toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
         : 'All bills';
     const ref = 'SOA-' + code + '-' + String(rows.length).padStart(3, '0');
+    // Subject of the statement: the chosen worker name, or project-wide.
+    const subject = picked || 'project-wide';
 
     const rowsHtml = rows.length
         ? rows.map((r, i) => `<tr style="background:${i % 2 ? '#f4f8f5' : '#fff'};">
@@ -1845,10 +2194,10 @@ window.pmCatSOA = function(type) {
         : `<tr><td colspan="3" style="text-align:center;color:#9aa8a0;padding:26px;">No ${label.toLowerCase()} entries yet.</td></tr>`;
 
     const pdfData = {
-        label, client, project, location, today, period, ref,
+        label, client, project, location, today, period, ref, subject,
         body: rows.map(r => [fmtDate(r.date), descOf(r), fmtN(r.amount)]),
         total: fmtN(total),
-        fname: `${ref}-${(String(project).replace(/[^A-Za-z0-9]+/g, '') || 'project')}.pdf`
+        fname: `${ref}-${(picked ? String(picked).replace(/[^A-Za-z0-9]+/g, '') + '-' : '')}${(String(project).replace(/[^A-Za-z0-9]+/g, '') || 'project')}.pdf`
     };
     const pdfJson = JSON.stringify(pdfData).replace(/</g, '\\u003c');
 
@@ -1893,11 +2242,12 @@ window.pmCatSOA = function(type) {
             <div class="company">DAC'S BUILDING DESIGN SERVICES</div>
             <div class="subtitle">Building Design &middot; Construction Management${location ? ' &middot; ' + _esc(location) : ''}</div>
             <div class="doctitle">STATEMENT OF ACCOUNT</div>
-            <div class="docsub">${_esc(label)} &middot; project-wide</div>
+            <div class="docsub">${_esc(label)} &middot; ${_esc(subject)}</div>
           </div>
           <div class="meta">
             <div><div class="meta-l">Project</div><div class="meta-v">${_esc(project)}</div></div>
             <div><div class="meta-l">Client</div><div class="meta-v">${_esc(client)}</div></div>
+            ${picked ? `<div><div class="meta-l">${t === 'both' ? 'Out Source' : t === 'materials' ? 'Material' : 'Worker / Crew'}</div><div class="meta-v">${_esc(picked)}</div></div>` : ''}
             <div><div class="meta-l">Period</div><div class="meta-v">${_esc(period)}</div></div>
             <div><div class="meta-l">Ref no.</div><div class="meta-v mono">${_esc(ref)}</div></div>
           </div>
@@ -1926,7 +2276,7 @@ window.pmCatSOA = function(type) {
           doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.setTextColor(20,83,45);
           doc.text("STATEMENT OF ACCOUNT", pw/2, 33, {align:'center'});
           doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(123,138,130);
-          doc.text(D.label + " - project-wide", pw/2, 38, {align:'center'});
+          doc.text(D.label + " - " + (D.subject || "project-wide"), pw/2, 38, {align:'center'});
           doc.setFontSize(7.5); doc.setTextColor(150,160,152);
           doc.text("PROJECT", 14, 50); doc.text("CLIENT", pw/2, 50);
           doc.text("PERIOD", 14, 63); doc.text("REF NO.", pw/2, 63);
