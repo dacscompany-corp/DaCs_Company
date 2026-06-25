@@ -511,6 +511,32 @@ body.dark-mode .pmcv-amt { color: #e8f0ec; }
 body.dark-mode .pmcv-footer { background: #11201a; border-top-color: #243029; }
 
 /* ── Full-page statement view (pmCatView, into #pmw-statement) ── */
+/* ── Labor SOA name-picker overlay ── */
+.pm-soa-pick-overlay { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(20, 32, 26, 0.45); backdrop-filter: blur(2px); }
+.pm-soa-pick-card { width: 100%; max-width: 420px; max-height: 80vh; display: flex; flex-direction: column; background: #fff; border-radius: 16px; overflow: hidden; box-shadow: 0 24px 60px -18px rgba(0,0,0,.4); }
+.pm-soa-pick-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 20px; border-bottom: 1px solid #f0efec; }
+.pm-soa-pick-title { font: 700 16px 'IBM Plex Sans'; color: #1c1c1a; }
+.pm-soa-pick-desc { font: 400 12px 'IBM Plex Sans'; color: #8a8983; margin-top: 3px; }
+.pm-soa-pick-x { flex: none; width: 30px; height: 30px; border: none; background: #f4f4f2; border-radius: 8px; font-size: 18px; line-height: 1; color: #6b6b66; cursor: pointer; transition: background .15s; }
+.pm-soa-pick-x:hover { background: #e8e8e5; }
+.pm-soa-pick-search { position: relative; padding: 12px 14px 0; }
+.pm-soa-pick-search-ico { position: absolute; left: 26px; top: 50%; transform: translateY(-25%); color: #9b9a94; pointer-events: none; }
+.pm-soa-pick-input { width: 100%; box-sizing: border-box; padding: 10px 12px 10px 36px; font: 400 13.5px 'IBM Plex Sans'; color: #1c1c1a; background: #fafaf8; border: 1px solid #ececea; border-radius: 10px; outline: none; transition: border-color .15s, background .15s; }
+.pm-soa-pick-input:focus { border-color: #157a52; background: #fff; }
+.pm-soa-pick-empty { padding: 18px 4px; text-align: center; font: 400 12.5px 'IBM Plex Sans'; color: #9b9a94; }
+.pm-soa-pick-list { padding: 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.pm-soa-pick-opt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; background: #fafaf8; border: 1px solid #ececea; border-radius: 11px; padding: 12px 14px; cursor: pointer; transition: border-color .15s, background .15s; }
+.pm-soa-pick-opt:hover { border-color: #157a52; background: #f3faf6; }
+.pm-soa-pick-name { font: 600 13.5px 'IBM Plex Sans'; color: #1c1c1a; }
+.pm-soa-pick-sub { font: 400 11.5px 'IBM Plex Sans'; color: #8a8983; }
+body.dark-mode .pm-soa-pick-card { background: #14201a; }
+body.dark-mode .pm-soa-pick-head { border-bottom-color: #243029; }
+body.dark-mode .pm-soa-pick-title { color: #f0fdf4; }
+body.dark-mode .pm-soa-pick-opt { background: #1a271f; border-color: #243029; }
+body.dark-mode .pm-soa-pick-name { color: #f0fdf4; }
+body.dark-mode .pm-soa-pick-input { background: #1a271f; border-color: #243029; color: #f0fdf4; }
+body.dark-mode .pm-soa-pick-input:focus { background: #14201a; border-color: #2f9c6a; }
+
 .pmst-card { background: #fff; border: 1px solid #e7e6e2; border-radius: 18px; overflow: hidden; box-shadow: 0 1px 2px rgba(0,0,0,.03); }
 .pmst-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 18px 26px; border-bottom: 1px solid #f0efec; }
 .pmst-head-left { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
@@ -525,6 +551,13 @@ body.dark-mode .pmcv-footer { background: #11201a; border-top-color: #243029; }
 .pmst-tile-label { font: 600 10.5px 'IBM Plex Sans'; letter-spacing: .05em; text-transform: uppercase; color: #9b9a94; }
 .pmst-tile-val { font: 700 22px 'IBM Plex Sans'; color: #1c1c1a; margin-top: 3px; }
 .pmst-tile-val2 { font: 600 14px 'IBM Plex Sans'; color: #1c1c1a; margin-top: 6px; }
+.pmst-search { position: relative; padding: 14px 26px 4px; }
+.pmst-search-ico { position: absolute; left: 38px; top: calc(50% + 5px); transform: translateY(-50%); color: #9b9a94; pointer-events: none; }
+.pmst-search-input { width: 100%; box-sizing: border-box; padding: 10px 14px 10px 38px; font: 400 13.5px 'IBM Plex Sans'; color: #1c1c1a; background: #fafaf8; border: 1px solid #ececea; border-radius: 11px; outline: none; transition: border-color .15s, background .15s; }
+.pmst-search-input:focus { border-color: #157a52; background: #fff; }
+.pmcv-noresult { text-align: center; font: 400 12.5px 'IBM Plex Sans'; color: #a8a79f; padding: 20px 0; }
+body.dark-mode .pmst-search-input { background: #1a271f; border-color: #243029; color: #f0fdf4; }
+body.dark-mode .pmst-search-input:focus { background: #14201a; border-color: #2f9c6a; }
 .pmst-list { padding: 6px 26px 10px; }
 .pmst-listhead { display: flex; align-items: center; gap: 14px; padding: 8px 0; border-bottom: 1px solid #f0efec; font: 600 10.5px 'IBM Plex Sans'; letter-spacing: .05em; text-transform: uppercase; color: #9b9a94; }
 .pmst-c-date { width: 54px; flex: none; text-align: center; }
@@ -722,6 +755,29 @@ body.dark-mode .pmst-total { background: #11201a; border-top-color: #243029; }
   font-weight: 600;
   color: var(--pm-green);
   margin-bottom: 13px;
+}
+/* Contract-value row on the project card */
+.pm-card-contract {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 0 11px;
+  margin-bottom: 11px;
+  border-bottom: 1px solid var(--pm-border, #ececec);
+}
+.pm-card-contract-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--pm-muted-3);
+}
+.pm-card-contract-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--pm-ink);
+  white-space: nowrap;
 }
 .pm-card-stats {
   display: grid;
@@ -1143,6 +1199,13 @@ body.dark-mode .pmst-total { background: #11201a; border-top-color: #243029; }
 .pmw-grp-card { background: #fff; border: 1px solid var(--pm-border, #e7e6e2); border-radius: 16px; overflow: hidden; margin-bottom: 16px; }
 .pmw-grp-card .pmw-entry { padding: 12px 16px 12px 13px; margin-left: 0; border-bottom: 1px solid #f0f1f5; }
 .pmw-grp-card .pmw-entry:last-child { border-bottom: none; }
+.pmw-grp-search { position: relative; margin: 0 0 8px; }
+.pmw-grp-search-ico { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: #9b9a94; pointer-events: none; }
+.pmw-grp-search-input { width: 100%; box-sizing: border-box; padding: 8px 12px 8px 32px; font: 400 12.5px 'IBM Plex Sans'; color: #1c1c1a; background: #fafaf8; border: 1px solid #ececea; border-radius: 10px; outline: none; transition: border-color .15s, background .15s; }
+.pmw-grp-search-input:focus { border-color: #157a52; background: #fff; }
+.pmw-grp-noresult { text-align: center; font: 400 12px 'IBM Plex Sans'; color: #a8a79f; padding: 14px 0; }
+body.dark-mode .pmw-grp-search-input { background: #1a271f; border-color: #243029; color: #f0fdf4; }
+body.dark-mode .pmw-grp-search-input:focus { background: #14201a; border-color: #2f9c6a; }
 .pmw-entry-edit-txt { flex: none; background: none; border: none; cursor: pointer; color: #aeb4c2; font: 600 12.5px 'IBM Plex Sans', sans-serif; padding: 0 2px; transition: color .15s; }
 .pmw-entry-edit-txt:hover { color: #157a52; }
 .pmw-rcpt-txt { color: #0f6342; font-weight: 600; cursor: pointer; }
