@@ -1421,7 +1421,7 @@
                       <span class="pmw-seg-dot" style="background:#5b6b7e;"></span><span>Materials</span>
                     </button>
                     <button class="pmw-seg-btn" id="pmw-seg-both" onclick="pmWeekSetCat('both')">
-                      <span class="pmw-seg-dot" style="background:#7a5bb5;"></span><span>Mat + Labor</span>
+                      <span class="pmw-seg-dot" style="background:#7a5bb5;"></span><span>Out Source</span>
                     </button>
                   </div>
 
@@ -1483,7 +1483,7 @@
                       <button id="pmw-vf-all"       onclick="pmWeekViewFilter('all')">All</button>
                       <button id="pmw-vf-labor"     onclick="pmWeekViewFilter('labor')">Labor</button>
                       <button id="pmw-vf-materials" onclick="pmWeekViewFilter('materials')">Materials</button>
-                      <button id="pmw-vf-both"      onclick="pmWeekViewFilter('both')">Mat + Labor</button>
+                      <button id="pmw-vf-both"      onclick="pmWeekViewFilter('both')">Out Source</button>
                     </div>
                   </div>
 
@@ -1515,7 +1515,7 @@
                   <div class="pmw-rail-seclabel">Today so far</div>
                   <div class="pmw-rail-line"><span class="pmw-rail-dotlabel"><span class="pmw-rail-dot" style="background:#157a52;"></span>Labor</span><span class="num" id="pmw-today-labor">₱0</span></div>
                   <div class="pmw-rail-line"><span class="pmw-rail-dotlabel"><span class="pmw-rail-dot" style="background:#5b6b7e;"></span>Materials</span><span class="num" id="pmw-today-materials">₱0</span></div>
-                  <div class="pmw-rail-line" id="pmw-today-both-row"><span class="pmw-rail-dotlabel"><span class="pmw-rail-dot" style="background:#7a5bb5;"></span>Mat + Labor</span><span class="num" id="pmw-today-both">₱0</span></div>
+                  <div class="pmw-rail-line" id="pmw-today-both-row"><span class="pmw-rail-dotlabel"><span class="pmw-rail-dot" style="background:#7a5bb5;"></span>Out Source</span><span class="num" id="pmw-today-both">₱0</span></div>
                 </div>
 
                 <!-- recent bills (collapsible) -->
@@ -1545,9 +1545,9 @@
                       <div class="pmw-soa-main"><div class="pmw-soa-label">Materials</div><div class="pmw-soa-total"><span class="num" id="pmw-soa-materials">₱0</span> · all bills</div></div>
                       <button class="pmw-soa-gen" onclick="event.stopPropagation();pmCatSOA('materials')">Generate</button>
                     </div>
-                    <div class="pmw-soa-row" onclick="pmCatView('both')" style="cursor:pointer;" title="View all Materials + Labor entries">
+                    <div class="pmw-soa-row" onclick="pmCatView('both')" style="cursor:pointer;" title="View all Out Source entries">
                       <span class="pmw-soa-bar" style="background:#7a5bb5;"></span>
-                      <div class="pmw-soa-main"><div class="pmw-soa-label">Mat + Labor</div><div class="pmw-soa-total"><span class="num" id="pmw-soa-both">₱0</span> · all bills</div></div>
+                      <div class="pmw-soa-main"><div class="pmw-soa-label">Out Source</div><div class="pmw-soa-total"><span class="num" id="pmw-soa-both">₱0</span> · all bills</div></div>
                       <button class="pmw-soa-gen" onclick="event.stopPropagation();pmCatSOA('both')">Generate</button>
                     </div>
                   </div>
@@ -1706,7 +1706,7 @@
             </div>
             <div class="pm-stat-grid">
               <div class="pm-stat"><div class="pm-stat-label">Outstanding balance</div><div class="pm-stat-value is-danger num" id="pm-pay-outstanding">₱0</div></div>
-              <div class="pm-stat"><div class="pm-stat-label">Total paid</div><div class="pm-stat-value is-green num" id="pm-pay-total-paid">₱0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">Total cash recite</div><div class="pm-stat-value is-green num" id="pm-pay-total-paid">₱0</div></div>
               <div class="pm-stat"><div class="pm-stat-label">Next payment due</div><div class="pm-stat-value" id="pm-pay-next-due">—</div></div>
               <div class="pm-stat"><div class="pm-stat-label">Strict weeks</div><div class="pm-stat-value num" id="pm-pay-strict-count">0</div></div>
             </div>

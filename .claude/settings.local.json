@@ -42,7 +42,11 @@
       "Bash(git fetch *)",
       "Bash(git stash *)",
       "Bash(git pull *)",
-      "Bash(git grep *)"
+      "Bash(git grep *)",
+      "Bash(grep -oE \"onclick=\\\\\\\\\\\\\\\\?[\\\\\"'][^\\\\\"']*\\\\\\(\" js/pm-admin.js)",
+      "Read(//tmp/**)",
+      "Bash(read fn *)",
+      "Bash(:)"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",

@@ -3537,6 +3537,16 @@ function cmRenderFinancialKPIs() {
     const budgetStatus     = k.budgetUtilization == null ? 'neutral' : k.budgetUtilization <= 85 ? 'green' : k.budgetUtilization <= 100 ? 'yellow' : 'red';
 
     const kpis = [
+        // ── Contract Value — partner monitoring view only.
+        //    Hidden on the Cost-Plus client portal, where the contract figure
+        //    isn't the client's billing basis.
+        ...(cmIsPartner() ? [{
+            label: 'Contract Value',
+            value: budget > 0 ? cmFmt(budget) : '—',
+            sub:   'Total agreed contract',
+            ...PALETTE.green,
+            icon:  '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/>'
+        }] : []),
         // ── Financial ──
         {
             label: 'Total Material Costs',
