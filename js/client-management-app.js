@@ -2632,6 +2632,31 @@ function cmOvWeekLabel(dateStr) {
     return isNaN(d) ? dateStr : d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+// ── Weekly grouping for the range dropdown (Sun–Sat) ─────────────────────
+// Daily bills group into calendar weeks, addressable by "wk:<YYYY-MM-DD Sunday>".
+function cmWeekStart(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d)) return dateStr;
+    d.setDate(d.getDate() - d.getDay());     // back to the week's Sunday
+    return d.toISOString().slice(0, 10);
+}
+function cmWeekRangeLabel(sundayStr) {
+    const start = new Date(sundayStr + 'T00:00:00');
+    if (isNaN(start)) return sundayStr;
+    const end = new Date(start); end.setDate(end.getDate() + 6);
+    const o = { month: 'short', day: 'numeric' };
+    const sameYear = start.getFullYear() === end.getFullYear();
+    return start.toLocaleDateString('en-PH', o) + ' – ' +
+        end.toLocaleDateString('en-PH', sameYear ? o : { ...o, year: 'numeric' });
+}
+// Distinct week-starts present in the bills, newest first.
+function cmOvWeekGroups() {
+    const set = new Set((cmWeeklyBills || [])
+        .filter(b => b.weekEndingDate)
+        .map(b => cmWeekStart(b.weekEndingDate)));
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+}
+
 // Filter the stored weekly bills by the selected billing-week mode.
 function cmOvFilterBills(mode) {
     const all = cmWeeklyBills || [];
@@ -2640,6 +2665,11 @@ function cmOvFilterBills(mode) {
         const now = new Date();
         const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         return all.filter(b => (b.weekEndingDate || '').startsWith(ym));
+    }
+    // "wk:<sunday>" → every bill whose date falls in that Sun–Sat week.
+    if (mode && mode.indexOf('wk:') === 0) {
+        const ws = mode.slice(3);
+        return all.filter(b => b.weekEndingDate && cmWeekStart(b.weekEndingDate) === ws);
     }
     const dated = all.filter(b => b.weekEndingDate)
         .slice().sort((a, b) => b.weekEndingDate.localeCompare(a.weekEndingDate));
@@ -2721,12 +2751,15 @@ window.cmOvApplyRange = function() {
 
     const note = document.getElementById('cm-ov-range-note');
     if (note) {
-        const wk = bills.length + ' week' + (bills.length === 1 ? '' : 's');
+        const isWeek = mode && mode.indexOf('wk:') === 0;
+        const unit = isWeek ? 'day' : 'week';
+        const wk = bills.length + ' ' + unit + (bills.length === 1 ? '' : 's');
         const label = mode === 'all'    ? 'All time'
             : mode === 'month'  ? 'This month'
-            : mode === 'latest' ? 'Latest week'
+            : mode === 'latest' ? 'This week'
             : mode === 'last4'  ? 'Last 4 weeks'
-            : 'Week ending ' + cmOvWeekLabel(mode);
+            : isWeek            ? 'Week of ' + cmWeekRangeLabel(mode.slice(3))
+            : 'Daily ' + cmOvWeekLabel(mode);
         note.textContent = label + ' · ' + wk;
     }
 };
@@ -2743,6 +2776,7 @@ function cmRenderOverview() {
         (cmCurrentProfile.fullName || '').split(' ')[0])) || 'there';
 
     const partner = cmIsPartner();   // monitoring/view-only: no 15% fee, no payments
+    const ovContract = Number(cmProjectData?.budget) || 0;   // agreed project contract value
 
     // Latest bill figures
     const labor     = latest ? (latest.labor || 0) : 0;
@@ -2762,17 +2796,14 @@ function cmRenderOverview() {
     const ovPaid    = (cmPayRequests || []).reduce((s, r) =>
         s + (r.status === 'verified' ? (r.amountPaid || r.paidAmount || r.totalAmount || 0) : (r.amountPaid || 0)), 0);
     const ovNet     = ovPaid - ovBd.direct;
-    const ovWeeks   = (cmWeeklyBills || []).filter(b => b.weekEndingDate)
-        .slice().sort((a, b) => b.weekEndingDate.localeCompare(a.weekEndingDate));
-    const ovWeekOpts = ovWeeks.map(b =>
-        `<option value="${cmEsc(b.weekEndingDate)}">Week ending ${cmEsc(cmOvWeekLabel(b.weekEndingDate))}</option>`).join('');
     // Custom range-dropdown option buttons (native <select> can't style its list)
     const ovDdChevron = '<svg class="cm-dd-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
-    const ovDdFixed = [['all', 'All time'], ['month', 'This month'], ['latest', 'Latest week'], ['last4', 'Last 4 weeks']]
+    const ovDdFixed = [['all', 'All time'], ['month', 'This month'], ['latest', 'This week'], ['last4', 'Last 4 weeks']]
         .map(([v, l], i) => `<button class="cm-dd-opt${i === 0 ? ' active' : ''}" onclick="cmOvPickRange(this,'${v}','${l}')"><span>${l}</span><span class="cm-dd-check">✓</span></button>`).join('');
-    const ovDdWeeks = ovWeeks.map(b => {
-        const l = cmOvWeekLabel(b.weekEndingDate);
-        return `<button class="cm-dd-opt" onclick="cmOvPickRange(this,'${cmEsc(b.weekEndingDate)}','${cmEsc(l)}')"><span>Week ending</span><span class="cm-dd-wk">${cmEsc(l)}</span></button>`;
+    // Per-week rows: each calendar week (Sun–Sat) present in the bills.
+    const ovDdWeekGroups = cmOvWeekGroups().map(ws => {
+        const l = cmWeekRangeLabel(ws);
+        return `<button class="cm-dd-opt" onclick="cmOvPickRange(this,'wk:${cmEsc(ws)}','${cmEsc(l)}')"><span>Per week</span><span class="cm-dd-wk">${cmEsc(l)}</span></button>`;
     }).join('');
 
     // Revolving fund
@@ -2859,7 +2890,7 @@ function cmRenderOverview() {
                 </div>
                 <div class="cm-dd" id="cm-ov-dd" style="position:relative;">
                     <button type="button" class="cm-dd-btn" onclick="cmOvToggleRange(event)"><span id="cm-ov-dd-label">All time</span>${ovDdChevron}</button>
-                    <div class="cm-dd-menu" id="cm-ov-dd-menu">${ovDdFixed}${ovDdWeeks ? '<div class="cm-dd-sep"></div>' + ovDdWeeks : ''}</div>
+                    <div class="cm-dd-menu" id="cm-ov-dd-menu">${ovDdFixed}${ovDdWeekGroups ? '<div class="cm-dd-sep"></div>' + ovDdWeekGroups : ''}</div>
                     <input type="hidden" id="cm-ov-range" value="all">
                 </div>
             </div>
@@ -2882,7 +2913,7 @@ function cmRenderOverview() {
         <div style="font-size:14px;color:#8b91a0;margin-top:3px;">Hello, ${cmEsc(first)}. Here's where the project stands today.</div>
     </div>
 
-    <div class="cm-ov-row1" style="display:grid;grid-template-columns:1.55fr 1fr;gap:24px;align-items:start;">
+    <div class="cm-ov-row1" style="display:grid;grid-template-columns:${partner ? '1fr 1fr' : '1.55fr 1fr'};gap:24px;align-items:stretch;">
         <!-- Hero: partner → direct cost breakdown · client → weekly bill -->
         ${partner ? breakdownCard : `
         <div style="background:#5b5bd6;border-radius:20px;padding:22px 24px;color:#fff;box-shadow:0 18px 36px -16px rgba(91,91,214,0.5);">
@@ -2903,9 +2934,14 @@ function cmRenderOverview() {
             </div>
         </div>`}
         <!-- Right stack -->
-        <div style="display:flex;flex-direction:column;gap:24px;">
+        <div style="display:flex;flex-direction:column;gap:24px;${partner ? 'justify-content:space-between;' : ''}">
             ${partner ? `<div style="${card}">
-                <div style="font-size:13px;color:#8b91a0;font-weight:600;">Net cash</div>
+                <div style="font-size:13px;color:#8b91a0;font-weight:600;">Project Contract</div>
+                <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:#1a1d24;">${ovContract > 0 ? cmFmt(ovContract) : '—'}</div>
+                <div style="font-size:12px;color:#8b91a0;margin-top:6px;">Total agreed contract</div>
+            </div>` : ''}
+            ${partner ? `<div style="${card}">
+                <div style="font-size:13px;color:#8b91a0;font-weight:600;">Remaining cash receipt</div>
                 <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:${ovNet >= 0 ? '#3f9960' : '#b91c1c'};">${ovNet < 0 ? '−' : ''}${cmFmt(Math.abs(ovNet))}</div>
                 <div style="font-size:12px;color:#8b91a0;margin-top:6px;">${ovNet >= 0 ? 'paid over direct cost' : 'direct cost over collections'}</div>
             </div>` : ''}
@@ -3541,7 +3577,7 @@ function cmRenderFinancialKPIs() {
         //    Hidden on the Cost-Plus client portal, where the contract figure
         //    isn't the client's billing basis.
         ...(cmIsPartner() ? [{
-            label: 'Contract Value',
+            label: 'Project Budget',
             value: budget > 0 ? cmFmt(budget) : '—',
             sub:   'Total agreed contract',
             ...PALETTE.green,

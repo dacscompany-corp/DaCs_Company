@@ -4479,7 +4479,7 @@ function _rptRenderKPIs(_groups) {
 
     if (!staffOnly) {
         // Row 1
-        html += _card('Contract Value',        '&#8369;' + formatNum(contract),     contractLabel + ' &middot; ' + _rptState.year);
+        html += _card('Project Budget',         '&#8369;' + formatNum(contract),     contractLabel + ' &middot; ' + _rptState.year);
         html += _card('Fund Allocated',        '&#8369;' + formatNum(totReceived),  activePeriodsCount + ' billing period' + (activePeriodsCount !== 1 ? 's' : '') + ' &middot; ' + rcvOfContract.toFixed(1) + '% of contract');
         html += _card('Materials &amp; Costs', '&#8369;' + formatNum(totMats),      (totReceived > 0 ? ((totMats / totReceived) * 100).toFixed(1) : '0.0') + '% of allocated budget');
         // Row 2

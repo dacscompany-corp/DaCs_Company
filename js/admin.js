@@ -1996,30 +1996,18 @@ function findPrimaryForView(view) {
     return null;
 }
 
-// Shared expand state for both bars
-const _portalState = { tabsExpanded: false, modulesExpanded: false };
-
 function _buildTabsBar(activePrimaryId) {
     const tabs = document.getElementById('portalPrimaryTabs');
     if (!tabs) return;
 
     const nav = _visibleNav();
-    const active = nav.find(p => p.id === activePrimaryId) || nav[0];
-    const toShow = _portalState.tabsExpanded ? nav : [active];
 
-    // Only show the expand/collapse (›) toggle when there's more than one section
-    // to switch between. A focused account (e.g. allowed_modules ['pm']) has a
-    // single section, so the toggle would do nothing — hide it.
-    const showToggle = nav.length > 1;
-
+    // Always show every section — no collapse/expand toggle.
     tabs.innerHTML =
-        toShow.map((p) => {
+        nav.map((p) => {
             const isActive = p.id === activePrimaryId;
             return `<button class="portal-ptab${isActive ? ' active' : ''}" data-primary="${p.id}">${p.label}</button>`;
-        }).join('') +
-        (showToggle
-            ? `<button class="portal-tabs-toggle" id="portalTabsToggle" title="${_portalState.tabsExpanded ? 'Collapse menu' : 'See other sections'}">${_portalState.tabsExpanded ? '&#8249;' : '&#8250;'}</button>`
-            : '');
+        }).join('');
 
     tabs.querySelectorAll('.portal-ptab').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -2028,14 +2016,6 @@ function _buildTabsBar(activePrimaryId) {
             if (primary) switchView(primary.defaultView);
         });
     });
-
-    const toggleBtn = document.getElementById('portalTabsToggle');
-    if (toggleBtn) {
-        toggleBtn.addEventListener('click', () => {
-            _portalState.tabsExpanded = !_portalState.tabsExpanded;
-            _buildTabsBar(activePrimaryId);
-        });
-    }
 }
 
 function renderPortalChrome() {
@@ -2062,26 +2042,19 @@ function syncPortalChrome(view) {
     if (!row) return;
 
     const visibleModules = primary.modules.filter(m => !m.hidden);
-    const activeModule   = visibleModules.find(m => m.view === view) || visibleModules[0];
-    const modulesToShow  = _portalState.modulesExpanded ? visibleModules : [activeModule];
 
+    // Always show every module — no collapse/expand toggle.
     row.innerHTML =
-        modulesToShow.map((m) => {
+        visibleModules.map((m) => {
             const isActive = m.view === view;
             return `<button class="portal-module-link${isActive ? ' active-link' : ''}" data-view="${m.view}">
                 <i data-lucide="${m.icon}" style="width:14px;height:14px;"></i>
                 <span>${m.label}</span>
             </button>`;
-        }).join('') +
-        `<button class="portal-modules-toggle" id="portalModulesToggle" title="${_portalState.modulesExpanded ? 'Collapse menu' : 'See other modules in this section'}">${_portalState.modulesExpanded ? '&#8249;' : '&#8250;'}</button>`;
+        }).join('');
 
     row.querySelectorAll('.portal-module-link').forEach(btn => {
         btn.addEventListener('click', () => switchView(btn.dataset.view));
-    });
-
-    document.getElementById('portalModulesToggle').addEventListener('click', () => {
-        _portalState.modulesExpanded = !_portalState.modulesExpanded;
-        syncPortalChrome(view);
     });
 
     if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
