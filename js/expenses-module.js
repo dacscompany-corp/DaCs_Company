@@ -3730,7 +3730,6 @@ async function handleEditPayroll(ev) {
             daysWorked:    d, dailyRate: r, totalSalary: eTotal,
             paymentDate:   document.getElementById('editPayDate').value,
             notes:         document.getElementById('editPayNotes').value.trim(),
-            receiptURL:    finalImages[0] || '',
             receiptImages: finalImages,
         });
         showExpNotif('Payroll updated! ✓', 'success');
