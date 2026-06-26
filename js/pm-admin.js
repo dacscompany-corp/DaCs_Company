@@ -189,6 +189,14 @@ function _pmOvHtml(p, ms, bills, reqs) {
     const payTotal    = paid + outstanding;
     const paidPct     = payTotal > 0 ? Math.round(paid / payTotal * 100) : 0;
 
+    // Payment-status donut uses the contract basis: Outstanding = Project Budget
+    // (contract value) − Total cash receipt. Clamp at 0 so an over-collection
+    // doesn't render a negative slice.
+    const donutContract    = Number(_pmActiveProject?.budget) || 0;
+    const donutOutstanding = Math.max(0, donutContract - paid);
+    const donutTotal       = donutContract > 0 ? donutContract : paid;
+    const donutPaidPct     = donutTotal > 0 ? Math.round(paid / donutTotal * 100) : 0;
+
     const open = reqs.filter(r => r.status === 'unpaid' || r.status === 'partial');
     const next = open.slice().sort((a, b) => (a.weekEndingDate || '').localeCompare(b.weekEndingDate || ''))[0];
     const today = new Date().toISOString().slice(0, 10);
@@ -242,7 +250,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
         </div>
         <div style="display:flex;align-items:center;gap:24px;">
           <div style="text-align:right;">
-            <div style="font:600 10px 'IBM Plex Sans';color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:.06em;">Total cash recite</div>
+            <div style="font:600 10px 'IBM Plex Sans';color:rgba(255,255,255,0.75);text-transform:uppercase;letter-spacing:.06em;">Total cash receipt</div>
             <div class="num" style="font:700 19px 'IBM Plex Sans';color:#fff;margin-top:3px;">${_fmt(paid)}</div>
           </div>
           <div style="width:1px;height:46px;background:rgba(255,255,255,0.22);"></div>
@@ -275,8 +283,8 @@ function _pmOvHtml(p, ms, bills, reqs) {
       ${tile('#c6e6d5', '#eaf4ef', 'Progress', '#0f6342', progress + '%', '', progress)}
       ${tile('#d6dde4', '#eef0f3', 'Direct cost', '#44525f', _fmt(directCost), (feeTotal > 0 ? _pmOvShort(feeTotal) + ' fee on top' : 'labor + materials'), null)}
       ${tile('#f0cdc8', '#f8ecea', 'Outstanding balance', '#8f352c', _fmt(outstanding), 'client still owes', null)}
-      ${tile('#c6e6d5', '#eaf4ef', 'Total cash recite', '#0f6342', _fmt(paid), 'collected to date', null)}
-      ${tile('#f0e2c5', '#fbf3e2', 'Remaining cash recite', netColor, _fmt(netCash), netSub, null)}
+      ${tile('#c6e6d5', '#eaf4ef', 'Total cash receipt', '#0f6342', _fmt(paid), 'collected to date', null)}
+      ${tile('#f0e2c5', '#fbf3e2', 'Remaining cash receipt', netColor, _fmt(netCash), netSub, null)}
       <div style="border:1px solid #d6e0f4;border-radius:14px;padding:16px 18px;background:#eef2fb;min-width:0;">
         <div style="font:600 10.5px 'IBM Plex Sans';color:#7c7b75;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">Next payment due</div>
         <div style="font:700 16px 'IBM Plex Sans';margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(nextDueDate)}</div>
@@ -301,8 +309,8 @@ function _pmOvHtml(p, ms, bills, reqs) {
           }).join('')
         : '<div style="flex:1;text-align:center;align-self:center;font:400 12px \'IBM Plex Sans\';color:#a8a79f;">No weekly bills yet.</div>';
 
-    const donutBg = payTotal > 0
-        ? `conic-gradient(#157a52 0% ${paidPct}%, #b4453a ${paidPct}% 100%)`
+    const donutBg = donutTotal > 0
+        ? `conic-gradient(#157a52 0% ${donutPaidPct}%, #b4453a ${donutPaidPct}% 100%)`
         : '#eeede9';
     const charts = `
     <div class="pm-ov-charts" style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;margin-bottom:16px;">
@@ -321,7 +329,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
           <div style="position:relative;width:118px;height:118px;flex:none;">
             <div style="position:absolute;inset:0;border-radius:50%;background:${donutBg};"></div>
             <div style="position:absolute;inset:17px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-              <span class="num" style="font:700 19px 'IBM Plex Sans';color:#0f6342;">${paidPct}%</span>
+              <span class="num" style="font:700 19px 'IBM Plex Sans';color:#0f6342;">${donutPaidPct}%</span>
               <span style="font:500 9px 'IBM Plex Sans';color:#9b9a94;text-transform:uppercase;letter-spacing:.04em;">paid</span>
             </div>
           </div>
@@ -332,7 +340,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
             </div>
             <div style="display:flex;align-items:center;gap:8px;">
               <span style="width:11px;height:11px;border-radius:3px;background:#b4453a;flex:none;"></span>
-              <div style="flex:1;"><div style="font:500 11.5px 'IBM Plex Sans';color:#3a3a36;">Outstanding</div><div class="num" style="font:700 13px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(outstanding)}</div></div>
+              <div style="flex:1;"><div style="font:500 11.5px 'IBM Plex Sans';color:#3a3a36;">Outstanding</div><div class="num" style="font:700 13px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(donutOutstanding)}</div></div>
             </div>
           </div>
         </div>
@@ -416,7 +424,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
           <select id="pm-ov-range" onchange="pmOvApplyRange()" style="${selStyle}">
             <option value="all">All time</option>
             <option value="month">This month</option>
-            <option value="latest">Latest week</option>
+            <option value="latest">This week</option>
             <option value="last4">Last 4 weeks</option>
             ${_ovWeeks.length ? '<option disabled>──────────</option>' + _ovWeekOpts : ''}
           </select>
@@ -445,11 +453,13 @@ function _pmOvHtml(p, ms, bills, reqs) {
     // ════════════════════════════════════════════════════════════
     // Custom date-range dropdown (native <select> can't style its option list).
     const _ddChevron = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
-    const _ddFixed = [['all', 'All time'], ['month', 'This month'], ['latest', 'Latest week'], ['last4', 'Last 4 weeks']]
+    const _ddFixed = [['all', 'All time'], ['month', 'This month'], ['latest', 'This week'], ['last4', 'Last 4 weeks']]
         .map(([v, l], i) => `<button class="pmw-dd-opt${i === 0 ? ' active' : ''}" onclick="pmOvPickRange(this,'${v}','${l}')"><span>${l}</span><span class="pmw-dd-check">✓</span></button>`).join('');
-    const _ddWeeks = _ovWeeks.map(b => {
-        const l = _pmOvWeekLabel(b.weekEndingDate);
-        return `<button class="pmw-dd-opt" onclick="pmOvPickRange(this,'${_esc(b.weekEndingDate)}','${_esc(l)}')"><span>Week ending</span><span class="num">${_esc(l)}</span></button>`;
+    // Per-week rows: each calendar week (Mon–Sun) present in the bills, so a whole
+    // week of the month can be viewed at once. Mode is "wk:<monday>".
+    const _ddWeekGroups = _pmOvWeekGroups().map(ws => {
+        const l = _pmWeekRangeLabel(ws);
+        return `<button class="pmw-dd-opt" onclick="pmOvPickRange(this,'wk:${_esc(ws)}','${_esc(l)}')"><span>Per week</span><span class="num">${_esc(l)}</span></button>`;
     }).join('');
     const ovHeader = `
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px;">
@@ -461,7 +471,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
         <button class="pmw-dd-btn" onclick="pmOvToggleRange(event)"><span id="pm-ov-dd-label">All time</span>${_ddChevron}</button>
         <div class="pmw-dd-menu" id="pm-ov-dd-menu" style="display:none;">
           ${_ddFixed}
-          ${_ddWeeks ? '<div class="pmw-dd-sep"></div>' + _ddWeeks : ''}
+          ${_ddWeekGroups ? '<div class="pmw-dd-sep"></div>' + _ddWeekGroups : ''}
         </div>
         <input type="hidden" id="pm-ov-range" value="all">
       </div>
@@ -478,11 +488,10 @@ function _pmOvHtml(p, ms, bills, reqs) {
     const contractValue = Number(p.budget) || 0;
     const ovTiles = `
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
-      ${kpi('Contract Value', contractValue > 0 ? _fmt(contractValue) : '—', '#0f6342', '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-contract')}
+      ${kpi('Project Budget', contractValue > 0 ? _fmt(contractValue) : '—', '#0f6342', '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-contract')}
       ${kpi('Progress', progress + '%', '#0f6342', '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-progress')}
       ${kpi('Direct cost', _fmt(directCost), '#44525f', '#eef0f3', '#d6dde4', 'pm-ov-kpi-direct')}
-      ${kpi('Total cash recite', _fmt(paid), '#0f6342', '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-paid')}
-      ${kpi('Remaining cash recite', (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), netColor, '#fbf3e2', '#f0e2c5', 'pm-ov-kpi-net')}
+      ${kpi('Remaining cash receipt', (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), netColor, '#fbf3e2', '#f0e2c5', 'pm-ov-kpi-net')}
     </div>`;
 
     // Direct-cost breakdown — one bar per category (keeps the #pm-ov-* IDs).
@@ -512,21 +521,21 @@ function _pmOvHtml(p, ms, bills, reqs) {
       </div>
     </div>`;
 
-    const ovDonutBg = payTotal > 0 ? `conic-gradient(#157a52 0% ${paidPct}%, #e6c878 ${paidPct}% 100%)` : '#eeede9';
+    const ovDonutBg = donutTotal > 0 ? `conic-gradient(#157a52 0% ${donutPaidPct}%, #e6c878 ${donutPaidPct}% 100%)` : '#eeede9';
     const ovDonut = `
     <div style="flex:1;min-width:240px;border:1px solid #e7e6e2;border-radius:16px;background:#fff;padding:20px 22px;">
       <div style="font:600 14.5px 'IBM Plex Sans';margin-bottom:16px;">Payment status</div>
-      <div style="display:flex;align-items:center;gap:18px;">
-        <div style="position:relative;width:104px;height:104px;flex:none;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:36px;">
+        <div style="position:relative;width:150px;height:150px;flex:none;">
           <div style="position:absolute;inset:0;border-radius:50%;background:${ovDonutBg};"></div>
-          <div style="position:absolute;inset:15px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-            <span class="num" style="font:700 18px 'IBM Plex Sans';color:#0f6342;">${paidPct}%</span>
-            <span style="font:500 8.5px 'IBM Plex Sans';color:#9b9a94;text-transform:uppercase;letter-spacing:.04em;">paid</span>
+          <div style="position:absolute;inset:22px;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+            <span class="num" style="font:700 26px 'IBM Plex Sans';color:#0f6342;">${donutPaidPct}%</span>
+            <span style="font:500 10px 'IBM Plex Sans';color:#9b9a94;text-transform:uppercase;letter-spacing:.04em;">paid</span>
           </div>
         </div>
-        <div style="flex:1;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;"><span style="width:10px;height:10px;border-radius:3px;background:#157a52;flex:none;"></span><div><div style="font:500 11px 'IBM Plex Sans';color:#3a3a36;">Paid</div><div class="num" style="font:700 12.5px 'IBM Plex Sans';">${_fmt(paid)}</div></div></div>
-          <div style="display:flex;align-items:center;gap:8px;"><span style="width:10px;height:10px;border-radius:3px;background:#c79024;flex:none;"></span><div><div style="font:500 11px 'IBM Plex Sans';color:#3a3a36;">Outstanding</div><div class="num" style="font:700 12.5px 'IBM Plex Sans';">${_fmt(outstanding)}</div></div></div>
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:22px;"><span style="width:10px;height:10px;border-radius:3px;background:#157a52;flex:none;"></span><div><div style="font:500 11px 'IBM Plex Sans';color:#3a3a36;">Paid</div><div class="num" style="font:700 12.5px 'IBM Plex Sans';">${_fmt(paid)}</div></div></div>
+          <div style="display:flex;align-items:center;gap:10px;"><span style="width:10px;height:10px;border-radius:3px;background:#c79024;flex:none;"></span><div><div style="font:500 11px 'IBM Plex Sans';color:#3a3a36;">Outstanding</div><div class="num" style="font:700 12.5px 'IBM Plex Sans';">${_fmt(donutOutstanding)}</div></div></div>
         </div>
       </div>
     </div>`;
@@ -594,6 +603,34 @@ function _pmOvWeekLabel(dateStr) {
     return isNaN(d) ? dateStr : d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+// ── Weekly grouping for the range dropdown ───────────────────────────────
+// The daily bills are grouped into calendar weeks (Sun–Sat). Each group is
+// addressable by the mode "wk:<YYYY-MM-DD of that Sunday>" so a whole week can
+// be viewed at once, alongside the per-day rows.
+function _pmWeekStart(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d)) return dateStr;
+    const day = d.getDay();                 // 0=Sun … 6=Sat
+    d.setDate(d.getDate() - day);           // back to the week's Sunday
+    return d.toISOString().slice(0, 10);
+}
+function _pmWeekRangeLabel(sundayStr) {
+    const start = new Date(sundayStr + 'T00:00:00');
+    if (isNaN(start)) return sundayStr;
+    const end = new Date(start); end.setDate(end.getDate() + 6);
+    const o = { month: 'short', day: 'numeric' };
+    const sameYear = start.getFullYear() === end.getFullYear();
+    return start.toLocaleDateString('en-PH', o) + ' – ' +
+        end.toLocaleDateString('en-PH', sameYear ? o : { ...o, year: 'numeric' });
+}
+// Distinct week-starts present in the bills, newest first.
+function _pmOvWeekGroups() {
+    const set = new Set((_pmOvBills || [])
+        .filter(b => b.weekEndingDate)
+        .map(b => _pmWeekStart(b.weekEndingDate)));
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+}
+
 // Filter the stored bills by the selected billing-week mode.
 function _pmOvFilterBills(mode) {
     if (mode === 'all') return _pmOvBills;
@@ -601,6 +638,11 @@ function _pmOvFilterBills(mode) {
         const now = new Date();
         const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         return _pmOvBills.filter(b => (b.weekEndingDate || '').startsWith(ym));
+    }
+    // "wk:<monday>" → every bill whose date falls in that Mon–Sun week.
+    if (mode && mode.indexOf('wk:') === 0) {
+        const ws = mode.slice(3);
+        return _pmOvBills.filter(b => b.weekEndingDate && _pmWeekStart(b.weekEndingDate) === ws);
     }
     const dated = _pmOvBills.filter(b => b.weekEndingDate)
         .slice().sort((a, b) => b.weekEndingDate.localeCompare(a.weekEndingDate));
@@ -618,6 +660,10 @@ function _pmOvFilterReqs(mode) {
         const now = new Date();
         const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
         return _pmOvReqs.filter(r => (r.weekEndingDate || '').startsWith(ym));
+    }
+    if (mode && mode.indexOf('wk:') === 0) {
+        const ws = mode.slice(3);
+        return _pmOvReqs.filter(r => r.weekEndingDate && _pmWeekStart(r.weekEndingDate) === ws);
     }
     if (mode === 'latest' || mode === 'last4') {
         const weeks = new Set(_pmOvFilterBills(mode).map(b => b.weekEndingDate).filter(Boolean));
@@ -680,7 +726,6 @@ window.pmOvApplyRange = function() {
     const pr = document.getElementById('pm-ov-kpi-progress');
     if (pr) pr.textContent = _pmOvProgressVal + '%';
     setAmt('pm-ov-kpi-direct', directCost);
-    setAmt('pm-ov-kpi-paid',   paid);
     const netEl = document.getElementById('pm-ov-kpi-net');
     if (netEl) {
         netEl.textContent = (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash));
@@ -700,12 +745,15 @@ window.pmOvApplyRange = function() {
 
     const note = document.getElementById('pm-ov-range-note');
     if (note) {
-        const wk = bills.length + ' week' + (bills.length === 1 ? '' : 's');
+        const isWeek = mode && mode.indexOf('wk:') === 0;
+        const unit = isWeek ? 'day' : 'week';
+        const wk = bills.length + ' ' + unit + (bills.length === 1 ? '' : 's');
         const label = mode === 'all'    ? 'All time'
             : mode === 'month'  ? 'This month'
-            : mode === 'latest' ? 'Latest week'
+            : mode === 'latest' ? 'This week'
             : mode === 'last4'  ? 'Last 4 weeks'
-            : 'Week ending ' + _pmOvWeekLabel(mode);
+            : isWeek            ? 'Week of ' + _pmWeekRangeLabel(mode.slice(3))
+            : 'Daily ' + _pmOvWeekLabel(mode);
         note.textContent = label + ' · ' + wk + ' · management fee excluded';
     }
 };
@@ -808,7 +856,7 @@ function _pmRenderProjectCards(projects) {
           <div class="pm-card-progress"><div class="pm-card-progress-fill" style="width:${m.progressPct}%;"></div></div>
           <div class="pm-card-progress-pct">${m.progressPct}% complete</div>
           <div class="pm-card-contract">
-            <span class="pm-card-contract-label">Contract Value</span>
+            <span class="pm-card-contract-label">Project Budget</span>
             <span class="pm-card-contract-value num">${contractVal > 0 ? _fmt(contractVal) : '—'}</span>
           </div>
           <div class="pm-card-stats">
@@ -2197,6 +2245,8 @@ window.pmCatSOA = function(type, nameFilter) {
         label, client, project, location, today, period, ref, subject,
         body: rows.map(r => [fmtDate(r.date), descOf(r), fmtN(r.amount)]),
         total: fmtN(total),
+        ack: t === 'labor',
+        ackName: picked || '',
         fname: `${ref}-${(picked ? String(picked).replace(/[^A-Za-z0-9]+/g, '') + '-' : '')}${(String(project).replace(/[^A-Za-z0-9]+/g, '') || 'project')}.pdf`
     };
     const pdfJson = JSON.stringify(pdfData).replace(/</g, '\\u003c');
@@ -2231,6 +2281,14 @@ window.pmCatSOA = function(type, nameFilter) {
       tfoot .lbl{padding:14px 8px 14px 16px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;}
       tfoot .tot{text-align:right;padding:14px 16px;font-family:'Courier New',monospace;font-size:17px;}
       .note{padding:16px 0 0;font-size:10px;color:#a3b0a8;line-height:1.6;}
+      .ack{margin-top:24px;padding:18px 20px;border:1px solid #d7e3db;border-radius:8px;background:#f9fbfa;}
+      .ack-title{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#14532d;margin-bottom:8px;}
+      .ack-text{font-size:12px;color:#3a4a41;line-height:1.7;}
+      .sig-row{display:flex;gap:28px;margin-top:34px;}
+      .sig-block{flex:1;text-align:center;}
+      .sig-space{height:30px;}
+      .sig-line{border-top:1px solid #6b7b72;padding-top:5px;font-size:10px;color:#5b6b62;letter-spacing:.04em;}
+      .sig-name{font-size:11px;font-weight:700;color:#1a2620;margin-top:3px;}
       .foot{border-top:1px solid #e6ece8;background:#f6f8f7;padding:14px 44px;display:flex;justify-content:flex-end;gap:12px;}
       .btn-print{background:#fff;color:#14532d;border:1.5px solid #14532d;border-radius:11px;padding:12px 22px;font:700 13px Arial;cursor:pointer;}
       .btn-pdf{background:#15803d;color:#fff;border:none;border-radius:11px;padding:12px 26px;font:700 13px Arial;cursor:pointer;}
@@ -2256,6 +2314,15 @@ window.pmCatSOA = function(type, nameFilter) {
             <tbody>${rowsHtml}</tbody>
             <tfoot><tr><td class="lbl" colspan="2">Total (PHP)</td><td class="tot">${fmtN(total)}</td></tr></tfoot>
           </table>
+          ${t === 'labor' ? `<div class="ack">
+            <div class="ack-title">Acknowledgment</div>
+            <div class="ack-text">I, <strong>${_esc(picked || 'the undersigned')}</strong>, hereby acknowledge receipt of the amount of <strong>PHP ${fmtN(total)}</strong> as full payment for labor rendered on the above project.</div>
+            <div class="sig-row">
+              <div class="sig-block"><div class="sig-space"></div><div class="sig-line">Worker's Signature</div><div class="sig-name">${_esc(picked || '—')}</div></div>
+              <div class="sig-block"><div class="sig-space"></div><div class="sig-line">Prepared by</div></div>
+              <div class="sig-block"><div class="sig-space"></div><div class="sig-line">Approved by</div></div>
+            </div>
+          </div>` : ''}
           <div class="note">Amounts in PHP. This statement lists every ${_esc(label)} entry across all daily bills for the period. Generated ${_esc(today)} &middot; DAC'S admin portal.</div>
         </div>
         <div class="foot">
@@ -2296,6 +2363,25 @@ window.pmCatSOA = function(type, nameFilter) {
             columnStyles:{ 0:{cellWidth:28}, 2:{halign:'right',cellWidth:36,fontStyle:'bold'} }
           });
           var fy = doc.lastAutoTable.finalY + 8;
+          if (D.ack) {
+            var ackName = D.ackName || 'the undersigned';
+            doc.setDrawColor(215,227,219); doc.setFillColor(249,251,250);
+            doc.roundedRect(14, fy, pw - 28, 50, 2, 2, 'FD');
+            doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(20,83,45);
+            doc.text("ACKNOWLEDGMENT", 20, fy + 9);
+            doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(58,74,65);
+            doc.text(doc.splitTextToSize("I, " + ackName + ", hereby acknowledge receipt of the amount of PHP " + D.total + " as full payment for labor rendered on the above project.", pw - 40), 20, fy + 16);
+            var sy = fy + 42, colW = (pw - 28) / 3;
+            doc.setDrawColor(107,123,114);
+            [["Worker's Signature", D.ackName || ''], ["Prepared by", ""], ["Approved by", ""]].forEach(function(c, i){
+              var cx = 14 + colW * i + 8, cw = colW - 16;
+              doc.line(cx, sy, cx + cw, sy);
+              doc.setFontSize(7.5); doc.setTextColor(91,107,98);
+              doc.text(c[0], cx + cw / 2, sy + 4, {align:'center'});
+              if (c[1]) { doc.setFont('helvetica','bold'); doc.setFontSize(8); doc.setTextColor(26,38,32); doc.text(c[1], cx + cw / 2, sy + 8, {align:'center'}); doc.setFont('helvetica','normal'); }
+            });
+            fy += 58;
+          }
           doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,160,152);
           doc.text(doc.splitTextToSize("Amounts in PHP. This statement lists every " + D.label + " entry across all daily bills for the period. Generated " + D.today + " - DAC'S admin portal.", pw - 28), 14, fy);
           doc.save(D.fname);

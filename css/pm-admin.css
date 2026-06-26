@@ -1716,6 +1716,47 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
   .pm-bd-box { flex: 1 1 auto !important; width: 100% !important; }
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   RESPONSIVE — current overview rendered into #pm-ov-root (_pmOvHtml).
+   This layout is built from bare flex <div>s with inline min-widths
+   (KPI strip min-width:150px, breakdown min-width:340px, donut/trend/
+   next-due min-width:240px). CSS media queries can't touch those inline
+   values directly, so we target them by [style*=…] under #pm-ov-root and
+   force the flex children to shrink + stack on phones. iOS/Android/Pixel.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Tablets / large phones: let the breakdown + donut row stack rather than
+   forcing the 340px breakdown card to sit beside the donut. */
+@media (max-width: 820px) {
+  #pm-ov-root > div { min-width: 0 !important; }
+  #pm-ov-root > div > div[style*="min-width:340px"],
+  #pm-ov-root > div > div[style*="min-width:360px"],
+  #pm-ov-root > div > div[style*="min-width:240px"],
+  #pm-ov-root > div > div[style*="min-width:260px"] {
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+/* Phones (incl. Google Pixel ~412px): KPI tiles to 2-up, everything fluid. */
+@media (max-width: 680px) {
+  /* KPI strip cards (flex:1;min-width:150px) → two per row, allowed to shrink.
+     Targeted by the unique inline min-width so the header above is untouched. */
+  #pm-ov-root div[style*="min-width:150px"] {
+    flex: 1 1 calc(50% - 6px) !important;
+    min-width: 0 !important;
+  }
+  /* Breakdown / donut / trend cards get tighter inner padding to fit width. */
+  #pm-ov-root div[style*="padding:20px 22px"] { padding: 16px 14px !important; }
+}
+
+/* Small phones (≤412px / Pixel and below): KPI tiles one per row so the
+   22px values never clip, and large overview numbers scale down. */
+@media (max-width: 412px) {
+  #pm-ov-root div[style*="min-width:150px"] { flex: 1 1 100% !important; }
+  #pm-ov-root .num { font-size: 19px !important; }
+}
+
 /* ── Daily-bill builder: fit phones, stack the add-row inputs ───────── */
 @media (max-width: 680px) {
   .pm-week-main { min-width: 0 !important; padding: 18px 16px !important; }

@@ -1,40 +1,112 @@
 (function() {
   const TIP_ID = 'dacs-global-tip';
+  const REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Spring-like easing for a lively but smooth entrance.
+  const EASE = 'cubic-bezier(0.34, 1.56, 0.64, 1)';
+  // Direction the tip slides in from: 1 = it sits below the anchor (slides up),
+  // -1 = it sits above (slides down). Set per-show so the motion points sensibly.
+  let dir = 1;
+
   function getEl() {
     let el = document.getElementById(TIP_ID);
     if (!el) {
       el = document.createElement('div');
       el.id = TIP_ID;
-      el.style.cssText = 'position:fixed;z-index:99999;background:#111827;color:#f9fafb;font-size:13px;font-weight:500;line-height:1.6;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);box-shadow:0 12px 32px rgba(0,0,0,0.35);max-width:280px;pointer-events:none;opacity:0;transition:opacity .2s ease,transform .2s ease;transform:translateY(6px);';
+      el.style.cssText = 'position:fixed;z-index:99999;background:linear-gradient(160deg,#1f2937,#111827);color:#f9fafb;font-size:13px;font-weight:500;line-height:1.6;padding:13px 16px;border-radius:13px;border:1px solid rgba(255,255,255,0.10);box-shadow:0 16px 40px rgba(0,0,0,0.40);max-width:300px;pointer-events:none;opacity:0;transform-origin:top center;will-change:transform,opacity;';
       document.body.appendChild(el);
     }
     return el;
   }
-  document.addEventListener('mouseover', function(e) {
-    const tip = e.target.closest('.pc-help-tip[data-tip]');
-    if (!tip) return;
+
+  // Render either a plain string (legacy data-tip) or a clearer, formatted
+  // layout when a title and/or newline-separated steps are provided. Steps that
+  // start with "1) ", "- ", or "• " are shown as a tidy list with the marker
+  // pulled into its own column so the text aligns cleanly.
+  function render(el, title, body) {
+    el.innerHTML = '';
+    if (title) {
+      const h = document.createElement('div');
+      h.textContent = title;
+      h.style.cssText = 'font-weight:800;font-size:12.5px;letter-spacing:.02em;color:#fff;margin-bottom:7px;padding-bottom:7px;border-bottom:1px solid rgba(255,255,255,0.12);';
+      el.appendChild(h);
+    }
+    const lines = String(body).split('\n').map(s => s.trim()).filter(Boolean);
+    const looksLikeList = lines.length > 1 && lines.some(l => /^(\d+[\).]|[-•])\s/.test(l));
+    if (looksLikeList) {
+      lines.forEach((line, i) => {
+        const m = line.match(/^(\d+[\).]|[-•])\s+(.*)$/);
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:8px;align-items:flex-start;' + (i ? 'margin-top:6px;' : '');
+        const marker = document.createElement('span');
+        marker.textContent = m ? m[1].replace(')', '').replace('.', '') : '•';
+        marker.style.cssText = 'flex:none;min-width:16px;text-align:center;font-weight:800;color:#6ee7b7;';
+        const txt = document.createElement('span');
+        txt.textContent = m ? m[2] : line;
+        txt.style.cssText = 'color:#e5e7eb;';
+        row.appendChild(marker); row.appendChild(txt);
+        el.appendChild(row);
+      });
+    } else {
+      const p = document.createElement('div');
+      p.textContent = body;
+      el.appendChild(p);
+    }
+  }
+
+  function show(tip) {
     const el = getEl();
-    el.textContent = tip.getAttribute('data-tip');
+    render(el, tip.getAttribute('data-tip-title'), tip.getAttribute('data-tip'));
     const r = tip.getBoundingClientRect();
+    el.style.transition = 'none';
     el.style.opacity = '0';
     el.style.display = 'block';
     const ew = el.offsetWidth, eh = el.offsetHeight;
     // prefer below, fallback above
-    let top = r.bottom + 10;
-    if (top + eh > window.innerHeight - 10) top = r.top - eh - 10;
+    let top = r.bottom + 10; dir = 1;
+    if (top + eh > window.innerHeight - 10) { top = r.top - eh - 10; dir = -1; }
     let left = r.left + r.width / 2 - ew / 2;
     if (left < 10) left = 10;
     if (left + ew > window.innerWidth - 10) left = window.innerWidth - ew - 10;
     el.style.top = top + 'px';
     el.style.left = left + 'px';
-    el.style.transform = 'translateY(6px)';
-    requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateY(0)'; });
+    el.style.transformOrigin = dir === 1 ? 'top center' : 'bottom center';
+    if (REDUCED) {
+      el.style.transform = 'none';
+      el.style.transition = 'opacity .15s ease';
+      requestAnimationFrame(() => { el.style.opacity = '1'; });
+      return;
+    }
+    // Start slightly offset toward the anchor and scaled down, then spring in.
+    el.style.transform = 'translateY(' + (dir * 8) + 'px) scale(.94)';
+    requestAnimationFrame(() => {
+      el.style.transition = 'opacity .18s ease, transform .28s ' + EASE;
+      el.style.opacity = '1';
+      el.style.transform = 'translateY(0) scale(1)';
+    });
+  }
+
+  function hide() {
+    const el = document.getElementById(TIP_ID);
+    if (!el) return;
+    el.style.transition = REDUCED ? 'opacity .12s ease' : 'opacity .15s ease, transform .15s ease';
+    el.style.opacity = '0';
+    if (!REDUCED) el.style.transform = 'translateY(' + (dir * 6) + 'px) scale(.96)';
+  }
+
+  document.addEventListener('mouseover', function(e) {
+    const tip = e.target.closest('.pc-help-tip[data-tip]');
+    if (tip) show(tip);
   });
   document.addEventListener('mouseout', function(e) {
     const tip = e.target.closest('.pc-help-tip[data-tip]');
-    if (!tip) return;
-    const el = document.getElementById(TIP_ID);
-    if (el) { el.style.opacity = '0'; el.style.transform = 'translateY(6px)'; }
+    if (tip) hide();
+  });
+  // Touch / tap support: tapping the "?" toggles the tip on phones (where there
+  // is no hover). Tapping elsewhere dismisses it.
+  document.addEventListener('click', function(e) {
+    const tip = e.target.closest('.pc-help-tip[data-tip]');
+    if (tip) { e.stopPropagation(); show(tip); }
+    else hide();
   });
 })();
 
