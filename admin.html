@@ -1386,6 +1386,11 @@
             <div id="pm-ov-root"><div class="pm-empty-row" style="color:#9b9a94;padding:40px 0;text-align:center;">Loading…</div></div>
           </div><!-- /ws-panel-overview -->
 
+          <!-- ── Direct-cost data input (sub-page of Overview, opened by the breakdown's "View") ── -->
+          <div class="pm-ws-panel" id="ws-panel-dataview">
+            <div id="pm-ov-dataview-root"></div>
+          </div><!-- /ws-panel-dataview -->
+
           <!-- ── Daily Panel (bill builder · redesign) ── -->
           <div class="pm-ws-panel" id="ws-panel-week">
             <!-- Page heading: day nav + status (outside the builder/readonly toggle) -->
@@ -1468,8 +1473,8 @@
                       </div>
                     </div>
                     <div class="pmw-addcard-foot">
-                      <input type="file" id="pm-week-receipt-input" accept="image/*" style="display:none" onchange="pmWeekStageReceipt(this)">
-                      <button class="pmw-attach2" id="pm-week-attach-btn" type="button" title="Attach receipt" onclick="document.getElementById('pm-week-receipt-input').click()">
+                      <input type="file" id="pm-week-receipt-input" accept="image/*" multiple style="display:none" onchange="pmWeekStageReceipt(this)">
+                      <button class="pmw-attach2" id="pm-week-attach-btn" type="button" title="Attach receipts" onclick="document.getElementById('pm-week-receipt-input').click()">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                         <span id="pmw-receipt-label">Attach receipt</span>
                       </button>
@@ -1668,31 +1673,27 @@
               </div>
             </div>
 
-            <!-- Revolving fund section -->
+            <!-- Revolving fund section — weekly fund to collect from the partner -->
             <div class="pm-ws-section">
             <div class="pm-ws-panel-header">
               <div>
                 <div class="pm-ws-panel-title">Revolving Fund</div>
-                <div class="pm-ws-panel-sub">Track client-provided revolving fund. Record expenses drawn and replenishments each Friday.</div>
+                <div class="pm-ws-panel-sub">Set the fund to collect from the partner each week, then check it off once received.</div>
               </div>
-              <button class="pm-btn pm-btn-primary" onclick="pmOpenExpenseModal()">
-                <i data-lucide="plus" style="width:14px;height:14px;"></i> Record Expense
+              <button class="pm-btn pm-btn-primary" onclick="pmOpenFundRequestModal()">
+                <i data-lucide="plus" style="width:14px;height:14px;"></i> Add Weekly Fund
               </button>
             </div>
             <div class="pm-stat-grid">
-              <div class="pm-stat"><div class="pm-stat-label">Initial fund</div><div class="pm-stat-value num" id="pm-rev-initial">₱0</div></div>
-              <div class="pm-stat"><div class="pm-stat-label">Total spent</div><div class="pm-stat-value is-danger num" id="pm-rev-spent">₱0</div></div>
-              <div class="pm-stat"><div class="pm-stat-label">Remaining balance</div><div class="pm-stat-value is-green num" id="pm-rev-balance">₱0</div></div>
-              <div class="pm-stat"><div class="pm-stat-label">To replenish (Friday)</div><div class="pm-stat-value num" id="pm-rev-replenish">₱0</div></div>
-            </div>
-            <div style="display:flex;gap:10px;margin-bottom:16px;">
-              <button class="pm-btn pm-btn-secondary" onclick="pmOpenSetFundModal()"><i data-lucide="settings" style="width:14px;height:14px;"></i> Set Initial Fund</button>
-              <button class="pm-btn pm-btn-secondary" onclick="pmOpenReplenishModal()"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Record Replenishment</button>
+              <div class="pm-stat"><div class="pm-stat-label">Total fund set</div><div class="pm-stat-value num" id="pm-rev-total">₱0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">Received</div><div class="pm-stat-value is-green num" id="pm-rev-received">₱0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">Spent (site costs)</div><div class="pm-stat-value num" id="pm-rev-spent">₱0</div></div>
+              <div class="pm-stat"><div class="pm-stat-label">Net (fund − spent)</div><div class="pm-stat-value num" id="pm-rev-net">₱0</div></div>
             </div>
             <div class="pm-table-wrap">
               <table class="pm-table">
-                <thead><tr><th>Date</th><th>Description</th><th>Amount</th><th>Notes</th><th>Actions</th></tr></thead>
-                <tbody id="pm-rev-tbody"><tr><td colspan="5" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr></tbody>
+                <thead><tr><th>Week</th><th>Fund received</th><th>Spent</th><th>Difference</th><th>Running balance</th><th>Status</th><th>Actions</th></tr></thead>
+                <tbody id="pm-rev-tbody"><tr><td colspan="7" class="pm-empty-row" style="color:#9ca3af;">Loading…</td></tr></tbody>
               </table>
             </div>
             </div><!-- /revolving section -->
@@ -3950,100 +3951,32 @@
   </div>
 </div>
 
-<!-- Revolving Fund: Set Initial Fund Modal -->
-<div id="pmSetFundModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmSetFundModal')" style="display:none;">
+<!-- Revolving Fund: Add Weekly Fund Modal -->
+<div id="pmFundRequestModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmFundRequestModal')" style="display:none;">
   <div class="pm-modal-box pm-modal-sm">
     <div class="pm-modal-header">
-      <h3>Set Initial Fund</h3>
-      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmSetFundModal')"><i data-lucide="x"></i></button>
+      <h3>Add Weekly Fund</h3>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmFundRequestModal')"><i data-lucide="x"></i></button>
     </div>
     <div class="pm-modal-body">
       <div class="pm-form-group">
-        <label class="pm-field-label">Initial Revolving Fund Amount (₱) <span class="pm-req">*</span></label>
-        <input type="number" id="pmSetFundAmount" class="pm-input" placeholder="0.00" min="0" step="0.01">
-        <div class="pm-field-err" id="err-pmSetFundAmount"></div>
+        <label class="pm-field-label">Week <span class="pm-req">*</span></label>
+        <select id="pmFundWeek" class="pm-input"></select>
+        <div class="pm-field-err" id="err-pmFundWeek"></div>
+      </div>
+      <div class="pm-form-group">
+        <label class="pm-field-label">Amount to collect from partner (₱) <span class="pm-req">*</span></label>
+        <input type="number" id="pmFundAmount" class="pm-input" placeholder="0.00" min="0" step="0.01">
+        <div class="pm-field-err" id="err-pmFundAmount"></div>
       </div>
       <div class="pm-form-group">
         <label class="pm-field-label">Notes (optional)</label>
-        <input type="text" id="pmSetFundNotes" class="pm-input" placeholder="e.g. Initial fund provided on April 21">
+        <input type="text" id="pmFundNotes" class="pm-input" placeholder="e.g. covers labor + materials for the week">
       </div>
     </div>
     <div class="pm-modal-footer">
-      <button class="pm-btn pm-btn-secondary" onclick="pmCloseModal('pmSetFundModal')">Cancel</button>
-      <button class="pm-btn pm-btn-primary" onclick="pmSaveInitialFund()">
-        <i data-lucide="save" style="width:14px;height:14px;"></i> Set Fund
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- Revolving Fund: Record Expense Modal -->
-<div id="pmExpenseModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmExpenseModal')" style="display:none;">
-  <div class="pm-modal-box pm-modal-sm">
-    <div class="pm-modal-header">
-      <h3>Record Expense</h3>
-      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmExpenseModal')"><i data-lucide="x"></i></button>
-    </div>
-    <div class="pm-modal-body">
-      <div class="pm-form-row pm-two-col">
-        <div class="pm-form-group">
-          <label class="pm-field-label">Date <span class="pm-req">*</span></label>
-          <input type="date" id="pmExpenseDate" class="pm-input">
-          <div class="pm-field-err" id="err-pmExpenseDate"></div>
-        </div>
-        <div class="pm-form-group">
-          <label class="pm-field-label">Amount (₱) <span class="pm-req">*</span></label>
-          <input type="number" id="pmExpenseAmount" class="pm-input" placeholder="0.00" min="0" step="0.01">
-          <div class="pm-field-err" id="err-pmExpenseAmount"></div>
-        </div>
-      </div>
-      <div class="pm-form-group">
-        <label class="pm-field-label">Description <span class="pm-req">*</span></label>
-        <input type="text" id="pmExpenseDesc" class="pm-input" placeholder="e.g. Nails and screws">
-        <div class="pm-field-err" id="err-pmExpenseDesc"></div>
-      </div>
-      <div class="pm-form-group">
-        <label class="pm-field-label">Notes (optional)</label>
-        <input type="text" id="pmExpenseNotes" class="pm-input" placeholder="Optional notes">
-      </div>
-    </div>
-    <div class="pm-modal-footer">
-      <button class="pm-btn pm-btn-secondary" onclick="pmCloseModal('pmExpenseModal')">Cancel</button>
-      <button class="pm-btn pm-btn-primary" onclick="pmSaveExpense()">
-        <i data-lucide="save" style="width:14px;height:14px;"></i> Save Expense
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- Revolving Fund: Replenishment Modal -->
-<div id="pmReplenishModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmReplenishModal')" style="display:none;">
-  <div class="pm-modal-box pm-modal-sm">
-    <div class="pm-modal-header">
-      <h3>Record Replenishment</h3>
-      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmReplenishModal')"><i data-lucide="x"></i></button>
-    </div>
-    <div class="pm-modal-body">
-      <div class="pm-form-row pm-two-col">
-        <div class="pm-form-group">
-          <label class="pm-field-label">Date (Friday) <span class="pm-req">*</span></label>
-          <input type="date" id="pmReplenishDate" class="pm-input">
-          <div class="pm-field-err" id="err-pmReplenishDate"></div>
-        </div>
-        <div class="pm-form-group">
-          <label class="pm-field-label">Amount (₱) <span class="pm-req">*</span></label>
-          <input type="number" id="pmReplenishAmount" class="pm-input" placeholder="0.00" min="0" step="0.01">
-          <div class="pm-field-err" id="err-pmReplenishAmount"></div>
-        </div>
-      </div>
-      <div class="pm-form-group">
-        <label class="pm-field-label">Notes (optional)</label>
-        <input type="text" id="pmReplenishNotes" class="pm-input" placeholder="e.g. Friday replenishment Week 4">
-      </div>
-    </div>
-    <div class="pm-modal-footer">
-      <button class="pm-btn pm-btn-secondary" onclick="pmCloseModal('pmReplenishModal')">Cancel</button>
-      <button class="pm-btn pm-btn-primary" onclick="pmSaveReplenishment()">
+      <button class="pm-btn pm-btn-secondary" onclick="pmCloseModal('pmFundRequestModal')">Cancel</button>
+      <button class="pm-btn pm-btn-primary" onclick="pmSaveFundRequest()">
         <i data-lucide="save" style="width:14px;height:14px;"></i> Save
       </button>
     </div>

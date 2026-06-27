@@ -2649,6 +2649,16 @@ function cmWeekRangeLabel(sundayStr) {
     return start.toLocaleDateString('en-PH', o) + ' – ' +
         end.toLocaleDateString('en-PH', sameYear ? o : { ...o, year: 'numeric' });
 }
+// "3rd week of June" — which calendar week of the month the week-start falls in.
+function cmWeekOfMonthLabel(sundayStr) {
+    const start = new Date(sundayStr + 'T00:00:00');
+    if (isNaN(start)) return 'Per week';
+    const n = Math.ceil(start.getDate() / 7);
+    const suffix = (n % 10 === 1 && n !== 11) ? 'st'
+        : (n % 10 === 2 && n !== 12) ? 'nd'
+        : (n % 10 === 3 && n !== 13) ? 'rd' : 'th';
+    return n + suffix + ' week of ' + start.toLocaleDateString('en-PH', { month: 'long' });
+}
 // Distinct week-starts present in the bills, newest first.
 function cmOvWeekGroups() {
     const set = new Set((cmWeeklyBills || [])
@@ -2803,7 +2813,7 @@ function cmRenderOverview() {
     // Per-week rows: each calendar week (Sun–Sat) present in the bills.
     const ovDdWeekGroups = cmOvWeekGroups().map(ws => {
         const l = cmWeekRangeLabel(ws);
-        return `<button class="cm-dd-opt" onclick="cmOvPickRange(this,'wk:${cmEsc(ws)}','${cmEsc(l)}')"><span>Per week</span><span class="cm-dd-wk">${cmEsc(l)}</span></button>`;
+        return `<button class="cm-dd-opt" onclick="cmOvPickRange(this,'wk:${cmEsc(ws)}','${cmEsc(l)}')"><span>${cmEsc(cmWeekOfMonthLabel(ws))}</span><span class="cm-dd-wk">${cmEsc(l)}</span></button>`;
     }).join('');
 
     // Revolving fund

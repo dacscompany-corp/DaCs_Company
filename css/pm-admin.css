@@ -1135,8 +1135,9 @@ body.dark-mode .pmst-total { background: #11201a; border-top-color: #243029; }
 .pmw-receipt-btn { display: inline-flex; align-items: center; gap: 7px; background: #fff; border: 1px solid #e2e1dc; border-radius: 9px; padding: 9px 13px; font: 600 12px 'IBM Plex Sans'; color: #5b5a55; cursor: pointer; transition: border-color .15s, color .15s; }
 .pmw-receipt-btn:hover { border-color: #157a52; color: #0f6342; }
 .pmw-receipt-btn.attached { border-color: #157a52; color: #0f6342; background: #f7faf8; }
-.pmw-attach-thumb { display: flex; align-items: center; position: relative; flex: none; width: 38px; height: 38px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e1dc; }
-.pmw-attach-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pmw-attach-thumb { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.pmw-attach-thumb-item { position: relative; flex: none; width: 38px; height: 38px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e1dc; }
+.pmw-attach-thumb-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .pmw-attach-x { position: absolute; top: -1px; right: -1px; width: 16px; height: 16px; border: none; border-bottom-left-radius: 6px; background: rgba(28,28,26,0.6); color: #fff; font: 700 12px 'IBM Plex Sans'; line-height: 1; cursor: pointer; padding: 0; }
 .pmw-attach-x:hover { background: #b4453a; }
 .pmw-cancel { background: #fff; border: 1px solid #d9d8d3; border-radius: 9px; padding: 10px 16px; font: 600 12.5px 'IBM Plex Sans'; color: #3a3a36; cursor: pointer; transition: background .15s; }
@@ -1240,9 +1241,10 @@ body.dark-mode .pmw-grp-search-input:focus { background: #14201a; border-color: 
 .pmw-entry-tag { font: 700 8.5px 'IBM Plex Sans'; letter-spacing: .06em; border-radius: 4px; padding: 2px 6px; flex: none; }
 .pmw-entry-details { font: 500 12.5px 'IBM Plex Sans'; color: #1c1c1a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pmw-entry-meta { display: inline-block; font: 600 10.5px 'IBM Plex Sans'; color: #5b5a55; background: #f1f0ec; border: 1px solid #e7e6e2; border-radius: 5px; padding: 2px 7px; margin-top: 4px; }
-.pmw-entry-rcpt { flex: none; width: 24px; height: 24px; padding: 0; border-radius: 6px; overflow: hidden; border: 1px solid #e2e1dc; background: #fff; cursor: pointer; transition: border-color .15s; }
+.pmw-entry-rcpt { position: relative; flex: none; width: 24px; height: 24px; padding: 0; border-radius: 6px; overflow: hidden; border: 1px solid #e2e1dc; background: #fff; cursor: pointer; transition: border-color .15s; }
 .pmw-entry-rcpt:hover { border-color: #157a52; }
 .pmw-entry-rcpt img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pmw-rcpt-count { position: absolute; bottom: -1px; right: -1px; min-width: 13px; height: 13px; padding: 0 2px; border-top-left-radius: 5px; background: #157a52; color: #fff; font: 700 9px 'IBM Plex Sans'; line-height: 13px; text-align: center; }
 .pmw-entry-amt { font: 600 13px 'IBM Plex Sans'; color: #1c1c1a; flex: none; }
 .pmw-entry-edit { flex: none; background: none; border: none; cursor: pointer; color: #c9c6bd; padding: 0 2px; line-height: 1; display: inline-flex; align-items: center; transition: color .15s; }
 .pmw-entry-edit:hover { color: #157a52; }
@@ -1804,4 +1806,28 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
 @media (max-width: 480px) {
   .pm-ws-tabs { gap: 18px !important; }
   .pm-ws-tab { font-size: 13px !important; }
+}
+
+/* Hide the scrollbar on the mobile filter-chip strip (still scrolls). */
+.pm-dv-chipscroll { -ms-overflow-style: none; scrollbar-width: none; }
+.pm-dv-chipscroll::-webkit-scrollbar { display: none; }
+
+/* Print: isolate the Direct-cost data-input sub-page (hide app chrome + the
+   interactive controls marked .pm-dv-noprint). */
+@media print {
+  body * { visibility: hidden; }
+  #ws-panel-dataview, #ws-panel-dataview * { visibility: visible; }
+  #ws-panel-dataview { position: absolute; left: 0; top: 0; width: 100%; }
+  #ws-panel-dataview .pm-dv-noprint { display: none !important; }
+
+  /* Ink-friendly: solid-green hero → white box w/ green border + green total. */
+  #ws-panel-dataview .pm-dv-hero {
+    background: #fff !important;
+    color: #1c1c1a !important;
+    border: 1px solid #0f6342 !important;
+  }
+  #ws-panel-dataview .pm-dv-total { color: #0f6342 !important; }
+  #ws-panel-dataview .pm-dv-hero-split { border-top-color: #e7e6e2 !important; }
+  /* Proportion bars rely on background fills that print drops — hide them. */
+  #ws-panel-dataview .pm-dv-bar { display: none !important; }
 }

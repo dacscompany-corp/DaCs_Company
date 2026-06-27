@@ -119,6 +119,7 @@ const SUBREG = {
   'constructionProjects/revolvingFund':     { table: 'revolving_funds',   parentField: 'project_id', singleton: true },
   'constructionProjects/revolvingFundExpenses':      { table: 'revolving_fund_expenses',       parentField: 'project_id', ts: ['createdAt'] },
   'constructionProjects/revolvingFundReplenishments':{ table: 'revolving_fund_replenishments', parentField: 'project_id', ts: ['createdAt'] },
+  'constructionProjects/revolvingFundRequests':      { table: 'revolving_fund_requests',        parentField: 'project_id', ts: ['receivedAt', 'createdAt', 'updatedAt'] },
   'constructionProjects/dailyLogs':            { table: 'daily_logs',            parentField: 'project_id', ts: ['createdAt', 'updatedAt'], jsonbData: true },
   'constructionProjects/milestones':           { table: 'milestones',            parentField: 'project_id', ts: ['createdAt', 'updatedAt'], jsonbData: true },
   'constructionProjects/accomplishmentReports':{ table: 'accomplishment_reports',parentField: 'project_id', ts: ['createdAt', 'updatedAt'], jsonbData: true },

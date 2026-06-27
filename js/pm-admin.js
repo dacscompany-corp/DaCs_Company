@@ -13,8 +13,8 @@ let _pmWeeklyEntries  = [];
 let _pmProcItems      = [];
 let _pmMilestones     = [];
 let _pmReports        = [];
-let _pmRevolvingData  = null;
-let _pmExpenses       = [];
+let _pmFundRequests   = [];       // weekly fund-to-collect-from-partner entries
+let _pmFundBills      = [];       // weeklyBills, for the per-week fund-vs-spent compare
 let _pmPayRequests    = [];
 let _pmCompanyBuyItemData = null;
 let _pmCompanyReceiptFile = null;
@@ -29,7 +29,7 @@ let _pmWeekEntries    = [];       // current draft line entries {id,type,details
 let _pmWeekDate       = null;     // selected Friday (YYYY-MM-DD)
 let _pmWeekEditingId  = null;     // doc id when the selected week already has a saved bill
 let _pmWeekCat        = 'labor';  // active category tab: 'labor' | 'materials' | 'both'
-let _pmWeekStagedReceipt = null;  // { file, dataUrl } staged in the add-row, attached to the next line
+let _pmWeekStagedReceipts = [];  // [{ file, dataUrl, url }] staged in the add-row, attached to the next line
 let _pmWeekEditEntryId   = null;  // id of the entry currently loaded into the add-row for editing
 let _pmWeekViewFilter    = 'all'; // entry list view filter: 'all' | 'labor' | 'materials'
 let _pmWeekViewDay       = null;  // null = editable builder; a bill id = read-only past view
@@ -459,7 +459,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
     // week of the month can be viewed at once. Mode is "wk:<monday>".
     const _ddWeekGroups = _pmOvWeekGroups().map(ws => {
         const l = _pmWeekRangeLabel(ws);
-        return `<button class="pmw-dd-opt" onclick="pmOvPickRange(this,'wk:${_esc(ws)}','${_esc(l)}')"><span>Per week</span><span class="num">${_esc(l)}</span></button>`;
+        return `<button class="pmw-dd-opt" onclick="pmOvPickRange(this,'wk:${_esc(ws)}','${_esc(l)}')"><span>${_esc(_pmWeekOfMonthLabel(ws))}</span><span class="num">${_esc(l)}</span></button>`;
     }).join('');
     const ovHeader = `
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:16px;">
@@ -510,7 +510,10 @@ function _pmOvHtml(p, ms, bills, reqs) {
     <div style="flex:1.6;min-width:340px;border:1px solid #e7e6e2;border-radius:16px;background:#fff;padding:20px 22px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
         <div style="font:600 14.5px 'IBM Plex Sans';">Direct-cost breakdown</div>
-        <span id="pm-ov-range-note" style="font:400 11px 'IBM Plex Sans';color:#9b9a94;">All time · ${bills.length} week${bills.length === 1 ? '' : 's'}</span>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span id="pm-ov-range-note" style="font:400 11px 'IBM Plex Sans';color:#9b9a94;">All time · ${bills.length} week${bills.length === 1 ? '' : 's'}</span>
+          <button onclick="pmOvViewData()" style="display:inline-flex;align-items:center;gap:5px;font:600 11.5px 'IBM Plex Sans';color:#0f6342;background:#eaf4ef;border:1px solid #c6e6d5;border-radius:8px;padding:5px 11px;cursor:pointer;">View</button>
+        </div>
       </div>
       ${bdRow('Labor', '#157a52', 'pm-ov-labor', 'pm-ov-labor-pct', 'pm-ov-seg-labor', bd.labor, bd.laborPct)}
       ${bdRow('Materials', '#c79024', 'pm-ov-materials', 'pm-ov-materials-pct', 'pm-ov-seg-materials', bd.materials, bd.matPct)}
@@ -623,6 +626,16 @@ function _pmWeekRangeLabel(sundayStr) {
     return start.toLocaleDateString('en-PH', o) + ' – ' +
         end.toLocaleDateString('en-PH', sameYear ? o : { ...o, year: 'numeric' });
 }
+// "3rd week of June" — which calendar week of the month the week-start falls in.
+function _pmWeekOfMonthLabel(sundayStr) {
+    const start = new Date(sundayStr + 'T00:00:00');
+    if (isNaN(start)) return 'Per week';
+    const n = Math.ceil(start.getDate() / 7);
+    const suffix = (n % 10 === 1 && n !== 11) ? 'st'
+        : (n % 10 === 2 && n !== 12) ? 'nd'
+        : (n % 10 === 3 && n !== 13) ? 'rd' : 'th';
+    return n + suffix + ' week of ' + start.toLocaleDateString('en-PH', { month: 'long' });
+}
 // Distinct week-starts present in the bills, newest first.
 function _pmOvWeekGroups() {
     const set = new Set((_pmOvBills || [])
@@ -717,7 +730,10 @@ window.pmOvApplyRange = function() {
         if (lm) return s + lm;
         return s + ((Number(b.grandTotal) || 0) - (Number(b.managementFee) || 0));
     }, 0);
-    const paid    = _pmOvPaid(reqs);
+    // Paid is intentionally all-time (matches the Payment status donut, which
+    // isn't range-filtered) so the tile doesn't flip negative just because the
+    // selected week happened to collect no payment. Direct cost stays per-range.
+    const paid    = _pmOvPaid(_pmOvReqs);
     const netCash = paid - directCost;
     const netColor = netCash >= 0 ? '#0f6342' : '#8f352c';
     // Contract value & progress are range-independent — re-set so they stay correct.
@@ -756,6 +772,294 @@ window.pmOvApplyRange = function() {
             : 'Daily ' + _pmOvWeekLabel(mode);
         note.textContent = label + ' · ' + wk + ' · management fee excluded';
     }
+};
+
+// ══════════════════════════════════════════════════════════════════════════
+// Direct-cost data input — redesigned sub-page (imported from Claude Design).
+// Green summary hero (category split + %), live search, category filter chips,
+// per-day cards with a proportion bar, styled range dropdown, and Print.
+// ══════════════════════════════════════════════════════════════════════════
+let _pmDvFilter = 'all';      // all | labor | materials | both
+let _pmDvQuery  = '';         // search text
+let _pmDvResizeBound = false; // one-time resize listener guard
+
+// Entries of a bill (synthesize from labor/materials totals for legacy bills).
+function _pmBillEntries(b) {
+    if (Array.isArray(b.entries) && b.entries.length) return b.entries;
+    const synth = [];
+    if (b.labor)     synth.push({ type: 'labor',     details: 'Labor total',     amount: Number(b.labor) });
+    if (b.materials) synth.push({ type: 'materials', details: 'Materials total', amount: Number(b.materials) });
+    return synth;
+}
+function _pmDvCat(e)      { return e.type === 'both' ? 'both' : (e.type === 'materials' ? 'materials' : 'labor'); }
+function _pmDvDateLabel(s){ const d = new Date(s + 'T00:00:00'); return isNaN(d) ? (s || '—') : d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }); }
+function _pmDvWeekday(s)  { const d = new Date(s + 'T00:00:00'); return isNaN(d) ? '' : d.toLocaleDateString('en-PH', { weekday: 'long' }); }
+function _pmDvRangeLabel(mode) {
+    if (mode === 'month')  return 'This month';
+    if (mode === 'latest') return 'This week';
+    if (mode === 'last4')  return 'Last 4 weeks';
+    if (mode && mode.indexOf('wk:') === 0) return _pmWeekOfMonthLabel(mode.slice(3));
+    return 'All time';
+}
+
+// "View" — open the redesigned data-input sub-page (fresh: filters reset).
+window.pmOvViewData = function() {
+    _pmDvFilter = 'all';
+    _pmDvQuery  = '';
+    // Re-render across the mobile/desktop breakpoint when the window resizes.
+    if (!_pmDvResizeBound) {
+        _pmDvResizeBound = true;
+        let t;
+        window.addEventListener('resize', () => {
+            clearTimeout(t);
+            t = setTimeout(() => {
+                const p = document.getElementById('ws-panel-dataview');
+                if (p && p.classList.contains('active')) _pmDvRender();
+            }, 160);
+        });
+    }
+    _pmDvRender();
+    document.querySelectorAll('.pm-ws-panel').forEach(p => p.classList.remove('active'));
+    const panel = document.getElementById('ws-panel-dataview');
+    if (panel) panel.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'auto' });
+};
+
+// Render/re-render the page body for the current range + filter + search.
+// Branches to a phone layout under a narrow viewport (mirrors the mobile design).
+function _pmDvRender() {
+    const root = document.getElementById('pm-ov-dataview-root');
+    if (!root) return;
+    const isMobile = (window.innerWidth || 9999) <= 560;
+    const sel  = document.getElementById('pm-ov-range');
+    const mode = sel ? sel.value : 'all';
+    const rangeLabel = _pmDvRangeLabel(mode);
+    const bills = _pmOvFilterBills(mode).slice()
+        .sort((a, b) => (b.weekEndingDate || '').localeCompare(a.weekEndingDate || ''));
+    const CAT = { labor: '#157a52', materials: '#c79024', both: '#8b6fc4' };
+
+    // Range totals + counts (ignore filter/search) — feed the hero + chip counts.
+    let gL = 0, gM = 0, gB = 0, cL = 0, cM = 0, cB = 0;
+    bills.forEach(b => _pmBillEntries(b).forEach(e => {
+        const t = _pmDvCat(e), a = Number(e.amount) || 0;
+        if (t === 'labor') { gL += a; cL++; } else if (t === 'both') { gB += a; cB++; } else { gM += a; cM++; }
+    }));
+    const grand = gL + gM + gB;
+    const pr = v => grand ? Math.round(v / grand * 100) + '%' : '0%';
+
+    // Filtered/searched day cards (each bill = a day).
+    const q = _pmDvQuery.trim().toLowerCase();
+    let shownTotal = 0;
+    const dayHtml = bills.map(b => {
+        let dl = 0, dm = 0, db = 0;
+        const ents = _pmBillEntries(b)
+            .filter(e => _pmDvFilter === 'all' || _pmDvCat(e) === _pmDvFilter)
+            .filter(e => !q || (e.details || '').toLowerCase().includes(q) || String(e.amount || '').includes(q));
+        if (!ents.length) return '';
+        const rows = ents.map(e => {
+            const t = _pmDvCat(e), a = Number(e.amount) || 0;
+            if (t === 'labor') dl += a; else if (t === 'both') db += a; else dm += a;
+            const urls = (typeof _pmEntryReceiptList === 'function' ? _pmEntryReceiptList(e) : []).map(r => r.url || r.dataUrl).filter(Boolean);
+            const rcpt = urls.map((u, i) => `<a href="${_esc(u)}" target="_blank" rel="noopener" class="pm-dv-noprint" style="display:inline-flex;align-items:center;gap:4px;font:600 11px 'IBM Plex Sans';color:#0f6342;text-decoration:none;background:#eaf4ef;border-radius:6px;padding:${isMobile ? '3px 8px;margin-top:6px;margin-right:6px;' : '4px 9px;'}white-space:nowrap;flex:none;">↗ receipt${urls.length > 1 ? ' ' + (i + 1) : ''}</a>`).join('');
+            if (isMobile) {
+                return `<div style="display:flex;align-items:center;gap:11px;padding:12px 16px;border-top:1px solid #f4f3f0;">
+                    <span style="width:9px;height:9px;border-radius:50%;background:${CAT[t]};flex:none;"></span>
+                    <div style="flex:1;min-width:0;">
+                      <div style="font:500 13.5px 'IBM Plex Sans';color:#2c2c28;line-height:1.25;">${_esc(e.details || '—')}</div>
+                      ${rcpt}
+                    </div>
+                    <span class="num" style="font:700 13.5px 'IBM Plex Sans';color:#1c1c1a;flex:none;">${_fmt(a)}</span>
+                  </div>`;
+            }
+            return `<div style="display:flex;align-items:center;gap:12px;padding:12px 18px;border-top:1px solid #f4f3f0;">
+                <span style="width:9px;height:9px;border-radius:50%;background:${CAT[t]};flex:none;"></span>
+                <span style="flex:1;min-width:0;font:500 13px 'IBM Plex Sans';color:#2c2c28;">${_esc(e.details || '—')}</span>
+                ${rcpt}
+                <span class="num" style="min-width:92px;text-align:right;font:700 13px 'IBM Plex Sans';color:#1c1c1a;flex:none;">${_fmt(a)}</span>
+              </div>`;
+        }).join('');
+        const dt = dl + dm + db; shownTotal += dt;
+        const p = v => dt ? (v / dt * 100).toFixed(1) + '%' : '0%';
+        const cnt = ents.length + (ents.length === 1 ? ' entry' : ' entries');
+        const cardStyle = isMobile ? 'margin:12px 14px 0;background:#fff;' : 'margin-top:14px;';
+        const pad = isMobile ? '13px 16px 11px' : '14px 18px 12px';
+        const barMargin = isMobile ? '0 16px 2px' : '0 18px 4px';
+        return `<div style="border:1px solid #e7e6e2;border-radius:14px;${cardStyle}overflow:hidden;">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:${pad};">
+              <div><div style="font:700 13px 'IBM Plex Sans';color:#1c1c1a;">${_esc(_pmDvDateLabel(b.weekEndingDate))}</div><div style="font:400 11px 'IBM Plex Sans';color:#9b9a94;margin-top:1px;">${_esc(_pmDvWeekday(b.weekEndingDate))} · ${cnt}</div></div>
+              <span class="num" style="font:700 14px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(dt)}</span>
+            </div>
+            <div class="pm-dv-bar" style="height:6px;display:flex;margin:${barMargin};border-radius:4px;overflow:hidden;background:#f0efec;">
+              <div style="width:${p(dm)};background:#c79024;"></div>
+              <div style="width:${p(dl)};background:#157a52;"></div>
+              <div style="width:${p(db)};background:#8b6fc4;"></div>
+            </div>
+            ${rows}
+          </div>`;
+    }).join('');
+    const isEmpty = !dayHtml.trim();
+    const emptyMsg = (q || _pmDvFilter !== 'all') ? 'No entries match your search.' : 'No entries in this range yet.';
+
+    const filterName = { all: 'all categories', labor: 'Labor', materials: 'Materials', both: 'Out Source' }[_pmDvFilter];
+    const totalLabel = (_pmDvFilter === 'all' ? 'Total spent · ' + rangeLabel : 'Total · ' + filterName) + (q ? ' · filtered' : '');
+
+    // Hero — desktop shows 3 columns; mobile stacks 3 rows (label+% left, amount right).
+    let heroInner;
+    if (isMobile) {
+        const heroRow = (dot, label, amt, pct, last) => `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;${last ? '' : 'border-bottom:1px solid rgba(255,255,255,.12);'}">
+            <div style="display:flex;align-items:center;gap:8px;"><span style="width:9px;height:9px;border-radius:50%;background:${dot};"></span><span style="font:600 12.5px 'IBM Plex Sans';opacity:.9;">${label}</span><span style="font:500 10.5px 'IBM Plex Sans';opacity:.6;">${pct}</span></div>
+            <span class="num" style="font:700 14px 'IBM Plex Sans';">${_fmt(amt)}</span>
+          </div>`;
+        heroInner = `<div class="pm-dv-hero-split" style="margin-top:16px;border-top:1px solid rgba(255,255,255,.18);padding-top:6px;">
+            ${heroRow('#f0c674', 'Materials', gM, pr(gM), false)}
+            ${heroRow('#7ed3a8', 'Labor', gL, pr(gL), false)}
+            ${heroRow('#c3aef0', 'Out Source', gB, pr(gB), true)}
+          </div>`;
+    } else {
+        const heroCol = (dot, label, amt, pct) => `<div style="flex:1;"><div style="display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:50%;background:${dot};"></span><span style="font:600 11px 'IBM Plex Sans';opacity:.88;">${label}</span></div><div class="num" style="font:700 15px 'IBM Plex Sans';margin-top:6px;">${_fmt(amt)}</div><div style="font:500 10.5px 'IBM Plex Sans';opacity:.7;margin-top:2px;">${pct} of total</div></div>`;
+        heroInner = `<div class="pm-dv-hero-split" style="display:flex;margin-top:18px;border-top:1px solid rgba(255,255,255,.18);padding-top:16px;gap:8px;">
+            ${heroCol('#f0c674', 'Materials', gM, pr(gM))}
+            ${heroCol('#7ed3a8', 'Labor', gL, pr(gL))}
+            ${heroCol('#c3aef0', 'Out Source', gB, pr(gB))}
+          </div>`;
+    }
+    const hero = `<div class="pm-dv-hero" style="border-radius:16px;background:#0f6342;color:#fff;padding:${isMobile ? '20px' : '22px 24px'};">
+        <div style="font:600 ${isMobile ? '10.5px' : '11px'} 'IBM Plex Sans';opacity:.78;text-transform:uppercase;letter-spacing:.07em;">${_esc(totalLabel)}</div>
+        <div class="num pm-dv-total" style="font:800 ${isMobile ? '30px' : '32px'} 'IBM Plex Sans';letter-spacing:-.02em;margin-top:4px;">${_fmt(shownTotal)}</div>
+        ${heroInner}
+      </div>`;
+
+    // Filter chips.
+    const chip = (key, label, count, dot) => {
+        const active = _pmDvFilter === key;
+        const base = "display:inline-flex;align-items:center;gap:7px;border-radius:999px;padding:" + (isMobile ? '8px 14px' : '7px 14px') + ";cursor:pointer;white-space:nowrap;flex:none;font:600 12px 'IBM Plex Sans';";
+        const style = active ? base + 'color:#fff;background:#0f6342;border:1px solid #0f6342;' : base + 'color:#3a3a36;background:#fff;border:1px solid #e7e6e2;';
+        const cStyle = active ? "font:700 11px 'IBM Plex Sans';opacity:.82;" : "font:700 11px 'IBM Plex Sans';color:#9b9a94;";
+        const dotHtml = dot ? `<span style="width:8px;height:8px;border-radius:50%;background:${dot};flex:none;"></span>` : '';
+        return `<button onclick="pmDvSetFilter('${key}')" style="${style}">${dotHtml}${label} <span style="${cStyle}">${count}</span></button>`;
+    };
+    const chips = [chip('all', 'All', cL + cM + cB, null), chip('labor', 'Labor', cL, '#157a52'), chip('materials', 'Materials', cM, '#c79024'), chip('both', 'Out Source', cB, '#8b6fc4')].join('');
+
+    // Styled range dropdown — full-width on mobile, right-aligned 260px on desktop.
+    const caret = '<svg width="' + (isMobile ? '12' : '11') + '" height="' + (isMobile ? '12' : '11') + '" viewBox="0 0 24 24" fill="none" stroke="#9b9a94" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+    const opts = [['all', 'All time', ''], ['month', 'This month', ''], ['latest', 'This week', ''], ['last4', 'Last 4 weeks', '']]
+        .concat(_pmOvWeekGroups().map(ws => ['wk:' + ws, _pmWeekOfMonthLabel(ws), _pmWeekRangeLabel(ws)]));
+    const menuRows = opts.map(([v, l, h]) => {
+        const s = v === mode;
+        const rowStyle = `display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:none;cursor:pointer;border-radius:9px;padding:11px 12px;background:${s ? '#eaf4ef' : 'transparent'};`;
+        const labelStyle = `flex:1;font:${s ? '700' : '500'} 13px 'IBM Plex Sans';color:${s ? '#0f6342' : '#2c2c28'};`;
+        const check = s ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0f6342" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>' : '';
+        return `<button onclick="pmDvPickRange('${_esc(v)}')" style="${rowStyle}"><span style="${labelStyle}">${_esc(l)}</span>${check}<span style="font:700 12.5px 'IBM Plex Sans';color:#1c1c1a;white-space:nowrap;">${_esc(h)}</span></button>`;
+    }).join('');
+    const ddWrapStyle  = isMobile ? 'position:relative;flex:1;' : 'position:relative;';
+    const ddBtnStyle   = isMobile
+        ? "display:flex;width:100%;align-items:center;justify-content:space-between;gap:8px;border:1px solid #e7e6e2;border-radius:10px;padding:11px 13px;font:600 12.5px 'IBM Plex Sans';color:#3a3a36;background:#fff;cursor:pointer;"
+        : "display:inline-flex;align-items:center;gap:8px;border:1px solid #e7e6e2;border-radius:10px;padding:9px 13px;font:600 12.5px 'IBM Plex Sans';color:#3a3a36;background:#fff;cursor:pointer;white-space:nowrap;";
+    const ddMenuStyle  = isMobile
+        ? "display:none;position:absolute;left:0;right:0;top:calc(100% + 6px);background:#fff;border:1px solid #e7e6e2;border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.16);padding:6px;z-index:30;"
+        : "display:none;position:absolute;right:0;top:calc(100% + 6px);width:260px;background:#fff;border:1px solid #e7e6e2;border-radius:14px;box-shadow:0 8px 28px rgba(0,0,0,.12);padding:6px;z-index:20;";
+    const dropdown = `<div style="${ddWrapStyle}" id="pm-dv-dd">
+        <button onclick="pmDvToggleRange(event)" style="${ddBtnStyle}">${_esc(rangeLabel)}${caret}</button>
+        <div id="pm-dv-dd-menu" style="${ddMenuStyle}">${menuRows}</div>
+      </div>`;
+
+    // Search box (no outer margin — applied by the layout wrapper).
+    const search = `<div class="pm-dv-noprint" style="display:flex;align-items:center;gap:10px;border:1px solid #e7e6e2;border-radius:11px;padding:11px ${isMobile ? '13px' : '14px'};background:#fff;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9b9a94" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.5" y2="16.5"/></svg>
+        <input id="pm-dv-search" value="${_esc(_pmDvQuery)}" oninput="pmDvSearch(this.value)" placeholder="Search a name or amount…" style="flex:1;min-width:0;border:none;outline:none;font:400 13.5px 'IBM Plex Sans';color:#2c2c28;background:transparent;" />
+        ${q ? '<button onclick="pmDvClearSearch()" style="border:none;background:#f0efec;color:#6b6a64;border-radius:6px;font:600 11px \'IBM Plex Sans\';padding:4px 9px;cursor:pointer;flex:none;">Clear</button>' : ''}
+      </div>`;
+
+    const printSvg = '<svg width="' + (isMobile ? '16' : '14') + '" height="' + (isMobile ? '16' : '14') + '" viewBox="0 0 24 24" fill="none" stroke="#0f6342" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>';
+    const printBtn = isMobile
+        ? `<button onclick="pmDvPrint()" title="Print" style="display:inline-flex;align-items:center;justify-content:center;border:1px solid #e7e6e2;border-radius:10px;padding:11px 14px;background:#fff;cursor:pointer;flex:none;">${printSvg}</button>`
+        : `<button onclick="pmDvPrint()" title="Print" style="display:inline-flex;align-items:center;gap:7px;border:1px solid #e7e6e2;border-radius:10px;padding:9px 13px;font:600 12.5px 'IBM Plex Sans';color:#3a3a36;background:#fff;cursor:pointer;white-space:nowrap;">${printSvg}Print</button>`;
+
+    if (isMobile) {
+        root.innerHTML = `<div style="max-width:480px;margin:0 auto;">
+          <div style="padding:6px 16px 0;">
+            <button onclick="pmOvCloseDataview()" class="pm-dv-noprint" style="display:inline-flex;align-items:center;gap:6px;font:600 12.5px 'IBM Plex Sans';color:#0f6342;background:#eaf4ef;border:1px solid #c6e6d5;border-radius:9px;padding:8px 13px;cursor:pointer;">← Back to overview</button>
+            <div style="font:800 20px 'IBM Plex Sans';letter-spacing:-.02em;color:#1c1c1a;margin-top:16px;">Direct-cost data input</div>
+            <div style="font:400 12px 'IBM Plex Sans';color:#9b9a94;margin-top:2px;">${_esc(rangeLabel)} · all line entries</div>
+            <div class="pm-dv-noprint" style="display:flex;gap:8px;margin-top:14px;">${dropdown}${printBtn}</div>
+          </div>
+          <div style="margin:14px 14px 0;">${hero}</div>
+          <div class="pm-dv-noprint" style="margin:12px 14px 0;">${search}</div>
+          <div class="pm-dv-noprint pm-dv-chipscroll" style="display:flex;gap:8px;margin-top:12px;padding:0 14px 2px;overflow-x:auto;">${chips}</div>
+          ${isEmpty ? `<div style="margin:12px 14px 0;text-align:center;padding:40px 20px;color:#9b9a94;font:500 13px 'IBM Plex Sans';">${emptyMsg}</div>` : dayHtml}
+        </div>`;
+        return;
+    }
+
+    root.innerHTML = `<div style="max-width:1180px;margin:0 auto;">
+      <div style="background:#fff;border:1px solid #e7e6e2;border-radius:18px;box-shadow:0 1px 3px rgba(0,0,0,.05);padding:24px 26px;">
+        <button onclick="pmOvCloseDataview()" class="pm-dv-noprint" style="display:inline-flex;align-items:center;gap:6px;font:600 12.5px 'IBM Plex Sans';color:#0f6342;background:#eaf4ef;border:1px solid #c6e6d5;border-radius:9px;padding:8px 14px;cursor:pointer;margin-bottom:18px;">← Back to overview</button>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px;">
+          <div>
+            <div style="font:800 22px 'IBM Plex Sans';letter-spacing:-.02em;color:#1c1c1a;">Direct-cost data input</div>
+            <div style="font:400 12.5px 'IBM Plex Sans';color:#9b9a94;margin-top:3px;">${_esc(rangeLabel)} · all line entries</div>
+          </div>
+          <div class="pm-dv-noprint" style="display:flex;align-items:center;gap:8px;flex:none;">${dropdown}${printBtn}</div>
+        </div>
+        ${hero}
+        <div style="margin-top:16px;">${search}</div>
+        <div class="pm-dv-noprint" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;">${chips}</div>
+        ${isEmpty ? `<div style="text-align:center;padding:40px 20px;color:#9b9a94;font:500 13px 'IBM Plex Sans';">${emptyMsg}</div>` : dayHtml}
+      </div>
+    </div>`;
+}
+
+// Return from the data-input sub-page to the overview without re-fetching it.
+window.pmOvCloseDataview = function() {
+    document.querySelectorAll('.pm-ws-panel').forEach(p => p.classList.remove('active'));
+    const ov = document.getElementById('ws-panel-overview');
+    if (ov) ov.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'auto' });
+};
+
+// Category filter chips.
+window.pmDvSetFilter = function(key) { _pmDvFilter = key; _pmDvRender(); };
+
+// Live search — re-render, then restore focus + caret to the search box.
+window.pmDvSearch = function(v) {
+    _pmDvQuery = v;
+    _pmDvRender();
+    const el = document.getElementById('pm-dv-search');
+    if (el) { el.focus(); const n = el.value.length; try { el.setSelectionRange(n, n); } catch (_) {} }
+};
+window.pmDvClearSearch = function() {
+    _pmDvQuery = '';
+    _pmDvRender();
+    const el = document.getElementById('pm-dv-search');
+    if (el) el.focus();
+};
+
+window.pmDvPrint = function() {
+    const menu = document.getElementById('pm-dv-dd-menu');
+    if (menu) menu.style.display = 'none';
+    setTimeout(() => window.print(), 60);
+};
+
+// Open/close the styled range dropdown.
+window.pmDvToggleRange = function(ev) {
+    if (ev) ev.stopPropagation();
+    const dd = document.getElementById('pm-dv-dd');
+    const menu = document.getElementById('pm-dv-dd-menu');
+    if (!dd || !menu) return;
+    if (menu.style.display !== 'none') { menu.style.display = 'none'; return; }
+    menu.style.display = 'block';
+    const close = (e) => { if (!dd.contains(e.target)) { menu.style.display = 'none'; document.removeEventListener('click', close); } };
+    setTimeout(() => document.addEventListener('click', close), 0);
+};
+
+// Pick a range: update the shared input, keep the overview in sync, re-render.
+window.pmDvPickRange = function(val) {
+    const input = document.getElementById('pm-ov-range');
+    if (input) input.value = val;
+    const ovLbl = document.getElementById('pm-ov-dd-label');
+    if (ovLbl) ovLbl.textContent = _pmDvRangeLabel(val);
+    if (typeof pmOvApplyRange === 'function') pmOvApplyRange();
+    _pmDvRender();
 };
 
 // ══════════════════════════════════════════════════════════
@@ -899,7 +1203,7 @@ window.pmOpenProject = function(p) {
     _pmActiveProject = _pmProjects.find(pr => pr.id === p.id) || p;
     localStorage.setItem('pm_selected_project', p.id);
     // Fresh "This Week" draft for the newly opened project.
-    _pmWeekDate = null; _pmWeekBills = []; _pmWeekEntries = []; _pmWeekEditingId = null; _pmWeekCat = 'labor'; _pmWeekStagedReceipt = null; _pmWeekEditEntryId = null; _pmWeekViewFilter = 'all'; _pmWeekViewDay = null;
+    _pmWeekDate = null; _pmWeekBills = []; _pmWeekEntries = []; _pmWeekEditingId = null; _pmWeekCat = 'labor'; _pmWeekStagedReceipts = []; _pmWeekEditEntryId = null; _pmWeekViewFilter = 'all'; _pmWeekViewDay = null;
     // Reset workspace to weekly tab
     document.querySelectorAll('.pm-ws-tab').forEach((t,i)  => t.classList.toggle('active', i===0));
     document.querySelectorAll('.pm-ws-panel').forEach((pn,i) => pn.classList.toggle('active', i===0));
@@ -1306,7 +1610,7 @@ async function _pmLoadWeekBuilder() {
 // Load the saved bill for the selected Friday into the draft (or start empty).
 function _pmWeekSyncDraft() {
     // Switching the loaded bill cancels any in-progress line edit.
-    _pmWeekEditEntryId = null; _pmWeekStagedReceipt = null;
+    _pmWeekEditEntryId = null; _pmWeekStagedReceipts = [];
     _pmWeekSyncAddBtn();
     const bill = _pmWeekBills.find(b => b.weekEndingDate === _pmWeekDate);
     if (bill) {
@@ -1320,9 +1624,7 @@ function _pmWeekSyncDraft() {
                 days: Number(e.days) || 0,
                 qty: Number(e.qty) || 0,
                 unit: e.unit || '',
-                receiptUrl: e.receiptUrl || '',
-                receiptDataUrl: '',
-                receiptFile: null
+                receipts: _pmEntryReceiptList(e)
             }));
         } else {
             // Legacy doc with only labor/materials totals — synthesize two lines.
@@ -1401,7 +1703,9 @@ window.pmWeekViewPastReceipt = function(billId, idx) {
     const bill = _pmWeekBills.find(b => b.id === billId);
     if (!bill || !Array.isArray(bill.entries)) return;
     const e = bill.entries[idx];
-    if (e && e.receiptUrl) pmViewReceipt(e.receiptUrl, e.details);
+    if (!e) return;
+    const srcs = _pmEntryReceiptList(e).map(r => r.url || r.dataUrl).filter(Boolean);
+    if (srcs.length) pmViewReceiptList(srcs, e.details);
 };
 
 window.pmWeekAddEntry = function() {
@@ -1420,18 +1724,18 @@ window.pmWeekAddEntry = function() {
     const unit   = (type === 'materials' && unitEl) ? unitEl.value : '';
     if (amount <= 0) { if (amtEl) amtEl.focus(); return; }
     const fallbackDetails = type === 'labor' ? 'Labor cost' : type === 'both' ? 'Materials & labor' : 'Materials';
-    const rc = _receiptFromStaged(_pmWeekStagedReceipt);
+    const receipts = _receiptsFromStaged(_pmWeekStagedReceipts);
     if (_pmWeekEditEntryId) {
         // Update the line in place.
         const en = _pmWeekEntries.find(e => e.id === _pmWeekEditEntryId);
         if (en) {
             en.type = type; en.details = details || fallbackDetails; en.amount = amount;
             en.days = days; en.qty = qty; en.unit = unit;
-            en.receiptFile = rc.receiptFile; en.receiptDataUrl = rc.receiptDataUrl; en.receiptUrl = rc.receiptUrl;
+            en.receipts = receipts;
         }
         _pmWeekEditEntryId = null;
     } else {
-        _pmWeekEntries.push({ id:_pmUid('we_'), type, details: details || fallbackDetails, amount, days, qty, unit, ...rc });
+        _pmWeekEntries.push({ id:_pmUid('we_'), type, details: details || fallbackDetails, amount, days, qty, unit, receipts });
     }
     if (detEl)  detEl.value = '';
     if (amtEl)  amtEl.value = '';
@@ -1513,18 +1817,35 @@ window.pmWeekViewFilter = function(f) {
 
 // ── per-line receipt image (Labor / Materials / Mat + Labor all support it) ──
 
-// Stage the chosen image in the add-row; it gets attached to the next line added.
+// Stage the chosen image(s) in the add-row; they get attached to the next line added.
+// Multiple files can be picked at once, and picking again appends rather than replaces.
 window.pmWeekStageReceipt = function(input) {
-    const file = input.files && input.files[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) { _pmToast('Please choose an image file.', true); input.value = ''; return; }
-    const reader = new FileReader();
-    reader.onload = e => { _pmWeekStagedReceipt = { file, dataUrl: e.target.result }; _pmWeekRenderAttach(); };
-    reader.readAsDataURL(file);
+    const files = input.files ? Array.from(input.files) : [];
+    if (!files.length) return;
+    let skipped = 0, pending = 0;
+    files.forEach(file => {
+        if (!file.type.startsWith('image/')) { skipped++; return; }
+        pending++;
+        const reader = new FileReader();
+        reader.onload = e => {
+            _pmWeekStagedReceipts.push({ file, dataUrl: e.target.result, url: '' });
+            _pmWeekRenderAttach();
+        };
+        reader.readAsDataURL(file);
+    });
+    if (skipped) _pmToast(`${skipped} file${skipped === 1 ? '' : 's'} skipped — receipts must be images.`, true);
+    input.value = '';   // allow re-picking the same file later
+    if (!pending) _pmWeekRenderAttach();
+};
+
+// Remove one staged receipt by index.
+window.pmWeekRemoveStagedReceipt = function(idx) {
+    _pmWeekStagedReceipts.splice(idx, 1);
+    _pmWeekRenderAttach();
 };
 
 window.pmWeekClearReceipt = function() {
-    _pmWeekStagedReceipt = null;
+    _pmWeekStagedReceipts = [];
     const input = document.getElementById('pm-week-receipt-input');
     if (input) input.value = '';
     _pmWeekRenderAttach();
@@ -1534,13 +1855,15 @@ function _pmWeekRenderAttach() {
     const btn   = document.getElementById('pm-week-attach-btn');
     const label = document.getElementById('pmw-receipt-label');
     const thumb = document.getElementById('pm-week-attach-thumb');
-    const has = !!_pmWeekStagedReceipt;
-    if (btn) btn.classList.toggle('attached', has);
-    if (label) label.textContent = has ? 'Receipt attached' : 'Attach receipt';
+    const n = _pmWeekStagedReceipts.length;
+    if (btn) btn.classList.toggle('attached', n > 0);
+    if (label) label.textContent = n > 0 ? (n === 1 ? '1 receipt' : n + ' receipts') : 'Attach receipt';
     if (thumb) {
-        if (has) {
+        if (n > 0) {
             thumb.style.display = 'flex';
-            thumb.innerHTML = `<img src="${_pmWeekStagedReceipt.dataUrl}" alt="receipt"><button type="button" class="pmw-attach-x" title="Remove receipt" onclick="pmWeekClearReceipt()">×</button>`;
+            thumb.innerHTML = _pmWeekStagedReceipts.map((r, i) =>
+                `<span class="pmw-attach-thumb-item"><img src="${_esc(r.dataUrl || r.url)}" alt="receipt"><button type="button" class="pmw-attach-x" title="Remove receipt" onclick="pmWeekRemoveStagedReceipt(${i})">×</button></span>`
+            ).join('');
         } else {
             thumb.style.display = 'none';
             thumb.innerHTML = '';
@@ -1548,24 +1871,32 @@ function _pmWeekRenderAttach() {
     }
 }
 
-// View an entry's receipt (works for both not-yet-saved data URLs and saved URLs).
+// View an entry's receipts (works for both not-yet-saved data URLs and saved URLs).
 window.pmWeekViewEntryReceipt = function(id) {
     const e = _pmWeekEntries.find(x => x.id === id);
     if (!e) return;
-    const src = e.receiptDataUrl || e.receiptUrl;
-    if (src) pmViewReceipt(src, e.details);
+    const srcs = _pmEntryReceiptList(e).map(r => r.dataUrl || r.url).filter(Boolean);
+    if (srcs.length) pmViewReceiptList(srcs, e.details);
 };
 
-// Resolve the staged add-row receipt into an entry's three receipt fields.
-function _receiptFromStaged(s) {
-    if (!s) return { receiptFile: null, receiptDataUrl: '', receiptUrl: '' };
-    if (s.file) return { receiptFile: s.file, receiptDataUrl: s.dataUrl, receiptUrl: '' };
-    // No new file chosen — keep whatever the line already had.
-    return {
-        receiptFile:    s.existingFile || null,
-        receiptDataUrl: s.existingFile ? s.dataUrl : '',
-        receiptUrl:     s.existingUrl || ''
-    };
+// Normalize an entry's receipts into [{ file, dataUrl, url }], tolerating both the
+// new receipts[] shape (array of url strings or objects) and the legacy single
+// receiptUrl/receiptDataUrl/receiptFile fields on older bills.
+function _pmEntryReceiptList(e) {
+    if (Array.isArray(e.receipts) && e.receipts.length) {
+        return e.receipts.map(r => typeof r === 'string'
+            ? { file: null, dataUrl: '', url: r }
+            : { file: r.file || null, dataUrl: r.dataUrl || '', url: r.url || '' });
+    }
+    if (e.receiptUrl || e.receiptDataUrl || e.receiptFile) {
+        return [{ file: e.receiptFile || null, dataUrl: e.receiptDataUrl || '', url: e.receiptUrl || '' }];
+    }
+    return [];
+}
+
+// Copy the staged add-row receipts into an entry's receipts[] (fresh array).
+function _receiptsFromStaged(arr) {
+    return (arr || []).map(s => ({ file: s.file || null, dataUrl: s.dataUrl || '', url: s.url || '' }));
 }
 
 // Reflect add/edit mode on the action button (+ Add ↔ Save) and the Cancel button.
@@ -1582,9 +1913,7 @@ window.pmWeekEditEntry = function(id) {
     if (!en) return;
     _pmWeekEditEntryId = id;
     _pmWeekCat = (en.type === 'materials' || en.type === 'both') ? en.type : 'labor';
-    _pmWeekStagedReceipt = (en.receiptUrl || en.receiptDataUrl || en.receiptFile)
-        ? { file: null, dataUrl: en.receiptDataUrl || en.receiptUrl, existingUrl: en.receiptUrl || '', existingFile: en.receiptFile || null }
-        : null;
+    _pmWeekStagedReceipts = _pmEntryReceiptList(en).map(r => ({ file: r.file || null, dataUrl: r.dataUrl || '', url: r.url || '' }));
     _pmWeekApplyCat();   // tab highlight, field visibility, list, attach thumb
     const detEl  = document.getElementById('pm-week-details'); if (detEl)  detEl.value  = en.details || '';
     const amtEl  = document.getElementById('pm-week-amount');  if (amtEl)  amtEl.value  = en.amount || '';
@@ -1616,8 +1945,9 @@ const _PMW_GROUP_TYPES = ['labor', 'materials', 'both'];
 function _pmWeekEntryRow(e) {
     const st = _pmWeekCatStyle(e.type);
     const meta = _pmWeekMeta(e);
-    const rcpt = (e.receiptDataUrl || e.receiptUrl)
-        ? `${meta ? ' · ' : ''}<span class="pmw-rcpt-txt" onclick="pmWeekViewEntryReceipt('${e.id}')">RCPT ✓</span>`
+    const rcptN = _pmEntryReceiptList(e).length;
+    const rcpt = rcptN
+        ? `${meta ? ' · ' : ''}<span class="pmw-rcpt-txt" onclick="pmWeekViewEntryReceipt('${e.id}')">RCPT ✓${rcptN > 1 ? ' ×' + rcptN : ''}</span>`
         : '';
     const metaHtml = (meta || rcpt) ? `<div class="pmw-entry-meta">${meta ? _esc(meta) : ''}${rcpt}</div>` : '';
     return `<div class="pmw-entry" style="border-left:3px solid ${st.accent};">
@@ -1780,8 +2110,10 @@ function _pmWeekRoRow(e, billId, idx) {
     const st = _pmWeekCatStyle(e.type);
     const meta = _pmWeekMeta(e);
     const metaHtml = meta ? `<div class="pmw-entry-meta">${_esc(meta)}</div>` : '';
-    const rcpt = e.receiptUrl
-        ? `<button class="pmw-entry-rcpt" title="View receipt" onclick="pmWeekViewPastReceipt('${_esc(billId)}',${idx})"><img src="${_esc(e.receiptUrl)}" alt="receipt"></button>`
+    const rcList = _pmEntryReceiptList(e);
+    const rcN = rcList.length;
+    const rcpt = rcN
+        ? `<button class="pmw-entry-rcpt" title="View receipt${rcN > 1 ? 's' : ''}" onclick="pmWeekViewPastReceipt('${_esc(billId)}',${idx})"><img src="${_esc(rcList[0].url || rcList[0].dataUrl)}" alt="receipt">${rcN > 1 ? `<span class="pmw-rcpt-count">${rcN}</span>` : ''}</button>`
         : '';
     return `<div class="pmw-entry ro" style="border-left:3px solid ${st.accent};">
         <div class="pmw-entry-main">
@@ -2395,7 +2727,10 @@ window.pmWeekSave = async function() {
     if (!_pmActiveProject) { alert('Please select a client project first.'); return; }
     if (!_pmWeekEntries.length) { alert('Add at least one labor or materials line first.'); return; }
     const btn = document.getElementById('pm-week-save-btn');
-    const pending = _pmWeekEntries.filter(e => e.receiptFile && !e.receiptUrl).length;
+    // Normalize every entry to a receipts[] of { file, dataUrl, url } so old and new
+    // lines share one upload path.
+    _pmWeekEntries.forEach(e => { e.receipts = _pmEntryReceiptList(e); });
+    const pending = _pmWeekEntries.reduce((n, e) => n + e.receipts.filter(r => r.file && !r.url).length, 0);
     if (btn) { btn.disabled = true; btn.textContent = pending ? 'Uploading receipts…' : 'Saving…'; }
     let rcptFails = 0;
     try {
@@ -2405,16 +2740,19 @@ window.pmWeekSave = async function() {
         if (pending && typeof storage !== 'undefined') {
             for (let i = 0; i < _pmWeekEntries.length; i++) {
                 const en = _pmWeekEntries[i];
-                if (en.receiptFile && !en.receiptUrl) {
-                    try {
-                        const ext = (en.receiptFile.name.split('.').pop() || 'jpg').toLowerCase();
-                        const path = `weeklyBillReceipts/${_pmActiveProject.id}/${_pmWeekDate}_${i}_${Date.now()}.${ext}`;
-                        const ref = storage.ref(path);
-                        await ref.put(en.receiptFile);
-                        en.receiptUrl = await ref.getDownloadURL();
-                    } catch (upErr) {
-                        console.warn('Receipt upload failed for line', i, '—', upErr.message);
-                        rcptFails++;
+                for (let j = 0; j < en.receipts.length; j++) {
+                    const r = en.receipts[j];
+                    if (r.file && !r.url) {
+                        try {
+                            const ext = (r.file.name.split('.').pop() || 'jpg').toLowerCase();
+                            const path = `weeklyBillReceipts/${_pmActiveProject.id}/${_pmWeekDate}_${i}_${j}_${Date.now()}.${ext}`;
+                            const ref = storage.ref(path);
+                            await ref.put(r.file);
+                            r.url = await ref.getDownloadURL();
+                        } catch (upErr) {
+                            console.warn('Receipt upload failed for line', i, 'receipt', j, '—', upErr.message);
+                            rcptFails++;
+                        }
                     }
                 }
             }
@@ -2428,10 +2766,13 @@ window.pmWeekSave = async function() {
             directCostTotal: t.direct,     // labor + materials; client prefers this field
             managementFee: t.fee,
             grandTotal: t.grand,
-            entries: _pmWeekEntries.map(e => ({ type:e.type, details:e.details, amount:e.amount,
-                ...(e.days ? { days:e.days } : {}),
-                ...(e.qty  ? { qty:e.qty, unit:e.unit || 'pcs' } : {}),
-                ...(e.receiptUrl ? { receiptUrl:e.receiptUrl } : {}) })),
+            entries: _pmWeekEntries.map(e => {
+                const urls = (e.receipts || []).map(r => r.url).filter(Boolean);
+                return { type:e.type, details:e.details, amount:e.amount,
+                    ...(e.days ? { days:e.days } : {}),
+                    ...(e.qty  ? { qty:e.qty, unit:e.unit || 'pcs' } : {}),
+                    ...(urls.length ? { receipts: urls, receiptUrl: urls[0] } : {}) };  // receiptUrl kept for legacy readers
+            }),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
         const col = db.collection('constructionProjects').doc(_pmActiveProject.id).collection('weeklyBills');
@@ -2772,6 +3113,26 @@ window.pmViewReceipt = function(url, itemName) {
     } else {
         content.innerHTML = `<div class="pm-file-chip" style="display:inline-flex;"><i data-lucide="file-text" style="width:18px;height:18px;"></i> PDF Receipt — use "Open in New Tab" to view</div>`;
     }
+    document.getElementById('pmReceiptViewModal').style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+};
+
+// Show one or more receipts in the viewer (stacked). Falls back to the single
+// viewer for a lone receipt so the download link still points at it.
+window.pmViewReceiptList = function(srcs, itemName) {
+    srcs = (srcs || []).filter(Boolean);
+    if (!srcs.length) return;
+    if (srcs.length === 1) return pmViewReceipt(srcs[0], itemName);
+    document.getElementById('pmReceiptViewTitle').textContent = (itemName || 'Receipt') + ` — Receipts (${srcs.length})`;
+    const content = document.getElementById('pmReceiptViewContent');
+    const dl = document.getElementById('pmReceiptDownloadLink');
+    dl.href = srcs[0];
+    content.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px;max-height:60vh;overflow:auto;">${
+        srcs.map((s, i) => (/\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(s) || s.includes('image'))
+            ? `<img src="${_esc(s)}" class="pm-receipt-preview-img" style="max-height:340px;" alt="receipt ${i + 1}">`
+            : `<a href="${_esc(s)}" target="_blank" rel="noopener" class="pm-file-chip" style="display:inline-flex;"><i data-lucide="file-text" style="width:18px;height:18px;"></i> Receipt ${i + 1} — open in new tab</a>`
+        ).join('')
+    }</div>`;
     document.getElementById('pmReceiptViewModal').style.display = 'flex';
     if (window.lucide) lucide.createIcons();
 };
@@ -3319,155 +3680,197 @@ window.pmRpSave = async function() {
 // 3. REVOLVING FUND
 // ══════════════════════════════════════════════════════════
 
+// ── Revolving Fund — weekly fund the admin collects from the partner ───────
+// Each entry is one week: an amount to collect, plus a received flag. Stored in
+// constructionProjects/{id}/revolvingFundRequests/{id} (keyed by `weekStart`,
+// the week's Sunday). No expense/spend tracking — it's a collection checklist.
 async function _pmLoadRevolving() {
     if (!_pmActiveProject) {
-        _pmRevolvingData = null;
-        _pmExpenses = [];
+        _pmFundRequests = [];
+        _pmFundBills = [];
         _pmRevUpdateKPIs();
         _pmRevRenderTable([]);
         return;
     }
+    // Weekly bills (best-effort — used only for the fund-vs-spent compare).
     try {
-        const [fundSnap, expSnap] = await Promise.all([
-            db.collection('constructionProjects').doc(_pmActiveProject.id)
-              .collection('revolvingFund').doc('summary').get(),
-            db.collection('constructionProjects').doc(_pmActiveProject.id)
-              .collection('revolvingFundExpenses').orderBy('date','desc').get()
-        ]);
-        _pmRevolvingData = fundSnap.exists ? fundSnap.data() : { initialFund: 0, totalReplenished: 0 };
-        _pmExpenses = expSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const billSnap = await db.collection('constructionProjects').doc(_pmActiveProject.id)
+            .collection('weeklyBills').get();
+        _pmFundBills = billSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch(e) {
+        _pmFundBills = [];
+    }
+    // Fund entries — render even if this fails so the panel never hangs on "Loading…".
+    try {
+        const reqSnap = await db.collection('constructionProjects').doc(_pmActiveProject.id)
+            .collection('revolvingFundRequests').get();
+        _pmFundRequests = reqSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (b.weekStart || '').localeCompare(a.weekStart || ''));   // newest first
         _pmRevUpdateKPIs();
-        _pmRevRenderTable(_pmExpenses);
+        _pmRevRenderTable(_pmFundRequests);
     } catch(e) {
         console.warn('PM revolving load:', e.message);
+        _pmFundRequests = [];
+        _pmRevUpdateKPIs();
+        const tbody = document.getElementById('pm-rev-tbody');
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="pm-empty-row" style="color:#9ca3af;">Couldn’t load the weekly fund — the database table may not be set up yet.</td></tr>';
     }
+}
+
+// Direct cost (labor + materials + out-source) of the bills that fall inside a
+// fund week's Sun–Sat range. Mirrors the overview's direct-cost formula.
+function _pmWeekDirectCost(weekStart) {
+    if (!weekStart) return 0;
+    const end = new Date(weekStart + 'T00:00:00'); end.setDate(end.getDate() + 6);
+    const pad = n => String(n).padStart(2, '0');
+    const endStr = end.getFullYear() + '-' + pad(end.getMonth() + 1) + '-' + pad(end.getDate());
+    return _pmFundBills
+        .filter(b => b.weekEndingDate && b.weekEndingDate >= weekStart && b.weekEndingDate <= endStr)
+        .reduce((s, b) => {
+            const dct = Number(b.directCostTotal) || 0;
+            if (dct) return s + dct;
+            const lm = (Number(b.labor) || 0) + (Number(b.materials) || 0);
+            if (lm) return s + lm;
+            return s + ((Number(b.grandTotal) || 0) - (Number(b.managementFee) || 0));
+        }, 0);
 }
 
 function _pmRevUpdateKPIs() {
-    const initial    = _pmRevolvingData?.initialFund || 0;
-    const replenished = _pmRevolvingData?.totalReplenished || 0;
-    const totalFund  = initial + replenished;
-    const spent      = _pmExpenses.reduce((s,e) => s + (e.amount||0), 0);
-    const balance    = totalFund - spent;
-    _pmSet('pm-rev-initial',    _fmt(initial));
-    _pmSet('pm-rev-spent',      _fmt(spent));
-    _pmSet('pm-rev-balance',    _fmt(Math.max(0, balance)));
-    _pmSet('pm-rev-replenish',  _fmt(Math.max(0, spent)));
+    const total    = _pmFundRequests.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const received = _pmFundRequests.filter(r => r.received).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const spent    = _pmFundRequests.reduce((s, r) => s + _pmWeekDirectCost(r.weekStart), 0);
+    const net      = total - spent;
+    _pmSet('pm-rev-total',    _fmt(total));
+    _pmSet('pm-rev-received', _fmt(received));
+    _pmSet('pm-rev-spent',    _fmt(spent));
+    _pmSet('pm-rev-net',      (net < 0 ? '−' : '') + _fmt(Math.abs(net)));
+    const netEl = document.getElementById('pm-rev-net');
+    if (netEl) netEl.style.color = net < 0 ? '#dc2626' : '#15803d';
 }
 
-function _pmRevRenderTable(expenses) {
+function _pmRevRenderTable(items) {
     const tbody = document.getElementById('pm-rev-tbody');
     if (!tbody) return;
-    if (!expenses.length) {
-        tbody.innerHTML = '<tr><td colspan="5" class="pm-empty-row">No expenses recorded yet.</td></tr>';
+    if (!items.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="pm-empty-row">No weekly fund set yet.</td></tr>';
         return;
     }
-    tbody.innerHTML = expenses.map(e => {
-        const dateStr = e.date ? new Date(e.date+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '—';
+    // Running balance: walk oldest→newest, carry (fund − spent) forward like a
+    // wallet, and remember the cumulative total at each week.
+    const balById = {};
+    let run = 0;
+    items.slice().sort((a, b) => (a.weekStart || '').localeCompare(b.weekStart || ''))
+        .forEach(r => { run += (Number(r.amount) || 0) - _pmWeekDirectCost(r.weekStart); balById[r.id] = run; });
+
+    tbody.innerHTML = items.map(r => {
+        const week  = r.weekStart ? _pmWeekOfMonthLabel(r.weekStart) : '—';
+        const range = r.weekStart ? _pmWeekRangeLabel(r.weekStart) : '—';
+        const fund  = Number(r.amount) || 0;
+        const spent = _pmWeekDirectCost(r.weekStart);
+        const diff  = fund - spent;
+        const bal   = balById[r.id] || 0;
+        const balHtml = `<span style="font-weight:700;color:${bal < 0 ? '#dc2626' : '#15803d'};">${bal < 0 ? '−' : ''}${_fmt(Math.abs(bal))}</span>`;
+        // Difference: green surplus / red shortfall, with a plain-words hint.
+        const diffHtml = spent === 0
+            ? '<span style="color:#9ca3af;">—</span>'
+            : `<span style="font-weight:700;color:${diff < 0 ? '#dc2626' : '#15803d'};">${diff < 0 ? '−' : '+'}${_fmt(Math.abs(diff))}</span>`
+              + `<div style="font-size:11px;color:#9ca3af;margin-top:1px;">${diff < 0 ? 'short' : 'left over'}</div>`;
+        const got   = !!r.received;
+        const badge = got
+            ? '<span class="pm-badge" style="background:#dcfce7;color:#15803d;">Received</span>'
+            : '<span class="pm-badge" style="background:#fef3c7;color:#b45309;">Pending</span>';
+        const markBtn = got
+            ? `<button class="pm-tbl-btn" title="Mark as not received" onclick="pmToggleFundReceived('${_esc(r.id)}')"><i data-lucide="rotate-ccw" style="width:12px;height:12px;"></i></button>`
+            : `<button class="pm-tbl-btn" title="Mark as received" style="color:#15803d;" onclick="pmToggleFundReceived('${_esc(r.id)}')"><i data-lucide="check" style="width:12px;height:12px;"></i> Received</button>`;
         return `<tr>
-            <td>${_esc(dateStr)}</td>
-            <td><strong>${_esc(e.description||'—')}</strong></td>
-            <td style="font-weight:600;color:#dc2626;">${_fmt(e.amount)}</td>
-            <td style="color:#6b7280;">${_esc(e.notes||'—')}</td>
-            <td>
-              <button class="pm-tbl-btn pm-tbl-btn-delete" onclick="pmDeleteExpense('${_esc(e.id)}')"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>
+            <td><strong>${_esc(week)}</strong><div style="font-size:11.5px;color:#9ca3af;margin-top:2px;">${_esc(range)}</div>${r.notes ? `<div style="font-size:11.5px;color:#6b7280;margin-top:2px;">${_esc(r.notes)}</div>` : ''}</td>
+            <td style="font-weight:600;">${_fmt(fund)}</td>
+            <td style="color:#6b7280;">${spent === 0 ? '<span style="color:#9ca3af;">—</span>' : _fmt(spent)}</td>
+            <td>${diffHtml}</td>
+            <td>${balHtml}</td>
+            <td>${badge}</td>
+            <td style="display:flex;gap:6px;align-items:center;">
+              ${markBtn}
+              <button class="pm-tbl-btn pm-tbl-btn-delete" onclick="pmDeleteFundRequest('${_esc(r.id)}')"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>
             </td>
         </tr>`;
     }).join('');
     if (window.lucide) lucide.createIcons();
 }
 
-window.pmOpenSetFundModal = function() {
+// Build the week <select> options: a few weeks back through several ahead, each
+// labelled "Nth week of <Month> (date range)". Value is the week's Sunday.
+function _pmFundWeekOptions(selected) {
+    const pad = n => String(n).padStart(2, '0');
+    const fmt = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+    const sun = new Date();
+    sun.setHours(0, 0, 0, 0);
+    sun.setDate(sun.getDate() - sun.getDay());   // this week's Sunday
+    const opts = [];
+    for (let i = -4; i <= 20; i++) {
+        const d = new Date(sun); d.setDate(d.getDate() + i * 7);
+        const ws = fmt(d);
+        const label = _pmWeekOfMonthLabel(ws) + ' (' + _pmWeekRangeLabel(ws) + ')';
+        opts.push(`<option value="${ws}"${ws === selected ? ' selected' : ''}>${_esc(label)}</option>`);
+    }
+    return opts.join('');
+}
+
+window.pmOpenFundRequestModal = function() {
     if (!_pmActiveProject) { alert('Select a project first.'); return; }
-    document.getElementById('pmSetFundAmount').value = _pmRevolvingData?.initialFund || '';
-    document.getElementById('pmSetFundNotes').value  = '';
-    _pmClearErr('err-pmSetFundAmount');
-    document.getElementById('pmSetFundModal').style.display = 'flex';
+    // Default to this week's Sunday.
+    const now = new Date(); now.setHours(0, 0, 0, 0); now.setDate(now.getDate() - now.getDay());
+    const pad = n => String(n).padStart(2, '0');
+    const thisWeek = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate());
+    document.getElementById('pmFundWeek').innerHTML = _pmFundWeekOptions(thisWeek);
+    document.getElementById('pmFundAmount').value = '';
+    document.getElementById('pmFundNotes').value  = '';
+    ['err-pmFundWeek', 'err-pmFundAmount'].forEach(_pmClearErr);
+    document.getElementById('pmFundRequestModal').style.display = 'flex';
     if (window.lucide) lucide.createIcons();
 };
 
-window.pmSaveInitialFund = async function() {
-    const amount = parseFloat(document.getElementById('pmSetFundAmount').value) || 0;
-    const notes  = document.getElementById('pmSetFundNotes').value.trim();
-    if (amount <= 0) { _pmShowErr('err-pmSetFundAmount','Enter a valid amount.'); return; }
-    try {
-        await db.collection('constructionProjects').doc(_pmActiveProject.id)
-          .collection('revolvingFund').doc('summary')
-          .set({ initialFund: amount, notes, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
-        pmCloseModal('pmSetFundModal');
-        _pmLoadRevolving();
-    } catch(e) { alert('Error: ' + e.message); }
-};
-
-window.pmOpenExpenseModal = function() {
-    if (!_pmActiveProject) { alert('Select a project first.'); return; }
-    document.getElementById('pmExpenseDate').value   = new Date().toISOString().slice(0,10);
-    document.getElementById('pmExpenseAmount').value = '';
-    document.getElementById('pmExpenseDesc').value   = '';
-    document.getElementById('pmExpenseNotes').value  = '';
-    ['err-pmExpenseDate','err-pmExpenseAmount','err-pmExpenseDesc'].forEach(_pmClearErr);
-    document.getElementById('pmExpenseModal').style.display = 'flex';
-    if (window.lucide) lucide.createIcons();
-};
-
-window.pmSaveExpense = async function() {
-    const date   = document.getElementById('pmExpenseDate').value;
-    const amount = parseFloat(document.getElementById('pmExpenseAmount').value) || 0;
-    const desc   = document.getElementById('pmExpenseDesc').value.trim();
-    const notes  = document.getElementById('pmExpenseNotes').value.trim();
+window.pmSaveFundRequest = async function() {
+    const weekStart = document.getElementById('pmFundWeek').value;
+    const amount    = parseFloat(document.getElementById('pmFundAmount').value) || 0;
+    const notes     = document.getElementById('pmFundNotes').value.trim();
     let valid = true;
-    if (!date)    { _pmShowErr('err-pmExpenseDate','Select a date.'); valid = false; }
-    if (amount<=0){ _pmShowErr('err-pmExpenseAmount','Enter amount.'); valid = false; }
-    if (!desc)    { _pmShowErr('err-pmExpenseDesc','Enter description.'); valid = false; }
+    if (!weekStart) { _pmShowErr('err-pmFundWeek', 'Pick a week.'); valid = false; }
+    if (amount <= 0) { _pmShowErr('err-pmFundAmount', 'Enter an amount.'); valid = false; }
     if (!valid) return;
+    // One entry per week — if the week already exists, update its amount/notes.
+    const existing = _pmFundRequests.find(r => r.weekStart === weekStart);
     try {
-        await db.collection('constructionProjects').doc(_pmActiveProject.id)
-          .collection('revolvingFundExpenses')
-          .add({ date, amount, description: desc, notes, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-        pmCloseModal('pmExpenseModal');
+        const col = db.collection('constructionProjects').doc(_pmActiveProject.id).collection('revolvingFundRequests');
+        if (existing) {
+            await col.doc(existing.id).set({ amount, notes, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
+        } else {
+            await col.add({ weekStart, amount, notes, received: false, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        }
+        pmCloseModal('pmFundRequestModal');
         _pmLoadRevolving();
     } catch(e) { alert('Error: ' + e.message); }
 };
 
-window.pmDeleteExpense = async function(id) {
-    if (!confirm('Delete this expense?')) return;
+window.pmToggleFundReceived = async function(id) {
+    const item = _pmFundRequests.find(r => r.id === id);
+    if (!item) return;
+    const next = !item.received;
     try {
         await db.collection('constructionProjects').doc(_pmActiveProject.id)
-          .collection('revolvingFundExpenses').doc(id).delete();
+          .collection('revolvingFundRequests').doc(id)
+          .set({ received: next, receivedAt: next ? firebase.firestore.FieldValue.serverTimestamp() : null }, { merge: true });
+        _pmLoadRevolving();
+    } catch(e) { alert('Error: ' + e.message); }
+};
+
+window.pmDeleteFundRequest = async function(id) {
+    if (!confirm('Delete this weekly fund entry?')) return;
+    try {
+        await db.collection('constructionProjects').doc(_pmActiveProject.id)
+          .collection('revolvingFundRequests').doc(id).delete();
         _pmLoadRevolving();
     } catch(e) { alert('Delete failed: ' + e.message); }
-};
-
-window.pmOpenReplenishModal = function() {
-    if (!_pmActiveProject) { alert('Select a project first.'); return; }
-    document.getElementById('pmReplenishDate').value   = _nextFriday();
-    document.getElementById('pmReplenishAmount').value = '';
-    document.getElementById('pmReplenishNotes').value  = '';
-    ['err-pmReplenishDate','err-pmReplenishAmount'].forEach(_pmClearErr);
-    document.getElementById('pmReplenishModal').style.display = 'flex';
-    if (window.lucide) lucide.createIcons();
-};
-
-window.pmSaveReplenishment = async function() {
-    const date   = document.getElementById('pmReplenishDate').value;
-    const amount = parseFloat(document.getElementById('pmReplenishAmount').value) || 0;
-    const notes  = document.getElementById('pmReplenishNotes').value.trim();
-    let valid = true;
-    if (!date)    { _pmShowErr('err-pmReplenishDate','Select a date.'); valid = false; }
-    if (amount<=0){ _pmShowErr('err-pmReplenishAmount','Enter amount.'); valid = false; }
-    if (!valid) return;
-    try {
-        await db.collection('constructionProjects').doc(_pmActiveProject.id)
-          .collection('revolvingFundReplenishments')
-          .add({ date, amount, notes, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
-        // Update totalReplenished in summary
-        const prev = _pmRevolvingData?.totalReplenished || 0;
-        await db.collection('constructionProjects').doc(_pmActiveProject.id)
-          .collection('revolvingFund').doc('summary')
-          .set({ totalReplenished: prev + amount, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
-        pmCloseModal('pmReplenishModal');
-        _pmLoadRevolving();
-    } catch(e) { alert('Error: ' + e.message); }
 };
 
 // ══════════════════════════════════════════════════════════
