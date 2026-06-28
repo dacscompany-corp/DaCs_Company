@@ -25,6 +25,9 @@
     <link rel="stylesheet" href="css/invoice-module.css">
     <!-- Project Management Module Styles -->
     <link rel="stylesheet" href="css/pm-admin.css">
+    <!-- Admin PWA manifest (separate from the client-portal manifest.json) -->
+    <link rel="manifest" href="manifest-admin.json">
+    <meta name="theme-color" content="#0f6342">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -1370,6 +1373,9 @@
               <div class="pm-workspace-project" id="ws-project-name">—</div>
             </div>
             <div class="pm-workspace-status" id="ws-status-badge"></div>
+            <button id="pm-push-bell" class="pm-push-bell" style="display:none;" onclick="pmPushToggle()" title="Get a daily 11:59 PM summary of this project">
+              <i data-lucide="bell-off" style="width:13px;height:13px;"></i> Notify me daily
+            </button>
           </div>
 
           <!-- Tab bar -->
@@ -3666,6 +3672,7 @@
 <script src="js/invoice-module.js"></script>
 <script src="js/labor-invoice-module.js"></script>
 <script src="js/pm-admin.js"></script>
+<script src="js/push-notify.js"></script>
 <script src="js/termination-requests.js"></script>
 <script src="js/ai-summary.js"></script>
 <script src="js/ai-assistant.js"></script>

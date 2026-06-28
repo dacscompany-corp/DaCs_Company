@@ -76,6 +76,8 @@ function _pmInitWorkspace() {
     const statusLabel = { active:'Active', 'on-hold':'On Hold', completed:'Completed', terminated:'Terminated' };
     const el = document.getElementById('ws-status-badge');
     if (el) el.innerHTML = `<span class="pm-badge ${statusBadge[p.status]||'pm-badge-paid'}">${statusLabel[p.status]||'Active'}</span>`;
+    // Reflect this project's nightly-notification state on the bell toggle.
+    if (window.pmPushRefreshBell) pmPushRefreshBell(p.id, p.clientName || p.projectName || 'this project');
     // Load the active tab's data
     const activePanel = document.querySelector('.pm-ws-panel.active');
     if (activePanel) _pmLoadWsPanel(activePanel.id);

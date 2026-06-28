@@ -49,7 +49,11 @@
       "Bash(:)",
       "Bash(node -e \"const fs=require\\('fs'\\);const c=fs.readFileSync\\('css/pm-admin.css','utf8'\\);const o=\\(c.match\\(/{/g\\)||[]\\).length,cl=\\(c.match\\(/}/g\\)||[]\\).length;console.log\\('braces open',o,'close',cl, o===cl?'OK balanced':'MISMATCH'\\);\")",
       "Bash(node --check \"c:/Users/John Aerol Tapales/Documents/Dacs Web/js/pm-admin.js\")",
-      "Bash(node --check \"c:/Users/John Aerol Tapales/Documents/Dacs Web/js/supabase-config.js\")"
+      "Bash(node --check \"c:/Users/John Aerol Tapales/Documents/Dacs Web/js/supabase-config.js\")",
+      "Bash(grep -E \"\\\\.\\(jsx?|tsx?\\)$\")",
+      "Bash(node --check \"c:/Users/John Aerol Tapales/Documents/Dacs Web/js/push-notify.js\")",
+      "Bash(node --check \"c:/Users/John Aerol Tapales/Documents/Dacs Web/service-worker.js\")",
+      "Bash(node --check \"c:/Users/John Aerol Tapales/Documents/Dacs Web/cloudflare-worker-notify/worker.js\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
