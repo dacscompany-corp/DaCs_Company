@@ -46,26 +46,29 @@ async function run(env, debug) {
   let lastMessages = null;
 
   for (const pid in byProj) {
-    let messages;
-    try { messages = await buildMessages(env, pid, today); }
-    catch (e) {
-      messages = [{ title: "DAC's — summary unavailable", body: "Couldn't load tonight's numbers.", url: '/admin.html', tag: 'pm-daily-err-' + pid }];
-      if (debug) results.push({ pid, msgError: e.message });
-    }
-    lastMessages = messages;
+    let data = null;
+    try { data = await computeMetrics(env, pid, today); }
+    catch (e) { if (debug) results.push({ pid, msgError: e.message }); }
+
     for (const s of byProj[pid]) {
+      const audience = s.audience || 'admin';
+      const messages = !data
+        ? [{ title: "DAC's — summary unavailable", body: "Couldn't load tonight's numbers.",
+             url: audience === 'partner' ? (s.page || '/') : '/admin.html', tag: 'pm-daily-err-' + pid }]
+        : (audience === 'partner' ? partnerMessages(data, pid, s) : adminMessages(data, pid));
+      lastMessages = messages;
       let dead = false;
-      for (const msg of messages) {        // 5 separate notifications per device
+      for (const msg of messages) {        // separate notification per metric
         if (dead) break;
         try {
           const r = await sendPush(s, JSON.stringify(msg), env);
-          if (debug) results.push({ pid, metric: msg.title, status: r.status, body: r.text });
+          if (debug) results.push({ pid, audience, metric: msg.title, status: r.status, body: r.text });
           if (r.status === 404 || r.status === 410) {
             await sb(env, `push_subscriptions?id=eq.${s.id}`, { method: 'DELETE' });
             dead = true;
           }
         } catch (e) {
-          if (debug) results.push({ pid, metric: msg.title, error: e.message });
+          if (debug) results.push({ pid, audience, metric: msg.title, error: e.message });
         }
       }
     }
@@ -74,7 +77,10 @@ async function run(env, debug) {
 }
 
 // ── Metrics (mirror the admin app's formulas) ─────────────────────────────
-async function buildMessages(env, pid, today) {
+const peso   = n => '₱' + Math.round(n).toLocaleString('en-PH');
+const signed = n => (n < 0 ? '−' : '+') + peso(Math.abs(n));
+
+async function computeMetrics(env, pid, today) {
   const [projRow] = await sb(env, `construction_projects?id=eq.${pid}&select=client_name,project_name,budget`).catch(() => []);
   const bills = await sb(env, `weekly_bills?project_id=eq.${pid}&select=*`);
   const reqs  = await sb(env, `payment_requests?construction_project_id=eq.${pid}&select=*`).catch(() => []);
@@ -83,33 +89,55 @@ async function buildMessages(env, pid, today) {
 
   const directCost = bills.reduce((s, b) => s + directCostOf(b), 0);
   const paid       = paidOf(reqs);
-  const netCash    = paid - directCost;                          // Remaining cash receipt (all-time)
-  const progress   = progressOf(ms);                             // Progress %
   const daily      = bills.filter(b => b.week_ending_date === today).reduce((s, b) => s + directCostOf(b), 0);
   const totalFund  = funds.reduce((s, f) => s + (Number(f.amount) || 0), 0);
   const spentWeeks = funds.reduce((s, f) => s + weekDirectCost(bills, f.week_start), 0);
-  const runBal     = totalFund - spentWeeks;                     // Revolving-fund running balance
 
-  const peso   = n => '₱' + Math.round(n).toLocaleString('en-PH');
-  const signed = n => (n < 0 ? '−' : '+') + peso(Math.abs(n));
-  const name   = (projRow && (projRow.client_name || projRow.project_name)) || 'Project';
+  return {
+    name:       (projRow && (projRow.client_name || projRow.project_name)) || 'Project',
+    directCost,
+    netCash:    paid - directCost,                 // Remaining cash receipt (all-time)
+    progress:   progressOf(ms),                    // Progress %
+    daily,                                         // Today's expenses (direct cost dated today)
+    runBal:     totalFund - spentWeeks,            // Revolving-fund running balance
+  };
+}
 
-  // One notification per metric (unique `tag` so they don't collapse into one).
-  // Each deep-links to the relevant tab; "bad" values (negative) flag as alerts.
+// ADMIN: 5 metrics, deep-link to the workspace tab, alerts on negatives.
+function adminMessages(d, pid) {
   const metrics = [
-    { key: 'money',  label: 'Remaining cash receipt', value: signed(netCash),  emoji: '💵', tab: 'money',    alert: netCash < 0 },
-    { key: 'prog',   label: 'Progress',               value: progress + '%',   emoji: '📈', tab: 'progress', alert: false },
-    { key: 'direct', label: 'Direct cost',            value: peso(directCost), emoji: '🏗️', tab: 'overview', alert: false },
-    { key: 'today',  label: "Today's expenses",       value: peso(daily),      emoji: '🧾', tab: 'week',     alert: false },
-    { key: 'revbal', label: 'Revolving balance',      value: signed(runBal),   emoji: '🔄', tab: 'money',    alert: runBal < 0 },
+    { key: 'money',  label: 'Remaining cash receipt', value: signed(d.netCash),  emoji: '💵', tab: 'money',    alert: d.netCash < 0 },
+    { key: 'prog',   label: 'Progress',               value: d.progress + '%',   emoji: '📈', tab: 'progress', alert: false },
+    { key: 'direct', label: 'Direct cost',            value: peso(d.directCost), emoji: '🏗️', tab: 'overview', alert: false },
+    { key: 'today',  label: "Today's expenses",       value: peso(d.daily),      emoji: '🧾', tab: 'week',     alert: false },
+    { key: 'revbal', label: 'Revolving balance',      value: signed(d.runBal),   emoji: '🔄', tab: 'money',    alert: d.runBal < 0 },
   ];
   return metrics.map(m => ({
     title:   `${m.emoji} ${m.label}${m.alert ? ' ⚠️' : ''}`,
-    body:    `${name} · ${m.value}`,
+    body:    `${d.name} · ${m.value}`,
     url:     `/admin.html?pmproject=${pid}&pmtab=${m.tab}`,
-    pid:     pid,
-    tab:     m.tab,
+    pid, tab: m.tab,
     tag:     `pm-daily-${pid}-${m.key}`,
+    requireInteraction: m.alert,
+    vibrate: m.alert ? [200, 100, 200] : [80],
+    actions: [{ action: 'open', title: 'Open' }, { action: 'dismiss', title: 'Dismiss' }],
+  }));
+}
+
+// PARTNER/CLIENT: 4 partner-facing metrics; opens their portal page on tap.
+function partnerMessages(d, pid, sub) {
+  const url = sub.page || '/';
+  const metrics = [
+    { key: 'direct', label: 'Direct cost',            value: peso(d.directCost), emoji: '🏗️', alert: false },
+    { key: 'money',  label: 'Remaining cash receipt', value: signed(d.netCash),  emoji: '💵', alert: d.netCash < 0 },
+    { key: 'prog',   label: 'Progress',               value: d.progress + '%',   emoji: '📈', alert: false },
+    { key: 'today',  label: "Today's expenses",       value: peso(d.daily),      emoji: '🧾', alert: false },
+  ];
+  return metrics.map(m => ({
+    title:   `${m.emoji} ${m.label}${m.alert ? ' ⚠️' : ''}`,
+    body:    `${d.name} · ${m.value}`,
+    url,
+    tag:     `pm-daily-partner-${pid}-${m.key}`,
     requireInteraction: m.alert,
     vibrate: m.alert ? [200, 100, 200] : [80],
     actions: [{ action: 'open', title: 'Open' }, { action: 'dismiss', title: 'Dismiss' }],
