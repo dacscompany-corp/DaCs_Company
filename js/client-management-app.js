@@ -28,9 +28,10 @@ let cmCurrentProfile       = null;
 let cmProjectData          = null;   // linked construction project
 let cmWeeklyBills          = [];
 let cmPayRequests          = [];
-let cmWeekSelId            = null;   // Weekly Summary: which bill is shown in the detail card (null = latest)
+let cmWeekSelId            = null;   // Weekly Summary: which week (Sunday key) is shown in the detail card (null = latest)
 let cmProgressLogs         = [];
 let cmRevolvingFund        = null;
+let cmFundRequests         = [];    // weekly revolving-fund entries (admin collects from partner), keyed by weekStart (Sunday)
 let cmMilestones           = [];
 let cmAccomplishmentReports= [];
 let cmRenderedReports      = [];   // current (possibly filtered) report list shown in the table
@@ -122,7 +123,7 @@ function cmShowLogin() {
     if (_cmBillUnsub)   { _cmBillUnsub();   _cmBillUnsub   = null; }
     if (_cmNotifUnsub)  { _cmNotifUnsub();  _cmNotifUnsub  = null; }
     cmCurrentUser = null; cmCurrentProfile = null; cmProjectData = null;
-    cmWeeklyBills = []; cmPayRequests = []; cmWeekSelId = null; cmProgressLogs = []; cmMilestones = []; cmAccomplishmentReports = [];
+    cmWeeklyBills = []; cmPayRequests = []; cmWeekSelId = null; cmProgressLogs = []; cmMilestones = []; cmAccomplishmentReports = []; cmFundRequests = [];
 }
 
 function cmShowLoginError(msg) {
@@ -251,6 +252,20 @@ async function cmLoadProjectData(user) {
                 .limit(1)
                 .get();
             cmRevolvingFund = rfSnap.empty ? null : rfSnap.docs[0].data();
+
+            // Load the weekly revolving-fund entries (admin's fund-to-collect-from-partner,
+            // one per week keyed by `weekStart` = the week's Sunday). Own try/catch so a
+            // permissions error never aborts the rest of the dashboard.
+            try {
+                const fundSnap = await db.collection('constructionProjects')
+                    .doc(cmProjectData.id)
+                    .collection('revolvingFundRequests')
+                    .get();
+                cmFundRequests = fundSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            } catch (e) {
+                console.warn('Weekly revolving fund load:', e.message);
+                cmFundRequests = [];
+            }
 
             // Load progress logs visible to client (own try/catch so a failure
             // here never aborts the milestone/report loads that follow)
@@ -2895,14 +2910,16 @@ function cmRenderOverview() {
     const partner = cmIsPartner();   // monitoring/view-only: no 15% fee, no payments
     const ovContract = Number(cmProjectData?.budget) || 0;   // agreed project contract value
 
-    // Latest bill figures
-    const labor     = latest ? (latest.labor || 0) : 0;
-    const materials = latest ? ((latest.materials||0)+(latest.delivery||0)+(latest.consumables||0)+(latest.other||0)) : 0;
-    const direct    = latest ? (latest.directCostTotal || (labor + materials)) : 0;
-    const fee       = latest ? (latest.managementFee || direct * (latest.managementFeeRate || cmFeeRate())) : 0;
-    const total     = latest ? (latest.totalDue || (direct + fee)) : 0;
-    const range     = latest ? cmWeekRange(latest.weekEndingDate) : '';
-    const status    = latest ? (latest.status || 'Submitted') : '';
+    // Latest WEEK figures — daily bills rolled into a Sun–Sat week so the cadence
+    // card matches the Weekly Summary (was showing a single day as a 7-day "week").
+    const latestWk  = cmWeekGroups()[0] || null;
+    const labor     = latestWk ? latestWk.lab : 0;
+    const materials = latestWk ? latestWk.mat : 0;
+    const direct    = latestWk ? latestWk.dir : 0;
+    const fee       = latestWk ? latestWk.fee : 0;
+    const total     = latestWk ? latestWk.tot : 0;
+    const range     = latestWk ? latestWk.range : '';
+    const status    = latestWk ? latestWk.status : '';
     const duePill   = status === 'Paid' ? 'PAID' : status === 'Overdue' ? 'OVERDUE' : 'DUE';
 
     // Direct-cost breakdown (admin parity) — all-time across every weekly bill
@@ -3207,9 +3224,62 @@ function cmBillCombined(b) {
     return c || 0;
 }
 
-// Pick which submitted week to show in the Weekly Summary detail card.
-window.cmWeekSelect = function(id) {
-    cmWeekSelId = id;
+// ── Daily → weekly grouping (Sun–Sat) ─────────────────────────────────
+// The admin records ONE bill per day; the partner Weekly Summary rolls those
+// daily bills up into calendar weeks (Sunday–Saturday) and sums each bucket,
+// mirroring the admin overview's _pmWeekStart. Without this, every day rendered
+// as its own overlapping 7-day "week" and each row's total was really one day.
+function cmWeekStartKey(dateStr) {
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d)) return String(dateStr || '');
+    d.setDate(d.getDate() - d.getDay());   // back to that week's Sunday (local time)
+    const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), da = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${da}`;
+}
+
+// Roll cmWeeklyBills into [{ key, range, bills, rep, lab, mat, cmb, matP, dir, fee, tot, status }]
+// newest week first. Per-bill math matches the old per-row formulas exactly.
+function cmWeekGroups() {
+    const map = new Map();
+    (cmWeeklyBills || []).forEach(b => {
+        const k = cmWeekStartKey(b.weekEndingDate);
+        if (!map.has(k)) map.set(k, []);
+        map.get(k).push(b);
+    });
+    const groups = [...map.entries()].map(([key, list]) => {
+        list.sort((a, b) => (a.weekEndingDate || '').localeCompare(b.weekEndingDate || ''));
+        let lab = 0, mat = 0, cmb = 0, dir = 0, fee = 0, tot = 0;
+        list.forEach(b => {
+            const bLab = Number(b.labor) || 0;
+            const bMat = (Number(b.materials)||0)+(Number(b.delivery)||0)+(Number(b.consumables)||0)+(Number(b.other)||0);
+            const bCmb = cmBillCombined(b);
+            const bDir = b.directCostTotal != null ? Number(b.directCostTotal) : (bLab + bMat);
+            const bFee = b.managementFee != null ? Number(b.managementFee)
+                       : bDir * (b.managementFeeRate != null ? Number(b.managementFeeRate) : cmFeeRate());
+            const bTot = b.totalDue != null ? Number(b.totalDue) : (bDir + bFee);
+            lab += bLab; mat += bMat; cmb += bCmb; dir += bDir; fee += bFee; tot += bTot;
+        });
+        const statuses = list.map(b => b.status || 'Submitted');
+        const status = statuses.every(s => s === 'Paid') ? 'Paid'
+                     : statuses.some(s => s === 'Overdue') ? 'Overdue'
+                     : statuses.some(s => s === 'Partial') ? 'Partial'
+                     : 'Submitted';
+        return { key, bills: list, rep: list[list.length - 1], range: cmWeekRangeLabel(key),
+                 lab, mat, cmb, matP: Math.max(0, mat - cmb), dir, fee, tot, status };
+    });
+    groups.sort((a, b) => b.key.localeCompare(a.key));   // newest week first
+    return groups;
+}
+
+// The admin's weekly revolving-fund entry for a given week (key = the week's Sunday,
+// which matches the admin's `weekStart`). null when no fund was set for that week.
+function cmFundForWeek(weekKey) {
+    return (cmFundRequests || []).find(r => r.weekStart === weekKey) || null;
+}
+
+// Pick which submitted week to show in the Weekly Summary detail card (key = week's Sunday).
+window.cmWeekSelect = function(key) {
+    cmWeekSelId = key;
     cmRenderWeekly();
     const host = document.getElementById('section-weekly-billing');
     if (host && window.innerWidth <= 700) host.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -3227,65 +3297,79 @@ function cmRenderWeekly() {
         return;
     }
 
-    const bills  = cmWeeklyBills || [];
-    const mostRecent = bills[0] || null;
+    const weeks = cmWeekGroups();   // daily bills rolled into Sun–Sat weeks
+    const mostRecent = weeks[0] || null;
     // The detail card shows the selected week (clicked from the table), else the latest.
-    const latest = (cmWeekSelId && bills.find(b => b.id === cmWeekSelId)) || mostRecent;
-    const isLatest = !!(latest && mostRecent && latest.id === mostRecent.id);
-    const labor     = latest ? (latest.labor || 0) : 0;
-    const materials = latest ? ((latest.materials||0)+(latest.delivery||0)+(latest.consumables||0)+(latest.other||0)) : 0;
-    const combined  = latest ? cmBillCombined(latest) : 0;            // Materials + Labor (supply & install)
-    const matPure   = Math.max(0, materials - combined);             // materials without the combined amount
-    const direct    = latest ? (latest.directCostTotal || (labor + materials)) : 0;
-    const fee       = latest ? (latest.managementFee || direct * (latest.managementFeeRate || cmFeeRate())) : 0;
-    const total     = latest ? (latest.totalDue || (direct + fee)) : 0;
-    const range     = latest ? cmWeekRange(latest.weekEndingDate) : '—';
-    const status    = latest ? (latest.status || 'Submitted') : '';
+    const latest = (cmWeekSelId && weeks.find(w => w.key === cmWeekSelId)) || mostRecent;
+    const isLatest = !!(latest && mostRecent && latest.key === mostRecent.key);
+    const labor     = latest ? latest.lab : 0;
+    const materials = latest ? latest.mat : 0;
+    const combined  = latest ? latest.cmb : 0;            // Materials + Labor (supply & install)
+    const matPure   = latest ? latest.matP : 0;           // materials without the combined amount
+    const direct    = latest ? latest.dir : 0;
+    const fee       = latest ? latest.fee : 0;
+    const total     = latest ? latest.tot : 0;
+    const range     = latest ? latest.range : '—';
+    const status    = latest ? latest.status : '';
     const partner   = cmIsPartner();   // monitoring/view-only: no 15% fee
     // Week-picker dropdown options (newest first) — selecting one shows that week above.
-    const wkOpts = bills.map(b => {
-        const a = latest && b.id === latest.id;
-        return `<button class="cm-dd-opt${a ? ' active' : ''}" onclick="cmWeekSelect('${b.id}')"><span>${cmEsc(cmWeekRange(b.weekEndingDate))}</span><span class="cm-dd-check">✓</span></button>`;
+    const wkOpts = weeks.map(w => {
+        const a = latest && w.key === latest.key;
+        return `<button class="cm-dd-opt${a ? ' active' : ''}" onclick="cmWeekSelect('${w.key}')"><span>${cmEsc(w.range)}</span><span class="cm-dd-check">✓</span></button>`;
     }).join('');
 
-    const rows = bills.map(b => {
-        const lab = b.labor || 0;
-        const mat = (b.materials||0)+(b.delivery||0)+(b.consumables||0)+(b.other||0);
-        const cmb = cmBillCombined(b);                    // Materials + Labor (combined)
-        const matP = Math.max(0, mat - cmb);              // pure materials
-        const dir = b.directCostTotal || (lab + mat);
-        const f   = b.managementFee || dir * (b.managementFeeRate || cmFeeRate());
-        const t   = b.totalDue || (dir + f);
-        const st  = b.status === 'Paid' ? ['PAID','#3f9960','#e7f5ed']
-                  : b.status === 'Overdue' ? ['OVERDUE','#b91c1c','#fef2f2']
+    const rows = weeks.map(w => {
+        const st  = w.status === 'Paid' ? ['PAID','#3f9960','#e7f5ed']
+                  : w.status === 'Overdue' ? ['OVERDUE','#b91c1c','#fef2f2']
                   : ['DUE','#5b5bd6','#eef1fd'];
-        const sel = latest && b.id === latest.id;
-        return `<tr onclick="cmWeekSelect('${cmEsc(b.id)}')" style="border-top:1px solid #f0f1f5;cursor:pointer;background:${sel ? '#f1f1fb' : 'transparent'};">
-            <td style="padding:14px 0;font-weight:600;">${cmEsc(cmWeekRange(b.weekEndingDate))}</td>
-            <td style="padding:14px 0;text-align:right;">${cmFmt(lab)}</td>
-            <td style="padding:14px 0;text-align:right;">${cmFmt(matP)}</td>
-            <td style="padding:14px 0;text-align:right;">${cmb ? cmFmt(cmb) : '<span style="color:#c4c9d4;">—</span>'}</td>
-            ${partner ? '' : `<td style="padding:14px 0;text-align:right;color:#5b5bd6;">${cmFmt(f)}</td>`}
-            <td style="padding:14px 0;text-align:right;font-weight:700;">${cmFmt(partner ? dir : t)}</td>
+        const sel = latest && w.key === latest.key;
+        return `<tr onclick="cmWeekSelect('${cmEsc(w.key)}')" style="border-top:1px solid #f0f1f5;cursor:pointer;background:${sel ? '#f1f1fb' : 'transparent'};">
+            <td style="padding:14px 0;font-weight:600;">${cmEsc(w.range)}</td>
+            <td style="padding:14px 0;text-align:right;">${cmFmt(w.lab)}</td>
+            <td style="padding:14px 0;text-align:right;">${cmFmt(w.matP)}</td>
+            <td style="padding:14px 0;text-align:right;">${w.cmb ? cmFmt(w.cmb) : '<span style="color:#c4c9d4;">—</span>'}</td>
+            ${partner ? '' : `<td style="padding:14px 0;text-align:right;color:#5b5bd6;">${cmFmt(w.fee)}</td>`}
+            <td style="padding:14px 0;text-align:right;font-weight:700;">${cmFmt(partner ? w.dir : w.tot)}</td>
             <td style="padding:14px 0;text-align:right;"><span style="font-size:11px;font-weight:700;background:${st[2]};color:${st[1]};padding:3px 10px;border-radius:20px;">${st[0]}</span></td>
         </tr>`;
     }).join('') || `<tr><td colspan="${partner?6:7}" style="padding:18px 0;color:#aeb4c2;font-size:13px;">No weekly records yet.</td></tr>`;
 
-    // Per-week Statement of Account rows (one Generate button per submitted week).
-    const soaRows = bills.map(b => {
-        const lab = b.labor || 0;
-        const mat = (b.materials||0)+(b.delivery||0)+(b.consumables||0)+(b.other||0);
-        const dir = b.directCostTotal || (lab + mat);
-        const tot = partner ? dir : (b.totalDue || (dir + (b.managementFee || dir * (b.managementFeeRate || cmFeeRate()))));
+    // Per-week Statement of Account rows (one Generate button per week).
+    const soaRows = weeks.map(w => {
+        const tot = partner ? w.dir : w.tot;
         return `<div style="display:flex;align-items:center;gap:12px;padding:14px 0;border-top:1px solid #f0f1f5;">
             <span style="width:4px;height:30px;border-radius:3px;background:#5b5bd6;flex:none;"></span>
             <div style="flex:1;min-width:0;">
-                <div style="font-size:14px;font-weight:700;color:#1a1d24;">Week of ${cmEsc(cmWeekRange(b.weekEndingDate))}</div>
-                <div style="font-size:12px;color:#aeb4c2;">${cmFmt(tot)} · ${cmEsc(b.status || 'Submitted')}</div>
+                <div style="font-size:14px;font-weight:700;color:#1a1d24;">Week of ${cmEsc(w.range)}</div>
+                <div style="font-size:12px;color:#aeb4c2;">${cmFmt(tot)} · ${cmEsc(w.status)}</div>
             </div>
-            <button onclick="cmWeekSOA('${cmEsc(b.id)}')" style="font-size:12.5px;font-weight:700;color:#fff;background:#5b5bd6;border:none;border-radius:9px;padding:9px 16px;cursor:pointer;flex:none;">Generate</button>
+            <button onclick="cmWeekSOA('${cmEsc(w.key)}')" style="font-size:12.5px;font-weight:700;color:#fff;background:#5b5bd6;border:none;border-radius:9px;padding:9px 16px;cursor:pointer;flex:none;">Generate</button>
         </div>`;
     }).join('') || `<div style="padding:18px 0;color:#aeb4c2;font-size:13px;border-top:1px solid #f0f1f5;">No submitted weeks yet.</div>`;
+
+    // Revolving fund the admin set for the selected week, and how it compares to the
+    // week's direct spend (Labor + Materials + Out Source). + = left over, − = short.
+    const wkFund   = latest ? cmFundForWeek(latest.key) : null;
+    const fundAmt  = wkFund ? (Number(wkFund.amount) || 0) : 0;
+    const fundDiff = fundAmt - (latest ? latest.dir : 0);
+
+    // Top KPI strip. The partner sees the revolving fund + difference here (Labor /
+    // Materials / Out Source live in the breakdown box below, so they're not repeated);
+    // the client keeps the labor/materials/out-source KPIs.
+    const kpiCell = (label, valHtml) =>
+        `<div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">${label}</div><div style="font-size:21px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${valHtml}</div></div>`;
+    const topGrid = partner
+        ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+            ${kpiCell(`Revolving fund${wkFund && wkFund.received ? ' <span style="font-size:10px;font-weight:700;color:#3f9960;background:#e7f5ed;padding:2px 7px;border-radius:20px;vertical-align:middle;">RECEIVED</span>' : ''}`,
+                wkFund ? cmFmt(fundAmt) : '<span style="color:#aeb4c2;">Not set</span>')}
+            ${kpiCell('Difference',
+                wkFund ? `<span style="color:${fundDiff < 0 ? '#b91c1c' : '#3f9960'};">${fundDiff < 0 ? '−' : '+'}${cmFmt(Math.abs(fundDiff))}</span><span style="font-size:12px;font-weight:600;color:#8b91a0;margin-left:6px;">${fundDiff < 0 ? 'short' : 'left over'}</span>` : '<span style="color:#aeb4c2;">—</span>')}
+          </div>`
+        : `<div style="display:grid;grid-template-columns:${combined > 0 ? 'repeat(3,1fr)' : '1fr 1fr'};gap:18px;">
+            ${kpiCell('Total labor', cmFmt(labor))}
+            ${kpiCell('Total materials', cmFmt(matPure))}
+            ${combined > 0 ? kpiCell('Out Source', cmFmt(combined)) : ''}
+          </div>`;
 
     host.innerHTML = `
     <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:26px;flex-wrap:wrap;gap:14px;">
@@ -3310,14 +3394,10 @@ function cmRenderWeekly() {
                 ${isLatest ? '' : `<button onclick="cmWeekSelect(null)" style="font-size:11.5px;font-weight:700;color:#5b5bd6;background:#eef1fd;border:none;border-radius:8px;padding:4px 10px;cursor:pointer;">← Back to latest</button>`}
             </div>
             <div style="font-size:12.5px;color:#8b91a0;margin-top:2px;margin-bottom:22px;">${latest ? 'Week of ' + cmEsc(range) : 'No bill submitted yet'}</div>
-            <div style="display:grid;grid-template-columns:${combined > 0 ? 'repeat(3,1fr)' : '1fr 1fr'};gap:18px;">
-                <div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">Total labor</div><div style="font-size:21px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${cmFmt(labor)}</div></div>
-                <div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">Total materials</div><div style="font-size:21px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${cmFmt(matPure)}</div></div>
-                ${combined > 0 ? `<div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">Out Source</div><div style="font-size:21px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${cmFmt(combined)}</div></div>` : ''}
-            </div>
+            ${topGrid}
             <div style="margin-top:22px;background:#f7f8fb;border-radius:15px;padding:20px 22px;">
                 <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;"><span style="color:#6b7180;">${partner ? 'Labor' : 'Direct costs'}</span><span style="font-weight:700;">${cmFmt(partner ? labor : direct)}</span></div>
-                <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;border-top:1px solid #ebedf2;"><span style="color:#6b7180;">${partner ? 'Materials' : 'Management fee · ' + cmBillPct(latest) + '%'}</span><span style="font-weight:700;${partner?'':'color:#5b5bd6;'}">${cmFmt(partner ? matPure : fee)}</span></div>
+                <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;border-top:1px solid #ebedf2;"><span style="color:#6b7180;">${partner ? 'Materials' : 'Management fee · ' + cmBillPct(latest && latest.rep) + '%'}</span><span style="font-weight:700;${partner?'':'color:#5b5bd6;'}">${cmFmt(partner ? matPure : fee)}</span></div>
                 ${partner && combined > 0 ? `<div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;border-top:1px solid #ebedf2;"><span style="color:#6b7180;">Out Source</span><span style="font-weight:700;">${cmFmt(combined)}</span></div>` : ''}
                 <div style="display:flex;justify-content:space-between;align-items:center;padding:13px 0 4px;font-size:14px;border-top:1px solid #ebedf2;margin-top:4px;"><span style="font-weight:700;">${partner ? 'Direct total' : 'Grand total'}</span><span style="font-weight:800;font-size:24px;letter-spacing:-0.01em;">${cmFmt(partner ? direct : total)}</span></div>
             </div>
@@ -3326,7 +3406,7 @@ function cmRenderWeekly() {
         <div style="display:flex;flex-direction:column;gap:20px;">
             ${partner ? '' : `<div style="${card}">
                 <div style="font-size:14px;font-weight:800;margin-bottom:12px;color:#1a1d24;">How it's computed</div>
-                <div style="font-family:'Space Mono',monospace;font-size:12.5px;color:#6b7180;background:#f7f8fb;border-radius:12px;padding:14px;line-height:1.7;">(Labor + Materials)<br/>&nbsp;&nbsp;× ${cmBillPct(latest)}% = <span style="color:#5b5bd6;">Fee</span><br/>Direct + Fee = <span style="font-weight:700;color:#1a1d24;">Total</span></div>
+                <div style="font-family:'Space Mono',monospace;font-size:12.5px;color:#6b7180;background:#f7f8fb;border-radius:12px;padding:14px;line-height:1.7;">(Labor + Materials)<br/>&nbsp;&nbsp;× ${cmBillPct(latest && latest.rep)}% = <span style="color:#5b5bd6;">Fee</span><br/>Direct + Fee = <span style="font-weight:700;color:#1a1d24;">Total</span></div>
             </div>`}
             <div style="${card}">
                 <div style="font-size:14px;font-weight:800;margin-bottom:8px;color:#1a1d24;">Cost notice</div>
@@ -3391,13 +3471,14 @@ function _cmWeekRows(b) {
     return out;
 }
 
-window.cmWeekSOA = function(billId) {
+window.cmWeekSOA = function(weekKey) {
     if (!cmProjectData) { alert('No project assigned yet.'); return; }
-    const bill = (cmWeeklyBills || []).find(b => b.id === billId);
-    if (!bill) { alert('Week not found.'); return; }
-    const rangeLabel = cmWeekRange(bill.weekEndingDate);
+    const group = cmWeekGroups().find(w => w.key === weekKey);
+    if (!group) { alert('Week not found.'); return; }
+    const rangeLabel = group.range;
     const label = 'Week of ' + rangeLabel;
-    const rows = _cmWeekRows(bill);
+    // Every line across all daily bills in the week, each date-stamped (bills sorted oldest→newest).
+    const rows = group.bills.flatMap(b => _cmWeekRows(b));
     const total = rows.reduce((s, r) => s + r.amount, 0);
     const client   = cmProjectData.clientName || cmProjectData.projectName || '—';
     const project  = cmProjectData.projectName || '—';
@@ -3407,7 +3488,7 @@ window.cmWeekSOA = function(billId) {
     const descOf = r => r.desc;
     const fmtN = n => Math.round(Number(n) || 0).toLocaleString('en-US');
     const period = rangeLabel;
-    const ref = 'SOA-WK-' + (bill.weekEndingDate ? String(bill.weekEndingDate).replace(/-/g, '') : String(rows.length).padStart(3, '0'));
+    const ref = 'SOA-WK-' + (group.key ? String(group.key).replace(/-/g, '') : String(rows.length).padStart(3, '0'));
 
     const rowsHtml = rows.length
         ? rows.map((r, i) => `<tr style="background:${i % 2 ? '#f4f8f5' : '#fff'};">
