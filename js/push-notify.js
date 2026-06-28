@@ -147,6 +147,36 @@ window.pmPushRefreshBell = async function(projectId, label) {
     if (window.lucide) lucide.createIcons();
 };
 
+// ── Deep-linking from a notification ──────────────────────────────────────
+// Open the project + tab a notification points to. Retries while the app/auth
+// finishes loading (e.g. cold start from a notification tap).
+function _pmRunDeepLink(pid, tab, _tries) {
+    _tries = _tries || 0;
+    if (!pid) return;
+    (async () => {
+        let ok = false;
+        try { ok = window.pmOpenProjectById ? await window.pmOpenProjectById(pid, tab) : false; } catch (_) {}
+        if (ok) { try { history.replaceState({}, '', location.pathname); } catch (_) {} return; }
+        if (_tries < 40) setTimeout(() => _pmRunDeepLink(pid, tab, _tries + 1), 800);  // ~32s max
+    })();
+}
+
+// Cold start: notification opened a new window with ?pmproject=…&pmtab=…
+window.addEventListener('load', () => {
+    try {
+        const q = new URLSearchParams(location.search);
+        const pid = q.get('pmproject');
+        if (pid) _pmRunDeepLink(pid, q.get('pmtab') || 'overview');
+    } catch (_) {}
+});
+
+// Warm start: the SW focused an already-open app and posted the target.
+if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', (e) => {
+        if (e.data && e.data.type === 'pm-deeplink') _pmRunDeepLink(e.data.pid, e.data.tab);
+    });
+}
+
 // Pre-register the SW on load so pushes are handled even before the first toggle.
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => { _pmSwReg(); });

@@ -53,7 +53,10 @@
       "Bash(grep -E \"\\\\.\\(jsx?|tsx?\\)$\")",
       "Bash(node --check \"c:/Users/John Aerol Tapales/Documents/Dacs Web/js/push-notify.js\")",
       "Bash(node --check \"c:/Users/John Aerol Tapales/Documents/Dacs Web/service-worker.js\")",
-      "Bash(node --check \"c:/Users/John Aerol Tapales/Documents/Dacs Web/cloudflare-worker-notify/worker.js\")"
+      "Bash(node --check \"c:/Users/John Aerol Tapales/Documents/Dacs Web/cloudflare-worker-notify/worker.js\")",
+      "Bash(node --check cloudflare-worker-notify/worker.js)",
+      "Bash(node --check service-worker.js)",
+      "Bash(node --check js/push-notify.js)"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",

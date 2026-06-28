@@ -95,18 +95,24 @@ async function buildMessages(env, pid, today) {
   const name   = (projRow && (projRow.client_name || projRow.project_name)) || 'Project';
 
   // One notification per metric (unique `tag` so they don't collapse into one).
+  // Each deep-links to the relevant tab; "bad" values (negative) flag as alerts.
   const metrics = [
-    ['Remaining cash receipt', signed(netCash)],
-    ['Progress',               progress + '%'],
-    ['Direct cost',            peso(directCost)],
-    ["Today's expenses",       peso(daily)],
-    ['Revolving balance',      signed(runBal)],
+    { key: 'money',  label: 'Remaining cash receipt', value: signed(netCash),  emoji: '💵', tab: 'money',    alert: netCash < 0 },
+    { key: 'prog',   label: 'Progress',               value: progress + '%',   emoji: '📈', tab: 'progress', alert: false },
+    { key: 'direct', label: 'Direct cost',            value: peso(directCost), emoji: '🏗️', tab: 'overview', alert: false },
+    { key: 'today',  label: "Today's expenses",       value: peso(daily),      emoji: '🧾', tab: 'week',     alert: false },
+    { key: 'revbal', label: 'Revolving balance',      value: signed(runBal),   emoji: '🔄', tab: 'money',    alert: runBal < 0 },
   ];
-  return metrics.map(([label, value], i) => ({
-    title: `${name} — ${label}`,
-    body:  value,
-    url:   '/admin.html',
-    tag:   `pm-daily-${pid}-${i}`,
+  return metrics.map(m => ({
+    title:   `${m.emoji} ${m.label}${m.alert ? ' ⚠️' : ''}`,
+    body:    `${name} · ${m.value}`,
+    url:     `/admin.html?pmproject=${pid}&pmtab=${m.tab}`,
+    pid:     pid,
+    tab:     m.tab,
+    tag:     `pm-daily-${pid}-${m.key}`,
+    requireInteraction: m.alert,
+    vibrate: m.alert ? [200, 100, 200] : [80],
+    actions: [{ action: 'open', title: 'Open' }, { action: 'dismiss', title: 'Dismiss' }],
   }));
 }
 

@@ -1212,6 +1212,19 @@ window.pmOpenProject = function(p) {
     switchView('pmWorkspace');
 };
 
+// Deep-link target (from a push notification): open a project by id, then a tab.
+window.pmOpenProjectById = async function(id, tab) {
+    if (!id) return false;
+    try {
+        await _pmLoadProjects();   // idempotent — ensures _pmProjects is populated
+        const p = (_pmProjects || []).find(pr => pr.id === id);
+        if (!p) return false;
+        pmOpenProject(p);          // opens the workspace (overview tab)
+        if (tab && tab !== 'overview') setTimeout(() => { try { pmWsTab(tab); } catch (_) {} }, 90);
+        return true;
+    } catch (_) { return false; }
+};
+
 window.pmOpenProjectModal = function() {
     document.getElementById('pmProjectModalTitle').textContent = 'Add Construction Project';
     document.getElementById('pmProjectId').value        = '';
