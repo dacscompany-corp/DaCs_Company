@@ -3194,13 +3194,13 @@ function cmRenderWeekly() {
             <div style="display:grid;grid-template-columns:${combined > 0 ? 'repeat(3,1fr)' : '1fr 1fr'};gap:18px;">
                 <div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">Total labor</div><div style="font-size:21px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${cmFmt(labor)}</div></div>
                 <div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">Total materials</div><div style="font-size:21px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${cmFmt(matPure)}</div></div>
-                ${combined > 0 ? `<div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">Mat + Labor</div><div style="font-size:21px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${cmFmt(combined)}</div></div>` : ''}
+                ${combined > 0 ? `<div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">Out Source</div><div style="font-size:21px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${cmFmt(combined)}</div></div>` : ''}
             </div>
             <div style="margin-top:22px;background:#f7f8fb;border-radius:15px;padding:20px 22px;">
                 <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;"><span style="color:#6b7180;">${partner ? 'Labor' : 'Direct costs'}</span><span style="font-weight:700;">${cmFmt(partner ? labor : direct)}</span></div>
                 <div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;border-top:1px solid #ebedf2;"><span style="color:#6b7180;">${partner ? 'Materials' : 'Management fee · ' + cmBillPct(latest) + '%'}</span><span style="font-weight:700;${partner?'':'color:#5b5bd6;'}">${cmFmt(partner ? matPure : fee)}</span></div>
-                ${partner && combined > 0 ? `<div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;border-top:1px solid #ebedf2;"><span style="color:#6b7180;">Materials + Labor</span><span style="font-weight:700;">${cmFmt(combined)}</span></div>` : ''}
-                <div style="display:flex;justify-content:space-between;align-items:center;padding:13px 0 4px;font-size:14px;border-top:1px solid #ebedf2;margin-top:4px;"><span style="font-weight:700;">${partner ? 'Total cost' : 'Grand total'}</span><span style="font-weight:800;font-size:24px;letter-spacing:-0.01em;">${cmFmt(partner ? direct : total)}</span></div>
+                ${partner && combined > 0 ? `<div style="display:flex;justify-content:space-between;padding:9px 0;font-size:14px;border-top:1px solid #ebedf2;"><span style="color:#6b7180;">Out Source</span><span style="font-weight:700;">${cmFmt(combined)}</span></div>` : ''}
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:13px 0 4px;font-size:14px;border-top:1px solid #ebedf2;margin-top:4px;"><span style="font-weight:700;">${partner ? 'Direct total' : 'Grand total'}</span><span style="font-weight:800;font-size:24px;letter-spacing:-0.01em;">${cmFmt(partner ? direct : total)}</span></div>
             </div>
             ${latest ? `<div style="margin-top:18px;font-size:12.5px;color:#8b91a0;">Status: <strong style="color:${status==='Paid'?'#3f9960':status==='Overdue'?'#b91c1c':'#5b5bd6'};">${cmEsc(status)}</strong> · recorded daily</div>` : ''}
         </div>
@@ -3227,7 +3227,7 @@ function cmRenderWeekly() {
                 <th style="text-align:left;padding:11px 0;">Week</th>
                 <th style="text-align:right;padding:11px 0;">Labor</th>
                 <th style="text-align:right;padding:11px 0;">Materials</th>
-                <th style="text-align:right;padding:11px 0;">Mat + Labor</th>
+                <th style="text-align:right;padding:11px 0;">Out Source</th>
                 ${partner ? '' : '<th style="text-align:right;padding:11px 0;">Fee</th>'}
                 <th style="text-align:right;padding:11px 0;">Total</th>
                 <th style="text-align:right;padding:11px 0;">Status</th>
@@ -3250,7 +3250,7 @@ function cmRenderWeekly() {
 // Collect every line entry in one week's bill (labor / materials / mat+labor).
 function _cmWeekRows(b) {
     const out = [];
-    const catName = t => t === 'both' ? 'Mat + Labor' : t === 'materials' ? 'Materials' : 'Labor';
+    const catName = t => t === 'both' ? 'Out Source' : t === 'materials' ? 'Materials' : 'Labor';
     const metaOf = (t, e) => t === 'labor' ? (Number(e.days) ? Number(e.days) + (Number(e.days) === 1 ? ' day' : ' days') : '')
         : t === 'materials' ? (Number(e.qty) ? Number(e.qty) + ' ' + (e.unit || 'pcs') : '')
         : 'supply & install';
@@ -3267,7 +3267,7 @@ function _cmWeekRows(b) {
         const matPure = Math.max(0, ((b.materials||0)+(b.delivery||0)+(b.consumables||0)+(b.other||0)) - c);
         if (b.labor) out.push({ date: b.weekEndingDate, desc: 'Labor · total', amount: Number(b.labor) || 0 });
         if (matPure) out.push({ date: b.weekEndingDate, desc: 'Materials · total', amount: matPure });
-        if (c)       out.push({ date: b.weekEndingDate, desc: 'Mat + Labor · supply & install', amount: c });
+        if (c)       out.push({ date: b.weekEndingDate, desc: 'Out Source · supply & install', amount: c });
     }
     return out;
 }
