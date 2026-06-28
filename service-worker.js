@@ -29,14 +29,19 @@ self.addEventListener('notificationclick', (event) => {
   if (event.action === 'dismiss') return;   // "Dismiss" button just closes it
 
   const d = event.notification.data || {};
-  const url = d.url || '/admin.html';
+  const url = d.url || '/';
+  let targetPath = url;
+  try { targetPath = decodeURIComponent(new URL(url, self.location.origin).pathname); } catch (_) {}
+
   event.waitUntil((async () => {
     const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    // Focus a window already on the target page (admin OR the portal page).
     for (const c of list) {
-      if (c.url.includes('admin.html')) {
+      let p = '';
+      try { p = decodeURIComponent(new URL(c.url).pathname); } catch (_) {}
+      if (p === targetPath) {
         await c.focus();
-        // App is already open — tell it to deep-link to the project + tab.
-        c.postMessage({ type: 'pm-deeplink', pid: d.pid, tab: d.tab });
+        if (d.pid) c.postMessage({ type: 'pm-deeplink', pid: d.pid, tab: d.tab }); // admin deep-link only
         return;
       }
     }

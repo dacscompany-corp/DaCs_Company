@@ -2762,8 +2762,10 @@ window.cmOvApplyRange = function() {
     const note = document.getElementById('cm-ov-range-note');
     if (note) {
         const isWeek = mode && mode.indexOf('wk:') === 0;
-        const unit = isWeek ? 'day' : 'week';
-        const wk = bills.length + ' ' + unit + (bills.length === 1 ? '' : 's');
+        const n = bills.length;
+        const wk = isWeek
+            ? n + ' day' + (n === 1 ? '' : 's')
+            : n + ' entr' + (n === 1 ? 'y' : 'ies');
         const label = mode === 'all'    ? 'All time'
             : mode === 'month'  ? 'This month'
             : mode === 'latest' ? 'This week'
@@ -2773,6 +2775,111 @@ window.cmOvApplyRange = function() {
         note.textContent = label + ' · ' + wk;
     }
 };
+
+// ── Daily-summary push (partner/client portal) ────────────────────────────
+// Opt this device into the nightly 11:59 PM project summary. Stored in Supabase
+// (pushSubscriptions, audience='partner') under the logged-in user; the Cloudflare
+// cron worker sends the partner-facing push that service-worker.js shows.
+const CM_VAPID_PUBLIC_KEY = 'BAB4GutS8XAXmVbWn7SLudzKYukRee_gMEHJ5uX_k7sBRRNi-z59VBIqJzEGO1whgUZJOLBN45nJvHt74zMmApo';
+
+function _cmUrlB64ToUint8(base64) {
+    const pad = '='.repeat((4 - (base64.length % 4)) % 4);
+    const b64 = (base64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(b64); const out = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+}
+async function _cmSwReg() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return null;
+    try { return await navigator.serviceWorker.register('/service-worker.js', { scope: '/' }); }
+    catch (_) { return null; }
+}
+function _cmSubKeyMatches(sub, appKey) {
+    try {
+        const cur = sub.options && sub.options.applicationServerKey;
+        if (!cur) return false;
+        const a = new Uint8Array(cur);
+        if (a.length !== appKey.length) return false;
+        for (let i = 0; i < a.length; i++) if (a[i] !== appKey[i]) return false;
+        return true;
+    } catch (_) { return false; }
+}
+async function cmPushIsEnabled() {
+    if (!cmProjectData || typeof Notification === 'undefined' || !('serviceWorker' in navigator) || Notification.permission !== 'granted') return false;
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) return false;
+    const sub = await reg.pushManager.getSubscription();
+    if (!sub) return false;
+    try {
+        const snap = await db.collection('pushSubscriptions')
+            .where('endpoint', '==', sub.endpoint).where('projectId', '==', cmProjectData.id).get();
+        return !snap.empty;
+    } catch (_) { return false; }
+}
+async function _cmStoreSub(sub) {
+    const json = sub.toJSON();
+    try {
+        const snap = await db.collection('pushSubscriptions')
+            .where('endpoint', '==', sub.endpoint).where('projectId', '==', cmProjectData.id).get();
+        if (!snap.empty) return;
+    } catch (_) {}
+    await db.collection('pushSubscriptions').add({
+        userId:    cmCurrentUser && cmCurrentUser.uid,
+        projectId: cmProjectData.id,
+        audience:  'partner',
+        page:      location.pathname,
+        endpoint:  sub.endpoint,
+        p256dh:    json.keys && json.keys.p256dh,
+        auth:      json.keys && json.keys.auth,
+        createdAt: new Date().toISOString(),
+    });
+}
+async function _cmRemoveSub(endpoint) {
+    try {
+        const snap = await db.collection('pushSubscriptions')
+            .where('endpoint', '==', endpoint).where('projectId', '==', cmProjectData.id).get();
+        await Promise.all(snap.docs.map(d => db.collection('pushSubscriptions').doc(d.id).delete()));
+    } catch (_) {}
+}
+window.cmPushToggle = async function() {
+    if (!cmProjectData) { alert('No project linked to your account yet.'); return; }
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
+        alert('Notifications are not supported on this browser.'); return;
+    }
+    const reg = await _cmSwReg();
+    if (!reg) { alert('Could not start notifications on this device.'); return; }
+    if (await cmPushIsEnabled()) {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) { await _cmRemoveSub(sub.endpoint); try { await sub.unsubscribe(); } catch (_) {} }
+        cmPushRefreshBell(); return;
+    }
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { alert('Allow notifications to get the daily summary.'); cmPushRefreshBell(); return; }
+    const appKey = _cmUrlB64ToUint8(CM_VAPID_PUBLIC_KEY);
+    let sub = await reg.pushManager.getSubscription();
+    if (sub && !_cmSubKeyMatches(sub, appKey)) { try { await sub.unsubscribe(); } catch (_) {} sub = null; }
+    if (!sub) {
+        try { sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey }); }
+        catch (e) { alert('Could not subscribe to notifications: ' + e.message); return; }
+    }
+    await _cmStoreSub(sub);
+    cmPushRefreshBell();
+    alert('Daily 11:59 PM summary enabled for this project.');
+};
+window.cmPushRefreshBell = async function() {
+    const btn = document.getElementById('cm-push-bell');
+    if (!btn) return;
+    if (!cmProjectData || typeof Notification === 'undefined' || !('serviceWorker' in navigator)) { btn.style.display = 'none'; return; }
+    btn.style.display = '';
+    let on = false;
+    try { on = await cmPushIsEnabled(); } catch (_) {}
+    btn.classList.toggle('on', on);
+    btn.style.background    = on ? '#ecfdf3' : '#fff';
+    btn.style.borderColor   = on ? '#abefc6' : '#e5e7eb';
+    btn.style.color         = on ? '#067647' : '#374151';
+    btn.textContent = on ? '🔔 Daily summary on' : '🔔 Notify me daily';
+};
+if ('serviceWorker' in navigator) { window.addEventListener('load', () => { _cmSwReg(); }); }
 
 function cmRenderOverview() {
     const host = document.getElementById('kpi-project-folder');
@@ -2858,7 +2965,14 @@ function cmRenderOverview() {
             <div style="margin-top:-3px;"><div style="font-size:13.5px;font-weight:700;color:${paid?'#1a1d24':'#aeb4c2'};">Paid + fund replenished</div><div style="font-size:12px;color:${paid?'#8b91a0':'#c4c9d4'};">${paid?'Settled':'Awaiting client'}</div></div>
         </div>` : '<div style="font-size:13px;color:#aeb4c2;">No billing activity yet.</div>';
 
-    // Recent weeks (partner = direct totals, no payment status)
+    // Recent entries — each bill shown on its REAL date (no synthetic 7-day range).
+    const cmEntryDate = (d) => {
+        if (!d) return '—';
+        const x = new Date(d);
+        if (isNaN(x.getTime())) return cmEsc(String(d));
+        const M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+        return `${M[x.getMonth()]} ${x.getDate()}, ${x.getFullYear()}`;
+    };
     const recent = bills.slice(0, 4).map(b => {
         const st = b.status === 'Paid' ? ['PAID','#3f9960','#e7f5ed']
                  : b.status === 'Overdue' ? ['OVERDUE','#b91c1c','#fef2f2']
@@ -2866,7 +2980,7 @@ function cmRenderOverview() {
         const bDirect = b.directCostTotal || ((b.labor||0)+(b.materials||0)+(b.delivery||0)+(b.consumables||0)+(b.other||0));
         const amt = partner ? bDirect : (b.totalDue || 0);
         return `<tr style="border-top:1px solid #f0f1f5;">
-            <td style="padding:13px 0;">${cmEsc(cmWeekRange(b.weekEndingDate))}</td>
+            <td style="padding:13px 0;">${cmEsc(cmEntryDate(b.weekEndingDate))}</td>
             <td style="padding:13px 0;text-align:right;font-weight:700;">${cmFmt(amt)}</td>
             ${partner ? '' : `<td style="padding:13px 0;text-align:right;"><span style="font-size:11px;font-weight:700;background:${st[2]};color:${st[1]};padding:3px 10px;border-radius:20px;">${st[0]}</span></td>`}
         </tr>`;
@@ -2890,7 +3004,7 @@ function cmRenderOverview() {
         <div class="cm-bd-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;">
             <div>
                 <div style="font-size:16px;font-weight:800;color:#fff;">Direct cost breakdown</div>
-                <div id="cm-ov-range-note" style="font-size:11.5px;color:rgba(255,255,255,0.8);margin-top:2px;">All time · ${(cmWeeklyBills||[]).length} week${(cmWeeklyBills||[]).length === 1 ? '' : 's'}</div>
+                <div id="cm-ov-range-note" style="font-size:11.5px;color:rgba(255,255,255,0.8);margin-top:2px;">All time · ${(cmWeeklyBills||[]).length} entr${(cmWeeklyBills||[]).length === 1 ? 'y' : 'ies'}</div>
             </div>
             <div class="cm-ov-head-right cm-bd-head-right" style="display:flex;flex-direction:column;gap:11px;">
 
@@ -2913,14 +3027,17 @@ function cmRenderOverview() {
         <div class="cm-bd-legend" style="display:flex;gap:13px;flex-wrap:wrap;">
             ${ovLegendBox('Labor',             '#5fd0a0', 'cm-ov-labor',     'cm-ov-labor-pct',     ovBd.labor,     ovBd.laborPct)}
             ${ovLegendBox('Materials',         '#f5c560', 'cm-ov-materials', 'cm-ov-materials-pct', ovBd.materials, ovBd.matPct)}
-            ${ovLegendBox('Materials + labor', '#c3adf0', 'cm-ov-combined',  'cm-ov-combined-pct',  ovBd.combined,  ovBd.combinedPct)}
+            ${ovLegendBox('Out Source', '#c3adf0', 'cm-ov-combined',  'cm-ov-combined-pct',  ovBd.combined,  ovBd.combinedPct)}
         </div>
     </div>`;
 
     host.innerHTML = `
-    <div style="margin-bottom:26px;">
-        <div style="font-size:28px;font-weight:800;letter-spacing:-0.02em;color:#1a1d24;">Overview</div>
-        <div style="font-size:14px;color:#8b91a0;margin-top:3px;">Hello, ${cmEsc(first)}. Here's where the project stands today.</div>
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:26px;">
+        <div>
+            <div style="font-size:28px;font-weight:800;letter-spacing:-0.02em;color:#1a1d24;">Overview</div>
+            <div style="font-size:14px;color:#8b91a0;margin-top:3px;">Hello, ${cmEsc(first)}. Here's where the project stands today.</div>
+        </div>
+        <button id="cm-push-bell" onclick="cmPushToggle()" style="display:none;align-self:center;border:1px solid #e5e7eb;border-radius:10px;padding:9px 14px;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">🔔 Notify me daily</button>
     </div>
 
     <div class="cm-ov-row1" style="display:grid;grid-template-columns:${partner ? '1fr 1fr' : '1.55fr 1fr'};gap:24px;align-items:stretch;">
@@ -2979,10 +3096,10 @@ function cmRenderOverview() {
             <div style="display:flex;flex-direction:column;">${cadence}</div>
         </div>`}
         <div style="${card}">
-            <div style="font-size:14px;font-weight:700;margin-bottom:6px;color:#1a1d24;">Recent weeks</div>
+            <div style="font-size:14px;font-weight:700;margin-bottom:6px;color:#1a1d24;">Recent entries</div>
             <table style="width:100%;border-collapse:collapse;">
                 <thead><tr style="font-size:11px;letter-spacing:0.04em;text-transform:uppercase;color:#aeb4c2;font-weight:700;">
-                    <th style="text-align:left;padding:10px 0;">Week</th>
+                    <th style="text-align:left;padding:10px 0;">Date</th>
                     <th style="text-align:right;padding:10px 0;">Total</th>
                     ${partner ? '' : '<th style="text-align:right;padding:10px 0;">Status</th>'}
                 </tr></thead>
@@ -2990,6 +3107,8 @@ function cmRenderOverview() {
             </table>
         </div>
     </div>`;
+
+    if (window.cmPushRefreshBell) cmPushRefreshBell();
 }
 
 // ── Revolving Fund (redesign: 3 KPI cards + expense ledger + replenishment) ──
