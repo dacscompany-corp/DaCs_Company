@@ -1620,6 +1620,7 @@ async function _pmLoadWeekBuilder() {
     _pmWeekRenderHistory();
     _pmWeekApplyCat();
     _pmWeekShowBuilder(true);
+    _pmLoadLaborContracts();   // labor contracts panel + picker (drawdown reads _pmWeekBills)
 }
 
 // Load the saved bill for the selected Friday into the draft (or start empty).
@@ -1740,22 +1741,26 @@ window.pmWeekAddEntry = function() {
     if (amount <= 0) { if (amtEl) amtEl.focus(); return; }
     const fallbackDetails = type === 'labor' ? 'Labor cost' : type === 'both' ? 'Materials & labor' : 'Materials';
     const receipts = _receiptsFromStaged(_pmWeekStagedReceipts);
+    // Labor lines can draw down a pakyaw/capped contract (none for materials/out source).
+    const contractId = (type === 'labor') ? ((document.getElementById('pm-week-contract') || {}).value || '') : '';
     if (_pmWeekEditEntryId) {
         // Update the line in place.
         const en = _pmWeekEntries.find(e => e.id === _pmWeekEditEntryId);
         if (en) {
             en.type = type; en.details = details || fallbackDetails; en.amount = amount;
             en.days = days; en.qty = qty; en.unit = unit;
-            en.receipts = receipts;
+            en.receipts = receipts; en.contractId = contractId;
         }
         _pmWeekEditEntryId = null;
     } else {
-        _pmWeekEntries.push({ id:_pmUid('we_'), type, details: details || fallbackDetails, amount, days, qty, unit, receipts });
+        _pmWeekEntries.push({ id:_pmUid('we_'), type, details: details || fallbackDetails, amount, days, qty, unit, receipts, contractId });
     }
     if (detEl)  detEl.value = '';
     if (amtEl)  amtEl.value = '';
     if (daysEl) daysEl.value = '';
     if (qtyEl)  qtyEl.value = '';
+    const cSel = document.getElementById('pm-week-contract'); if (cSel) cSel.value = '';
+    if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
     pmWeekClearReceipt();
     _pmWeekSyncAddBtn();
     _pmWeekRenderEntries();
@@ -1808,6 +1813,10 @@ function _pmWeekApplyCat() {
     if (daysWrap) daysWrap.style.display = cat === 'labor' ? '' : 'none';
     const qtyWrap = document.getElementById('pm-week-qty-wrap');
     if (qtyWrap) qtyWrap.style.display = cat === 'materials' ? '' : 'none';
+    // "Pay against contract" picker is Labor-only.
+    const contractWrap = document.getElementById('pm-week-contract-wrap');
+    if (contractWrap) contractWrap.style.display = cat === 'labor' ? '' : 'none';
+    if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
     _pmWeekRenderEntries();
     _pmWeekRenderAttach();
 }
@@ -1935,6 +1944,8 @@ window.pmWeekEditEntry = function(id) {
     const daysEl = document.getElementById('pm-week-days');    if (daysEl) daysEl.value = en.days || '';
     const qtyEl  = document.getElementById('pm-week-qty');     if (qtyEl)  qtyEl.value  = en.qty || '';
     const unitEl = document.getElementById('pm-week-unit');    if (unitEl && en.unit) unitEl.value = en.unit;
+    const cSel = document.getElementById('pm-week-contract'); if (cSel) cSel.value = en.contractId || '';
+    if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
     _pmWeekSyncAddBtn();
     if (detEl) { detEl.focus(); detEl.scrollIntoView({ block: 'nearest' }); }
 };
@@ -2786,6 +2797,7 @@ window.pmWeekSave = async function() {
                 return { type:e.type, details:e.details, amount:e.amount,
                     ...(e.days ? { days:e.days } : {}),
                     ...(e.qty  ? { qty:e.qty, unit:e.unit || 'pcs' } : {}),
+                    ...(e.contractId ? { contractId: e.contractId } : {}),   // pakyaw/contract drawdown link
                     ...(urls.length ? { receipts: urls, receiptUrl: urls[0] } : {}) };  // receiptUrl kept for legacy readers
             }),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -4235,3 +4247,247 @@ function _nextFriday() {
     d.setDate(d.getDate() + diff);
     return d.toISOString().slice(0,10);
 }
+
+// ══════════════════════════════════════════════════════════
+// LABOR CONTRACTS (PAKYAW / IN-HOUSE CAPPED PAY) — Project Management
+// Project-scoped capped agreements in constructionProjects/{id}/laborContracts.
+// Drawdown = saved Daily Expenses "Labor" lines (weeklyBills.entries, type 'labor')
+// tagged with the contract id. Collapsible panel inside the Daily Expenses tab.
+// Admin-only. Mirrors the Project-Control feature against the PM data model.
+// ══════════════════════════════════════════════════════════
+let _pmLaborContracts = [];
+
+function _pmLcCol() {
+    return db.collection('constructionProjects').doc(_pmActiveProject.id).collection('laborContracts');
+}
+async function _pmLoadLaborContracts() {
+    if (!_pmActiveProject) { _pmLaborContracts = []; _pmRenderContracts(); return; }
+    try {
+        const snap = await _pmLcCol().get();
+        _pmLaborContracts = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .sort((a, b) => (a.workerName || '').localeCompare(b.workerName || '')
+                         || (a.scope || '').localeCompare(b.scope || ''));
+    } catch (e) { console.warn('PM labor contracts load:', e.message); _pmLaborContracts = []; }
+    _pmRenderContracts();
+    _pmPopulateContractPicker();
+}
+
+// Paid-to-date = every saved Daily Expenses labor line tagged to this contract.
+function _pmContractPaid(contractId) {
+    if (!contractId) return 0;
+    let sum = 0;
+    (_pmWeekBills || []).forEach(b => {
+        (Array.isArray(b.entries) ? b.entries : []).forEach(e => {
+            if (e.type === 'labor' && e.contractId === contractId) sum += (Number(e.amount) || 0);
+        });
+    });
+    return sum;
+}
+function _pmContractStats(c) {
+    const agreed = Number(c.agreedAmount) || 0;
+    const paid = _pmContractPaid(c.id);
+    const remaining = agreed - paid;
+    const pct = agreed > 0 ? (paid / agreed) * 100 : 0;
+    let status = 'Ongoing';
+    if (agreed > 0 && paid >= agreed) status = paid > agreed ? 'Over' : 'Completed';
+    return { agreed, paid, remaining, pct, status };
+}
+
+// ── Labor add-row picker ───────────────────────────────────
+function _pmPopulateContractPicker() {
+    const sel = document.getElementById('pm-week-contract');
+    if (sel) {
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">— None (regular labor) —</option>'
+            + _pmLaborContracts.map(c => {
+                const st = _pmContractStats(c);
+                return '<option value="' + c.id + '">' + _esc(c.workerName || 'Worker') + ' · ' + _esc(c.scope || 'job')
+                    + ' (₱' + _fmt(st.remaining) + ' left)</option>';
+            }).join('');
+        if (cur && _pmLaborContracts.some(c => c.id === cur)) sel.value = cur;
+    }
+    const dl = document.getElementById('pmLcWorkerNames');
+    if (dl) dl.innerHTML = [...new Set(_pmLaborContracts.map(c => (c.workerName || '').trim()).filter(Boolean))]
+        .map(n => '<option value="' + _esc(n) + '">').join('');
+}
+window.pmWeekContractHint = function() {
+    const sel = document.getElementById('pm-week-contract');
+    const hint = document.getElementById('pm-week-contract-remaining');
+    if (!sel || !hint) return;
+    const c = _pmLaborContracts.find(x => x.id === sel.value);
+    if (!c) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
+    const st = _pmContractStats(c);
+    hint.style.display = '';
+    hint.innerHTML = 'Remaining: <strong class="' + (st.remaining < 0 ? 'pm-lc-neg' : '') + '">₱' + _fmt(st.remaining)
+        + '</strong> of ₱' + _fmt(st.agreed) + ' agreed';
+};
+
+// ── Worker Tracker panel (collapsible, in Daily Expenses) ──
+window.pmContractsToggle = function() {
+    const body = document.getElementById('pm-contracts-body');
+    const chev = document.getElementById('pm-contracts-chev');
+    if (!body) return;
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : '';
+    if (chev) chev.style.transform = open ? '' : 'rotate(180deg)';
+};
+function _pmRenderContracts() {
+    const sumEl = document.getElementById('pm-contracts-summary');
+    const body  = document.getElementById('pm-contracts-body');
+    if (!body) return;
+    const n = _pmLaborContracts.length;
+    let totAgreed = 0, totPaid = 0;
+    _pmLaborContracts.forEach(c => { const s = _pmContractStats(c); totAgreed += s.agreed; totPaid += s.paid; });
+    if (sumEl) sumEl.textContent = n
+        ? (n + ' contract' + (n === 1 ? '' : 's') + ' · ₱' + _fmt(totAgreed - totPaid) + ' remaining')
+        : 'No contracts yet';
+    if (!n) { body.innerHTML = '<div class="pm-lc-empty">No labor contracts yet. Click "＋ New Contract" to cap a worker’s job (pakyaw or in-house). Then tag a Labor entry to it when you log the day.</div>'; return; }
+    const byW = {};
+    _pmLaborContracts.forEach(c => { const w = (c.workerName || '—').trim() || '—'; (byW[w] = byW[w] || []).push(c); });
+    body.innerHTML = Object.keys(byW).sort((a, b) => a.localeCompare(b)).map(w => {
+        const cs = byW[w];
+        let wa = 0, wp = 0;
+        const cards = cs.map(c => {
+            const st = _pmContractStats(c);
+            wa += st.agreed; wp += st.paid;
+            const pct = Math.min(100, Math.max(0, st.pct));
+            const badge = st.status === 'Completed' ? 'pm-lc-b-done' : st.status === 'Over' ? 'pm-lc-b-over' : 'pm-lc-b-on';
+            const bar = st.status === 'Over' ? 'pm-lc-bar-over' : (st.status === 'Completed' ? 'pm-lc-bar-done' : 'pm-lc-bar-ok');
+            const typeLbl = c.payType === 'inhouse' ? 'In-house' : 'Pakyaw';
+            return '<div class="pm-lc-card">'
+                + '<div class="pm-lc-chead"><div class="pm-lc-scope">' + _esc(c.scope || 'Untitled job')
+                + ' <span class="pm-lc-type">' + typeLbl + '</span></div>'
+                + '<span class="pm-lc-badge ' + badge + '">' + st.status + (st.status === 'Ongoing' ? ' · ' + st.pct.toFixed(0) + '%' : '') + '</span></div>'
+                + '<div class="pm-lc-figs"><div><span>Agreed</span><b>₱' + _fmt(st.agreed) + '</b></div>'
+                + '<div><span>Paid</span><b>₱' + _fmt(st.paid) + '</b></div>'
+                + '<div><span>Remaining</span><b class="' + (st.remaining < 0 ? 'pm-lc-neg' : '') + '">₱' + _fmt(st.remaining) + '</b></div></div>'
+                + '<div class="pm-lc-bar"><div class="pm-lc-bar-fill ' + bar + '" style="width:' + pct.toFixed(1) + '%"></div></div>'
+                + '<div class="pm-lc-actions">'
+                + '<button onclick="pmLcOpenLedger(\'' + c.id + '\')">Ledger</button>'
+                + '<button onclick="pmLcRaiseCap(\'' + c.id + '\')">Raise cap</button>'
+                + '<button onclick="pmLcOpenEdit(\'' + c.id + '\')">Edit</button>'
+                + '<button class="pm-lc-del" onclick="pmLcDelete(\'' + c.id + '\')">Delete</button>'
+                + '</div></div>';
+        }).join('');
+        const wr = wa - wp;
+        return '<div class="pm-lc-wgroup"><div class="pm-lc-whead">'
+            + '<span class="pm-lc-wname">' + _esc(w) + '</span>'
+            + '<span class="pm-lc-wtot">Agreed <b>₱' + _fmt(wa) + '</b> · Paid <b>₱' + _fmt(wp) + '</b> · Remaining <b class="' + (wr < 0 ? 'pm-lc-neg' : '') + '">₱' + _fmt(wr) + '</b></span>'
+            + '</div><div class="pm-lc-grid">' + cards + '</div></div>';
+    }).join('');
+}
+
+// ── Create / edit / raise cap / delete ─────────────────────
+window.pmLcOpenNew = function() {
+    if (!_pmActiveProject) { _pmToast('Open a project first.', true); return; }
+    document.getElementById('pmLcId').value = '';
+    document.getElementById('pmLcWorker').value = '';
+    document.getElementById('pmLcScope').value = '';
+    document.getElementById('pmLcAmount').value = '';
+    document.getElementById('pmLcNotes').value = '';
+    const pk = document.querySelector('input[name="pmLcPayType"][value="pakyaw"]'); if (pk) pk.checked = true;
+    const t = document.getElementById('pmLcModalTitle'); if (t) t.textContent = 'New Labor Contract';
+    _pmPopulateContractPicker();
+    document.getElementById('pmLaborContractModal').style.display = 'flex';
+};
+window.pmLcOpenEdit = function(id) {
+    const c = _pmLaborContracts.find(x => x.id === id); if (!c) return;
+    document.getElementById('pmLcId').value = c.id;
+    document.getElementById('pmLcWorker').value = c.workerName || '';
+    document.getElementById('pmLcScope').value = c.scope || '';
+    document.getElementById('pmLcAmount').value = c.agreedAmount ? Number(c.agreedAmount).toLocaleString('en-PH') : '';
+    document.getElementById('pmLcNotes').value = c.notes || '';
+    const r = document.querySelector('input[name="pmLcPayType"][value="' + (c.payType === 'inhouse' ? 'inhouse' : 'pakyaw') + '"]'); if (r) r.checked = true;
+    const t = document.getElementById('pmLcModalTitle'); if (t) t.textContent = 'Edit Labor Contract';
+    _pmPopulateContractPicker();
+    document.getElementById('pmLaborContractModal').style.display = 'flex';
+};
+window.pmLcSave = async function(e) {
+    if (e) e.preventDefault();
+    if (!_pmActiveProject) { _pmToast('No project selected.', true); return; }
+    const id = document.getElementById('pmLcId').value;
+    const workerName = document.getElementById('pmLcWorker').value.trim();
+    const scope = document.getElementById('pmLcScope').value.trim();
+    const agreedAmount = parseFloat((document.getElementById('pmLcAmount').value || '').replace(/,/g, '')) || 0;
+    const notes = document.getElementById('pmLcNotes').value.trim();
+    const payType = (document.querySelector('input[name="pmLcPayType"]:checked') || {}).value || 'pakyaw';
+    if (!workerName) { _pmToast('Enter the worker name.', true); return; }
+    if (agreedAmount <= 0) { _pmToast('Enter the agreed amount (cap).', true); return; }
+    try {
+        if (id) {
+            const ex = _pmLaborContracts.find(x => x.id === id);
+            const upd = { workerName, scope, agreedAmount, payType, notes, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+            if (ex && (Number(ex.agreedAmount) || 0) !== agreedAmount) {
+                const h = Array.isArray(ex.capHistory) ? ex.capHistory.slice() : [];
+                h.push({ amount: agreedAmount, at: new Date().toISOString(), note: 'Edited cap' });
+                upd.capHistory = h;
+            }
+            await _pmLcCol().doc(id).update(upd);
+        } else {
+            await _pmLcCol().add({ workerName, scope, agreedAmount, payType, notes, status: 'ongoing',
+                capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        }
+        pmCloseModal('pmLaborContractModal');
+        _pmToast('Contract saved');
+        await _pmLoadLaborContracts();
+    } catch (err) { _pmToast('Error: ' + err.message, true); }
+};
+window.pmLcRaiseCap = async function(id) {
+    const c = _pmLaborContracts.find(x => x.id === id); if (!c) return;
+    const cur = Number(c.agreedAmount) || 0;
+    const input = prompt('Raise cap for ' + (c.workerName || 'worker') + ' — ' + (c.scope || 'job')
+        + '\nCurrent agreed: ₱' + _fmt(cur) + '\n\nEnter the NEW agreed amount:', cur);
+    if (input === null) return;
+    const next = parseFloat(String(input).replace(/,/g, '')) || 0;
+    if (next <= 0) { _pmToast('Enter a valid amount.', true); return; }
+    try {
+        const h = Array.isArray(c.capHistory) ? c.capHistory.slice() : [];
+        h.push({ amount: next, at: new Date().toISOString(), note: next >= cur ? 'Raised cap' : 'Lowered cap' });
+        await _pmLcCol().doc(id).update({ agreedAmount: next, capHistory: h, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        _pmToast('Cap updated');
+        await _pmLoadLaborContracts();
+    } catch (err) { _pmToast('Error: ' + err.message, true); }
+};
+window.pmLcDelete = async function(id) {
+    const paid = _pmContractPaid(id);
+    const msg = paid > 0
+        ? 'This contract has ₱' + _fmt(paid) + ' in linked labor lines. Deleting it leaves those lines but un-caps them. Continue?'
+        : 'Delete this labor contract?';
+    if (!confirm(msg)) return;
+    try {
+        await _pmLcCol().doc(id).delete();
+        _pmToast('Contract deleted');
+        await _pmLoadLaborContracts();
+    } catch (err) { _pmToast('Error: ' + err.message, true); }
+};
+
+// ── Per-contract ledger (the labor lines that drew it down) ─
+window.pmLcOpenLedger = function(id) {
+    const c = _pmLaborContracts.find(x => x.id === id); if (!c) return;
+    const st = _pmContractStats(c);
+    const rows = [];
+    (_pmWeekBills || []).forEach(b => (Array.isArray(b.entries) ? b.entries : []).forEach(e => {
+        if (e.type === 'labor' && e.contractId === id) rows.push({ date: b.weekEndingDate, details: e.details || '—', amount: Number(e.amount) || 0 });
+    }));
+    rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const titleEl = document.getElementById('pmLcLedgerTitle');
+    if (titleEl) titleEl.textContent = (c.workerName || 'Worker') + ' — ' + (c.scope || 'Contract');
+    const fmtD = d => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return d || '—'; } };
+    let running = st.agreed;
+    const rowsHtml = rows.length ? rows.map(r => {
+        running -= r.amount;
+        return '<tr><td>' + fmtD(r.date) + '</td><td>' + _esc(r.details) + '</td><td class="num">₱' + _fmt(r.amount)
+            + '</td><td class="num ' + (running < 0 ? 'pm-lc-neg' : '') + '">₱' + _fmt(running) + '</td></tr>';
+    }).join('') : '<tr><td colspan="4" style="text-align:center;color:#9b9a94;padding:18px;">No labor lines tagged to this contract yet.</td></tr>';
+    const badge = st.status === 'Completed' ? 'pm-lc-b-done' : st.status === 'Over' ? 'pm-lc-b-over' : 'pm-lc-b-on';
+    const body = document.getElementById('pmLcLedgerBody');
+    if (body) body.innerHTML =
+        '<div class="pm-lc-led-sum"><div><span>Agreed</span><b>₱' + _fmt(st.agreed) + '</b></div>'
+        + '<div><span>Paid</span><b>₱' + _fmt(st.paid) + '</b></div>'
+        + '<div><span>Remaining</span><b class="' + (st.remaining < 0 ? 'pm-lc-neg' : '') + '">₱' + _fmt(st.remaining) + '</b></div>'
+        + '<span class="pm-lc-badge ' + badge + '">' + st.status + '</span></div>'
+        + '<table class="pm-lc-led-table"><thead><tr><th>Date</th><th>Labor line</th><th class="num">Amount</th><th class="num">Remaining after</th></tr></thead><tbody>'
+        + rowsHtml + '</tbody></table>';
+    document.getElementById('pmLaborLedgerModal').style.display = 'flex';
+};

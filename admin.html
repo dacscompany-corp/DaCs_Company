@@ -1424,6 +1424,18 @@
               </div>
             </div>
 
+            <!-- Labor Contracts (pakyaw / capped) — collapsible Worker Tracker -->
+            <div class="pm-lc-panel">
+              <div class="pm-lc-phead" onclick="pmContractsToggle()">
+                <svg id="pm-contracts-chev" class="pm-lc-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                <span class="pm-lc-ptitle">Labor Contracts</span>
+                <span class="pm-lc-psum" id="pm-contracts-summary">No contracts yet</span>
+                <span style="flex:1"></span>
+                <button class="pm-lc-newbtn" type="button" onclick="event.stopPropagation(); pmLcOpenNew()">＋ New Contract</button>
+              </div>
+              <div class="pm-lc-pbody" id="pm-contracts-body" style="display:none;"></div>
+            </div>
+
             <div class="pmw-grid">
               <!-- LEFT: editable builder OR read-only past bill -->
               <div class="pmw-main">
@@ -1481,6 +1493,13 @@
                           <input class="pmw-amount num" id="pm-week-amount" inputmode="numeric" placeholder="Amount" onkeydown="if(event.key==='Enter')pmWeekAddEntry()">
                         </div>
                       </div>
+                    </div>
+                    <div class="pmw-addcard-field pmw-contract-field" id="pm-week-contract-wrap" style="display:none;">
+                      <label>Pay against contract <span style="font-weight:400;color:#9b9a94;">— pakyaw / capped job (optional)</span></label>
+                      <select class="pmw-input" id="pm-week-contract" onchange="pmWeekContractHint()">
+                        <option value="">— None (regular labor) —</option>
+                      </select>
+                      <div id="pm-week-contract-remaining" class="pm-lc-remaining" style="display:none;"></div>
                     </div>
                     <div class="pmw-addcard-foot">
                       <input type="file" id="pm-week-receipt-input" accept="image/*" multiple style="display:none" onchange="pmWeekStageReceipt(this)">
@@ -4022,6 +4041,65 @@
 </div>
 
 <!-- Add/Edit Milestone Modal -->
+<!-- Labor Contract (pakyaw / in-house) — Project Management -->
+<div id="pmLaborContractModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmLaborContractModal')" style="display:none;">
+  <div class="pm-modal-box">
+    <div class="pm-modal-header">
+      <h3 id="pmLcModalTitle">New Labor Contract</h3>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmLaborContractModal')"><i data-lucide="x"></i></button>
+    </div>
+    <form onsubmit="pmLcSave(event)">
+      <div class="pm-modal-body">
+        <input type="hidden" id="pmLcId">
+        <div class="pm-form-row pm-two-col">
+          <div class="pm-form-group">
+            <label class="pm-field-label">Worker Name <span class="pm-req">*</span></label>
+            <input type="text" id="pmLcWorker" class="pm-input" list="pmLcWorkerNames" placeholder="Full name" autocomplete="off">
+            <datalist id="pmLcWorkerNames"></datalist>
+          </div>
+          <div class="pm-form-group">
+            <label class="pm-field-label">Scope / Job</label>
+            <input type="text" id="pmLcScope" class="pm-input" placeholder="e.g. Tiling &amp; masonry">
+          </div>
+        </div>
+        <div class="pm-form-group">
+          <label class="pm-field-label">Pay Type</label>
+          <div style="display:flex;gap:20px;align-items:center;padding-top:2px;">
+            <label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;"><input type="radio" name="pmLcPayType" value="pakyaw" checked> Pakyaw <span style="color:#9b9a94;font-size:.85em;">(contract)</span></label>
+            <label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;"><input type="radio" name="pmLcPayType" value="inhouse"> In-house <span style="color:#9b9a94;font-size:.85em;">(capped regular)</span></label>
+          </div>
+        </div>
+        <div class="pm-form-group">
+          <label class="pm-field-label">Agreed Amount / Cap (₱) <span class="pm-req">*</span></label>
+          <input type="text" inputmode="decimal" id="pmLcAmount" class="pm-input" placeholder="0.00">
+        </div>
+        <div class="pm-form-group">
+          <label class="pm-field-label">Notes (optional)</label>
+          <textarea id="pmLcNotes" class="pm-input" rows="2" placeholder="Additional details…"></textarea>
+        </div>
+      </div>
+      <div class="pm-modal-footer">
+        <button type="button" class="pm-btn pm-btn-secondary" onclick="pmCloseModal('pmLaborContractModal')">Cancel</button>
+        <button type="submit" class="pm-btn pm-btn-primary">Save Contract</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Labor Contract ledger -->
+<div id="pmLaborLedgerModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmLaborLedgerModal')" style="display:none;">
+  <div class="pm-modal-box" style="max-width:640px;">
+    <div class="pm-modal-header">
+      <h3 id="pmLcLedgerTitle">Contract Ledger</h3>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmLaborLedgerModal')"><i data-lucide="x"></i></button>
+    </div>
+    <div class="pm-modal-body" id="pmLcLedgerBody"></div>
+    <div class="pm-modal-footer">
+      <button type="button" class="pm-btn pm-btn-secondary" onclick="pmCloseModal('pmLaborLedgerModal')">Close</button>
+    </div>
+  </div>
+</div>
+
 <div id="pmMilestoneModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmMilestoneModal')" style="display:none;">
   <div class="pm-modal-box">
     <div class="pm-modal-header">

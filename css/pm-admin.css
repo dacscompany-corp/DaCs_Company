@@ -1860,3 +1860,65 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
   border-style: dashed;
   background: #fbfbfa;
 }
+
+/* ════════════════════════════════════════════════════════════
+   LABOR CONTRACTS (pakyaw / capped) — Project Management
+   ════════════════════════════════════════════════════════════ */
+/* picker field in the Labor add-row */
+.pmw-contract-field { margin-top: 12px; }
+.pmw-contract-field > label { display: block; font: 600 11px 'IBM Plex Sans'; color: #6f6e69; margin-bottom: 5px; }
+.pm-lc-remaining { margin-top: 7px; display: inline-flex; align-items: center; gap: 6px; background: #eaf4ef; color: #0f6342; border-radius: 8px; padding: 5px 11px; font: 500 12px 'IBM Plex Sans'; }
+.pm-lc-remaining strong { font-weight: 700; }
+.pm-lc-neg { color: #b4453a !important; }
+
+/* collapsible panel */
+.pm-lc-panel { border: 1px solid #e7e6e2; border-radius: 14px; background: #fff; margin-bottom: 18px; overflow: hidden; }
+.pm-lc-phead { display: flex; align-items: center; gap: 10px; padding: 13px 16px; cursor: pointer; user-select: none; }
+.pm-lc-phead:hover { background: #faf9f7; }
+.pm-lc-chev { color: #9b9a94; flex: none; transition: transform .18s; }
+.pm-lc-ptitle { font: 700 13.5px 'IBM Plex Sans'; color: #1c1c1a; }
+.pm-lc-psum { font: 500 12px 'IBM Plex Sans'; color: #6f6e69; }
+.pm-lc-newbtn { flex: none; background: #157a52; color: #fff; border: none; border-radius: 9px; padding: 8px 14px; font: 700 12px 'IBM Plex Sans'; cursor: pointer; white-space: nowrap; }
+.pm-lc-newbtn:hover { background: #11653f; }
+.pm-lc-pbody { padding: 4px 16px 16px; border-top: 1px solid #f0efec; }
+.pm-lc-empty { text-align: center; color: #9b9a94; font: 400 12.5px 'IBM Plex Sans'; padding: 22px 10px; }
+
+/* worker group */
+.pm-lc-wgroup { margin-top: 14px; }
+.pm-lc-whead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding-bottom: 8px; border-bottom: 1.5px solid #eef0ec; margin-bottom: 10px; }
+.pm-lc-wname { font: 800 14px 'IBM Plex Sans'; color: #0f6342; }
+.pm-lc-wtot { font: 500 11.5px 'IBM Plex Sans'; color: #6f6e69; }
+.pm-lc-wtot b { color: #1c1c1a; font-weight: 700; }
+
+/* contract cards */
+.pm-lc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.pm-lc-card { border: 1px solid #e7e6e2; border-radius: 12px; padding: 12px 13px; background: #fff; }
+.pm-lc-chead { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.pm-lc-scope { font: 700 13px 'IBM Plex Sans'; color: #1c1c1a; }
+.pm-lc-type { font: 700 9.5px 'IBM Plex Sans'; letter-spacing: .03em; text-transform: uppercase; color: #5b3f96; background: #efeaf8; padding: 1px 6px; border-radius: 20px; margin-left: 3px; }
+.pm-lc-badge { flex: none; font: 700 10px 'IBM Plex Sans'; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+.pm-lc-b-on { background: #eef3fb; color: #1d4ed8; }
+.pm-lc-b-done { background: #eaf4ef; color: #0f6342; }
+.pm-lc-b-over { background: #f8ecea; color: #b4453a; }
+.pm-lc-figs { display: flex; gap: 8px; margin-bottom: 8px; }
+.pm-lc-figs > div { flex: 1; min-width: 0; }
+.pm-lc-figs span { display: block; font: 600 9.5px 'IBM Plex Sans'; color: #9b9a94; text-transform: uppercase; letter-spacing: .03em; }
+.pm-lc-figs b { font: 700 13px 'IBM Plex Sans'; color: #1c1c1a; }
+.pm-lc-bar { height: 6px; background: #f0efec; border-radius: 4px; overflow: hidden; margin-bottom: 10px; }
+.pm-lc-bar-fill { height: 100%; border-radius: 4px; }
+.pm-lc-bar-ok { background: #3b82f6; }
+.pm-lc-bar-done { background: #157a52; }
+.pm-lc-bar-over { background: #b4453a; }
+.pm-lc-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.pm-lc-actions button { font: 600 11px 'IBM Plex Sans'; color: #3a3a36; background: #f5f4f1; border: 1px solid #e2e1dc; border-radius: 7px; padding: 4px 9px; cursor: pointer; }
+.pm-lc-actions button:hover { background: #eaf4ef; color: #0f6342; border-color: #c6e6d5; }
+.pm-lc-actions .pm-lc-del:hover { background: #f8ecea; color: #b4453a; border-color: #f0cdc8; }
+
+/* ledger modal */
+.pm-lc-led-sum { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+.pm-lc-led-sum > div span { display: block; font: 600 9.5px 'IBM Plex Sans'; color: #9b9a94; text-transform: uppercase; letter-spacing: .03em; }
+.pm-lc-led-sum > div b { font: 700 15px 'IBM Plex Sans'; color: #1c1c1a; }
+.pm-lc-led-table { width: 100%; border-collapse: collapse; font: 400 12.5px 'IBM Plex Sans'; }
+.pm-lc-led-table th { text-align: left; font: 700 9.5px 'IBM Plex Sans'; text-transform: uppercase; letter-spacing: .03em; color: #9b9a94; padding: 8px 10px; border-bottom: 1.5px solid #eef0ec; }
+.pm-lc-led-table td { padding: 9px 10px; border-bottom: 1px solid #f3f2ef; color: #3a3a36; }
+.pm-lc-led-table .num { text-align: right; font-variant-numeric: tabular-nums; }
