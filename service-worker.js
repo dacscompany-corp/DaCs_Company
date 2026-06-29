@@ -12,7 +12,7 @@ self.addEventListener('push', (event) => {
   const title = data.title || "DAC's Project Update";
   const options = {
     body:     data.body || '',
-    icon:     data.icon  || '/icons/icon-192.png',
+    icon:     data.icon  || '/assets/images/DACS-TRANSPARENT.png',
     badge:    data.badge || '/icons/icon-192.png',
     tag:      data.tag   || 'pm-daily',
     renotify: true,

@@ -803,9 +803,12 @@ function cmRenderNotifDropdown() {
         // a couple of legacy ones use `read`.
         const isUnread = !n.isRead && !n.read;
         return `
-        <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;${isUnread ? 'background:#f0fdf4;' : ''}cursor:pointer;" onclick="cmMarkRead('${n.id}')">
-            <div style="font-size:13px;font-weight:${isUnread ? '600' : '400'};color:#1f2937;">${cmEsc(n.message || n.title || '—')}</div>
-            <div style="font-size:11.5px;color:#9ca3af;margin-top:3px;">${n.createdAt?.toDate ? n.createdAt.toDate().toLocaleDateString('en-PH') : '—'}</div>
+        <div style="padding:12px 16px;border-bottom:1px solid #f1f5f9;${isUnread ? 'background:#f0fdf4;' : ''}cursor:pointer;display:flex;gap:11px;align-items:flex-start;" onclick="cmMarkRead('${n.id}')">
+            <div style="width:32px;height:32px;border-radius:9px;background:#fff;border:1px solid #ececf3;flex:none;display:flex;align-items:center;justify-content:center;overflow:hidden;"><img src="assets/images/DACS-TRANSPARENT.png" alt="DAC's" style="width:22px;height:22px;object-fit:contain;"></div>
+            <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:${isUnread ? '600' : '400'};color:#1f2937;">${cmEsc(n.message || n.title || '—')}</div>
+                <div style="font-size:11.5px;color:#9ca3af;margin-top:3px;">${n.createdAt?.toDate ? n.createdAt.toDate().toLocaleDateString('en-PH') : '—'}</div>
+            </div>
         </div>`;
     }).join('');
 }
@@ -842,6 +845,8 @@ function cmRelTime(ts) {
     return d > 0 ? d+'d ago' : h > 0 ? h+'h ago' : m > 0 ? m+'m ago' : 'just now';
 }
 
+// Category-based icon picker. Currently unused — notifications show the DAC's
+// logo instead (see cmRenderNotifPage / cmRenderNotifDropdown). Kept for reuse.
 function _cmNotifIcon(text) {
     const t = (text || '').toLowerCase();
     if (t.includes('paid') || t.includes('payment received') || t.includes('replenish'))
@@ -866,12 +871,11 @@ function cmRenderNotifPage() {
 
     const rows = notifs.map(n => {
         const unread = !n.isRead && !n.read;
-        const [bg, fg, path] = _cmNotifIcon(n.message || n.title);
         const title = n.title || n.message || '—';
         const sub   = (n.title && n.message && n.title !== n.message) ? n.message : '';
         return `
         <div onclick="cmMarkRead('${n.id}');" style="display:flex;gap:14px;align-items:flex-start;padding:16px;border-radius:14px;${unread?'background:#f7f7fd;':''}cursor:pointer;">
-            <div style="width:38px;height:38px;border-radius:11px;background:${bg};flex:none;display:flex;align-items:center;justify-content:center;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${fg}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${path}</svg></div>
+            <div style="width:38px;height:38px;border-radius:11px;background:#fff;border:1px solid #ececf3;flex:none;display:flex;align-items:center;justify-content:center;overflow:hidden;"><img src="assets/images/DACS-TRANSPARENT.png" alt="DAC's" style="width:26px;height:26px;object-fit:contain;"></div>
             <div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:700;color:#1a1d24;">${cmEsc(title)}</div>${sub?`<div style="font-size:13px;color:#8b91a0;margin-top:2px;">${cmEsc(sub)}</div>`:''}</div>
             <div style="display:flex;align-items:center;gap:10px;flex:none;"><span style="font-size:12px;color:#aeb4c2;">${cmRelTime(n.createdAt)}</span>${unread?'<span style="width:8px;height:8px;background:#5b5bd6;border-radius:50%;"></span>':''}</div>
         </div>`;
