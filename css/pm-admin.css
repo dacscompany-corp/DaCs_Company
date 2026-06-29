@@ -1854,3 +1854,9 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
   border-color: #c6e6d5;
   color: #0f6342;
 }
+/* Visible-but-muted when web push isn't available (e.g. iPhone Safari tab) */
+.pm-push-bell.unsupported {
+  color: #9b9a94;
+  border-style: dashed;
+  background: #fbfbfa;
+}

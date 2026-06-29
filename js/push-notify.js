@@ -44,6 +44,16 @@ function _pmPushOwnerId() {
         || null;
 }
 
+// Can this browser actually receive web push? (iPhone Safari TABS can't — only
+// works once the app is Added to Home Screen on iOS 16.4+.)
+function _pmPushSupported() {
+    return ('serviceWorker' in navigator) && (typeof Notification !== 'undefined') && ('PushManager' in window);
+}
+function _pmIsIOS() {
+    return /iphone|ipad|ipod/i.test(navigator.userAgent || '')
+        || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPadOS
+}
+
 // Is THIS device subscribed for THIS project?
 async function pmPushIsEnabled(projectId) {
     if (!('serviceWorker' in navigator) || typeof Notification === 'undefined' || Notification.permission !== 'granted') return false;
@@ -98,8 +108,10 @@ async function _pmEndpointStillUsed(endpoint) {
 window.pmPushToggle = async function() {
     const proj = _pmPushProj;
     if (!proj) { alert('Open a project first.'); return; }
-    if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
-        alert('Notifications are not supported on this browser.');
+    if (!_pmPushSupported()) {
+        alert(_pmIsIOS()
+            ? 'To get daily notifications on iPhone/iPad:\n\n1. Tap the Share button\n2. Choose "Add to Home Screen"\n3. Open DAC\'s from your Home Screen\n4. Then tap "Notify me daily" again\n\n(Requires iOS 16.4 or newer — Safari tabs can\'t do notifications.)'
+            : 'Daily notifications aren\'t supported on this browser. Try Chrome on Android, or a desktop browser.');
         return;
     }
     if (PM_VAPID_PUBLIC_KEY.indexOf('REPLACE') === 0) {
@@ -145,11 +157,22 @@ window.pmPushRefreshBell = async function(projectId, label) {
     if (projectId) _pmPushProj = { id: projectId, label: label || 'this project' };
     const btn = document.getElementById('pm-push-bell');
     if (!btn) return;
-    if (!_pmPushProj || typeof Notification === 'undefined' || !('serviceWorker' in navigator)) {
-        btn.style.display = 'none';
+    // Only hide the bell when no project is open. On browsers that can't do web
+    // push (e.g. iPhone Safari tabs) keep it VISIBLE but in an info state, so the
+    // button doesn't silently vanish — tapping explains what to do.
+    if (!_pmPushProj) { btn.style.display = 'none'; return; }
+    btn.style.display = '';
+    if (!_pmPushSupported()) {
+        btn.classList.remove('on');
+        btn.classList.add('unsupported');
+        btn.title = _pmIsIOS()
+            ? 'iPhone: add this app to your Home Screen first, then enable daily notifications'
+            : 'Daily notifications aren’t supported on this browser';
+        btn.innerHTML = '<i data-lucide="bell-off" style="width:13px;height:13px;"></i> Notify me daily';
+        if (window.lucide) lucide.createIcons();
         return;
     }
-    btn.style.display = '';
+    btn.classList.remove('unsupported');
     let on = false;
     try { on = await pmPushIsEnabled(_pmPushProj.id); } catch (_) {}
     btn.classList.toggle('on', on);
