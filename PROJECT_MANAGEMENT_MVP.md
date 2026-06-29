@@ -8,11 +8,13 @@ Each construction project opens into a **workspace** with five tabs (below). Thi
 reflects the **current** workflow; the original spec had a weekly total-only summary,
 which has since been replaced by the itemized **Daily Expenses** builder.
 
-> **🆕 Recently added:** per-category **Statements of Account** (Daily Expenses) — **click a
-> category to view all its entries** on screen, plus PDF download · **module-focused accounts**
-> (scope a login to a single module) · **mobile-responsive** workspace (bottom tab bar) ·
-> **client/partner portal parity** (Materials + Labor split · Net cash · tap to view past weeks)
-> with **dark-mode** coverage. Items below tagged **🆕 New** are part of this batch.
+> **🆕 Recently added:** **Labor Contracts (pakyaw / capped pay)** in Daily Expenses — cap a
+> worker's job and draw it down from the daily **Labor** lines, with a Worker Tracker + ledger ·
+> per-category **Statements of Account** (Daily Expenses) — **click a category to view all its
+> entries** on screen, plus PDF download · **module-focused accounts** (scope a login to a single
+> module) · **mobile-responsive** workspace (bottom tab bar) · **client/partner portal parity**
+> (Materials + Labor split · Net cash · tap to view past weeks) with **dark-mode** coverage.
+> Items below tagged **🆕 New** are part of this batch.
 
 ---
 
@@ -90,6 +92,26 @@ itemized** (not a single weekly labor/materials total).
 
 **Management fee:** **per project & editable** (default **15%**, can be **0%**). Changing a
 project's rate **re-bills its unpaid bills** at the new rate.
+
+#### 🆕 Labor Contracts (pakyaw / capped pay)
+For workers paid a **fixed agreed amount for a whole job** (*pakyaw*) or a **capped in-house**
+arrangement — instead of open-ended daily labor. Everything lives **inside Daily Expenses** (no
+separate tab):
+- A **collapsible "Labor Contracts" panel** (Worker Tracker) at the top of the tab. Its header
+  shows the **contract count + total remaining**; expand for the full list.
+- **＋ New Contract:** worker name, **scope / job**, **pay type** (Pakyaw / In-house), **agreed
+  amount (the cap)**, and notes. Contracts can be **edited**, have their **cap raised** (kept in a
+  cap history), or **deleted**.
+- Cards are **grouped by worker**, each showing **Agreed / Paid / Remaining**, a progress bar, and
+  a **status badge** (**Ongoing · % / Completed / Over**), plus per-worker subtotals.
+- **Drawdown from daily labor:** when adding a **Labor** line, a **"Pay against contract"** picker
+  (Labor category only) tags that line to a contract. The contract's **Paid** rises and
+  **Remaining** falls as bills are saved — the same daily labor entry is the **single source of
+  truth** (no parallel payment system). Leaving the picker on **"None"** = ordinary labor.
+- **Ledger:** per contract, lists **every labor line that drew it down** (date · line · amount ·
+  running remaining).
+- Contracts are **per project** and **admin-only**. *(Drawn down from Labor lines only; v1 has no
+  payment milestones.)*
 
 ---
 
@@ -209,6 +231,8 @@ forms is the planned next step).
 | Input daily labor & materials lines | Yes | No |
 | View daily bills & overview | Yes | Yes |
 | Attach receipt to a bill line | Yes | No |
+| Create / edit / raise-cap / delete labor contracts (pakyaw) | Yes | No |
+| Tag a daily Labor line to a contract | Yes | No |
 | Create materials procurement list | Yes | No |
 | Mark item as bought (company) | Yes | No |
 | Mark item as bought (client) | No | Yes |
@@ -246,7 +270,9 @@ If admin marks strict → That Friday is strict regardless of history
 ---
 
 ## Out of Scope (Not in MVP)
-- Per-worker payroll breakdown (labor is logged as itemized lines, not per worker)
+- Full per-worker payroll / timesheets (daily labor is logged as itemized lines; **pakyaw /
+  capped contracts** add per-worker **cap tracking** on top, but not a full payroll register)
+- Payment-milestone tags on contract drawdowns (advance / progress / final)
 - Cover expenses / cash advances by admin
 - Partial payments beyond ₱5,000 shortage
 - Client editing payment amounts or fee %
