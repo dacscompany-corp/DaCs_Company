@@ -1,5 +1,6 @@
 /* DAC's Admin — service worker (Web Push only; no offline caching).
-   Receives the nightly Project Management summary push and shows it. */
+   Receives the nightly Project Management summary push and shows it.
+   SW_VERSION: 2026-06-29-opaque-icon  (bump to force clients to pick up icon/badge changes) */
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
@@ -12,8 +13,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || "DAC's Project Update";
   const options = {
     body:     data.body || '',
-    icon:     data.icon  || '/icons/icon-192.png',
-    badge:    data.badge || '/icons/icon-192.png',
+    icon:     data.icon  || '/icons/notif-icon.png',
+    badge:    data.badge || '/icons/notif-bell.png',
     tag:      data.tag   || 'pm-daily',
     renotify: true,
     requireInteraction: !!data.requireInteraction,
