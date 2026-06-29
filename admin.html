@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard | DAC's Building Design Services</title>
     <link rel="icon" href="assets/images/DACS-TRANSPARENT.png" type="image/png">
+    <!-- Fonts for the Add Payroll redesign (scoped to #addPayrollModal) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/admin.css">
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
     <!-- Cloudflare Turnstile (captcha) -->
@@ -3165,60 +3169,155 @@
     </div>
 </div>
 
-<!-- Add Payroll -->
-<div id="addPayrollModal" class="exp-modal">
-    <div class="exp-modal-box">
-        <div class="exp-modal-header"><h2>👷 Add Payroll Entry</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('addPayrollModal')">&times;</button></div>
+<!-- Add Payroll (redesigned — "Add Payroll Redesign.dc.html") -->
+<style>
+.apr-scope .exp-modal-box.apr-box{width:100% !important;max-width:540px !important;padding:0 !important;border-radius:18px;overflow:hidden;background:#fff;color:#1C1C1E;font-family:'Barlow',-apple-system,sans-serif;max-height:92vh;display:flex;flex-direction:column;}
+.apr-scope .apr-box *{box-sizing:border-box;}
+.apr-scope form{display:flex;flex-direction:column;min-height:0;flex:1;overflow:hidden;}
+.apr-scope .apr-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:22px 26px 18px;border-bottom:1px solid #EEEEEE;flex-shrink:0;}
+.apr-scope .apr-hd-left{display:flex;gap:13px;align-items:center;}
+.apr-scope .apr-hd-ic{width:40px;height:40px;border-radius:11px;background:#EAF2EC;display:grid;place-items:center;flex-shrink:0;}
+.apr-scope .apr-title{font-family:'Playfair Display',serif;font-size:21px;font-weight:600;line-height:1.1;color:#1C1C1E;}
+.apr-scope .apr-hd-sub{font-size:12.5px;color:#6C6C70;margin-top:2px;}
+.apr-scope .apr-x{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:#A1A1A6;font-size:22px;line-height:1;background:#F5F5F5;border:none;cursor:pointer;}
+.apr-scope .apr-x:hover{background:#ECECEC;color:#6C6C70;}
+.apr-scope .apr-body{flex:1;overflow:auto;padding:20px 26px 8px;}
+.apr-scope .apr-sec{display:flex;align-items:center;gap:10px;margin:0 0 14px;}
+.apr-scope .apr-sec b{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#6C6C70;}
+.apr-scope .apr-sec small{font-size:11px;color:#A1A1A6;}
+.apr-scope .apr-sec .ln{flex:1;height:1px;background:#EEEEEE;}
+.apr-scope .apr-lbl{display:block;font-size:12.5px;font-weight:600;color:#3A3A3C;margin-bottom:6px;}
+.apr-scope .apr-lbl small{font-weight:400;color:#A1A1A6;}
+.apr-scope .apr-in,.apr-scope .apr-box select,.apr-scope .apr-box textarea{width:100%;padding:10px 12px;border:1.5px solid #E5E5E5;border-radius:10px;font-size:14px;color:#1C1C1E;font-family:'Barlow',sans-serif;background:#fff;}
+.apr-scope .apr-box textarea{resize:vertical;}
+.apr-scope .apr-box input:focus,.apr-scope .apr-box select:focus,.apr-scope .apr-box textarea:focus{border-color:#1A5C3A;box-shadow:0 0 0 3px rgba(26,92,58,.14);outline:none;}
+.apr-scope .apr-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.apr-scope #payFundingSourceWrap{margin-bottom:20px;}
+.apr-scope #paySplitPreview{margin-bottom:14px;}
+.apr-scope .exp-funding-check-list{display:flex;flex-direction:column;gap:8px;}
+.apr-scope .exp-funding-check-item{display:flex;align-items:center;gap:11px;padding:11px 14px;border:1.5px solid #E5E5E5;background:#fff;border-radius:11px;cursor:pointer;margin:0;}
+.apr-scope .exp-funding-check-item.is-checked{border-color:#1A5C3A;background:#F4F8F5;}
+.apr-scope .exp-funding-check-item input[type=checkbox]{accent-color:#1A5C3A;width:18px;height:18px;flex-shrink:0;margin:0;}
+.apr-scope .exp-funding-check-item__label{flex:1;font-size:13.5px;font-weight:600;color:#3A3A3C;}
+.apr-scope .exp-funding-check-item.is-checked .exp-funding-check-item__label{color:#1C1C1E;}
+.apr-scope .exp-funding-check-item__remain{font-size:12.5px;font-weight:600;color:#6C6C70;font-variant-numeric:tabular-nums;}
+.apr-scope .exp-funding-check-item.is-checked .exp-funding-check-item__remain{color:#1A5C3A;}
+.apr-scope .apr-selwrap{position:relative;}
+.apr-scope .apr-selwrap select{appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:34px;}
+.apr-scope .apr-chev{position:absolute;right:12px;top:50%;transform:translateY(-50%);pointer-events:none;color:#A1A1A6;}
+.apr-scope .lc-remaining-hint{display:inline-flex;align-items:center;gap:7px;margin-top:9px;background:#EAF2EC;border:none;border-radius:8px;padding:6px 11px;font-size:12px;color:#1A5C3A;}
+.apr-scope .lc-remaining-hint strong{font-weight:700;}
+.apr-scope .apr-mile-row{display:flex;gap:8px;}
+.apr-scope .apr-mile{flex:1;padding:9px 8px;border:1.5px solid #E5E5E5;background:#fff;border-radius:9px;font-size:12.5px;font-weight:600;color:#6C6C70;cursor:pointer;font-family:'Barlow',sans-serif;}
+.apr-scope .apr-mile:hover{border-color:#B9CFC1;}
+.apr-scope .apr-mile.on{border-color:#1A5C3A;background:#F4F8F5;color:#1A5C3A;font-weight:700;}
+.apr-scope .apr-cat{display:flex;align-items:center;gap:12px;padding:11px 13px;border:1.5px solid #E5E5E5;background:#fff;border-radius:11px;cursor:pointer;margin:0;}
+.apr-scope .apr-cat:hover{border-color:#B9CFC1;}
+.apr-scope .apr-cat:has(input:checked){border-color:#1A5C3A;background:#F4F8F5;}
+.apr-scope .apr-cat input{position:absolute;opacity:0;width:0;height:0;pointer-events:none;}
+.apr-scope .apr-badge{width:30px;height:30px;border-radius:8px;background:#F0F0F0;color:#6C6C70;display:grid;place-items:center;font-weight:700;font-size:14px;flex-shrink:0;}
+.apr-scope .apr-cat:has(input:checked) .apr-badge{background:#1A5C3A;color:#fff;}
+.apr-scope .apr-cat-t{font-size:13.5px;font-weight:700;color:#3A3A3C;}
+.apr-scope .apr-cat:has(input:checked) .apr-cat-t{color:#1C1C1E;}
+.apr-scope .apr-cat-s{font-size:11.5px;color:#6C6C70;}
+.apr-scope .apr-total{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;background:#EAF2EC;border:1px solid #cde2d4;border-radius:12px;}
+.apr-scope .apr-total-lbl{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#1A5C3A;}
+.apr-scope .apr-total-sub{font-size:11px;color:#5b7a67;margin-top:1px;}
+.apr-scope .apr-total-peso{font-family:'Playfair Display',serif;font-size:24px;font-weight:600;color:#1A5C3A;}
+.apr-scope .apr-total-input{font-family:'Playfair Display',serif;font-size:30px;font-weight:600;color:#1A5C3A;font-variant-numeric:tabular-nums;border:none !important;border-bottom:2px solid #b9d6c6 !important;border-radius:0 !important;background:transparent !important;text-align:right;width:170px;padding:0 0 2px !important;}
+.apr-scope .apr-total-input:focus{border-bottom-color:#1A5C3A !important;box-shadow:none !important;outline:none;}
+.apr-scope .apr-total-input::placeholder{color:#a9c6b6;}
+.apr-scope .apr-drop{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1.6px dashed #B9CFC1;border-radius:11px;background:#FAFCFB;cursor:pointer;}
+.apr-scope .apr-drop:hover{border-color:#1A5C3A;}
+.apr-scope .apr-drop-ic{width:34px;height:34px;border-radius:9px;background:#EAF2EC;display:grid;place-items:center;flex-shrink:0;}
+.apr-scope .apr-drop-t{font-size:13px;font-weight:600;color:#1A5C3A;}
+.apr-scope .apr-drop-s{font-size:11.5px;color:#8a9b90;}
+.apr-scope .apr-ft{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:16px 26px;border-top:1px solid #EEEEEE;background:#FBFCFB;flex-shrink:0;}
+.apr-scope .apr-btn-cancel{padding:11px 20px;border-radius:10px;border:1.5px solid #E5E5E5;background:#fff;color:#3A3A3C;font-size:14px;font-weight:600;cursor:pointer;font-family:'Barlow',sans-serif;}
+.apr-scope .apr-btn-cancel:hover{background:#F5F5F5;}
+.apr-scope .apr-btn-save{display:inline-flex;align-items:center;gap:8px;padding:11px 24px;border-radius:10px;background:#1A5C3A;color:#fff;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(26,92,58,.25);border:none;font-family:'Barlow',sans-serif;}
+.apr-scope .apr-btn-save:hover{background:#16482e;}
+</style>
+<div id="addPayrollModal" class="exp-modal apr-scope">
+    <div class="exp-modal-box apr-box">
         <form id="addPayrollForm">
-            <div id="payFundingSourceWrap" style="display:none;margin-bottom:0.75rem;">
-                <label style="font-size:0.85rem;font-weight:600;color:#374151;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem;">
-                    Funding Source
-                    <small style="font-weight:400;color:#6b7280;font-size:0.75rem;">— check multiple to split</small>
-                </label>
-                <div id="payFundingCheckList" class="exp-funding-check-list"></div>
-                <select id="payFundingSourceSelect" style="display:none;"></select>
-            </div>
-            <div id="paySplitPreview" style="display:none;margin-bottom:0.75rem;"></div>
-            <div class="exp-form-row">
-                <div class="exp-form-group"><label>Worker Name</label><input type="text" id="payWorkerName" required placeholder="Full name"></div>
-                <div class="exp-form-group"><label>Role / Position</label><input type="text" id="payRole" placeholder="e.g. Mason, Carpenter"></div>
-            </div>
-            <div class="exp-form-group">
-                <label>Labor Category <small style="font-weight:400;color:#6b7280;">— determines where this amount is counted</small></label>
-                <div class="lt-radio-group lt-radio-group-detailed">
-                    <label class="lt-radio lt-radio-card">
-                        <input type="radio" name="payLaborType" value="direct" checked>
-                        <span class="lt-tag lt-tag-direct">D &nbsp;Direct</span>
-                        <span class="lt-radio-hint">On-site workers (mason, carpenter, laborer, painter, etc.)</span>
-                    </label>
-                    <label class="lt-radio lt-radio-card">
-                        <input type="radio" name="payLaborType" value="indirect">
-                        <span class="lt-tag lt-tag-indirect">I &nbsp;Indirect</span>
-                        <span class="lt-radio-hint">Support roles (supervisor, foreman, admin, engineer, etc.)</span>
-                    </label>
-                    <label class="lt-radio lt-radio-card">
-                        <input type="radio" name="payLaborType" value="liability">
-                        <span class="lt-tag lt-tag-liability">L &nbsp;Liability</span>
-                        <span class="lt-radio-hint">Gov't contributions (SSS, PhilHealth, Pag-IBIG, withholding tax, etc.)</span>
-                    </label>
+            <!-- Lump-sum mode: both normal payroll & pakyaw are paid as an agreed amount (no daily rate) -->
+            <input type="radio" name="payMode" value="lamsam" checked style="display:none" aria-hidden="true">
+            <!-- header -->
+            <div class="apr-hd">
+                <div class="apr-hd-left">
+                    <div class="apr-hd-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A5C3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9M14 17H5M17 17a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM7 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/></svg></div>
+                    <div><div class="apr-title">Add Payroll Entry</div><div class="apr-hd-sub">Record a payment to a worker.</div></div>
                 </div>
+                <button type="button" class="apr-x" aria-label="Close" onclick="closeExpModal('addPayrollModal')">&times;</button>
             </div>
-            <div class="exp-form-row">
-                <div class="exp-form-group"><label>Days Worked</label><input type="number" id="payDays" required min="0.5" step="0.5" placeholder="0"></div>
-                <div class="exp-form-group"><label>Daily Rate (₱)</label><input type="text" inputmode="decimal" id="payDailyRate" required placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
+
+            <!-- body -->
+            <div class="apr-body">
+                <!-- charge to billing period (funding sources, rendered by JS) -->
+                <div id="payFundingSourceWrap" style="display:none;">
+                    <div class="apr-sec"><b>Charge to billing period</b><small>— tick more than one to split</small><span class="ln"></span></div>
+                    <div id="payFundingCheckList" class="exp-funding-check-list"></div>
+                    <select id="payFundingSourceSelect" style="display:none;"></select>
+                </div>
+                <div id="paySplitPreview" style="display:none;"></div>
+
+                <!-- worker -->
+                <div class="apr-sec"><b>Worker</b><span class="ln"></span></div>
+                <div class="apr-row" style="margin-bottom:14px;">
+                    <div><label class="apr-lbl">Worker name</label><input class="apr-in" type="text" id="payWorkerName" list="payWorkerNames" required placeholder="Full name" autocomplete="off"><datalist id="payWorkerNames"></datalist></div>
+                    <div><label class="apr-lbl">Role / position</label><input class="apr-in" type="text" id="payRole" placeholder="e.g. Mason, Carpenter"></div>
+                </div>
+                <div style="margin-bottom:10px;">
+                    <label class="apr-lbl">Pay against contract <small>— pakyaw / capped job, optional</small></label>
+                    <div class="apr-selwrap">
+                        <select id="payContract" onchange="lcUpdateRemainingHint('payContract','payContractRemaining')"><option value="">— None (normal payroll) —</option></select>
+                        <svg class="apr-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                    <div id="payContractRemaining" class="lc-remaining-hint" style="display:none;"></div>
+                </div>
+                <div id="payMilestoneRow" style="display:none;margin-bottom:20px;">
+                    <label class="apr-lbl">Milestone <small>— tag this payment, optional</small></label>
+                    <div class="apr-mile-row">
+                        <button type="button" class="apr-mile" onclick="paySetMilestone(this,'advance')">Advance (vale)</button>
+                        <button type="button" class="apr-mile" onclick="paySetMilestone(this,'progress')">Progress</button>
+                        <button type="button" class="apr-mile" onclick="paySetMilestone(this,'final')">Final</button>
+                    </div>
+                    <input type="hidden" id="payMilestone" value="">
+                </div>
+
+                <!-- amount -->
+                <div class="apr-sec"><b>Amount</b><span class="ln"></span></div>
+                <label class="apr-lbl">Labor category <small>— where this cost is counted</small></label>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+                    <label class="apr-cat"><input type="radio" name="payLaborType" value="direct" checked><span class="apr-badge">D</span><div><div class="apr-cat-t">Direct</div><div class="apr-cat-s">On-site workers — mason, carpenter, laborer, painter</div></div></label>
+                    <label class="apr-cat"><input type="radio" name="payLaborType" value="indirect"><span class="apr-badge">I</span><div><div class="apr-cat-t">Indirect</div><div class="apr-cat-s">Support roles — supervisor, foreman, admin, engineer</div></div></label>
+                    <label class="apr-cat"><input type="radio" name="payLaborType" value="liability"><span class="apr-badge">L</span><div><div class="apr-cat-t">Liability</div><div class="apr-cat-s">Gov't — SSS, PhilHealth, Pag-IBIG, withholding tax</div></div></label>
+                </div>
+                <div class="apr-total" style="margin-bottom:20px;">
+                    <div><div class="apr-total-lbl">Amount paid</div><div class="apr-total-sub">The agreed amount for this payment</div></div>
+                    <div style="display:flex;align-items:baseline;gap:6px;"><span class="apr-total-peso">₱</span><input id="payTotal" inputmode="decimal" class="apr-total-input" placeholder="0" oninput="fmtBudgetInput(this)"></div>
+                </div>
+
+                <!-- date & proof -->
+                <div class="apr-sec"><b>Date &amp; proof</b><span class="ln"></span></div>
+                <div style="margin-bottom:14px;"><label class="apr-lbl" for="payDate">Payment date</label><input class="apr-in" type="datetime-local" id="payDate" required></div>
+                <div style="margin-bottom:14px;">
+                    <label class="apr-lbl">Receipts <small>— photo of voucher / payslip, optional</small></label>
+                    <label class="apr-drop" for="payReceipt">
+                        <span class="apr-drop-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1A5C3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></span>
+                        <div><div class="apr-drop-t">Add photos</div><div class="apr-drop-s">Tap to take a photo or choose from gallery</div></div>
+                    </label>
+                    <input type="file" id="payReceipt" accept="image/jpeg,image/png,image/jpg" multiple style="display:none;">
+                    <div id="payReceiptGrid" class="exp-receipt-grid" style="display:none;margin-top:0.5rem;"></div>
+                </div>
+                <div style="margin-bottom:8px;"><label class="apr-lbl">Notes <small>— optional</small></label><textarea id="payNotes" rows="2" placeholder="Anything worth remembering about this payment…"></textarea></div>
             </div>
-            <div class="exp-form-group"><label>Total Salary (₱) <small style="font-weight:400;color:#888">(auto-computed)</small></label><input type="text" inputmode="decimal" id="payTotal" readonly placeholder="0.00"></div>
-            <div class="exp-form-group"><label for="payDate">Payment Date</label><input type="datetime-local" id="payDate" required></div>
-            <div class="exp-form-group">
-                <label>Upload Receipts <small style="font-weight:400;color:#888">(JPG/PNG, optional)</small></label>
-                <label for="payReceipt" style="display:flex;align-items:center;gap:0.5rem;padding:0.55rem 0.9rem;background:#f0fdf4;border:2px dashed #059669;border-radius:8px;cursor:pointer;font-size:0.88rem;color:#15803d;font-weight:600;">📎 Choose Images <span style="font-weight:400;color:#888;font-size:0.8rem;">(tap to add more)</span></label>
-                <input type="file" id="payReceipt" accept="image/jpeg,image/png,image/jpg" multiple style="display:none;">
-                <div id="payReceiptGrid" class="exp-receipt-grid" style="display:none;margin-top:0.5rem;"></div>
-            </div>
-            <div class="exp-form-group"><label>Notes (optional)</label><textarea id="payNotes" rows="2" placeholder="Additional details…"></textarea></div>
-            <div class="exp-modal-footer">
-                <button type="button" class="exp-btn exp-btn-secondary" onclick="closeExpModal('addPayrollModal')">Cancel</button>
-                <button type="submit" id="addPayrollBtn" class="exp-btn exp-btn-primary" data-label="Save Entry">Save Entry</button>
+
+            <!-- footer -->
+            <div class="apr-ft">
+                <button type="button" class="apr-btn-cancel" onclick="closeExpModal('addPayrollModal')">Cancel</button>
+                <button type="submit" id="addPayrollBtn" class="apr-btn-save" data-label="Save Entry"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Save Entry</button>
             </div>
         </form>
     </div>
@@ -3340,50 +3439,116 @@
 </div>
 
 <!-- Edit Payroll Modal -->
-<div id="editPayrollModal" class="exp-modal">
+<!-- Labor Contract — per-contract payment ledger (wallet view) -->
+<div id="laborLedgerModal" class="exp-modal">
+    <div class="exp-modal-box" style="max-width:680px;">
+        <div class="exp-modal-header"><h2 id="lcLedgerTitle">Contract Ledger</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('laborLedgerModal')">&times;</button></div>
+        <div id="lcLedgerBody"></div>
+        <div class="exp-modal-footer">
+            <button type="button" class="exp-btn exp-btn-secondary" onclick="closeExpModal('laborLedgerModal')">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Labor Contract (pakyaw / in-house capped pay) -->
+<div id="laborContractModal" class="exp-modal">
     <div class="exp-modal-box">
-        <div class="exp-modal-header"><h2><i data-lucide="pencil" class="modal-icon"></i> Edit Payroll Entry</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('editPayrollModal')">&times;</button></div>
-        <form id="editPayrollForm">
+        <div class="exp-modal-header"><h2 id="lcModalTitle">New Labor Contract</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('laborContractModal')">&times;</button></div>
+        <form id="laborContractForm">
+            <input type="hidden" id="lcId">
             <div class="exp-form-row">
-                <div class="exp-form-group"><label>Worker Name</label><input type="text" id="editPayWorkerName" required placeholder="Full name"></div>
-                <div class="exp-form-group"><label>Role / Position</label><input type="text" id="editPayRole" placeholder="e.g. Mason, Carpenter"></div>
+                <div class="exp-form-group"><label>Worker Name</label><input type="text" id="lcWorker" list="lcWorkerNames" required placeholder="Full name" autocomplete="off"><datalist id="lcWorkerNames"></datalist></div>
+                <div class="exp-form-group"><label>Scope / Job</label><input type="text" id="lcScope" placeholder="e.g. Tiling &amp; masonry"></div>
             </div>
             <div class="exp-form-group">
-                <label>Labor Category <small style="font-weight:400;color:#6b7280;">— determines where this amount is counted</small></label>
-                <div class="lt-radio-group lt-radio-group-detailed">
-                    <label class="lt-radio lt-radio-card">
-                        <input type="radio" name="editPayLaborType" value="direct" checked>
-                        <span class="lt-tag lt-tag-direct">D &nbsp;Direct</span>
-                        <span class="lt-radio-hint">On-site workers (mason, carpenter, laborer, painter, etc.)</span>
-                    </label>
-                    <label class="lt-radio lt-radio-card">
-                        <input type="radio" name="editPayLaborType" value="indirect">
-                        <span class="lt-tag lt-tag-indirect">I &nbsp;Indirect</span>
-                        <span class="lt-radio-hint">Support roles (supervisor, foreman, admin, engineer, etc.)</span>
-                    </label>
-                    <label class="lt-radio lt-radio-card">
-                        <input type="radio" name="editPayLaborType" value="liability">
-                        <span class="lt-tag lt-tag-liability">L &nbsp;Liability</span>
-                        <span class="lt-radio-hint">Gov't contributions (SSS, PhilHealth, Pag-IBIG, withholding tax, etc.)</span>
-                    </label>
+                <label>Pay Type</label>
+                <div class="lt-radio-group">
+                    <label class="lt-radio lt-radio-card"><input type="radio" name="lcPayType" value="pakyaw" checked><span class="lt-tag lt-tag-direct">Pakyaw</span><span class="lt-radio-hint">External contract worker (lump-sum job)</span></label>
+                    <label class="lt-radio lt-radio-card"><input type="radio" name="lcPayType" value="inhouse"><span class="lt-tag lt-tag-indirect">In-house</span><span class="lt-radio-hint">Regular worker with a capped agreed amount</span></label>
                 </div>
             </div>
-            <div class="exp-form-row">
-                <div class="exp-form-group"><label>Days Worked</label><input type="number" id="editPayDays" required min="0.5" step="0.5" placeholder="0"></div>
-                <div class="exp-form-group"><label>Daily Rate (₱)</label><input type="text" inputmode="decimal" id="editPayDailyRate" required placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
-            </div>
-            <div class="exp-form-group"><label>Total Salary (₱) <small style="font-weight:400;color:#888">(auto-computed)</small></label><input type="text" inputmode="decimal" id="editPayTotal" readonly placeholder="0.00"></div>
-            <div class="exp-form-group"><label for="editPayDate">Payment Date</label><input type="datetime-local" id="editPayDate" required></div>
-            <div class="exp-form-group">
-                <label>Receipts <small style="font-weight:400;color:#888">— remove or add images</small></label>
-                <div id="editPayReceiptGrid" class="exp-receipt-grid" style="display:none;margin-bottom:0.5rem;"></div>
-                <label for="editPayReceiptInput" style="display:flex;align-items:center;gap:0.5rem;padding:0.55rem 0.9rem;background:#f0fdf4;border:2px dashed #059669;border-radius:8px;cursor:pointer;font-size:0.88rem;color:#15803d;font-weight:600;">📎 Add More Images</label>
-                <input type="file" id="editPayReceiptInput" accept="image/jpeg,image/png,image/jpg" multiple style="display:none;">
-            </div>
-            <div class="exp-form-group"><label>Notes (optional)</label><textarea id="editPayNotes" rows="2" placeholder="Additional details…"></textarea></div>
+            <div class="exp-form-group"><label>Agreed Amount / Cap (₱)</label><input type="text" inputmode="decimal" id="lcAmount" required placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
+            <div class="exp-form-group"><label>Notes (optional)</label><textarea id="lcNotes" rows="2" placeholder="Additional details…"></textarea></div>
             <div class="exp-modal-footer">
-                <button type="button" class="exp-btn exp-btn-secondary" onclick="closeExpModal('editPayrollModal')">Cancel</button>
-                <button type="submit" id="editPayrollBtn" class="exp-btn exp-btn-primary" data-label="Save Changes"><i data-lucide="check" class="btn-icon"></i> Save Changes</button>
+                <button type="button" class="exp-btn exp-btn-secondary" onclick="closeExpModal('laborContractModal')">Cancel</button>
+                <button type="submit" id="lcSaveBtn" class="exp-btn exp-btn-primary" data-label="Save Contract">Save Contract</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="editPayrollModal" class="exp-modal apr-scope">
+    <div class="exp-modal-box apr-box">
+        <form id="editPayrollForm">
+            <!-- Lump-sum mode: agreed amount, no daily rate -->
+            <input type="radio" name="editPayMode" value="lamsam" checked style="display:none" aria-hidden="true">
+            <!-- header -->
+            <div class="apr-hd">
+                <div class="apr-hd-left">
+                    <div class="apr-hd-ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A5C3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></div>
+                    <div><div class="apr-title">Edit Payroll Entry</div><div class="apr-hd-sub">Update this payment.</div></div>
+                </div>
+                <button type="button" class="apr-x" aria-label="Close" onclick="closeExpModal('editPayrollModal')">&times;</button>
+            </div>
+
+            <!-- body -->
+            <div class="apr-body">
+                <!-- worker -->
+                <div class="apr-sec"><b>Worker</b><span class="ln"></span></div>
+                <div class="apr-row" style="margin-bottom:14px;">
+                    <div><label class="apr-lbl">Worker name</label><input class="apr-in" type="text" id="editPayWorkerName" list="editPayWorkerNames" required placeholder="Full name" autocomplete="off"><datalist id="editPayWorkerNames"></datalist></div>
+                    <div><label class="apr-lbl">Role / position</label><input class="apr-in" type="text" id="editPayRole" placeholder="e.g. Mason, Carpenter"></div>
+                </div>
+                <div style="margin-bottom:10px;">
+                    <label class="apr-lbl">Pay against contract <small>— pakyaw / capped job, optional</small></label>
+                    <div class="apr-selwrap">
+                        <select id="editPayContract" onchange="lcUpdateRemainingHint('editPayContract','editPayContractRemaining')"><option value="">— None (normal payroll) —</option></select>
+                        <svg class="apr-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                    <div id="editPayContractRemaining" class="lc-remaining-hint" style="display:none;"></div>
+                </div>
+                <div id="editPayMilestoneRow" style="display:none;margin-bottom:20px;">
+                    <label class="apr-lbl">Milestone <small>— tag this payment, optional</small></label>
+                    <div class="apr-mile-row">
+                        <button type="button" class="apr-mile" data-mile="advance" onclick="editPaySetMilestone(this,'advance')">Advance (vale)</button>
+                        <button type="button" class="apr-mile" data-mile="progress" onclick="editPaySetMilestone(this,'progress')">Progress</button>
+                        <button type="button" class="apr-mile" data-mile="final" onclick="editPaySetMilestone(this,'final')">Final</button>
+                    </div>
+                    <input type="hidden" id="editPayMilestone" value="">
+                </div>
+
+                <!-- amount -->
+                <div class="apr-sec"><b>Amount</b><span class="ln"></span></div>
+                <label class="apr-lbl">Labor category <small>— where this cost is counted</small></label>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
+                    <label class="apr-cat"><input type="radio" name="editPayLaborType" value="direct" checked><span class="apr-badge">D</span><div><div class="apr-cat-t">Direct</div><div class="apr-cat-s">On-site workers — mason, carpenter, laborer, painter</div></div></label>
+                    <label class="apr-cat"><input type="radio" name="editPayLaborType" value="indirect"><span class="apr-badge">I</span><div><div class="apr-cat-t">Indirect</div><div class="apr-cat-s">Support roles — supervisor, foreman, admin, engineer</div></div></label>
+                    <label class="apr-cat"><input type="radio" name="editPayLaborType" value="liability"><span class="apr-badge">L</span><div><div class="apr-cat-t">Liability</div><div class="apr-cat-s">Gov't — SSS, PhilHealth, Pag-IBIG, withholding tax</div></div></label>
+                </div>
+                <div class="apr-total" style="margin-bottom:20px;">
+                    <div><div class="apr-total-lbl">Amount paid</div><div class="apr-total-sub">The agreed amount for this payment</div></div>
+                    <div style="display:flex;align-items:baseline;gap:6px;"><span class="apr-total-peso">₱</span><input id="editPayTotal" inputmode="decimal" class="apr-total-input" placeholder="0" oninput="fmtBudgetInput(this)"></div>
+                </div>
+
+                <!-- date & proof -->
+                <div class="apr-sec"><b>Date &amp; proof</b><span class="ln"></span></div>
+                <div style="margin-bottom:14px;"><label class="apr-lbl" for="editPayDate">Payment date</label><input class="apr-in" type="datetime-local" id="editPayDate" required></div>
+                <div style="margin-bottom:14px;">
+                    <label class="apr-lbl">Receipts <small>— remove or add images</small></label>
+                    <div id="editPayReceiptGrid" class="exp-receipt-grid" style="display:none;margin-bottom:0.5rem;"></div>
+                    <label class="apr-drop" for="editPayReceiptInput">
+                        <span class="apr-drop-ic"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#1A5C3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></span>
+                        <div><div class="apr-drop-t">Add photos</div><div class="apr-drop-s">Tap to take a photo or choose from gallery</div></div>
+                    </label>
+                    <input type="file" id="editPayReceiptInput" accept="image/jpeg,image/png,image/jpg" multiple style="display:none;">
+                </div>
+                <div style="margin-bottom:8px;"><label class="apr-lbl">Notes <small>— optional</small></label><textarea id="editPayNotes" rows="2" placeholder="Anything worth remembering about this payment…"></textarea></div>
+            </div>
+
+            <!-- footer -->
+            <div class="apr-ft">
+                <button type="button" class="apr-btn-cancel" onclick="closeExpModal('editPayrollModal')">Cancel</button>
+                <button type="submit" id="editPayrollBtn" class="apr-btn-save" data-label="Save Changes"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Save Changes</button>
             </div>
         </form>
     </div>

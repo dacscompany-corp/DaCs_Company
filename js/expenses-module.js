@@ -85,6 +85,7 @@ function initExpensesModule() {
     setupEditPayrollFormListeners();
     loadCategories();
     setupDocUploadListeners();
+    setupLaborContractFormListeners();
 }
 
 // Wire all .doc-upload inputs (Add + Edit expense modals) so the state label
@@ -735,6 +736,7 @@ function selectProject(id) {
 
 function subscribeFolderData(folderId) {
     if (!currentUser) return;
+    subscribeLaborContracts(folderId);   // pakyaw / capped labor contracts (folder-level)
     const projectIds = expProjects
         .filter(p => p.folderId === folderId)
         .map(p => p.id);
@@ -2361,6 +2363,39 @@ window.editPayToggleMode = function () {
     _applyPayMode(lam, ids);
     if (!lam) _recomputePayTotal(ids);
 };
+// Add Payroll redesign — milestone segmented buttons drive the hidden #payMilestone input.
+window.paySetMilestone = function (el, val) {
+    const row = document.getElementById('payMilestoneRow');
+    const inp = document.getElementById('payMilestone');
+    if (!row) return;
+    const wasOn = el.classList.contains('on');
+    row.querySelectorAll('.apr-mile').forEach(b => b.classList.remove('on'));
+    if (wasOn) { if (inp) inp.value = ''; }          // click the active one again → clear
+    else { el.classList.add('on'); if (inp) inp.value = val; }
+};
+window.payResetMilestone = function () {
+    const row = document.getElementById('payMilestoneRow');
+    if (row) row.querySelectorAll('.apr-mile').forEach(b => b.classList.remove('on'));
+    const inp = document.getElementById('payMilestone');
+    if (inp) inp.value = '';
+};
+// Edit Payroll redesign — milestone segmented buttons → hidden #editPayMilestone.
+window.editPaySetMilestone = function (el, val) {
+    const row = document.getElementById('editPayMilestoneRow');
+    const inp = document.getElementById('editPayMilestone');
+    if (!row) return;
+    const wasOn = el.classList.contains('on');
+    row.querySelectorAll('.apr-mile').forEach(b => b.classList.remove('on'));
+    if (wasOn) { if (inp) inp.value = ''; }
+    else { el.classList.add('on'); if (inp) inp.value = val; }
+};
+// Set the milestone buttons + hidden value from a record (used when opening the edit modal).
+window.editPayMileFromValue = function (val) {
+    const row = document.getElementById('editPayMilestoneRow');
+    const inp = document.getElementById('editPayMilestone');
+    if (inp) inp.value = val || '';
+    if (row) row.querySelectorAll('.apr-mile').forEach(b => b.classList.toggle('on', (b.getAttribute('data-mile') || '') === (val || '')));
+};
 
 function setupPayrollFormListeners() {
     const form = document.getElementById('addPayrollForm');
@@ -2521,8 +2556,8 @@ async function handleAddPayroll(e) {
     }
 
     const _payLamsam = _payIsLamsam();
-    const d = parseFloat(document.getElementById('payDays').value) || 0;
-    const r = _payLamsam ? 0 : (parseFloat((document.getElementById('payDailyRate').value || '').replace(/,/g, '')) || 0);
+    const d = parseFloat((document.getElementById('payDays') || {}).value) || 0;
+    const r = _payLamsam ? 0 : (parseFloat(((document.getElementById('payDailyRate') || {}).value || '').replace(/,/g, '')) || 0);
     const totalSalary = _payLamsam
         ? (parseFloat((document.getElementById('payTotal').value || '').replace(/,/g, '')) || 0)
         : (d * r);
@@ -2532,6 +2567,11 @@ async function handleAddPayroll(e) {
     const paymentDate = document.getElementById('payDate').value;
     const notes       = document.getElementById('payNotes').value.trim();
     const laborType   = (document.querySelector('input[name="payLaborType"]:checked') || {}).value || 'direct';
+    const contractId  = (document.getElementById('payContract') || {}).value || null;
+    const payMilestone = contractId ? ((document.getElementById('payMilestone') || {}).value || null) : null;
+
+    // Pakyaw/capped contract: warn (but allow) if this draws the contract over its cap.
+    if (contractId && !lcConfirmOverCap(contractId, totalSalary)) return;
 
     // Priority split: lowest remaining first; overflow → Cover Expenses
     const sortedSources = [...checkedSources].sort((a, b) => a.remain - b.remain);
@@ -2566,6 +2606,8 @@ async function handleAddPayroll(e) {
                 paymentDate, notes,
                 receiptImages: idx === 0 ? receiptImages : [],
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                ...(contractId && { contractId }),
+                ...(payMilestone && { payMilestone }),
                 ...(sp.coverExpense && { coverExpense: true }),
                 ...(splits.length > 1 && { splitGroup: paymentDate + '_' + workerName, splitIndex: idx + 1, splitTotal: splits.length })
             });
@@ -2576,6 +2618,8 @@ async function handleAddPayroll(e) {
         showExpNotif(msg, 'success');
         refreshOvAllData();
         document.getElementById('addPayrollForm').reset();
+        lcUpdateRemainingHint('payContract', 'payContractRemaining');   // clear contract hint
+        if (typeof payResetMilestone === 'function') payResetMilestone();
         if (typeof payToggleMode === 'function') payToggleMode(); // reset Daily/Lamsam UI to default
         document.getElementById('paySplitPreview').style.display = 'none';
         clearPayReceiptPreview();
@@ -3639,18 +3683,22 @@ async function openEditPayrollModal(id) {
     const _laborType = p.laborType || 'direct';
     const _radio = document.querySelector('input[name="editPayLaborType"][value="' + _laborType + '"]');
     if (_radio) _radio.checked = true;
-    document.getElementById('editPayDays').value       = p.daysWorked  || '';
-    document.getElementById('editPayDailyRate').value  = p.dailyRate   || '';
+    const _eDays = document.getElementById('editPayDays'); if (_eDays) _eDays.value = p.daysWorked || '';
+    const _eRate = document.getElementById('editPayDailyRate'); if (_eRate) _eRate.value = p.dailyRate || '';
     document.getElementById('editPayTotal').value      = p.totalSalary || '';
-    // Set Payment Type from the record (lamsam = no daily rate) — UI only, keep the saved total.
-    const _eLam = _payRecIsLamsam(p);
-    const _eModeRadio = document.querySelector('input[name="editPayMode"][value="' + (_eLam ? 'lamsam' : 'daily') + '"]');
-    if (_eModeRadio) _eModeRadio.checked = true;
-    _applyPayMode(_eLam, { rateGroup: 'editPayRateGroup', rate: 'editPayDailyRate', total: 'editPayTotal', hint: 'editPayTotalHint', days: 'editPayDays' });
+    // Edit modal is lump-sum only now (days/rate fields removed) — always make the
+    // "Amount paid" field editable and keep the saved total (legacy daily-rate entries
+    // keep their total and convert to lump-sum on save).
+    _applyPayMode(true, { rateGroup: 'editPayRateGroup', rate: 'editPayDailyRate', total: 'editPayTotal', hint: 'editPayTotalHint', days: 'editPayDays' });
     // Ensure paymentDate is in datetime-local format (YYYY-MM-DDTHH:mm)
     const _payDt = p.paymentDate || '';
     document.getElementById('editPayDate').value = _payDt.includes('T') ? _payDt : (_payDt ? _payDt + 'T00:00' : '');
     document.getElementById('editPayNotes').value      = p.notes       || '';
+    if (typeof lcPopulatePayrollPicker === 'function') lcPopulatePayrollPicker();
+    const _ecSel = document.getElementById('editPayContract');
+    if (_ecSel) _ecSel.value = p.contractId || '';
+    lcUpdateRemainingHint('editPayContract', 'editPayContractRemaining');
+    if (typeof editPayMileFromValue === 'function') editPayMileFromValue(p.payMilestone || '');
     const imgs = p.receiptImages?.length ? p.receiptImages : (p.receiptURL ? [p.receiptURL] : []);
     _editPayKept = [...imgs];
     _renderEditPayGrid();
@@ -3715,14 +3763,20 @@ async function handleEditPayroll(ev) {
     try {
         showExpLoading('editPayrollBtn', true);
         const _eLamsam = _editPayIsLamsam();
-        const d = parseFloat(document.getElementById('editPayDays').value) || 0;
-        const r = _eLamsam ? 0 : (parseFloat((document.getElementById('editPayDailyRate').value||'').replace(/,/g,'')) || 0);
+        const d = parseFloat((document.getElementById('editPayDays') || {}).value) || 0;
+        const r = _eLamsam ? 0 : (parseFloat(((document.getElementById('editPayDailyRate') || {}).value||'').replace(/,/g,'')) || 0);
         const eTotal = _eLamsam ? (parseFloat((document.getElementById('editPayTotal').value||'').replace(/,/g,'')) || 0) : (d * r);
         const newImgs = [];
         for (const item of _editPayStaged.filter(x => x !== null))
             newImgs.push(await compressImageToBase64(item.file));
         const finalImages = [..._editPayKept, ...newImgs];
         const laborType = (document.querySelector('input[name="editPayLaborType"]:checked') || {}).value || 'direct';
+        const editContractId = (document.getElementById('editPayContract') || {}).value || null;
+        const editMilestone = editContractId ? ((document.getElementById('editPayMilestone') || {}).value || null) : null;
+        // Over-cap warning excludes THIS row's current contribution so editing isn't double-counted.
+        if (editContractId && !lcConfirmOverCap(editContractId, eTotal, _editingPayrollId)) {
+            showExpLoading('editPayrollBtn', false); return;
+        }
         await db.collection('payroll').doc(_editingPayrollId).update({
             workerName:    document.getElementById('editPayWorkerName').value.trim(),
             role:          document.getElementById('editPayRole').value.trim(),
@@ -3731,6 +3785,8 @@ async function handleEditPayroll(ev) {
             paymentDate:   document.getElementById('editPayDate').value,
             notes:         document.getElementById('editPayNotes').value.trim(),
             receiptImages: finalImages,
+            contractId:    editContractId,
+            payMilestone:  editMilestone,
         });
         showExpNotif('Payroll updated! ✓', 'success');
         refreshOvAllData();
@@ -3765,6 +3821,12 @@ function openExpModal(id)  {
     }
     _legacyModalOpen = false;
     if (id === 'addPayrollModal' && typeof payToggleMode === 'function') payToggleMode(); // sync Daily/Lamsam UI
+    if (id === 'addPayrollModal' && typeof lcPopulatePayrollPicker === 'function') {
+        lcPopulatePayrollPicker();
+        const sel = document.getElementById('payContract'); if (sel) sel.value = '';
+        lcUpdateRemainingHint('payContract', 'payContractRemaining');
+        if (typeof payResetMilestone === 'function') payResetMilestone();
+    }
     const m = document.getElementById(id); if (m) m.classList.add('active');
 }
 function closeExpModal(id) {
@@ -7225,3 +7287,291 @@ window.openMoveToFolderModal  = openMoveToFolderModal;
 window.handleMoveToFolder     = handleMoveToFolder;
 
 console.log('✅ MVP Navigation Module Loaded');
+
+// ════════════════════════════════════════════════════════════
+// LABOR CONTRACTS (PAKYAW / IN-HOUSE CAPPED PAY)
+// A capped agreement (worker + scope + agreed amount) on a folder. Payroll rows
+// draw it down via payroll.contractId. Admin-only; rides on the payroll pipeline.
+// Drawdown math reads expPayroll (folder-wide), so paid/remaining stay live.
+// ════════════════════════════════════════════════════════════
+let expLaborContracts = [];
+let _lcPortalFolderId = null;   // set by the React Project Control portal (see lcSyncFromPortal)
+
+// The folder currently in view (React portal, folder view, or a period inside a folder).
+function lcActiveFolderId() {
+    return _lcPortalFolderId
+        || _mvpCurrentFolderId
+        || (expCurrentFolder && expCurrentFolder.id)
+        || (expCurrentProject && expCurrentProject.folderId)
+        || null;
+}
+
+// Bridge for the React Project Control portal (portal-app.compiled.js): it owns its
+// own data pipeline, so it pushes the active folder's contracts + folder-wide payroll
+// in here. This lets the shared contract modal / save / picker / over-cap functions
+// work identically whether opened from the React portal or the legacy Expenses screen.
+window.lcSyncFromPortal = function(folderId, contracts, payroll) {
+    _lcPortalFolderId = folderId || null;
+    expLaborContracts = Array.isArray(contracts) ? contracts : [];
+    if (Array.isArray(payroll)) expPayroll = payroll;   // raw payroll docs (have totalSalary + contractId)
+    if (typeof lcPopulatePayrollPicker === 'function') lcPopulatePayrollPicker();
+};
+
+// Subscribe to the active folder's contracts (called from subscribeFolderData).
+function subscribeLaborContracts(folderId) {
+    if (!currentUser || !folderId) { expLaborContracts = []; return; }
+    const unsub = db.collection('laborContracts')
+        .where('folderId', '==', folderId)
+        .where('userId', '==', _uid())
+        .onSnapshot(snap => {
+            expLaborContracts = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                .sort((a, b) => (a.workerName || '').localeCompare(b.workerName || '')
+                             || (a.scope || '').localeCompare(b.scope || ''));
+            lcPopulatePayrollPicker();
+        }, err => console.error('laborContracts listener:', err));
+    expUnsubscribers.push(unsub);
+}
+
+// ── Drawdown math ──────────────────────────────────────────
+// Paid-to-date = sum of every payroll row linked to the contract (splits included).
+function lcPaid(contractId, excludeRowId) {
+    if (!contractId) return 0;
+    return expPayroll
+        .filter(p => p.contractId === contractId && p.id !== excludeRowId)
+        .reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
+}
+function lcStats(c) {
+    const agreed = parseFloat(c.agreedAmount) || 0;
+    const paid = lcPaid(c.id);
+    const remaining = agreed - paid;
+    const pct = agreed > 0 ? (paid / agreed) * 100 : 0;
+    let status = 'Ongoing';
+    if (agreed > 0 && paid >= agreed) status = paid > agreed ? 'Over' : 'Completed';
+    return { agreed, paid, remaining, pct, status };
+}
+// Worker names seen on this folder (payroll + contracts) — for autocomplete.
+function lcWorkerNames() {
+    const set = new Set();
+    expPayroll.forEach(p => { if (p.workerName) set.add(String(p.workerName).trim()); });
+    expLaborContracts.forEach(c => { if (c.workerName) set.add(String(c.workerName).trim()); });
+    return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b));
+}
+
+
+// ── Create / edit modal ────────────────────────────────────
+function lcFillWorkerDatalist() {
+    const names = lcWorkerNames();
+    const opts = names.map(n => '<option value="' + _mvpEsc(n) + '">').join('');
+    ['lcWorkerNames', 'payWorkerNames', 'editPayWorkerNames'].forEach(id => {
+        const dl = document.getElementById(id); if (dl) dl.innerHTML = opts;
+    });
+}
+function lcOpenNew() {
+    if (!lcActiveFolderId()) { showExpNotif('Open a project folder first.', 'error'); return; }
+    document.getElementById('lcId').value = '';
+    document.getElementById('lcWorker').value = '';
+    document.getElementById('lcScope').value = '';
+    document.getElementById('lcAmount').value = '';
+    document.getElementById('lcNotes').value = '';
+    const pk = document.querySelector('input[name="lcPayType"][value="pakyaw"]'); if (pk) pk.checked = true;
+    const t = document.getElementById('lcModalTitle'); if (t) t.textContent = 'New Labor Contract';
+    lcFillWorkerDatalist();
+    openExpModal('laborContractModal');
+}
+function lcOpenEdit(id) {
+    const c = expLaborContracts.find(x => x.id === id); if (!c) return;
+    document.getElementById('lcId').value = c.id;
+    document.getElementById('lcWorker').value = c.workerName || '';
+    document.getElementById('lcScope').value = c.scope || '';
+    document.getElementById('lcAmount').value = c.agreedAmount ? Number(c.agreedAmount).toLocaleString('en-PH') : '';
+    document.getElementById('lcNotes').value = c.notes || '';
+    const r = document.querySelector('input[name="lcPayType"][value="' + (c.payType === 'inhouse' ? 'inhouse' : 'pakyaw') + '"]'); if (r) r.checked = true;
+    const t = document.getElementById('lcModalTitle'); if (t) t.textContent = 'Edit Labor Contract';
+    lcFillWorkerDatalist();
+    openExpModal('laborContractModal');
+}
+function setupLaborContractFormListeners() {
+    const form = document.getElementById('laborContractForm');
+    if (form) form.addEventListener('submit', handleSaveLaborContract);
+}
+async function handleSaveLaborContract(e) {
+    e.preventDefault();
+    const id = document.getElementById('lcId').value;
+    const folderId = lcActiveFolderId();
+    if (!folderId) { showExpNotif('No project folder selected.', 'error'); return; }
+    const workerName = document.getElementById('lcWorker').value.trim();
+    const scope = document.getElementById('lcScope').value.trim();
+    const agreedAmount = parseFloat((document.getElementById('lcAmount').value || '').replace(/,/g, '')) || 0;
+    const notes = document.getElementById('lcNotes').value.trim();
+    const payType = (document.querySelector('input[name="lcPayType"]:checked') || {}).value || 'pakyaw';
+    if (!workerName) { showExpNotif('Enter the worker name.', 'error'); return; }
+    if (agreedAmount <= 0) { showExpNotif('Enter the agreed amount (the cap).', 'error'); return; }
+    try {
+        showExpLoading('lcSaveBtn', true);
+        if (id) {
+            const existing = expLaborContracts.find(x => x.id === id);
+            const update = { workerName, scope, agreedAmount, payType, notes,
+                             updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+            if (existing && (parseFloat(existing.agreedAmount) || 0) !== agreedAmount) {
+                const hist = Array.isArray(existing.capHistory) ? existing.capHistory.slice() : [];
+                hist.push({ amount: agreedAmount, at: new Date().toISOString(), note: 'Edited cap' });
+                update.capHistory = hist;
+            }
+            await db.collection('laborContracts').doc(id).update(update);
+        } else {
+            await db.collection('laborContracts').add({
+                userId: _uid(), folderId, workerName, scope, agreedAmount, payType, notes,
+                status: 'ongoing',
+                capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        }
+        showExpNotif('Contract saved ✓', 'success');
+        closeExpModal('laborContractModal');
+    } catch (err) {
+        showExpNotif('Error: ' + err.message, 'error');
+    } finally { showExpLoading('lcSaveBtn', false); }
+}
+async function lcOpenRaiseCap(id) {
+    const c = expLaborContracts.find(x => x.id === id); if (!c) return;
+    const cur = parseFloat(c.agreedAmount) || 0;
+    const input = prompt('Raise cap for ' + (c.workerName || 'worker') + ' — ' + (c.scope || 'job')
+        + '\nCurrent agreed: ₱' + formatNum(cur) + '\n\nEnter the NEW agreed amount:', cur);
+    if (input === null) return;
+    const next = parseFloat(String(input).replace(/,/g, '')) || 0;
+    if (next <= 0) { showExpNotif('Enter a valid amount.', 'error'); return; }
+    try {
+        const hist = Array.isArray(c.capHistory) ? c.capHistory.slice() : [];
+        hist.push({ amount: next, at: new Date().toISOString(), note: next >= cur ? 'Raised cap' : 'Lowered cap' });
+        await db.collection('laborContracts').doc(id).update({
+            agreedAmount: next, capHistory: hist,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        showExpNotif('Cap updated ✓', 'success');
+    } catch (err) { showExpNotif('Error: ' + err.message, 'error'); }
+}
+async function lcDelete(id) {
+    const paid = lcPaid(id);
+    const msg = paid > 0
+        ? 'This contract has ₱' + formatNum(paid) + ' in linked payments. Deleting it unlinks them (the payroll rows stay). Continue?'
+        : 'Delete this labor contract?';
+    if (!await showDeleteConfirm(msg)) return;
+    try {
+        await db.collection('laborContracts').doc(id).delete();
+        showExpNotif('Contract deleted', 'success');
+    } catch (err) { showExpNotif('Error: ' + err.message, 'error'); }
+}
+
+// ── Payroll-form contract picker ───────────────────────────
+function lcPopulatePayrollPicker() {
+    lcFillWorkerDatalist();
+    ['payContract', 'editPayContract'].forEach(selId => {
+        const sel = document.getElementById(selId);
+        if (!sel) return;
+        const cur = sel.value;
+        const opts = ['<option value="">— None (normal payroll) —</option>'].concat(
+            expLaborContracts.map(c => {
+                const st = lcStats(c);
+                return '<option value="' + c.id + '">'
+                    + _mvpEsc(c.workerName || 'Worker') + ' · ' + _mvpEsc(c.scope || 'job')
+                    + ' (remaining ₱' + formatNum(st.remaining) + ')</option>';
+            }));
+        sel.innerHTML = opts.join('');
+        if (cur && expLaborContracts.some(c => c.id === cur)) sel.value = cur;
+    });
+}
+function lcUpdateRemainingHint(selId, hintId) {
+    const sel = document.getElementById(selId);
+    const hint = document.getElementById(hintId);
+    // Milestone row shows only when a contract is selected.
+    const msRow = document.getElementById(selId === 'editPayContract' ? 'editPayMilestoneRow' : 'payMilestoneRow');
+    if (!sel || !hint) return;
+    const c = expLaborContracts.find(x => x.id === sel.value);
+    if (!c) {
+        hint.style.display = 'none'; hint.innerHTML = '';
+        if (msRow) msRow.style.display = 'none';
+        return;
+    }
+    const st = lcStats(c);
+    hint.style.display = '';
+    hint.innerHTML = 'Remaining on this contract: <strong class="' + (st.remaining < 0 ? 'lc-neg' : '')
+        + '">₱' + formatNum(st.remaining) + '</strong> of ₱' + formatNum(st.agreed) + ' agreed';
+    if (msRow) msRow.style.display = '';
+}
+// Over-cap guard — returns true to proceed. excludeRowId lets edits ignore their own old amount.
+function lcConfirmOverCap(contractId, addAmount, excludeRowId) {
+    const c = expLaborContracts.find(x => x.id === contractId);
+    if (!c) return true;
+    const agreed = parseFloat(c.agreedAmount) || 0;
+    const after = lcPaid(contractId, excludeRowId) + (parseFloat(addAmount) || 0);
+    if (agreed > 0 && after > agreed) {
+        const over = after - agreed;
+        return confirm('This payment brings the contract total to ₱' + formatNum(after)
+            + ', which exceeds the agreed ₱' + formatNum(agreed) + ' by ₱' + formatNum(over) + '.\n\nSave anyway?');
+    }
+    return true;
+}
+
+// ── Per-contract payment ledger (wallet view) ──────────────
+window.lcOpenLedger = function(contractId) {
+    const c = expLaborContracts.find(x => x.id === contractId);
+    if (!c) { showExpNotif('Contract not found.', 'error'); return; }
+    const st = lcStats(c);
+    const rows = expPayroll
+        .filter(p => p.contractId === contractId)
+        .sort((a, b) => (a.paymentDate || '').localeCompare(b.paymentDate || ''));
+    const titleEl = document.getElementById('lcLedgerTitle');
+    if (titleEl) titleEl.textContent = (c.workerName || 'Worker') + ' — ' + (c.scope || 'Contract');
+    const body = document.getElementById('lcLedgerBody');
+    if (!body) return;
+    const mlabel = m => m === 'advance' ? 'Advance' : m === 'progress' ? 'Progress' : m === 'final' ? 'Final' : '—';
+    const fmtD = d => { try { return new Date(d).toLocaleDateString('en-PH', { year:'numeric', month:'short', day:'numeric' }); } catch(e){ return d || '—'; } };
+    let running = st.agreed;
+    const rowsHtml = rows.length ? rows.map(p => {
+        const amt = parseFloat(p.totalSalary) || 0;
+        running -= amt;
+        const imgs = Array.isArray(p.receiptImages) ? p.receiptImages.filter(Boolean) : [];
+        const rcpt = imgs.length ? `<button class="lc-led-rcpt" onclick="lcLedgerViewReceipt('${p.id}')">View</button>` : '<span style="color:#c4c9d4;">—</span>';
+        return `<tr>
+            <td>${fmtD(p.paymentDate)}</td>
+            <td>${mlabel(p.payMilestone)}</td>
+            <td class="num">₱${formatNum(amt)}</td>
+            <td class="num ${running < 0 ? 'lc-neg' : ''}">₱${formatNum(running)}</td>
+            <td>${rcpt}</td>
+        </tr>`;
+    }).join('') : '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:18px;">No payments linked to this contract yet.</td></tr>';
+    const badge = st.status === 'Completed' ? 'lc-badge-done' : st.status === 'Over' ? 'lc-badge-over' : 'lc-badge-ongoing';
+    body.innerHTML = `
+        <div class="lc-led-head">
+            <span class="lc-type lc-type-${c.payType === 'inhouse' ? 'in' : 'pk'}">${c.payType === 'inhouse' ? 'In-house' : 'Pakyaw'}</span>
+            <span class="lc-badge ${badge}">${st.status}</span>
+        </div>
+        <div class="lc-led-sum">
+            <div><span>Agreed</span><strong>₱${formatNum(st.agreed)}</strong></div>
+            <div><span>Paid</span><strong>₱${formatNum(st.paid)}</strong></div>
+            <div><span>Remaining</span><strong class="${st.remaining < 0 ? 'lc-neg' : ''}">₱${formatNum(st.remaining)}</strong></div>
+        </div>
+        <table class="lc-led-table">
+            <thead><tr><th>Date</th><th>Milestone</th><th class="num">Amount</th><th class="num">Remaining after</th><th>Receipt</th></tr></thead>
+            <tbody>${rowsHtml}</tbody>
+        </table>`;
+    openExpModal('laborLedgerModal');
+};
+window.lcLedgerViewReceipt = function(payId) {
+    const p = expPayroll.find(x => x.id === payId);
+    const imgs = p && Array.isArray(p.receiptImages) ? p.receiptImages.filter(Boolean) : [];
+    if (!imgs.length) return;
+    if (window._receiptStore && typeof window.openLightbox === 'function') {
+        window._receiptStore['lcled_' + payId] = { images: imgs, name: 'Payment receipt' };
+        window.openLightbox('lcled_' + payId, 0);
+    } else {
+        window.open(imgs[0], '_blank');
+    }
+};
+
+window.lcOpenNew            = lcOpenNew;
+window.lcOpenEdit           = lcOpenEdit;
+window.lcOpenRaiseCap       = lcOpenRaiseCap;
+window.lcDelete            = lcDelete;
+window.handleSaveLaborContract = handleSaveLaborContract;
+window.lcUpdateRemainingHint = lcUpdateRemainingHint;

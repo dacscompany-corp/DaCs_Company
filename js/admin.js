@@ -278,6 +278,12 @@ function _syncPaymentBadge() {
 function setupEventListeners() {
     // Login form
     document.getElementById('loginForm').addEventListener('submit', handleLogin);
+    // Enter key in either login field submits too (belt-and-suspenders alongside
+    // the form submit; handleLogin guards against firing twice).
+    ['loginEmail', 'loginPassword'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(e); });
+    });
     
     // Logout button — show confirmation modal
     document.getElementById('logoutBtn').addEventListener('click', () => {
@@ -329,7 +335,10 @@ function setupEventListeners() {
 
 // Handle login
 async function handleLogin(e) {
-    e.preventDefault();
+    if (e) e.preventDefault();
+    // Guard against a double submit (e.g. the Enter key and the form submit both
+    // firing) — bail out if a sign-in is already in flight.
+    if (document.getElementById('loginBtn')?.disabled) return;
 
     const email    = document.getElementById('loginEmail').value;
     const password = document.getElementById('loginPassword').value;

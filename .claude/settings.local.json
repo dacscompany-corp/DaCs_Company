@@ -59,7 +59,13 @@
       "Bash(node --check js/push-notify.js)",
       "Bash(node --check \"c:/Users/John Aerol Tapales/Documents/Dacs Web/js/client-management-app.js\")",
       "Bash(grep -n -E \"duePill|\\\\\\\\brange\\\\\\\\b|\\\\\\\\btotal\\\\\\\\b|\\\\\\\\bstatus\\\\\\\\b|\\\\\\\\bpaid\\\\\\\\b|\\\\\\\\blabor\\\\\\\\b|\\\\\\\\bmaterials\\\\\\\\b|\\\\\\\\bdirect\\\\\\\\b|\\\\\\\\bfee\\\\\\\\b\" js/client-management-app.js)",
-      "Bash(awk -F: '$1>=2898 && $1<=2990')"
+      "Bash(awk -F: '$1>=2898 && $1<=2990')",
+      "Bash(node --check \"c:/Users/John Aerol Tapales/Documents/Dacs Web/js/admin.js\")",
+      "Bash(awk '/const PRIMARY_NAV/,/^\\\\];/' js/admin.js)",
+      "Bash(grep -v \"//\\\\|\\\\/\\\\*\")",
+      "Bash(awk '{o+=gsub\\(/{/,\"{\"\\); c+=gsub\\(/}/,\"}\"\\)} END{print \"open=\"o\" close=\"c\" \"\\(o==c?\"BALANCED\":\"MISMATCH\"\\)}' css/expenses-mvp.css)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",

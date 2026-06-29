@@ -185,6 +185,8 @@ function mapPayrollDoc(d) {
     type,
     hours: Number(d.hours) || 0,
     amount: Number(d.totalSalary) || 0,
+    contractId: d.contractId || null,
+    payMilestone: d.payMilestone || "",
     paymentMethod: (d.paymentMethod || "").toString(),
     ref: shortRef("PAY", d.id)
   };
@@ -783,10 +785,30 @@ function openAddEntry(kind, childMonths) {
   const modalId = kind === "labor" ? "addPayrollModal" : "addExpenseModal";
   if (typeof window.openExpModal === "function") window.openExpModal(modalId);
 }
-function LaborDrill({ project, onBack, laborTx, childMonths }) {
+function ContractRollup({ contracts, folderPayroll, onOpen }) {
+  const rc = React.createElement;
+  if (!contracts || !contracts.length) return null;
+  let agreed = 0, paid = 0;
+  contracts.forEach((c) => {
+    agreed += Number(c.agreedAmount) || 0;
+    paid += (folderPayroll || []).filter((x) => x.contractId === c.id).reduce((s, x) => s + (Number(x.amount) || 0), 0);
+  });
+  const remaining = agreed - paid;
+  return rc("button", { className: "pc-contract-rollup", onClick: () => onOpen && onOpen("labor"), title: "Open the Worker Tracker" },
+    rc("div", { className: "pc-cr-label" }, "Contracted Labor ", rc("span", { className: "pc-cr-sub" }, "(" + contracts.length + " contract" + (contracts.length === 1 ? "" : "s") + ") →")),
+    rc("div", { className: "pc-cr-figs" },
+      rc("div", null, rc("span", null, "Agreed"), rc("strong", null, "₱ ", peso(agreed))),
+      rc("div", null, rc("span", null, "Paid"), rc("strong", null, "₱ ", peso(paid))),
+      rc("div", null, rc("span", null, "Outstanding"), rc("strong", { className: remaining < 0 ? "lc-neg" : "" }, "₱ ", peso(remaining)))
+    )
+  );
+}
+function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPayroll }) {
+  const rc = React.createElement;
   const [tab, setTab] = React.useState("all");
   const [searchQuery, setSearchQuery] = React.useState("");
   const [soaOpen, setSoaOpen] = React.useState(false);
+  const [openW, setOpenW] = React.useState({});
   const soaRef = React.useRef(null);
   React.useEffect(() => {
     if (!soaOpen) return;
@@ -796,10 +818,9 @@ function LaborDrill({ project, onBack, laborTx, childMonths }) {
   }, [soaOpen]);
   const workers = React.useMemo(() => {
     const m = {};
-    laborTx.forEach((t) => { const n = t.name || "—"; if (!m[n]) m[n] = { name: n, role: t.role || "", total: 0, count: 0 }; m[n].total += t.amount || 0; m[n].count++; });
+    laborTx.forEach((t) => { const n = t.name || "\u2014"; if (!m[n]) m[n] = { name: n, role: t.role || "", total: 0, count: 0 }; m[n].total += t.amount || 0; m[n].count++; });
     return Object.values(m).sort((a, b) => b.total - a.total);
   }, [laborTx]);
-  const lb = project.laborBreakdown;
   const billingByProjectId = React.useMemo(() => {
     const monthNum = (m) => {
       const map2 = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
@@ -811,16 +832,16 @@ function LaborDrill({ project, onBack, laborTx, childMonths }) {
       if (ya !== yb) return ya - yb;
       return monthNum(a.month) - monthNum(b.month);
     });
-    const map = /* @__PURE__ */ new Map();
+    const map = new Map();
     sorted.forEach((m, i) => map.set(m.id, i + 1));
     return map;
   }, [childMonths]);
   const filtered = React.useMemo(() => {
     let result = tab === "all" ? laborTx : laborTx.filter((x) => x.type === tab);
     if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
+      const q2 = searchQuery.trim().toLowerCase();
       result = result.filter(
-        (x) => (x.name || "").toLowerCase().includes(q) || (x.role || "").toLowerCase().includes(q)
+        (x) => (x.name || "").toLowerCase().includes(q2) || (x.role || "").toLowerCase().includes(q2)
       );
     }
     return result;
@@ -841,38 +862,200 @@ function LaborDrill({ project, onBack, laborTx, childMonths }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `labor-${project.code || "export"}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.csv`;
+    a.download = `labor-${project.code || "export"}-${(new Date()).toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1e3);
   };
-  return /* @__PURE__ */ React.createElement("section", { className: "drill" }, /* @__PURE__ */ React.createElement("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"), /* @__PURE__ */ React.createElement("div", { className: "drill-head" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Labor Cost \xB7 Transaction History"), /* @__PURE__ */ React.createElement("h2", null, "Labor", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "var(--sans)", color: "var(--brand-green)", fontWeight: 700, fontSize: "22px", letterSpacing: "0.02em", marginLeft: 18, background: "rgba(26,90,58,0.12)", padding: "8px 20px", borderRadius: "999px", whiteSpace: "nowrap", verticalAlign: "middle", fontVariantNumeric: "tabular-nums" } }, project.revenue > 0 ? (project.labor / project.revenue * 100).toFixed(1) + "%" : "—")), /* @__PURE__ */ React.createElement("div", { className: "sub" }, project.name, " \xB7 ", project.code)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { className: "panel-tabs" }, [["all", "All"], ["direct", "Direct"], ["indirect", "Indirect"], ["liability", "Liability"]].map(
-    ([k, l]) => /* @__PURE__ */ React.createElement("button", { key: k, className: tab === k ? "active" : "", onClick: () => setTab(k) }, l)
-  )), /* @__PURE__ */ React.createElement("div", { ref: soaRef, style: { position: "relative" } }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "pcf-soa-trigger" + (soaOpen ? " open" : ""), onClick: () => setSoaOpen((o) => !o), title: "Generate a worker's Statement of Account (all entries in this project)" }, /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" }), /* @__PURE__ */ React.createElement("polyline", { points: "14 2 14 8 20 8" }), /* @__PURE__ */ React.createElement("line", { x1: 16, y1: 13, x2: 8, y2: 13 }), /* @__PURE__ */ React.createElement("line", { x1: 16, y1: 17, x2: 8, y2: 17 })), " Worker Statement"), soaOpen && /* @__PURE__ */ React.createElement("div", { className: "pcf-soa-pop" }, /* @__PURE__ */ React.createElement("div", { className: "pcf-soa-head" }, /* @__PURE__ */ React.createElement("div", { className: "t" }, "Worker Statement"), /* @__PURE__ */ React.createElement("div", { className: "s" }, "Select a worker to generate their SOA")), /* @__PURE__ */ React.createElement("div", { className: "pcf-soa-list" }, workers.length === 0 ? /* @__PURE__ */ React.createElement("div", { className: "pcf-soa-empty" }, "No workers yet.") : workers.map((wk) => /* @__PURE__ */ React.createElement("button", { key: wk.name, type: "button", className: "pcf-soa-item", onClick: () => { setSoaOpen(false); window.printWorkerLaborSOA && window.printWorkerLaborSOA(wk.name, project.id); } }, /* @__PURE__ */ React.createElement("span", { className: "pcf-soa-av" }, (wk.name || "?").trim().charAt(0).toUpperCase() || "?"), /* @__PURE__ */ React.createElement("span", { className: "pcf-soa-info" }, /* @__PURE__ */ React.createElement("span", { className: "pcf-soa-name" }, wk.name), /* @__PURE__ */ React.createElement("span", { className: "pcf-soa-sub" }, (wk.role || "—") + " \xB7 " + wk.count + " " + (wk.count === 1 ? "entry" : "entries"))), /* @__PURE__ */ React.createElement("span", { className: "pcf-soa-amt" }, "₱ ", peso(wk.total))))))), /* @__PURE__ */ React.createElement("button", { className: "btn-primary", onClick: () => openAddEntry("labor", childMonths) }, Ico.plus, " Add Payroll"))), /* @__PURE__ */ _staff() ? null : React.createElement("div", { className: "drill-stats" }, /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Direct Labor"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(lb.direct))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Indirect Labor"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(lb.indirect))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Liability"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(lb.liability))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Labor Total \xB7 Actual"), /* @__PURE__ */ React.createElement("div", { className: "val total" }, "\u20B1 ", peso(lb.total)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "14px 4px 10px" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", flex: "1 1 220px", minWidth: 200, maxWidth: 380 } }, /* @__PURE__ */ React.createElement(
-    "input",
-    {
-      type: "text",
-      placeholder: "Search by worker or role\u2026",
-      value: searchQuery,
-      onChange: (e) => setSearchQuery(e.target.value),
-      "aria-label": "Search labor entries",
-      style: { width: "100%", padding: "8px 12px 8px 32px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" }
+
+  // ---- contract math (per worker) ----
+  const _lcRows = (contracts || []).map((c) => {
+    const agreed = Number(c.agreedAmount) || 0;
+    const paid = (folderPayroll || []).filter((p) => p.contractId === c.id).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const remaining = agreed - paid;
+    const pct = agreed > 0 ? Math.min(100, Math.max(0, paid / agreed * 100)) : 0;
+    return { c, agreed, paid, remaining, pct };
+  });
+  const _lcByWorker = {};
+  _lcRows.forEach((r) => {
+    const w = (r.c.workerName || "\u2014").trim() || "\u2014";
+    (_lcByWorker[w] = _lcByWorker[w] || []).push(r);
+  });
+  const _lcWorkers = Object.keys(_lcByWorker);
+  const _lcTotAgreed = _lcRows.reduce((s, r) => s + r.agreed, 0);
+  const _lcTotPaid = _lcRows.reduce((s, r) => s + r.paid, 0);
+  const _lcTotRem = _lcTotAgreed - _lcTotPaid;
+
+  // ---- payments grouped by worker (respects category tab + search) ----
+  const _payByWorker = {};
+  filtered.forEach((p) => { const w = (p.name || "\u2014").trim() || "\u2014"; (_payByWorker[w] = _payByWorker[w] || []).push(p); });
+  const q = searchQuery.trim().toLowerCase();
+  const _union = Array.from(new Set([..._lcWorkers, ...Object.keys(_payByWorker)]));
+  const _allWorkers = _union.filter((w) => {
+    if (!q) return true;
+    if (w.toLowerCase().includes(q)) return true;
+    if ((_payByWorker[w] || []).length) return true;
+    if ((_lcByWorker[w] || []).some((r) => (String(r.c.scope || "") + String(r.c.role || "")).toLowerCase().includes(q))) return true;
+    return false;
+  }).sort((a, b) => a.localeCompare(b));
+
+  const toggle = (w) => setOpenW((s) => ({ ...s, [w]: !s[w] }));
+
+  const payRows = (list) => {
+    const sorted = [...list].sort((a, b) => new Date(b.dateTime || b.date || 0) - new Date(a.dateTime || a.date || 0));
+    return rc("table", { className: "lc2-tx" },
+      rc("thead", null, rc("tr", null,
+        rc("th", null, "Date"),
+        rc("th", null, "Milestone"),
+        rc("th", { className: "r" }, "Amount"),
+        rc("th", { className: "r" }, "")
+      )),
+      rc("tbody", null, sorted.map((p, i) => rc("tr", { key: p.id || i },
+        rc("td", null, fmtDateTime(p.dateTime || p.date)),
+        rc("td", null, rc("span", { className: "lc2-mile" }, p.payMilestone ? (p.payMilestone.charAt(0).toUpperCase() + p.payMilestone.slice(1)) : "Payment")),
+        rc("td", { className: "r amt" }, "\u20B1 ", peso(Number(p.amount) || 0)),
+        rc("td", { className: "r" },
+          rc("button", { className: "lc2-rowbtn", title: "Receipt / Invoice", onClick: () => window.printSinglePayrollInvoice && window.printSinglePayrollInvoice(p.id) }, Ico.receipt || "\u{1F9FE}"),
+          rc("button", { className: "lc2-rowbtn", title: "Edit", onClick: () => window.openEditPayrollModal && window.openEditPayrollModal(p.id) }, Ico.pencil || "\u270E"),
+          rc("button", { className: "lc2-rowbtn", title: "Delete", onClick: () => window.deletePayroll && window.deletePayroll(p.id) }, Ico.trash || "\u{1F5D1}")
+        )
+      )))
+    );
+  };
+
+  const workerBody = (w, crows, pays) => {
+    const blocks = [];
+    crows.forEach((r) => {
+      const cpays = pays.filter((p) => p.contractId === r.c.id);
+      blocks.push(rc("div", { key: r.c.id, className: "lc2-cblock" },
+        rc("div", { className: "lc2-cblock-head" },
+          rc("div", { className: "lc2-cscope" }, r.c.scope || "Untitled job"),
+          rc("div", { className: "lc2-cmeta" }, "Agreed \u20B1 " + peso(r.agreed) + " \u00B7 Paid \u20B1 " + peso(r.paid) + " \u00B7 " + (r.remaining < 0 ? "Over by \u20B1 " + peso(Math.abs(r.remaining)) : "Remaining \u20B1 " + peso(r.remaining)))
+        ),
+        cpays.length ? payRows(cpays) : rc("div", { className: "lc2-none" }, "No payments recorded against this contract yet."),
+        rc("div", { className: "lc2-cactions" },
+          rc("button", { onClick: () => window.lcOpenLedger && window.lcOpenLedger(r.c.id) }, "Ledger"),
+          rc("button", { onClick: () => window.lcOpenRaiseCap && window.lcOpenRaiseCap(r.c.id) }, "Raise cap"),
+          rc("button", { onClick: () => window.lcOpenEdit && window.lcOpenEdit(r.c.id) }, "Edit contract"),
+          rc("button", { onClick: () => window.printWorkerLaborSOA && window.printWorkerLaborSOA(w, project.id) }, "Worker statement"),
+          rc("button", { className: "danger", onClick: () => window.lcDelete && window.lcDelete(r.c.id) }, "Delete")
+        )
+      ));
+    });
+    const uncapPays = pays.filter((p) => !p.contractId);
+    if (uncapPays.length) {
+      const uncapTot = uncapPays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      blocks.push(rc("div", { key: "_uncap", className: "lc2-cblock" },
+        rc("div", { className: "lc2-cblock-head" },
+          rc("div", { className: "lc2-cscope" }, "Other (uncapped) payments"),
+          rc("div", { className: "lc2-cmeta" }, "Total \u20B1 " + peso(uncapTot))
+        ),
+        payRows(uncapPays)
+      ));
     }
-  ), /* @__PURE__ */ React.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "#9ca3af", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", style: { position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" } }, /* @__PURE__ */ React.createElement("circle", { cx: "11", cy: "11", r: "8" }), /* @__PURE__ */ React.createElement("path", { d: "m21 21-4.3-4.3" }))), /* @__PURE__ */ React.createElement("div", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11.5, color: "var(--ink-3)" } }, filtered.length, " of ", laborTx.length), /* @__PURE__ */ React.createElement(
-    "button",
-    {
-      type: "button",
-      onClick: exportCsv,
-      title: "Export the currently visible rows as CSV",
-      style: { display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, border: "1.5px solid #d1fae5", background: "#f0fdf4", color: "#059669", fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }
-    },
-    /* @__PURE__ */ React.createElement("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }), /* @__PURE__ */ React.createElement("polyline", { points: "7 10 12 15 17 10" }), /* @__PURE__ */ React.createElement("line", { x1: "12", y1: "15", x2: "12", y2: "3" })),
-    "Export CSV"
-  ))), /* @__PURE__ */ React.createElement("table", { className: "tx-table" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { style: { width: 170 } }, "Date"), /* @__PURE__ */ React.createElement("th", null, "Worker"), /* @__PURE__ */ React.createElement("th", { style: { width: 140 } }, "Category"), /* @__PURE__ */ React.createElement("th", { className: "right", style: { width: 80 } }, "Hours"), /* @__PURE__ */ React.createElement("th", { className: "right", style: { width: 140 } }, "Amount"), /* @__PURE__ */ React.createElement("th", { style: { width: 100 } }, "Actions"))), /* @__PURE__ */ React.createElement("tbody", null, filtered.length === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 6, style: { padding: "24px 12px", textAlign: "center", color: "var(--ink-3)" } }, "No payroll entries in this category.")), filtered.map((row, i) => {
-    const billingNum = billingByProjectId.get(row.projectId);
-    return /* @__PURE__ */ React.createElement("tr", { key: row.id || i, className: "row" }, /* @__PURE__ */ React.createElement("td", { style: { fontSize: 12.5, color: "var(--ink-2)", whiteSpace: "nowrap" } }, fmtDateTime(row.dateTime || row.date)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { className: "name" }, row.name), /* @__PURE__ */ React.createElement(PaymentTag, { method: row.paymentMethod })), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "var(--ink-3)", marginTop: 2 } }, row.role), billingNum && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--ink-3)", marginTop: 3, display: "inline-flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("svg", { width: "11", height: "11", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })), "Charged to \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)", fontWeight: 600 } }, "Billing #", billingNum))), /* @__PURE__ */ React.createElement("td", null, row.type === "direct" && /* @__PURE__ */ React.createElement("span", { className: "tag green" }, "Direct"), row.type === "indirect" && /* @__PURE__ */ React.createElement("span", { className: "tag" }, "Indirect"), row.type === "liability" && /* @__PURE__ */ React.createElement("span", { className: "tag warn" }, "Liability")), /* @__PURE__ */ React.createElement("td", { className: "right tabular" }, row.hours || "\u2014"), /* @__PURE__ */ React.createElement("td", { className: "right" }, /* @__PURE__ */ React.createElement("span", { className: "amt" }, "\u20B1 ", peso(row.amount))), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon pc-row-icon-invoice", title: "Invoice", onClick: () => window.printSinglePayrollInvoice && window.printSinglePayrollInvoice(row.id) }, Ico.receipt || "\u{1F9FE}"), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Edit", onClick: () => window.openEditPayrollModal && window.openEditPayrollModal(row.id) }, Ico.pencil || "\u270E"), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon pc-row-icon-danger", title: "Delete", onClick: () => window.deletePayroll && window.deletePayroll(row.id) }, Ico.trash || "\u{1F5D1}")));
-  }))));
+    if (!blocks.length) blocks.push(rc("div", { key: "_empty", className: "lc2-none" }, "No payments yet."));
+    return blocks;
+  };
+
+  const workerRow = (w) => {
+    const crows = _lcByWorker[w] || [];
+    const pays = _payByWorker[w] || [];
+    const hasContract = crows.length > 0;
+    const agreed = crows.reduce((s, r) => s + r.agreed, 0);
+    const paid = crows.reduce((s, r) => s + r.paid, 0);
+    const remaining = agreed - paid;
+    const pct = agreed > 0 ? Math.min(100, Math.max(0, paid / agreed * 100)) : 0;
+    const totalPaidAll = pays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    let status = "Ongoing", scls = "lc2-badge-ongoing", barcls = "lc2-bar-ok";
+    if (!hasContract) { status = "No contract"; scls = "lc2-badge-none"; }
+    else if (paid >= agreed) {
+      if (paid > agreed) { status = "Over cap"; scls = "lc2-badge-over"; barcls = "lc2-bar-over"; }
+      else { status = "Completed"; scls = "lc2-badge-done"; barcls = "lc2-bar-done"; }
+    }
+    const open = !!openW[w];
+    const role = (crows[0] && crows[0].c.role) || (pays[0] && pays[0].role) || "";
+    const payType = crows[0] && crows[0].c.payType;
+    const initial = (w || "?").trim().charAt(0).toUpperCase() || "?";
+    const isDone = hasContract && paid >= agreed && paid <= agreed;
+    return rc("div", { key: w, className: "lc2-acc" + (open ? " open" : "") },
+      rc("div", { className: "lc2-acc-head", onClick: () => toggle(w) },
+        rc("div", { className: "lc2-av" }, initial),
+        rc("div", { className: "lc2-id" },
+          rc("div", { className: "lc2-name" }, w),
+          rc("div", { className: "lc2-role" }, role || "\u2014",
+            payType ? rc("span", { className: "lc2-type lc2-type-" + (payType === "inhouse" ? "in" : "pk") }, payType === "inhouse" ? "In-house" : "Pakyaw") : null
+          )
+        ),
+        rc("div", { className: "lc2-mid" },
+          hasContract
+            ? rc(React.Fragment, null,
+                rc("div", { className: "lc2-bar" }, rc("div", { className: "lc2-bar-fill " + barcls, style: { width: pct.toFixed(1) + "%" } })),
+                rc("div", { className: "lc2-mid-cap" }, "\u20B1 " + peso(paid) + " paid of \u20B1 " + peso(agreed) + (crows.length === 1 && crows[0].c.scope ? " \u00B7 " + crows[0].c.scope : " \u00B7 " + crows.length + " contracts"))
+              )
+            : rc("div", { className: "lc2-mid-cap" }, pays.length + " payment" + (pays.length === 1 ? "" : "s") + " \u00B7 no capped contract")
+        ),
+        rc("div", { className: "lc2-rem" },
+          rc("div", { className: "lc2-rem-lbl" }, hasContract ? (remaining < 0 ? "Over by" : "Remaining") : "Total paid"),
+          rc("div", { className: "lc2-rem-val" + (remaining < 0 ? " neg" : (hasContract ? (isDone ? " muted" : "") : " muted")) }, remaining < 0 ? "\u2212 \u20B1 " + peso(Math.abs(remaining)) : "\u20B1 " + peso(hasContract ? remaining : totalPaidAll))
+        ),
+        rc("span", { className: "lc2-badge " + scls }, status + (status === "Ongoing" ? " \u00B7 " + pct.toFixed(0) + "%" : "")),
+        rc("button", { className: "lc2-pay", onClick: (e) => { e.stopPropagation(); openAddEntry("labor", childMonths); } }, Ico.plus, " Pay"),
+        rc("svg", { className: "lc2-chev", width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "#A1A1A6", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }))
+      ),
+      open ? rc("div", { className: "lc2-acc-body" }, workerBody(w, crows, pays)) : null
+    );
+  };
+
+  const pctChip = project.revenue > 0 ? (project.labor / project.revenue * 100).toFixed(1) + "%" : "\u2014";
+
+  return rc("section", { className: "drill lc2-drill" },
+    rc("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"),
+    rc("div", { className: "drill-head" },
+      rc("div", null,
+        rc("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Labor Cost \u00B7 Worker Tracker"),
+        rc("h2", null, "Labor", rc("span", { style: { fontFamily: "var(--sans)", color: "var(--brand-green)", fontWeight: 700, fontSize: "22px", letterSpacing: "0.02em", marginLeft: 18, background: "rgba(26,90,58,0.12)", padding: "8px 20px", borderRadius: "999px", whiteSpace: "nowrap", verticalAlign: "middle", fontVariantNumeric: "tabular-nums" } }, pctChip)),
+        rc("div", { className: "sub" }, project.name, " \u00B7 ", project.code)
+      ),
+      rc("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" } },
+        rc("div", { ref: soaRef, style: { position: "relative" } },
+          rc("button", { type: "button", className: "lc2-ghost" + (soaOpen ? " open" : ""), onClick: () => setSoaOpen((o) => !o), title: "Generate a worker's Statement of Account" },
+            rc("svg", { width: 14, height: 14, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("path", { d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" }), rc("polyline", { points: "14 2 14 8 20 8" }), rc("line", { x1: 16, y1: 13, x2: 8, y2: 13 }), rc("line", { x1: 16, y1: 17, x2: 8, y2: 17 })),
+            " Worker Statement"),
+          soaOpen && rc("div", { className: "pcf-soa-pop" },
+            rc("div", { className: "pcf-soa-head" }, rc("div", { className: "t" }, "Worker Statement"), rc("div", { className: "s" }, "Select a worker to generate their SOA")),
+            rc("div", { className: "pcf-soa-list" }, workers.length === 0 ? rc("div", { className: "pcf-soa-empty" }, "No workers yet.") : workers.map((wk) => rc("button", { key: wk.name, type: "button", className: "pcf-soa-item", onClick: () => { setSoaOpen(false); window.printWorkerLaborSOA && window.printWorkerLaborSOA(wk.name, project.id); } },
+              rc("span", { className: "pcf-soa-av" }, (wk.name || "?").trim().charAt(0).toUpperCase() || "?"),
+              rc("span", { className: "pcf-soa-info" }, rc("span", { className: "pcf-soa-name" }, wk.name), rc("span", { className: "pcf-soa-sub" }, (wk.role || "\u2014") + " \u00B7 " + wk.count + " " + (wk.count === 1 ? "entry" : "entries"))),
+              rc("span", { className: "pcf-soa-amt" }, "\u20B1 ", peso(wk.total)))))
+          )
+        ),
+        _staff() ? null : rc("button", { className: "lc2-ghost", onClick: () => window.lcOpenNew && window.lcOpenNew() }, Ico.plus, " New Contract"),
+        rc("button", { className: "btn-primary", onClick: () => openAddEntry("labor", childMonths) }, Ico.plus, " Add Payment")
+      )
+    ),
+    _lcRows.length ? rc("div", { className: "lc2-totals" },
+      rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Total Agreed"), rc("div", { className: "lc2-tval" }, "\u20B1 " + peso(_lcTotAgreed))),
+      rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Paid So Far"), rc("div", { className: "lc2-tval" }, "\u20B1 " + peso(_lcTotPaid))),
+      rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Remaining to Pay"), rc("div", { className: "lc2-tval" + (_lcTotRem < 0 ? " neg" : " accent") }, _lcTotRem < 0 ? "\u2212 \u20B1 " + peso(Math.abs(_lcTotRem)) : "\u20B1 " + peso(_lcTotRem))),
+      rc("div", { className: "lc2-tcell lc2-tcell-last" }, rc("div", { className: "lc2-tlbl" }, "Contracts"), rc("div", { className: "lc2-tval" }, String(_lcRows.length), rc("span", { style: { fontSize: 13, color: "var(--ink-4)", fontFamily: "var(--sans)", fontWeight: 400 } }, " \u00B7 " + _lcWorkers.length + " workers")))
+    ) : null,
+    rc("div", { className: "lc2-toolbar" },
+      rc("div", { style: { position: "relative", flex: "1 1 240px", minWidth: 200, maxWidth: 340 } },
+        rc("input", { type: "text", placeholder: "Search worker or job\u2026", value: searchQuery, onChange: (e) => setSearchQuery(e.target.value), "aria-label": "Search labor entries", style: { width: "100%", padding: "9px 12px 9px 34px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, outline: "none", boxSizing: "border-box", fontFamily: "inherit" } }),
+        rc("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "#9ca3af", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round", style: { position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" } }, rc("circle", { cx: "11", cy: "11", r: "8" }), rc("path", { d: "m21 21-4.3-4.3" }))
+      ),
+      rc("div", { className: "panel-tabs" }, [["all", "All"], ["direct", "Direct"], ["indirect", "Indirect"], ["liability", "Liability"]].map(
+        ([k, l]) => rc("button", { key: k, className: tab === k ? "active" : "", onClick: () => setTab(k) }, l)
+      )),
+      rc("button", { className: "lc2-export", type: "button", onClick: exportCsv, title: "Export the currently visible payments as CSV" }, Ico.download, " Export CSV")
+    ),
+    rc("div", { className: "lc2-list" },
+      _allWorkers.length === 0
+        ? rc("div", { className: "lc2-empty" }, searchQuery ? "No workers match your search." : "No labor recorded yet. Click \u201CAdd Payment\u201D to record a payroll payment, or \u201CNew Contract\u201D to cap a worker\u2019s job.")
+        : _allWorkers.map(workerRow)
+    )
+  );
 }
 function DocPill({ m, k, label, title }) {
   const attached = !!m.docs[k];
@@ -1211,6 +1394,7 @@ function PortalApp() {
   const [boqRaw, setBoqRaw] = React.useState([]);
   const [payReqRaw, setPayReqRaw] = React.useState([]);
   const [invoicesRaw, setInvoicesRaw] = React.useState([]);
+  const [laborContractsRaw, setLaborContractsRaw] = React.useState([]);
   const [projectId, setProjectId] = React.useState(null);
   React.useEffect(() => {
     window._activeProjectFolderId = projectId || null;
@@ -1341,6 +1525,10 @@ function PortalApp() {
       db.collection("paymentRequests").where("ownerUid", "==", ownerId).onSnapshot(
         (s) => setPayReqRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
         skip
+      ),
+      db.collection("laborContracts").where("userId", "==", ownerId).onSnapshot(
+        (s) => setLaborContractsRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
+        skip
       )
     ];
     return () => unsubs.forEach((u) => u && u());
@@ -1369,6 +1557,19 @@ function PortalApp() {
     [foldersRaw]
   );
   const project = activeFolder ? buildProject(activeFolder, childMonths, laborTx, materialTx) : null;
+  const folderContracts = React.useMemo(
+    () => laborContractsRaw.filter((c) => c.folderId === projectId),
+    [laborContractsRaw, projectId]
+  );
+  const folderPayrollAll = React.useMemo(
+    () => payrollRaw.filter((p) => childMonthIds.has(p.projectId)),
+    [payrollRaw, childMonthIds]
+  );
+  React.useEffect(() => {
+    if (typeof window.lcSyncFromPortal === "function") {
+      window.lcSyncFromPortal(projectId, folderContracts, folderPayrollAll);
+    }
+  }, [projectId, folderContracts, folderPayrollAll]);
   const billing = React.useMemo(() => {
     if (!activeFolder) return null;
     const boqMatches = boqRaw.filter((x) => x.folderId === activeFolder.id);
@@ -1434,7 +1635,7 @@ function PortalApp() {
       onPeriod: setPeriod,
       onBackToGrid: () => setProjectId(null)
     }
-  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, onBack: () => setView("dashboard") })));
+  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), folderContracts.length ? /* @__PURE__ */ React.createElement(ContractRollup, { contracts: folderContracts, folderPayroll: allLaborTx, onOpen: setView }) : null, /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx, contracts: folderContracts, folderPayroll: allLaborTx }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, onBack: () => setView("dashboard") })));
 }
 (function() {
   const mount = document.getElementById("dacsPortalRoot");

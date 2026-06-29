@@ -169,6 +169,17 @@ window.doLogin = async function() {
     }
 };
 
+// Pressing Enter in the email/password field submits the login. The fields aren't
+// wrapped in a <form>, so there's no implicit submit — wire it up explicitly.
+document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Enter') return;
+    const t = e.target;
+    if (t && (t.id === 'login-email' || t.id === 'login-password')) {
+        e.preventDefault();
+        if (typeof doLogin === 'function') doLogin();
+    }
+});
+
 // ── Logout ───────────────────────────────────────────────────────
 window.confirmLogout = function() { document.getElementById('logout-modal').classList.add('show'); };
 window.closeLogoutModal = function(e) {
