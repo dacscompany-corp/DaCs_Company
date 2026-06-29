@@ -888,8 +888,17 @@ function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPa
   const _lcTotRem = _lcTotAgreed - _lcTotPaid;
 
   // ---- payments grouped by worker (respects category tab + search) ----
+  // A payment LINKED to a contract groups under that CONTRACT's worker name, so a
+  // mismatched typed name (e.g. "Mark Frias" on the payment vs "Mark Frias
+  // (Demolition)" on the contract) doesn't split it into a phantom "No contract"
+  // row \u2014 the contract link wins over the free-typed name.
+  const _cWorkerById = {};
+  _lcRows.forEach((r) => { _cWorkerById[r.c.id] = (r.c.workerName || "\u2014").trim() || "\u2014"; });
   const _payByWorker = {};
-  filtered.forEach((p) => { const w = (p.name || "\u2014").trim() || "\u2014"; (_payByWorker[w] = _payByWorker[w] || []).push(p); });
+  filtered.forEach((p) => {
+    const w = (p.contractId && _cWorkerById[p.contractId]) || (p.name || "\u2014").trim() || "\u2014";
+    (_payByWorker[w] = _payByWorker[w] || []).push(p);
+  });
   const q = searchQuery.trim().toLowerCase();
   const _union = Array.from(new Set([..._lcWorkers, ...Object.keys(_payByWorker)]));
   const _allWorkers = _union.filter((w) => {
