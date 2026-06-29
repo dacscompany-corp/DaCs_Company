@@ -1697,6 +1697,27 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
         const today     = new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'});
         const logoHtml  = _buildLogoHtml(_defaults.logos);
 
+        // Contract status (Completed / Over cap / Ongoing) from this worker's contract(s).
+        const _allC      = (typeof expLaborContracts !== 'undefined' ? expLaborContracts : []);
+        const _entryCids = new Set(entries.map(p => p.contractId).filter(Boolean));
+        const _wContracts = _allC.filter(c => (c.workerName || '') === workerName || _entryCids.has(c.id));
+        let _stLabel = '', _stColor = '', _stBg = '';
+        if (_wContracts.length) {
+            const _agreed = _wContracts.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
+            const _wcSet  = new Set(_wContracts.map(c => c.id));
+            const _paid   = entries.filter(p => p.contractId && _wcSet.has(p.contractId)).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
+            if (_agreed > 0 && _paid >= _agreed) {
+                if (_paid > _agreed) { _stLabel = 'Over cap'; _stColor = '#b91c1c'; _stBg = '#fee2e2'; }
+                else                 { _stLabel = 'Completed'; _stColor = '#15803d'; _stBg = '#dcfce7'; }
+            } else {
+                const _pct = _agreed > 0 ? Math.round(_paid / _agreed * 100) : 0;
+                _stLabel = 'Ongoing · ' + _pct + '%'; _stColor = '#1d4ed8'; _stBg = '#dbeafe';
+            }
+        }
+        const _stPill = _stLabel
+            ? `<div style="display:inline-block;margin-top:8px;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;background:${_stBg};color:${_stColor};">${esc(_stLabel)}</div>`
+            : '';
+
         const w = window.open('','_blank','width=870,height=1100');
         if (!w) { alert('Please allow pop-ups to print the statement.'); return; }
 
@@ -1755,6 +1776,7 @@ table.totals tr.grand td { font-size:15px; font-weight:800; color:#fff; backgrou
     <div class="inv-title-block">
       <h2>STATEMENT OF ACCOUNT</h2>
       <div class="inv-sub">Labor &amp; Payroll</div>
+      ${_stPill}
       <div class="inv-meta">
         SOA No: <strong>${esc(invoiceNo)}</strong><br>
         Date: <strong>${esc(today)}</strong>
