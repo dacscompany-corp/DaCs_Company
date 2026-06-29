@@ -72,7 +72,8 @@
       "Bash(node -e \"console.log\\('node ok'\\)\")",
       "Bash(grep -iB1 -A1 \"submit\\\\|paid\\\\|sent\\\\|status:\")",
       "Bash(git commit *)",
-      "Bash(git rev-list *)"
+      "Bash(git rev-list *)",
+      "Bash(echo \"=== confirm em-dash matched \\(not literal \\\\\\\\u2014 left\\) ===\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
