@@ -144,7 +144,16 @@ window.pmPushToggle = async function() {
     if (!sub) {
         try {
             sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
-        } catch (e) { alert('Could not subscribe to notifications: ' + e.message); return; }
+        } catch (e) {
+            alert('Could not turn on notifications.\n\n' + (e.message || e) +
+                '\n\nThings to try:\n' +
+                '• Open this site in Chrome directly — not inside Facebook/Messenger\'s browser.\n' +
+                '• Make sure Chrome has Notification permission and an internet connection.\n' +
+                '• On Xiaomi / Huawei / Oppo phones, allow Notifications + background for Chrome (and update Google Play Services), then try again.\n' +
+                '• Or install the app: Chrome menu → "Add to Home screen", open it, then tap Notify me daily.');
+            pmPushRefreshBell();
+            return;
+        }
     }
     await _pmStoreSub(sub, proj.id);
     pmPushRefreshBell();
