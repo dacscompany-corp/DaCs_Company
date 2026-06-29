@@ -2933,7 +2933,7 @@
 .lc2-tcell { flex: 1; padding: 16px 22px; border-right: 1px solid var(--hair-2); }
 .lc2-tcell.lc2-tcell-last { border-right: 0; flex: 0 0 200px; }
 .lc2-tlbl { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
-.lc2-tval { font-family: var(--serif); font-size: 26px; font-weight: 600; margin-top: 6px; font-variant-numeric: tabular-nums; color: var(--ink); }
+.lc2-tval { font-family: var(--sans); font-size: 26px; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; color: var(--ink); }
 .lc2-tval.accent { color: var(--brand-green); }
 .lc2-tval.neg { color: #C0392B; }
 
