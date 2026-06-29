@@ -1640,8 +1640,17 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
         const projectName = folder ? folder.name : 'Labor & Payroll';
         const periodIds   = new Set(_projs.filter(p => p.folderId === folderId).map(p => p.id));
 
+        // Include payments by typed name OR linked to a contract owned by this worker,
+        // so a name mismatch (payment "Mark Frias" vs contract "Mark Frias (Demolition)")
+        // still gathers the right entries.
+        const _wcIds = new Set(
+            (typeof expLaborContracts !== 'undefined' ? expLaborContracts : [])
+                .filter(c => (c.workerName || '') === workerName)
+                .map(c => c.id)
+        );
         let entries = _allPay
-            .filter(p => (p.workerName || '') === workerName && periodIds.has(p.projectId))
+            .filter(p => periodIds.has(p.projectId) &&
+                ((p.workerName || '') === workerName || (p.contractId && _wcIds.has(p.contractId))))
             .sort((a, b) => new Date(a.paymentDate || 0) - new Date(b.paymentDate || 0));
         if (!entries.length) { alert('No labor entries found for ' + workerName + ' in this project.'); return; }
 
