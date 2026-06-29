@@ -63,7 +63,8 @@
       "Bash(ls -la assets/images/ icons/)",
       "Bash(ls -la *.png)",
       "Bash(command -v magick convert inkscape rsvg-convert)",
-      "Bash(node -e \"console.log\\('node ok'\\)\")"
+      "Bash(node -e \"console.log\\('node ok'\\)\")",
+      "Bash(grep -iB1 -A1 \"submit\\\\|paid\\\\|sent\\\\|status:\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
