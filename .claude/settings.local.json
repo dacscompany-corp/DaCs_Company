@@ -71,7 +71,8 @@
       "Bash(command -v magick convert inkscape rsvg-convert)",
       "Bash(node -e \"console.log\\('node ok'\\)\")",
       "Bash(grep -iB1 -A1 \"submit\\\\|paid\\\\|sent\\\\|status:\")",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(git rev-list *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
