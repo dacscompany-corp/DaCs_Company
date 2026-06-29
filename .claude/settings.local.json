@@ -73,7 +73,10 @@
       "Bash(grep -iB1 -A1 \"submit\\\\|paid\\\\|sent\\\\|status:\")",
       "Bash(git commit *)",
       "Bash(git rev-list *)",
-      "Bash(echo \"=== confirm em-dash matched \\(not literal \\\\\\\\u2014 left\\) ===\")"
+      "Bash(echo \"=== confirm em-dash matched \\(not literal \\\\\\\\u2014 left\\) ===\")",
+      "Bash(curl -s --max-time 30 \"https://dacs-notify.dacscompany.workers.dev/run?key=dacs-notification&debug=1\")",
+      "Bash(awk 'NR>=786 && NR<=1060 && /_staff\\\\\\(\\\\\\)/{print NR\": \"$0}' js/portal-app.compiled.js)",
+      "Bash(awk -F: '$1<4251')"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",

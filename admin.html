@@ -1386,6 +1386,7 @@
           <div class="pm-ws-tabs">
             <button class="pm-ws-tab active" id="pm-ws-tab-overview"  onclick="pmWsTab('overview',this)">Dashboard Overview</button>
             <button class="pm-ws-tab"        id="pm-ws-tab-week"      onclick="pmWsTab('week',this)">Daily Expenses</button>
+            <button class="pm-ws-tab"        id="pm-ws-tab-labor"     onclick="pmWsTab('labor',this)">Labor Contracts</button>
             <button class="pm-ws-tab"        id="pm-ws-tab-materials" onclick="pmWsTab('materials',this)">Procurements</button>
             <button class="pm-ws-tab"        id="pm-ws-tab-progress"  onclick="pmWsTab('progress',this)">Progress</button>
             <button class="pm-ws-tab"        id="pm-ws-tab-money"     onclick="pmWsTab('money',this)">Money</button>
@@ -1422,18 +1423,6 @@
                 <span class="pmw-status-badge" id="pmw-status-badge">DRAFT</span>
                 <button class="pmw-print-btn" onclick="window.print()">Print</button>
               </div>
-            </div>
-
-            <!-- Labor Contracts (pakyaw / capped) — collapsible Worker Tracker -->
-            <div class="pm-lc-panel">
-              <div class="pm-lc-phead" onclick="pmContractsToggle()">
-                <svg id="pm-contracts-chev" class="pm-lc-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                <span class="pm-lc-ptitle">Labor Contracts</span>
-                <span class="pm-lc-psum" id="pm-contracts-summary">No contracts yet</span>
-                <span style="flex:1"></span>
-                <button class="pm-lc-newbtn" type="button" onclick="event.stopPropagation(); pmLcOpenNew()">＋ New Contract</button>
-              </div>
-              <div class="pm-lc-pbody" id="pm-contracts-body" style="display:none;"></div>
             </div>
 
             <div class="pmw-grid">
@@ -1495,9 +1484,9 @@
                       </div>
                     </div>
                     <div class="pmw-addcard-field pmw-contract-field" id="pm-week-contract-wrap" style="display:none;">
-                      <label>Pay against contract <span style="font-weight:400;color:#9b9a94;">— pakyaw / capped job (optional)</span></label>
+                      <label>Is this part of a job? <span style="font-weight:400;color:#9b9a94;">— pakyaw / capped contract (optional)</span></label>
                       <select class="pmw-input" id="pm-week-contract" onchange="pmWeekContractHint()">
-                        <option value="">— None (regular labor) —</option>
+                        <option value="">— No, regular labor —</option>
                       </select>
                       <div id="pm-week-contract-remaining" class="pm-lc-remaining" style="display:none;"></div>
                     </div>
@@ -1599,6 +1588,20 @@
             <!-- full-page statement view (rendered by pmCatView; replaces the builder) -->
             <div id="pmw-statement" style="display:none;"></div>
           </div><!-- /ws-panel-week -->
+
+          <!-- ── Labor Contracts Panel (pakyaw / capped jobs — management home) ── -->
+          <div class="pm-ws-panel" id="ws-panel-labor">
+            <div class="pmw-pagehead">
+              <div>
+                <div class="pmw-pagehead-title">Labor Contracts</div>
+                <div class="pmw-pagehead-sub">Fixed-price (pakyaw) &amp; capped jobs — paid through your daily Labor entries.</div>
+              </div>
+              <div class="pmw-pagehead-right">
+                <button class="pm-lc-newbtn" type="button" onclick="pmLcOpenNew()">＋ New Contract</button>
+              </div>
+            </div>
+            <div class="pm-lc-pbody pm-lc-pbody--tab" id="pm-contracts-body"></div>
+          </div><!-- /ws-panel-labor -->
 
           <!-- ── Materials Panel ── -->
           <div class="pm-ws-panel" id="ws-panel-materials">
@@ -1760,6 +1763,9 @@
             </button>
             <button class="pm-mnav-item" id="pm-mnav-week" onclick="pmWsTab('week')">
               <i data-lucide="receipt"></i><span>Expenses</span>
+            </button>
+            <button class="pm-mnav-item" id="pm-mnav-labor" onclick="pmWsTab('labor')">
+              <i data-lucide="hard-hat"></i><span>Labor</span>
             </button>
             <button class="pm-mnav-item" id="pm-mnav-materials" onclick="pmWsTab('materials')">
               <i data-lucide="shopping-cart"></i><span>Procure</span>
@@ -4049,38 +4055,63 @@
       <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmLaborContractModal')"><i data-lucide="x"></i></button>
     </div>
     <form onsubmit="pmLcSave(event)">
-      <div class="pm-modal-body">
+      <div class="pm-modal-body pm-lc-form">
         <input type="hidden" id="pmLcId">
-        <div class="pm-form-row pm-two-col">
-          <div class="pm-form-group">
-            <label class="pm-field-label">Worker Name <span class="pm-req">*</span></label>
-            <input type="text" id="pmLcWorker" class="pm-input" list="pmLcWorkerNames" placeholder="Full name" autocomplete="off">
-            <datalist id="pmLcWorkerNames"></datalist>
-          </div>
-          <div class="pm-form-group">
-            <label class="pm-field-label">Scope / Job</label>
-            <input type="text" id="pmLcScope" class="pm-input" placeholder="e.g. Tiling &amp; masonry">
+
+        <!-- Step 1 — who's doing the work -->
+        <div class="pm-lc-step">
+          <div class="pm-lc-stepnum">1</div>
+          <div class="pm-lc-stepbody">
+            <div class="pm-lc-stepq">Who’s doing the work?</div>
+            <div class="pm-lc-step2col">
+              <div class="pm-form-group">
+                <label class="pm-field-label">Worker name <span class="pm-req">*</span></label>
+                <input type="text" id="pmLcWorker" class="pm-input" list="pmLcWorkerNames" placeholder="e.g. Aerol" autocomplete="off">
+                <datalist id="pmLcWorkerNames"></datalist>
+              </div>
+              <div class="pm-form-group">
+                <label class="pm-field-label">The job</label>
+                <input type="text" id="pmLcScope" class="pm-input" placeholder="e.g. Tiling">
+              </div>
+            </div>
           </div>
         </div>
-        <div class="pm-form-group">
-          <label class="pm-field-label">Pay Type</label>
-          <div style="display:flex;gap:20px;align-items:center;padding-top:2px;">
-            <label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;"><input type="radio" name="pmLcPayType" value="pakyaw" checked> Pakyaw <span style="color:#9b9a94;font-size:.85em;">(contract)</span></label>
-            <label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;"><input type="radio" name="pmLcPayType" value="inhouse"> In-house <span style="color:#9b9a94;font-size:.85em;">(capped regular)</span></label>
+
+        <!-- Step 2 — how are they paid -->
+        <div class="pm-lc-step">
+          <div class="pm-lc-stepnum">2</div>
+          <div class="pm-lc-stepbody">
+            <div class="pm-lc-stepq">How are they paid?</div>
+            <div class="pm-lc-payopts">
+              <label class="pm-lc-payopt"><input type="radio" name="pmLcPayType" value="pakyaw" checked>
+                <span class="pm-lc-payopt-in"><span class="pm-lc-payopt-t">Pakyaw</span><span class="pm-lc-payopt-d">Fixed price, whole job</span></span></label>
+              <label class="pm-lc-payopt"><input type="radio" name="pmLcPayType" value="inhouse">
+                <span class="pm-lc-payopt-in"><span class="pm-lc-payopt-t">In-house</span><span class="pm-lc-payopt-d">Own worker, set limit</span></span></label>
+            </div>
           </div>
         </div>
-        <div class="pm-form-group">
-          <label class="pm-field-label">Agreed Amount / Cap (₱) <span class="pm-req">*</span></label>
-          <input type="text" inputmode="decimal" id="pmLcAmount" class="pm-input" placeholder="0.00">
-        </div>
-        <div class="pm-form-group">
-          <label class="pm-field-label">Notes (optional)</label>
-          <textarea id="pmLcNotes" class="pm-input" rows="2" placeholder="Additional details…"></textarea>
+
+        <!-- Step 3 — agreed total -->
+        <div class="pm-lc-step">
+          <div class="pm-lc-stepnum">3</div>
+          <div class="pm-lc-stepbody">
+            <div class="pm-lc-stepq">What’s the agreed total?</div>
+            <div class="pm-lc-amtbox"><span class="pm-lc-peso">₱</span>
+              <input type="text" inputmode="decimal" id="pmLcAmount" class="pm-lc-amtinput num" placeholder="0"></div>
+            <div class="pm-lc-reassure">
+              <span class="pm-lc-reassure-i">✓</span>
+              <span>As you log labor for this worker, the panel counts down from the agreed total and warns you if you go over.</span>
+            </div>
+            <div class="pm-form-group" style="margin-top:14px;">
+              <label class="pm-field-label">Notes (optional)</label>
+              <textarea id="pmLcNotes" class="pm-input" rows="2" placeholder="Additional details…"></textarea>
+            </div>
+          </div>
         </div>
       </div>
       <div class="pm-modal-footer">
         <button type="button" class="pm-btn pm-btn-secondary" onclick="pmCloseModal('pmLaborContractModal')">Cancel</button>
-        <button type="submit" class="pm-btn pm-btn-primary">Save Contract</button>
+        <button type="submit" class="pm-btn pm-btn-primary">Save job</button>
       </div>
     </form>
   </div>
@@ -4088,14 +4119,18 @@
 
 <!-- Labor Contract ledger -->
 <div id="pmLaborLedgerModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmLaborLedgerModal')" style="display:none;">
-  <div class="pm-modal-box" style="max-width:640px;">
-    <div class="pm-modal-header">
+  <div class="pm-modal-box pm-lc-led-box" style="max-width:640px;">
+    <div class="pm-modal-header pm-lc-led-head">
       <h3 id="pmLcLedgerTitle">Contract Ledger</h3>
       <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmLaborLedgerModal')"><i data-lucide="x"></i></button>
     </div>
-    <div class="pm-modal-body" id="pmLcLedgerBody"></div>
-    <div class="pm-modal-footer">
-      <button type="button" class="pm-btn pm-btn-secondary" onclick="pmCloseModal('pmLaborLedgerModal')">Close</button>
+    <div class="pm-modal-body pm-lc-led-modalbody" id="pmLcLedgerBody"></div>
+    <div class="pm-modal-footer pm-lc-led-foot">
+      <button type="button" class="pm-btn pm-btn-secondary" onclick="pmLcLedgerEdit()">Edit job</button>
+      <button type="button" class="pm-btn pm-btn-secondary" onclick="pmLcLedgerRaise()">Raise cap</button>
+      <button type="button" class="pm-btn pm-lc-btn-danger" onclick="pmLcLedgerDelete()">Delete</button>
+      <span style="flex:1"></span>
+      <button type="button" class="pm-btn pm-btn-primary" onclick="pmCloseModal('pmLaborLedgerModal')">Close</button>
     </div>
   </div>
 </div>

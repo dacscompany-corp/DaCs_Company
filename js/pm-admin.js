@@ -103,6 +103,7 @@ function _pmLoadWsPanel(panelId) {
     switch(panelId) {
         case 'ws-panel-overview':  _pmLoadOverview();                    break;
         case 'ws-panel-week':      _pmLoadWeekBuilder();                  break;
+        case 'ws-panel-labor':     _pmLoadLaborTab();                     break;
         case 'ws-panel-materials': _pmLoadProcItems();                    break;
         case 'ws-panel-progress':  _pmLoadMilestones(); _pmLoadReports(); break;
         case 'ws-panel-money':     _pmLoadPayments();   _pmLoadRevolving(); break;
@@ -4260,6 +4261,22 @@ let _pmLaborContracts = [];
 function _pmLcCol() {
     return db.collection('constructionProjects').doc(_pmActiveProject.id).collection('laborContracts');
 }
+// Labor Contracts now live in their OWN tab (the management home). Opening the tab
+// reloads the project's weekly bills first, so "paid-to-date" (summed from the daily
+// Labor lines tagged to each contract) is always current. The Daily Expenses tab keeps
+// only the "Is this part of a job?" dropdown, populated from the same _pmLaborContracts.
+async function _pmLoadLaborTab() {
+    if (!_pmActiveProject) { _pmLaborContracts = []; _pmWeekBills = []; _pmRenderContracts(); return; }
+    try {
+        const snap = await db.collection('constructionProjects')
+            .doc(_pmActiveProject.id)
+            .collection('weeklyBills')
+            .orderBy('weekEndingDate', 'desc')
+            .get();
+        _pmWeekBills = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) { console.warn('PM labor tab bills:', e.message); }
+    await _pmLoadLaborContracts();
+}
 async function _pmLoadLaborContracts() {
     if (!_pmActiveProject) { _pmLaborContracts = []; _pmRenderContracts(); return; }
     try {
@@ -4302,7 +4319,7 @@ function _pmPopulateContractPicker() {
             + _pmLaborContracts.map(c => {
                 const st = _pmContractStats(c);
                 return '<option value="' + c.id + '">' + _esc(c.workerName || 'Worker') + ' · ' + _esc(c.scope || 'job')
-                    + ' (₱' + _fmt(st.remaining) + ' left)</option>';
+                    + ' (' + _fmt(st.remaining) + ' left)</option>';
             }).join('');
         if (cur && _pmLaborContracts.some(c => c.id === cur)) sel.value = cur;
     }
@@ -4318,8 +4335,9 @@ window.pmWeekContractHint = function() {
     if (!c) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
     const st = _pmContractStats(c);
     hint.style.display = '';
-    hint.innerHTML = 'Remaining: <strong class="' + (st.remaining < 0 ? 'pm-lc-neg' : '') + '">₱' + _fmt(st.remaining)
-        + '</strong> of ₱' + _fmt(st.agreed) + ' agreed';
+    hint.innerHTML = st.remaining < 0
+        ? '<strong class="pm-lc-neg">' + _fmt(Math.abs(st.remaining)) + ' over</strong> the ' + _fmt(st.agreed) + ' agreed'
+        : '<strong>' + _fmt(st.remaining) + ' left</strong> of ' + _fmt(st.agreed) + ' agreed';
 };
 
 // ── Worker Tracker panel (collapsible, in Daily Expenses) ──
@@ -4330,7 +4348,35 @@ window.pmContractsToggle = function() {
     const open = body.style.display !== 'none';
     body.style.display = open ? 'none' : '';
     if (chev) chev.style.transform = open ? '' : 'rotate(180deg)';
+    // Header summary is for the COLLAPSED state only — when expanded the green
+    // banner inside the body already says it, so hide the header copy to avoid repeats.
+    const sumEl = document.getElementById('pm-contracts-summary');
+    if (sumEl) sumEl.style.display = open ? '' : 'none';
 };
+// Plain-language statement view for one contract (the "bank statement row").
+// Returns the friendly sentence, the right-side amount-left + its label/colour,
+// and the progress bar style — shared by the panel rows and the ledger banner.
+function _pmLcView(st) {
+    const peso = n => '' + _fmt(Math.abs(Math.round(n)));
+    let sentence, sentOver = false, rAmt, rLbl, rCls, amtCls, barCls,
+        barPct = Math.min(100, Math.max(0, st.pct));
+    if (st.status === 'Over') {
+        const over = st.paid - st.agreed;
+        sentence = 'Paid ' + peso(st.paid) + ' — <b>' + peso(over) + ' more</b> than the ' + peso(st.agreed) + ' agreed';
+        sentOver = true; rAmt = '+' + peso(over); rLbl = '⚠ Over agreed';
+        rCls = 'pm-lc-stat-over'; amtCls = 'pm-lc-amt-over'; barCls = 'pm-lc-bar-over'; barPct = 100;
+    } else if (st.status === 'Completed') {
+        sentence = 'Paid ' + peso(st.paid) + ' of ' + peso(st.agreed) + ' — nothing left';
+        rAmt = '₱0'; rLbl = '✓ Fully paid';
+        rCls = 'pm-lc-stat-done'; amtCls = 'pm-lc-amt-done'; barCls = 'pm-lc-bar-done'; barPct = 100;
+    } else {
+        sentence = 'Paid ' + peso(st.paid) + ' of ' + peso(st.agreed) + ' — <b>' + peso(st.remaining) + ' to go</b>';
+        rAmt = peso(st.remaining); rLbl = 'In progress · ' + st.pct.toFixed(0) + '%';
+        rCls = 'pm-lc-stat-on'; amtCls = ''; barCls = 'pm-lc-bar-ok';
+    }
+    return { sentence, sentOver, rAmt, rLbl, rCls, amtCls, barCls, barPct };
+}
+
 function _pmRenderContracts() {
     const sumEl = document.getElementById('pm-contracts-summary');
     const body  = document.getElementById('pm-contracts-body');
@@ -4338,43 +4384,60 @@ function _pmRenderContracts() {
     const n = _pmLaborContracts.length;
     let totAgreed = 0, totPaid = 0;
     _pmLaborContracts.forEach(c => { const s = _pmContractStats(c); totAgreed += s.agreed; totPaid += s.paid; });
+    const totRem = totAgreed - totPaid;
     if (sumEl) sumEl.textContent = n
-        ? (n + ' contract' + (n === 1 ? '' : 's') + ' · ₱' + _fmt(totAgreed - totPaid) + ' remaining')
+        ? (n + ' job' + (n === 1 ? '' : 's') + ' · ' + _fmt(totRem) + ' still to pay')
         : 'No contracts yet';
     if (!n) { body.innerHTML = '<div class="pm-lc-empty">No labor contracts yet. Click "＋ New Contract" to cap a worker’s job (pakyaw or in-house). Then tag a Labor entry to it when you log the day.</div>'; return; }
+
+    // group by worker (avatar sections), count jobs/workers for the banner
     const byW = {};
     _pmLaborContracts.forEach(c => { const w = (c.workerName || '—').trim() || '—'; (byW[w] = byW[w] || []).push(c); });
-    body.innerHTML = Object.keys(byW).sort((a, b) => a.localeCompare(b)).map(w => {
-        const cs = byW[w];
-        let wa = 0, wp = 0;
-        const cards = cs.map(c => {
+    const workerNames = Object.keys(byW).sort((a, b) => a.localeCompare(b));
+    const totPct = totAgreed > 0 ? Math.min(100, (totPaid / totAgreed) * 100) : 0;
+
+    // ① summary banner — "Across N workers and M jobs, you still owe …"
+    const banner = '<div class="pm-lc-summary">'
+        + '<div class="pm-lc-sum-left">'
+        + '<div class="pm-lc-sum-cap">Across <b>' + workerNames.length + ' worker' + (workerNames.length === 1 ? '' : 's')
+        + '</b> and <b>' + n + ' job' + (n === 1 ? '' : 's') + '</b>, you still owe</div>'
+        + '<div class="pm-lc-sum-big num">' + _fmt(totRem) + ' <span>of ' + _fmt(totAgreed) + ' agreed</span></div>'
+        + '</div>'
+        + '<div class="pm-lc-sum-right">'
+        + '<div class="pm-lc-sum-bar"><div style="width:' + totPct.toFixed(0) + '%"></div></div>'
+        + '<div class="pm-lc-sum-pct">' + totPct.toFixed(0) + '% paid so far</div>'
+        + '</div></div>';
+
+    // ② worker sections of statement rows — tap a whole row to open its ledger
+    const sections = workerNames.map(w => {
+        const cs = byW[w].slice().sort((a, b) => (a.scope || '').localeCompare(b.scope || ''));
+        const initial = (w.replace(/[^A-Za-z0-9]/g, '')[0] || '—').toUpperCase();
+        const rows = cs.map(c => {
             const st = _pmContractStats(c);
-            wa += st.agreed; wp += st.paid;
-            const pct = Math.min(100, Math.max(0, st.pct));
-            const badge = st.status === 'Completed' ? 'pm-lc-b-done' : st.status === 'Over' ? 'pm-lc-b-over' : 'pm-lc-b-on';
-            const bar = st.status === 'Over' ? 'pm-lc-bar-over' : (st.status === 'Completed' ? 'pm-lc-bar-done' : 'pm-lc-bar-ok');
+            const v = _pmLcView(st);
             const typeLbl = c.payType === 'inhouse' ? 'In-house' : 'Pakyaw';
-            return '<div class="pm-lc-card">'
-                + '<div class="pm-lc-chead"><div class="pm-lc-scope">' + _esc(c.scope || 'Untitled job')
-                + ' <span class="pm-lc-type">' + typeLbl + '</span></div>'
-                + '<span class="pm-lc-badge ' + badge + '">' + st.status + (st.status === 'Ongoing' ? ' · ' + st.pct.toFixed(0) + '%' : '') + '</span></div>'
-                + '<div class="pm-lc-figs"><div><span>Agreed</span><b>₱' + _fmt(st.agreed) + '</b></div>'
-                + '<div><span>Paid</span><b>₱' + _fmt(st.paid) + '</b></div>'
-                + '<div><span>Remaining</span><b class="' + (st.remaining < 0 ? 'pm-lc-neg' : '') + '">₱' + _fmt(st.remaining) + '</b></div></div>'
-                + '<div class="pm-lc-bar"><div class="pm-lc-bar-fill ' + bar + '" style="width:' + pct.toFixed(1) + '%"></div></div>'
-                + '<div class="pm-lc-actions">'
-                + '<button onclick="pmLcOpenLedger(\'' + c.id + '\')">Ledger</button>'
-                + '<button onclick="pmLcRaiseCap(\'' + c.id + '\')">Raise cap</button>'
-                + '<button onclick="pmLcOpenEdit(\'' + c.id + '\')">Edit</button>'
-                + '<button class="pm-lc-del" onclick="pmLcDelete(\'' + c.id + '\')">Delete</button>'
-                + '</div></div>';
+            const typeCls = c.payType === 'inhouse' ? 'pm-lc-type-inh' : 'pm-lc-type-pak';
+            const overRow = st.status === 'Over' ? ' pm-lc-row-over' : '';
+            return '<div class="pm-lc-row' + overRow + '" onclick="pmLcOpenLedger(\'' + c.id + '\')">'
+                + '<div class="pm-lc-rmain">'
+                + '<div class="pm-lc-rtitle"><span class="pm-lc-rscope">' + _esc(c.scope || 'Untitled job')
+                + '</span><span class="pm-lc-type ' + typeCls + '">' + typeLbl + '</span></div>'
+                + '<div class="pm-lc-rsent num' + (v.sentOver ? ' pm-lc-rsent-over' : '') + '">' + v.sentence + '</div>'
+                + '<div class="pm-lc-rbar"><div class="pm-lc-rbar-fill ' + v.barCls + '" style="width:' + v.barPct.toFixed(1) + '%"></div></div>'
+                + '</div>'
+                + '<div class="pm-lc-rright"><div class="pm-lc-ramt num ' + v.amtCls + '">' + v.rAmt + '</div>'
+                + '<div class="pm-lc-rstat ' + v.rCls + '">' + v.rLbl + '</div></div>'
+                + '<svg class="pm-lc-rchev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'
+                + '</div>';
         }).join('');
-        const wr = wa - wp;
-        return '<div class="pm-lc-wgroup"><div class="pm-lc-whead">'
-            + '<span class="pm-lc-wname">' + _esc(w) + '</span>'
-            + '<span class="pm-lc-wtot">Agreed <b>₱' + _fmt(wa) + '</b> · Paid <b>₱' + _fmt(wp) + '</b> · Remaining <b class="' + (wr < 0 ? 'pm-lc-neg' : '') + '">₱' + _fmt(wr) + '</b></span>'
-            + '</div><div class="pm-lc-grid">' + cards + '</div></div>';
+        return '<div class="pm-lc-wsec">'
+            + '<div class="pm-lc-whead2"><span class="pm-lc-avatar">' + _esc(initial) + '</span>'
+            + '<span class="pm-lc-wname2">' + _esc(w) + '</span>'
+            + '<span class="pm-lc-wjobs">· ' + cs.length + ' job' + (cs.length === 1 ? '' : 's') + '</span></div>'
+            + rows + '</div>';
     }).join('');
+
+    body.innerHTML = banner + sections;
 }
 
 // ── Create / edit / raise cap / delete ─────────────────────
@@ -4437,7 +4500,7 @@ window.pmLcRaiseCap = async function(id) {
     const c = _pmLaborContracts.find(x => x.id === id); if (!c) return;
     const cur = Number(c.agreedAmount) || 0;
     const input = prompt('Raise cap for ' + (c.workerName || 'worker') + ' — ' + (c.scope || 'job')
-        + '\nCurrent agreed: ₱' + _fmt(cur) + '\n\nEnter the NEW agreed amount:', cur);
+        + '\nCurrent agreed: ' + _fmt(cur) + '\n\nEnter the NEW agreed amount:', cur);
     if (input === null) return;
     const next = parseFloat(String(input).replace(/,/g, '')) || 0;
     if (next <= 0) { _pmToast('Enter a valid amount.', true); return; }
@@ -4452,7 +4515,7 @@ window.pmLcRaiseCap = async function(id) {
 window.pmLcDelete = async function(id) {
     const paid = _pmContractPaid(id);
     const msg = paid > 0
-        ? 'This contract has ₱' + _fmt(paid) + ' in linked labor lines. Deleting it leaves those lines but un-caps them. Continue?'
+        ? 'This contract has ' + _fmt(paid) + ' in linked labor lines. Deleting it leaves those lines but un-caps them. Continue?'
         : 'Delete this labor contract?';
     if (!confirm(msg)) return;
     try {
@@ -4463,31 +4526,63 @@ window.pmLcDelete = async function(id) {
 };
 
 // ── Per-contract ledger (the labor lines that drew it down) ─
+let _pmLcLedgerId = null;
 window.pmLcOpenLedger = function(id) {
     const c = _pmLaborContracts.find(x => x.id === id); if (!c) return;
+    _pmLcLedgerId = id;
     const st = _pmContractStats(c);
+    const v  = _pmLcView(st);
     const rows = [];
     (_pmWeekBills || []).forEach(b => (Array.isArray(b.entries) ? b.entries : []).forEach(e => {
-        if (e.type === 'labor' && e.contractId === id) rows.push({ date: b.weekEndingDate, details: e.details || '—', amount: Number(e.amount) || 0 });
+        if (e.type === 'labor' && e.contractId === id) rows.push({ date: b.weekEndingDate, details: e.details || 'Labor payment', amount: Number(e.amount) || 0 });
     }));
     rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    const initial = ((c.workerName || '—').replace(/[^A-Za-z0-9]/g, '')[0] || '—').toUpperCase();
+    const typeLbl = c.payType === 'inhouse' ? 'In-house' : 'Pakyaw';
     const titleEl = document.getElementById('pmLcLedgerTitle');
-    if (titleEl) titleEl.textContent = (c.workerName || 'Worker') + ' — ' + (c.scope || 'Contract');
+    if (titleEl) titleEl.innerHTML =
+        '<span class="pm-lc-led-avatar">' + _esc(initial) + '</span>'
+        + '<span class="pm-lc-led-htext"><span class="pm-lc-led-hname">' + _esc(c.workerName || 'Worker') + ' — ' + _esc(c.scope || 'Contract')
+        + '</span><span class="pm-lc-led-hsub">' + typeLbl + ' · payment history</span></span>';
+
     const fmtD = d => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return d || '—'; } };
+
+    // green banner — amount left is the focus
+    let bigLbl = 'Still to pay on this job', bigVal = v.rAmt, subLine;
+    if (st.status === 'Over')      { bigLbl = 'Over the agreed amount'; subLine = '' + _fmt(st.paid) + ' paid · ' + _fmt(st.paid - st.agreed) + ' more than ' + _fmt(st.agreed) + ' agreed'; }
+    else if (st.status === 'Completed') { bigLbl = 'Fully paid — nothing left'; subLine = '' + _fmt(st.paid) + ' paid of ' + _fmt(st.agreed) + ' agreed · 100%'; }
+    else { subLine = '' + _fmt(st.paid) + ' paid of ' + _fmt(st.agreed) + ' agreed · ' + st.pct.toFixed(0) + '%'; }
+    const overCls = st.status === 'Over' ? ' pm-lc-led-banner-over' : '';
+
+    // timeline of payments with running "left after"
     let running = st.agreed;
-    const rowsHtml = rows.length ? rows.map(r => {
+    const items = rows.map((r, i) => {
         running -= r.amount;
-        return '<tr><td>' + fmtD(r.date) + '</td><td>' + _esc(r.details) + '</td><td class="num">₱' + _fmt(r.amount)
-            + '</td><td class="num ' + (running < 0 ? 'pm-lc-neg' : '') + '">₱' + _fmt(running) + '</td></tr>';
-    }).join('') : '<tr><td colspan="4" style="text-align:center;color:#9b9a94;padding:18px;">No labor lines tagged to this contract yet.</td></tr>';
-    const badge = st.status === 'Completed' ? 'pm-lc-b-done' : st.status === 'Over' ? 'pm-lc-b-over' : 'pm-lc-b-on';
+        const last = i === rows.length - 1;
+        return '<div class="pm-lc-tl-item">'
+            + '<span class="pm-lc-tl-dot' + (last ? ' pm-lc-tl-dot-on' : '') + '"></span>'
+            + '<div class="pm-lc-tl-row"><span class="pm-lc-tl-name">' + _esc(r.details) + '</span>'
+            + '<span class="pm-lc-tl-amt num">' + _fmt(r.amount) + '</span></div>'
+            + '<div class="pm-lc-tl-meta num' + (running < 0 ? ' pm-lc-neg' : (last ? ' pm-lc-tl-meta-on' : '')) + '">'
+            + fmtD(r.date) + ' · ' + _fmt(running) + ' left after</div></div>';
+    }).join('');
+    const listHtml = rows.length
+        ? '<div class="pm-lc-led-cnt">' + rows.length + ' payment' + (rows.length === 1 ? '' : 's') + '</div><div class="pm-lc-timeline">' + items + '</div>'
+        : '<div class="pm-lc-empty">No payments yet. Tag a daily Labor entry to this job to start counting it down.</div>';
+
     const body = document.getElementById('pmLcLedgerBody');
     if (body) body.innerHTML =
-        '<div class="pm-lc-led-sum"><div><span>Agreed</span><b>₱' + _fmt(st.agreed) + '</b></div>'
-        + '<div><span>Paid</span><b>₱' + _fmt(st.paid) + '</b></div>'
-        + '<div><span>Remaining</span><b class="' + (st.remaining < 0 ? 'pm-lc-neg' : '') + '">₱' + _fmt(st.remaining) + '</b></div>'
-        + '<span class="pm-lc-badge ' + badge + '">' + st.status + '</span></div>'
-        + '<table class="pm-lc-led-table"><thead><tr><th>Date</th><th>Labor line</th><th class="num">Amount</th><th class="num">Remaining after</th></tr></thead><tbody>'
-        + rowsHtml + '</tbody></table>';
+        '<div class="pm-lc-led-banner' + overCls + '">'
+        + '<div class="pm-lc-led-lbl">' + bigLbl + '</div>'
+        + '<div class="pm-lc-led-big num">' + bigVal + '</div>'
+        + '<div class="pm-lc-led-pbar"><div class="' + v.barCls + '" style="width:' + v.barPct.toFixed(0) + '%"></div></div>'
+        + '<div class="pm-lc-led-sub num">' + subLine + '</div></div>'
+        + '<div class="pm-lc-led-list">' + listHtml + '</div>';
     document.getElementById('pmLaborLedgerModal').style.display = 'flex';
 };
+
+// In-ledger actions (rows themselves have no buttons — tap row → ledger → manage)
+window.pmLcLedgerEdit  = function() { const id = _pmLcLedgerId; if (!id) return; pmCloseModal('pmLaborLedgerModal'); pmLcOpenEdit(id); };
+window.pmLcLedgerRaise = function() { if (_pmLcLedgerId) pmLcRaiseCap(_pmLcLedgerId); };
+window.pmLcLedgerDelete = async function() { const id = _pmLcLedgerId; if (!id) return; await pmLcDelete(id); if (!_pmLaborContracts.some(c => c.id === id)) pmCloseModal('pmLaborLedgerModal'); };
