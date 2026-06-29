@@ -118,7 +118,7 @@ window.pmPushToggle = async function() {
         alert('Push is not configured yet — add the VAPID public key in js/push-notify.js (see the deploy guide).');
         return;
     }
-    const reg = await _pmSwReg();
+    let reg = await _pmSwReg();
     if (!reg) { alert('Could not start notifications on this device.'); return; }
 
     if (await pmPushIsEnabled(proj.id)) {
@@ -145,14 +145,27 @@ window.pmPushToggle = async function() {
         try {
             sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
         } catch (e) {
-            alert('Could not turn on notifications.\n\n' + (e.message || e) +
-                '\n\nThings to try:\n' +
-                '• Open this site in Chrome directly — not inside Facebook/Messenger\'s browser.\n' +
-                '• Make sure Chrome has Notification permission and an internet connection.\n' +
-                '• On Xiaomi / Huawei / Oppo phones, allow Notifications + background for Chrome (and update Google Play Services), then try again.\n' +
-                '• Or install the app: Chrome menu → "Add to Home screen", open it, then tap Notify me daily.');
-            pmPushRefreshBell();
-            return;
+            // One automatic clean retry: unregister the (possibly stale/broken)
+            // service worker, re-register fresh, and try once more. This recovers
+            // the common "Registration failed - push service error" caused by a
+            // worker left in a bad state after an app update.
+            try {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(regs.map(r => r.unregister()));
+                reg = await _pmSwReg();
+                await navigator.serviceWorker.ready;
+                sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
+            } catch (e2) {
+                alert('Could not turn on notifications.\n\n' + (e2.message || e2) +
+                    '\n\nThings to try:\n' +
+                    '• Open this site in Chrome directly — not inside Facebook/Messenger\'s browser.\n' +
+                    '• Make sure Chrome has Notification permission and an internet connection.\n' +
+                    '• Restart the phone (this re-establishes Google\'s push connection), then try again.\n' +
+                    '• On Xiaomi / Huawei / Oppo phones, update Google Play Services and allow Notifications + Autostart + no battery limit for Chrome.\n' +
+                    '• Or install the app: Chrome menu → "Add to Home screen", open it, then tap Notify me daily.');
+                pmPushRefreshBell();
+                return;
+            }
         }
     }
     await _pmStoreSub(sub, proj.id);
