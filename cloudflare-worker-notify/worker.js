@@ -117,6 +117,8 @@ function adminMessages(d, pid) {
     body:    `${d.name} · ${m.value}`,
     url:     `/admin.html?pmproject=${pid}&pmtab=${m.tab}`,
     pid, tab: m.tab,
+    icon:    '/icons/notif-icon.png',    // DAC's logo on solid white (opaque — no blue placeholder box)
+    badge:   '/icons/notif-bell.png',   // small monochrome bell shown in the status bar
     tag:     `pm-daily-${pid}-${m.key}`,
     requireInteraction: m.alert,
     vibrate: m.alert ? [200, 100, 200] : [80],
@@ -137,6 +139,8 @@ function partnerMessages(d, pid, sub) {
     title:   `${m.emoji} ${m.label}${m.alert ? ' ⚠️' : ''}`,
     body:    `${d.name} · ${m.value}`,
     url,
+    icon:    '/icons/notif-icon.png',    // DAC's logo on solid white (opaque — no blue placeholder box)
+    badge:   '/icons/notif-bell.png',   // small monochrome bell shown in the status bar
     tag:     `pm-daily-partner-${pid}-${m.key}`,
     requireInteraction: m.alert,
     vibrate: m.alert ? [200, 100, 200] : [80],
