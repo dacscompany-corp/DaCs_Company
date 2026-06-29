@@ -13,7 +13,7 @@ self.addEventListener('push', (event) => {
   const options = {
     body:     data.body || '',
     icon:     data.icon  || '/assets/images/DACS-TRANSPARENT.png',
-    badge:    data.badge || '/icons/icon-192.png',
+    badge:    data.badge || '/icons/notif-bell.png',
     tag:      data.tag   || 'pm-daily',
     renotify: true,
     requireInteraction: !!data.requireInteraction,

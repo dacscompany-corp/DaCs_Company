@@ -2860,16 +2860,31 @@ async function _cmRemoveSub(endpoint) {
         await Promise.all(snap.docs.map(d => db.collection('pushSubscriptions').doc(d.id).delete()));
     } catch (_) {}
 }
+// True if this device's endpoint is still opted into any other project. The
+// browser has one shared push subscription, so don't unsubscribe() it while
+// another project still depends on it.
+async function _cmEndpointStillUsed(endpoint) {
+    try {
+        const snap = await db.collection('pushSubscriptions').where('endpoint', '==', endpoint).get();
+        return !snap.empty;
+    } catch (_) { return true; }
+}
 window.cmPushToggle = async function() {
     if (!cmProjectData) { alert('No project linked to your account yet.'); return; }
     if (!('serviceWorker' in navigator) || !('PushManager' in window) || typeof Notification === 'undefined') {
         alert('Notifications are not supported on this browser.'); return;
     }
+    if (CM_VAPID_PUBLIC_KEY.indexOf('REPLACE') === 0) {
+        alert('Push is not configured yet — add the VAPID public key in the deploy guide.'); return;
+    }
     const reg = await _cmSwReg();
     if (!reg) { alert('Could not start notifications on this device.'); return; }
     if (await cmPushIsEnabled()) {
         const sub = await reg.pushManager.getSubscription();
-        if (sub) { await _cmRemoveSub(sub.endpoint); try { await sub.unsubscribe(); } catch (_) {} }
+        if (sub) {
+            await _cmRemoveSub(sub.endpoint);
+            if (!(await _cmEndpointStillUsed(sub.endpoint))) { try { await sub.unsubscribe(); } catch (_) {} }
+        }
         cmPushRefreshBell(); return;
     }
     const perm = await Notification.requestPermission();
