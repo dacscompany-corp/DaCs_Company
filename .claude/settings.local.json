@@ -64,7 +64,15 @@
       "Bash(ls -la *.png)",
       "Bash(command -v magick convert inkscape rsvg-convert)",
       "Bash(node -e \"console.log\\('node ok'\\)\")",
-      "Bash(grep -iB1 -A1 \"submit\\\\|paid\\\\|sent\\\\|status:\")"
+      "Bash(grep -iB1 -A1 \"submit\\\\|paid\\\\|sent\\\\|status:\")",
+      "Bash(awk 'NR==647' js/portal-app.compiled.js)",
+      "Bash(awk 'NR==647 {print length\\($0\\)}' js/portal-app.compiled.js)",
+      "Bash(grep -oE 'pc-flow-expand\", role: \"button\"[^@]*?React.createElement.{260}')",
+      "Bash(grep -oE 'className: \"pc-flow-expand\".{0,520}')",
+      "Bash(grep -o 'function LaborDrill\\({ project, onBack, laborTx, childMonths, initialTab, eyebrow, title }\\)' js/portal-app.compiled.js)",
+      "Bash(grep -o 'overheadOpen ? \" staff-flow-empty\" : \"\"\\), onClick: \\(\\) => { if \\(typeof window.switchView === \"function\"\\) window.switchView\\(\"expOverhead\"\\); }' js/portal-app.compiled.js)",
+      "Bash(node \"C:\\\\Users\\\\yuich\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-yuich-DaCs-Company\\\\b381e597-2a3b-4ff6-b234-5d7441192358\\\\scratchpad\\\\scan.js\")",
+      "Bash(node \"C:\\\\Users\\\\yuich\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-yuich-DaCs-Company\\\\b381e597-2a3b-4ff6-b234-5d7441192358\\\\scratchpad\\\\fix.js\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",

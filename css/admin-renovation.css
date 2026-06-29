@@ -1159,12 +1159,12 @@ button.btn-primary:hover,
 /* Module cards under Project Control — Labor / Material / Billing Periods */
 .dacs-portal-scope .pc-flow-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);   /* 2×2 grid — wide cards, everything fits */
   gap: 18px;
   margin-bottom: 20px;
   align-items: start;   /* don't stretch cards to equal height, so a collapsed card can shrink */
 }
-@media (max-width: 1100px) {
+@media (max-width: 720px) {
   .dacs-portal-scope .pc-flow-cards { grid-template-columns: 1fr; }
 }
 
@@ -1194,9 +1194,10 @@ button.btn-primary:hover,
 }
 .dacs-portal-scope .pc-flow-card-head {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 10px;
   margin-bottom: 0;
+  min-height: 28px;            /* match the icon height so all headers line up */
 }
 .dacs-portal-scope .pc-flow-card-title {
   font-family: var(--serif);
@@ -1207,6 +1208,9 @@ button.btn-primary:hover,
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 1 1 auto;             /* take the row width so the link sits at the edge */
+  min-width: 0;               /* allow shrink instead of pushing the help-tip */
+  white-space: nowrap;        /* keep the title on one line */
 }
 .dacs-portal-scope .pc-flow-card-title-icon {
   width: 28px; height: 28px;
@@ -1215,9 +1219,11 @@ button.btn-primary:hover,
   color: var(--brand-green);
   display: grid;
   place-items: center;
+  flex: none;                 /* icon keeps its size; never squeezed */
 }
-.dacs-portal-scope .pc-flow-card-title-icon.pc-icon-amber { background: #F4EBD9; color: #8B6914; }
-.dacs-portal-scope .pc-flow-card-title-icon.pc-icon-blue  { background: #E3EEF6; color: #1E5582; }
+.dacs-portal-scope .pc-flow-card-title-icon.pc-icon-amber  { background: #F4EBD9; color: #8B6914; }
+.dacs-portal-scope .pc-flow-card-title-icon.pc-icon-blue   { background: #E3EEF6; color: #1E5582; }
+.dacs-portal-scope .pc-flow-card-title-icon.pc-icon-purple { background: #EFEAF7; color: #6B3F8F; }
 
 .pc-help-tip,
 .dacs-portal-scope .pc-help-tip {
@@ -1273,6 +1279,9 @@ button.btn-primary:hover,
   color: var(--text-light);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  white-space: nowrap;        /* keep "Transaction History →" on one line */
+  flex: none;                 /* never shrink/wrap into the title */
+  margin-left: auto;          /* sit at the right edge, beside the title */
 }
 .dacs-portal-scope .pc-flow-card:hover .pc-flow-link { color: var(--brand-green); }
 
@@ -1349,11 +1358,10 @@ button.btn-primary:hover,
 
 .dacs-portal-scope .pc-labor-row {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;            /* let the formula chip drop below in narrow cards */
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   color: var(--brand-green);
-  white-space: nowrap;
 }
 
 .dacs-portal-scope .pc-labor-currency {
@@ -1388,14 +1396,16 @@ button.btn-primary:hover,
   display: inline-flex;
   align-items: center;
   font-family: var(--sans);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 500;
+  line-height: 1.35;
   color: #059669;
   background: #d1fae5;
   border: 1px solid #6ee7b7;
   border-radius: 6px;
-  padding: 2px 8px;
-  white-space: nowrap;
+  padding: 3px 8px;
+  white-space: normal;        /* allow the formula to wrap instead of overflowing */
+  max-width: 100%;            /* never exceed the card width */
 }
 
 /* Staff: flow cards have no body — give the footer breathing room */
