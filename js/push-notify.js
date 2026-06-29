@@ -83,6 +83,17 @@ async function _pmRemoveSub(endpoint, projectId) {
     } catch (_) {}
 }
 
+// True if THIS device's endpoint is still opted into any OTHER project. The
+// browser has a single push subscription shared by every project, so we must
+// not unsubscribe() it while another project still depends on it.
+async function _pmEndpointStillUsed(endpoint) {
+    try {
+        const snap = await db.collection('pushSubscriptions')
+            .where('endpoint', '==', endpoint).get();
+        return !snap.empty;
+    } catch (_) { return true; }  // on error, keep the sub (safer than killing it)
+}
+
 // Bell button click — toggles the nightly summary for the open project.
 window.pmPushToggle = async function() {
     const proj = _pmPushProj;
@@ -99,9 +110,13 @@ window.pmPushToggle = async function() {
     if (!reg) { alert('Could not start notifications on this device.'); return; }
 
     if (await pmPushIsEnabled(proj.id)) {
-        // turn OFF for this project — remove the row AND drop the browser sub.
+        // turn OFF for this project — remove its row. Only drop the browser sub
+        // if no other project on this device still uses the same endpoint.
         const sub = await reg.pushManager.getSubscription();
-        if (sub) { await _pmRemoveSub(sub.endpoint, proj.id); try { await sub.unsubscribe(); } catch (_) {} }
+        if (sub) {
+            await _pmRemoveSub(sub.endpoint, proj.id);
+            if (!(await _pmEndpointStillUsed(sub.endpoint))) { try { await sub.unsubscribe(); } catch (_) {} }
+        }
         pmPushRefreshBell();
         return;
     }
