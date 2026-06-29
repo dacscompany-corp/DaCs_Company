@@ -76,7 +76,17 @@
       "Bash(echo \"=== confirm em-dash matched \\(not literal \\\\\\\\u2014 left\\) ===\")",
       "Bash(curl -s --max-time 30 \"https://dacs-notify.dacscompany.workers.dev/run?key=dacs-notification&debug=1\")",
       "Bash(awk 'NR>=786 && NR<=1060 && /_staff\\\\\\(\\\\\\)/{print NR\": \"$0}' js/portal-app.compiled.js)",
-      "Bash(awk -F: '$1<4251')"
+      "Bash(awk -F: '$1<4251')",
+      "Bash(awk 'NR==647' js/portal-app.compiled.js)",
+      "Bash(awk 'NR==647 {print length\\($0\\)}' js/portal-app.compiled.js)",
+      "Bash(grep -oE 'pc-flow-expand\", role: \"button\"[^@]*?React.createElement.{260}')",
+      "Bash(grep -oE 'className: \"pc-flow-expand\".{0,520}')",
+      "Bash(grep -o 'function LaborDrill\\({ project, onBack, laborTx, childMonths, initialTab, eyebrow, title }\\)' js/portal-app.compiled.js)",
+      "Bash(grep -o 'overheadOpen ? \" staff-flow-empty\" : \"\"\\), onClick: \\(\\) => { if \\(typeof window.switchView === \"function\"\\) window.switchView\\(\"expOverhead\"\\); }' js/portal-app.compiled.js)",
+      "Bash(node \"C:\\\\Users\\\\yuich\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-yuich-DaCs-Company\\\\b381e597-2a3b-4ff6-b234-5d7441192358\\\\scratchpad\\\\scan.js\")",
+      "Bash(node \"C:\\\\Users\\\\yuich\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-yuich-DaCs-Company\\\\b381e597-2a3b-4ff6-b234-5d7441192358\\\\scratchpad\\\\fix.js\")",
+      "Bash(git diff *)",
+      "Read(//c/tmp/**)"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
