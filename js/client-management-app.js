@@ -3275,13 +3275,30 @@ function cmRenderOverview() {
         <button id="cm-push-bell" onclick="cmPushToggle()" style="display:none;align-self:center;border:1px solid #e5e7eb;border-radius:10px;padding:9px 14px;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">🔔 Notify me daily</button>
     </div>
 
-    <div class="cm-ov-row1" style="display:grid;grid-template-columns:${partner ? '1fr 1fr' : '1.55fr 1fr'};gap:24px;align-items:stretch;">
-        <!-- Hero: partner → Project Contract / cash (top) · client → weekly bill -->
-        ${partner ? `<div style="${card}">
-            <div style="font-size:13px;color:#8b91a0;font-weight:600;">Project Contract</div>
-            <div style="font-size:34px;font-weight:800;margin-top:8px;letter-spacing:-0.02em;color:#1a1d24;">${ovContract > 0 ? cmFmt(ovContract) : '—'}</div>
-            <div style="font-size:12px;color:#8b91a0;margin-top:6px;">Total agreed contract</div>
-        </div>` : `
+    ${partner ? `
+    <!-- Partner: breakdown hero LEFT + KPI cards RIGHT on desktop; stacks (cards → breakdown) on mobile. -->
+    <div class="cm-ov-row1 cm-ov-partner-grid" style="display:grid;gap:24px;align-items:stretch;">
+        <div class="ov-cards" style="display:flex;flex-direction:column;gap:24px;justify-content:space-between;">
+            <div style="${card}">
+                <div style="font-size:13px;color:#8b91a0;font-weight:600;">Project Contract</div>
+                <div style="font-size:34px;font-weight:800;margin-top:8px;letter-spacing:-0.02em;color:#1a1d24;">${ovContract > 0 ? cmFmt(ovContract) : '—'}</div>
+                <div style="font-size:12px;color:#8b91a0;margin-top:6px;">Total agreed contract</div>
+            </div>
+            <div style="${card}">
+                <div style="font-size:13px;color:#8b91a0;font-weight:600;">Total cash receipt</div>
+                <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:#1a1d24;">${ovPaid > 0 ? cmFmt(ovPaid) : '—'}</div>
+                <div style="font-size:12px;color:#8b91a0;margin-top:6px;">Total cash received</div>
+            </div>
+            <div style="${card}">
+                <div style="font-size:13px;color:#8b91a0;font-weight:600;">Remaining cash receipt</div>
+                <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:${ovNet >= 0 ? '#3f9960' : '#b91c1c'};">${ovNet < 0 ? '−' : ''}${cmFmt(Math.abs(ovNet))}</div>
+                <div style="font-size:12px;color:#8b91a0;margin-top:6px;">${ovNet >= 0 ? 'paid over cash received' : 'direct cost over collections'}</div>
+            </div>
+        </div>
+        <div class="ov-breakdown">${breakdownCard}</div>
+    </div>
+    ` : `
+    <div class="cm-ov-row1" style="display:grid;grid-template-columns:1.55fr 1fr;gap:24px;align-items:stretch;">
         <div style="background:#5b5bd6;border-radius:20px;padding:22px 24px;color:#fff;box-shadow:0 18px 36px -16px rgba(91,91,214,0.5);">
             <div style="display:flex;align-items:center;justify-content:space-between;">
                 <span style="font-size:12.5px;font-weight:600;opacity:0.88;">This week's bill</span>
@@ -3298,20 +3315,14 @@ function cmRenderOverview() {
                 <button onclick="showSection('weekly-billing')" style="flex:1;border:none;background:#fff;color:#5b5bd6;font-size:13.5px;font-weight:700;padding:12px;border-radius:12px;cursor:pointer;">View Weekly Summary</button>
                 <button onclick="showSection('billing')" style="border:1px solid rgba(255,255,255,0.4);background:none;color:#fff;font-size:13.5px;font-weight:700;padding:12px 20px;border-radius:12px;cursor:pointer;">Payments</button>
             </div>
-        </div>`}
-        <!-- Right stack -->
-        <div style="display:flex;flex-direction:column;gap:24px;${partner ? 'justify-content:space-between;' : ''}">
-            ${partner ? `<div style="${card}">
-                <div style="font-size:13px;color:#8b91a0;font-weight:600;">Remaining cash receipt</div>
-                <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:${ovNet >= 0 ? '#3f9960' : '#b91c1c'};">${ovNet < 0 ? '−' : ''}${cmFmt(Math.abs(ovNet))}</div>
-                <div style="font-size:12px;color:#8b91a0;margin-top:6px;">${ovNet >= 0 ? 'paid over cash received' : 'direct cost over collections'}</div>
-            </div>` : ''}
-            ${partner ? '' : `<div style="${card}">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:24px;">
+            <div style="${card}">
                 <div style="font-size:13px;color:#8b91a0;font-weight:600;">Revolving fund</div>
                 <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:#1a1d24;">${cmFmt(rfBal)}</div>
                 <div style="height:6px;background:#eceef3;border-radius:3px;margin-top:12px;overflow:hidden;"><div style="width:${rfPct}%;height:100%;background:#5b5bd6;"></div></div>
                 <div style="font-size:12px;color:#8b91a0;margin-top:9px;">${cmFmt(rfSpent)} spent of ${cmFmt(rfTotal)}</div>
-            </div>`}
+            </div>
             <div style="${card}">
                 <div style="font-size:13px;color:#8b91a0;font-weight:600;">Total cash receipt</div>
                 <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:#1a1d24;">${ovPaid > 0 ? cmFmt(ovPaid) : '—'}</div>
@@ -3321,6 +3332,7 @@ function cmRenderOverview() {
     </div>
 
     <div style="margin-top:24px;">${breakdownCard}</div>
+    `}
 
     <div class="cm-ov-row2" style="display:grid;grid-template-columns:${partner ? '1fr' : '1fr 1.2fr'};gap:24px;margin-top:24px;">
         ${partner ? '' : `<div style="${card}">

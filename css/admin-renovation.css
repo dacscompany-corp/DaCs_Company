@@ -1162,10 +1162,29 @@ button.btn-primary:hover,
   grid-template-columns: repeat(2, 1fr);   /* 2×2 grid — wide cards, everything fits */
   gap: 18px;
   margin-bottom: 20px;
-  align-items: start;   /* don't stretch cards to equal height, so a collapsed card can shrink */
+  align-items: start;   /* size cards independently so expanding one card never stretches its neighbour; a shared min-height (below) keeps the collapsed cards aligned */
+}
+/* Cost grid (4 cards) — give each card a shared min-height so the collapsed
+   cards line up (footer pinned to the bottom via margin-top:auto). Because the
+   grid is align-items:start, expanding ONE card grows only that card, not its
+   neighbour. Scoped to the 4-card grid so the header-only Billing & Reports
+   cards aren't padded out. */
+.dacs-portal-scope .pc-flow-cards:not(:has(> .pc-flow-card:nth-child(3):last-child)) > .pc-flow-card {
+  min-height: 112px;
+}
+
+/* Billing & Reports grid holds exactly 3 cards (Accomplishment · Payment
+   Requests · Invoices) — lay them out 3-across so none is left orphaned on
+   its own row. The cost grid has 4 cards so it keeps the 2×2 layout above. */
+.dacs-portal-scope .pc-flow-cards:has(> .pc-flow-card:nth-child(3):last-child) {
+  grid-template-columns: repeat(3, 1fr);
+}
+@media (max-width: 980px) {
+  .dacs-portal-scope .pc-flow-cards:has(> .pc-flow-card:nth-child(3):last-child) { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 720px) {
   .dacs-portal-scope .pc-flow-cards { grid-template-columns: 1fr; }
+  .dacs-portal-scope .pc-flow-cards:has(> .pc-flow-card:nth-child(3):last-child) { grid-template-columns: 1fr; }
 }
 
 .dacs-portal-scope .pc-flow-card {
@@ -1358,10 +1377,11 @@ button.btn-primary:hover,
 
 .dacs-portal-scope .pc-labor-row {
   display: flex;
-  flex-wrap: wrap;            /* let the formula chip drop below in narrow cards */
+  flex-wrap: nowrap;          /* keep amount + % + formula on ONE line (2-line card) */
   align-items: center;
   gap: 6px;
   color: var(--brand-green);
+  min-width: 0;
 }
 
 .dacs-portal-scope .pc-labor-currency {
@@ -1404,8 +1424,8 @@ button.btn-primary:hover,
   border: 1px solid #6ee7b7;
   border-radius: 6px;
   padding: 3px 8px;
-  white-space: normal;        /* allow the formula to wrap instead of overflowing */
-  max-width: 100%;            /* never exceed the card width */
+  white-space: nowrap;        /* one line — no internal wrap, keeps the card to 2 lines */
+  flex-shrink: 0;
 }
 
 /* Staff: flow cards have no body — give the footer breathing room */

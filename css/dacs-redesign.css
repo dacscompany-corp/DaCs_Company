@@ -285,10 +285,22 @@ body:not(.dark-mode) .cm-topbar-date       { font-size: 13px; color: var(--dx-mu
   .cm-project-pill-sub, .cm-topbar-date { display: none; }
 }
 
+/* ── Partner overview: breakdown hero LEFT, KPI cards RIGHT (desktop) ──
+   On mobile it collapses to a single column ordered cards → breakdown,
+   matching the previous mobile layout. */
+.cm-ov-partner-grid {
+  grid-template-columns: 1.55fr 1fr;
+  grid-template-areas: "breakdown cards";
+}
+.cm-ov-partner-grid .ov-cards      { grid-area: cards; }
+.cm-ov-partner-grid .ov-breakdown  { grid-area: breakdown; display: flex; }
+.cm-ov-partner-grid .ov-breakdown > .cm-bd-card { flex: 1 1 auto; width: 100%; }
+
 /* ── Overview redesign grids: stack on narrow screens ────────────── */
 @media (max-width: 980px) {
   .cm-ov-row1, .cm-ov-row2, .cm-wk-row, .cm-rf-row, .cm-profile-grid { grid-template-columns: 1fr !important; }
   .cm-rf-kpis, .cm-soa-kpis { grid-template-columns: 1fr !important; }
+  .cm-ov-partner-grid { grid-template-areas: "cards" "breakdown" !important; }
 }
 
 /* ── Direct cost breakdown card: responsive for phones (iOS / Android) ── */
