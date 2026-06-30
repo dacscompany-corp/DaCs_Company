@@ -86,7 +86,11 @@
       "Bash(node \"C:\\\\Users\\\\yuich\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-yuich-DaCs-Company\\\\b381e597-2a3b-4ff6-b234-5d7441192358\\\\scratchpad\\\\scan.js\")",
       "Bash(node \"C:\\\\Users\\\\yuich\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-yuich-DaCs-Company\\\\b381e597-2a3b-4ff6-b234-5d7441192358\\\\scratchpad\\\\fix.js\")",
       "Bash(git diff *)",
-      "Read(//c/tmp/**)"
+      "Read(//c/tmp/**)",
+      "Bash(cd \"C:\\\\Users\\\\yuich\\\\.claude\\\\projects\\\\c--Users-yuich-DaCs-Company\\\\memory\")",
+      "Bash(ls -la)",
+      "Bash(find \"C:\\\\Users\\\\yuich\\\\.claude\\\\projects\\\\c--Users-yuich-DaCs-Company\\\\memory\" -type f)",
+      "Bash(grep -c \"Revolving fund\\\\${wkFund\" js/client-management-app.js)"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",

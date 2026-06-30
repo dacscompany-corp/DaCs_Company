@@ -130,13 +130,7 @@
         <span id="procurement-pending-badge" class="pr-nav-badge" style="display:none;background:#f59e0b;margin-left:auto;">!</span>
       </a>
 
-      <a class="nav-item cm-client-only" onclick="showSection('revolving-fund')" style="display:none;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/>
-        </svg>
-        Revolving Fund
-        <span id="rf-low-badge" class="pr-nav-badge" style="display:none;background:#ef4444;margin-left:auto;">!</span>
-      </a>
+      <!-- Revolving Fund removed from Partnership portal (admin-only — Project Control > Money) -->
 
       <div class="nav-label">Account</div>
 
@@ -868,86 +862,7 @@
         </div>
       </div>
 
-      <!-- ══════════ REVOLVING FUND ══════════ -->
-      <div class="sub-page" id="section-revolving-fund">
-
-        <div style="margin-bottom:24px;">
-          <div class="section-title" style="margin-bottom:4px;">Revolving Fund</div>
-          <div class="section-sub" style="margin-bottom:0;">Petty cash fund for minor and urgent site purchases — replenished weekly via receipts you provide.</div>
-        </div>
-
-
-        <!-- Low Balance Alert -->
-        <div id="rf-low-alert" style="display:none;align-items:center;gap:12px;background:#fffbeb;border:1.5px solid #fcd34d;border-radius:12px;padding:14px 18px;margin-bottom:20px;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <div style="font-size:13.5px;color:#b45309;font-weight:600;">Revolving fund balance is below 20% — replenishment needed. Submit receipts to your project manager.</div>
-        </div>
-
-        <!-- Balance Cards -->
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
-          <div style="background:linear-gradient(135deg,#f0fdf4 0%,#dcfce7 100%);border:1.5px solid #bbf7d0;border-radius:14px;padding:20px;">
-            <div style="font-size:12px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Current Balance</div>
-            <div style="font-size:26px;font-weight:700;color:#15803d;font-family:'Playfair Display',serif;" id="rf-balance">&#8369;0</div>
-            <div style="font-size:12px;color:#4ade80;margin-top:4px;" id="rf-balance-pct">0% of fund remaining</div>
-          </div>
-          <div style="background:linear-gradient(135deg,#fff7ed 0%,#fed7aa 100%);border:1.5px solid #fdba74;border-radius:14px;padding:20px;">
-            <div style="font-size:12px;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Total Spent</div>
-            <div style="font-size:26px;font-weight:700;color:#c2410c;font-family:'Playfair Display',serif;" id="rf-spent">&#8369;0</div>
-            <div style="font-size:12px;color:#fb923c;margin-top:4px;">This replenishment period</div>
-          </div>
-          <div style="background:linear-gradient(135deg,#eff6ff 0%,#dbeafe 100%);border:1.5px solid #93c5fd;border-radius:14px;padding:20px;">
-            <div style="font-size:12px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Fund Amount</div>
-            <div style="font-size:26px;font-weight:700;color:#1d4ed8;font-family:'Playfair Display',serif;" id="rf-total">&#8369;0</div>
-            <div style="font-size:12px;color:#60a5fa;margin-top:4px;">Client-provided revolving fund</div>
-          </div>
-        </div>
-
-        <!-- Replenishment History -->
-        <div class="content-panel" style="padding:0;overflow:hidden;margin-bottom:24px;">
-          <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;">
-            <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Replenishment History</div>
-            <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Weekly replenishments via submitted receipts.</div>
-          </div>
-          <div class="table-scroll">
-            <table class="data-table" id="rf-replenish-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Amount Added</th>
-                  <th>Receipts Submitted</th>
-                  <th>Remarks</th>
-                </tr>
-              </thead>
-              <tbody id="rf-replenish-tbody">
-                <tr><td colspan="4" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">No replenishments yet.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Expense Log -->
-        <div class="content-panel" style="padding:0;overflow:hidden;">
-          <div style="padding:18px 22px;border-bottom:1px solid #f1f5f9;">
-            <div style="font-size:15px;font-weight:700;color:#1f2937;font-family:'Playfair Display',serif;">Expense Log</div>
-            <div style="font-size:12.5px;color:#9ca3af;margin-top:2px;">Minor site purchases drawn from the revolving fund, with receipts.</div>
-          </div>
-          <div class="table-scroll">
-            <table class="data-table" id="rf-expense-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Item / Description</th>
-                  <th>Amount</th>
-                  <th>Receipt</th>
-                </tr>
-              </thead>
-              <tbody id="rf-expense-tbody">
-                <tr><td colspan="4" style="text-align:center;padding:32px;color:#b0c8bc;font-style:italic;">Loading expenses…</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
+      <!-- Revolving Fund section removed from Partnership portal (admin-only — Project Control > Money) -->
 
     </div><!-- /page-body -->
   </div><!-- /main-content -->
