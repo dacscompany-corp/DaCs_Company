@@ -498,10 +498,10 @@ function _pmOvHtml(p, ms, bills, reqs) {
     </div>`;
 
     // Direct-cost breakdown — one bar per category (keeps the #pm-ov-* IDs).
-    const bdRow = (label, color, amtId, pctId, segId, val, pct) => `
+    const bdRow = (label, color, amtId, pctId, segId, val, pct, count, countId) => `
       <div style="margin-bottom:13px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-          <span style="font:600 12.5px 'IBM Plex Sans';color:#3a3a36;">${label}</span>
+          <span style="font:600 12.5px 'IBM Plex Sans';color:#3a3a36;">${label}<span id="${countId}" style="font:500 11px 'IBM Plex Sans';color:#9b9a94;margin-left:7px;">${count} ${count === 1 ? 'entry' : 'entries'}</span></span>
           <span class="num" id="${amtId}" style="font:700 12.5px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(val)}</span>
         </div>
         <div style="height:9px;background:#f0efec;border-radius:99px;overflow:hidden;">
@@ -514,13 +514,13 @@ function _pmOvHtml(p, ms, bills, reqs) {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
         <div style="font:600 14.5px 'IBM Plex Sans';">Direct-cost breakdown</div>
         <div style="display:flex;align-items:center;gap:12px;">
-          <span id="pm-ov-range-note" style="font:400 11px 'IBM Plex Sans';color:#9b9a94;">All time · ${bills.length} week${bills.length === 1 ? '' : 's'}</span>
+          <span id="pm-ov-range-note" style="font:400 11px 'IBM Plex Sans';color:#9b9a94;">All time · ${_pmOvWeekGroups().length} week${_pmOvWeekGroups().length === 1 ? '' : 's'}</span>
           <button onclick="pmOvViewData()" style="display:inline-flex;align-items:center;gap:5px;font:600 11.5px 'IBM Plex Sans';color:#0f6342;background:#eaf4ef;border:1px solid #c6e6d5;border-radius:8px;padding:5px 11px;cursor:pointer;">View</button>
         </div>
       </div>
-      ${bdRow('Labor', '#157a52', 'pm-ov-labor', 'pm-ov-labor-pct', 'pm-ov-seg-labor', bd.labor, bd.laborPct)}
-      ${bdRow('Materials', '#c79024', 'pm-ov-materials', 'pm-ov-materials-pct', 'pm-ov-seg-materials', bd.materials, bd.matPct)}
-      ${bdRow('Out Source', '#8b6fc4', 'pm-ov-combined', 'pm-ov-combined-pct', 'pm-ov-seg-combined', bd.combined, bd.combinedPct)}
+      ${bdRow('Labor', '#157a52', 'pm-ov-labor', 'pm-ov-labor-pct', 'pm-ov-seg-labor', bd.labor, bd.laborPct, bd.laborCount, 'pm-ov-labor-cnt')}
+      ${bdRow('Materials', '#c79024', 'pm-ov-materials', 'pm-ov-materials-pct', 'pm-ov-seg-materials', bd.materials, bd.matPct, bd.matCount, 'pm-ov-materials-cnt')}
+      ${bdRow('Out Source', '#8b6fc4', 'pm-ov-combined', 'pm-ov-combined-pct', 'pm-ov-seg-combined', bd.combined, bd.combinedPct, bd.combinedCount, 'pm-ov-combined-cnt')}
       <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #f0efec;margin-top:4px;padding-top:13px;">
         <span style="font:600 12.5px 'IBM Plex Sans';color:#3a3a36;">Direct cost total</span>
         <span class="num" id="pm-ov-direct" style="font:800 16px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(bd.direct)}</span>
@@ -582,6 +582,10 @@ function _pmOvHtml(p, ms, bills, reqs) {
 // = materials − combined; the combined bucket is reported on its own.
 function _pmOvBreakdown(bills) {
     let labor = 0, materials = 0, combined = 0;
+    // Per-category ENTRY counts. Prefer the per-line `entries` array (each line is
+    // one entry, typed labor/materials/both); else fall back to counting a bill as
+    // one entry per category it has a nonzero amount in.
+    let laborCount = 0, matCount = 0, combinedCount = 0;
     bills.forEach(b => {
         // Prefer the stored `combined` field; for bills saved before it existed,
         // derive it from the 'both' line entries (the stored `materials` folds it in).
@@ -592,14 +596,27 @@ function _pmOvBreakdown(bills) {
             c = b.entries.filter(e => e.type === 'both').reduce((s, e) => s + (Number(e.amount) || 0), 0);
         }
         c = c || 0;
+        const matPure = Math.max(0, (b.materials || 0) - c);
         labor     += b.labor || 0;
         combined  += c;
-        materials += Math.max(0, (b.materials || 0) - c);
+        materials += matPure;
+
+        if (Array.isArray(b.entries) && b.entries.length) {
+            laborCount    += b.entries.filter(e => e.type === 'labor').length;
+            matCount      += b.entries.filter(e => e.type === 'materials').length;
+            combinedCount += b.entries.filter(e => e.type === 'both').length;
+        } else {
+            // Legacy bills with no line items: count the bill once per nonzero category.
+            if ((b.labor || 0) > 0) laborCount++;
+            if (matPure > 0)        matCount++;
+            if (c > 0)              combinedCount++;
+        }
     });
     const direct = labor + materials + combined;
     const pct = v => direct > 0 ? Math.round(v / direct * 100) : 0;
     return { labor, materials, combined, direct,
-             laborPct: pct(labor), matPct: pct(materials), combinedPct: pct(combined) };
+             laborPct: pct(labor), matPct: pct(materials), combinedPct: pct(combined),
+             laborCount, matCount, combinedCount };
 }
 
 // Format a week-ending date for the breakdown filter, e.g. "Jun 26, 2026".
@@ -775,6 +792,10 @@ window.pmOvApplyRange = function() {
     setAmt('pm-ov-labor',     bd.labor);
     setAmt('pm-ov-materials', bd.materials);
     setAmt('pm-ov-combined',  bd.combined);
+    const setCnt = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n + ' ' + (n === 1 ? 'entry' : 'entries'); };
+    setCnt('pm-ov-labor-cnt',     bd.laborCount);
+    setCnt('pm-ov-materials-cnt', bd.matCount);
+    setCnt('pm-ov-combined-cnt',  bd.combinedCount);
     _pmSet('pm-ov-labor-pct',     String(bd.laborPct));
     _pmSet('pm-ov-materials-pct', String(bd.matPct));
     _pmSet('pm-ov-combined-pct',  String(bd.combinedPct));
@@ -793,7 +814,7 @@ window.pmOvApplyRange = function() {
             : mode === 'last4'  ? 'Last 4 weeks'
             : isWeek            ? 'Week of ' + _pmWeekRangeLabel(mode.slice(3))
             : 'Daily ' + _pmOvWeekLabel(mode);
-        note.textContent = label + ' · ' + wk + ' · management fee excluded';
+        note.textContent = label + ' · ' + wk;
     }
 };
 

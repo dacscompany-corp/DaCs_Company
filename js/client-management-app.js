@@ -2807,6 +2807,10 @@ function cmWeekRange(end) {
 // materials = materials − combined; the combined bucket is reported on its own.
 function cmOvBreakdown(bills) {
     let labor = 0, materials = 0, combined = 0;
+    // Per-category ENTRY counts: prefer the per-line `entries` array (each line is
+    // one entry, typed labor/materials/both); else count a bill once per category
+    // that has a nonzero amount.
+    let laborCount = 0, matCount = 0, combinedCount = 0;
     (bills || []).forEach(b => {
         // Prefer the stored `combined` field; 0 is treated as "missing" too (a
         // `default 0` column leaves old bills at 0), so we still derive the supply &
@@ -2816,14 +2820,26 @@ function cmOvBreakdown(bills) {
             c = b.entries.filter(e => e.type === 'both').reduce((s, e) => s + (Number(e.amount) || 0), 0);
         }
         c = c || 0;
+        const matPure = Math.max(0, (b.materials || 0) - c);
         labor     += b.labor || 0;
         combined  += c;
-        materials += Math.max(0, (b.materials || 0) - c);
+        materials += matPure;
+
+        if (Array.isArray(b.entries) && b.entries.length) {
+            laborCount    += b.entries.filter(e => e.type === 'labor').length;
+            matCount      += b.entries.filter(e => e.type === 'materials').length;
+            combinedCount += b.entries.filter(e => e.type === 'both').length;
+        } else {
+            if ((b.labor || 0) > 0) laborCount++;
+            if (matPure > 0)        matCount++;
+            if (c > 0)              combinedCount++;
+        }
     });
     const direct = labor + materials + combined;
     const pct = v => direct > 0 ? Math.round(v / direct * 100) : 0;
     return { labor, materials, combined, direct,
-             laborPct: pct(labor), matPct: pct(materials), combinedPct: pct(combined) };
+             laborPct: pct(labor), matPct: pct(materials), combinedPct: pct(combined),
+             laborCount, matCount, combinedCount };
 }
 
 function cmOvWeekLabel(dateStr) {
@@ -2970,6 +2986,10 @@ window.cmOvApplyRange = function() {
     setAmt('cm-ov-labor',     bd.labor);
     setAmt('cm-ov-materials', bd.materials);
     setAmt('cm-ov-combined',  bd.combined);
+    const setCnt = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n + ' ' + (n === 1 ? 'entry' : 'entries'); };
+    setCnt('cm-ov-labor-cnt',     bd.laborCount);
+    setCnt('cm-ov-materials-cnt', bd.matCount);
+    setCnt('cm-ov-combined-cnt',  bd.combinedCount);
     setPct('cm-ov-labor-pct',     bd.laborPct);
     setPct('cm-ov-materials-pct', bd.matPct);
     setPct('cm-ov-combined-pct',  bd.combinedPct);
@@ -3225,14 +3245,14 @@ function cmRenderOverview() {
 
     // ── Direct cost breakdown card (purple hero theme: period selector + proportion bar + 3 split boxes) ──
     const ovSelStyle = "font-size:12px !important;font-weight:700 !important;color:#5b5bd6 !important;border:none !important;border-radius:10px !important;padding:8px 32px 8px 14px !important;background-color:#fff !important;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235b5bd6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\") !important;background-repeat:no-repeat !important;background-position:right 12px center !important;-webkit-appearance:none !important;-moz-appearance:none !important;appearance:none !important;cursor:pointer;box-shadow:0 2px 6px rgba(20,25,40,0.12);";
-    const ovLegendBox = (label, swatch, amtId, pctId, val, pct) => `
+    const ovLegendBox = (label, swatch, amtId, pctId, val, pct, count, countId) => `
         <div class="cm-bd-box" style="flex:1 1 160px;min-width:0;display:flex;flex-direction:column;gap:8px;padding:14px 16px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);border-radius:13px;">
             <div style="display:flex;align-items:center;gap:8px;min-width:0;">
                 <span style="width:10px;height:10px;border-radius:3px;background:${swatch};flex:none;"></span>
                 <span style="font-size:12px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</span>
             </div>
             <div id="${amtId}" style="font-size:18px;font-weight:800;color:#fff;line-height:1;letter-spacing:-0.01em;white-space:nowrap;">${cmFmt(val)}</div>
-            <div style="font-size:10.5px;color:rgba(255,255,255,0.72);white-space:nowrap;"><span id="${pctId}">${pct}</span>% of direct cost</div>
+            <div style="font-size:10.5px;color:rgba(255,255,255,0.72);white-space:nowrap;"><span id="${pctId}">${pct}</span>% of direct cost · <span id="${countId}">${count} ${count === 1 ? 'entry' : 'entries'}</span></div>
         </div>`;
     const breakdownCard = `
     <div class="cm-bd-card" style="background:#5b5bd6;border-radius:20px;padding:24px;color:#fff;box-shadow:0 18px 36px -16px rgba(91,91,214,0.5);">
@@ -3260,9 +3280,9 @@ function cmRenderOverview() {
             <div id="cm-ov-seg-combined"  style="width:${ovBd.combinedPct}%;background:#c3adf0;border-radius:99px;${ovBd.combined > 0 ? 'min-width:6px;' : ''}transition:width .25s ease;"></div>
         </div>
         <div class="cm-bd-legend" style="display:flex;gap:13px;flex-wrap:wrap;">
-            ${ovLegendBox('Labor',             '#5fd0a0', 'cm-ov-labor',     'cm-ov-labor-pct',     ovBd.labor,     ovBd.laborPct)}
-            ${ovLegendBox('Materials',         '#f5c560', 'cm-ov-materials', 'cm-ov-materials-pct', ovBd.materials, ovBd.matPct)}
-            ${ovLegendBox('Out Source', '#c3adf0', 'cm-ov-combined',  'cm-ov-combined-pct',  ovBd.combined,  ovBd.combinedPct)}
+            ${ovLegendBox('Labor',             '#5fd0a0', 'cm-ov-labor',     'cm-ov-labor-pct',     ovBd.labor,     ovBd.laborPct,     ovBd.laborCount,     'cm-ov-labor-cnt')}
+            ${ovLegendBox('Materials',         '#f5c560', 'cm-ov-materials', 'cm-ov-materials-pct', ovBd.materials, ovBd.matPct,       ovBd.matCount,       'cm-ov-materials-cnt')}
+            ${ovLegendBox('Out Source', '#c3adf0', 'cm-ov-combined',  'cm-ov-combined-pct',  ovBd.combined,  ovBd.combinedPct,  ovBd.combinedCount,  'cm-ov-combined-cnt')}
         </div>
     </div>`;
 
@@ -3313,9 +3333,13 @@ function cmRenderOverview() {
                 <div style="font-size:12px;color:#8b91a0;margin-top:9px;">${cmFmt(rfSpent)} spent of ${cmFmt(rfTotal)}</div>
             </div>`}
             <div style="${card}">
-                <div style="font-size:13px;color:#8b91a0;font-weight:600;">Total cash receipt</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:28px;">
+                    <span style="font-size:13px;color:#8b91a0;font-weight:600;">Total cash receipt</span>
+                    ${ovContract > 0 ? `<span style="font-size:15px;font-weight:800;color:#fff;background:#15a35b;padding:7px 16px;border-radius:999px;white-space:nowrap;line-height:1;letter-spacing:.01em;box-shadow:0 3px 8px rgba(21,163,91,0.35);">${Math.round(ovPaid / ovContract * 100)}%</span>` : ''}
+                </div>
                 <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:#1a1d24;">${ovPaid > 0 ? cmFmt(ovPaid) : '—'}</div>
-                <div style="font-size:12px;color:#8b91a0;margin-top:6px;">Total cash received</div>
+                ${ovContract > 0 ? `<div style="height:6px;background:#eceef3;border-radius:3px;margin-top:12px;overflow:hidden;"><div style="width:${Math.max(0, Math.min(100, Math.round(ovPaid / ovContract * 100)))}%;height:100%;background:#3f9960;"></div></div>` : ''}
+                <div style="font-size:12px;color:#8b91a0;margin-top:${ovContract > 0 ? '9' : '6'}px;">${ovContract > 0 ? Math.round(ovPaid / ovContract * 100) + '% of project contract' : 'Total cash received'}</div>
             </div>
         </div>
     </div>
