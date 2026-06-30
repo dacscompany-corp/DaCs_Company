@@ -86,7 +86,8 @@
       "Bash(node \"C:\\\\Users\\\\yuich\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-yuich-DaCs-Company\\\\b381e597-2a3b-4ff6-b234-5d7441192358\\\\scratchpad\\\\scan.js\")",
       "Bash(node \"C:\\\\Users\\\\yuich\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-yuich-DaCs-Company\\\\b381e597-2a3b-4ff6-b234-5d7441192358\\\\scratchpad\\\\fix.js\")",
       "Bash(git diff *)",
-      "Read(//c/tmp/**)"
+      "Read(//c/tmp/**)",
+      "Bash(node --check \"c:/Users/John Aerol Tapales/Documents/Dacs Web/js/client-payment.js\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",

@@ -1386,7 +1386,7 @@
           <div class="pm-ws-tabs">
             <button class="pm-ws-tab active" id="pm-ws-tab-overview"  onclick="pmWsTab('overview',this)">Dashboard Overview</button>
             <button class="pm-ws-tab"        id="pm-ws-tab-week"      onclick="pmWsTab('week',this)">Daily Expenses</button>
-            <button class="pm-ws-tab"        id="pm-ws-tab-labor"     onclick="pmWsTab('labor',this)">Labor Contracts</button>
+            <button class="pm-ws-tab"        id="pm-ws-tab-contracts" onclick="pmWsTab('contracts',this)">Contracts</button>
             <button class="pm-ws-tab"        id="pm-ws-tab-materials" onclick="pmWsTab('materials',this)">Procurements</button>
             <button class="pm-ws-tab"        id="pm-ws-tab-progress"  onclick="pmWsTab('progress',this)">Progress</button>
             <button class="pm-ws-tab"        id="pm-ws-tab-money"     onclick="pmWsTab('money',this)">Money</button>
@@ -1490,6 +1490,13 @@
                       </select>
                       <div id="pm-week-contract-remaining" class="pm-lc-remaining" style="display:none;"></div>
                     </div>
+                    <div class="pmw-addcard-field pmw-contract-field" id="pm-week-outsource-wrap" style="display:none;">
+                      <label>Is this part of a job? <span style="font-weight:400;color:#9b9a94;">— out source / capped contract (optional)</span></label>
+                      <select class="pmw-input" id="pm-week-outsource" onchange="pmWeekOutsourceHint()">
+                        <option value="">— No, regular out source —</option>
+                      </select>
+                      <div id="pm-week-outsource-remaining" class="pm-lc-remaining" style="display:none;"></div>
+                    </div>
                     <div class="pmw-addcard-foot">
                       <input type="file" id="pm-week-receipt-input" accept="image/*" multiple style="display:none" onchange="pmWeekStageReceipt(this)">
                       <button class="pmw-attach2" id="pm-week-attach-btn" type="button" title="Attach receipts" onclick="document.getElementById('pm-week-receipt-input').click()">
@@ -1589,19 +1596,11 @@
             <div id="pmw-statement" style="display:none;"></div>
           </div><!-- /ws-panel-week -->
 
-          <!-- ── Labor Contracts Panel (pakyaw / capped jobs — management home) ── -->
-          <div class="pm-ws-panel" id="ws-panel-labor">
-            <div class="pmw-pagehead">
-              <div>
-                <div class="pmw-pagehead-title">Labor Contracts</div>
-                <div class="pmw-pagehead-sub">Fixed-price (pakyaw) &amp; capped jobs — paid through your daily Labor entries.</div>
-              </div>
-              <div class="pmw-pagehead-right">
-                <button class="pm-lc-newbtn" type="button" onclick="pmLcOpenNew()">＋ New Contract</button>
-              </div>
-            </div>
-            <div class="pm-lc-pbody pm-lc-pbody--tab" id="pm-contracts-body"></div>
-          </div><!-- /ws-panel-labor -->
+          <!-- ── Contracts Panel (Labor + Out Source merged, in-tab segmented switch) ── -->
+          <!-- Rendered as one HTML string by pm-admin.js _pmRenderContractsTab(). -->
+          <div class="pm-ws-panel" id="ws-panel-contracts">
+            <div id="pm-contracts-root"></div>
+          </div><!-- /ws-panel-contracts -->
 
           <!-- ── Materials Panel ── -->
           <div class="pm-ws-panel" id="ws-panel-materials">
@@ -1764,8 +1763,8 @@
             <button class="pm-mnav-item" id="pm-mnav-week" onclick="pmWsTab('week')">
               <i data-lucide="receipt"></i><span>Expenses</span>
             </button>
-            <button class="pm-mnav-item" id="pm-mnav-labor" onclick="pmWsTab('labor')">
-              <i data-lucide="hard-hat"></i><span>Labor</span>
+            <button class="pm-mnav-item" id="pm-mnav-contracts" onclick="pmWsTab('contracts')">
+              <i data-lucide="file-signature"></i><span>Contracts</span>
             </button>
             <button class="pm-mnav-item" id="pm-mnav-materials" onclick="pmWsTab('materials')">
               <i data-lucide="shopping-cart"></i><span>Procure</span>
@@ -4131,6 +4130,94 @@
       <button type="button" class="pm-btn pm-lc-btn-danger" onclick="pmLcLedgerDelete()">Delete</button>
       <span style="flex:1"></span>
       <button type="button" class="pm-btn pm-btn-primary" onclick="pmCloseModal('pmLaborLedgerModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Out Source Contract create/edit -->
+<div id="pmOutsourceContractModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmOutsourceContractModal')" style="display:none;">
+  <div class="pm-modal-box">
+    <div class="pm-modal-header">
+      <h3 id="pmOcModalTitle">New Out Source Contract</h3>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmOutsourceContractModal')"><i data-lucide="x"></i></button>
+    </div>
+    <form onsubmit="pmOcSave(event)">
+      <div class="pm-modal-body pm-lc-form">
+        <input type="hidden" id="pmOcId">
+
+        <!-- Step 1 — who's doing the work -->
+        <div class="pm-lc-step">
+          <div class="pm-lc-stepnum">1</div>
+          <div class="pm-lc-stepbody">
+            <div class="pm-lc-stepq">Who’s doing the work?</div>
+            <div class="pm-lc-step2col">
+              <div class="pm-form-group">
+                <label class="pm-field-label">Vendor / crew <span class="pm-req">*</span></label>
+                <input type="text" id="pmOcWorker" class="pm-input" list="pmOcWorkerNames" placeholder="e.g. Aluminum Supplier Co." autocomplete="off">
+                <datalist id="pmOcWorkerNames"></datalist>
+              </div>
+              <div class="pm-form-group">
+                <label class="pm-field-label">The job</label>
+                <input type="text" id="pmOcScope" class="pm-input" placeholder="e.g. Windows supply &amp; install">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 2 — how are they paid -->
+        <div class="pm-lc-step">
+          <div class="pm-lc-stepnum">2</div>
+          <div class="pm-lc-stepbody">
+            <div class="pm-lc-stepq">How are they paid?</div>
+            <div class="pm-lc-payopts">
+              <label class="pm-lc-payopt"><input type="radio" name="pmOcPayType" value="pakyaw" checked>
+                <span class="pm-lc-payopt-in"><span class="pm-lc-payopt-t">Pakyaw</span><span class="pm-lc-payopt-d">Fixed price, whole job</span></span></label>
+              <label class="pm-lc-payopt"><input type="radio" name="pmOcPayType" value="inhouse">
+                <span class="pm-lc-payopt-in"><span class="pm-lc-payopt-t">In-house</span><span class="pm-lc-payopt-d">Own vendor, set limit</span></span></label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Step 3 — agreed total -->
+        <div class="pm-lc-step">
+          <div class="pm-lc-stepnum">3</div>
+          <div class="pm-lc-stepbody">
+            <div class="pm-lc-stepq">What’s the agreed total?</div>
+            <div class="pm-lc-amtbox"><span class="pm-lc-peso">₱</span>
+              <input type="text" inputmode="decimal" id="pmOcAmount" class="pm-lc-amtinput num" placeholder="0"></div>
+            <div class="pm-lc-reassure">
+              <span class="pm-lc-reassure-i">✓</span>
+              <span>As you log Out Source for this vendor, the panel counts down from the agreed total and warns you if you go over.</span>
+            </div>
+            <div class="pm-form-group" style="margin-top:14px;">
+              <label class="pm-field-label">Notes (optional)</label>
+              <textarea id="pmOcNotes" class="pm-input" rows="2" placeholder="Additional details…"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pm-modal-footer">
+        <button type="button" class="pm-btn pm-btn-secondary" onclick="pmCloseModal('pmOutsourceContractModal')">Cancel</button>
+        <button type="submit" class="pm-btn pm-btn-primary">Save job</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Out Source Contract ledger -->
+<div id="pmOutsourceLedgerModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmOutsourceLedgerModal')" style="display:none;">
+  <div class="pm-modal-box pm-lc-led-box" style="max-width:640px;">
+    <div class="pm-modal-header pm-lc-led-head">
+      <h3 id="pmOcLedgerTitle">Contract Ledger</h3>
+      <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmOutsourceLedgerModal')"><i data-lucide="x"></i></button>
+    </div>
+    <div class="pm-modal-body pm-lc-led-modalbody" id="pmOcLedgerBody"></div>
+    <div class="pm-modal-footer pm-lc-led-foot">
+      <button type="button" class="pm-btn pm-btn-secondary" onclick="pmOcLedgerEdit()">Edit job</button>
+      <button type="button" class="pm-btn pm-btn-secondary" onclick="pmOcLedgerRaise()">Raise cap</button>
+      <button type="button" class="pm-btn pm-lc-btn-danger" onclick="pmOcLedgerDelete()">Delete</button>
+      <span style="flex:1"></span>
+      <button type="button" class="pm-btn pm-btn-primary" onclick="pmCloseModal('pmOutsourceLedgerModal')">Close</button>
     </div>
   </div>
 </div>

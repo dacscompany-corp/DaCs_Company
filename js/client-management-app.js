@@ -25,7 +25,8 @@ async function cmNotifyOwnerAndStaff(ownerUid, payload) {
 // ── State ────────────────────────────────────────────────────────
 let cmCurrentUser          = null;
 let cmCurrentProfile       = null;
-let cmProjectData          = null;   // linked construction project
+let cmProjectData          = null;   // active construction project (the one being viewed)
+let cmProjects             = [];     // ALL construction projects linked to this account (one account can own several)
 let cmWeeklyBills          = [];
 let cmPayRequests          = [];
 let cmWeekSelId            = null;   // Weekly Summary: which week (Sunday key) is shown in the detail card (null = latest)
@@ -115,6 +116,7 @@ auth.onAuthStateChanged(async function(user) {
 // ── Show Login ───────────────────────────────────────────────────
 function cmShowLogin() {
     document.getElementById('dashboard-page').classList.remove('active');
+    document.getElementById('project-picker-page')?.classList.remove('active');
     document.getElementById('login-page').classList.add('active');
     document.getElementById('login-email').value = '';
     document.getElementById('login-password').value = '';
@@ -122,7 +124,7 @@ function cmShowLogin() {
     switchToLogin();
     if (_cmBillUnsub)   { _cmBillUnsub();   _cmBillUnsub   = null; }
     if (_cmNotifUnsub)  { _cmNotifUnsub();  _cmNotifUnsub  = null; }
-    cmCurrentUser = null; cmCurrentProfile = null; cmProjectData = null;
+    cmCurrentUser = null; cmCurrentProfile = null; cmProjectData = null; cmProjects = [];
     cmWeeklyBills = []; cmPayRequests = []; cmWeekSelId = null; cmProgressLogs = []; cmMilestones = []; cmAccomplishmentReports = []; cmFundRequests = [];
 }
 
@@ -203,15 +205,54 @@ async function cmLoadProfile(user) {
     }
 }
 
-// ── Load Project Data ─────────────────────────────────────────────
+// ── Load Project List ─────────────────────────────────────────────
+// One account (clientEmail) can own SEVERAL construction projects. Load them
+// all here; the picker / switcher decides which one becomes active. When there
+// is exactly one we auto-select it so the single-project experience is unchanged.
 async function cmLoadProjectData(user) {
     try {
-        // Find construction project(s) linked to this client email
         const snap = await db.collection('constructionProjects')
             .where('clientEmail', '==', user.email)
-            .limit(1)
             .get();
-        cmProjectData = snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() };
+        cmProjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Newest first so the picker and default selection feel natural.
+        cmProjects.sort((a, b) => {
+            const ta = a.createdAt?.toMillis?.() ?? (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+            const tb = b.createdAt?.toMillis?.() ?? (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+            return tb - ta;
+        });
+
+        cmProjectData = null;
+        // Auto-select when there's nothing to choose between (0 or 1 project).
+        if (cmProjects.length === 1) {
+            await cmLoadProjectDetails(cmProjects[0].id);
+        } else {
+            // No active project yet → keep owner UID/state clean until one is picked.
+            window._clientOwnerUid = null;
+        }
+    } catch (err) {
+        console.warn('CM project list load:', err.message);
+        cmProjects = []; cmProjectData = null;
+    }
+}
+
+// ── Load One Project's Data ───────────────────────────────────────
+// Sets cmProjectData (active project) and loads all of its subcollections.
+// Called when auto-selecting the only project, or when the user picks one in
+// the project picker / switcher.
+async function cmLoadProjectDetails(projectId) {
+    // Reset per-project state so a switch never shows the previous project's data.
+    cmWeeklyBills = []; cmPayRequests = []; cmWeekSelId = null;
+    cmRevolvingFund = null; cmFundRequests = []; cmProgressLogs = [];
+    cmMilestones = []; cmAccomplishmentReports = [];
+    try {
+        const local = cmProjects.find(p => p.id === projectId);
+        if (local) {
+            cmProjectData = local;
+        } else {
+            const doc = await db.collection('constructionProjects').doc(projectId).get();
+            cmProjectData = doc.exists ? { id: doc.id, ...doc.data() } : null;
+        }
 
         // Expose the owning admin UID so the shared client-payment.js can stamp
         // owner_id on self-initiated payments (else they're orphaned and no admin
@@ -319,9 +360,128 @@ async function cmLoadProjectData(user) {
     }
 }
 
+// ── Routing after a successful login / agreement ─────────────────
+// One account can own several projects. With more than one and none chosen
+// yet, show the project picker; otherwise go straight into the dashboard.
+function cmRouteAfterLogin() {
+    if (cmProjects.length > 1 && !cmProjectData) { cmShowProjectPicker(); return; }
+    cmEnterDashboard();
+}
+
+// ── Project Picker (landing) ─────────────────────────────────────
+// Built entirely in JS so both portal HTML files (client + partner) get it
+// without edits. Shown after login when the account owns multiple projects,
+// and reachable again from the topbar pill to switch projects.
+// Markup imported from the claude_design project "Minimalist design
+// enhancement" → Projects Picker.dc.html, variant 1A "Calm List".
+function cmPickerInitials(name) {
+    return String(name || '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || 'P';
+}
+
+function cmShowProjectPicker() {
+    document.getElementById('login-page')?.classList.remove('active');
+    document.getElementById('dashboard-page')?.classList.remove('active');
+
+    // Fonts the design uses (Barlow for headings/numbers, DM Sans for body).
+    if (!document.getElementById('cm-picker-fonts')) {
+        const link = document.createElement('link');
+        link.id = 'cm-picker-fonts';
+        link.rel = 'stylesheet';
+        link.href = 'https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&display=swap';
+        document.head.appendChild(link);
+    }
+
+    let page = document.getElementById('project-picker-page');
+    if (!page) {
+        page = document.createElement('div');
+        page.className = 'page';
+        page.id = 'project-picker-page';
+        document.body.appendChild(page);
+    }
+    page.style.cssText = "align-items:flex-start;justify-content:center;background:linear-gradient(rgba(255,255,255,.62),rgba(255,255,255,.62)),url('assets/images/background.jpg') center center / cover no-repeat fixed #f4f5f9;overflow:auto;font-family:'DM Sans',sans-serif;";
+
+    const accent     = '#5b5bd6';
+    const accentSoft = 'rgba(91,91,214,0.12)';
+    const accentDeep = 'rgb(67,67,158)';   // _darken('#5b5bd6', 0.74) from the design
+    const greeting   = cmEsc(cmCurrentProfile?.firstName
+        || (cmProjects[0]?.clientName || '').split(/\s+/)[0]
+        || 'there');
+    const dateStr    = new Date().toLocaleDateString('en-PH', { weekday:'long', month:'long', day:'numeric' });
+    const countLabel = cmProjects.length + (cmProjects.length === 1 ? ' active project' : ' active projects');
+
+    const cards = cmProjects.map(p => {
+        const name     = cmEsc(p.projectName || p.clientName || 'Project');
+        const initials = cmEsc(cmPickerInitials(p.projectName || p.clientName));
+        const location = cmEsc(p.location || p.address || p.clientName || '—');
+        const status   = cmEsc(p.status || 'Active');
+        const budget   = Number(p.budget) || 0;
+        const budgetBlock = budget > 0 ? `
+              <div>
+                <div style="font-size:10.5px;font-weight:700;color:#aeb4c2;letter-spacing:.06em;text-transform:uppercase;">Project Budget</div>
+                <div style="font-family:'Barlow',sans-serif;font-size:22px;font-weight:800;color:#1a1d24;margin-top:2px;">${cmFmt(budget)}</div>
+              </div>` : '<div></div>';
+        return `<div onclick="cmSelectProject('${p.id}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')cmSelectProject('${p.id}')" style="background:#fff;border:1px solid #e7e9f2;border-radius:20px;padding:24px 24px 20px;cursor:pointer;transition:box-shadow .15s,transform .15s,border-color .15s;display:flex;flex-direction:column;"
+                onmouseover="this.style.boxShadow='0 18px 40px -22px rgba(31,41,80,.48)';this.style.transform='translateY(-3px)';this.style.borderColor='#d6d9e8';"
+                onmouseout="this.style.boxShadow='none';this.style.transform='none';this.style.borderColor='#e7e9f2';">
+            <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:18px;">
+              <span style="width:52px;height:52px;border-radius:15px;background:${accentSoft};color:${accent};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Barlow',sans-serif;font-weight:800;font-size:19px;">${initials}</span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-family:'Barlow',sans-serif;font-size:21px;font-weight:700;color:#1a1d24;letter-spacing:-0.01em;">${name}</div>
+                <div style="display:inline-flex;align-items:center;gap:6px;font-size:14px;color:#8b91a0;margin-top:3px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  ${location}
+                </div>
+              </div>
+              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#16a34a;background:#e7f7ee;padding:3px 10px;border-radius:20px;"><span style="width:6px;height:6px;border-radius:50%;background:#16a34a;"></span>${status}</span>
+            </div>
+            <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:auto;padding-top:18px;border-top:1px solid #f0f1f5;">
+              ${budgetBlock}
+              <span style="display:inline-flex;align-items:center;gap:8px;background:${accent};color:#fff;border:none;border-radius:12px;padding:12px 20px;font-size:14.5px;font-weight:700;font-family:'Barlow',sans-serif;box-shadow:0 8px 20px -10px ${accent};white-space:nowrap;margin-left:auto;">
+                Open project
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </span>
+            </div>
+        </div>`;
+    }).join('');
+
+    page.innerHTML = `
+      <div style="min-height:100vh;width:100%;display:flex;justify-content:center;padding:40px 40px 64px;">
+        <div style="width:100%;max-width:1120px;">
+
+          <div style="background:linear-gradient(135deg,${accent} 0%,${accentDeep} 100%);border-radius:22px;padding:34px 38px;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;box-shadow:0 22px 52px -30px rgba(31,41,80,.55);">
+            <div>
+              <div style="font-family:'Barlow',sans-serif;font-size:13px;font-weight:600;opacity:.82;">${cmEsc(dateStr)}</div>
+              <div style="font-family:'Barlow',sans-serif;font-size:32px;font-weight:800;letter-spacing:-0.02em;line-height:1.1;margin-top:5px;">Welcome back, ${greeting}</div>
+              <div style="font-size:15.5px;opacity:.9;margin-top:9px;max-width:440px;line-height:1.5;">Choose a project below to ${cmIsPartner() ? 'monitor its progress, budget, and updates' : 'check its progress, budget, and updates'}.</div>
+            </div>
+            <button type="button" onclick="doLogout()" style="background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.3);border-radius:12px;padding:11px 20px;font-size:13.5px;font-weight:600;color:#fff;cursor:pointer;font-family:inherit;white-space:nowrap;backdrop-filter:blur(4px);align-self:flex-start;"
+                onmouseover="this.style.background='rgba(255,255,255,.26)';" onmouseout="this.style.background='rgba(255,255,255,.16)';">Sign out</button>
+          </div>
+
+          <div style="display:flex;align-items:baseline;gap:10px;margin:30px 4px 16px;">
+            <span style="font-family:'Barlow',sans-serif;font-size:18px;font-weight:800;color:#1a1d24;letter-spacing:-0.01em;">Your projects</span>
+            <span style="font-size:13.5px;font-weight:600;color:#9aa0b2;">${countLabel}</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:22px;">
+            ${cards || '<div style="font-size:14px;color:#8b91a0;">No projects are linked to your account yet.</div>'}
+          </div>
+
+        </div>
+      </div>`;
+
+    page.classList.add('active');
+}
+
+window.cmSelectProject = async function(id) {
+    await cmLoadProjectDetails(id);
+    cmEnterDashboard();
+};
+
 // ── Enter Dashboard ──────────────────────────────────────────────
 function cmEnterDashboard() {
     document.getElementById('login-page').classList.remove('active');
+    document.getElementById('project-picker-page')?.classList.remove('active');
     document.getElementById('dashboard-page').classList.add('active');
     // Tag the body so partner-only CSS/JS can hide client-only bits (15% fee, payments).
     document.body.classList.toggle('cm-partner', cmIsPartner());
@@ -387,6 +547,16 @@ function cmRefreshUserDisplay() {
     // Topbar project switcher pill + date (redesign)
     cmSet('topbar-project-name', cmProjectData?.projectName || 'My Project');
     cmSet('topbar-date', new Date().toLocaleDateString('en-PH', { weekday:'long', month:'short', day:'numeric' }));
+
+    // When the account owns several projects, make the topbar pill a switcher
+    // back to the picker. With only one project it stays a plain label.
+    const pill = document.querySelector('#dashboard-page .cm-project-pill');
+    if (pill) {
+        const multi = cmProjects.length > 1;
+        pill.style.cursor = multi ? 'pointer' : '';
+        pill.title = multi ? 'Switch project' : '';
+        pill.onclick = multi ? function() { cmShowProjectPicker(); } : null;
+    }
 
     const since = p.createdAt?.toDate
         ? p.createdAt.toDate().toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' })
@@ -2668,7 +2838,11 @@ function cmWeekStart(dateStr) {
     const d = new Date(dateStr + 'T00:00:00');
     if (isNaN(d)) return dateStr;
     d.setDate(d.getDate() - d.getDay());     // back to the week's Sunday
-    return d.toISOString().slice(0, 10);
+    // Serialize from LOCAL parts (matches cmWeekStartKey). toISOString() would
+    // convert to UTC and, in PH (UTC+8), drop to the previous day — shifting
+    // every Sun–Sat week a day early in the dropdown range labels.
+    const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), da = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${da}`;
 }
 function cmWeekRangeLabel(sundayStr) {
     const start = new Date(sundayStr + 'T00:00:00');
@@ -2679,15 +2853,29 @@ function cmWeekRangeLabel(sundayStr) {
     return start.toLocaleDateString('en-PH', o) + ' – ' +
         end.toLocaleDateString('en-PH', sameYear ? o : { ...o, year: 'numeric' });
 }
-// "3rd week of June" — which calendar week of the month the week-start falls in.
-function cmWeekOfMonthLabel(sundayStr) {
-    const start = new Date(sundayStr + 'T00:00:00');
-    if (isNaN(start)) return 'Per week';
-    const n = Math.ceil(start.getDate() / 7);
+function cmOrdinal(n) {
     const suffix = (n % 10 === 1 && n !== 11) ? 'st'
         : (n % 10 === 2 && n !== 12) ? 'nd'
         : (n % 10 === 3 && n !== 13) ? 'rd' : 'th';
-    return n + suffix + ' week of ' + start.toLocaleDateString('en-PH', { month: 'long' });
+    return n + suffix;
+}
+// "1st Week" — which week OF THE PROJECT this Sun–Sat week is, counting from the
+// week the project's start date falls in (so the first billed week reads "1st Week"
+// instead of a calendar position like "3rd week of June"). Mirrors the admin's
+// _pmWeekOfMonthLabel. Falls back to the calendar label with no start date.
+function cmWeekOfMonthLabel(sundayStr) {
+    const start = new Date(sundayStr + 'T00:00:00');
+    if (isNaN(start)) return 'Per week';
+    const startRaw = cmProjectData && cmProjectData.startDate;
+    if (startRaw) {
+        const projSun = new Date(cmWeekStart(startRaw) + 'T00:00:00');
+        if (!isNaN(projSun)) {
+            const weeks = Math.round((start - projSun) / (7 * 24 * 60 * 60 * 1000)) + 1;
+            if (weeks >= 1) return cmOrdinal(weeks) + ' Week';
+        }
+    }
+    return cmOrdinal(Math.ceil(start.getDate() / 7)) + ' week of '
+        + start.toLocaleDateString('en-PH', { month: 'long' });
 }
 // Distinct week-starts present in the bills, newest first.
 function cmOvWeekGroups() {
@@ -3117,7 +3305,7 @@ function cmRenderOverview() {
             ${partner ? `<div style="${card}">
                 <div style="font-size:13px;color:#8b91a0;font-weight:600;">Remaining cash receipt</div>
                 <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:${ovNet >= 0 ? '#3f9960' : '#b91c1c'};">${ovNet < 0 ? '−' : ''}${cmFmt(Math.abs(ovNet))}</div>
-                <div style="font-size:12px;color:#8b91a0;margin-top:6px;">${ovNet >= 0 ? 'paid over direct cost' : 'direct cost over collections'}</div>
+                <div style="font-size:12px;color:#8b91a0;margin-top:6px;">${ovNet >= 0 ? 'paid over cash received' : 'direct cost over collections'}</div>
             </div>` : ''}
             ${partner ? '' : `<div style="${card}">
                 <div style="font-size:13px;color:#8b91a0;font-weight:600;">Revolving fund</div>
@@ -3126,11 +3314,9 @@ function cmRenderOverview() {
                 <div style="font-size:12px;color:#8b91a0;margin-top:9px;">${cmFmt(rfSpent)} spent of ${cmFmt(rfTotal)}</div>
             </div>`}
             <div style="${card}">
-                <div style="display:flex;align-items:center;justify-content:space-between;">
-                    <span style="font-size:13px;color:#8b91a0;font-weight:600;">To purchase</span>
-                    <span style="font-size:11px;font-weight:700;background:#eeeefb;color:#5b5bd6;padding:3px 10px;border-radius:20px;">${pend.length} ITEM${pend.length===1?'':'S'}</span>
-                </div>
-                <div style="margin-top:14px;display:flex;flex-direction:column;gap:12px;font-size:13.5px;color:#1a1d24;">${buyRows}</div>
+                <div style="font-size:13px;color:#8b91a0;font-weight:600;">Total cash receipt</div>
+                <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:#1a1d24;">${ovPaid > 0 ? cmFmt(ovPaid) : '—'}</div>
+                <div style="font-size:12px;color:#8b91a0;margin-top:6px;">Total cash received</div>
             </div>
         </div>
     </div>
@@ -4051,10 +4237,10 @@ function cmRenderWeeklyPreview() {
 function cmCheckAgreement() {
     // Partners are monitoring-only and are not a billing party — they never see
     // the Cost-Plus (15% fee / payment) agreement; go straight to the dashboard.
-    if (cmIsPartner()) { cmEnterDashboard(); return; }
+    if (cmIsPartner()) { cmRouteAfterLogin(); return; }
     const accepted = cmCurrentProfile?.agreementAccepted === true;
     if (accepted) {
-        cmEnterDashboard();
+        cmRouteAfterLogin();
     } else {
         const modal = document.getElementById('cm-agreement-modal');
         if (modal) modal.style.display = '';
@@ -4114,7 +4300,7 @@ window.cmAcceptAgreement = async function() {
 
     const modal = document.getElementById('cm-agreement-modal');
     if (modal) modal.style.display = 'none';
-    cmEnterDashboard();
+    cmRouteAfterLogin();
 };
 
 // ══════════════════════════════════════════════════════════════════
