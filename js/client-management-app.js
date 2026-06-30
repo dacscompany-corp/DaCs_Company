@@ -3305,9 +3305,13 @@ function cmRenderOverview() {
                 <div style="font-size:12px;color:#8b91a0;margin-top:6px;">Total agreed contract</div>
             </div>
             <div style="${card}">
-                <div style="font-size:13px;color:#8b91a0;font-weight:600;">Total cash receipt</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:28px;">
+                    <span style="font-size:13px;color:#8b91a0;font-weight:600;">Total cash receipt</span>
+                    ${ovContract > 0 ? `<span style="font-size:15px;font-weight:800;color:#fff;background:#15a35b;padding:7px 16px;border-radius:999px;white-space:nowrap;line-height:1;letter-spacing:.01em;box-shadow:0 3px 8px rgba(21,163,91,0.35);">${Math.round(ovPaid / ovContract * 100)}%</span>` : ''}
+                </div>
                 <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:#1a1d24;">${ovPaid > 0 ? cmFmt(ovPaid) : '—'}</div>
-                <div style="font-size:12px;color:#8b91a0;margin-top:6px;">Total cash received</div>
+                ${ovContract > 0 ? `<div style="height:6px;background:#eceef3;border-radius:3px;margin-top:12px;overflow:hidden;"><div style="width:${Math.max(0, Math.min(100, Math.round(ovPaid / ovContract * 100)))}%;height:100%;background:#3f9960;"></div></div>` : ''}
+                <div style="font-size:12px;color:#8b91a0;margin-top:${ovContract > 0 ? '9' : '6'}px;">${ovContract > 0 ? Math.round(ovPaid / ovContract * 100) + '% of project contract' : 'Total cash received'}</div>
             </div>
             <div style="${card}">
                 <div style="font-size:13px;color:#8b91a0;font-weight:600;">Remaining cash receipt</div>
