@@ -458,8 +458,8 @@ function _pmOvHtml(p, ms, bills, reqs) {
     const _ddChevron = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
     const _ddFixed = [['all', 'All time'], ['month', 'This month'], ['latest', 'This week'], ['last4', 'Last 4 weeks']]
         .map(([v, l], i) => `<button class="pmw-dd-opt${i === 0 ? ' active' : ''}" onclick="pmOvPickRange(this,'${v}','${l}')"><span>${l}</span><span class="pmw-dd-check">✓</span></button>`).join('');
-    // Per-week rows: each calendar week (Mon–Sun) present in the bills, so a whole
-    // week of the month can be viewed at once. Mode is "wk:<monday>".
+    // Per-week rows: each calendar week (Sun–Sat) present in the bills, so a whole
+    // week of the month can be viewed at once. Mode is "wk:<sunday>".
     const _ddWeekGroups = _pmOvWeekGroups().map(ws => {
         const l = _pmWeekRangeLabel(ws);
         return `<button class="pmw-dd-opt" onclick="pmOvPickRange(this,'wk:${_esc(ws)}','${_esc(l)}')"><span>${_esc(_pmWeekOfMonthLabel(ws))}</span><span class="num">${_esc(l)}</span></button>`;

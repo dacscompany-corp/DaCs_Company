@@ -3276,8 +3276,12 @@ function cmRenderOverview() {
     </div>
 
     <div class="cm-ov-row1" style="display:grid;grid-template-columns:${partner ? '1fr 1fr' : '1.55fr 1fr'};gap:24px;align-items:stretch;">
-        <!-- Hero: partner → direct cost breakdown · client → weekly bill -->
-        ${partner ? breakdownCard : `
+        <!-- Hero: partner → Project Contract / cash (top) · client → weekly bill -->
+        ${partner ? `<div style="${card}">
+            <div style="font-size:13px;color:#8b91a0;font-weight:600;">Project Contract</div>
+            <div style="font-size:34px;font-weight:800;margin-top:8px;letter-spacing:-0.02em;color:#1a1d24;">${ovContract > 0 ? cmFmt(ovContract) : '—'}</div>
+            <div style="font-size:12px;color:#8b91a0;margin-top:6px;">Total agreed contract</div>
+        </div>` : `
         <div style="background:#5b5bd6;border-radius:20px;padding:22px 24px;color:#fff;box-shadow:0 18px 36px -16px rgba(91,91,214,0.5);">
             <div style="display:flex;align-items:center;justify-content:space-between;">
                 <span style="font-size:12.5px;font-weight:600;opacity:0.88;">This week's bill</span>
@@ -3298,11 +3302,6 @@ function cmRenderOverview() {
         <!-- Right stack -->
         <div style="display:flex;flex-direction:column;gap:24px;${partner ? 'justify-content:space-between;' : ''}">
             ${partner ? `<div style="${card}">
-                <div style="font-size:13px;color:#8b91a0;font-weight:600;">Project Contract</div>
-                <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:#1a1d24;">${ovContract > 0 ? cmFmt(ovContract) : '—'}</div>
-                <div style="font-size:12px;color:#8b91a0;margin-top:6px;">Total agreed contract</div>
-            </div>` : ''}
-            ${partner ? `<div style="${card}">
                 <div style="font-size:13px;color:#8b91a0;font-weight:600;">Remaining cash receipt</div>
                 <div style="font-size:30px;font-weight:800;margin-top:6px;letter-spacing:-0.01em;color:${ovNet >= 0 ? '#3f9960' : '#b91c1c'};">${ovNet < 0 ? '−' : ''}${cmFmt(Math.abs(ovNet))}</div>
                 <div style="font-size:12px;color:#8b91a0;margin-top:6px;">${ovNet >= 0 ? 'paid over cash received' : 'direct cost over collections'}</div>
@@ -3321,7 +3320,7 @@ function cmRenderOverview() {
         </div>
     </div>
 
-    ${partner ? '' : `<div style="margin-top:24px;">${breakdownCard}</div>`}
+    <div style="margin-top:24px;">${breakdownCard}</div>
 
     <div class="cm-ov-row2" style="display:grid;grid-template-columns:${partner ? '1fr' : '1fr 1.2fr'};gap:24px;margin-top:24px;">
         ${partner ? '' : `<div style="${card}">
@@ -3563,24 +3562,13 @@ function cmRenderWeekly() {
         </div>`;
     }).join('') || `<div style="padding:18px 0;color:#aeb4c2;font-size:13px;border-top:1px solid #f0f1f5;">No submitted weeks yet.</div>`;
 
-    // Revolving fund the admin set for the selected week, and how it compares to the
-    // week's direct spend (Labor + Materials + Out Source). + = left over, − = short.
-    const wkFund   = latest ? cmFundForWeek(latest.key) : null;
-    const fundAmt  = wkFund ? (Number(wkFund.amount) || 0) : 0;
-    const fundDiff = fundAmt - (latest ? latest.dir : 0);
-
-    // Top KPI strip. The partner sees the revolving fund + difference here (Labor /
-    // Materials / Out Source live in the breakdown box below, so they're not repeated);
-    // the client keeps the labor/materials/out-source KPIs.
+    // Top KPI strip. Partners no longer see the revolving fund / difference here
+    // (revolving fund is admin-only); their Labor / Materials / Out Source / Direct
+    // total live in the breakdown box below. The client keeps the labor/materials KPIs.
     const kpiCell = (label, valHtml) =>
         `<div><div style="font-size:12.5px;font-weight:700;color:#6b7180;">${label}</div><div style="font-size:21px;font-weight:800;margin-top:7px;letter-spacing:-0.01em;">${valHtml}</div></div>`;
     const topGrid = partner
-        ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
-            ${kpiCell(`Revolving fund${wkFund && wkFund.received ? ' <span style="font-size:10px;font-weight:700;color:#3f9960;background:#e7f5ed;padding:2px 7px;border-radius:20px;vertical-align:middle;">RECEIVED</span>' : ''}`,
-                wkFund ? cmFmt(fundAmt) : '<span style="color:#aeb4c2;">Not set</span>')}
-            ${kpiCell('Difference',
-                wkFund ? `<span style="color:${fundDiff < 0 ? '#b91c1c' : '#3f9960'};">${fundDiff < 0 ? '−' : '+'}${cmFmt(Math.abs(fundDiff))}</span><span style="font-size:12px;font-weight:600;color:#8b91a0;margin-left:6px;">${fundDiff < 0 ? 'short' : 'left over'}</span>` : '<span style="color:#aeb4c2;">—</span>')}
-          </div>`
+        ? ''
         : `<div style="display:grid;grid-template-columns:${combined > 0 ? 'repeat(3,1fr)' : '1fr 1fr'};gap:18px;">
             ${kpiCell('Total labor', cmFmt(labor))}
             ${kpiCell('Total materials', cmFmt(matPure))}
