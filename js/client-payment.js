@@ -1573,6 +1573,9 @@ ${previewOnly ? `<div class="preview-bar"><span>Print Preview &mdash; Invoice ${
 
         const dateGenerated = new Date().toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
 
+        // Does this SOA carry any invoices? (a request with a generated invoice)
+        const hasInvoices = requests.some(r => r.invoiceId || r.invoiceSnapshot);
+
         // Group by project
         const hasProject = requests.some(r => r.projectName);
         const projects = {};
@@ -1675,7 +1678,22 @@ ${previewOnly ? `<div class="preview-bar"><span>Print Preview &mdash; Invoice ${
                     <td></td>
                 </tr>
             </tfoot>
-        </table>`;
+        </table>
+        ${hasInvoices ? `
+        <div class="sowa-ack-block" style="margin-top:32px;padding-top:18px;border-top:1px solid #e5e7eb;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#6b7280;margin-bottom:10px;">Acknowledgement</div>
+            <div style="font-size:12.5px;color:#374151;line-height:1.7;margin-bottom:30px;">
+                I, <strong>${_esc(clientName)}</strong>, hereby acknowledge receipt of the invoice(s) covered by this Statement of Account and confirm the amounts billed above as accurate and received.
+            </div>
+            <div style="display:flex;justify-content:space-between;gap:40px;flex-wrap:wrap;">
+                <div style="flex:1;min-width:200px;">
+                    <div style="border-top:1.5px solid #374151;padding-top:6px;font-size:11.5px;color:#6b7280;">Acknowledged by (Signature over Printed Name)</div>
+                </div>
+                <div style="flex:1;min-width:200px;">
+                    <div style="border-top:1.5px solid #374151;padding-top:6px;font-size:11.5px;color:#6b7280;">Date</div>
+                </div>
+            </div>
+        </div>` : ''}`;
 
         modal.style.display = 'flex';
     };
