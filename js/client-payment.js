@@ -71,6 +71,16 @@
             _requests = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
                 .sort((a, b) => _tsToMs(b.createdAt) - _tsToMs(a.createdAt));
 
+            // One client account can own SEVERAL construction projects. The query
+            // above matches by clientEmail only, so it returns every project's
+            // payment requests. Scope to the project currently open (cmProjectData)
+            // — otherwise another project's billing (e.g. Dapitan) leaks into this
+            // project's SOA (Total Billed, Billing Periods, Payment Requests list).
+            // Non-construction portals leave cmProjectData undefined → no filter.
+            const _consProjId = (typeof cmProjectData !== 'undefined' && cmProjectData) ? cmProjectData.id : null;
+            if (_consProjId) {
+                _requests = _requests.filter(r => r.constructionProjectId === _consProjId);
+            }
 
             window._clientPayRequests = _requests;
             _renderList(listEl);

@@ -103,7 +103,7 @@ function _pmLoadWsPanel(panelId) {
     switch(panelId) {
         case 'ws-panel-overview':  _pmLoadOverview();                    break;
         case 'ws-panel-week':      _pmLoadWeekBuilder();                  break;
-        case 'ws-panel-labor':     _pmLoadLaborTab();                     break;
+        case 'ws-panel-contracts': _pmLoadContractsTab();                 break;
         case 'ws-panel-materials': _pmLoadProcItems();                    break;
         case 'ws-panel-progress':  _pmLoadMilestones(); _pmLoadReports(); break;
         case 'ws-panel-money':     _pmLoadPayments();   _pmLoadRevolving(); break;
@@ -618,7 +618,12 @@ function _pmWeekStart(dateStr) {
     if (isNaN(d)) return dateStr;
     const day = d.getDay();                 // 0=Sun … 6=Sat
     d.setDate(d.getDate() - day);           // back to the week's Sunday
-    return d.toISOString().slice(0, 10);
+    // Serialize from LOCAL parts, NOT toISOString(): toISOString() converts to
+    // UTC, and in PH (UTC+8) local midnight becomes the previous day, which
+    // shifted every Sun–Sat week a day early (showing "Jun 20 – Jun 26" for the
+    // Jun 21–27 week, and "3rd week of June" against the wrong dates).
+    const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
 }
 function _pmWeekRangeLabel(sundayStr) {
     const start = new Date(sundayStr + 'T00:00:00');
@@ -629,15 +634,30 @@ function _pmWeekRangeLabel(sundayStr) {
     return start.toLocaleDateString('en-PH', o) + ' – ' +
         end.toLocaleDateString('en-PH', sameYear ? o : { ...o, year: 'numeric' });
 }
-// "3rd week of June" — which calendar week of the month the week-start falls in.
-function _pmWeekOfMonthLabel(sundayStr) {
-    const start = new Date(sundayStr + 'T00:00:00');
-    if (isNaN(start)) return 'Per week';
-    const n = Math.ceil(start.getDate() / 7);
+function _pmOrdinal(n) {
     const suffix = (n % 10 === 1 && n !== 11) ? 'st'
         : (n % 10 === 2 && n !== 12) ? 'nd'
         : (n % 10 === 3 && n !== 13) ? 'rd' : 'th';
-    return n + suffix + ' week of ' + start.toLocaleDateString('en-PH', { month: 'long' });
+    return n + suffix;
+}
+// "1st Week" — which week OF THE PROJECT this Sun–Sat week is, counting from the
+// week the project's start date falls in (so the first billed week reads "1st Week"
+// instead of a calendar position like "3rd week of June"). Falls back to the
+// calendar label if the project has no start date / the week predates it.
+function _pmWeekOfMonthLabel(sundayStr) {
+    const start = new Date(sundayStr + 'T00:00:00');
+    if (isNaN(start)) return 'Per week';
+    const startRaw = _pmActiveProject && _pmActiveProject.startDate;
+    if (startRaw) {
+        const projSun = new Date(_pmWeekStart(startRaw) + 'T00:00:00');
+        if (!isNaN(projSun)) {
+            const weeks = Math.round((start - projSun) / (7 * 24 * 60 * 60 * 1000)) + 1;
+            if (weeks >= 1) return _pmOrdinal(weeks) + ' Week';
+        }
+    }
+    // Fallback: calendar "Nth week of <Month>".
+    return _pmOrdinal(Math.ceil(start.getDate() / 7)) + ' week of '
+        + start.toLocaleDateString('en-PH', { month: 'long' });
 }
 // Distinct week-starts present in the bills, newest first.
 function _pmOvWeekGroups() {
@@ -1621,7 +1641,8 @@ async function _pmLoadWeekBuilder() {
     _pmWeekRenderHistory();
     _pmWeekApplyCat();
     _pmWeekShowBuilder(true);
-    _pmLoadLaborContracts();   // labor contracts panel + picker (drawdown reads _pmWeekBills)
+    _pmLoadLaborContracts();     // labor contracts picker (drawdown reads _pmWeekBills)
+    _pmLoadOutsourceContracts(); // out source contracts picker (same _pmWeekBills)
 }
 
 // Load the saved bill for the selected Friday into the draft (or start empty).
@@ -1742,8 +1763,11 @@ window.pmWeekAddEntry = function() {
     if (amount <= 0) { if (amtEl) amtEl.focus(); return; }
     const fallbackDetails = type === 'labor' ? 'Labor cost' : type === 'both' ? 'Materials & labor' : 'Materials';
     const receipts = _receiptsFromStaged(_pmWeekStagedReceipts);
-    // Labor lines can draw down a pakyaw/capped contract (none for materials/out source).
-    const contractId = (type === 'labor') ? ((document.getElementById('pm-week-contract') || {}).value || '') : '';
+    // Labor lines draw down a labor contract; Out Source ('both') lines draw down an
+    // outsource contract. Materials have no contract.
+    const contractId = (type === 'labor') ? ((document.getElementById('pm-week-contract') || {}).value || '')
+        : (type === 'both') ? ((document.getElementById('pm-week-outsource') || {}).value || '')
+        : '';
     if (_pmWeekEditEntryId) {
         // Update the line in place.
         const en = _pmWeekEntries.find(e => e.id === _pmWeekEditEntryId);
@@ -1762,6 +1786,8 @@ window.pmWeekAddEntry = function() {
     if (qtyEl)  qtyEl.value = '';
     const cSel = document.getElementById('pm-week-contract'); if (cSel) cSel.value = '';
     if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
+    const oSel = document.getElementById('pm-week-outsource'); if (oSel) oSel.value = '';
+    if (typeof pmWeekOutsourceHint === 'function') pmWeekOutsourceHint();
     pmWeekClearReceipt();
     _pmWeekSyncAddBtn();
     _pmWeekRenderEntries();
@@ -1814,10 +1840,13 @@ function _pmWeekApplyCat() {
     if (daysWrap) daysWrap.style.display = cat === 'labor' ? '' : 'none';
     const qtyWrap = document.getElementById('pm-week-qty-wrap');
     if (qtyWrap) qtyWrap.style.display = cat === 'materials' ? '' : 'none';
-    // "Pay against contract" picker is Labor-only.
+    // "Pay against contract" picker is Labor-only; the Out Source one is 'both'-only.
     const contractWrap = document.getElementById('pm-week-contract-wrap');
     if (contractWrap) contractWrap.style.display = cat === 'labor' ? '' : 'none';
     if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
+    const outsourceWrap = document.getElementById('pm-week-outsource-wrap');
+    if (outsourceWrap) outsourceWrap.style.display = cat === 'both' ? '' : 'none';
+    if (typeof pmWeekOutsourceHint === 'function') pmWeekOutsourceHint();
     _pmWeekRenderEntries();
     _pmWeekRenderAttach();
 }
@@ -1945,8 +1974,10 @@ window.pmWeekEditEntry = function(id) {
     const daysEl = document.getElementById('pm-week-days');    if (daysEl) daysEl.value = en.days || '';
     const qtyEl  = document.getElementById('pm-week-qty');     if (qtyEl)  qtyEl.value  = en.qty || '';
     const unitEl = document.getElementById('pm-week-unit');    if (unitEl && en.unit) unitEl.value = en.unit;
-    const cSel = document.getElementById('pm-week-contract'); if (cSel) cSel.value = en.contractId || '';
+    const cSel = document.getElementById('pm-week-contract'); if (cSel) cSel.value = (en.type === 'labor' ? (en.contractId || '') : '');
     if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
+    const oSel = document.getElementById('pm-week-outsource'); if (oSel) oSel.value = (en.type === 'both' ? (en.contractId || '') : '');
+    if (typeof pmWeekOutsourceHint === 'function') pmWeekOutsourceHint();
     _pmWeekSyncAddBtn();
     if (detEl) { detEl.focus(); detEl.scrollIntoView({ block: 'nearest' }); }
 };
@@ -4282,11 +4313,13 @@ async function _pmLoadLaborContracts() {
     try {
         const snap = await _pmLcCol().get();
         _pmLaborContracts = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .filter(c => c.category !== 'outsource')   // shared table; labor tab excludes outsource
             .sort((a, b) => (a.workerName || '').localeCompare(b.workerName || '')
                          || (a.scope || '').localeCompare(b.scope || ''));
     } catch (e) { console.warn('PM labor contracts load:', e.message); _pmLaborContracts = []; }
     _pmRenderContracts();
     _pmPopulateContractPicker();
+    if (typeof _pmRenderContractsTab === 'function') _pmRenderContractsTab();   // refresh merged Contracts tab
 }
 
 // Paid-to-date = every saved Daily Expenses labor line tagged to this contract.
@@ -4487,7 +4520,7 @@ window.pmLcSave = async function(e) {
             }
             await _pmLcCol().doc(id).update(upd);
         } else {
-            await _pmLcCol().add({ workerName, scope, agreedAmount, payType, notes, status: 'ongoing',
+            await _pmLcCol().add({ workerName, scope, agreedAmount, payType, notes, status: 'ongoing', category: 'labor',
                 capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
                 createdAt: firebase.firestore.FieldValue.serverTimestamp() });
         }
@@ -4586,3 +4619,449 @@ window.pmLcOpenLedger = function(id) {
 window.pmLcLedgerEdit  = function() { const id = _pmLcLedgerId; if (!id) return; pmCloseModal('pmLaborLedgerModal'); pmLcOpenEdit(id); };
 window.pmLcLedgerRaise = function() { if (_pmLcLedgerId) pmLcRaiseCap(_pmLcLedgerId); };
 window.pmLcLedgerDelete = async function() { const id = _pmLcLedgerId; if (!id) return; await pmLcDelete(id); if (!_pmLaborContracts.some(c => c.id === id)) pmCloseModal('pmLaborLedgerModal'); };
+
+// ══════════════════════════════════════════════════════════
+//  OUTSOURCE CONTRACTS (Out Source = entry type 'both')
+//  Parallel of the Labor Contracts feature: same capped-contract
+//  workflow, but the cap is paid down by the Daily Expenses
+//  "Out Source" lines instead of the "Labor" lines. Stored in the
+//  SAME `pm_labor_contracts` table (collection `laborContracts`)
+//  with category:'outsource'. Reuses _pmLcView + the .pm-lc-* CSS.
+// ══════════════════════════════════════════════════════════
+let _pmOutsourceContracts = [];
+
+// Same collection as labor — rows are split by `category`.
+function _pmOcCol() { return _pmLcCol(); }
+
+async function _pmLoadOutsourceTab() {
+    if (!_pmActiveProject) { _pmOutsourceContracts = []; _pmWeekBills = []; _pmRenderOutsource(); return; }
+    try {
+        const snap = await db.collection('constructionProjects')
+            .doc(_pmActiveProject.id)
+            .collection('weeklyBills')
+            .orderBy('weekEndingDate', 'desc')
+            .get();
+        _pmWeekBills = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) { console.warn('PM outsource tab bills:', e.message); }
+    await _pmLoadOutsourceContracts();
+}
+async function _pmLoadOutsourceContracts() {
+    if (!_pmActiveProject) { _pmOutsourceContracts = []; _pmRenderOutsource(); return; }
+    try {
+        const snap = await _pmOcCol().get();
+        _pmOutsourceContracts = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .filter(c => c.category === 'outsource')   // shared table; outsource tab only
+            .sort((a, b) => (a.workerName || '').localeCompare(b.workerName || '')
+                         || (a.scope || '').localeCompare(b.scope || ''));
+    } catch (e) { console.warn('PM outsource contracts load:', e.message); _pmOutsourceContracts = []; }
+    _pmRenderOutsource();
+    _pmPopulateOutsourcePicker();
+    if (typeof _pmRenderContractsTab === 'function') _pmRenderContractsTab();   // refresh merged Contracts tab
+}
+
+// Paid-to-date = every saved Daily Expenses Out Source ('both') line tagged here.
+function _pmOcPaid(contractId) {
+    if (!contractId) return 0;
+    let sum = 0;
+    (_pmWeekBills || []).forEach(b => {
+        (Array.isArray(b.entries) ? b.entries : []).forEach(e => {
+            if (e.type === 'both' && e.contractId === contractId) sum += (Number(e.amount) || 0);
+        });
+    });
+    return sum;
+}
+function _pmOcStats(c) {
+    const agreed = Number(c.agreedAmount) || 0;
+    const paid = _pmOcPaid(c.id);
+    const remaining = agreed - paid;
+    const pct = agreed > 0 ? (paid / agreed) * 100 : 0;
+    let status = 'Ongoing';
+    if (agreed > 0 && paid >= agreed) status = paid > agreed ? 'Over' : 'Completed';
+    return { agreed, paid, remaining, pct, status };
+}
+
+// ── Out Source add-row picker (shown for the 'both' category) ──
+function _pmPopulateOutsourcePicker() {
+    const sel = document.getElementById('pm-week-outsource');
+    if (sel) {
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">— None (regular out source) —</option>'
+            + _pmOutsourceContracts.map(c => {
+                const st = _pmOcStats(c);
+                return '<option value="' + c.id + '">' + _esc(c.workerName || 'Vendor') + ' · ' + _esc(c.scope || 'job')
+                    + ' (' + _fmt(st.remaining) + ' left)</option>';
+            }).join('');
+        if (cur && _pmOutsourceContracts.some(c => c.id === cur)) sel.value = cur;
+    }
+    const dl = document.getElementById('pmOcWorkerNames');
+    if (dl) dl.innerHTML = [...new Set(_pmOutsourceContracts.map(c => (c.workerName || '').trim()).filter(Boolean))]
+        .map(n => '<option value="' + _esc(n) + '">').join('');
+}
+window.pmWeekOutsourceHint = function() {
+    const sel = document.getElementById('pm-week-outsource');
+    const hint = document.getElementById('pm-week-outsource-remaining');
+    if (!sel || !hint) return;
+    const c = _pmOutsourceContracts.find(x => x.id === sel.value);
+    if (!c) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
+    const st = _pmOcStats(c);
+    hint.style.display = '';
+    hint.innerHTML = st.remaining < 0
+        ? '<strong class="pm-lc-neg">' + _fmt(Math.abs(st.remaining)) + ' over</strong> the ' + _fmt(st.agreed) + ' agreed'
+        : '<strong>' + _fmt(st.remaining) + ' left</strong> of ' + _fmt(st.agreed) + ' agreed';
+};
+
+function _pmRenderOutsource() {
+    const sumEl = document.getElementById('pm-outsource-summary');
+    const body  = document.getElementById('pm-outsource-body');
+    if (!body) return;
+    const n = _pmOutsourceContracts.length;
+    let totAgreed = 0, totPaid = 0;
+    _pmOutsourceContracts.forEach(c => { const s = _pmOcStats(c); totAgreed += s.agreed; totPaid += s.paid; });
+    const totRem = totAgreed - totPaid;
+    if (sumEl) sumEl.textContent = n
+        ? (n + ' job' + (n === 1 ? '' : 's') + ' · ' + _fmt(totRem) + ' still to pay')
+        : 'No contracts yet';
+    if (!n) { body.innerHTML = '<div class="pm-lc-empty">No out source contracts yet. Click "＋ New Contract" to cap a subcontractor / supplier’s job. Then tag an Out Source entry to it when you log the day.</div>'; return; }
+
+    const byW = {};
+    _pmOutsourceContracts.forEach(c => { const w = (c.workerName || '—').trim() || '—'; (byW[w] = byW[w] || []).push(c); });
+    const workerNames = Object.keys(byW).sort((a, b) => a.localeCompare(b));
+    const totPct = totAgreed > 0 ? Math.min(100, (totPaid / totAgreed) * 100) : 0;
+
+    const banner = '<div class="pm-lc-summary">'
+        + '<div class="pm-lc-sum-left">'
+        + '<div class="pm-lc-sum-cap">Across <b>' + workerNames.length + ' vendor' + (workerNames.length === 1 ? '' : 's')
+        + '</b> and <b>' + n + ' job' + (n === 1 ? '' : 's') + '</b>, you still owe</div>'
+        + '<div class="pm-lc-sum-big num">' + _fmt(totRem) + ' <span>of ' + _fmt(totAgreed) + ' agreed</span></div>'
+        + '</div>'
+        + '<div class="pm-lc-sum-right">'
+        + '<div class="pm-lc-sum-bar"><div style="width:' + totPct.toFixed(0) + '%"></div></div>'
+        + '<div class="pm-lc-sum-pct">' + totPct.toFixed(0) + '% paid so far</div>'
+        + '</div></div>';
+
+    const sections = workerNames.map(w => {
+        const cs = byW[w].slice().sort((a, b) => (a.scope || '').localeCompare(b.scope || ''));
+        const initial = (w.replace(/[^A-Za-z0-9]/g, '')[0] || '—').toUpperCase();
+        const rows = cs.map(c => {
+            const st = _pmOcStats(c);
+            const v = _pmLcView(st);
+            const typeLbl = c.payType === 'inhouse' ? 'In-house' : 'Pakyaw';
+            const typeCls = c.payType === 'inhouse' ? 'pm-lc-type-inh' : 'pm-lc-type-pak';
+            const overRow = st.status === 'Over' ? ' pm-lc-row-over' : '';
+            return '<div class="pm-lc-row' + overRow + '" onclick="pmOcOpenLedger(\'' + c.id + '\')">'
+                + '<div class="pm-lc-rmain">'
+                + '<div class="pm-lc-rtitle"><span class="pm-lc-rscope">' + _esc(c.scope || 'Untitled job')
+                + '</span><span class="pm-lc-type ' + typeCls + '">' + typeLbl + '</span></div>'
+                + '<div class="pm-lc-rsent num' + (v.sentOver ? ' pm-lc-rsent-over' : '') + '">' + v.sentence + '</div>'
+                + '<div class="pm-lc-rbar"><div class="pm-lc-rbar-fill ' + v.barCls + '" style="width:' + v.barPct.toFixed(1) + '%"></div></div>'
+                + '</div>'
+                + '<div class="pm-lc-rright"><div class="pm-lc-ramt num ' + v.amtCls + '">' + v.rAmt + '</div>'
+                + '<div class="pm-lc-rstat ' + v.rCls + '">' + v.rLbl + '</div></div>'
+                + '<svg class="pm-lc-rchev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'
+                + '</div>';
+        }).join('');
+        return '<div class="pm-lc-wsec">'
+            + '<div class="pm-lc-whead2"><span class="pm-lc-avatar">' + _esc(initial) + '</span>'
+            + '<span class="pm-lc-wname2">' + _esc(w) + '</span>'
+            + '<span class="pm-lc-wjobs">· ' + cs.length + ' job' + (cs.length === 1 ? '' : 's') + '</span></div>'
+            + rows + '</div>';
+    }).join('');
+
+    body.innerHTML = banner + sections;
+}
+
+// ── Create / edit / raise cap / delete ─────────────────────
+window.pmOcOpenNew = function() {
+    if (!_pmActiveProject) { _pmToast('Open a project first.', true); return; }
+    document.getElementById('pmOcId').value = '';
+    document.getElementById('pmOcWorker').value = '';
+    document.getElementById('pmOcScope').value = '';
+    document.getElementById('pmOcAmount').value = '';
+    document.getElementById('pmOcNotes').value = '';
+    const pk = document.querySelector('input[name="pmOcPayType"][value="pakyaw"]'); if (pk) pk.checked = true;
+    const t = document.getElementById('pmOcModalTitle'); if (t) t.textContent = 'New Out Source Contract';
+    _pmPopulateOutsourcePicker();
+    document.getElementById('pmOutsourceContractModal').style.display = 'flex';
+};
+window.pmOcOpenEdit = function(id) {
+    const c = _pmOutsourceContracts.find(x => x.id === id); if (!c) return;
+    document.getElementById('pmOcId').value = c.id;
+    document.getElementById('pmOcWorker').value = c.workerName || '';
+    document.getElementById('pmOcScope').value = c.scope || '';
+    document.getElementById('pmOcAmount').value = c.agreedAmount ? Number(c.agreedAmount).toLocaleString('en-PH') : '';
+    document.getElementById('pmOcNotes').value = c.notes || '';
+    const r = document.querySelector('input[name="pmOcPayType"][value="' + (c.payType === 'inhouse' ? 'inhouse' : 'pakyaw') + '"]'); if (r) r.checked = true;
+    const t = document.getElementById('pmOcModalTitle'); if (t) t.textContent = 'Edit Out Source Contract';
+    _pmPopulateOutsourcePicker();
+    document.getElementById('pmOutsourceContractModal').style.display = 'flex';
+};
+window.pmOcSave = async function(e) {
+    if (e) e.preventDefault();
+    if (!_pmActiveProject) { _pmToast('No project selected.', true); return; }
+    const id = document.getElementById('pmOcId').value;
+    const workerName = document.getElementById('pmOcWorker').value.trim();
+    const scope = document.getElementById('pmOcScope').value.trim();
+    const agreedAmount = parseFloat((document.getElementById('pmOcAmount').value || '').replace(/,/g, '')) || 0;
+    const notes = document.getElementById('pmOcNotes').value.trim();
+    const payType = (document.querySelector('input[name="pmOcPayType"]:checked') || {}).value || 'pakyaw';
+    if (!workerName) { _pmToast('Enter the vendor / crew name.', true); return; }
+    if (agreedAmount <= 0) { _pmToast('Enter the agreed amount (cap).', true); return; }
+    try {
+        if (id) {
+            const ex = _pmOutsourceContracts.find(x => x.id === id);
+            const upd = { workerName, scope, agreedAmount, payType, notes, category: 'outsource', updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+            if (ex && (Number(ex.agreedAmount) || 0) !== agreedAmount) {
+                const h = Array.isArray(ex.capHistory) ? ex.capHistory.slice() : [];
+                h.push({ amount: agreedAmount, at: new Date().toISOString(), note: 'Edited cap' });
+                upd.capHistory = h;
+            }
+            await _pmOcCol().doc(id).update(upd);
+        } else {
+            await _pmOcCol().add({ workerName, scope, agreedAmount, payType, notes, status: 'ongoing', category: 'outsource',
+                capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
+                createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        }
+        pmCloseModal('pmOutsourceContractModal');
+        _pmToast('Contract saved');
+        await _pmLoadOutsourceContracts();
+    } catch (err) { _pmToast('Error: ' + err.message, true); }
+};
+window.pmOcRaiseCap = async function(id) {
+    const c = _pmOutsourceContracts.find(x => x.id === id); if (!c) return;
+    const cur = Number(c.agreedAmount) || 0;
+    const input = prompt('Raise cap for ' + (c.workerName || 'vendor') + ' — ' + (c.scope || 'job')
+        + '\nCurrent agreed: ' + _fmt(cur) + '\n\nEnter the NEW agreed amount:', cur);
+    if (input === null) return;
+    const next = parseFloat(String(input).replace(/,/g, '')) || 0;
+    if (next <= 0) { _pmToast('Enter a valid amount.', true); return; }
+    try {
+        const h = Array.isArray(c.capHistory) ? c.capHistory.slice() : [];
+        h.push({ amount: next, at: new Date().toISOString(), note: next >= cur ? 'Raised cap' : 'Lowered cap' });
+        await _pmOcCol().doc(id).update({ agreedAmount: next, capHistory: h, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        _pmToast('Cap updated');
+        await _pmLoadOutsourceContracts();
+    } catch (err) { _pmToast('Error: ' + err.message, true); }
+};
+window.pmOcDelete = async function(id) {
+    const paid = _pmOcPaid(id);
+    const msg = paid > 0
+        ? 'This contract has ' + _fmt(paid) + ' in linked out source lines. Deleting it leaves those lines but un-caps them. Continue?'
+        : 'Delete this out source contract?';
+    if (!confirm(msg)) return;
+    try {
+        await _pmOcCol().doc(id).delete();
+        _pmToast('Contract deleted');
+        await _pmLoadOutsourceContracts();
+    } catch (err) { _pmToast('Error: ' + err.message, true); }
+};
+
+// ── Per-contract ledger (the out source lines that drew it down) ─
+let _pmOcLedgerId = null;
+window.pmOcOpenLedger = function(id) {
+    const c = _pmOutsourceContracts.find(x => x.id === id); if (!c) return;
+    _pmOcLedgerId = id;
+    const st = _pmOcStats(c);
+    const v  = _pmLcView(st);
+    const rows = [];
+    (_pmWeekBills || []).forEach(b => (Array.isArray(b.entries) ? b.entries : []).forEach(e => {
+        if (e.type === 'both' && e.contractId === id) rows.push({ date: b.weekEndingDate, details: e.details || 'Out source payment', amount: Number(e.amount) || 0 });
+    }));
+    rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    const initial = ((c.workerName || '—').replace(/[^A-Za-z0-9]/g, '')[0] || '—').toUpperCase();
+    const typeLbl = c.payType === 'inhouse' ? 'In-house' : 'Pakyaw';
+    const titleEl = document.getElementById('pmOcLedgerTitle');
+    if (titleEl) titleEl.innerHTML =
+        '<span class="pm-lc-led-avatar">' + _esc(initial) + '</span>'
+        + '<span class="pm-lc-led-htext"><span class="pm-lc-led-hname">' + _esc(c.workerName || 'Vendor') + ' — ' + _esc(c.scope || 'Contract')
+        + '</span><span class="pm-lc-led-hsub">' + typeLbl + ' · payment history</span></span>';
+
+    const fmtD = d => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return d || '—'; } };
+
+    let bigLbl = 'Still to pay on this job', bigVal = v.rAmt, subLine;
+    if (st.status === 'Over')      { bigLbl = 'Over the agreed amount'; subLine = '' + _fmt(st.paid) + ' paid · ' + _fmt(st.paid - st.agreed) + ' more than ' + _fmt(st.agreed) + ' agreed'; }
+    else if (st.status === 'Completed') { bigLbl = 'Fully paid — nothing left'; subLine = '' + _fmt(st.paid) + ' paid of ' + _fmt(st.agreed) + ' agreed · 100%'; }
+    else { subLine = '' + _fmt(st.paid) + ' paid of ' + _fmt(st.agreed) + ' agreed · ' + st.pct.toFixed(0) + '%'; }
+    const overCls = st.status === 'Over' ? ' pm-lc-led-banner-over' : '';
+
+    let running = st.agreed;
+    const items = rows.map((r, i) => {
+        running -= r.amount;
+        const last = i === rows.length - 1;
+        return '<div class="pm-lc-tl-item">'
+            + '<span class="pm-lc-tl-dot' + (last ? ' pm-lc-tl-dot-on' : '') + '"></span>'
+            + '<div class="pm-lc-tl-row"><span class="pm-lc-tl-name">' + _esc(r.details) + '</span>'
+            + '<span class="pm-lc-tl-amt num">' + _fmt(r.amount) + '</span></div>'
+            + '<div class="pm-lc-tl-meta num' + (running < 0 ? ' pm-lc-neg' : (last ? ' pm-lc-tl-meta-on' : '')) + '">'
+            + fmtD(r.date) + ' · ' + _fmt(running) + ' left after</div></div>';
+    }).join('');
+    const listHtml = rows.length
+        ? '<div class="pm-lc-led-cnt">' + rows.length + ' payment' + (rows.length === 1 ? '' : 's') + '</div><div class="pm-lc-timeline">' + items + '</div>'
+        : '<div class="pm-lc-empty">No payments yet. Tag a daily Out Source entry to this job to start counting it down.</div>';
+
+    const body = document.getElementById('pmOcLedgerBody');
+    if (body) body.innerHTML =
+        '<div class="pm-lc-led-banner' + overCls + '">'
+        + '<div class="pm-lc-led-lbl">' + bigLbl + '</div>'
+        + '<div class="pm-lc-led-big num">' + bigVal + '</div>'
+        + '<div class="pm-lc-led-pbar"><div class="' + v.barCls + '" style="width:' + v.barPct.toFixed(0) + '%"></div></div>'
+        + '<div class="pm-lc-led-sub num">' + subLine + '</div></div>'
+        + '<div class="pm-lc-led-list">' + listHtml + '</div>';
+    document.getElementById('pmOutsourceLedgerModal').style.display = 'flex';
+};
+window.pmOcLedgerEdit  = function() { const id = _pmOcLedgerId; if (!id) return; pmCloseModal('pmOutsourceLedgerModal'); pmOcOpenEdit(id); };
+window.pmOcLedgerRaise = function() { if (_pmOcLedgerId) pmOcRaiseCap(_pmOcLedgerId); };
+window.pmOcLedgerDelete = async function() { const id = _pmOcLedgerId; if (!id) return; await pmOcDelete(id); if (!_pmOutsourceContracts.some(c => c.id === id)) pmCloseModal('pmOutsourceLedgerModal'); };
+
+// ══════════════════════════════════════════════════════════
+//  CONTRACTS TAB (merged Labor + Out Source, in-tab switch)
+//  One "Contracts" tab with a Labor / Out Source segmented
+//  toggle (green / purple themed). Rendered as a single HTML
+//  string into #pm-contracts-root. Ported from the claude_design
+//  project "Minimalist design enhancement" → Contracts Tab.dc.html.
+// ══════════════════════════════════════════════════════════
+let _pmContractSeg = 'labor';   // 'labor' | 'outsource'
+
+async function _pmLoadContractsTab() {
+    if (!_pmActiveProject) { _pmLaborContracts = []; _pmOutsourceContracts = []; _pmWeekBills = []; _pmRenderContractsTab(); return; }
+    try {
+        const snap = await db.collection('constructionProjects')
+            .doc(_pmActiveProject.id)
+            .collection('weeklyBills')
+            .orderBy('weekEndingDate', 'desc')
+            .get();
+        _pmWeekBills = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) { console.warn('PM contracts tab bills:', e.message); }
+    // Load both contract sets (each also repopulates its Daily Expenses picker).
+    await _pmLoadLaborContracts();
+    await _pmLoadOutsourceContracts();
+    _pmRenderContractsTab();
+}
+
+window.pmContractSeg = function(seg) {
+    _pmContractSeg = (seg === 'outsource') ? 'outsource' : 'labor';
+    _pmRenderContractsTab();
+};
+
+function _pmRenderContractsTab() {
+    const root = document.getElementById('pm-contracts-root');
+    if (!root) return;
+    const isLabor = _pmContractSeg !== 'outsource';
+    const list    = isLabor ? _pmLaborContracts : _pmOutsourceContracts;
+    const statOf  = isLabor ? _pmContractStats : _pmOcStats;
+    const laborN  = _pmLaborContracts.length, outN = _pmOutsourceContracts.length;
+
+    // total count badge on the Contracts tab button (design shows it)
+    const tabBtn = document.getElementById('pm-ws-tab-contracts');
+    if (tabBtn) tabBtn.innerHTML = 'Contracts' + ((laborN + outN) > 0
+        ? ' <span style="font-size:10.5px;font-weight:700;color:#157a52;background:#eaf4ef;border-radius:20px;padding:1px 7px;">' + (laborN + outN) + '</span>' : '');
+
+    const t = isLabor
+        ? { accent: '#157a52', accentDark: '#0f6342', soft: '#eaf4ef', bannerBg: '#f4f9f6', bannerBorder: '#d8ebe1', barTrack: '#e3efe8' }
+        : { accent: '#7a5bb5', accentDark: '#5b3f96', soft: '#efeaf8', bannerBg: '#f7f3fc', bannerBorder: '#e4dbf3', barTrack: '#ece4f6' };
+
+    // group by worker / vendor
+    const byW = {};
+    list.forEach(c => { const w = (c.workerName || '—').trim() || '—'; (byW[w] = byW[w] || []).push(c); });
+    const names = Object.keys(byW).sort((a, b) => a.localeCompare(b));
+
+    let totAgreed = 0, totPaid = 0;
+    list.forEach(c => { const s = statOf(c); totAgreed += s.agreed; totPaid += s.paid; });
+    const totRem = totAgreed - totPaid;
+    const totPct = totAgreed > 0 ? Math.round((totPaid / totAgreed) * 100) : 0;
+
+    const newFn      = isLabor ? 'pmLcOpenNew()' : 'pmOcOpenNew()';
+    const ledgerFn   = isLabor ? 'pmLcOpenLedger' : 'pmOcOpenLedger';
+    const newBtnLbl  = isLabor ? 'New Labor contract' : 'New Out Source contract';
+    const workersLbl = names.length + ' ' + (isLabor ? 'worker' : 'vendor') + (names.length === 1 ? '' : 's');
+    const jobsLbl    = list.length + ' job' + (list.length === 1 ? '' : 's');
+
+    // segmented switch styling
+    const segOn  = (active, theme) => active
+        ? ('background:' + theme.soft + ';border:1.5px solid ' + theme.accent + ';color:' + theme.accentDark + ';')
+        : ('background:transparent;border:1.5px solid transparent;color:#7c7b75;');
+    const lab = segOn(isLabor, { soft:'#eaf4ef', accent:'#157a52', accentDark:'#0f6342' });
+    const out = segOn(!isLabor, { soft:'#efeaf8', accent:'#7a5bb5', accentDark:'#5b3f96' });
+
+    const rowHtml = (c) => {
+        const st = statOf(c);
+        const agreed = st.agreed, paid = st.paid, remaining = st.remaining;
+        const pct = st.pct;
+        // type pill (we keep Pakyaw / In-house labels for both kinds)
+        const pill = c.payType === 'inhouse'
+            ? { lbl: 'IN-HOUSE', bg: '#eef0f3', col: '#5b6b7e' }
+            : { lbl: 'PAKYAW',   bg: '#efeaf8', col: '#5b3f96' };
+        let sentPre, sentBold, sentSuf = '', sentColor = '#6f6e69', boldColor = '#1c1c1a',
+            rightAmt, rightLbl, rightColor, amtColor, barColor, barPct;
+        if (st.status === 'Over') {
+            const over = paid - agreed;
+            sentPre = 'Paid ' + _fmt(paid) + ' — '; sentBold = _fmt(over) + ' more'; sentSuf = ' than the ' + _fmt(agreed) + ' agreed';
+            sentColor = '#b4453a'; boldColor = '#b4453a';
+            rightAmt = '+' + _fmt(over); rightLbl = '⚠ Over agreed';
+            rightColor = '#b4453a'; amtColor = '#b4453a'; barColor = '#b4453a'; barPct = 100;
+        } else if (st.status === 'Completed') {
+            sentPre = 'Paid ' + _fmt(paid) + ' of ' + _fmt(agreed) + ' — nothing left'; sentBold = '';
+            rightAmt = _fmt(0); rightLbl = '✓ Fully paid';
+            rightColor = '#0f6342'; amtColor = '#0f6342'; barColor = '#157a52'; barPct = 100;
+        } else {
+            sentPre = 'Paid ' + _fmt(paid) + ' of ' + _fmt(agreed) + ' — '; sentBold = _fmt(remaining) + ' to go';
+            rightAmt = _fmt(remaining); rightLbl = 'In progress · ' + pct.toFixed(0) + '%';
+            rightColor = '#1d4ed8'; amtColor = '#1c1c1a'; barColor = '#3b82f6'; barPct = Math.min(100, pct);
+        }
+        return '<div onclick="' + ledgerFn + '(\'' + c.id + '\')" style="display:flex;align-items:center;gap:16px;padding:14px 6px;border-top:1px solid #f0efec;cursor:pointer;border-radius:8px;transition:background .12s;"'
+            + ' onmouseover="this.style.background=\'#faf9f7\'" onmouseout="this.style.background=\'\'">'
+            + '<div style="flex:1;min-width:0;">'
+            + '<div style="display:flex;align-items:center;gap:9px;">'
+            + '<span style="font-size:14.5px;font-weight:700;color:#1c1c1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + _esc(c.scope || 'Untitled job') + '</span>'
+            + '<span style="font-size:9.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:2px 8px;border-radius:20px;flex:none;background:' + pill.bg + ';color:' + pill.col + ';">' + pill.lbl + '</span>'
+            + '</div>'
+            + '<div style="font-size:12.5px;color:' + sentColor + ';margin-top:6px;">' + sentPre + '<b style="font-weight:700;color:' + boldColor + ';">' + sentBold + '</b>' + sentSuf + '</div>'
+            + '<div style="height:6px;max-width:260px;background:#eef0ec;border-radius:4px;overflow:hidden;margin-top:8px;"><div style="height:100%;border-radius:4px;background:' + barColor + ';width:' + barPct.toFixed(1) + '%;"></div></div>'
+            + '</div>'
+            + '<div style="text-align:right;flex:none;"><div style="font-size:20px;font-weight:700;color:' + amtColor + ';">' + rightAmt + '</div>'
+            + '<div style="font-size:11px;font-weight:600;color:' + rightColor + ';margin-top:3px;">' + rightLbl + '</div></div>'
+            + '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c4c9d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;"><polyline points="9 18 15 12 9 6"/></svg>'
+            + '</div>';
+    };
+
+    const sectionsHtml = names.length ? names.map(name => {
+        const cs = byW[name].slice().sort((a, b) => (a.scope || '').localeCompare(b.scope || ''));
+        const initial = (name.replace(/[^A-Za-z0-9]/g, '')[0] || '—').toUpperCase();
+        return '<div style="padding-top:4px;">'
+            + '<div style="display:flex;align-items:center;gap:9px;padding:18px 0 2px;">'
+            + '<span style="flex:none;width:28px;height:28px;border-radius:50%;background:' + t.soft + ';color:' + t.accentDark + ';font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;">' + _esc(initial) + '</span>'
+            + '<span style="font-size:14px;font-weight:700;color:' + t.accentDark + ';">' + _esc(name) + '</span>'
+            + '<span style="font-size:12px;font-weight:500;color:#9b9a94;">· ' + cs.length + ' job' + (cs.length === 1 ? '' : 's') + '</span>'
+            + '</div>'
+            + cs.map(rowHtml).join('')
+            + '</div>';
+    }).join('') : ('<div style="padding:34px 6px;text-align:center;color:#9b9a94;font-size:13.5px;">No ' + (isLabor ? 'labor' : 'out source') + ' contracts yet. Click “＋ ' + newBtnLbl + '” to cap a ' + (isLabor ? 'worker’s' : 'vendor’s') + ' job — then tag a daily ' + (isLabor ? 'Labor' : 'Out Source') + ' entry to it.</div>');
+
+    root.innerHTML =
+        '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;">'
+        + '<div><div style="font-size:22px;font-weight:700;color:#1c1c1a;letter-spacing:-0.01em;">Contracts</div>'
+        + '<div style="font-size:13px;color:#8a8983;margin-top:3px;">In-house labor and outsourced jobs — both capped agreements, paid through your daily entries.</div></div>'
+        + '<button type="button" onclick="' + newFn + '" style="flex:none;background:' + t.accent + ';color:#fff;border:none;border-radius:9px;padding:10px 16px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;transition:filter .15s;" onmouseover="this.style.filter=\'brightness(1.08)\'" onmouseout="this.style.filter=\'\'">＋ ' + newBtnLbl + '</button>'
+        + '</div>'
+        // segmented switch
+        + '<div style="display:flex;gap:8px;background:#f6f5f2;border:1px solid #ecebe6;border-radius:13px;padding:5px;margin-bottom:6px;max-width:480px;">'
+        + '<button type="button" onclick="pmContractSeg(\'labor\')" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:10px;padding:11px;cursor:pointer;font-size:13.5px;font-weight:700;font-family:inherit;transition:all .15s;' + lab + '">'
+        + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>'
+        + 'Labor <span style="font-size:11px;font-weight:700;opacity:.85;background:rgba(0,0,0,.06);border-radius:20px;padding:1px 7px;">' + laborN + '</span></button>'
+        + '<button type="button" onclick="pmContractSeg(\'outsource\')" style="flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:10px;padding:11px;cursor:pointer;font-size:13.5px;font-weight:700;font-family:inherit;transition:all .15s;' + out + '">'
+        + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>'
+        + 'Out Source <span style="font-size:11px;font-weight:700;opacity:.85;background:rgba(0,0,0,.06);border-radius:20px;padding:1px 7px;">' + outN + '</span></button>'
+        + '</div>'
+        // summary banner
+        + '<div style="margin:16px 0 4px;background:' + t.bannerBg + ';border:1px solid ' + t.bannerBorder + ';border-radius:12px;padding:15px 18px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;">'
+        + '<div style="flex:1;min-width:220px;">'
+        + '<div style="font-size:13px;color:#3a3a36;">Across <b style="color:#1c1c1a;">' + workersLbl + '</b> and <b style="color:#1c1c1a;">' + jobsLbl + '</b>, you still owe</div>'
+        + '<div style="font-size:26px;font-weight:700;color:' + t.accentDark + ';margin-top:2px;">' + _fmt(totRem) + ' <span style="font-size:13px;font-weight:500;color:#8a8983;">of ' + _fmt(totAgreed) + ' agreed</span></div>'
+        + '</div>'
+        + '<div style="flex:none;width:180px;">'
+        + '<div style="height:10px;background:' + t.barTrack + ';border-radius:6px;overflow:hidden;"><div style="height:100%;border-radius:6px;background:' + t.accent + ';width:' + totPct + '%;"></div></div>'
+        + '<div style="font-size:11.5px;font-weight:600;color:' + t.accentDark + ';margin-top:6px;text-align:right;">' + totPct + '% paid so far</div>'
+        + '</div></div>'
+        // sections
+        + sectionsHtml;
+}
