@@ -66,7 +66,7 @@ function tsToISO(v) {
 // children  : { camelArr: { table, fk, orderBy?, rename?, idCol? } }
 const OWNER = { userId: 'owner_id' };
 const REG = {
-  users:                    { table: 'profiles', kind: 'admin',               rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt'] },
+  users:                    { table: 'profiles', kind: 'admin',               rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt', 'termsAcceptedAt'] },
   clientUsers:              { table: 'profiles', kind: 'client',              rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt'] },
   constructionClientUsers:  { table: 'profiles', kind: 'construction_client', rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt', 'agreementAcceptedAt'] },
 
@@ -127,6 +127,7 @@ const SUBREG = {
   'constructionProjects/milestones':           { table: 'milestones',            parentField: 'project_id', ts: ['createdAt', 'updatedAt'], jsonbData: true },
   'constructionProjects/accomplishmentReports':{ table: 'accomplishment_reports',parentField: 'project_id', ts: ['createdAt', 'updatedAt'], jsonbData: true },
   'constructionProjects/walkthroughs':         { table: 'walkthroughs',          parentField: 'project_id', ts: ['createdAt', 'updatedAt'], jsonbData: true },
+  'constructionProjects/partnerAgreements':    { table: 'partner_agreements',    parentField: 'project_id', ts: ['createdAt', 'updatedAt'], jsonbData: true },
   'notifications/items':                        { table: 'notifications',         parentField: 'user_id',    ts: ['createdAt'] },
 };
 

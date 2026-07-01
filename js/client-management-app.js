@@ -100,6 +100,13 @@ auth.onAuthStateChanged(async function(user) {
         }
 
         cmCurrentUser = user; window.currentUser = user;
+        // In the PARTNER portal, flag this account as a partner in the DB (once) so
+        // the per-project gate can be ENFORCED by RLS. Non-blocking + idempotent.
+        if (cmIsPartner()) {
+            try {
+                await db.collection(CM_COLLECTION).doc(user.uid).update({ isPartner: true });
+            } catch (e) { console.warn('is_partner flag set skipped:', e.message); }
+        }
         try {
             await Promise.all([cmLoadProfile(user), cmLoadProjectData(user)]);
             cmCheckAgreement();
@@ -280,10 +287,6 @@ async function cmLoadProjectDetails(projectId) {
                 const tb = b.weekEndingDate?.toMillis?.() ?? (b.weekEndingDate ? new Date(b.weekEndingDate).getTime() : 0);
                 return tb - ta;
             });
-            // TEMP DIAGNOSTIC — verify combined data is loading. Remove once confirmed.
-            console.log('[partnership] project:', cmProjectData.id, cmProjectData.projectName || cmProjectData.clientName,
-                '| bills loaded:', cmWeeklyBills.length,
-                '| per-bill:', cmWeeklyBills.map(b => ({ week: b.weekEndingDate, status: b.status, labor: b.labor, materials: b.materials, combined: b.combined, hasEntries: Array.isArray(b.entries), bothEntries: Array.isArray(b.entries) ? b.entries.filter(e => e.type === 'both') : null })));
 
             // Load this project's payment requests (for the Net cash KPI — paid to date).
             // Own try/catch so an RLS denial never aborts the rest of the dashboard.
@@ -479,7 +482,17 @@ window.cmSelectProject = async function(id) {
 };
 
 // ── Enter Dashboard ──────────────────────────────────────────────
-function cmEnterDashboard() {
+async function cmEnterDashboard() {
+    // ── Per-project terms gate (PARTNERS ONLY) ──
+    // Before a partner sees a project's information, they must sign THIS project's
+    // Terms & Conditions. Runs here (after login + account agreement + project
+    // selection), so it never collides with the account-level agreement modal.
+    if (cmProjectData && cmProjectData.id && cmIsPartner()) {
+        let accepted = true;
+        try { accepted = await cmPartnerHasAcceptedProject(cmProjectData.id); } catch (_) { accepted = true; }
+        if (!accepted) { cmOpenProjectTerms(cmProjectData); return; }
+    }
+
     document.getElementById('login-page').classList.remove('active');
     document.getElementById('project-picker-page')?.classList.remove('active');
     document.getElementById('dashboard-page').classList.add('active');
@@ -4263,15 +4276,25 @@ function cmRenderWeeklyPreview() {
 // ══════════════════════════════════════════════════════════════════
 
 function cmCheckAgreement() {
-    // Partners are monitoring-only and are not a billing party — they never see
-    // the Cost-Plus (15% fee / payment) agreement; go straight to the dashboard.
-    if (cmIsPartner()) { cmRouteAfterLogin(); return; }
+    // First-login agreement gate — applies to BOTH clients and partners. The user
+    // cannot reach the dashboard until they read it, tick the box, type their name
+    // as a digital signature, and Accept.
     const accepted = cmCurrentProfile?.agreementAccepted === true;
     if (accepted) {
         cmRouteAfterLogin();
     } else {
         const modal = document.getElementById('cm-agreement-modal');
         if (modal) modal.style.display = '';
+        // Initialise the drawing pad once the modal is visible (needs real size).
+        setTimeout(cmInitSignaturePad, 60);
+        // Pre-fill the signature hint with the account's name (editable).
+        const sig = document.getElementById('cm-agreement-signature');
+        if (sig && !sig.value) {
+            const nm = cmCurrentProfile
+                ? [cmCurrentProfile.firstName, cmCurrentProfile.lastName].filter(Boolean).join(' ').trim()
+                : '';
+            if (nm) sig.setAttribute('data-expected', nm);
+        }
     }
 }
 
@@ -4284,18 +4307,118 @@ window.cmCloseMvpModal = function() {
     if (el) { el.style.display = 'none'; document.body.style.overflow = ''; }
 };
 
-window.cmToggleAgreementBtn = function() {
-    const cb  = document.getElementById('cm-agreement-checkbox');
-    const btn = document.getElementById('cm-agreement-accept-btn');
-    if (btn) btn.disabled = !(cb && cb.checked);
+// ── Signature pad (draw with mouse/finger) ───────────────────────────────
+let _cmSigPad = { canvas: null, ctx: null, drawing: false, hasInk: false, bound: false };
+function cmInitSignaturePad() {
+    const canvas = document.getElementById('cm-signature-pad');
+    if (!canvas) return;
+    // Size the backing store to the element's CSS size (crisp lines, correct coords).
+    const rect = canvas.getBoundingClientRect();
+    const dpr  = window.devicePixelRatio || 1;
+    canvas.width  = Math.max(1, Math.round(rect.width  * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111827';
+    _cmSigPad.canvas = canvas; _cmSigPad.ctx = ctx; _cmSigPad.hasInk = false;
+
+    if (_cmSigPad.bound) return;   // only attach listeners once
+    _cmSigPad.bound = true;
+    const pos = (e) => {
+        const r = canvas.getBoundingClientRect();
+        const p = e.touches ? e.touches[0] : e;
+        return { x: p.clientX - r.left, y: p.clientY - r.top };
+    };
+    const start = (e) => {
+        e.preventDefault();
+        _cmSigPad.drawing = true;
+        const { x, y } = pos(e); ctx.beginPath(); ctx.moveTo(x, y);
+        const hint = document.getElementById('cm-signature-hint');
+        if (hint) hint.style.display = 'none';
+    };
+    const move = (e) => {
+        if (!_cmSigPad.drawing) return;
+        e.preventDefault();
+        const { x, y } = pos(e); ctx.lineTo(x, y); ctx.stroke();
+        _cmSigPad.hasInk = true;
+        cmToggleAgreementBtn();
+    };
+    const end = () => { _cmSigPad.drawing = false; cmToggleAgreementBtn(); };
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', end);
+    canvas.addEventListener('touchstart', start, { passive: false });
+    canvas.addEventListener('touchmove',  move,  { passive: false });
+    canvas.addEventListener('touchend',   end);
+}
+window.cmClearSignature = function() {
+    const c = _cmSigPad.canvas, ctx = _cmSigPad.ctx;
+    if (c && ctx) ctx.clearRect(0, 0, c.width, c.height);
+    _cmSigPad.hasInk = false;
+    const hint = document.getElementById('cm-signature-hint');
+    if (hint) hint.style.display = '';
+    cmToggleAgreementBtn();
 };
 
+window.cmToggleAgreementBtn = function() {
+    const cb  = document.getElementById('cm-agreement-checkbox');
+    const sig = document.getElementById('cm-agreement-signature');
+    const btn = document.getElementById('cm-agreement-accept-btn');
+    // Enabled when the box is ticked AND a name is typed (≥2 characters). The
+    // drawn signature is captured too but is NOT a hard requirement, so a canvas
+    // init hiccup can never lock the user out of their portal.
+    const named = sig && sig.value.trim().length >= 2;
+    if (btn) btn.disabled = !((cb && cb.checked) && named);
+};
+
+// Best-effort client IP (optional — blank if the lookup is blocked/offline).
+// Fully guarded + 2.5s timeout so browser tracking-prevention can never hang
+// or break the agreement acceptance.
+async function cmFetchIp() {
+    try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 2500);
+        const r = await fetch('https://api.ipify.org?format=json', { cache: 'no-store', signal: ctrl.signal });
+        clearTimeout(t);
+        if (r && r.ok) { const j = await r.json(); return (j && j.ip) || ''; }
+    } catch (_) { /* offline / blocked / aborted → leave blank */ }
+    return '';
+}
+
 window.cmAcceptAgreement = async function() {
-    const cb = document.getElementById('cm-agreement-checkbox');
+    const cb  = document.getElementById('cm-agreement-checkbox');
+    const sig = document.getElementById('cm-agreement-signature');
+    const signature = sig ? sig.value.trim() : '';
     if (!cb?.checked) return;
+    if (signature.trim().length < 2) {
+        alert('Please type your name as your printed signature.');
+        return;
+    }
 
     const btn = document.getElementById('cm-agreement-accept-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+    // Optional client IP — fully non-blocking (browsers may block the lookup).
+    let ip = '';
+    try { ip = await cmFetchIp(); } catch (_) { ip = ''; }
+
+    // Upload the drawn signature image to the 'uploads' bucket; store the URL.
+    // Only when the user actually drew something — otherwise skip (typed name is
+    // enough). Never blocks acceptance if the upload fails.
+    let signatureImageUrl = '';
+    try {
+        if (_cmSigPad.hasInk && _cmSigPad.canvas && typeof storage !== 'undefined' && cmCurrentUser) {
+            const blob = await new Promise(res => _cmSigPad.canvas.toBlob(res, 'image/png'));
+            if (blob) {
+                const path = `signatures/${cmCurrentUser.uid}_${Date.now()}.png`;
+                const ref = storage.ref(path);
+                await ref.put(blob);
+                signatureImageUrl = await ref.getDownloadURL();
+            }
+        }
+    } catch (upErr) {
+        console.warn('Signature image upload failed (continuing):', upErr.message);
+    }
 
     let saveError = null;
     try {
@@ -4308,11 +4431,25 @@ window.cmAcceptAgreement = async function() {
             // session. user-navigator.js:714 also seeds the field here when
             // the construction client account is created.
             await db.collection(CM_COLLECTION).doc(cmCurrentUser.uid).update({
-                agreementAccepted   : true,
-                agreementAcceptedAt : firebase.firestore.FieldValue.serverTimestamp()
+                agreementAccepted      : true,
+                agreementAcceptedAt    : firebase.firestore.FieldValue.serverTimestamp(),
+                agreementSignature     : signature,
+                agreementSignatureImage: signatureImageUrl || '',
+                agreementIp            : ip || ''
             });
         }
-        if (cmCurrentProfile) cmCurrentProfile.agreementAccepted = true;
+        if (cmCurrentProfile) {
+            cmCurrentProfile.agreementAccepted       = true;
+            cmCurrentProfile.agreementSignature      = signature;
+            cmCurrentProfile.agreementSignatureImage = signatureImageUrl || '';
+        }
+        // Flip the linked project Pending Agreement → Ready to Start.
+        if (cmProjectData && cmProjectData.id && cmProjectData.status === 'pending_agreement') {
+            try {
+                await db.collection('constructionProjects').doc(cmProjectData.id).update({ status: 'ready' });
+                cmProjectData.status = 'ready';
+            } catch (pe) { console.warn('Project status update skipped:', pe.message); }
+        }
     } catch (e) {
         saveError = e;
         console.warn('Agreement save error:', e.message);
@@ -4329,6 +4466,262 @@ window.cmAcceptAgreement = async function() {
     const modal = document.getElementById('cm-agreement-modal');
     if (modal) modal.style.display = 'none';
     cmRouteAfterLogin();
+};
+
+// ── Signed agreement PDF (print-to-PDF; no external library) ──────────────
+// Generates a locked, read-only agreement document filled with the recorded
+// signature + date. Callable by the client/partner after signing. The admin
+// version (user-navigator) passes an explicit profile/project to print any
+// client's signed copy.
+window.cmDownloadAgreementPdf = function(opts) {
+    const o = opts || {};
+    const prof = o.profile || cmCurrentProfile || {};
+    const proj = o.project || cmProjectData || {};
+    if (typeof window.dacsAgreementPdf !== 'function') { alert('Print utility not loaded.'); return; }
+    const clientName = [prof.firstName, prof.lastName].filter(Boolean).join(' ').trim() || prof.email || '—';
+    const signature  = prof.agreementSignature || clientName;
+    const signedAt   = prof.agreementAcceptedAt
+        ? (prof.agreementAcceptedAt.toDate ? prof.agreementAcceptedAt.toDate() : new Date(prof.agreementAcceptedAt))
+        : new Date();
+    const dateStr = isNaN(signedAt) ? '' : signedAt.toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' });
+    const dayStr  = isNaN(signedAt) ? '' : signedAt.toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
+    const projectTitle = proj.projectName || proj.clientName || 'Construction Project';
+    const contract = proj.budget != null ? '₱' + Number(proj.budget).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+    const feePct   = (proj.managementFeePct != null ? proj.managementFeePct : 15) + '%';
+    window.dacsAgreementPdf({
+        title: 'Cost-Plus Project Management Agreement',
+        subtitle: 'Client Agreement',
+        preamble: 'This Agreement is entered into on ' + (dayStr || '____________') + ' between DAC’s Building Design Services (the “Manager”) and ' + clientName + ' (the “Client”) for the construction project identified below. By electronically signing this Agreement, the Client acknowledges having read, understood, and voluntarily accepted all terms and conditions herein.',
+        parties: [
+            { label: 'Client', value: clientName },
+            { label: 'Project', value: projectTitle },
+            { label: 'Contract Value', value: contract },
+            { label: 'Management Fee', value: feePct + ' on direct costs' },
+            { label: 'Start Date', value: proj.startDate || '—' },
+            { label: 'Planned Completion', value: proj.plannedEndDate || '—' }
+        ],
+        sections: [
+            { heading: 'Scope of Work', body: 'DAC’s Building Design Services shall manage the construction works for the above project, procuring materials and labor and reporting actual recorded costs to the Client on a weekly basis.' },
+            { heading: 'Payment Terms', body: 'The Client shall pay the actual direct costs (labor + materials) plus a management fee of ' + feePct + ', billed weekly. Payment is due each Friday for the corresponding week’s recorded costs.' },
+            { heading: 'Responsibilities', body: 'DAC’s shall record all costs transparently and provide supporting documents. The Client shall settle weekly billings promptly and may fund a revolving fund for minor site purchases.' },
+            { heading: 'Terms & Conditions', body: 'Prices may vary with market conditions. Quoted estimates are not guaranteed fixed prices. Either party may terminate per the termination clause; consumed costs and the equivalent management fee are settled on termination.' }
+        ],
+        signature,
+        signatureImage: prof.agreementSignatureImage || '',
+        dateStr,
+        signerLabel: 'Client',
+        ip: prof.agreementIp || ''
+    });
+};
+
+// ══════════════════════════════════════════════════════════════════
+// PER-PROJECT TERMS GATE (partners must sign each project's terms)
+// ══════════════════════════════════════════════════════════════════
+let _cmPtSig = { canvas: null, ctx: null, drawing: false, hasInk: false, bound: false };
+
+// Has this partner already accepted the given project's terms?
+async function cmPartnerHasAcceptedProject(projectId) {
+    try {
+        const uid = cmCurrentUser && cmCurrentUser.uid;
+        if (!uid) return true;   // no user → don't block
+        const snap = await db.collection('constructionProjects').doc(projectId)
+            .collection('partnerAgreements')
+            .where('partnerUid', '==', uid)
+            .get();
+        return !snap.empty;
+    } catch (e) {
+        console.warn('Project-terms check failed (allowing through):', e.message);
+        return true;             // never hard-block on a read error
+    }
+}
+
+function cmOpenProjectTerms(project) {
+    const modal = document.getElementById('cm-projterms-modal');
+    if (!modal) return;
+    const nameEl = document.getElementById('cm-projterms-projectname');
+    if (nameEl) nameEl.textContent = 'For project: ' + (project.projectName || project.clientName || 'this project');
+
+    const pdfUrl = project.partnerTermsPdfUrl && project.partnerTermsPdfUrl.trim();
+
+    // reset inputs
+    const cb = document.getElementById('cm-projterms-checkbox'); if (cb) cb.checked = false;
+    const sig = document.getElementById('cm-projterms-signature'); if (sig) sig.value = '';
+    const btn = document.getElementById('cm-projterms-accept-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Accept & View Project'; }
+
+    // No special sizing needed — PDF mode just shows an "Open PDF" button now.
+    const card = modal.querySelector('.cm-agreement-card');
+    if (card) card.classList.remove('pdf-mode');
+
+    if (pdfUrl) {
+        // PDF mode: show a single "Open Terms (PDF)" button; no read gate — the
+        // checkbox and signature are available right away.
+        cmProjTermsSetReadGate(false);
+        cmProjTermsRenderPdf(pdfUrl);
+    } else {
+        // Text mode (no PDF): show the terms text.
+        cmProjTermsSetReadGate(false);
+        const textEl = document.getElementById('cm-projterms-text');
+        if (textEl) {
+            textEl.innerHTML = '';
+            textEl.style.whiteSpace = 'pre-wrap';
+            textEl.textContent = (project.partnerTerms && project.partnerTerms.trim())
+                ? project.partnerTerms
+                : 'By viewing this project you agree to keep its information confidential, to use it only for the purposes of this partnership, and to abide by DAC’s Building Design Services’ standard Cost-Plus terms and policies. Prices may vary with market conditions; figures reflect actual recorded costs.';
+        }
+    }
+
+    modal.style.display = '';
+    setTimeout(cmProjTermsInitPad, 60);
+}
+
+// Lock/unlock the read gate. When locked, the agree-checkbox is disabled and a
+// hint tells the partner to open and read the PDF first.
+function cmProjTermsSetReadGate(locked) {
+    const cb   = document.getElementById('cm-projterms-checkbox');
+    const wrap = cb ? cb.closest('.cm-agreement-check-wrap') : null;
+    const hint = document.getElementById('cm-projterms-readhint');
+    if (cb) {
+        cb.disabled = !!locked;
+        if (locked) cb.checked = false;
+    }
+    if (wrap) { wrap.style.opacity = locked ? '0.5' : ''; wrap.style.pointerEvents = locked ? 'none' : ''; }
+    if (hint) hint.style.display = locked ? '' : 'none';
+    if (typeof cmProjTermsToggleBtn === 'function') cmProjTermsToggleBtn();
+}
+
+// Show a single "Open Terms & Conditions (PDF)" button — the document opens
+// full-screen in a new tab. No inline preview, no read gate.
+function cmProjTermsRenderPdf(url) {
+    const textEl = document.getElementById('cm-projterms-text');
+    if (!textEl) return;
+    textEl.style.whiteSpace = 'normal';
+    textEl.innerHTML =
+        '<div style="padding:8px 0 4px;font-size:13.5px;color:#374151;margin-bottom:12px;">Read the project’s Terms &amp; Conditions:</div>'
+        + '<a href="' + cmEsc(url) + '" target="_blank" rel="noopener" '
+        + 'style="display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border:1.5px solid #111827;border-radius:9px;background:#fff;color:#111827;font-weight:700;font-size:14px;cursor:pointer;text-decoration:none;font-family:inherit;">'
+        + '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="vertical-align:middle;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
+        + 'Open Terms &amp; Conditions (PDF)</a>';
+}
+
+// Leave the terms modal without accepting. Multiple projects → return to the
+// picker so they can choose a different one; single project → sign out.
+window.cmProjTermsBack = function() {
+    const modal = document.getElementById('cm-projterms-modal');
+    if (modal) modal.style.display = 'none';
+    if (cmProjects.length > 1) {
+        cmProjectData = null;
+        cmShowProjectPicker();
+    } else {
+        doLogout();
+    }
+};
+
+function cmProjTermsInitPad() {
+    const canvas = document.getElementById('cm-projterms-pad');
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const dpr  = window.devicePixelRatio || 1;
+    canvas.width  = Math.max(1, Math.round(rect.width  * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111827';
+    _cmPtSig.canvas = canvas; _cmPtSig.ctx = ctx; _cmPtSig.hasInk = false;
+    const hint = document.getElementById('cm-projterms-hint'); if (hint) hint.style.display = '';
+    if (_cmPtSig.bound) return;
+    _cmPtSig.bound = true;
+    const pos = (e) => { const r = canvas.getBoundingClientRect(); const p = e.touches ? e.touches[0] : e; return { x: p.clientX - r.left, y: p.clientY - r.top }; };
+    const start = (e) => { e.preventDefault(); _cmPtSig.drawing = true; const { x, y } = pos(e); ctx.beginPath(); ctx.moveTo(x, y); const h = document.getElementById('cm-projterms-hint'); if (h) h.style.display = 'none'; };
+    const move  = (e) => { if (!_cmPtSig.drawing) return; e.preventDefault(); const { x, y } = pos(e); ctx.lineTo(x, y); ctx.stroke(); _cmPtSig.hasInk = true; };
+    const end   = () => { _cmPtSig.drawing = false; };
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', end);
+    canvas.addEventListener('touchstart', start, { passive: false });
+    canvas.addEventListener('touchmove',  move,  { passive: false });
+    canvas.addEventListener('touchend',   end);
+}
+
+window.cmProjTermsClearSig = function() {
+    const c = _cmPtSig.canvas, ctx = _cmPtSig.ctx;
+    if (c && ctx) ctx.clearRect(0, 0, c.width, c.height);
+    _cmPtSig.hasInk = false;
+    const hint = document.getElementById('cm-projterms-hint'); if (hint) hint.style.display = '';
+};
+
+window.cmProjTermsToggleBtn = function() {
+    const cb  = document.getElementById('cm-projterms-checkbox');
+    const sig = document.getElementById('cm-projterms-signature');
+    const btn = document.getElementById('cm-projterms-accept-btn');
+    const named = sig && sig.value.trim().length >= 2;
+    if (btn) btn.disabled = !((cb && cb.checked) && named);
+};
+
+window.cmProjTermsAccept = async function() {
+    const cb  = document.getElementById('cm-projterms-checkbox');
+    const sig = document.getElementById('cm-projterms-signature');
+    const signature = sig ? sig.value.trim() : '';
+    if (!cb?.checked) return;
+    if (signature.length < 2) { alert('Please type your name as your signature.'); return; }
+    if (!cmProjectData || !cmProjectData.id) return;
+
+    const btn = document.getElementById('cm-projterms-accept-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+    let ip = ''; try { ip = await cmFetchIp(); } catch (_) { ip = ''; }
+
+    // Upload the drawn signature (optional, non-blocking).
+    let signatureImageUrl = '';
+    try {
+        if (_cmPtSig.hasInk && _cmPtSig.canvas && typeof storage !== 'undefined' && cmCurrentUser) {
+            const blob = await new Promise(res => _cmPtSig.canvas.toBlob(res, 'image/png'));
+            if (blob) {
+                const path = `signatures/proj_${cmProjectData.id}_${cmCurrentUser.uid}_${Date.now()}.png`;
+                const ref = storage.ref(path);
+                await ref.put(blob);
+                signatureImageUrl = await ref.getDownloadURL();
+            }
+        }
+    } catch (upErr) { console.warn('Project signature upload failed (continuing):', upErr.message); }
+
+    try {
+        const uid = cmCurrentUser ? cmCurrentUser.uid : null;
+        const col = db.collection('constructionProjects').doc(cmProjectData.id).collection('partnerAgreements');
+        const payload = {
+            partnerUid     : uid,
+            partnerEmail   : cmCurrentUser ? (cmCurrentUser.email || '') : '',
+            signature      : signature,
+            signatureImage : signatureImageUrl || '',
+            termsPdfUrl    : (cmProjectData && cmProjectData.partnerTermsPdfUrl)  || '',
+            termsPdfName   : (cmProjectData && cmProjectData.partnerTermsPdfName) || '',
+            ip             : ip || '',
+            acceptedAt     : firebase.firestore.FieldValue.serverTimestamp()
+        };
+        // Upsert: one row per partner per project. Update the existing row if this
+        // partner already signed (re-sign), otherwise create a fresh one.
+        let existingId = null;
+        if (uid) {
+            try {
+                const prior = await col.where('partnerUid', '==', uid).get();
+                if (!prior.empty) existingId = prior.docs[0].id;
+            } catch (_) { /* fall through to add */ }
+        }
+        if (existingId) {
+            await col.doc(existingId).update(payload);
+        } else {
+            payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+            await col.add(payload);
+        }
+    } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Accept & View Project'; }
+        alert('Could not save your acceptance: ' + (e.message || e) + '\n\nPlease try again.');
+        return;
+    }
+
+    const modal = document.getElementById('cm-projterms-modal');
+    if (modal) modal.style.display = 'none';
+    // Enter the dashboard now — the gate will pass this time (just accepted).
+    cmEnterDashboard();
 };
 
 // ══════════════════════════════════════════════════════════════════
