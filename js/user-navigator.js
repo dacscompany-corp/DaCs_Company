@@ -315,6 +315,91 @@
         }
     };
 
+    // ── Employee Terms & Conditions ───────────────────────────
+
+    const EMP_TERMS_DEFAULT =
+`EMPLOYMENT TERMS & CONDITIONS
+
+1. Employment. This account grants access to DaCs Company systems for the purpose of performing your assigned duties. Access is granted based on your role and may be changed or revoked at any time.
+
+2. Confidentiality. You agree to keep all company, client, and project information confidential and to use it only for authorized work purposes.
+
+3. Acceptable Use. You agree to use company systems responsibly, to protect your login credentials, and not to share your account with anyone.
+
+4. Conduct. You agree to follow all company policies, applicable laws, and to act honestly and professionally in your work.
+
+5. Company Property. All work products, data, and materials created in the course of your employment remain the property of DaCs Company.
+
+6. Termination. Your access may be suspended or terminated upon the end of your employment or a violation of these terms.
+
+By agreeing, you confirm that you have read, understood, and accept these Terms & Conditions.`;
+
+    let _empTermsCache = null;
+
+    async function _loadEmployeeTerms() {
+        if (_empTermsCache !== null) return _empTermsCache;
+        try {
+            const doc = await db.collection('settings').doc('employeeTerms').get();
+            const data = doc && doc.exists ? doc.data() : null;
+            _empTermsCache = (data && typeof data.text === 'string' && data.text.trim())
+                ? data.text
+                : EMP_TERMS_DEFAULT;
+        } catch (err) {
+            console.error('_loadEmployeeTerms:', err);
+            _empTermsCache = EMP_TERMS_DEFAULT;
+        }
+        return _empTermsCache;
+    }
+
+    window.unOpenEmployeeTermsModal = async function () {
+        const modal = document.getElementById('unEmployeeTermsModal');
+        if (!modal) return;
+        const errEl = document.getElementById('emp-terms-editor-err');
+        if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+        const editor = document.getElementById('emp-terms-editor');
+        if (editor) { editor.value = 'Loading…'; editor.disabled = true; }
+        modal.style.display = 'flex';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+        const text = await _loadEmployeeTerms();
+        if (editor) { editor.value = text; editor.disabled = false; editor.focus(); }
+    };
+
+    window.unCloseEmployeeTermsModal = function () {
+        const modal = document.getElementById('unEmployeeTermsModal');
+        if (modal) modal.style.display = 'none';
+    };
+
+    window.unSaveEmployeeTerms = async function () {
+        const editor = document.getElementById('emp-terms-editor');
+        const errEl  = document.getElementById('emp-terms-editor-err');
+        if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+        const text = (editor?.value || '').trim();
+        if (!text) {
+            if (errEl) { errEl.textContent = 'The terms text cannot be empty.'; errEl.style.display = 'block'; }
+            return;
+        }
+        const btn = document.getElementById('emp-terms-save-btn');
+        if (btn) { btn.disabled = true; btn.innerHTML = '<div class="un-loading-spinner" style="width:14px;height:14px;border-width:2px;margin-right:6px;display:inline-block;"></div>Saving…'; }
+        try {
+            await db.collection('settings').doc('employeeTerms').set({
+                text,
+                updatedAt: new Date().toISOString()
+            });
+            _empTermsCache = text;
+            unCloseEmployeeTermsModal();
+            _showSuccessBanner('Employee Terms & Conditions saved.');
+        } catch (err) {
+            console.error('unSaveEmployeeTerms:', err);
+            if (errEl) { errEl.textContent = 'Could not save. Please try again.'; errEl.style.display = 'block'; }
+        } finally {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="save" style="width:14px;height:14px;"></i> Save Terms';
+                if (typeof lucide !== 'undefined') lucide.createIcons();
+            }
+        }
+    };
+
     // ── Add Employee Modal ────────────────────────────────────
 
     window.unOpenAddEmployeeModal = function () {
@@ -329,10 +414,17 @@
         const roleEl = document.getElementById('emp-create-role');
         if (roleEl) roleEl.value = '';
         ['err-emp-firstname','err-emp-lastname','err-emp-email','err-emp-role',
-         'err-emp-password','err-emp-confirm','emp-create-general-err'].forEach(id => {
+         'err-emp-password','err-emp-confirm','err-emp-terms','emp-create-general-err'].forEach(id => {
             const el = document.getElementById(id);
             if (el) { el.style.display = 'none'; el.textContent = ''; }
         });
+        const agreeEl = document.getElementById('emp-create-terms-agree');
+        if (agreeEl) agreeEl.checked = false;
+        const termsBox = document.getElementById('emp-create-terms-box');
+        if (termsBox) {
+            termsBox.textContent = 'Loading terms…';
+            _loadEmployeeTerms().then(text => { termsBox.textContent = text; });
+        }
 
         modal.style.display = 'flex';
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -346,7 +438,7 @@
 
     window.unSubmitAddEmployee = async function () {
         ['err-emp-firstname','err-emp-lastname','err-emp-email','err-emp-role',
-         'err-emp-password','err-emp-confirm','emp-create-general-err'].forEach(id => {
+         'err-emp-password','err-emp-confirm','err-emp-terms','emp-create-general-err'].forEach(id => {
             const el = document.getElementById(id);
             if (el) { el.style.display = 'none'; el.textContent = ''; }
         });
@@ -357,6 +449,7 @@
         const role      = (document.getElementById('emp-create-role')?.value      || '');
         const password  = (document.getElementById('emp-create-password')?.value  || '');
         const confirm   = (document.getElementById('emp-create-confirm')?.value   || '');
+        const termsAgreed = !!document.getElementById('emp-create-terms-agree')?.checked;
 
         let valid = true;
         function _fe(id, msg) { const el = document.getElementById(id); if (el) { el.textContent = msg; el.style.display = 'block'; } valid = false; }
@@ -370,6 +463,7 @@
         else if (password.length < 8)                _fe('err-emp-password',  'Minimum 8 characters.');
         if (!confirm)                                _fe('err-emp-confirm',   'Please confirm the password.');
         else if (confirm !== password)               _fe('err-emp-confirm',   'Passwords don\'t match.');
+        if (!termsAgreed)                            _fe('err-emp-terms',     'The employee must agree to the Terms & Conditions.');
         if (!valid) return;
 
         const btn = document.getElementById('emp-create-submit-btn');
@@ -384,6 +478,19 @@
                 firstName, lastName, displayName: firstName + ' ' + lastName,
             });
 
+            // Record the Terms & Conditions acceptance on the new employee's profile.
+            const termsAcceptedAt = new Date();
+            const termsText = await _loadEmployeeTerms();
+            try {
+                await db.collection('users').doc(uid).update({
+                    termsAccepted  : true,
+                    termsAcceptedAt,
+                    termsSnapshot  : termsText
+                });
+            } catch (termsErr) {
+                console.error('record terms acceptance:', termsErr);
+            }
+
             // Add to local state and refresh table
             const newUser = {
                 uid,
@@ -392,7 +499,9 @@
                 email,
                 role,
                 status   : 'active',
-                createdAt: new Date()
+                createdAt: new Date(),
+                termsAccepted  : true,
+                termsAcceptedAt
             };
             _allUsers.unshift(newUser);
             _renderStats(_allUsers);
@@ -448,7 +557,11 @@
                     email    : d.email     || '',
                     status   : d.status    || 'active',
                     createdAt: d.createdAt || null,
-                    project  : projectByEmail[email] || ''
+                    project  : projectByEmail[email] || '',
+                    agreementAccepted  : d.agreementAccepted === true,
+                    agreementAcceptedAt: d.agreementAcceptedAt || null,
+                    agreementSignature : d.agreementSignature || '',
+                    agreementSignatureImage: d.agreementSignatureImage || ''
                 };
             }).sort((a, b) => _tsToMs(b.createdAt) - _tsToMs(a.createdAt));
 
@@ -487,15 +600,29 @@
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
+    function _agreementChip(c) {
+        if (c.agreementAccepted) {
+            const when = c.agreementAcceptedAt ? _formatDate(c.agreementAcceptedAt) : '';
+            return `<span title="Signed by ${_esc(c.agreementSignature || c.name || '')}${when ? ' on ' + _esc(when) : ''}" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 9px;border-radius:20px;white-space:nowrap;"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> Signed${when ? ' · ' + _esc(when) : ''}</span>`;
+        }
+        return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 9px;border-radius:20px;white-space:nowrap;"><i data-lucide="clock" style="width:12px;height:12px;"></i> Pending agreement</span>`;
+    }
+
     function _buildConRow(c) {
         const name    = c.name || _nameFromEmail(c.email);
         const initial = (name[0] || 'C').toUpperCase();
         const toggleBtn = c.status === 'active'
             ? `<button class="un-btn-toggle un-btn-deactivate" onclick="ccToggleStatus('${c.uid}','active')">Deactivate</button>`
             : `<button class="un-btn-toggle un-btn-activate"   onclick="ccToggleStatus('${c.uid}','inactive')">Activate</button>`;
-        const projectCell = c.project
+        const projectCell = (c.project
             ? `<span class="ca-project-tag">${_esc(c.project)}</span>`
-            : `<span style="color:#d1d5db;font-size:12px;">No project linked</span>`;
+            : `<span style="color:#d1d5db;font-size:12px;">No project linked</span>`)
+            + `<div style="margin-top:6px;">${_agreementChip(c)}</div>`;
+        const pdfBtn = c.agreementAccepted
+            ? `<button class="un-btn-view" onclick="ccViewAgreementPdf('${c.uid}')" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;" title="Download the client's signed agreement PDF">
+                    <i data-lucide="file-text" style="width:13px;height:13px;"></i> Agreement
+               </button>`
+            : '';
 
         return `<tr data-uid="${c.uid}">
             <td><div class="un-user-cell">
@@ -513,6 +640,7 @@
                 <button class="un-btn-view" onclick="ccOpenEditModal('${c.uid}')" style="background:#f0fdf4;color:#16a34a;border-color:#bbf7d0;">
                     <i data-lucide="pencil" style="width:13px;height:13px;"></i> Edit
                 </button>
+                ${pdfBtn}
                 ${toggleBtn}
             </div></td>
         </tr>`;
@@ -543,6 +671,49 @@
             console.error('ccToggleStatus:', err);
             alert('Could not update account status. Please try again.');
         }
+    };
+
+    // Admin: download a client's signed agreement PDF (self-contained — mirrors
+    // the portal's cmDownloadAgreementPdf so both sides produce the same locked doc).
+    window.ccViewAgreementPdf = function (uid) {
+        const c = _allConClients.find(x => x.uid === uid);
+        if (!c) return;
+        if (!c.agreementAccepted) { alert('This client has not signed the agreement yet.'); return; }
+        if (typeof window.dacsAgreementPdf !== 'function') { alert('Print utility not loaded.'); return; }
+        const email = (c.email || '').toLowerCase();
+        const proj  = (_conProjects || []).find(p => (p.clientEmail || '').toLowerCase() === email) || {};
+        const clientName = [c.firstName, c.lastName].filter(Boolean).join(' ').trim() || c.email || '—';
+        const signature  = c.agreementSignature || clientName;
+        const at = c.agreementAcceptedAt ? (c.agreementAcceptedAt.toDate ? c.agreementAcceptedAt.toDate() : new Date(c.agreementAcceptedAt)) : new Date();
+        const dateStr = isNaN(at) ? '' : at.toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' });
+        const dayStr  = isNaN(at) ? '' : at.toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
+        const projectTitle = proj.projectName || proj.clientName || 'Construction Project';
+        const contract = proj.budget != null ? '₱' + Number(proj.budget).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+        const feePct   = (proj.managementFeePct != null ? proj.managementFeePct : 15) + '%';
+        window.dacsAgreementPdf({
+            title: 'Cost-Plus Project Management Agreement',
+            subtitle: 'Client Agreement',
+            preamble: 'This Agreement is entered into on ' + (dayStr || '____________') + ' between DAC’s Building Design Services (the “Manager”) and ' + clientName + ' (the “Client”) for the construction project identified below. By electronically signing this Agreement, the Client acknowledges having read, understood, and voluntarily accepted all terms and conditions herein.',
+            parties: [
+                { label: 'Client', value: clientName },
+                { label: 'Project', value: projectTitle },
+                { label: 'Contract Value', value: contract },
+                { label: 'Management Fee', value: feePct + ' on direct costs' },
+                { label: 'Start Date', value: proj.startDate || '—' },
+                { label: 'Planned Completion', value: proj.plannedEndDate || '—' }
+            ],
+            sections: [
+                { heading: 'Scope of Work', body: 'DAC’s Building Design Services shall manage the construction works for the above project, procuring materials and labor and reporting actual recorded costs to the Client on a weekly basis.' },
+                { heading: 'Payment Terms', body: 'The Client shall pay the actual direct costs (labor + materials) plus a management fee of ' + feePct + ', billed weekly. Payment is due each Friday for the corresponding week’s recorded costs.' },
+                { heading: 'Responsibilities', body: 'DAC’s shall record all costs transparently and provide supporting documents. The Client shall settle weekly billings promptly and may fund a revolving fund for minor site purchases.' },
+                { heading: 'Terms & Conditions', body: 'Prices may vary with market conditions. Quoted estimates are not guaranteed fixed prices. Either party may terminate per the termination clause; consumed costs and the equivalent management fee are settled on termination.' }
+            ],
+            signature,
+            signatureImage: c.agreementSignatureImage || '',
+            dateStr,
+            signerLabel: 'Client',
+            ip: c.agreementIp || ''
+        });
     };
 
     window.ccViewProfile = function (uid) {
@@ -700,7 +871,11 @@
                 email,
                 status   : 'active',
                 createdAt: new Date(),
-                project  : linkedProject?.projectName || ''
+                project  : linkedProject?.projectName || '',
+                // New accounts start un-signed → show "Pending agreement" until they sign on first login.
+                agreementAccepted  : false,
+                agreementAcceptedAt: null,
+                agreementSignature : ''
             });
             _renderConStats(_allConClients);
             _renderConTable(_allConClients);

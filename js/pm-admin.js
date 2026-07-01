@@ -18,6 +18,9 @@ let _pmFundBills      = [];       // weeklyBills, for the per-week fund-vs-spent
 let _pmPayRequests    = [];
 let _pmCompanyBuyItemData = null;
 let _pmCompanyReceiptFile = null;
+let _pmTermsPdfFile   = null;     // newly-picked Terms & Conditions PDF (pending upload)
+let _pmTermsPdfUrl    = '';       // existing Terms PDF url when editing (kept if not replaced)
+let _pmTermsPdfName   = '';       // existing Terms PDF display name when editing
 let _pmProcFilter     = 'all';   // materials status filter: all | pending | bought
 let _pmOvBills        = [];       // weekly bills for the active project (overview date filter)
 let _pmOvReqs         = [];       // payment requests for the active project (overview date filter)
@@ -72,8 +75,8 @@ function _pmInitWorkspace() {
     const p = _pmActiveProject;
     _pmSet('ws-client-name', p.clientName || '—');
     _pmSet('ws-project-name', p.projectName || '');
-    const statusBadge = { active:'pm-badge-paid', 'on-hold':'pm-badge-partial', completed:'pm-badge-client', terminated:'pm-badge-terminated' };
-    const statusLabel = { active:'Active', 'on-hold':'On Hold', completed:'Completed', terminated:'Terminated' };
+    const statusBadge = { pending_agreement:'pm-badge-pending', ready:'pm-badge-client', active:'pm-badge-paid', 'on-hold':'pm-badge-partial', completed:'pm-badge-client', terminated:'pm-badge-terminated' };
+    const statusLabel = { pending_agreement:'Pending Agreement', ready:'Ready to Start', active:'Active', 'on-hold':'On Hold', completed:'Completed', terminated:'Terminated' };
     const el = document.getElementById('ws-status-badge');
     if (el) el.innerHTML = `<span class="pm-badge ${statusBadge[p.status]||'pm-badge-paid'}">${statusLabel[p.status]||'Active'}</span>`;
     // Reflect this project's nightly-notification state on the bell toggle.
@@ -1132,10 +1135,18 @@ async function _pmComputeProjectMetrics(p) {
     const m = { progressPct: 0, balanceDue: 0, thisFriday: 0, cadence: 'ontrack' };
     p._m = m;
     try {
-        const [msSnap, paySnap] = await Promise.all([
+        const [msSnap, paySnap, paSnap] = await Promise.all([
             db.collection('constructionProjects').doc(p.id).collection('milestones').get(),
-            db.collection('paymentRequests').where('constructionProjectId', '==', p.id).get()
+            db.collection('paymentRequests').where('constructionProjectId', '==', p.id).get(),
+            db.collection('constructionProjects').doc(p.id).collection('partnerAgreements').get()
+                .catch(() => ({ docs: [] }))   // never break the card if this read fails
         ]);
+
+        // Partner agreement: has any partner signed this project's terms?
+        const paDocs = (paSnap.docs || []).map(d => ({ id: d.id, ...d.data() }));
+        p._partner = paDocs.length
+            ? paDocs.sort((a, b) => (_pmTsMs(b.acceptedAt) - _pmTsMs(a.acceptedAt)))[0]
+            : null;
 
         // Progress: weighted by `percentage` of completed milestones; fall back to count.
         const ms = msSnap.docs.map(d => d.data());
@@ -1217,7 +1228,13 @@ function _pmRenderProjectCards(projects) {
               <div class="pm-card-stat-value num">${_fmt(m.thisFriday)}</div>
             </div>
           </div>
-          <div style="margin-top:13px;">${cadenceBadge[m.cadence] || cadenceBadge.ontrack}</div>
+          <div style="margin-top:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            ${cadenceBadge[m.cadence] || cadenceBadge.ontrack}
+            ${p._partner
+                ? `<span title="Partner signed the project terms on ${_esc(_pmTsDateStr(p._partner.acceptedAt))}${p._partner.signature ? ' — ' + _esc(p._partner.signature) : ''}" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 9px;border-radius:20px;"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> Partner signed · ${_esc(_pmTsDateStr(p._partner.acceptedAt))}</span>
+                   <button data-pm-action="partner-agreement" style="font-size:11px;font-weight:600;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;padding:3px 9px;cursor:pointer;"><i data-lucide="file-text" style="width:11px;height:11px;vertical-align:-1px;"></i> View</button>`
+                : `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 9px;border-radius:20px;"><i data-lucide="clock" style="width:12px;height:12px;"></i> Partner: pending</span>`}
+          </div>
           <button class="pm-card-open-btn" data-pm-action="open">
             <i data-lucide="arrow-right" style="width:14px;height:14px;"></i> Open Project
           </button>
@@ -1237,6 +1254,7 @@ function _pmRenderProjectCards(projects) {
                 case 'edit':   pmEditProject(p);     break;
                 case 'delete': pmDeleteProject(p.id); break;
                 case 'open':   pmOpenProject(p);     break;
+                case 'partner-agreement': _pmViewPartnerAgreement(p); break;
             }
         });
     }
@@ -1267,15 +1285,72 @@ window.pmOpenProjectById = async function(id, tab) {
     } catch (_) { return false; }
 };
 
+// ── Terms & Conditions PDF (per-project) ─────────────────────────
+// Reflect the current PDF state (newly picked / existing / none) in the modal.
+function _pmRenderTermsPdfState() {
+    const nameEl = document.getElementById('pmProjectTermsPdfName');
+    const rmEl   = document.getElementById('pmProjectTermsPdfRemove');
+    if (!nameEl) return;
+    if (_pmTermsPdfFile) {
+        nameEl.textContent = _pmTermsPdfFile.name + ' (new — will upload on save)';
+        nameEl.style.color = '#111827';
+        if (rmEl) rmEl.style.display = '';
+    } else if (_pmTermsPdfUrl) {
+        nameEl.textContent = _pmTermsPdfName || 'Attached PDF';
+        nameEl.style.color = '#111827';
+        if (rmEl) rmEl.style.display = '';
+    } else {
+        nameEl.textContent = 'No PDF attached.';
+        nameEl.style.color = '#6b7280';
+        if (rmEl) rmEl.style.display = 'none';
+    }
+}
+
+window.pmOnTermsPdfPick = function(input) {
+    const f = input && input.files && input.files[0];
+    if (!f) return;
+    if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) {
+        alert('Please choose a PDF file.');
+        input.value = '';
+        return;
+    }
+    _pmTermsPdfFile = f;
+    _pmRenderTermsPdfState();
+};
+
+// Upload a Terms PDF for a project → { url, name }. Path is namespaced by project.
+async function _pmUploadTermsPdf(projectId, file) {
+    if (typeof storage === 'undefined') throw new Error('Storage unavailable');
+    const safe = String(file.name || 'terms.pdf').replace(/[^\w.\-]+/g, '_');
+    const path = `projectTerms/${projectId}/${Date.now()}_${safe}`;
+    const ref  = storage.ref(path);
+    await ref.put(file);
+    const url = await ref.getDownloadURL();
+    return { url, name: file.name || 'Terms & Conditions.pdf' };
+}
+
+window.pmRemoveTermsPdf = function() {
+    _pmTermsPdfFile = null;
+    _pmTermsPdfUrl  = '';
+    _pmTermsPdfName = '';
+    const input = document.getElementById('pmProjectTermsPdfInput');
+    if (input) input.value = '';
+    _pmRenderTermsPdfState();
+};
+
 window.pmOpenProjectModal = function() {
     document.getElementById('pmProjectModalTitle').textContent = 'Add Construction Project';
     document.getElementById('pmProjectId').value        = '';
     document.getElementById('pmProjectClientName').value = '';
     document.getElementById('pmProjectName').value       = '';
     document.getElementById('pmProjectEmail').value      = '';
-    document.getElementById('pmProjectStatus').value     = 'active';
+    document.getElementById('pmProjectStatus').value     = 'pending_agreement';
     document.getElementById('pmProjectStartDate').value  = '';
     document.getElementById('pmProjectAddress').value    = '';
+    if (document.getElementById('pmProjectPartnerTerms')) document.getElementById('pmProjectPartnerTerms').value = '';
+    _pmTermsPdfFile = null; _pmTermsPdfUrl = ''; _pmTermsPdfName = '';
+    const _tpi = document.getElementById('pmProjectTermsPdfInput'); if (_tpi) _tpi.value = '';
+    _pmRenderTermsPdfState();
     document.getElementById('pmProjectBudget').value     = '';
     document.getElementById('pmProjectEndDate').value    = '';
     document.getElementById('pmProjectFeePct').value     = '15';
@@ -1296,6 +1371,12 @@ window.pmEditProject = function(p) {
     document.getElementById('pmProjectBudget').value     = (p.budget != null ? p.budget : '');
     document.getElementById('pmProjectEndDate').value    = p.plannedEndDate || '';
     document.getElementById('pmProjectFeePct').value     = (p.managementFeePct != null ? p.managementFeePct : 15);
+    if (document.getElementById('pmProjectPartnerTerms')) document.getElementById('pmProjectPartnerTerms').value = p.partnerTerms || '';
+    _pmTermsPdfFile = null;
+    _pmTermsPdfUrl  = p.partnerTermsPdfUrl  || '';
+    _pmTermsPdfName = p.partnerTermsPdfName || (p.partnerTermsPdfUrl ? 'Attached PDF' : '');
+    const _tpiE = document.getElementById('pmProjectTermsPdfInput'); if (_tpiE) _tpiE.value = '';
+    _pmRenderTermsPdfState();
     ['err-pmProjectClientName','err-pmProjectName'].forEach(_pmClearErr);
     document.getElementById('pmProjectModal').style.display = 'flex';
     if (window.lucide) lucide.createIcons();
@@ -1316,6 +1397,8 @@ window.pmSaveProject = async function() {
     let   managementFeePct = feePctRaw === '' ? 15 : Number(feePctRaw);
     if (isNaN(managementFeePct) || managementFeePct < 0) managementFeePct = 15;
     if (managementFeePct > 100) managementFeePct = 100;
+    const partnerTermsEl = document.getElementById('pmProjectPartnerTerms');
+    const partnerTerms   = partnerTermsEl ? partnerTermsEl.value.trim() : '';
 
     let valid = true;
     if (!clientName)  { _pmShowErr('err-pmProjectClientName','Client name is required.'); valid = false; }
@@ -1323,7 +1406,19 @@ window.pmSaveProject = async function() {
     if (!valid) return;
 
     const data = { clientName, projectName, clientEmail, status, startDate, address, budget, plannedEndDate, managementFeePct,
+                   partnerTerms,
                    updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+
+    // Terms PDF: if the admin removed it (no new file + no kept url), clear the
+    // fields; otherwise keep the existing url (a newly-picked file is uploaded
+    // after we know the project id, then written below).
+    if (!_pmTermsPdfFile && !_pmTermsPdfUrl) {
+        data.partnerTermsPdfUrl  = '';
+        data.partnerTermsPdfName = '';
+    } else if (!_pmTermsPdfFile && _pmTermsPdfUrl) {
+        data.partnerTermsPdfUrl  = _pmTermsPdfUrl;
+        data.partnerTermsPdfName = _pmTermsPdfName || 'Attached PDF';
+    }
 
     // Detect a fee-rate change so we can re-bill unpaid weeks at the new rate.
     const existing  = projectId ? _pmProjects.find(p => p.id === projectId) : null;
@@ -1335,6 +1430,13 @@ window.pmSaveProject = async function() {
     try {
         if (projectId) {
             await db.collection('constructionProjects').doc(projectId).update(data);
+            // A newly-picked Terms PDF is uploaded now that we have the project id.
+            if (_pmTermsPdfFile) {
+                btn.textContent = 'Uploading PDF…';
+                const up = await _pmUploadTermsPdf(projectId, _pmTermsPdfFile);
+                await db.collection('constructionProjects').doc(projectId)
+                    .update({ partnerTermsPdfUrl: up.url, partnerTermsPdfName: up.name });
+            }
             // Keep the active-project copy in sync so This Week uses the new rate.
             if (_pmActiveProject && _pmActiveProject.id === projectId) _pmActiveProject.managementFeePct = managementFeePct;
             let reBilled = 0;
@@ -1346,7 +1448,14 @@ window.pmSaveProject = async function() {
             else _pmToast('Project saved');
         } else {
             data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-            await db.collection('constructionProjects').add(data);
+            const ref = await db.collection('constructionProjects').add(data);
+            // Upload the Terms PDF against the brand-new project id, then link it.
+            if (_pmTermsPdfFile && ref && ref.id) {
+                btn.textContent = 'Uploading PDF…';
+                const up = await _pmUploadTermsPdf(ref.id, _pmTermsPdfFile);
+                await db.collection('constructionProjects').doc(ref.id)
+                    .update({ partnerTermsPdfUrl: up.url, partnerTermsPdfName: up.name });
+            }
             _pmToast('Project created');
         }
         _pmProjects = [];
@@ -3431,9 +3540,49 @@ function _pmBoqPct(doc) {
 function _pmCiSub(ci) { return (ci.subItems || []).reduce((s, si) => s + (si.lineItems || []).reduce((s2, li) => s2 + _pmLiTotal(li), 0), 0); }
 function _pmCiAcc(ci) { return (ci.subItems || []).reduce((s, si) => s + (si.lineItems || []).reduce((s2, li) => s2 + _pmLiAcc(li), 0), 0); }
 
-function _pmTsDateStr(ts) {
+function _pmTsMs(ts) {
     const ms = ts && ts.toMillis ? ts.toMillis() : (ts ? new Date(ts).getTime() : 0);
-    if (!ms || isNaN(ms)) return '—';
+    return (!ms || isNaN(ms)) ? 0 : ms;
+}
+// Print/download the signed PER-PROJECT partner agreement (admin view) —
+// styled as a formal, letterhead-style agreement document with the DAC's logo.
+function _pmViewPartnerAgreement(p) {
+    const pa = p && p._partner;
+    if (!pa) { alert('The partner has not signed this project\'s terms yet.'); return; }
+    if (typeof window.dacsAgreementPdf !== 'function') { alert('Print utility not loaded.'); return; }
+    const at = _pmTsMs(pa.acceptedAt);
+    const dateStr = at ? new Date(at).toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+    const dayStr  = at ? new Date(at).toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' }) : '';
+    const partner = pa.signature || pa.partnerEmail || 'the Partner';
+    const contract = p.budget != null ? '₱' + Number(p.budget).toLocaleString('en-PH', {minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
+    const ref = 'PA-' + String(p.id || '').slice(0, 6).toUpperCase();
+    const terms = (p.partnerTerms && p.partnerTerms.trim())
+        ? p.partnerTerms
+        : 'By viewing this project the Partner agrees to keep its information strictly confidential, to use it only for the purposes of this partnership, and to abide by DAC’s Building Design Services’ standard Cost-Plus terms and policies. Prices may vary with market conditions; all figures reflect actual recorded costs.';
+    window.dacsAgreementPdf({
+        title: 'Project Partnership Agreement',
+        subtitle: 'Cost-Plus Terms & Conditions',
+        ref,
+        preamble: 'This Agreement is entered into on ' + (dayStr || '____________') + ' between DAC’s Building Design Services (the “Manager”) and ' + partner + ' (the “Partner”), in connection with the project identified below. By electronically signing this Agreement, the Partner acknowledges having read, understood, and voluntarily accepted all terms and conditions herein prior to accessing the project’s information.',
+        parties: [
+            { label: 'Project', value: p.projectName || '—' },
+            { label: 'Client', value: p.clientName || '—' },
+            { label: 'Partner', value: pa.partnerEmail || partner },
+            { label: 'Contract Value', value: contract },
+            { label: 'Reference No.', value: ref },
+            { label: 'Date Executed', value: dayStr || '—' }
+        ],
+        sections: [{ heading: 'Terms & Conditions', body: terms }],
+        signature: pa.signature || '',
+        signatureImage: pa.signatureImage || '',
+        dateStr,
+        signerLabel: 'Partner',
+        ip: pa.ip || ''
+    });
+}
+function _pmTsDateStr(ts) {
+    const ms = _pmTsMs(ts);
+    if (!ms) return '—';
     return new Date(ms).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' });
 }
 function _pmUid(p) { return p + Math.random().toString(36).slice(2, 9); }

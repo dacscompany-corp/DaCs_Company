@@ -436,6 +436,12 @@
               <div class="profile-name" id="profile-fullname">Client User</div>
               <div class="profile-email" id="profile-email-display"></div>
               <span class="profile-role-badge">Client Account</span>
+              <div style="margin-top:16px;">
+                <button onclick="cmDownloadAgreementPdf()" style="display:inline-flex;align-items:center;gap:7px;background:#eff6ff;color:#1d4ed8;border:1.5px solid #bfdbfe;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+                  Download Signed Agreement
+                </button>
+              </div>
             </div>
           </div>
           <!-- RIGHT: account info + security -->
@@ -1577,12 +1583,79 @@ function filterProgressLogs(){
         <input type="checkbox" id="cm-agreement-checkbox" onchange="cmToggleAgreementBtn()"/>
         <span>I have fully read and understood this <strong>Cost-Plus Project Management Agreement</strong> and agree to all its terms and conditions.</span>
       </label>
+      <div class="cm-agreement-sign-wrap cm-sign-grid" style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:end;">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+            <label style="font-size:12px;font-weight:700;color:#374151;">Draw your signature <span style="color:#dc2626;">*</span></label>
+            <button type="button" onclick="cmClearSignature()" style="font-size:11px;font-weight:600;color:#6b7280;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:7px;padding:3px 10px;cursor:pointer;">Clear</button>
+          </div>
+          <div style="position:relative;border:1.5px solid #d1d5db;border-radius:10px;background:#fff;overflow:hidden;">
+            <canvas id="cm-signature-pad" style="display:block;width:100%;height:96px;touch-action:none;cursor:crosshair;"></canvas>
+            <div id="cm-signature-hint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;color:#c4c8d0;font-size:13px;font-style:italic;">Sign here</div>
+          </div>
+        </div>
+        <div>
+          <label for="cm-agreement-signature" style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:5px;">Full name (printed) <span style="color:#dc2626;">*</span></label>
+          <input type="text" id="cm-agreement-signature" oninput="cmToggleAgreementBtn()" placeholder="e.g. Juan Dela Cruz" autocomplete="off"
+                 style="width:100%;padding:10px 13px;border:1.5px solid #d1d5db;border-radius:10px;font-size:14.5px;font-family:'Playfair Display',serif;font-style:italic;color:#111827;outline:none;box-sizing:border-box;"/>
+          <div style="font-size:11px;color:#9ca3af;margin-top:6px;">Drawing + typing your name signs this electronically. Recorded with the date/time.</div>
+        </div>
+      </div>
       <button id="cm-agreement-accept-btn" class="cm-agreement-accept-btn" onclick="cmAcceptAgreement()" disabled>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>
         Accept &amp; Continue to Portal
       </button>
     </div>
 
+  </div>
+</div>
+
+<!-- ══════════ PER-PROJECT TERMS GATE (partner must accept before viewing a project) ══════════ -->
+<div id="cm-projterms-modal" class="cm-agreement-overlay" style="display:none;">
+  <div class="cm-agreement-card">
+    <button id="cm-projterms-close-btn" type="button" class="cm-agreement-close" onclick="cmProjTermsBack()" aria-label="Close" title="Close">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <div class="cm-agreement-header">
+      <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC Logo"/>
+      <span class="cm-agreement-badge">🔒 PROJECT AGREEMENT</span>
+      <h2 class="cm-agreement-title" style="font-family:'Playfair Display',serif;">Project Terms &amp; Conditions</h2>
+      <p class="cm-agreement-desc" id="cm-projterms-projectname">Please read and sign the terms for this project before viewing its information.</p>
+    </div>
+    <div class="cm-agreement-body">
+      <div class="cm-agreement-section">
+        <div class="cm-agreement-section-title"><span class="cm-agreement-section-num">!</span> Policy &amp; Terms for this Project</div>
+        <div id="cm-projterms-text" style="white-space:pre-wrap;"></div>
+      </div>
+    </div>
+    <div class="cm-agreement-footer">
+      <label class="cm-agreement-check-wrap" for="cm-projterms-checkbox">
+        <input type="checkbox" id="cm-projterms-checkbox" onchange="cmProjTermsToggleBtn()"/>
+        <span>I have read and agree to the <strong>Terms &amp; Conditions</strong> for this project.</span>
+      </label>
+      <div class="cm-agreement-sign-wrap cm-sign-grid" style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:end;">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
+            <label style="font-size:12px;font-weight:700;color:#374151;">Draw your signature</label>
+            <button type="button" onclick="cmProjTermsClearSig()" style="font-size:11px;font-weight:600;color:#6b7280;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:7px;padding:3px 10px;cursor:pointer;">Clear</button>
+          </div>
+          <div style="position:relative;border:1.5px solid #d1d5db;border-radius:10px;background:#fff;overflow:hidden;">
+            <canvas id="cm-projterms-pad" style="display:block;width:100%;height:96px;touch-action:none;cursor:crosshair;"></canvas>
+            <div id="cm-projterms-hint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;color:#c4c8d0;font-size:13px;font-style:italic;">Sign here</div>
+          </div>
+        </div>
+        <div>
+          <label for="cm-projterms-signature" style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:5px;">Full name (printed) <span style="color:#dc2626;">*</span></label>
+          <input type="text" id="cm-projterms-signature" oninput="cmProjTermsToggleBtn()" placeholder="e.g. Juan Dela Cruz" autocomplete="off"
+                 style="width:100%;padding:10px 13px;border:1.5px solid #d1d5db;border-radius:10px;font-size:14.5px;font-family:'Playfair Display',serif;font-style:italic;color:#111827;outline:none;box-sizing:border-box;"/>
+          <div style="font-size:11px;color:#9ca3af;margin-top:6px;">Signing accepts this project's terms. Recorded with the date/time.</div>
+        </div>
+      </div>
+      <button id="cm-projterms-accept-btn" class="cm-agreement-accept-btn" onclick="cmProjTermsAccept()" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>
+        Accept &amp; View Project
+      </button>
+    </div>
   </div>
 </div>
 

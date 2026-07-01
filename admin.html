@@ -1839,7 +1839,10 @@
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
                     </select>
-                    <button class="pr-btn-create" onclick="unOpenAddEmployeeModal()" style="margin-left:auto;">
+                    <button class="pr-btn-create" onclick="unOpenEmployeeTermsModal()" style="margin-left:auto;background:#fff;color:#7c3aed;border:1.5px solid #ddd6fe;">
+                        <i data-lucide="file-text" style="width:15px;height:15px;"></i> Terms &amp; Conditions
+                    </button>
+                    <button class="pr-btn-create" onclick="unOpenAddEmployeeModal()">
                         <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Add Employee
                     </button>
                 </div>
@@ -2400,6 +2403,15 @@
                     <div id="err-emp-confirm" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
                 </div>
             </div>
+            <div style="margin-bottom:16px;">
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Terms &amp; Conditions <span style="color:#ef4444;">*</span></label>
+                <div id="emp-create-terms-box" style="max-height:170px;overflow-y:auto;border:1.5px solid #d1d5db;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.65;color:#374151;background:#f9fafb;white-space:pre-wrap;">Loading terms…</div>
+                <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-size:12.5px;color:#374151;cursor:pointer;user-select:none;">
+                    <input type="checkbox" id="emp-create-terms-agree" style="margin-top:2px;width:15px;height:15px;flex-shrink:0;cursor:pointer;">
+                    <span>The employee has read and agrees to the Terms &amp; Conditions above.</span>
+                </label>
+                <div id="err-emp-terms" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
+            </div>
             <div id="emp-create-general-err" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;"></div>
             <div style="display:flex;gap:10px;justify-content:flex-end;">
                 <button onclick="unCloseAddEmployeeModal()"
@@ -2409,6 +2421,37 @@
                 <button id="emp-create-submit-btn" onclick="unSubmitAddEmployee()"
                     style="padding:9px 20px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;">
                     <i data-lucide="user-plus" style="width:14px;height:14px;"></i> Add Employee
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════ USER NAVIGATOR: Employee Terms & Conditions Editor ════ -->
+<div id="unEmployeeTermsModal" class="un-modal-overlay" style="display:none;" onclick="if(event.target===this)unCloseEmployeeTermsModal()">
+    <div class="un-modal-card" style="max-width:640px;width:94%;">
+        <div class="un-modal-header">
+            <div class="un-modal-avatar" style="background:#7c3aed;color:#fff;"><i data-lucide="file-text" style="width:18px;height:18px;"></i></div>
+            <div class="un-modal-title-block">
+                <h3>Employee Terms &amp; Conditions</h3>
+                <span class="un-role-badge un-role-staff">Shown when adding an employee</span>
+            </div>
+            <button class="un-modal-close" aria-label="Close" onclick="unCloseEmployeeTermsModal()"><i data-lucide="x"></i></button>
+        </div>
+        <div class="un-modal-body" style="padding:20px 24px 24px;">
+            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Terms &amp; Conditions text</label>
+            <textarea id="emp-terms-editor" rows="14" placeholder="Write the Terms &amp; Conditions that every employee must read and agree to when their account is created."
+                style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;line-height:1.6;resize:vertical;min-height:220px;"></textarea>
+            <div style="font-size:11.5px;color:#9ca3af;margin-top:6px;">This exact text is shown to the admin in the Add Employee form; the employee must be marked as agreeing before the account can be created.</div>
+            <div id="emp-terms-editor-err" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:14px;"></div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+                <button onclick="unCloseEmployeeTermsModal()"
+                    style="padding:9px 20px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+                    Cancel
+                </button>
+                <button id="emp-terms-save-btn" onclick="unSaveEmployeeTerms()"
+                    style="padding:9px 20px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;">
+                    <i data-lucide="save" style="width:14px;height:14px;"></i> Save Terms
                 </button>
             </div>
         </div>
@@ -3913,6 +3956,8 @@
         <div class="pm-form-group">
           <label class="pm-field-label">Status</label>
           <select id="pmProjectStatus" class="pm-select">
+            <option value="pending_agreement">Pending Agreement</option>
+            <option value="ready">Ready to Start</option>
             <option value="active">Active</option>
             <option value="on-hold">On Hold</option>
             <option value="completed">Completed</option>
@@ -3948,6 +3993,26 @@
           <input type="number" id="pmProjectFeePct" min="0" max="100" step="0.5" placeholder="15" value="15">
           <span>%</span>
         </div>
+      </div>
+
+      <div class="pm-form-section">Partner Agreement</div>
+      <div class="pm-form-group">
+        <label class="pm-field-label">Terms &amp; Conditions <span style="color:#9ca3af;font-weight:400;">(the partner must read &amp; sign these before viewing this project)</span></label>
+        <textarea id="pmProjectPartnerTerms" class="pm-input" rows="6" placeholder="Write the terms &amp; conditions and policy the partner must accept before seeing this project's information. Leave blank to use the standard terms." style="resize:vertical;min-height:120px;font-family:inherit;line-height:1.6;"></textarea>
+        <div style="font-size:11.5px;color:#9ca3af;margin-top:6px;">Shown to the partner the first time they open this project. If left blank, the standard Cost-Plus terms are used.</div>
+      </div>
+      <div class="pm-form-group">
+        <label class="pm-field-label">Terms &amp; Conditions PDF <span style="color:#9ca3af;font-weight:400;">(optional — the partner must scroll through this document before they can sign)</span></label>
+        <input type="file" id="pmProjectTermsPdfInput" accept="application/pdf,.pdf" onchange="pmOnTermsPdfPick(this)" style="display:none;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <button type="button" onclick="document.getElementById('pmProjectTermsPdfInput').click()"
+            style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border:1.5px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+            <i data-lucide="upload" style="width:15px;height:15px;"></i> Upload PDF
+          </button>
+          <span id="pmProjectTermsPdfName" style="font-size:12.5px;color:#6b7280;">No PDF attached.</span>
+          <button type="button" id="pmProjectTermsPdfRemove" onclick="pmRemoveTermsPdf()" style="display:none;font-size:12px;font-weight:600;color:#dc2626;background:none;border:none;cursor:pointer;font-family:inherit;">Remove</button>
+        </div>
+        <div style="font-size:11.5px;color:#9ca3af;margin-top:6px;">If a PDF is attached, the partner reads it in-page and can only sign after scrolling to the end. If left blank, the text above is used.</div>
       </div>
     </div>
     <div class="pm-modal-footer">

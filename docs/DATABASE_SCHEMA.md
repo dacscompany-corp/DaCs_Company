@@ -23,6 +23,9 @@
 | `status` | string | user-navigator | `active` / inactive |
 | `ownerUid` | string | user-navigator | for `staff`/workers → points to the owner whose data they share |
 | `createdAt` | ts | — | |
+| `termsAccepted` | bool | user-navigator | `true` once the employee agreed to the T&C at account creation (migration 0020) |
+| `termsAcceptedAt` | ts | user-navigator | when the T&C were accepted (migration 0020) |
+| `termsSnapshot` | string | user-navigator | copy of the exact T&C text agreed to (migration 0020) |
 **Rules:** anyone signed-in can **read**; you may only create/update your **own** doc and **cannot set/modify `role`**.
 
 ### `clientUsers/{uid}` — customer portal profiles (`client.html`)
@@ -40,7 +43,11 @@
 | `role` | string | `'client'` |
 | `status` | string | `'active'` |
 | `agreementAccepted` | bool | starts `false` |
-| `agreementAcceptedAt` | ts | set when the client accepts the Cost-Plus agreement |
+| `agreementAcceptedAt` | ts | set when the client/partner accepts the Cost-Plus agreement |
+| `agreementSignature` | string | typed full name (printed) (migration 0016) |
+| `agreementSignatureImage` | string | URL of the hand-drawn signature PNG in the `uploads` bucket (migration 0017) |
+| `agreementIp` | string | best-effort client IP at signing time (migration 0016) |
+| `isPartner` | bool | flags a partner account (auto-set on partner-portal login, migration 0019). Enables the RLS gate: a partner can't read a project's data subtables until they've signed that project's `partnerAgreements`. Clients (is_partner=false) are unaffected. |
 | `createdAt` | ts | |
 
 ---
@@ -200,6 +207,9 @@ Same shape as `invoices`; `items` are labor lines auto-built from `weeklyBills` 
 | `projectName`, `address` | string | |
 | `status` | string | `active` \| `on-hold` \| `completed` \| `terminated` |
 | `startDate` | string | |
+| `partnerTerms` | string | admin-authored T&C text shown in the sign-gate (migration 0018) |
+| `partnerTermsPdfUrl` | string | optional uploaded T&C PDF (uploads bucket, `projectTerms/{id}/…`); partner must scroll it to the end before signing (migration 0021) |
+| `partnerTermsPdfName` | string | display name of the uploaded T&C PDF (migration 0021) |
 | `createdAt` | ts | |
 
 **Subcollections** (owner/staff full access; client read-only of own; client write **only** `procurementList`):
@@ -212,6 +222,7 @@ Same shape as `invoices`; `items` are labor lines auto-built from `weeklyBills` 
 | `revolvingFundExpenses/{id}` | `date`, `amount`, `description`, `notes`, `createdAt` |
 | `revolvingFundReplenishments/{id}` | `date`, `amount`, `notes`, `createdAt` |
 | `dailyLogs`, `milestones`, `accomplishmentReports`, `walkthroughs` | site-progress docs (read by `client-management-app.js`) |
+| `partnerAgreements/{id}` | per-project partner terms acceptance (migration 0018): `partnerUid`, `partnerEmail`, `signature`, `signatureImage` (uploads URL), `termsPdfUrl`/`termsPdfName` (the PDF version signed, if any), `ip`, `acceptedAt`. A partner must sign before viewing the project. The project's own `partnerTerms` field holds the admin-authored T&C text; `partnerTermsPdfUrl` holds an optional uploaded PDF the partner must scroll before signing. |
 
 ---
 
@@ -264,6 +275,7 @@ Same shape as `invoices`; `items` are labor lines auto-built from `weeklyBills` 
 ### `settings/{id}`
 - `settings/paymentQR` — payment QR (clients can read)
 - `settings/invoiceDefaults` — `businessName/Tin/Address`, `vatRate`, `paymentDetails`
+- `settings/employeeTerms` — `text` (admin-editable Terms & Conditions shown when adding an employee), `updatedAt`
 - other config: owner/staff only.
 
 ### `stats/{…}` — read-only aggregates (no client writes).

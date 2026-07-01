@@ -94,7 +94,13 @@
       "Bash(node --check \"c:/Users/John Aerol Tapales/Documents/Dacs Web/js/client-payment.js\")",
       "Bash(grep -rn *)",
       "Bash(grep -oE 'Billing Periods.{0,400}' js/portal-app.compiled.js)",
-      "Bash(grep -oE 'BILLING & REPORTS.{0,120}|className: \"pc-flow-cards[^\"]*\"|pc-flow-section[^\"]*\"|pcf-section[^\"]*\"' js/portal-app.compiled.js)"
+      "Bash(grep -oE 'BILLING & REPORTS.{0,120}|className: \"pc-flow-cards[^\"]*\"|pc-flow-section[^\"]*\"|pcf-section[^\"]*\"' js/portal-app.compiled.js)",
+      "Bash(node --check js/user-navigator.js)",
+      "Bash(grep -nA6 \"create table revolving_funds\\\\|create table weekly_bills\\\\|create table procurement_items\\\\|create table daily_logs\" supabase/migrations/0001_init.sql)",
+      "Bash(echo \"=== dollar-quote balance \\($$ count, should be even\\) ===\")",
+      "Bash(grep -o '\\\\$\\\\$' supabase/migrations/0019_partner_gate_enforcement.sql)",
+      "Bash(grep -c \"format\\(\\\\|%1\\\\$\" supabase/migrations/0019_partner_gate_enforcement.sql)",
+      "Bash(supabase --version)"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
