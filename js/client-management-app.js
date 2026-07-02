@@ -90,6 +90,20 @@ auth.onAuthStateChanged(async function(user) {
                 cmShowLoginError('Access denied. Client accounts are provisioned by DACS admin. Contact your project manager if you need access.');
                 return;
             }
+            // Portal ↔ account-type enforcement: partner accounts (profiles.role =
+            // 'partner') may only enter the Dacs Partnership portal; client accounts
+            // only the Client Management portal. Each signs a DIFFERENT agreement, so
+            // the person logging in must match the portal's document and money flow.
+            const isPartnerAccount = (doc.data() && doc.data().role) === 'partner';
+            if (cmIsPartner() !== isPartnerAccount) {
+                await auth.signOut();
+                cmCurrentUser = null; window.currentUser = null;
+                cmShowLogin();
+                cmShowLoginError(isPartnerAccount
+                    ? 'This is a Partner account — please sign in at the DAC\'s Partnership portal instead.'
+                    : 'This is a Client account — please sign in at the Client Management portal instead.');
+                return;
+            }
         } catch (err) {
             console.error('CM auth check:', err);
             await auth.signOut();
@@ -218,10 +232,25 @@ async function cmLoadProfile(user) {
 // is exactly one we auto-select it so the single-project experience is unchanged.
 async function cmLoadProjectData(user) {
     try {
-        const snap = await db.collection('constructionProjects')
-            .where('clientEmail', '==', user.email)
-            .get();
-        cmProjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        let docs;
+        if (cmIsPartner()) {
+            // Partner portal: projects link their partner via partnerEmail (migration
+            // 0018). Legacy setups linked the partner through clientEmail (one shared
+            // account) — keep that as a fallback and merge, so nothing disappears.
+            const [pSnap, cSnap] = await Promise.all([
+                db.collection('constructionProjects').where('partnerEmail', '==', user.email).get()
+                    .catch(() => ({ docs: [] })),   // column absent pre-migration → fallback still works
+                db.collection('constructionProjects').where('clientEmail', '==', user.email).get()
+            ]);
+            const seen = new Set();
+            docs = [...pSnap.docs, ...cSnap.docs].filter(d => !seen.has(d.id) && seen.add(d.id));
+        } else {
+            const snap = await db.collection('constructionProjects')
+                .where('clientEmail', '==', user.email)
+                .get();
+            docs = snap.docs;
+        }
+        cmProjects = docs.map(d => ({ id: d.id, ...d.data() }));
         // Newest first so the picker and default selection feel natural.
         cmProjects.sort((a, b) => {
             const ta = a.createdAt?.toMillis?.() ?? (a.createdAt ? new Date(a.createdAt).getTime() : 0);
@@ -4279,7 +4308,12 @@ function cmCheckAgreement() {
     // First-login agreement gate — applies to BOTH clients and partners. The user
     // cannot reach the dashboard until they read it, tick the box, type their name
     // as a digital signature, and Accept.
-    const accepted = cmCurrentProfile?.agreementAccepted === true;
+    // Clients sign the Cost-Plus agreement; partners sign the PARTNERSHIP agreement
+    // (different document, different modal content per HTML file) — so acceptance is
+    // tracked in separate fields and one signature never covers the other document.
+    const accepted = cmIsPartner()
+        ? cmCurrentProfile?.partnerAgreementAccepted === true
+        : cmCurrentProfile?.agreementAccepted === true;
     if (accepted) {
         cmRouteAfterLogin();
     } else {
@@ -4295,8 +4329,150 @@ function cmCheckAgreement() {
                 : '';
             if (nm) sig.setAttribute('data-expected', nm);
         }
+        // Partner portal: the modal is a 3-step gate (read → e-sign → review signed
+        // copy). Start it at step 1. Client portal: render the agreement sections
+        // from the canonical client document instead.
+        if (document.getElementById('cm-agr-step-1')) cmAgrGoStep(1);
+        else _cmClientAgrRenderSections();
     }
 }
+
+// Fill the CLIENT agreement modal's body from the canonical document
+// (dacsClientAgreementDoc in print-utils.js) so what the client reads is
+// word-for-word what the signed PDF reprints. Keeps the modal's numbered-chip
+// section styling; no-ops on the partner portal (container absent there).
+function _cmClientAgrRenderSections() {
+    const host = document.getElementById('cm-client-agr-sections');
+    if (!host || typeof window.dacsClientAgreementDoc !== 'function') return;
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const doc = window.dacsClientAgreementDoc(_cmAgrPartnerName(), cmProjectData, '');
+    host.innerHTML = (doc.sections || []).map((s, i) => {
+        const title = String(s.heading || '').replace(/^\d+\.\s*/, '');
+        return (i ? '<div class="cm-agreement-divider"></div>' : '')
+            + '<div class="cm-agreement-section">'
+            + '<div class="cm-agreement-section-title"><span class="cm-agreement-section-num">' + (i + 1) + '</span> ' + esc(title) + '</div>'
+            + '<p style="white-space:pre-wrap;">' + esc(s.body) + '</p>'
+            + '</div>';
+    }).join('');
+}
+
+// ── Partner agreement signing stepper (Dacs Partnership.html only) ─────────
+// Step 1: the agreement rendered as the actual PDF document (iframe, no print).
+// Step 2: tick the box + draw a signature + type the printed name.
+// Step 3: review the SAME document with the e-signature, name & date applied,
+//         then Accept (the existing cmAcceptAgreement saves it).
+// The document comes from window.dacsPartnerAgreementDoc (print-utils.js) — the
+// same definition the portal download and the admin print use, so what the
+// partner reads and signs is exactly what reprints later.
+let _cmAgrStep = 1;
+
+function _cmAgrPartnerName() {
+    return (document.getElementById('cm-agreement-signature')?.value || '').trim()
+        || (cmCurrentProfile ? [cmCurrentProfile.firstName, cmCurrentProfile.lastName].filter(Boolean).join(' ').trim() : '')
+        || (cmCurrentUser?.email || '');
+}
+
+// Render the agreement as an inline paper sheet (Partnership Agreement Gate
+// design). Content comes from the canonical dacsPartnerAgreementDoc so the
+// gate, the PDF download, and the admin print always show the same document.
+function _cmAgrRenderPaper(elId, signed) {
+    const el = document.getElementById(elId);
+    if (!el || typeof window.dacsPartnerAgreementDoc !== 'function') return;
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const now = new Date();
+    const dayStr = now.toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
+    const typed = (document.getElementById('cm-agreement-signature')?.value || '').trim();
+    const name = (signed && typed) ? typed : _cmAgrPartnerName();
+    const doc = window.dacsPartnerAgreementDoc(name, cmProjectData, dayStr);
+    const secs = (doc.sections || []).map(s =>
+        `<div class="cm-agr-p-sec"><div class="cm-agr-p-h">${esc(s.heading)}</div><p>${esc(s.body)}</p></div>`).join('');
+    const sigImg = (signed && _cmSigPad.hasInk && _cmSigPad.canvas) ? _cmSigPad.canvas.toDataURL('image/png') : '';
+    const signBlock = signed
+        ? `<div class="cm-agr-p-signrow">
+             <div>${sigImg ? `<div class="cm-agr-p-sigimg" style="background-image:url(${sigImg});"></div>` : ''}
+               <div class="cm-agr-p-signame">${esc(name)}</div>
+               <div class="cm-agr-p-siglbl">${esc(name)} — Partner · Signed electronically on ${esc(dayStr)}</div></div>
+             <div><div class="cm-agr-p-sigline"></div><div class="cm-agr-p-siglbl">DAC's Building Design Services</div></div>
+           </div>`
+        : `<div class="cm-agr-p-signrow">
+             <div><div class="cm-agr-p-sigline"></div><div class="cm-agr-p-siglbl">${esc(name)} — Partner</div></div>
+             <div><div class="cm-agr-p-sigline"></div><div class="cm-agr-p-siglbl">DAC's Building Design Services</div></div>
+           </div>`;
+    el.innerHTML = `
+      <div class="cm-agr-p-head">
+        <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC's logo"/>
+        <div class="cm-agr-p-title">DAC's Partnership Agreement</div>
+        <div class="cm-agr-p-subtitle">Partner Agreement · ${signed ? 'Signed Copy' : 'Official Document'}</div>
+        <div class="cm-agr-p-rule"></div>
+      </div>
+      <div class="cm-agr-p-parties">
+        <div>Partner</div><div class="b">${esc(name)}</div>
+        <div>Company</div><div>DAC's Building Design Services</div>
+        <div>${signed ? 'Signed on' : 'Date'}</div><div>${esc(dayStr)}</div>
+      </div>
+      <p class="cm-agr-p-pre">${esc(doc.preamble)}</p>
+      ${secs}
+      ${signBlock}
+      <div class="cm-agr-p-end">— End of agreement —</div>`;
+}
+
+window.cmAgrGoStep = function(n) {
+    if (!document.getElementById('cm-agr-step-1')) return;   // no gate markup (client portal)
+    _cmAgrStep = n;
+    [1, 2, 3].forEach(i => {
+        const p = document.getElementById('cm-agr-step-' + i);
+        if (p) p.style.display = (i === n) ? '' : 'none';
+    });
+    // Top progress bar + step label ("Step 1 of 2" / "Step 2 of 2" / "Complete")
+    const fill = document.getElementById('cm-agr-progress-fill');
+    if (fill) fill.style.width = n === 1 ? '50%' : n === 2 ? '85%' : '100%';
+    const lbl = document.getElementById('cm-agr-steplabel');
+    if (lbl) lbl.textContent = n === 3 ? 'Complete' : 'Step ' + n + ' of 2';
+
+    if (n === 1) {
+        const w = document.getElementById('cm-agr-welcome');
+        const first = (cmCurrentProfile && cmCurrentProfile.firstName) || _cmAgrPartnerName().split(' ')[0] || 'Partner';
+        if (w) w.textContent = 'Welcome, ' + first;
+        _cmAgrRenderPaper('cm-agr-paper-read', false);
+    }
+    if (n === 2) {
+        // Canvas needs its real on-screen size — init only once the panel is visible.
+        setTimeout(cmInitSignaturePad, 60);
+        cmToggleAgreementBtn();
+    }
+    if (n === 3) {
+        _cmAgrRenderPaper('cm-agr-paper-signed', true);
+        cmToggleAgreementBtn();
+    }
+    const modal = document.getElementById('cm-agreement-modal');
+    if (modal) modal.scrollTop = 0;
+};
+
+// "Download my signed copy (PDF)" on the done step — prints the signed document
+// from the live pad/name (the profile fields are saved on Enter-the-portal).
+window.cmAgrDownloadPreview = function() {
+    if (typeof window.dacsAgreementPdf !== 'function' || typeof window.dacsPartnerAgreementDoc !== 'function') return;
+    const sigName = (document.getElementById('cm-agreement-signature')?.value || '').trim() || _cmAgrPartnerName();
+    const img = (_cmSigPad.hasInk && _cmSigPad.canvas) ? _cmSigPad.canvas.toDataURL('image/png') : '';
+    const now = new Date();
+    const dateStr = now.toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' });
+    const dayStr  = now.toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
+    window.dacsAgreementPdf({
+        ...window.dacsPartnerAgreementDoc(sigName, cmProjectData, dayStr),
+        signature: sigName, signatureImage: img, dateStr
+    });
+};
+
+window.cmAgrNext = function() {
+    if (_cmAgrStep === 1) { cmAgrGoStep(2); return; }
+    if (_cmAgrStep === 2) {
+        const cb  = document.getElementById('cm-agreement-checkbox');
+        const sig = document.getElementById('cm-agreement-signature');
+        if (!(cb && cb.checked) || !sig || sig.value.trim().length < 2) return;
+        cmAgrGoStep(3);
+    }
+};
+window.cmAgrBack = function() { if (_cmAgrStep > 1) cmAgrGoStep(_cmAgrStep - 1); };
 
 window.cmOpenMvpModal = function() {
     const el = document.getElementById('cm-mvp-modal');
@@ -4369,6 +4545,22 @@ window.cmToggleAgreementBtn = function() {
     // init hiccup can never lock the user out of their portal.
     const named = sig && sig.value.trim().length >= 2;
     if (btn) btn.disabled = !((cb && cb.checked) && named);
+    // Partner gate: the step-2 "Agree & sign" button follows the same rule, and a
+    // hint below it lists what's missing (drawing is suggested but never blocks —
+    // a canvas init hiccup must not lock the partner out).
+    const nextBtn = document.getElementById('cm-agr-next-btn');
+    if (nextBtn && _cmAgrStep === 2) nextBtn.disabled = !((cb && cb.checked) && named);
+    const hintEl = document.getElementById('cm-agr-signhint');
+    if (hintEl && _cmAgrStep === 2) {
+        const missing = [];
+        if (!(cb && cb.checked)) missing.push('tick the box');
+        if (!_cmSigPad.hasInk)   missing.push('draw your signature');
+        if (!named)              missing.push('type your name');
+        hintEl.textContent = missing.length ? 'To finish: ' + missing.join(', ') + '.' : '';
+    }
+    // Agree-card border highlights when ticked (gate design).
+    const agreeCard = document.getElementById('cm-agr-agree-card');
+    if (agreeCard) agreeCard.style.borderColor = (cb && cb.checked) ? '#1A5C3A' : '#e3e8e4';
 };
 
 // Best-effort client IP (optional — blank if the lookup is blocked/offline).
@@ -4430,7 +4622,15 @@ window.cmAcceptAgreement = async function() {
             // acceptance never registered and the modal re-appeared every
             // session. user-navigator.js:714 also seeds the field here when
             // the construction client account is created.
-            await db.collection(CM_COLLECTION).doc(cmCurrentUser.uid).update({
+            // Partners sign the Partnership Agreement → partner-prefixed fields;
+            // clients sign the Cost-Plus agreement → the original fields.
+            await db.collection(CM_COLLECTION).doc(cmCurrentUser.uid).update(cmIsPartner() ? {
+                partnerAgreementAccepted      : true,
+                partnerAgreementAcceptedAt    : firebase.firestore.FieldValue.serverTimestamp(),
+                partnerAgreementSignature     : signature,
+                partnerAgreementSignatureImage: signatureImageUrl || '',
+                partnerAgreementIp            : ip || ''
+            } : {
                 agreementAccepted      : true,
                 agreementAcceptedAt    : firebase.firestore.FieldValue.serverTimestamp(),
                 agreementSignature     : signature,
@@ -4439,12 +4639,20 @@ window.cmAcceptAgreement = async function() {
             });
         }
         if (cmCurrentProfile) {
-            cmCurrentProfile.agreementAccepted       = true;
-            cmCurrentProfile.agreementSignature      = signature;
-            cmCurrentProfile.agreementSignatureImage = signatureImageUrl || '';
+            if (cmIsPartner()) {
+                cmCurrentProfile.partnerAgreementAccepted       = true;
+                cmCurrentProfile.partnerAgreementSignature      = signature;
+                cmCurrentProfile.partnerAgreementSignatureImage = signatureImageUrl || '';
+            } else {
+                cmCurrentProfile.agreementAccepted       = true;
+                cmCurrentProfile.agreementSignature      = signature;
+                cmCurrentProfile.agreementSignatureImage = signatureImageUrl || '';
+            }
         }
         // Flip the linked project Pending Agreement → Ready to Start.
-        if (cmProjectData && cmProjectData.id && cmProjectData.status === 'pending_agreement') {
+        // Client-only: the CLIENT's cost-plus acceptance is what starts a project;
+        // a partner signing the partnership terms must not change project status.
+        if (!cmIsPartner() && cmProjectData && cmProjectData.id && cmProjectData.status === 'pending_agreement') {
             try {
                 await db.collection('constructionProjects').doc(cmProjectData.id).update({ status: 'ready' });
                 cmProjectData.status = 'ready';
@@ -4478,38 +4686,35 @@ window.cmDownloadAgreementPdf = function(opts) {
     const prof = o.profile || cmCurrentProfile || {};
     const proj = o.project || cmProjectData || {};
     if (typeof window.dacsAgreementPdf !== 'function') { alert('Print utility not loaded.'); return; }
+    // Partner portal (or explicit opts.partner) prints the signed PARTNERSHIP
+    // agreement from the partner-prefixed fields; clients print the Cost-Plus one.
+    const isPartner  = o.partner === true || cmIsPartner();
     const clientName = [prof.firstName, prof.lastName].filter(Boolean).join(' ').trim() || prof.email || '—';
-    const signature  = prof.agreementSignature || clientName;
-    const signedAt   = prof.agreementAcceptedAt
-        ? (prof.agreementAcceptedAt.toDate ? prof.agreementAcceptedAt.toDate() : new Date(prof.agreementAcceptedAt))
+    const signature  = (isPartner ? prof.partnerAgreementSignature : prof.agreementSignature) || clientName;
+    const acceptedAtRaw = isPartner ? prof.partnerAgreementAcceptedAt : prof.agreementAcceptedAt;
+    const signedAt   = acceptedAtRaw
+        ? (acceptedAtRaw.toDate ? acceptedAtRaw.toDate() : new Date(acceptedAtRaw))
         : new Date();
     const dateStr = isNaN(signedAt) ? '' : signedAt.toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' });
     const dayStr  = isNaN(signedAt) ? '' : signedAt.toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
     const projectTitle = proj.projectName || proj.clientName || 'Construction Project';
     const contract = proj.budget != null ? '₱' + Number(proj.budget).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
     const feePct   = (proj.managementFeePct != null ? proj.managementFeePct : 15) + '%';
-    window.dacsAgreementPdf({
-        title: 'Cost-Plus Project Management Agreement',
-        subtitle: 'Client Agreement',
-        preamble: 'This Agreement is entered into on ' + (dayStr || '____________') + ' between DAC’s Building Design Services (the “Manager”) and ' + clientName + ' (the “Client”) for the construction project identified below. By electronically signing this Agreement, the Client acknowledges having read, understood, and voluntarily accepted all terms and conditions herein.',
-        parties: [
-            { label: 'Client', value: clientName },
-            { label: 'Project', value: projectTitle },
-            { label: 'Contract Value', value: contract },
-            { label: 'Management Fee', value: feePct + ' on direct costs' },
-            { label: 'Start Date', value: proj.startDate || '—' },
-            { label: 'Planned Completion', value: proj.plannedEndDate || '—' }
-        ],
-        sections: [
-            { heading: 'Scope of Work', body: 'DAC’s Building Design Services shall manage the construction works for the above project, procuring materials and labor and reporting actual recorded costs to the Client on a weekly basis.' },
-            { heading: 'Payment Terms', body: 'The Client shall pay the actual direct costs (labor + materials) plus a management fee of ' + feePct + ', billed weekly. Payment is due each Friday for the corresponding week’s recorded costs.' },
-            { heading: 'Responsibilities', body: 'DAC’s shall record all costs transparently and provide supporting documents. The Client shall settle weekly billings promptly and may fund a revolving fund for minor site purchases.' },
-            { heading: 'Terms & Conditions', body: 'Prices may vary with market conditions. Quoted estimates are not guaranteed fixed prices. Either party may terminate per the termination clause; consumed costs and the equivalent management fee are settled on termination.' }
-        ],
+    window.dacsAgreementPdf(isPartner ? {
+        // The canonical Partnership document (print-utils.js) — the SAME definition
+        // the signing stepper showed, so the reprint matches what was signed.
+        ...window.dacsPartnerAgreementDoc(clientName, proj, dayStr),
+        signature,
+        signatureImage: prof.partnerAgreementSignatureImage || '',
+        dateStr,
+        ip: prof.partnerAgreementIp || ''
+    } : {
+        // Canonical Cost-Plus client document (print-utils.js) — the SAME 8 sections
+        // the client read and signed in the portal modal.
+        ...window.dacsClientAgreementDoc(clientName, proj, dayStr),
         signature,
         signatureImage: prof.agreementSignatureImage || '',
         dateStr,
-        signerLabel: 'Client',
         ip: prof.agreementIp || ''
     });
 };

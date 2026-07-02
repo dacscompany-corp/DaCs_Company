@@ -68,7 +68,7 @@ const OWNER = { userId: 'owner_id' };
 const REG = {
   users:                    { table: 'profiles', kind: 'admin',               rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt', 'termsAcceptedAt'] },
   clientUsers:              { table: 'profiles', kind: 'client',              rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt'] },
-  constructionClientUsers:  { table: 'profiles', kind: 'construction_client', rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt', 'agreementAcceptedAt'] },
+  constructionClientUsers:  { table: 'profiles', kind: 'construction_client', rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt', 'agreementAcceptedAt', 'partnerAgreementAcceptedAt'] },
 
   folders:        { table: 'folders',        rename: OWNER, ts: ['createdAt', 'updatedAt'] },
   folderBudgets:  { table: 'folder_budgets', rename: OWNER, idField: 'folder_id' },

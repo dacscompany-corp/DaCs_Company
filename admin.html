@@ -1867,37 +1867,32 @@
                 </div>
             </div>
 
-            <!-- ── CONSTRUCTION CLIENTS PANEL ── -->
+            <!-- ── CONSTRUCTION CLIENTS PANEL (Client Management Redesign) ── -->
             <div id="un-panel-construction" style="display:none;">
-                <!-- Stats Row -->
-                <div class="un-stats-row">
-                    <div class="un-stat-card">
-                        <div class="un-stat-icon un-icon-total"><i data-lucide="hard-hat"></i></div>
-                        <div class="un-stat-info"><h3 id="ccTotalCount">0</h3><p>Total Clients</p></div>
+                <!-- Page header -->
+                <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px;">
+                    <div>
+                        <h1 style="font-family:'Playfair Display',serif;font-size:26px;font-weight:700;color:#143523;margin:0 0 4px;">Client accounts</h1>
+                        <div id="cc-stats-line" style="font-size:14.5px;color:#6b7280;">0 clients · 0 active · 0 inactive</div>
                     </div>
-                    <div class="un-stat-card">
-                        <div class="un-stat-icon un-icon-active"><i data-lucide="user-check"></i></div>
-                        <div class="un-stat-info"><h3 id="ccActiveCount">0</h3><p>Active</p></div>
-                    </div>
-                    <div class="un-stat-card">
-                        <div class="un-stat-icon un-icon-inactive"><i data-lucide="user-x"></i></div>
-                        <div class="un-stat-info"><h3 id="ccInactiveCount">0</h3><p>Inactive</p></div>
-                    </div>
-                </div>
-                <!-- Toolbar -->
-                <div class="un-toolbar">
-                    <div class="un-search-wrap">
-                        <i data-lucide="search" class="un-search-icon"></i>
-                        <input type="text" id="ccSearchInput" class="un-search-input" placeholder="Search by name or email…" oninput="ccFilterClients()">
-                    </div>
-                    <select id="ccStatusFilter" class="un-filter-select" onchange="ccFilterClients()">
-                        <option value="">All Status</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                    </select>
-                    <button class="pr-btn-create" onclick="caOpenCreateModal()" style="margin-left:auto;">
-                        <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Create Account
+                    <button onclick="caOpenCreateModal()" style="display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border:none;border-radius:11px;background:#1A5C3A;color:#fff;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(26,92,58,0.25);">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Create account
                     </button>
+                </div>
+                <!-- Toolbar: search + segmented status tabs -->
+                <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:240px;position:relative;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9aa4ad" stroke-width="2" style="position:absolute;left:15px;top:50%;transform:translateY(-50%);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="ccSearchInput" placeholder="Search by name or email…" oninput="ccFilterClients()"
+                               style="width:100%;box-sizing:border-box;padding:12px 16px 12px 42px;border:1.5px solid #e1e6e2;border-radius:11px;font-size:14.5px;font-family:inherit;background:#fff;outline:none;color:#1f2937;">
+                    </div>
+                    <input type="hidden" id="ccStatusFilter" value="">
+                    <div id="cc-status-tabs" style="display:flex;gap:6px;background:#fff;border:1.5px solid #e1e6e2;border-radius:11px;padding:4px;">
+                        <button type="button" data-v="" onclick="ccSetStatusTab('')" style="padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;background:#1A5C3A;color:#fff;">All</button>
+                        <button type="button" data-v="active" onclick="ccSetStatusTab('active')" style="padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;background:transparent;color:#6b7280;">Active</button>
+                        <button type="button" data-v="inactive" onclick="ccSetStatusTab('inactive')" style="padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;background:transparent;color:#6b7280;">Inactive</button>
+                    </div>
                 </div>
                 <!-- Table -->
                 <div class="un-table-wrap">
@@ -1915,8 +1910,8 @@
                     <table class="un-table" id="ccTable" style="display:none;">
                         <thead>
                             <tr>
-                                <th>Full Name</th><th>Email</th><th>Construction Project</th>
-                                <th>Created</th><th>Status</th><th>Actions</th>
+                                <th>Client</th><th>Project &amp; Agreement</th>
+                                <th>Created</th><th>Status</th><th style="text-align:right;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="ccTableBody"></tbody>
@@ -2536,6 +2531,14 @@
                     style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;background:#fff;font-family:inherit;">
                     <option value="">— No project yet —</option>
                 </select>
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin:12px 0 5px;">
+                    Account type
+                </label>
+                <select id="cc-create-role"
+                    style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;background:#fff;font-family:inherit;">
+                    <option value="client">Client — Client Management portal (signs the Cost-Plus agreement)</option>
+                    <option value="partner">Partner — Dacs Partnership portal (signs the Partnership agreement)</option>
+                </select>
                 <div style="font-size:11.5px;color:#6b7280;margin-top:4px;">If selected, the project's client email will be updated to this account's email.</div>
             </div>
             <div id="cc-create-general-err" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;"></div>
@@ -2736,6 +2739,14 @@
                 <select id="cc-edit-project"
                     style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;background:#fff;font-family:inherit;">
                     <option value="">— No project linked —</option>
+                </select>
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin:12px 0 5px;">
+                    Account type
+                </label>
+                <select id="cc-edit-role"
+                    style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;background:#fff;font-family:inherit;">
+                    <option value="client">Client — Client Management portal (signs the Cost-Plus agreement)</option>
+                    <option value="partner">Partner — Dacs Partnership portal (signs the Partnership agreement)</option>
                 </select>
             </div>
             <div id="cc-edit-general-err" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:16px;"></div>
@@ -3949,6 +3960,10 @@
       <div class="pm-form-group">
         <label class="pm-field-label">Client Email <span style="color:#9ca3af;font-weight:400;">(used to link with client app)</span></label>
         <input type="email" id="pmProjectEmail" class="pm-input" placeholder="client@email.com">
+      </div>
+      <div class="pm-form-group">
+        <label class="pm-field-label">Partner Email <span style="color:#9ca3af;font-weight:400;">(links a Partner account to the Dacs Partnership portal — optional)</span></label>
+        <input type="email" id="pmProjectPartnerEmail" class="pm-input" placeholder="partner@email.com">
       </div>
 
       <div class="pm-form-section">Timeline &amp; Location</div>

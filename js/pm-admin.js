@@ -1344,6 +1344,7 @@ window.pmOpenProjectModal = function() {
     document.getElementById('pmProjectClientName').value = '';
     document.getElementById('pmProjectName').value       = '';
     document.getElementById('pmProjectEmail').value      = '';
+    const _npe = document.getElementById('pmProjectPartnerEmail'); if (_npe) _npe.value = '';
     document.getElementById('pmProjectStatus').value     = 'pending_agreement';
     document.getElementById('pmProjectStartDate').value  = '';
     document.getElementById('pmProjectAddress').value    = '';
@@ -1365,6 +1366,7 @@ window.pmEditProject = function(p) {
     document.getElementById('pmProjectClientName').value = p.clientName  || '';
     document.getElementById('pmProjectName').value       = p.projectName || '';
     document.getElementById('pmProjectEmail').value      = p.clientEmail || '';
+    const _epe = document.getElementById('pmProjectPartnerEmail'); if (_epe) _epe.value = p.partnerEmail || '';
     document.getElementById('pmProjectStatus').value     = p.status      || 'active';
     document.getElementById('pmProjectStartDate').value  = p.startDate   || '';
     document.getElementById('pmProjectAddress').value    = p.address     || '';
@@ -1387,6 +1389,7 @@ window.pmSaveProject = async function() {
     const clientName = document.getElementById('pmProjectClientName').value.trim();
     const projectName= document.getElementById('pmProjectName').value.trim();
     const clientEmail= document.getElementById('pmProjectEmail').value.trim();
+    const partnerEmail = (document.getElementById('pmProjectPartnerEmail')?.value || '').trim();
     const status     = document.getElementById('pmProjectStatus').value;
     const startDate  = document.getElementById('pmProjectStartDate').value;
     const address    = document.getElementById('pmProjectAddress').value.trim();
@@ -1405,7 +1408,7 @@ window.pmSaveProject = async function() {
     if (!projectName) { _pmShowErr('err-pmProjectName','Project name is required.');      valid = false; }
     if (!valid) return;
 
-    const data = { clientName, projectName, clientEmail, status, startDate, address, budget, plannedEndDate, managementFeePct,
+    const data = { clientName, projectName, clientEmail, partnerEmail, status, startDate, address, budget, plannedEndDate, managementFeePct,
                    partnerTerms,
                    updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
 

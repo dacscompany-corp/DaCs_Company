@@ -543,7 +543,8 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
 
             const projectByEmail = {};
             _conProjects.forEach(p => {
-                if (p.clientEmail) projectByEmail[(p.clientEmail || '').toLowerCase()] = p.projectName || '';
+                if (p.clientEmail)  projectByEmail[(p.clientEmail  || '').toLowerCase()] = p.projectName || '';
+                if (p.partnerEmail) projectByEmail[(p.partnerEmail || '').toLowerCase()] = p.projectName || '';
             });
 
             _allConClients = conSnap.docs.map(doc => {
@@ -558,10 +559,20 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
                     status   : d.status    || 'active',
                     createdAt: d.createdAt || null,
                     project  : projectByEmail[email] || '',
+                    role     : d.role || 'client',
+                    isPartner: d.role === 'partner',   // partner accounts use the Dacs Partnership portal
                     agreementAccepted  : d.agreementAccepted === true,
                     agreementAcceptedAt: d.agreementAcceptedAt || null,
                     agreementSignature : d.agreementSignature || '',
-                    agreementSignatureImage: d.agreementSignatureImage || ''
+                    agreementSignatureImage: d.agreementSignatureImage || '',
+                    agreementIp        : d.agreementIp || '',
+                    // Partnership agreement (Dacs Partnership portal) — separate document,
+                    // signed into partner-prefixed fields (migration 0017).
+                    partnerAgreementAccepted  : d.partnerAgreementAccepted === true,
+                    partnerAgreementAcceptedAt: d.partnerAgreementAcceptedAt || null,
+                    partnerAgreementSignature : d.partnerAgreementSignature || '',
+                    partnerAgreementSignatureImage: d.partnerAgreementSignatureImage || '',
+                    partnerAgreementIp        : d.partnerAgreementIp || ''
                 };
             }).sort((a, b) => _tsToMs(b.createdAt) - _tsToMs(a.createdAt));
 
@@ -581,7 +592,23 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         _setText('ccTotalCount',    total);
         _setText('ccActiveCount',   active);
         _setText('ccInactiveCount', total - active);
+        // Redesigned header shows one compact stats line instead of stat cards.
+        _setText('cc-stats-line', total + ' client' + (total === 1 ? '' : 's') + ' · ' + active + ' active · ' + (total - active) + ' inactive');
     }
+
+    // Segmented status filter (All / Active / Inactive) — writes the hidden
+    // #ccStatusFilter input the existing ccFilterClients() already reads.
+    window.ccSetStatusTab = function (v) {
+        const hid = document.getElementById('ccStatusFilter');
+        if (hid) hid.value = v;
+        const wrap = document.getElementById('cc-status-tabs');
+        if (wrap) wrap.querySelectorAll('button').forEach(b => {
+            const on = b.getAttribute('data-v') === v;
+            b.style.background = on ? '#1A5C3A' : 'transparent';
+            b.style.color = on ? '#fff' : '#6b7280';
+        });
+        ccFilterClients();
+    };
 
     function _renderConTable(clients) {
         const tbody = document.getElementById('ccTableBody');
@@ -601,50 +628,102 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
     }
 
     function _agreementChip(c) {
-        if (c.agreementAccepted) {
+        // Two separate documents: the client Cost-Plus agreement and the Partnership
+        // agreement. Each account tracks the document for ITS portal (by role); a
+        // signed chip for the other document still shows if it exists (e.g. an
+        // account that was a client before becoming a partner).
+        const chips = [];
+        const clientSigned = () => {
             const when = c.agreementAcceptedAt ? _formatDate(c.agreementAcceptedAt) : '';
-            return `<span title="Signed by ${_esc(c.agreementSignature || c.name || '')}${when ? ' on ' + _esc(when) : ''}" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 9px;border-radius:20px;white-space:nowrap;"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> Signed${when ? ' · ' + _esc(when) : ''}</span>`;
+            return `<span title="Signed by ${_esc(c.agreementSignature || c.name || '')}${when ? ' on ' + _esc(when) : ''}" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#15803d;background:#ecfdf3;padding:3px 11px;border-radius:99px;white-space:nowrap;">✓ Signed${when ? ' · ' + _esc(when) : ''}</span>`;
+        };
+        const partnerSigned = () => {
+            const pwhen = c.partnerAgreementAcceptedAt ? _formatDate(c.partnerAgreementAcceptedAt) : '';
+            return `<span title="Partnership agreement signed by ${_esc(c.partnerAgreementSignature || c.name || '')}${pwhen ? ' on ' + _esc(pwhen) : ''}" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#5b3f96;background:#efeaf8;padding:3px 11px;border-radius:99px;white-space:nowrap;">✓ Partner${pwhen ? ' · ' + _esc(pwhen) : ''}</span>`;
+        };
+        const pending = (label) =>
+            `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#b45309;background:#fff7e6;padding:3px 11px;border-radius:99px;white-space:nowrap;">${label}</span>`;
+
+        if (c.isPartner) {
+            chips.push(c.partnerAgreementAccepted ? partnerSigned() : pending('Partner agreement pending'));
+            if (c.agreementAccepted) chips.push(clientSigned());
+        } else {
+            chips.push(c.agreementAccepted ? clientSigned() : pending('Waiting for signature'));
+            if (c.partnerAgreementAccepted) chips.push(partnerSigned());
         }
-        return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 9px;border-radius:20px;white-space:nowrap;"><i data-lucide="clock" style="width:12px;height:12px;"></i> Pending agreement</span>`;
+        return chips.join(' ');
     }
 
+    // Client Management Redesign row: avatar + stacked name/email, combined
+    // "Project & agreement" cell (project name + status badges), and a compact
+    // View + "More ▾" action pair — the Edit / print / (de)activate actions live
+    // in the More dropdown (ccToggleRowMenu) instead of five inline buttons.
     function _buildConRow(c) {
         const name    = c.name || _nameFromEmail(c.email);
         const initial = (name[0] || 'C').toUpperCase();
-        const toggleBtn = c.status === 'active'
-            ? `<button class="un-btn-toggle un-btn-deactivate" onclick="ccToggleStatus('${c.uid}','active')">Deactivate</button>`
-            : `<button class="un-btn-toggle un-btn-activate"   onclick="ccToggleStatus('${c.uid}','inactive')">Activate</button>`;
-        const projectCell = (c.project
-            ? `<span class="ca-project-tag">${_esc(c.project)}</span>`
-            : `<span style="color:#d1d5db;font-size:12px;">No project linked</span>`)
-            + `<div style="margin-top:6px;">${_agreementChip(c)}</div>`;
-        const pdfBtn = c.agreementAccepted
-            ? `<button class="un-btn-view" onclick="ccViewAgreementPdf('${c.uid}')" style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;" title="Download the client's signed agreement PDF">
-                    <i data-lucide="file-text" style="width:13px;height:13px;"></i> Agreement
-               </button>`
-            : '';
-
+        const active  = c.status === 'active';
         return `<tr data-uid="${c.uid}">
-            <td><div class="un-user-cell">
-                <div class="un-avatar un-avatar-client">${initial}</div>
-                <span class="un-user-name">${_esc(name)}</span>
-            </div></td>
-            <td style="color:#6b7280;font-size:13px;">${_esc(c.email)}</td>
-            <td>${projectCell}</td>
-            <td style="color:#6b7280;font-size:13px;">${_formatDate(c.createdAt)}</td>
-            <td>${_statusBadge(c.status)}</td>
-            <td><div class="un-actions">
-                <button class="un-btn-view" onclick="ccViewProfile('${c.uid}')">
-                    <i data-lucide="eye" style="width:13px;height:13px;"></i> View
-                </button>
-                <button class="un-btn-view" onclick="ccOpenEditModal('${c.uid}')" style="background:#f0fdf4;color:#16a34a;border-color:#bbf7d0;">
-                    <i data-lucide="pencil" style="width:13px;height:13px;"></i> Edit
-                </button>
-                ${pdfBtn}
-                ${toggleBtn}
-            </div></td>
+            <td>
+                <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+                    <span style="width:38px;height:38px;border-radius:50%;flex-shrink:0;background:#eaf5ee;color:#1A5C3A;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;">${initial}</span>
+                    <span style="min-width:0;">
+                        <span style="display:block;font-size:15px;font-weight:700;color:#143523;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(name)}</span>
+                        <span style="display:block;font-size:13px;color:#8a94a1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(c.email)}</span>
+                    </span>
+                </div>
+            </td>
+            <td>
+                <div style="font-size:14px;font-weight:600;color:${c.project ? '#143523' : '#a8b0ba'};margin-bottom:5px;">${c.project ? _esc(c.project) : 'No project linked'}</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">${_agreementChip(c)}</div>
+            </td>
+            <td style="color:#6b7280;font-size:13.5px;white-space:nowrap;">${_formatDate(c.createdAt)}</td>
+            <td><span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;border-radius:99px;padding:4px 12px;background:${active ? '#ecfdf3' : '#f3f4f6'};color:${active ? '#15803d' : '#6b7280'};">${active ? 'Active' : 'Inactive'}</span></td>
+            <td>
+                <div style="display:flex;gap:8px;justify-content:flex-end;">
+                    <button onclick="ccViewProfile('${c.uid}')" style="padding:9px 16px;border:1.5px solid #d6dcd7;border-radius:10px;background:#fff;color:#143523;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;">View</button>
+                    <button id="cc-more-${c.uid}" onclick="ccToggleRowMenu('${c.uid}', event)" style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;border:1.5px solid #d6dcd7;background:#fff;color:#143523;">
+                        More <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                </div>
+            </td>
         </tr>`;
     }
+
+    // "More ▾" dropdown — one shared fixed-position popup (so the table's
+    // overflow can never clip it), rebuilt per row on open.
+    let _ccRowMenuUid = null;
+    window.ccToggleRowMenu = function (uid, ev) {
+        if (ev) ev.stopPropagation();
+        if (_ccRowMenuUid === uid) { window.ccCloseRowMenu(); return; }
+        const c = _allConClients.find(x => x.uid === uid);
+        const btn = document.getElementById('cc-more-' + uid);
+        if (!c || !btn) return;
+        _ccRowMenuUid = uid;
+        let menu = document.getElementById('ccRowMenu');
+        if (!menu) {
+            menu = document.createElement('div');
+            menu.id = 'ccRowMenu';
+            document.body.appendChild(menu);
+            document.addEventListener('click', function () { window.ccCloseRowMenu(); });
+        }
+        const item = (label, onclick, danger) =>
+            '<button type="button" onclick="' + onclick + '" style="text-align:left;padding:10px 13px;border:none;border-radius:8px;background:transparent;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;color:' + (danger ? '#b91c1c' : '#374151') + ';" onmouseover="this.style.background=\'#f3f5f3\'" onmouseout="this.style.background=\'transparent\'">' + label + '</button>';
+        menu.innerHTML = [
+            item('Edit account', "ccOpenEditModal('" + uid + "')"),
+            (c.agreementAccepted ? item('Print agreement (PDF)', "ccViewAgreementPdf('" + uid + "')") : ''),
+            ((c.isPartner || c.partnerAgreementAccepted) ? item('Print partner agreement', "ccViewAgreementPdf('" + uid + "', true)") : ''),
+            item(c.status === 'active' ? 'Deactivate account' : 'Reactivate account', "ccToggleStatus('" + uid + "','" + c.status + "')", c.status === 'active')
+        ].join('');
+        menu.style.cssText = 'position:fixed;z-index:10060;background:#fff;border:1px solid #e3e8e4;border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,0.16);min-width:210px;padding:6px;display:flex;flex-direction:column;';
+        const r = btn.getBoundingClientRect();
+        menu.style.left = Math.max(8, r.right - Math.max(210, menu.offsetWidth)) + 'px';
+        menu.style.top  = Math.min(window.innerHeight - menu.offsetHeight - 8, r.bottom + 6) + 'px';
+    };
+    window.ccCloseRowMenu = function () {
+        const menu = document.getElementById('ccRowMenu');
+        if (menu) menu.style.display = 'none';
+        _ccRowMenuUid = null;
+    };
 
     window.ccFilterClients = function () {
         const q      = (document.getElementById('ccSearchInput')?.value  || '').toLowerCase().trim();
@@ -675,45 +754,126 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
 
     // Admin: download a client's signed agreement PDF (self-contained — mirrors
     // the portal's cmDownloadAgreementPdf so both sides produce the same locked doc).
-    window.ccViewAgreementPdf = function (uid) {
+    // Pass partner=true to print the signed PARTNERSHIP agreement (separate document,
+    // partner-prefixed fields) instead of the client Cost-Plus one.
+    window.ccViewAgreementPdf = function (uid, partner) {
         const c = _allConClients.find(x => x.uid === uid);
         if (!c) return;
-        if (!c.agreementAccepted) { alert('This client has not signed the agreement yet.'); return; }
+        // Partner doc not signed yet → offer an UNSIGNED review copy instead of blocking
+        // (signing happens in the Dacs Partnership portal; needs migration 0017 applied).
+        const unsigned = partner && !c.partnerAgreementAccepted;
+        if (unsigned && !confirm('This account has not signed the Partnership Agreement yet.\n\nPrint an UNSIGNED copy for review?')) return;
+        if (!partner && !c.agreementAccepted) { alert('This account has not signed the agreement yet.'); return; }
         if (typeof window.dacsAgreementPdf !== 'function') { alert('Print utility not loaded.'); return; }
         const email = (c.email || '').toLowerCase();
-        const proj  = (_conProjects || []).find(p => (p.clientEmail || '').toLowerCase() === email) || {};
+        // One account can own SEVERAL projects (same clientEmail) — never print the
+        // first match blindly (it mixed one project's name with another's numbers).
+        // With more than one, the admin picks which project in a styled modal.
+        const matches = (_conProjects || []).filter(p =>
+            (p.clientEmail || '').toLowerCase() === email || (p.partnerEmail || '').toLowerCase() === email);
+        if (matches.length > 1) { _ccOpenPrintPicker(c, matches, !!partner, unsigned); return; }
+        _ccPrintAgreement(c, matches[0] || {}, !!partner, unsigned);
+    };
+
+    function _ccPrintAgreement(c, proj, partner, unsigned) {
         const clientName = [c.firstName, c.lastName].filter(Boolean).join(' ').trim() || c.email || '—';
-        const signature  = c.agreementSignature || clientName;
-        const at = c.agreementAcceptedAt ? (c.agreementAcceptedAt.toDate ? c.agreementAcceptedAt.toDate() : new Date(c.agreementAcceptedAt)) : new Date();
-        const dateStr = isNaN(at) ? '' : at.toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' });
-        const dayStr  = isNaN(at) ? '' : at.toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
-        const projectTitle = proj.projectName || proj.clientName || 'Construction Project';
-        const contract = proj.budget != null ? '₱' + Number(proj.budget).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
-        const feePct   = (proj.managementFeePct != null ? proj.managementFeePct : 15) + '%';
+        const signature  = unsigned ? '' : ((partner ? c.partnerAgreementSignature : c.agreementSignature) || clientName);
+        const atRaw = partner ? c.partnerAgreementAcceptedAt : c.agreementAcceptedAt;
+        const at = atRaw ? (atRaw.toDate ? atRaw.toDate() : new Date(atRaw)) : new Date();
+        const dateStr = (unsigned || isNaN(at)) ? '' : at.toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' });
+        const dayStr  = (unsigned || isNaN(at)) ? '' : at.toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
+        if (partner) {
+            // Canonical Partnership document from print-utils.js — identical to what
+            // the partner read and signed in the portal's signing stepper.
+            window.dacsAgreementPdf({
+                ...window.dacsPartnerAgreementDoc(clientName, proj, dayStr),
+                subtitle: unsigned ? 'Partner Agreement — UNSIGNED (for review)' : 'Partner Agreement',
+                signature,
+                signatureImage: unsigned ? '' : (c.partnerAgreementSignatureImage || ''),
+                dateStr,
+                ip: unsigned ? '' : (c.partnerAgreementIp || '')
+            });
+            return;
+        }
+        // Canonical Cost-Plus client document (print-utils.js) — identical to what
+        // the client read and signed in the portal modal.
         window.dacsAgreementPdf({
-            title: 'Cost-Plus Project Management Agreement',
-            subtitle: 'Client Agreement',
-            preamble: 'This Agreement is entered into on ' + (dayStr || '____________') + ' between DAC’s Building Design Services (the “Manager”) and ' + clientName + ' (the “Client”) for the construction project identified below. By electronically signing this Agreement, the Client acknowledges having read, understood, and voluntarily accepted all terms and conditions herein.',
-            parties: [
-                { label: 'Client', value: clientName },
-                { label: 'Project', value: projectTitle },
-                { label: 'Contract Value', value: contract },
-                { label: 'Management Fee', value: feePct + ' on direct costs' },
-                { label: 'Start Date', value: proj.startDate || '—' },
-                { label: 'Planned Completion', value: proj.plannedEndDate || '—' }
-            ],
-            sections: [
-                { heading: 'Scope of Work', body: 'DAC’s Building Design Services shall manage the construction works for the above project, procuring materials and labor and reporting actual recorded costs to the Client on a weekly basis.' },
-                { heading: 'Payment Terms', body: 'The Client shall pay the actual direct costs (labor + materials) plus a management fee of ' + feePct + ', billed weekly. Payment is due each Friday for the corresponding week’s recorded costs.' },
-                { heading: 'Responsibilities', body: 'DAC’s shall record all costs transparently and provide supporting documents. The Client shall settle weekly billings promptly and may fund a revolving fund for minor site purchases.' },
-                { heading: 'Terms & Conditions', body: 'Prices may vary with market conditions. Quoted estimates are not guaranteed fixed prices. Either party may terminate per the termination clause; consumed costs and the equivalent management fee are settled on termination.' }
-            ],
+            ...window.dacsClientAgreementDoc(clientName, proj, dayStr),
             signature,
             signatureImage: c.agreementSignatureImage || '',
             dateStr,
-            signerLabel: 'Client',
             ip: c.agreementIp || ''
         });
+    }
+
+    // ── Print-agreement project picker (claude_design "Print Agreement Picker") ──
+    // Styled radio-card modal replacing the old native prompt(): pick which of the
+    // account's projects the printed agreement covers, then print.
+    let _ccPicker = null;   // { c, matches, partner, unsigned, selected }
+
+    function _ccOpenPrintPicker(c, matches, partner, unsigned) {
+        _ccPicker = { c, matches, partner, unsigned, selected: 0 };
+        let ov = document.getElementById('ccPrintPickerOverlay');
+        if (!ov) {
+            ov = document.createElement('div');
+            ov.id = 'ccPrintPickerOverlay';
+            ov.addEventListener('click', function (e) { if (e.target === ov) window.ccPickerCancel(); });
+            document.body.appendChild(ov);
+        }
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(17,24,39,0.45);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:20px;z-index:10050;';
+        _ccRenderPrintPicker();
+    }
+
+    function _ccRenderPrintPicker() {
+        const ov = document.getElementById('ccPrintPickerOverlay');
+        const st = _ccPicker;
+        if (!ov || !st) return;
+        const name = [st.c.firstName, st.c.lastName].filter(Boolean).join(' ').trim() || st.c.email || 'This account';
+        const printIcon = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1A5C3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>';
+        const cards = st.matches.map(function (p, i) {
+            const sel = i === st.selected;
+            const budget = p.budget != null ? '₱' + Number(p.budget).toLocaleString('en-PH') : '';
+            return '<button type="button" onclick="ccPickerSelect(' + i + ')" style="display:flex;align-items:center;gap:14px;width:100%;padding:15px 16px;border-radius:13px;cursor:pointer;font-family:inherit;border:1.5px solid ' + (sel ? '#1A5C3A' : '#e3e8e4') + ';background:' + (sel ? '#f4faf6' : '#fff') + ';box-shadow:' + (sel ? '0 0 0 3px rgba(26,92,58,0.10)' : 'none') + ';transition:border-color .15s,background .15s,box-shadow .15s;">'
+                + '<span style="width:20px;height:20px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;border:' + (sel ? 'none' : '2px solid #cdd6cf') + ';background:' + (sel ? '#1A5C3A' : '#fff') + ';">' + (sel ? '<span style="width:8px;height:8px;border-radius:50%;background:#fff;display:block;"></span>' : '') + '</span>'
+                + '<span style="flex:1;min-width:0;text-align:left;">'
+                + '<span style="display:block;font-size:15px;font-weight:700;color:#143523;">' + _esc(p.projectName || 'Project') + '</span>'
+                + '<span style="display:block;font-size:13px;color:#6b7280;margin-top:2px;">' + _esc(p.address || '—') + '</span>'
+                + '</span>'
+                + (budget ? '<span style="font-size:14px;font-weight:700;color:#1A5C3A;white-space:nowrap;">' + budget + '</span>' : '')
+                + '</button>';
+        }).join('');
+        ov.innerHTML =
+            '<div style="background:#fff;border-radius:18px;width:100%;max-width:470px;box-shadow:0 24px 60px rgba(15,23,42,0.28);overflow:hidden;">'
+            + '<div style="padding:24px 26px 6px;display:flex;align-items:flex-start;gap:14px;">'
+            + '<div style="width:42px;height:42px;border-radius:12px;background:#eaf5ee;display:flex;align-items:center;justify-content:center;flex-shrink:0;">' + printIcon + '</div>'
+            + '<div style="flex:1;">'
+            + '<div style="font-size:18px;font-weight:700;color:#143523;line-height:1.3;">Print ' + (st.partner ? 'partner ' : '') + 'agreement</div>'
+            + '<div style="font-size:14px;color:#6b7280;line-height:1.5;margin-top:3px;">' + _esc(name) + ' has ' + st.matches.length + ' linked projects. Choose which one this agreement covers.</div>'
+            + '</div>'
+            + '<button type="button" onclick="ccPickerCancel()" aria-label="Close" style="width:32px;height:32px;border-radius:50%;border:none;background:#f3f4f6;color:#6b7280;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">'
+            + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>'
+            + '</button></div>'
+            + '<div style="padding:16px 26px 4px;display:flex;flex-direction:column;gap:10px;">' + cards + '</div>'
+            + '<div style="padding:18px 26px 22px;display:flex;gap:10px;justify-content:flex-end;">'
+            + '<button type="button" onclick="ccPickerCancel()" style="padding:12px 20px;border-radius:11px;border:1.5px solid #d6dcd7;background:#fff;color:#374151;font-size:14.5px;font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>'
+            + '<button type="button" onclick="ccPickerConfirm()" style="padding:12px 24px;border-radius:11px;border:none;background:#1A5C3A;color:#fff;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(26,92,58,0.28);display:inline-flex;align-items:center;gap:8px;">'
+            + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>'
+            + 'Print agreement</button>'
+            + '</div></div>';
+    }
+
+    window.ccPickerSelect = function (i) {
+        if (_ccPicker) { _ccPicker.selected = i; _ccRenderPrintPicker(); }
+    };
+    window.ccPickerCancel = function () {
+        const ov = document.getElementById('ccPrintPickerOverlay');
+        if (ov) ov.style.display = 'none';
+        _ccPicker = null;
+    };
+    window.ccPickerConfirm = function () {
+        const st = _ccPicker;
+        window.ccPickerCancel();
+        if (st) _ccPrintAgreement(st.c, st.matches[st.selected] || {}, st.partner, st.unsigned);
     };
 
     window.ccViewProfile = function (uid) {
@@ -774,6 +934,8 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
+        const newRoleSel = document.getElementById('cc-create-role');
+        if (newRoleSel) newRoleSel.value = 'client';
         ['err-cc-firstname','err-cc-lastname','err-cc-email',
          'err-cc-password','err-cc-confirm','cc-create-general-err'].forEach(id => {
             const el = document.getElementById(id);
@@ -850,8 +1012,9 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         try {
             // Edge Function creates the auth user (reusing the uid if the email already
             // exists) and upserts the construction_client profile. Admin session intact.
+            const accountRole = (document.getElementById('cc-create-role')?.value === 'partner') ? 'partner' : 'client';
             const { uid } = await adminCreateUser({
-                email, password, kind: 'construction_client', role: 'client',
+                email, password, kind: 'construction_client', role: accountRole,
                 firstName, lastName, displayName: firstName + ' ' + lastName,
             });
 
@@ -872,16 +1035,19 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
                 status   : 'active',
                 createdAt: new Date(),
                 project  : linkedProject?.projectName || '',
+                role     : accountRole,
+                isPartner: accountRole === 'partner',
                 // New accounts start un-signed → show "Pending agreement" until they sign on first login.
                 agreementAccepted  : false,
                 agreementAcceptedAt: null,
-                agreementSignature : ''
+                agreementSignature : '',
+                partnerAgreementAccepted: false
             });
             _renderConStats(_allConClients);
             _renderConTable(_allConClients);
 
             caCloseCreateModal();
-            _showSuccessBanner('Account created for ' + firstName + ' ' + lastName + '. They can now log in to the Client Management Portal.');
+            _showSuccessBanner('Account created for ' + firstName + ' ' + lastName + '. They can now log in to the ' + (accountRole === 'partner' ? 'Dacs Partnership Portal' : 'Client Management Portal') + '.');
         } catch (err) {
             console.error('caSubmitCreateClient:', err);
             let msg = 'Something went wrong. Please try again.';
@@ -927,6 +1093,8 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         if (lnEl)    lnEl.value          = c.lastName  || '';
         if (emailEl) emailEl.textContent = c.email;
         if (nameEl)  nameEl.textContent  = c.name || _nameFromEmail(c.email);
+        const roleSel = document.getElementById('cc-edit-role');
+        if (roleSel) roleSel.value = c.isPartner ? 'partner' : 'client';
 
         const sel = document.getElementById('cc-edit-project');
         if (sel) {
@@ -972,6 +1140,7 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         const firstName = (document.getElementById('cc-edit-firstname')?.value || '').trim();
         const lastName  = (document.getElementById('cc-edit-lastname')?.value  || '').trim();
         const projectId = (document.getElementById('cc-edit-project')?.value   || '');
+        const accountRole = (document.getElementById('cc-edit-role')?.value === 'partner') ? 'partner' : 'client';
 
         let valid = true;
         function _fe(id, msg) { const el = document.getElementById(id); if (el) { el.textContent = msg; el.style.display = 'block'; } valid = false; }
@@ -984,7 +1153,7 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
 
         try {
-            await db.collection('constructionClientUsers').doc(uid).update({ firstName, lastName });
+            await db.collection('constructionClientUsers').doc(uid).update({ firstName, lastName, role: accountRole });
 
             // Handle project link changes
             const prevProj = _conProjects.find(p => (p.clientEmail || '').toLowerCase() === c.email.toLowerCase());
@@ -1008,6 +1177,8 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
             c.lastName  = lastName;
             c.name      = firstName + ' ' + lastName;
             c.project   = newProj?.projectName || '';
+            c.role      = accountRole;
+            c.isPartner = accountRole === 'partner';
 
             _renderConStats(_allConClients);
             ccFilterClients();

@@ -1448,166 +1448,98 @@ function filterProgressLogs(){
 </div>
 
 <!-- ══════════ COST-PLUS AGREEMENT MODAL ══════════ -->
-<div id="cm-agreement-modal" class="cm-agreement-overlay" style="display:none;">
-  <div class="cm-agreement-card">
+<div id="cm-agreement-modal" class="cm-agreement-overlay cm-agr-gate" style="display:none;">
 
-    <!-- Header -->
-    <div class="cm-agreement-header">
-      <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo"/>
-      <div class="cm-agreement-badge">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        Official Document
-      </div>
-      <div class="cm-agreement-title">Cost-Plus Project Management Agreement</div>
-      <div class="cm-agreement-subtitle">Please read the full agreement carefully before accessing your project portal. Your acceptance is required to proceed.</div>
+  <!-- Top bar -->
+  <div class="cm-agr-gate-topbar">
+    <div class="cm-agr-gate-brand">
+      <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC's logo"/>
+      <span>Partner Portal</span>
     </div>
-
-    <!-- Scrollable Body -->
-    <div class="cm-agreement-body">
-
-      <!-- Section 1 -->
-      <div class="cm-agreement-section">
-        <div class="cm-agreement-section-title">
-          <span class="cm-agreement-section-num">1</span> Parties
-        </div>
-        <p>This Cost-Plus Project Management Agreement is entered into between:</p>
-        <ul>
-          <li><strong>Manager:</strong> DAC's Building Design Services — responsible for all construction management activities including labor, procurement, and site supervision.</li>
-          <li><strong>Client:</strong> The registered account holder — responsible for funding all direct costs and the management fee as defined herein.</li>
-        </ul>
-        <p style="margin-top:8px;">Each project must be formally linked to both a Manager and a Client account within the system.</p>
-      </div>
-      <div class="cm-agreement-divider"></div>
-
-      <!-- Section 2 -->
-      <div class="cm-agreement-section">
-        <div class="cm-agreement-section-title">
-          <span class="cm-agreement-section-num">2</span> Scope of Services
-        </div>
-        <p>The Manager shall provide the following services on behalf of the Client:</p>
-        <ul>
-          <li><strong>Labor Management:</strong> Adding, assigning, and scheduling workers; tracking daily/weekly labor activities and payroll.</li>
-          <li><strong>Procurement Management:</strong> Recording material requests, supplier canvassing, tracking purchases, delivery status, and quality checks.</li>
-          <li><strong>Site Supervision:</strong> Monitoring project progress; uploading site reports, images, and compliance updates accessible by the Client.</li>
-        </ul>
-      </div>
-      <div class="cm-agreement-divider"></div>
-
-      <!-- Section 3 -->
-      <div class="cm-agreement-section">
-        <div class="cm-agreement-section-title">
-          <span class="cm-agreement-section-num">3</span> Cost-Plus Fee Structure
-        </div>
-        <p>This agreement operates under a <strong>Cost-Plus Model</strong>:</p>
-        <ul>
-          <li><strong>Direct Costs:</strong> Weekly labor payroll, materials and supplies, delivery, and consumables — all tracked individually in the system.</li>
-          <li><strong>Management Fee:</strong> 15% of the total weekly direct costs, automatically computed and displayed in all billing reports.</li>
-        </ul>
-        <div class="cm-agreement-highlight">Total Weekly Amount = Direct Costs + 15% Management Fee</div>
-      </div>
-      <div class="cm-agreement-divider"></div>
-
-      <!-- Section 4 -->
-      <div class="cm-agreement-section">
-        <div class="cm-agreement-section-title">
-          <span class="cm-agreement-section-num">4</span> Payment Terms
-        </div>
-        <ul>
-          <li>The Manager uploads a Weekly Labor &amp; Material Summary every billing period.</li>
-          <li>The Client is notified and must release payment within <strong>24 hours</strong> of submission.</li>
-          <li>Payment covers labor costs, material expenses, and the 15% management fee.</li>
-          <li>The Client may pay suppliers directly or fund the system's revolving fund for petty purchases.</li>
-        </ul>
-      </div>
-      <div class="cm-agreement-divider"></div>
-
-      <!-- Section 5 -->
-      <div class="cm-agreement-section">
-        <div class="cm-agreement-section-title">
-          <span class="cm-agreement-section-num">5</span> Revolving Fund
-        </div>
-        <p>An optional revolving fund (petty cash) may be established by the Client for minor and urgent site purchases. The system shall:</p>
-        <ul>
-          <li>Track deductions from the revolving fund with receipts as proof.</li>
-          <li>Calculate the remaining balance weekly.</li>
-          <li>Prompt the Client to replenish the fund when the balance falls below the required threshold.</li>
-        </ul>
-      </div>
-      <div class="cm-agreement-divider"></div>
-
-      <!-- Section 6 -->
-      <div class="cm-agreement-section">
-        <div class="cm-agreement-section-title">
-          <span class="cm-agreement-section-num">6</span> Responsibilities &amp; System Rules
-        </div>
-        <ul>
-          <li><strong>Quality Control:</strong> The Manager logs defective materials; the system records return and replacement actions.</li>
-          <li><strong>Labor Management:</strong> All workers are managed by the Manager. Payroll is funded and approved by the Client.</li>
-          <li><strong>Price Variability:</strong> Material and labor costs are subject to market fluctuations.</li>
-        </ul>
-        <div class="cm-agreement-warn-box">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" flex-shrink="0" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span>⚠ Costs may vary based on market price changes. The Client acknowledges that quoted estimates are not guaranteed fixed prices.</span>
-        </div>
-      </div>
-      <div class="cm-agreement-divider"></div>
-
-      <!-- Section 7 -->
-      <div class="cm-agreement-section">
-        <div class="cm-agreement-section-title">
-          <span class="cm-agreement-section-num">7</span> Termination
-        </div>
-        <p>Either party may request early project termination through the system. Upon termination:</p>
-        <ul>
-          <li>The system auto-calculates: total consumed labor costs, total materials used, and the equivalent management fee.</li>
-          <li>The final payable balance must be settled in full before the project is officially closed.</li>
-          <li>Termination requests are subject to review and confirmation by the Manager.</li>
-        </ul>
-      </div>
-      <div class="cm-agreement-divider"></div>
-
-      <!-- Section 8 -->
-      <div class="cm-agreement-section">
-        <div class="cm-agreement-section-title">
-          <span class="cm-agreement-section-num">8</span> Agreement Confirmation
-        </div>
-        <p>By accepting this agreement, the Client confirms that they have fully read, understood, and voluntarily agree to all terms and conditions set forth in this Cost-Plus Project Management Agreement with DAC's Building Design Services.</p>
-        <p>This digital acceptance serves as a binding confirmation equivalent to a written signature.</p>
-      </div>
-
-    </div><!-- /agreement-body -->
-
-    <!-- Footer -->
-    <div class="cm-agreement-footer">
-      <label class="cm-agreement-check-wrap" for="cm-agreement-checkbox">
-        <input type="checkbox" id="cm-agreement-checkbox" onchange="cmToggleAgreementBtn()"/>
-        <span>I have fully read and understood this <strong>Cost-Plus Project Management Agreement</strong> and agree to all its terms and conditions.</span>
-      </label>
-      <div class="cm-agreement-sign-wrap cm-sign-grid" style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:end;">
-        <div>
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;">
-            <label style="font-size:12px;font-weight:700;color:#374151;">Draw your signature <span style="color:#dc2626;">*</span></label>
-            <button type="button" onclick="cmClearSignature()" style="font-size:11px;font-weight:600;color:#6b7280;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:7px;padding:3px 10px;cursor:pointer;">Clear</button>
-          </div>
-          <div style="position:relative;border:1.5px solid #d1d5db;border-radius:10px;background:#fff;overflow:hidden;">
-            <canvas id="cm-signature-pad" style="display:block;width:100%;height:96px;touch-action:none;cursor:crosshair;"></canvas>
-            <div id="cm-signature-hint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;color:#c4c8d0;font-size:13px;font-style:italic;">Sign here</div>
-          </div>
-        </div>
-        <div>
-          <label for="cm-agreement-signature" style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:5px;">Full name (printed) <span style="color:#dc2626;">*</span></label>
-          <input type="text" id="cm-agreement-signature" oninput="cmToggleAgreementBtn()" placeholder="e.g. Juan Dela Cruz" autocomplete="off"
-                 style="width:100%;padding:10px 13px;border:1.5px solid #d1d5db;border-radius:10px;font-size:14.5px;font-family:'Playfair Display',serif;font-style:italic;color:#111827;outline:none;box-sizing:border-box;"/>
-          <div style="font-size:11px;color:#9ca3af;margin-top:6px;">Drawing + typing your name signs this electronically. Recorded with the date/time.</div>
-        </div>
-      </div>
-      <button id="cm-agreement-accept-btn" class="cm-agreement-accept-btn" onclick="cmAcceptAgreement()" disabled>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:6px;"><polyline points="20 6 9 17 4 12"/></svg>
-        Accept &amp; Continue to Portal
-      </button>
-    </div>
-
+    <div class="cm-agr-gate-steplabel" id="cm-agr-steplabel">Step 1 of 2</div>
   </div>
+  <!-- Thin progress bar -->
+  <div class="cm-agr-gate-progress"><div id="cm-agr-progress-fill" style="width:50%;"></div></div>
+
+  <!-- ══════════ STEP 1 · READ ══════════ -->
+  <div id="cm-agr-step-1">
+    <div class="cm-agr-gate-wrap">
+      <div class="cm-agr-gate-hero">
+        <h1 id="cm-agr-welcome">Welcome</h1>
+        <p>Before you start, please read your Partnership Agreement below. Signing takes about 2 minutes — and you only do this once.</p>
+      </div>
+      <div class="cm-agr-paper" id="cm-agr-paper-read"></div>
+      <div class="cm-agr-pagenote">Page 1 of 1 · You'll sign electronically on the next step.</div>
+    </div>
+    <div class="cm-agr-gate-actionbar">
+      <div class="cm-agr-gate-actioninner">
+        <div class="cm-agr-gate-hint">Next: sign with your finger or mouse.</div>
+        <button type="button" class="cm-agr-gate-btn" onclick="cmAgrNext()">I've read it — continue to sign &nbsp;→</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════ STEP 2 · SIGN ══════════ -->
+  <div id="cm-agr-step-2" style="display:none;">
+    <div class="cm-agr-gate-wrap cm-agr-gate-wrap--narrow">
+      <button type="button" class="cm-agr-gate-back" onclick="cmAgrBack()">← Back to the agreement</button>
+      <h1 class="cm-agr-gate-h1">Sign the agreement</h1>
+      <p class="cm-agr-gate-sub">Almost done — just confirm and sign below.</p>
+
+      <label class="cm-agr-card cm-agr-agree" id="cm-agr-agree-card" for="cm-agreement-checkbox">
+        <input type="checkbox" id="cm-agreement-checkbox" onchange="cmToggleAgreementBtn()"/>
+        <span>I have read the <strong>DAC's Partnership Agreement</strong> and I agree to its terms.</span>
+      </label>
+
+      <div class="cm-agr-card">
+        <div class="cm-agr-card-head">
+          <div class="cm-agr-card-title">Draw your signature</div>
+          <button type="button" onclick="cmClearSignature()" class="cm-agr-clear">Clear</button>
+        </div>
+        <div class="cm-agr-card-note">Use your finger or mouse — it doesn't need to be perfect.</div>
+        <div class="cm-agr-padwrap">
+          <canvas id="cm-signature-pad" style="display:block;width:100%;height:150px;touch-action:none;cursor:crosshair;"></canvas>
+          <div id="cm-signature-hint">Sign here</div>
+        </div>
+      </div>
+
+      <div class="cm-agr-card">
+        <label class="cm-agr-card-title" for="cm-agreement-signature" style="display:block;margin-bottom:10px;">Type your full name</label>
+        <input type="text" id="cm-agreement-signature" class="cm-agr-nameinput" oninput="cmToggleAgreementBtn()" placeholder="e.g. Juan Dela Cruz" autocomplete="off"/>
+        <div class="cm-agr-lock">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          Signing here is recorded with today's date and is as valid as signing on paper.
+        </div>
+      </div>
+
+      <button type="button" id="cm-agr-next-btn" class="cm-agr-gate-btn cm-agr-gate-btn--big" onclick="cmAgrNext()" disabled>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-3px;margin-right:8px;"><polyline points="20 6 9 17 4 12"/></svg>
+        Agree &amp; sign
+      </button>
+      <div class="cm-agr-signhint" id="cm-agr-signhint"></div>
+    </div>
+  </div>
+
+  <!-- ══════════ STEP 3 · DONE (review the signed copy) ══════════ -->
+  <div id="cm-agr-step-3" style="display:none;">
+    <div class="cm-agr-gate-wrap">
+      <div class="cm-agr-done-hero">
+        <div class="cm-agr-done-check">
+          <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#1A5C3A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h1>You're all set</h1>
+        <p>Here is your signed copy — check your signature and name at the bottom, then enter the portal. <button type="button" class="cm-agr-gate-back" style="margin:0;display:inline;" onclick="cmAgrBack()">Need to fix something?</button></p>
+      </div>
+      <div class="cm-agr-paper" id="cm-agr-paper-signed"></div>
+    </div>
+    <div class="cm-agr-gate-actionbar">
+      <div class="cm-agr-gate-actioninner">
+        <button type="button" class="cm-agr-gate-link" onclick="cmAgrDownloadPreview()">Download my signed copy (PDF)</button>
+        <button id="cm-agreement-accept-btn" class="cm-agr-gate-btn" onclick="cmAcceptAgreement()" disabled>Enter the portal &nbsp;→</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- ══════════ PER-PROJECT TERMS GATE (partner must accept before viewing a project) ══════════ -->
