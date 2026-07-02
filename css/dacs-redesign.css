@@ -296,6 +296,125 @@ body:not(.dark-mode) .cm-topbar-date       { font-size: 13px; color: var(--dx-mu
 .cm-ov-partner-grid .ov-breakdown  { grid-area: breakdown; display: flex; }
 .cm-ov-partner-grid .ov-breakdown > .cm-bd-card { flex: 1 1 auto; width: 100%; }
 
+/* ── Partner agreement signing GATE (full-page, Dacs Partnership.html) ──
+   From the claude_design "Partnership Agreement Gate" — step 1 shows the
+   agreement as an inline paper sheet, step 2 signs, step 3 reviews the
+   signed copy. Overrides the centered-card overlay into a scrolling page. */
+.cm-agreement-overlay.cm-agr-gate {
+  display: block;
+  align-items: unset;
+  justify-content: unset;
+  padding: 0;
+  background: #eceef1;
+  overflow-y: auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  color: #1f2937;
+}
+.cm-agr-gate-topbar {
+  position: sticky; top: 0; z-index: 6;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 14px 22px; background: #fff; border-bottom: 1px solid #e7ebe8;
+}
+.cm-agr-gate-brand { display: flex; align-items: center; gap: 10px; }
+.cm-agr-gate-brand img { height: 34px; display: block; }
+.cm-agr-gate-brand span { font-size: 13.5px; font-weight: 600; color: #374151; }
+.cm-agr-gate-steplabel { font-size: 13px; font-weight: 600; color: #6b7280; }
+.cm-agr-gate-progress { position: sticky; top: 63px; z-index: 6; height: 4px; background: #e7ebe8; }
+.cm-agr-gate-progress > div { height: 4px; background: #1A5C3A; border-radius: 0 99px 99px 0; transition: width .4s ease; }
+
+.cm-agr-gate-wrap { width: 100%; max-width: 720px; margin: 0 auto; padding: 36px 20px 40px; }
+.cm-agr-gate-wrap--narrow { max-width: 620px; }
+.cm-agr-gate-hero { text-align: center; margin-bottom: 28px; }
+.cm-agr-gate-hero h1, .cm-agr-gate-h1 { font-family: 'Playfair Display', serif; font-size: clamp(26px, 5vw, 34px); font-weight: 700; color: #143523; margin: 0 0 10px; line-height: 1.2; }
+.cm-agr-gate-hero p { font-size: 16px; color: #5b6572; line-height: 1.6; margin: 0 auto; max-width: 480px; }
+.cm-agr-gate-h1 { font-size: clamp(24px, 5vw, 30px); }
+.cm-agr-gate-sub { font-size: 15.5px; color: #5b6572; line-height: 1.6; margin: 0 0 26px; }
+.cm-agr-pagenote { text-align: center; font-size: 12.5px; color: #8a94a1; margin-top: 14px; }
+
+/* The paper sheet */
+.cm-agr-paper {
+  background: #fff; border: 1px solid #d7dbe0; border-radius: 2px;
+  padding: clamp(30px, 7vw, 68px) clamp(24px, 8vw, 76px);
+  box-shadow: 0 1px 3px rgba(15,23,42,.10), 0 22px 48px rgba(15,23,42,.14);
+  font-family: Georgia, 'Times New Roman', serif;
+}
+.cm-agr-p-head { text-align: center; margin-bottom: 26px; }
+.cm-agr-p-head img { height: 52px; display: block; margin: 0 auto 14px; }
+.cm-agr-p-title { font-family: 'Playfair Display', serif; font-size: clamp(21px, 4vw, 27px); font-weight: 700; color: #143523; line-height: 1.25; }
+.cm-agr-p-subtitle { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #6b7280; margin-top: 7px; }
+.cm-agr-p-rule { height: 2.5px; background: #1A5C3A; width: 72px; margin: 16px auto 0; }
+.cm-agr-p-parties { border: 1px solid #e2e6ea; padding: 14px 18px; margin-bottom: 24px; display: grid; grid-template-columns: auto 1fr; gap: 6px 20px; font-size: 14.5px; }
+.cm-agr-p-parties > div:nth-child(odd) { color: #6b7280; }
+.cm-agr-p-parties > div:nth-child(even) { color: #111827; }
+.cm-agr-p-parties .b { font-weight: 700; }
+.cm-agr-p-pre { font-size: 15px; color: #1f2937; line-height: 1.8; margin: 0 0 28px; text-align: justify; }
+.cm-agr-p-sec { margin-bottom: 24px; }
+.cm-agr-p-h { font-size: 15.5px; font-weight: 700; color: #143523; margin-bottom: 7px; }
+.cm-agr-p-sec p { font-size: 15px; color: #1f2937; line-height: 1.8; margin: 0; text-align: justify; white-space: pre-wrap; }
+.cm-agr-p-signrow { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; margin-top: 44px; }
+.cm-agr-p-sigline { border-bottom: 1px solid #111827; height: 44px; }
+.cm-agr-p-siglbl { font-size: 12.5px; color: #6b7280; margin-top: 7px; }
+.cm-agr-p-signame { font-family: 'Playfair Display', serif; font-style: italic; font-size: 20px; color: #111827; border-bottom: 1px solid #111827; padding-bottom: 4px; }
+.cm-agr-p-sigimg { height: 52px; margin-bottom: -8px; background-repeat: no-repeat; background-size: contain; background-position: left bottom; position: relative; z-index: 1; }
+.cm-agr-p-end { text-align: center; font-size: 12px; color: #9aa2ad; margin-top: 40px; font-style: italic; }
+
+/* Sign-step cards */
+.cm-agr-gate-back { display: inline-flex; align-items: center; gap: 7px; background: none; border: none; padding: 0; margin-bottom: 22px; font-size: 14px; font-weight: 600; color: #1A5C3A; cursor: pointer; font-family: inherit; }
+.cm-agr-card { display: block; background: #fff; border: 1.5px solid #e3e8e4; border-radius: 14px; padding: 17px 18px; margin-bottom: 18px; transition: border-color .15s; }
+.cm-agr-agree { display: flex; align-items: flex-start; gap: 13px; cursor: pointer; }
+.cm-agr-agree input { width: 22px; height: 22px; flex-shrink: 0; margin: 0; accent-color: #1A5C3A; cursor: pointer; }
+.cm-agr-agree span { font-size: 15px; color: #374151; line-height: 1.55; }
+.cm-agr-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.cm-agr-card-title { font-size: 14px; font-weight: 700; color: #143523; }
+.cm-agr-card-note { font-size: 13px; color: #8a94a1; margin-bottom: 10px; }
+.cm-agr-clear { font-size: 12.5px; font-weight: 600; color: #6b7280; background: #f3f5f3; border: 1px solid #e3e8e4; border-radius: 8px; padding: 5px 13px; cursor: pointer; font-family: inherit; }
+.cm-agr-padwrap { position: relative; border: 1.5px dashed #cdd6cf; border-radius: 10px; background: #fbfcfb; overflow: hidden; }
+.cm-agr-padwrap #cm-signature-hint { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; color: #c0c7cd; font-size: 15px; font-style: italic; }
+.cm-agr-nameinput { width: 100%; padding: 13px 16px; border: 1.5px solid #d6dcd7; border-radius: 10px; font-size: 19px; font-family: 'Playfair Display', serif; font-style: italic; color: #111827; outline: none; background: #fbfcfb; box-sizing: border-box; }
+.cm-agr-nameinput::placeholder { color: #b3b9c4; font-style: normal; }
+.cm-agr-lock { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: #8a94a1; margin-top: 10px; line-height: 1.5; }
+.cm-agr-signhint { text-align: center; font-size: 13px; color: #8a94a1; margin-top: 12px; min-height: 18px; }
+
+/* Buttons + sticky action bars */
+.cm-agr-gate-btn { padding: 13px 24px; border: none; border-radius: 12px; background: #1A5C3A; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; font-family: inherit; box-shadow: 0 4px 14px rgba(26,92,58,.28); transition: background .15s; white-space: nowrap; }
+.cm-agr-gate-btn:disabled { background: #e2e7e3; color: #9aa4ad; cursor: not-allowed; box-shadow: none; }
+.cm-agr-gate-btn--big { width: 100%; padding: 16px; font-size: 16px; }
+.cm-agr-gate-link { background: none; border: none; font-size: 14px; font-weight: 600; color: #1A5C3A; cursor: pointer; font-family: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.cm-agr-gate-actionbar { position: sticky; bottom: 0; z-index: 5; background: rgba(255,255,255,.96); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); border-top: 1px solid #e7ebe8; padding: 14px 20px calc(14px + env(safe-area-inset-bottom)); }
+.cm-agr-gate-actioninner { max-width: 720px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.cm-agr-gate-hint { font-size: 13.5px; color: #6b7280; line-height: 1.4; }
+
+/* Done step */
+.cm-agr-done-hero { text-align: center; margin-bottom: 30px; }
+.cm-agr-done-check { width: 78px; height: 78px; border-radius: 50%; background: #eaf5ee; display: flex; align-items: center; justify-content: center; margin: 0 auto 22px; animation: cmAgrPop .45s ease; }
+.cm-agr-done-hero h1 { font-family: 'Playfair Display', serif; font-size: clamp(26px, 5vw, 32px); font-weight: 700; color: #143523; margin: 0 0 10px; }
+.cm-agr-done-hero p { font-size: 15.5px; color: #5b6572; line-height: 1.65; margin: 0 auto; max-width: 460px; }
+@keyframes cmAgrPop { 0% { transform: scale(.6); opacity: 0; } 70% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+@media (max-width: 560px) {
+  .cm-agr-p-signrow { grid-template-columns: 1fr; gap: 24px; }
+}
+
+/* ── Partner agreement signing stepper (Dacs Partnership.html) ───── */
+.cm-agr-steps { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 14px; }
+.cm-agr-step-dot { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; color: #9aa0b2; white-space: nowrap; }
+.cm-agr-step-dot span { width: 22px; height: 22px; border-radius: 50%; background: #eceef3; color: #8b91a0; display: inline-flex; align-items: center; justify-content: center; font-size: 11.5px; flex: none; }
+.cm-agr-step-dot.active { color: #0f6342; }
+.cm-agr-step-dot.active span { background: #157a52; color: #fff; }
+.cm-agr-step-dot.done { color: #157a52; }
+.cm-agr-step-dot.done span { background: #dcfce7; color: #15803d; }
+.cm-agr-step-line { width: 34px; height: 2px; background: #e5e7eb; border-radius: 2px; flex: none; }
+.cm-agr-frame { width: 100%; height: 56vh; min-height: 340px; border: 1px solid #e5e7eb; border-radius: 12px; background: #e9eaee; display: block; }
+.cm-agr-nav { display: flex; align-items: center; gap: 12px; width: 100%; }
+.cm-agr-nav .cm-agreement-accept-btn { width: auto; margin: 0; }
+.cm-agr-btn-back { background: #fff; border: 1.5px solid #d1d5db; border-radius: 10px; padding: 12px 20px; font-size: 13.5px; font-weight: 700; color: #374151; cursor: pointer; font-family: inherit; }
+.cm-agr-btn-back:hover { border-color: #9ca3af; }
+@media (max-width: 560px) {
+  .cm-agr-step-line { width: 16px; }
+  .cm-agr-step-dot { font-size: 0; gap: 0; }        /* labels hide, circles remain */
+  .cm-agr-step-dot span { font-size: 11.5px; }
+  .cm-agr-frame { height: 48vh; }
+}
+
 /* ── Overview redesign grids: stack on narrow screens ────────────── */
 @media (max-width: 980px) {
   .cm-ov-row1, .cm-ov-row2, .cm-wk-row, .cm-rf-row, .cm-profile-grid { grid-template-columns: 1fr !important; }
