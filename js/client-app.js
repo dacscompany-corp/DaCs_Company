@@ -114,7 +114,10 @@ auth.onAuthStateChanged(async user => {
 
         currentUser = user;
         try {
-            await Promise.all([loadClientData(user), loadUserProfile(user)]);
+            await Promise.all([loadClientData(user), loadUserProfile(user), _clLoadGlobalTerms()]);
+            // Terms & Conditions PDF gate: if an admin set a global Terms PDF and the
+            // client hasn't signed it, they must open + e-sign before the dashboard.
+            if (_clientNeedsTermsPdf()) { _showClientTermsGate(user); return; }
             enterDashboard();
         } catch (err) {
             console.error('Client portal load error:', err);
@@ -254,6 +257,172 @@ async function loadUserProfile(user) {
     }
 }
 
+// ══════════════════════════════════════════════════════════
+// TERMS & CONDITIONS PDF GATE (first-login open + e-sign)
+// Mirrors the Client Management / Employee gate. Shown when an admin attached a
+// Terms PDF to this clientUsers account and it hasn't been signed yet.
+// ══════════════════════════════════════════════════════════
+let _clTermsSig = { canvas: null, ctx: null, drawing: false, hasInk: false, bound: false };
+let _clTermsReadLocked = false;
+let _clGlobalTerms = null;   // cached settings/clientPortalTerms { text, pdfUrl, pdfName }
+
+async function _clLoadGlobalTerms() {
+    try {
+        const doc = await db.collection('settings').doc('clientPortalTerms').get();
+        const d = doc && doc.exists ? doc.data() : null;
+        _clGlobalTerms = { text: (d && d.text) || '', pdfUrl: (d && d.pdfUrl) || '', pdfName: (d && d.pdfName) || '' };
+    } catch (_) { _clGlobalTerms = { text: '', pdfUrl: '', pdfName: '' }; }
+    return _clGlobalTerms;
+}
+
+function _clientNeedsTermsPdf() {
+    const g = _clGlobalTerms || {};
+    const p = currentProfile || {};
+    return !!(g.pdfUrl && String(g.pdfUrl).trim()) && p.agreementAccepted !== true;
+}
+
+function _clEsc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function _showClientTermsGate(user) {
+    document.getElementById('login-page')?.classList.remove('active');
+    const p = currentProfile || {};
+    const pdfUrl = String((_clGlobalTerms && _clGlobalTerms.pdfUrl) || '').trim();
+
+    let modal = document.getElementById('cl-terms-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'cl-terms-modal';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px;';
+        document.body.appendChild(modal);
+    }
+    _clTermsReadLocked = true;
+    const nm = [p.firstName, p.lastName].filter(Boolean).join(' ').trim();
+    modal.innerHTML =
+      '<div style="background:#fff;border:1.5px solid #111827;width:100%;max-width:640px;height:90vh;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 28px 80px rgba(0,0,0,.32);font-family:inherit;">'
+      + '<div style="padding:20px 28px 16px;border-bottom:1.5px solid #e5e7eb;text-align:center;background:linear-gradient(160deg,#eff6ff 0%,#dbeafe 100%);">'
+      +   '<div style="display:inline-flex;align-items:center;gap:5px;padding:4px 12px;background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.2);border-radius:20px;font-size:11px;font-weight:700;color:#1d4ed8;letter-spacing:.07em;text-transform:uppercase;">🔒 Agreement</div>'
+      +   '<h2 style="font-size:20px;font-weight:800;color:#1e3a8a;margin:8px 0 2px;">Terms &amp; Conditions</h2>'
+      +   '<p style="font-size:13px;color:#6b7280;margin:0;">Please read and sign to continue.</p>'
+      + '</div>'
+      + '<div style="flex:1;min-height:0;overflow-y:auto;padding:22px 28px;">'
+      +   '<div style="padding:4px 0 4px;font-size:13.5px;color:#374151;margin-bottom:12px;">Please open and read the Terms &amp; Conditions before you sign:</div>'
+      +   '<a href="' + _clEsc(pdfUrl) + '" target="_blank" rel="noopener" id="cl-terms-openpdf" onclick="clMarkTermsOpened()" style="display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border:1.5px solid #111827;border-radius:9px;background:#fff;color:#111827;font-weight:700;font-size:14px;cursor:pointer;text-decoration:none;font-family:inherit;">'
+      +     '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> Open Terms &amp; Conditions (PDF)</a>'
+      +   '<div id="cl-terms-openednote" style="display:none;margin-top:10px;font-size:12.5px;font-weight:600;color:#16a34a;">✓ Document opened — you can now sign below.</div>'
+      + '</div>'
+      + '<div style="padding:14px 28px 18px;border-top:1.5px solid #e5e7eb;background:#fafafa;display:flex;flex-direction:column;gap:12px;">'
+      +   '<label style="display:flex;align-items:flex-start;gap:9px;font-size:12.5px;color:#374151;cursor:pointer;"><input type="checkbox" id="cl-terms-checkbox" onchange="clToggleTermsBtn()" style="width:17px;height:17px;margin-top:1px;flex-shrink:0;cursor:pointer;"><span>I have read and agree to the <strong>Terms &amp; Conditions</strong>.</span></label>'
+      +   '<div style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:end;">'
+      +     '<div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;"><label style="font-size:12px;font-weight:700;color:#374151;">Draw your signature</label><button type="button" onclick="clClearTermsSig()" style="font-size:11px;font-weight:600;color:#6b7280;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:7px;padding:3px 10px;cursor:pointer;">Clear</button></div>'
+      +       '<div style="position:relative;border:1.5px solid #d1d5db;border-radius:10px;background:#fff;overflow:hidden;"><canvas id="cl-terms-pad" style="display:block;width:100%;height:90px;touch-action:none;cursor:crosshair;"></canvas><div id="cl-terms-hint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;color:#c4c8d0;font-size:13px;font-style:italic;">Sign here</div></div></div>'
+      +     '<div><label for="cl-terms-signature" style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:5px;">Full name (printed) <span style="color:#dc2626;">*</span></label><input type="text" id="cl-terms-signature" oninput="clToggleTermsBtn()" placeholder="e.g. Juan Dela Cruz" autocomplete="off" value="' + _clEsc(nm) + '" style="width:100%;box-sizing:border-box;padding:10px 13px;border:1.5px solid #d1d5db;border-radius:10px;font-size:14px;font-family:inherit;color:#111827;outline:none;"><div style="font-size:11px;color:#9ca3af;margin-top:6px;">Signing is recorded with the date/time.</div></div>'
+      +   '</div>'
+      +   '<div style="display:flex;gap:10px;justify-content:flex-end;"><button type="button" onclick="clTermsSignOut()" style="padding:11px 18px;border-radius:10px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;">Sign out</button><button type="button" id="cl-terms-accept" onclick="clAcceptTerms()" disabled style="flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#1d4ed8 0%,#2563eb 100%);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;opacity:.6;">Accept &amp; Continue</button></div>'
+      + '</div>'
+      + '</div>';
+    modal.dataset.uid = user.uid;
+    modal.style.display = 'flex';
+    setTimeout(_clInitTermsPad, 60);
+    clToggleTermsBtn();
+}
+
+window.clMarkTermsOpened = function() {
+    _clTermsReadLocked = false;
+    const note = document.getElementById('cl-terms-openednote'); if (note) note.style.display = '';
+    const link = document.getElementById('cl-terms-openpdf'); if (link) { link.style.borderColor = '#16a34a'; link.style.color = '#16a34a'; }
+    clToggleTermsBtn();
+};
+
+window.clToggleTermsBtn = function() {
+    const cb  = document.getElementById('cl-terms-checkbox');
+    const sig = document.getElementById('cl-terms-signature');
+    const btn = document.getElementById('cl-terms-accept');
+    if (cb) cb.disabled = _clTermsReadLocked;
+    const ok = !_clTermsReadLocked && (cb && cb.checked) && sig && sig.value.trim().length >= 2;
+    if (btn) { btn.disabled = !ok; btn.style.opacity = ok ? '1' : '.6'; }
+};
+
+window.clClearTermsSig = function() {
+    const c = _clTermsSig.canvas, ctx = _clTermsSig.ctx;
+    if (c && ctx) ctx.clearRect(0, 0, c.width, c.height);
+    _clTermsSig.hasInk = false;
+    const h = document.getElementById('cl-terms-hint'); if (h) h.style.display = '';
+};
+
+window.clTermsSignOut = async function() {
+    const modal = document.getElementById('cl-terms-modal'); if (modal) modal.style.display = 'none';
+    try { await auth.signOut(); } catch (_) {}
+};
+
+function _clInitTermsPad() {
+    const canvas = document.getElementById('cl-terms-pad');
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const dpr  = window.devicePixelRatio || 1;
+    canvas.width  = Math.max(1, Math.round(rect.width  * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111827';
+    _clTermsSig.canvas = canvas; _clTermsSig.ctx = ctx; _clTermsSig.hasInk = false;
+    const hint = document.getElementById('cl-terms-hint'); if (hint) hint.style.display = '';
+    if (_clTermsSig.bound) return;
+    _clTermsSig.bound = true;
+    const pos = (e) => { const r = canvas.getBoundingClientRect(); const p = e.touches ? e.touches[0] : e; return { x: p.clientX - r.left, y: p.clientY - r.top }; };
+    const start = (e) => { e.preventDefault(); _clTermsSig.drawing = true; const { x, y } = pos(e); ctx.beginPath(); ctx.moveTo(x, y); const h = document.getElementById('cl-terms-hint'); if (h) h.style.display = 'none'; };
+    const move  = (e) => { if (!_clTermsSig.drawing) return; e.preventDefault(); const { x, y } = pos(e); ctx.lineTo(x, y); ctx.stroke(); _clTermsSig.hasInk = true; };
+    const end   = () => { _clTermsSig.drawing = false; };
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', end);
+    canvas.addEventListener('touchstart', start, { passive: false });
+    canvas.addEventListener('touchmove',  move,  { passive: false });
+    canvas.addEventListener('touchend',   end);
+}
+
+window.clAcceptTerms = async function() {
+    const modal = document.getElementById('cl-terms-modal');
+    const uid   = modal?.dataset.uid;
+    const cb    = document.getElementById('cl-terms-checkbox');
+    const sig   = document.getElementById('cl-terms-signature');
+    const signature = sig ? sig.value.trim() : '';
+    if (_clTermsReadLocked) { alert('Please open the Terms & Conditions document first.'); return; }
+    if (!uid || !cb?.checked) return;
+    if (signature.length < 2) { alert('Please type your name as your signature.'); return; }
+
+    const btn = document.getElementById('cl-terms-accept');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+    let signatureImageUrl = '';
+    try {
+        if (_clTermsSig.hasInk && _clTermsSig.canvas && typeof storage !== 'undefined') {
+            const blob = await new Promise(res => _clTermsSig.canvas.toBlob(res, 'image/png'));
+            if (blob) {
+                const ref = storage.ref(`signatures/clientportal_${uid}_${Date.now()}.png`);
+                await ref.put(blob);
+                signatureImageUrl = await ref.getDownloadURL();
+            }
+        }
+    } catch (upErr) { console.warn('Signature upload failed (continuing):', upErr.message); }
+
+    try {
+        await db.collection('clientUsers').doc(uid).update({
+            agreementAccepted      : true,
+            agreementAcceptedAt    : firebase.firestore.FieldValue.serverTimestamp(),
+            agreementSignature     : signature,
+            agreementSignatureImage: signatureImageUrl || ''
+        });
+        if (currentProfile) currentProfile.agreementAccepted = true;
+    } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Accept & Continue'; }
+        alert('Could not save your acceptance: ' + (e.message || e) + '\n\nPlease try again.');
+        return;
+    }
+
+    if (modal) modal.style.display = 'none';
+    enterDashboard();
+};
+
 // ── Load Client Data — real-time listener ────────────────
 function loadClientData(user) {
     // Tear down any existing listener
@@ -264,7 +433,7 @@ function loadClientData(user) {
         let resolved = false;
 
         _boqUnsub = db.collection('boqDocuments')
-            .where('clientEmail', '==', user.email)
+            .where('clientEmail', '==', (user.email || '').toLowerCase())
             .onSnapshot(async snap => {
                 // Update docs list
                 currentBoqDocs = snap.docs

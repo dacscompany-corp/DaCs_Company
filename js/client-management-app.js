@@ -218,10 +218,19 @@ async function cmLoadProfile(user) {
 // is exactly one we auto-select it so the single-project experience is unchanged.
 async function cmLoadProjectData(user) {
     try {
-        const snap = await db.collection('constructionProjects')
-            .where('clientEmail', '==', user.email)
+        const emailLc = (user.email || '').toLowerCase();
+        let snap = await db.collection('constructionProjects')
+            .where('clientEmail', '==', emailLc)
             .get();
         cmProjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Safety net for legacy projects saved with a mixed-case clientEmail
+        // (before emails were normalized): match case-insensitively.
+        if (!cmProjects.length) {
+            const all = await db.collection('constructionProjects').get();
+            cmProjects = all.docs
+                .map(d => ({ id: d.id, ...d.data() }))
+                .filter(p => (p.clientEmail || '').toLowerCase() === emailLc);
+        }
         // Newest first so the picker and default selection feel natural.
         cmProjects.sort((a, b) => {
             const ta = a.createdAt?.toMillis?.() ?? (a.createdAt ? new Date(a.createdAt).getTime() : 0);
@@ -366,7 +375,30 @@ async function cmLoadProjectDetails(projectId) {
 // ── Routing after a successful login / agreement ─────────────────
 // One account can own several projects. With more than one and none chosen
 // yet, show the project picker; otherwise go straight into the dashboard.
-function cmRouteAfterLogin() {
+let _cmGlobalTerms = null;   // cached settings/constructionClientTerms { text, pdfUrl, pdfName }
+
+async function cmLoadGlobalTerms() {
+    if (_cmGlobalTerms) return _cmGlobalTerms;
+    try {
+        const doc = await db.collection('settings').doc('constructionClientTerms').get();
+        const d = doc && doc.exists ? doc.data() : null;
+        _cmGlobalTerms = { text: (d && d.text) || '', pdfUrl: (d && d.pdfUrl) || '', pdfName: (d && d.pdfName) || '' };
+    } catch (_) { _cmGlobalTerms = { text: '', pdfUrl: '', pdfName: '' }; }
+    return _cmGlobalTerms;
+}
+
+async function cmRouteAfterLogin() {
+    // Global Terms & Policy PDF gate (CLIENTS only, not partners): if an admin set
+    // a global terms PDF and this client hasn't signed it, they must open + e-sign.
+    if (!cmIsPartner()) {
+        const g = await cmLoadGlobalTerms();
+        const hasPdf = !!(g.pdfUrl && String(g.pdfUrl).trim());
+        if (hasPdf && (cmCurrentProfile || {}).termsAccepted !== true) {
+            cmOpenClientTermsGate();
+            return;
+        }
+    }
+
     if (cmProjects.length > 1 && !cmProjectData) { cmShowProjectPicker(); return; }
     cmEnterDashboard();
 }
@@ -412,40 +444,7 @@ function cmShowProjectPicker() {
     const dateStr    = new Date().toLocaleDateString('en-PH', { weekday:'long', month:'long', day:'numeric' });
     const countLabel = cmProjects.length + (cmProjects.length === 1 ? ' active project' : ' active projects');
 
-    const cards = cmProjects.map(p => {
-        const name     = cmEsc(p.projectName || p.clientName || 'Project');
-        const initials = cmEsc(cmPickerInitials(p.projectName || p.clientName));
-        const location = cmEsc(p.location || p.address || p.clientName || '—');
-        const status   = cmEsc(p.status || 'Active');
-        const budget   = Number(p.budget) || 0;
-        const budgetBlock = budget > 0 ? `
-              <div>
-                <div style="font-size:10.5px;font-weight:700;color:#aeb4c2;letter-spacing:.06em;text-transform:uppercase;">Project Budget</div>
-                <div style="font-family:'Barlow',sans-serif;font-size:22px;font-weight:800;color:#1a1d24;margin-top:2px;">${cmFmt(budget)}</div>
-              </div>` : '<div></div>';
-        return `<div onclick="cmSelectProject('${p.id}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')cmSelectProject('${p.id}')" style="background:#fff;border:1px solid #e7e9f2;border-radius:20px;padding:24px 24px 20px;cursor:pointer;transition:box-shadow .15s,transform .15s,border-color .15s;display:flex;flex-direction:column;"
-                onmouseover="this.style.boxShadow='0 18px 40px -22px rgba(31,41,80,.48)';this.style.transform='translateY(-3px)';this.style.borderColor='#d6d9e8';"
-                onmouseout="this.style.boxShadow='none';this.style.transform='none';this.style.borderColor='#e7e9f2';">
-            <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:18px;">
-              <span style="width:52px;height:52px;border-radius:15px;background:${accentSoft};color:${accent};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Barlow',sans-serif;font-weight:800;font-size:19px;">${initials}</span>
-              <div style="flex:1;min-width:0;">
-                <div style="font-family:'Barlow',sans-serif;font-size:21px;font-weight:700;color:#1a1d24;letter-spacing:-0.01em;">${name}</div>
-                <div style="display:inline-flex;align-items:center;gap:6px;font-size:14px;color:#8b91a0;margin-top:3px;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  ${location}
-                </div>
-              </div>
-              <span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#16a34a;background:#e7f7ee;padding:3px 10px;border-radius:20px;"><span style="width:6px;height:6px;border-radius:50%;background:#16a34a;"></span>${status}</span>
-            </div>
-            <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:auto;padding-top:18px;border-top:1px solid #f0f1f5;">
-              ${budgetBlock}
-              <span style="display:inline-flex;align-items:center;gap:8px;background:${accent};color:#fff;border:none;border-radius:12px;padding:12px 20px;font-size:14.5px;font-weight:700;font-family:'Barlow',sans-serif;box-shadow:0 8px 20px -10px ${accent};white-space:nowrap;margin-left:auto;">
-                Open project
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-              </span>
-            </div>
-        </div>`;
-    }).join('');
+    const cards = cmProjects.map(cmRenderPickerCard).join('');
 
     page.innerHTML = `
       <div style="min-height:100vh;width:100%;display:flex;justify-content:center;padding:40px 40px 64px;">
@@ -461,12 +460,20 @@ function cmShowProjectPicker() {
                 onmouseover="this.style.background='rgba(255,255,255,.26)';" onmouseout="this.style.background='rgba(255,255,255,.16)';">Sign out</button>
           </div>
 
-          <div style="display:flex;align-items:baseline;gap:10px;margin:30px 4px 16px;">
-            <span style="font-family:'Barlow',sans-serif;font-size:18px;font-weight:800;color:#1a1d24;letter-spacing:-0.01em;">Your projects</span>
-            <span style="font-size:13.5px;font-weight:600;color:#9aa0b2;">${countLabel}</span>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:30px 4px 16px;">
+            <div style="display:flex;align-items:baseline;gap:10px;">
+              <span style="font-family:'Barlow',sans-serif;font-size:18px;font-weight:800;color:#1a1d24;letter-spacing:-0.01em;">Your projects</span>
+              <span id="cm-picker-count" style="font-size:13.5px;font-weight:600;color:#9aa0b2;">${countLabel}</span>
+            </div>
+            <div style="position:relative;flex:0 1 320px;max-width:100%;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9aa0b2" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);pointer-events:none;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input type="text" id="cm-picker-search" oninput="cmFilterProjects()" placeholder="Search projects…" autocomplete="off"
+                style="width:100%;box-sizing:border-box;padding:11px 14px 11px 40px;border:1px solid #e7e9f2;border-radius:12px;font-size:14px;font-family:'DM Sans',sans-serif;color:#1a1d24;background:#fff;outline:none;box-shadow:0 1px 2px rgba(31,41,80,.04);"
+                onfocus="this.style.borderColor='${accent}';" onblur="this.style.borderColor='#e7e9f2';">
+            </div>
           </div>
 
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:22px;">
+          <div id="cm-picker-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:22px;">
             ${cards || '<div style="font-size:14px;color:#8b91a0;">No projects are linked to your account yet.</div>'}
           </div>
 
@@ -476,6 +483,66 @@ function cmShowProjectPicker() {
     page.classList.add('active');
 }
 
+// One project card for the picker grid (reused by the search filter).
+function cmRenderPickerCard(p) {
+    const accent     = '#5b5bd6';
+    const accentSoft = 'rgba(91,91,214,0.12)';
+    const name     = cmEsc(p.projectName || p.clientName || 'Project');
+    const initials = cmEsc(cmPickerInitials(p.projectName || p.clientName));
+    const location = cmEsc(p.location || p.address || p.clientName || '—');
+    const status   = cmEsc(p.status || 'Active');
+    const budget   = Number(p.budget) || 0;
+    const budgetBlock = budget > 0 ? `
+          <div>
+            <div style="font-size:10.5px;font-weight:700;color:#aeb4c2;letter-spacing:.06em;text-transform:uppercase;">Project Budget</div>
+            <div style="font-family:'Barlow',sans-serif;font-size:22px;font-weight:800;color:#1a1d24;margin-top:2px;">${cmFmt(budget)}</div>
+          </div>` : '<div></div>';
+    return `<div onclick="cmSelectProject('${p.id}')" role="button" tabindex="0" onkeydown="if(event.key==='Enter')cmSelectProject('${p.id}')" style="background:#fff;border:1px solid #e7e9f2;border-radius:20px;padding:24px 24px 20px;cursor:pointer;transition:box-shadow .15s,transform .15s,border-color .15s;display:flex;flex-direction:column;"
+            onmouseover="this.style.boxShadow='0 18px 40px -22px rgba(31,41,80,.48)';this.style.transform='translateY(-3px)';this.style.borderColor='#d6d9e8';"
+            onmouseout="this.style.boxShadow='none';this.style.transform='none';this.style.borderColor='#e7e9f2';">
+        <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:18px;">
+          <span style="width:52px;height:52px;border-radius:15px;background:${accentSoft};color:${accent};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'Barlow',sans-serif;font-weight:800;font-size:19px;">${initials}</span>
+          <div style="flex:1;min-width:0;">
+            <div style="font-family:'Barlow',sans-serif;font-size:21px;font-weight:700;color:#1a1d24;letter-spacing:-0.01em;">${name}</div>
+            <div style="display:inline-flex;align-items:center;gap:6px;font-size:14px;color:#8b91a0;margin-top:3px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              ${location}
+            </div>
+          </div>
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:#16a34a;background:#e7f7ee;padding:3px 10px;border-radius:20px;"><span style="width:6px;height:6px;border-radius:50%;background:#16a34a;"></span>${status}</span>
+        </div>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:auto;padding-top:18px;border-top:1px solid #f0f1f5;">
+          ${budgetBlock}
+          <span style="display:inline-flex;align-items:center;gap:8px;background:${accent};color:#fff;border:none;border-radius:12px;padding:12px 20px;font-size:14.5px;font-weight:700;font-family:'Barlow',sans-serif;box-shadow:0 8px 20px -10px ${accent};white-space:nowrap;margin-left:auto;">
+            Open project
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+          </span>
+        </div>
+    </div>`;
+}
+
+// Filter the picker cards by the search box (matches project name + location).
+window.cmFilterProjects = function() {
+    const q    = (document.getElementById('cm-picker-search')?.value || '').toLowerCase().trim();
+    const grid = document.getElementById('cm-picker-grid');
+    const cnt  = document.getElementById('cm-picker-count');
+    if (!grid) return;
+    const matched = cmProjects.filter(p => {
+        if (!q) return true;
+        const hay = [p.projectName, p.clientName, p.location, p.address, p.status]
+            .filter(Boolean).join(' ').toLowerCase();
+        return hay.includes(q);
+    });
+    grid.innerHTML = matched.length
+        ? matched.map(cmRenderPickerCard).join('')
+        : '<div style="font-size:14px;color:#8b91a0;">No projects match “' + cmEsc(q) + '”.</div>';
+    if (cnt) {
+        cnt.textContent = q
+            ? matched.length + ' of ' + cmProjects.length + ' shown'
+            : cmProjects.length + (cmProjects.length === 1 ? ' active project' : ' active projects');
+    }
+};
+
 window.cmSelectProject = async function(id) {
     await cmLoadProjectDetails(id);
     cmEnterDashboard();
@@ -483,14 +550,19 @@ window.cmSelectProject = async function(id) {
 
 // ── Enter Dashboard ──────────────────────────────────────────────
 async function cmEnterDashboard() {
-    // ── Per-project terms gate (PARTNERS ONLY) ──
-    // Before a partner sees a project's information, they must sign THIS project's
-    // Terms & Conditions. Runs here (after login + account agreement + project
-    // selection), so it never collides with the account-level agreement modal.
-    if (cmProjectData && cmProjectData.id && cmIsPartner()) {
-        let accepted = true;
-        try { accepted = await cmPartnerHasAcceptedProject(cmProjectData.id); } catch (_) { accepted = true; }
-        if (!accepted) { cmOpenProjectTerms(cmProjectData); return; }
+    // ── Per-project Terms & Conditions gate (partners AND clients) ──
+    // Before viewing a project's information, the user must sign THIS project's
+    // Terms & Conditions when the admin attached a per-project PDF/terms and they
+    // haven't accepted it yet. Applies to both the Partnership and Client
+    // Management portals (they share this file).
+    if (cmProjectData && cmProjectData.id) {
+        const hasProjTerms = !!((cmProjectData.partnerTermsPdfUrl && String(cmProjectData.partnerTermsPdfUrl).trim())
+                              || (cmProjectData.partnerTerms && String(cmProjectData.partnerTerms).trim()));
+        if (hasProjTerms) {
+            let accepted = true;
+            try { accepted = await cmPartnerHasAcceptedProject(cmProjectData.id); } catch (_) { accepted = true; }
+            if (!accepted) { cmOpenProjectTerms(cmProjectData); return; }
+        }
     }
 
     document.getElementById('login-page').classList.remove('active');
@@ -4553,9 +4625,9 @@ function cmOpenProjectTerms(project) {
     if (card) card.classList.remove('pdf-mode');
 
     if (pdfUrl) {
-        // PDF mode: show a single "Open Terms (PDF)" button; no read gate — the
-        // checkbox and signature are available right away.
-        cmProjTermsSetReadGate(false);
+        // PDF mode: the partner must OPEN the document once before the checkbox
+        // (and therefore the e-signature) unlocks.
+        cmProjTermsSetReadGate(true);
         cmProjTermsRenderPdf(pdfUrl);
     } else {
         // Text mode (no PDF): show the terms text.
@@ -4570,8 +4642,92 @@ function cmOpenProjectTerms(project) {
         }
     }
 
+    _cmTermsMode = 'project';
     modal.style.display = '';
     setTimeout(cmProjTermsInitPad, 60);
+}
+
+// Which flow the shared terms modal is serving: 'project' (partner per-project)
+// or 'client' (Client Management account-level Terms & Policy PDF).
+let _cmTermsMode = 'project';
+
+// Open the shared terms modal for the CLIENT account-level Terms & Policy PDF.
+function cmOpenClientTermsGate() {
+    const modal = document.getElementById('cm-projterms-modal');
+    if (!modal) { cmEnterDashboard(); return; }
+    const pdfUrl = _cmGlobalTerms && _cmGlobalTerms.pdfUrl && String(_cmGlobalTerms.pdfUrl).trim();
+    if (!pdfUrl) { cmEnterDashboard(); return; }
+
+    const nameEl = document.getElementById('cm-projterms-projectname');
+    if (nameEl) nameEl.textContent = 'Please review and sign to continue.';
+
+    const cb  = document.getElementById('cm-projterms-checkbox'); if (cb) cb.checked = false;
+    const sig = document.getElementById('cm-projterms-signature'); if (sig) sig.value = '';
+    const btn = document.getElementById('cm-projterms-accept-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Accept & Continue'; }
+
+    const card = modal.querySelector('.cm-agreement-card');
+    if (card) card.classList.remove('pdf-mode');
+
+    cmProjTermsSetReadGate(true);       // must open the PDF first
+    cmProjTermsRenderPdf(pdfUrl);
+
+    _cmTermsMode = 'client';
+    modal.style.display = '';
+    setTimeout(cmProjTermsInitPad, 60);
+}
+
+// Save the CLIENT's acceptance of the account-level Terms & Policy PDF, then enter.
+async function cmClientTermsAccept() {
+    const cb  = document.getElementById('cm-projterms-checkbox');
+    const sig = document.getElementById('cm-projterms-signature');
+    const signature = sig ? sig.value.trim() : '';
+    if (!cb?.checked) return;
+    if (signature.length < 2) { alert('Please type your name as your signature.'); return; }
+    if (!cmCurrentUser) return;
+
+    const btn = document.getElementById('cm-projterms-accept-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+    let ip = ''; try { ip = await cmFetchIp(); } catch (_) { ip = ''; }
+
+    // Upload the drawn signature (optional, non-blocking).
+    let signatureImageUrl = '';
+    try {
+        if (_cmPtSig.hasInk && _cmPtSig.canvas && typeof storage !== 'undefined') {
+            const blob = await new Promise(res => _cmPtSig.canvas.toBlob(res, 'image/png'));
+            if (blob) {
+                const path = `signatures/clientterms_${cmCurrentUser.uid}_${Date.now()}.png`;
+                const ref = storage.ref(path);
+                await ref.put(blob);
+                signatureImageUrl = await ref.getDownloadURL();
+            }
+        }
+    } catch (upErr) { console.warn('Client terms signature upload failed (continuing):', upErr.message); }
+
+    try {
+        const acceptedAt = new Date();
+        await db.collection('constructionClientUsers').doc(cmCurrentUser.uid).update({
+            termsAccepted       : true,
+            termsAcceptedAt     : acceptedAt,
+            termsSignature      : signature,
+            termsSignatureImage : signatureImageUrl || '',
+            termsIp             : ip || ''
+        });
+        if (cmCurrentProfile) {
+            cmCurrentProfile.termsAccepted   = true;
+            cmCurrentProfile.termsAcceptedAt = acceptedAt;
+        }
+    } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Accept & Continue'; }
+        alert('Could not save your acceptance: ' + (e.message || e) + '\n\nPlease try again.');
+        return;
+    }
+
+    const modal = document.getElementById('cm-projterms-modal');
+    if (modal) modal.style.display = 'none';
+    // Proceed into the portal (picker or dashboard).
+    if (cmProjects.length > 1 && !cmProjectData) { cmShowProjectPicker(); return; }
+    cmEnterDashboard();
 }
 
 // Lock/unlock the read gate. When locked, the agree-checkbox is disabled and a
@@ -4580,34 +4736,51 @@ function cmProjTermsSetReadGate(locked) {
     const cb   = document.getElementById('cm-projterms-checkbox');
     const wrap = cb ? cb.closest('.cm-agreement-check-wrap') : null;
     const hint = document.getElementById('cm-projterms-readhint');
+    const sign = document.querySelector('#cm-projterms-modal .cm-agreement-sign-wrap');
+    const sig  = document.getElementById('cm-projterms-signature');
     if (cb) {
         cb.disabled = !!locked;
         if (locked) cb.checked = false;
     }
+    if (sig) sig.disabled = !!locked;
     if (wrap) { wrap.style.opacity = locked ? '0.5' : ''; wrap.style.pointerEvents = locked ? 'none' : ''; }
+    if (sign) { sign.style.opacity = locked ? '0.5' : ''; sign.style.pointerEvents = locked ? 'none' : ''; }
     if (hint) hint.style.display = locked ? '' : 'none';
     if (typeof cmProjTermsToggleBtn === 'function') cmProjTermsToggleBtn();
 }
 
 // Show a single "Open Terms & Conditions (PDF)" button — the document opens
-// full-screen in a new tab. No inline preview, no read gate.
+// full-screen in a new tab. Opening it once satisfies the read gate.
 function cmProjTermsRenderPdf(url) {
     const textEl = document.getElementById('cm-projterms-text');
     if (!textEl) return;
     textEl.style.whiteSpace = 'normal';
     textEl.innerHTML =
-        '<div style="padding:8px 0 4px;font-size:13.5px;color:#374151;margin-bottom:12px;">Read the project’s Terms &amp; Conditions:</div>'
-        + '<a href="' + cmEsc(url) + '" target="_blank" rel="noopener" '
+        '<div style="padding:8px 0 4px;font-size:13.5px;color:#374151;margin-bottom:12px;">Please open and read the project’s Terms &amp; Conditions before you sign:</div>'
+        + '<a href="' + cmEsc(url) + '" target="_blank" rel="noopener" id="cm-projterms-openpdf-btn" onclick="cmProjTermsMarkOpened()" '
         + 'style="display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border:1.5px solid #111827;border-radius:9px;background:#fff;color:#111827;font-weight:700;font-size:14px;cursor:pointer;text-decoration:none;font-family:inherit;">'
         + '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="vertical-align:middle;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
-        + 'Open Terms &amp; Conditions (PDF)</a>';
+        + 'Open Terms &amp; Conditions (PDF)</a>'
+        + '<div id="cm-projterms-openednote" style="display:none;margin-top:10px;font-size:12.5px;font-weight:600;color:#16a34a;">✓ Document opened — you can now sign below.</div>';
 }
+
+// The partner clicked "Open Terms (PDF)": mark as read and unlock the e-sign.
+window.cmProjTermsMarkOpened = function() {
+    cmProjTermsSetReadGate(false);
+    const note = document.getElementById('cm-projterms-openednote');
+    if (note) note.style.display = '';
+    const btn = document.getElementById('cm-projterms-openpdf-btn');
+    if (btn) { btn.style.borderColor = '#16a34a'; btn.style.color = '#16a34a'; }
+    // The link's default navigation (opening the PDF in a new tab) still happens.
+};
 
 // Leave the terms modal without accepting. Multiple projects → return to the
 // picker so they can choose a different one; single project → sign out.
 window.cmProjTermsBack = function() {
     const modal = document.getElementById('cm-projterms-modal');
     if (modal) modal.style.display = 'none';
+    // Client account-level terms: can't enter without signing → sign out.
+    if (_cmTermsMode === 'client') { doLogout(); return; }
     if (cmProjects.length > 1) {
         cmProjectData = null;
         cmShowProjectPicker();
@@ -4658,6 +4831,9 @@ window.cmProjTermsToggleBtn = function() {
 };
 
 window.cmProjTermsAccept = async function() {
+    // The shared modal serves two flows — route to the client handler when needed.
+    if (_cmTermsMode === 'client') { return cmClientTermsAccept(); }
+
     const cb  = document.getElementById('cm-projterms-checkbox');
     const sig = document.getElementById('cm-projterms-signature');
     const signature = sig ? sig.value.trim() : '';

@@ -1386,7 +1386,8 @@ window.pmSaveProject = async function() {
     const projectId  = document.getElementById('pmProjectId').value;
     const clientName = document.getElementById('pmProjectClientName').value.trim();
     const projectName= document.getElementById('pmProjectName').value.trim();
-    const clientEmail= document.getElementById('pmProjectEmail').value.trim();
+    // Lowercase so the project↔account link matches the lowercased login email.
+    const clientEmail= document.getElementById('pmProjectEmail').value.trim().toLowerCase();
     const status     = document.getElementById('pmProjectStatus').value;
     const startDate  = document.getElementById('pmProjectStartDate').value;
     const address    = document.getElementById('pmProjectAddress').value.trim();

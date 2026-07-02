@@ -71,7 +71,10 @@
                     role     : d.role || 'owner',
                     status   : d.status || 'active',
                     lastLogin: d.lastLogin || d.last_login || null,
-                    createdAt: d.createdAt || null
+                    createdAt: d.createdAt || null,
+                    agreementAccepted  : d.agreementAccepted === true,
+                    agreementAcceptedAt: d.agreementAcceptedAt || null,
+                    agreementSignature : d.agreementSignature || ''
                 };
             }).sort((a, b) => _tsToMs(b.createdAt) - _tsToMs(a.createdAt));
         } catch (e) {
@@ -127,11 +130,14 @@
         return `<tr data-uid="${user.uid}">
             <td><div class="un-user-cell">
                 <div class="un-avatar">${avatarContent}</div>
-                <span class="un-user-name">${_esc(name)}</span>
+                <div style="display:flex;flex-direction:column;">
+                    <span class="un-user-name">${_esc(name)}</span>
+                    <span class="un-role-badge ${_roleClass(user.role)}" style="margin-top:3px;align-self:flex-start;">${_roleLabel(user.role)}</span>
+                </div>
             </div></td>
             <td style="color:#6b7280;font-size:13px;">${_esc(user.email)}</td>
-            <td><span class="un-role-badge ${_roleClass(user.role)}">${_roleLabel(user.role)}</span></td>
-            <td>${_statusBadge(user.status)}</td>
+            <td style="color:#6b7280;font-size:13px;">${_formatDate(user.createdAt)}</td>
+            <td><div style="display:flex;flex-direction:column;align-items:flex-start;">${_statusBadge(user.status)}${_empAgreementBadge(user)}</div></td>
             <td><div class="un-actions">
                 <button class="un-btn-view" onclick="unViewProfile('${user.uid}','admin')">
                     <i data-lucide="eye" style="width:13px;height:13px;"></i> View
@@ -334,22 +340,72 @@
 
 By agreeing, you confirm that you have read, understood, and accept these Terms & Conditions.`;
 
-    let _empTermsCache = null;
+    // Cached settings/employeeTerms doc: { text, pdfUrl, pdfName }.
+    let _empTermsDoc  = null;   // full settings blob
+    let _empTermsCache = null;  // text only (back-compat for the Add Employee preview)
 
-    async function _loadEmployeeTerms() {
-        if (_empTermsCache !== null) return _empTermsCache;
+    async function _loadEmployeeTermsDoc() {
+        if (_empTermsDoc !== null) return _empTermsDoc;
         try {
             const doc = await db.collection('settings').doc('employeeTerms').get();
             const data = doc && doc.exists ? doc.data() : null;
-            _empTermsCache = (data && typeof data.text === 'string' && data.text.trim())
-                ? data.text
-                : EMP_TERMS_DEFAULT;
+            _empTermsDoc = {
+                text  : (data && typeof data.text === 'string' && data.text.trim()) ? data.text : EMP_TERMS_DEFAULT,
+                pdfUrl : (data && data.pdfUrl)  || '',
+                pdfName: (data && data.pdfName) || ''
+            };
         } catch (err) {
-            console.error('_loadEmployeeTerms:', err);
-            _empTermsCache = EMP_TERMS_DEFAULT;
+            console.error('_loadEmployeeTermsDoc:', err);
+            _empTermsDoc = { text: EMP_TERMS_DEFAULT, pdfUrl: '', pdfName: '' };
         }
-        return _empTermsCache;
+        _empTermsCache = _empTermsDoc.text;
+        return _empTermsDoc;
     }
+
+    async function _loadEmployeeTerms() {
+        return (await _loadEmployeeTermsDoc()).text;
+    }
+
+    // Global Terms PDF picker state (for the editor modal).
+    let _empGlobalPdfFile = null;   // newly-picked file
+    let _empGlobalPdfUrl  = '';     // existing url
+    let _empGlobalPdfName = '';     // existing name
+
+    function _empRenderGlobalPdfState() {
+        const nameEl = document.getElementById('emp-terms-pdf-name');
+        const rmEl   = document.getElementById('emp-terms-pdf-remove');
+        if (!nameEl) return;
+        if (_empGlobalPdfFile) {
+            nameEl.textContent = _empGlobalPdfFile.name + ' (new — will upload on save)';
+            nameEl.style.color = '#111827';
+            if (rmEl) rmEl.style.display = '';
+        } else if (_empGlobalPdfUrl) {
+            nameEl.textContent = _empGlobalPdfName || 'Attached PDF';
+            nameEl.style.color = '#111827';
+            if (rmEl) rmEl.style.display = '';
+        } else {
+            nameEl.textContent = 'No PDF attached.';
+            nameEl.style.color = '#6b7280';
+            if (rmEl) rmEl.style.display = 'none';
+        }
+    }
+
+    window.unOnGlobalTermsPdfPick = function (input) {
+        const f = input && input.files && input.files[0];
+        if (!f) return;
+        if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) { alert('Please choose a PDF file.'); input.value = ''; return; }
+        _empGlobalPdfFile = f;
+        _empRenderGlobalPdfState();
+    };
+
+    window.unRemoveGlobalTermsPdf = function () {
+        _empGlobalPdfFile = null;
+        _empGlobalPdfUrl  = '';
+        _empGlobalPdfName = '';
+        const input = document.getElementById('emp-terms-pdf-input');
+        if (input) input.value = '';
+        _empRenderGlobalPdfState();
+    };
 
     window.unOpenEmployeeTermsModal = async function () {
         const modal = document.getElementById('unEmployeeTermsModal');
@@ -358,10 +414,15 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
         const editor = document.getElementById('emp-terms-editor');
         if (editor) { editor.value = 'Loading…'; editor.disabled = true; }
+        _empGlobalPdfFile = null;
+        const _pi = document.getElementById('emp-terms-pdf-input'); if (_pi) _pi.value = '';
         modal.style.display = 'flex';
         if (typeof lucide !== 'undefined') lucide.createIcons();
-        const text = await _loadEmployeeTerms();
-        if (editor) { editor.value = text; editor.disabled = false; editor.focus(); }
+        const doc = await _loadEmployeeTermsDoc();
+        if (editor) { editor.value = doc.text; editor.disabled = false; }
+        _empGlobalPdfUrl  = doc.pdfUrl;
+        _empGlobalPdfName = doc.pdfName;
+        _empRenderGlobalPdfState();
     };
 
     window.unCloseEmployeeTermsModal = function () {
@@ -381,10 +442,23 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         const btn = document.getElementById('emp-terms-save-btn');
         if (btn) { btn.disabled = true; btn.innerHTML = '<div class="un-loading-spinner" style="width:14px;height:14px;border-width:2px;margin-right:6px;display:inline-block;"></div>Saving…'; }
         try {
+            // Resolve the PDF: upload a new one, keep the existing url, or clear it.
+            let pdfUrl = _empGlobalPdfUrl, pdfName = _empGlobalPdfName;
+            if (_empGlobalPdfFile) {
+                const safe = String(_empGlobalPdfFile.name || 'terms.pdf').replace(/[^\w.\-]+/g, '_');
+                const ref  = storage.ref(`employeeTermsGlobal/${Date.now()}_${safe}`);
+                await ref.put(_empGlobalPdfFile);
+                pdfUrl  = await ref.getDownloadURL();
+                pdfName = _empGlobalPdfFile.name || 'Terms & Conditions.pdf';
+            }
+            // settings is a kv table — .set() overwrites the whole value, so write all fields.
             await db.collection('settings').doc('employeeTerms').set({
                 text,
+                pdfUrl : pdfUrl || '',
+                pdfName: pdfName || '',
                 updatedAt: new Date().toISOString()
             });
+            _empTermsDoc = { text, pdfUrl: pdfUrl || '', pdfName: pdfName || '' };
             _empTermsCache = text;
             unCloseEmployeeTermsModal();
             _showSuccessBanner('Employee Terms & Conditions saved.');
@@ -397,6 +471,124 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
                 btn.innerHTML = '<i data-lucide="save" style="width:14px;height:14px;"></i> Save Terms';
                 if (typeof lucide !== 'undefined') lucide.createIcons();
             }
+        }
+    };
+
+    // ── Global Terms & Conditions editor (Client Management + Client Portal) ──
+    // One document per audience: text fallback + optional global PDF. Stored in
+    // a settings/{key} doc. Reused by both tabs via a small config map.
+    const GLOBAL_TERMS_CFG = {
+        cc: { settingsKey: 'constructionClientTerms', folder: 'constructionClientTermsGlobal', title: 'Client Management Terms & Conditions', sub: 'Applies to all construction clients' },
+        cp: { settingsKey: 'clientPortalTerms',       folder: 'clientPortalTermsGlobal',       title: 'Client Portal Terms & Conditions',      sub: 'Applies to all client-portal accounts' }
+    };
+    let _gtFile = null, _gtUrl = '', _gtName = '', _gtKind = null;
+
+    function _gtRenderState() {
+        const nameEl = document.getElementById('gt-pdf-name');
+        const rmEl   = document.getElementById('gt-pdf-remove');
+        if (!nameEl) return;
+        if (_gtFile)      { nameEl.textContent = _gtFile.name + ' (new — will upload on save)'; nameEl.style.color = '#111827'; if (rmEl) rmEl.style.display = ''; }
+        else if (_gtUrl)  { nameEl.textContent = _gtName || 'Attached PDF'; nameEl.style.color = '#111827'; if (rmEl) rmEl.style.display = ''; }
+        else              { nameEl.textContent = 'No PDF attached.'; nameEl.style.color = '#6b7280'; if (rmEl) rmEl.style.display = 'none'; }
+    }
+
+    window.unGtPickPdf = function (input) {
+        const f = input && input.files && input.files[0];
+        if (!f) return;
+        if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) { alert('Please choose a PDF file.'); input.value = ''; return; }
+        _gtFile = f; _gtRenderState();
+    };
+    window.unGtRemovePdf = function () {
+        _gtFile = null; _gtUrl = ''; _gtName = '';
+        const input = document.getElementById('gt-pdf-input'); if (input) input.value = '';
+        _gtRenderState();
+    };
+
+    window.unOpenGlobalTerms = async function (kind) {
+        const cfg = GLOBAL_TERMS_CFG[kind];
+        if (!cfg) return;
+        _gtKind = kind; _gtFile = null; _gtUrl = ''; _gtName = '';
+
+        let modal = document.getElementById('unGlobalTermsModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'unGlobalTermsModal';
+            modal.className = 'un-modal-overlay';
+            modal.style.display = 'none';
+            modal.onclick = (e) => { if (e.target === modal) unCloseGlobalTerms(); };
+            document.body.appendChild(modal);
+        }
+        modal.innerHTML =
+          '<div class="un-modal-card" style="max-width:640px;width:94%;">'
+          + '<div class="un-modal-header"><div class="un-modal-avatar" style="background:#7c3aed;color:#fff;"><i data-lucide="file-text" style="width:18px;height:18px;"></i></div>'
+          +   '<div class="un-modal-title-block"><h3>' + _esc(cfg.title) + '</h3><span class="un-role-badge un-role-staff">' + _esc(cfg.sub) + '</span></div>'
+          +   '<button class="un-modal-close" aria-label="Close" onclick="unCloseGlobalTerms()"><i data-lucide="x"></i></button></div>'
+          + '<div class="un-modal-body" style="padding:20px 24px 24px;">'
+          +   '<label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Terms &amp; Conditions PDF <span style="color:#9ca3af;font-weight:400;">(one document for everyone)</span></label>'
+          +   '<input type="file" id="gt-pdf-input" accept="application/pdf,.pdf" onchange="unGtPickPdf(this)" style="display:none;">'
+          +   '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">'
+          +     '<button type="button" onclick="document.getElementById(\'gt-pdf-input\').click()" style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border:1.5px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;"><i data-lucide="upload" style="width:15px;height:15px;"></i> Upload PDF</button>'
+          +     '<span id="gt-pdf-name" style="font-size:12.5px;color:#6b7280;">No PDF attached.</span>'
+          +     '<button type="button" id="gt-pdf-remove" onclick="unGtRemovePdf()" style="display:none;font-size:12px;font-weight:600;color:#dc2626;background:none;border:none;cursor:pointer;font-family:inherit;">Remove</button>'
+          +   '</div>'
+          +   '<div style="font-size:11.5px;color:#9ca3af;margin-bottom:18px;">If a PDF is attached, every ' + (kind === 'cc' ? 'construction client' : 'client') + ' must open it and e-sign on their next login before entering. Leave blank to use the text below.</div>'
+          +   '<label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Terms &amp; Conditions text <span style="color:#9ca3af;font-weight:400;">(used when no PDF is attached)</span></label>'
+          +   '<textarea id="gt-editor" rows="10" placeholder="Write the Terms &amp; Conditions everyone must agree to." style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;line-height:1.6;resize:vertical;min-height:160px;">Loading…</textarea>'
+          +   '<div id="gt-err" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:14px;"></div>'
+          +   '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">'
+          +     '<button onclick="unCloseGlobalTerms()" style="padding:9px 20px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>'
+          +     '<button id="gt-save" onclick="unSaveGlobalTerms()" style="padding:9px 20px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;"><i data-lucide="save" style="width:14px;height:14px;"></i> Save</button>'
+          +   '</div>'
+          + '</div></div>';
+        modal.style.display = 'flex';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        try {
+            const doc  = await db.collection('settings').doc(cfg.settingsKey).get();
+            const data = doc && doc.exists ? doc.data() : null;
+            const editor = document.getElementById('gt-editor');
+            if (editor) editor.value = (data && data.text) || '';
+            _gtUrl  = (data && data.pdfUrl)  || '';
+            _gtName = (data && data.pdfName) || '';
+        } catch (e) { const editor = document.getElementById('gt-editor'); if (editor) editor.value = ''; }
+        _gtRenderState();
+    };
+
+    window.unCloseGlobalTerms = function () {
+        const modal = document.getElementById('unGlobalTermsModal');
+        if (modal) modal.style.display = 'none';
+        _gtFile = null; _gtKind = null;
+    };
+
+    window.unSaveGlobalTerms = async function () {
+        const cfg = GLOBAL_TERMS_CFG[_gtKind];
+        if (!cfg) return;
+        const editor = document.getElementById('gt-editor');
+        const errEl  = document.getElementById('gt-err');
+        if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+        const text = (editor?.value || '').trim();
+        const btn = document.getElementById('gt-save');
+        if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+        try {
+            let pdfUrl = _gtUrl, pdfName = _gtName;
+            if (_gtFile) {
+                if (btn) btn.textContent = 'Uploading…';
+                const safe = String(_gtFile.name || 'terms.pdf').replace(/[^\w.\-]+/g, '_');
+                const ref  = storage.ref(cfg.folder + '/' + Date.now() + '_' + safe);
+                await ref.put(_gtFile);
+                pdfUrl  = await ref.getDownloadURL();
+                pdfName = _gtFile.name || 'Terms & Conditions.pdf';
+            }
+            await db.collection('settings').doc(cfg.settingsKey).set({
+                text, pdfUrl: pdfUrl || '', pdfName: pdfName || '', updatedAt: new Date().toISOString()
+            });
+            unCloseGlobalTerms();
+            _showSuccessBanner('Terms & Conditions saved.');
+        } catch (err) {
+            console.error('unSaveGlobalTerms:', err);
+            if (errEl) { errEl.textContent = 'Could not save: ' + (err.message || err); errEl.style.display = 'block'; }
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="save" style="width:14px;height:14px;"></i> Save'; if (typeof lucide !== 'undefined') lucide.createIcons(); }
         }
     };
 
@@ -445,7 +637,9 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
 
         const firstName = (document.getElementById('emp-create-firstname')?.value || '').trim();
         const lastName  = (document.getElementById('emp-create-lastname')?.value  || '').trim();
-        const email     = (document.getElementById('emp-create-email')?.value     || '').trim();
+        // Lowercase the email so it matches what the auth system stores (login
+        // returns a lowercased email); avoids case-mismatch lookups later.
+        const email     = (document.getElementById('emp-create-email')?.value     || '').trim().toLowerCase();
         const role      = (document.getElementById('emp-create-role')?.value      || '');
         const password  = (document.getElementById('emp-create-password')?.value  || '');
         const confirm   = (document.getElementById('emp-create-confirm')?.value   || '');
@@ -463,7 +657,9 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         else if (password.length < 8)                _fe('err-emp-password',  'Minimum 8 characters.');
         if (!confirm)                                _fe('err-emp-confirm',   'Please confirm the password.');
         else if (confirm !== password)               _fe('err-emp-confirm',   'Passwords don\'t match.');
-        if (!termsAgreed)                            _fe('err-emp-terms',     'The employee must agree to the Terms & Conditions.');
+        // Terms are now OPTIONAL at creation: if the admin ticks the box the
+        // employee is pre-signed; otherwise the account starts "Pending" and the
+        // employee signs the agreement themselves on first login.
         if (!valid) return;
 
         const btn = document.getElementById('emp-create-submit-btn');
@@ -478,17 +674,28 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
                 firstName, lastName, displayName: firstName + ' ' + lastName,
             });
 
-            // Record the Terms & Conditions acceptance on the new employee's profile.
-            const termsAcceptedAt = new Date();
-            const termsText = await _loadEmployeeTerms();
+            // Seed the agreement state. If the admin ticked the box the employee is
+            // pre-signed; otherwise the account starts "Pending" and the employee
+            // signs on their first login to the admin portal.
+            const acceptedAt = new Date();
+            const termsText  = await _loadEmployeeTerms();
             try {
-                await db.collection('users').doc(uid).update({
-                    termsAccepted  : true,
-                    termsAcceptedAt,
-                    termsSnapshot  : termsText
-                });
+                if (termsAgreed) {
+                    await db.collection('users').doc(uid).update({
+                        agreementAccepted   : true,
+                        agreementAcceptedAt : acceptedAt,
+                        agreementSignature  : firstName + ' ' + lastName,
+                        termsSnapshot       : termsText
+                    });
+                } else {
+                    await db.collection('users').doc(uid).update({
+                        agreementAccepted   : false,
+                        agreementAcceptedAt : null,
+                        termsSnapshot       : termsText
+                    });
+                }
             } catch (termsErr) {
-                console.error('record terms acceptance:', termsErr);
+                console.error('seed employee agreement:', termsErr);
             }
 
             // Add to local state and refresh table
@@ -500,8 +707,9 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
                 role,
                 status   : 'active',
                 createdAt: new Date(),
-                termsAccepted  : true,
-                termsAcceptedAt
+                agreementAccepted   : !!termsAgreed,
+                agreementAcceptedAt : termsAgreed ? acceptedAt : null,
+                agreementSignature  : termsAgreed ? (firstName + ' ' + lastName) : ''
             };
             _allUsers.unshift(newUser);
             _renderStats(_allUsers);
@@ -826,7 +1034,9 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
 
         const firstName = (document.getElementById('cc-create-firstname')?.value || '').trim();
         const lastName  = (document.getElementById('cc-create-lastname')?.value  || '').trim();
-        const email     = (document.getElementById('cc-create-email')?.value     || '').trim();
+        // Lowercase the email so it matches auth storage and the project's
+        // clientEmail link (login returns a lowercased email).
+        const email     = (document.getElementById('cc-create-email')?.value     || '').trim().toLowerCase();
         const password  = (document.getElementById('cc-create-password')?.value  || '');
         const confirm   = (document.getElementById('cc-create-confirm')?.value   || '');
         const projectId = (document.getElementById('cc-create-project')?.value   || '');
@@ -984,7 +1194,8 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
 
         try {
-            await db.collection('constructionClientUsers').doc(uid).update({ firstName, lastName });
+            const updates = { firstName, lastName };
+            await db.collection('constructionClientUsers').doc(uid).update(updates);
 
             // Handle project link changes
             const prevProj = _conProjects.find(p => (p.clientEmail || '').toLowerCase() === c.email.toLowerCase());
@@ -1075,9 +1286,17 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
                     email    : d.email  || '',
                     status   : d.status || 'active',
                     createdAt: d.createdAt || null,
-                    projects : projectsByEmail[email] || []
+                    projects : projectsByEmail[email] || [],
+                    agreementAccepted  : d.agreementAccepted === true,
+                    agreementAcceptedAt: d.agreementAcceptedAt || null
                 };
             }).sort((a, b) => _tsToMs(b.createdAt) - _tsToMs(a.createdAt));
+
+            // Does a global client-portal Terms PDF exist? Drives the Signed/Pending badge.
+            try {
+                const gt = await db.collection('settings').doc('clientPortalTerms').get();
+                _cpGlobalHasPdf = !!(gt && gt.exists && gt.data() && gt.data().pdfUrl);
+            } catch (_) { _cpGlobalHasPdf = false; }
 
             _showPortalLoading(false);
             _renderPortalStats(_allPortalClients);
@@ -1130,11 +1349,22 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
             <td style="color:#6b7280;font-size:13px;">${_esc(c.email)}</td>
             <td>${projectCell}</td>
             <td style="color:#6b7280;font-size:13px;">${_formatDate(c.createdAt)}</td>
-            <td>${_statusBadge(c.status)}</td>
+            <td><div style="display:flex;flex-direction:column;align-items:flex-start;">${_statusBadge(c.status)}${_cpTermsBadge(c)}</div></td>
             <td><div class="un-actions">
                 ${toggleBtn}
             </div></td>
         </tr>`;
+    }
+
+    // Signed/Pending badge — only shown when a GLOBAL client-portal Terms PDF is set.
+    let _cpGlobalHasPdf = false;
+    function _cpTermsBadge(c) {
+        if (!_cpGlobalHasPdf) return '';
+        if (c.agreementAccepted) {
+            const when = c.agreementAcceptedAt ? _formatDate(c.agreementAcceptedAt) : '';
+            return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 9px;border-radius:20px;white-space:nowrap;margin-top:6px;"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> Signed${when ? ' · ' + _esc(when) : ''}</span>`;
+        }
+        return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 9px;border-radius:20px;white-space:nowrap;margin-top:6px;"><i data-lucide="clock" style="width:12px;height:12px;"></i> Pending agreement</span>`;
     }
 
     window.cpFilterClients = function () {
@@ -1216,7 +1446,9 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
 
         const firstName = (document.getElementById('cp-create-firstname')?.value || '').trim();
         const lastName  = (document.getElementById('cp-create-lastname')?.value  || '').trim();
-        const email     = (document.getElementById('cp-create-email')?.value     || '').trim();
+        // Lowercase the email so it matches auth storage and the project's
+        // clientEmail link (login returns a lowercased email).
+        const email     = (document.getElementById('cp-create-email')?.value     || '').trim().toLowerCase();
         const password  = (document.getElementById('cp-create-password')?.value  || '');
         const confirm   = (document.getElementById('cp-create-confirm')?.value   || '');
         const projectId = (document.getElementById('cp-create-project')?.value   || '');
@@ -1414,6 +1646,16 @@ match /clientUsers/{uid} {
         return status === 'inactive'
             ? `<span class="un-status-badge un-status-inactive"><span class="un-status-dot"></span>Inactive</span>`
             : `<span class="un-status-badge un-status-active"><span class="un-status-dot"></span>Active</span>`;
+    }
+
+    // Agreement badge for an employee (owners don't sign an agreement → no badge).
+    function _empAgreementBadge(user) {
+        if (user.role === 'owner') return '';
+        if (user.agreementAccepted) {
+            const when = user.agreementAcceptedAt ? _formatDate(user.agreementAcceptedAt) : '';
+            return `<span title="Signed by ${_esc(user.agreementSignature || user.name || '')}${when ? ' on ' + _esc(when) : ''}" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 9px;border-radius:20px;white-space:nowrap;margin-top:6px;"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> Signed${when ? ' · ' + _esc(when) : ''}</span>`;
+        }
+        return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 9px;border-radius:20px;white-space:nowrap;margin-top:6px;"><i data-lucide="clock" style="width:12px;height:12px;"></i> Pending agreement</span>`;
     }
 
     function _formatDate(ts) {

@@ -1859,7 +1859,8 @@
                     <table class="un-table" id="unTable" style="display:none;">
                         <thead>
                             <tr>
-                                <th>Full Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th>
+                                <th>Full Name</th><th>Email</th>
+                                <th>Created</th><th>Status</th><th>Actions</th>
                             </tr>
                         </thead>
                         <tbody id="unTableBody"></tbody>
@@ -1895,7 +1896,10 @@
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
                     </select>
-                    <button class="pr-btn-create" onclick="caOpenCreateModal()" style="margin-left:auto;">
+                    <button class="pr-btn-create" onclick="unOpenGlobalTerms('cc')" style="margin-left:auto;background:#fff;color:#7c3aed;border:1.5px solid #ddd6fe;">
+                        <i data-lucide="file-text" style="width:15px;height:15px;"></i> Terms &amp; Conditions
+                    </button>
+                    <button class="pr-btn-create" onclick="caOpenCreateModal()">
                         <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Create Account
                     </button>
                 </div>
@@ -1952,7 +1956,10 @@
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
                     </select>
-                    <button class="pr-btn-create" onclick="cpOpenCreateModal()" style="margin-left:auto;">
+                    <button class="pr-btn-create" onclick="unOpenGlobalTerms('cp')" style="margin-left:auto;background:#fff;color:#7c3aed;border:1.5px solid #ddd6fe;">
+                        <i data-lucide="file-text" style="width:15px;height:15px;"></i> Terms &amp; Conditions
+                    </button>
+                    <button class="pr-btn-create" onclick="cpOpenCreateModal()">
                         <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Create Account
                     </button>
                 </div>
@@ -2404,11 +2411,11 @@
                 </div>
             </div>
             <div style="margin-bottom:16px;">
-                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Terms &amp; Conditions <span style="color:#ef4444;">*</span></label>
+                <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Terms &amp; Conditions <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
                 <div id="emp-create-terms-box" style="max-height:170px;overflow-y:auto;border:1.5px solid #d1d5db;border-radius:8px;padding:12px 14px;font-size:12.5px;line-height:1.65;color:#374151;background:#f9fafb;white-space:pre-wrap;">Loading terms…</div>
                 <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;font-size:12.5px;color:#374151;cursor:pointer;user-select:none;">
                     <input type="checkbox" id="emp-create-terms-agree" style="margin-top:2px;width:15px;height:15px;flex-shrink:0;cursor:pointer;">
-                    <span>The employee has read and agrees to the Terms &amp; Conditions above.</span>
+                    <span>Mark as already agreed. <span style="color:#9ca3af;">Leave unticked and the employee will sign the agreement on their first login.</span></span>
                 </label>
                 <div id="err-emp-terms" style="color:#ef4444;font-size:11.5px;margin-top:3px;display:none;"></div>
             </div>
@@ -2434,15 +2441,27 @@
             <div class="un-modal-avatar" style="background:#7c3aed;color:#fff;"><i data-lucide="file-text" style="width:18px;height:18px;"></i></div>
             <div class="un-modal-title-block">
                 <h3>Employee Terms &amp; Conditions</h3>
-                <span class="un-role-badge un-role-staff">Shown when adding an employee</span>
+                <span class="un-role-badge un-role-staff">Applies to all employees</span>
             </div>
             <button class="un-modal-close" aria-label="Close" onclick="unCloseEmployeeTermsModal()"><i data-lucide="x"></i></button>
         </div>
         <div class="un-modal-body" style="padding:20px 24px 24px;">
-            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Terms &amp; Conditions text</label>
-            <textarea id="emp-terms-editor" rows="14" placeholder="Write the Terms &amp; Conditions that every employee must read and agree to when their account is created."
-                style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;line-height:1.6;resize:vertical;min-height:220px;"></textarea>
-            <div style="font-size:11.5px;color:#9ca3af;margin-top:6px;">This exact text is shown to the admin in the Add Employee form; the employee must be marked as agreeing before the account can be created.</div>
+            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Terms &amp; Conditions PDF <span style="color:#9ca3af;font-weight:400;">(one document for all employees)</span></label>
+            <input type="file" id="emp-terms-pdf-input" accept="application/pdf,.pdf" onchange="unOnGlobalTermsPdfPick(this)" style="display:none;">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+                <button type="button" onclick="document.getElementById('emp-terms-pdf-input').click()"
+                    style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border:1.5px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+                    <i data-lucide="upload" style="width:15px;height:15px;"></i> Upload PDF
+                </button>
+                <span id="emp-terms-pdf-name" style="font-size:12.5px;color:#6b7280;">No PDF attached.</span>
+                <button type="button" id="emp-terms-pdf-remove" onclick="unRemoveGlobalTermsPdf()" style="display:none;font-size:12px;font-weight:600;color:#dc2626;background:none;border:none;cursor:pointer;font-family:inherit;">Remove</button>
+            </div>
+            <div style="font-size:11.5px;color:#9ca3af;margin-bottom:18px;">If a PDF is attached, every employee must open it and e-sign on their first login before entering. Leave blank to use the text terms below instead.</div>
+
+            <label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Terms &amp; Conditions text <span style="color:#9ca3af;font-weight:400;">(used when no PDF is attached)</span></label>
+            <textarea id="emp-terms-editor" rows="12" placeholder="Write the Terms &amp; Conditions that every employee must read and agree to."
+                style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;line-height:1.6;resize:vertical;min-height:180px;"></textarea>
+            <div style="font-size:11.5px;color:#9ca3af;margin-top:6px;">Shown to employees who sign on first login when no PDF is set.</div>
             <div id="emp-terms-editor-err" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:14px;"></div>
             <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
                 <button onclick="unCloseEmployeeTermsModal()"

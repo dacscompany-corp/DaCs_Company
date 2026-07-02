@@ -100,7 +100,9 @@
       "Bash(echo \"=== dollar-quote balance \\($$ count, should be even\\) ===\")",
       "Bash(grep -o '\\\\$\\\\$' supabase/migrations/0019_partner_gate_enforcement.sql)",
       "Bash(grep -c \"format\\(\\\\|%1\\\\$\" supabase/migrations/0019_partner_gate_enforcement.sql)",
-      "Bash(supabase --version)"
+      "Bash(supabase --version)",
+      "Bash(node --check js/client-app.js)",
+      "Bash(node --check js/admin.js)"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
