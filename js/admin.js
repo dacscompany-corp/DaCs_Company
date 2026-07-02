@@ -67,6 +67,20 @@ function checkAuthState() {
                 _loginViaForm = false;
                 return;
             }
+            // First-login agreement gate — all admin roles EXCEPT owner must read
+            // and e-sign the Terms before reaching the dashboard.
+            try {
+                const needsAgreement = currentUserRole !== 'owner'
+                    && (await _empAgreementProfile(user.uid)).agreementAccepted !== true;
+                if (needsAgreement) {
+                    _showEmployeeAgreementGate(user);
+                    _loginViaForm = false;
+                    return;   // dashboard shows only after they accept
+                }
+            } catch (agErr) {
+                console.warn('Employee agreement gate skipped:', agErr && agErr.message);
+            }
+
             applyRoleBasedUI();
             showDashboard();
             showWelcomeToast(user.email, _loginViaForm ? 'Login Successful!' : 'Welcome back!');
@@ -78,6 +92,237 @@ function checkAuthState() {
         }
     });
 }
+
+// ════════════════════════════════════════════════════════════════════
+// EMPLOYEE FIRST-LOGIN AGREEMENT GATE
+// Mirrors the Client Management agreement: a non-owner admin account must read
+// the Terms and e-sign (tick + typed name + optional drawn signature) before
+// reaching the dashboard. Acceptance is saved on their `users` profile.
+// ════════════════════════════════════════════════════════════════════
+
+const EMP_AGREEMENT_FALLBACK =
+`EMPLOYMENT TERMS & CONDITIONS
+
+By accepting, you confirm that you have read, understood, and agree to DAC's Building Design Services' employment terms, confidentiality, acceptable-use, and conduct policies, and that all work products created in the course of your employment remain the property of the company.`;
+
+let _empAgrSig = { canvas: null, ctx: null, drawing: false, hasInk: false, bound: false };
+
+async function _empAgreementProfile(uid) {
+    try {
+        const doc = await db.collection('users').doc(uid).get();
+        return doc.exists ? doc.data() : {};
+    } catch (_) { return {}; }
+}
+
+// Load the global employee terms: { text, pdfUrl, pdfName }.
+async function _empLoadGlobalTerms() {
+    try {
+        const doc = await db.collection('settings').doc('employeeTerms').get();
+        const t = doc && doc.exists ? doc.data() : null;
+        return {
+            text  : (t && typeof t.text === 'string' && t.text.trim()) ? t.text : EMP_AGREEMENT_FALLBACK,
+            pdfUrl : (t && t.pdfUrl)  || '',
+            pdfName: (t && t.pdfName) || ''
+        };
+    } catch (_) { return { text: EMP_AGREEMENT_FALLBACK, pdfUrl: '', pdfName: '' }; }
+}
+
+async function _empLoadTermsText() {
+    try {
+        const doc = await db.collection('settings').doc('employeeTerms').get();
+        const t = doc && doc.exists ? doc.data() : null;
+        return (t && typeof t.text === 'string' && t.text.trim()) ? t.text : EMP_AGREEMENT_FALLBACK;
+    } catch (_) { return EMP_AGREEMENT_FALLBACK; }
+}
+
+async function _showEmployeeAgreementGate(user) {
+    // Keep the login screen hidden but do NOT show the dashboard yet.
+    const loginScreen = document.getElementById('loginScreen');
+    if (loginScreen) loginScreen.style.display = 'none';
+
+    let modal = document.getElementById('emp-agreement-modal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'emp-agreement-modal';
+        modal.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:16px;';
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML =
+      '<div style="background:#fff;border:1.5px solid #111827;width:100%;max-width:720px;height:92vh;max-height:92vh;display:flex;flex-direction:column;box-shadow:0 28px 80px rgba(0,0,0,.32);font-family:inherit;">'
+      + '<div style="padding:20px 28px 16px;border-bottom:1.5px solid #e5e7eb;text-align:center;background:linear-gradient(160deg,#f5f3ff 0%,#ede9fe 100%);">'
+      +   '<div style="display:inline-flex;align-items:center;gap:5px;padding:4px 12px;background:rgba(124,58,237,.1);border:1px solid rgba(124,58,237,.2);border-radius:20px;font-size:11px;font-weight:700;color:#6d28d9;letter-spacing:.07em;text-transform:uppercase;">🔒 Employee Agreement</div>'
+      +   '<h2 style="font-size:20px;font-weight:800;color:#4c1d95;margin:8px 0 2px;">Terms &amp; Conditions</h2>'
+      +   '<p style="font-size:13px;color:#6b7280;margin:0;">Please read and sign to access the portal.</p>'
+      + '</div>'
+      + '<div style="flex:1;min-height:0;overflow-y:auto;padding:22px 28px;">'
+      +   '<div id="emp-agreement-text" style="white-space:pre-wrap;font-size:13px;line-height:1.65;color:#374151;">Loading…</div>'
+      + '</div>'
+      + '<div style="padding:14px 28px 18px;border-top:1.5px solid #e5e7eb;background:#fafafa;display:flex;flex-direction:column;gap:12px;">'
+      +   '<label style="display:flex;align-items:flex-start;gap:9px;font-size:12.5px;color:#374151;cursor:pointer;">'
+      +     '<input type="checkbox" id="emp-agreement-checkbox" onchange="empToggleAgreementBtn()" style="width:17px;height:17px;margin-top:1px;flex-shrink:0;cursor:pointer;">'
+      +     '<span>I have read and agree to the <strong>Terms &amp; Conditions</strong>.</span>'
+      +   '</label>'
+      +   '<div style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px;align-items:end;">'
+      +     '<div><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;"><label style="font-size:12px;font-weight:700;color:#374151;">Draw your signature</label><button type="button" onclick="empClearAgreementSig()" style="font-size:11px;font-weight:600;color:#6b7280;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:7px;padding:3px 10px;cursor:pointer;">Clear</button></div>'
+      +       '<div style="position:relative;border:1.5px solid #d1d5db;border-radius:10px;background:#fff;overflow:hidden;"><canvas id="emp-agreement-pad" style="display:block;width:100%;height:90px;touch-action:none;cursor:crosshair;"></canvas><div id="emp-agreement-hint" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;color:#c4c8d0;font-size:13px;font-style:italic;">Sign here</div></div></div>'
+      +     '<div><label for="emp-agreement-signature" style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:5px;">Full name (printed) <span style="color:#dc2626;">*</span></label>'
+      +       '<input type="text" id="emp-agreement-signature" oninput="empToggleAgreementBtn()" placeholder="e.g. Juan Dela Cruz" autocomplete="off" style="width:100%;box-sizing:border-box;padding:10px 13px;border:1.5px solid #d1d5db;border-radius:10px;font-size:14px;font-family:inherit;color:#111827;outline:none;">'
+      +       '<div style="font-size:11px;color:#9ca3af;margin-top:6px;">Signing is recorded with the date/time.</div></div>'
+      +   '</div>'
+      +   '<div style="display:flex;gap:10px;justify-content:flex-end;">'
+      +     '<button type="button" onclick="empAgreementSignOut()" style="padding:11px 18px;border-radius:10px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;">Sign out</button>'
+      +     '<button type="button" id="emp-agreement-accept-btn" onclick="empAcceptAgreement()" disabled style="flex:1;padding:12px;border-radius:10px;border:none;background:linear-gradient(135deg,#6d28d9 0%,#7c3aed 100%);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;opacity:.6;">Accept Agreement</button>'
+      +   '</div>'
+      + '</div>'
+      + '</div>';
+
+    modal.dataset.uid = user.uid;
+    modal.style.display = 'flex';
+
+    const prof  = await _empAgreementProfile(user.uid);
+    const nm    = [prof.firstName, prof.lastName].filter(Boolean).join(' ').trim();
+    const sigEl = document.getElementById('emp-agreement-signature');
+    if (sigEl && nm) sigEl.value = nm;
+
+    // Global employee terms (one document for all employees).
+    const globalTerms = await _empLoadGlobalTerms();
+    const pdfUrl = globalTerms.pdfUrl && String(globalTerms.pdfUrl).trim();
+    const textEl = document.getElementById('emp-agreement-text');
+    if (pdfUrl) {
+        // PDF mode: must open the document once before the checkbox unlocks.
+        _empReadGateLocked = true;
+        if (textEl) {
+            textEl.style.whiteSpace = 'normal';
+            textEl.innerHTML =
+                '<div style="padding:4px 0 4px;font-size:13.5px;color:#374151;margin-bottom:12px;">Please open and read the Terms &amp; Conditions before you sign:</div>'
+                + '<a href="' + _empEsc(pdfUrl) + '" target="_blank" rel="noopener" id="emp-agreement-openpdf" onclick="empMarkPdfOpened()" '
+                + 'style="display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border:1.5px solid #111827;border-radius:9px;background:#fff;color:#111827;font-weight:700;font-size:14px;cursor:pointer;text-decoration:none;font-family:inherit;">'
+                + '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>'
+                + 'Open Terms &amp; Conditions (PDF)</a>'
+                + '<div id="emp-agreement-openednote" style="display:none;margin-top:10px;font-size:12.5px;font-weight:600;color:#16a34a;">✓ Document opened — you can now sign below.</div>';
+        }
+    } else {
+        // Text mode: show the global terms text; no read gate.
+        _empReadGateLocked = false;
+        if (textEl) { textEl.style.whiteSpace = 'pre-wrap'; textEl.textContent = globalTerms.text; }
+    }
+
+    setTimeout(_empInitAgreementPad, 60);
+    empToggleAgreementBtn();
+}
+
+// Simple HTML-attribute escaper for the PDF url.
+function _empEsc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// Read gate: when a PDF is attached, the checkbox/signature stay locked until
+// the employee opens the document once.
+let _empReadGateLocked = false;
+
+window.empMarkPdfOpened = function() {
+    _empReadGateLocked = false;
+    const note = document.getElementById('emp-agreement-openednote');
+    if (note) note.style.display = '';
+    const link = document.getElementById('emp-agreement-openpdf');
+    if (link) { link.style.borderColor = '#16a34a'; link.style.color = '#16a34a'; }
+    empToggleAgreementBtn();
+    // The link's default navigation (opening the PDF) still happens.
+};
+
+window.empToggleAgreementBtn = function() {
+    const cb  = document.getElementById('emp-agreement-checkbox');
+    const sig = document.getElementById('emp-agreement-signature');
+    const btn = document.getElementById('emp-agreement-accept-btn');
+    // Disable the checkbox itself until the PDF has been opened (if gated).
+    if (cb) cb.disabled = _empReadGateLocked;
+    const ok  = !_empReadGateLocked && (cb && cb.checked) && sig && sig.value.trim().length >= 2;
+    if (btn) { btn.disabled = !ok; btn.style.opacity = ok ? '1' : '.6'; }
+};
+
+window.empClearAgreementSig = function() {
+    const c = _empAgrSig.canvas, ctx = _empAgrSig.ctx;
+    if (c && ctx) ctx.clearRect(0, 0, c.width, c.height);
+    _empAgrSig.hasInk = false;
+    const h = document.getElementById('emp-agreement-hint'); if (h) h.style.display = '';
+};
+
+window.empAgreementSignOut = async function() {
+    const modal = document.getElementById('emp-agreement-modal');
+    if (modal) modal.style.display = 'none';
+    try { await auth.signOut(); } catch (_) {}
+};
+
+function _empInitAgreementPad() {
+    const canvas = document.getElementById('emp-agreement-pad');
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const dpr  = window.devicePixelRatio || 1;
+    canvas.width  = Math.max(1, Math.round(rect.width  * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111827';
+    _empAgrSig.canvas = canvas; _empAgrSig.ctx = ctx; _empAgrSig.hasInk = false;
+    const hint = document.getElementById('emp-agreement-hint'); if (hint) hint.style.display = '';
+    if (_empAgrSig.bound) return;
+    _empAgrSig.bound = true;
+    const pos = (e) => { const r = canvas.getBoundingClientRect(); const p = e.touches ? e.touches[0] : e; return { x: p.clientX - r.left, y: p.clientY - r.top }; };
+    const start = (e) => { e.preventDefault(); _empAgrSig.drawing = true; const { x, y } = pos(e); ctx.beginPath(); ctx.moveTo(x, y); const h = document.getElementById('emp-agreement-hint'); if (h) h.style.display = 'none'; };
+    const move  = (e) => { if (!_empAgrSig.drawing) return; e.preventDefault(); const { x, y } = pos(e); ctx.lineTo(x, y); ctx.stroke(); _empAgrSig.hasInk = true; };
+    const end   = () => { _empAgrSig.drawing = false; };
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', end);
+    canvas.addEventListener('touchstart', start, { passive: false });
+    canvas.addEventListener('touchmove',  move,  { passive: false });
+    canvas.addEventListener('touchend',   end);
+}
+
+window.empAcceptAgreement = async function() {
+    const modal = document.getElementById('emp-agreement-modal');
+    const uid   = modal?.dataset.uid;
+    const cb    = document.getElementById('emp-agreement-checkbox');
+    const sig   = document.getElementById('emp-agreement-signature');
+    const signature = sig ? sig.value.trim() : '';
+    if (_empReadGateLocked) { alert('Please open the Terms & Conditions document first.'); return; }
+    if (!uid || !cb?.checked) return;
+    if (signature.length < 2) { alert('Please type your name as your signature.'); return; }
+
+    const btn = document.getElementById('emp-agreement-accept-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+
+    // Optional drawn-signature upload (non-blocking).
+    let signatureImageUrl = '';
+    try {
+        if (_empAgrSig.hasInk && _empAgrSig.canvas && typeof storage !== 'undefined') {
+            const blob = await new Promise(res => _empAgrSig.canvas.toBlob(res, 'image/png'));
+            if (blob) {
+                const ref = storage.ref(`signatures/employee_${uid}_${Date.now()}.png`);
+                await ref.put(blob);
+                signatureImageUrl = await ref.getDownloadURL();
+            }
+        }
+    } catch (upErr) { console.warn('Employee signature upload failed (continuing):', upErr.message); }
+
+    try {
+        await db.collection('users').doc(uid).update({
+            agreementAccepted      : true,
+            agreementAcceptedAt    : firebase.firestore.FieldValue.serverTimestamp(),
+            agreementSignature     : signature,
+            agreementSignatureImage: signatureImageUrl || ''
+        });
+    } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Accept Agreement'; }
+        alert('Could not save your acceptance: ' + (e.message || e) + '\n\nPlease try again.');
+        return;
+    }
+
+    if (modal) modal.style.display = 'none';
+    // Now enter the dashboard.
+    applyRoleBasedUI();
+    showDashboard();
+    showWelcomeToast(auth.currentUser?.email || '', 'Welcome!');
+    if (typeof loadNotifications === 'function') loadNotifications();
+};
 
 // Show an error message on the login screen
 function showLoginError(message) {

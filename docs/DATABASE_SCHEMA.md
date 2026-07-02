@@ -26,6 +26,7 @@
 | `termsAccepted` | bool | user-navigator | `true` once the employee agreed to the T&C at account creation (migration 0020) |
 | `termsAcceptedAt` | ts | user-navigator | when the T&C were accepted (migration 0020) |
 | `termsSnapshot` | string | user-navigator | copy of the exact T&C text agreed to (migration 0020) |
+| `agreementAccepted` / `agreementAcceptedAt` / `agreementSignature` / `agreementSignatureImage` | bool/ts/string | first-login agreement gate for non-owner admins (reuses migrations 0001/0016/0017 columns): starts `false`, flips true when the employee reads + e-signs on first login. The T&C document (text or one global PDF) lives in `settings/employeeTerms`. |
 **Rules:** anyone signed-in can **read**; you may only create/update your **own** doc and **cannot set/modify `role`**.
 
 ### `clientUsers/{uid}` — customer portal profiles (`client.html`)
@@ -34,6 +35,8 @@
 | `firstName`, `lastName`, `email` | string | self-set at signup |
 | `createdAt` | ts | |
 | (profile edits) | — | phone/address etc. added via profile editor |
+| `termsPdfUrl` / `termsPdfName` | string | optional Terms PDF an admin attached (uploads bucket, `clientPortalTerms/{uid}/…`); if set, the client must open it + e-sign on next login (reuses migration 0022 columns) |
+| `agreementAccepted` / `agreementAcceptedAt` / `agreementSignature` / `agreementSignatureImage` | bool/ts/string | set when the client signs the attached Terms PDF (reuses migrations 0001/0016/0017 columns); a new PDF resets `agreementAccepted` |
 **Rules:** client reads/writes own; owner/staff read all.
 
 ### `constructionClientUsers/{uid}` — construction-side client profiles
@@ -48,6 +51,11 @@
 | `agreementSignatureImage` | string | URL of the hand-drawn signature PNG in the `uploads` bucket (migration 0017) |
 | `agreementIp` | string | best-effort client IP at signing time (migration 0016) |
 | `isPartner` | bool | flags a partner account (auto-set on partner-portal login, migration 0019). Enables the RLS gate: a partner can't read a project's data subtables until they've signed that project's `partnerAgreements`. Clients (is_partner=false) are unaffected. |
+| `termsPdfUrl` | string | optional Terms & Policy PDF the admin attached to this client (uploads bucket, `clientTerms/{uid}/…`); the client must open + e-sign it on login before entering (migration 0022) |
+| `termsPdfName` | string | display name of the attached Terms & Policy PDF (migration 0022) |
+| `termsAccepted` | bool | client signed the Terms & Policy PDF (reuses migration 0020 column); re-set to false when the admin uploads a new PDF |
+| `termsAcceptedAt` | ts | when the client signed (migration 0020) |
+| `termsSignature` / `termsSignatureImage` / `termsIp` | string | typed name / drawn-signature URL / IP captured at signing |
 | `createdAt` | ts | |
 
 ---
@@ -275,7 +283,9 @@ Same shape as `invoices`; `items` are labor lines auto-built from `weeklyBills` 
 ### `settings/{id}`
 - `settings/paymentQR` — payment QR (clients can read)
 - `settings/invoiceDefaults` — `businessName/Tin/Address`, `vatRate`, `paymentDetails`
-- `settings/employeeTerms` — `text` (admin-editable Terms & Conditions shown when adding an employee), `updatedAt`
+- `settings/employeeTerms` — one global employee agreement: `text` (fallback terms), `pdfUrl`/`pdfName` (optional global Terms PDF in the uploads bucket, `employeeTermsGlobal/…`; if set, every employee opens + e-signs it on first login), `updatedAt`
+- `settings/constructionClientTerms` — one global Client Management agreement: `text`, `pdfUrl`/`pdfName` (`constructionClientTermsGlobal/…`); if a PDF is set, every construction client opens + e-signs on next login
+- `settings/clientPortalTerms` — one global Client Portal agreement: `text`, `pdfUrl`/`pdfName` (`clientPortalTermsGlobal/…`); if a PDF is set, every customer-portal client opens + e-signs on next login
 - other config: owner/staff only.
 
 ### `stats/{…}` — read-only aggregates (no client writes).

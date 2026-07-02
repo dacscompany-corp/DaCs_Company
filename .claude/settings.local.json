@@ -101,12 +101,16 @@
       "Bash(grep -o '\\\\$\\\\$' supabase/migrations/0019_partner_gate_enforcement.sql)",
       "Bash(grep -c \"format\\(\\\\|%1\\\\$\" supabase/migrations/0019_partner_gate_enforcement.sql)",
       "Bash(supabase --version)",
+      "Bash(node --check js/client-app.js)",
+      "Bash(node --check js/admin.js)",
       "Bash(awk '/id=\"cm-agreement-modal\"/,/I have read and understood|cm-agreement-checkbox/' \"Dacs Partnership.html\")",
       "Bash(awk '/id=\"cm-agreement-modal\"/,/\\\\/agreement-body/' \"Dacs Partnership.html\")",
       "Bash(awk '/id=\"cm-agreement-modal\"/,/\\\\/agreement-body/' \"Client Management.html\")",
       "Bash(node --check js/print-utils.js)",
       "Bash(node -e \"const c=require\\('fs'\\).readFileSync\\('css/dacs-redesign.css','utf8'\\);const o=\\(c.match\\(/{/g\\)||[]\\).length,cl=\\(c.match\\(/}/g\\)||[]\\).length;console.log\\('css braces',o,cl,o===cl?'BALANCED':'MISMATCH'\\)\")",
-      "WebSearch"
+      "WebSearch",
+      "Bash(git commit -m 'Merge branch '\\\\''main'\\\\'' into salvs — resolve conflicts *)",
+      "Bash(git push *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
