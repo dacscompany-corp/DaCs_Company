@@ -7575,22 +7575,16 @@ async function lcViewAgreement(c) {
     if (_basePdf && typeof window.dacsWorkerAgreementView === 'function') {
         const folder = (typeof expFolders !== 'undefined' ? expFolders : []).find(f => f.id === c.folderId);
         const projName = folder ? (folder.name || '') + (folder.code ? ' · ' + folder.code : '') : '';
-        let signedDay = '';
-        try {
-            const at = c.agreementSignedAt;
-            const dd = at && at.toDate ? at.toDate() : (at ? new Date(at) : null);
-            if (dd && !isNaN(dd)) signedDay = dd.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
-        } catch (_) {}
+        // Details ONLY — signature lines stay BLANK on every page. The worker
+        // signs the printed manual by hand (owner's call: the on-screen signature
+        // captured at contract creation must NOT be replicated onto the pages).
         await window.dacsWorkerAgreementView(_basePdf, {
             ref      : 'LC-' + String(c.id || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase(),
             project  : projName,
             worker   : c.workerName || '',
             scope    : c.scope || '',
             payType  : c.payType === 'inhouse' ? 'In-house (capped)' : 'Pakyaw (piecework)',
-            amount   : (Number(c.agreedAmount) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            signature      : signed ? (c.agreementSignature || c.workerName || '') : '',
-            signatureImage : signed ? (c.agreementSignatureImage || '') : '',
-            dateStr        : signed ? signedDay : ''
+            amount   : (Number(c.agreedAmount) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
         });
         return;
     }
