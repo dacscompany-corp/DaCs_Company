@@ -3612,18 +3612,55 @@ function _pmViewPartnerAgreement(p) {
 // Print the profile-level Partnership Agreement (current flow) — the same
 // canonical document + signature the partner signed at first login, exactly
 // as User Navigator's ccViewAgreementPdf renders it.
-function _pmPrintProfilePartnerAgreement(p, c) {
+async function _pmPrintProfilePartnerAgreement(p, c) {
     if (typeof window.dacsAgreementPdf !== 'function' || typeof window.dacsPartnerAgreementDoc !== 'function') {
         alert('Print utility not loaded.'); return;
     }
+    // Reprint the VERSION the partner signed, not the current template.
+    try { if (window.dacsLoadAgreementTemplates) await window.dacsLoadAgreementTemplates(); } catch (_) {}
     const name  = [c.firstName, c.lastName].filter(Boolean).join(' ').trim() || c.email || '—';
+    // Uploaded-PDF version → signature certificate + button to open the document.
+    const verDocP = (typeof window.dacsAgrVersionDoc === 'function')
+        ? window.dacsAgrVersionDoc('partner', c.partnerAgreementDocVersion) : null;
+    if (verDocP && verDocP.mode === 'pdf' && verDocP.pdfUrl) {
+        const atRawP = c.partnerAgreementAcceptedAt;
+        const atP = atRawP ? (atRawP.toDate ? atRawP.toDate() : new Date(atRawP)) : null;
+        const okP = atP && !isNaN(atP);
+        window.dacsAgreementPdf({
+            title   : 'DAC’s Partnership Agreement',
+            subtitle: 'Signature Certificate',
+            preamble: 'This certificate is attached to the agreement document “' + (verDocP.pdfName || 'Agreement.pdf') + '” (version ' + (verDocP.version || '—') + ') — the preceding pages of this file — electronically signed by ' + name + '.',
+            parties : [
+                { label: 'Partner', value: name },
+                { label: 'Document', value: verDocP.pdfName || 'Agreement.pdf' },
+                { label: 'Version',  value: 'v' + (verDocP.version || '—') },
+                ...(p && p.projectName ? [{ label: 'Project', value: p.projectName }] : [])
+            ],
+            sections: [],
+            signature: c.partnerAgreementSignature || name,
+            signatureImage: c.partnerAgreementSignatureImage || '',
+            dateStr: okP ? atP.toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '',
+            signerLabel: 'Partner',
+            ip: c.partnerAgreementIp || '',
+            pdfEmbedUrl: verDocP.pdfUrl,
+            fillFields: [
+                { label: 'Partner',        value: name },
+                { label: 'Project',        value: (p && p.projectName) || '' },
+                { label: 'Start Date',     value: (p && p.startDate) || '' },
+                { label: 'Contract Value', value: (p && p.budget != null) ? 'PHP ' + Number(p.budget).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '' }
+            ]
+        });
+        return;
+    }
     const atRaw = c.partnerAgreementAcceptedAt;
     const at    = atRaw ? (atRaw.toDate ? atRaw.toDate() : new Date(atRaw)) : null;
     const ok    = at && !isNaN(at);
     const dateStr = ok ? at.toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
     const dayStr  = ok ? at.toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' }) : '';
     window.dacsAgreementPdf({
-        ...window.dacsPartnerAgreementDoc(name, p, dayStr),
+        ...window.dacsPartnerAgreementDoc(name, p, dayStr,
+            (typeof window.dacsAgrVersionSections === 'function')
+                ? window.dacsAgrVersionSections('partner', c.partnerAgreementDocVersion) : null),
         subtitle: 'Partner Agreement',
         signature: c.partnerAgreementSignature || name,
         signatureImage: c.partnerAgreementSignatureImage || '',

@@ -405,30 +405,10 @@ async function cmLoadProjectDetails(projectId) {
 // ── Routing after a successful login / agreement ─────────────────
 // One account can own several projects. With more than one and none chosen
 // yet, show the project picker; otherwise go straight into the dashboard.
-let _cmGlobalTerms = null;   // cached settings/constructionClientTerms { text, pdfUrl, pdfName }
-
-async function cmLoadGlobalTerms() {
-    if (_cmGlobalTerms) return _cmGlobalTerms;
-    try {
-        const doc = await db.collection('settings').doc('constructionClientTerms').get();
-        const d = doc && doc.exists ? doc.data() : null;
-        _cmGlobalTerms = { text: (d && d.text) || '', pdfUrl: (d && d.pdfUrl) || '', pdfName: (d && d.pdfName) || '' };
-    } catch (_) { _cmGlobalTerms = { text: '', pdfUrl: '', pdfName: '' }; }
-    return _cmGlobalTerms;
-}
-
 async function cmRouteAfterLogin() {
-    // Global Terms & Policy PDF gate (CLIENTS only, not partners): if an admin set
-    // a global terms PDF and this client hasn't signed it, they must open + e-sign.
-    if (!cmIsPartner()) {
-        const g = await cmLoadGlobalTerms();
-        const hasPdf = !!(g.pdfUrl && String(g.pdfUrl).trim());
-        if (hasPdf && (cmCurrentProfile || {}).termsAccepted !== true) {
-            cmOpenClientTermsGate();
-            return;
-        }
-    }
-
+    // NOTE: the global Terms & Conditions layer (settings/constructionClientTerms)
+    // was removed 2026-07-03 — never configured in production. The binding
+    // document is the Cost-Plus agreement signed in cmCheckAgreement.
     if (cmProjects.length > 1 && !cmProjectData) { cmShowProjectPicker(); return; }
     cmEnterDashboard();
 }
@@ -4379,7 +4359,7 @@ function cmRenderWeeklyPreview() {
 // COST-PLUS AGREEMENT
 // ══════════════════════════════════════════════════════════════════
 
-function cmCheckAgreement() {
+async function cmCheckAgreement() {
     // First-login agreement gate — applies to BOTH clients and partners. The user
     // cannot reach the dashboard until they read it, tick the box, type their name
     // as a digital signature, and Accept.
@@ -4392,6 +4372,9 @@ function cmCheckAgreement() {
     if (accepted) {
         cmRouteAfterLogin();
     } else {
+        // Make sure the CURRENT (possibly admin-edited) template version is
+        // loaded before the document renders — what they read is what they sign.
+        try { if (window.dacsLoadAgreementTemplates) await window.dacsLoadAgreementTemplates(); } catch (_) {}
         const modal = document.getElementById('cm-agreement-modal');
         if (modal) modal.style.display = '';
         // Initialise the drawing pad once the modal is visible (needs real size).
@@ -4420,15 +4403,28 @@ function _cmClientAgrRenderSections() {
     const host = document.getElementById('cm-client-agr-sections');
     if (!host || typeof window.dacsClientAgreementDoc !== 'function') return;
     const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-    const doc = window.dacsClientAgreementDoc(_cmAgrPartnerName(), cmProjectData, '');
-    host.innerHTML = (doc.sections || []).map((s, i) => {
-        const title = String(s.heading || '').replace(/^\d+\.\s*/, '');
-        return (i ? '<div class="cm-agreement-divider"></div>' : '')
-            + '<div class="cm-agreement-section">'
-            + '<div class="cm-agreement-section-title"><span class="cm-agreement-section-num">' + (i + 1) + '</span> ' + esc(title) + '</div>'
-            + '<p style="white-space:pre-wrap;">' + esc(s.body) + '</p>'
-            + '</div>';
-    }).join('');
+    // Uploaded-PDF agreement: extract its section text and render it in the
+    // same numbered-chip design as the standard document.
+    const tpl = (typeof window.dacsAgrTemplate === 'function') ? window.dacsAgrTemplate('client') : { mode: 'sections' };
+    const renderList = (secsOverride) => {
+        const doc = window.dacsClientAgreementDoc(_cmAgrPartnerName(), cmProjectData, '', secsOverride);
+        host.innerHTML = (doc.sections || []).map((s, i) => {
+            const title = String(s.heading || '').replace(/^\d+\.\s*/, '');
+            return (i ? '<div class="cm-agreement-divider"></div>' : '')
+                + '<div class="cm-agreement-section">'
+                + '<div class="cm-agreement-section-title"><span class="cm-agreement-section-num">' + (i + 1) + '</span> ' + esc(title) + '</div>'
+                + '<p style="white-space:pre-wrap;">' + esc(s.body) + '</p>'
+                + '</div>';
+        }).join('');
+    };
+    if (tpl.mode === 'pdf' && tpl.pdfUrl && typeof window.dacsAgrPdfSections === 'function') {
+        host.innerHTML = '<div style="padding:40px 0;text-align:center;color:#9ca3af;font-size:13px;">Loading the agreement…</div>';
+        window.dacsAgrPdfSections(tpl.pdfUrl)
+            .then(ps => renderList((ps && ps.length) ? ps : null))
+            .catch(() => renderList(null));
+        return;
+    }
+    renderList(null);
 }
 
 // ── Partner agreement signing stepper (Dacs Partnership.html only) ─────────
@@ -4451,6 +4447,25 @@ function _cmAgrPartnerName() {
 // design). Content comes from the canonical dacsPartnerAgreementDoc so the
 // gate, the PDF download, and the admin print always show the same document.
 function _cmAgrRenderPaper(elId, signed) {
+    // Uploaded-PDF agreement: extract its SECTION TEXT and render it in the
+    // same elegant paper design as the standard document (raw PDF-page
+    // rendering was rejected — it reads small and dense). Falls back to the
+    // standard text if the PDF yields no parseable sections.
+    const tplP = (typeof window.dacsAgrTemplate === 'function') ? window.dacsAgrTemplate('partner') : { mode: 'sections' };
+    if (tplP.mode === 'pdf' && tplP.pdfUrl && typeof window.dacsAgrPdfSections === 'function') {
+        const el0 = document.getElementById(elId);
+        if (el0 && !el0.dataset.agrLoaded) {
+            el0.innerHTML = '<div style="padding:40px 0;text-align:center;color:#9ca3af;font-size:13px;">Loading the agreement…</div>';
+        }
+        window.dacsAgrPdfSections(tplP.pdfUrl)
+            .then(ps => { if (el0) el0.dataset.agrLoaded = '1'; _cmAgrRenderPaperBody(elId, signed, (ps && ps.length) ? ps : null); })
+            .catch(() => _cmAgrRenderPaperBody(elId, signed, null));
+        return;
+    }
+    _cmAgrRenderPaperBody(elId, signed, null);
+}
+
+function _cmAgrRenderPaperBody(elId, signed, secsOverride) {
     const el = document.getElementById(elId);
     if (!el || typeof window.dacsPartnerAgreementDoc !== 'function') return;
     const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -4458,20 +4473,20 @@ function _cmAgrRenderPaper(elId, signed) {
     const dayStr = now.toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
     const typed = (document.getElementById('cm-agreement-signature')?.value || '').trim();
     const name = (signed && typed) ? typed : _cmAgrPartnerName();
-    const doc = window.dacsPartnerAgreementDoc(name, cmProjectData, dayStr);
+    const doc = window.dacsPartnerAgreementDoc(name, cmProjectData, dayStr, secsOverride);
     const secs = (doc.sections || []).map(s =>
-        `<div class="cm-agr-p-sec"><div class="cm-agr-p-h">${esc(s.heading)}</div><p>${esc(s.body)}</p></div>`).join('');
+        `<div class="cm-agr-p-sec"><div class="cm-agr-p-h">${esc(s.heading)}</div><p style="white-space:pre-wrap;">${esc(s.body)}</p></div>`).join('');
     const sigImg = (signed && _cmSigPad.hasInk && _cmSigPad.canvas) ? _cmSigPad.canvas.toDataURL('image/png') : '';
     const signBlock = signed
         ? `<div class="cm-agr-p-signrow">
              <div>${sigImg ? `<div class="cm-agr-p-sigimg" style="background-image:url(${sigImg});"></div>` : ''}
                <div class="cm-agr-p-signame">${esc(name)}</div>
                <div class="cm-agr-p-siglbl">${esc(name)} — Partner · Signed electronically on ${esc(dayStr)}</div></div>
-             <div><div class="cm-agr-p-sigline"></div><div class="cm-agr-p-siglbl">DAC's Building Design Services</div></div>
+             <div><img src="assets/images/dacs-signature.png" alt="" onerror="this.style.display='none'" style="height:34px;display:block;margin:0 auto 2px;"/><div class="cm-agr-p-sigline"></div><div class="cm-agr-p-siglbl">DAC's Building Design Services — Authorized Representative</div></div>
            </div>`
         : `<div class="cm-agr-p-signrow">
              <div><div class="cm-agr-p-sigline"></div><div class="cm-agr-p-siglbl">${esc(name)} — Partner</div></div>
-             <div><div class="cm-agr-p-sigline"></div><div class="cm-agr-p-siglbl">DAC's Building Design Services</div></div>
+             <div><img src="assets/images/dacs-signature.png" alt="" onerror="this.style.display='none'" style="height:34px;display:block;margin:0 auto 2px;"/><div class="cm-agr-p-sigline"></div><div class="cm-agr-p-siglbl">DAC's Building Design Services — Authorized Representative</div></div>
            </div>`;
     el.innerHTML = `
       <div class="cm-agr-p-head">
@@ -4661,7 +4676,6 @@ window.cmAcceptAgreement = async function() {
         alert('Please type your name as your printed signature.');
         return;
     }
-
     const btn = document.getElementById('cm-agreement-accept-btn');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
 
@@ -4699,18 +4713,24 @@ window.cmAcceptAgreement = async function() {
             // the construction client account is created.
             // Partners sign the Partnership Agreement → partner-prefixed fields;
             // clients sign the Cost-Plus agreement → the original fields.
+            // Record WHICH template version was on screen — reprints render this
+            // version even after the admin edits the agreement text later.
+            const tplVer = (typeof window.dacsAgrTemplate === 'function')
+                ? window.dacsAgrTemplate(cmIsPartner() ? 'partner' : 'client').version : 1;
             await db.collection(CM_COLLECTION).doc(cmCurrentUser.uid).update(cmIsPartner() ? {
                 partnerAgreementAccepted      : true,
                 partnerAgreementAcceptedAt    : firebase.firestore.FieldValue.serverTimestamp(),
                 partnerAgreementSignature     : signature,
                 partnerAgreementSignatureImage: signatureImageUrl || '',
-                partnerAgreementIp            : ip || ''
+                partnerAgreementIp            : ip || '',
+                partnerAgreementDocVersion    : tplVer
             } : {
                 agreementAccepted      : true,
                 agreementAcceptedAt    : firebase.firestore.FieldValue.serverTimestamp(),
                 agreementSignature     : signature,
                 agreementSignatureImage: signatureImageUrl || '',
-                agreementIp            : ip || ''
+                agreementIp            : ip || '',
+                agreementDocVersion    : tplVer
             });
         }
         if (cmCurrentProfile) {
@@ -4732,6 +4752,42 @@ window.cmAcceptAgreement = async function() {
                 await db.collection('constructionProjects').doc(cmProjectData.id).update({ status: 'ready' });
                 cmProjectData.status = 'ready';
             } catch (pe) { console.warn('Project status update skipped:', pe.message); }
+        }
+        // Immutable audit row (append-only agreement_events, migration 0021).
+        // Best-effort by design — the helper never throws.
+        if (typeof dacsLogAgreementEvent === 'function') {
+            const tplA = (typeof window.dacsAgrTemplate === 'function')
+                ? window.dacsAgrTemplate(cmIsPartner() ? 'partner' : 'client')
+                : { mode: 'sections', version: 1 };
+            let docText = '', pdfSnap = null;
+            if (tplA.mode === 'pdf' && tplA.pdfUrl) {
+                // The signed document is the uploaded PDF — freeze a per-signer
+                // copy + fingerprint (best-effort; never blocks acceptance).
+                if (cmCurrentUser && typeof dacsSnapshotPdf === 'function')
+                    pdfSnap = await dacsSnapshotPdf(tplA.pdfUrl, cmCurrentUser.uid, tplA.pdfName || 'agreement');
+            } else {
+                const doc = cmIsPartner()
+                    ? (typeof window.dacsPartnerAgreementDoc === 'function' ? window.dacsPartnerAgreementDoc(signature, cmProjectData || {}, '') : null)
+                    : (typeof window.dacsClientAgreementDoc  === 'function' ? window.dacsClientAgreementDoc(signature,  cmProjectData || {}, '') : null);
+                docText = doc ? [doc.title || '', ...(doc.sections || []).map(s => (s.heading || '') + '\n' + (s.body || ''))].join('\n\n') : '';
+            }
+            await dacsLogAgreementEvent({
+                audience : cmIsPartner() ? 'partner' : 'construction_client',
+                docType  : cmIsPartner() ? 'partnership_agreement' : 'cost_plus_agreement',
+                docTitle : (tplA.mode === 'pdf' && tplA.pdfName)
+                    ? tplA.pdfName
+                    : (cmIsPartner() ? 'DAC’s Partnership Agreement' : 'Cost-Plus Project Management Agreement'),
+                projectId: (cmProjectData && cmProjectData.id) || null,
+                signature,
+                signatureImageUrl: signatureImageUrl || '',
+                pdfSnapshotUrl : pdfSnap ? pdfSnap.url  : '',
+                pdfSnapshotName: pdfSnap ? pdfSnap.name : '',
+                docSha256      : pdfSnap ? pdfSnap.sha256
+                    : (docText && typeof dacsSha256Text === 'function' ? await dacsSha256Text(docText) : ''),
+                docText,
+                docVersion: tplA.version || 1,
+                ip: ip || ''
+            });
         }
     } catch (e) {
         saveError = e;
@@ -4756,11 +4812,13 @@ window.cmAcceptAgreement = async function() {
 // signature + date. Callable by the client/partner after signing. The admin
 // version (user-navigator) passes an explicit profile/project to print any
 // client's signed copy.
-window.cmDownloadAgreementPdf = function(opts) {
+window.cmDownloadAgreementPdf = async function(opts) {
     const o = opts || {};
     const prof = o.profile || cmCurrentProfile || {};
     const proj = o.project || cmProjectData || {};
     if (typeof window.dacsAgreementPdf !== 'function') { alert('Print utility not loaded.'); return; }
+    // Reprints render the VERSION the person signed, not the current template.
+    try { if (window.dacsLoadAgreementTemplates) await window.dacsLoadAgreementTemplates(); } catch (_) {}
     // Partner portal (or explicit opts.partner) prints the signed PARTNERSHIP
     // agreement from the partner-prefixed fields; clients print the Cost-Plus one.
     const isPartner  = o.partner === true || cmIsPartner();
@@ -4775,18 +4833,58 @@ window.cmDownloadAgreementPdf = function(opts) {
     const projectTitle = proj.projectName || proj.clientName || 'Construction Project';
     const contract = proj.budget != null ? '₱' + Number(proj.budget).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
     const feePct   = (proj.managementFeePct != null ? proj.managementFeePct : 15) + '%';
-    window.dacsAgreementPdf(isPartner ? {
-        // The canonical Partnership document (print-utils.js) — the SAME definition
-        // the signing stepper showed, so the reprint matches what was signed.
-        ...window.dacsPartnerAgreementDoc(clientName, proj, dayStr),
+    const signedVer = isPartner ? prof.partnerAgreementDocVersion : prof.agreementDocVersion;
+    // If the signed version was an admin-UPLOADED PDF, that file IS the
+    // agreement — download the archived copy directly.
+    const verDoc = (typeof window.dacsAgrVersionDoc === 'function')
+        ? window.dacsAgrVersionDoc(isPartner ? 'partner' : 'client', signedVer) : null;
+    if (verDoc && verDoc.mode === 'pdf' && verDoc.pdfUrl) {
+        // One merged file: the signed document's pages + the signature
+        // certificate page (falls back to opening the document if merge fails).
+        if (typeof window.dacsAgreementDownloadPdf !== 'function') { window.open(verDoc.pdfUrl, '_blank'); return; }
+        window.dacsAgreementDownloadPdf({
+            title   : isPartner ? 'DAC’s Partnership Agreement' : 'Cost-Plus Project Management Agreement',
+            subtitle: 'Signature Certificate',
+            preamble: 'This certificate is attached to the agreement document “' + (verDoc.pdfName || 'Agreement.pdf') + '” (version ' + (verDoc.version || '—') + ') — the preceding pages of this file — electronically signed by ' + clientName + '.',
+            parties : [
+                { label: isPartner ? 'Partner' : 'Client', value: clientName },
+                { label: 'Document', value: verDoc.pdfName || 'Agreement.pdf' },
+                { label: 'Version',  value: 'v' + (verDoc.version || '—') },
+                ...(proj && proj.projectName ? [{ label: 'Project', value: proj.projectName }] : [])
+            ],
+            sections: [],
+            signature,
+            signatureImage: (isPartner ? prof.partnerAgreementSignatureImage : prof.agreementSignatureImage) || '',
+            dateStr,
+            signerLabel: isPartner ? 'Partner' : 'Client',
+            ip: (isPartner ? prof.partnerAgreementIp : prof.agreementIp) || '',
+            pdfEmbedUrl: verDoc.pdfUrl,
+            fillFields: [
+                { label: isPartner ? 'Partner' : 'Client', value: clientName },
+                { label: 'Project',        value: (proj && proj.projectName) || '' },
+                { label: 'Start Date',     value: (proj && proj.startDate) || '' },
+                { label: 'Contract Value', value: (proj && proj.budget != null) ? 'PHP ' + Number(proj.budget).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '' }
+            ]
+        });
+        return;
+    }
+    const verSections = (verDoc && verDoc.mode !== 'pdf') ? verDoc.sections : null;
+    // TRUE file download (jsPDF) — this is the portal's "Download" action;
+    // fall back to the print popup only if the PDF library can't load.
+    const _pdfFn = (typeof window.dacsAgreementDownloadPdf === 'function')
+        ? window.dacsAgreementDownloadPdf : window.dacsAgreementPdf;
+    _pdfFn(isPartner ? {
+        // The canonical Partnership document (print-utils.js) at the SIGNED
+        // version — the reprint matches what was signed, even after edits.
+        ...window.dacsPartnerAgreementDoc(clientName, proj, dayStr, verSections),
         signature,
         signatureImage: prof.partnerAgreementSignatureImage || '',
         dateStr,
         ip: prof.partnerAgreementIp || ''
     } : {
-        // Canonical Cost-Plus client document (print-utils.js) — the SAME 8 sections
-        // the client read and signed in the portal modal.
-        ...window.dacsClientAgreementDoc(clientName, proj, dayStr),
+        // Canonical Cost-Plus client document (print-utils.js) at the SIGNED
+        // version — the same sections the client read in the portal modal.
+        ...window.dacsClientAgreementDoc(clientName, proj, dayStr, verSections),
         signature,
         signatureImage: prof.agreementSignatureImage || '',
         dateStr,
@@ -4850,93 +4948,14 @@ function cmOpenProjectTerms(project) {
         }
     }
 
-    _cmTermsMode = 'project';
     modal.style.display = '';
     setTimeout(cmProjTermsInitPad, 60);
 }
 
-// Which flow the shared terms modal is serving: 'project' (partner per-project)
-// or 'client' (Client Management account-level Terms & Policy PDF).
-let _cmTermsMode = 'project';
-
-// Open the shared terms modal for the CLIENT account-level Terms & Policy PDF.
-function cmOpenClientTermsGate() {
-    const modal = document.getElementById('cm-projterms-modal');
-    if (!modal) { cmEnterDashboard(); return; }
-    const pdfUrl = _cmGlobalTerms && _cmGlobalTerms.pdfUrl && String(_cmGlobalTerms.pdfUrl).trim();
-    if (!pdfUrl) { cmEnterDashboard(); return; }
-
-    const nameEl = document.getElementById('cm-projterms-projectname');
-    if (nameEl) nameEl.textContent = 'Please review and sign to continue.';
-
-    const cb  = document.getElementById('cm-projterms-checkbox'); if (cb) cb.checked = false;
-    const sig = document.getElementById('cm-projterms-signature'); if (sig) sig.value = '';
-    const btn = document.getElementById('cm-projterms-accept-btn'); if (btn) { btn.disabled = true; btn.textContent = 'Accept & Continue'; }
-
-    const card = modal.querySelector('.cm-agreement-card');
-    if (card) card.classList.remove('pdf-mode');
-
-    cmProjTermsSetReadGate(true);       // must open the PDF first
-    cmProjTermsRenderPdf(pdfUrl);
-
-    _cmTermsMode = 'client';
-    modal.style.display = '';
-    setTimeout(cmProjTermsInitPad, 60);
-}
-
-// Save the CLIENT's acceptance of the account-level Terms & Policy PDF, then enter.
-async function cmClientTermsAccept() {
-    const cb  = document.getElementById('cm-projterms-checkbox');
-    const sig = document.getElementById('cm-projterms-signature');
-    const signature = sig ? sig.value.trim() : '';
-    if (!cb?.checked) return;
-    if (signature.length < 2) { alert('Please type your name as your signature.'); return; }
-    if (!cmCurrentUser) return;
-
-    const btn = document.getElementById('cm-projterms-accept-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
-
-    let ip = ''; try { ip = await cmFetchIp(); } catch (_) { ip = ''; }
-
-    // Upload the drawn signature (optional, non-blocking).
-    let signatureImageUrl = '';
-    try {
-        if (_cmPtSig.hasInk && _cmPtSig.canvas && typeof storage !== 'undefined') {
-            const blob = await new Promise(res => _cmPtSig.canvas.toBlob(res, 'image/png'));
-            if (blob) {
-                const path = `signatures/clientterms_${cmCurrentUser.uid}_${Date.now()}.png`;
-                const ref = storage.ref(path);
-                await ref.put(blob);
-                signatureImageUrl = await ref.getDownloadURL();
-            }
-        }
-    } catch (upErr) { console.warn('Client terms signature upload failed (continuing):', upErr.message); }
-
-    try {
-        const acceptedAt = new Date();
-        await db.collection('constructionClientUsers').doc(cmCurrentUser.uid).update({
-            termsAccepted       : true,
-            termsAcceptedAt     : acceptedAt,
-            termsSignature      : signature,
-            termsSignatureImage : signatureImageUrl || '',
-            termsIp             : ip || ''
-        });
-        if (cmCurrentProfile) {
-            cmCurrentProfile.termsAccepted   = true;
-            cmCurrentProfile.termsAcceptedAt = acceptedAt;
-        }
-    } catch (e) {
-        if (btn) { btn.disabled = false; btn.textContent = 'Accept & Continue'; }
-        alert('Could not save your acceptance: ' + (e.message || e) + '\n\nPlease try again.');
-        return;
-    }
-
-    const modal = document.getElementById('cm-projterms-modal');
-    if (modal) modal.style.display = 'none';
-    // Proceed into the portal (picker or dashboard).
-    if (cmProjects.length > 1 && !cmProjectData) { cmShowProjectPicker(); return; }
-    cmEnterDashboard();
-}
+// (cmOpenClientTermsGate / cmClientTermsAccept were retired 2026-07-03: the
+// account-level Terms PDF is now required reading inside the Cost-Plus
+// agreement ceremony — see _cmClientAgrSetupTermsPdf. The shared modal below
+// now serves ONLY the per-project terms gate for clients.)
 
 // Lock/unlock the read gate. When locked, the agree-checkbox is disabled and a
 // hint tells the partner to open and read the PDF first.
@@ -4987,8 +5006,6 @@ window.cmProjTermsMarkOpened = function() {
 window.cmProjTermsBack = function() {
     const modal = document.getElementById('cm-projterms-modal');
     if (modal) modal.style.display = 'none';
-    // Client account-level terms: can't enter without signing → sign out.
-    if (_cmTermsMode === 'client') { doLogout(); return; }
     if (cmProjects.length > 1) {
         cmProjectData = null;
         cmShowProjectPicker();
@@ -5039,9 +5056,6 @@ window.cmProjTermsToggleBtn = function() {
 };
 
 window.cmProjTermsAccept = async function() {
-    // The shared modal serves two flows — route to the client handler when needed.
-    if (_cmTermsMode === 'client') { return cmClientTermsAccept(); }
-
     const cb  = document.getElementById('cm-projterms-checkbox');
     const sig = document.getElementById('cm-projterms-signature');
     const signature = sig ? sig.value.trim() : '';
@@ -5095,6 +5109,28 @@ window.cmProjTermsAccept = async function() {
         } else {
             payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
             await col.add(payload);
+        }
+        // Immutable audit row + frozen copy of the exact document (agreement_events,
+        // migration 0021). Best-effort — the helpers never throw.
+        if (typeof dacsLogAgreementEvent === 'function') {
+            const pdfUrl = ((cmProjectData.partnerTermsPdfUrl) || '').trim();
+            let snap = null;
+            if (pdfUrl && uid && typeof dacsSnapshotPdf === 'function')
+                snap = await dacsSnapshotPdf(pdfUrl, uid, cmProjectData.partnerTermsPdfName || 'project-terms');
+            const docText = pdfUrl ? '' : ((cmProjectData.partnerTerms && cmProjectData.partnerTerms.trim()) || '');
+            await dacsLogAgreementEvent({
+                audience : cmIsPartner() ? 'partner' : 'construction_client',
+                docType  : 'project_terms',
+                docTitle : 'Per-Project Terms & Conditions — ' + (cmProjectData.projectName || cmProjectData.id),
+                projectId: cmProjectData.id,
+                signature,
+                signatureImageUrl: signatureImageUrl || '',
+                pdfSnapshotUrl : snap ? snap.url    : '',
+                pdfSnapshotName: snap ? snap.name   : '',
+                docSha256      : snap ? snap.sha256 : (docText && typeof dacsSha256Text === 'function' ? await dacsSha256Text(docText) : ''),
+                docText,
+                ip: ip || ''
+            });
         }
     } catch (e) {
         if (btn) { btn.disabled = false; btn.textContent = 'Accept & View Project'; }

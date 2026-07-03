@@ -474,121 +474,177 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         }
     };
 
-    // ── Global Terms & Conditions editor (Client Management + Client Portal) ──
-    // One document per audience: text fallback + optional global PDF. Stored in
-    // a settings/{key} doc. Reused by both tabs via a small config map.
-    const GLOBAL_TERMS_CFG = {
-        cc: { settingsKey: 'constructionClientTerms', folder: 'constructionClientTermsGlobal', title: 'Client Management Terms & Conditions', sub: 'Applies to all construction clients' },
-        cp: { settingsKey: 'clientPortalTerms',       folder: 'clientPortalTermsGlobal',       title: 'Client Portal Terms & Conditions',      sub: 'Applies to all client-portal accounts' }
+    // ── Agreements editor — the ACTUAL documents clients/partners sign ──────
+    // Edits the section text of the Cost-Plus Client Agreement and the
+    // Partnership Agreement (standard text lives in js/print-utils.js as v1).
+    // Every save creates a NEW version in settings/agreementDoc_client|partner
+    // with the outgoing version archived in `history`; signers record the
+    // version they signed (profiles.*_doc_version), so reprints always show
+    // the signed text — editing here never rewrites an existing signature.
+    let _agrEdKind = 'client';
+    let _agrEdDrafts = null;   // working copies: { client:[{heading,body}], partner:[...] }
+
+    window.unOpenAgreementEditor = async function () {
+        try { if (window.dacsLoadAgreementTemplates) await window.dacsLoadAgreementTemplates(true); } catch (_) {}
+        if (typeof window.dacsAgrTemplate !== 'function') { alert('Print utility not loaded.'); return; }
+        _agrEdKind = 'client';
+        // PDF-only editor: the agreement IS an uploaded PDF. (The built-in
+        // standard text is only the fallback signers see before the first
+        // upload, and what old text-version signatures reprint.)
+        const draft = (k) => {
+            const t = window.dacsAgrTemplate(k);
+            return {
+                mode   : t.mode || 'sections',
+                pdfUrl : t.pdfUrl || '',
+                pdfName: t.pdfName || '',
+                file   : null           // newly picked PDF (uploads on Save)
+            };
+        };
+        _agrEdDrafts = { client: draft('client'), partner: draft('partner') };
+        let modal = document.getElementById('unAgrEditorModal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'unAgrEditorModal';
+            modal.className = 'un-modal-overlay';
+            modal.style.display = 'none';
+            modal.onclick = (e) => { if (e.target === modal) unCloseAgreementEditor(); };
+            document.body.appendChild(modal);
+        }
+        _agrEdRender();
+        modal.style.display = 'flex';
     };
-    let _gtFile = null, _gtUrl = '', _gtName = '', _gtKind = null;
 
-    function _gtRenderState() {
-        const nameEl = document.getElementById('gt-pdf-name');
-        const rmEl   = document.getElementById('gt-pdf-remove');
-        if (!nameEl) return;
-        if (_gtFile)      { nameEl.textContent = _gtFile.name + ' (new — will upload on save)'; nameEl.style.color = '#111827'; if (rmEl) rmEl.style.display = ''; }
-        else if (_gtUrl)  { nameEl.textContent = _gtName || 'Attached PDF'; nameEl.style.color = '#111827'; if (rmEl) rmEl.style.display = ''; }
-        else              { nameEl.textContent = 'No PDF attached.'; nameEl.style.color = '#6b7280'; if (rmEl) rmEl.style.display = 'none'; }
-    }
+    window.unCloseAgreementEditor = function () {
+        const m = document.getElementById('unAgrEditorModal');
+        if (m) m.style.display = 'none';
+    };
 
-    window.unGtPickPdf = function (input) {
+    window.unAgrEdTab = function (kind) { _agrEdKind = kind; _agrEdRender(); };
+    window.unAgrEdPickPdf = function (input) {
         const f = input && input.files && input.files[0];
         if (!f) return;
         if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) { alert('Please choose a PDF file.'); input.value = ''; return; }
-        _gtFile = f; _gtRenderState();
+        const d = _agrEdDrafts[_agrEdKind];
+        d.mode = 'pdf'; d.file = f; d.pdfName = f.name;
+        _agrEdRender();
     };
-    window.unGtRemovePdf = function () {
-        _gtFile = null; _gtUrl = ''; _gtName = '';
-        const input = document.getElementById('gt-pdf-input'); if (input) input.value = '';
-        _gtRenderState();
+    window.unAgrEdRemovePdf = function () {
+        if (!confirm('Remove the uploaded PDF? Signers will see the built-in standard text again (saved as a new version).')) return;
+        const d = _agrEdDrafts[_agrEdKind];
+        d.mode = 'sections'; d.file = null; d.pdfUrl = ''; d.pdfName = '';
+        _agrEdRender();
     };
 
-    window.unOpenGlobalTerms = async function (kind) {
-        const cfg = GLOBAL_TERMS_CFG[kind];
-        if (!cfg) return;
-        _gtKind = kind; _gtFile = null; _gtUrl = ''; _gtName = '';
-
-        let modal = document.getElementById('unGlobalTermsModal');
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'unGlobalTermsModal';
-            modal.className = 'un-modal-overlay';
-            modal.style.display = 'none';
-            modal.onclick = (e) => { if (e.target === modal) unCloseGlobalTerms(); };
-            document.body.appendChild(modal);
-        }
+    function _agrEdRender() {
+        const modal = document.getElementById('unAgrEditorModal');
+        if (!modal) return;
+        const kind = _agrEdKind;
+        const cur  = window.dacsAgrTemplate(kind);
+        const d    = _agrEdDrafts[kind] || { mode: 'sections' };
+        const pdfMode = d.mode === 'pdf';
+        const tab = (k, label) =>
+            '<button type="button" onclick="unAgrEdTab(\'' + k + '\')" style="padding:9px 18px;border-radius:9px;border:1.5px solid ' + (kind === k ? '#1A5C3A' : '#d6dcd7') + ';background:' + (kind === k ? '#eaf5ee' : '#fff') + ';color:' + (kind === k ? '#1A5C3A' : '#6b7280') + ';font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;">' + label + '</button>';
+        // Upload card — the primary way to set the agreement (your own drafted PDF).
+        const pdfCard =
+            '<div style="border:1.5px solid ' + (pdfMode ? '#1A5C3A' : '#e5e7eb') + ';border-radius:11px;padding:14px 16px;margin-bottom:16px;background:' + (pdfMode ? '#f4faf6' : '#fff') + ';">'
+            + '<div style="font-size:13px;font-weight:700;color:#143523;margin-bottom:8px;">Agreement document (PDF)</div>'
+            + '<input type="file" id="agr-ed-pdf-input" accept="application/pdf,.pdf" onchange="unAgrEdPickPdf(this)" style="display:none;">'
+            + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+            +   '<button type="button" onclick="document.getElementById(\'agr-ed-pdf-input\').click()" style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border:1.5px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;"><i data-lucide="upload" style="width:15px;height:15px;"></i> ' + (pdfMode ? 'Replace PDF' : 'Upload PDF') + '</button>'
+            +   (pdfMode
+                    ? '<span style="font-size:12.5px;color:#143523;font-weight:600;">' + _esc(d.pdfName || 'Agreement.pdf') + (d.file ? ' (new — uploads on save)' : '') + '</span>'
+                      + (d.pdfUrl && !d.file ? ' <a href="' + _esc(d.pdfUrl) + '" target="_blank" rel="noopener" style="font-size:12px;font-weight:600;color:#1d4ed8;">View</a>' : '')
+                      + '<button type="button" onclick="unAgrEdRemovePdf()" style="font-size:12px;font-weight:600;color:#dc2626;background:none;border:none;cursor:pointer;font-family:inherit;">Remove PDF</button>'
+                    : '<span style="font-size:12.5px;color:#6b7280;">No PDF uploaded yet — signers currently see the built-in standard text.</span>')
+            + '</div>'
+            + '<div style="font-size:11.5px;color:#9ca3af;margin-top:8px;">'
+            + (pdfMode
+                ? 'Signers read THIS document in the signing screen and their signature covers it.'
+                : 'Upload your drafted agreement (PDF). Once saved, new signers read and sign YOUR document instead of the standard text.')
+            + '</div>'
+            + (pdfMode && d.pdfUrl && !d.file
+                ? '<iframe src="' + _esc(d.pdfUrl) + '" style="width:100%;height:320px;border:1.5px solid #e5e7eb;border-radius:10px;margin-top:12px;background:#f8fafc;"></iframe>'
+                : '')
+            + '</div>';
         modal.innerHTML =
-          '<div class="un-modal-card" style="max-width:640px;width:94%;">'
-          + '<div class="un-modal-header"><div class="un-modal-avatar" style="background:#7c3aed;color:#fff;"><i data-lucide="file-text" style="width:18px;height:18px;"></i></div>'
-          +   '<div class="un-modal-title-block"><h3>' + _esc(cfg.title) + '</h3><span class="un-role-badge un-role-staff">' + _esc(cfg.sub) + '</span></div>'
-          +   '<button class="un-modal-close" aria-label="Close" onclick="unCloseGlobalTerms()"><i data-lucide="x"></i></button></div>'
-          + '<div class="un-modal-body" style="padding:20px 24px 24px;">'
-          +   '<label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Terms &amp; Conditions PDF <span style="color:#9ca3af;font-weight:400;">(one document for everyone)</span></label>'
-          +   '<input type="file" id="gt-pdf-input" accept="application/pdf,.pdf" onchange="unGtPickPdf(this)" style="display:none;">'
-          +   '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">'
-          +     '<button type="button" onclick="document.getElementById(\'gt-pdf-input\').click()" style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border:1.5px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;"><i data-lucide="upload" style="width:15px;height:15px;"></i> Upload PDF</button>'
-          +     '<span id="gt-pdf-name" style="font-size:12.5px;color:#6b7280;">No PDF attached.</span>'
-          +     '<button type="button" id="gt-pdf-remove" onclick="unGtRemovePdf()" style="display:none;font-size:12px;font-weight:600;color:#dc2626;background:none;border:none;cursor:pointer;font-family:inherit;">Remove</button>'
+          '<div class="un-modal-card" style="max-width:760px;width:96%;max-height:92vh;display:flex;flex-direction:column;">'
+          + '<div class="un-modal-header"><div class="un-modal-avatar" style="background:#1A5C3A;color:#fff;"><i data-lucide="file-signature" style="width:18px;height:18px;"></i></div>'
+          +   '<div class="un-modal-title-block"><h3>Agreements</h3><span class="un-role-badge un-role-staff">The documents clients & partners sign — versioned</span></div>'
+          +   '<button class="un-modal-close" aria-label="Close" onclick="unCloseAgreementEditor()"><i data-lucide="x"></i></button></div>'
+          + '<div class="un-modal-body" style="padding:18px 24px 24px;overflow-y:auto;">'
+          +   '<div style="display:flex;gap:8px;margin-bottom:14px;">'
+          +     tab('client', 'Cost-Plus Agreement (clients)') + tab('partner', 'Partnership Agreement (partners)')
           +   '</div>'
-          +   '<div style="font-size:11.5px;color:#9ca3af;margin-bottom:18px;">If a PDF is attached, every ' + (kind === 'cc' ? 'construction client' : 'client') + ' must open it and e-sign on their next login before entering. Leave blank to use the text below.</div>'
-          +   '<label style="font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:5px;">Terms &amp; Conditions text <span style="color:#9ca3af;font-weight:400;">(used when no PDF is attached)</span></label>'
-          +   '<textarea id="gt-editor" rows="10" placeholder="Write the Terms &amp; Conditions everyone must agree to." style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;line-height:1.6;resize:vertical;min-height:160px;">Loading…</textarea>'
-          +   '<div id="gt-err" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:14px;"></div>'
-          +   '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">'
-          +     '<button onclick="unCloseGlobalTerms()" style="padding:9px 20px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>'
-          +     '<button id="gt-save" onclick="unSaveGlobalTerms()" style="padding:9px 20px;border-radius:8px;border:none;background:#7c3aed;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:inherit;"><i data-lucide="save" style="width:14px;height:14px;"></i> Save</button>'
+          +   '<div style="font-size:12px;color:#6b7280;margin-bottom:14px;">Currently in force: <strong>version ' + cur.version + (cur.version === 1 ? ' (standard text)' : (cur.mode === 'pdf' ? ' (uploaded PDF)' : '')) + '</strong>. Saving creates version ' + (cur.version + 1) + '; new signers see the new document, while everyone who already signed keeps — and reprints — the exact version they accepted.</div>'
+          +   pdfCard
+          +   '<div id="agr-ed-err" style="display:none;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:14px;"></div>'
+          +   '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;flex-wrap:wrap;">'
+          +     '<div style="display:flex;gap:10px;">'
+          +       '<button type="button" onclick="unCloseAgreementEditor()" style="padding:10px 18px;border-radius:9px;border:1.5px solid #d6dcd7;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>'
+          +       '<button type="button" id="agr-ed-save" onclick="unAgrEdSave()" style="padding:10px 22px;border-radius:9px;border:none;background:#1A5C3A;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">Save as version ' + (cur.version + 1) + '</button>'
+          +     '</div>'
           +   '</div>'
           + '</div></div>';
-        modal.style.display = 'flex';
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
 
-        try {
-            const doc  = await db.collection('settings').doc(cfg.settingsKey).get();
-            const data = doc && doc.exists ? doc.data() : null;
-            const editor = document.getElementById('gt-editor');
-            if (editor) editor.value = (data && data.text) || '';
-            _gtUrl  = (data && data.pdfUrl)  || '';
-            _gtName = (data && data.pdfName) || '';
-        } catch (e) { const editor = document.getElementById('gt-editor'); if (editor) editor.value = ''; }
-        _gtRenderState();
-    };
+    window.unAgrEdSave = async function () {
+        const kind = _agrEdKind;
+        const errEl = document.getElementById('agr-ed-err');
+        const show = (m) => { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } else alert(m); };
+        const d   = _agrEdDrafts[kind] || {};
+        const cur = window.dacsAgrTemplate(kind);
+        const pdfMode = d.mode === 'pdf';
 
-    window.unCloseGlobalTerms = function () {
-        const modal = document.getElementById('unGlobalTermsModal');
-        if (modal) modal.style.display = 'none';
-        _gtFile = null; _gtKind = null;
-    };
+        // PDF-only editor: sections mode is only reachable via "Remove PDF"
+        // (revert to the built-in standard text as a new version).
+        let secs = null;
+        if (!pdfMode) {
+            if (cur.mode !== 'pdf') { show('No changes to save — signers already see the standard text (version ' + cur.version + ').'); return; }
+            secs = JSON.parse(JSON.stringify(window.DACS_AGR_DEFAULT_SECTIONS[kind]));
+        } else {
+            if (!d.file && !d.pdfUrl) { show('Upload a PDF first.'); return; }
+            if (!d.file && cur.mode === 'pdf' && d.pdfUrl === cur.pdfUrl) { show('No changes to save — this PDF is already version ' + cur.version + '.'); return; }
+        }
 
-    window.unSaveGlobalTerms = async function () {
-        const cfg = GLOBAL_TERMS_CFG[_gtKind];
-        if (!cfg) return;
-        const editor = document.getElementById('gt-editor');
-        const errEl  = document.getElementById('gt-err');
-        if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
-        const text = (editor?.value || '').trim();
-        const btn = document.getElementById('gt-save');
+        const btn = document.getElementById('agr-ed-save');
         if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
         try {
-            let pdfUrl = _gtUrl, pdfName = _gtName;
-            if (_gtFile) {
-                if (btn) btn.textContent = 'Uploading…';
-                const safe = String(_gtFile.name || 'terms.pdf').replace(/[^\w.\-]+/g, '_');
-                const ref  = storage.ref(cfg.folder + '/' + Date.now() + '_' + safe);
-                await ref.put(_gtFile);
+            // New PDF picked → upload it to a permanent, versioned path first.
+            let pdfUrl = d.pdfUrl, pdfName = d.pdfName;
+            if (pdfMode && d.file) {
+                if (btn) btn.textContent = 'Uploading PDF…';
+                const safe = String(d.file.name || 'agreement.pdf').replace(/[^\w.\-]+/g, '_');
+                const ref  = storage.ref('agreementDocs/' + kind + '/v' + (cur.version + 1) + '_' + Date.now() + '_' + safe);
+                await ref.put(d.file);
                 pdfUrl  = await ref.getDownloadURL();
-                pdfName = _gtFile.name || 'Terms & Conditions.pdf';
+                pdfName = d.file.name || 'Agreement.pdf';
             }
-            await db.collection('settings').doc(cfg.settingsKey).set({
-                text, pdfUrl: pdfUrl || '', pdfName: pdfName || '', updatedAt: new Date().toISOString()
+            // Archive the outgoing version exactly as it was (text OR pdf).
+            const t = (window._dacsAgrTpl || {})[kind] || {};
+            const history = Array.isArray(t.history) ? t.history.slice() : [];
+            history.push(cur.mode === 'pdf'
+                ? { version: cur.version, mode: 'pdf', pdfUrl: cur.pdfUrl, pdfName: cur.pdfName, archivedAt: new Date().toISOString() }
+                : { version: cur.version, mode: 'sections', sections: cur.sections, archivedAt: new Date().toISOString() });
+            await db.collection('settings').doc(kind === 'client' ? 'agreementDoc_client' : 'agreementDoc_partner').set({
+                mode     : pdfMode ? 'pdf' : 'sections',
+                sections : pdfMode ? null : secs,
+                pdfUrl   : pdfMode ? pdfUrl : '',
+                pdfName  : pdfMode ? (pdfName || 'Agreement.pdf') : '',
+                version  : cur.version + 1,
+                updatedAt: new Date().toISOString(),
+                updatedBy: (auth.currentUser && auth.currentUser.email) || '',
+                history
             });
-            unCloseGlobalTerms();
-            _showSuccessBanner('Terms & Conditions saved.');
+            await window.dacsLoadAgreementTemplates(true);
+            const t2 = window.dacsAgrTemplate(kind);   // rebuild draft from the fresh template
+            _agrEdDrafts[kind] = { mode: t2.mode, pdfUrl: t2.pdfUrl || '', pdfName: t2.pdfName || '', file: null };
+            _showSuccessBanner((kind === 'client' ? 'Cost-Plus Agreement' : 'Partnership Agreement') + ' saved as version ' + (cur.version + 1) + (pdfMode ? ' (PDF)' : '') + '.');
+            _agrEdRender();
         } catch (err) {
-            console.error('unSaveGlobalTerms:', err);
-            if (errEl) { errEl.textContent = 'Could not save: ' + (err.message || err); errEl.style.display = 'block'; }
-        } finally {
-            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="save" style="width:14px;height:14px;"></i> Save'; if (typeof lucide !== 'undefined') lucide.createIcons(); }
+            console.error('unAgrEdSave:', err);
+            show('Could not save: ' + (err.message || err));
+            if (btn) { btn.disabled = false; btn.textContent = 'Save as version ' + (cur.version + 1); }
         }
     };
 
@@ -678,20 +734,17 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
             // pre-signed; otherwise the account starts "Pending" and the employee
             // signs on their first login to the admin portal.
             const acceptedAt = new Date();
-            const termsText  = await _loadEmployeeTerms();
             try {
                 if (termsAgreed) {
                     await db.collection('users').doc(uid).update({
                         agreementAccepted   : true,
                         agreementAcceptedAt : acceptedAt,
-                        agreementSignature  : firstName + ' ' + lastName,
-                        termsSnapshot       : termsText
+                        agreementSignature  : firstName + ' ' + lastName
                     });
                 } else {
                     await db.collection('users').doc(uid).update({
                         agreementAccepted   : false,
-                        agreementAcceptedAt : null,
-                        termsSnapshot       : termsText
+                        agreementAcceptedAt : null
                     });
                 }
             } catch (termsErr) {
@@ -836,10 +889,11 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
     }
 
     function _agreementChip(c) {
-        // Two separate documents: the client Cost-Plus agreement and the Partnership
-        // agreement. Each account tracks the document for ITS portal (by role); a
-        // signed chip for the other document still shows if it exists (e.g. an
-        // account that was a client before becoming a partner).
+        // ONE chip per account — the document for ITS role (partner → Partnership
+        // agreement, client → Cost-Plus agreement). Accounts from the old
+        // single-account era may ALSO hold the other document's signature; that
+        // legacy copy stays reachable via More ▾ print and the View profile,
+        // but showing two "signed" chips per row read as redundant.
         const chips = [];
         const clientSigned = () => {
             const when = c.agreementAcceptedAt ? _formatDate(c.agreementAcceptedAt) : '';
@@ -854,10 +908,8 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
 
         if (c.isPartner) {
             chips.push(c.partnerAgreementAccepted ? partnerSigned() : pending('Partner agreement pending'));
-            if (c.agreementAccepted) chips.push(clientSigned());
         } else {
             chips.push(c.agreementAccepted ? clientSigned() : pending('Waiting for signature'));
-            if (c.partnerAgreementAccepted) chips.push(partnerSigned());
         }
         return chips.join(' ');
     }
@@ -916,10 +968,18 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         }
         const item = (label, onclick, danger) =>
             '<button type="button" onclick="' + onclick + '" style="text-align:left;padding:10px 13px;border:none;border-radius:8px;background:transparent;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;color:' + (danger ? '#b91c1c' : '#374151') + ';" onmouseover="this.style.background=\'#f3f5f3\'" onmouseout="this.style.background=\'transparent\'">' + label + '</button>';
+        // Role-aware print actions: each account offers ITS document; the other
+        // document appears only when a legacy signature for it actually exists
+        // (accounts from the old single-account era signed both).
         menu.innerHTML = [
             item('Edit account', "ccOpenEditModal('" + uid + "')"),
-            (c.agreementAccepted ? item('Print agreement (PDF)', "ccViewAgreementPdf('" + uid + "')") : ''),
-            ((c.isPartner || c.partnerAgreementAccepted) ? item('Print partner agreement', "ccViewAgreementPdf('" + uid + "', true)") : ''),
+            (c.isPartner
+                ? item('Print partner agreement', "ccViewAgreementPdf('" + uid + "', true)")
+                : (c.agreementAccepted ? item('Print agreement (PDF)', "ccViewAgreementPdf('" + uid + "')") : '')),
+            (c.isPartner && c.agreementAccepted
+                ? item('Print old client agreement', "ccViewAgreementPdf('" + uid + "')") : ''),
+            (!c.isPartner && c.partnerAgreementAccepted
+                ? item('Print old partner agreement', "ccViewAgreementPdf('" + uid + "', true)") : ''),
             item(c.status === 'active' ? 'Deactivate account' : 'Reactivate account', "ccToggleStatus('" + uid + "','" + c.status + "')", c.status === 'active')
         ].join('');
         menu.style.cssText = 'position:fixed;z-index:10060;background:#fff;border:1px solid #e3e8e4;border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,0.16);min-width:210px;padding:6px;display:flex;flex-direction:column;';
@@ -983,18 +1043,58 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         _ccPrintAgreement(c, matches[0] || {}, !!partner, unsigned);
     };
 
-    function _ccPrintAgreement(c, proj, partner, unsigned) {
+    async function _ccPrintAgreement(c, proj, partner, unsigned) {
         const clientName = [c.firstName, c.lastName].filter(Boolean).join(' ').trim() || c.email || '—';
         const signature  = unsigned ? '' : ((partner ? c.partnerAgreementSignature : c.agreementSignature) || clientName);
         const atRaw = partner ? c.partnerAgreementAcceptedAt : c.agreementAcceptedAt;
         const at = atRaw ? (atRaw.toDate ? atRaw.toDate() : new Date(atRaw)) : new Date();
         const dateStr = (unsigned || isNaN(at)) ? '' : at.toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' });
         const dayStr  = (unsigned || isNaN(at)) ? '' : at.toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' });
+        // Signed copies reprint the VERSION the person signed; unsigned review
+        // copies show the current template.
+        try { if (window.dacsLoadAgreementTemplates) await window.dacsLoadAgreementTemplates(); } catch (_) {}
+        const verDoc = (typeof window.dacsAgrVersionDoc === 'function')
+            ? window.dacsAgrVersionDoc(partner ? 'partner' : 'client',
+                  unsigned ? null : (partner ? c.partnerAgreementDocVersion : c.agreementDocVersion))
+            : null;
+        // Uploaded-PDF version: the PDF is the agreement — print a SIGNATURE
+        // CERTIFICATE referencing it, with a button to open the document itself.
+        if (verDoc && verDoc.mode === 'pdf' && verDoc.pdfUrl) {
+            // Show the ACTUAL signed document (embedded), with the signature
+            // panel below it. Download merges document + certificate into one file.
+            window.dacsAgreementPdf({
+                title   : partner ? 'DAC’s Partnership Agreement' : 'Cost-Plus Project Management Agreement',
+                subtitle: unsigned ? 'Signature Certificate — UNSIGNED (for review)' : 'Signature Certificate',
+                preamble: 'This certificate is attached to the agreement document “' + (verDoc.pdfName || 'Agreement.pdf') + '” (version ' + (verDoc.version || '—') + ') — the preceding pages of this file' + (unsigned ? ' — for review.' : ' — electronically signed by ' + clientName + '.'),
+                parties : [
+                    { label: partner ? 'Partner' : 'Client', value: clientName },
+                    { label: 'Document', value: verDoc.pdfName || 'Agreement.pdf' },
+                    { label: 'Version',  value: 'v' + (verDoc.version || '—') },
+                    ...(proj && proj.projectName ? [{ label: 'Project', value: proj.projectName }] : [])
+                ],
+                sections: [],
+                signature,
+                signatureImage: unsigned ? '' : ((partner ? c.partnerAgreementSignatureImage : c.agreementSignatureImage) || ''),
+                dateStr,
+                signerLabel: partner ? 'Partner' : 'Client',
+                ip: unsigned ? '' : ((partner ? c.partnerAgreementIp : c.agreementIp) || ''),
+                pdfEmbedUrl: verDoc.pdfUrl,
+                unsigned: !!unsigned,
+                fillFields: [
+                    { label: partner ? 'Partner' : 'Client', value: clientName },
+                    { label: 'Project',        value: (proj && proj.projectName) || '' },
+                    { label: 'Start Date',     value: (proj && proj.startDate) || '' },
+                    { label: 'Contract Value', value: (proj && proj.budget != null) ? 'PHP ' + Number(proj.budget).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '' }
+                ]
+            });
+            return;
+        }
+        const verSections = (!unsigned && verDoc && verDoc.mode !== 'pdf') ? verDoc.sections : null;
         if (partner) {
             // Canonical Partnership document from print-utils.js — identical to what
             // the partner read and signed in the portal's signing stepper.
             window.dacsAgreementPdf({
-                ...window.dacsPartnerAgreementDoc(clientName, proj, dayStr),
+                ...window.dacsPartnerAgreementDoc(clientName, proj, dayStr, verSections),
                 subtitle: unsigned ? 'Partner Agreement — UNSIGNED (for review)' : 'Partner Agreement',
                 signature,
                 signatureImage: unsigned ? '' : (c.partnerAgreementSignatureImage || ''),
@@ -1006,7 +1106,7 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         // Canonical Cost-Plus client document (print-utils.js) — identical to what
         // the client read and signed in the portal modal.
         window.dacsAgreementPdf({
-            ...window.dacsClientAgreementDoc(clientName, proj, dayStr),
+            ...window.dacsClientAgreementDoc(clientName, proj, dayStr, verSections),
             signature,
             signatureImage: c.agreementSignatureImage || '',
             dateStr,
