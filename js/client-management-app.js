@@ -580,12 +580,14 @@ window.cmSelectProject = async function(id) {
 
 // ── Enter Dashboard ──────────────────────────────────────────────
 async function cmEnterDashboard() {
-    // ── Per-project Terms & Conditions gate (partners AND clients) ──
-    // Before viewing a project's information, the user must sign THIS project's
+    // ── Per-project Terms & Conditions gate (CLIENTS only) ──
+    // Before viewing a project's information, the client must sign THIS project's
     // Terms & Conditions when the admin attached a per-project PDF/terms and they
-    // haven't accepted it yet. Applies to both the Partnership and Client
-    // Management portals (they share this file).
-    if (cmProjectData && cmProjectData.id) {
+    // haven't accepted it yet. PARTNERS are exempt: their binding document is the
+    // Partnership Agreement signed once at first login (profiles.partner_agreement_*,
+    // gate in cmCheckAgreement) — the per-project sign-off was the OLD partner flow
+    // and must not fire a second signature.
+    if (!cmIsPartner() && cmProjectData && cmProjectData.id) {
         const hasProjTerms = !!((cmProjectData.partnerTermsPdfUrl && String(cmProjectData.partnerTermsPdfUrl).trim())
                               || (cmProjectData.partnerTerms && String(cmProjectData.partnerTerms).trim()));
         if (hasProjTerms) {
