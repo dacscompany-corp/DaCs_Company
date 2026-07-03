@@ -66,9 +66,9 @@ function tsToISO(v) {
 // children  : { camelArr: { table, fk, orderBy?, rename?, idCol? } }
 const OWNER = { userId: 'owner_id' };
 const REG = {
-  users:                    { table: 'profiles', kind: 'admin',               rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt', 'termsAcceptedAt', 'agreementAcceptedAt'] },
+  users:                    { table: 'profiles', kind: 'admin',               rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt', 'agreementAcceptedAt'] },
   clientUsers:              { table: 'profiles', kind: 'client',              rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt', 'agreementAcceptedAt'] },
-  constructionClientUsers:  { table: 'profiles', kind: 'construction_client', rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt', 'agreementAcceptedAt', 'termsAcceptedAt', 'partnerAgreementAcceptedAt'] },
+  constructionClientUsers:  { table: 'profiles', kind: 'construction_client', rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt', 'agreementAcceptedAt', 'partnerAgreementAcceptedAt'] },
 
   folders:        { table: 'folders',        rename: OWNER, ts: ['createdAt', 'updatedAt'] },
   folderBudgets:  { table: 'folder_budgets', rename: OWNER, idField: 'folder_id' },
@@ -107,6 +107,7 @@ const REG = {
 
   sowaRequests:        { table: 'sowa_requests', ts: ['requestedAt'] },
   terminationRequests: { table: 'termination_requests', ts: ['requestedAt'] },
+  agreementEvents:     { table: 'agreement_events', ts: ['acceptedAt'] },   // append-only e-sign audit log (0021)
 
   notifications:  { table: 'notifications', ts: ['createdAt'] },  // only via /items subpath
   appointments:   { table: 'appointments', ts: ['createdAt', 'updatedAt'] },
@@ -619,7 +620,58 @@ const storage = {
   },
 };
 
-// ── 12. expose globals (mirror old firebase-config.js) ───────────────
+// ── 12. e-sign evidence helpers (shared by ALL portals) ──────────────
+// Every acceptance gate calls these to build a dispute-proof trail:
+//  • dacsSnapshotPdf — freeze a copy of the EXACT PDF the signer saw into
+//    signed-terms/{uid}/… (the shared settings/project URL can be replaced
+//    later; the snapshot cannot) and fingerprint it (SHA-256).
+//  • dacsLogAgreementEvent — one immutable row in agreement_events (0021).
+// Both are best-effort: they log a warning and return null/false rather than
+// ever blocking an acceptance (offline, CORS, or migration not yet applied).
+async function _dacsSha256Hex(buf) {
+  const h = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+window.dacsSha256Text = async function (text) {
+  try { return await _dacsSha256Hex(new TextEncoder().encode(String(text || ''))); }
+  catch (_) { return ''; }
+};
+window.dacsSnapshotPdf = async function (pdfUrl, uid, label) {
+  try {
+    if (!pdfUrl || !uid) return null;
+    const res = await fetch(pdfUrl);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const sha256 = await _dacsSha256Hex(await blob.arrayBuffer());
+    const safe = String(label || 'terms').replace(/\.pdf$/i, '').replace(/[^\w.-]+/g, '_').slice(0, 60) || 'terms';
+    const path = `signed-terms/${uid}/${Date.now()}_${safe}.pdf`;
+    const ref = storage.ref(path);
+    await ref.put(blob);
+    const url = await ref.getDownloadURL();
+    return { url, name: safe + '.pdf', sha256 };
+  } catch (e) {
+    console.warn('PDF snapshot failed (acceptance continues):', e.message || e);
+    return null;
+  }
+};
+window.dacsLogAgreementEvent = async function (ev) {
+  try {
+    const u = (auth && auth.currentUser) || null;
+    await db.collection('agreementEvents').add({
+      userId: (ev && ev.userId) || (u && u.uid) || null,
+      email: (ev && ev.email) || (u && u.email) || '',
+      userAgent: (navigator && navigator.userAgent) || '',
+      acceptedAt: SERVER_TS,
+      ...ev,
+    });
+    return true;
+  } catch (e) {
+    console.warn('Agreement event log failed (acceptance continues):', e.message || e);
+    return false;
+  }
+};
+
+// ── 13. expose globals (mirror old firebase-config.js) ───────────────
 window.db = db; window.auth = auth; window.storage = storage; window.firebase = firebase;
 console.log('✅ Supabase initialized (Firestore-compat shim active)');
 console.log('📁 Project URL:', SUPABASE_URL);

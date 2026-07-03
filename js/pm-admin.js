@@ -205,7 +205,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
 
     const open = reqs.filter(r => r.status === 'unpaid' || r.status === 'partial');
     const next = open.slice().sort((a, b) => (a.weekEndingDate || '').localeCompare(b.weekEndingDate || ''))[0];
-    const today = new Date().toISOString().slice(0, 10);
+    const today = _pmToday();   // local PH date — toISOString is UTC and lags a day before 8AM
     let cadence = 'ontrack';
     if (reqs.some(r => r.status === 'partial')) cadence = 'partial';
     else if (open.some(r => r.status === 'unpaid' && r.weekEndingDate && r.weekEndingDate < today)) cadence = 'overdue';
@@ -1163,18 +1163,32 @@ async function _pmComputeProjectMetrics(p) {
     const m = { progressPct: 0, balanceDue: 0, thisFriday: 0, cadence: 'ontrack' };
     p._m = m;
     try {
-        const [msSnap, paySnap, paSnap] = await Promise.all([
+        const [msSnap, paySnap, paSnap, ppSnap] = await Promise.all([
             db.collection('constructionProjects').doc(p.id).collection('milestones').get(),
             db.collection('paymentRequests').where('constructionProjectId', '==', p.id).get(),
             db.collection('constructionProjects').doc(p.id).collection('partnerAgreements').get()
-                .catch(() => ({ docs: [] }))   // never break the card if this read fails
+                .catch(() => ({ docs: [] })),   // never break the card if this read fails
+            (async () => {
+                // Current flow: the partner signs ONE Partnership Agreement at first
+                // login (profiles.partner_agreement_*). The per-project row above is
+                // the legacy flow, kept only so old projects still read as signed.
+                const pEmail = ((p.partnerEmail || p.clientEmail) || '').trim();
+                if (!pEmail) return { docs: [] };
+                let s = await db.collection('constructionClientUsers').where('email', '==', pEmail).get();
+                if (s.empty && pEmail !== pEmail.toLowerCase())
+                    s = await db.collection('constructionClientUsers').where('email', '==', pEmail.toLowerCase()).get();
+                return s;
+            })().catch(() => ({ docs: [] }))
         ]);
 
-        // Partner agreement: has any partner signed this project's terms?
+        // Partner agreement — legacy per-project row (old flow)…
         const paDocs = (paSnap.docs || []).map(d => ({ id: d.id, ...d.data() }));
         p._partner = paDocs.length
             ? paDocs.sort((a, b) => (_pmTsMs(b.acceptedAt) - _pmTsMs(a.acceptedAt)))[0]
             : null;
+        // …and the current profile-level Partnership Agreement.
+        p._partnerProfile = (ppSnap.docs || []).map(d => d.data())
+            .find(x => x.partnerAgreementAccepted === true) || null;
 
         // Progress: weighted by `percentage` of completed milestones; fall back to count.
         const ms = msSnap.docs.map(d => d.data());
@@ -1197,7 +1211,7 @@ async function _pmComputeProjectMetrics(p) {
         const next = open.slice().sort((a, b) => (a.weekEndingDate || '').localeCompare(b.weekEndingDate || ''))[0];
         m.thisFriday = next ? (next.totalAmount || next.amount || 0) : 0;
 
-        const today = new Date().toISOString().slice(0, 10);
+        const today = _pmToday();   // local PH date, not UTC
         if (reqs.some(r => r.status === 'partial')) m.cadence = 'partial';
         else if (open.some(r => r.status === 'unpaid' && r.weekEndingDate && r.weekEndingDate < today)) m.cadence = 'overdue';
         else m.cadence = 'ontrack';
@@ -1258,9 +1272,13 @@ function _pmRenderProjectCards(projects) {
           </div>
           <div style="margin-top:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
             ${cadenceBadge[m.cadence] || cadenceBadge.ontrack}
-            ${p._partner
-                ? `<span title="Partner signed the project terms on ${_esc(_pmTsDateStr(p._partner.acceptedAt))}${p._partner.signature ? ' — ' + _esc(p._partner.signature) : ''}" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 9px;border-radius:20px;"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> Partner signed · ${_esc(_pmTsDateStr(p._partner.acceptedAt))}</span>
-                   <button data-pm-action="partner-agreement" style="font-size:11px;font-weight:600;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;padding:3px 9px;cursor:pointer;"><i data-lucide="file-text" style="width:11px;height:11px;vertical-align:-1px;"></i> View</button>`
+            ${(p._partner || p._partnerProfile)
+                ? (() => {
+                    const at  = p._partner ? p._partner.acceptedAt : p._partnerProfile.partnerAgreementAcceptedAt;
+                    const sig = p._partner ? p._partner.signature  : (p._partnerProfile.partnerAgreementSignature || '');
+                    return `<span title="Partner signed on ${_esc(_pmTsDateStr(at))}${sig ? ' — ' + _esc(sig) : ''}" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 9px;border-radius:20px;"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> Partner signed · ${_esc(_pmTsDateStr(at))}</span>
+                   <button data-pm-action="partner-agreement" style="font-size:11px;font-weight:600;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;padding:3px 9px;cursor:pointer;"><i data-lucide="file-text" style="width:11px;height:11px;vertical-align:-1px;"></i> View</button>`;
+                  })()
                 : `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 9px;border-radius:20px;"><i data-lucide="clock" style="width:12px;height:12px;"></i> Partner: pending</span>`}
           </div>
           <button class="pm-card-open-btn" data-pm-action="open">
@@ -3580,7 +3598,14 @@ function _pmTsMs(ts) {
 // styled as a formal, letterhead-style agreement document with the DAC's logo.
 function _pmViewPartnerAgreement(p) {
     const pa = p && p._partner;
-    if (!pa) { alert('The partner has not signed this project\'s terms yet.'); return; }
+    if (!pa) {
+        // No legacy per-project row — print the profile-level Partnership Agreement
+        // (the current flow: signed once at first login in the Dacs Partnership portal).
+        const pp = p && p._partnerProfile;
+        if (pp && pp.partnerAgreementAccepted) { _pmPrintProfilePartnerAgreement(p, pp); return; }
+        alert('The partner has not signed the Partnership Agreement yet.');
+        return;
+    }
     if (typeof window.dacsAgreementPdf !== 'function') { alert('Print utility not loaded.'); return; }
     const at = _pmTsMs(pa.acceptedAt);
     const dateStr = at ? new Date(at).toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
@@ -3610,6 +3635,65 @@ function _pmViewPartnerAgreement(p) {
         dateStr,
         signerLabel: 'Partner',
         ip: pa.ip || ''
+    });
+}
+// Print the profile-level Partnership Agreement (current flow) — the same
+// canonical document + signature the partner signed at first login, exactly
+// as User Navigator's ccViewAgreementPdf renders it.
+async function _pmPrintProfilePartnerAgreement(p, c) {
+    if (typeof window.dacsAgreementPdf !== 'function' || typeof window.dacsPartnerAgreementDoc !== 'function') {
+        alert('Print utility not loaded.'); return;
+    }
+    // Reprint the VERSION the partner signed, not the current template.
+    try { if (window.dacsLoadAgreementTemplates) await window.dacsLoadAgreementTemplates(); } catch (_) {}
+    const name  = [c.firstName, c.lastName].filter(Boolean).join(' ').trim() || c.email || '—';
+    // Uploaded-PDF version → signature certificate + button to open the document.
+    const verDocP = (typeof window.dacsAgrVersionDoc === 'function')
+        ? window.dacsAgrVersionDoc('partner', c.partnerAgreementDocVersion) : null;
+    if (verDocP && verDocP.mode === 'pdf' && verDocP.pdfUrl) {
+        const atRawP = c.partnerAgreementAcceptedAt;
+        const atP = atRawP ? (atRawP.toDate ? atRawP.toDate() : new Date(atRawP)) : null;
+        const okP = atP && !isNaN(atP);
+        window.dacsAgreementPdf({
+            title   : 'DAC’s Partnership Agreement',
+            subtitle: 'Signature Certificate',
+            preamble: 'This certificate is attached to the agreement document “' + (verDocP.pdfName || 'Agreement.pdf') + '” (version ' + (verDocP.version || '—') + ') — the preceding pages of this file — electronically signed by ' + name + '.',
+            parties : [
+                { label: 'Partner', value: name },
+                { label: 'Document', value: verDocP.pdfName || 'Agreement.pdf' },
+                { label: 'Version',  value: 'v' + (verDocP.version || '—') },
+                ...(p && p.projectName ? [{ label: 'Project', value: p.projectName }] : [])
+            ],
+            sections: [],
+            signature: c.partnerAgreementSignature || name,
+            signatureImage: c.partnerAgreementSignatureImage || '',
+            dateStr: okP ? atP.toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '',
+            signerLabel: 'Partner',
+            ip: c.partnerAgreementIp || '',
+            pdfEmbedUrl: verDocP.pdfUrl,
+            fillFields: [
+                { label: 'Partner',        value: name },
+                { label: 'Project',        value: (p && p.projectName) || '' },
+                { label: 'Start Date',     value: (p && p.startDate) || '' },
+                { label: 'Contract Value', value: (p && p.budget != null) ? 'PHP ' + Number(p.budget).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '' }
+            ]
+        });
+        return;
+    }
+    const atRaw = c.partnerAgreementAcceptedAt;
+    const at    = atRaw ? (atRaw.toDate ? atRaw.toDate() : new Date(atRaw)) : null;
+    const ok    = at && !isNaN(at);
+    const dateStr = ok ? at.toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+    const dayStr  = ok ? at.toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' }) : '';
+    window.dacsAgreementPdf({
+        ...window.dacsPartnerAgreementDoc(name, p, dayStr,
+            (typeof window.dacsAgrVersionSections === 'function')
+                ? window.dacsAgrVersionSections('partner', c.partnerAgreementDocVersion) : null),
+        subtitle: 'Partner Agreement',
+        signature: c.partnerAgreementSignature || name,
+        signatureImage: c.partnerAgreementSignatureImage || '',
+        dateStr,
+        ip: c.partnerAgreementIp || ''
     });
 }
 function _pmTsDateStr(ts) {
@@ -3715,7 +3799,7 @@ window.pmRpNew = function() {
     if (!_pmActiveProject) { alert('Please select a client project first.'); return; }
     _pmRpDoc = {
         id: null,
-        date: new Date().toISOString().slice(0,10),
+        date: _pmToday(),
         projectName: _pmActiveProject.projectName || '',
         area: '', ownerName: _pmActiveProject.clientName || '', location: _pmActiveProject.address || '',
         subject: 'Accomplishment Report',
@@ -4479,7 +4563,7 @@ function _nextFriday() {
     const day = d.getDay(); // 0=Sun,5=Fri
     const diff = (5 - day + 7) % 7 || 7;
     d.setDate(d.getDate() + diff);
-    return d.toISOString().slice(0,10);
+    return _pmDateStr(d);   // local parts — toISOString could land on Thursday (UTC lag)
 }
 
 // ══════════════════════════════════════════════════════════

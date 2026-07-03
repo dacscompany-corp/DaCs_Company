@@ -804,10 +804,14 @@ function ContractRollup({ contracts, folderPayroll, onOpen }) {
     )
   );
 }
+function _ovhdLocalToday() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 function OverheadDrill({ project, onBack, overheadTx, folderId }) {
   const h = React.createElement;
   const [adding, setAdding] = React.useState(false);
-  const [form, setForm] = React.useState({ category: "", amount: "", date: new Date().toISOString().slice(0, 10), description: "" });
+  const [form, setForm] = React.useState({ category: "", amount: "", date: _ovhdLocalToday(), description: "" });
   const [saving, setSaving] = React.useState(false);
   const OVHD_PALETTE = ["#157a52", "#c8a45a", "#7f9cb0", "#9fb98a", "#b0907f", "#8a7fb0", "#5e9d80", "#c0564a"];
   const catColor = (name) => { let n = 0; const x = String(name || ""); for (let i = 0; i < x.length; i++) n = (n * 31 + x.charCodeAt(i)) >>> 0; return OVHD_PALETTE[n % OVHD_PALETTE.length]; };
@@ -830,7 +834,7 @@ function OverheadDrill({ project, onBack, overheadTx, folderId }) {
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       setAdding(false);
-      setForm({ category: "", amount: "", date: new Date().toISOString().slice(0, 10), description: "" });
+      setForm({ category: "", amount: "", date: _ovhdLocalToday(), description: "" });
     } catch (err) { alert("Save failed: " + (err.message || err)); }
     setSaving(false);
   };
@@ -973,7 +977,7 @@ function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPa
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `labor-${project.code || "export"}-${(new Date()).toISOString().slice(0, 10)}.csv`;
+    a.download = `labor-${project.code || "export"}-${_ovhdLocalToday()}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1328,7 +1332,7 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder 
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `materials-${project.code || "export"}-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}.csv`;
+    a.download = `materials-${project.code || "export"}-${_ovhdLocalToday()}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1775,4 +1779,3 @@ function PortalApp() {
     ReactDOM.createRoot(mount).render(/* @__PURE__ */ React.createElement(PortalApp, null));
   }
 })();
-//# sourceMappingURL=portal-app.compiled.js.map

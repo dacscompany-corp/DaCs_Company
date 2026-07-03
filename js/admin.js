@@ -316,6 +316,30 @@ window.empAcceptAgreement = async function() {
         return;
     }
 
+    // Immutable audit row + frozen copy of the exact document signed
+    // (agreement_events, migration 0021). Best-effort — never blocks entry.
+    try {
+        if (typeof dacsLogAgreementEvent === 'function') {
+            const g = await _empLoadGlobalTerms();
+            let snap = null;
+            if (g.pdfUrl && typeof dacsSnapshotPdf === 'function')
+                snap = await dacsSnapshotPdf(g.pdfUrl, uid, g.pdfName || 'employee-terms');
+            const docText = g.pdfUrl ? '' : (g.text || '');
+            await dacsLogAgreementEvent({
+                userId  : uid,
+                audience: 'employee',
+                docType : 'employee_terms',
+                docTitle: 'Employment Terms & Conditions',
+                signature,
+                signatureImageUrl: signatureImageUrl || '',
+                pdfSnapshotUrl : snap ? snap.url    : '',
+                pdfSnapshotName: snap ? snap.name   : '',
+                docSha256      : snap ? snap.sha256 : (docText && typeof dacsSha256Text === 'function' ? await dacsSha256Text(docText) : ''),
+                docText
+            });
+        }
+    } catch (evErr) { console.warn('Agreement event skipped:', evErr.message); }
+
     if (modal) modal.style.display = 'none';
     // Now enter the dashboard.
     applyRoleBasedUI();

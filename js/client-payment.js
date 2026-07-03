@@ -904,7 +904,7 @@
                     ...(_isConstruction ? {
                         constructionProjectId: _consProj.id,
                         source:                'self_payment',
-                        weekEndingDate:        new Date().toISOString().slice(0, 10),
+                        weekEndingDate:        _localDateKey(),
                         totalAmount:           paidAmount,
                         amountPaid:            0,
                         carryover:             0
@@ -1006,6 +1006,14 @@
         if (ts instanceof Date) return ts.getTime();
         if (typeof ts === 'number') return ts;
         return new Date(ts).getTime() || 0;
+    }
+
+    // Local YYYY-MM-DD. Never toISOString().slice(0,10) for date keys: that is
+    // UTC, which in PH (UTC+8) is still YESTERDAY before 8:00 AM — a self-payment
+    // made at 7am would land in the previous day/billing week.
+    function _localDateKey(d) {
+        d = d || new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
 
     function _compressImageToBase64(file, maxPx, quality) {
@@ -1191,9 +1199,19 @@
                 .where('status', '==', 'issued')
                 .get();
 
-            const invoices = snap.docs
+            let invoices = snap.docs
                 .map(d => ({ id: d.id, ...d.data() }))
                 .sort((a, b) => _tsToMs(b.createdAt) - _tsToMs(a.createdAt));
+
+            // Same multi-project guard as initClientPayment: the query above is
+            // clientEmail-only, so inside a construction portal (cmProjectData set)
+            // it would surface EVERY project's invoices. Keep only invoices tagged
+            // to the open project; untagged ones stay hidden rather than leak.
+            // client.html (design services) has no cmProjectData → no filter.
+            const _invProjId = (typeof cmProjectData !== 'undefined' && cmProjectData) ? cmProjectData.id : null;
+            if (_invProjId) {
+                invoices = invoices.filter(inv => inv.constructionProjectId === _invProjId);
+            }
 
             if (!invoices.length) {
                 el.innerHTML = `<div style="padding:40px 24px;text-align:center;">
@@ -1292,9 +1310,11 @@
 
             const amount  = Number(req.amount || 0);
             const desc    = req.description || req.billingPeriod || 'Payment';
+            // _localDateKey, not toISOString: a payment verified 00:00–07:59 PH
+            // would otherwise print the PREVIOUS day's date on the invoice.
             const tsToDate = ts => ts
-                ? new Date(ts.seconds ? ts.seconds * 1000 : ts).toISOString().slice(0, 10)
-                : new Date().toISOString().slice(0, 10);
+                ? _localDateKey(new Date(ts.seconds ? ts.seconds * 1000 : ts))
+                : _localDateKey();
 
             window.clientPrintInvoice({
                 id:              req.invoiceId || req.id,

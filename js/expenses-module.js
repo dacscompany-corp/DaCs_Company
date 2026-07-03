@@ -3569,7 +3569,11 @@ async function openEditExpenseModal(id) {
 
     document.getElementById('editExpName').value     = e.expenseName || '';
     const _editExpDT = e.dateTime ? new Date(e.dateTime) : null;
-    document.getElementById('editExpDate').value = _editExpDT ? _editExpDT.toISOString().slice(0,10) : '';
+    // Local date parts — toISOString (UTC) shows the previous day for expenses
+    // logged 00:00–07:59 PH, silently shifting the date back a day on save.
+    document.getElementById('editExpDate').value = _editExpDT
+        ? `${_editExpDT.getFullYear()}-${String(_editExpDT.getMonth()+1).padStart(2,'0')}-${String(_editExpDT.getDate()).padStart(2,'0')}`
+        : '';
     document.getElementById('editExpTime').value = _editExpDT ? _editExpDT.toTimeString().slice(0,5) : '';
     document.getElementById('editExpQty').value      = e.quantity || 1;
     var _unitCost = e.quantity && e.amount ? (e.amount / e.quantity) : (e.amount || 0);

@@ -1877,8 +1877,8 @@
                         <div id="cc-stats-line" style="font-size:14.5px;color:#6b7280;">0 clients · 0 active · 0 inactive</div>
                     </div>
                     <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                        <button onclick="unOpenGlobalTerms('cc')" style="display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border:1.5px solid #ddd6fe;border-radius:11px;background:#fff;color:#7c3aed;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;">
-                            <i data-lucide="file-text" style="width:15px;height:15px;"></i> Terms &amp; Conditions
+                        <button onclick="unOpenAgreementEditor()" style="display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border:1.5px solid #cfe0d5;border-radius:11px;background:#fff;color:#1A5C3A;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;">
+                            <i data-lucide="file-signature" style="width:15px;height:15px;"></i> Agreements
                         </button>
                         <button onclick="caOpenCreateModal()" style="display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border:none;border-radius:11px;background:#1A5C3A;color:#fff;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(26,92,58,0.25);">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -1953,10 +1953,7 @@
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
                     </select>
-                    <button class="pr-btn-create" onclick="unOpenGlobalTerms('cp')" style="margin-left:auto;background:#fff;color:#7c3aed;border:1.5px solid #ddd6fe;">
-                        <i data-lucide="file-text" style="width:15px;height:15px;"></i> Terms &amp; Conditions
-                    </button>
-                    <button class="pr-btn-create" onclick="cpOpenCreateModal()">
+                    <button class="pr-btn-create" onclick="cpOpenCreateModal()" style="margin-left:auto;">
                         <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Create Account
                     </button>
                 </div>
@@ -3968,10 +3965,10 @@
 <script src="js/ai-assistant.js"></script>
 
 <!-- ════════════ DACS PORTAL (Project Control) — React via CDN ════════════
-     React + ReactDOM are loaded from CDN; the Project Control React app
-     itself is in src/portal-app.jsx, precompiled to js/portal-app.compiled.js
-     by `npm run build` (esbuild). Babel-standalone is no longer needed —
-     this fixes the live-server / inline-Babel parsing quirks. -->
+     React + ReactDOM are loaded from CDN. js/portal-app.compiled.js IS the
+     source of truth — edit it directly (readable, non-minified JS). Do NOT
+     run `npm run build`: src/portal-app.jsx is a stale 2026-06-03 snapshot
+     and the build scripts are disabled on purpose — see src/README.md. -->
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
 <script src="js/portal-app.compiled.js" defer></script>
@@ -4057,14 +4054,14 @@
         </div>
       </div>
 
-      <div class="pm-form-section">Partner Agreement</div>
+      <div class="pm-form-section">Project Terms (client sign-off)</div>
       <div class="pm-form-group">
-        <label class="pm-field-label">Terms &amp; Conditions <span style="color:#9ca3af;font-weight:400;">(the partner must read &amp; sign these before viewing this project)</span></label>
-        <textarea id="pmProjectPartnerTerms" class="pm-input" rows="6" placeholder="Write the terms &amp; conditions and policy the partner must accept before seeing this project's information. Leave blank to use the standard terms." style="resize:vertical;min-height:120px;font-family:inherit;line-height:1.6;"></textarea>
-        <div style="font-size:11.5px;color:#9ca3af;margin-top:6px;">Shown to the partner the first time they open this project. If left blank, the standard Cost-Plus terms are used.</div>
+        <label class="pm-field-label">Terms &amp; Conditions <span style="color:#9ca3af;font-weight:400;">(the CLIENT must read &amp; sign these before viewing this project — partners sign the Partnership Agreement at first login instead)</span></label>
+        <textarea id="pmProjectPartnerTerms" class="pm-input" rows="6" placeholder="Write the terms &amp; conditions the client must accept before seeing this project's information. Leave blank to use the standard terms." style="resize:vertical;min-height:120px;font-family:inherit;line-height:1.6;"></textarea>
+        <div style="font-size:11.5px;color:#9ca3af;margin-top:6px;">Shown to the client the first time they open this project. If left blank, the standard Cost-Plus terms are used. Leave the whole section empty to skip this gate entirely.</div>
       </div>
       <div class="pm-form-group">
-        <label class="pm-field-label">Terms &amp; Conditions PDF <span style="color:#9ca3af;font-weight:400;">(optional — the partner must scroll through this document before they can sign)</span></label>
+        <label class="pm-field-label">Terms &amp; Conditions PDF <span style="color:#9ca3af;font-weight:400;">(optional — the client must open this document before they can sign)</span></label>
         <input type="file" id="pmProjectTermsPdfInput" accept="application/pdf,.pdf" onchange="pmOnTermsPdfPick(this)" style="display:none;">
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <button type="button" onclick="document.getElementById('pmProjectTermsPdfInput').click()"
@@ -4074,7 +4071,7 @@
           <span id="pmProjectTermsPdfName" style="font-size:12.5px;color:#6b7280;">No PDF attached.</span>
           <button type="button" id="pmProjectTermsPdfRemove" onclick="pmRemoveTermsPdf()" style="display:none;font-size:12px;font-weight:600;color:#dc2626;background:none;border:none;cursor:pointer;font-family:inherit;">Remove</button>
         </div>
-        <div style="font-size:11.5px;color:#9ca3af;margin-top:6px;">If a PDF is attached, the partner reads it in-page and can only sign after scrolling to the end. If left blank, the text above is used.</div>
+        <div style="font-size:11.5px;color:#9ca3af;margin-top:6px;">If a PDF is attached, the client must open it before they can sign. If left blank, the text above is used.</div>
       </div>
     </div>
     <div class="pm-modal-footer">

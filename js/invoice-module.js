@@ -1337,7 +1337,7 @@ ${previewOnly ? '' : '<script>window.onload=function(){window.print();};<\\/scri
             inv.status       || ''
         ].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
 
-        const dateStr = new Date().toISOString().slice(0, 10);
+        const dateStr = _todayStr();
         const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
         const url  = URL.createObjectURL(blob);
         const a    = document.createElement('a');
@@ -1393,7 +1393,9 @@ ${previewOnly ? '' : '<script>window.onload=function(){window.print();};<\\/scri
     }
 
     function _todayStr() {
-        return new Date().toISOString().slice(0, 10);
+        // Local date — toISOString is UTC, which in PH is still yesterday before 8AM
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
 
     function _fmtDate(str) {
