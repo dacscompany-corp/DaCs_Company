@@ -10,11 +10,28 @@
     window.__dacsBwPrintPatched = true;
 
     const BW_STYLE_ID = 'dacs-bw-print-style';
+    // One global print stylesheet injected into EVERY print popup, so all PDFs come
+    // out grayscale AND consistently positioned/presentable without editing each of
+    // the ~20 document generators. Uses !important so it layers over their own CSS.
     const BW_TAG =
-        '<style id="' + BW_STYLE_ID + '">@media print{' +
-        'html{-webkit-filter:grayscale(100%)!important;filter:grayscale(100%)!important;}' +
-        '*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}' +
-        '}</style>';
+        '<style id="' + BW_STYLE_ID + '">' +
+        '@media print{' +
+          'html{-webkit-filter:grayscale(100%)!important;filter:grayscale(100%)!important;}' +
+          '*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;box-shadow:none!important;}' +
+          // A4 with comfortable, uniform margins so nothing is jammed to the edge.
+          '@page{size:A4 portrait;margin:14mm 12mm;}' +
+          'html,body{background:#fff!important;margin:0!important;padding:0!important;}' +
+          // Common page/sheet wrappers: center, cap width, drop screen chrome.
+          'body>.page,body>.sheet,body>.doc,body>.invoice,body>.a4,.print-page{' +
+            'margin:0 auto!important;box-shadow:none!important;border:none!important;' +
+            'border-radius:0!important;max-width:186mm!important;width:100%!important;}' +
+          // Don't slice rows, cards, or signature blocks across pages.
+          'tr,.sig-row,.sig-block,.pay-box,.totals-wrap,.cm-bd-box,.card,.box{break-inside:avoid;page-break-inside:avoid;}' +
+          'thead{display:table-header-group;}' +          // repeat table headers per page
+          'tfoot{display:table-footer-group;}' +
+          '.noprint,.no-print{display:none!important;}' +
+        '}' +
+        '</style>';
 
     // Inject the grayscale <style> into any markup that lacks it. Prefer inside
     // <head>; fall back to prepending so it always applies.

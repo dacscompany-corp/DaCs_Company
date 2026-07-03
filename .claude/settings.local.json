@@ -111,7 +111,8 @@
       "WebSearch",
       "Bash(git commit -m 'Merge branch '\\\\''main'\\\\'' into salvs — resolve conflicts *)",
       "Bash(git push *)",
-      "Bash(node --check js/expenses-module.js)"
+      "Bash(node --check js/expenses-module.js)",
+      "Bash(grep -v \"//\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
