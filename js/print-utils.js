@@ -433,30 +433,15 @@ async function _dacsWorkerAgrStampBlob(pdfUrl, d) {
     put(/^Pay\s+Type\b/i,          d.payType);
     put(/Agreed\s+Contract\s+Amount/i, d.amount);
 
-    // Signature + date on EVERY signature line (form page: "Pirma ng
-    // Manggagawa…"; each policy page: "Pirma ng Empleyado…"), signed copies only.
-    if (d.signature) {
-        let sigImg = null;
-        if (d.signatureImage) {
-            try {
-                const sb = await (await fetch(d.signatureImage)).arrayBuffer();
-                try { sigImg = await pdf.embedPng(sb); } catch (_) { sigImg = await pdf.embedJpg(sb); }
-            } catch (_) { sigImg = null; }
-        }
+    // PRINTED NAME on every signature line — the labels read "…sa Ibabaw ng
+    // Nakalimbag na Pangalan" (signature over printed name), so the name is
+    // typeset on the line and the worker SIGNS BY HAND over it. No drawn
+    // signature and no date are ever stamped (owner's call).
+    if (d.printedName) {
         lines.forEach(L => {
-            const isSig = /Pirma\s+ng\s+(Manggagawa|Empleyado)/i.test(L.raw);
-            const isDate = /^Petsa\s*:/i.test(L.raw);
+            if (!/Pirma\s+ng\s+(Manggagawa|Empleyado)/i.test(L.raw)) return;
             const pg = pages[L.page]; if (!pg) return;
-            if (isSig) {
-                pg.drawText(String(d.signature), { x: L.xAt(0) + 6, y: L.y + 16, size: 12.5, font: fontI, color: ink });
-                if (sigImg) {
-                    const s = Math.min(100 / sigImg.width, 24 / sigImg.height, 1);
-                    pg.drawImage(sigImg, { x: L.xAt(0) + 40, y: L.y + 18, width: sigImg.width * s, height: sigImg.height * s });
-                }
-            } else if (isDate && d.dateStr) {
-                const m2 = L.raw.match(/^Petsa\s*:/i);
-                pg.drawText(String(d.dateStr), { x: L.xAt(m2[0].length) + 10, y: L.y + 1.5, size: 10, font: fontB, color: ink });
-            }
+            pg.drawText(String(d.printedName), { x: L.xAt(0) + 10, y: L.y + 16, size: 10.5, font: fontB, color: ink });
         });
     }
     return new Blob([await pdf.save()], { type: 'application/pdf' });

@@ -7584,7 +7584,8 @@ async function lcViewAgreement(c) {
             worker   : c.workerName || '',
             scope    : c.scope || '',
             payType  : c.payType === 'inhouse' ? 'In-house' : 'Pakyaw',
-            amount   : (Number(c.agreedAmount) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            amount   : (Number(c.agreedAmount) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            printedName: c.workerName || ''
         });
         return;
     }
