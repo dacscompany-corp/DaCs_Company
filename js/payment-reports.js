@@ -473,7 +473,8 @@
                 csv += `"${c.name.replace(/"/g, '""')}","${c.email}",${c.requests.length},${totalBilled.toFixed(2)},${totalPaid.toFixed(2)},${outstanding.toFixed(2)},${overdueCount}\n`;
             });
 
-        const dateStr = new Date().toISOString().slice(0, 10);
+        const _d = new Date();
+        const dateStr = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const url  = URL.createObjectURL(blob);
         const a    = document.createElement('a');

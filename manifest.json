@@ -1,10 +1,10 @@
 {
-  "id": "/Dacs-Company/client",
+  "id": "/client.html",
   "name": "DAC's Client Portal",
   "short_name": "DACs Portal",
   "description": "DAC's Building Design Services – Client Portal",
-  "start_url": "https://dacscompany-corp.github.io/Dacs-Company/client",
-  "scope": "https://dacscompany-corp.github.io/Dacs-Company/",
+  "start_url": "./client.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#006b3c",
   "theme_color": "#00b368",

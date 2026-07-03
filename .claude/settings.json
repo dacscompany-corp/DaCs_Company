@@ -29,7 +29,16 @@
       "Read(//c/Users/John Aerol Tapales/.claude/projects/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/memory/**)",
       "Bash(\"c:/Users/John Aerol:*)",
       "Bash(find '/c/Users/John Aerol Tapales/Documents/Dacs Web' -type f \\\\\\(-name *.js -o -name *.html -o -name *firebase* -o -name *config* \\\\\\))",
-      "Bash(find '/c/Users/John Aerol Tapales/Documents/Dacs Web' -type f ! -path */node_modules/* ! -path */.claude/* ! -path */.vscode/*)"
+      "Bash(find '/c/Users/John Aerol Tapales/Documents/Dacs Web' -type f ! -path */node_modules/* ! -path */.claude/* ! -path */.vscode/*)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://dacscompany-corp.github.io/Dacs-Company/client\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://dacs-company.vercel.app/client.html\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://dacs-company.vercel.app/\")",
+      "Bash(curl -s -w \"\\\\n%{http_code}\" \"https://dacs-company.vercel.app/.well-known/assetlinks.json\")",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Program Files/Android/Android Studio/jbr/bin/**)",
+      "Bash(where keytool *)",
+      "Bash(\"/c/Program Files/Android/Android Studio/jbr/bin/keytool.exe\" -printcert -jarfile app-release-signed.apk)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://dacs-company.vercel.app/client\")"
     ]
   }
 }

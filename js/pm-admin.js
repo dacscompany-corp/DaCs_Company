@@ -205,7 +205,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
 
     const open = reqs.filter(r => r.status === 'unpaid' || r.status === 'partial');
     const next = open.slice().sort((a, b) => (a.weekEndingDate || '').localeCompare(b.weekEndingDate || ''))[0];
-    const today = new Date().toISOString().slice(0, 10);
+    const today = _pmToday();   // local PH date — toISOString is UTC and lags a day before 8AM
     let cadence = 'ontrack';
     if (reqs.some(r => r.status === 'partial')) cadence = 'partial';
     else if (open.some(r => r.status === 'unpaid' && r.weekEndingDate && r.weekEndingDate < today)) cadence = 'overdue';
@@ -1169,7 +1169,7 @@ async function _pmComputeProjectMetrics(p) {
         const next = open.slice().sort((a, b) => (a.weekEndingDate || '').localeCompare(b.weekEndingDate || ''))[0];
         m.thisFriday = next ? (next.totalAmount || next.amount || 0) : 0;
 
-        const today = new Date().toISOString().slice(0, 10);
+        const today = _pmToday();   // local PH date, not UTC
         if (reqs.some(r => r.status === 'partial')) m.cadence = 'partial';
         else if (open.some(r => r.status === 'unpaid' && r.weekEndingDate && r.weekEndingDate < today)) m.cadence = 'overdue';
         else m.cadence = 'ontrack';
@@ -3687,7 +3687,7 @@ window.pmRpNew = function() {
     if (!_pmActiveProject) { alert('Please select a client project first.'); return; }
     _pmRpDoc = {
         id: null,
-        date: new Date().toISOString().slice(0,10),
+        date: _pmToday(),
         projectName: _pmActiveProject.projectName || '',
         area: '', ownerName: _pmActiveProject.clientName || '', location: _pmActiveProject.address || '',
         subject: 'Accomplishment Report',
@@ -4451,7 +4451,7 @@ function _nextFriday() {
     const day = d.getDay(); // 0=Sun,5=Fri
     const diff = (5 - day + 7) % 7 || 7;
     d.setDate(d.getDate() + diff);
-    return d.toISOString().slice(0,10);
+    return _pmDateStr(d);   // local parts — toISOString could land on Thursday (UTC lag)
 }
 
 // ══════════════════════════════════════════════════════════

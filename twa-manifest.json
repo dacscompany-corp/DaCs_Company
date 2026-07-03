@@ -1,6 +1,6 @@
 {
   "packageId": "io.github.dacscompany_corp.twa",
-  "host": "dacscompany-corp.github.io",
+  "host": "dacs-company.vercel.app",
   "name": "DAC's Client Portal",
   "launcherName": "DACs Portal",
   "display": "standalone",
@@ -12,9 +12,9 @@
   "navigationDividerColorDark": "#000000",
   "backgroundColor": "#006B3C",
   "enableNotifications": true,
-  "startUrl": "/Dacs-Company/client",
-  "iconUrl": "https://dacscompany-corp.github.io/Dacs-Company/icons/icon-512.png",
-  "maskableIconUrl": "https://dacscompany-corp.github.io/Dacs-Company/icons/icon-512-maskable.png",
+  "startUrl": "/client.html",
+  "iconUrl": "https://dacs-company.vercel.app/icons/icon-512.png",
+  "maskableIconUrl": "https://dacs-company.vercel.app/icons/icon-512-maskable.png",
   "splashScreenFadeOutDuration": 300,
   "signingKey": {
     "path": "C:\\Users\\John Aerol Tapales\\Documents\\Dacs Web\\android.keystore",
@@ -24,7 +24,7 @@
   "appVersionCode": 3,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
-  "webManifestUrl": "https://dacscompany-corp.github.io/Dacs-Company/manifest.json",
+  "webManifestUrl": "https://dacs-company.vercel.app/manifest.json",
   "fallbackType": "customtabs",
   "features": {},
   "alphaDependencies": {
@@ -33,7 +33,7 @@
   "enableSiteSettingsShortcut": true,
   "isChromeOSOnly": false,
   "isMetaQuest": false,
-  "fullScopeUrl": "https://dacscompany-corp.github.io/Dacs-Company/",
+  "fullScopeUrl": "https://dacs-company.vercel.app/",
   "minSdkVersion": 21,
   "orientation": "portrait",
   "fingerprints": [],

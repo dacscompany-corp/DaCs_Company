@@ -3,9 +3,9 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "com.dacscompany.clientportal",
+      "package_name": "io.github.dacscompany_corp.twa",
       "sha256_cert_fingerprints": [
-        "REPLACE_WITH_YOUR_SHA256_FINGERPRINT_AFTER_SIGNING"
+        "83:19:0F:CF:F9:C2:74:01:6D:9B:29:36:03:08:69:32:0F:D7:7E:A9:B3:BF:FC:FC:A3:8F:54:02:4B:07:F5:80"
       ]
     }
   }

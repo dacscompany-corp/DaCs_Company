@@ -1,6 +1,23 @@
 # DAC's Client Portal – Android APK Build Guide
 ## PWA → TWA → APK (Trusted Web Activity)
 
+> **⚠️ STATUS UPDATE (2026-07-03)** — parts of this guide are outdated:
+> - The real package name is **`io.github.dacscompany_corp.twa`** (NOT
+>   `com.dacscompany.clientportal` used below) — confirmed from the built APK
+>   and `app/build.gradle`.
+> - Hosting moved from GitHub Pages to **Vercel** (`dacs-company.vercel.app`).
+>   `twa-manifest.json`, `manifest.json`, and `.well-known/assetlinks.json`
+>   have been updated to the Vercel host, and assetlinks now carries the real
+>   SHA256 fingerprint extracted from `app-release-signed.apk`
+>   (`83:19:0F:CF:...:F5:80`, keystore `android.keystore`, alias `android`).
+> - `sw.js` (offline cache) was deleted — it was never registered after the
+>   Supabase migration; push notifications use `service-worker.js` instead.
+> - **The currently built APK (versionCode 3) still points at the old GitHub
+>   Pages URL.** To ship the Vercel version: `bubblewrap update` then
+>   `bubblewrap build` (uses the updated twa-manifest.json + same keystore),
+>   bump the version, and re-upload. Until then the old APK keeps opening the
+>   frozen GitHub Pages copy of the portal.
+
 ---
 
 ## What Was Added
