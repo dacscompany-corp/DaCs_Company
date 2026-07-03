@@ -1628,74 +1628,6 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
     // entries within a single project folder (all-time).
     // ══════════════════════════════════════════════════════
 
-    // Ask the mode of payment (Cash / E-wallet / Bank / Check) + its fields before
-    // printing a Statement of Account. Resolves to a paymentDetails-shaped object,
-    // or null if cancelled. Pre-filled from the saved defaults.
-    function _askPaymentMode(defaults) {
-        return new Promise(resolve => {
-            const pd = defaults || {};
-            let modal = document.getElementById('soaPayModeModal');
-            if (!modal) {
-                modal = document.createElement('div');
-                modal.id = 'soaPayModeModal';
-                modal.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;';
-                document.body.appendChild(modal);
-            }
-            const inp = 'width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;margin-top:4px;';
-            const fld = (id, label, val) => '<div style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:#374151;">' + label + '</label><input id="' + id + '" style="' + inp + '" value="' + String(val || '').replace(/"/g, '&quot;') + '"></div>';
-            const curMethod = (pd.method === 'gcash') ? 'ewallet' : (pd.method || 'cash');
-
-            modal.innerHTML =
-              '<div style="background:#fff;border-radius:14px;width:100%;max-width:420px;box-shadow:0 24px 60px rgba(0,0,0,.3);font-family:inherit;overflow:hidden;">'
-              + '<div style="padding:18px 22px;border-bottom:1px solid #eef0f2;display:flex;align-items:center;justify-content:space-between;">'
-              +   '<h3 style="margin:0;font-size:16px;font-weight:700;color:#111827;">Mode of Payment</h3>'
-              +   '<button onclick="window._soaPayModeResolve(null)" style="border:none;background:none;font-size:22px;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>'
-              + '</div>'
-              + '<div style="padding:20px 22px;">'
-              +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">'
-              +     ['cash','ewallet','bank','check'].map(m =>
-                      '<label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:9px;cursor:pointer;font-size:13.5px;font-weight:600;color:#374151;">'
-                      + '<input type="radio" name="soaPM" value="' + m + '" ' + (curMethod === m ? 'checked' : '') + ' onchange="window._soaPayModeToggle()"> '
-                      + ({cash:'Cash', ewallet:'E-wallet', bank:'Bank', check:'Check'}[m]) + '</label>').join('')
-              +   '</div>'
-              +   '<div id="soaPMCash"    style="display:none;font-size:12.5px;color:#6b7280;">No extra details needed — the statement will show “Cash”.</div>'
-              +   '<div id="soaPMEwallet" style="display:none;">' + fld('soaEwProvider','Provider (GCash, Maya…)', pd.ewalletProvider || (pd.method==='gcash'?'GCash':'')) + fld('soaEwNumber','Number', pd.ewalletNumber || pd.gcashNumber) + fld('soaEwName','Account Name', pd.ewalletName || pd.gcashName) + '</div>'
-              +   '<div id="soaPMBank"    style="display:none;">' + fld('soaBank','Bank', pd.bank) + fld('soaAcctNo','Account No.', pd.accountNo) + fld('soaAcctName','Account Name', pd.accountName) + fld('soaBranch','Branch (optional)', pd.branch) + '</div>'
-              +   '<div id="soaPMCheck"   style="display:none;">' + fld('soaChkBank','Bank', pd.checkBank || pd.bank) + fld('soaChkNo','Check No.', pd.checkNumber) + fld('soaChkPayee','Payee', pd.checkPayee || pd.accountName) + '</div>'
-              +   '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">'
-              +     '<button onclick="window._soaPayModeResolve(null)" style="padding:9px 18px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>'
-              +     '<button onclick="window._soaPayModeSubmit()" style="padding:9px 20px;border-radius:8px;border:none;background:#1e3a5f;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Print Statement</button>'
-              +   '</div>'
-              + '</div></div>';
-            modal.style.display = 'flex';
-
-            window._soaPayModeToggle = function () {
-                const m = (document.querySelector('input[name="soaPM"]:checked') || {}).value || 'cash';
-                ['cash','ewallet','bank','check'].forEach(k => {
-                    const el = document.getElementById('soaPM' + k.charAt(0).toUpperCase() + k.slice(1));
-                    if (el) el.style.display = (k === m) ? '' : 'none';
-                });
-            };
-            window._soaPayModeToggle();
-
-            const done = (val) => {
-                modal.style.display = 'none';
-                window._soaPayModeResolve = window._soaPayModeSubmit = window._soaPayModeToggle = null;
-                resolve(val);
-            };
-            window._soaPayModeResolve = () => done(null);
-            window._soaPayModeSubmit = function () {
-                const m = (document.querySelector('input[name="soaPM"]:checked') || {}).value || 'cash';
-                const gv = id => (document.getElementById(id) || {}).value || '';
-                let out = { method: m };
-                if (m === 'ewallet') out = { method:'ewallet', ewalletProvider:gv('soaEwProvider'), ewalletNumber:gv('soaEwNumber'), ewalletName:gv('soaEwName') };
-                else if (m === 'bank')  out = { method:'bank', bank:gv('soaBank'), accountNo:gv('soaAcctNo'), accountName:gv('soaAcctName'), branch:gv('soaBranch') };
-                else if (m === 'check') out = { method:'check', checkBank:gv('soaChkBank'), checkNumber:gv('soaChkNo'), checkPayee:gv('soaChkPayee') };
-                done(out);
-            };
-        });
-    }
-
     window.printWorkerLaborSOA = async function (workerName, folderId) {
         if (!_ownerUid) await _resolveOwnerUid();
         if (!_defaults || !Object.keys(_defaults).length) await _loadDefaults();
@@ -1724,9 +1656,13 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
             .sort((a, b) => new Date(a.paymentDate || 0) - new Date(b.paymentDate || 0));
         if (!entries.length) { alert('No labor entries found for ' + workerName + ' in this project.'); return; }
 
-        // Ask the mode of payment for THIS statement (Cash / E-wallet / Bank / Check).
-        const pd = await _askPaymentMode(_defaults.paymentDetails || {});
-        if (!pd) return;   // cancelled
+        // Payment details come straight from the saved invoice defaults — the
+        // statement prints immediately, no Mode-of-Payment popup (owner's call:
+        // keep the new statement DESIGN, drop the per-print selection step).
+        const d0 = _defaults.paymentDetails || {};
+        const pd = (d0.method === 'gcash')
+            ? { method: 'ewallet', ewalletProvider: 'GCash', ewalletNumber: d0.gcashNumber || '', ewalletName: d0.gcashName || '' }
+            : (d0.method ? d0 : { method: 'cash' });
 
         const role    = (entries.find(e => e.role) || {}).role || '—';
         const bizName = _defaults.businessName    || "DAC's Building Design Services";
@@ -1759,26 +1695,34 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
         // Payment mode: Cash · E-wallet · Bank · Check. Reads _defaults.paymentDetails.
         // Existing data used method 'gcash' → treated as an E-wallet (provider GCash).
         const _pdRow = (l, v) => `<div><span class="lbl">${l}: </span><span class="val">${esc(v || '—')}</span></div>`;
+        // "Mode of Payment" prints ALL options form-style — the active one bold
+        // + underlined, the rest grayed: Cash / GCash / E-Wallet / Bank Transfer / Check.
+        const _pdModeRow = (sel) => {
+            const opts = ['Cash', 'E-Wallet', 'Bank Transfer', 'Cheque'];
+            return '<div><span class="lbl">Mode of Payment: </span>'
+                + opts.map(o => o === sel
+                    ? '<span class="val" style="font-weight:700;text-decoration:underline;">' + o + '</span>'
+                    : '<span class="val">' + o + '</span>')
+                  .join(' <span class="val">/</span> ')
+                + '</div>';
+        };
         const payBlock = (function () {
             const m = (pd.method || 'bank').toLowerCase();
             if (m === 'cash') {
-                return _pdRow('Mode of Payment', 'Cash');
+                return _pdModeRow('Cash');
             }
             if (m === 'ewallet' || m === 'gcash' || m === 'e-wallet') {
-                const provider = pd.ewalletProvider || (m === 'gcash' ? 'GCash' : '');
-                return _pdRow('Mode of Payment', 'E-wallet')
-                     + _pdRow('Provider', provider)
-                     + _pdRow('Number', pd.ewalletNumber || pd.gcashNumber)
+                return _pdModeRow('E-Wallet')
                      + _pdRow('Account Name', pd.ewalletName || pd.gcashName);
             }
             if (m === 'check' || m === 'cheque') {
-                return _pdRow('Mode of Payment', 'Check')
+                return _pdModeRow('Cheque')
                      + _pdRow('Bank', pd.checkBank || pd.bank)
                      + _pdRow('Check No.', pd.checkNumber)
                      + _pdRow('Payee', pd.checkPayee || pd.accountName);
             }
             // default: bank
-            return _pdRow('Mode of Payment', 'Bank Transfer')
+            return _pdModeRow('Bank Transfer')
                  + _pdRow('Bank', pd.bank)
                  + _pdRow('Account No.', pd.accountNo)
                  + _pdRow('Account Name', pd.accountName)
@@ -2017,6 +1961,7 @@ table.totals tr.grand td { font-size:16px; font-weight:800; color:#1a1a1a; backg
 
         // Payment mode: Cash · E-wallet · Bank · Check. Reads _defaults.paymentDetails.
         // Existing data used method 'gcash' → treated as an E-wallet (provider GCash).
+        // (Original rendering — the form-style mode line is WORKER STATEMENT only.)
         const _pdRow = (l, v) => `<div><span class="lbl">${l}: </span><span class="val">${esc(v || '—')}</span></div>`;
         const payBlock = (function () {
             const m = (pd.method || 'bank').toLowerCase();

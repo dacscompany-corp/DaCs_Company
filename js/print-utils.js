@@ -378,6 +378,109 @@ function _dacsEnsurePdfJs() {
     });
 }
 
+// ── Worker Agreement (pakyaw) PDF stamping ─────────────────────────────────
+// The admin uploads the Employee Policy Manual PDF whose "Detalye ng Pakyaw
+// Labor Contract" page has blank lines for: Contract Ref No., Project, Worker,
+// Scope of Work, Pay Type, Agreed Contract Amount — plus a worker-signature
+// line ("Pirma ng Manggagawa…") and per-policy lines ("Pirma ng Empleyado…").
+// This fills those lines from the contract record (anchor-text positioning),
+// and — when the worker signed digitally — stamps the signature + date on
+// EVERY signature line of the manual.
+async function _dacsWorkerAgrStampBlob(pdfUrl, d) {
+    const PDFLib = await _dacsEnsurePdfLib();
+    const bytes = await (await fetch(pdfUrl)).arrayBuffer();
+    const lines = await _dacsScanPdfLines(bytes);
+    const pdf = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
+    const pages = pdf.getPages();
+    const font  = await pdf.embedFont(PDFLib.StandardFonts.Helvetica);
+    const fontB = await pdf.embedFont(PDFLib.StandardFonts.HelveticaBold);
+    const fontI = await pdf.embedFont(PDFLib.StandardFonts.TimesRomanItalic);
+    const ink = PDFLib.rgb(0.08, 0.10, 0.16);
+
+    // The details form lives on the page titled "Detalye ng Pakyaw Labor Contract".
+    const formLine = lines.find(L => /Detalye\s+ng\s+Pakyaw\s+Labor\s+Contract/i.test(L.raw));
+    const formPage = formLine ? formLine.page : -1;
+
+    // Write a value on the blank line to the RIGHT of a label (wraps onto the
+    // form's extra ruled lines when long, e.g. Scope of Work).
+    const put = (re, value, opts = {}) => {
+        if (!value) return;
+        for (const L of lines) {
+            if (formPage >= 0 && L.page !== formPage) continue;
+            const m = L.raw.match(re);
+            if (!m) continue;
+            const pg = pages[L.page]; if (!pg) return;
+            const pw = pg.getSize().width;
+            const x = Math.max(L.xAt(m.index + m[0].length) + 10, pw * 0.40);
+            const size = opts.size || 10, maxW = pw - x - 46, step = 15.5;
+            let cur = '', yy = L.y + 2;
+            String(value).split(/\s+/).forEach(wd => {
+                const t = cur ? cur + ' ' + wd : wd;
+                if (fontB.widthOfTextAtSize(t, size) > maxW && cur) {
+                    pg.drawText(cur, { x, y: yy, size, font: fontB, color: ink });
+                    cur = wd; yy -= step;
+                } else cur = t;
+            });
+            if (cur) pg.drawText(cur, { x, y: yy, size, font: fontB, color: ink });
+            return;
+        }
+    };
+
+    put(/Contract\s+Ref\s+No\.?/i, d.ref);
+    put(/^Project\b/i,             d.project);
+    put(/^Worker\b/i,              d.worker);
+    put(/Scope\s+of\s+Work/i,      d.scope);
+    put(/^Pay\s+Type\b/i,          d.payType);
+    put(/Agreed\s+Contract\s+Amount/i, d.amount);
+
+    // Signature + date on EVERY signature line (form page: "Pirma ng
+    // Manggagawa…"; each policy page: "Pirma ng Empleyado…"), signed copies only.
+    if (d.signature) {
+        let sigImg = null;
+        if (d.signatureImage) {
+            try {
+                const sb = await (await fetch(d.signatureImage)).arrayBuffer();
+                try { sigImg = await pdf.embedPng(sb); } catch (_) { sigImg = await pdf.embedJpg(sb); }
+            } catch (_) { sigImg = null; }
+        }
+        lines.forEach(L => {
+            const isSig = /Pirma\s+ng\s+(Manggagawa|Empleyado)/i.test(L.raw);
+            const isDate = /^Petsa\s*:/i.test(L.raw);
+            const pg = pages[L.page]; if (!pg) return;
+            if (isSig) {
+                pg.drawText(String(d.signature), { x: L.xAt(0) + 6, y: L.y + 16, size: 12.5, font: fontI, color: ink });
+                if (sigImg) {
+                    const s = Math.min(100 / sigImg.width, 24 / sigImg.height, 1);
+                    pg.drawImage(sigImg, { x: L.xAt(0) + 40, y: L.y + 18, width: sigImg.width * s, height: sigImg.height * s });
+                }
+            } else if (isDate && d.dateStr) {
+                const m2 = L.raw.match(/^Petsa\s*:/i);
+                pg.drawText(String(d.dateStr), { x: L.xAt(m2[0].length) + 10, y: L.y + 1.5, size: 10, font: fontB, color: ink });
+            }
+        });
+    }
+    return new Blob([await pdf.save()], { type: 'application/pdf' });
+}
+
+// Open the filled worker agreement in ONE native PDF tab (same UX as the
+// signed partnership agreement). Falls back to the raw template on failure.
+window.dacsWorkerAgreementView = async function (pdfUrl, d) {
+    const w = window.open('', '_blank');
+    if (!w) { alert('Please allow pop-ups to open the agreement.'); return; }
+    try {
+        w.document.write('<title>Worker Agreement — ' + String((d && d.worker) || '').replace(/</g, '&lt;') + '</title>'
+            + '<body style="font-family:Arial,sans-serif;padding:44px;color:#374151;font-size:15px;">Preparing the agreement…</body>');
+        w.document.close();
+    } catch (_) {}
+    try {
+        const blob = await _dacsWorkerAgrStampBlob(pdfUrl, d || {});
+        w.location.href = URL.createObjectURL(blob);
+    } catch (e) {
+        console.warn('Worker agreement stamping failed — opening the template:', e.message || e);
+        try { w.location.href = pdfUrl; } catch (_) {}
+    }
+};
+
 // Render a PDF's pages as clean white CANVASES inside a container — looks
 // like a document on paper (no dark viewer chrome, no iframe toolbar).
 // Used by the signing screens for uploaded-PDF agreements.

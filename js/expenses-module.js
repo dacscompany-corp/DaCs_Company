@@ -7545,7 +7545,10 @@ async function lcSaveAgrTemplate() {
 // (that IS the signed document). Otherwise fall back to the generated policy sheet.
 async function lcOpenAgreement(id) {
     const c = expLaborContracts.find(x => x.id === id); if (!c) return;
-    if (c.agreementPdfUrl) { window.open(c.agreementPdfUrl, '_blank', 'noopener'); return; }
+    // Always route through lcViewAgreement: it fills the contract details onto
+    // the PDF's "Detalye ng Pakyaw Labor Contract" page. A signed SCAN attached
+    // to the contract passes through unchanged (image pages have no text
+    // anchors to fill), so nothing is ever drawn over a real signature.
     await lcViewAgreement(c);
 }
 
@@ -7553,7 +7556,6 @@ function lcViewAgreementCurrent() {
     const id = document.getElementById('lcId')?.value;
     const c = expLaborContracts.find(x => x.id === id) ||
               (_lcAgrUrl ? { agreementPdfUrl: _lcAgrUrl } : null);
-    if (c && c.agreementPdfUrl) { window.open(c.agreementPdfUrl, '_blank', 'noopener'); return; }
     if (c) lcViewAgreement(c);
 }
 
@@ -7561,6 +7563,37 @@ function lcViewAgreementCurrent() {
 async function lcViewAgreement(c) {
     const esc = _mvpEsc;
     const signed = !!c.agreementSigned;
+
+    // Uploaded policy-manual PDF (settings/workerAgreement): fill its "Detalye
+    // ng Pakyaw Labor Contract" page with THIS contract's details — and, when
+    // signed, stamp the worker's signature + date on every signature line.
+    let _tpl = null;
+    try { _tpl = await lcLoadAgrTemplate(); } catch (_) { _tpl = null; }
+    // Base document: the contract's own attached PDF (if any) wins over the
+    // global template — both get the details stamped onto the form page.
+    const _basePdf = c.agreementPdfUrl || (_tpl && _tpl.pdfUrl) || '';
+    if (_basePdf && typeof window.dacsWorkerAgreementView === 'function') {
+        const folder = (typeof expFolders !== 'undefined' ? expFolders : []).find(f => f.id === c.folderId);
+        const projName = folder ? (folder.name || '') + (folder.code ? ' · ' + folder.code : '') : '';
+        let signedDay = '';
+        try {
+            const at = c.agreementSignedAt;
+            const dd = at && at.toDate ? at.toDate() : (at ? new Date(at) : null);
+            if (dd && !isNaN(dd)) signedDay = dd.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+        } catch (_) {}
+        await window.dacsWorkerAgreementView(_basePdf, {
+            ref      : 'LC-' + String(c.id || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase(),
+            project  : projName,
+            worker   : c.workerName || '',
+            scope    : c.scope || '',
+            payType  : c.payType === 'inhouse' ? 'In-house (capped)' : 'Pakyaw (piecework)',
+            amount   : (Number(c.agreedAmount) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            signature      : signed ? (c.agreementSignature || c.workerName || '') : '',
+            signatureImage : signed ? (c.agreementSignatureImage || '') : '',
+            dateStr        : signed ? signedDay : ''
+        });
+        return;
+    }
 
     // Policy text: the snapshot the worker signed, or the current template if unsigned.
     let policy = c.agreementTermsSnapshot || '';
