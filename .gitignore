@@ -11,6 +11,8 @@
 !*.json
 !*.md
 !*.rules
+!*.sql
+!*.ts
 !*.png
 !*.jpg
 !*.jpeg

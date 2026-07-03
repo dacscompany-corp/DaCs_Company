@@ -110,7 +110,9 @@
       "Bash(node -e \"const c=require\\('fs'\\).readFileSync\\('css/dacs-redesign.css','utf8'\\);const o=\\(c.match\\(/{/g\\)||[]\\).length,cl=\\(c.match\\(/}/g\\)||[]\\).length;console.log\\('css braces',o,cl,o===cl?'BALANCED':'MISMATCH'\\)\")",
       "WebSearch",
       "Bash(git commit -m 'Merge branch '\\\\''main'\\\\'' into salvs — resolve conflicts *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(grep -iE '\\\\.\\(apk|aab|keystore|idsig\\)$|node_modules|^app/|^build/|^tools/|sw\\\\.js|package\\\\.json')",
+      "Bash(echo \"exit=$?\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
