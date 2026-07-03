@@ -1628,6 +1628,74 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
     // entries within a single project folder (all-time).
     // ══════════════════════════════════════════════════════
 
+    // Ask the mode of payment (Cash / E-wallet / Bank / Check) + its fields before
+    // printing a Statement of Account. Resolves to a paymentDetails-shaped object,
+    // or null if cancelled. Pre-filled from the saved defaults.
+    function _askPaymentMode(defaults) {
+        return new Promise(resolve => {
+            const pd = defaults || {};
+            let modal = document.getElementById('soaPayModeModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'soaPayModeModal';
+                modal.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px;';
+                document.body.appendChild(modal);
+            }
+            const inp = 'width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #d1d5db;border-radius:8px;font-size:13px;outline:none;font-family:inherit;margin-top:4px;';
+            const fld = (id, label, val) => '<div style="margin-bottom:10px;"><label style="font-size:12px;font-weight:600;color:#374151;">' + label + '</label><input id="' + id + '" style="' + inp + '" value="' + String(val || '').replace(/"/g, '&quot;') + '"></div>';
+            const curMethod = (pd.method === 'gcash') ? 'ewallet' : (pd.method || 'cash');
+
+            modal.innerHTML =
+              '<div style="background:#fff;border-radius:14px;width:100%;max-width:420px;box-shadow:0 24px 60px rgba(0,0,0,.3);font-family:inherit;overflow:hidden;">'
+              + '<div style="padding:18px 22px;border-bottom:1px solid #eef0f2;display:flex;align-items:center;justify-content:space-between;">'
+              +   '<h3 style="margin:0;font-size:16px;font-weight:700;color:#111827;">Mode of Payment</h3>'
+              +   '<button onclick="window._soaPayModeResolve(null)" style="border:none;background:none;font-size:22px;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>'
+              + '</div>'
+              + '<div style="padding:20px 22px;">'
+              +   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;">'
+              +     ['cash','ewallet','bank','check'].map(m =>
+                      '<label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid #d1d5db;border-radius:9px;cursor:pointer;font-size:13.5px;font-weight:600;color:#374151;">'
+                      + '<input type="radio" name="soaPM" value="' + m + '" ' + (curMethod === m ? 'checked' : '') + ' onchange="window._soaPayModeToggle()"> '
+                      + ({cash:'Cash', ewallet:'E-wallet', bank:'Bank', check:'Check'}[m]) + '</label>').join('')
+              +   '</div>'
+              +   '<div id="soaPMCash"    style="display:none;font-size:12.5px;color:#6b7280;">No extra details needed — the statement will show “Cash”.</div>'
+              +   '<div id="soaPMEwallet" style="display:none;">' + fld('soaEwProvider','Provider (GCash, Maya…)', pd.ewalletProvider || (pd.method==='gcash'?'GCash':'')) + fld('soaEwNumber','Number', pd.ewalletNumber || pd.gcashNumber) + fld('soaEwName','Account Name', pd.ewalletName || pd.gcashName) + '</div>'
+              +   '<div id="soaPMBank"    style="display:none;">' + fld('soaBank','Bank', pd.bank) + fld('soaAcctNo','Account No.', pd.accountNo) + fld('soaAcctName','Account Name', pd.accountName) + fld('soaBranch','Branch (optional)', pd.branch) + '</div>'
+              +   '<div id="soaPMCheck"   style="display:none;">' + fld('soaChkBank','Bank', pd.checkBank || pd.bank) + fld('soaChkNo','Check No.', pd.checkNumber) + fld('soaChkPayee','Payee', pd.checkPayee || pd.accountName) + '</div>'
+              +   '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">'
+              +     '<button onclick="window._soaPayModeResolve(null)" style="padding:9px 18px;border-radius:8px;border:1.5px solid #d1d5db;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Cancel</button>'
+              +     '<button onclick="window._soaPayModeSubmit()" style="padding:9px 20px;border-radius:8px;border:none;background:#1e3a5f;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">Print Statement</button>'
+              +   '</div>'
+              + '</div></div>';
+            modal.style.display = 'flex';
+
+            window._soaPayModeToggle = function () {
+                const m = (document.querySelector('input[name="soaPM"]:checked') || {}).value || 'cash';
+                ['cash','ewallet','bank','check'].forEach(k => {
+                    const el = document.getElementById('soaPM' + k.charAt(0).toUpperCase() + k.slice(1));
+                    if (el) el.style.display = (k === m) ? '' : 'none';
+                });
+            };
+            window._soaPayModeToggle();
+
+            const done = (val) => {
+                modal.style.display = 'none';
+                window._soaPayModeResolve = window._soaPayModeSubmit = window._soaPayModeToggle = null;
+                resolve(val);
+            };
+            window._soaPayModeResolve = () => done(null);
+            window._soaPayModeSubmit = function () {
+                const m = (document.querySelector('input[name="soaPM"]:checked') || {}).value || 'cash';
+                const gv = id => (document.getElementById(id) || {}).value || '';
+                let out = { method: m };
+                if (m === 'ewallet') out = { method:'ewallet', ewalletProvider:gv('soaEwProvider'), ewalletNumber:gv('soaEwNumber'), ewalletName:gv('soaEwName') };
+                else if (m === 'bank')  out = { method:'bank', bank:gv('soaBank'), accountNo:gv('soaAcctNo'), accountName:gv('soaAcctName'), branch:gv('soaBranch') };
+                else if (m === 'check') out = { method:'check', checkBank:gv('soaChkBank'), checkNumber:gv('soaChkNo'), checkPayee:gv('soaChkPayee') };
+                done(out);
+            };
+        });
+    }
+
     window.printWorkerLaborSOA = async function (workerName, folderId) {
         if (!_ownerUid) await _resolveOwnerUid();
         if (!_defaults || !Object.keys(_defaults).length) await _loadDefaults();
@@ -1656,11 +1724,14 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
             .sort((a, b) => new Date(a.paymentDate || 0) - new Date(b.paymentDate || 0));
         if (!entries.length) { alert('No labor entries found for ' + workerName + ' in this project.'); return; }
 
+        // Ask the mode of payment for THIS statement (Cash / E-wallet / Bank / Check).
+        const pd = await _askPaymentMode(_defaults.paymentDetails || {});
+        if (!pd) return;   // cancelled
+
         const role    = (entries.find(e => e.role) || {}).role || '—';
         const bizName = _defaults.businessName    || "DAC's Building Design Services";
         const bizTin  = _defaults.businessTin     || '—';
         const bizAddr = _defaults.businessAddress || '—';
-        const pd      = _defaults.paymentDetails  || {};
 
         const fmt     = n => '&#8369;&nbsp;' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const esc     = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -1685,15 +1756,34 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
         const lastDate  = fmtDate(entries[entries.length - 1].paymentDate);
         const rangeLbl  = firstDate === lastDate ? firstDate : (firstDate + ' – ' + lastDate);
 
-        const payBlock = pd.method === 'gcash'
-            ? `<div><span class="lbl">Payment Via: </span><span class="val">GCash</span></div>
-               <div><span class="lbl">GCash No.: </span><span class="val">${esc(pd.gcashNumber||'—')}</span></div>
-               <div><span class="lbl">Account Name: </span><span class="val">${esc(pd.gcashName||'—')}</span></div>`
-            : `<div><span class="lbl">Payment Via: </span><span class="val">Bank Transfer</span></div>
-               <div><span class="lbl">Bank: </span><span class="val">${esc(pd.bank||'—')}</span></div>
-               <div><span class="lbl">Account No.: </span><span class="val">${esc(pd.accountNo||'—')}</span></div>
-               <div><span class="lbl">Account Name: </span><span class="val">${esc(pd.accountName||'—')}</span></div>
-               <div><span class="lbl">Branch: </span><span class="val">${esc(pd.branch||'—')}</span></div>`;
+        // Payment mode: Cash · E-wallet · Bank · Check. Reads _defaults.paymentDetails.
+        // Existing data used method 'gcash' → treated as an E-wallet (provider GCash).
+        const _pdRow = (l, v) => `<div><span class="lbl">${l}: </span><span class="val">${esc(v || '—')}</span></div>`;
+        const payBlock = (function () {
+            const m = (pd.method || 'bank').toLowerCase();
+            if (m === 'cash') {
+                return _pdRow('Mode of Payment', 'Cash');
+            }
+            if (m === 'ewallet' || m === 'gcash' || m === 'e-wallet') {
+                const provider = pd.ewalletProvider || (m === 'gcash' ? 'GCash' : '');
+                return _pdRow('Mode of Payment', 'E-wallet')
+                     + _pdRow('Provider', provider)
+                     + _pdRow('Number', pd.ewalletNumber || pd.gcashNumber)
+                     + _pdRow('Account Name', pd.ewalletName || pd.gcashName);
+            }
+            if (m === 'check' || m === 'cheque') {
+                return _pdRow('Mode of Payment', 'Check')
+                     + _pdRow('Bank', pd.checkBank || pd.bank)
+                     + _pdRow('Check No.', pd.checkNumber)
+                     + _pdRow('Payee', pd.checkPayee || pd.accountName);
+            }
+            // default: bank
+            return _pdRow('Mode of Payment', 'Bank Transfer')
+                 + _pdRow('Bank', pd.bank)
+                 + _pdRow('Account No.', pd.accountNo)
+                 + _pdRow('Account Name', pd.accountName)
+                 + (pd.branch ? _pdRow('Branch', pd.branch) : '');
+        })();
 
         const invoiceNo = await _generateInvoiceNo();
         const today     = new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'});
@@ -1720,6 +1810,15 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
             ? `<div style="display:inline-block;margin-top:8px;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;background:${_stBg};color:${_stColor};">${esc(_stLabel)}</div>`
             : '';
 
+        // Contract type for this worker (shown under the name): Pakyaw / In-house.
+        // If they have contracts of one type, show it; mixed → "Pakyaw & In-house";
+        // no contract on record → "Payroll (no contract)".
+        let _contractType = 'Payroll (no contract)';
+        if (_wContracts.length) {
+            const _types = new Set(_wContracts.map(c => c.payType === 'inhouse' ? 'In-house' : 'Pakyaw'));
+            _contractType = [..._types].join(' & ');
+        }
+
         const w = window.open('','_blank','width=870,height=1100');
         if (!w) { alert('Please allow pop-ups to print the statement.'); return; }
 
@@ -1730,50 +1829,51 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
 <title>Statement of Account — ${esc(workerName)}</title>
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
-body { font-family:Arial,Helvetica,sans-serif; font-size:13px; color:#111; background:#f5f5f5; }
-.page { width:210mm; min-height:297mm; margin:20px auto; padding:18mm 16mm 14mm; background:#fff; box-shadow:0 2px 12px rgba(0,0,0,.12); }
-.inv-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
-.inv-biz h1 { font-size:20px; font-weight:800; color:#1a1a2e; }
-.inv-biz p  { font-size:12px; color:#555; margin-top:4px; line-height:1.5; }
+body { font-family:Arial,Helvetica,sans-serif; font-size:13px; color:#1a1a1a; background:#f5f5f5; -webkit-font-smoothing:antialiased; }
+.page { width:210mm; min-height:297mm; margin:24px auto; padding:24mm 22mm 20mm; background:#fff; box-shadow:0 2px 16px rgba(0,0,0,.10); }
+.inv-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:44px; padding-bottom:26px; border-bottom:3px solid #1e3a5f; }
+.inv-logo { display:block; height:72px; width:auto; max-width:180px; object-fit:contain; margin-bottom:16px; mix-blend-mode:multiply; }
+.inv-biz h1 { font-size:21px; font-weight:800; color:#1a1a2e; letter-spacing:.3px; line-height:1.3; }
+.inv-biz p  { font-size:12px; color:#666; margin-top:11px; line-height:1.8; letter-spacing:.2px; }
 .inv-title-block { text-align:right; }
-.inv-title-block h2 { font-size:22px; font-weight:800; color:#1e3a5f; letter-spacing:2px; }
-.inv-title-block .inv-sub { font-size:13px; font-weight:600; color:#7c3aed; margin-top:4px; }
-.inv-meta { margin-top:8px; font-size:12px; color:#444; line-height:1.8; }
-.inv-meta strong { color:#111; }
-.bill-row { display:flex; gap:32px; margin-bottom:18px; padding:14px 0; border-top:2.5px solid #1e3a5f; border-bottom:1px solid #e5e7eb; }
-.bill-to h4 { font-size:10px; font-weight:700; color:#6b7280; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:6px; }
-.bill-to .name { font-size:15px; font-weight:700; color:#1a1a2e; margin-bottom:3px; }
-.bill-to p { font-size:12px; color:#555; line-height:1.5; }
-table.items { width:100%; border-collapse:collapse; margin-bottom:14px; }
-table.items thead tr { background:#1e3a5f; color:#fff; }
-table.items thead th { padding:9px 10px; font-size:11px; font-weight:700; text-align:left; letter-spacing:.4px; }
-table.items tbody tr:nth-child(even) { background:#f8fafc; }
-table.items tbody td { padding:8px 10px; border-bottom:1px solid #e9ecef; vertical-align:top; font-size:12px; }
-.totals-wrap { display:flex; justify-content:flex-end; margin-bottom:20px; }
-table.totals { width:300px; border-collapse:collapse; font-size:13px; }
-table.totals td { padding:6px 10px; }
-table.totals td:first-child { color:#555; }
-table.totals td:last-child { text-align:right; font-weight:600; color:#111; }
-table.totals tr.grand td { font-size:15px; font-weight:800; color:#fff; background:#1e3a5f; padding:10px 12px; }
-.pay-box { background:#f1f5f9; border-radius:8px; padding:13px 16px; margin-bottom:18px; }
-.pay-box h4 { font-size:10px; font-weight:700; color:#6b7280; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:10px; }
-.pay-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px 24px; font-size:12px; }
-.pay-grid .lbl { color:#6b7280; }
-.pay-grid .val { font-weight:600; color:#111; }
-.sig-row { display:flex; justify-content:space-between; margin-top:36px; }
-.sig-block { text-align:center; width:180px; }
-.sig-line { border-top:1px solid #374151; padding-top:6px; font-size:11px; color:#6b7280; }
-.footer { text-align:center; margin-top:24px; font-size:10px; color:#9ca3af; border-top:1px solid #e5e7eb; padding-top:10px; }
-@media print { body{background:#fff;} .page{margin:0;box-shadow:none;padding:10mm 10mm;width:100%;} @page{size:A4 portrait;margin:8mm;} }
+.inv-title-block h2 { font-size:23px; font-weight:800; color:#1e3a5f; letter-spacing:3px; line-height:1.2; }
+.inv-title-block .inv-sub { font-size:12px; font-weight:600; color:#7c3aed; margin-top:8px; letter-spacing:1px; }
+.inv-meta { margin-top:14px; font-size:12px; color:#555; line-height:2.1; letter-spacing:.3px; }
+.inv-meta strong { color:#1a1a1a; }
+.bill-row { display:flex; gap:48px; margin-bottom:34px; padding:6px 0 24px; border-bottom:1px solid #e5e7eb; }
+.bill-to h4 { font-size:9.5px; font-weight:700; color:#9ca3af; letter-spacing:2.5px; text-transform:uppercase; margin-bottom:10px; }
+.bill-to .name { font-size:16px; font-weight:700; color:#1a1a2e; margin-bottom:6px; letter-spacing:.2px; }
+.bill-to p { font-size:12px; color:#666; line-height:1.6; letter-spacing:.3px; }
+table.items { width:100%; border-collapse:collapse; margin-bottom:22px; }
+table.items thead tr { background:#fff; color:#1a1a1a; border-bottom:2px solid #1a1a1a; }
+table.items thead th { padding:13px 12px; font-size:10px; font-weight:700; text-align:left; letter-spacing:1.2px; text-transform:uppercase; color:#555; }
+table.items tbody tr { border-bottom:1px solid #eef0f2; }
+table.items tbody td { padding:15px 12px; vertical-align:middle; font-size:12.5px; letter-spacing:.2px; }
+.totals-wrap { display:flex; justify-content:flex-end; margin-bottom:32px; }
+table.totals { width:340px; border-collapse:collapse; font-size:13px; }
+table.totals td { padding:10px 14px; letter-spacing:.3px; }
+table.totals td:first-child { color:#666; }
+table.totals td:last-child { text-align:right; font-weight:600; color:#1a1a1a; }
+table.totals tr.grand td { font-size:16px; font-weight:800; color:#1a1a1a; background:#fff; border-top:2px solid #1a1a1a; border-bottom:2px solid #1a1a1a; padding:15px 14px; letter-spacing:.6px; }
+.pay-box { background:#f7f8fa; border:1px solid #eef0f2; border-radius:10px; padding:20px 24px; margin-bottom:30px; }
+.pay-box h4 { font-size:9.5px; font-weight:700; color:#9ca3af; letter-spacing:2.5px; text-transform:uppercase; margin-bottom:14px; }
+.pay-grid { display:grid; grid-template-columns:1fr 1fr; gap:11px 32px; font-size:12.5px; }
+.pay-grid .lbl { color:#888; letter-spacing:.3px; }
+.pay-grid .val { font-weight:600; color:#1a1a1a; letter-spacing:.2px; }
+.sig-row { display:flex; justify-content:space-between; margin-top:60px; }
+.sig-block { text-align:center; width:190px; }
+.sig-line { border-top:1px solid #374151; padding-top:9px; font-size:11px; color:#666; letter-spacing:.3px; }
+.footer { text-align:center; margin-top:44px; font-size:9.5px; color:#b0b4bb; border-top:1px solid #eef0f2; padding-top:14px; letter-spacing:.5px; }
+@media print { body{background:#fff;} .page{margin:0;box-shadow:none;padding:16mm 14mm;width:100%;} @page{size:A4 portrait;margin:8mm;} }
 </style>
 </head>
 <body>
 <div class="page">
-  ${logoHtml}
   <div class="inv-header">
     <div class="inv-biz">
+      <img class="inv-logo" src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo" onerror="this.style.display='none'">
       <h1>${esc(bizName)}</h1>
-      <p>Business Tax Id: ${esc(bizTin)}<br>${esc(bizAddr)}</p>
+      <p>${esc(bizAddr)}</p>
     </div>
     <div class="inv-title-block">
       <h2>STATEMENT OF ACCOUNT</h2>
@@ -1789,12 +1889,11 @@ table.totals tr.grand td { font-size:15px; font-weight:800; color:#fff; backgrou
     <div class="bill-to">
       <h4>Worker</h4>
       <div class="name">${esc(workerName)}</div>
-      <p>${esc(role)}</p>
+      <p>${esc(_contractType)}</p>
     </div>
     <div class="bill-to">
       <h4>Project</h4>
       <div class="name" style="font-size:13px;">${esc(projectName)}</div>
-      <p>Period covered: ${esc(rangeLbl)}</p>
     </div>
   </div>
   <table class="items">
@@ -1916,15 +2015,34 @@ table.totals tr.grand td { font-size:15px; font-weight:800; color:#fff; backgrou
             });
         });
 
-        const payBlock = pd.method === 'gcash'
-            ? `<div><span class="lbl">Payment Via: </span><span class="val">GCash</span></div>
-               <div><span class="lbl">GCash No.: </span><span class="val">${esc(pd.gcashNumber||'—')}</span></div>
-               <div><span class="lbl">Account Name: </span><span class="val">${esc(pd.gcashName||'—')}</span></div>`
-            : `<div><span class="lbl">Payment Via: </span><span class="val">Bank Transfer</span></div>
-               <div><span class="lbl">Bank: </span><span class="val">${esc(pd.bank||'—')}</span></div>
-               <div><span class="lbl">Account No.: </span><span class="val">${esc(pd.accountNo||'—')}</span></div>
-               <div><span class="lbl">Account Name: </span><span class="val">${esc(pd.accountName||'—')}</span></div>
-               <div><span class="lbl">Branch: </span><span class="val">${esc(pd.branch||'—')}</span></div>`;
+        // Payment mode: Cash · E-wallet · Bank · Check. Reads _defaults.paymentDetails.
+        // Existing data used method 'gcash' → treated as an E-wallet (provider GCash).
+        const _pdRow = (l, v) => `<div><span class="lbl">${l}: </span><span class="val">${esc(v || '—')}</span></div>`;
+        const payBlock = (function () {
+            const m = (pd.method || 'bank').toLowerCase();
+            if (m === 'cash') {
+                return _pdRow('Mode of Payment', 'Cash');
+            }
+            if (m === 'ewallet' || m === 'gcash' || m === 'e-wallet') {
+                const provider = pd.ewalletProvider || (m === 'gcash' ? 'GCash' : '');
+                return _pdRow('Mode of Payment', 'E-wallet')
+                     + _pdRow('Provider', provider)
+                     + _pdRow('Number', pd.ewalletNumber || pd.gcashNumber)
+                     + _pdRow('Account Name', pd.ewalletName || pd.gcashName);
+            }
+            if (m === 'check' || m === 'cheque') {
+                return _pdRow('Mode of Payment', 'Check')
+                     + _pdRow('Bank', pd.checkBank || pd.bank)
+                     + _pdRow('Check No.', pd.checkNumber)
+                     + _pdRow('Payee', pd.checkPayee || pd.accountName);
+            }
+            // default: bank
+            return _pdRow('Mode of Payment', 'Bank Transfer')
+                 + _pdRow('Bank', pd.bank)
+                 + _pdRow('Account No.', pd.accountNo)
+                 + _pdRow('Account Name', pd.accountName)
+                 + (pd.branch ? _pdRow('Branch', pd.branch) : '');
+        })();
 
         const invoiceNo = await _generateInvoiceNo();
         const today = new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'});
@@ -1955,7 +2073,7 @@ body { font-family:Arial,Helvetica,sans-serif; font-size:13px; color:#111; backg
 .bill-to .name { font-size:15px; font-weight:700; color:#1a1a2e; margin-bottom:3px; }
 .bill-to p { font-size:12px; color:#555; line-height:1.5; }
 table.items { width:100%; border-collapse:collapse; margin-bottom:14px; }
-table.items thead tr { background:#1e3a5f; color:#fff; }
+table.items thead tr { background:#fff; color:#111; border-bottom:2px solid #111; }
 table.items thead th { padding:9px 10px; font-size:11px; font-weight:700; text-align:left; letter-spacing:.4px; }
 table.items tbody tr:nth-child(even):not(.role-header) { background:#f8fafc; }
 table.items tbody td { padding:8px 10px; border-bottom:1px solid #e9ecef; vertical-align:top; font-size:12px; }
@@ -1964,7 +2082,7 @@ table.totals { width:280px; border-collapse:collapse; font-size:13px; }
 table.totals td { padding:6px 10px; }
 table.totals td:first-child { color:#555; }
 table.totals td:last-child { text-align:right; font-weight:600; color:#111; }
-table.totals tr.grand td { font-size:15px; font-weight:800; color:#fff; background:#1e3a5f; padding:10px 12px; }
+table.totals tr.grand td { font-size:15px; font-weight:800; color:#111; background:#fff; border-top:2px solid #111; border-bottom:2px solid #111; padding:10px 12px; }
 .pay-box { background:#f1f5f9; border-radius:8px; padding:13px 16px; margin-bottom:18px; }
 .pay-box h4 { font-size:10px; font-weight:700; color:#6b7280; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:10px; }
 .pay-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px 24px; font-size:12px; }
@@ -1983,7 +2101,7 @@ table.totals tr.grand td { font-size:15px; font-weight:800; color:#fff; backgrou
   <div class="inv-header">
     <div class="inv-biz">
       <h1>${esc(bizName)}</h1>
-      <p>Business Tax Id: ${esc(bizTin)}<br>${esc(bizAddr)}</p>
+      <p>${esc(bizAddr)}</p>
     </div>
     <div class="inv-title-block">
       <h2>RECEIPT OF PAYMENT</h2>

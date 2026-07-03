@@ -1,3 +1,86 @@
+// ════════════════════════════════════════════════════════════════════
+// GLOBAL: force EVERY printed document to grayscale (black & white).
+// All print/PDF outputs in the app open a blank popup via window.open() and
+// write their own HTML. We wrap window.open once here (this file loads on every
+// page) so any such popup gets a grayscale @media print rule injected — no need
+// to touch each of the ~10 print generators. Screen view keeps its colors; only
+// the printed/saved-PDF output is desaturated.
+(function () {
+    if (window.__dacsBwPrintPatched) return;
+    window.__dacsBwPrintPatched = true;
+
+    const BW_STYLE_ID = 'dacs-bw-print-style';
+    // One global print stylesheet injected into EVERY print popup, so all PDFs come
+    // out grayscale AND consistently positioned/presentable without editing each of
+    // the ~20 document generators. Uses !important so it layers over their own CSS.
+    const BW_TAG =
+        '<style id="' + BW_STYLE_ID + '">' +
+        '@media print{' +
+          'html{-webkit-filter:grayscale(100%)!important;filter:grayscale(100%)!important;}' +
+          '*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;box-shadow:none!important;}' +
+          // A4 with comfortable, uniform margins so nothing is jammed to the edge.
+          '@page{size:A4 portrait;margin:14mm 12mm;}' +
+          'html,body{background:#fff!important;margin:0!important;padding:0!important;}' +
+          // Common page/sheet wrappers: center, cap width, drop screen chrome.
+          'body>.page,body>.sheet,body>.doc,body>.invoice,body>.a4,.print-page{' +
+            'margin:0 auto!important;box-shadow:none!important;border:none!important;' +
+            'border-radius:0!important;max-width:186mm!important;width:100%!important;}' +
+          // Don't slice rows, cards, or signature blocks across pages.
+          'tr,.sig-row,.sig-block,.pay-box,.totals-wrap,.cm-bd-box,.card,.box{break-inside:avoid;page-break-inside:avoid;}' +
+          'thead{display:table-header-group;}' +          // repeat table headers per page
+          'tfoot{display:table-footer-group;}' +
+          '.noprint,.no-print{display:none!important;}' +
+        '}' +
+        '</style>';
+
+    // Inject the grayscale <style> into any markup that lacks it. Prefer inside
+    // <head>; fall back to prepending so it always applies.
+    function withBw(markup) {
+        const s = String(markup == null ? '' : markup);
+        if (s.indexOf(BW_STYLE_ID) !== -1) return s;
+        if (/<\/head>/i.test(s)) return s.replace(/<\/head>/i, BW_TAG + '</head>');
+        if (/<head[^>]*>/i.test(s)) return s.replace(/(<head[^>]*>)/i, '$1' + BW_TAG);
+        // No <head> in this chunk — only prepend if it looks like the doc start.
+        if (/^\s*(<!doctype|<html)/i.test(s)) return BW_TAG + s;
+        return s;
+    }
+
+    function injectStyleEl(win) {
+        try {
+            const doc = win.document;
+            if (!doc || doc.getElementById(BW_STYLE_ID)) return;
+            const head = doc.head || doc.getElementsByTagName('head')[0] || doc.documentElement;
+            if (!head) return;
+            const style = doc.createElement('style');
+            style.id = BW_STYLE_ID;
+            style.textContent = BW_TAG.replace(/^<style[^>]*>/, '').replace(/<\/style>$/, '');
+            head.appendChild(style);
+        } catch (e) { /* ignore */ }
+    }
+
+    const _open = window.open.bind(window);
+    window.open = function (url, name, features) {
+        const win = _open(url, name, features);
+        if (win && (!url || url === '' || url === 'about:blank')) {
+            try {
+                // Patch this popup's write/writeln so the grayscale rule is baked
+                // into whatever HTML the generator writes (guaranteed before print).
+                const d = win.document;
+                if (d && !d.__dacsBwWrap) {
+                    d.__dacsBwWrap = true;
+                    const _w = d.write.bind(d), _wl = d.writeln.bind(d);
+                    d.write   = function (m) { return _w(withBw(m)); };
+                    d.writeln = function (m) { return _wl(withBw(m)); };
+                }
+            } catch (e) { /* ignore */ }
+            // Belt-and-suspenders for popups that set innerHTML/srcdoc instead.
+            setTimeout(() => injectStyleEl(win), 60);
+            setTimeout(() => injectStyleEl(win), 300);
+        }
+        return win;
+    };
+})();
+
 /**
  * Standardized print header for all DAC's admin documents.
  *

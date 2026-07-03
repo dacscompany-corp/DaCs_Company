@@ -3553,7 +3553,7 @@
         <form id="laborContractForm">
             <input type="hidden" id="lcId">
             <div class="exp-form-row">
-                <div class="exp-form-group"><label>Worker Name</label><input type="text" id="lcWorker" list="lcWorkerNames" required placeholder="Full name" autocomplete="off"><datalist id="lcWorkerNames"></datalist></div>
+                <div class="exp-form-group"><label>Worker Name</label><input type="text" id="lcWorker" list="lcWorkerNames" required placeholder="Full name" autocomplete="off" oninput="if(window.lcAgrSyncWorkerName)lcAgrSyncWorkerName()"><datalist id="lcWorkerNames"></datalist></div>
                 <div class="exp-form-group"><label>Scope / Job</label><input type="text" id="lcScope" placeholder="e.g. Tiling &amp; masonry"></div>
             </div>
             <div class="exp-form-group">
@@ -3565,6 +3565,32 @@
             </div>
             <div class="exp-form-group"><label>Agreed Amount / Cap (₱)</label><input type="text" inputmode="decimal" id="lcAmount" required placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
             <div class="exp-form-group"><label>Notes (optional)</label><textarea id="lcNotes" rows="2" placeholder="Additional details…"></textarea></div>
+
+            <!-- ── Worker Agreement — upload the signed PDF ── -->
+            <div class="exp-form-group" style="border:1.5px solid #e5e7eb;border-radius:10px;padding:14px 16px;background:#fafafa;">
+                <label style="margin:0 0 8px;display:block;">Worker Agreement <span style="color:#9ca3af;font-weight:400;">(upload the signed agreement PDF)</span></label>
+                <input type="file" id="lcAgrPdfInput" accept="application/pdf,.pdf" onchange="lcAgrPdfPick(this)" style="display:none;">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <button type="button" onclick="document.getElementById('lcAgrPdfInput').click()"
+                        style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border:1.5px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+                        <i data-lucide="upload" style="width:15px;height:15px;"></i> Upload PDF
+                    </button>
+                    <a id="lcAgrPdfLink" href="#" target="_blank" rel="noopener" style="display:none;font-size:12.5px;font-weight:700;color:#7c3aed;text-decoration:none;">View current PDF</a>
+                    <span id="lcAgrPdfName" style="font-size:12.5px;color:#6b7280;">No PDF attached.</span>
+                    <button type="button" id="lcAgrPdfRemoveBtn" onclick="lcAgrPdfRemove()" style="display:none;font-size:12px;font-weight:600;color:#dc2626;background:none;border:none;cursor:pointer;font-family:inherit;">Remove</button>
+                </div>
+                <div style="display:flex;gap:32px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px dashed #e5e7eb;">
+                    <div style="min-width:150px;">
+                        <div id="lcAgrWorkerName" style="font-size:13px;font-weight:700;color:#111827;">—</div>
+                        <div style="font-size:10.5px;color:#9ca3af;letter-spacing:.04em;text-transform:uppercase;margin-top:2px;">Worker (printed name)</div>
+                    </div>
+                    <div style="min-width:150px;">
+                        <div id="lcAgrCompanyName" style="font-size:13px;font-weight:700;color:#111827;">—</div>
+                        <div style="font-size:10.5px;color:#9ca3af;letter-spacing:.04em;text-transform:uppercase;margin-top:2px;">Company</div>
+                    </div>
+                </div>
+            </div>
+
             <div class="exp-modal-footer">
                 <button type="button" class="exp-btn exp-btn-secondary" onclick="closeExpModal('laborContractModal')">Cancel</button>
                 <button type="submit" id="lcSaveBtn" class="exp-btn exp-btn-primary" data-label="Save Contract">Save Contract</button>
@@ -3923,7 +3949,7 @@
 <script src="js/supabase-config.js"></script>
 <script src="js/admin.js"></script>
 <script src="js/print-utils.js"></script>
-<script src="js/expenses-module.js"></script>
+<script src="js/expenses-module.js?v=20260703d"></script>
 <script src="js/overhead-module.js"></script>
 <script src="js/construction-module.js"></script>
 <script src="js/boq-module.js"></script>

@@ -7370,6 +7370,284 @@ function lcFillWorkerDatalist() {
         const dl = document.getElementById(id); if (dl) dl.innerHTML = opts;
     });
 }
+// ── Worker Agreement (piecework rates + company rules) ─────────────
+// Template lives in settings/workerAgreement { text, pdfUrl, pdfName } and is
+// signed by the worker on the admin's device when the contract is created.
+const LC_AGR_DEFAULT =
+`WORKER AGREEMENT — PIECEWORK (PAKYAW) TERMS & COMPANY RULES
+
+1. Scope & Rate. The worker agrees to complete the scope of work stated in this contract for the agreed amount (piecework/pakyaw rate). No additional charges beyond the agreed cap unless approved in writing.
+
+2. Quality of Work. Work must meet the company's quality standards. Rework due to poor workmanship is at the worker's expense.
+
+3. Site Rules. The worker agrees to follow all site safety rules and company regulations, keep the work area safe and orderly, and use protective equipment where required.
+
+4. Schedule. The worker will complete the work within the agreed timeframe and coordinate absences with the site supervisor.
+
+5. Tools & Materials. Unless otherwise stated, the worker provides their own hand tools; materials are supplied by the company and must be used responsibly.
+
+6. Payment. Payments are released against completed work and draw down from the agreed contract amount.
+
+7. Termination. The company may end this contract for violation of these terms; completed work will be assessed and paid accordingly.
+
+By signing, the worker confirms they understood and accept these terms.`;
+
+let _lcAgrTemplate = null;                 // cached { text, pdfUrl, pdfName }
+
+async function lcLoadAgrTemplate(force) {
+    if (_lcAgrTemplate && !force) return _lcAgrTemplate;
+    try {
+        const doc = await db.collection('settings').doc('workerAgreement').get();
+        const d = doc && doc.exists ? doc.data() : null;
+        _lcAgrTemplate = {
+            text  : (d && typeof d.text === 'string' && d.text.trim()) ? d.text : LC_AGR_DEFAULT,
+            pdfUrl : (d && d.pdfUrl)  || '',
+            pdfName: (d && d.pdfName) || ''
+        };
+    } catch (_) { _lcAgrTemplate = { text: LC_AGR_DEFAULT, pdfUrl: '', pdfName: '' }; }
+    return _lcAgrTemplate;
+}
+
+// ── Per-contract signed-agreement PDF upload (no on-screen e-signature) ──
+let _lcAgrFile = null, _lcAgrUrl = '', _lcAgrName = '';
+
+function _lcAgrRenderState() {
+    const nameEl = document.getElementById('lcAgrPdfName');
+    const rmEl   = document.getElementById('lcAgrPdfRemoveBtn');
+    const link   = document.getElementById('lcAgrPdfLink');
+    if (link) { if (_lcAgrUrl && !_lcAgrFile) { link.href = _lcAgrUrl; link.style.display = ''; } else link.style.display = 'none'; }
+    if (!nameEl) return;
+    if (_lcAgrFile)     { nameEl.textContent = _lcAgrFile.name + ' (new — will upload on save)'; nameEl.style.color = '#111827'; if (rmEl) rmEl.style.display = ''; }
+    else if (_lcAgrUrl) { nameEl.textContent = _lcAgrName || 'Signed agreement attached.'; nameEl.style.color = '#111827'; if (rmEl) rmEl.style.display = ''; }
+    else                { nameEl.textContent = 'No PDF attached.'; nameEl.style.color = '#6b7280'; if (rmEl) rmEl.style.display = 'none'; }
+}
+
+window.lcAgrPdfPick = function (input) {
+    const f = input && input.files && input.files[0];
+    if (!f) return;
+    if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) { alert('Please choose a PDF file.'); input.value = ''; return; }
+    _lcAgrFile = f; _lcAgrRenderState();
+};
+window.lcAgrPdfRemove = function () {
+    _lcAgrFile = null; _lcAgrUrl = ''; _lcAgrName = '';
+    const input = document.getElementById('lcAgrPdfInput'); if (input) input.value = '';
+    _lcAgrRenderState();
+};
+
+// Fill the agreement section for a new / existing contract. Shows the worker
+// name and the current uploaded signed PDF (if any).
+function lcAgrPopulate(contract) {
+    _lcAgrFile = null;
+    _lcAgrUrl  = (contract && (contract.agreementPdfUrl || '')) || '';
+    _lcAgrName = (contract && (contract.agreementPdfName || '')) || '';
+    const input = document.getElementById('lcAgrPdfInput'); if (input) input.value = '';
+    const wn = document.getElementById('lcAgrWorkerName');
+    if (wn) wn.textContent = ((contract && contract.workerName) || (document.getElementById('lcWorker')?.value || '')) || '—';
+    const cn = document.getElementById('lcAgrCompanyName');
+    if (cn) cn.textContent = (typeof _defaults !== 'undefined' && _defaults && _defaults.businessName) ? _defaults.businessName : "DAC's Building Design Services";
+    _lcAgrRenderState();
+}
+
+// Keep the worker's printed name live as the admin types it (new contracts).
+window.lcAgrSyncWorkerName = function () {
+    const wn = document.getElementById('lcAgrWorkerName');
+    if (wn) wn.textContent = (document.getElementById('lcWorker')?.value || '') || '—';
+};
+
+// ── Agreement template editor (settings/workerAgreement) ──
+let _lcTplFile = null, _lcTplUrl = '', _lcTplName = '';
+
+function _lcTplRender() {
+    const nameEl = document.getElementById('lc-tpl-pdf-name');
+    const rmEl   = document.getElementById('lc-tpl-pdf-remove');
+    if (!nameEl) return;
+    if (_lcTplFile)     { nameEl.textContent = _lcTplFile.name + ' (new — will upload on save)'; nameEl.style.color = '#111827'; if (rmEl) rmEl.style.display = ''; }
+    else if (_lcTplUrl) { nameEl.textContent = _lcTplName || 'Attached PDF'; nameEl.style.color = '#111827'; if (rmEl) rmEl.style.display = ''; }
+    else                { nameEl.textContent = 'No PDF attached.'; nameEl.style.color = '#6b7280'; if (rmEl) rmEl.style.display = 'none'; }
+}
+
+window.lcTplPickPdf = function (input) {
+    const f = input && input.files && input.files[0];
+    if (!f) return;
+    if (f.type !== 'application/pdf' && !/\.pdf$/i.test(f.name)) { alert('Please choose a PDF file.'); input.value = ''; return; }
+    _lcTplFile = f; _lcTplRender();
+};
+window.lcTplRemovePdf = function () {
+    _lcTplFile = null; _lcTplUrl = ''; _lcTplName = '';
+    const input = document.getElementById('lc-tpl-pdf-input'); if (input) input.value = '';
+    _lcTplRender();
+};
+
+async function lcOpenAgrTemplate() {
+    _lcTplFile = null;
+    let modal = document.getElementById('lcAgrTemplateModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'lcAgrTemplateModal';
+        modal.className = 'exp-modal';
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML =
+      '<div class="exp-modal-box">'
+      + '<div class="exp-modal-header"><h2>Worker Agreement Template</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal(\'lcAgrTemplateModal\')">&times;</button></div>'
+      + '<div style="padding:0 4px;">'
+      +   '<div class="exp-form-group"><label>Agreement PDF <span style="color:#9ca3af;font-weight:400;">(optional — the comprehensive agreement form)</span></label>'
+      +     '<input type="file" id="lc-tpl-pdf-input" accept="application/pdf,.pdf" onchange="lcTplPickPdf(this)" style="display:none;">'
+      +     '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+      +       '<button type="button" onclick="document.getElementById(\'lc-tpl-pdf-input\').click()" class="exp-btn exp-btn-secondary" style="padding:8px 14px;">Upload PDF</button>'
+      +       '<span id="lc-tpl-pdf-name" style="font-size:12.5px;color:#6b7280;">No PDF attached.</span>'
+      +       '<button type="button" id="lc-tpl-pdf-remove" onclick="lcTplRemovePdf()" style="display:none;font-size:12px;font-weight:600;color:#dc2626;background:none;border:none;cursor:pointer;font-family:inherit;">Remove</button>'
+      +     '</div></div>'
+      +   '<div class="exp-form-group"><label>Agreement text <span style="color:#9ca3af;font-weight:400;">(shown in the contract form; used when no PDF)</span></label>'
+      +     '<textarea id="lc-tpl-text" rows="12" style="line-height:1.6;">Loading…</textarea></div>'
+      +   '<div class="exp-modal-footer">'
+      +     '<button type="button" class="exp-btn exp-btn-secondary" onclick="closeExpModal(\'lcAgrTemplateModal\')">Cancel</button>'
+      +     '<button type="button" id="lc-tpl-save" class="exp-btn exp-btn-primary" onclick="lcSaveAgrTemplate()">Save Template</button>'
+      +   '</div>'
+      + '</div></div>';
+    openExpModal('lcAgrTemplateModal');
+    const tpl = await lcLoadAgrTemplate(true);
+    const ta = document.getElementById('lc-tpl-text'); if (ta) ta.value = tpl.text;
+    _lcTplUrl = tpl.pdfUrl; _lcTplName = tpl.pdfName;
+    _lcTplRender();
+}
+
+async function lcSaveAgrTemplate() {
+    const ta   = document.getElementById('lc-tpl-text');
+    const text = (ta?.value || '').trim();
+    if (!text) { showExpNotif('The agreement text cannot be empty.', 'error'); return; }
+    const btn = document.getElementById('lc-tpl-save');
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    try {
+        let pdfUrl = _lcTplUrl, pdfName = _lcTplName;
+        if (_lcTplFile) {
+            if (btn) btn.textContent = 'Uploading…';
+            const safe = String(_lcTplFile.name || 'agreement.pdf').replace(/[^\w.\-]+/g, '_');
+            const ref  = storage.ref('workerAgreementGlobal/' + Date.now() + '_' + safe);
+            await ref.put(_lcTplFile);
+            pdfUrl  = await ref.getDownloadURL();
+            pdfName = _lcTplFile.name || 'Worker Agreement.pdf';
+        }
+        await db.collection('settings').doc('workerAgreement').set({
+            text, pdfUrl: pdfUrl || '', pdfName: pdfName || '', updatedAt: new Date().toISOString()
+        });
+        _lcAgrTemplate = { text, pdfUrl: pdfUrl || '', pdfName: pdfName || '' };
+        closeExpModal('lcAgrTemplateModal');
+        showExpNotif('Worker agreement template saved ✓', 'success');
+    } catch (err) {
+        showExpNotif('Error: ' + err.message, 'error');
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Save Template'; }
+    }
+}
+
+// View the worker's agreement. If a signed PDF was uploaded, open it directly
+// (that IS the signed document). Otherwise fall back to the generated policy sheet.
+async function lcOpenAgreement(id) {
+    const c = expLaborContracts.find(x => x.id === id); if (!c) return;
+    if (c.agreementPdfUrl) { window.open(c.agreementPdfUrl, '_blank', 'noopener'); return; }
+    await lcViewAgreement(c);
+}
+
+function lcViewAgreementCurrent() {
+    const id = document.getElementById('lcId')?.value;
+    const c = expLaborContracts.find(x => x.id === id) ||
+              (_lcAgrUrl ? { agreementPdfUrl: _lcAgrUrl } : null);
+    if (c && c.agreementPdfUrl) { window.open(c.agreementPdfUrl, '_blank', 'noopener'); return; }
+    if (c) lcViewAgreement(c);
+}
+
+// Build + auto-print the Worker Agreement PDF (contract + company policy).
+async function lcViewAgreement(c) {
+    const esc = _mvpEsc;
+    const signed = !!c.agreementSigned;
+
+    // Policy text: the snapshot the worker signed, or the current template if unsigned.
+    let policy = c.agreementTermsSnapshot || '';
+    if (!policy) { try { policy = (await lcLoadAgrTemplate()).text || ''; } catch (_) {} }
+
+    let when = '';
+    try {
+        const at = c.agreementSignedAt;
+        const d = at && at.toDate ? at.toDate() : (at ? new Date(at) : null);
+        if (d && !isNaN(d)) when = d.toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' });
+    } catch (_) {}
+    const today = new Date().toLocaleDateString('en-PH', { dateStyle: 'long' });
+
+    const w = window.open('', '_blank');
+    if (!w) { alert('Please allow pop-ups to print the agreement.'); return; }
+
+    const signatureBlock = signed
+        ? (c.agreementSignatureImage
+            ? '<img class="sig-img" src="' + esc(c.agreementSignatureImage) + '" alt="signature">'
+            : '<div class="sig-line"></div>')
+          + '<div class="sig-name">' + esc(c.agreementSignature || c.workerName || '') + '</div>'
+          + '<div class="sig-cap">Worker’s signature · Signed' + (when ? ' on ' + esc(when) : '') + '</div>'
+        : '<div class="sig-line"></div>'
+          + '<div class="sig-name">' + esc(c.workerName || '') + '</div>'
+          + '<div class="sig-cap">Worker’s signature over printed name · Date: _______________</div>';
+
+    const html =
+      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Worker Agreement — ' + esc(c.workerName || '') + '</title>'
+      + '<style>'
+      + '*{box-sizing:border-box;}'
+      + 'body{font-family:Georgia,\'Times New Roman\',serif;max-width:760px;margin:0 auto;padding:44px 40px;color:#1a1a1a;line-height:1.65;}'
+      + '.doc-head{text-align:center;border-bottom:2px solid #1a1a1a;padding-bottom:16px;margin-bottom:22px;}'
+      + '.doc-head .co{font-size:20px;font-weight:700;letter-spacing:.5px;}'
+      + '.doc-head .co-sub{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#666;margin-top:2px;}'
+      + '.doc-title{font-size:22px;font-weight:700;text-align:center;margin:6px 0 2px;}'
+      + '.doc-date{text-align:center;font-size:12px;color:#666;margin-bottom:24px;}'
+      + '.status{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.05em;padding:3px 12px;border-radius:20px;}'
+      + '.status.signed{background:#e7f7ee;color:#15803d;}'
+      + '.status.draft{background:#fff4e5;color:#b45309;}'
+      + '.status-wrap{text-align:center;margin-bottom:24px;}'
+      + 'h2{font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:#444;border-bottom:1px solid #ddd;padding-bottom:5px;margin:28px 0 12px;}'
+      + 'table{width:100%;border-collapse:collapse;margin:6px 0 4px;}'
+      + 'td{padding:8px 12px;border:1px solid #e2e2e2;font-size:14px;vertical-align:top;}'
+      + 'td.k{width:36%;font-weight:700;background:#f7f7f7;}'
+      + '.policy{white-space:pre-wrap;font-size:13px;line-height:1.7;}'
+      + '.sig-area{margin-top:34px;display:flex;gap:48px;flex-wrap:wrap;}'
+      + '.sig-col{flex:1;min-width:220px;}'
+      + '.sig-img{max-height:80px;display:block;margin-bottom:2px;}'
+      + '.sig-line{border-bottom:1.5px solid #1a1a1a;height:56px;margin-bottom:4px;}'
+      + '.sig-name{font-weight:700;font-size:14px;}'
+      + '.sig-cap{font-size:11.5px;color:#666;margin-top:2px;}'
+      + '.foot{margin-top:40px;font-size:10.5px;color:#999;text-align:center;border-top:1px solid #eee;padding-top:10px;}'
+      + '@media print{.noprint{display:none;}body{padding:0;}}'
+      + '</style></head><body>'
+      + '<div class="doc-head"><div class="co">DAC’s Building Design Services</div><div class="co-sub">Construction · Labor Agreement</div></div>'
+      + '<div class="doc-title">Worker Agreement</div>'
+      + '<div class="doc-date">' + esc(today) + '</div>'
+      + '<div class="status-wrap"><span class="status ' + (signed ? 'signed' : 'draft') + '">' + (signed ? '✓ SIGNED' : 'FOR SIGNATURE') + '</span></div>'
+
+      + '<h2>Contract Details</h2><table>'
+      + '<tr><td class="k">Worker</td><td>' + esc(c.workerName || '—') + '</td></tr>'
+      + '<tr><td class="k">Scope of work</td><td>' + esc(c.scope || '—') + '</td></tr>'
+      + '<tr><td class="k">Agreed amount (cap)</td><td>₱ ' + (Number(c.agreedAmount) || 0).toLocaleString('en-PH') + '</td></tr>'
+      + '<tr><td class="k">Pay type</td><td>' + (c.payType === 'inhouse' ? 'In-house (capped)' : 'Pakyaw (piecework)') + '</td></tr>'
+      + (c.notes ? '<tr><td class="k">Notes</td><td>' + esc(c.notes) + '</td></tr>' : '')
+      + '</table>'
+
+      + '<h2>Worker Policy — Piecework Rates &amp; Company Rules</h2>'
+      + '<div class="policy">' + esc(policy) + '</div>'
+      + (c.agreementPdfUrl ? '<p style="font-size:12px;color:#555;margin-top:10px;">Full policy document on file: ' + esc(c.agreementPdfUrl) + '</p>' : '')
+
+      + '<h2>Acknowledgement &amp; Signature</h2>'
+      + '<p style="font-size:13px;">The worker confirms they have read (or been read) this agreement — including the piecework rates and company rules &amp; regulations above — understood it, and agree to be bound by it.</p>'
+      + '<div class="sig-area">'
+      +   '<div class="sig-col">' + signatureBlock + '</div>'
+      +   '<div class="sig-col"><div class="sig-line"></div><div class="sig-name">DAC’s Building Design Services</div><div class="sig-cap">Company representative · Date: _______________</div></div>'
+      + '</div>'
+
+      + '<div class="foot">Generated by DAC’s Portal · This document reflects the agreement ' + (signed ? 'signed by the worker.' : 'to be signed.') + '</div>'
+      + '<div class="noprint" style="text-align:center;margin-top:20px;"><button onclick="window.print()" style="padding:11px 26px;font-size:14px;font-family:inherit;cursor:pointer;border:1px solid #1a1a1a;background:#1a1a1a;color:#fff;border-radius:8px;">Print / Save as PDF</button></div>'
+      + '<scr' + 'ipt>window.onload=function(){setTimeout(function(){window.print();},350);};</scr' + 'ipt>'
+      + '</body></html>';
+
+    w.document.write(html);
+    w.document.close();
+}
+
 function lcOpenNew() {
     if (!lcActiveFolderId()) { showExpNotif('Open a project folder first.', 'error'); return; }
     document.getElementById('lcId').value = '';
@@ -7381,6 +7659,7 @@ function lcOpenNew() {
     const t = document.getElementById('lcModalTitle'); if (t) t.textContent = 'New Labor Contract';
     lcFillWorkerDatalist();
     openExpModal('laborContractModal');
+    lcAgrPopulate(null);
 }
 function lcOpenEdit(id) {
     const c = expLaborContracts.find(x => x.id === id); if (!c) return;
@@ -7393,6 +7672,7 @@ function lcOpenEdit(id) {
     const t = document.getElementById('lcModalTitle'); if (t) t.textContent = 'Edit Labor Contract';
     lcFillWorkerDatalist();
     openExpModal('laborContractModal');
+    lcAgrPopulate(c);
 }
 function setupLaborContractFormListeners() {
     const form = document.getElementById('laborContractForm');
@@ -7410,8 +7690,32 @@ async function handleSaveLaborContract(e) {
     const payType = (document.querySelector('input[name="lcPayType"]:checked') || {}).value || 'pakyaw';
     if (!workerName) { showExpNotif('Enter the worker name.', 'error'); return; }
     if (agreedAmount <= 0) { showExpNotif('Enter the agreed amount (the cap).', 'error'); return; }
+
     try {
         showExpLoading('lcSaveBtn', true);
+
+        // ── Worker agreement PDF ──
+        // Upload a newly-picked signed PDF; keep an existing one; or clear if removed.
+        // A contract with an attached PDF counts as "signed".
+        let agrFields = null;
+        if (_lcAgrFile) {
+            showExpLoading('lcSaveBtn', true);
+            const safe = String(_lcAgrFile.name || 'agreement.pdf').replace(/[^\w.\-]+/g, '_');
+            const ref  = storage.ref('workerAgreements/' + folderId + '_' + Date.now() + '_' + safe);
+            await ref.put(_lcAgrFile);
+            const url = await ref.getDownloadURL();
+            agrFields = {
+                agreementSigned    : true,
+                agreementSignedAt  : new Date(),
+                agreementSignature : workerName,
+                agreementPdfUrl    : url,
+                agreementPdfName   : _lcAgrFile.name || 'Worker Agreement.pdf'
+            };
+        } else if (!_lcAgrUrl) {
+            // No file picked and none kept → clear any previous agreement.
+            agrFields = { agreementSigned: false, agreementPdfUrl: '', agreementPdfName: '', agreementSignedAt: null };
+        }
+
         if (id) {
             const existing = expLaborContracts.find(x => x.id === id);
             const update = { workerName, scope, agreedAmount, payType, notes,
@@ -7421,16 +7725,35 @@ async function handleSaveLaborContract(e) {
                 hist.push({ amount: agreedAmount, at: new Date().toISOString(), note: 'Edited cap' });
                 update.capHistory = hist;
             }
-            await db.collection('laborContracts').doc(id).update(update);
+            if (agrFields) Object.assign(update, agrFields);   // attach/replace/clear PDF
+            try {
+                await db.collection('laborContracts').doc(id).update(update);
+            } catch (colErr) {
+                // Fallback if the DB doesn't have the newer agreement_pdf_name column
+                // yet: retry without it so remove/edit still persists.
+                if (/agreement_pdf_name|column/i.test(colErr.message || '')) {
+                    const u2 = { ...update }; delete u2.agreementPdfName;
+                    await db.collection('laborContracts').doc(id).update(u2);
+                } else { throw colErr; }
+            }
         } else {
-            await db.collection('laborContracts').add({
+            const addDoc = {
                 userId: _uid(), folderId, workerName, scope, agreedAmount, payType, notes,
                 status: 'ongoing',
                 capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
+                ...(agrFields || { agreementSigned: false }),
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
+            };
+            try {
+                await db.collection('laborContracts').add(addDoc);
+            } catch (colErr) {
+                if (/agreement_pdf_name|column/i.test(colErr.message || '')) {
+                    delete addDoc.agreementPdfName;
+                    await db.collection('laborContracts').add(addDoc);
+                } else { throw colErr; }
+            }
         }
-        showExpNotif('Contract saved ✓', 'success');
+        showExpNotif((agrFields && agrFields.agreementSigned) ? 'Contract saved — agreement PDF attached ✓' : 'Contract saved ✓', 'success');
         closeExpModal('laborContractModal');
     } catch (err) {
         showExpNotif('Error: ' + err.message, 'error');
@@ -7576,6 +7899,10 @@ window.lcLedgerViewReceipt = function(payId) {
 window.lcOpenNew            = lcOpenNew;
 window.lcOpenEdit           = lcOpenEdit;
 window.lcOpenRaiseCap       = lcOpenRaiseCap;
+window.lcOpenAgrTemplate    = lcOpenAgrTemplate;
+window.lcSaveAgrTemplate    = lcSaveAgrTemplate;
+window.lcOpenAgreement      = lcOpenAgreement;
+window.lcViewAgreementCurrent = lcViewAgreementCurrent;
 window.lcDelete            = lcDelete;
 window.handleSaveLaborContract = handleSaveLaborContract;
 window.lcUpdateRemainingHint = lcUpdateRemainingHint;

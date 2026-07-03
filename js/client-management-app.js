@@ -3083,6 +3083,18 @@ window.cmOvApplyRange = function() {
     setAmt('cm-ov-labor',     bd.labor);
     setAmt('cm-ov-materials', bd.materials);
     setAmt('cm-ov-combined',  bd.combined);
+    // Keep the "% of budget" pills in sync with the range-filtered amounts.
+    const _ovBudget = Number(cmProjectData && cmProjectData.budget) || 0;
+    const setBpct = (id, val) => {
+        const el = document.getElementById(id); if (!el) return;
+        if (_ovBudget <= 0) { el.textContent = ''; return; }
+        const p = (Number(val) || 0) / _ovBudget * 100;
+        el.textContent = (p >= 10 ? p.toFixed(0) : p.toFixed(1)) + '% of budget';
+    };
+    setBpct('cm-ov-labor-bpct',     bd.labor);
+    setBpct('cm-ov-materials-bpct', bd.materials);
+    setBpct('cm-ov-combined-bpct',  bd.combined);
+    setBpct('cm-ov-direct-bpct',    bd.direct);
     const setCnt = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n + ' ' + (n === 1 ? 'entry' : 'entries'); };
     setCnt('cm-ov-labor-cnt',     bd.laborCount);
     setCnt('cm-ov-materials-cnt', bd.matCount);
@@ -3342,13 +3354,27 @@ function cmRenderOverview() {
 
     // ── Direct cost breakdown card (purple hero theme: period selector + proportion bar + 3 split boxes) ──
     const ovSelStyle = "font-size:12px !important;font-weight:700 !important;color:#5b5bd6 !important;border:none !important;border-radius:10px !important;padding:8px 32px 8px 14px !important;background-color:#fff !important;background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235b5bd6' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\") !important;background-repeat:no-repeat !important;background-position:right 12px center !important;-webkit-appearance:none !important;-moz-appearance:none !important;appearance:none !important;cursor:pointer;box-shadow:0 2px 6px rgba(20,25,40,0.12);";
+    // % of the PROJECT BUDGET consumed by a category (categoryAmount / budget).
+    const ovBudget = Number(cmProjectData && cmProjectData.budget) || 0;
+    const ovBudgetPctText = (val) => {
+        if (ovBudget <= 0) return '';
+        const p = (Number(val) || 0) / ovBudget * 100;
+        return (p >= 10 ? p.toFixed(0) : p.toFixed(1)) + '% of budget';
+    };
+    // Bright chip so it stands out on the purple hero card.
+    const ovBudgetPill = (val, id) =>
+        `<span id="${id}" style="display:inline-block;font-size:11px;font-weight:800;color:#3a2f7a;background:#fff;border-radius:999px;padding:2px 10px;white-space:nowrap;">${ovBudgetPctText(val)}</span>`;
+
     const ovLegendBox = (label, swatch, amtId, pctId, val, pct, count, countId) => `
         <div class="cm-bd-box" style="flex:1 1 160px;min-width:0;display:flex;flex-direction:column;gap:8px;padding:14px 16px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.22);border-radius:13px;">
             <div style="display:flex;align-items:center;gap:8px;min-width:0;">
                 <span style="width:10px;height:10px;border-radius:3px;background:${swatch};flex:none;"></span>
                 <span style="font-size:12px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${label}</span>
             </div>
-            <div id="${amtId}" style="font-size:18px;font-weight:800;color:#fff;line-height:1;letter-spacing:-0.01em;white-space:nowrap;">${cmFmt(val)}</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <div id="${amtId}" style="font-size:18px;font-weight:800;color:#fff;line-height:1;letter-spacing:-0.01em;white-space:nowrap;">${cmFmt(val)}</div>
+                ${ovBudget > 0 ? ovBudgetPill(val, amtId + '-bpct') : ''}
+            </div>
             <div style="font-size:10.5px;color:rgba(255,255,255,0.72);white-space:nowrap;"><span id="${pctId}">${pct}</span>% of direct cost · <span id="${countId}">${count} ${count === 1 ? 'entry' : 'entries'}</span></div>
         </div>`;
     const breakdownCard = `
@@ -3360,9 +3386,10 @@ function cmRenderOverview() {
             </div>
             <div class="cm-ov-head-right cm-bd-head-right" style="display:flex;flex-direction:column;gap:11px;">
 
-                <div style="display:flex;align-items:baseline;gap:7px;">
+                <div style="display:flex;align-items:center;gap:7px;">
                     <span id="cm-ov-direct" style="font-size:21px;font-weight:800;color:#fff;line-height:1;white-space:nowrap;">${cmFmt(ovBd.direct)}</span>
                     <span style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.8);">total</span>
+                    ${ovBudget > 0 ? ovBudgetPill(ovBd.direct, 'cm-ov-direct-bpct') : ''}
                 </div>
                 <div class="cm-dd" id="cm-ov-dd" style="position:relative;">
                     <button type="button" class="cm-dd-btn" onclick="cmOvToggleRange(event)"><span id="cm-ov-dd-label">All time</span>${ovDdChevron}</button>

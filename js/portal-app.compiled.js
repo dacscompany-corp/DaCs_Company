@@ -1062,6 +1062,7 @@ function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPa
           rc("button", { onClick: () => window.lcOpenLedger && window.lcOpenLedger(r.c.id) }, "Ledger"),
           rc("button", { onClick: () => window.lcOpenRaiseCap && window.lcOpenRaiseCap(r.c.id) }, "Raise cap"),
           rc("button", { onClick: () => window.lcOpenEdit && window.lcOpenEdit(r.c.id) }, "Edit contract"),
+          rc("button", { onClick: () => window.lcOpenAgreement && window.lcOpenAgreement(r.c.id) }, "Print agreement"),
           rc("button", { onClick: () => window.printWorkerLaborSOA && window.printWorkerLaborSOA(w, project.id) }, "Worker statement"),
           rc("button", { className: "danger", onClick: () => window.lcDelete && window.lcDelete(r.c.id) }, "Delete")
         )

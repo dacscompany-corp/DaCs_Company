@@ -111,8 +111,11 @@
       "WebSearch",
       "Bash(git commit -m 'Merge branch '\\\\''main'\\\\'' into salvs — resolve conflicts *)",
       "Bash(git push *)",
+      "Bash(node --check js/expenses-module.js)",
+      "Bash(grep -v \"//\")",
       "Bash(grep -iE '\\\\.\\(apk|aab|keystore|idsig\\)$|node_modules|^app/|^build/|^tools/|sw\\\\.js|package\\\\.json')",
       "Bash(echo \"exit=$?\")"
+
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",

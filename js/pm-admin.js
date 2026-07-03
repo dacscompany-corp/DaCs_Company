@@ -500,12 +500,30 @@ function _pmOvHtml(p, ms, bills, reqs) {
       ${kpi('Remaining cash receipt', (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), netColor, '#fbf3e2', '#f0e2c5', 'pm-ov-kpi-net')}
     </div>`;
 
+    // % of the project budget consumed by this category (categoryAmount / budget).
+    const _budgetPctText = (val) => {
+        if (contractValue <= 0) return '';
+        const p = (Number(val) || 0) / contractValue * 100;
+        return (p >= 10 ? p.toFixed(0) : p.toFixed(1)) + '% of budget';
+    };
+    // Rendered as a colored pill so the budget % stands out. `color` = the
+    // category bar color; `bg`/`bd` are its soft tint + border.
+    const _budgetPctLabel = (val, id, color, bg, bd) => {
+        color = color || '#0f6342'; bg = bg || '#eaf4ef'; bd = bd || '#c6e6d5';
+        return `<span id="${id}" style="display:inline-block;font:700 11px 'IBM Plex Sans';color:${color};background:${bg};border:1px solid ${bd};border-radius:999px;padding:2px 9px;margin-left:10px;white-space:nowrap;">${_budgetPctText(val)}</span>`;
+    };
+
     // Direct-cost breakdown — one bar per category (keeps the #pm-ov-* IDs).
-    const bdRow = (label, color, amtId, pctId, segId, val, pct, count, countId) => `
+    // `pct` still drives the BAR width (relative to the largest category); the
+    // budget % (categoryAmount / project budget) is shown next to the amount.
+    const bdRow = (label, color, amtId, pctId, segId, val, pct, count, countId, pillColor, pillBg, pillBd) => `
       <div style="margin-bottom:13px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
           <span style="font:600 12.5px 'IBM Plex Sans';color:#3a3a36;">${label}<span id="${countId}" style="font:500 11px 'IBM Plex Sans';color:#9b9a94;margin-left:7px;">${count} ${count === 1 ? 'entry' : 'entries'}</span></span>
-          <span class="num" id="${amtId}" style="font:700 12.5px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(val)}</span>
+          <span style="display:inline-flex;align-items:center;">
+            <span class="num" id="${amtId}" style="font:700 12.5px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(val)}</span>
+            ${_budgetPctLabel(val, amtId + '-bpct', pillColor, pillBg, pillBd)}
+          </span>
         </div>
         <div style="height:9px;background:#f0efec;border-radius:99px;overflow:hidden;">
           <div id="${segId}" style="width:${pct}%;${val > 0 ? 'min-width:6px;' : ''}height:100%;background:${color};border-radius:99px;transition:width .25s ease;"></div>
@@ -521,12 +539,15 @@ function _pmOvHtml(p, ms, bills, reqs) {
           <button onclick="pmOvViewData()" style="display:inline-flex;align-items:center;gap:5px;font:600 11.5px 'IBM Plex Sans';color:#0f6342;background:#eaf4ef;border:1px solid #c6e6d5;border-radius:8px;padding:5px 11px;cursor:pointer;">View</button>
         </div>
       </div>
-      ${bdRow('Labor', '#157a52', 'pm-ov-labor', 'pm-ov-labor-pct', 'pm-ov-seg-labor', bd.labor, bd.laborPct, bd.laborCount, 'pm-ov-labor-cnt')}
-      ${bdRow('Materials', '#c79024', 'pm-ov-materials', 'pm-ov-materials-pct', 'pm-ov-seg-materials', bd.materials, bd.matPct, bd.matCount, 'pm-ov-materials-cnt')}
-      ${bdRow('Out Source', '#8b6fc4', 'pm-ov-combined', 'pm-ov-combined-pct', 'pm-ov-seg-combined', bd.combined, bd.combinedPct, bd.combinedCount, 'pm-ov-combined-cnt')}
+      ${bdRow('Labor', '#157a52', 'pm-ov-labor', 'pm-ov-labor-pct', 'pm-ov-seg-labor', bd.labor, bd.laborPct, bd.laborCount, 'pm-ov-labor-cnt', '#0f6342', '#eaf4ef', '#c6e6d5')}
+      ${bdRow('Materials', '#c79024', 'pm-ov-materials', 'pm-ov-materials-pct', 'pm-ov-seg-materials', bd.materials, bd.matPct, bd.matCount, 'pm-ov-materials-cnt', '#9a6c12', '#fbf2dc', '#ecd8a6')}
+      ${bdRow('Out Source', '#8b6fc4', 'pm-ov-combined', 'pm-ov-combined-pct', 'pm-ov-seg-combined', bd.combined, bd.combinedPct, bd.combinedCount, 'pm-ov-combined-cnt', '#6b4fa8', '#f1ecfa', '#ddd0f0')}
       <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #f0efec;margin-top:4px;padding-top:13px;">
         <span style="font:600 12.5px 'IBM Plex Sans';color:#3a3a36;">Direct cost total</span>
-        <span class="num" id="pm-ov-direct" style="font:800 16px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(bd.direct)}</span>
+        <span style="display:inline-flex;align-items:baseline;">
+          <span class="num" id="pm-ov-direct" style="font:800 16px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(bd.direct)}</span>
+          ${_budgetPctLabel(bd.direct, 'pm-ov-direct-bpct', '#ffffff', '#1c1c1a', '#1c1c1a')}
+        </span>
       </div>
     </div>`;
 
@@ -795,6 +816,13 @@ window.pmOvApplyRange = function() {
     setAmt('pm-ov-labor',     bd.labor);
     setAmt('pm-ov-materials', bd.materials);
     setAmt('pm-ov-combined',  bd.combined);
+    // Keep the "% of budget" labels in sync with the range-filtered amounts.
+    const _bpct = (val) => (_pmOvContractVal > 0 ? (() => { const p = (Number(val) || 0) / _pmOvContractVal * 100; return (p >= 10 ? p.toFixed(0) : p.toFixed(1)) + '% of budget'; })() : '');
+    const setBpct = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = _bpct(val); };
+    setBpct('pm-ov-labor-bpct',     bd.labor);
+    setBpct('pm-ov-materials-bpct', bd.materials);
+    setBpct('pm-ov-combined-bpct',  bd.combined);
+    setBpct('pm-ov-direct-bpct',    bd.direct);
     const setCnt = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n + ' ' + (n === 1 ? 'entry' : 'entries'); };
     setCnt('pm-ov-labor-cnt',     bd.laborCount);
     setCnt('pm-ov-materials-cnt', bd.matCount);
