@@ -1894,3 +1894,10 @@ h1, h2, h3, h4, h5, h6 {
 .exp-icon-btn-edit svg   { stroke: #4AC84A; }
 .exp-icon-btn-danger svg { stroke: #ef4444; }
 
+
+/* ── Force all printed output to grayscale (black & white). Screen stays in
+   color; only the printed/saved-PDF version is desaturated. ── */
+@media print {
+  html { -webkit-filter: grayscale(100%) !important; filter: grayscale(100%) !important; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+}

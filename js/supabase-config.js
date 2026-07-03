@@ -76,7 +76,7 @@ const REG = {
   projectBudgets: { table: 'project_budgets',rename: OWNER, idField: 'project_id' },
   expenses:       { table: 'expenses',       rename: OWNER, ts: ['createdAt', 'updatedAt'] },
   payroll:        { table: 'payroll',        rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['receiptImages'] },
-  laborContracts: { table: 'labor_contracts', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['capHistory'] },
+  laborContracts: { table: 'labor_contracts', rename: OWNER, ts: ['createdAt', 'updatedAt', 'agreementSignedAt'], json: ['capHistory'] },
   pushSubscriptions:{ table: 'push_subscriptions', rename: OWNER, ts: ['createdAt'] },
   categories:     { table: 'categories',     rename: OWNER, ts: ['createdAt'] },
   overheadExpenses:{ table: 'overhead_expenses', rename: OWNER, ts: ['createdAt'] },

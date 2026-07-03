@@ -1743,7 +1743,7 @@ body { font-family:Arial,Helvetica,sans-serif; font-size:13px; color:#111; backg
 .bill-to .name { font-size:15px; font-weight:700; color:#1a1a2e; margin-bottom:3px; }
 .bill-to p { font-size:12px; color:#555; line-height:1.5; }
 table.items { width:100%; border-collapse:collapse; margin-bottom:14px; }
-table.items thead tr { background:#1e3a5f; color:#fff; }
+table.items thead tr { background:#fff; color:#111; border-bottom:2px solid #111; }
 table.items thead th { padding:9px 10px; font-size:11px; font-weight:700; text-align:left; letter-spacing:.4px; }
 table.items tbody tr:nth-child(even) { background:#f8fafc; }
 table.items tbody td { padding:8px 10px; border-bottom:1px solid #e9ecef; vertical-align:top; font-size:12px; }
@@ -1752,7 +1752,7 @@ table.totals { width:300px; border-collapse:collapse; font-size:13px; }
 table.totals td { padding:6px 10px; }
 table.totals td:first-child { color:#555; }
 table.totals td:last-child { text-align:right; font-weight:600; color:#111; }
-table.totals tr.grand td { font-size:15px; font-weight:800; color:#fff; background:#1e3a5f; padding:10px 12px; }
+table.totals tr.grand td { font-size:15px; font-weight:800; color:#111; background:#fff; border-top:2px solid #111; border-bottom:2px solid #111; padding:10px 12px; }
 .pay-box { background:#f1f5f9; border-radius:8px; padding:13px 16px; margin-bottom:18px; }
 .pay-box h4 { font-size:10px; font-weight:700; color:#6b7280; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:10px; }
 .pay-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px 24px; font-size:12px; }
@@ -1953,7 +1953,7 @@ body { font-family:Arial,Helvetica,sans-serif; font-size:13px; color:#111; backg
 .bill-to .name { font-size:15px; font-weight:700; color:#1a1a2e; margin-bottom:3px; }
 .bill-to p { font-size:12px; color:#555; line-height:1.5; }
 table.items { width:100%; border-collapse:collapse; margin-bottom:14px; }
-table.items thead tr { background:#1e3a5f; color:#fff; }
+table.items thead tr { background:#fff; color:#111; border-bottom:2px solid #111; }
 table.items thead th { padding:9px 10px; font-size:11px; font-weight:700; text-align:left; letter-spacing:.4px; }
 table.items tbody tr:nth-child(even):not(.role-header) { background:#f8fafc; }
 table.items tbody td { padding:8px 10px; border-bottom:1px solid #e9ecef; vertical-align:top; font-size:12px; }
@@ -1962,7 +1962,7 @@ table.totals { width:280px; border-collapse:collapse; font-size:13px; }
 table.totals td { padding:6px 10px; }
 table.totals td:first-child { color:#555; }
 table.totals td:last-child { text-align:right; font-weight:600; color:#111; }
-table.totals tr.grand td { font-size:15px; font-weight:800; color:#fff; background:#1e3a5f; padding:10px 12px; }
+table.totals tr.grand td { font-size:15px; font-weight:800; color:#111; background:#fff; border-top:2px solid #111; border-bottom:2px solid #111; padding:10px 12px; }
 .pay-box { background:#f1f5f9; border-radius:8px; padding:13px 16px; margin-bottom:18px; }
 .pay-box h4 { font-size:10px; font-weight:700; color:#6b7280; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:10px; }
 .pay-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px 24px; font-size:12px; }
