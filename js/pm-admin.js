@@ -4905,6 +4905,34 @@ window.pmLcOpenLedger = function(id) {
 window.pmLcLedgerEdit  = function() { const id = _pmLcLedgerId; if (!id) return; pmCloseModal('pmLaborLedgerModal'); pmLcOpenEdit(id); };
 window.pmLcLedgerRaise = function() { if (_pmLcLedgerId) pmLcRaiseCap(_pmLcLedgerId); };
 window.pmLcLedgerDelete = async function() { const id = _pmLcLedgerId; if (!id) return; await pmLcDelete(id); if (!_pmLaborContracts.some(c => c.id === id)) pmCloseModal('pmLaborLedgerModal'); };
+window.pmLcLedgerViewFiles = function() {
+    if (!_pmLcLedgerId) return;
+    const c = _pmLaborContracts.find(x => x.id === _pmLcLedgerId);
+    if (!c) return;
+    _pmContractFilesViewer(c, 'labor', _pmLcLedgerId);
+};
+
+window.pmLcLedgerUpload = async function(input) {
+    const file = input && input.files && input.files[0];
+    if (!file || !_pmLcLedgerId) return;
+    input.value = '';
+    try {
+        const ext  = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        const path = `laborContractFiles/${_pmActiveProject.id}/${_pmLcLedgerId}_${Date.now()}.${ext}`;
+        const ref  = storage.ref(path);
+        await ref.put(file);
+        const url  = await ref.getDownloadURL();
+        const snap = await _pmLcCol().doc(_pmLcLedgerId).get();
+        const c = snap.data() || {};
+        const h = Array.isArray(c.capHistory) ? c.capHistory.slice() : [];
+        h.push({ fileUrl: url, fileName: file.name, at: new Date().toISOString(), note: 'File uploaded' });
+        await _pmLcCol().doc(_pmLcLedgerId).update({ capHistory: h, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        const lc = _pmLaborContracts.find(x => x.id === _pmLcLedgerId);
+        if (lc) lc.capHistory = h;
+        _pmToast('File uploaded');
+        pmLcOpenLedger(_pmLcLedgerId);
+    } catch(e) { _pmToast('Upload failed: ' + e.message, true); }
+};
 
 // ══════════════════════════════════════════════════════════
 //  OUTSOURCE CONTRACTS (Out Source = entry type 'both')
@@ -5198,6 +5226,196 @@ window.pmOcOpenLedger = function(id) {
 window.pmOcLedgerEdit  = function() { const id = _pmOcLedgerId; if (!id) return; pmCloseModal('pmOutsourceLedgerModal'); pmOcOpenEdit(id); };
 window.pmOcLedgerRaise = function() { if (_pmOcLedgerId) pmOcRaiseCap(_pmOcLedgerId); };
 window.pmOcLedgerDelete = async function() { const id = _pmOcLedgerId; if (!id) return; await pmOcDelete(id); if (!_pmOutsourceContracts.some(c => c.id === id)) pmCloseModal('pmOutsourceLedgerModal'); };
+window.pmOcLedgerViewFiles = function() {
+    if (!_pmOcLedgerId) return;
+    const c = _pmOutsourceContracts.find(x => x.id === _pmOcLedgerId);
+    if (!c) return;
+    _pmContractFilesViewer(c, 'outsource', _pmOcLedgerId);
+};
+
+window._pmAddFileMenu = function(btn, type) {
+    const existing = document.getElementById('_pmAddFileDropdown');
+    if (existing) { existing.remove(); return; }
+    const uploadFn = type === 'lc' ? 'pmLcLedgerUpload' : 'pmOcLedgerUpload';
+    const menu = document.createElement('div');
+    menu.id = '_pmAddFileDropdown';
+    menu.style.cssText = 'position:fixed;z-index:4000;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.15);overflow:hidden;min-width:170px;';
+    menu.innerHTML = `
+        <label style="display:flex;align-items:center;gap:10px;padding:11px 16px;cursor:pointer;font:500 13px 'IBM Plex Sans';color:#111827;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background=''">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Upload from gallery
+            <input type="file" accept="image/*,.pdf" style="display:none" onchange="menu.remove();${uploadFn}(this)">
+        </label>
+        <label style="display:flex;align-items:center;gap:10px;padding:11px 16px;cursor:pointer;font:500 13px 'IBM Plex Sans';color:#111827;border-top:1px solid #f3f4f6;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background=''">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Take a photo
+            <input type="file" accept="image/*" capture="environment" style="display:none" onchange="menu.remove();${uploadFn}(this)">
+        </label>`;
+    document.body.appendChild(menu);
+    const r = btn.getBoundingClientRect();
+    menu.style.top = (r.bottom + 6) + 'px';
+    menu.style.left = r.left + 'px';
+    const dismiss = e => { if (!menu.contains(e.target) && e.target !== btn) { menu.remove(); document.removeEventListener('click', dismiss, true); } };
+    setTimeout(() => document.addEventListener('click', dismiss, true), 0);
+};
+
+function _pmContractFilesViewer(contract, type, contractId) {
+    const files = (Array.isArray(contract.capHistory) ? contract.capHistory : []).filter(h => h.fileUrl);
+    const col = type === 'labor' ? _pmLcCol() : _pmOcCol();
+    const contracts = type === 'labor' ? _pmLaborContracts : _pmOutsourceContracts;
+    const title = (contract.workerName || 'Contract') + ' — Uploaded Files';
+
+    const isImg = url => /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url) || url.includes('image');
+
+    function render() {
+        const currentFiles = (Array.isArray(contract.capHistory) ? contract.capHistory : []).filter(h => h.fileUrl);
+        const existing = document.getElementById('pmContractFilesModal');
+        if (existing) existing.remove();
+
+        const ov = document.createElement('div');
+        ov.id = 'pmContractFilesModal';
+        ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:2000;display:flex;align-items:center;justify-content:center;padding:16px;';
+        ov.onclick = e => { if (e.target === ov) ov.remove(); };
+
+        const noFiles = !currentFiles.length;
+        const itemsHtml = noFiles
+            ? '<div style="padding:32px;text-align:center;color:#9b9a94;font:400 13px \'IBM Plex Sans\';">No files uploaded yet.</div>'
+            : currentFiles.map((h, i) => {
+                const url = h.fileUrl;
+                const name = h.fileName || ('File ' + (i + 1));
+                const img = isImg(url);
+                return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f0efec;">
+                    ${ img
+                        ? `<a href="${_esc(url)}" target="_blank" rel="noopener" title="Click to open full size" style="flex:none;display:block;cursor:pointer;">
+                             <img src="${_esc(url)}" alt="${_esc(name)}" style="width:64px;height:64px;object-fit:cover;border-radius:8px;border:2px solid #e7e6e2;transition:border-color .15s;" onmouseover="this.style.borderColor='#157a52'" onmouseout="this.style.borderColor='#e7e6e2'">
+                           </a>`
+                        : `<a href="${_esc(url)}" target="_blank" rel="noopener" style="flex:none;width:64px;height:64px;border-radius:8px;border:1px solid #e7e6e2;background:#f9fafb;display:flex;align-items:center;justify-content:center;">
+                             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                           </a>`
+                    }
+                    <div style="flex:1;min-width:0;">
+                        <div style="font:600 13px 'IBM Plex Sans';color:#1c1c1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(name)}</div>
+                        <div style="font:400 11px 'IBM Plex Sans';color:#9b9a94;margin-top:2px;">${h.at ? new Date(h.at).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : ''}</div>
+                        ${ img ? '<div style="font:500 11px \'IBM Plex Sans\';color:#157a52;margin-top:2px;">Click image to open full size</div>' : '' }
+                    </div>
+                    <a href="${_esc(url)}" target="_blank" rel="noopener" style="flex:none;padding:6px 12px;border-radius:7px;border:1px solid #e7e6e2;background:#f9fafb;font:600 12px 'IBM Plex Sans';color:#374151;text-decoration:none;">Open</a>
+                    <button onclick="_pmContractFileRename('${_esc(contractId)}','${_esc(url)}','${type}')" style="flex:none;padding:6px 12px;border-radius:7px;border:1px solid #d1d5db;background:#f9fafb;font:600 12px 'IBM Plex Sans';color:#374151;cursor:pointer;">Edit</button>
+                    <button onclick="_pmContractFileDelete('${_esc(contractId)}','${_esc(url)}','${type}')" style="flex:none;padding:6px 12px;border-radius:7px;border:1px solid #fecaca;background:#fef2f2;font:600 12px 'IBM Plex Sans';color:#dc2626;cursor:pointer;">Delete</button>
+                </div>`;
+            }).join('');
+
+        ov.innerHTML = `
+            <div style="background:#fff;border-radius:16px;width:100%;max-width:520px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.25);overflow:hidden;">
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e5e7eb;">
+                    <div style="font:700 15px 'IBM Plex Sans';color:#111827;">${_esc(title)}</div>
+                    <button onclick="document.getElementById('pmContractFilesModal').remove()" style="background:none;border:none;font-size:1.4rem;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>
+                </div>
+                <div style="overflow-y:auto;flex:1;">${itemsHtml}</div>
+                <div style="padding:12px 16px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;">
+                    <button onclick="document.getElementById('pmContractFilesModal').remove()" style="padding:8px 18px;border-radius:8px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;font:600 13px 'IBM Plex Sans';cursor:pointer;">Close</button>
+                </div>
+            </div>`;
+        document.body.appendChild(ov);
+    }
+
+    window._pmContractFileRename = function(cId, url, cType) {
+        const arr = cType === 'labor' ? _pmLaborContracts : _pmOutsourceContracts;
+        const obj = arr.find(x => x.id === cId);
+        const entry = obj && Array.isArray(obj.capHistory) && obj.capHistory.find(h => h.fileUrl === url);
+        const currentName = entry ? (entry.fileName || '') : '';
+        const ren = document.createElement('div');
+        ren.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;';
+        ren.innerHTML = `
+            <div style="background:#fff;border-radius:14px;width:100%;max-width:340px;box-shadow:0 12px 40px rgba(0,0,0,0.2);overflow:hidden;">
+                <div style="padding:20px 20px 8px;">
+                    <div style="font:700 15px 'IBM Plex Sans';color:#111827;margin-bottom:6px;">Rename file</div>
+                    <input id="pmCfRenameInput" value="${_esc(currentName)}" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;border-radius:8px;font:400 13px 'IBM Plex Sans';color:#111827;outline:none;">
+                </div>
+                <div style="display:flex;gap:8px;padding:16px 20px;justify-content:flex-end;">
+                    <button id="pmCfRenCancel" style="padding:8px 18px;border-radius:8px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;font:600 13px 'IBM Plex Sans';cursor:pointer;">Cancel</button>
+                    <button id="pmCfRenSave" style="padding:8px 18px;border-radius:8px;border:none;background:#157a52;color:#fff;font:600 13px 'IBM Plex Sans';cursor:pointer;">Save</button>
+                </div>
+            </div>`;
+        document.body.appendChild(ren);
+        const input = ren.querySelector('#pmCfRenameInput');
+        input.focus(); input.select();
+        ren.querySelector('#pmCfRenCancel').onclick = () => ren.remove();
+        ren.querySelector('#pmCfRenSave').onclick = async () => {
+            const newName = input.value.trim();
+            if (!newName) return;
+            ren.remove();
+            try {
+                const c2 = cType === 'labor' ? _pmLcCol() : _pmOcCol();
+                const snap = await c2.doc(cId).get();
+                const data = snap.data() || {};
+                const h = (Array.isArray(data.capHistory) ? data.capHistory : []).map(x => x.fileUrl === url ? { ...x, fileName: newName } : x);
+                await c2.doc(cId).update({ capHistory: h, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+                const obj2 = arr.find(x => x.id === cId);
+                if (obj2) obj2.capHistory = h;
+                contract.capHistory = h;
+                _pmToast('File renamed');
+                render();
+            } catch(e) { _pmToast('Rename failed: ' + e.message, true); }
+        };
+    };
+
+    window._pmContractFileDelete = function(cId, url, cType) {
+        const confirmEl = document.createElement('div');
+        confirmEl.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:3000;display:flex;align-items:center;justify-content:center;padding:16px;';
+        confirmEl.innerHTML = `
+            <div style="background:#fff;border-radius:14px;width:100%;max-width:340px;box-shadow:0 12px 40px rgba(0,0,0,0.2);overflow:hidden;">
+                <div style="padding:20px 20px 8px;">
+                    <div style="font:700 15px 'IBM Plex Sans';color:#111827;margin-bottom:6px;">Delete file?</div>
+                    <div style="font:400 13px 'IBM Plex Sans';color:#6b7280;">This cannot be undone.</div>
+                </div>
+                <div style="display:flex;gap:8px;padding:16px 20px;justify-content:flex-end;">
+                    <button id="pmCfCancel" style="padding:8px 18px;border-radius:8px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;font:600 13px 'IBM Plex Sans';cursor:pointer;">Cancel</button>
+                    <button id="pmCfConfirm" style="padding:8px 18px;border-radius:8px;border:none;background:#dc2626;color:#fff;font:600 13px 'IBM Plex Sans';cursor:pointer;">Delete</button>
+                </div>
+            </div>`;
+        document.body.appendChild(confirmEl);
+        confirmEl.querySelector('#pmCfCancel').onclick = () => confirmEl.remove();
+        confirmEl.querySelector('#pmCfConfirm').onclick = async () => {
+            confirmEl.remove();
+            try {
+            const snap = await col.doc(cId).get();
+            const data = snap.data() || {};
+            const h = (Array.isArray(data.capHistory) ? data.capHistory : []).filter(x => x.fileUrl !== url);
+            await col.doc(cId).update({ capHistory: h, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+            const arr = cType === 'labor' ? _pmLaborContracts : _pmOutsourceContracts;
+            const obj = arr.find(x => x.id === cId);
+            if (obj) obj.capHistory = h;
+            contract.capHistory = h;
+            _pmToast('File deleted');
+            render();
+        } catch(e) { _pmToast('Delete failed: ' + e.message, true); }
+        };
+    };
+
+    render();
+}
+
+window.pmOcLedgerUpload = async function(input) {
+    const file = input && input.files && input.files[0];
+    if (!file || !_pmOcLedgerId) return;
+    input.value = '';
+    try {
+        const ext  = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        const path = `outsourceContractFiles/${_pmActiveProject.id}/${_pmOcLedgerId}_${Date.now()}.${ext}`;
+        const ref  = storage.ref(path);
+        await ref.put(file);
+        const url  = await ref.getDownloadURL();
+        const snap = await _pmOcCol().doc(_pmOcLedgerId).get();
+        const c = snap.data() || {};
+        const h = Array.isArray(c.capHistory) ? c.capHistory.slice() : [];
+        h.push({ fileUrl: url, fileName: file.name, at: new Date().toISOString(), note: 'File uploaded' });
+        await _pmOcCol().doc(_pmOcLedgerId).update({ capHistory: h, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+        const oc = _pmOutsourceContracts.find(x => x.id === _pmOcLedgerId);
+        if (oc) oc.capHistory = h;
+        _pmToast('File uploaded');
+        pmOcOpenLedger(_pmOcLedgerId);
+    } catch(e) { _pmToast('Upload failed: ' + e.message, true); }
+};
 
 // ══════════════════════════════════════════════════════════
 //  CONTRACTS TAB (merged Labor + Out Source, in-tab switch)
