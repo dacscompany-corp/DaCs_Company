@@ -114,8 +114,8 @@
       "Bash(node --check js/expenses-module.js)",
       "Bash(grep -v \"//\")",
       "Bash(grep -iE '\\\\.\\(apk|aab|keystore|idsig\\)$|node_modules|^app/|^build/|^tools/|sw\\\\.js|package\\\\.json')",
-      "Bash(echo \"exit=$?\")"
-
+      "Bash(echo \"exit=$?\")",
+      "Bash(python3 -c ' *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",

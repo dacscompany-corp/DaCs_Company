@@ -5569,3 +5569,510 @@ function _pmRenderContractsTab() {
         // sections
         + sectionsHtml;
 }
+
+// ══════════════════════════════════════════════════════════
+// PROJECT MANAGEMENT — REPORTS DASHBOARD
+// Mirrors Project Control's Reports (expenses-module.js:
+// initReportsDashboard/loadRptData/renderReportsDashboard) but reads
+// PM's own data: constructionProjects/{id}/weeklyBills entries and
+// laborContracts — NOT Project Control's expenses/payroll collections.
+// ══════════════════════════════════════════════════════════
+const _PM_RPT_MONTHS = ['January','February','March','April','May','June',
+                        'July','August','September','October','November','December'];
+const _PM_RPT_MON3   = _PM_RPT_MONTHS.map(m => m.substring(0, 3));
+
+let _pmRptState = {
+    projectId: '',
+    year: new Date().getFullYear(),
+    period: 'monthly',
+    loading: false,
+    bills: [],        // weeklyBills docs (across selected project or all projects)
+    contracts: [],    // laborContracts docs (for worker-name resolution)
+    projects: [],      // the PM project(s) currently in scope
+};
+
+const _pmRptCharts = {};
+
+function _pmRptCol(projectId) {
+    return db.collection('constructionProjects').doc(projectId).collection('weeklyBills');
+}
+function _pmRptLcCol(projectId) {
+    return db.collection('constructionProjects').doc(projectId).collection('laborContracts');
+}
+
+window.initPMReportsDashboard = function () {
+    // Year selector
+    const yearSel = document.getElementById('pmRptYearSel');
+    if (yearSel) {
+        const cy = new Date().getFullYear();
+        const prev = yearSel.value ? parseInt(yearSel.value) : _pmRptState.year;
+        yearSel.innerHTML = '';
+        for (let y = cy + 1; y >= cy - 4; y--) {
+            const o = document.createElement('option');
+            o.value = y; o.textContent = y;
+            if (y === prev) o.selected = true;
+            yearSel.appendChild(o);
+        }
+        _pmRptState.year = parseInt(yearSel.value) || cy;
+    }
+
+    // Project selector — reuse the already-loaded PM project list.
+    const projSel = document.getElementById('pmRptProjectSel');
+    if (projSel) {
+        const prevId = projSel.value || _pmRptState.projectId;
+        projSel.innerHTML = '<option value="">All Projects</option>';
+        (_pmProjects || []).forEach(p => {
+            const o = document.createElement('option');
+            o.value = p.id;
+            o.textContent = p.projectName || p.clientName || 'Untitled Project';
+            if (p.id === prevId) o.selected = true;
+            projSel.appendChild(o);
+        });
+        _pmRptState.projectId = projSel.value || '';
+    }
+
+    document.querySelectorAll('#pmRptPeriodTabs .rpt-tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.period === _pmRptState.period)
+    );
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+    _pmRptUpdateAxisHint(_pmRptState.period);
+
+    if (!(_pmProjects || []).length) {
+        _pmRptShowNoProjects();
+        return;
+    }
+    loadPMRptData();
+};
+
+window.onPmRptYearChange = function () {
+    _pmRptState.year = parseInt(document.getElementById('pmRptYearSel')?.value) || new Date().getFullYear();
+    renderPMReportsDashboard();
+};
+
+window.onPmRptProjectChange = function () {
+    _pmRptState.projectId = document.getElementById('pmRptProjectSel')?.value || '';
+    loadPMRptData();
+};
+
+window.setPmRptPeriod = function (period) {
+    _pmRptState.period = period;
+    document.querySelectorAll('#pmRptPeriodTabs .rpt-tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.period === period)
+    );
+    _pmRptUpdateAxisHint(period);
+    renderPMReportsDashboard();
+};
+
+function _pmRptUpdateAxisHint(period) {
+    const el = document.getElementById('pmRptAxisHintText');
+    if (!el) return;
+    const hints = {
+        weekly:    'X-axis: <strong>W1, W2, W3…</strong> — W = Week number, based on each Daily Expenses week-ending date.',
+        monthly:   'X-axis: <strong>Jan, Feb, Mar…</strong> — Each bar represents one calendar month.',
+        quarterly: 'X-axis: <strong>Q1 – Q4</strong> — Q = Quarter. Q1=Jan–Mar · Q2=Apr–Jun · Q3=Jul–Sep · Q4=Oct–Dec',
+        semi:      'X-axis: <strong>H1, H2</strong> — H = Half-year. H1=Jan–Jun (first 6 months) · H2=Jul–Dec (last 6 months)',
+        annual:    'X-axis: <strong>Full Year</strong> — One combined bar showing total spending for the entire year.'
+    };
+    el.innerHTML = hints[period] || '';
+}
+
+function _pmRptShowNoProjects() {
+    const empty = document.getElementById('pmRptEmptyState');
+    const content = document.getElementById('pmRptContent');
+    if (empty) empty.style.display = 'flex';
+    if (content) content.style.display = 'none';
+}
+
+function _pmRptShowLoading() {
+    const row = document.getElementById('pmRptKpiRow');
+    if (row) row.innerHTML = '<div class="rpt-loading"><span class="rpt-spinner"></span>Loading report data…</div>';
+}
+
+async function loadPMRptData() {
+    const empty = document.getElementById('pmRptEmptyState');
+    const content = document.getElementById('pmRptContent');
+    if (empty) empty.style.display = 'none';
+    if (content) content.style.display = 'block';
+
+    _pmRptState.loading = true;
+    _pmRptShowLoading();
+
+    const scopeProjects = _pmRptState.projectId
+        ? (_pmProjects || []).filter(p => p.id === _pmRptState.projectId)
+        : (_pmProjects || []);
+    _pmRptState.projects = scopeProjects;
+
+    const label = _pmRptState.projectId
+        ? (scopeProjects[0]?.projectName || scopeProjects[0]?.clientName || 'Project')
+        : 'Company-Wide';
+    const sub = document.getElementById('pmRptCompanySub');
+    if (sub) sub.textContent = `${label} · ${scopeProjects.length} project${scopeProjects.length !== 1 ? 's' : ''}`;
+
+    if (!scopeProjects.length) {
+        _pmRptState.bills = [];
+        _pmRptState.contracts = [];
+        renderPMReportsDashboard();
+        return;
+    }
+
+    try {
+        const results = await Promise.all(scopeProjects.map(async (p) => {
+            const [billsSnap, lcSnap] = await Promise.all([
+                _pmRptCol(p.id).get(),
+                _pmRptLcCol(p.id).get(),
+            ]);
+            const bills = billsSnap.docs.map(d => ({ id: d.id, projectId: p.id, ...d.data() }));
+            const contracts = lcSnap.docs.map(d => ({ id: d.id, projectId: p.id, ...d.data() }));
+            return { bills, contracts };
+        }));
+        _pmRptState.bills = results.flatMap(r => r.bills);
+        _pmRptState.contracts = results.flatMap(r => r.contracts);
+    } catch (err) {
+        console.error('PM Reports fetch error:', err);
+        _pmRptState.bills = [];
+        _pmRptState.contracts = [];
+    }
+    _pmRptState.loading = false;
+    renderPMReportsDashboard();
+}
+
+// ── Period grouping engine — keyed off each weeklyBills doc's weekEndingDate ──
+function _pmRptStatus(pct) {
+    if (pct > 100) return 'danger';
+    if (pct > 85)  return 'warning';
+    if (pct > 60)  return 'ontrack';
+    return 'healthy';
+}
+
+function _pmRptEntrySums(entries) {
+    let labor = 0, materials = 0, outsource = 0;
+    (entries || []).forEach(e => {
+        const amt = Number(e.amount) || 0;
+        if (e.type === 'labor') labor += amt;
+        else if (e.type === 'both') outsource += amt;
+        else materials += amt;
+    });
+    return { labor, materials, outsource };
+}
+
+function _pmRptBudgetForProjects(projects) {
+    return projects.reduce((s, p) => s + (Number(p.budget) || 0), 0);
+}
+
+function _pmRptComputePeriodGroups(period, year, projects, bills) {
+    const budgetTotal = _pmRptBudgetForProjects(projects);
+
+    function _sumRange(inRange) {
+        let labor = 0, materials = 0, outsource = 0, managementFee = 0, tx = 0;
+        bills.forEach(b => {
+            const d = b.weekEndingDate ? new Date(b.weekEndingDate) : null;
+            if (!d || !inRange(d)) return;
+            const sums = _pmRptEntrySums(b.entries);
+            labor += sums.labor; materials += sums.materials; outsource += sums.outsource;
+            managementFee += Number(b.managementFee) || 0;
+            tx += (b.entries || []).length;
+        });
+        const totalSpent = labor + materials + outsource + managementFee;
+        return { labor, materials, outsource, managementFee, totalSpent, txCount: tx };
+    }
+
+    function _groupFromMonths(label, shortLabel, monthIdxs) {
+        const d = _sumRange(dt => dt.getFullYear() === year && monthIdxs.includes(dt.getMonth()));
+        // Budget is a one-time project value — prorate evenly across the periods this call spans
+        // (monthly = 1/12th, quarterly = 3/12ths, etc.) so period bars are comparable.
+        const budget = budgetTotal * (monthIdxs.length / 12);
+        const remaining = budget - d.totalSpent;
+        const usedPct = budget > 0 ? (d.totalSpent / budget) * 100 : 0;
+        return { label, shortLabel, budget, remaining, usedPct, status: _pmRptStatus(usedPct), ...d };
+    }
+
+    switch (period) {
+        case 'annual': {
+            const d = _sumRange(dt => dt.getFullYear() === year);
+            const remaining = budgetTotal - d.totalSpent;
+            const usedPct = budgetTotal > 0 ? (d.totalSpent / budgetTotal) * 100 : 0;
+            return [{ label: `FY ${year}`, shortLabel: `${year}`, budget: budgetTotal, remaining, usedPct, status: _pmRptStatus(usedPct), ...d }];
+        }
+        case 'semi':
+            return [
+                _groupFromMonths(`H1 ${year}`, 'H1', [0,1,2,3,4,5]),
+                _groupFromMonths(`H2 ${year}`, 'H2', [6,7,8,9,10,11]),
+            ];
+        case 'quarterly':
+            return [
+                _groupFromMonths(`Q1 ${year}`, 'Q1', [0,1,2]),
+                _groupFromMonths(`Q2 ${year}`, 'Q2', [3,4,5]),
+                _groupFromMonths(`Q3 ${year}`, 'Q3', [6,7,8]),
+                _groupFromMonths(`Q4 ${year}`, 'Q4', [9,10,11]),
+            ];
+        case 'monthly':
+            return _PM_RPT_MONTHS.map((mo, i) => _groupFromMonths(`${mo} ${year}`, _PM_RPT_MON3[i], [i]));
+        case 'weekly': {
+            const weeks = _pmRptWeeksInYear(year);
+            return weeks.map(wk => {
+                const d = _sumRange(dt => dt >= wk.start && dt <= wk.end);
+                const daysInSpan = Math.round((wk.end - wk.start) / 86400000) + 1;
+                const budget = budgetTotal * (daysInSpan / 365);
+                const remaining = budget - d.totalSpent;
+                const usedPct = budget > 0 ? (d.totalSpent / budget) * 100 : 0;
+                return { label: `Wk ${wk.num} · ${_pmRptFmtDateShort(wk.start)}`, shortLabel: `W${wk.num}`,
+                    budget, remaining, usedPct, status: _pmRptStatus(usedPct), ...d };
+            }).filter(w => w.budget > 0 || w.totalSpent > 0);
+        }
+        default: return [];
+    }
+}
+
+function _pmRptWeeksInYear(year) {
+    const weeks = [];
+    let d = new Date(year, 0, 4);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    let num = 1;
+    while (true) {
+        const start = new Date(d);
+        const end = new Date(d); end.setDate(end.getDate() + 6);
+        if (start.getFullYear() > year) break;
+        if (end.getFullYear() >= year && start.getFullYear() <= year) {
+            const cs = start.getFullYear() < year ? new Date(year, 0, 1) : start;
+            const ce = end.getFullYear() > year ? new Date(year, 11, 31) : end;
+            weeks.push({ num, start: cs, end: ce });
+        }
+        d.setDate(d.getDate() + 7); num++;
+        if (num > 55) break;
+    }
+    return weeks;
+}
+
+function _pmRptFmtDateShort(d) {
+    return new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+}
+
+function renderPMReportsDashboard() {
+    if (!_pmRptState.projects.length) {
+        _pmRptShowNoProjects();
+        return;
+    }
+    let groups = _pmRptComputePeriodGroups(_pmRptState.period, _pmRptState.year, _pmRptState.projects, _pmRptState.bills);
+
+    _pmRptRenderKPIs(groups);
+    _pmRptRenderTrendChart(groups);
+    _pmRptRenderCategoryChart();
+    _pmRptRenderBvaChart(groups);
+    _pmRptRenderDetailTables();
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function _pmRptCard(label, val, sub, cls) {
+    return '<div class="rpt-kpi-card' + (cls ? ' ' + cls : '') + '">'
+        + '<div class="rpt-kpi-label">' + label + '</div>'
+        + '<div class="rpt-kpi-val">' + val + '</div>'
+        + '<div class="rpt-kpi-sub">' + sub + '</div>'
+        + '</div>';
+}
+
+function _pmRptRenderKPIs(groups) {
+    const row = document.getElementById('pmRptKpiRow');
+    if (!row) return;
+
+    const budget = _pmRptBudgetForProjects(_pmRptState.projects);
+    const totLabor = _pmRptState.bills.reduce((s, b) => s + _pmRptEntrySums(b.entries).labor, 0);
+    const totMaterials = _pmRptState.bills.reduce((s, b) => s + _pmRptEntrySums(b.entries).materials, 0);
+    const totOutsource = _pmRptState.bills.reduce((s, b) => s + _pmRptEntrySums(b.entries).outsource, 0);
+    const totFee = _pmRptState.bills.reduce((s, b) => s + (Number(b.managementFee) || 0), 0);
+    const totSpent = totLabor + totMaterials + totOutsource + totFee;
+    const remaining = budget - totSpent;
+    const usedPct = budget > 0 ? (totSpent / budget) * 100 : 0;
+    const remPct = budget > 0 ? (remaining / budget) * 100 : 0;
+
+    const projLabel = _pmRptState.projectId
+        ? (_pmRptState.projects[0]?.projectName || _pmRptState.projects[0]?.clientName || 'Project')
+        : 'All Projects';
+
+    let html = '';
+    html += _pmRptCard('Project Budget', '&#8369;' + formatNum(budget), projLabel + ' &middot; ' + _pmRptState.year);
+    html += _pmRptCard('Materials', '&#8369;' + formatNum(totMaterials), (totSpent > 0 ? ((totMaterials / totSpent) * 100).toFixed(1) : '0.0') + '% of spend');
+    html += _pmRptCard('Labor', '&#8369;' + formatNum(totLabor), (totSpent > 0 ? ((totLabor / totSpent) * 100).toFixed(1) : '0.0') + '% of spend');
+    html += _pmRptCard('Outsource', '&#8369;' + formatNum(totOutsource), (totSpent > 0 ? ((totOutsource / totSpent) * 100).toFixed(1) : '0.0') + '% of spend');
+    html += _pmRptCard('Management Fee', '&#8369;' + formatNum(totFee), (totSpent > 0 ? ((totFee / totSpent) * 100).toFixed(1) : '0.0') + '% of spend');
+    html += _pmRptCard('Total Spent', '&#8369;' + formatNum(totSpent), usedPct.toFixed(1) + '% of budget');
+
+    const remClass = remaining < 0 ? 'rpt-kpi-card--bad' : '';
+    html += _pmRptCard('Remaining Budget', (remaining < 0 ? '-' : '') + '&#8369;' + formatNum(Math.abs(remaining)),
+        (budget > 0 ? Math.abs(remPct).toFixed(1) + '% of budget &middot; ' : '') + (remaining < 0 ? 'over budget' : 'available'), remClass);
+
+    row.innerHTML = html;
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+function _pmRptRenderTrendChart(groups) {
+    const ctx = document.getElementById('pmRptTrendChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    const labels = groups.map(g => g.shortLabel);
+    const laborData = groups.map(g => g.labor);
+    const materialsData = groups.map(g => g.materials);
+    const outsourceData = groups.map(g => g.outsource);
+    const budgetData = groups.map(g => g.budget);
+
+    const titleMap = { weekly: 'Weekly Spending Trend', monthly: 'Monthly Spending Trend',
+        quarterly: 'Quarterly Spending Trend', semi: 'Semi-Annual Spending Trend', annual: 'Annual Overview' };
+    setText('pmRptTrendTitle', titleMap[_pmRptState.period] || 'Spending Trend');
+
+    if (_pmRptCharts.trend) _pmRptCharts.trend.destroy();
+    _pmRptCharts.trend = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                { label: 'Labor', data: laborData, backgroundColor: '#7f9cb0', borderWidth: 0, borderRadius: 5, stack: 'spend' },
+                { label: 'Materials', data: materialsData, backgroundColor: '#157a52', borderWidth: 0, borderRadius: 5, stack: 'spend' },
+                { label: 'Outsource', data: outsourceData, backgroundColor: '#c8a45a', borderWidth: 0, borderRadius: 5, stack: 'spend' },
+                { label: 'Budget', data: budgetData, type: 'line', borderColor: '#c39e8b', backgroundColor: 'transparent',
+                  borderWidth: 2, borderDash: [6, 4], pointBackgroundColor: '#c39e8b', pointRadius: 3, tension: 0.35 }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            font: { family: "'IBM Plex Sans', system-ui, sans-serif" },
+            plugins: {
+                legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 12, usePointStyle: true, pointStyle: 'rectRounded' } },
+                tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ₱${formatNum(c.parsed.y)}` } }
+            },
+            scales: {
+                x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 }, color: '#9b9a94' } },
+                y: { stacked: false, beginAtZero: true,
+                    ticks: { callback: v => '₱' + formatNum(v), font: { size: 10 }, color: '#9b9a94' },
+                    grid: { color: 'rgba(0,0,0,0.04)' }, border: { display: false } }
+            }
+        }
+    });
+}
+
+function _pmRptRenderCategoryChart() {
+    const ctx = document.getElementById('pmRptCategoryChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    let labor = 0, materials = 0, outsource = 0, fee = 0;
+    _pmRptState.bills.forEach(b => {
+        const s = _pmRptEntrySums(b.entries);
+        labor += s.labor; materials += s.materials; outsource += s.outsource;
+        fee += Number(b.managementFee) || 0;
+    });
+    const cats = { Labor: labor, Materials: materials, Outsource: outsource, 'Management Fee': fee };
+    const labels = Object.keys(cats).filter(k => cats[k] > 0);
+    const data = labels.map(k => cats[k]);
+    const RPT_DONUT = { Labor: '#7f9cb0', Materials: '#157a52', Outsource: '#c8a45a', 'Management Fee': '#b0907f' };
+    const colors = labels.map(k => RPT_DONUT[k] || '#a8a79f');
+
+    if (_pmRptCharts.cat) _pmRptCharts.cat.destroy();
+    _pmRptCharts.cat = new Chart(ctx, {
+        type: 'doughnut',
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 3, borderColor: '#fff' }] },
+        options: {
+            responsive: true, maintainAspectRatio: false, cutout: '64%',
+            font: { family: "'IBM Plex Sans', system-ui, sans-serif" },
+            plugins: {
+                legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 12, usePointStyle: true, pointStyle: 'rectRounded' } },
+                tooltip: { callbacks: { label: c => ` ₱${formatNum(c.parsed)} (${((c.parsed / c.chart.getDatasetMeta(0).total) * 100).toFixed(1)}%)` } }
+            }
+        }
+    });
+}
+
+function _pmRptRenderBvaChart(groups) {
+    const ctx = document.getElementById('pmRptBvaChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    const filtered = groups.filter(g => g.budget > 0 || g.totalSpent > 0);
+    if (_pmRptCharts.bva) _pmRptCharts.bva.destroy();
+    _pmRptCharts.bva = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: filtered.map(g => g.shortLabel),
+            datasets: [
+                { label: 'Budget', data: filtered.map(g => g.budget), backgroundColor: '#cdd7cf', borderWidth: 0, borderRadius: 4 },
+                { label: 'Actual Spend', data: filtered.map(g => g.totalSpent),
+                  backgroundColor: filtered.map(g => g.totalSpent > g.budget ? '#c0564a' : '#157a52'), borderWidth: 0, borderRadius: 4 }
+            ]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            font: { family: "'IBM Plex Sans', system-ui, sans-serif" },
+            plugins: {
+                legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 12, usePointStyle: true, pointStyle: 'rectRounded' } },
+                tooltip: { callbacks: { label: c => ` ${c.dataset.label}: ₱${formatNum(c.parsed.y)}` } }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#9b9a94' } },
+                y: { beginAtZero: true, ticks: { callback: v => '₱' + formatNum(v), font: { size: 10 }, color: '#9b9a94' },
+                    grid: { color: 'rgba(0,0,0,0.04)' }, border: { display: false } }
+            }
+        }
+    });
+}
+
+function _pmRptWorkerName(entry, contracts) {
+    if (entry.contractId) {
+        const c = contracts.find(x => x.id === entry.contractId);
+        if (c && c.workerName) return c.workerName;
+    }
+    return entry.details || '—';
+}
+
+function _pmRptRenderDetailTables() {
+    const expCard = document.getElementById('pmRptExpDetailCard');
+    const laborCard = document.getElementById('pmRptLaborDetailCard');
+    const expTbody = document.getElementById('pmRptExpDetailTbody');
+    const laborTbody = document.getElementById('pmRptLaborDetailTbody');
+    const expSub = document.getElementById('pmRptExpDetailSub');
+    const laborSub = document.getElementById('pmRptLaborDetailSub');
+
+    const show = !!_pmRptState.projectId;
+    if (expCard) expCard.style.display = show ? '' : 'none';
+    if (laborCard) laborCard.style.display = show ? '' : 'none';
+    if (!show) return;
+
+    const contracts = _pmRptState.contracts;
+    const expRows = [];
+    const laborRows = [];
+    [..._pmRptState.bills]
+        .sort((a, b) => new Date(b.weekEndingDate || 0) - new Date(a.weekEndingDate || 0))
+        .forEach(b => {
+            (b.entries || []).forEach(e => {
+                if (e.type === 'labor') {
+                    laborRows.push({ date: b.weekEndingDate, worker: _pmRptWorkerName(e, contracts), days: e.days || '', amount: Number(e.amount) || 0 });
+                } else {
+                    expRows.push({ date: b.weekEndingDate, details: e.details || (e.type === 'both' ? 'Outsource' : 'Material'),
+                        type: e.type === 'both' ? 'Outsource' : 'Materials', qty: e.qty || 1, amount: Number(e.amount) || 0 });
+                }
+            });
+        });
+
+    if (expSub) expSub.textContent = `${expRows.length} entr${expRows.length !== 1 ? 'ies' : 'y'}`;
+    if (!expRows.length) {
+        if (expTbody) expTbody.innerHTML = '<tr><td colspan="5" class="exp-empty-row">No materials/outsource entries found.</td></tr>';
+    } else if (expTbody) {
+        const total = expRows.reduce((s, r) => s + r.amount, 0);
+        let html = expRows.map(r => `<tr>
+            <td>${formatDate ? formatDate(r.date) : (r.date || '—')}</td>
+            <td>${r.details}</td>
+            <td>${r.type}</td>
+            <td>${r.qty}</td>
+            <td>₱${formatNum(r.amount)}</td>
+        </tr>`).join('');
+        html += `<tr class="exp-total-row"><td colspan="3"></td><td class="exp-total-label">TOTAL</td><td class="exp-total-value">₱${formatNum(total)}</td></tr>`;
+        expTbody.innerHTML = html;
+    }
+
+    if (laborSub) laborSub.textContent = `${laborRows.length} entr${laborRows.length !== 1 ? 'ies' : 'y'}`;
+    if (!laborRows.length) {
+        if (laborTbody) laborTbody.innerHTML = '<tr><td colspan="4" class="exp-empty-row">No labor entries found.</td></tr>';
+    } else if (laborTbody) {
+        const total = laborRows.reduce((s, r) => s + r.amount, 0);
+        let html = laborRows.map(r => `<tr>
+            <td>${formatDate ? formatDate(r.date) : (r.date || '—')}</td>
+            <td>${r.worker}</td>
+            <td>${r.days}</td>
+            <td>₱${formatNum(r.amount)}</td>
+        </tr>`).join('');
+        html += `<tr class="exp-total-row"><td colspan="2"></td><td class="exp-total-label">TOTAL</td><td class="exp-total-value">₱${formatNum(total)}</td></tr>`;
+        laborTbody.innerHTML = html;
+    }
+}

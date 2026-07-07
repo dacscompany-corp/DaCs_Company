@@ -754,6 +754,7 @@ function switchView(view) {
         consInventory:    'Inventory',
         userNavigator:    'User Navigator',
         terminationRequests: 'Termination Requests',
+        pmReports:        'Reports',
     };
     const _pt = document.getElementById('pageTitle');
     if (_pt) _pt.textContent = titles[view] || view;
@@ -2187,6 +2188,7 @@ const PRIMARY_NAV = [
       modules: [
         { view: 'pmProjects',          label: 'Projects',             icon: 'folder-open' },
         { view: 'terminationRequests', label: 'Termination Requests', icon: 'alert-triangle' },
+        { view: 'pmReports',           label: 'Reports',              icon: 'file-bar-chart' },
       ]
     },
     { id: 'appointments', label: 'Appointments', sub: 'Workflow', defaultView: 'dashboard',
