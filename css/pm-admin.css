@@ -1965,7 +1965,7 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
 .pm-lc-tl-amt { font: 700 14px 'IBM Plex Sans'; color: #1c1c1a; }
 .pm-lc-tl-meta { font: 400 11.5px 'IBM Plex Sans'; color: #9b9a94; margin-top: 2px; }
 .pm-lc-tl-meta-on { color: #0f6342; font-weight: 600; }
-.pm-lc-led-foot { display: flex; align-items: center; gap: 8px; }
+.pm-lc-led-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pm-lc-btn-danger { color: #b4453a; background: #fff; border: 1px solid #f0cdc8; }
 .pm-lc-btn-danger:hover { background: #f8ecea; }
 
