@@ -897,8 +897,26 @@ function OverheadDrill({ project, onBack, overheadTx, folderId }) {
   const modal = adding ? h("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16 }, onClick: (ev) => { if (ev.target === ev.currentTarget) setAdding(false); } },
     h("div", { style: { background: "#fff", borderRadius: 16, width: "100%", maxWidth: 460, padding: 24 } },
       h("h3", { style: { font: "700 16px 'IBM Plex Sans'", margin: "0 0 16px" } }, "Add Overhead Expense"),
-      field("Category", h("select", { value: form.category, onChange: (ev) => setForm({ ...form, category: ev.target.value }), style: inStyle },
-        ["", "Electricity", "Water", "Internet", "Rent", "Transportation", "Office Supplies", "Permits & Fees", "Other"].map((c) => h("option", { key: c, value: c }, c || "Select category\u2026")))),
+      field("Category", h(React.Fragment, null,
+        h("select", { value: form.category, onChange: (ev) => setForm({ ...form, category: ev.target.value }), style: inStyle },
+          ["", "Electricity", "Water", "Internet", "Rent", "Transportation", "Office Supplies", "Permits & Fees", "Other"].map((c) => h("option", { key: c, value: c }, c || "Select category\u2026"))),
+        h("button", {
+          type: "button",
+          onClick: () => setForm({ ...form, category: "Indirect Support (Supervisor/Foreman/Admin/Engineer)" }),
+          style: {
+            display: "flex", alignItems: "center", gap: 10, width: "100%", marginTop: 8, padding: "10px 12px",
+            borderRadius: 9, cursor: "pointer", textAlign: "left", fontFamily: "inherit",
+            border: form.category === "Indirect Support (Supervisor/Foreman/Admin/Engineer)" ? "1.5px solid #1A5C3A" : "1.5px solid #e5e7eb",
+            background: form.category === "Indirect Support (Supervisor/Foreman/Admin/Engineer)" ? "rgba(26,90,58,0.06)" : "#fff"
+          }
+        },
+          h("span", { style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: 6, background: "#1A5C3A", color: "#fff", fontSize: 11, fontWeight: 700, flex: "none" } }, "I"),
+          h("div", null,
+            h("div", { style: { fontSize: 13.5, fontWeight: 600, color: "#111827" } }, "Indirect Support"),
+            h("div", { style: { fontSize: 11.5, color: "#6b7280" } }, "Supervisor, foreman, admin, engineer")
+          )
+        )
+      )),
       field("Amount (\u20B1)", h("input", { type: "number", value: form.amount, onChange: (ev) => setForm({ ...form, amount: ev.target.value }), placeholder: "0.00", style: inStyle })),
       field("Date", h("input", { type: "date", value: form.date, onChange: (ev) => setForm({ ...form, date: ev.target.value }), style: inStyle })),
       field("Description (optional)", h("input", { type: "text", value: form.description, onChange: (ev) => setForm({ ...form, description: ev.target.value }), placeholder: "e.g. June electricity bill", style: inStyle })),
@@ -1064,6 +1082,8 @@ function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPa
           rc("button", { onClick: () => window.lcOpenEdit && window.lcOpenEdit(r.c.id) }, "Edit contract"),
           rc("button", { onClick: () => window.lcOpenAgreement && window.lcOpenAgreement(r.c.id) }, "Print agreement"),
           rc("button", { onClick: () => window.printWorkerLaborSOA && window.printWorkerLaborSOA(w, project.id) }, "Worker statement"),
+          rc("button", { onClick: (e) => window.lcAddFile && window.lcAddFile(r.c.id, e.currentTarget) }, "Add file"),
+          rc("button", { onClick: () => window.lcViewFiles && window.lcViewFiles(r.c.id) }, "View"),
           rc("button", { className: "danger", onClick: () => window.lcDelete && window.lcDelete(r.c.id) }, "Delete")
         )
       ));
@@ -1311,6 +1331,34 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder 
     }
     return result;
   }, [materialTx, searchQuery, docFilter]);
+  const MAT_PALETTE = ["#157a52", "#c8a45a", "#7f9cb0", "#9fb98a", "#b0907f", "#8a7fb0", "#5e9d80", "#c0564a"];
+  const matCatColor = (name) => { let n = 0; const x = String(name || ""); for (let i = 0; i < x.length; i++) n = (n * 31 + x.charCodeAt(i)) >>> 0; return MAT_PALETTE[n % MAT_PALETTE.length]; };
+  const byCategory = React.useMemo(() => {
+    const map = /* @__PURE__ */ new Map();
+    filteredTx.forEach((m) => {
+      const cat = (m.category || "Uncategorized").trim() || "Uncategorized";
+      map.set(cat, (map.get(cat) || 0) + (Number(m.amount) || 0));
+    });
+    return Array.from(map.entries()).map(([cat, amt]) => ({ cat, amt })).sort((a, b) => b.amt - a.amt);
+  }, [filteredTx]);
+  const groupedTx = React.useMemo(() => {
+    const order = byCategory.map((r) => r.cat);
+    const byCat = /* @__PURE__ */ new Map();
+    filteredTx.forEach((m) => {
+      const cat = (m.category || "Uncategorized").trim() || "Uncategorized";
+      if (!byCat.has(cat)) byCat.set(cat, []);
+      byCat.get(cat).push(m);
+    });
+    const flat = [];
+    order.forEach((cat) => {
+      const items = byCat.get(cat) || [];
+      const total = items.reduce((s, m) => s + (Number(m.amount) || 0), 0);
+      const pctContract = project.revenue > 0 ? total / project.revenue * 100 : 0;
+      flat.push({ kind: "header", cat, total, pctContract, count: items.length });
+      items.forEach((m) => flat.push({ kind: "item", m }));
+    });
+    return flat;
+  }, [filteredTx, byCategory, project.revenue]);
   const exportCsv = () => {
     const headers = ["Date", "Description", "Category", "Amount (PHP)", "PO", "DR", "SI", "PR"];
     const csvEsc = (v) => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
@@ -1360,9 +1408,14 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder 
     },
     /* @__PURE__ */ React.createElement("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }), /* @__PURE__ */ React.createElement("polyline", { points: "7 10 12 15 17 10" }), /* @__PURE__ */ React.createElement("line", { x1: "12", y1: "15", x2: "12", y2: "3" })),
     "Export CSV"
-  ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", flexWrap: "wrap", gap: "4px 16px", fontSize: 11.5, color: "var(--ink-3)", margin: "10px 4px 6px" } }, /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)" } }, "PO"), " Purchase Order"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)" } }, "DR"), " Delivery Receipt"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)" } }, "SI"), " Supplier Invoice"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)" } }, "PR"), " Payment Receipt")), /* @__PURE__ */ React.createElement("table", { className: "tx-table" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { style: { width: 170 } }, "Date"), /* @__PURE__ */ React.createElement("th", null, "Description"), /* @__PURE__ */ React.createElement("th", null, "Category"), /* @__PURE__ */ React.createElement("th", { style: { width: 160 } }, "Documents"), /* @__PURE__ */ React.createElement("th", { className: "right", style: { width: 140 } }, "Amount"), /* @__PURE__ */ React.createElement("th", { style: { width: 70 } }, "Receipt"), /* @__PURE__ */ React.createElement("th", { style: { width: 140 } }, "Actions"))), /* @__PURE__ */ React.createElement("tbody", null, filteredTx.length === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 7, style: { padding: "24px 12px", textAlign: "center", color: "var(--ink-3)" } }, count === 0 ? "No expense entries in this period." : "No transactions match the current search/filter.")), filteredTx.map((m, i) => {
+  ))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", flexWrap: "wrap", gap: "4px 16px", fontSize: 11.5, color: "var(--ink-3)", margin: "10px 4px 6px" } }, /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)" } }, "PO"), " Purchase Order"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)" } }, "DR"), " Delivery Receipt"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)" } }, "SI"), " Supplier Invoice"), /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)" } }, "PR"), " Payment Receipt")), /* @__PURE__ */ React.createElement("table", { className: "tx-table" }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("th", { style: { width: 170 } }, "Date"), /* @__PURE__ */ React.createElement("th", null, "Description"), /* @__PURE__ */ React.createElement("th", null, "Category"), /* @__PURE__ */ React.createElement("th", { style: { width: 160 } }, "Documents"), /* @__PURE__ */ React.createElement("th", { className: "right", style: { width: 140 } }, "Amount"), /* @__PURE__ */ React.createElement("th", { style: { width: 70 } }, "Receipt"), /* @__PURE__ */ React.createElement("th", { style: { width: 140 } }, "Actions"))), /* @__PURE__ */ React.createElement("tbody", null, filteredTx.length === 0 && /* @__PURE__ */ React.createElement("tr", null, /* @__PURE__ */ React.createElement("td", { colSpan: 7, style: { padding: "24px 12px", textAlign: "center", color: "var(--ink-3)" } }, count === 0 ? "No expense entries in this period." : "No transactions match the current search/filter.")), groupedTx.map((row, i) => {
+    if (row.kind === "header") {
+      const col = matCatColor(row.cat);
+      return /* @__PURE__ */ React.createElement("tr", { key: "cat_" + row.cat + "_" + i, style: { background: "#faf9f7" } }, /* @__PURE__ */ React.createElement("td", { colSpan: 4, style: { padding: "10px 16px" } }, /* @__PURE__ */ React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 8, font: "600 12.5px 'IBM Plex Sans'", color: "var(--ink)" } }, /* @__PURE__ */ React.createElement("span", { style: { width: 9, height: 9, borderRadius: 3, background: col, flex: "none" } }), row.cat, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 400, color: "var(--ink-3)" } }, "(", row.count, ")"))), /* @__PURE__ */ React.createElement("td", { className: "right", style: { padding: "10px 16px" } }, /* @__PURE__ */ React.createElement("span", { style: { font: "700 13px 'IBM Plex Sans'", color: "var(--ink)" } }, "₱ ", peso(row.total)), _staff() ? null : /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: "var(--brand-green)", marginTop: 2 } }, row.pctContract.toFixed(2), "% of contract")), /* @__PURE__ */ React.createElement("td", { colSpan: 2 }));
+    }
+    const m = row.m;
     const billingNum = billingByProjectId.get(m.projectId);
-    return /* @__PURE__ */ React.createElement("tr", { key: m.id || i, className: "row", onClick: () => setDetailsItem(m), title: "Click to view item details" }, /* @__PURE__ */ React.createElement("td", { style: { fontSize: 12.5, color: "var(--ink-2)", whiteSpace: "nowrap" } }, fmtDateTime(m.dateTime || m.date)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { className: "name" }, m.name), /* @__PURE__ */ React.createElement(PaymentTag, { method: m.paymentMethod })), billingNum && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--ink-3)", marginTop: 3, display: "inline-flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("svg", { width: "11", height: "11", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })), "Charged to \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)", fontWeight: 600 } }, "Billing #", billingNum))), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-2)" } }, m.category || "\u2014")), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { className: "pc-docs-row", title: "Purchase Order \xB7 Delivery Receipt \xB7 Supplier Invoice \xB7 Payment Receipt" }, /* @__PURE__ */ React.createElement(DocPill, { m, k: "po", label: "PO", title: "Purchase Order" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "dr", label: "DR", title: "Delivery Receipt" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "si", label: "SI", title: "Supplier Invoice" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "pay", label: "PR", title: "Payment Receipt" }))), /* @__PURE__ */ React.createElement("td", { className: "right" }, /* @__PURE__ */ React.createElement("span", { className: "amt" }, "\u20B1 ", peso(m.amount))), /* @__PURE__ */ React.createElement("td", { onClick: (e) => e.stopPropagation() }, m.firstReceipt ? /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("tr", { key: m.id || i, className: "row", onClick: () => setDetailsItem(m), title: "Click to view item details" }, /* @__PURE__ */ React.createElement("td", { style: { fontSize: 12.5, color: "var(--ink-2)", whiteSpace: "nowrap" } }, fmtDateTime(m.dateTime || m.date)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { className: "name" }, m.name), /* @__PURE__ */ React.createElement(PaymentTag, { method: m.paymentMethod })), billingNum && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--ink-3)", marginTop: 3, display: "inline-flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("svg", { width: "11", height: "11", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })), "Charged to \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)", fontWeight: 600 } }, "Billing #", billingNum))), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-2)" } }, m.category || "\u2014")), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { className: "pc-docs-row", title: "Purchase Order \xB7 Delivery Receipt \xB7 Supplier Invoice \xB7 Payment Receipt" }, /* @__PURE__ */ React.createElement(DocPill, { m, k: "po", label: "PO", title: "Purchase Order" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "dr", label: "DR", title: "Delivery Receipt" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "si", label: "SI", title: "Supplier Invoice" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "pay", label: "PR", title: "Payment Receipt" }))), /* @__PURE__ */ React.createElement("td", { className: "right" }, /* @__PURE__ */ React.createElement("span", { className: "amt" }, "\u20B1 ", peso(m.amount)), _staff() ? null : /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "var(--ink-3)", marginTop: 2 } }, project.revenue > 0 ? (Number(m.amount) / project.revenue * 100).toFixed(2) + "% of contract" : "\u2014")), /* @__PURE__ */ React.createElement("td", { onClick: (e) => e.stopPropagation() }, m.firstReceipt ? /* @__PURE__ */ React.createElement(
       "img",
       {
         src: m.firstReceipt,
