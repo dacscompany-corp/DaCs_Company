@@ -7924,6 +7924,133 @@ window.lcLedgerViewReceipt = function(payId) {
     }
 };
 
+// ── Contract file attachments (photos / PDFs, stored on capHistory) ──
+async function lcUploadFile(contractId, file) {
+    const c = expLaborContracts.find(x => x.id === contractId);
+    if (!c || !file) return;
+    try {
+        const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+        const path = `laborContractFiles/${contractId}_${Date.now()}.${ext}`;
+        const ref = window.storage.ref(path);
+        await ref.put(file);
+        const url = await ref.getDownloadURL();
+        const hist = Array.isArray(c.capHistory) ? c.capHistory.slice() : [];
+        hist.push({ fileUrl: url, fileName: file.name, at: new Date().toISOString(), note: 'File uploaded' });
+        await db.collection('laborContracts').doc(contractId).update({
+            capHistory: hist, updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        c.capHistory = hist;
+        showExpNotif('File uploaded ✓', 'success');
+        window.lcViewFiles(contractId);
+    } catch (err) { showExpNotif('Upload failed: ' + err.message, 'error'); }
+}
+
+window.lcAddFile = function(contractId, btn) {
+    const existing = document.getElementById('lcAddFileDropdown');
+    if (existing) { existing.remove(); return; }
+    const c = expLaborContracts.find(x => x.id === contractId);
+    if (!c) { showExpNotif('Contract not found.', 'error'); return; }
+
+    // Hidden inputs live directly on <body> (not inside the dropdown), and are
+    // triggered via input.click() from a real tap handler. Some mobile browsers
+    // (notably iOS Safari) won't honor capture="environment" when the input is
+    // reached through label-click-forwarding on a display:none element inside a
+    // menu that gets removed/re-created — calling .click() directly is reliable.
+    const galleryInput = document.createElement('input');
+    galleryInput.type = 'file';
+    galleryInput.accept = 'image/*,.pdf';
+    galleryInput.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
+
+    const cameraInput = document.createElement('input');
+    cameraInput.type = 'file';
+    cameraInput.accept = 'image/*';
+    cameraInput.capture = 'environment';
+    cameraInput.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
+
+    document.body.appendChild(galleryInput);
+    document.body.appendChild(cameraInput);
+
+    const cleanupInputs = () => { galleryInput.remove(); cameraInput.remove(); };
+    const handlePick = (input) => {
+        input.onchange = () => {
+            const file = input.files && input.files[0];
+            cleanupInputs();
+            if (file) lcUploadFile(contractId, file);
+        };
+    };
+    handlePick(galleryInput);
+    handlePick(cameraInput);
+
+    const menu = document.createElement('div');
+    menu.id = 'lcAddFileDropdown';
+    menu.style.cssText = 'position:fixed;z-index:9999;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.15);overflow:hidden;min-width:170px;';
+    menu.innerHTML = `
+        <button type="button" data-pick="gallery" style="display:flex;align-items:center;gap:10px;padding:11px 16px;width:100%;border:0;background:none;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;color:#111827;text-align:left;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background=''">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Upload from gallery
+        </button>
+        <button type="button" data-pick="camera" style="display:flex;align-items:center;gap:10px;padding:11px 16px;width:100%;border:0;background:none;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;color:#111827;border-top:1px solid #f3f4f6;text-align:left;" onmouseover="this.style.background='#f3f4f6'" onmouseout="this.style.background=''">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            Take a photo
+        </button>`;
+    menu.querySelector('[data-pick="gallery"]').onclick = () => { menu.remove(); galleryInput.click(); };
+    menu.querySelector('[data-pick="camera"]').onclick = () => { menu.remove(); cameraInput.click(); };
+
+    document.body.appendChild(menu);
+    const r = (btn || event.target).getBoundingClientRect();
+    menu.style.top = (r.bottom + 6) + 'px';
+    menu.style.left = r.left + 'px';
+    const dismiss = e => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('click', dismiss, true); cleanupInputs(); } };
+    setTimeout(() => document.addEventListener('click', dismiss, true), 0);
+};
+
+window.lcViewFiles = function(contractId) {
+    const c = expLaborContracts.find(x => x.id === contractId);
+    if (!c) { showExpNotif('Contract not found.', 'error'); return; }
+    const files = (Array.isArray(c.capHistory) ? c.capHistory : []).filter(h => h.fileUrl);
+    const isImg = url => /\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(url);
+    const existing = document.getElementById('lcFilesOverlay');
+    if (existing) existing.remove();
+
+    const itemsHtml = !files.length
+        ? '<div style="padding:32px;text-align:center;color:#9ca3af;font-size:13px;">No files uploaded yet.</div>'
+        : files.map((h, i) => {
+            const url = h.fileUrl;
+            const name = h.fileName || ('File ' + (i + 1));
+            const img = isImg(url);
+            return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f0f0f0;">
+                ${ img
+                    ? `<a href="${_mvpEsc(url)}" target="_blank" rel="noopener" style="flex:none;">
+                         <img src="${_mvpEsc(url)}" alt="${_mvpEsc(name)}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;">
+                       </a>`
+                    : `<a href="${_mvpEsc(url)}" target="_blank" rel="noopener" style="flex:none;width:56px;height:56px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;display:flex;align-items:center;justify-content:center;font-size:11px;color:#6b7280;">PDF</a>`
+                }
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:13px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_mvpEsc(name)}</div>
+                    <div style="font-size:11px;color:#9ca3af;margin-top:2px;">${h.at ? new Date(h.at).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : ''}</div>
+                </div>
+                <a href="${_mvpEsc(url)}" target="_blank" rel="noopener" style="flex:none;padding:6px 12px;border-radius:7px;border:1px solid #e5e7eb;background:#f9fafb;font-size:12px;font-weight:600;color:#374151;text-decoration:none;">Open</a>
+            </div>`;
+        }).join('');
+
+    const ov = document.createElement('div');
+    ov.id = 'lcFilesOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    ov.onclick = e => { if (e.target === ov) ov.remove(); };
+    ov.innerHTML = `
+        <div style="background:#fff;border-radius:14px;width:100%;max-width:480px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.25);overflow:hidden;">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e5e7eb;">
+                <div style="font-size:15px;font-weight:700;color:#111827;">${_mvpEsc(c.workerName || 'Contract')} — Files</div>
+                <button onclick="document.getElementById('lcFilesOverlay').remove()" style="background:none;border:none;font-size:1.4rem;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>
+            </div>
+            <div style="overflow-y:auto;flex:1;">${itemsHtml}</div>
+            <div style="padding:12px 16px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;">
+                <button onclick="document.getElementById('lcFilesOverlay').remove()" style="padding:8px 18px;border-radius:8px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;font-size:13px;font-weight:600;cursor:pointer;">Close</button>
+            </div>
+        </div>`;
+    document.body.appendChild(ov);
+};
+
 window.lcOpenNew            = lcOpenNew;
 window.lcOpenEdit           = lcOpenEdit;
 window.lcOpenRaiseCap       = lcOpenRaiseCap;
