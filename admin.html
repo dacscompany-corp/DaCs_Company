@@ -1059,20 +1059,68 @@
         <div id="expOverheadView" class="content-view" style="display: none;">
 
             <!-- Topbar -->
-            <div class="ovhd-topbar">
-                <div class="ovhd-filter-bar">
-                    <label for="ovhdMonthPicker">Month:</label>
+            <div class="ovhd-topbar" style="flex-wrap:wrap;row-gap:10px;">
+                <div class="ovhd-filter-bar" style="flex-wrap:wrap;row-gap:8px;">
+                    <div class="rpt-period-tabs" id="ovhdScopeTabs">
+                        <button class="rpt-tab active" data-scope="all" onclick="setOverheadScope('all')">All</button>
+                        <button class="rpt-tab" data-scope="company" onclick="setOverheadScope('company')">Company</button>
+                        <button class="rpt-tab" data-scope="project" onclick="setOverheadScope('project')">Project</button>
+                    </div>
+                    <div class="rpt-select-wrap rpt-folder-wrap">
+                        <i data-lucide="folder" class="rpt-sel-ico"></i>
+                        <select id="ovhdProjectSel" onchange="onOverheadProjectChange(this.value)">
+                            <option value="">All Projects</option>
+                        </select>
+                    </div>
+                    <div class="rpt-select-wrap">
+                        <i data-lucide="tag" class="rpt-sel-ico"></i>
+                        <select id="ovhdCategorySel" onchange="onOverheadCategoryChange(this.value)">
+                            <option value="">All Categories</option>
+                        </select>
+                    </div>
+                    <div class="rpt-select-wrap">
+                        <i data-lucide="flag" class="rpt-sel-ico"></i>
+                        <select id="ovhdStatusSel" onchange="onOverheadStatusChange(this.value)">
+                            <option value="">All Status</option>
+                            <option value="paid">Paid</option>
+                            <option value="pending">Pending</option>
+                        </select>
+                    </div>
+                    <label for="ovhdMonthPicker" style="margin-left:4px;">Month:</label>
                     <!-- webhint-disable-next-line compat-api/html -->
                     <input type="month" id="ovhdMonthPicker" class="ovhd-month-picker"
                            placeholder="YYYY-MM"
                            pattern="\d{4}-(0[1-9]|1[0-2])"
                            title="Year-month, e.g. 2026-05"
                            onchange="onOverheadMonthChange(this.value)">
+                    <div style="position:relative;flex:1 1 200px;min-width:180px;max-width:320px;">
+                        <input type="text" id="ovhdSearchInput" placeholder="Search name, description, category…"
+                               oninput="onOverheadSearchChange(this.value)"
+                               style="width:100%;padding:8px 12px 8px 30px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box;font-family:inherit;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);pointer-events:none;"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    </div>
                 </div>
-                <div style="display:flex;align-items:center;gap:10px;">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span id="ovhdLargeExpenseBadge" style="display:none;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;background:#fef3c7;color:#92400e;font-size:12px;font-weight:700;"></span>
                     <button class="ovhd-guide-btn" onclick="document.getElementById('ovhdGuideModal').style.display='flex'" title="Learn how Overhead Expenses works">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                         Guide me
+                    </button>
+                    <div class="exp-btn-group" style="position:relative;display:inline-flex;">
+                        <button class="exp-btn exp-btn-secondary" onclick="toggleOverheadReportMenu()" title="Generate a report">
+                            <i data-lucide="file-bar-chart" style="width:14px;height:14px;"></i> Reports
+                        </button>
+                        <div id="ovhdReportMenu" style="display:none;position:absolute;top:calc(100% + 6px);right:0;z-index:200;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.15);min-width:200px;overflow:hidden;">
+                            <button type="button" onclick="printOverheadReport('monthly')" style="display:block;width:100%;text-align:left;padding:10px 16px;border:0;background:none;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;">Monthly Report</button>
+                            <button type="button" onclick="printOverheadReport('quarterly')" style="display:block;width:100%;text-align:left;padding:10px 16px;border:0;background:none;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;border-top:1px solid #f3f4f6;">Quarterly Report</button>
+                            <button type="button" onclick="printOverheadReport('annual')" style="display:block;width:100%;text-align:left;padding:10px 16px;border:0;background:none;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;border-top:1px solid #f3f4f6;">Annual Report</button>
+                            <button type="button" onclick="printOverheadReport('company')" style="display:block;width:100%;text-align:left;padding:10px 16px;border:0;background:none;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;border-top:1px solid #f3f4f6;">Company Overhead Report</button>
+                            <button type="button" onclick="printOverheadReport('project')" style="display:block;width:100%;text-align:left;padding:10px 16px;border:0;background:none;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;border-top:1px solid #f3f4f6;">Project Overhead Report</button>
+                            <button type="button" onclick="printOverheadReport('overall')" style="display:block;width:100%;text-align:left;padding:10px 16px;border:0;background:none;cursor:pointer;font:500 13px 'IBM Plex Sans',sans-serif;border-top:1px solid #f3f4f6;">Overall Overhead Report</button>
+                        </div>
+                    </div>
+                    <button class="exp-btn exp-btn-secondary" onclick="exportOverheadCsv()" title="Export the currently visible expenses as CSV (Excel-compatible)">
+                        <i data-lucide="download" style="width:14px;height:14px;"></i> Export
                     </button>
                     <button class="exp-btn exp-btn-primary" onclick="openOverheadModal()">
                         <i data-lucide="plus" style="width:15px;height:15px;stroke:#fff;flex-shrink:0;"></i> Add Expense
@@ -1134,39 +1182,55 @@
                 </div>
             </div>
 
-            <!-- KPI Cards -->
+            <!-- Scope Summary Cards -->
             <div class="ovhd-kpi-row">
                 <div class="ovhd-kpi-card ovhd-kpi-total">
                     <div class="ovhd-kpi-top">
                         <div class="ovhd-kpi-icon-wrap">
-                            <i data-lucide="wallet" class="ovhd-kpi-ico"></i>
+                            <i data-lucide="building-2" class="ovhd-kpi-ico"></i>
                         </div>
-                        <span class="ovhd-kpi-label">Total Overhead</span>
+                        <span class="ovhd-kpi-label">Company Overhead</span>
                     </div>
-                    <div class="ovhd-kpi-value" id="ovhdTotalAmount">₱0.00</div>
-                    <div id="ovhdTotalTrend"></div>
+                    <div class="ovhd-kpi-value" id="ovhdCompanyAmount">₱0.00</div>
+                    <div id="ovhdCompanyTrend"></div>
                 </div>
                 <div class="ovhd-kpi-card ovhd-kpi-count">
                     <div class="ovhd-kpi-top">
                         <div class="ovhd-kpi-icon-wrap">
-                            <i data-lucide="receipt" class="ovhd-kpi-ico"></i>
+                            <i data-lucide="hard-hat" class="ovhd-kpi-ico"></i>
                         </div>
-                        <span class="ovhd-kpi-label">Total Entries</span>
+                        <span class="ovhd-kpi-label">Project Overhead</span>
                     </div>
-                    <div class="ovhd-kpi-value" id="ovhdTotalCount">0</div>
+                    <div class="ovhd-kpi-value" id="ovhdProjectAmount">₱0.00</div>
+                    <div id="ovhdProjectTrend"></div>
                 </div>
                 <div class="ovhd-kpi-card ovhd-kpi-avg">
                     <div class="ovhd-kpi-top">
                         <div class="ovhd-kpi-icon-wrap">
-                            <i data-lucide="trending-up" class="ovhd-kpi-ico"></i>
+                            <i data-lucide="wallet" class="ovhd-kpi-ico"></i>
                         </div>
-                        <span class="ovhd-kpi-label">Average per Entry</span>
+                        <span class="ovhd-kpi-label">Overall Overhead</span>
                     </div>
-                    <div class="ovhd-kpi-value" id="ovhdAvgAmount">₱0.00</div>
+                    <div class="ovhd-kpi-value" id="ovhdOverallAmount">₱0.00</div>
+                    <div class="card-subtitle" style="margin-top:2px;">Company + Project</div>
                 </div>
             </div>
 
-            <div class="ovhd-cols">
+            <!-- Charts -->
+            <div class="section-card" style="margin-top:1rem;">
+                <div class="card-header"><div><h2 style="margin:0;">Expense Distribution</h2><p class="card-subtitle">Company vs. Project</p></div></div>
+                <div class="chart-wrapper" style="height:240px"><canvas id="ovhdScopeChart"></canvas></div>
+            </div>
+            <div class="section-card" style="margin-top:1rem;">
+                <div class="card-header"><div><h2 style="margin:0;">Monthly Overhead</h2><p class="card-subtitle">Total overhead recorded per month</p></div></div>
+                <div class="chart-wrapper" style="height:260px"><canvas id="ovhdMonthlyChart"></canvas></div>
+            </div>
+            <div class="section-card" style="margin-top:1rem;">
+                <div class="card-header"><div><h2 style="margin:0;">Overhead Trend</h2><p class="card-subtitle">Month-over-month comparison</p></div></div>
+                <div class="chart-wrapper" style="height:220px"><canvas id="ovhdTrendChart"></canvas></div>
+            </div>
+
+            <div class="ovhd-cols" style="margin-top:1rem;">
               <!-- Category Breakdown -->
               <div class="ovhd-panel ovhd-col-cats">
                 <div class="ovhd-panel-header">By Category</div>
@@ -1183,14 +1247,17 @@
                         <thead>
                             <tr>
                                 <th>Date</th>
+                                <th>Scope</th>
+                                <th>Project</th>
                                 <th>Category</th>
                                 <th>Description</th>
                                 <th>Amount</th>
+                                <th>Status</th>
                                 <th></th>
                             </tr>
                         </thead>
                         <tbody id="ovhdTableBody">
-                            <tr><td colspan="5" class="ovhd-table-empty">No overhead expenses found for this month.</td></tr>
+                            <tr><td colspan="8" class="ovhd-table-empty">No overhead expenses found for this month.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -1415,9 +1482,9 @@
                     <div>
                       <div style="display:flex;align-items:center;gap:8px;">
                         <h2 id="pmRptTrendTitle" style="margin:0;">Monthly Spending Trend</h2>
-                        <span class="pc-help-tip" data-tip="This chart shows how much was spent each period on Labor, Materials, and Outsource — from Daily Expenses entries. The dashed green line represents the project's budget. Bars above the dashed line mean spending exceeded the budget.">?</span>
+                        <span class="pc-help-tip" data-tip="This chart shows how much was spent each period on Labor, Materials, and Outsource — from Daily Expenses entries. See the Budget vs Actual chart below for how this compares to the project's total budget.">?</span>
                       </div>
-                      <p class="card-subtitle" id="pmRptTrendSubtitle">Labor vs Materials vs Outsource · dashed line = budget</p>
+                      <p class="card-subtitle" id="pmRptTrendSubtitle">Labor vs Materials vs Outsource per period</p>
                     </div>
                 </div>
                 <div class="chart-wrapper" style="height:260px"><canvas id="pmRptTrendChart"></canvas></div>
@@ -1441,9 +1508,9 @@
                   <div>
                     <div style="display:flex;align-items:center;gap:8px;">
                       <h2 style="margin:0;">Budget vs Actual</h2>
-                      <span class="pc-help-tip" data-tip="This chart compares the project's budget (green) against what was actually spent (red) in each period. If the red bar exceeds the green, spending went over budget for that period.">?</span>
+                      <span class="pc-help-tip" data-tip="This chart tracks cumulative spending (green) against the project's total budget (dashed line) over time — since PM projects have one overall budget, not a separate budget per period. The point turns red once cumulative spend passes the budget line.">?</span>
                     </div>
-                    <p class="card-subtitle">Project budget vs real spend per period</p>
+                    <p class="card-subtitle">Cumulative spend-to-date vs. total project budget</p>
                   </div>
                 </div>
                 <div class="chart-wrapper" style="height:260px"><canvas id="pmRptBvaChart"></canvas></div>
@@ -4006,26 +4073,61 @@
 <div id="overheadAddModal" class="exp-modal" onclick="if(event.target===this)closeOverheadModal()">
     <div class="ovhd-modal-box exp-modal-box">
         <div class="ovhd-modal-header exp-modal-header">
-            <h2>Add Overhead Expense</h2>
+            <h2 id="ovhdModalTitle">Add Overhead Expense</h2>
             <button class="ovhd-modal-close exp-modal-close" aria-label="Close" onclick="closeOverheadModal()">&#x2715;</button>
         </div>
-        <form id="overheadExpenseForm" onsubmit="handleAddOverheadExpense(event)">
+        <form id="overheadExpenseForm" onsubmit="handleSaveOverheadExpense(event)">
+            <input type="hidden" id="ovhdEditingId" value="">
             <div class="ovhd-modal-body">
+                <div class="exp-form-group">
+                    <label>Expense Scope</label>
+                    <div style="display:flex;gap:16px;padding:4px 0;">
+                        <label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;">
+                            <input type="radio" name="ovhdExpScope" value="company" checked onchange="onOverheadScopeFieldChange()"> Company
+                        </label>
+                        <label style="display:flex;align-items:center;gap:6px;font-weight:500;cursor:pointer;">
+                            <input type="radio" name="ovhdExpScope" value="project" onchange="onOverheadScopeFieldChange()"> Project
+                        </label>
+                    </div>
+                </div>
+                <div class="exp-form-group" id="ovhdExpProjectGroup" style="display:none;">
+                    <label for="ovhdExpProject">Select Project</label>
+                    <select id="ovhdExpProject">
+                        <option value="">Select project…</option>
+                    </select>
+                </div>
+                <div class="exp-form-group">
+                    <label for="ovhdExpName">Expense Name</label>
+                    <input type="text" id="ovhdExpName" placeholder="e.g. June Electricity Bill" required>
+                </div>
                 <div class="exp-form-group">
                     <label for="ovhdExpCategory">Category</label>
                     <select id="ovhdExpCategory" required>
                         <option value="">Select category…</option>
-                        <option value="Office Rent">Office Rent</option>
-                        <option value="Electricity">Electricity</option>
-                        <option value="Water">Water</option>
-                        <option value="Utilities">Utilities</option>
-                        <option value="Internet & Telecoms">Internet &amp; Telecoms</option>
-                        <option value="Office Supplies">Office Supplies</option>
-                        <option value="Staff Salaries">Staff Salaries</option>
-                        <option value="Software & Subscriptions">Software &amp; Subscriptions</option>
-                        <option value="Transportation">Transportation</option>
-                        <option value="Marketing">Marketing</option>
-                        <option value="Professional Fees">Professional Fees</option>
+                        <optgroup label="Company Categories">
+                            <option value="Office Rent">Office Rent</option>
+                            <option value="Electricity">Electricity</option>
+                            <option value="Water">Water</option>
+                            <option value="Utilities">Utilities</option>
+                            <option value="Internet & Telecoms">Internet &amp; Telecoms</option>
+                            <option value="Office Supplies">Office Supplies</option>
+                            <option value="Administrative Salaries">Administrative Salaries</option>
+                            <option value="Software & Subscriptions">Software &amp; Subscriptions</option>
+                            <option value="Insurance">Insurance</option>
+                            <option value="Company Vehicles">Company Vehicles</option>
+                            <option value="Office Maintenance">Office Maintenance</option>
+                        </optgroup>
+                        <optgroup label="Project Categories">
+                            <option value="Equipment Rental">Equipment Rental</option>
+                            <option value="Fuel">Fuel</option>
+                            <option value="Transportation">Transportation</option>
+                            <option value="Temporary Utilities">Temporary Utilities</option>
+                            <option value="Site Office Expenses">Site Office Expenses</option>
+                            <option value="Safety Equipment">Safety Equipment</option>
+                            <option value="Permits">Permits</option>
+                            <option value="Security">Security</option>
+                        </optgroup>
+                        <option value="Indirect Support (Supervisor/Foreman/Admin/Engineer)">Indirect Support (Supervisor/Foreman/Admin/Engineer)</option>
                         <option value="Miscellaneous">Miscellaneous</option>
                     </select>
                 </div>
@@ -4041,8 +4143,38 @@
                     </div>
                 </div>
                 <div class="exp-form-group">
-                    <label for="ovhdExpDescription">Description <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
-                    <textarea id="ovhdExpDescription" placeholder="Brief description…"></textarea>
+                    <label for="ovhdExpDescription">Description</label>
+                    <textarea id="ovhdExpDescription" placeholder="Brief description…" required></textarea>
+                </div>
+                <div class="exp-form-row">
+                    <div class="exp-form-group">
+                        <label for="ovhdExpSupplier">Supplier <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
+                        <input type="text" id="ovhdExpSupplier" placeholder="e.g. Meralco">
+                    </div>
+                    <div class="exp-form-group">
+                        <label for="ovhdExpInvoice">Invoice Number <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
+                        <input type="text" id="ovhdExpInvoice" placeholder="e.g. INV-00123">
+                    </div>
+                </div>
+                <div class="exp-form-row">
+                    <div class="exp-form-group">
+                        <label for="ovhdExpStatus">Status</label>
+                        <select id="ovhdExpStatus">
+                            <option value="pending">Pending</option>
+                            <option value="paid">Paid</option>
+                        </select>
+                    </div>
+                    <div class="exp-form-group">
+                        <label>Receipt <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
+                        <button type="button" class="exp-btn exp-btn-secondary" onclick="overheadAddReceipt(this)" style="width:100%;justify-content:center;">
+                            <i data-lucide="paperclip" style="width:13px;height:13px;"></i> <span id="ovhdReceiptBtnLabel">Attach receipt</span>
+                        </button>
+                        <input type="hidden" id="ovhdReceiptUrl" value="">
+                    </div>
+                </div>
+                <div class="exp-form-group">
+                    <label for="ovhdExpNotes">Notes <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
+                    <textarea id="ovhdExpNotes" placeholder="Additional notes…"></textarea>
                 </div>
             </div>
             <div class="ovhd-modal-footer exp-modal-footer">
