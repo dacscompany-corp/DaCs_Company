@@ -2178,6 +2178,13 @@ async function handleAddExpense(e) {
     const checkedBoxes = Array.from(document.querySelectorAll('input[name="expFundingSrc"]:checked'));
     const checkedSources = checkedBoxes.map(cb => _expSources.find(s => s.id === cb.value)).filter(Boolean);
 
+    // Additional Works has no monthly budget / Cover Expenses concept —
+    // always record straight against the current period as a normal expense.
+    if (_expIsAdditionalWorks() && expCurrentProject) {
+        checkedSources.length = 0;
+        checkedSources.push({ id: expCurrentProject.id, remain: Infinity, label: 'Additional Works' });
+    }
+
     // Fallback to hidden select or current project
     const fsSel = document.getElementById('expFundingSourceSelect');
     if (!checkedSources.length && _expCoverExpensesMode) {
@@ -3860,6 +3867,16 @@ function selectFolderAutoProject(folderId) {
 // Holds the available sources for the current Add Expense session
 var _expSources = [];
 
+// Additional Works child folders (parentFolderId set) have no monthly budget
+// and no Cover Expenses concept — entries are recorded straight against the
+// (hidden) auto-provisioned period as normal labor/material.
+function _expIsAdditionalWorks() {
+    const fid = expCurrentProject ? (expCurrentProject.folderId || null) : (expCurrentFolder ? expCurrentFolder.id : null);
+    if (!fid) return false;
+    const folder = expFolders.find(f => f.id === fid);
+    return !!(folder && folder.parentFolderId);
+}
+
 function _updateExpBudgetBanner() {
     const banner  = document.getElementById('expBudgetBanner');
     const fsWrap  = document.getElementById('expFundingSourceWrap');
@@ -3868,6 +3885,13 @@ function _updateExpBudgetBanner() {
     const p   = expCurrentProject;
     const fid = p ? (p.folderId || null) : (expCurrentFolder ? expCurrentFolder.id : null);
     if (!p && !fid) { banner.style.display = 'none'; if (fsWrap) fsWrap.style.display = 'none'; return; }
+
+    if (_expIsAdditionalWorks()) {
+        _expCoverExpensesMode = false;
+        banner.style.display = 'none';
+        if (fsWrap) fsWrap.style.display = 'none';
+        return;
+    }
 
     const folderMonths = expProjects.filter(m => m.folderId === fid && m.fundingType !== 'president' && (m.monthlyBudget || 0) > 0);
     _expSources = folderMonths.map(m => {

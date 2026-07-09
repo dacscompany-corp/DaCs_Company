@@ -2076,9 +2076,9 @@
                         <td class="c-unit">${escHtml(li.unit || '')}</td>
                         <td class="c-rate">${escHtml(mat)}</td>
                         <td class="c-rate">${escHtml(lab)}</td>
-                        <td class="c-amt">₱ ${fmt(li.totalAmount)}</td>
+                        <td class="c-amt">${fmt(li.totalAmount)}</td>
                         <td class="c-pct">${li.percentCompletion || 0}%</td>
-                        <td class="c-amt">₱ ${fmt(li.accomplishmentAmount)}</td>
+                        <td class="c-amt">${fmt(li.accomplishmentAmount)}</td>
                     </tr>`;
                 });
             });
@@ -2087,10 +2087,10 @@
             tableRows += `
             <tr class="pr-sub">
                 <td class="c-no"></td>
-                <td colspan="5" style="text-align:right">SUBTOTAL — ${ciNo}. ${escHtml(ci.label || '')}</td>
-                <td class="c-amt">₱ ${fmt(calcCostItemSubtotal(ci))}</td>
+                <td colspan="5" style="text-align:right">SUBTOTAL - ${escHtml(ci.label || '')}:</td>
+                <td class="c-amt">${fmt(calcCostItemSubtotal(ci))}</td>
                 <td></td>
-                <td class="c-amt">₱ ${fmt(calcCostItemAccomplishment(ci))}</td>
+                <td class="c-amt">${fmt(calcCostItemAccomplishment(ci))}</td>
             </tr>
             <tr class="pr-spacer"><td colspan="9"></td></tr>`;
         });
@@ -2269,16 +2269,16 @@
         <td class="pr-transparent"></td>
         <td class="pr-transparent"></td>
         <td colspan="3" style="text-align:right;font-weight:800">TOTAL PROJECT COST (VAT EXCLUSIVE)</td>
-        <td class="c-amt">₱ ${fmt(grand)}</td>
+        <td class="c-amt">${fmt(grand)}</td>
         <td class="c-pct">${avgPct}</td>
-        <td class="c-amt">₱ ${fmt(totalAcc)}</td>
+        <td class="c-amt">${fmt(totalAcc)}</td>
       </tr>
       <tr class="pr-discount">
         <td class="pr-transparent"></td>
         <td class="pr-transparent"></td>
         <td class="pr-transparent"></td>
         <td colspan="3" style="text-align:right;font-weight:800">DISCOUNT</td>
-        <td class="c-amt">₱ ${fmt(disc)}</td>
+        <td class="c-amt">${fmt(disc)}</td>
         <td colspan="2"></td>
       </tr>
       <tr class="pr-grand-final">
@@ -2286,7 +2286,7 @@
         <td class="pr-transparent"></td>
         <td class="pr-transparent"></td>
         <td colspan="3" style="text-align:right;font-weight:900">DISCOUNTED TOTAL PROJECT COST (VAT EXCLUSIVE)</td>
-        <td class="c-amt">₱ ${fmt(discounted)}</td>
+        <td class="c-amt">${fmt(discounted)}</td>
         <td colspan="2"></td>
       </tr>
       <tr class="pr-acc">
@@ -2294,7 +2294,7 @@
         <td class="pr-transparent"></td>
         <td class="pr-transparent"></td>
         <td colspan="5" style="text-align:right;font-weight:900">TOTAL ACCOMPLISHMENT TO DATE</td>
-        <td class="c-amt">₱ ${fmt(totalAcc)}</td>
+        <td class="c-amt">${fmt(totalAcc)}</td>
       </tr>`}
     </tbody>
   </table>
