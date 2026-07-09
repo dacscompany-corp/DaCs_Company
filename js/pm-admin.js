@@ -1547,10 +1547,33 @@ async function _pmRecomputeUnpaidBills(projectId, ratePct) {
     return writes.length;
 }
 
+// Subcollections that live under constructionProjects/{id} — deleted in full
+// when the project is deleted, so nothing orphaned is left behind to pollute
+// Reports/Overhead totals with an "Unknown Project" line.
+const PM_PROJECT_SUBCOLLECTIONS = ['weeklyBills', 'procurementList', 'milestones', 'accomplishmentReports', 'revolvingFundRequests', 'laborContracts'];
+
+async function _pmDeleteProjectCascade(id) {
+    for (const name of PM_PROJECT_SUBCOLLECTIONS) {
+        const snap = await db.collection('constructionProjects').doc(id).collection(name).get();
+        for (const d of snap.docs) await d.ref.delete();
+    }
+    // Top-level collections that reference the project by id instead of
+    // living under it as a subcollection.
+    const paymentReqs = await db.collection('paymentRequests').where('constructionProjectId', '==', id).get();
+    for (const d of paymentReqs.docs) await d.ref.delete();
+    const overheadTx = await db.collection('overheadExpenses').where('folderId', '==', id).get();
+    for (const d of overheadTx.docs) await d.ref.delete();
+
+    await db.collection('constructionProjects').doc(id).delete();
+}
+
 window.pmDeleteProject = async function(id) {
-    if (!confirm('Delete this project? This removes the project from the list but does NOT delete subcollection data (weekly bills, procurement, etc.).')) return;
+    const ok = await showDeleteConfirm(
+        'This permanently deletes the project AND all of its saved data — weekly bills, procurement records, labor contracts, milestones, accomplishment reports, payment requests, and overhead expenses. Nothing will be left behind to show up in reports. This can’t be undone.'
+    );
+    if (!ok) return;
     try {
-        await db.collection('constructionProjects').doc(id).delete();
+        await _pmDeleteProjectCascade(id);
         if (_pmActiveProject?.id === id) {
             _pmActiveProject = null;
             localStorage.removeItem('pm_selected_project');
@@ -5600,7 +5623,14 @@ function _pmRptLcCol(projectId) {
     return db.collection('constructionProjects').doc(projectId).collection('laborContracts');
 }
 
-window.initPMReportsDashboard = function () {
+window.initPMReportsDashboard = async function () {
+    // Reports can be opened directly (nav pill next to Termination Requests)
+    // without ever visiting Projects/Workspace first — _pmProjects would still
+    // be empty in that case, since only PM_VIEWS (pmProjects/pmWorkspace)
+    // trigger _pmLoadProjects() from switchView. Load it here too so a direct
+    // nav-in doesn't show a false "No Projects Yet" empty state.
+    if (!(_pmProjects || []).length) await _pmLoadProjects();
+
     // Year selector
     const yearSel = document.getElementById('pmRptYearSel');
     if (yearSel) {
@@ -5776,48 +5806,44 @@ function _pmRptComputePeriodGroups(period, year, projects, bills) {
         return { labor, materials, outsource, managementFee, totalSpent, txCount: tx };
     }
 
-    function _groupFromMonths(label, shortLabel, monthIdxs) {
-        const d = _sumRange(dt => dt.getFullYear() === year && monthIdxs.includes(dt.getMonth()));
-        // Budget is a one-time project value — prorate evenly across the periods this call spans
-        // (monthly = 1/12th, quarterly = 3/12ths, etc.) so period bars are comparable.
-        const budget = budgetTotal * (monthIdxs.length / 12);
-        const remaining = budget - d.totalSpent;
-        const usedPct = budget > 0 ? (d.totalSpent / budget) * 100 : 0;
-        return { label, shortLabel, budget, remaining, usedPct, status: _pmRptStatus(usedPct), ...d };
+    // Construction spend is lumpy (mobilization, procurement waves, milestone
+    // labor surges) — a PM project has one lump `budget`, not a per-period
+    // budget the way Project Control's billing periods do. Evenly prorating
+    // that budget across calendar time would flag normal slow months as
+    // "over budget" and normal heavy months as falsely "healthy". Instead:
+    // `budget` on every group is the SAME flat total project budget (a
+    // constant reference line, not a per-period allocation), and `cumSpent`
+    // is the running total spent from the start of the year through the end
+    // of this period — that's what Budget vs Actual actually compares.
+    let running = 0;
+    function _finish(label, shortLabel, d) {
+        running += d.totalSpent;
+        const remaining = budgetTotal - running;
+        const usedPct = budgetTotal > 0 ? (running / budgetTotal) * 100 : 0;
+        return { label, shortLabel, budget: budgetTotal, cumSpent: running, remaining, usedPct, status: _pmRptStatus(usedPct), ...d };
     }
 
     switch (period) {
         case 'annual': {
             const d = _sumRange(dt => dt.getFullYear() === year);
-            const remaining = budgetTotal - d.totalSpent;
-            const usedPct = budgetTotal > 0 ? (d.totalSpent / budgetTotal) * 100 : 0;
-            return [{ label: `FY ${year}`, shortLabel: `${year}`, budget: budgetTotal, remaining, usedPct, status: _pmRptStatus(usedPct), ...d }];
+            return [_finish(`FY ${year}`, `${year}`, d)];
         }
         case 'semi':
             return [
-                _groupFromMonths(`H1 ${year}`, 'H1', [0,1,2,3,4,5]),
-                _groupFromMonths(`H2 ${year}`, 'H2', [6,7,8,9,10,11]),
+                _finish(`H1 ${year}`, 'H1', _sumRange(dt => dt.getFullYear() === year && dt.getMonth() < 6)),
+                _finish(`H2 ${year}`, 'H2', _sumRange(dt => dt.getFullYear() === year && dt.getMonth() >= 6)),
             ];
         case 'quarterly':
-            return [
-                _groupFromMonths(`Q1 ${year}`, 'Q1', [0,1,2]),
-                _groupFromMonths(`Q2 ${year}`, 'Q2', [3,4,5]),
-                _groupFromMonths(`Q3 ${year}`, 'Q3', [6,7,8]),
-                _groupFromMonths(`Q4 ${year}`, 'Q4', [9,10,11]),
-            ];
+            return [[0,1,2],[3,4,5],[6,7,8],[9,10,11]].map((idxs, i) =>
+                _finish(`Q${i+1} ${year}`, `Q${i+1}`, _sumRange(dt => dt.getFullYear() === year && idxs.includes(dt.getMonth()))));
         case 'monthly':
-            return _PM_RPT_MONTHS.map((mo, i) => _groupFromMonths(`${mo} ${year}`, _PM_RPT_MON3[i], [i]));
+            return _PM_RPT_MONTHS.map((mo, i) =>
+                _finish(`${mo} ${year}`, _PM_RPT_MON3[i], _sumRange(dt => dt.getFullYear() === year && dt.getMonth() === i)));
         case 'weekly': {
             const weeks = _pmRptWeeksInYear(year);
-            return weeks.map(wk => {
-                const d = _sumRange(dt => dt >= wk.start && dt <= wk.end);
-                const daysInSpan = Math.round((wk.end - wk.start) / 86400000) + 1;
-                const budget = budgetTotal * (daysInSpan / 365);
-                const remaining = budget - d.totalSpent;
-                const usedPct = budget > 0 ? (d.totalSpent / budget) * 100 : 0;
-                return { label: `Wk ${wk.num} · ${_pmRptFmtDateShort(wk.start)}`, shortLabel: `W${wk.num}`,
-                    budget, remaining, usedPct, status: _pmRptStatus(usedPct), ...d };
-            }).filter(w => w.budget > 0 || w.totalSpent > 0);
+            return weeks.map(wk => _finish(`Wk ${wk.num} · ${_pmRptFmtDateShort(wk.start)}`, `W${wk.num}`,
+                _sumRange(dt => dt >= wk.start && dt <= wk.end))
+            ).filter(w => w.totalSpent > 0 || w.cumSpent > 0);
         }
         default: return [];
     }
@@ -5856,7 +5882,7 @@ function renderPMReportsDashboard() {
 
     _pmRptRenderKPIs(groups);
     _pmRptRenderTrendChart(groups);
-    _pmRptRenderCategoryChart();
+    _pmRptRenderCategoryChart(groups);
     _pmRptRenderBvaChart(groups);
     _pmRptRenderDetailTables();
     if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -5874,11 +5900,14 @@ function _pmRptRenderKPIs(groups) {
     const row = document.getElementById('pmRptKpiRow');
     if (!row) return;
 
+    // Sum straight from `groups` (already scoped to the selected period tab +
+    // year) so the KPI row always matches what the charts below are showing —
+    // never re-read the unfiltered all-time `_pmRptState.bills` here.
     const budget = _pmRptBudgetForProjects(_pmRptState.projects);
-    const totLabor = _pmRptState.bills.reduce((s, b) => s + _pmRptEntrySums(b.entries).labor, 0);
-    const totMaterials = _pmRptState.bills.reduce((s, b) => s + _pmRptEntrySums(b.entries).materials, 0);
-    const totOutsource = _pmRptState.bills.reduce((s, b) => s + _pmRptEntrySums(b.entries).outsource, 0);
-    const totFee = _pmRptState.bills.reduce((s, b) => s + (Number(b.managementFee) || 0), 0);
+    const totLabor = groups.reduce((s, g) => s + g.labor, 0);
+    const totMaterials = groups.reduce((s, g) => s + g.materials, 0);
+    const totOutsource = groups.reduce((s, g) => s + g.outsource, 0);
+    const totFee = groups.reduce((s, g) => s + g.managementFee, 0);
     const totSpent = totLabor + totMaterials + totOutsource + totFee;
     const remaining = budget - totSpent;
     const usedPct = budget > 0 ? (totSpent / budget) * 100 : 0;
@@ -5911,12 +5940,15 @@ function _pmRptRenderTrendChart(groups) {
     const laborData = groups.map(g => g.labor);
     const materialsData = groups.map(g => g.materials);
     const outsourceData = groups.map(g => g.outsource);
-    const budgetData = groups.map(g => g.budget);
 
     const titleMap = { weekly: 'Weekly Spending Trend', monthly: 'Monthly Spending Trend',
         quarterly: 'Quarterly Spending Trend', semi: 'Semi-Annual Spending Trend', annual: 'Annual Overview' };
     setText('pmRptTrendTitle', titleMap[_pmRptState.period] || 'Spending Trend');
 
+    // No per-period budget line here — PM has one flat project-wide budget,
+    // not a per-period allocation, so pacing against it belongs on the
+    // dedicated Budget vs Actual chart (cumulative spend vs. that flat
+    // total) rather than implying each bar has its own target.
     if (_pmRptCharts.trend) _pmRptCharts.trend.destroy();
     _pmRptCharts.trend = new Chart(ctx, {
         type: 'bar',
@@ -5925,9 +5957,7 @@ function _pmRptRenderTrendChart(groups) {
             datasets: [
                 { label: 'Labor', data: laborData, backgroundColor: '#7f9cb0', borderWidth: 0, borderRadius: 5, stack: 'spend' },
                 { label: 'Materials', data: materialsData, backgroundColor: '#157a52', borderWidth: 0, borderRadius: 5, stack: 'spend' },
-                { label: 'Outsource', data: outsourceData, backgroundColor: '#c8a45a', borderWidth: 0, borderRadius: 5, stack: 'spend' },
-                { label: 'Budget', data: budgetData, type: 'line', borderColor: '#c39e8b', backgroundColor: 'transparent',
-                  borderWidth: 2, borderDash: [6, 4], pointBackgroundColor: '#c39e8b', pointRadius: 3, tension: 0.35 }
+                { label: 'Outsource', data: outsourceData, backgroundColor: '#c8a45a', borderWidth: 0, borderRadius: 5, stack: 'spend' }
             ]
         },
         options: {
@@ -5947,15 +5977,16 @@ function _pmRptRenderTrendChart(groups) {
     });
 }
 
-function _pmRptRenderCategoryChart() {
+function _pmRptRenderCategoryChart(groups) {
     const ctx = document.getElementById('pmRptCategoryChart');
     if (!ctx || typeof Chart === 'undefined') return;
-    let labor = 0, materials = 0, outsource = 0, fee = 0;
-    _pmRptState.bills.forEach(b => {
-        const s = _pmRptEntrySums(b.entries);
-        labor += s.labor; materials += s.materials; outsource += s.outsource;
-        fee += Number(b.managementFee) || 0;
-    });
+    // Same rule as the KPI row: sum from `groups` (period + year filtered),
+    // not the unfiltered all-time `_pmRptState.bills`, so the donut always
+    // matches the selected Year / period tab.
+    const labor = groups.reduce((s, g) => s + g.labor, 0);
+    const materials = groups.reduce((s, g) => s + g.materials, 0);
+    const outsource = groups.reduce((s, g) => s + g.outsource, 0);
+    const fee = groups.reduce((s, g) => s + g.managementFee, 0);
     const cats = { Labor: labor, Materials: materials, Outsource: outsource, 'Management Fee': fee };
     const labels = Object.keys(cats).filter(k => cats[k] > 0);
     const data = labels.map(k => cats[k]);
@@ -5980,16 +6011,24 @@ function _pmRptRenderCategoryChart() {
 function _pmRptRenderBvaChart(groups) {
     const ctx = document.getElementById('pmRptBvaChart');
     if (!ctx || typeof Chart === 'undefined') return;
-    const filtered = groups.filter(g => g.budget > 0 || g.totalSpent > 0);
+    // Line chart, not bars: `budget` is one flat project-wide total (not a
+    // per-period allocation PM doesn't have), so it's plotted as a constant
+    // reference line against the running CUMULATIVE spend-to-date — this
+    // shows real budget pacing without fabricating a per-period budget.
+    const filtered = groups.filter(g => g.budget > 0 || g.cumSpent > 0);
     if (_pmRptCharts.bva) _pmRptCharts.bva.destroy();
     _pmRptCharts.bva = new Chart(ctx, {
-        type: 'bar',
+        type: 'line',
         data: {
             labels: filtered.map(g => g.shortLabel),
             datasets: [
-                { label: 'Budget', data: filtered.map(g => g.budget), backgroundColor: '#cdd7cf', borderWidth: 0, borderRadius: 4 },
-                { label: 'Actual Spend', data: filtered.map(g => g.totalSpent),
-                  backgroundColor: filtered.map(g => g.totalSpent > g.budget ? '#c0564a' : '#157a52'), borderWidth: 0, borderRadius: 4 }
+                { label: 'Total Budget', data: filtered.map(g => g.budget),
+                  borderColor: '#8aa08e', backgroundColor: 'transparent', borderWidth: 2, borderDash: [6,4],
+                  pointRadius: 0, tension: 0 },
+                { label: 'Cumulative Spend', data: filtered.map(g => g.cumSpent),
+                  borderColor: '#157a52', backgroundColor: 'rgba(21,122,82,0.08)', fill: true, borderWidth: 2,
+                  pointBackgroundColor: filtered.map(g => g.cumSpent > g.budget ? '#c0564a' : '#157a52'),
+                  pointRadius: 3, tension: 0.25 }
             ]
         },
         options: {
@@ -6013,7 +6052,12 @@ function _pmRptWorkerName(entry, contracts) {
         const c = contracts.find(x => x.id === entry.contractId);
         if (c && c.workerName) return c.workerName;
     }
-    return entry.details || '—';
+    // No linked contract — this is a freeform daily labor line. `details` is
+    // admin-typed free text (often the worker's name), but the "Labor cost"
+    // fallback (used when that field was left blank) is not a worker
+    // identity — label it as such instead of presenting it as one.
+    if (entry.details && entry.details !== 'Labor cost') return _esc(entry.details);
+    return '<span style="color:#9ca3af;font-style:italic;">Uncapped (no name entered)</span>';
 }
 
 function _pmRptRenderDetailTables() {
@@ -6032,22 +6076,25 @@ function _pmRptRenderDetailTables() {
     const contracts = _pmRptState.contracts;
     const expRows = [];
     const laborRows = [];
+    // Respect the selected Year here too — otherwise these tables would keep
+    // listing every entry ever recorded regardless of the Year dropdown.
     [..._pmRptState.bills]
+        .filter(b => b.weekEndingDate && new Date(b.weekEndingDate).getFullYear() === _pmRptState.year)
         .sort((a, b) => new Date(b.weekEndingDate || 0) - new Date(a.weekEndingDate || 0))
         .forEach(b => {
             (b.entries || []).forEach(e => {
                 if (e.type === 'labor') {
                     laborRows.push({ date: b.weekEndingDate, worker: _pmRptWorkerName(e, contracts), days: e.days || '', amount: Number(e.amount) || 0 });
                 } else {
-                    expRows.push({ date: b.weekEndingDate, details: e.details || (e.type === 'both' ? 'Outsource' : 'Material'),
+                    expRows.push({ date: b.weekEndingDate, details: _esc(e.details || (e.type === 'both' ? 'Outsource' : 'Material')),
                         type: e.type === 'both' ? 'Outsource' : 'Materials', qty: e.qty || 1, amount: Number(e.amount) || 0 });
                 }
             });
         });
 
-    if (expSub) expSub.textContent = `${expRows.length} entr${expRows.length !== 1 ? 'ies' : 'y'}`;
+    if (expSub) expSub.textContent = `${expRows.length} entr${expRows.length !== 1 ? 'ies' : 'y'} · ${_pmRptState.year}`;
     if (!expRows.length) {
-        if (expTbody) expTbody.innerHTML = '<tr><td colspan="5" class="exp-empty-row">No materials/outsource entries found.</td></tr>';
+        if (expTbody) expTbody.innerHTML = `<tr><td colspan="5" class="exp-empty-row">No materials/outsource entries found for ${_pmRptState.year}.</td></tr>`;
     } else if (expTbody) {
         const total = expRows.reduce((s, r) => s + r.amount, 0);
         let html = expRows.map(r => `<tr>
@@ -6061,9 +6108,9 @@ function _pmRptRenderDetailTables() {
         expTbody.innerHTML = html;
     }
 
-    if (laborSub) laborSub.textContent = `${laborRows.length} entr${laborRows.length !== 1 ? 'ies' : 'y'}`;
+    if (laborSub) laborSub.textContent = `${laborRows.length} entr${laborRows.length !== 1 ? 'ies' : 'y'} · ${_pmRptState.year}`;
     if (!laborRows.length) {
-        if (laborTbody) laborTbody.innerHTML = '<tr><td colspan="4" class="exp-empty-row">No labor entries found.</td></tr>';
+        if (laborTbody) laborTbody.innerHTML = `<tr><td colspan="4" class="exp-empty-row">No labor entries found for ${_pmRptState.year}.</td></tr>`;
     } else if (laborTbody) {
         const total = laborRows.reduce((s, r) => s + r.amount, 0);
         let html = laborRows.map(r => `<tr>
