@@ -83,6 +83,7 @@ const REG = {
 
   boqDocuments:   { table: 'boq_documents', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['costItems', 'terms'] },
   boqTemplates:   { table: 'boq_templates', rename: OWNER, ts: ['createdAt'], json: ['costItems'] },
+  additionalWorks:{ table: 'additional_works', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['categories'] },
 
   invoices:       { table: 'invoices', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['paymentDetails'],
                     children: { items: { table: 'invoice_items', fk: 'invoice_id', orderBy: 'position', rename: { unitPrice: 'unit_price' } } } },

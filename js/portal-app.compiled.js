@@ -557,11 +557,11 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
     window.aiSummarizeFolder && window.aiSummarizeFolder({ name: c.name, location: c.location, revenue: c.revenue, allocated: c.allocated, labor: c.labor, material: c.material, coverCost: c.coverCost, remaining: c.remaining, spentPct: c.spentPct, periodCount: c.periodCount, statusLabel: c.h.label });
   } }, Ico.sparkles), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Edit folder", onClick: (e) => openEdit(c.id, e) }, Ico.pencil), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon pc-row-icon-danger", title: "Delete folder", onClick: (e) => openDelete(c.id, e) }, Ico.trash))))));
 }
-function PageHead({ project, projects, onSelectProject, period, onPeriod, onBackToGrid }) {
+function PageHead({ project, projects, onSelectProject, period, onPeriod, onBackToGrid, parentFolder }) {
   const [open, setOpen] = React.useState(false);
   const [pOpen, setPOpen] = React.useState(false);
   const PERIODS = ["This Month", "Last 30 days", "Quarter to Date", "Year to Date", "All Time"];
-  return /* @__PURE__ */ React.createElement("header", { className: "pc-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-head-text" }, /* @__PURE__ */ React.createElement("div", { className: "pc-head-eyebrow" }, onBackToGrid && /* @__PURE__ */ React.createElement("button", { className: "pc-head-back", onClick: onBackToGrid, title: "Go back to All Folders" }, "\u2190 All Folders"), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: onBackToGrid ? 10 : 0 } }, "Project Control")), /* @__PURE__ */ React.createElement("h1", { className: "pc-head-title" }, project.name), /* @__PURE__ */ React.createElement("div", { className: "pc-head-sub" }, /* @__PURE__ */ React.createElement("span", { className: "pc-code" }, project.code), project.location && /* @__PURE__ */ React.createElement("span", null, project.location))), /* @__PURE__ */ React.createElement("div", { className: "pc-head-controls" }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement("button", { className: "pc-pill", onClick: () => setOpen((o) => !o) }, Ico.bldg, /* @__PURE__ */ React.createElement("span", { className: "pc-pill-lbl" }, "Project"), /* @__PURE__ */ React.createElement("span", { className: "pc-pill-val" }, project.name), Ico.chevron), open && /* @__PURE__ */ React.createElement("div", { className: "dropdown", style: dropdownStyle }, projects.map((p) => /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement("header", { className: "pc-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-head-text" }, /* @__PURE__ */ React.createElement("div", { className: "pc-head-eyebrow" }, (parentFolder ? /* @__PURE__ */ React.createElement("button", { className: "pc-head-back", onClick: () => onSelectProject(parentFolder.id), title: "Back to " + parentFolder.name }, "\u2190 Back to " + parentFolder.name) : (onBackToGrid && /* @__PURE__ */ React.createElement("button", { className: "pc-head-back", onClick: onBackToGrid, title: "Go back to All Folders" }, "\u2190 All Folders"))), /* @__PURE__ */ React.createElement("span", { style: { marginLeft: (onBackToGrid || parentFolder) ? 10 : 0 } }, "Project Control")), /* @__PURE__ */ React.createElement("h1", { className: "pc-head-title" }, project.name), /* @__PURE__ */ React.createElement("div", { className: "pc-head-sub" }, /* @__PURE__ */ React.createElement("span", { className: "pc-code" }, project.code), project.location && /* @__PURE__ */ React.createElement("span", null, project.location))), /* @__PURE__ */ React.createElement("div", { className: "pc-head-controls" }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement("button", { className: "pc-pill", onClick: () => setOpen((o) => !o) }, Ico.bldg, /* @__PURE__ */ React.createElement("span", { className: "pc-pill-lbl" }, "Project"), /* @__PURE__ */ React.createElement("span", { className: "pc-pill-val" }, project.name), Ico.chevron), open && /* @__PURE__ */ React.createElement("div", { className: "dropdown", style: dropdownStyle }, projects.map((p) => /* @__PURE__ */ React.createElement(
     "button",
     {
       key: p.id,
@@ -637,7 +637,7 @@ function KPIStrip({ project }) {
   ];
   return /* @__PURE__ */ React.createElement("section", { className: "pc-kpi-strip" + (_staff() ? " staff-kpi-single" : ""), style: (amountsHidden && !_staff()) ? { position: "relative", padding: "8px 0", marginBottom: 12 } : { position: "relative" } }, (amountsHidden && !_staff()) ? /* @__PURE__ */ React.createElement("div", { className: "pc-kpi", style: { borderRight: 0 } }, /* @__PURE__ */ React.createElement("span", { className: "pc-kpi-lbl" }, "Financial summary hidden — click the eye to show")) : kpis.map((k, i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "pc-kpi" }, /* @__PURE__ */ React.createElement("span", { className: "pc-kpi-lbl" }, k.lbl), /* @__PURE__ */ React.createElement("span", { className: "pc-kpi-val" + (k.accent ? " pc-accent" : "") + (k.warn ? " pc-warn" : "") + (k.danger ? " pc-danger" : "") }, k.val), k.danger && /* @__PURE__ */ React.createElement("span", { className: "pc-over-badge" }, "Over \u20B1", COVER_LIMIT.toLocaleString("en-PH")))), _staff() ? null : /* @__PURE__ */ React.createElement("button", { type: "button", "aria-label": amountsHidden ? "Show amounts" : "Hide amounts", title: amountsHidden ? "Show amounts" : "Hide amounts", onClick: () => setAmountsHidden((h) => !h), style: { position: "absolute", top: 8, right: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, border: 0, borderRadius: 8, background: "transparent", color: "var(--text-light)", cursor: "pointer" } }, amountsHidden ? /* @__PURE__ */ React.createElement("svg", { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" }), /* @__PURE__ */ React.createElement("line", { x1: 1, y1: 1, x2: 23, y2: 23 })) : /* @__PURE__ */ React.createElement("svg", { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" }), /* @__PURE__ */ React.createElement("circle", { cx: 12, cy: 12, r: 3 }))));
 }
-function FlowCards({ project, onOpen, periodCount }) {
+function FlowCards({ project, onOpen, periodCount, additionalWorksTotal, additionalWorksCount, isAdditionalWorks }) {
   const [laborOpen, setLaborOpen] = React.useState(false);
   const [materialOpen, setMaterialOpen] = React.useState(false);
   const [overheadOpen, setOverheadOpen] = React.useState(false);
@@ -647,7 +647,7 @@ function FlowCards({ project, onOpen, periodCount }) {
   const matCount = project.materialCount || 0;
   const docsAttached = dc.po + dc.dr + dc.si + dc.pay;
   const docsExpected = matCount * 4;
-  return /* @__PURE__ */ React.createElement("div", { className: "pc-flow-cards" }, /* @__PURE__ */ React.createElement("button", { className: "pc-flow-card" + (laborOpen ? "" : " pc-flow-card--collapsed") + (_staff() && laborOpen ? " staff-flow-empty" : ""), onClick: () => onOpen("labor") }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon" }, Ico.users), "Labor Cost", /* @__PURE__ */ React.createElement("span", { className: "pc-help-tip", "data-tip": "Total wages and payroll paid to all workers on site. Includes direct labor, indirect labor, and liability costs.", onClick: (e) => e.stopPropagation() }, "?")), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Transaction History \u2192"), _staff() ? null : /* @__PURE__ */ React.createElement("span", { className: "pc-flow-expand", role: "button", "aria-label": laborOpen ? "Collapse labor breakdown" : "Expand labor breakdown", onClick: (e) => { e.stopPropagation(); setLaborOpen((o) => !o); }, style: { cursor: "pointer", display: "inline-flex", alignItems: "center", marginLeft: 8, color: "var(--brand-green)", transition: "transform .15s ease", transform: laborOpen ? "rotate(180deg)" : "rotate(0deg)" } }, /* @__PURE__ */ React.createElement("svg", { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.5, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "6 9 12 15 18 9" })))), _staff() ? null : (laborOpen && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ _staff() ? null : React.createElement("div", { className: "pc-flow-amount" }, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-currency" }, "\u20B1"), peso(lb.total)), _staff() ? null : /* @__PURE__ */ React.createElement("div", { className: "pc-flow-sub-label" }, "By Tag"), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-list" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot" }), "Direct"), "    ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(lb.direct))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot b" }), "Indirect"), /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(lb.indirect))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot c" }), "Liability"), /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(lb.liability)))))),/* @__PURE__ */ React.createElement("div", { className: "pc-flow-total" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Labor Total \xB7 Actual"), /* @__PURE__ */ React.createElement("span", { className: _staff() ? "val val-split" : "val" }, _staff() ? /* @__PURE__ */ React.createElement(React.Fragment, null, (project.revenue > 0 ? (project.labor / project.revenue * 100).toFixed(1) + "%" : "—"), project.revenue > 0 ? /* @__PURE__ */ React.createElement("span", { className: "pc-labor-formula", style: { marginLeft: 8 } }, "(Labor Total ÷ Contract Amount) × 100") : null) : /* @__PURE__ */ React.createElement(React.Fragment, null, React.createElement("div", { className: "pc-labor-row" }, React.createElement("span", { className: "pc-labor-currency" }, "₱"), React.createElement("span", { className: "pc-labor-amount" }, peso(lb.total)), project.revenue > 0 ? React.createElement("span", { className: "pc-labor-pct" }, (lb.total / project.revenue * 100).toFixed(1) + "%") : null, project.revenue > 0 ? React.createElement("span", { className: "pc-labor-formula" }, "(Labor Total ÷ Contract Amount) × 100") : null)))))  , /* @__PURE__ */ React.createElement("button", { className: "pc-flow-card" + (materialOpen ? "" : " pc-flow-card--collapsed") + (_staff() && materialOpen ? " staff-flow-empty" : ""), onClick: () => onOpen("material") }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon pc-icon-amber" }, Ico.package), "Material Cost", /* @__PURE__ */ React.createElement("span", { className: "pc-help-tip", "data-tip": "Total cost of all materials purchased for the project. Each transaction has supporting documents like PO, delivery receipt, invoice, and payment slip.", onClick: (e) => e.stopPropagation() }, "?")), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Transaction History \u2192"), _staff() ? null : /* @__PURE__ */ React.createElement("span", { className: "pc-flow-expand", role: "button", "aria-label": materialOpen ? "Collapse material breakdown" : "Expand material breakdown", onClick: (e) => { e.stopPropagation(); setMaterialOpen((o) => !o); }, style: { cursor: "pointer", display: "inline-flex", alignItems: "center", marginLeft: 8, color: "var(--brand-green)", transition: "transform .15s ease", transform: materialOpen ? "rotate(180deg)" : "rotate(0deg)" } }, /* @__PURE__ */ React.createElement("svg", { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.5, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "6 9 12 15 18 9" })))), _staff() ? null : (materialOpen && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ _staff() ? null : React.createElement("div", { className: "pc-flow-amount" }, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-currency" }, "\u20B1"), peso(project.material)), _staff() ? null : /* @__PURE__ */ React.createElement("div", { className: "pc-flow-sub-label" }, "Per-Transaction Files"), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-list" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Transactions"), "          ", /* @__PURE__ */ React.createElement("span", { className: "val" }, matCount)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Files Attached"), "        ", /* @__PURE__ */ React.createElement("span", { className: "val" }, docsAttached, " / ", docsExpected || 0)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item", style: { fontSize: 11.5, color: "var(--text-light)" } }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "PO \xB7 Delivery \xB7 Invoice \xB7 Payment"))))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-total" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Material Total \xB7 Actual"), /* @__PURE__ */ React.createElement("span", { className: _staff() ? "val val-split" : "val" }, _staff() ? /* @__PURE__ */ React.createElement(React.Fragment, null, (project.revenue > 0 ? (project.material / project.revenue * 100).toFixed(1) + "%" : "—"), project.revenue > 0 ? /* @__PURE__ */ React.createElement("span", { className: "pc-labor-formula", style: { marginLeft: 8 } }, "(Material Total ÷ Contract Amount) × 100") : null) : /* @__PURE__ */ React.createElement("div", { className: "pc-labor-row" }, React.createElement("span", { className: "pc-labor-currency" }, "₱"), React.createElement("span", { className: "pc-labor-amount" }, peso(project.material)), project.revenue > 0 ? React.createElement("span", { className: "pc-labor-pct" }, (project.material / project.revenue * 100).toFixed(1) + "%") : null, project.revenue > 0 ? React.createElement("span", { className: "pc-labor-formula" }, "(Material Total ÷ Contract Amount) × 100") : null)))), /* @__PURE__ */ React.createElement("button", { className: "pc-flow-card" + (overheadOpen ? "" : " pc-flow-card--collapsed") + (_staff() && overheadOpen ? " staff-flow-empty" : ""), onClick: () => onOpen("overhead") }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon pc-icon-purple" }, Ico.briefcase), "Overhead Cost", /* @__PURE__ */ React.createElement("span", { className: "pc-help-tip", "data-tip": "Indirect / overhead labor — supervision, management, and other costs not tied to a single direct task.", onClick: (e) => e.stopPropagation() }, "?")), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Transaction History →"), _staff() ? null : /* @__PURE__ */ React.createElement("span", { className: "pc-flow-expand", role: "button", "aria-label": overheadOpen ? "Collapse overhead breakdown" : "Expand overhead breakdown", onClick: (e) => { e.stopPropagation(); setOverheadOpen((o) => !o); }, style: { cursor: "pointer", display: "inline-flex", alignItems: "center", marginLeft: 8, color: "var(--brand-green)", transition: "transform .15s ease", transform: overheadOpen ? "rotate(180deg)" : "rotate(0deg)" } }, /* @__PURE__ */ React.createElement("svg", { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.5, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "6 9 12 15 18 9" })))), _staff() ? null : (overheadOpen && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-amount" }, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-currency" }, "₱"), peso(project.overhead || 0)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-sub-label" }, "Operating Costs"), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-list" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot b" }), "Total Overhead"), /* @__PURE__ */ React.createElement("span", { className: "val" }, "₱ ", peso(project.overhead || 0))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item", style: { fontSize: 11.5, color: "var(--text-light)" } }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Utilities · Rent · Supplies · Other"))))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-total" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Overhead Total \xB7 Actual"), /* @__PURE__ */ React.createElement("span", { className: _staff() ? "val val-split" : "val" }, _staff() ? /* @__PURE__ */ React.createElement(React.Fragment, null, (project.revenue > 0 ? ((project.overhead || 0) / project.revenue * 100).toFixed(1) + "%" : "—"), project.revenue > 0 ? /* @__PURE__ */ React.createElement("span", { className: "pc-labor-formula", style: { marginLeft: 8 } }, "(Overhead Total ÷ Contract Amount) × 100") : null) : /* @__PURE__ */ React.createElement("div", { className: "pc-labor-row" }, React.createElement("span", { className: "pc-labor-currency" }, "₱"), React.createElement("span", { className: "pc-labor-amount" }, peso(project.overhead || 0)), project.revenue > 0 ? React.createElement("span", { className: "pc-labor-pct" }, ((project.overhead || 0) / project.revenue * 100).toFixed(1) + "%") : null, project.revenue > 0 ? React.createElement("span", { className: "pc-labor-formula" }, "(Overhead Total ÷ Contract Amount) × 100") : null)))), /* @__PURE__ */ React.createElement("button", { className: "pc-flow-card" + (periodsOpen ? "" : " pc-flow-card--collapsed") + (_staff() && periodsOpen ? " staff-flow-empty" : ""), onClick: () => onOpen("periods") }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon pc-icon-blue" }, Ico.calendar), "Billing Periods", /* @__PURE__ */ React.createElement("span", { className: "pc-help-tip", "data-tip": "Billing periods are monthly cycles where project funds are allocated. Each period tracks how much was spent on labor and materials versus what was budgeted.", onClick: (e) => e.stopPropagation() }, "?")), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Manage Periods \u2192"), _staff() ? null : /* @__PURE__ */ React.createElement("span", { className: "pc-flow-expand", role: "button", "aria-label": periodsOpen ? "Collapse period breakdown" : "Expand period breakdown", onClick: (e) => { e.stopPropagation(); setPeriodsOpen((o) => !o); }, style: { cursor: "pointer", display: "inline-flex", alignItems: "center", marginLeft: 8, color: "var(--brand-green)", transition: "transform .15s ease", transform: periodsOpen ? "rotate(180deg)" : "rotate(0deg)" } }, /* @__PURE__ */ React.createElement("svg", { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.5, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "6 9 12 15 18 9" })))), _staff() ? null : (periodsOpen && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-amount" }, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-currency" }), periodCount), _staff() ? null : /* @__PURE__ */ React.createElement("div", { className: "pc-flow-sub-label" }, "Allocation by Period"), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-list" }, !_staff() && /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot" }), "Total Allocated"), "  ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(project.allocated))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot b" }), "Total Spent"), "    ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(project.labor + project.material))), !_staff() && /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot c" }), "Remaining"), "      ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(project.allocated - (project.labor + project.material))))))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-total" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Periods \xB7 Count"), /* @__PURE__ */ React.createElement("span", { className: "val" }, periodCount))));
+  return /* @__PURE__ */ React.createElement("div", { className: "pc-flow-cards" }, /* @__PURE__ */ React.createElement("button", { className: "pc-flow-card" + (laborOpen ? "" : " pc-flow-card--collapsed") + (_staff() && laborOpen ? " staff-flow-empty" : ""), onClick: () => onOpen("labor") }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon" }, Ico.users), "Labor Cost", /* @__PURE__ */ React.createElement("span", { className: "pc-help-tip", "data-tip": "Total wages and payroll paid to all workers on site. Includes direct labor, indirect labor, and liability costs.", onClick: (e) => e.stopPropagation() }, "?")), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Transaction History \u2192"), _staff() ? null : /* @__PURE__ */ React.createElement("span", { className: "pc-flow-expand", role: "button", "aria-label": laborOpen ? "Collapse labor breakdown" : "Expand labor breakdown", onClick: (e) => { e.stopPropagation(); setLaborOpen((o) => !o); }, style: { cursor: "pointer", display: "inline-flex", alignItems: "center", marginLeft: 8, color: "var(--brand-green)", transition: "transform .15s ease", transform: laborOpen ? "rotate(180deg)" : "rotate(0deg)" } }, /* @__PURE__ */ React.createElement("svg", { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.5, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "6 9 12 15 18 9" })))), _staff() ? null : (laborOpen && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ _staff() ? null : React.createElement("div", { className: "pc-flow-amount" }, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-currency" }, "\u20B1"), peso(lb.total)), _staff() ? null : /* @__PURE__ */ React.createElement("div", { className: "pc-flow-sub-label" }, "By Tag"), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-list" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot" }), "Direct"), "    ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(lb.direct))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot b" }), "Indirect"), /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(lb.indirect))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot c" }), "Liability"), /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(lb.liability)))))),/* @__PURE__ */ React.createElement("div", { className: "pc-flow-total" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Labor Total \xB7 Actual"), /* @__PURE__ */ React.createElement("span", { className: _staff() ? "val val-split" : "val" }, _staff() ? /* @__PURE__ */ React.createElement(React.Fragment, null, (project.revenue > 0 ? (project.labor / project.revenue * 100).toFixed(1) + "%" : "—"), project.revenue > 0 ? /* @__PURE__ */ React.createElement("span", { className: "pc-labor-formula", style: { marginLeft: 8 } }, "(Labor Total ÷ Contract Amount) × 100") : null) : /* @__PURE__ */ React.createElement(React.Fragment, null, React.createElement("div", { className: "pc-labor-row" }, React.createElement("span", { className: "pc-labor-currency" }, "₱"), React.createElement("span", { className: "pc-labor-amount" }, peso(lb.total)), project.revenue > 0 ? React.createElement("span", { className: "pc-labor-pct" }, (lb.total / project.revenue * 100).toFixed(1) + "%") : null, project.revenue > 0 ? React.createElement("span", { className: "pc-labor-formula" }, "(Labor Total ÷ Contract Amount) × 100") : null)))))  , /* @__PURE__ */ React.createElement("button", { className: "pc-flow-card" + (materialOpen ? "" : " pc-flow-card--collapsed") + (_staff() && materialOpen ? " staff-flow-empty" : ""), onClick: () => onOpen("material") }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon pc-icon-amber" }, Ico.package), "Material Cost", /* @__PURE__ */ React.createElement("span", { className: "pc-help-tip", "data-tip": "Total cost of all materials purchased for the project. Each transaction has supporting documents like PO, delivery receipt, invoice, and payment slip.", onClick: (e) => e.stopPropagation() }, "?")), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Transaction History \u2192"), _staff() ? null : /* @__PURE__ */ React.createElement("span", { className: "pc-flow-expand", role: "button", "aria-label": materialOpen ? "Collapse material breakdown" : "Expand material breakdown", onClick: (e) => { e.stopPropagation(); setMaterialOpen((o) => !o); }, style: { cursor: "pointer", display: "inline-flex", alignItems: "center", marginLeft: 8, color: "var(--brand-green)", transition: "transform .15s ease", transform: materialOpen ? "rotate(180deg)" : "rotate(0deg)" } }, /* @__PURE__ */ React.createElement("svg", { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.5, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "6 9 12 15 18 9" })))), _staff() ? null : (materialOpen && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ _staff() ? null : React.createElement("div", { className: "pc-flow-amount" }, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-currency" }, "\u20B1"), peso(project.material)), _staff() ? null : /* @__PURE__ */ React.createElement("div", { className: "pc-flow-sub-label" }, "Per-Transaction Files"), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-list" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Transactions"), "          ", /* @__PURE__ */ React.createElement("span", { className: "val" }, matCount)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Files Attached"), "        ", /* @__PURE__ */ React.createElement("span", { className: "val" }, docsAttached, " / ", docsExpected || 0)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item", style: { fontSize: 11.5, color: "var(--text-light)" } }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "PO \xB7 Delivery \xB7 Invoice \xB7 Payment"))))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-total" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Material Total \xB7 Actual"), /* @__PURE__ */ React.createElement("span", { className: _staff() ? "val val-split" : "val" }, _staff() ? /* @__PURE__ */ React.createElement(React.Fragment, null, (project.revenue > 0 ? (project.material / project.revenue * 100).toFixed(1) + "%" : "—"), project.revenue > 0 ? /* @__PURE__ */ React.createElement("span", { className: "pc-labor-formula", style: { marginLeft: 8 } }, "(Material Total ÷ Contract Amount) × 100") : null) : /* @__PURE__ */ React.createElement("div", { className: "pc-labor-row" }, React.createElement("span", { className: "pc-labor-currency" }, "₱"), React.createElement("span", { className: "pc-labor-amount" }, peso(project.material)), project.revenue > 0 ? React.createElement("span", { className: "pc-labor-pct" }, (project.material / project.revenue * 100).toFixed(1) + "%") : null, project.revenue > 0 ? React.createElement("span", { className: "pc-labor-formula" }, "(Material Total ÷ Contract Amount) × 100") : null)))), /* @__PURE__ */ React.createElement("button", { className: "pc-flow-card" + (overheadOpen ? "" : " pc-flow-card--collapsed") + (_staff() && overheadOpen ? " staff-flow-empty" : ""), onClick: () => onOpen("overhead") }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon pc-icon-purple" }, Ico.briefcase), "Overhead Cost", /* @__PURE__ */ React.createElement("span", { className: "pc-help-tip", "data-tip": "Indirect / overhead labor — supervision, management, and other costs not tied to a single direct task.", onClick: (e) => e.stopPropagation() }, "?")), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Transaction History →"), _staff() ? null : /* @__PURE__ */ React.createElement("span", { className: "pc-flow-expand", role: "button", "aria-label": overheadOpen ? "Collapse overhead breakdown" : "Expand overhead breakdown", onClick: (e) => { e.stopPropagation(); setOverheadOpen((o) => !o); }, style: { cursor: "pointer", display: "inline-flex", alignItems: "center", marginLeft: 8, color: "var(--brand-green)", transition: "transform .15s ease", transform: overheadOpen ? "rotate(180deg)" : "rotate(0deg)" } }, /* @__PURE__ */ React.createElement("svg", { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.5, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "6 9 12 15 18 9" })))), _staff() ? null : (overheadOpen && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-amount" }, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-currency" }, "₱"), peso(project.overhead || 0)), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-sub-label" }, "Operating Costs"), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-list" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot b" }), "Total Overhead"), /* @__PURE__ */ React.createElement("span", { className: "val" }, "₱ ", peso(project.overhead || 0))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item", style: { fontSize: 11.5, color: "var(--text-light)" } }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Utilities · Rent · Supplies · Other"))))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-total" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Overhead Total \xB7 Actual"), /* @__PURE__ */ React.createElement("span", { className: _staff() ? "val val-split" : "val" }, _staff() ? /* @__PURE__ */ React.createElement(React.Fragment, null, (project.revenue > 0 ? ((project.overhead || 0) / project.revenue * 100).toFixed(1) + "%" : "—"), project.revenue > 0 ? /* @__PURE__ */ React.createElement("span", { className: "pc-labor-formula", style: { marginLeft: 8 } }, "(Overhead Total ÷ Contract Amount) × 100") : null) : /* @__PURE__ */ React.createElement("div", { className: "pc-labor-row" }, React.createElement("span", { className: "pc-labor-currency" }, "₱"), React.createElement("span", { className: "pc-labor-amount" }, peso(project.overhead || 0)), project.revenue > 0 ? React.createElement("span", { className: "pc-labor-pct" }, ((project.overhead || 0) / project.revenue * 100).toFixed(1) + "%") : null, project.revenue > 0 ? React.createElement("span", { className: "pc-labor-formula" }, "(Overhead Total ÷ Contract Amount) × 100") : null)))), isAdditionalWorks ? null : (/* @__PURE__ */ React.createElement("button", { className: "pc-flow-card" + (periodsOpen ? "" : " pc-flow-card--collapsed") + (_staff() && periodsOpen ? " staff-flow-empty" : ""), onClick: () => onOpen("periods") }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon pc-icon-blue" }, Ico.calendar), "Billing Periods", /* @__PURE__ */ React.createElement("span", { className: "pc-help-tip", "data-tip": "Billing periods are monthly cycles where project funds are allocated. Each period tracks how much was spent on labor and materials versus what was budgeted.", onClick: (e) => e.stopPropagation() }, "?")), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Manage Periods \u2192"), _staff() ? null : /* @__PURE__ */ React.createElement("span", { className: "pc-flow-expand", role: "button", "aria-label": periodsOpen ? "Collapse period breakdown" : "Expand period breakdown", onClick: (e) => { e.stopPropagation(); setPeriodsOpen((o) => !o); }, style: { cursor: "pointer", display: "inline-flex", alignItems: "center", marginLeft: 8, color: "var(--brand-green)", transition: "transform .15s ease", transform: periodsOpen ? "rotate(180deg)" : "rotate(0deg)" } }, /* @__PURE__ */ React.createElement("svg", { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.5, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "6 9 12 15 18 9" })))), _staff() ? null : (periodsOpen && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-amount" }, /* @__PURE__ */ React.createElement("span", { className: "pc-flow-currency" }), periodCount), _staff() ? null : /* @__PURE__ */ React.createElement("div", { className: "pc-flow-sub-label" }, "Allocation by Period"), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-list" }, !_staff() && /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot" }), "Total Allocated"), "  ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(project.allocated))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot b" }), "Total Spent"), "    ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(project.labor + project.material))), !_staff() && /* @__PURE__ */ React.createElement("div", { className: "pc-flow-item" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot c" }), "Remaining"), "      ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(project.allocated - (project.labor + project.material))))))), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-total" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Periods \xB7 Count"), /* @__PURE__ */ React.createElement("span", { className: "val" }, periodCount)))), /* @__PURE__ */ React.createElement("button", { className: "pc-flow-card pc-flow-card--collapsed", onClick: () => onOpen("additionalWorks") }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-flow-card-title-icon pc-icon-teal" }, Ico.hard), "Additional Works", /* @__PURE__ */ React.createElement("span", { className: "pc-help-tip", "data-tip": "Extra scope added to this project after the original contract (contract extensions / change orders). Record each Additional Works BOQ here.", onClick: (e) => e.stopPropagation() }, "?")), /* @__PURE__ */ React.createElement("span", { className: "pc-flow-link" }, "Manage →")), /* @__PURE__ */ React.createElement("div", { className: "pc-flow-total" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Additional Works · Total"), /* @__PURE__ */ React.createElement("span", { className: "val" }, _staff() ? (additionalWorksCount || 0) + " entr" + ((additionalWorksCount || 0) === 1 ? "y" : "ies") : "₱ " + peso(additionalWorksTotal || 0)))));
 }
 function Summarize({ project }) {
   const [eqOpen, setEqOpen] = React.useState(false);
@@ -774,15 +774,33 @@ function pickLatestMonth(childMonths) {
   });
   return sorted[0] || null;
 }
-function openAddEntry(kind, childMonths) {
-  const latest = pickLatestMonth(childMonths);
+async function ensureAdditionalWorksPeriod(folderId) {
+  const uid = window.currentDataUserId || (firebase.auth().currentUser && firebase.auth().currentUser.uid) || null;
+  const now = new Date();
+  const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const month = months[now.getMonth()];
+  const year = now.getFullYear();
+  const ref = await db.collection("projects").add({
+    userId: uid, month, year, fundingType: "downpayment", folderId,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  return { id: ref.id, folderId, month, year, monthlyBudget: 0 };
+}
+async function openAddEntry(kind, childMonths, folder) {
+  let latest = pickLatestMonth(childMonths);
+  if (!latest && folder && folder.parentFolderId) {
+    try {
+      latest = await ensureAdditionalWorksPeriod(folder.id);
+    } catch (err) {
+      alert("Could not prepare this Additional Works folder: " + (err.message || err));
+      return;
+    }
+  }
   if (!latest) {
     alert("Add a billing period to this folder first via Budget Overview, then return to record entries.");
     return;
   }
-  if (typeof window.expCurrentProject !== "undefined" || true) {
-    window.expCurrentProject = { id: latest.id, folderId: latest.folderId, month: latest.month, year: latest.year, monthlyBudget: latest.monthlyBudget };
-  }
+  window.expCurrentProject = { id: latest.id, folderId: latest.folderId, month: latest.month, year: latest.year, monthlyBudget: latest.monthlyBudget };
   const modalId = kind === "labor" ? "addPayrollModal" : "addExpenseModal";
   if (typeof window.openExpModal === "function") window.openExpModal(modalId);
 }
@@ -803,6 +821,21 @@ function ContractRollup({ contracts, folderPayroll, onOpen }) {
       rc("div", null, rc("span", null, "Outstanding"), rc("strong", { className: remaining < 0 ? "lc-neg" : "" }, "₱ ", peso(remaining)))
     )
   );
+}
+function awLineTotal(item) {
+  return (Number(item.materialCost) || 0) + (Number(item.laborCost) || 0);
+}
+function awCategoryTotal(cat) {
+  return (cat.items || []).reduce((s, it) => s + awLineTotal(it), 0);
+}
+function awSubtotal(categories) {
+  return (categories || []).reduce((s, c) => s + awCategoryTotal(c), 0);
+}
+function awDiscountedTotal(entry) {
+  return Math.max(0, awSubtotal(entry.categories) - (Number(entry.discount) || 0));
+}
+function awItemCount(categories) {
+  return (categories || []).reduce((s, c) => s + (c.items || []).length, 0);
 }
 function _ovhdLocalToday() {
   const d = new Date();
@@ -935,8 +968,206 @@ function OverheadDrill({ project, onBack, overheadTx, folderId }) {
     h("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"),
     head, kpis, body, modal);
 }
+function _awId() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+function _awNewItem() { return { id: _awId(), description: "", qty: "", unit: "", materialCost: "", laborCost: "" }; }
+function _awNewCategory() { return { id: _awId(), label: "", items: [_awNewItem()] }; }
+function _awEmptyDraft() { return { id: null, title: "", workDate: _ovhdLocalToday(), categories: [_awNewCategory()], discount: 0 }; }
+function AdditionalWorksDrill({ project, onBack, childFolders, additionalWorksRaw, onOpenChild, folderId }) {
+  const h = React.createElement;
+  const [editing, setEditing] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+  const [creating, setCreating] = React.useState(null);
+  const [savingNew, setSavingNew] = React.useState(false);
+  const esc = (v) => String(v == null ? "" : v);
+
+  const children = childFolders || [];
+  const grandTotal = children.reduce((s, c) => s + c.revenue, 0);
+  const totalSpent = children.reduce((s, c) => s + c.labor + c.material, 0);
+
+  const openAdd = () => setCreating({ title: "", workDate: _ovhdLocalToday() });
+  const closeCreate = () => { if (!savingNew) setCreating(null); };
+  const saveNew = async () => {
+    if (!folderId) { alert("Open a project first."); return; }
+    if (!creating.title || !creating.title.trim()) { alert("Please enter a name for this project."); return; }
+    setSavingNew(true);
+    try {
+      const uid = window.currentDataUserId || (firebase.auth().currentUser && firebase.auth().currentUser.uid) || null;
+      const ref = await db.collection("folders").add({
+        userId: uid, name: creating.title, description: "", parentFolderId: folderId,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      await db.collection("folderBudgets").doc(ref.id).set({ userId: uid, totalBudget: 0 });
+      await db.collection("additionalWorks").add({
+        userId: uid, folderId: ref.id, title: creating.title, workDate: creating.workDate || "",
+        categories: [], discount: 0,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      setCreating(null);
+    } catch (err) { alert("Save failed: " + (err.message || err)); }
+    setSavingNew(false);
+  };
+  const openEditChild = (child) => {
+    const aw = (additionalWorksRaw || []).find((x) => x.folderId === child.id);
+    setEditing({
+      id: aw ? aw.id : null,
+      childFolderId: child.id,
+      title: (aw && aw.title) || child.name || "",
+      workDate: (aw && aw.workDate) || _ovhdLocalToday(),
+      categories: (aw && aw.categories && aw.categories.length ? aw.categories : [_awNewCategory()]).map((c) => ({ id: c.id || _awId(), label: c.label || "", items: (c.items && c.items.length ? c.items : [_awNewItem()]).map((it) => ({ id: it.id || _awId(), description: it.description || "", qty: it.qty || "", unit: it.unit || "", materialCost: it.materialCost || "", laborCost: it.laborCost || "" })) })),
+      discount: (aw && aw.discount) || 0
+    });
+  };
+  const closeModal = () => { if (!saving) setEditing(null); };
+
+  const patchCategory = (catId, patch) => setEditing((d) => ({ ...d, categories: d.categories.map((c) => c.id === catId ? { ...c, ...patch } : c) }));
+  const patchItem = (catId, itemId, patch) => setEditing((d) => ({ ...d, categories: d.categories.map((c) => c.id !== catId ? c : { ...c, items: c.items.map((it) => it.id === itemId ? { ...it, ...patch } : it) }) }));
+  const addCategory = () => setEditing((d) => ({ ...d, categories: [...d.categories, _awNewCategory()] }));
+  const removeCategory = (catId) => setEditing((d) => ({ ...d, categories: d.categories.length > 1 ? d.categories.filter((c) => c.id !== catId) : d.categories }));
+  const addItem = (catId) => setEditing((d) => ({ ...d, categories: d.categories.map((c) => c.id === catId ? { ...c, items: [...c.items, _awNewItem()] } : c) }));
+  const removeItem = (catId, itemId) => setEditing((d) => ({ ...d, categories: d.categories.map((c) => c.id !== catId ? c : { ...c, items: c.items.length > 1 ? c.items.filter((it) => it.id !== itemId) : c.items }) }));
+
+  const draftSubtotal = editing ? awSubtotal(editing.categories) : 0;
+  const draftDiscount = editing ? Number(String(editing.discount).replace(/,/g, "")) || 0 : 0;
+  const draftTotal = Math.max(0, draftSubtotal - draftDiscount);
+
+  const save = async () => {
+    if (!folderId) { alert("Open a project first."); return; }
+    if (!editing.title || !editing.title.trim()) { alert("Please enter a title — it becomes the project name."); return; }
+    const cleanCategories = editing.categories.map((c) => ({
+      label: c.label || "",
+      items: c.items.filter((it) => it.description || it.materialCost || it.laborCost).map((it) => ({
+        description: it.description || "", qty: it.qty || "", unit: it.unit || "",
+        materialCost: Number(String(it.materialCost).replace(/,/g, "")) || 0,
+        laborCost: Number(String(it.laborCost).replace(/,/g, "")) || 0
+      }))
+    })).filter((c) => c.items.length);
+    setSaving(true);
+    try {
+      const uid = window.currentDataUserId || (firebase.auth().currentUser && firebase.auth().currentUser.uid) || null;
+      let childId = editing.childFolderId;
+      if (childId) {
+        await db.collection("folders").doc(childId).update({ name: editing.title });
+        await db.collection("folderBudgets").doc(childId).set({ userId: uid, totalBudget: draftTotal });
+      } else {
+        const ref = await db.collection("folders").add({
+          userId: uid, name: editing.title, description: "", parentFolderId: folderId,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        childId = ref.id;
+        await db.collection("folderBudgets").doc(childId).set({ userId: uid, totalBudget: draftTotal });
+      }
+      const awPayload = {
+        userId: uid, folderId: childId, title: editing.title, workDate: editing.workDate || "",
+        categories: cleanCategories, discount: draftDiscount,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      if (editing.id) {
+        await db.collection("additionalWorks").doc(editing.id).update(awPayload);
+      } else {
+        awPayload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+        await db.collection("additionalWorks").add(awPayload);
+      }
+      setEditing(null);
+    } catch (err) { alert("Save failed: " + (err.message || err)); }
+    setSaving(false);
+  };
+  const deleteChild = async (child) => {
+    if (!confirm(`Delete "${child.name}"? This removes its contract amount and any billing periods/entries recorded under it.`)) return;
+    try { await db.collection("folders").doc(child.id).delete(); } catch (err) { alert("Delete failed: " + (err.message || err)); }
+  };
+
+  const card = (label, value, accent) => h("div", { className: "drill-stat" },
+    h("div", { className: "lbl" }, label),
+    h("div", { className: "val" + (accent ? " total" : "") }, value));
+  const kpis = h("div", { className: "drill-stats" },
+    card("Total Additional Works", _staff() ? children.length + " project" + (children.length === 1 ? "" : "s") : "₱ " + peso(grandTotal), true),
+    card("Projects", children.length),
+    _staff() ? null : card("Total Spent", "₱ " + peso(totalSpent)));
+
+  const headerRow = h("tr", { style: { background: "#faf9f7", color: "var(--text-light)", textAlign: "left" } },
+    ["Name", "Contract", "Spent", "Remaining", ""].map((t, i) => h("th", { key: i, style: { padding: "10px 16px", font: "600 10.5px 'IBM Plex Sans'", letterSpacing: ".06em", textTransform: "uppercase" } }, t)));
+
+  const bodyRows = children.length
+    ? children.map((cf) => h("tr", { key: cf.id, style: { borderTop: "1px solid #f0efec", cursor: "pointer" }, onClick: () => onOpenChild(cf.id) },
+        h("td", { style: { padding: "12px 16px", fontWeight: 600 } }, esc(cf.name) || "—"),
+        h("td", { style: { padding: "12px 16px" } }, _staff() ? "—" : "₱ " + peso(cf.revenue)),
+        h("td", { style: { padding: "12px 16px" } }, _staff() ? "—" : "₱ " + peso(cf.labor + cf.material)),
+        h("td", { style: { padding: "12px 16px", fontWeight: 600 } }, _staff() ? "—" : "₱ " + peso(cf.revenue - (cf.labor + cf.material))),
+        h("td", { style: { padding: "12px 16px", textAlign: "right", whiteSpace: "nowrap" } },
+          h("button", { onClick: (ev) => { ev.stopPropagation(); onOpenChild(cf.id); }, title: "Open", style: { border: 0, background: "#eef6f1", color: "var(--brand-green)", borderRadius: 8, padding: "6px 9px", cursor: "pointer", marginRight: 6, font: "600 12px 'IBM Plex Sans'" } }, "Open →"),
+          h("button", { onClick: (ev) => { ev.stopPropagation(); openEditChild(cf); }, title: "Edit BOQ breakdown", style: { border: 0, background: "#f0efec", color: "var(--text-primary)", borderRadius: 8, padding: "6px 9px", cursor: "pointer", marginRight: 6 } }, Ico.pencil),
+          h("button", { onClick: (ev) => { ev.stopPropagation(); deleteChild(cf); }, title: "Delete", style: { border: 0, background: "#fdecea", color: "#c0564a", borderRadius: 8, padding: "6px 9px", cursor: "pointer" } }, Ico.trash))))
+    : [h("tr", { key: "empty" }, h("td", { colSpan: 5, style: { padding: "28px 16px", textAlign: "center", color: "var(--text-light)" } }, "No Additional Works projects yet for this project."))];
+
+  const recordsPanel = h("div", { style: { border: "1px solid #e7e6e2", borderRadius: 14, background: "#fff", overflow: "hidden" } },
+    h("div", { style: { font: "600 14px 'IBM Plex Sans'", padding: "16px 20px" } }, "Additional Works Projects"),
+    h("table", { style: { width: "100%", borderCollapse: "collapse", font: "400 13px 'IBM Plex Sans'" } },
+      h("thead", null, headerRow), h("tbody", null, bodyRows)));
+
+  const inStyle = { width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, font: "400 13px 'IBM Plex Sans'", boxSizing: "border-box" };
+  const field = (label, input, w) => h("div", { style: { marginBottom: 10, flex: w || "1 1 120px", minWidth: 0 } },
+    h("label", { style: { font: "600 11px 'IBM Plex Sans'", display: "block", marginBottom: 4, color: "var(--text-light)" } }, label), input);
+
+  const createModal = creating ? h("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16 }, onClick: (ev) => { if (ev.target === ev.currentTarget) closeCreate(); } },
+    h("div", { style: { background: "#fff", borderRadius: 16, width: "100%", maxWidth: 420, padding: 24 } },
+      h("h3", { style: { font: "700 16px 'IBM Plex Sans'", margin: "0 0 16px" } }, "New Additional Works"),
+      field("Project Name", h("input", { type: "text", autoFocus: true, value: creating.title, onChange: (ev) => setCreating({ ...creating, title: ev.target.value }), placeholder: "e.g. Additional Works Rev. 1", style: inStyle })),
+      field("Date", h("input", { type: "date", value: creating.workDate, onChange: (ev) => setCreating({ ...creating, workDate: ev.target.value }), style: inStyle })),
+      h("div", { style: { fontSize: 12, color: "var(--text-light)", margin: "-4px 0 16px" } }, "You can price it (categories, line items, discount) afterward via the edit icon."),
+      h("div", { style: { display: "flex", justifyContent: "flex-end", gap: 10 } },
+        h("button", { onClick: closeCreate, disabled: savingNew, style: { padding: "9px 16px", borderRadius: 9, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", font: "600 13px 'IBM Plex Sans'" } }, "Cancel"),
+        h("button", { onClick: saveNew, disabled: savingNew, style: { padding: "9px 18px", borderRadius: 9, border: 0, background: "var(--brand-green)", color: "#fff", cursor: "pointer", font: "700 13px 'IBM Plex Sans'" } }, savingNew ? "Saving…" : "Create Project")))) : null;
+
+  const itemRow = (cat, it) => h("div", { key: it.id, style: { display: "flex", gap: 8, alignItems: "flex-end", marginBottom: 8, flexWrap: "wrap" } },
+    field("Description", h("input", { type: "text", value: it.description, onChange: (ev) => patchItem(cat.id, it.id, { description: ev.target.value }), placeholder: "e.g. Shower Set", style: inStyle }), "1 1 200px"),
+    field("Qty", h("input", { type: "text", value: it.qty, onChange: (ev) => patchItem(cat.id, it.id, { qty: ev.target.value }), placeholder: "1.00", style: inStyle }), "0 1 70px"),
+    field("Unit", h("input", { type: "text", value: it.unit, onChange: (ev) => patchItem(cat.id, it.id, { unit: ev.target.value }), placeholder: "lot", style: inStyle }), "0 1 70px"),
+    field("Material (₱)", h("input", { type: "text", value: it.materialCost, onChange: (ev) => patchItem(cat.id, it.id, { materialCost: ev.target.value }), placeholder: "0.00", style: inStyle }), "0 1 110px"),
+    field("Labor (₱)", h("input", { type: "text", value: it.laborCost, onChange: (ev) => patchItem(cat.id, it.id, { laborCost: ev.target.value }), placeholder: "0.00", style: inStyle }), "0 1 110px"),
+    h("div", { style: { flex: "0 1 90px", font: "600 13px 'IBM Plex Sans'", padding: "8px 0", textAlign: "right" } }, "₱ " + peso(awLineTotal(it))),
+    h("button", { onClick: () => removeItem(cat.id, it.id), title: "Remove item", style: { border: 0, background: "#fdecea", color: "#c0564a", borderRadius: 8, padding: "8px 9px", cursor: "pointer", flex: "none" } }, Ico.trash));
+
+  const categoryBlock = (cat, idx) => h("div", { key: cat.id, style: { border: "1px solid #e7e6e2", borderRadius: 12, padding: 14, marginBottom: 12 } },
+    h("div", { style: { display: "flex", gap: 8, alignItems: "center", marginBottom: 10 } },
+      h("input", { type: "text", value: cat.label, onChange: (ev) => patchCategory(cat.id, { label: ev.target.value }), placeholder: `e.g. ${String.fromCharCode(65 + idx)}. Plumbing Fixtures`, style: { ...inStyle, fontWeight: 600, flex: 1 } }),
+      h("button", { onClick: () => removeCategory(cat.id), title: "Remove category", style: { border: 0, background: "#fdecea", color: "#c0564a", borderRadius: 8, padding: "8px 9px", cursor: "pointer", flex: "none" } }, Ico.trash)),
+    cat.items.map((it) => itemRow(cat, it)),
+    h("button", { onClick: () => addItem(cat.id), style: { border: "1.5px dashed #d1d5db", background: "#fff", color: "var(--text-light)", borderRadius: 8, padding: "7px 12px", cursor: "pointer", font: "600 12px 'IBM Plex Sans'" } }, "+ Add Line Item"));
+
+  const modal = editing ? h("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16 }, onClick: (ev) => { if (ev.target === ev.currentTarget) closeModal(); } },
+    h("div", { style: { background: "#fff", borderRadius: 16, width: "100%", maxWidth: 720, maxHeight: "88vh", overflowY: "auto", padding: 24 } },
+      h("h3", { style: { font: "700 16px 'IBM Plex Sans'", margin: "0 0 16px" } }, editing.childFolderId ? "Edit Additional Works" : "New Additional Works"),
+      h("div", { style: { display: "flex", gap: 12, flexWrap: "wrap" } },
+        field("Title", h("input", { type: "text", value: editing.title, onChange: (ev) => setEditing({ ...editing, title: ev.target.value }), placeholder: "e.g. Additional Works Rev. 1", style: inStyle }), "2 1 260px"),
+        field("Date", h("input", { type: "date", value: editing.workDate, onChange: (ev) => setEditing({ ...editing, workDate: ev.target.value }), style: inStyle }), "1 1 160px")),
+      h("div", { style: { margin: "14px 0 8px", font: "600 12.5px 'IBM Plex Sans'" } }, "Line Items by Category"),
+      editing.categories.map((cat, idx) => categoryBlock(cat, idx)),
+      h("button", { onClick: addCategory, style: { border: "1.5px dashed #d1d5db", background: "#fff", color: "var(--text-light)", borderRadius: 8, padding: "8px 14px", cursor: "pointer", font: "600 12.5px 'IBM Plex Sans'", marginBottom: 16 } }, "+ Add Category"),
+      h("div", { style: { borderTop: "1px solid #f0efec", paddingTop: 14, display: "flex", justifyContent: "flex-end" } },
+        h("div", { style: { width: 260 } },
+          h("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 6, font: "400 13px 'IBM Plex Sans'" } }, h("span", null, "Subtotal"), h("span", null, "₱ " + peso(draftSubtotal))),
+          h("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
+            h("span", { style: { font: "400 13px 'IBM Plex Sans'" } }, "Discount"),
+            h("input", { type: "text", value: editing.discount, onChange: (ev) => setEditing({ ...editing, discount: ev.target.value }), placeholder: "0.00", style: { ...inStyle, width: 120, textAlign: "right" } })),
+          h("div", { style: { display: "flex", justifyContent: "space-between", font: "700 15px 'IBM Plex Sans'", borderTop: "1px solid #f0efec", paddingTop: 8 } }, h("span", null, "Total"), h("span", null, "₱ " + peso(draftTotal))))),
+      h("div", { style: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 } },
+        h("button", { onClick: closeModal, disabled: saving, style: { padding: "9px 16px", borderRadius: 9, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", font: "600 13px 'IBM Plex Sans'" } }, "Cancel"),
+        h("button", { onClick: save, disabled: saving, style: { padding: "9px 18px", borderRadius: 9, border: 0, background: "var(--brand-green)", color: "#fff", cursor: "pointer", font: "700 13px 'IBM Plex Sans'" } }, saving ? "Saving…" : "Save Additional Works")))) : null;
+
+  const head = h("div", { className: "drill-head", style: { marginTop: 14 } },
+    h("div", { style: { minWidth: 0 } },
+      h("div", { className: "eyebrow", style: { marginBottom: 10 } }, "Additional Works \xB7 Contract Extensions"),
+      h("h2", null, "Additional Works"),
+      h("div", { className: "sub" }, esc(project && project.name), project && project.code ? " \xB7 " + project.code : "")),
+    h("button", { onClick: openAdd, style: { display: "inline-flex", alignItems: "center", gap: 8, background: "var(--brand-green)", color: "#fff", border: 0, borderRadius: 10, padding: "11px 20px", font: "700 13px 'IBM Plex Sans'", cursor: "pointer", whiteSpace: "nowrap", flex: "none" } }, "+ New Additional Works"));
+
+  return h("section", { className: "drill" },
+    h("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"),
+    head, kpis, recordsPanel, modal, createModal);
+}
 function _esc2(s) { return String(s == null ? "" : s); }
-function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPayroll }) {
+function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPayroll, activeFolder }) {
   const rc = React.createElement;
   const [tab, setTab] = React.useState("all");
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -1145,7 +1376,7 @@ function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPa
           rc("div", { className: "lc2-rem-val" + (remaining < 0 ? " neg" : (hasContract ? (isDone ? " muted" : "") : " muted")) }, remaining < 0 ? "\u2212 \u20B1 " + peso(Math.abs(remaining)) : "\u20B1 " + peso(hasContract ? remaining : totalPaidAll))
         ),
         rc("span", { className: "lc2-badge " + scls }, status + (status === "Ongoing" ? " \u00B7 " + pct.toFixed(0) + "%" : "")),
-        rc("button", { className: "lc2-pay", onClick: (e) => { e.stopPropagation(); openAddEntry("labor", childMonths); } }, Ico.plus, " Pay"),
+        rc("button", { className: "lc2-pay", onClick: (e) => { e.stopPropagation(); openAddEntry("labor", childMonths, activeFolder); } }, Ico.plus, " Pay"),
         rc("svg", { className: "lc2-chev", width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "#A1A1A6", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }))
       ),
       open ? rc("div", { className: "lc2-acc-body" }, workerBody(w, crows, pays)) : null
@@ -1176,7 +1407,7 @@ function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPa
           )
         ),
         _staff() ? null : rc("button", { className: "lc2-ghost", onClick: () => window.lcOpenNew && window.lcOpenNew() }, Ico.plus, " New Contract"),
-        rc("button", { className: "btn-primary", onClick: () => openAddEntry("labor", childMonths) }, Ico.plus, " Add Payment")
+        rc("button", { className: "btn-primary", onClick: () => openAddEntry("labor", childMonths, activeFolder) }, Ico.plus, " Add Payment")
       )
     ),
     _lcRows.length ? rc("div", { className: "lc2-totals" },
@@ -1388,7 +1619,7 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder 
   };
   const pillBase = { padding: "6px 12px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", whiteSpace: "nowrap" };
   const pillActive = { ...pillBase, background: "#1A5C3A", color: "#fff", borderColor: "#1A5C3A" };
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("section", { className: "drill" }, /* @__PURE__ */ React.createElement("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"), /* @__PURE__ */ React.createElement("div", { className: "drill-head" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Material Cost \xB7 Transaction History"), /* @__PURE__ */ React.createElement("h2", null, "Materials", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "var(--sans)", color: "var(--brand-green)", fontWeight: 700, fontSize: "22px", letterSpacing: "0.02em", marginLeft: 18, background: "rgba(26,90,58,0.12)", padding: "8px 20px", borderRadius: "999px", whiteSpace: "nowrap", verticalAlign: "middle", fontVariantNumeric: "tabular-nums" } }, project.revenue > 0 ? (project.material / project.revenue * 100).toFixed(1) + "%" : "\u2014")), /* @__PURE__ */ React.createElement("div", { className: "sub" }, project.name, " \xB7 ", project.code)), /* @__PURE__ */ React.createElement("button", { className: "btn-primary", onClick: () => openAddEntry("material", childMonths) }, Ico.plus, " Add Expense")), /* @__PURE__ */ React.createElement("div", { className: "drill-stats" }, /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Purchase Order"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.po, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Delivery Receipt"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.dr, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Supplier Invoice"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.si, " / ", count)), _staff() ? null : /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Material Total \xB7 Actual"), /* @__PURE__ */ React.createElement("div", { className: "val total" }, "\u20B1 ", peso(project.material)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "14px 4px 4px" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", flex: "1 1 220px", minWidth: 200, maxWidth: 380 } }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("section", { className: "drill" }, /* @__PURE__ */ React.createElement("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"), /* @__PURE__ */ React.createElement("div", { className: "drill-head" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Material Cost \xB7 Transaction History"), /* @__PURE__ */ React.createElement("h2", null, "Materials", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "var(--sans)", color: "var(--brand-green)", fontWeight: 700, fontSize: "22px", letterSpacing: "0.02em", marginLeft: 18, background: "rgba(26,90,58,0.12)", padding: "8px 20px", borderRadius: "999px", whiteSpace: "nowrap", verticalAlign: "middle", fontVariantNumeric: "tabular-nums" } }, project.revenue > 0 ? (project.material / project.revenue * 100).toFixed(1) + "%" : "\u2014")), /* @__PURE__ */ React.createElement("div", { className: "sub" }, project.name, " \xB7 ", project.code)), /* @__PURE__ */ React.createElement("button", { className: "btn-primary", onClick: () => openAddEntry("material", childMonths, activeFolder) }, Ico.plus, " Add Expense")), /* @__PURE__ */ React.createElement("div", { className: "drill-stats" }, /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Purchase Order"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.po, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Delivery Receipt"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.dr, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Supplier Invoice"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.si, " / ", count)), _staff() ? null : /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Material Total \xB7 Actual"), /* @__PURE__ */ React.createElement("div", { className: "val total" }, "\u20B1 ", peso(project.material)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "14px 4px 4px" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", flex: "1 1 220px", minWidth: 200, maxWidth: 380 } }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
@@ -1567,6 +1798,7 @@ function PortalApp() {
   const [payrollRaw, setPayrollRaw] = React.useState([]);
   const [expensesRaw, setExpensesRaw] = React.useState([]);
   const [overheadRaw, setOverheadRaw] = React.useState([]);
+  const [additionalWorksRaw, setAdditionalWorksRaw] = React.useState([]);
   const folderBudgetRef = React.useRef({});
   const projectBudgetRef = React.useRef({});
   const [isStaff, setIsStaff] = React.useState(false);
@@ -1688,6 +1920,10 @@ function PortalApp() {
       db.collection("overheadExpenses").where("userId", "==", dataUid).onSnapshot((s) => {
         setOverheadRaw(s.docs.map((d) => ({ id: d.id, ...d.data() })));
       }, () => {
+      }),
+      db.collection("additionalWorks").where("userId", "==", dataUid).onSnapshot((s) => {
+        setAdditionalWorksRaw(s.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }, () => {
       })
     ];
     return () => unsubs.forEach((u) => u && u());
@@ -1737,14 +1973,57 @@ function PortalApp() {
     () => (overheadRaw || []).filter((e) => e.folderId === projectId).map((e) => ({ id: e.id, category: e.category || "Uncategorized", amount: Number(e.amount) || 0, date: (e.date || "").toString().slice(0, 10), description: e.description || "" })).sort((a, b) => (b.date || "").localeCompare(a.date || "")),
     [overheadRaw, projectId]
   );
+  const childFolders = React.useMemo(
+    () => foldersRaw.filter((f) => f.parentFolderId === projectId),
+    [foldersRaw, projectId]
+  );
+  const childFolderStats = React.useMemo(
+    () => childFolders.map((cf) => {
+      const cfMonths = monthsRaw.filter((m) => m.folderId === cf.id).map(mapMonthlyProject);
+      const cfMonthIds = new Set(cfMonths.map((m) => m.id));
+      const cfLabor = payrollRaw.filter((p) => cfMonthIds.has(p.projectId)).map(mapPayrollDoc);
+      const cfMaterial = expensesRaw.filter((e) => cfMonthIds.has(e.projectId)).map(mapExpenseDoc);
+      return { ...buildProject(cf, cfMonths, cfLabor, cfMaterial), raw: cf };
+    }),
+    [childFolders, monthsRaw, payrollRaw, expensesRaw]
+  );
+  const additionalWorksTotal = childFolderStats.reduce((s, c) => s + c.revenue, 0);
   const laborTx = React.useMemo(() => filterByPeriod(allLaborTx, period), [allLaborTx, period]);
   const materialTx = React.useMemo(() => filterByPeriod(allMaterialTx, period), [allMaterialTx, period]);
   const projects = React.useMemo(
-    () => foldersRaw.map((f) => buildProject(f, [], [], [])),
+    () => foldersRaw.filter((f) => !f.parentFolderId).map((f) => buildProject(f, [], [], [])),
     [foldersRaw]
   );
   const overheadTotal = overheadTx.reduce((s2, e) => s2 + (Number(e.amount) || 0), 0);
-  const project = activeFolder ? { ...buildProject(activeFolder, childMonths, laborTx, materialTx), overhead: overheadTotal } : null;
+  const project = activeFolder ? (() => {
+    const base = buildProject(activeFolder, childMonths, laborTx, materialTx);
+    const childRevenue = childFolderStats.reduce((s, c) => s + c.revenue, 0);
+    const childLabor = childFolderStats.reduce((s, c) => s + c.labor, 0);
+    const childMaterial = childFolderStats.reduce((s, c) => s + c.material, 0);
+    const childAllocated = childFolderStats.reduce((s, c) => s + c.allocated, 0);
+    const childLb = childFolderStats.reduce((acc, c) => ({
+      direct: acc.direct + c.laborBreakdown.direct,
+      indirect: acc.indirect + c.laborBreakdown.indirect,
+      liability: acc.liability + c.laborBreakdown.liability
+    }), { direct: 0, indirect: 0, liability: 0 });
+    return {
+      ...base,
+      overhead: overheadTotal,
+      revenue: base.revenue + childRevenue,
+      labor: base.labor + childLabor,
+      material: base.material + childMaterial,
+      allocated: base.allocated + childAllocated,
+      laborBreakdown: {
+        direct: base.laborBreakdown.direct + childLb.direct,
+        indirect: base.laborBreakdown.indirect + childLb.indirect,
+        liability: base.laborBreakdown.liability + childLb.liability,
+        total: base.laborBreakdown.total + childLabor
+      }
+    };
+  })() : null;
+  const parentFolder = activeFolder && activeFolder.parentFolderId
+    ? foldersRaw.find((f) => f.id === activeFolder.parentFolderId) || null
+    : null;
   const folderContracts = React.useMemo(
     () => laborContractsRaw.filter((c) => c.folderId === projectId),
     [laborContractsRaw, projectId]
@@ -1821,9 +2100,10 @@ function PortalApp() {
       onSelectProject: setProjectId,
       period,
       onPeriod: setPeriod,
-      onBackToGrid: () => setProjectId(null)
+      onBackToGrid: () => setProjectId(null),
+      parentFolder
     }
-  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx, contracts: folderContracts, folderPayroll: allLaborTx }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { project, onBack: () => setView("dashboard"), overheadTx, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, onBack: () => setView("dashboard") })));
+  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId) }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx, contracts: folderContracts, folderPayroll: allLaborTx, activeFolder }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { project, onBack: () => setView("dashboard"), overheadTx, folderId: projectId }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, onBack: () => setView("dashboard") })));
 }
 (function() {
   const mount = document.getElementById("dacsPortalRoot");

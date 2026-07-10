@@ -3322,123 +3322,265 @@
     </div>
 </div>
 
-<!-- Add Expense -->
-<div id="addExpenseModal" class="exp-modal">
-    <div class="exp-modal-box">
-        <div class="exp-modal-header"><h2><i data-lucide="receipt" class="modal-icon"></i> Add Expense</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('addExpenseModal')">&times;</button></div>
+<!-- Add Expense (redesigned — "Add Expense - Standalone.dc.html") -->
+<style>
+.aer-scope .exp-modal-box.aer-box{width:100% !important;max-width:560px !important;padding:0 !important;border-radius:20px;overflow:hidden;background:#fff;color:#1C1C1E;font-family:'Barlow',-apple-system,sans-serif;max-height:92vh;display:flex;flex-direction:column;}
+.aer-scope .aer-box *{box-sizing:border-box;}
+.aer-scope form{display:flex;flex-direction:column;min-height:0;flex:1;overflow:hidden;}
+.aer-scope .aer-hd{display:flex;align-items:center;gap:14px;padding:22px 26px 18px;border-bottom:1px solid #EEEEEE;flex-shrink:0;}
+.aer-scope .aer-hd-ic{width:44px;height:44px;border-radius:12px;background:#EAF2EC;display:grid;place-items:center;flex-shrink:0;}
+.aer-scope .aer-hd-txt{flex:1;}
+.aer-scope .aer-title{font-family:'Playfair Display',serif;font-size:22px;font-weight:600;line-height:1.1;color:#1C1C1E;}
+.aer-scope .aer-hd-sub{font-size:12.5px;color:#8A8A8E;margin-top:3px;}
+.aer-scope .aer-x{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:#A1A1A6;font-size:22px;line-height:1;background:#F5F5F5;border:none;cursor:pointer;flex-shrink:0;}
+.aer-scope .aer-x:hover{background:#ECECEC;color:#6C6C70;}
+.aer-scope .aer-body{flex:1;overflow:auto;padding:20px 26px 8px;}
+.aer-scope .aer-step{display:flex;align-items:center;gap:10px;margin:0 0 14px;}
+.aer-scope .aer-step b{font-size:15px;font-weight:700;color:#1C1C1E;}
+.aer-scope .aer-num{width:22px;height:22px;border-radius:50%;background:#1A5C3A;color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center;flex-shrink:0;}
+.aer-scope .aer-num-mute{background:#F0F0F0;color:#8A8A8E;}
+.aer-scope .aer-opt{font-size:12px;color:#A1A1A6;font-weight:500;}
+.aer-scope .aer-hint{font-size:12.5px;color:#8A8A8E;margin:-8px 0 12px 32px;}
+.aer-scope .aer-fg{margin-bottom:14px;}
+.aer-scope .aer-lbl{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#3A3A3C;margin-bottom:7px;}
+.aer-scope .aer-lbl small{font-weight:400;color:#A1A1A6;}
+.aer-scope .aer-in,.aer-scope .aer-box select,.aer-scope .aer-box textarea{width:100%;padding:12px 14px;border:1.5px solid #E5E5E5;border-radius:11px;font-size:14.5px;color:#1C1C1E;font-family:'Barlow',sans-serif;background:#fff;}
+.aer-scope .aer-box textarea{resize:vertical;}
+.aer-scope .aer-box input:focus,.aer-scope .aer-box select:focus,.aer-scope .aer-box textarea:focus{border-color:#1A5C3A;box-shadow:0 0 0 3px rgba(26,92,58,.13);outline:none;}
+.aer-scope .aer-center{text-align:center;}
+.aer-scope .aer-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.aer-scope .aer-selwrap{position:relative;}
+.aer-scope .aer-selwrap select{appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:38px;}
+.aer-scope .aer-chev{position:absolute;right:14px;top:50%;transform:translateY(-50%);pointer-events:none;color:#A1A1A6;}
+.aer-scope .aer-catmgr{margin-left:auto;background:#F5F5F5;border:1px solid #E5E5E5;border-radius:7px;color:#6C6C70;font-size:11.5px;font-weight:600;padding:3px 9px;cursor:pointer;font-family:'Barlow',sans-serif;}
+.aer-scope .aer-catmgr:hover{background:#ECECEC;color:#3A3A3C;}
+/* funding sources (markup rendered by expenses-module.js) */
+.aer-scope #expFundingSourceWrap{margin-bottom:22px;}
+.aer-scope #expSplitPreview{margin-bottom:16px;}
+.aer-scope .exp-funding-check-list{display:flex;flex-direction:column;gap:9px;}
+.aer-scope .exp-funding-check-item{display:flex;align-items:center;gap:13px;padding:14px 15px;border:1.5px solid #E5E5E5;background:#fff;border-radius:13px;cursor:pointer;margin:0;transition:border-color .12s,background .12s;}
+.aer-scope .exp-funding-check-item:hover{border-color:#B9CFC1;}
+.aer-scope .exp-funding-check-item.is-checked{border-color:#1A5C3A;background:#F4F8F5;}
+.aer-scope .exp-funding-check-item input[type=checkbox]{accent-color:#1A5C3A;width:19px;height:19px;flex-shrink:0;margin:0;cursor:pointer;}
+.aer-scope .exp-funding-check-item__label{flex:1;font-size:14px;font-weight:600;color:#3A3A3C;}
+.aer-scope .exp-funding-check-item.is-checked .exp-funding-check-item__label{color:#1C1C1E;}
+.aer-scope .exp-funding-check-item__remain{font-size:12.5px;font-weight:700;color:#6C6C70;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.aer-scope .exp-funding-check-item.is-checked .exp-funding-check-item__remain{color:#1A5C3A;}
+/* total bar */
+.aer-scope .aer-total{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;background:#EAF2EC;border-radius:14px;margin-bottom:24px;}
+.aer-scope .aer-total-lbl{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#1A5C3A;}
+.aer-scope .aer-total-sub{font-size:11.5px;color:#5b7a67;margin-top:2px;}
+.aer-scope .aer-total-right{display:flex;align-items:baseline;gap:6px;}
+.aer-scope .aer-peso{font-family:'Playfair Display',serif;font-size:26px;font-weight:600;color:#1A5C3A;}
+.aer-scope .aer-total-input{font-family:'Playfair Display',serif;font-size:30px;font-weight:600;color:#1A5C3A;font-variant-numeric:tabular-nums;border:none !important;border-bottom:2px solid #b9d6c6 !important;border-radius:0 !important;background:transparent !important;text-align:right;width:170px;padding:0 0 2px !important;}
+.aer-scope .aer-total-input:focus{border-bottom-color:#1A5C3A !important;box-shadow:none !important;outline:none;}
+.aer-scope .aer-total-input::placeholder{color:#a9c6b6;}
+/* supporting document cards */
+.aer-scope .doc-uploads{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+@media (max-width:520px){.aer-scope .doc-uploads{grid-template-columns:1fr;}.aer-scope .aer-row{grid-template-columns:1fr;}}
+.aer-scope .doc-upload{display:flex;align-items:center;gap:11px;padding:13px 14px;border:1.5px dashed #D8D8D8;background:#FAFBFA;border-radius:13px;cursor:pointer;margin:0;}
+.aer-scope .doc-upload:hover{border-color:#1A5C3A;}
+.aer-scope .doc-upload.attached{border-style:solid;border-color:#1A5C3A;background:#F4F8F5;}
+.aer-scope .doc-upload input[type=file]{display:none;}
+.aer-scope .doc-upload-icon{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0;background:#EDEEEC;color:#8A8A8E;}
+.aer-scope .doc-upload.attached .doc-upload-icon{background:#1A5C3A;color:#fff;}
+.aer-scope .doc-upload-body{flex:1;min-width:0;}
+.aer-scope .doc-upload-title{display:block;font-size:13px;font-weight:600;color:#1C1C1E;}
+.aer-scope .doc-upload-state{display:block;font-size:11.5px;margin-top:1px;color:#A1A1A6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.aer-scope .doc-upload.attached .doc-upload-state{color:#1A5C3A;}
+/* more-details disclosure */
+.aer-scope .aer-more{display:flex;align-items:center;gap:8px;width:100%;padding:13px 0;border:none;border-top:1px solid #EEEEEE;background:transparent;cursor:pointer;font-family:'Barlow',sans-serif;font-size:13.5px;font-weight:600;color:#6C6C70;}
+.aer-scope .aer-more:hover{color:#1A5C3A;}
+.aer-scope .aer-more svg{transition:transform .18s;}
+.aer-scope .aer-more.open svg{transform:rotate(180deg);}
+.aer-scope .aer-inv{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1.5px solid #E5E5E5;background:#fff;border-radius:12px;cursor:pointer;margin:0 0 6px;}
+.aer-scope .aer-inv:hover{border-color:#B9CFC1;}
+.aer-scope .aer-inv:has(input:checked){border-color:#1A5C3A;background:#F4F8F5;}
+.aer-scope .aer-inv input{width:19px;height:19px;accent-color:#1A5C3A;flex-shrink:0;margin:0;cursor:pointer;}
+.aer-scope .aer-inv-t{display:block;font-size:14px;font-weight:600;color:#1C1C1E;}
+.aer-scope .aer-inv-s{display:block;font-size:12px;color:#8A8A8E;margin-top:1px;}
+/* category manager */
+.aer-scope #catManagerPanel{margin-top:10px;background:#FAFBFA;border:1px solid #EEEEEE;border-radius:12px;padding:12px;}
+.aer-scope #catManagerPanel input[type=text]{padding:8px 10px;border:1.5px solid #E5E5E5;border-radius:9px;font-size:13px;color:#1C1C1E;font-family:'Barlow',sans-serif;background:#fff;min-width:0;}
+.aer-scope #catManagerPanel input[type=color]{width:34px;height:34px;padding:2px;border-radius:9px;border:1px solid #E5E5E5;cursor:pointer;flex-shrink:0;}
+.aer-scope .aer-catadd{padding:8px 14px;border-radius:9px;border:none;background:#1A5C3A;color:#fff;font-size:12.5px;font-weight:600;white-space:nowrap;cursor:pointer;font-family:'Barlow',sans-serif;}
+.aer-scope .aer-catadd:hover{background:#16482e;}
+/* footer */
+.aer-scope .aer-ft{display:flex;align-items:center;gap:12px;padding:16px 26px;border-top:1px solid #EEEEEE;background:#FBFCFB;flex-shrink:0;}
+.aer-scope .aer-btn-cancel{flex:0 0 auto;padding:13px 22px;border-radius:12px;border:1.5px solid #E5E5E5;background:#fff;color:#3A3A3C;font-size:14.5px;font-weight:600;cursor:pointer;font-family:'Barlow',sans-serif;}
+.aer-scope .aer-btn-cancel:hover{background:#F5F5F5;}
+.aer-scope .aer-btn-save{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:13px 24px;border-radius:12px;background:#1A5C3A;color:#fff;font-size:14.5px;font-weight:700;cursor:pointer;border:none;box-shadow:0 3px 12px rgba(26,92,58,.28);font-family:'Barlow',sans-serif;}
+.aer-scope .aer-btn-save:hover{background:#16482e;}
+</style>
+<div id="addExpenseModal" class="exp-modal aer-scope">
+    <div class="exp-modal-box aer-box">
         <form id="addExpenseForm">
-            <div id="expBudgetBanner" style="display:none;"></div>
-            <div id="expFundingSourceWrap" style="display:none;margin-bottom:0.75rem;">
-                <label style="font-size:0.85rem;font-weight:600;color:#374151;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem;">
-                    Funding Source
-                    <small style="font-weight:400;color:#6b7280;font-size:0.75rem;">— check multiple to split</small>
-                </label>
-                <div id="expFundingCheckList" class="exp-funding-check-list"></div>
-                <!-- hidden select kept for single-source fallback in save logic -->
-                <select id="expFundingSourceSelect" style="display:none;"></select>
+            <!-- header -->
+            <div class="aer-hd">
+                <div class="aer-hd-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1A5C3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8M8 11h8M8 15h5"/></svg></div>
+                <div class="aer-hd-txt">
+                    <div class="aer-title">Add an expense</div>
+                    <div class="aer-hd-sub">Log what you spent — we'll do the math.</div>
+                </div>
+                <button type="button" class="aer-x" aria-label="Close" onclick="closeExpModal('addExpenseModal')">&times;</button>
             </div>
-            <div id="expSplitPreview" style="display:none;margin-bottom:0.75rem;"></div>
-            <div class="exp-form-row">
-                <div class="exp-form-group"><label>Expense Name</label><input type="text" id="expName" required placeholder="e.g. Tiles, Cement"></div>
-                <div class="exp-form-group">
-                    <label>Category <button type="button" onclick="toggleCatManager()" class="exp-cat-mgr-toggle">⚙ Manage</button></label>
-                    <select id="expCategory" aria-label="Category" required><option value="">Select category…</option></select>
-                    <div id="catManagerPanel" style="display:none;margin-top:0.6rem;background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:0.75rem;">
-                        <div style="display:flex;gap:0.5rem;align-items:center;margin-bottom:0.6rem;">
-                            <input type="text" id="catNameInput" placeholder="Category name…" style="flex:1;padding:0.4rem 0.6rem;border:1px solid #d1d5db;border-radius:7px;font-size:0.85rem;" onkeydown="if(event.key==='Enter'){event.preventDefault();addCategory();}">
-                            <input type="color" id="catColorInput" value="#059669" title="Pick color" style="width:34px;height:34px;border:none;border-radius:7px;cursor:pointer;padding:2px;background:#fff;border:1px solid #d1d5db;">
-                            <button type="button" onclick="addCategory()" class="exp-btn exp-btn-primary" style="padding:0.4rem 0.8rem;font-size:0.82rem;white-space:nowrap;">+ Add</button>
+
+            <!-- body -->
+            <div class="aer-body">
+                <div id="expBudgetBanner" style="display:none;"></div>
+
+                <!-- 1 · funding source (list rendered by expenses-module.js) -->
+                <div id="expFundingSourceWrap" style="display:none;">
+                    <div class="aer-step"><span class="aer-num">1</span><b>Which budget pays for this?</b></div>
+                    <div class="aer-hint">Tick one. Tick more than one to split the cost between budgets.</div>
+                    <div id="expFundingCheckList" class="exp-funding-check-list"></div>
+                    <!-- hidden select kept for single-source fallback in save logic -->
+                    <select id="expFundingSourceSelect" style="display:none;"></select>
+                </div>
+                <div id="expSplitPreview" style="display:none;"></div>
+
+                <!-- 2 · what -->
+                <div class="aer-step"><span class="aer-num">2</span><b>What did you buy?</b></div>
+                <div class="aer-fg">
+                    <label class="aer-lbl" for="expName">Item</label>
+                    <input class="aer-in" type="text" id="expName" required placeholder="e.g. Cement, tiles, steel bars">
+                </div>
+                <div class="aer-fg" style="margin-bottom:24px;">
+                    <label class="aer-lbl" for="expCategory">Category <button type="button" onclick="toggleCatManager()" class="aer-catmgr">⚙ Manage</button></label>
+                    <div class="aer-selwrap">
+                        <select id="expCategory" aria-label="Category" required><option value="">Choose a category…</option></select>
+                        <svg class="aer-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                    <div id="catManagerPanel" style="display:none;">
+                        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+                            <input type="text" id="catNameInput" placeholder="Category name…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();addCategory();}">
+                            <input type="color" id="catColorInput" value="#1A5C3A" title="Pick color">
+                            <button type="button" onclick="addCategory()" class="aer-catadd">+ Add</button>
                         </div>
-                        <div id="expCategoryList" style="display:flex;flex-wrap:wrap;gap:6px;min-height:24px;"><span style="color:#aaa;font-size:0.8rem;">No categories yet. Add one above.</span></div>
+                        <div id="expCategoryList" style="display:flex;flex-wrap:wrap;gap:6px;min-height:24px;"><span style="color:#A1A1A6;font-size:12.5px;">No categories yet. Add one above.</span></div>
                     </div>
                 </div>
-            </div>
-            <div class="exp-form-row">
-                <div class="exp-form-group"><label for="expQty">Quantity</label><input type="number" id="expQty" value="1" min="0.01" step="any" required></div>
-                <div class="exp-form-group"><label>Unit Cost (₱)</label><input type="text" inputmode="decimal" id="expUnitCost" placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
-            </div>
-            <div class="exp-form-group"><label>Total Amount (₱) <small style="font-weight:400;color:#888">(auto-computed)</small></label><input type="text" inputmode="decimal" id="expAmount" required placeholder="0.00"></div>
-            <div class="exp-form-group">
-                <label for="expPaymentMethod">Payment Method <small style="font-weight:400;color:#888">(optional)</small></label>
-                <select id="expPaymentMethod" style="width:100%;padding:0.55rem 0.75rem;border:1.5px solid #d1d5db;border-radius:8px;font-size:0.9rem;background:#fff;color:#111827;font-family:inherit;">
-                    <option value="">— Select payment method —</option>
-                    <option value="Cash">Cash</option>
-                    <option value="GCash">GCash</option>
-                    <option value="Maya">Maya</option>
-                    <option value="Lalamove">Lalamove</option>
-                    <option value="Bank Transfer">Bank Transfer</option>
-                    <option value="BDO">BDO</option>
-                    <option value="BPI">BPI</option>
-                    <option value="Metrobank">Metrobank</option>
-                    <option value="Cheque">Cheque</option>
-                    <option value="Credit Card">Credit Card</option>
-                    <option value="Other">Other</option>
-                </select>
-            </div>
-            <div class="exp-form-group">
-                <label>Date <small style="font-weight:400;color:#888">&amp; Time <span style="color:#aaa">(optional)</span></small></label>
-                <div style="display:flex;gap:0.5rem">
-                    <input type="date" id="expDate" aria-label="Date" required style="flex:1">
-                    <input type="time" id="expTime" aria-label="Time (optional)" style="flex:1" placeholder="(optional)">
+
+                <!-- 3 · how much -->
+                <div class="aer-step"><span class="aer-num">3</span><b>How much did it cost?</b></div>
+                <div class="aer-row" style="margin-bottom:16px;">
+                    <div><label class="aer-lbl" for="expQty">Quantity</label><input class="aer-in aer-center" type="number" id="expQty" value="1" min="0.01" step="any" required></div>
+                    <div><label class="aer-lbl" for="expUnitCost">Price each (₱)</label><input class="aer-in aer-center" type="text" inputmode="decimal" id="expUnitCost" placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
                 </div>
-            </div>
-            <div class="exp-form-group">
-                <label>Supporting Documents <small style="font-weight:400;color:#888">— attach one image per type (optional)</small></label>
+                <div class="aer-total">
+                    <div>
+                        <div class="aer-total-lbl">Total</div>
+                        <div class="aer-total-sub">Quantity × price each</div>
+                    </div>
+                    <div class="aer-total-right">
+                        <span class="aer-peso">₱</span>
+                        <input type="text" inputmode="decimal" id="expAmount" class="aer-total-input" required placeholder="0" aria-label="Total amount">
+                    </div>
+                </div>
+
+                <!-- 4 · proof -->
+                <div class="aer-step" style="margin-bottom:6px;"><span class="aer-num aer-num-mute">4</span><b>Add a photo of the receipt</b><span class="aer-opt">optional</span></div>
+                <div class="aer-hint" style="margin:0 0 14px 32px;">Snap any paper you have. You can add more later.</div>
                 <div class="doc-uploads">
                     <label class="doc-upload" for="expDocPO">
                         <span class="doc-upload-icon">PO</span>
-                        <span class="doc-upload-body"><span class="doc-upload-title">Purchase Order</span><span class="doc-upload-state" id="expDocPOState">Tap to attach</span></span>
+                        <span class="doc-upload-body"><span class="doc-upload-title">Purchase order</span><span class="doc-upload-state" id="expDocPOState">Tap to attach</span></span>
                         <input type="file" id="expDocPO" accept="image/*" data-doc-key="po" data-state-id="expDocPOState">
                     </label>
                     <label class="doc-upload" for="expDocDR">
                         <span class="doc-upload-icon">DR</span>
-                        <span class="doc-upload-body"><span class="doc-upload-title">Delivery Receipt</span><span class="doc-upload-state" id="expDocDRState">Tap to attach</span></span>
+                        <span class="doc-upload-body"><span class="doc-upload-title">Delivery receipt</span><span class="doc-upload-state" id="expDocDRState">Tap to attach</span></span>
                         <input type="file" id="expDocDR" accept="image/*" data-doc-key="dr" data-state-id="expDocDRState">
                     </label>
                     <label class="doc-upload" for="expDocSI">
                         <span class="doc-upload-icon">SI</span>
-                        <span class="doc-upload-body"><span class="doc-upload-title">Supplier Invoice</span><span class="doc-upload-state" id="expDocSIState">Tap to attach</span></span>
+                        <span class="doc-upload-body"><span class="doc-upload-title">Supplier invoice</span><span class="doc-upload-state" id="expDocSIState">Tap to attach</span></span>
                         <input type="file" id="expDocSI" accept="image/*" data-doc-key="si" data-state-id="expDocSIState">
                     </label>
                     <label class="doc-upload" for="expDocPR">
                         <span class="doc-upload-icon">PR</span>
-                        <span class="doc-upload-body"><span class="doc-upload-title">Payment Receipt</span><span class="doc-upload-state" id="expDocPRState">Tap to attach</span></span>
+                        <span class="doc-upload-body"><span class="doc-upload-title">Payment receipt</span><span class="doc-upload-state" id="expDocPRState">Tap to attach</span></span>
                         <input type="file" id="expDocPR" accept="image/*" data-doc-key="pay" data-state-id="expDocPRState">
                     </label>
                 </div>
-            </div>
-            <div class="exp-form-group"><label>Notes (optional)</label><textarea id="expNotes" rows="2" placeholder="Additional details…"></textarea></div>
 
-            <div class="exp-form-group" style="margin-top:2px;">
-                <label style="display:flex;align-items:center;gap:9px;cursor:pointer;font-size:0.88rem;color:#374151;font-weight:500;">
-                    <input type="checkbox" id="expToInventory" onchange="expToggleInventoryFields()" style="width:15px;height:15px;cursor:pointer;accent-color:#15803d;">
-                    <span>Add to inventory <span style="color:#9ca3af;font-weight:400;">— track as a stock item</span></span>
-                </label>
-            </div>
-            <div id="expInventoryFields" style="display:none;">
-                <div class="exp-form-row">
-                    <div class="exp-form-group"><label>Unit</label>
-                        <select id="expInvUnit" aria-label="Inventory unit">
-                            <option value="pcs">pcs</option>
-                            <option value="bag">bag</option>
-                            <option value="kg">kg</option>
-                            <option value="L">L</option>
-                            <option value="m">m</option>
-                            <option value="sqm">sq m</option>
-                            <option value="box">box</option>
-                            <option value="roll">roll</option>
-                            <option value="set">set</option>
-                            <option value="unit">unit</option>
-                        </select>
+                <!-- more details -->
+                <button type="button" id="expMoreToggle" class="aer-more" onclick="expToggleMoreDetails()" aria-expanded="false" aria-controls="expMoreDetails">
+                    <span id="expMoreLabel">More details — payment, date, notes</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+                <div id="expMoreDetails" style="display:none;padding:6px 0 2px;">
+                    <div class="aer-row" style="margin-bottom:14px;">
+                        <div>
+                            <label class="aer-lbl" for="expPaymentMethod">Paid with</label>
+                            <div class="aer-selwrap">
+                                <select id="expPaymentMethod">
+                                    <option value="">Not sure yet</option>
+                                    <option value="Cash">Cash</option>
+                                    <option value="GCash">GCash</option>
+                                    <option value="Maya">Maya</option>
+                                    <option value="Lalamove">Lalamove</option>
+                                    <option value="Bank Transfer">Bank Transfer</option>
+                                    <option value="BDO">BDO</option>
+                                    <option value="BPI">BPI</option>
+                                    <option value="Metrobank">Metrobank</option>
+                                    <option value="Cheque">Cheque</option>
+                                    <option value="Credit Card">Credit Card</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                                <svg class="aer-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="aer-lbl" for="expDate">Date <small>&amp; time</small></label>
+                            <div style="display:flex;gap:8px;">
+                                <input class="aer-in" type="date" id="expDate" aria-label="Date" required style="flex:1;min-width:0;">
+                                <input class="aer-in" type="time" id="expTime" aria-label="Time (optional)" style="flex:1;min-width:0;">
+                            </div>
+                        </div>
                     </div>
-                    <div class="exp-form-group"><label>Min Stock (optional)</label><input type="number" id="expInvMinStock" min="0" step="any" placeholder="0"></div>
+                    <div class="aer-fg">
+                        <label class="aer-lbl" for="expNotes">Notes <small>— optional</small></label>
+                        <textarea id="expNotes" rows="2" placeholder="Anything worth remembering…"></textarea>
+                    </div>
+                    <label class="aer-inv">
+                        <input type="checkbox" id="expToInventory" onchange="expToggleInventoryFields()">
+                        <span>
+                            <span class="aer-inv-t">Also add this to inventory</span>
+                            <span class="aer-inv-s">Keep count of it as a stock item</span>
+                        </span>
+                    </label>
+                    <div id="expInventoryFields" style="display:none;padding-top:8px;">
+                        <div class="aer-row" style="margin-bottom:8px;">
+                            <div>
+                                <label class="aer-lbl" for="expInvUnit">Unit</label>
+                                <div class="aer-selwrap">
+                                    <select id="expInvUnit" aria-label="Inventory unit">
+                                        <option value="pcs">pcs</option>
+                                        <option value="bag">bag</option>
+                                        <option value="kg">kg</option>
+                                        <option value="L">L</option>
+                                        <option value="m">m</option>
+                                        <option value="sqm">sq m</option>
+                                        <option value="box">box</option>
+                                        <option value="roll">roll</option>
+                                        <option value="set">set</option>
+                                        <option value="unit">unit</option>
+                                    </select>
+                                    <svg class="aer-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                                </div>
+                            </div>
+                            <div><label class="aer-lbl" for="expInvMinStock">Min stock <small>— optional</small></label><input class="aer-in" type="number" id="expInvMinStock" min="0" step="any" placeholder="0"></div>
+                        </div>
+                        <p style="font-size:12px;color:#8A8A8E;margin:0 2px 6px;">The <b>Quantity</b> above becomes the stock added. If an inventory item with the same name already exists, this quantity is added to it.</p>
+                    </div>
                 </div>
-                <p style="font-size:0.78rem;color:#6b7280;margin:-2px 2px 6px;">The <b>Quantity</b> above becomes the stock added. If an inventory item with the same name already exists, this quantity is added to it.</p>
             </div>
 
-            <div class="exp-modal-footer">
-                <button type="button" class="exp-btn exp-btn-secondary" onclick="closeExpModal('addExpenseModal')">Cancel</button>
-                <button type="submit" id="addExpenseBtn" class="exp-btn exp-btn-primary" data-label="Save Expense">Save Expense</button>
+            <!-- footer -->
+            <div class="aer-ft">
+                <button type="button" class="aer-btn-cancel" onclick="closeExpModal('addExpenseModal')">Cancel</button>
+                <button type="submit" id="addExpenseBtn" class="aer-btn-save" data-label="Save expense"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Save expense</button>
             </div>
         </form>
     </div>

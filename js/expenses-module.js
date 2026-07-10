@@ -2141,6 +2141,14 @@ function setupExpenseFormListeners() {
     const recalc = () => { if (amt) { amt.value = fmtBudgetVal((parseFloat(qty?.value) || 1) * (parseFloat((cost?.value||'').replace(/,/g,'')) || 0)); _updateExpSplitPreview(); } };
     qty?.addEventListener('input', recalc);
     cost?.addEventListener('input', recalc);
+    // A required field (the date) lives inside the collapsed "More details" panel.
+    // The browser cannot focus a hidden invalid control, so it would refuse to submit
+    // with no visible reason. Open the panel first so the message is shown.
+    form.addEventListener('invalid', (ev) => {
+        if (document.getElementById('expMoreDetails')?.contains(ev.target)) {
+            window.expSetMoreDetails(true);
+        }
+    }, true);
     form.addEventListener('submit', handleAddExpense);
 }
 
@@ -2177,6 +2185,13 @@ async function handleAddExpense(e) {
     // Build split list from checked sources
     const checkedBoxes = Array.from(document.querySelectorAll('input[name="expFundingSrc"]:checked'));
     const checkedSources = checkedBoxes.map(cb => _expSources.find(s => s.id === cb.value)).filter(Boolean);
+
+    // Additional Works has no monthly budget / Cover Expenses concept —
+    // always record straight against the current period as a normal expense.
+    if (_expIsAdditionalWorks() && expCurrentProject) {
+        checkedSources.length = 0;
+        checkedSources.push({ id: expCurrentProject.id, remain: Infinity, label: 'Additional Works' });
+    }
 
     // Fallback to hidden select or current project
     const fsSel = document.getElementById('expFundingSourceSelect');
@@ -2293,6 +2308,20 @@ window.expToggleInventoryFields = function () {
     const box = document.getElementById('expInventoryFields');
     if (box) box.style.display = on ? 'block' : 'none';
 };
+
+// "More details" disclosure on the Add Expense modal (payment method, date, notes,
+// inventory). Pass `true`/`false` to force a state, or nothing to flip it.
+window.expSetMoreDetails = function (open) {
+    const box    = document.getElementById('expMoreDetails');
+    const toggle = document.getElementById('expMoreToggle');
+    const label  = document.getElementById('expMoreLabel');
+    if (!box) return;
+    if (open === undefined) open = box.style.display === 'none';
+    box.style.display = open ? 'block' : 'none';
+    if (toggle) { toggle.classList.toggle('open', open); toggle.setAttribute('aria-expanded', open ? 'true' : 'false'); }
+    if (label) label.textContent = open ? 'Fewer details' : 'More details — payment, date, notes';
+};
+window.expToggleMoreDetails = function () { window.expSetMoreDetails(); };
 
 // Stock-in to the shared Construction inventory. If an item with the same name
 // already exists, the quantity is added to its current stock; otherwise a new
@@ -3824,6 +3853,17 @@ function openExpModal(id)  {
         else                          _updateExpBudgetBanner();
     }
     _legacyModalOpen = false;
+    if (id === 'addExpenseModal') {
+        // Start collapsed, and default the date to today. The date input is `required`
+        // but sits inside that collapsed panel, so it must never open empty.
+        const d = document.getElementById('expDate');
+        if (d && !d.value) {
+            // Build from local parts — toISOString() would roll back a day in UTC+8.
+            const n = new Date();
+            d.value = n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0');
+        }
+        if (typeof window.expSetMoreDetails === 'function') window.expSetMoreDetails(false);
+    }
     if (id === 'addPayrollModal' && typeof payToggleMode === 'function') payToggleMode(); // sync Daily/Lamsam UI
     if (id === 'addPayrollModal' && typeof lcPopulatePayrollPicker === 'function') {
         lcPopulatePayrollPicker();
@@ -3860,6 +3900,16 @@ function selectFolderAutoProject(folderId) {
 // Holds the available sources for the current Add Expense session
 var _expSources = [];
 
+// Additional Works child folders (parentFolderId set) have no monthly budget
+// and no Cover Expenses concept — entries are recorded straight against the
+// (hidden) auto-provisioned period as normal labor/material.
+function _expIsAdditionalWorks() {
+    const fid = expCurrentProject ? (expCurrentProject.folderId || null) : (expCurrentFolder ? expCurrentFolder.id : null);
+    if (!fid) return false;
+    const folder = expFolders.find(f => f.id === fid);
+    return !!(folder && folder.parentFolderId);
+}
+
 function _updateExpBudgetBanner() {
     const banner  = document.getElementById('expBudgetBanner');
     const fsWrap  = document.getElementById('expFundingSourceWrap');
@@ -3868,6 +3918,13 @@ function _updateExpBudgetBanner() {
     const p   = expCurrentProject;
     const fid = p ? (p.folderId || null) : (expCurrentFolder ? expCurrentFolder.id : null);
     if (!p && !fid) { banner.style.display = 'none'; if (fsWrap) fsWrap.style.display = 'none'; return; }
+
+    if (_expIsAdditionalWorks()) {
+        _expCoverExpensesMode = false;
+        banner.style.display = 'none';
+        if (fsWrap) fsWrap.style.display = 'none';
+        return;
+    }
 
     const folderMonths = expProjects.filter(m => m.folderId === fid && m.fundingType !== 'president' && (m.monthlyBudget || 0) > 0);
     _expSources = folderMonths.map(m => {
