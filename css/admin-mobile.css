@@ -36,6 +36,7 @@
   .content-view        { padding-left: 14px !important; padding-right: 14px !important; max-width: 100% !important; }
   .portal-primary-tabs,
   .portal-modules-row  { padding-left: 12px !important; padding-right: 12px !important; }
+  .portal-modules-track { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
   /* ── DACS Portal (Project Control — React app in #dacsPortalRoot) ──── */
   /* The React content is NOT in .content-view, so it needs its own rules.
