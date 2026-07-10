@@ -2325,13 +2325,15 @@ function syncPortalChrome(view) {
 
     // Always show every module — no collapse/expand toggle.
     row.innerHTML =
+        '<div class="portal-modules-track">' +
         visibleModules.map((m) => {
             const isActive = m.view === view;
             return `<button class="portal-module-link${isActive ? ' active-link' : ''}" data-view="${m.view}">
                 <i data-lucide="${m.icon}" style="width:14px;height:14px;"></i>
                 <span>${m.label}</span>
             </button>`;
-        }).join('');
+        }).join('') +
+        '</div>';
 
     row.querySelectorAll('.portal-module-link').forEach(btn => {
         btn.addEventListener('click', () => switchView(btn.dataset.view));

@@ -517,13 +517,16 @@ button.btn-primary:hover,
 }
 
 
-/* ── Modules row ── */
+/* ── Modules row — iOS-style segmented control ──────────────────────
+   The row itself stays on the white page background (required by the
+   global "white app background" rule below). The pills live inside
+   .portal-modules-track, a grouped gray capsule; the active pill pops
+   as a raised white card inside that track. */
 .portal-modules-row {
-  background: #ffffff;
-  padding: 8px 40px;
+  background: #ffffff !important;
+  padding: 10px 40px;
   display: flex;
   align-items: center;
-  gap: 4px;
   border-bottom: 1px solid var(--brand-hair);
   overflow: hidden;
   min-height: 52px;
@@ -540,13 +543,26 @@ button.btn-primary:hover,
   margin-right: 8px;
 }
 
+.portal-modules-track {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  background: #EFEEEA;
+  border: 1px solid var(--brand-hair);
+  border-radius: 13px;
+  overflow: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* active item — no animation, always stable */
 .portal-module-link {
-  padding: 8px 18px;
+  padding: 9px 18px;
   font-family: var(--sans);
   font-size: 13px;
   color: var(--text-secondary);
-  border-radius: 8px;
+  border-radius: 9px;
   border: 1px solid transparent;
   background: transparent;
   cursor: pointer;
@@ -558,10 +574,7 @@ button.btn-primary:hover,
   flex-shrink: 0;
 }
 .portal-module-link:hover {
-  background: var(--bg-white);
   color: var(--brand-green);
-  border-color: var(--brand-hair);
-  box-shadow: 0 2px 8px rgba(26, 92, 58, 0.10);
 }
 .portal-module-link:hover svg { color: var(--brand-green); }
 .portal-module-link svg { color: var(--text-light); flex-shrink: 0; transition: color .18s; }
