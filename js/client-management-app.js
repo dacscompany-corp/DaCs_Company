@@ -1510,7 +1510,7 @@ function cmRenderAccomplishmentTable(reports) {
     tbody.innerHTML = reports.map((r, idx) => {
         const ss     = SS[r.status] || SS.draft;
         const grand  = cmBoqGrand(r.costItems);
-        const acc    = cmBoqAcc(r.costItems);
+        const acc    = cmBoqAccNet(r.costItems, r.discount);
         const pctNum = r.progressPercentage != null ? r.progressPercentage : cmBoqPct(r);
         const pctColor = pctNum >= 80 ? '#15803d' : pctNum >= 50 ? '#d97706' : '#374151';
         const title  = r.subject || r.projectName || r.title || 'Accomplishment Report';
@@ -1552,7 +1552,7 @@ window.cmViewAccomplishmentReport = function(idx) {
     const footerEl= document.getElementById('rmd-footer');
 
     const grand  = cmBoqGrand(r.costItems);
-    const acc    = cmBoqAcc(r.costItems);
+    const acc    = cmBoqAccNet(r.costItems, r.discount);
     const pctNum = r.progressPercentage != null ? r.progressPercentage : cmBoqPct(r);
     const SM     = { approved:{label:'Approved by DACS',color:'#15803d'}, submitted:{label:'For Admin Review',color:'#1d4ed8'}, draft:{label:'Draft',color:'#6b7280'} };
     const ss     = SM[r.status] || SM.draft;
@@ -2695,6 +2695,14 @@ function cmBoqAcc(costItems) {
     return (costItems || []).reduce((s, ci) =>
         s + (ci.subItems || []).reduce((s2, si) =>
             s2 + (si.lineItems || []).reduce((s3, li) => s3 + cmBoqLiTotal(li) * (cmBoqNum(li.percentCompletion) / 100), 0), 0), 0);
+}
+// Accomplishment is claimed against the discounted contract, so the discount is
+// spread across it in proportion to work done. cmBoqAcc stays gross because
+// cmBoqPct divides it by the gross total to get % complete.
+function cmBoqAccNet(costItems, discount) {
+    const grand = cmBoqGrand(costItems);
+    if (!grand) return 0;
+    return cmBoqAcc(costItems) * (Math.max(0, grand - cmBoqNum(discount)) / grand);
 }
 function cmBoqPct(doc) {
     const grand = cmBoqGrand(doc.costItems);

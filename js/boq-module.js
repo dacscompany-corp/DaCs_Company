@@ -164,7 +164,7 @@
             const doc       = boq.allDocs.find(d => d.folderId === f.id);
             const hasDoc    = !!doc;
             const grandTotal = hasDoc ? calcGrandTotalFromItems(doc.costItems || []) : 0;
-            const totalAcc   = hasDoc ? calcTotalAccFromItems(doc.costItems || []) : 0;
+            const totalAcc   = hasDoc ? calcTotalAccFromItems(doc.costItems || [], doc.discount) : 0;
             const updatedStr = hasDoc && doc.updatedAt
                 ? (doc.updatedAt.toDate ? doc.updatedAt.toDate().toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '')
                 : '';
@@ -232,11 +232,12 @@
             s + (ci.subItems || []).reduce((s2, si) =>
                 s2 + (si.lineItems || []).reduce((s3, li) => s3 + calcLITotalStatic(li), 0), 0), 0);
     }
-    function calcTotalAccFromItems(costItems) {
-        return (costItems || []).reduce((s, ci) =>
+    function calcTotalAccFromItems(costItems, discount) {
+        const raw = (costItems || []).reduce((s, ci) =>
             s + (ci.subItems || []).reduce((s2, si) =>
                 s2 + (si.lineItems || []).reduce((s3, li) =>
                     s3 + calcLITotalStatic(li) * (parseNum(li.percentCompletion) / 100), 0), 0), 0);
+        return raw * discountRatio(calcGrandTotalFromItems(costItems), discount);
     }
 
     // ── Back to grid ───────────────────────────────────────────
@@ -755,7 +756,22 @@
         return ci.subItems.reduce((s, si) => s + si.lineItems.reduce((s2, li) => s2 + calcLIAcc(li), 0), 0);
     }
     function calcGrandTotal()         { return boq.costItems.reduce((s, ci) => s + calcCostItemSubtotal(ci), 0); }
-    function calcTotalAccomplishment() { return boq.costItems.reduce((s, ci) => s + calcCostItemAccomplishment(ci), 0); }
+
+    // Accomplishment is claimed against the discounted contract, not the gross
+    // cost, so the discount is spread across it in proportion to work done.
+    // Section subtotal rows stay gross — they reconcile to Total Project Cost.
+    function discountRatio(grand, discount) {
+        if (!grand) return 1;
+        return Math.max(0, grand - (parseNum(discount) || 0)) / grand;
+    }
+    // Raw = gross value of work done. Use it for % complete (raw/grand), never
+    // for the peso figure shown to the client.
+    function calcTotalAccomplishmentRaw() {
+        return boq.costItems.reduce((s, ci) => s + calcCostItemAccomplishment(ci), 0);
+    }
+    function calcTotalAccomplishment() {
+        return calcTotalAccomplishmentRaw() * discountRatio(calcGrandTotal(), boq.discount);
+    }
 
     // ── Live calc while editing a row ──────────────────────────
     window.boqCalcRow = function (liId) {
@@ -825,6 +841,8 @@
         boq.discount = parseNum(input.value.replace(/,/g,''));
         const e = el('boqDiscountedTotal');
         if (e) e.textContent = '₱ ' + fmt(Math.max(0, calcGrandTotal() - boq.discount));
+        const a = el('boqTotalAccomplishment');
+        if (a) a.textContent = '₱ ' + fmt(calcTotalAccomplishment());
         markDirty();
     };
 
@@ -1724,7 +1742,7 @@
         const grand    = calcGrandTotal();
         const disc     = boq.discount || 0;
         const totalAcc = calcTotalAccomplishment();
-        const grandPct = grand > 0 ? (totalAcc / grand * 100).toFixed(0) + '%' : '';
+        const grandPct = grand > 0 ? (calcTotalAccomplishmentRaw() / grand * 100).toFixed(0) + '%' : '';
         // Staff must not see the project cost / accomplishment totals (matches the on-screen Summary hide).
         if (window.currentUserRole !== 'staff') {
             rows.push(['', '', '', { content: 'TOTAL PROJECT COST (VAT EXCLUSIVE)', colSpan: 3, styles: { halign: 'right', fontStyle: 'bold' } }, fmt(grand), grandPct, fmt(totalAcc)]);
@@ -2035,7 +2053,7 @@
         const disc       = boq.discount || 0;
         const discounted = Math.max(0, grand - disc);
         const totalAcc   = calcTotalAccomplishment();
-        const avgPct = grand > 0 ? (totalAcc / grand * 100).toFixed(0) + '%' : '';
+        const avgPct = grand > 0 ? (calcTotalAccomplishmentRaw() / grand * 100).toFixed(0) + '%' : '';
 
         // ── Build table rows HTML ────────────────────────────
         let tableRows = '';
