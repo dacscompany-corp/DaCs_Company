@@ -1737,6 +1737,7 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
         const _allC      = (typeof expLaborContracts !== 'undefined' ? expLaborContracts : []);
         const _entryCids = new Set(entries.map(p => p.contractId).filter(Boolean));
         const _wContracts = _allC.filter(c => (c.workerName || '') === workerName || _entryCids.has(c.id));
+
         let _stLabel = '', _stColor = '', _stBg = '';
         if (_wContracts.length) {
             const _agreed = _wContracts.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
@@ -1765,6 +1766,17 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
 
         const w = window.open('','_blank','width=870,height=1100');
         if (!w) { alert('Please allow pop-ups to print the statement.'); return; }
+
+        // Always print in color — force the browser to keep background colors
+        // on the page instead of silently dropping them (browsers strip
+        // background-color by default when printing unless told otherwise).
+        const _colorStyle = `
+* { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; color-adjust:exact !important; }
+table.items thead tr { background:#1e3a5f !important; }
+table.items thead th { color:#fff !important; }
+table.totals tr.grand td { background:#1e3a5f !important; color:#fff !important; border-color:#1e3a5f !important; }
+.pay-box { border-left:4px solid #1e3a5f; }
+`;
 
         w.document.write(`<!DOCTYPE html>
 <html lang="en">
@@ -1809,6 +1821,7 @@ table.totals tr.grand td { font-size:16px; font-weight:800; color:#1a1a1a; backg
 .sig-line { border-top:1px solid #374151; padding-top:9px; font-size:11px; color:#666; letter-spacing:.3px; }
 .footer { text-align:center; margin-top:44px; font-size:9.5px; color:#b0b4bb; border-top:1px solid #eef0f2; padding-top:14px; letter-spacing:.5px; }
 @media print { body{background:#fff;} .page{margin:0;box-shadow:none;padding:16mm 14mm;width:100%;} @page{size:A4 portrait;margin:8mm;} }
+${_colorStyle}
 </style>
 </head>
 <body>
