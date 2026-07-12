@@ -110,6 +110,8 @@ const REG = {
   terminationRequests: { table: 'termination_requests', ts: ['requestedAt'] },
   agreementEvents:     { table: 'agreement_events', ts: ['acceptedAt'] },   // append-only e-sign audit log (0021)
 
+  clientErrors:   { table: 'client_errors', ts: ['at'] },   // telemetry (0028); owner read/delete only
+
   notifications:  { table: 'notifications', ts: ['createdAt'] },  // only via /items subpath
   appointments:   { table: 'appointments', ts: ['createdAt', 'updatedAt'] },
   testimonials:   { table: 'testimonials', ts: ['createdAt'] },

@@ -245,6 +245,9 @@
                     <i data-lucide="chevron-right" class="nav-group-chevron"></i>
                 </button>
                 <div class="nav-group-children">
+                    <a href="#" class="nav-item nav-child" data-view="sysErrors">
+                        <span class="nav-icon-wrap"><i data-lucide="bug" class="nav-icon"></i></span><span>System Errors</span>
+                    </a>
                     <a href="#" class="nav-item nav-child" data-view="userNavigator">
                         <span class="nav-icon-wrap"><i data-lucide="user-round" class="nav-icon"></i></span><span>Navigator</span><span id="users-child-badge" style="display:none;" class="pr-nav-badge"></span>
                     </a>
@@ -1962,6 +1965,39 @@
         </div>
 
         <!-- ════════════ USER NAVIGATOR ════════════ -->
+        <!-- ════════════ SYSTEM ERRORS VIEW (owner-only; client_errors, 0028/0029) ════════════ -->
+        <div id="sysErrorsView" class="content-view" style="display: none;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+                <div>
+                    <p style="margin:0;color:#6b7280;font-size:13px;">Uncaught errors reported from every visitor's browser — check here before asking the client "what did you click?"</p>
+                    <p id="elCount" style="margin:6px 0 0;font-weight:700;font-size:13px;color:#111827;"></p>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <button class="exp-btn exp-btn-secondary" onclick="elRefreshErrors()">
+                        <i data-lucide="refresh-cw" style="width:13px;height:13px;"></i> Refresh
+                    </button>
+                    <button class="exp-btn exp-btn-secondary" onclick="elClearErrors()">
+                        <i data-lucide="trash-2" style="width:13px;height:13px;"></i> Clear all
+                    </button>
+                </div>
+            </div>
+            <div style="border:1px solid #e7e6e2;border-radius:14px;background:#fff;overflow:auto;">
+                <table style="width:100%;border-collapse:collapse;min-width:760px;">
+                    <thead>
+                        <tr style="background:#faf9f7;text-align:left;">
+                            <th style="padding:10px 14px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9b9a94;">Time</th>
+                            <th style="padding:10px 14px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9b9a94;">Page</th>
+                            <th style="padding:10px 14px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9b9a94;">Kind</th>
+                            <th style="padding:10px 14px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9b9a94;">Message</th>
+                            <th style="padding:10px 14px;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#9b9a94;">Source / User</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="elTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
         <div id="userNavigatorView" class="content-view" style="display: none;">
 
             <!-- Tab Switcher -->
@@ -4345,6 +4381,7 @@
 <script src="js/pm-admin.js"></script>
 <script src="js/push-notify.js"></script>
 <script src="js/termination-requests.js"></script>
+<script src="js/error-log.js"></script>
 <script src="js/ai-summary.js"></script>
 <script src="js/ai-assistant.js"></script>
 
@@ -5016,6 +5053,7 @@
         boqBuilder:       'Accomplishment Report',
         clientAccounts:   'Client Accounts',
         userNavigator:    'User Navigator',
+        sysErrors:        'System Errors',
         paymentRequests:  'Payment Requests',
         invoices:         'Invoice Receipt',
         laborInvoices:    'Labor Invoice',
@@ -5037,8 +5075,8 @@
         if (typeof currentUserRole !== 'undefined' && currentUserRole !== null) {
             if (currentUserRole === 'staff') {
                 // Staff can access all expense/construction views, but NOT the
-                // admin-only User Navigator or Client Accounts pages.
-                const blocked = ['userNavigator', 'clientAccounts'];
+                // admin-only User Navigator, Client Accounts or System Errors pages.
+                const blocked = ['userNavigator', 'clientAccounts', 'sysErrors'];
                 if (blocked.includes(view)) view = 'dashboard';
             } else if (currentUserRole === 'worker' || currentUserRole === 'teamLeader') {
                 const allowed = ['consBatch','consUrgent','consBatchHistory'];
@@ -5109,6 +5147,7 @@
         }
         if (BOQ_VIEWS.includes(view)  && typeof initBOQModule          === 'function') initBOQModule();
         if (view === 'userNavigator'  && typeof initUserNavigator      === 'function') initUserNavigator();
+        if (view === 'sysErrors'      && typeof initErrorLog           === 'function') initErrorLog();
         if (view === 'clientAccounts' && typeof initClientAccounts     === 'function') initClientAccounts();
         if (view === 'paymentRequests' && typeof initPaymentRequests === 'function') initPaymentRequests();
         if (view === 'paymentRequests' && typeof initSOAModule      === 'function') initSOAModule();
