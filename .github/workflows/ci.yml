@@ -1,0 +1,44 @@
+# ════════════════════════════════════════════════════════════════════
+# CI — runs on every push and pull request.
+#
+# Two jobs, ~30 seconds total, no dependencies to install:
+#   1. syntax   — node --check on every JS file (catches the "one bad
+#                 character broke the whole admin page" class of bug)
+#   2. money    — tests/money-math.test.js: 42 checks that extract the
+#                 LIVE money functions and enforce every invariant in
+#                 CLAUDE.md (one bucket per peso, pakyaw protection,
+#                 earned margins, zero-profit recognition, …)
+#
+# If the money job fails, a financial rule was broken (or the source was
+# restructured — the failure says which; see tests/money-math.test.js).
+# Do not merge until it's green.
+# ════════════════════════════════════════════════════════════════════
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Syntax check every JS file
+        run: |
+          fail=0
+          for f in js/*.js tests/*.js; do
+            if ! node --check "$f"; then
+              echo "::error file=$f::JavaScript syntax error"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Money math invariants
+        run: node tests/money-math.test.js

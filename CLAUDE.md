@@ -63,4 +63,8 @@ in the test file, never delete the test.
 `node --check <file>` catches syntax errors in files the test doesn't cover. Then check it in the
 browser: `admin.html`, log in as owner.
 
+CI (`.github/workflows/ci.yml`) runs both of the above on every push and PR — syntax-checks all
+JS and runs the money tests. Red CI on a `salvs` merge usually means the merge reverted a money
+rule or the staff amount-hiding; don't merge until green.
+
 Staff accounts (`currentUserRole === 'staff'`) must not see peso amounts anywhere.

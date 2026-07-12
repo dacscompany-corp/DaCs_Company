@@ -1,0 +1,14 @@
+{
+  "name": "dacs-firebase-to-supabase",
+  "private": true,
+  "type": "module",
+  "description": "One-time migration: Firestore + Firebase Auth -> Supabase (Postgres)",
+  "scripts": {
+    "migrate": "node migrate-data.mjs",
+    "migrate:dry": "DRY_RUN=1 node migrate-data.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "firebase-admin": "^12.0.0"
+  }
+}
