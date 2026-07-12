@@ -768,7 +768,46 @@ window.dacsLogAgreementEvent = async function (ev) {
   }
 };
 
-// ── 13. expose globals (mirror old firebase-config.js) ───────────────
+// ── 13. client error telemetry → client_errors table (0028) ─────────
+// Uncaught errors and unhandled rejections are reported so production breakage
+// is visible without waiting for a client to call. Deduped per session, capped
+// at 15 rows, fields truncated (RLS enforces the caps server-side too).
+// Deliberately fire-and-forget: the reporter itself must never throw or await.
+const _dacsErrSeen = new Set();
+let _dacsErrBudget = 15;
+function _dacsReportError(kind, message, source, line, col, stack) {
+  try {
+    if (_dacsErrBudget <= 0) return;
+    const msg = String(message || '').slice(0, 500);
+    // 'Script error.' is the browser's opaque cross-origin placeholder — pure noise.
+    if (!msg || msg === 'Script error.') return;
+    const key = kind + '|' + msg + '|' + (source || '') + '|' + (line || 0);
+    if (_dacsErrSeen.has(key)) return;
+    _dacsErrSeen.add(key);
+    _dacsErrBudget--;
+    let uid = null;
+    try { uid = (auth.currentUser && auth.currentUser.uid) || null; } catch (_) {}
+    sb.from('client_errors').insert({
+      kind,
+      message: msg,
+      source: String(source || '').slice(0, 300),
+      line: line | 0,
+      col: col | 0,
+      stack: String(stack || '').slice(0, 4000),
+      page: String(location.pathname || '').slice(0, 300),
+      ua: String(navigator.userAgent || '').slice(0, 300),
+      uid,
+    }).then(() => {}, () => {});
+  } catch (_) {}
+}
+window.addEventListener('error', (e) =>
+  _dacsReportError('error', e.message, e.filename, e.lineno, e.colno, e.error && e.error.stack));
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  _dacsReportError('unhandledrejection', (r && r.message) || String(r), '', 0, 0, r && r.stack);
+});
+
+// ── 14. expose globals (mirror old firebase-config.js) ───────────────
 window.db = db; window.auth = auth; window.storage = storage; window.firebase = firebase;
 console.log('✅ Supabase initialized (Firestore-compat shim active)');
 console.log('📁 Project URL:', SUPABASE_URL);

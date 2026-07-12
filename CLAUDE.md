@@ -63,6 +63,13 @@ in the test file, never delete the test.
 `node --check <file>` catches syntax errors in files the test doesn't cover. Then check it in the
 browser: `admin.html`, log in as owner.
 
+Production errors self-report into the `client_errors` table (migration 0028, reporter in
+supabase-config.js §13) — query it first when a user reports "it broke":
+`select at, page, kind, message, source, line from client_errors order by at desc limit 100;`
+
+Migrations: **next number = highest + 1, never reuse, never SQL-editor changes** — see
+`supabase/migrations/README.md` for the canonical order and the audited duplicate pairs.
+
 CI (`.github/workflows/ci.yml`) runs both of the above on every push and PR — syntax-checks all
 JS and runs the money tests. Red CI on a `salvs` merge usually means the merge reverted a money
 rule or the staff amount-hiding; don't merge until green.
