@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "_comment": "Static site — NO build step. package.json's `build` script is a deliberate trap that exits 1 (js/portal-app.compiled.js is the source of truth; see src/README.md). When package.json became git-tracked (2026-07-12) Vercel started running that script and every deployment failed. Empty commands = skip install and build, serve the repo root as-is.",
+  "buildCommand": "",
+  "installCommand": "",
+  "outputDirectory": "."
+}
