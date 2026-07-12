@@ -4560,10 +4560,36 @@ function _fmtDateShort(d) {
 // ════════════════════════════════════════════════════════════
 // REPORT KPI CARDS
 // ════════════════════════════════════════════════════════════
+// Overhead expenses cache for the report (fetched once per session).
+// null = not fetched yet; the KPI renderer kicks off the fetch and re-renders
+// itself when the rows arrive.
+let _rptOvhdRows = null;
+let _rptOvhdFetching = false;
+
+// A payroll row that belongs to OVERHEAD, not Labor: indirect pay, or the
+// statutory burden of an indirect worker. Delegates to overhead-module's
+// classifier (single source of truth, incl. the legacy keyword fallback).
+function _rptIsOverheadPay(p) {
+    if (typeof _ovhdIsIndirectPay === 'function') return _ovhdIsIndirectPay(p);
+    if (p.laborType === 'indirect') return true;
+    if (p.laborType === 'liability') return p.liabilityFor === 'indirect';
+    return false;
+}
+
 function _rptRenderKPIs(_groups) {
     const row = document.getElementById('rptKpiRow');
     if (!row) return;
     if (window.currentUserRole === 'staff') { row.style.display = 'none'; return; }
+
+    if (_rptOvhdRows === null && !_rptOvhdFetching) {
+        _rptOvhdFetching = true;
+        db.collection('overheadExpenses').where('userId', '==', _uid()).get()
+            .then(snap => {
+                _rptOvhdRows = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => !e.deletedAt);
+                _rptRenderKPIs(_groups);
+            })
+            .catch(err => { console.error('rpt overhead fetch:', err); _rptOvhdRows = []; });
+    }
 
     const contract = _rptState.folderId
         ? (expFolders.find(f => f.id === _rptState.folderId)?.totalBudget || 0)
@@ -4586,16 +4612,27 @@ function _rptRenderKPIs(_groups) {
     const _srcPay = _ovAllPayroll.length  ? _ovAllPayroll  : expPayroll;
 
     const totMats  = _srcExp.filter(e => _kpiProjIdSet.has(e.projectId) && !e.coverExpense).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-    const totLabor = _srcPay.filter(p => _kpiProjIdSet.has(p.projectId) && !_kpiPresProjIds.has(p.projectId)).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
-    const totSpent = totMats + totLabor;
+    // Same money model as Project Control: Labor = direct + direct burden;
+    // Overhead = indirect pay + indirect burden + operating costs. Every peso once.
+    const _scopePay   = _srcPay.filter(p => _kpiProjIdSet.has(p.projectId) && !_kpiPresProjIds.has(p.projectId));
+    const totIndirect = _scopePay.filter(_rptIsOverheadPay).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
+    const totLabor    = _scopePay.filter(p => !_rptIsOverheadPay(p)).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
+    // Operating costs recorded against the folders in scope. Company-scope (G&A)
+    // rows are deliberately EXCLUDED — company overhead is never charged to jobs.
+    const _scopeFolderIds = _rptState.folderId ? new Set([_rptState.folderId]) : new Set(expFolders.map(f => f.id));
+    const totOvhdExp  = (_rptOvhdRows || []).filter(e => !e.deletedAt && e.folderId && _scopeFolderIds.has(e.folderId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+    const totOverhead = totIndirect + totOvhdExp;
+    const totSpent = totMats + totLabor + totOverhead;
     const totCover = _srcExp.filter(e => _kpiProjIdSet.has(e.projectId) && (e.coverExpense || _kpiPresProjIds.has(e.projectId))).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0)
                    + _srcPay.filter(p => _kpiPresProjIds.has(p.projectId)).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
 
     const coverPctOfBudget = totReceived > 0 ? (totCover / totReceived) * 100 : 0;
-    const periodAlloc      = contract - totReceived;
-    const periodAllocPct   = contract > 0 ? (periodAlloc / contract) * 100 : 0;
-    const contractRem      = contract - totSpent;
-    const contractRemPct   = contract > 0 ? (contractRem / contract) * 100 : 0;
+    // Funds Available = Allocated − Spent. (The old "Budget Remaining" was
+    // contract − spent, which treats the whole contract as spendable — i.e. a
+    // planned margin of zero. The old "Receivable Balance" was just the
+    // complement of the Fund Allocated card's %, so it's gone.)
+    const fundsAvail       = totReceived - totSpent;
+    const fundsAvailPct    = totReceived > 0 ? (fundsAvail / totReceived) * 100 : 0;
     const utilizedPct      = totReceived > 0 ? (totSpent / totReceived) * 100 : 0;
     const contractUsedPct  = contract > 0 ? (totSpent / contract) * 100 : 0;
     const rcvOfContract    = contract > 0 ? (totReceived / contract) * 100 : 0;
@@ -4623,7 +4660,8 @@ function _rptRenderKPIs(_groups) {
         html += _card('Materials &amp; Costs', '&#8369;' + formatNum(totMats),      (totReceived > 0 ? ((totMats / totReceived) * 100).toFixed(1) : '0.0') + '% of allocated budget');
         // Row 2
         html += _card('Labor &amp; Payroll',   '&#8369;' + formatNum(totLabor),     (totReceived > 0 ? ((totLabor / totReceived) * 100).toFixed(1) : '0.0') + '% of allocated budget');
-        html += _card('Total Fund Spent',      '&#8369;' + formatNum(totSpent),     utilizedPct.toFixed(1) + '% utilized &middot; ' + contractUsedPct.toFixed(1) + '% of contract');
+        html += _card('Overhead',              '&#8369;' + formatNum(totOverhead),  '&#8369;' + formatNum(totIndirect) + ' indirect labor &middot; &#8369;' + formatNum(totOvhdExp) + ' operating');
+        html += _card('Total Fund Spent',      '&#8369;' + formatNum(totSpent),     'Labor + Materials + Overhead &middot; ' + utilizedPct.toFixed(1) + '% utilized &middot; ' + contractUsedPct.toFixed(1) + '% of contract');
         html += _card('Cover Expenses',        '&#8369;' + formatNum(totCover),     coverPctOfBudget.toFixed(1) + '% of allocated budget &middot; ' + (coverPctOfBudget >= 5 ? 'BAD' : coverPctOfBudget >= 2 ? 'WARNING' : 'HEALTHY'), coverPctOfBudget >= 5 ? 'rpt-kpi-card--bad' : coverPctOfBudget >= 2 ? 'rpt-kpi-card--warn' : '');
     } else {
         html += _card('Materials &amp; Costs', '&#8369;' + formatNum(totMats),      txCount + ' transaction' + (txCount !== 1 ? 's' : ''));
@@ -4631,28 +4669,20 @@ function _rptRenderKPIs(_groups) {
         html += _card('Total Fund Spent',      '&#8369;' + formatNum(totSpent),     contractUsedPct.toFixed(1) + '% of contract value');
     }
 
-    // Remaining Allocation — full-width card with two side-by-side columns
+    // Funds Available — full-width card: Allocated − Spent, the money actually
+    // left to work with out of what clients have funded.
     if (!staffOnly) {
-        const varClass = periodAlloc < 0 ? 'rpt-variance-kpi-badge--red' : 'rpt-variance-kpi-badge--green';
-        const remClass = contractRem  < 0 ? 'rpt-variance-kpi-badge--red' : 'rpt-variance-kpi-badge--green';
+        const availClass = fundsAvail < 0 ? 'rpt-variance-kpi-badge--red' : 'rpt-variance-kpi-badge--green';
         html += '<div class="rpt-kpi-card rpt-kpi-variance-wide">'
-            + '<div class="rpt-kpi-label rpt-kpi-label--highlight">Remaining Allocation</div>'
+            + '<div class="rpt-kpi-label rpt-kpi-label--highlight">Funds Available</div>'
             + '<div class="rpt-variance-rule"></div>'
             + '<div class="rpt-variance-split">'
             +   '<div class="rpt-variance-col">'
-            +     '<div class="rpt-variance-col-label">Receivable Balance</div>'
-            +     '<div class="rpt-variance-kpi-badge ' + varClass + '">' + periodAllocPct.toFixed(1) + '% of contract</div>'
-            +     '<div class="rpt-variance-col-val">' + (periodAlloc < 0 ? '-' : '') + '&#8369;' + formatNum(Math.abs(periodAlloc)) + '</div>'
-            +     '<div class="rpt-variance-bar-wrap"><div class="rpt-variance-bar-fill" style="width:' + Math.max(Math.min(Math.abs(periodAllocPct), 100), 2).toFixed(1) + '%;background:' + (periodAlloc < 0 ? '#b4453a' : '#157a52') + '"></div></div>'
-            +     '<div class="rpt-variance-col-sub">' + (periodAlloc < 0 ? 'over-billed' : 'pending billing') + '</div>'
-            +   '</div>'
-            +   '<div class="rpt-variance-divider"></div>'
-            +   '<div class="rpt-variance-col">'
-            +     '<div class="rpt-variance-col-label">Budget Remaining</div>'
-            +     '<div class="rpt-variance-kpi-badge ' + remClass + '">' + (contract > 0 ? contractRemPct.toFixed(1) + '% of contract' : 'No contract set') + '</div>'
-            +     '<div class="rpt-variance-col-val">' + (contractRem < 0 ? '-' : '') + '&#8369;' + formatNum(Math.abs(contractRem)) + '</div>'
-            +     '<div class="rpt-variance-bar-wrap"><div class="rpt-variance-bar-fill" style="width:' + Math.max(Math.min(Math.abs(contractRemPct), 100), 2).toFixed(1) + '%;background:' + (contractRem < 0 ? '#b4453a' : '#157a52') + '"></div></div>'
-            +     '<div class="rpt-variance-col-sub">' + (contract > 0 ? (contractRem < 0 ? 'over budget' : 'available') : 'no contract set') + '</div>'
+            +     '<div class="rpt-variance-col-label">Allocated &minus; Spent</div>'
+            +     '<div class="rpt-variance-kpi-badge ' + availClass + '">' + (totReceived > 0 ? fundsAvailPct.toFixed(1) + '% of allocated' : 'Nothing allocated yet') + '</div>'
+            +     '<div class="rpt-variance-col-val">' + (fundsAvail < 0 ? '-' : '') + '&#8369;' + formatNum(Math.abs(fundsAvail)) + '</div>'
+            +     '<div class="rpt-variance-bar-wrap"><div class="rpt-variance-bar-fill" style="width:' + Math.max(Math.min(Math.abs(fundsAvailPct), 100), 2).toFixed(1) + '%;background:' + (fundsAvail < 0 ? '#b4453a' : '#157a52') + '"></div></div>'
+            +     '<div class="rpt-variance-col-sub">' + (fundsAvail < 0 ? 'overspent beyond allocated funds' : 'available to spend') + '</div>'
             +   '</div>'
             + '</div>'
             + '</div>';
