@@ -613,12 +613,108 @@ const storage = {
         return { ref: this };
       },
       async getDownloadURL() {
+        // Still returns the public-FORMAT URL even though the bucket is private
+        // (migration 0027): it's the stable identifier persisted in the DB.
+        // Section 11b below resolves it into a signed URL at the moment of use.
         const { data } = sb.storage.from('uploads').getPublicUrl(this._path);
         return data.publicUrl;
       },
       child(p) { return storage.ref((this._path + '/' + p).replace(/\/+/g, '/')); },
     };
   },
+};
+
+// ── 11b. PRIVATE storage — transparent signed-URL resolution ─────────
+// Migration 0027 flips the `uploads` bucket private: receipts, contract files,
+// signatures and agreement PDFs stop being readable by anyone with the link.
+// The DB keeps storing the public-format URL (…/object/public/uploads/<path>)
+// as a stable identifier, and THIS block converts it to a short-lived signed
+// URL at the moment of use — globally, so no template has to know:
+//   • clicks on <a href="…public/uploads/…">   → intercepted, signed, opened
+//   • <img>/<iframe> src set by any innerHTML   → rewritten via MutationObserver
+//   • fetch(url)                                → wrapped (PDF stamping/merge/sha)
+//   • window.open(url)                          → wrapped (receipt viewers)
+// Every legitimate viewer is logged in (RLS: authenticated may SELECT on the
+// bucket), so signing succeeds; anonymous links now get 404 — which is the point.
+// DEPLOY ORDER: this file must be live BEFORE migration 0027 runs, or existing
+// links 404 with nothing to resolve them.
+const DACS_PUB_UPLOADS_RE = /\/storage\/v1\/object\/public\/uploads\/([^?#]+)/;
+const _dacsSignCache = new Map(); // path → { url, exp }
+window.dacsSignedUrl = async function (urlOrPath, expiresIn = 3600) {
+  let path = String(urlOrPath || '');
+  const m = path.match(DACS_PUB_UPLOADS_RE);
+  if (m) path = decodeURIComponent(m[1]);
+  const hit = _dacsSignCache.get(path);
+  if (hit && hit.exp > Date.now()) return hit.url;
+  const { data, error } = await sb.storage.from('uploads').createSignedUrl(path, expiresIn);
+  if (error) throw error;
+  _dacsSignCache.set(path, { url: data.signedUrl, exp: Date.now() + Math.max(expiresIn - 600, 60) * 1000 });
+  return data.signedUrl;
+};
+const _dacsIsPubUpload = (u) => typeof u === 'string' && DACS_PUB_UPLOADS_RE.test(u);
+// Sign only when the URL is one of ours; anything else passes through untouched.
+window.dacsMaybeSignUrl = async function (u) {
+  if (!_dacsIsPubUpload(u)) return u;
+  try { return await window.dacsSignedUrl(u); } catch (e) { console.warn('sign failed:', e.message || e); return u; }
+};
+
+// window.open(url) — receipt viewers call it with the stored URL directly.
+// Open the window synchronously (preserves the click gesture), navigate after signing.
+const _dacsOrigOpen = window.open.bind(window);
+window.open = function (url, target, feats) {
+  if (_dacsIsPubUpload(url)) {
+    const w = _dacsOrigOpen('', target || '_blank', feats);
+    window.dacsSignedUrl(url)
+      .then((s) => { if (w) w.location.href = s; })
+      .catch((e) => { console.warn('sign failed:', e.message || e); if (w) { try { w.close(); } catch (_) {} } });
+    return w;
+  }
+  return _dacsOrigOpen(url, target, feats);
+};
+
+// <a href> — capture-phase interceptor covers every anchor in every module.
+document.addEventListener('click', function (ev) {
+  const a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+  if (!a || !_dacsIsPubUpload(a.href)) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  window.open(a.href, '_blank'); // routes through the signing wrapper above
+}, true);
+
+// <img>/<iframe> src — rewrite as elements appear or change. No loop risk:
+// the signed URL (…/object/sign/…) no longer matches the public pattern.
+function _dacsSignSrcEl(el) {
+  const u = el.getAttribute && el.getAttribute('src');
+  if (!_dacsIsPubUpload(u)) return;
+  window.dacsSignedUrl(u).then((s) => { el.src = s; }).catch((e) => console.warn('sign failed:', e.message || e));
+}
+function _dacsSignScan(root) {
+  if (root.nodeType !== 1) return;
+  if (root.matches && root.matches('img[src],iframe[src]')) _dacsSignSrcEl(root);
+  if (root.querySelectorAll) root.querySelectorAll('img[src*="/object/public/uploads/"],iframe[src*="/object/public/uploads/"]').forEach(_dacsSignSrcEl);
+}
+new MutationObserver((muts) => {
+  for (const m of muts) {
+    if (m.type === 'attributes') { _dacsSignSrcEl(m.target); continue; }
+    m.addedNodes.forEach(_dacsSignScan);
+  }
+}).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['src'] });
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => _dacsSignScan(document.documentElement));
+else _dacsSignScan(document.documentElement);
+
+// fetch — PDF stamping, agreement merging and dacsSnapshotPdf all fetch the
+// stored URL. Only OUR public-uploads URLs are rewritten; everything else
+// (supabase-js internals, workers, CDNs) passes through untouched.
+const _dacsOrigFetch = window.fetch.bind(window);
+window.fetch = async function (input, init) {
+  try {
+    const u = typeof input === 'string' ? input : (input && input.url);
+    if (_dacsIsPubUpload(u)) {
+      const s = await window.dacsSignedUrl(u);
+      input = typeof input === 'string' ? s : new Request(s, input);
+    }
+  } catch (e) { console.warn('signed fetch fallback:', e.message || e); }
+  return _dacsOrigFetch(input, init);
 };
 
 // ── 12. e-sign evidence helpers (shared by ALL portals) ──────────────

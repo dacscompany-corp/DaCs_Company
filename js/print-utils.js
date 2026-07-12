@@ -462,7 +462,9 @@ window.dacsWorkerAgreementView = async function (pdfUrl, d) {
         w.location.href = URL.createObjectURL(blob);
     } catch (e) {
         console.warn('Worker agreement stamping failed — opening the template:', e.message || e);
-        try { w.location.href = pdfUrl; } catch (_) {}
+        // Bucket is private (migration 0027) — resolve to a signed URL before navigating.
+        const raw = (typeof window.dacsMaybeSignUrl === 'function') ? await window.dacsMaybeSignUrl(pdfUrl) : pdfUrl;
+        try { w.location.href = raw; } catch (_) {}
     }
 };
 
@@ -758,8 +760,13 @@ window.dacsAgreementViewSigned = async function (opts) {
             + '<body style="font-family:Arial,sans-serif;padding:44px;color:#374151;font-size:15px;">Preparing the signed document…</body>');
         w.document.close();
     } catch (_) {}
+    // Bucket is private (migration 0027) — resolve the stored URL to a signed one
+    // before any direct navigation (the fetch inside _dacsAgrStampBlob is covered
+    // by the global fetch wrapper; these two direct navigations are not).
+    const _signedEmbed = async () =>
+        (typeof window.dacsMaybeSignUrl === 'function') ? await window.dacsMaybeSignUrl(o.pdfEmbedUrl) : o.pdfEmbedUrl;
     if (o.unsigned || (!o.signature && !o.signatureImage)) {
-        try { w.location.href = o.pdfEmbedUrl; } catch (_) {}
+        try { w.location.href = await _signedEmbed(); } catch (_) {}
         return;
     }
     try {
@@ -767,7 +774,7 @@ window.dacsAgreementViewSigned = async function (opts) {
         w.location.href = URL.createObjectURL(blob);
     } catch (e) {
         console.warn('Signature stamping failed — opening the raw document:', e.message || e);
-        try { w.location.href = o.pdfEmbedUrl; } catch (_) {}
+        try { w.location.href = await _signedEmbed(); } catch (_) {}
     }
 };
 

@@ -202,8 +202,14 @@ reverted the staff money-hiding in portal footers. Re-check after every merge.
 **PH timezone.** Never build a local date key with `toISOString().slice(0,10)` — UTC+8 rolls it
 back a day. Build from local parts.
 
-**Receipts are public.** Storage uses `getPublicUrl` on a public `uploads` bucket. Anyone with a
-receipt link can open it, no login required.
+**Storage is PRIVATE — don't render stored URLs directly.** Since migration `0027` the
+`uploads` bucket is private. The DB still stores the public-format URL as a stable identifier,
+and §11b of `js/supabase-config.js` resolves it to a short-lived signed URL transparently — a
+global click interceptor for `<a>`, a MutationObserver for `<img>`/`<iframe>` src, and wrapped
+`fetch`/`window.open`. New code can just keep using the stored URL in templates; the shim signs
+it at the moment of use. What breaks the pattern: assigning a stored URL straight to
+`location.href` (use `window.dacsMaybeSignUrl(url)` first — see `print-utils.js` for examples)
+or fetching it from a **worker/server** context where the shim isn't loaded.
 
 ---
 
