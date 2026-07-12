@@ -1,5 +1,13 @@
 # DAC's Building Design Services — Budget Overview Module
 
+> ⚠️ **Written before the Supabase migration.** Where this doc says Firebase/Firestore, the app
+> now uses **Supabase** through a compatibility shim (`js/supabase-config.js`) — which is why the
+> code still looks like Firestore. The **module behaviour, flows and field names remain accurate**;
+> the storage layer does not. See [ARCHITECTURE.md](ARCHITECTURE.md).
+>
+> Also note: the labor model has since changed — indirect labor is now **Overhead, not Labor**.
+> See [OVERHEAD_MODULE.md](OVERHEAD_MODULE.md).
+
 > **Admin Dashboard · Expenses Tracker · MVP Documentation**
 > Last updated: March 2026
 

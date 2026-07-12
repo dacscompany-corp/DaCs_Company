@@ -1,4 +1,12 @@
-# DAC's — Firestore Database Schema (Full Field Map)
+# DAC's — Database Schema (Full Field Map)
+
+> ⚠️ **The storage layer described below is out of date.** The app runs on **Supabase
+> (Postgres)**, not Firestore. `js/supabase-config.js` is a Firestore-*compatibility shim*, which
+> is why the code still reads `db.collection(...)` — collections are tables, camelCase fields are
+> snake_case columns. **The field maps and document shapes here are still accurate**; the database
+> they describe is not. The authoritative schema is `supabase/migrations/`, and even that has
+> drifted (see `0020_schema_drift_catchup.sql`, `0025`, `0026`).
+> See [ARCHITECTURE.md](ARCHITECTURE.md) §2.
 
 > Generated from a full read of every `.add()` / `.set()` / `.update()` write across
 > `js/` + `src/`, cross-checked against `firestore.rules`.

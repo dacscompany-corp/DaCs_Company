@@ -583,3 +583,18 @@
     border-top: 1px solid #e5e7eb;
     margin-top: 0.5rem;
 }
+
+/* Rows sourced from payroll (Overhead / Indirect Labor) — read-only here. */
+.ovhd-src-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 5px;
+    border: 1px solid #dbe3e9;
+    border-radius: 5px;
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #7f9cb0;
+    vertical-align: middle;
+}

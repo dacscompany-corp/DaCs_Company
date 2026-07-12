@@ -1,6 +1,13 @@
 # Staff Account Setup Guide
 ## DAC's Building Design Services — Expenses-Only Staff Role
 
+> ⚠️ **The most out-of-date doc in this folder.** It describes Firebase Auth and Firestore rules
+> ~23 times; the app runs on **Supabase Auth + Postgres RLS** (`supabase/migrations/0002_rls.sql`).
+> Staff accounts are created via the `admin-create-user` edge function, and access is enforced by
+> RLS plus `profiles.role = 'staff'` / `profiles.allowed_modules`, **not** by Firestore rules.
+> The *intent* of the staff role (no peso amounts, limited modules) is still correct; **every
+> setup step involving the Firebase console is not.** See [ARCHITECTURE.md](ARCHITECTURE.md) §1.
+
 This guide walks you through creating a **staff** account that only sees the **Expenses Tracker** modules and KPIs. Admin (owner) keeps full access to everything.
 
 ---

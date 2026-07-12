@@ -1561,15 +1561,16 @@ async function _pmDeleteProjectCascade(id) {
     // living under it as a subcollection.
     const paymentReqs = await db.collection('paymentRequests').where('constructionProjectId', '==', id).get();
     for (const d of paymentReqs.docs) await d.ref.delete();
-    const overheadTx = await db.collection('overheadExpenses').where('folderId', '==', id).get();
-    for (const d of overheadTx.docs) await d.ref.delete();
+    // NOTE: no overheadExpenses sweep here. overheadExpenses.folderId points at a
+    // `folders` row (Project Control), never at a constructionProjects id — the two
+    // are different id spaces, so a query by this id could only ever match nothing.
 
     await db.collection('constructionProjects').doc(id).delete();
 }
 
 window.pmDeleteProject = async function(id) {
     const ok = await showDeleteConfirm(
-        'This permanently deletes the project AND all of its saved data — weekly bills, procurement records, labor contracts, milestones, accomplishment reports, payment requests, and overhead expenses. Nothing will be left behind to show up in reports. This can’t be undone.'
+        'This permanently deletes the project AND all of its saved data — weekly bills, procurement records, labor contracts, milestones, accomplishment reports, and payment requests. Nothing will be left behind to show up in reports. This can’t be undone.'
     );
     if (!ok) return;
     try {

@@ -2596,7 +2596,12 @@ async function handleAddPayroll(e) {
     const paymentDate = document.getElementById('payDate').value;
     const notes       = document.getElementById('payNotes').value.trim();
     const laborType   = (document.querySelector('input[name="payLaborType"]:checked') || {}).value || 'direct';
-    const contractId  = (document.getElementById('payContract') || {}).value || null;
+    // Statutory burden follows the worker class it was paid for (see payToggleContractForType).
+    const liabilityFor = laborType === 'liability'
+        ? ((document.querySelector('input[name="payLiabilityFor"]:checked') || {}).value || 'direct')
+        : null;
+    // Overhead / indirect pay can't be charged against a pakyaw contract.
+    const contractId  = laborType === 'indirect' ? null : ((document.getElementById('payContract') || {}).value || null);
     const payMilestone = contractId ? ((document.getElementById('payMilestone') || {}).value || null) : null;
 
     // Pakyaw/capped contract: warn (but allow) if this draws the contract over its cap.
@@ -2630,6 +2635,7 @@ async function handleAddPayroll(e) {
             batch.set(ref, {
                 projectId: sp.projectId, userId: _uid(),
                 workerName, role, laborType,
+                ...(liabilityFor && { liabilityFor }),
                 daysWorked: splits.length > 1 ? 0 : d, dailyRate: r,
                 totalSalary: sp.amount,
                 paymentDate, notes,
@@ -3716,6 +3722,9 @@ async function openEditPayrollModal(id) {
     const _laborType = p.laborType || 'direct';
     const _radio = document.querySelector('input[name="editPayLaborType"][value="' + _laborType + '"]');
     if (_radio) _radio.checked = true;
+    const _burden = p.liabilityFor === 'indirect' ? 'indirect' : 'direct';
+    const _bRadio = document.querySelector('input[name="editPayLiabilityFor"][value="' + _burden + '"]');
+    if (_bRadio) _bRadio.checked = true;
     const _eDays = document.getElementById('editPayDays'); if (_eDays) _eDays.value = p.daysWorked || '';
     const _eRate = document.getElementById('editPayDailyRate'); if (_eRate) _eRate.value = p.dailyRate || '';
     document.getElementById('editPayTotal').value      = p.totalSalary || '';
@@ -3731,6 +3740,7 @@ async function openEditPayrollModal(id) {
     const _ecSel = document.getElementById('editPayContract');
     if (_ecSel) _ecSel.value = p.contractId || '';
     lcUpdateRemainingHint('editPayContract', 'editPayContractRemaining');
+    payToggleContractForType('edit');   // an indirect row shows no contract picker
     if (typeof editPayMileFromValue === 'function') editPayMileFromValue(p.payMilestone || '');
     const imgs = p.receiptImages?.length ? p.receiptImages : (p.receiptURL ? [p.receiptURL] : []);
     _editPayKept = [...imgs];
@@ -3804,7 +3814,12 @@ async function handleEditPayroll(ev) {
             newImgs.push(await compressImageToBase64(item.file));
         const finalImages = [..._editPayKept, ...newImgs];
         const laborType = (document.querySelector('input[name="editPayLaborType"]:checked') || {}).value || 'direct';
-        const editContractId = (document.getElementById('editPayContract') || {}).value || null;
+        const liabilityFor = laborType === 'liability'
+            ? ((document.querySelector('input[name="editPayLiabilityFor"]:checked') || {}).value || 'direct')
+            : null;
+        // Re-tagging a row as Overhead / indirect also unlinks it from the contract,
+        // so the worker's agreed amount is credited back.
+        const editContractId = laborType === 'indirect' ? null : ((document.getElementById('editPayContract') || {}).value || null);
         const editMilestone = editContractId ? ((document.getElementById('editPayMilestone') || {}).value || null) : null;
         // Over-cap warning excludes THIS row's current contribution so editing isn't double-counted.
         if (editContractId && !lcConfirmOverCap(editContractId, eTotal, _editingPayrollId)) {
@@ -3814,6 +3829,7 @@ async function handleEditPayroll(ev) {
             workerName:    document.getElementById('editPayWorkerName').value.trim(),
             role:          document.getElementById('editPayRole').value.trim(),
             laborType,
+            liabilityFor,   // null unless laborType === 'liability'
             daysWorked:    d, dailyRate: r, totalSalary: eTotal,
             paymentDate:   document.getElementById('editPayDate').value,
             notes:         document.getElementById('editPayNotes').value.trim(),
@@ -3869,6 +3885,7 @@ function openExpModal(id)  {
         lcPopulatePayrollPicker();
         const sel = document.getElementById('payContract'); if (sel) sel.value = '';
         lcUpdateRemainingHint('payContract', 'payContractRemaining');
+        payToggleContractForType('add');   // keep the picker in sync with the labor category
         if (typeof payResetMilestone === 'function') payResetMilestone();
     }
     const m = document.getElementById(id); if (m) m.classList.add('active');
@@ -7394,11 +7411,15 @@ function subscribeLaborContracts(folderId) {
 }
 
 // ── Drawdown math ──────────────────────────────────────────
+// Overhead / indirect pay (coordination, site supervision, procurement) is a
+// company cost, NOT progress against the worker's agreed pakyaw amount — so it
+// never draws down a contract, even if an old row still carries a contractId.
+function lcDrawsDown(p) { return p.laborType !== 'indirect'; }
 // Paid-to-date = sum of every payroll row linked to the contract (splits included).
 function lcPaid(contractId, excludeRowId) {
     if (!contractId) return 0;
     return expPayroll
-        .filter(p => p.contractId === contractId && p.id !== excludeRowId)
+        .filter(p => p.contractId === contractId && p.id !== excludeRowId && lcDrawsDown(p))
         .reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
 }
 function lcStats(c) {
@@ -7910,6 +7931,29 @@ function lcUpdateRemainingHint(selId, hintId) {
         + '">₱' + formatNum(st.remaining) + '</strong> of ₱' + formatNum(st.agreed) + ' agreed';
     if (msRow) msRow.style.display = '';
 }
+// Overhead / indirect pay never draws down a pakyaw contract, so the picker is
+// hidden (and any earlier pick discarded) the moment that category is chosen.
+window.payToggleContractForType = function(which) {
+    const isEdit = which === 'edit';
+    const selId  = isEdit ? 'editPayContract' : 'payContract';
+    const hintId = isEdit ? 'editPayContractRemaining' : 'payContractRemaining';
+    const rowId  = isEdit ? 'editPayContractRow' : 'payContractRow';
+    const name   = isEdit ? 'editPayLaborType' : 'payLaborType';
+    const type = (document.querySelector('input[name="' + name + '"]:checked') || {}).value || 'direct';
+    const row = document.getElementById(rowId);
+    if (type === 'indirect') {
+        const sel = document.getElementById(selId);
+        if (sel) sel.value = '';
+        lcUpdateRemainingHint(selId, hintId);   // also hides the milestone row
+        if (row) row.style.display = 'none';
+    } else if (row) {
+        row.style.display = '';
+    }
+    // Statutory contributions are labor BURDEN — they belong with the worker they were
+    // paid for. A coordinator's SSS is overhead, not labor. Ask only when it matters.
+    const burdenRow = document.getElementById(isEdit ? 'editPayLiabilityForRow' : 'payLiabilityForRow');
+    if (burdenRow) burdenRow.style.display = (type === 'liability') ? '' : 'none';
+};
 // Over-cap guard — returns true to proceed. excludeRowId lets edits ignore their own old amount.
 function lcConfirmOverCap(contractId, addAmount, excludeRowId) {
     const c = expLaborContracts.find(x => x.id === contractId);
@@ -7930,7 +7974,7 @@ window.lcOpenLedger = function(contractId) {
     if (!c) { showExpNotif('Contract not found.', 'error'); return; }
     const st = lcStats(c);
     const rows = expPayroll
-        .filter(p => p.contractId === contractId)
+        .filter(p => p.contractId === contractId && lcDrawsDown(p))
         .sort((a, b) => (a.paymentDate || '').localeCompare(b.paymentDate || ''));
     const titleEl = document.getElementById('lcLedgerTitle');
     if (titleEl) titleEl.textContent = (c.workerName || 'Worker') + ' — ' + (c.scope || 'Contract');

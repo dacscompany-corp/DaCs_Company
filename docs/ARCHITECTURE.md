@@ -1,0 +1,225 @@
+# DAC's — System Architecture
+
+The one document that explains how the whole thing fits together. Per-module detail lives in
+the other files in `docs/`; this one is the map you read first.
+
+**Stack:** plain HTML + vanilla JS (no build step, no framework except React-via-CDN on one
+screen) → a Firestore-compatibility shim → **Supabase** (Postgres + Auth + Storage + Realtime).
+Deployed on Vercel. There is also an Android TWA wrapper.
+
+---
+
+## 1. Entry points and audiences
+
+Five HTML pages. Each is a separate app; they share `js/supabase-config.js` and little else.
+
+| Page | Audience | Loads | Notes |
+|---|---|---|---|
+| `index.html` | Public | `script.js` | Marketing site, appointments, testimonials |
+| `admin.html` | **Owner + Staff** | ~17 modules | The whole back office. By far the biggest surface |
+| `client.html` | **Design client** | `client-app.js`, `client-payment.js` | BOQ / design-side client portal |
+| `Client Management.html` | **Construction client** | `client-management-app.js`, `client-payment.js` | |
+| `Dacs Partnership.html` | **Partner** | `client-management-app.js`, `client-payment.js` | Same JS as above, different HTML |
+
+> **Client Management.html and Dacs Partnership.html are two live audiences sharing one JS
+> file.** An HTML edit made for one usually has to be mirrored into the other. Forgetting is a
+> recurring source of bugs.
+
+**Roles.** `profiles.kind` is `admin` | `client` | `construction_client` (the shim splits one
+table into three logical collections). Within `admin`, `profiles.role` is `owner` or `staff`.
+Within `construction_client`, an `isPartner` flag selects the partner experience.
+
+- **staff** — `window.currentUserRole === 'staff'`. Money is hidden from them across the app
+  (`_staff()` in the portal, equivalent checks elsewhere). Percentages are shown instead of pesos.
+- **allowed_modules** — narrows an admin account to specific nav sections on every screen.
+
+---
+
+## 2. The Supabase shim — read this before touching any data code
+
+`js/supabase-config.js` exposes the **old Firebase globals** (`db`, `auth`, `storage`,
+`firebase.firestore.FieldValue.serverTimestamp()`), so every module still reads like Firestore:
+
+```js
+db.collection('payroll').where('userId', '==', uid).onSnapshot(...)
+```
+
+…but underneath it is PostgREST. The mapping lives in one place — the **`REG` registry**:
+
+- **collection → table** (`overheadExpenses` → `overhead_expenses`)
+- **camelCase → snake_case columns**, automatically (`expenseName` → `expense_name`)
+- `rename` overrides (`userId` → `owner_id`)
+- `ts` — fields wrapped as Timestamps on read
+- `kind` — the profiles split
+- `jsonbData` — tables whose fields live in a single `data` jsonb blob
+- `children` — nested arrays (e.g. `invoices.items` → `invoice_items`)
+- `onSnapshot` is a real Postgres realtime subscription that re-runs the query on change
+
+### The two rules this creates
+
+1. **A new field needs a real column.** Fields map straight to snake_case columns. Write
+   `foo: 1` to a table without a `foo` column and the save **fails**. (Unless the table is
+   `jsonbData`, where everything goes into the blob.)
+2. **A collection whose table is `jsonbData` must be registered as such**, or reads silently
+   return empty objects.
+
+---
+
+## 3. The biggest structural fact: TWO parallel project systems
+
+This surprises everyone. There are two unrelated notions of "project":
+
+| | **Project Control** (design/build costing) | **Project Management** (site ops) |
+|---|---|---|
+| Project row | `folders` | `construction_projects` |
+| Sub-unit | `projects` = **billing periods** (confusingly named) | `weekly_bills` (one row **per day**) |
+| Costs | `payroll` + `expenses`, tied to a billing period | `weekly_bills.entries` (jsonb) |
+| Contracts | `labor_contracts` | `pm_labor_contracts` |
+| Overhead | `overhead_expenses.folder_id` | — none — |
+| UI | `portal-app.compiled.js` (React) | `pm-admin.js` |
+
+**`folders.id` and `construction_projects.id` are different id spaces.** Querying one with the
+other's id silently matches nothing — that exact bug lived in the PM delete-cascade for months.
+`overhead_expenses.folder_id` is a **`folders`** FK; it never points at a construction project.
+
+Also note: **`projects` means billing period**, not project. Read it that way everywhere.
+
+---
+
+## 4. Module map (admin.html)
+
+| Module | File | What it owns |
+|---|---|---|
+| Project Control | `portal-app.compiled.js` | Folder grid, per-project cost/profit, drills (labor, material, overhead, periods, additional works) |
+| Budget Overview / Expenses | `expenses-module.js` (8.1k lines — the biggest) | Folders, billing periods, payroll, expenses, pakyaw labor contracts |
+| Overhead | `overhead-module.js` | Company + project overhead ([OVERHEAD_MODULE.md](OVERHEAD_MODULE.md)) |
+| Project Management | `pm-admin.js` | Construction projects, weekly bills, procurement, milestones, revolving fund |
+| Accomplishment / BOQ | `boq-module.js` | BOQ + accomplishment reports (`percentCompletion` per line item) |
+| Invoices | `invoice-module.js`, `labor-invoice-module.js` | |
+| Payment Requests | `payment-requests.js` | |
+| Construction (procurement) | `construction-module.js` | Batches, requests, inventory |
+| Clients | `client-accounts.js`, `user-navigator.js` | |
+| AI | `ai-summary.js`, `ai-assistant.js` | Folder briefings, health check |
+
+**Project Control is compiled React.** See the build trap in §8.
+
+---
+
+## 5. The project lifecycle, end to end
+
+```
+1. Folder created                 folders                 (contract amount = folders.totalBudget)
+2. BOQ / cost estimate            boq_documents           (costItems tree, jsonb)
+3. Billing periods opened         projects                (monthly fund allocations)
+   └─ funded by client, or 'president' = cover expense
+4. Costs recorded against a period
+   ├─ payroll     (labor: direct | indirect | liability)
+   ├─ expenses    (materials, with PO/DR/SI/Payment docs)
+   └─ labor_contracts  (pakyaw caps; payroll draws down via contractId)
+5. Project overhead                overhead_expenses      (folder-level; no billing period)
+6. Work accomplished               boq_documents.costItems[].percentCompletion
+                                   → % complete → EARNED revenue
+7. Billed                          invoices / labor_invoices
+8. Client pays                     payment_requests → verified
+9. Additional works                child folders (parentFolderId) — extra scope after contract
+```
+
+**Additional Works** are child `folders` under a parent folder. They carry their own revenue,
+costs and overhead, and roll up into the parent. They deliberately hide billing periods.
+
+---
+
+## 6. The money model
+
+This is the part most likely to be "fixed" wrongly later. All of it lives in
+`portal-app.compiled.js`; the rules are stated in full in [OVERHEAD_MODULE.md](OVERHEAD_MODULE.md).
+
+```
+Labor Cost   = direct + (liability − liabilityIndirect)
+Overhead     = indirect + liabilityIndirect + overhead_expenses
+Spent        = Labor + Material + Overhead
+Earned       = % complete × contract          ← percentage-of-completion
+Gross Profit = Earned − Spent
+Net Profit   = Σ recognised project profit − company overhead (G&A)
+```
+
+Four invariants, each of which cost real debugging to establish:
+
+1. **Every peso lands in exactly one bucket.** Indirect labor is Overhead, *not* Labor. Statutory
+   burden follows the worker it was paid for (a coordinator's SSS is Overhead; a mason's is Labor).
+2. **Overhead pay never draws down a pakyaw contract.** Enforced in three places — `lcPaid()`,
+   both payroll save paths, and the form.
+3. **Profit is measured on EARNED revenue.** Contract-minus-cost-to-date reports a ~90% margin on
+   a job that is 10% built. Where there is no accomplishment data the figure falls back to the
+   full contract and **must be labelled "Forecast"**, never "Earned".
+4. **Company overhead (G&A) is never charged to a job.** It is subtracted once, at company level.
+   Projects with no accomplishment data recognise **zero profit** (but losses immediately).
+
+**Cover Expenses** are a separate concept: costs charged to the company because a billing period
+had no budget (`fundingType: 'president'`), with a ₱10,000 warning threshold (`COVER_LIMIT`).
+
+---
+
+## 7. Data model at a glance
+
+~45 tables. Grouped:
+
+- **Identity** — `profiles` (3 logical collections), `agreement_events`, `push_subscriptions`
+- **Project Control** — `folders`, `folder_budgets`, `projects`, `project_budgets`, `expenses`,
+  `payroll`, `labor_contracts`, `overhead_expenses`, `categories`, `additional_works`
+- **Project Management** — `construction_projects`, `weekly_bills`, `procurement_items`,
+  `pm_labor_contracts`, `milestones`, `accomplishment_reports`, `daily_logs`, `walkthroughs`,
+  `revolving_fund*`, `partner_agreements`
+- **Billing** — `boq_documents`, `boq_templates`, `invoices`(+`items`), `labor_invoices`(+`items`),
+  `payment_requests`
+- **Procurement** — `requests`(+`items`), `batches`, `inventory`
+- **Misc** — `notifications`, `appointments`, `testimonials`, `sowa_requests`,
+  `termination_requests`, `settings`, `stats` (kv tables)
+
+**RLS** is on for every table (`0002_rls.sql`), keyed on `can_access(owner_id)` / `is_owner()` /
+`is_staff()`, with client policies matching on email where clients need read access.
+
+---
+
+## 8. Known traps
+
+**The portal build trap.** `js/portal-app.compiled.js` is the **live source of truth** and is
+edited **directly**. `src/portal-app.jsx.stale-*` is stale. **Never run `npm run build`** — it
+would overwrite the live portal with the old source.
+
+**Schema drift.** The live database has been patched by hand beyond the migrations more than
+once. `0020_schema_drift_catchup.sql` captured one round; `0025` (overhead columns) and `0026`
+(`payroll.liability_for`) captured another. **Before adding a field, check the table actually has
+the column** — the shim maps camelCase straight to snake_case and the save fails otherwise.
+Duplicate migration numbers exist (two 0006s, 0016s, 0017s, 0018s, 0019s, 0020s, 0021s, 0022s, 0023s).
+
+**Two HTML files, one JS.** Mirror portal HTML edits into both `Client Management.html` and
+`Dacs Partnership.html`.
+
+**Staff amount-hiding regresses on merges.** Historically, merges from the `salvs` branch have
+reverted the staff money-hiding in portal footers. Re-check after every merge.
+
+**PH timezone.** Never build a local date key with `toISOString().slice(0,10)` — UTC+8 rolls it
+back a day. Build from local parts.
+
+**Receipts are public.** Storage uses `getPublicUrl` on a public `uploads` bucket. Anyone with a
+receipt link can open it, no login required.
+
+---
+
+## 9. Where to look next
+
+| Topic | Doc |
+|---|---|
+| Overhead, the money rules, pakyaw interaction | [OVERHEAD_MODULE.md](OVERHEAD_MODULE.md) |
+| Expenses / Budget Overview | [EXPENSES_README.md](EXPENSES_README.md) |
+| Project Management module | [../PROJECT_MANAGEMENT_MVP.md](../PROJECT_MANAGEMENT_MVP.md) |
+| Additional Works | [ADDITIONAL_WORKS_ARCHITECTURE.md](ADDITIONAL_WORKS_ARCHITECTURE.md) |
+| Pakyaw labor contracts | [labor-contracts-plan.md](labor-contracts-plan.md) |
+| Agreement gates (6 of them) | [partnership-agreement-system-alignment.md](partnership-agreement-system-alignment.md) |
+| Staff accounts | [STAFF_ACCOUNT_SETUP.md](STAFF_ACCOUNT_SETUP.md) |
+| Field-by-field schema | [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) |
+| Android build | [../BUILD_APK.md](../BUILD_APK.md) |
+
+> Several of those predate the Supabase migration and still say "Firestore" — the *field maps and
+> flows* remain accurate; the *storage layer* described in them does not.

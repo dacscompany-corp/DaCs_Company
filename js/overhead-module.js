@@ -59,6 +59,49 @@ function _ovhdFolderName(folderId) {
     return f ? f.name : (folderId ? 'Unknown Project' : '—');
 }
 
+// ── Overhead / Indirect Labor from payroll ───────────────────
+// Project Overhead is ONE bucket: the support people (coordinator, site
+// supervision, procurement) PLUS the site operating costs. The people are paid
+// through payroll (laborType 'indirect'), so this page has to read them from
+// there — otherwise it would disagree with Project Control. They surface here
+// read-only; payroll stays the place they're edited.
+const _OVHD_INDIRECT_KEYWORDS = ['supervisor','supervision','coordinator','coordination','procurement','manager','officer','foreman','indirect','overhead','admin'];
+function _ovhdIsIndirectPay(p) {
+    if (p.laborType === 'indirect') return true;
+    // A statutory contribution paid FOR an indirect worker is overhead burden — it
+    // belongs with the coordinator it was paid for, not in Labor Cost.
+    if (p.laborType === 'liability') return p.liabilityFor === 'indirect';
+    // Legacy rows saved before laborType existed — fall back to the role text.
+    if (p.laborType === 'direct') return false;
+    const s = ((p.role || '') + ' ' + (p.workerName || '')).toLowerCase();
+    return _OVHD_INDIRECT_KEYWORDS.some(k => s.includes(k));
+}
+function _ovhdIndirectRows() {
+    const pay = (typeof _ovAllPayroll !== 'undefined' && _ovAllPayroll.length)
+        ? _ovAllPayroll
+        : (typeof expPayroll !== 'undefined' ? expPayroll : []);
+    const projs = (typeof expProjects !== 'undefined' ? expProjects : []);
+    const folderOf = {};
+    projs.forEach(p => { folderOf[p.id] = p.folderId; });
+    return pay.filter(_ovhdIsIndirectPay).map(p => ({
+        id: 'pay:' + p.id,
+        fromPayroll: true,
+        scope: 'project',
+        folderId: folderOf[p.projectId] || '',
+        expenseName: p.workerName || 'Indirect Labor',
+        category: p.role || 'Indirect Labor',
+        amount: parseFloat(p.totalSalary) || 0,
+        date: (p.paymentDate || '').toString().slice(0, 10),
+        description: p.role || 'Overhead / Indirect Labor',
+        status: 'paid'   // payroll rows are money already released
+    }));
+}
+// Every card, chart, table and report reads THIS — never _ovhdExpenses directly —
+// so the operating costs and the indirect-labor payroll always agree.
+function _ovhdRows() {
+    return _ovhdExpenses.concat(_ovhdIndirectRows());
+}
+
 // ── Init ─────────────────────────────────────────────────────
 function initOverheadModule() {
     // Default month = current YYYY-MM
@@ -97,9 +140,32 @@ function _ovhdPopulateCategorySelect() {
     const sel = document.getElementById('ovhdCategorySel');
     if (!sel) return;
     const cur = sel.value;
-    const cats = Array.from(new Set(_ovhdExpenses.map(e => e.category).filter(Boolean))).sort();
+    const cats = Array.from(new Set(_ovhdRows().map(e => e.category).filter(Boolean))).sort();
     sel.innerHTML = '<option value="">All Categories</option>' + cats.map(c => `<option value="${_esc(c)}">${_esc(c)}</option>`).join('');
     if (cur && cats.includes(cur)) sel.value = cur;
+    _ovhdFillCategoryDatalist();
+}
+
+// Suggestions for the Add/Edit category box: the presets PLUS every category already
+// used (including any the user typed themselves, so a new one is offered from then on).
+// Deliberately no "Indirect Support" preset — that pay comes from payroll and adding it
+// here as an expense would double-count it.
+const _OVHD_CAT_PRESETS = [
+    // Company (G&A)
+    'Office Rent', 'Electricity', 'Water', 'Utilities', 'Internet & Telecoms', 'Office Supplies',
+    'Administrative Salaries', 'Software & Subscriptions', 'Insurance', 'Company Vehicles', 'Office Maintenance',
+    // Project (site operating costs)
+    'Equipment Rental', 'Fuel', 'Transportation', 'Temporary Utilities', 'Site Office Expenses',
+    'Safety Equipment', 'Permits', 'Security', 'Miscellaneous'
+];
+function _ovhdFillCategoryDatalist() {
+    const dl = document.getElementById('ovhdCategoryList');
+    if (!dl) return;
+    // Only expense categories — payroll-derived rows carry a job ROLE as their category
+    // ("Coordinator Site Supervision"), which must never be suggested as an expense.
+    const used = _ovhdExpenses.map(e => e.category).filter(Boolean);
+    const cats = Array.from(new Set(_OVHD_CAT_PRESETS.concat(used))).sort();
+    dl.innerHTML = cats.map(c => `<option value="${_esc(c)}"></option>`).join('');
 }
 
 // ── Filter control handlers ─────────────────────────────────
@@ -145,7 +211,7 @@ function _ovhdSubscribe() {
 
 // ── Filtering (single source of truth every card/chart/table reads from) ──
 function _ovhdFilteredForMonth() {
-    return _ovhdExpenses.filter(ex => {
+    return _ovhdRows().filter(ex => {
         if (!ex.date || !String(ex.date).startsWith(_ovhdMonth)) return false;
         const scope = _ovhdEffectiveScope(ex);
         if (_ovhdScope !== 'all' && scope !== _ovhdScope) return false;
@@ -175,7 +241,7 @@ function _ovhdRender() {
     const overallTotal = companyTotal + projectTotal;
 
     const prevMonth = _ovhdPrevMonth(_ovhdMonth);
-    const prevFiltered = _ovhdExpenses.filter(ex => {
+    const prevFiltered = _ovhdRows().filter(ex => {
         if (!ex.date || !String(ex.date).startsWith(prevMonth)) return false;
         const scope = _ovhdEffectiveScope(ex);
         if (_ovhdScope !== 'all' && scope !== _ovhdScope) return false;
@@ -305,16 +371,20 @@ function _ovhdRenderTable(filtered) {
             <td><span class="ovhd-cat-badge" style="--ovhd-dot:${scope === 'company' ? '#157a52' : '#7f9cb0'}">${scope === 'company' ? 'Company' : 'Project'}</span></td>
             <td>${_esc(_ovhdFolderName(ex.folderId))}</td>
             <td><span class="ovhd-cat-badge" style="--ovhd-dot:${_ovhdCatColor(ex.category || 'Uncategorized')}">${_esc(ex.category || 'Uncategorized')}</span></td>
-            <td>${_esc(ex.expenseName || ex.description || '—')}</td>
+            <td>${_esc(ex.expenseName || ex.description || '—')}${ex.fromPayroll ? ' <span class="ovhd-src-badge" title="Recorded in Expenses → Payroll as Overhead / Indirect Labor">Payroll</span>' : ''}</td>
             <td class="ovhd-amt-cell">${_fmtAmt(parseFloat(ex.amount || 0))}</td>
             <td><span class="ovhd-cat-badge" style="--ovhd-dot:${status === 'paid' ? '#157a52' : '#c8a45a'}">${status === 'paid' ? 'Paid' : 'Pending'}</span></td>
             <td style="white-space:nowrap;">
+                ${ex.receiptUrl ? `<a class="exp-icon-btn" href="${_esc(ex.receiptUrl)}" target="_blank" rel="noopener noreferrer" title="View receipt" style="display:inline-flex;align-items:center;text-decoration:none;">
+                    <i data-lucide="paperclip" style="width:14px;height:14px;stroke:currentColor;"></i>
+                </a>` : ''}
+                ${ex.fromPayroll ? '<span style="color:#9ca3af;font-size:11px;">Edit in Payroll</span>' : `
                 <button class="exp-icon-btn" onclick="openOverheadEditModal('${_esc(ex.id)}')" title="Edit">
                     <i data-lucide="pencil" style="width:14px;height:14px;stroke:currentColor;"></i>
                 </button>
                 <button class="exp-icon-btn exp-icon-btn-danger" onclick="deleteOverheadExpense('${_esc(ex.id)}')" title="Delete">
                     <i data-lucide="trash-2" style="width:14px;height:14px;stroke:currentColor;"></i>
-                </button>
+                </button>`}
             </td>
         </tr>`;
     }).join('');
@@ -352,7 +422,7 @@ function _ovhdRenderMonthlyChart() {
     const year = _ovhdMonth.split('-')[0];
     const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const totals = new Array(12).fill(0);
-    _ovhdExpenses.forEach(ex => {
+    _ovhdRows().forEach(ex => {
         if (!ex.date || !String(ex.date).startsWith(year + '-')) return;
         const scope = _ovhdEffectiveScope(ex);
         if (_ovhdScope !== 'all' && scope !== _ovhdScope) return;
@@ -392,7 +462,7 @@ function _ovhdRenderTrendChart() {
         const ym = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
         labels.push(d.toLocaleString('en-PH', { month: 'short', year: '2-digit' }));
         let sum = 0;
-        _ovhdExpenses.forEach(ex => {
+        _ovhdRows().forEach(ex => {
             if (!ex.date || !String(ex.date).startsWith(ym)) return;
             const scope = _ovhdEffectiveScope(ex);
             if (_ovhdScope !== 'all' && scope !== _ovhdScope) return;
@@ -449,6 +519,11 @@ function openOverheadModal() {
 }
 
 function openOverheadEditModal(id) {
+    // Payroll-sourced overhead is edited in Expenses → Payroll, never here.
+    if (String(id).startsWith('pay:')) {
+        _ovhdToast('This is an Overhead / Indirect Labor payroll entry — edit it in Expenses → Payroll.', 'error');
+        return;
+    }
     const ex = _ovhdExpenses.find(e => e.id === id);
     if (!ex) { _ovhdToast('Expense not found.', 'error'); return; }
     const modal = document.getElementById('overheadAddModal');
@@ -626,7 +701,7 @@ function openCategoryDetail(cat, color) {
     const modal = document.getElementById('ovhdCatDetailModal');
     if (!modal) return;
 
-    const allEntries = _ovhdExpenses.filter(ex => (ex.category || 'Uncategorized') === cat && ex.date);
+    const allEntries = _ovhdRows().filter(ex => (ex.category || 'Uncategorized') === cat && ex.date);
 
     const monthMap = {};
     allEntries.forEach(ex => {
@@ -716,6 +791,10 @@ function closeCategoryDetail() {
 // ── Delete (soft) ────────────────────────────────────────────────
 async function deleteOverheadExpense(id) {
     if (!id) return;
+    if (String(id).startsWith('pay:')) {
+        _ovhdToast('This is a payroll entry — delete it in Expenses → Payroll.', 'error');
+        return;
+    }
     if (!await showDeleteConfirm('Delete this overhead expense?')) return;
     try {
         const existing = _ovhdExpenses.find(e => e.id === id);
@@ -736,7 +815,7 @@ async function deleteOverheadExpense(id) {
 // ── CSV export (Excel-compatible) ────────────────────────────────
 function exportOverheadCsv() {
     const filtered = _ovhdFilteredForMonth();
-    const headers = ['Date', 'Scope', 'Project', 'Category', 'Description', 'Amount', 'Status'];
+    const headers = ['Date', 'Scope', 'Project', 'Category', 'Description', 'Amount', 'Status', 'Source'];
     const csvEsc = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
     const rows = filtered.map(ex => [
         ex.date || '',
@@ -745,7 +824,8 @@ function exportOverheadCsv() {
         ex.category || '',
         ex.expenseName || ex.description || '',
         Number(ex.amount) || 0,
-        ex.status || 'pending'
+        ex.status || 'pending',
+        ex.fromPayroll ? 'Payroll (Indirect Labor)' : 'Overhead Expense'
     ].map(csvEsc).join(','));
     const csv = [headers.map(csvEsc).join(','), ...rows].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -784,7 +864,7 @@ function printOverheadReport(kind) {
     else if (kind === 'annual') { rangeStart = `${cy}-01-01`; rangeEnd = `${cy}-12-31`; rangeLabel = `FY ${cy}`; }
     else { rangeStart = '0000-01-01'; rangeEnd = '9999-12-31'; rangeLabel = 'All Time'; if (kind === 'company') scopeFilter = 'company'; if (kind === 'project') scopeFilter = 'project'; if (kind === 'overall') scopeFilter = null; }
 
-    const rows = _ovhdExpenses.filter(ex => {
+    const rows = _ovhdRows().filter(ex => {
         if (!ex.date) return false;
         if (ex.date < rangeStart || ex.date > rangeEnd) return false;
         if (scopeFilter && _ovhdEffectiveScope(ex) !== scopeFilter) return false;

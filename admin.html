@@ -1139,7 +1139,8 @@
                     </div>
                     <div style="overflow-y:auto;padding:22px;flex:1;font-size:13.5px;color:#374151;line-height:1.7;">
                         <p style="font-weight:700;color:#111827;margin-bottom:12px;">What is Overhead Expenses?</p>
-                        <p style="margin-bottom:14px;">This module tracks your company's recurring operational costs that are <strong>not tied to a specific project</strong> — such as electricity, water, internet, rent, and office supplies.</p>
+                        <p style="margin-bottom:14px;">This module tracks overhead in two scopes. <strong>Company</strong> overhead is the cost of running the business — office rent, electricity, internet, software. <strong>Project</strong> overhead is the cost of running a specific job: its site operating costs (fuel, temporary utilities, permits, equipment rental) <em>plus</em> its support people — coordinator, site supervision, procurement staff and fees.</p>
+                        <p style="margin-bottom:14px;padding:10px 12px;background:#f0f9ff;border:1px solid #dbeafe;border-radius:8px;">Overhead / Indirect Labor is recorded in <strong>Expenses → Payroll</strong> (choose the <em>Overhead / Indirect Labor</em> category) and appears here automatically, marked <strong>Payroll</strong>. Don't re-enter those people here — it would count them twice. Overhead pay never draws down a worker's pakyaw contract.</p>
                         <div style="display:flex;flex-direction:column;gap:12px;">
                             <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
                                 <div style="width:32px;height:32px;border-radius:8px;background:#dcfce7;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -1157,7 +1158,7 @@
                                 <div style="width:32px;height:32px;border-radius:8px;background:#fef9c3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ca8a04" stroke-width="2.5"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
                                 </div>
-                                <div><strong style="color:#111827;">KPI Cards</strong><br>The three cards at the top show your <em>Total Overhead</em>, <em>Total Entries</em>, and <em>Average per Entry</em> for the selected month at a glance.</div>
+                                <div><strong style="color:#111827;">KPI Cards</strong><br>The three cards at the top show <em>Company Overhead</em>, <em>Project Overhead</em>, and <em>Overall Overhead</em> for the selected month, each with its change against the previous month.</div>
                             </div>
                             <div style="display:flex;gap:12px;padding:12px;background:#f9fafb;border-radius:10px;border:1px solid #f3f4f6;">
                                 <div style="width:32px;height:32px;border-radius:8px;background:#fce7f3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
@@ -3682,7 +3683,7 @@
                     <div><label class="apr-lbl">Worker name</label><input class="apr-in" type="text" id="payWorkerName" list="payWorkerNames" required placeholder="Full name" autocomplete="off"><datalist id="payWorkerNames"></datalist></div>
                     <div><label class="apr-lbl">Role / position</label><input class="apr-in" type="text" id="payRole" placeholder="e.g. Mason, Carpenter"></div>
                 </div>
-                <div style="margin-bottom:10px;">
+                <div id="payContractRow" style="margin-bottom:10px;">
                     <label class="apr-lbl">Pay against contract <small>— pakyaw / capped job, optional</small></label>
                     <div class="apr-selwrap">
                         <select id="payContract" onchange="lcUpdateRemainingHint('payContract','payContractRemaining')"><option value="">— None (normal payroll) —</option></select>
@@ -3704,8 +3705,16 @@
                 <div class="apr-sec"><b>Amount</b><span class="ln"></span></div>
                 <label class="apr-lbl">Labor category <small>— where this cost is counted</small></label>
                 <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
-                    <label class="apr-cat"><input type="radio" name="payLaborType" value="direct" checked><span class="apr-badge">D</span><div><div class="apr-cat-t">Direct</div><div class="apr-cat-s">On-site workers — mason, carpenter, laborer, painter</div></div></label>
-                    <label class="apr-cat"><input type="radio" name="payLaborType" value="liability"><span class="apr-badge">L</span><div><div class="apr-cat-t">Liability</div><div class="apr-cat-s">Gov't — SSS, PhilHealth, Pag-IBIG, withholding tax</div></div></label>
+                    <label class="apr-cat"><input type="radio" name="payLaborType" value="direct" checked onchange="payToggleContractForType('add')"><span class="apr-badge">D</span><div><div class="apr-cat-t">Direct</div><div class="apr-cat-s">On-site workers — mason, carpenter, laborer, painter</div></div></label>
+                    <label class="apr-cat"><input type="radio" name="payLaborType" value="indirect" onchange="payToggleContractForType('add')"><span class="apr-badge">O</span><div><div class="apr-cat-t">Overhead / Indirect Labor</div><div class="apr-cat-s">Coordinator, site supervision, procurement staff, procurement fee — never draws down a pakyaw contract</div></div></label>
+                    <label class="apr-cat"><input type="radio" name="payLaborType" value="liability" onchange="payToggleContractForType('add')"><span class="apr-badge">L</span><div><div class="apr-cat-t">Liability</div><div class="apr-cat-s">Gov't — SSS, PhilHealth, Pag-IBIG, withholding tax</div></div></label>
+                </div>
+                <div id="payLiabilityForRow" style="display:none;margin-bottom:16px;">
+                    <label class="apr-lbl">Whose contribution is this? <small>— burden follows the worker it belongs to</small></label>
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                        <label class="apr-cat"><input type="radio" name="payLiabilityFor" value="direct" checked><span class="apr-badge">D</span><div><div class="apr-cat-t">A direct worker</div><div class="apr-cat-s">Counted in Labor Cost, with the worker it belongs to</div></div></label>
+                        <label class="apr-cat"><input type="radio" name="payLiabilityFor" value="indirect"><span class="apr-badge">O</span><div><div class="apr-cat-t">An overhead / indirect worker</div><div class="apr-cat-s">Coordinator, supervision, procurement — counted in Overhead</div></div></label>
+                    </div>
                 </div>
                 <div class="apr-total" style="margin-bottom:20px;">
                     <div><div class="apr-total-lbl">Amount paid</div><div class="apr-total-sub">The agreed amount for this payment</div></div>
@@ -3938,7 +3947,7 @@
                     <div><label class="apr-lbl">Worker name</label><input class="apr-in" type="text" id="editPayWorkerName" list="editPayWorkerNames" required placeholder="Full name" autocomplete="off"><datalist id="editPayWorkerNames"></datalist></div>
                     <div><label class="apr-lbl">Role / position</label><input class="apr-in" type="text" id="editPayRole" placeholder="e.g. Mason, Carpenter"></div>
                 </div>
-                <div style="margin-bottom:10px;">
+                <div id="editPayContractRow" style="margin-bottom:10px;">
                     <label class="apr-lbl">Pay against contract <small>— pakyaw / capped job, optional</small></label>
                     <div class="apr-selwrap">
                         <select id="editPayContract" onchange="lcUpdateRemainingHint('editPayContract','editPayContractRemaining')"><option value="">— None (normal payroll) —</option></select>
@@ -3960,8 +3969,16 @@
                 <div class="apr-sec"><b>Amount</b><span class="ln"></span></div>
                 <label class="apr-lbl">Labor category <small>— where this cost is counted</small></label>
                 <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
-                    <label class="apr-cat"><input type="radio" name="editPayLaborType" value="direct" checked><span class="apr-badge">D</span><div><div class="apr-cat-t">Direct</div><div class="apr-cat-s">On-site workers — mason, carpenter, laborer, painter</div></div></label>
-                    <label class="apr-cat"><input type="radio" name="editPayLaborType" value="liability"><span class="apr-badge">L</span><div><div class="apr-cat-t">Liability</div><div class="apr-cat-s">Gov't — SSS, PhilHealth, Pag-IBIG, withholding tax</div></div></label>
+                    <label class="apr-cat"><input type="radio" name="editPayLaborType" value="direct" checked onchange="payToggleContractForType('edit')"><span class="apr-badge">D</span><div><div class="apr-cat-t">Direct</div><div class="apr-cat-s">On-site workers — mason, carpenter, laborer, painter</div></div></label>
+                    <label class="apr-cat"><input type="radio" name="editPayLaborType" value="indirect" onchange="payToggleContractForType('edit')"><span class="apr-badge">O</span><div><div class="apr-cat-t">Overhead / Indirect Labor</div><div class="apr-cat-s">Coordinator, site supervision, procurement staff, procurement fee — never draws down a pakyaw contract</div></div></label>
+                    <label class="apr-cat"><input type="radio" name="editPayLaborType" value="liability" onchange="payToggleContractForType('edit')"><span class="apr-badge">L</span><div><div class="apr-cat-t">Liability</div><div class="apr-cat-s">Gov't — SSS, PhilHealth, Pag-IBIG, withholding tax</div></div></label>
+                </div>
+                <div id="editPayLiabilityForRow" style="display:none;margin-bottom:16px;">
+                    <label class="apr-lbl">Whose contribution is this? <small>— burden follows the worker it belongs to</small></label>
+                    <div style="display:flex;flex-direction:column;gap:8px;">
+                        <label class="apr-cat"><input type="radio" name="editPayLiabilityFor" value="direct" checked><span class="apr-badge">D</span><div><div class="apr-cat-t">A direct worker</div><div class="apr-cat-s">Counted in Labor Cost, with the worker it belongs to</div></div></label>
+                        <label class="apr-cat"><input type="radio" name="editPayLiabilityFor" value="indirect"><span class="apr-badge">O</span><div><div class="apr-cat-t">An overhead / indirect worker</div><div class="apr-cat-s">Coordinator, supervision, procurement — counted in Overhead</div></div></label>
+                    </div>
                 </div>
                 <div class="apr-total" style="margin-bottom:20px;">
                     <div><div class="apr-total-lbl">Amount paid</div><div class="apr-total-sub">The agreed amount for this payment</div></div>
@@ -4241,34 +4258,20 @@
                 </div>
                 <div class="exp-form-group">
                     <label for="ovhdExpCategory">Category</label>
-                    <select id="ovhdExpCategory" required>
-                        <option value="">Select category…</option>
-                        <optgroup label="Company Categories">
-                            <option value="Office Rent">Office Rent</option>
-                            <option value="Electricity">Electricity</option>
-                            <option value="Water">Water</option>
-                            <option value="Utilities">Utilities</option>
-                            <option value="Internet & Telecoms">Internet &amp; Telecoms</option>
-                            <option value="Office Supplies">Office Supplies</option>
-                            <option value="Administrative Salaries">Administrative Salaries</option>
-                            <option value="Software & Subscriptions">Software &amp; Subscriptions</option>
-                            <option value="Insurance">Insurance</option>
-                            <option value="Company Vehicles">Company Vehicles</option>
-                            <option value="Office Maintenance">Office Maintenance</option>
-                        </optgroup>
-                        <optgroup label="Project Categories">
-                            <option value="Equipment Rental">Equipment Rental</option>
-                            <option value="Fuel">Fuel</option>
-                            <option value="Transportation">Transportation</option>
-                            <option value="Temporary Utilities">Temporary Utilities</option>
-                            <option value="Site Office Expenses">Site Office Expenses</option>
-                            <option value="Safety Equipment">Safety Equipment</option>
-                            <option value="Permits">Permits</option>
-                            <option value="Security">Security</option>
-                        </optgroup>
-                        <option value="Indirect Support (Supervisor/Foreman/Admin/Engineer)">Indirect Support (Supervisor/Foreman/Admin/Engineer)</option>
-                        <option value="Miscellaneous">Miscellaneous</option>
-                    </select>
+                    <!-- Free text + suggestions: type any category, or pick one from the list
+                         (presets plus every category already used). Options are rebuilt by
+                         _ovhdFillCategoryDatalist() so a new category is suggested next time.
+                         NOTE: there is deliberately no "Indirect Support" option — coordinator,
+                         site supervision and procurement pay is recorded in Expenses → Payroll
+                         and already flows into this page. Adding it here would double-count. -->
+                    <input type="text" id="ovhdExpCategory" list="ovhdCategoryList"
+                           placeholder="Type or pick a category…" autocomplete="off" required>
+                    <datalist id="ovhdCategoryList"></datalist>
+                    <small style="display:block;margin-top:5px;color:#6b7280;font-size:11px;line-height:1.45;">
+                        Type any category — new ones are remembered and suggested next time.
+                        Coordinator, site supervision and procurement pay belongs in
+                        <strong>Expenses → Payroll</strong> (Overhead / Indirect Labor), not here.
+                    </small>
                 </div>
                 <div class="exp-form-row">
                     <div class="exp-form-group">
@@ -4314,7 +4317,7 @@
                 <div class="exp-form-group">
                     <label for="ovhdExpNotes">Notes <span style="color:#9ca3af;font-weight:400;">(optional)</span></label>
                     <textarea id="ovhdExpNotes" placeholder="Additional notes…"></textarea>
-                </div>
+                    </div>
             </div>
             <div class="ovhd-modal-footer exp-modal-footer">
                 <button type="button" class="exp-btn exp-btn-secondary" onclick="closeOverheadModal()">Cancel</button>
