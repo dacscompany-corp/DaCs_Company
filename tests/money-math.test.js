@@ -70,7 +70,7 @@ const portal = evalWith(
   { window: undefined },
   ['classifyLabor', 'mapPayrollDoc', '_isOverheadPay', '_projOverhead', '_projSpent',
    '_folderCompletion', '_projEarned', '_projMargin', '_recognisedProfit', '_companyOverhead',
-   'buildProject', 'boqGrandTotal', 'boqAccTotal']
+   '_ocmStatus', 'buildProject', 'boqGrandTotal', 'boqAccTotal']
 );
 
 // pakyaw drawdown: lcDrawsDown / lcPaid / lcStats read the expPayroll global
@@ -286,6 +286,30 @@ console.log('\nG. BOQ totals');
     eq(portal.boqAccTotal(items), 1150));
   test('material/labor overrides zero out that component', () =>
     eq(portal.boqGrandTotal([{ subItems: [{ lineItems: [{ qty: 2, materialRate: 100, laborRate: 50, materialOverride: true }] }] }]), 100));
+}
+
+// ════════════════════════════════════════════════════════════════════
+// H. OCM allowance — priced overhead vs actual
+// ════════════════════════════════════════════════════════════════════
+console.log('\nH. OCM allowance (priced vs actual overhead)');
+{
+  test('10% of a 1M contract → 100k allowance; 81k spent = 81% used, within', () => {
+    const o = portal._ocmStatus(1000000, 10, 81000);
+    eq(o.allowance, 100000); eq(o.usedPct, 81); eq(o.over, false); eq(o.remaining, 19000);
+  });
+  test('overrun flagged: 120k spent on a 100k allowance → over, −20k remaining', () => {
+    const o = portal._ocmStatus(1000000, 10, 120000);
+    eq(o.over, true); eq(o.remaining, -20000); eq(o.usedPct, 120);
+  });
+  test('no allowance configured (pct 0 / null / no contract) → null, never a fake comparison', () => {
+    ok(portal._ocmStatus(1000000, 0, 50000) === null, 'pct 0');
+    ok(portal._ocmStatus(1000000, null, 50000) === null, 'pct null');
+    ok(portal._ocmStatus(0, 10, 50000) === null, 'no contract');
+  });
+  test('zero spend on a set allowance → 0% used, full remaining', () => {
+    const o = portal._ocmStatus(2000000, 8, 0);
+    eq(o.allowance, 160000); eq(o.usedPct, 0); eq(o.remaining, 160000);
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════

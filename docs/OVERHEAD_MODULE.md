@@ -78,6 +78,19 @@ worker's contract. That's the repair path for anything mis-recorded.
 
 ---
 
+## OCM allowance — priced overhead vs actual
+
+A contract prices overhead in (OCM, typically 8–12% of a PH BOQ). `folders.ocm_pct`
+(migration 0030) stores that percentage per project; the Overhead drill shows
+**priced allowance vs actual overhead spend**, with an over-allowance warning. Set/edit it
+via the panel's button (owner only; staff never see the panel).
+
+Two rules baked into `_ocmStatus()`:
+
+- The spent side is **all-time**, never period-filtered — the allowance covers the whole job.
+- No configured percentage (or no contract) → `null`, and the panel shows a "set allowance"
+  prompt. It never invents a comparison from missing data.
+
 ## Profit is measured on EARNED revenue, not the full contract
 
 Project overhead only means something if the profit it feeds is real. Contract revenue is

@@ -319,6 +319,29 @@ function _projMargin(c) {
     completePct: comp && comp.hasData ? comp.pct * 100 : null
   };
 }
+// ── OCM allowance ─────────────────────────────────────────────
+// The contract PRICES overhead in (OCM, typically 8–12% of a PH BOQ), but
+// until now nothing compared that allowance to actual overhead spend.
+// folders.ocm_pct (migration 0030) stores what was priced; this turns
+// overhead tracking into overhead CONTROL. The comparison always uses
+// ALL-TIME overhead — the allowance covers the whole job, so the drill's
+// period filter must not shrink the spent side. Returns null when no
+// allowance is configured.
+function _ocmStatus(contract, ocmPct, overheadSpent) {
+  const pct = Number(ocmPct) || 0;
+  const rev = Number(contract) || 0;
+  if (!(pct > 0) || !(rev > 0)) return null;
+  const allowance = rev * pct / 100;
+  const spent = Number(overheadSpent) || 0;
+  return {
+    pct,
+    allowance,
+    spent,
+    usedPct: allowance > 0 ? spent / allowance * 100 : 0,
+    remaining: allowance - spent,
+    over: spent > allowance
+  };
+}
 function buildProject(folder, childMonths, labor, material, overheadRows) {
   const laborBreakdown = labor.reduce((acc, p) => {
     acc[p.type] = (acc[p.type] || 0) + p.amount;
@@ -975,7 +998,7 @@ function _ovhdLocalToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId }) {
+function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, ocmPct, contractAmount, allTimeOverhead }) {
   const h = React.createElement;
   const [adding, setAdding] = React.useState(false);
   const [form, setForm] = React.useState({ category: "", amount: "", date: _ovhdLocalToday(), description: "" });
@@ -1062,6 +1085,45 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId }) {
     card("Operating Costs", "\u20B1 " + peso(expenseTotal)),
     card("Total Entries", count),
     card("Average Per Entry", "\u20B1 " + peso(avg)));
+
+  // \u2500\u2500 OCM allowance: what you PRICED vs what you've SPENT (all-time) \u2500\u2500
+  const ocm = _ocmStatus(contractAmount, ocmPct, allTimeOverhead);
+  const setOcmPct = async () => {
+    const v = prompt(
+      "Overhead (OCM) allowance as a % of the contract \u2014 the overhead you priced into the BOQ (typically 8\u201312). Enter 0 to remove.",
+      ocmPct || ""
+    );
+    if (v === null) return;
+    const n = parseFloat(String(v).replace(/,/g, ""));
+    if (isNaN(n) || n < 0 || n > 100) { alert("Enter a percentage between 0 and 100."); return; }
+    try {
+      await db.collection("folders").doc(folderId).update({ ocmPct: n });
+    } catch (err) { alert("Save failed (is migration 0030 applied?): " + (err.message || err)); }
+  };
+  const _ocmBtn = (label) => h("button", { onClick: setOcmPct, style: { border: "1px solid #e5e7eb", background: "#fff", borderRadius: 8, padding: "7px 13px", cursor: "pointer", font: "600 12px 'IBM Plex Sans'", color: "#157a52", whiteSpace: "nowrap", flex: "none" } }, label);
+  const _ocmFig = (lbl, val, sub, color) => h("div", { style: { minWidth: 150 } },
+    h("div", { style: { font: "600 10.5px 'IBM Plex Sans'", letterSpacing: ".06em", textTransform: "uppercase", color: "var(--text-light)", marginBottom: 4 } }, lbl),
+    h("div", { style: { font: "700 17px 'IBM Plex Sans'", color: color || "var(--ink)" } }, val),
+    sub ? h("div", { style: { font: "400 11px 'IBM Plex Sans'", color: "var(--text-light)", marginTop: 2 } }, sub) : null);
+  const ocmPanel = _staff() ? null : h("div", { style: { border: "1px solid " + (ocm && ocm.over ? "#f3c1bb" : "#e7e6e2"), borderRadius: 14, background: ocm && ocm.over ? "#fdf6f5" : "#fff", padding: "16px 20px", marginBottom: 14 } },
+    h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" } },
+      h("div", { style: { font: "600 13px 'IBM Plex Sans'" } }, "OCM Allowance ",
+        h("span", { className: "pc-help-tip", "data-tip": "The overhead you PRICED into this contract (OCM % of the contract amount) versus the overhead you have actually spent \u2014 all-time, unaffected by the period filter. If Spent passes the allowance, this project's overhead is eating margin you never priced.", onClick: (e2) => e2.stopPropagation() }, "?")),
+      _ocmBtn(ocm ? "Edit %" : "Set OCM %")),
+    !ocm
+      ? h("div", { style: { font: "400 12.5px 'IBM Plex Sans'", color: "var(--text-light)", marginTop: 8 } },
+          "No allowance set. Enter the OCM % you priced into this contract to see whether overhead is staying inside what the client is already paying for.")
+      : h(React.Fragment, null,
+          h("div", { style: { display: "flex", gap: 26, flexWrap: "wrap", marginTop: 12 } },
+            _ocmFig("Priced Allowance", "\u20B1 " + peso(ocm.allowance), ocm.pct + "% of \u20B1 " + peso(contractAmount) + " contract"),
+            _ocmFig("Overhead Spent \u00B7 All-Time", "\u20B1 " + peso(ocm.spent), ocm.usedPct.toFixed(1) + "% of allowance used"),
+            ocm.over
+              ? _ocmFig("Over Allowance", "\u20B1 " + peso(ocm.spent - ocm.allowance), "eating margin you never priced", "#c0392b")
+              : _ocmFig("Allowance Remaining", "\u20B1 " + peso(ocm.remaining), "before overhead exceeds what was priced", "#157a52")),
+          h("div", { style: { height: 8, background: "#f0efec", borderRadius: 99, overflow: "hidden", marginTop: 14 } },
+            h("div", { style: { width: Math.min(ocm.usedPct, 100) + "%", height: "100%", borderRadius: 99, background: ocm.over ? "#c0392b" : ocm.usedPct > 85 ? "#A86B00" : "#157a52" } })),
+          h("div", { style: { font: "400 10.5px 'IBM Plex Sans'", color: "var(--text-light)", marginTop: 5 } },
+            ocm.over ? "OVER \u2014 actual overhead has exceeded the priced allowance." : ocm.usedPct > 85 ? "Approaching the priced allowance." : "Within the priced allowance.")));
 
   const byCatRows = byCat.length
     ? byCat.map((r, i) => {
@@ -1158,7 +1220,7 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId }) {
 
   return h("section", { className: "drill" },
     h("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"),
-    head, kpis, body, modal);
+    head, ocmPanel, kpis, body, modal);
 }
 function _awId() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function _awNewItem() { return { id: _awId(), description: "", qty: "", unit: "", materialCost: "", laborCost: "" }; }
@@ -2201,6 +2263,13 @@ function PortalApp() {
   const laborOnlyTx = React.useMemo(() => laborTx.filter((t) => !_isOverheadPay(t)), [laborTx]);
   const overheadLaborTx = React.useMemo(() => laborTx.filter(_isOverheadPay), [laborTx]);
   const contractPayroll = React.useMemo(() => allLaborTx.filter((t) => t.type !== "indirect"), [allLaborTx]);
+  // ALL-TIME overhead for the OCM allowance comparison — the allowance covers
+  // the whole job, so this deliberately ignores the period filter.
+  const allTimeOverheadSpent = React.useMemo(
+    () => overheadRows.reduce((s, e) => s + (Number(e.amount) || 0), 0)
+        + allLaborTx.filter(_isOverheadPay).reduce((s, t) => s + (t.amount || 0), 0),
+    [overheadRows, allLaborTx]
+  );
   const projects = React.useMemo(
     () => foldersRaw.filter((f) => !f.parentFolderId).map((f) => buildProject(f, [], [], [])),
     [foldersRaw]
@@ -2328,7 +2397,7 @@ function PortalApp() {
       onBackToGrid: () => setProjectId(null),
       parentFolder
     }
-  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId) }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { project, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, onBack: () => setView("dashboard") })));
+  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId) }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { project, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, onBack: () => setView("dashboard") })));
 }
 (function() {
   const mount = document.getElementById("dacsPortalRoot");
