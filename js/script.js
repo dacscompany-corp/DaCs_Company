@@ -319,20 +319,26 @@ async function loadTestimonials() {
             return;
         }
         
+        // Testimonials are public submissions rendered to every visitor —
+        // escape all fields (and clamp rating: '★'.repeat throws on negatives).
+        const esc = s => String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         container.innerHTML = testimonials.map(data => {
-            const initials = data.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-            const stars = '★'.repeat(data.rating) + '☆'.repeat(5 - data.rating);
-            
+            const initials = String(data.name || '').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+            const r = Math.max(0, Math.min(5, parseInt(data.rating, 10) || 0));
+            const stars = '★'.repeat(r) + '☆'.repeat(5 - r);
+
             return `
                 <div class="testimonial-card">
                     <div class="testimonial-quote">"</div>
                     <div class="testimonial-stars">${stars}</div>
-                    <p class="testimonial-text">"${data.message}"</p>
+                    <p class="testimonial-text">"${esc(data.message)}"</p>
                     <div class="testimonial-author">
-                        <div class="testimonial-avatar">${initials}</div>
+                        <div class="testimonial-avatar">${esc(initials)}</div>
                         <div class="testimonial-info">
-                            <h4>${data.name}</h4>
-                            <p>Client from ${data.location}</p>
+                            <h4>${esc(data.name)}</h4>
+                            <p>Client from ${esc(data.location)}</p>
                         </div>
                     </div>
                 </div>

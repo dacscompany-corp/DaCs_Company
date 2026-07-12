@@ -235,7 +235,7 @@ function renderRequestCard(request) {
                 <div class="cons-request-info">
                     <div class="cons-request-worker">
                         <i data-lucide="user"></i>
-                        <strong>${request.workerName}</strong>
+                        <strong>${_consEsc(request.workerName)}</strong>
                     </div>
                     <div class="cons-request-date">
                         <i data-lucide="calendar"></i>
@@ -244,7 +244,7 @@ function renderRequestCard(request) {
                 </div>
                 <div class="cons-request-badges">
                     ${urgentBadge}
-                    <span class="cons-status-badge ${statusClass}">${request.status.toUpperCase()}</span>
+                    <span class="cons-status-badge ${_consEsc(statusClass)}">${_consEsc(String(request.status || '').toUpperCase())}</span>
                 </div>
             </div>
             
@@ -278,7 +278,7 @@ function renderRequestCard(request) {
                     ${item.notes ? `<div class="cons-item-notes">${safeNotes}</div>` : ''}
                 </div>
                 <div class="cons-item-actions">
-                    <span class="cons-status-badge ${itemStatusClass}">${item.status}</span>
+                    <span class="cons-status-badge ${_consEsc(itemStatusClass)}">${_consEsc(item.status)}</span>
                     ${item.status === 'pending' ? `
                         <button class="cons-btn-icon" onclick="updateItemStatus('${request.id}', '${item.id}', 'purchased')" title="Mark as Purchased">
                             <i data-lucide="shopping-cart"></i>
@@ -583,11 +583,11 @@ function renderInventory() {
             html += `
                 <tr>
                     <td>
-                        <strong>${item.itemName}</strong>
-                        ${item.notes ? `<div style="font-size:0.8rem;color:#9CA3AF;margin-top:2px;">${item.notes}</div>` : ''}
+                        <strong>${_consEsc(item.itemName)}</strong>
+                        ${item.notes ? `<div style="font-size:0.8rem;color:#9CA3AF;margin-top:2px;">${_consEsc(item.notes)}</div>` : ''}
                     </td>
                     <td><span class="cons-stock-value ${stockClass}">${stock}${stockLabel}</span></td>
-                    <td>${item.unit}</td>
+                    <td>${_consEsc(item.unit)}</td>
                     <td>${lastUpdated ? lastUpdated.toLocaleDateString() : 'N/A'}</td>
                     <td>
                         <div class="cons-action-buttons">
@@ -943,10 +943,10 @@ function showRequestDetailModal(request) {
             <div class="cons-detail-item">
                 ${imageDisplay}
                 <div class="cons-detail-item-info">
-                    <h4>${item.name}</h4>
-                    <p class="cons-detail-item-qty">${item.quantity} ${item.unit}</p>
-                    ${item.notes ? `<p class="cons-detail-item-notes">${item.notes}</p>` : ''}
-                    <span class="cons-status-badge ${itemStatusClass}">${item.status.toUpperCase()}</span>
+                    <h4>${_consEsc(item.name)}</h4>
+                    <p class="cons-detail-item-qty">${_consEsc(item.quantity)} ${_consEsc(item.unit)}</p>
+                    ${item.notes ? `<p class="cons-detail-item-notes">${_consEsc(item.notes)}</p>` : ''}
+                    <span class="cons-status-badge ${_consEsc(itemStatusClass)}">${_consEsc(String(item.status || '').toUpperCase())}</span>
                 </div>
             </div>`;
     });
@@ -954,10 +954,10 @@ function showRequestDetailModal(request) {
     document.getElementById('consRequestDetailContent').innerHTML = `
         <div class="cons-detail-header">
             <div>
-                <h3>Request from ${request.workerName}</h3>
+                <h3>Request from ${_consEsc(request.workerName)}</h3>
                 ${request.isUrgent ? '<span class="cons-urgent-badge">🔥 URGENT</span>' : ''}
             </div>
-            <span class="cons-status-badge ${statusClass}">${request.status.toUpperCase()}</span>
+            <span class="cons-status-badge ${_consEsc(statusClass)}">${_consEsc(String(request.status || '').toUpperCase())}</span>
         </div>
         <div class="cons-detail-row">
             <span class="cons-detail-label">Created:</span>
@@ -1156,8 +1156,8 @@ function showAdjustStockModal(itemId) {
     currentAdjType = 'add';
 
     document.getElementById('adjItemInfo').innerHTML = `
-        <div class="cons-adj-item-name">${item.itemName}</div>
-        <div class="cons-adj-current-stock">Current Stock: <strong>${item.currentStock || 0} ${item.unit}</strong></div>`;
+        <div class="cons-adj-item-name">${_consEsc(item.itemName)}</div>
+        <div class="cons-adj-current-stock">Current Stock: <strong>${item.currentStock || 0} ${_consEsc(item.unit)}</strong></div>`;
 
     document.getElementById('adjAmount').value = '';
     document.getElementById('adjReason').value = '';

@@ -855,6 +855,23 @@ function updateDashboardStats() {
     _syncApptGroupBadge(pending);
 }
 
+// ── XSS guards ───────────────────────────────────────────────
+// Appointments and feedback are submitted from the PUBLIC website form by
+// anyone on the internet, then rendered inside the logged-in admin session.
+// Every dynamic field below goes through _admEsc — an unescaped fullname
+// like <img onerror=…> would otherwise execute as the owner.
+function _admEsc(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+// Rating comes from the public form too — clamp before '★'.repeat(), which
+// throws on negatives and can hang the tab on huge values.
+function _admStars(rating) {
+    const r = Math.max(0, Math.min(5, parseInt(rating, 10) || 0));
+    return '★'.repeat(r) + '☆'.repeat(5 - r);
+}
+
 // Display recent appointments
 function displayRecentAppointments() {
     const container = document.getElementById('recentAppointments');
@@ -870,12 +887,12 @@ function displayRecentAppointments() {
         const dateStr = date ? date.toLocaleDateString() : 'N/A';
         
         return `
-            <div class="appointment-item" onclick="showAppointmentDetails('${appointment.id}')">
+            <div class="appointment-item" onclick="showAppointmentDetails('${_admEsc(appointment.id)}')">
                 <div class="appointment-date">${dateStr}</div>
-                <div class="appointment-name">${appointment.fullname}</div>
-                <div class="appointment-service">${formatService(appointment.service)}</div>
-                <span class="status-badge status-${appointment.status}">${appointment.status}</span>
-                <button class="btn-secondary" onclick="event.stopPropagation(); showAppointmentDetails('${appointment.id}')">View</button>
+                <div class="appointment-name">${_admEsc(appointment.fullname)}</div>
+                <div class="appointment-service">${_admEsc(formatService(appointment.service))}</div>
+                <span class="status-badge status-${_admEsc(appointment.status)}">${_admEsc(appointment.status)}</span>
+                <button class="btn-secondary" onclick="event.stopPropagation(); showAppointmentDetails('${_admEsc(appointment.id)}')">View</button>
             </div>
         `;
     }).join('');
@@ -896,16 +913,16 @@ function displayAllAppointments() {
         
         const isPending = appointment.status === 'pending';
         return `
-            <tr onclick="showAppointmentDetails('${appointment.id}')">
+            <tr onclick="showAppointmentDetails('${_admEsc(appointment.id)}')">
                 <td>${dateStr}</td>
-                <td>${appointment.fullname}</td>
-                <td>${appointment.email}</td>
-                <td>${appointment.contact}</td>
-                <td>${formatService(appointment.service)}</td>
-                <td><span class="status-badge status-${appointment.status}">${appointment.status}</span></td>
+                <td>${_admEsc(appointment.fullname)}</td>
+                <td>${_admEsc(appointment.email)}</td>
+                <td>${_admEsc(appointment.contact)}</td>
+                <td>${_admEsc(formatService(appointment.service))}</td>
+                <td><span class="status-badge status-${_admEsc(appointment.status)}">${_admEsc(appointment.status)}</span></td>
                 <td style="position:relative;">
                     ${isPending ? '<span style="position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%;background:#ef4444;pointer-events:none;"></span>' : ''}
-                    <select onchange="updateStatus('${appointment.id}', this.value)" onclick="event.stopPropagation()">
+                    <select onchange="updateStatus('${_admEsc(appointment.id)}', this.value)" onclick="event.stopPropagation()">
                         <option value="">Update Status</option>
                         <option value="pending" ${isPending ? 'selected' : ''}>Pending</option>
                         <option value="confirmed" ${appointment.status === 'confirmed' ? 'selected' : ''}>Confirmed</option>
@@ -945,16 +962,16 @@ function filterAppointments() {
         
         const isPending = appointment.status === 'pending';
         return `
-            <tr onclick="showAppointmentDetails('${appointment.id}')">
+            <tr onclick="showAppointmentDetails('${_admEsc(appointment.id)}')">
                 <td>${dateStr}</td>
-                <td>${appointment.fullname}</td>
-                <td>${appointment.email}</td>
-                <td>${appointment.contact}</td>
-                <td>${formatService(appointment.service)}</td>
-                <td><span class="status-badge status-${appointment.status}">${appointment.status}</span></td>
+                <td>${_admEsc(appointment.fullname)}</td>
+                <td>${_admEsc(appointment.email)}</td>
+                <td>${_admEsc(appointment.contact)}</td>
+                <td>${_admEsc(formatService(appointment.service))}</td>
+                <td><span class="status-badge status-${_admEsc(appointment.status)}">${_admEsc(appointment.status)}</span></td>
                 <td style="position:relative;">
                     ${isPending ? '<span style="position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%;background:#ef4444;pointer-events:none;"></span>' : ''}
-                    <select onchange="updateStatus('${appointment.id}', this.value)" onclick="event.stopPropagation()">
+                    <select onchange="updateStatus('${_admEsc(appointment.id)}', this.value)" onclick="event.stopPropagation()">
                         <option value="">Update Status</option>
                         <option value="pending" ${isPending ? 'selected' : ''}>Pending</option>
                         <option value="confirmed" ${appointment.status === 'confirmed' ? 'selected' : ''}>Confirmed</option>
@@ -1008,7 +1025,7 @@ function _showStatusConfirm(clientName, newStatus, color) {
         <div style="background:#fff;border-radius:16px;width:100%;max-width:380px;box-shadow:0 8px 40px rgba(0,0,0,0.18);overflow:hidden;">
             <div style="background:#1e3a5f;padding:18px 22px;">
                 <div style="font-size:15px;font-weight:700;color:#fff;">Update Appointment Status</div>
-                <div style="font-size:12px;color:rgba(255,255,255,0.7);margin-top:2px;">${clientName}</div>
+                <div style="font-size:12px;color:rgba(255,255,255,0.7);margin-top:2px;">${_admEsc(clientName)}</div>
             </div>
             <div style="padding:22px;">
                 <p style="font-size:13.5px;color:#374151;margin:0 0 16px;">Change status to <span style="font-weight:700;color:${color};text-transform:capitalize;">${newStatus}</span>?</p>
@@ -1048,30 +1065,30 @@ function showAppointmentDetails(appointmentId) {
         </div>
         <div class="detail-row">
             <div class="detail-label">Full Name</div>
-            <div class="detail-value">${currentAppointment.fullname}</div>
+            <div class="detail-value">${_admEsc(currentAppointment.fullname)}</div>
         </div>
         <div class="detail-row">
             <div class="detail-label">Email</div>
-            <div class="detail-value">${currentAppointment.email}</div>
+            <div class="detail-value">${_admEsc(currentAppointment.email)}</div>
         </div>
         <div class="detail-row">
             <div class="detail-label">Contact Number</div>
-            <div class="detail-value">${currentAppointment.contact}</div>
+            <div class="detail-value">${_admEsc(currentAppointment.contact)}</div>
         </div>
         <div class="detail-row">
             <div class="detail-label">Service Required</div>
-            <div class="detail-value">${formatService(currentAppointment.service)}</div>
+            <div class="detail-value">${_admEsc(formatService(currentAppointment.service))}</div>
         </div>
         <div class="detail-row">
             <div class="detail-label">Status</div>
             <div class="detail-value">
-                <span class="status-badge status-${currentAppointment.status}">${currentAppointment.status}</span>
+                <span class="status-badge status-${_admEsc(currentAppointment.status)}">${_admEsc(currentAppointment.status)}</span>
             </div>
         </div>
         ${currentAppointment.message ? `
             <div class="detail-row">
                 <div class="detail-label">Project Details</div>
-                <div class="detail-value">${currentAppointment.message}</div>
+                <div class="detail-value">${_admEsc(currentAppointment.message)}</div>
             </div>
         ` : ''}
     `;
@@ -2036,24 +2053,24 @@ function renderFeedbackTable() {
     tbody.innerHTML = feedbackList.map(t => {
         const date = t.createdAt?.toDate();
         const dateStr = date ? date.toLocaleDateString() : 'N/A';
-        const stars = '★'.repeat(t.rating) + '☆'.repeat(5 - t.rating);
+        const stars = _admStars(t.rating);
         
         return `
             <tr>
                 <td>${dateStr}</td>
-                <td>${t.name}</td>
-                <td>${t.location}</td>
+                <td>${_admEsc(t.name)}</td>
+                <td>${_admEsc(t.location)}</td>
                 <td style="color: #FFD700;">${stars}</td>
-                <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t.message}</td>
-                <td><span class="status-badge status-${t.status}">${t.status}</span></td>
+                <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${_admEsc(t.message)}</td>
+                <td><span class="status-badge status-${_admEsc(t.status)}">${_admEsc(t.status)}</span></td>
                 <td>
-                    <select onchange="updateFeedbackStatus('${t.id}', this.value)" onclick="event.stopPropagation()">
+                    <select onchange="updateFeedbackStatus('${_admEsc(t.id)}', this.value)" onclick="event.stopPropagation()">
                         <option value="">Update Status</option>
                         <option value="pending" ${t.status === 'pending' ? 'selected' : ''}>Pending</option>
                         <option value="approved" ${t.status === 'approved' ? 'selected' : ''}>Approved</option>
                         <option value="rejected" ${t.status === 'rejected' ? 'selected' : ''}>Rejected</option>
                     </select>
-                    <button class="btn-danger" style="margin-left: 8px; padding: 6px 12px; font-size: 13px;" onclick="deleteFeedback('${t.id}')">Delete</button>
+                    <button class="btn-danger" style="margin-left: 8px; padding: 6px 12px; font-size: 13px;" onclick="deleteFeedback('${_admEsc(t.id)}')">Delete</button>
                 </td>
             </tr>
         `;
@@ -2092,24 +2109,24 @@ function filterFeedback() {
     tbody.innerHTML = filtered.map(t => {
         const date = t.createdAt?.toDate();
         const dateStr = date ? date.toLocaleDateString() : 'N/A';
-        const stars = '★'.repeat(t.rating) + '☆'.repeat(5 - t.rating);
+        const stars = _admStars(t.rating);
         
         return `
             <tr>
                 <td>${dateStr}</td>
-                <td>${t.name}</td>
-                <td>${t.location}</td>
+                <td>${_admEsc(t.name)}</td>
+                <td>${_admEsc(t.location)}</td>
                 <td style="color: #FFD700;">${stars}</td>
-                <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${t.message}</td>
-                <td><span class="status-badge status-${t.status}">${t.status}</span></td>
+                <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${_admEsc(t.message)}</td>
+                <td><span class="status-badge status-${_admEsc(t.status)}">${_admEsc(t.status)}</span></td>
                 <td>
-                    <select onchange="updateFeedbackStatus('${t.id}', this.value)" onclick="event.stopPropagation()">
+                    <select onchange="updateFeedbackStatus('${_admEsc(t.id)}', this.value)" onclick="event.stopPropagation()">
                         <option value="">Update Status</option>
                         <option value="pending" ${t.status === 'pending' ? 'selected' : ''}>Pending</option>
                         <option value="approved" ${t.status === 'approved' ? 'selected' : ''}>Approved</option>
                         <option value="rejected" ${t.status === 'rejected' ? 'selected' : ''}>Rejected</option>
                     </select>
-                    <button class="btn-danger" style="margin-left: 8px; padding: 6px 12px; font-size: 13px;" onclick="deleteFeedback('${t.id}')">Delete</button>
+                    <button class="btn-danger" style="margin-left: 8px; padding: 6px 12px; font-size: 13px;" onclick="deleteFeedback('${_admEsc(t.id)}')">Delete</button>
                 </td>
             </tr>
         `;

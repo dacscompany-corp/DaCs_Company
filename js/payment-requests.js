@@ -1140,7 +1140,9 @@
                 ? `${_formatAmount(r.paidAmount)} (Partial of ${_formatAmount(r.amount)})`
                 : _formatAmount(r.amount);
             const due = _formatDate(r.dueDate);
-            const status = r.status.charAt(0).toUpperCase() + r.status.slice(1).replace('_', ' ');
+            // status is client-writable at insert — escape it like any other client field.
+            const statusRaw = _esc(r.status || '');
+            const status = statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1).replace('_', ' ');
 
             return `
                 <tr>
@@ -1150,7 +1152,7 @@
                     <td>${project}</td>
                     <td style="text-align:right;">${amount}</td>
                     <td>${due}</td>
-                    <td><span class="status-${r.status}">${status}</span></td>
+                    <td><span class="status-${statusRaw}">${status}</span></td>
                 </tr>`;
         }).join('');
 
