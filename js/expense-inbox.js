@@ -172,5 +172,8 @@
     // ── Public mount points ──
     window.expenseInboxRenderPC = function (folderId)   { _eiLoad('eiPanelPC', 'pc', folderId); };
     window.expenseInboxRenderPM = function (pmProjectId){ _eiLoad('eiPanelPM', 'pm', pmProjectId); };
+    // Project Control React portal (folder dashboard) — see ExpenseInboxMount
+    // in portal-app.compiled.js.
+    window.expenseInboxRenderPortal = function (folderId) { _eiLoad('eiPanelPortal', 'pc', folderId); };
 
 })();
