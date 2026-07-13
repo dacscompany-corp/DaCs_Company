@@ -4653,38 +4653,90 @@ function _rptRenderKPIs(_groups) {
     const staffOnly = window.currentUserRole === 'staff';
     let html = '';
 
-    if (!staffOnly) {
-        // Row 1
-        html += _card('Project Budget',         '&#8369;' + formatNum(contract),     contractLabel + ' &middot; ' + _rptState.year);
-        html += _card('Fund Allocated',        '&#8369;' + formatNum(totReceived),  activePeriodsCount + ' billing period' + (activePeriodsCount !== 1 ? 's' : '') + ' &middot; ' + rcvOfContract.toFixed(1) + '% of contract');
-        html += _card('Materials &amp; Costs', '&#8369;' + formatNum(totMats),      (totReceived > 0 ? ((totMats / totReceived) * 100).toFixed(1) : '0.0') + '% of allocated budget');
-        // Row 2
-        html += _card('Labor &amp; Payroll',   '&#8369;' + formatNum(totLabor),     (totReceived > 0 ? ((totLabor / totReceived) * 100).toFixed(1) : '0.0') + '% of allocated budget');
-        html += _card('Overhead',              '&#8369;' + formatNum(totOverhead),  '&#8369;' + formatNum(totIndirect) + ' indirect labor &middot; &#8369;' + formatNum(totOvhdExp) + ' operating');
-        html += _card('Total Fund Spent',      '&#8369;' + formatNum(totSpent),     'Labor + Materials + Overhead &middot; ' + utilizedPct.toFixed(1) + '% utilized &middot; ' + contractUsedPct.toFixed(1) + '% of contract');
-        html += _card('Cover Expenses',        '&#8369;' + formatNum(totCover),     coverPctOfBudget.toFixed(1) + '% of allocated budget &middot; ' + (coverPctOfBudget >= 5 ? 'BAD' : coverPctOfBudget >= 2 ? 'WARNING' : 'HEALTHY'), coverPctOfBudget >= 5 ? 'rpt-kpi-card--bad' : coverPctOfBudget >= 2 ? 'rpt-kpi-card--warn' : '');
-    } else {
-        html += _card('Materials &amp; Costs', '&#8369;' + formatNum(totMats),      txCount + ' transaction' + (txCount !== 1 ? 's' : ''));
-        html += _card('Labor &amp; Payroll',   '&#8369;' + formatNum(totLabor),     workerCount + ' worker' + (workerCount !== 1 ? 's' : ''));
-        html += _card('Total Fund Spent',      '&#8369;' + formatNum(totSpent),     contractUsedPct.toFixed(1) + '% of contract value');
-    }
+    // Section heading: a small caption + hairline, so the strip reads as three
+    // stories (what came in / where it went / what's left) instead of 8 tiles.
+    const _group = (title) =>
+        '<div class="rpt-group"><span class="rpt-group-title">' + title + '</span><span class="rpt-group-rule"></span></div>';
+    // Big card with an icon chip (Contract & Funding).
+    const _cardIco = (label, val, sub, icon) =>
+        '<div class="rpt-kpi-card rpt-kpi-card--lg">'
+        + '<div class="rpt-kpi-ico"><i data-lucide="' + icon + '"></i></div>'
+        + '<div class="rpt-kpi-label">' + label + '</div>'
+        + '<div class="rpt-kpi-val">' + val + '</div>'
+        + '<div class="rpt-kpi-sub">' + sub + '</div>'
+        + '</div>';
+    // Compact card with a colour dot that matches its series in the charts.
+    const _cardDot = (label, val, sub, dot, cls, badge) =>
+        '<div class="rpt-kpi-card rpt-kpi-card--sm' + (cls ? ' ' + cls : '') + '">'
+        + '<div class="rpt-kpi-dotrow">'
+        +   '<span class="rpt-kpi-dot" style="background:' + dot + '"></span>'
+        +   '<span class="rpt-kpi-label">' + label + '</span>'
+        +   (badge ? '<span class="rpt-kpi-flag">' + badge + '</span>' : '')
+        + '</div>'
+        + '<div class="rpt-kpi-val">' + val + '</div>'
+        + '<div class="rpt-kpi-sub">' + sub + '</div>'
+        + '</div>';
+    const _bar = (pct, color, track) =>
+        '<div class="rpt-kpi-bar" style="background:' + track + '"><div class="rpt-kpi-bar-fill" style="width:'
+        + Math.max(Math.min(Math.abs(pct), 100), 2).toFixed(1) + '%;background:' + color + '"></div></div>';
 
-    // Funds Available — full-width card: Allocated − Spent, the money actually
-    // left to work with out of what clients have funded.
     if (!staffOnly) {
-        const availClass = fundsAvail < 0 ? 'rpt-variance-kpi-badge--red' : 'rpt-variance-kpi-badge--green';
-        html += '<div class="rpt-kpi-card rpt-kpi-variance-wide">'
-            + '<div class="rpt-kpi-label rpt-kpi-label--highlight">Funds Available</div>'
-            + '<div class="rpt-variance-rule"></div>'
-            + '<div class="rpt-variance-split">'
-            +   '<div class="rpt-variance-col">'
-            +     '<div class="rpt-variance-col-label">Allocated &minus; Spent</div>'
-            +     '<div class="rpt-variance-kpi-badge ' + availClass + '">' + (totReceived > 0 ? fundsAvailPct.toFixed(1) + '% of allocated' : 'Nothing allocated yet') + '</div>'
-            +     '<div class="rpt-variance-col-val">' + (fundsAvail < 0 ? '-' : '') + '&#8369;' + formatNum(Math.abs(fundsAvail)) + '</div>'
-            +     '<div class="rpt-variance-bar-wrap"><div class="rpt-variance-bar-fill" style="width:' + Math.max(Math.min(Math.abs(fundsAvailPct), 100), 2).toFixed(1) + '%;background:' + (fundsAvail < 0 ? '#b4453a' : '#157a52') + '"></div></div>'
-            +     '<div class="rpt-variance-col-sub">' + (fundsAvail < 0 ? 'overspent beyond allocated funds' : 'available to spend') + '</div>'
+        // ── Contract & Funding: what the job is worth, what's been funded ──
+        html += _group('Contract &amp; Funding');
+        html += '<div class="rpt-grid rpt-grid-2">'
+            + _cardIco('Project Budget', '&#8369;' + formatNum(contract),
+                contractLabel + ' &middot; ' + _rptState.year, 'wallet')
+            + _cardIco('Fund Allocated', '&#8369;' + formatNum(totReceived),
+                activePeriodsCount + ' billing period' + (activePeriodsCount !== 1 ? 's' : '')
+                + ' &middot; ' + rcvOfContract.toFixed(1) + '% of contract', 'banknote')
+            + '</div>';
+
+        // ── Spending Breakdown: the three cost buckets + the exception ──
+        const coverState = coverPctOfBudget >= 5 ? 'BAD' : coverPctOfBudget >= 2 ? 'WARNING' : 'HEALTHY';
+        const coverCls   = coverPctOfBudget >= 5 ? 'rpt-kpi-card--bad' : coverPctOfBudget >= 2 ? 'rpt-kpi-card--warn' : '';
+        html += _group('Spending Breakdown');
+        html += '<div class="rpt-grid rpt-grid-4">'
+            + _cardDot('Materials &amp; Costs', '&#8369;' + formatNum(totMats),
+                (totReceived > 0 ? ((totMats / totReceived) * 100).toFixed(1) : '0.0') + '% of allocated budget', '#157a52')
+            + _cardDot('Labor &amp; Payroll', '&#8369;' + formatNum(totLabor),
+                (totReceived > 0 ? ((totLabor / totReceived) * 100).toFixed(1) : '0.0') + '% of allocated budget', '#7f9cb0')
+            + _cardDot('Overhead', '&#8369;' + formatNum(totOverhead),
+                '&#8369;' + formatNum(totIndirect) + ' indirect labor &middot; &#8369;' + formatNum(totOvhdExp) + ' operating', '#c8a45a')
+            + _cardDot('Cover Expenses', '&#8369;' + formatNum(totCover),
+                coverPctOfBudget.toFixed(1) + '% of allocated budget', '#b4453a', coverCls, coverState)
+            + '</div>';
+
+        // ── Totals & Balance: the two numbers the owner actually acts on ──
+        html += _group('Totals &amp; Balance');
+        html += '<div class="rpt-grid rpt-grid-2">'
+            // Total spent — dark card, utilisation bar
+            + '<div class="rpt-kpi-card rpt-kpi-card--dark">'
+            +   '<div class="rpt-kpi-dotrow">'
+            +     '<span class="rpt-kpi-ico rpt-kpi-ico--dark"><i data-lucide="trending-down"></i></span>'
+            +     '<span class="rpt-kpi-label">Total Fund Spent</span>'
             +   '</div>'
+            +   '<div class="rpt-kpi-val">&#8369;' + formatNum(totSpent) + '</div>'
+            +   _bar(utilizedPct, 'linear-gradient(90deg,#3fa877,#7fd0a5)', 'rgba(255,255,255,0.10)')
+            +   '<div class="rpt-kpi-sub">Labor + Materials + Overhead &middot; <strong>' + utilizedPct.toFixed(1)
+            +     '%</strong> utilized &middot; ' + contractUsedPct.toFixed(1) + '% of contract</div>'
             + '</div>'
+            // Funds available — green card, remaining bar
+            + '<div class="rpt-kpi-card rpt-kpi-card--avail' + (fundsAvail < 0 ? ' rpt-kpi-card--over' : '') + '">'
+            +   '<div class="rpt-kpi-dotrow">'
+            +     '<span class="rpt-kpi-label">Funds Available</span>'
+            +     '<span class="rpt-kpi-pill">' + (totReceived > 0 ? fundsAvailPct.toFixed(1) + '% of allocated' : 'Nothing allocated yet') + '</span>'
+            +   '</div>'
+            +   '<div class="rpt-kpi-cap">Allocated &minus; Spent</div>'
+            +   '<div class="rpt-kpi-val">' + (fundsAvail < 0 ? '-' : '') + '&#8369;' + formatNum(Math.abs(fundsAvail)) + '</div>'
+            +   _bar(fundsAvailPct, fundsAvail < 0 ? '#b4453a' : '#157a52', fundsAvail < 0 ? '#f0d3cf' : '#dcebe3')
+            +   '<div class="rpt-kpi-sub">' + (fundsAvail < 0 ? 'overspent beyond allocated funds' : 'available to spend') + '</div>'
+            + '</div>'
+            + '</div>';
+    } else {
+        html += '<div class="rpt-grid rpt-grid-4">'
+            + _cardDot('Materials &amp; Costs', '&#8369;' + formatNum(totMats), txCount + ' transaction' + (txCount !== 1 ? 's' : ''), '#157a52')
+            + _cardDot('Labor &amp; Payroll', '&#8369;' + formatNum(totLabor), workerCount + ' worker' + (workerCount !== 1 ? 's' : ''), '#7f9cb0')
+            + _cardDot('Total Fund Spent', '&#8369;' + formatNum(totSpent), contractUsedPct.toFixed(1) + '% of contract value', '#1c2b23')
             + '</div>';
     }
 

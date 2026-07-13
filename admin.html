@@ -952,32 +952,38 @@
             </div>
             <div id="expReportsContent" style="display:none;">
             <!-- REPORTS TOP BAR -->
-            <div class="rpt-topbar">
-                <div class="rpt-topbar-left">
-                    <div class="rpt-company-badge">
-                        <i data-lucide="building-2" class="rpt-company-ico"></i>
-                        <div class="rpt-company-info">
-                            <span class="rpt-company-name">DAC's Building Design Services</span>
-                            <span class="rpt-company-sub" id="rptCompanySub">All Projects · Company-Wide</span>
+            <div class="rpt-header-card">
+                <div class="rpt-topbar">
+                    <div class="rpt-topbar-left">
+                        <div class="rpt-company-badge">
+                            <span class="rpt-company-mark"><i data-lucide="building-2"></i></span>
+                            <div class="rpt-company-info">
+                                <span class="rpt-company-name">DAC's Building Design Services</span>
+                                <span class="rpt-company-sub" id="rptCompanySub">All Projects · Company-Wide</span>
+                            </div>
+                        </div>
+                        <div class="rpt-select-wrap rpt-folder-wrap">
+                            <i data-lucide="folder" class="rpt-sel-ico"></i>
+                            <select id="rptFolderSel" onchange="onRptFolderChange()">
+                                <option value="">All Folders</option>
+                            </select>
+                        </div>
+                        <div class="rpt-select-wrap rpt-year-wrap">
+                            <i data-lucide="calendar" class="rpt-sel-ico"></i>
+                            <select id="rptYearSel" onchange="onRptYearChange()"></select>
                         </div>
                     </div>
-                    <div class="rpt-select-wrap rpt-folder-wrap">
-                        <i data-lucide="folder" class="rpt-sel-ico"></i>
-                        <select id="rptFolderSel" onchange="onRptFolderChange()">
-                            <option value="">All Folders</option>
-                        </select>
-                    </div>
-                    <div class="rpt-select-wrap rpt-year-wrap">
-                        <i data-lucide="calendar" class="rpt-sel-ico"></i>
-                        <select id="rptYearSel" onchange="onRptYearChange()"></select>
-                    </div>
                 </div>
-                <div class="rpt-period-tabs" id="rptPeriodTabs">
-                    <button class="rpt-tab" data-period="weekly" onclick="setRptPeriod('weekly')"><i data-lucide="calendar-days" class="rpt-tab-ico"></i>Weekly</button>
-                    <button class="rpt-tab active" data-period="monthly" onclick="setRptPeriod('monthly')"><i data-lucide="calendar" class="rpt-tab-ico"></i>Monthly</button>
-                    <button class="rpt-tab" data-period="quarterly" onclick="setRptPeriod('quarterly')"><i data-lucide="layout-grid" class="rpt-tab-ico"></i>Quarterly</button>
-                    <button class="rpt-tab" data-period="semi" onclick="setRptPeriod('semi')"><i data-lucide="split" class="rpt-tab-ico"></i>Semi-Annual</button>
-                    <button class="rpt-tab" data-period="annual" onclick="setRptPeriod('annual')"><i data-lucide="trending-up" class="rpt-tab-ico"></i>Annual</button>
+                <div class="rpt-header-rule"></div>
+                <div class="rpt-header-row2">
+                    <span class="rpt-viewby">View By</span>
+                    <div class="rpt-period-tabs" id="rptPeriodTabs">
+                        <button class="rpt-tab" data-period="weekly" onclick="setRptPeriod('weekly')"><i data-lucide="calendar-days" class="rpt-tab-ico"></i>Weekly</button>
+                        <button class="rpt-tab active" data-period="monthly" onclick="setRptPeriod('monthly')"><i data-lucide="calendar" class="rpt-tab-ico"></i>Monthly</button>
+                        <button class="rpt-tab" data-period="quarterly" onclick="setRptPeriod('quarterly')"><i data-lucide="layout-grid" class="rpt-tab-ico"></i>Quarterly</button>
+                        <button class="rpt-tab" data-period="semi" onclick="setRptPeriod('semi')"><i data-lucide="split" class="rpt-tab-ico"></i>Semi-Annual</button>
+                        <button class="rpt-tab" data-period="annual" onclick="setRptPeriod('annual')"><i data-lucide="trending-up" class="rpt-tab-ico"></i>Annual</button>
+                    </div>
                 </div>
             </div>
             <!-- AXIS LEGEND HINT -->

@@ -2050,6 +2050,181 @@ mark.exp-search-highlight {
 /* ── Reports view: prevent horizontal overflow ── */
 #expReportsView { overflow-x: hidden; }
 
+/* ── Header card: identity + filters, then the View By strip ── */
+.rpt-header-card {
+    background: #fff;
+    border: 1px solid #e7e6e2;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    margin-bottom: 1.25rem;
+    overflow: hidden;
+}
+.rpt-header-card .rpt-topbar { margin-bottom: 0; padding: 14px 18px; }
+.rpt-header-rule { height: 1px; background: #f0efec; }
+.rpt-header-row2 {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    flex-wrap: wrap;
+    padding: 11px 18px;
+    background: #fbfbfa;
+}
+.rpt-viewby {
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #a8a79f;
+    flex-shrink: 0;
+}
+/* Company mark — filled tile instead of a bare icon */
+.rpt-company-mark {
+    width: 40px; height: 40px;
+    border-radius: 11px;
+    background: linear-gradient(135deg, #1c5c3a, #157a52);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 4px 10px rgba(21,122,82,0.22);
+}
+.rpt-company-mark i { width: 20px; height: 20px; color: #fff; }
+.rpt-header-card .rpt-company-badge {
+    border: none;
+    box-shadow: none;
+    background: transparent;
+    padding: 0;
+}
+
+/* ── Grouped KPI sections ─────────────────────────────────── */
+.rpt-group {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.6rem;
+}
+.rpt-group + .rpt-grid { margin-bottom: 1.4rem; }
+.rpt-group-title {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: #a8a79f;
+    white-space: nowrap;
+}
+.rpt-group-rule { flex: 1; height: 1px; background: #e7e6e2; }
+
+/* The container is now just a stack — the inner grids do the layout. */
+#rptKpiRow.rpt-kpi-row { display: block; }
+#rptKpiRow .rpt-grid { display: grid; gap: 14px; }
+#rptKpiRow .rpt-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#rptKpiRow .rpt-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* Large card (Contract & Funding) with a corner icon chip */
+#rptKpiRow .rpt-kpi-card--lg { position: relative; padding: 18px 20px; overflow: hidden; }
+.rpt-kpi-ico {
+    position: absolute; top: 16px; right: 18px;
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    background: #eef4f0;
+    display: flex; align-items: center; justify-content: center;
+}
+.rpt-kpi-ico i { width: 18px; height: 18px; color: #157a52; }
+#rptKpiRow .rpt-kpi-card--lg .rpt-kpi-val { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.015em; }
+
+/* Compact card (Spending Breakdown) with a series colour dot */
+.rpt-kpi-dotrow { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.6rem; }
+.rpt-kpi-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.rpt-kpi-dotrow .rpt-kpi-label { margin-bottom: 0; }
+.rpt-kpi-flag {
+    margin-left: auto;
+    font-size: 0.56rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: #157a52;
+    background: #fff;
+    border: 1px solid #cfe5da;
+    border-radius: 5px;
+    padding: 2px 6px;
+    white-space: nowrap;
+}
+#rptKpiRow .rpt-kpi-card--bad  { background: #fdf5f3; border-color: #f0d3cf; }
+#rptKpiRow .rpt-kpi-card--bad  .rpt-kpi-label,
+#rptKpiRow .rpt-kpi-card--bad  .rpt-kpi-flag { color: #b4453a; }
+#rptKpiRow .rpt-kpi-card--bad  .rpt-kpi-flag { border-color: #f0d3cf; }
+#rptKpiRow .rpt-kpi-card--bad  .rpt-kpi-sub  { color: #a86a62; }
+#rptKpiRow .rpt-kpi-card--warn { background: #fdfaf3; border-color: #ecdfc3; }
+#rptKpiRow .rpt-kpi-card--warn .rpt-kpi-label,
+#rptKpiRow .rpt-kpi-card--warn .rpt-kpi-flag { color: #9a6b1f; }
+#rptKpiRow .rpt-kpi-card--warn .rpt-kpi-flag { border-color: #ecdfc3; }
+
+/* Progress bar shared by the two Totals cards */
+.rpt-kpi-bar {
+    height: 8px;
+    border-radius: 99px;
+    overflow: hidden;
+    margin: 0.6rem 0 0.55rem;
+}
+.rpt-kpi-bar-fill { height: 100%; border-radius: 99px; }
+.rpt-kpi-cap { font-size: 0.72rem; color: #5e9d80; margin-bottom: 0.2rem; }
+.rpt-kpi-pill {
+    margin-left: auto;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: #157a52;
+    background: #fff;
+    border: 1px solid #cfe5da;
+    border-radius: 6px;
+    padding: 3px 9px;
+    white-space: nowrap;
+}
+
+/* Total Fund Spent — dark card */
+#rptKpiRow .rpt-kpi-card--dark {
+    background: #1c2b23;
+    border-color: #1c2b23;
+    padding: 18px 20px;
+}
+#rptKpiRow .rpt-kpi-card--dark .rpt-kpi-label { color: #9db8ab; }
+#rptKpiRow .rpt-kpi-card--dark .rpt-kpi-val   { color: #fff; font-size: 1.7rem; font-weight: 700; letter-spacing: -0.015em; }
+#rptKpiRow .rpt-kpi-card--dark .rpt-kpi-sub   { color: #9db8ab; }
+#rptKpiRow .rpt-kpi-card--dark .rpt-kpi-sub strong { color: #cfe5da; }
+#rptKpiRow .rpt-kpi-card--dark:hover { border-color: #1c2b23; }
+.rpt-kpi-ico--dark {
+    position: static;
+    width: 32px; height: 32px;
+    border-radius: 9px;
+    background: rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.rpt-kpi-ico--dark i { width: 16px; height: 16px; color: #7fd0a5; }
+
+/* Funds Available — green card (red when overspent) */
+#rptKpiRow .rpt-kpi-card--avail {
+    background: #f3faf6;
+    border-color: #cfe5da;
+    padding: 18px 20px;
+}
+#rptKpiRow .rpt-kpi-card--avail .rpt-kpi-label { color: #157a52; font-weight: 700; letter-spacing: 0.06em; }
+#rptKpiRow .rpt-kpi-card--avail .rpt-kpi-val   { color: #157a52; font-size: 1.7rem; font-weight: 700; letter-spacing: -0.015em; }
+#rptKpiRow .rpt-kpi-card--avail .rpt-kpi-sub   { color: #5e9d80; }
+#rptKpiRow .rpt-kpi-card--over  { background: #fdf5f3; border-color: #f0d3cf; }
+#rptKpiRow .rpt-kpi-card--over .rpt-kpi-label,
+#rptKpiRow .rpt-kpi-card--over .rpt-kpi-val   { color: #b4453a; }
+#rptKpiRow .rpt-kpi-card--over .rpt-kpi-cap,
+#rptKpiRow .rpt-kpi-card--over .rpt-kpi-sub   { color: #a86a62; }
+#rptKpiRow .rpt-kpi-card--over .rpt-kpi-pill  { color: #b4453a; border-color: #f0d3cf; }
+
+/* Responsive: 4-up → 2-up → 1-up; the two big pairs stack on phones */
+@media (max-width: 1100px) {
+    #rptKpiRow .rpt-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+    #rptKpiRow .rpt-grid-2,
+    #rptKpiRow .rpt-grid-4 { grid-template-columns: 1fr; }
+    .rpt-header-card .rpt-topbar { padding: 12px 14px; }
+    .rpt-header-row2 { padding: 10px 14px; }
+}
+
 /* ── Top Bar ──────────────────────────────────────────────── */
 .rpt-topbar {
     display: flex;
