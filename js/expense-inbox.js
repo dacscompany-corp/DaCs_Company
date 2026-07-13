@@ -63,6 +63,9 @@
             _eiState[containerId].items = items;
         } catch (e) {
             console.warn('expense-inbox: load', e.message || e);
+            // Surface the failure instead of silently rendering nothing —
+            // a hidden panel and a broken panel must not look the same.
+            _eiState[containerId].loadError = e.message || String(e);
         }
         _eiRender(containerId);
     }
@@ -71,6 +74,11 @@
         const box = document.getElementById(containerId);
         const st  = _eiState[containerId];
         if (!box || !st) return;
+
+        if (st.loadError) {
+            box.innerHTML = '<div style="background:#f8ecea;border:1px solid #f0cdc8;border-radius:12px;padding:10px 14px;margin-bottom:16px;font:400 12.5px \'IBM Plex Sans\';color:#8f352c;">📥 Expense Inbox could not load: ' + _eiEsc(st.loadError) + '</div>';
+            return;
+        }
 
         // No items at all → keep the screen clean, render nothing.
         if (!st.items.length) { box.innerHTML = ''; return; }
