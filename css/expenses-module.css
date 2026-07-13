@@ -2077,6 +2077,72 @@ mark.exp-search-highlight {
     color: #a8a79f;
     flex-shrink: 0;
 }
+/* Identity left, controls right */
+.rpt-header-card .rpt-topbar { justify-content: space-between; align-items: center; }
+.rpt-topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+.rpt-company-meta { display: flex; align-items: center; gap: 0.45rem; margin-top: 3px; }
+.rpt-scope-chip {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #157a52;
+    background: #eef6f1;
+    border-radius: 5px;
+    padding: 2px 7px;
+    white-space: nowrap;
+}
+/* Selects: tiny caption above the value */
+.rpt-header-card .rpt-select-wrap {
+    background: #faf9f7;
+    border-color: #e7e6e2;
+    border-radius: 10px;
+    padding: 7px 12px;
+    box-shadow: none;
+    gap: 0.5rem;
+}
+.rpt-header-card .rpt-sel-ico { color: #157a52; width: 15px; height: 15px; }
+.rpt-sel-field { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.rpt-sel-cap {
+    font-size: 0.56rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #a8a79f;
+}
+.rpt-header-card .rpt-select-wrap select {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #374151;
+    min-width: 0;
+    padding: 0;
+}
+.rpt-header-card .rpt-folder-wrap select { min-width: 110px; }
+.rpt-header-card .rpt-year-wrap select { min-width: 56px; }
+/* Export */
+.rpt-export-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 10px 14px;
+    border: 1.5px solid #cfe5da;
+    background: #fff;
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #157a52;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    white-space: nowrap;
+}
+.rpt-export-btn:hover { background: #f3faf6; border-color: #157a52; }
+.rpt-export-btn i { width: 15px; height: 15px; }
+
 /* Company mark — filled tile instead of a bare icon */
 .rpt-company-mark {
     width: 40px; height: 40px;
@@ -2112,14 +2178,22 @@ mark.exp-search-highlight {
 }
 .rpt-group-rule { flex: 1; height: 1px; background: #e7e6e2; }
 
-/* The container is now just a stack — the inner grids do the layout. */
-#rptKpiRow.rpt-kpi-row { display: block; }
-#rptKpiRow .rpt-grid { display: grid; gap: 14px; }
-#rptKpiRow .rpt-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-#rptKpiRow .rpt-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* The container is now just a stack — the inner grids do the layout.
+   Project Control (#rptKpiRow) and Project Management (#pmRptKpiRow) share the
+   same grouped-KPI treatment. Scoped by id, not by .rpt-kpi-row — that class is
+   also the plain auto-fit grid used by boq-module.css. */
+#rptKpiRow.rpt-kpi-row,
+#pmRptKpiRow.rpt-kpi-row { display: block; }
+#rptKpiRow .rpt-grid,
+#pmRptKpiRow .rpt-grid { display: grid; gap: 14px; }
+#rptKpiRow .rpt-grid-2,
+#pmRptKpiRow .rpt-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#rptKpiRow .rpt-grid-4,
+#pmRptKpiRow .rpt-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 /* Large card (Contract & Funding) with a corner icon chip */
-#rptKpiRow .rpt-kpi-card--lg { position: relative; padding: 18px 20px; overflow: hidden; }
+#rptKpiRow .rpt-kpi-card--lg,
+#pmRptKpiRow .rpt-kpi-card--lg { position: relative; padding: 18px 20px; overflow: hidden; }
 .rpt-kpi-ico {
     position: absolute; top: 16px; right: 18px;
     width: 36px; height: 36px;
@@ -2128,7 +2202,8 @@ mark.exp-search-highlight {
     display: flex; align-items: center; justify-content: center;
 }
 .rpt-kpi-ico i { width: 18px; height: 18px; color: #157a52; }
-#rptKpiRow .rpt-kpi-card--lg .rpt-kpi-val { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.015em; }
+#rptKpiRow .rpt-kpi-card--lg .rpt-kpi-val,
+#pmRptKpiRow .rpt-kpi-card--lg .rpt-kpi-val { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.015em; }
 
 /* Compact card (Spending Breakdown) with a series colour dot */
 .rpt-kpi-dotrow { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.6rem; }
@@ -2146,15 +2221,32 @@ mark.exp-search-highlight {
     padding: 2px 6px;
     white-space: nowrap;
 }
-#rptKpiRow .rpt-kpi-card--bad  { background: #fdf5f3; border-color: #f0d3cf; }
+#rptKpiRow .rpt-kpi-card--bad,
+#pmRptKpiRow .rpt-kpi-card--bad  { background: #fdf5f3; border-color: #f0d3cf; }
 #rptKpiRow .rpt-kpi-card--bad  .rpt-kpi-label,
-#rptKpiRow .rpt-kpi-card--bad  .rpt-kpi-flag { color: #b4453a; }
-#rptKpiRow .rpt-kpi-card--bad  .rpt-kpi-flag { border-color: #f0d3cf; }
-#rptKpiRow .rpt-kpi-card--bad  .rpt-kpi-sub  { color: #a86a62; }
-#rptKpiRow .rpt-kpi-card--warn { background: #fdfaf3; border-color: #ecdfc3; }
+#rptKpiRow .rpt-kpi-card--bad  .rpt-kpi-flag,
+#pmRptKpiRow .rpt-kpi-card--bad  .rpt-kpi-label,
+#pmRptKpiRow .rpt-kpi-card--bad  .rpt-kpi-flag { color: #b4453a; }
+#rptKpiRow .rpt-kpi-card--bad  .rpt-kpi-flag,
+#pmRptKpiRow .rpt-kpi-card--bad  .rpt-kpi-flag { border-color: #f0d3cf; }
+#rptKpiRow .rpt-kpi-card--bad  .rpt-kpi-sub,
+#pmRptKpiRow .rpt-kpi-card--bad  .rpt-kpi-sub  { color: #a86a62; }
+#rptKpiRow .rpt-kpi-card--warn,
+#pmRptKpiRow .rpt-kpi-card--warn { background: #fdfaf3; border-color: #ecdfc3; }
 #rptKpiRow .rpt-kpi-card--warn .rpt-kpi-label,
-#rptKpiRow .rpt-kpi-card--warn .rpt-kpi-flag { color: #9a6b1f; }
-#rptKpiRow .rpt-kpi-card--warn .rpt-kpi-flag { border-color: #ecdfc3; }
+#rptKpiRow .rpt-kpi-card--warn .rpt-kpi-flag,
+#pmRptKpiRow .rpt-kpi-card--warn .rpt-kpi-label,
+#pmRptKpiRow .rpt-kpi-card--warn .rpt-kpi-flag { color: #9a6b1f; }
+#rptKpiRow .rpt-kpi-card--warn .rpt-kpi-flag,
+#pmRptKpiRow .rpt-kpi-card--warn .rpt-kpi-flag { border-color: #ecdfc3; }
+
+/* Muted card — a bucket with nothing recorded in it (e.g. Management Fee = ₱0).
+   Dashed + grey so a real zero reads as "none recorded", not as a live figure. */
+#pmRptKpiRow .rpt-kpi-card--muted { background: #fafafa; border-style: dashed; border-color: #dcdbd6; }
+#pmRptKpiRow .rpt-kpi-card--muted .rpt-kpi-val,
+#pmRptKpiRow .rpt-kpi-card--muted .rpt-kpi-flag,
+#pmRptKpiRow .rpt-kpi-card--muted .rpt-kpi-sub { color: #a8a79f; }
+#pmRptKpiRow .rpt-kpi-card--muted .rpt-kpi-flag { border-color: #e5e4df; }
 
 /* Progress bar shared by the two Totals cards */
 .rpt-kpi-bar {
@@ -2177,50 +2269,77 @@ mark.exp-search-highlight {
     white-space: nowrap;
 }
 
-/* Total Fund Spent — dark card */
-#rptKpiRow .rpt-kpi-card--dark {
-    background: #1c2b23;
-    border-color: #1c2b23;
-    padding: 18px 20px;
-}
-#rptKpiRow .rpt-kpi-card--dark .rpt-kpi-label { color: #9db8ab; }
-#rptKpiRow .rpt-kpi-card--dark .rpt-kpi-val   { color: #fff; font-size: 1.7rem; font-weight: 700; letter-spacing: -0.015em; }
-#rptKpiRow .rpt-kpi-card--dark .rpt-kpi-sub   { color: #9db8ab; }
-#rptKpiRow .rpt-kpi-card--dark .rpt-kpi-sub strong { color: #cfe5da; }
-#rptKpiRow .rpt-kpi-card--dark:hover { border-color: #1c2b23; }
-.rpt-kpi-ico--dark {
-    position: static;
-    width: 32px; height: 32px;
-    border-radius: 9px;
-    background: rgba(255,255,255,0.08);
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-}
-.rpt-kpi-ico--dark i { width: 16px; height: 16px; color: #7fd0a5; }
-
-/* Funds Available — green card (red when overspent) */
-#rptKpiRow .rpt-kpi-card--avail {
+/* Total Fund Spent — same light-green treatment as Funds Available, so the
+   two Totals cards read as one pair rather than two different things. */
+#rptKpiRow .rpt-kpi-card--dark,
+#pmRptKpiRow .rpt-kpi-card--dark {
     background: #f3faf6;
     border-color: #cfe5da;
     padding: 18px 20px;
 }
-#rptKpiRow .rpt-kpi-card--avail .rpt-kpi-label { color: #157a52; font-weight: 700; letter-spacing: 0.06em; }
-#rptKpiRow .rpt-kpi-card--avail .rpt-kpi-val   { color: #157a52; font-size: 1.7rem; font-weight: 700; letter-spacing: -0.015em; }
-#rptKpiRow .rpt-kpi-card--avail .rpt-kpi-sub   { color: #5e9d80; }
-#rptKpiRow .rpt-kpi-card--over  { background: #fdf5f3; border-color: #f0d3cf; }
+#rptKpiRow .rpt-kpi-card--dark .rpt-kpi-label,
+#pmRptKpiRow .rpt-kpi-card--dark .rpt-kpi-label { color: #157a52; font-weight: 700; letter-spacing: 0.06em; }
+#rptKpiRow .rpt-kpi-card--dark .rpt-kpi-val,
+#pmRptKpiRow .rpt-kpi-card--dark .rpt-kpi-val   { color: #157a52; font-size: 1.7rem; font-weight: 700; letter-spacing: -0.015em; }
+#rptKpiRow .rpt-kpi-card--dark .rpt-kpi-sub,
+#pmRptKpiRow .rpt-kpi-card--dark .rpt-kpi-sub   { color: #5e9d80; }
+#rptKpiRow .rpt-kpi-card--dark .rpt-kpi-sub strong,
+#pmRptKpiRow .rpt-kpi-card--dark .rpt-kpi-sub strong { color: #157a52; }
+#rptKpiRow .rpt-kpi-card--dark:hover,
+#pmRptKpiRow .rpt-kpi-card--dark:hover { border-color: #cfe5da; }
+.rpt-kpi-ico--dark {
+    position: static;
+    width: 32px; height: 32px;
+    border-radius: 9px;
+    background: #fff;
+    border: 1px solid #cfe5da;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.rpt-kpi-ico--dark i { width: 16px; height: 16px; color: #157a52; }
+
+/* Funds Available — green card (red when overspent) */
+#rptKpiRow .rpt-kpi-card--avail,
+#pmRptKpiRow .rpt-kpi-card--avail {
+    background: #f3faf6;
+    border-color: #cfe5da;
+    padding: 18px 20px;
+}
+#rptKpiRow .rpt-kpi-card--avail .rpt-kpi-label,
+#pmRptKpiRow .rpt-kpi-card--avail .rpt-kpi-label { color: #157a52; font-weight: 700; letter-spacing: 0.06em; }
+#rptKpiRow .rpt-kpi-card--avail .rpt-kpi-val,
+#pmRptKpiRow .rpt-kpi-card--avail .rpt-kpi-val   { color: #157a52; font-size: 1.7rem; font-weight: 700; letter-spacing: -0.015em; }
+#rptKpiRow .rpt-kpi-card--avail .rpt-kpi-sub,
+#pmRptKpiRow .rpt-kpi-card--avail .rpt-kpi-sub   { color: #5e9d80; }
+#rptKpiRow .rpt-kpi-card--over,
+#pmRptKpiRow .rpt-kpi-card--over  { background: #fdf5f3; border-color: #f0d3cf; }
 #rptKpiRow .rpt-kpi-card--over .rpt-kpi-label,
-#rptKpiRow .rpt-kpi-card--over .rpt-kpi-val   { color: #b4453a; }
+#rptKpiRow .rpt-kpi-card--over .rpt-kpi-val,
+#pmRptKpiRow .rpt-kpi-card--over .rpt-kpi-label,
+#pmRptKpiRow .rpt-kpi-card--over .rpt-kpi-val   { color: #b4453a; }
 #rptKpiRow .rpt-kpi-card--over .rpt-kpi-cap,
-#rptKpiRow .rpt-kpi-card--over .rpt-kpi-sub   { color: #a86a62; }
-#rptKpiRow .rpt-kpi-card--over .rpt-kpi-pill  { color: #b4453a; border-color: #f0d3cf; }
+#rptKpiRow .rpt-kpi-card--over .rpt-kpi-sub,
+#pmRptKpiRow .rpt-kpi-card--over .rpt-kpi-cap,
+#pmRptKpiRow .rpt-kpi-card--over .rpt-kpi-sub   { color: #a86a62; }
+#rptKpiRow .rpt-kpi-card--over .rpt-kpi-pill,
+#pmRptKpiRow .rpt-kpi-card--over .rpt-kpi-pill  { color: #b4453a; border-color: #f0d3cf; }
+
+/* Charts: Category Breakdown + Budget vs Actual sit side by side under the
+   full-width trend chart, and stack back to one column on narrow screens. */
+.rpt-chart-duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.rpt-chart-duo > .section-card { margin-bottom: 0; min-width: 0; }
 
 /* Responsive: 4-up → 2-up → 1-up; the two big pairs stack on phones */
 @media (max-width: 1100px) {
-    #rptKpiRow .rpt-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #rptKpiRow .rpt-grid-4,
+    #pmRptKpiRow .rpt-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .rpt-chart-duo { grid-template-columns: 1fr; }
 }
 @media (max-width: 700px) {
     #rptKpiRow .rpt-grid-2,
-    #rptKpiRow .rpt-grid-4 { grid-template-columns: 1fr; }
+    #rptKpiRow .rpt-grid-4,
+    #pmRptKpiRow .rpt-grid-2,
+    #pmRptKpiRow .rpt-grid-4 { grid-template-columns: 1fr; }
     .rpt-header-card .rpt-topbar { padding: 12px 14px; }
     .rpt-header-row2 { padding: 10px 14px; }
 }

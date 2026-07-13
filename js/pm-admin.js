@@ -105,7 +105,9 @@ window.pmWsTab = function(tab, btn) {
 function _pmLoadWsPanel(panelId) {
     switch(panelId) {
         case 'ws-panel-overview':  _pmLoadOverview();                    break;
-        case 'ws-panel-week':      _pmLoadWeekBuilder();                  break;
+        case 'ws-panel-week':      _pmLoadWeekBuilder();
+                                   if (window.expenseInboxRenderPM && _pmActiveProject) expenseInboxRenderPM(_pmActiveProject.id);
+                                   break;
         case 'ws-panel-contracts': _pmLoadContractsTab();                 break;
         case 'ws-panel-materials': _pmLoadProcItems();                    break;
         case 'ws-panel-progress':  _pmLoadMilestones(); _pmLoadReports(); break;
@@ -5733,11 +5735,13 @@ async function loadPMRptData() {
         : (_pmProjects || []);
     _pmRptState.projects = scopeProjects;
 
+    // Scope reads as a chip (COMPANY-WIDE / the project name); the count sits
+    // beside it as quiet meta text.
     const label = _pmRptState.projectId
         ? (scopeProjects[0]?.projectName || scopeProjects[0]?.clientName || 'Project')
         : 'Company-Wide';
-    const sub = document.getElementById('pmRptCompanySub');
-    if (sub) sub.textContent = `${label} · ${scopeProjects.length} project${scopeProjects.length !== 1 ? 's' : ''}`;
+    setText('pmRptScopeChip', label.toUpperCase());
+    setText('pmRptCompanySub', `${scopeProjects.length} project${scopeProjects.length !== 1 ? 's' : ''}`);
 
     if (!scopeProjects.length) {
         _pmRptState.bills = [];
@@ -5889,46 +5893,109 @@ function renderPMReportsDashboard() {
     if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
-function _pmRptCard(label, val, sub, cls) {
-    return '<div class="rpt-kpi-card' + (cls ? ' ' + cls : '') + '">'
-        + '<div class="rpt-kpi-label">' + label + '</div>'
-        + '<div class="rpt-kpi-val">' + val + '</div>'
-        + '<div class="rpt-kpi-sub">' + sub + '</div>'
-        + '</div>';
+// Totals for the current scope, summed straight from `groups` (already scoped
+// to the selected period tab + year) so the KPI row, the charts and the export
+// always agree — never re-read the unfiltered all-time `_pmRptState.bills`.
+function _pmRptTotals(groups) {
+    const budget = _pmRptBudgetForProjects(_pmRptState.projects);
+    const labor = groups.reduce((s, g) => s + g.labor, 0);
+    const materials = groups.reduce((s, g) => s + g.materials, 0);
+    const outsource = groups.reduce((s, g) => s + g.outsource, 0);
+    const fee = groups.reduce((s, g) => s + g.managementFee, 0);
+    const spent = labor + materials + outsource + fee;
+    const remaining = budget - spent;
+    return {
+        budget, labor, materials, outsource, fee, spent, remaining,
+        usedPct: budget > 0 ? (spent / budget) * 100 : 0,
+        remPct:  budget > 0 ? (remaining / budget) * 100 : 0,
+        pctOfSpend: v => spent > 0 ? (v / spent) * 100 : 0,
+    };
 }
 
 function _pmRptRenderKPIs(groups) {
     const row = document.getElementById('pmRptKpiRow');
     if (!row) return;
+    if (window.currentUserRole === 'staff') { row.style.display = 'none'; return; }
 
-    // Sum straight from `groups` (already scoped to the selected period tab +
-    // year) so the KPI row always matches what the charts below are showing —
-    // never re-read the unfiltered all-time `_pmRptState.bills` here.
-    const budget = _pmRptBudgetForProjects(_pmRptState.projects);
-    const totLabor = groups.reduce((s, g) => s + g.labor, 0);
-    const totMaterials = groups.reduce((s, g) => s + g.materials, 0);
-    const totOutsource = groups.reduce((s, g) => s + g.outsource, 0);
-    const totFee = groups.reduce((s, g) => s + g.managementFee, 0);
-    const totSpent = totLabor + totMaterials + totOutsource + totFee;
-    const remaining = budget - totSpent;
-    const usedPct = budget > 0 ? (totSpent / budget) * 100 : 0;
-    const remPct = budget > 0 ? (remaining / budget) * 100 : 0;
-
+    const t = _pmRptTotals(groups);
     const projLabel = _pmRptState.projectId
         ? (_pmRptState.projects[0]?.projectName || _pmRptState.projects[0]?.clientName || 'Project')
         : 'All Projects';
 
-    let html = '';
-    html += _pmRptCard('Project Budget', '&#8369;' + formatNum(budget), projLabel + ' &middot; ' + _pmRptState.year);
-    html += _pmRptCard('Materials', '&#8369;' + formatNum(totMaterials), (totSpent > 0 ? ((totMaterials / totSpent) * 100).toFixed(1) : '0.0') + '% of spend');
-    html += _pmRptCard('Labor', '&#8369;' + formatNum(totLabor), (totSpent > 0 ? ((totLabor / totSpent) * 100).toFixed(1) : '0.0') + '% of spend');
-    html += _pmRptCard('Outsource', '&#8369;' + formatNum(totOutsource), (totSpent > 0 ? ((totOutsource / totSpent) * 100).toFixed(1) : '0.0') + '% of spend');
-    html += _pmRptCard('Management Fee', '&#8369;' + formatNum(totFee), (totSpent > 0 ? ((totFee / totSpent) * 100).toFixed(1) : '0.0') + '% of spend');
-    html += _pmRptCard('Total Spent', '&#8369;' + formatNum(totSpent), usedPct.toFixed(1) + '% of budget');
+    // Section heading: a small caption + hairline, so the strip reads as three
+    // stories (what the job is worth / where it went / what's left) instead of
+    // 7 undifferentiated tiles.
+    const _group = (title) =>
+        '<div class="rpt-group"><span class="rpt-group-title">' + title + '</span><span class="rpt-group-rule"></span></div>';
+    const _bar = (pct, color, track) =>
+        '<div class="rpt-kpi-bar" style="background:' + track + '"><div class="rpt-kpi-bar-fill" style="width:'
+        + Math.max(Math.min(Math.abs(pct), 100), 2).toFixed(1) + '%;background:' + color + '"></div></div>';
+    // Compact card with a colour dot matching this bucket's series in the charts.
+    const _cardDot = (label, amount, dot, track) => {
+        const pct  = t.pctOfSpend(amount);
+        const zero = amount <= 0;
+        return '<div class="rpt-kpi-card rpt-kpi-card--sm' + (zero ? ' rpt-kpi-card--muted' : '') + '">'
+            + '<div class="rpt-kpi-dotrow">'
+            +   '<span class="rpt-kpi-dot" style="background:' + (zero ? '#c7c6c0' : dot) + '"></span>'
+            +   '<span class="rpt-kpi-label">' + label + '</span>'
+            +   '<span class="rpt-kpi-flag">' + pct.toFixed(1) + '%</span>'
+            + '</div>'
+            + '<div class="rpt-kpi-val">&#8369;' + formatNum(amount) + '</div>'
+            + _bar(pct, zero ? '#c7c6c0' : dot, track)
+            + '<div class="rpt-kpi-sub">' + (zero ? 'none recorded' : 'of total spend') + '</div>'
+            + '</div>';
+    };
 
-    const remClass = remaining < 0 ? 'rpt-kpi-card--bad' : '';
-    html += _pmRptCard('Remaining Budget', (remaining < 0 ? '-' : '') + '&#8369;' + formatNum(Math.abs(remaining)),
-        (budget > 0 ? Math.abs(remPct).toFixed(1) + '% of budget &middot; ' : '') + (remaining < 0 ? 'over budget' : 'available'), remClass);
+    let html = '';
+
+    // ── Contract Budget: what the job is worth ──
+    html += _group('Contract Budget');
+    html += '<div class="rpt-grid">'
+        + '<div class="rpt-kpi-card rpt-kpi-card--lg">'
+        +   '<div class="rpt-kpi-ico"><i data-lucide="wallet"></i></div>'
+        +   '<div class="rpt-kpi-label">Project Budget</div>'
+        +   '<div class="rpt-kpi-val">&#8369;' + formatNum(t.budget) + '</div>'
+        +   '<div class="rpt-kpi-sub">' + _esc(projLabel) + ' &middot; ' + _pmRptState.year
+        +     ' &middot; <strong>' + t.usedPct.toFixed(1) + '%</strong> utilized</div>'
+        + '</div>'
+        + '</div>';
+
+    // ── Spend Breakdown: the four cost buckets ──
+    html += _group('Spend Breakdown');
+    html += '<div class="rpt-grid rpt-grid-4">'
+        + _cardDot('Materials',      t.materials, '#157a52', '#eef2ec')
+        + _cardDot('Labor',          t.labor,     '#7f9cb0', '#eef1f4')
+        + _cardDot('Outsource',      t.outsource, '#c8a45a', '#f4efe4')
+        + _cardDot('Management Fee', t.fee,       '#b0907f', '#f2ece9')
+        + '</div>';
+
+    // ── Totals & Balance: the two numbers the owner actually acts on ──
+    const overspent = t.remaining < 0;
+    html += _group('Totals &amp; Balance');
+    html += '<div class="rpt-grid rpt-grid-2">'
+        // Total spent — utilisation against the flat project budget
+        + '<div class="rpt-kpi-card rpt-kpi-card--dark">'
+        +   '<div class="rpt-kpi-dotrow">'
+        +     '<span class="rpt-kpi-ico rpt-kpi-ico--dark"><i data-lucide="trending-down"></i></span>'
+        +     '<span class="rpt-kpi-label">Total Spent</span>'
+        +   '</div>'
+        +   '<div class="rpt-kpi-val">&#8369;' + formatNum(t.spent) + '</div>'
+        +   _bar(t.usedPct, '#157a52', '#dcebe3')
+        +   '<div class="rpt-kpi-sub">Materials + Labor + Outsource + Fee &middot; <strong>'
+        +     t.usedPct.toFixed(1) + '%</strong> of budget</div>'
+        + '</div>'
+        // Remaining budget — green, red once it goes negative
+        + '<div class="rpt-kpi-card rpt-kpi-card--avail' + (overspent ? ' rpt-kpi-card--over' : '') + '">'
+        +   '<div class="rpt-kpi-dotrow">'
+        +     '<span class="rpt-kpi-label">' + (overspent ? 'Over Budget' : 'Remaining Budget') + '</span>'
+        +     (t.budget > 0 ? '<span class="rpt-kpi-pill">' + Math.abs(t.remPct).toFixed(1) + '% of budget</span>' : '')
+        +   '</div>'
+        +   '<div class="rpt-kpi-cap">Budget &minus; Total Spent</div>'
+        +   '<div class="rpt-kpi-val">' + (overspent ? '&minus;' : '') + '&#8369;' + formatNum(Math.abs(t.remaining)) + '</div>'
+        +   _bar(t.remPct, overspent ? '#b4453a' : '#157a52', overspent ? '#f3ddd9' : '#dcebe3')
+        +   '<div class="rpt-kpi-sub">' + (overspent ? 'spent beyond the budget' : 'available to spend') + '</div>'
+        + '</div>'
+        + '</div>';
 
     row.innerHTML = html;
     if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -6124,3 +6191,149 @@ function _pmRptRenderDetailTables() {
         laborTbody.innerHTML = html;
     }
 }
+
+// ══════════════════════════════════════════════════════════
+// PM REPORTS — EXPORT (print view)
+// Prints exactly what's on screen: the same `groups` the KPI row and charts
+// are built from, so the paper copy can't drift from the dashboard.
+// ══════════════════════════════════════════════════════════
+window.printPMReportsDashboard = function () {
+    // Staff never see peso amounts — and a print view is all peso amounts.
+    if (window.currentUserRole === 'staff') return;
+    if (!_pmRptState.projects.length) { alert('No report data to export.'); return; }
+
+    const groups = _pmRptComputePeriodGroups(_pmRptState.period, _pmRptState.year,
+        _pmRptState.projects, _pmRptState.bills);
+    const t = _pmRptTotals(groups);
+
+    const periodLabels = { weekly: 'Weekly', monthly: 'Monthly', quarterly: 'Quarterly',
+        semi: 'Semi-Annual', annual: 'Annual' };
+    const scopeLabel = _pmRptState.projectId
+        ? (_pmRptState.projects[0]?.projectName || _pmRptState.projects[0]?.clientName || 'Project')
+        : 'Company-Wide Report';
+    const peso = v => '₱' + formatNum(v);
+
+    const kpi = (label, val, sub) =>
+        `<div class="kpi"><div class="kpi-l">${label}</div><div class="kpi-v">${val}</div><div class="kpi-s">${sub}</div></div>`;
+
+    const periodRows = groups.map(g => `<tr>
+        <td>${_esc(g.label)}</td>
+        <td class="n">${peso(g.materials)}</td>
+        <td class="n">${peso(g.labor)}</td>
+        <td class="n">${peso(g.outsource)}</td>
+        <td class="n">${peso(g.managementFee)}</td>
+        <td class="n b">${peso(g.totalSpent)}</td>
+        <td class="n">${peso(g.cumSpent)}</td>
+        <td class="c">${g.usedPct.toFixed(1)}%</td>
+    </tr>`).join('') || '<tr><td colspan="8" class="c muted">No spending recorded for this period.</td></tr>';
+
+    const cats = [
+        ['Materials', t.materials], ['Labor', t.labor],
+        ['Outsource', t.outsource], ['Management Fee', t.fee],
+    ];
+    const catRows = cats.map(([name, amt]) => `<tr>
+        <td>${name}</td>
+        <td class="n">${peso(amt)}</td>
+        <td class="c">${t.pctOfSpend(amt).toFixed(1)}%</td>
+    </tr>`).join('');
+
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Project Management Report — ${_esc(scopeLabel)} ${_pmRptState.year}</title>
+<style>
+  @page { size: A4 landscape; margin: 14mm; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:'IBM Plex Sans',system-ui,sans-serif; color:#1c1c1a; font-size:12px; }
+  .head { display:flex; justify-content:space-between; align-items:flex-start;
+          border-bottom:2px solid #157a52; padding-bottom:10px; margin-bottom:16px; }
+  .head h1 { margin:0 0 4px; font-size:19px; color:#157a52; }
+  .head .meta { font-size:11px; color:#6b7280; line-height:1.6; }
+  .head .right { text-align:right; font-size:11px; color:#6b7280; }
+  .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:18px; }
+  .kpi { border:1px solid #e7e6e2; border-radius:8px; padding:10px 12px; }
+  .kpi-l { font-size:9px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#8a8983; }
+  .kpi-v { font-size:16px; font-weight:700; margin:3px 0 2px; }
+  .kpi-s { font-size:10px; color:#8a8983; }
+  .kpi.hi { background:#f3faf6; border-color:#cfe5da; }
+  .kpi.hi .kpi-l, .kpi.hi .kpi-v { color:#157a52; }
+  .kpi.over { background:#fdf5f3; border-color:#f0d3cf; }
+  .kpi.over .kpi-l, .kpi.over .kpi-v { color:#b4453a; }
+  .section-title { font-size:12px; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+                   color:#157a52; margin:0 0 8px; }
+  table { width:100%; border-collapse:collapse; margin-bottom:20px; }
+  th { background:#f3faf6; color:#157a52; font-size:10px; letter-spacing:.04em; text-transform:uppercase;
+       text-align:left; padding:7px 8px; border-bottom:1px solid #cfe5da; }
+  td { padding:6px 8px; border-bottom:1px solid #f0efec; }
+  td.n, th.n { text-align:right; }
+  td.c, th.c { text-align:center; }
+  td.b { font-weight:700; }
+  td.muted { color:#9ca3af; }
+  tfoot td { font-weight:700; border-top:2px solid #157a52; border-bottom:none; background:#fbfbfa; }
+  .footer { margin-top:8px; padding-top:8px; border-top:1px solid #e7e6e2;
+            display:flex; justify-content:space-between; font-size:10px; color:#9ca3af; }
+  tr { page-break-inside:avoid; }
+</style></head>
+<body>
+  <div class="head">
+    <div>
+      <h1>Project Management Report</h1>
+      <div class="meta">
+        <strong>${_esc(scopeLabel)}</strong><br>
+        ${periodLabels[_pmRptState.period] || _pmRptState.period} view &middot; ${_pmRptState.year}
+        &middot; ${_pmRptState.projects.length} project${_pmRptState.projects.length !== 1 ? 's' : ''}
+      </div>
+    </div>
+    <div class="right">
+      DAC's Building Design Services<br>
+      Generated ${new Date().toLocaleString('en-PH')}
+    </div>
+  </div>
+
+  <div class="kpis">
+    ${kpi('Project Budget', peso(t.budget), `${_esc(scopeLabel)} · ${_pmRptState.year}`)}
+    ${kpi('Total Spent', peso(t.spent), `${t.usedPct.toFixed(1)}% of budget`)}
+    <div class="kpi ${t.remaining < 0 ? 'over' : 'hi'}">
+      <div class="kpi-l">${t.remaining < 0 ? 'Over Budget' : 'Remaining Budget'}</div>
+      <div class="kpi-v">${t.remaining < 0 ? '−' : ''}${peso(Math.abs(t.remaining))}</div>
+      <div class="kpi-s">${Math.abs(t.remPct).toFixed(1)}% of budget</div>
+    </div>
+    ${kpi('Materials / Labor / Outsource', `${peso(t.materials)} · ${peso(t.labor)} · ${peso(t.outsource)}`, 'spend by bucket')}
+  </div>
+
+  <div class="section-title">${periodLabels[_pmRptState.period] || ''} Breakdown</div>
+  <table>
+    <thead><tr>
+      <th>Period</th><th class="n">Materials</th><th class="n">Labor</th><th class="n">Outsource</th>
+      <th class="n">Mgmt Fee</th><th class="n">Total Spent</th><th class="n">Cumulative</th><th class="c">% of Budget</th>
+    </tr></thead>
+    <tbody>${periodRows}</tbody>
+    <tfoot><tr>
+      <td>TOTAL</td>
+      <td class="n">${peso(t.materials)}</td>
+      <td class="n">${peso(t.labor)}</td>
+      <td class="n">${peso(t.outsource)}</td>
+      <td class="n">${peso(t.fee)}</td>
+      <td class="n">${peso(t.spent)}</td>
+      <td class="n">—</td>
+      <td class="c">${t.usedPct.toFixed(1)}%</td>
+    </tr></tfoot>
+  </table>
+
+  <div class="section-title">Category Breakdown</div>
+  <table>
+    <thead><tr><th>Category</th><th class="n">Amount</th><th class="c">% of Total Spend</th></tr></thead>
+    <tbody>${catRows}</tbody>
+  </table>
+
+  <div class="footer">
+    <span>Official report generated by the DAC's Admin System. For internal use only.</span>
+    <span>DAC's Building Design Services</span>
+  </div>
+</body></html>`;
+
+    const win = window.open('', '_blank', 'width=1100,height=900');
+    if (!win) { alert('Pop-up blocked. Please allow pop-ups for this site to export.'); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    win.onload = function () { win.print(); win.onafterprint = function () { win.close(); }; };
+};

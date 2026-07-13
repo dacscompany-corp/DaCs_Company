@@ -112,6 +112,8 @@ const REG = {
 
   clientErrors:   { table: 'client_errors', ts: ['at'] },   // telemetry (0028); owner read/delete only
 
+  expenseInbox:   { table: 'expense_inbox', ts: ['createdAt', 'updatedAt', 'encodedAt'] },   // admin→staff receipt handoff queue (0031); no amounts
+
   notifications:  { table: 'notifications', ts: ['createdAt'] },  // only via /items subpath
   appointments:   { table: 'appointments', ts: ['createdAt', 'updatedAt'] },
   testimonials:   { table: 'testimonials', ts: ['createdAt'] },

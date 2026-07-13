@@ -4273,9 +4273,11 @@ function loadRptData() {
     const folderLabel = _rptState.folderId
         ? (expFolders.find(f => f.id === _rptState.folderId)?.name || 'Folder')
         : 'Company-Wide';
-    const yearSuffix = _rptState.folderId ? '' : '';
+    // Scope reads as a chip (COMPANY-WIDE / the folder name); the counts sit
+    // beside it as quiet meta text.
+    setText('rptScopeChip', folderLabel.toUpperCase());
     setText('rptCompanySub',
-        `${folderLabel} · ${projCount} project period${projCount!==1?'s':''} · ${folderCount} folder${folderCount!==1?'s':''}${yearSuffix}`);
+        `${projCount} project period${projCount!==1?'s':''} · ${folderCount} folder${folderCount!==1?'s':''}`);
 
     _rptState.projects = folderProjects;
 
@@ -4716,7 +4718,7 @@ function _rptRenderKPIs(_groups) {
             +     '<span class="rpt-kpi-label">Total Fund Spent</span>'
             +   '</div>'
             +   '<div class="rpt-kpi-val">&#8369;' + formatNum(totSpent) + '</div>'
-            +   _bar(utilizedPct, 'linear-gradient(90deg,#3fa877,#7fd0a5)', 'rgba(255,255,255,0.10)')
+            +   _bar(utilizedPct, '#157a52', '#dcebe3')
             +   '<div class="rpt-kpi-sub">Labor + Materials + Overhead &middot; <strong>' + utilizedPct.toFixed(1)
             +     '%</strong> utilized &middot; ' + contractUsedPct.toFixed(1) + '% of contract</div>'
             + '</div>'
@@ -6188,6 +6190,7 @@ function mvpNavigate(state, folderId) {
         mvpSwitchTab('materials');
         // selectFolder loads all expenses/payroll for the folder
         if (typeof selectFolder === 'function') selectFolder(_mvpCurrentFolderId);
+        if (window.expenseInboxRenderPC) expenseInboxRenderPC(_mvpCurrentFolderId);
     }
 }
 

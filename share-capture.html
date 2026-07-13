@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Share to Expense Inbox — DAC's Admin</title>
+<link rel="manifest" href="manifest-admin.json">
+<meta name="theme-color" content="#0f6342">
+<link rel="icon" href="icons/icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font: 400 14px 'IBM Plex Sans', sans-serif; background: #f4f3ef; color: #1c1c1a; min-height: 100vh; padding: 16px 14px 40px; }
+  .sc-card { max-width: 520px; margin: 0 auto; background: #fff; border: 1px solid #e2e1dc; border-radius: 16px; padding: 18px 16px 22px; }
+  .sc-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .sc-logo { width: 34px; height: 34px; border-radius: 9px; }
+  .sc-title { font: 800 16px 'IBM Plex Sans'; color: #0f6342; }
+  .sc-sub { font-size: 12px; color: #8a897f; margin-bottom: 14px; }
+  .sc-label { display: block; font: 700 11px 'IBM Plex Sans'; color: #6f6e69; text-transform: uppercase; letter-spacing: .4px; margin: 14px 0 5px; }
+  .sc-input, .sc-select, .sc-textarea { width: 100%; padding: 10px 12px; border: 1px solid #d7d6d0; border-radius: 10px; font: 400 14px 'IBM Plex Sans'; color: #1c1c1a; background: #fff; outline: none; }
+  .sc-input:focus, .sc-select:focus, .sc-textarea:focus { border-color: #157a52; }
+  .sc-seg { display: flex; gap: 6px; }
+  .sc-seg button { flex: 1; padding: 10px 6px; border: 1px solid #d7d6d0; border-radius: 10px; background: #fff; font: 600 12.5px 'IBM Plex Sans'; color: #5b5a55; cursor: pointer; }
+  .sc-seg button.on { background: #0f6342; border-color: #0f6342; color: #fff; }
+  .sc-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .sc-thumb { position: relative; width: 84px; height: 84px; border-radius: 10px; overflow: hidden; border: 1px solid #e2e1dc; background: #f3f2ef; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #8a897f; text-align: center; padding: 2px; }
+  .sc-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .sc-thumb .rm { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; line-height: 20px; cursor: pointer; padding: 0; }
+  .sc-pickbtn { width: 100%; margin-top: 8px; padding: 12px; border: 1.5px dashed #b9b8b0; border-radius: 10px; background: #faf9f6; font: 600 13px 'IBM Plex Sans'; color: #6f6e69; cursor: pointer; }
+  .sc-save { width: 100%; margin-top: 20px; padding: 13px; border: none; border-radius: 12px; background: #157a52; color: #fff; font: 700 14px 'IBM Plex Sans'; cursor: pointer; }
+  .sc-save:disabled { opacity: .55; cursor: default; }
+  .sc-msg { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: 13px; display: none; }
+  .sc-msg.err { background: #f8ecea; color: #8f352c; border: 1px solid #f0cdc8; }
+  .sc-msg.ok  { background: #eaf4ef; color: #0f6342; border: 1px solid #c6e6d5; }
+  .sc-gate { max-width: 520px; margin: 60px auto 0; text-align: center; }
+  .sc-gate a { display: inline-block; margin-top: 14px; padding: 11px 22px; border-radius: 10px; background: #157a52; color: #fff; font: 700 13px 'IBM Plex Sans'; text-decoration: none; }
+  .sc-done { text-align: center; padding: 30px 0 10px; display: none; }
+  .sc-done .big { font-size: 42px; }
+  .sc-done h2 { font: 800 17px 'IBM Plex Sans'; color: #0f6342; margin: 8px 0 4px; }
+  .sc-done p { font-size: 12.5px; color: #8a897f; }
+  .sc-done .row { display: flex; gap: 8px; justify-content: center; margin-top: 18px; }
+  .sc-done button, .sc-done a { padding: 10px 18px; border-radius: 10px; font: 700 13px 'IBM Plex Sans'; cursor: pointer; text-decoration: none; }
+  .sc-done .again { border: 1px solid #157a52; background: #fff; color: #157a52; }
+  .sc-done .home  { border: none; background: #157a52; color: #fff; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="sc-gate" id="scGate" style="display:none;">
+  <div style="font-size:38px;">🔒</div>
+  <h2 style="font:800 16px 'IBM Plex Sans';margin-top:8px;">Log in first</h2>
+  <p style="font-size:13px;color:#6f6e69;margin-top:6px;">Open the Admin app and log in, then share the receipt again.<br>Your shared image is kept and will still be here.</p>
+  <a href="admin.html">Open Admin</a>
+</div>
+
+<div class="sc-card" id="scCard" style="display:none;">
+  <div class="sc-head">
+    <img class="sc-logo" src="icons/icon-192.png" alt="">
+    <div>
+      <div class="sc-title">Send to Expense Inbox</div>
+      <div class="sc-sub" style="margin:0;">Tag it — staff encodes the rest from the receipt.</div>
+    </div>
+  </div>
+
+  <div id="scForm">
+    <span class="sc-label">Receipt / payment image</span>
+    <div class="sc-thumbs" id="scThumbs"></div>
+    <button type="button" class="sc-pickbtn" onclick="document.getElementById('scFile').click()">+ Add image or PDF</button>
+    <input type="file" id="scFile" accept="image/*,application/pdf" multiple class="hidden">
+
+    <span class="sc-label">System</span>
+    <div class="sc-seg" id="scSysSeg">
+      <button type="button" data-sys="pc" onclick="scSetSystem('pc')">Project Control</button>
+      <button type="button" data-sys="pm" onclick="scSetSystem('pm')">Project Management</button>
+    </div>
+
+    <span class="sc-label">Project</span>
+    <select class="sc-select" id="scProject"><option value="">Loading…</option></select>
+
+    <span class="sc-label">Type</span>
+    <select class="sc-select" id="scType" onchange="scTypeChanged()"></select>
+
+    <div id="scCatWrap" class="hidden">
+      <span class="sc-label">Material category</span>
+      <input class="sc-input" id="scCategory" list="scCatList" placeholder="e.g. Cement, Rebar, Electrical">
+      <datalist id="scCatList"></datalist>
+    </div>
+
+    <div id="scLaborWrap" class="hidden">
+      <span class="sc-label">Laborer / worker name</span>
+      <input class="sc-input" id="scLaborName" placeholder="e.g. Juan Dela Cruz">
+    </div>
+
+    <span class="sc-label">Note (optional)</span>
+    <textarea class="sc-textarea" id="scNote" rows="2" placeholder="Anything staff should know — supplier, what it's for…"></textarea>
+
+    <button type="button" class="sc-save" id="scSave" onclick="scSave()">Send to Inbox</button>
+    <div class="sc-msg err" id="scErr"></div>
+  </div>
+
+  <div class="sc-done" id="scDone">
+    <div class="big">✅</div>
+    <h2 id="scDoneTitle">Sent to the Expense Inbox</h2>
+    <p>Staff will see it as pending until they encode it.</p>
+    <div class="row">
+      <button type="button" class="again" onclick="scReset()">Send another</button>
+      <a class="home" href="admin.html">Open Admin</a>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabase-config.js"></script>
+<script>
+'use strict';
+
+// Keep the SW registered so the share-sheet POST is always intercepted.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).catch(() => {});
+  });
+}
+
+const SHARE_CACHE = 'dacs-share-intake';
+let scFiles   = [];      // [{ file, previewUrl }]
+let scSystem  = 'pc';
+let scFolders = [];      // Project Control folders
+let scPmProjects = [];   // Project Management construction projects
+
+const TYPE_OPTIONS = {
+  pc: [ ['materials','Materials'], ['labor','Labor'], ['overhead','Overhead'] ],
+  pm: [ ['labor','Labor'], ['materials','Materials'], ['both','Out Source'] ],
+};
+
+function $(id) { return document.getElementById(id); }
+function scShowErr(msg) { const e = $('scErr'); e.textContent = msg; e.style.display = 'block'; }
+function scHideErr() { $('scErr').style.display = 'none'; }
+
+// ── Shared-file intake (from the service worker's cache) ──
+async function scLoadSharedFiles() {
+  if (!('caches' in window)) return;
+  try {
+    const cache = await caches.open(SHARE_CACHE);
+    for (let i = 0; i < 20; i++) {
+      const res = await cache.match('/shared-file-' + i);
+      if (!res) break;
+      const blob = await res.blob();
+      let name = 'shared-' + i;
+      try { name = decodeURIComponent(res.headers.get('X-File-Name') || name); } catch (_) {}
+      scAddFile(new File([blob], name, { type: blob.type }));
+    }
+  } catch (_) {}
+}
+async function scClearSharedCache() {
+  try {
+    const cache = await caches.open(SHARE_CACHE);
+    for (const req of await cache.keys()) await cache.delete(req);
+  } catch (_) {}
+}
+
+function scAddFile(file) {
+  const isImg = (file.type || '').startsWith('image/');
+  scFiles.push({ file, previewUrl: isImg ? URL.createObjectURL(file) : null });
+  scRenderThumbs();
+}
+function scRemoveFile(i) {
+  const f = scFiles.splice(i, 1)[0];
+  if (f && f.previewUrl) URL.revokeObjectURL(f.previewUrl);
+  scRenderThumbs();
+}
+function scRenderThumbs() {
+  $('scThumbs').innerHTML = scFiles.map((f, i) =>
+    '<div class="sc-thumb">'
+    + (f.previewUrl ? '<img src="' + f.previewUrl + '" alt="">' : '📄 ' + (f.file.name || 'file'))
+    + '<button type="button" class="rm" onclick="scRemoveFile(' + i + ')">×</button>'
+    + '</div>'
+  ).join('');
+}
+
+$('scFile').addEventListener('change', (e) => {
+  for (const f of e.target.files) scAddFile(f);
+  e.target.value = '';
+});
+
+// ── System / project / type pickers ──
+function scSetSystem(sys) {
+  scSystem = sys;
+  document.querySelectorAll('#scSysSeg button').forEach((b) => b.classList.toggle('on', b.dataset.sys === sys));
+  const sel = $('scType');
+  sel.innerHTML = TYPE_OPTIONS[sys].map(([v, l]) => '<option value="' + v + '">' + l + '</option>').join('');
+  scTypeChanged();
+  scFillProjects();
+}
+function scTypeChanged() {
+  const t = $('scType').value;
+  $('scCatWrap').classList.toggle('hidden', t !== 'materials');
+  $('scLaborWrap').classList.toggle('hidden', t !== 'labor');
+}
+function scFillProjects() {
+  const sel = $('scProject');
+  if (scSystem === 'pc') {
+    sel.innerHTML = '<option value="">— pick a project —</option>'
+      + scFolders.map((f) => '<option value="' + f.id + '">' + scEsc(f.name || 'Unnamed') + (f.parentFolderId ? ' (Additional Works)' : '') + '</option>').join('');
+  } else {
+    sel.innerHTML = '<option value="">— pick a project —</option>'
+      + scPmProjects.map((p) => '<option value="' + p.id + '">' + scEsc((p.clientName ? p.clientName + ' — ' : '') + (p.projectName || 'Unnamed')) + '</option>').join('');
+  }
+}
+function scEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
+
+async function scLoadPickers() {
+  try {
+    const [fSnap, pSnap, cSnap] = await Promise.all([
+      db.collection('folders').orderBy('name').get(),
+      db.collection('constructionProjects').orderBy('clientName').get(),
+      db.collection('categories').get().catch(() => ({ docs: [] })),
+    ]);
+    scFolders    = fSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    scPmProjects = pSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    $('scCatList').innerHTML = cSnap.docs.map((d) => '<option value="' + scEsc((d.data() || {}).name || '') + '">').join('');
+    scFillProjects();
+  } catch (e) {
+    scShowErr('Could not load projects: ' + (e.message || e));
+  }
+}
+
+// ── Save: upload each file + one inbox row per file ──
+async function scSave() {
+  scHideErr();
+  if (!scFiles.length)        { scShowErr('Attach at least one image or PDF.'); return; }
+  const projectId = $('scProject').value;
+  if (!projectId)             { scShowErr('Pick a project.'); return; }
+  const entryType = $('scType').value;
+
+  const btn = $('scSave');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const email = (auth.currentUser && auth.currentUser.email) || '';
+    for (let i = 0; i < scFiles.length; i++) {
+      const file = scFiles[i].file;
+      const safe = (file.name || 'receipt').replace(/[^a-zA-Z0-9._-]/g, '_');
+      const ref  = storage.ref('expenseInbox/' + Date.now() + '_' + i + '_' + safe);
+      await ref.put(file);
+      const url = await ref.getDownloadURL();
+      const row = {
+        system:    scSystem,
+        imageUrl:  url,
+        imageName: file.name || safe,
+        entryType: entryType,
+        category:  entryType === 'materials' ? ($('scCategory').value.trim() || null) : null,
+        laborName: entryType === 'labor' ? ($('scLaborName').value.trim() || null) : null,
+        note:      $('scNote').value.trim() || null,
+        status:    'pending',
+        createdBy: email,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      };
+      if (scSystem === 'pc') row.folderId = projectId; else row.pmProjectId = projectId;
+      await db.collection('expenseInbox').add(row);
+    }
+    await scClearSharedCache();
+    $('scDoneTitle').textContent = scFiles.length > 1
+      ? scFiles.length + ' items sent to the Expense Inbox'
+      : 'Sent to the Expense Inbox';
+    $('scForm').classList.add('hidden');
+    $('scDone').style.display = 'block';
+  } catch (e) {
+    scShowErr('Save failed: ' + (e.message || e));
+  } finally {
+    btn.disabled = false; btn.textContent = 'Send to Inbox';
+  }
+}
+
+function scReset() {
+  scFiles.forEach((f) => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
+  scFiles = [];
+  scRenderThumbs();
+  $('scNote').value = ''; $('scCategory').value = ''; $('scLaborName').value = '';
+  $('scDone').style.display = 'none';
+  $('scForm').classList.remove('hidden');
+}
+
+// ── Boot: auth gate, then pickers + shared files ──
+auth.onAuthStateChanged(async (user) => {
+  if (!user) { $('scGate').style.display = 'block'; $('scCard').style.display = 'none'; return; }
+  $('scGate').style.display = 'none';
+  $('scCard').style.display = 'block';
+  scSetSystem('pc');
+  await Promise.all([scLoadPickers(), scLoadSharedFiles()]);
+});
+</script>
+</body>
+</html>
