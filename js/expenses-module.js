@@ -4565,12 +4565,6 @@ function _fmtDateShort(d) {
 // itself when the rows arrive.
 let _rptOvhdRows = null;
 let _rptOvhdFetching = false;
-// BOQ documents (accomplishment %) and payment requests (receivables) — same
-// fetch-once pattern. Each re-renders the KPIs when its rows arrive.
-let _rptBoqRows = null;
-let _rptBoqFetching = false;
-let _rptPayReqs = null;
-let _rptPayReqFetching = false;
 
 // A payroll row that belongs to OVERHEAD, not Labor: indirect pay, or the
 // statutory burden of an indirect worker. Delegates to overhead-module's
@@ -4595,24 +4589,6 @@ function _rptRenderKPIs(_groups) {
                 _rptRenderKPIs(_groups);
             })
             .catch(err => { console.error('rpt overhead fetch:', err); _rptOvhdRows = []; });
-    }
-    if (_rptBoqRows === null && !_rptBoqFetching) {
-        _rptBoqFetching = true;
-        db.collection('boqDocuments').where('userId', '==', _uid()).get()
-            .then(snap => {
-                _rptBoqRows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                _rptRenderKPIs(_groups);
-            })
-            .catch(err => { console.error('rpt boq fetch:', err); _rptBoqRows = []; });
-    }
-    if (_rptPayReqs === null && !_rptPayReqFetching) {
-        _rptPayReqFetching = true;
-        db.collection('paymentRequests').where('ownerUid', '==', _uid()).get()
-            .then(snap => {
-                _rptPayReqs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                _rptRenderKPIs(_groups);
-            })
-            .catch(err => { console.error('rpt payreq fetch:', err); _rptPayReqs = []; });
     }
 
     const contract = _rptState.folderId
@@ -4687,111 +4663,6 @@ function _rptRenderKPIs(_groups) {
         html += _card('Overhead',              '&#8369;' + formatNum(totOverhead),  '&#8369;' + formatNum(totIndirect) + ' indirect labor &middot; &#8369;' + formatNum(totOvhdExp) + ' operating');
         html += _card('Total Fund Spent',      '&#8369;' + formatNum(totSpent),     'Labor + Materials + Overhead &middot; ' + utilizedPct.toFixed(1) + '% utilized &middot; ' + contractUsedPct.toFixed(1) + '% of contract');
         html += _card('Cover Expenses',        '&#8369;' + formatNum(totCover),     coverPctOfBudget.toFixed(1) + '% of allocated budget &middot; ' + (coverPctOfBudget >= 5 ? 'BAD' : coverPctOfBudget >= 2 ? 'WARNING' : 'HEALTHY'), coverPctOfBudget >= 5 ? 'rpt-kpi-card--bad' : coverPctOfBudget >= 2 ? 'rpt-kpi-card--warn' : '');
-
-        // ── Performance layer: % complete, earned revenue, gross profit ──
-        // Reuses portal-app.compiled.js's TESTED money helpers (they're global);
-        // if the portal file somehow isn't loaded, these cards simply don't render
-        // rather than showing numbers computed by a second implementation.
-        const _hasPerfFns = typeof _folderCompletion === 'function'
-            && typeof _projMargin === 'function'
-            && typeof _recognisedProfit === 'function';
-        if (_hasPerfFns && _rptBoqRows !== null) {
-            // Per-folder cost in the PORTAL's convention (all expenses incl. cover,
-            // all payroll incl. president periods — the real cost of the job),
-            // split into the same three buckets buildProject uses.
-            const _folderOfPeriod = {};
-            expProjects.forEach(p => { _folderOfPeriod[p.id] = p.folderId; });
-            const _scopeFolders = _rptState.folderId
-                ? expFolders.filter(f => f.id === _rptState.folderId)
-                : expFolders;
-            const _cost = {};
-            _scopeFolders.forEach(f => { _cost[f.id] = { material: 0, labor: 0, overhead: 0 }; });
-            _srcExp.forEach(e => {
-                const c = _cost[_folderOfPeriod[e.projectId]];
-                if (c) c.material += parseFloat(e.amount) || 0;
-            });
-            _srcPay.forEach(p => {
-                const c = _cost[_folderOfPeriod[p.projectId]];
-                if (!c) return;
-                if (_rptIsOverheadPay(p)) c.overhead += parseFloat(p.totalSalary) || 0;
-                else c.labor += parseFloat(p.totalSalary) || 0;
-            });
-            (_rptOvhdRows || []).forEach(e => {
-                if (e.deletedAt) return;
-                const c = _cost[e.folderId];
-                if (c) c.overhead += parseFloat(e.amount) || 0;
-            });
-            const _perf = _scopeFolders.map(f => ({
-                revenue: f.totalBudget || 0,
-                labor: _cost[f.id].labor,
-                material: _cost[f.id].material,
-                overhead: _cost[f.id].overhead,
-                completion: _folderCompletion(_rptBoqRows, f.id)
-            }));
-
-            if (_rptState.folderId && _perf.length === 1) {
-                const m = _projMargin(_perf[0]);
-                if (m.isForecast) {
-                    html += _card('% Complete &middot; Earned Revenue', '&mdash;',
-                        'No accomplishment report yet &mdash; update the BOQ to measure this project', 'rpt-kpi-card--warn');
-                    html += _card('Gross Profit &middot; Forecast',
-                        (m.profit < 0 ? '-' : '') + '&#8369;' + formatNum(Math.abs(m.profit)),
-                        'Contract &minus; cost &middot; assumes the job is completed &middot; not yet earned',
-                        m.profit < 0 ? 'rpt-kpi-card--bad' : 'rpt-kpi-card--warn');
-                } else {
-                    html += _card('% Complete &middot; Earned Revenue', '&#8369;' + formatNum(m.earned),
-                        m.completePct.toFixed(1) + '% of contract accomplished');
-                    html += _card('Gross Profit &middot; Earned',
-                        (m.profit < 0 ? '-' : '') + '&#8369;' + formatNum(Math.abs(m.profit)),
-                        (m.pct == null ? '&mdash;' : m.pct.toFixed(1) + '% margin') + ' &middot; earned revenue &minus; actual cost',
-                        m.profit < 0 ? 'rpt-kpi-card--bad' : '');
-                }
-            } else {
-                const _measured = _perf.filter(p => p.completion && p.completion.hasData);
-                const earnedSum = _measured.reduce((s, p) => s + (typeof _projEarned === 'function' ? _projEarned(p) : p.revenue * p.completion.pct), 0);
-                const profitSum = _perf.reduce((s, p) => s + _recognisedProfit(p), 0);
-                html += _card('% Complete &middot; Earned Revenue', '&#8369;' + formatNum(earnedSum),
-                    _measured.length + ' of ' + _perf.length + ' project' + (_perf.length !== 1 ? 's' : '') + ' measured by accomplishment');
-                html += _card('Gross Profit &middot; Earned',
-                    (profitSum < 0 ? '-' : '') + '&#8369;' + formatNum(Math.abs(profitSum)),
-                    'Zero profit booked for unmeasured projects &middot; losses counted immediately',
-                    profitSum < 0 ? 'rpt-kpi-card--bad' : '');
-            }
-        }
-
-        // ── TRUE receivables: billed but not yet paid ──
-        // (The removed "Receivable Balance" card was just unallocated contract
-        // wearing the wrong name; this is the real thing, from payment requests.)
-        if (_rptPayReqs !== null) {
-            let _reqs = (_rptPayReqs || []).filter(r => r.status !== 'rejected');
-            if (_rptState.folderId) {
-                // Folder scope — same BOQ→client matching rule the portal's billing
-                // memo uses (folders and payment requests live in different systems).
-                const _fBoqs = (_rptBoqRows || []).filter(x => x.folderId === _rptState.folderId);
-                const _fDoc = _fBoqs.slice().sort((a, b) => ((b.costItems && b.costItems.length) || 0) - ((a.costItems && a.costItems.length) || 0))[0] || null;
-                const _fEmail = (_fDoc && _fDoc.clientEmail) || '';
-                const _fProj  = (_fDoc && _fDoc.projectName) || '';
-                _reqs = _fEmail
-                    ? _reqs.filter(r => r.clientEmail === _fEmail && (!_fProj || !r.projectName || r.projectName === _fProj))
-                    : null;
-            }
-            if (_reqs === null) {
-                html += _card('Receivables &middot; Billed Unpaid', '&mdash;', 'No BOQ / billing link for this folder yet');
-            } else {
-                const _dueMs = (d) => d && (typeof d.toMillis === 'function' ? d.toMillis() : new Date(d).getTime());
-                const outstanding = _reqs.reduce((s, r) => {
-                    const amt  = parseFloat(r.amount) || 0;
-                    const paid = r.status === 'verified' ? (r.paidAmount != null ? (parseFloat(r.paidAmount) || 0) : amt) : 0;
-                    return s + Math.max(amt - paid, 0);
-                }, 0);
-                const _open = _reqs.filter(r => r.status !== 'verified');
-                const _overdue = _open.filter(r => { const ms = _dueMs(r.dueDate); return ms && ms < Date.now(); }).length;
-                html += _card('Receivables &middot; Billed Unpaid', '&#8369;' + formatNum(outstanding),
-                    _open.length + ' request' + (_open.length !== 1 ? 's' : '') + ' awaiting payment'
-                    + (_overdue ? ' &middot; ' + _overdue + ' OVERDUE' : ''),
-                    _overdue ? 'rpt-kpi-card--bad' : (outstanding > 0 ? 'rpt-kpi-card--warn' : ''));
-            }
-        }
     } else {
         html += _card('Materials &amp; Costs', '&#8369;' + formatNum(totMats),      txCount + ' transaction' + (txCount !== 1 ? 's' : ''));
         html += _card('Labor &amp; Payroll',   '&#8369;' + formatNum(totLabor),     workerCount + ' worker' + (workerCount !== 1 ? 's' : ''));
