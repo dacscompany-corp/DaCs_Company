@@ -3,112 +3,125 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Share to Expense Inbox — DAC's Admin</title>
+<title>Send to Expense Inbox — DAC's Admin</title>
 <link rel="manifest" href="manifest-admin.json">
 <meta name="theme-color" content="#0f6342">
 <link rel="icon" href="icons/icon-192.png">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font: 400 14px 'IBM Plex Sans', sans-serif; background: #f4f3ef; color: #1c1c1a; min-height: 100vh; padding: 16px 14px 40px; }
-  .sc-card { max-width: 520px; margin: 0 auto; background: #fff; border: 1px solid #e2e1dc; border-radius: 16px; padding: 18px 16px 22px; }
-  .sc-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
-  .sc-logo { width: 34px; height: 34px; border-radius: 9px; }
-  .sc-title { font: 800 16px 'IBM Plex Sans'; color: #0f6342; }
-  .sc-sub { font-size: 12px; color: #8a897f; margin-bottom: 14px; }
-  .sc-label { display: block; font: 700 11px 'IBM Plex Sans'; color: #6f6e69; text-transform: uppercase; letter-spacing: .4px; margin: 14px 0 5px; }
-  .sc-input, .sc-select, .sc-textarea { width: 100%; padding: 10px 12px; border: 1px solid #d7d6d0; border-radius: 10px; font: 400 14px 'IBM Plex Sans'; color: #1c1c1a; background: #fff; outline: none; }
-  .sc-input:focus, .sc-select:focus, .sc-textarea:focus { border-color: #157a52; }
-  .sc-seg { display: flex; gap: 6px; }
-  .sc-seg button { flex: 1; padding: 10px 6px; border: 1px solid #d7d6d0; border-radius: 10px; background: #fff; font: 600 12.5px 'IBM Plex Sans'; color: #5b5a55; cursor: pointer; }
-  .sc-seg button.on { background: #0f6342; border-color: #0f6342; color: #fff; }
-  .sc-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-  .sc-thumb { position: relative; width: 84px; height: 84px; border-radius: 10px; overflow: hidden; border: 1px solid #e2e1dc; background: #f3f2ef; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #8a897f; text-align: center; padding: 2px; }
+  body { font-family: 'IBM Plex Sans', sans-serif; -webkit-font-smoothing: antialiased; background: #eceae4; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: 12px; }
+  a { color: #157a52; text-decoration: none; }
+  ::-webkit-scrollbar { width: 8px; }
+  ::-webkit-scrollbar-thumb { background: #d5d4ce; border-radius: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  .sc-frame { display: flex; flex-direction: column; width: 412px; max-width: 100%; height: 812px; max-height: calc(100dvh - 24px); background: #fff; border: 1px solid #e6e5e0; border-radius: 30px; overflow: hidden; box-shadow: 0 20px 56px rgba(20,40,30,.12); }
+  .sc-brand { display: flex; align-items: center; gap: 8px; padding: 22px 28px 0; }
+  .sc-brand-dot { width: 9px; height: 9px; border-radius: 50%; background: #157a52; }
+  .sc-brand-label { font: 600 12px 'IBM Plex Sans'; letter-spacing: .4px; color: #77857d; }
+
+  .sc-progress { padding: 18px 28px 0; }
+  .sc-dots { display: flex; align-items: center; gap: 6px; }
+  .sc-dot { height: 6px; border-radius: 99px; flex: 1; background: #e2e4df; transition: all .3s; }
+  .sc-dot.done, .sc-dot.current { background: #157a52; }
+  .sc-dot.current { flex: 2.4; }
+  .sc-stepnum { font: 600 11px 'IBM Plex Sans'; letter-spacing: .6px; color: #9aa39c; text-transform: uppercase; margin-top: 11px; }
+
+  .sc-body { flex: 1; overflow-y: auto; padding: 22px 28px 10px; }
+  .sc-h1 { font: 700 27px 'IBM Plex Sans'; color: #16211c; letter-spacing: -.4px; line-height: 1.18; margin: 0 0 8px; }
+  .sc-sub { font: 400 14.5px 'IBM Plex Sans'; color: #77857d; line-height: 1.5; margin: 0 0 24px; }
+
+  .sc-upload { width: 100%; padding: 36px 20px; border: 2px dashed #bfc4bd; border-radius: 20px; background: #faf9f6; color: #5d6b63; font: 700 15px 'IBM Plex Sans'; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 9px; }
+  .sc-upload-plus { width: 54px; height: 54px; border-radius: 50%; background: #eaf3ee; color: #157a52; font-size: 29px; display: flex; align-items: center; justify-content: center; }
+  .sc-thumbs { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  .sc-thumb { position: relative; width: 108px; height: 108px; border-radius: 16px; overflow: hidden; border: 1px solid #e6e5e0; background: #f3f2ef; display: flex; align-items: center; justify-content: center; }
   .sc-thumb img { width: 100%; height: 100%; object-fit: cover; }
-  .sc-thumb .rm { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%; border: none; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; line-height: 20px; cursor: pointer; padding: 0; }
-  .sc-pickbtn { width: 100%; margin-top: 8px; padding: 12px; border: 1.5px dashed #b9b8b0; border-radius: 10px; background: #faf9f6; font: 600 13px 'IBM Plex Sans'; color: #6f6e69; cursor: pointer; }
-  .sc-save { width: 100%; margin-top: 20px; padding: 13px; border: none; border-radius: 12px; background: #157a52; color: #fff; font: 700 14px 'IBM Plex Sans'; cursor: pointer; }
-  .sc-save:disabled { opacity: .55; cursor: default; }
-  .sc-msg { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: 13px; display: none; }
-  .sc-msg.err { background: #f8ecea; color: #8f352c; border: 1px solid #f0cdc8; }
-  .sc-msg.ok  { background: #eaf4ef; color: #0f6342; border: 1px solid #c6e6d5; }
-  .sc-gate { max-width: 520px; margin: 60px auto 0; text-align: center; }
-  .sc-gate a { display: inline-block; margin-top: 14px; padding: 11px 22px; border-radius: 10px; background: #157a52; color: #fff; font: 700 13px 'IBM Plex Sans'; text-decoration: none; }
-  .sc-done { text-align: center; padding: 30px 0 10px; display: none; }
-  .sc-done .big { font-size: 42px; }
-  .sc-done h2 { font: 800 17px 'IBM Plex Sans'; color: #0f6342; margin: 8px 0 4px; }
-  .sc-done p { font-size: 12.5px; color: #8a897f; }
-  .sc-done .row { display: flex; gap: 8px; justify-content: center; margin-top: 18px; }
-  .sc-done button, .sc-done a { padding: 10px 18px; border-radius: 10px; font: 700 13px 'IBM Plex Sans'; cursor: pointer; text-decoration: none; }
-  .sc-done .again { border: 1px solid #157a52; background: #fff; color: #157a52; }
-  .sc-done .home  { border: none; background: #157a52; color: #fff; }
+  .sc-thumb-pdf { font: 600 10px 'IBM Plex Sans'; color: #9aa39c; letter-spacing: .4px; text-align: center; padding: 6px; word-break: break-all; }
+  .sc-thumb-rm { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border: none; border-radius: 50%; background: rgba(20,30,25,.6); color: #fff; font-size: 14px; line-height: 1; cursor: pointer; }
+  .sc-err { background: #fbeeec; border: 1px solid #f2d3cd; color: #a1443a; font: 500 13px 'IBM Plex Sans'; padding: 11px 14px; border-radius: 11px; margin-top: 12px; }
+
+  .sc-options { display: flex; flex-direction: column; gap: 12px; }
+  .sc-opt { display: flex; align-items: center; justify-content: space-between; gap: 14px; width: 100%; text-align: left; padding: 20px 18px; border-radius: 18px; cursor: pointer; border: 2px solid #e6e5e0; background: #fff; font-family: 'IBM Plex Sans'; }
+  .sc-opt.on { border-color: #157a52; background: #eaf3ee; box-shadow: 0 6px 18px rgba(21,122,82,.14); }
+  .sc-opt-label { font: 700 16px 'IBM Plex Sans'; color: #16211c; }
+  .sc-opt-sub { font: 400 13px 'IBM Plex Sans'; color: #8a938c; margin-top: 3px; }
+  .sc-radio { flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: #fff; border: 2px solid #d7d6d0; }
+  .sc-opt.on .sc-radio { background: #157a52; border-color: #157a52; }
+  .sc-radio span { color: #fff; font-size: 13px; font-weight: 700; }
+
+  .sc-text { width: 100%; padding: 17px 18px; border: 2px solid #d9d8d2; border-radius: 16px; font: 400 16px 'IBM Plex Sans'; color: #16211c; outline: none; }
+  .sc-text:focus { border-color: #157a52; }
+  textarea.sc-text { resize: none; line-height: 1.5; }
+  .sc-chips { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+  .sc-chip { padding: 10px 16px; border-radius: 999px; cursor: pointer; font: 600 13px 'IBM Plex Sans'; border: 1.5px solid #d9d8d2; background: #fff; color: #5d6b63; }
+  .sc-chip.on { border-color: #157a52; background: #157a52; color: #fff; }
+
+  .sc-review { display: flex; flex-direction: column; gap: 2px; }
+  .sc-rrow { display: flex; justify-content: space-between; gap: 16px; padding: 15px 0; border-bottom: 1px solid #f0efea; }
+  .sc-rlabel { font: 500 12px 'IBM Plex Sans'; color: #9aa39c; text-transform: uppercase; letter-spacing: .5px; flex-shrink: 0; }
+  .sc-rvalue { font: 600 15px 'IBM Plex Sans'; color: #16211c; text-align: right; word-break: break-word; }
+  .sc-send { width: 100%; margin-top: 22px; padding: 18px; border: none; border-radius: 16px; background: #157a52; color: #fff; font: 700 16px 'IBM Plex Sans'; cursor: pointer; }
+  .sc-send:disabled { opacity: .6; cursor: default; }
+
+  .sc-footer { display: flex; gap: 12px; padding: 14px 28px 26px; border-top: 1px solid #f0efea; }
+  .sc-back { flex: 0 0 auto; padding: 16px 24px; border: 2px solid #e0dfd9; border-radius: 16px; background: #fff; color: #3a453f; font: 700 15px 'IBM Plex Sans'; cursor: pointer; }
+  .sc-next { flex: 1; padding: 16px; border: none; border-radius: 16px; background: #157a52; color: #fff; font: 700 16px 'IBM Plex Sans'; cursor: pointer; }
+
+  .sc-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 30px; }
+  .sc-done-badge { width: 88px; height: 88px; border-radius: 50%; background: #eaf3ee; display: flex; align-items: center; justify-content: center; font-size: 42px; color: #157a52; }
+  .sc-done-h2 { font: 700 24px 'IBM Plex Sans'; color: #16211c; margin: 22px 0 0; }
+  .sc-done-p { font: 400 14.5px 'IBM Plex Sans'; color: #77857d; line-height: 1.5; margin: 8px 0 0; max-width: 270px; }
+  .sc-done-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 260px; margin-top: 30px; }
+  .sc-done-primary { padding: 16px; border: none; border-radius: 15px; background: #157a52; color: #fff; font: 700 15px 'IBM Plex Sans'; cursor: pointer; }
+  .sc-done-secondary { padding: 16px; border: 2px solid #157a52; border-radius: 15px; background: #fff; color: #157a52; font: 700 15px 'IBM Plex Sans'; text-align: center; }
   .hidden { display: none !important; }
 </style>
 </head>
 <body>
 
-<div class="sc-gate" id="scGate" style="display:none;">
-  <div style="font-size:38px;">🔒</div>
-  <h2 style="font:800 16px 'IBM Plex Sans';margin-top:8px;">Log in first</h2>
-  <p style="font-size:13px;color:#6f6e69;margin-top:6px;">Open the Admin app and log in, then share the receipt again.<br>Your shared image is kept and will still be here.</p>
-  <a href="admin.html">Open Admin</a>
-</div>
+<div class="sc-frame">
+  <div class="sc-brand">
+    <div class="sc-brand-dot"></div>
+    <div class="sc-brand-label">Expense Inbox</div>
+  </div>
 
-<div class="sc-card" id="scCard" style="display:none;">
-  <div class="sc-head">
-    <img class="sc-logo" src="icons/icon-192.png" alt="">
-    <div>
-      <div class="sc-title">Send to Expense Inbox</div>
-      <div class="sc-sub" style="margin:0;">Tag it — staff encodes the rest from the receipt.</div>
+  <!-- Login gate -->
+  <div class="sc-center hidden" id="scGate">
+    <div style="font-size:42px;">🔒</div>
+    <h2 class="sc-done-h2">Log in first</h2>
+    <p class="sc-done-p">Open the Admin app and log in, then share the receipt again. Your shared image is kept and will still be here.</p>
+    <div class="sc-done-actions">
+      <a class="sc-done-secondary" href="admin.html">Open Admin</a>
     </div>
   </div>
 
-  <div id="scForm">
-    <span class="sc-label">Receipt / payment image</span>
-    <div class="sc-thumbs" id="scThumbs"></div>
-    <button type="button" class="sc-pickbtn" onclick="document.getElementById('scFile').click()">+ Add image or PDF</button>
-    <input type="file" id="scFile" accept="image/*,application/pdf" multiple class="hidden">
-
-    <span class="sc-label">System</span>
-    <div class="sc-seg" id="scSysSeg">
-      <button type="button" data-sys="pc" onclick="scSetSystem('pc')">Project Control</button>
-      <button type="button" data-sys="pm" onclick="scSetSystem('pm')">Project Management</button>
+  <!-- Wizard -->
+  <div id="scWizard" class="hidden" style="display:flex;flex-direction:column;flex:1;min-height:0;">
+    <div class="sc-progress">
+      <div class="sc-dots" id="scDots"></div>
+      <div class="sc-stepnum" id="scStepNum"></div>
     </div>
-
-    <span class="sc-label">Project</span>
-    <select class="sc-select" id="scProject"><option value="">Loading…</option></select>
-
-    <span class="sc-label">Type</span>
-    <select class="sc-select" id="scType" onchange="scTypeChanged()"></select>
-
-    <div id="scCatWrap" class="hidden">
-      <span class="sc-label">Material category</span>
-      <input class="sc-input" id="scCategory" list="scCatList" placeholder="e.g. Cement, Rebar, Electrical">
-      <datalist id="scCatList"></datalist>
+    <div class="sc-body" id="scBody"></div>
+    <div class="sc-footer hidden" id="scFooter">
+      <button type="button" class="sc-back hidden" id="scBack" onclick="scBack()">Back</button>
+      <button type="button" class="sc-next hidden" id="scNext" onclick="scNext()">Continue</button>
     </div>
-
-    <div id="scLaborWrap" class="hidden">
-      <span class="sc-label">Laborer / worker name</span>
-      <input class="sc-input" id="scLaborName" placeholder="e.g. Juan Dela Cruz">
-    </div>
-
-    <span class="sc-label">Note (optional)</span>
-    <textarea class="sc-textarea" id="scNote" rows="2" placeholder="Anything staff should know — supplier, what it's for…"></textarea>
-
-    <button type="button" class="sc-save" id="scSave" onclick="scSave()">Send to Inbox</button>
-    <div class="sc-msg err" id="scErr"></div>
   </div>
 
-  <div class="sc-done" id="scDone">
-    <div class="big">✅</div>
-    <h2 id="scDoneTitle">Sent to the Expense Inbox</h2>
-    <p>Staff will see it as pending until they encode it.</p>
-    <div class="row">
-      <button type="button" class="again" onclick="scReset()">Send another</button>
-      <a class="home" href="admin.html">Open Admin</a>
+  <!-- Done -->
+  <div class="sc-center hidden" id="scDone">
+    <div class="sc-done-badge">✓</div>
+    <h2 class="sc-done-h2" id="scDoneTitle">All sent!</h2>
+    <p class="sc-done-p">Staff will encode the details from your receipt. Nothing else for you to do.</p>
+    <div class="sc-done-actions">
+      <button type="button" class="sc-done-primary" onclick="scResetAll()">Send another</button>
+      <a class="sc-done-secondary" href="admin.html">Open Admin</a>
     </div>
   </div>
 </div>
+
+<input type="file" id="scFile" accept="image/*,application/pdf" multiple class="hidden">
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-config.js"></script>
@@ -123,19 +136,51 @@ if ('serviceWorker' in navigator) {
 }
 
 const SHARE_CACHE = 'dacs-share-intake';
-let scFiles   = [];      // [{ file, previewUrl }]
-let scSystem  = 'pc';
-let scFolders = [];      // Project Control folders
-let scPmProjects = [];   // Project Management construction projects
 
-const TYPE_OPTIONS = {
-  pc: [ ['materials','Materials'], ['labor','Labor'], ['overhead','Overhead'] ],
-  pm: [ ['labor','Labor'], ['materials','Materials'], ['both','Out Source'] ],
+// ── Wizard copy + choice data (from the approved design) ──
+const SYSTEMS = [
+  { v: 'pc', l: 'Project Control',    s: 'DAC-managed site projects' },
+  { v: 'pm', l: 'Project Management', s: 'Client-managed builds' },
+];
+const TYPES = {
+  pc: [ { v: 'materials', l: 'Materials', s: 'Cement, rebar, hardware' },
+        { v: 'labor',     l: 'Labor',     s: 'Worker wages' },
+        { v: 'overhead',  l: 'Overhead',  s: 'Fuel, permits, misc.' } ],
+  pm: [ { v: 'labor',     l: 'Labor',     s: 'Worker wages' },
+        { v: 'materials', l: 'Materials', s: 'Supplies bought' },
+        { v: 'both',      l: 'Out Source',s: 'Subcontracted work' } ],
 };
+const HEAD = {
+  photo:    { h: 'Add the receipt photo',      s: 'Take a photo or upload the receipt. You can add more than one.' },
+  system:   { h: 'Which system is this for?',  s: 'Not sure? Most site receipts are Project Control.' },
+  project:  { h: 'Which project?',             s: 'Pick the project this expense belongs to.' },
+  type:     { h: 'What kind of expense?',      s: 'Choose the closest match — staff can fix it later.' },
+  category: { h: 'What material is it?',       s: 'A short name is enough. Tap a suggestion or type your own.' },
+  labor:    { h: 'Whose labor is this?',       s: 'Type the worker or laborer’s name.' },
+  note:     { h: 'Anything staff should know?',s: 'Optional — supplier name, what it’s for, etc.' },
+  review:   { h: 'Quick check before sending', s: 'Make sure this looks right, then send.' },
+};
+const DEFAULT_CATS = ['Cement', 'Rebar', 'Electrical', 'Plumbing', 'Paint', 'Hardware'];
 
+// ── State ──
+let S = scFresh();
+let scFolders = [], scPmProjects = [], scDbCats = [];
+
+function scFresh() {
+  return { step: 'photo', sys: 'pc', type: 'materials', project: '', cat: '', labor: '', note: '', photos: [], err: '' };
+}
+function scSteps() {
+  const s = ['photo', 'system', 'project', 'type'];
+  if (S.type === 'materials') s.push('category');
+  else if (S.type === 'labor') s.push('labor');
+  s.push('note', 'review');
+  return s;
+}
 function $(id) { return document.getElementById(id); }
-function scShowErr(msg) { const e = $('scErr'); e.textContent = msg; e.style.display = 'block'; }
-function scHideErr() { $('scErr').style.display = 'none'; }
+function scEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 // ── Shared-file intake (from the service worker's cache) ──
 async function scLoadSharedFiles() {
@@ -148,7 +193,7 @@ async function scLoadSharedFiles() {
       const blob = await res.blob();
       let name = 'shared-' + i;
       try { name = decodeURIComponent(res.headers.get('X-File-Name') || name); } catch (_) {}
-      scAddFile(new File([blob], name, { type: blob.type }));
+      scPushFile(new File([blob], name, { type: blob.type }));
     }
   } catch (_) {}
 }
@@ -159,56 +204,24 @@ async function scClearSharedCache() {
   } catch (_) {}
 }
 
-function scAddFile(file) {
+function scPushFile(file) {
   const isImg = (file.type || '').startsWith('image/');
-  scFiles.push({ file, previewUrl: isImg ? URL.createObjectURL(file) : null });
-  scRenderThumbs();
+  S.photos.push({ file, previewUrl: isImg ? URL.createObjectURL(file) : null });
+  S.err = '';
 }
-function scRemoveFile(i) {
-  const f = scFiles.splice(i, 1)[0];
-  if (f && f.previewUrl) URL.revokeObjectURL(f.previewUrl);
-  scRenderThumbs();
-}
-function scRenderThumbs() {
-  $('scThumbs').innerHTML = scFiles.map((f, i) =>
-    '<div class="sc-thumb">'
-    + (f.previewUrl ? '<img src="' + f.previewUrl + '" alt="">' : '📄 ' + (f.file.name || 'file'))
-    + '<button type="button" class="rm" onclick="scRemoveFile(' + i + ')">×</button>'
-    + '</div>'
-  ).join('');
-}
+window.scRemovePhoto = function (i) {
+  const p = S.photos.splice(i, 1)[0];
+  if (p && p.previewUrl) URL.revokeObjectURL(p.previewUrl);
+  scRender();
+};
 
 $('scFile').addEventListener('change', (e) => {
-  for (const f of e.target.files) scAddFile(f);
+  for (const f of e.target.files) scPushFile(f);
   e.target.value = '';
+  scRender();
 });
 
-// ── System / project / type pickers ──
-function scSetSystem(sys) {
-  scSystem = sys;
-  document.querySelectorAll('#scSysSeg button').forEach((b) => b.classList.toggle('on', b.dataset.sys === sys));
-  const sel = $('scType');
-  sel.innerHTML = TYPE_OPTIONS[sys].map(([v, l]) => '<option value="' + v + '">' + l + '</option>').join('');
-  scTypeChanged();
-  scFillProjects();
-}
-function scTypeChanged() {
-  const t = $('scType').value;
-  $('scCatWrap').classList.toggle('hidden', t !== 'materials');
-  $('scLaborWrap').classList.toggle('hidden', t !== 'labor');
-}
-function scFillProjects() {
-  const sel = $('scProject');
-  if (scSystem === 'pc') {
-    sel.innerHTML = '<option value="">— pick a project —</option>'
-      + scFolders.map((f) => '<option value="' + f.id + '">' + scEsc(f.name || 'Unnamed') + (f.parentFolderId ? ' (Additional Works)' : '') + '</option>').join('');
-  } else {
-    sel.innerHTML = '<option value="">— pick a project —</option>'
-      + scPmProjects.map((p) => '<option value="' + p.id + '">' + scEsc((p.clientName ? p.clientName + ' — ' : '') + (p.projectName || 'Unnamed')) + '</option>').join('');
-  }
-}
-function scEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
-
+// ── Data loads ──
 async function scLoadPickers() {
   try {
     const [fSnap, pSnap, cSnap] = await Promise.all([
@@ -218,76 +231,198 @@ async function scLoadPickers() {
     ]);
     scFolders    = fSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
     scPmProjects = pSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    $('scCatList').innerHTML = cSnap.docs.map((d) => '<option value="' + scEsc((d.data() || {}).name || '') + '">').join('');
-    scFillProjects();
+    scDbCats     = cSnap.docs.map((d) => (d.data() || {}).name).filter(Boolean);
+    if (S.step === 'project' || S.step === 'category') scRender();
   } catch (e) {
-    scShowErr('Could not load projects: ' + (e.message || e));
+    S.err = 'Could not load projects: ' + (e.message || e);
+    scRender();
   }
 }
+function scProjectOptions() {
+  if (S.sys === 'pc') {
+    return scFolders.map((f) => ({ v: f.id, l: f.name || 'Unnamed', s: f.parentFolderId ? 'Additional Works' : '' }));
+  }
+  return scPmProjects.map((p) => ({
+    v: p.id,
+    l: (p.clientName ? p.clientName + ' — ' : '') + (p.projectName || 'Unnamed'),
+    s: '',
+  }));
+}
+function scCats() { return scDbCats.length ? scDbCats : DEFAULT_CATS; }
 
-// ── Save: upload each file + one inbox row per file ──
-async function scSave() {
-  scHideErr();
-  if (!scFiles.length)        { scShowErr('Attach at least one image or PDF.'); return; }
-  const projectId = $('scProject').value;
-  if (!projectId)             { scShowErr('Pick a project.'); return; }
-  const entryType = $('scType').value;
+// ── Navigation ──
+window.scChoose = function (stepKey, val) {
+  if (stepKey === 'system') { S.sys = val; S.type = TYPES[val][0].v; S.project = ''; }
+  else if (stepKey === 'project') S.project = val;
+  else if (stepKey === 'type') S.type = val;
+  S.err = '';
+  const steps = scSteps();
+  const i = steps.indexOf(stepKey);
+  if (i > -1 && i < steps.length - 1) S.step = steps[i + 1];
+  scRender();
+};
+window.scNext = function () {
+  const steps = scSteps();
+  const i = steps.indexOf(S.step);
+  if (S.step === 'photo' && S.photos.length === 0) { S.err = 'Please add at least one photo or PDF first.'; scRender(); return; }
+  S.err = '';
+  if (i < steps.length - 1) S.step = steps[i + 1];
+  scRender();
+};
+window.scBack = function () {
+  const steps = scSteps();
+  const i = steps.indexOf(S.step);
+  if (i > 0) S.step = steps[i - 1];
+  S.err = '';
+  scRender();
+};
+window.scSetField = function (f, val) { S[f] = val; };
+window.scPickCat = function (c) { S.cat = c; scRender(); };
+window.scResetAll = function () {
+  S.photos.forEach((p) => { if (p.previewUrl) URL.revokeObjectURL(p.previewUrl); });
+  S = scFresh();
+  $('scDone').classList.add('hidden');
+  $('scWizard').classList.remove('hidden');
+  scRender();
+};
 
-  const btn = $('scSave');
-  btn.disabled = true; btn.textContent = 'Sending…';
+// ── Send (upload each file + one inbox row per file) ──
+window.scSend = async function () {
+  const btn = $('scSendBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
   try {
     const email = (auth.currentUser && auth.currentUser.email) || '';
-    for (let i = 0; i < scFiles.length; i++) {
-      const file = scFiles[i].file;
+    for (let i = 0; i < S.photos.length; i++) {
+      const file = S.photos[i].file;
       const safe = (file.name || 'receipt').replace(/[^a-zA-Z0-9._-]/g, '_');
       const ref  = storage.ref('expenseInbox/' + Date.now() + '_' + i + '_' + safe);
       await ref.put(file);
       const url = await ref.getDownloadURL();
       const row = {
-        system:    scSystem,
+        system:    S.sys,
         imageUrl:  url,
         imageName: file.name || safe,
-        entryType: entryType,
-        category:  entryType === 'materials' ? ($('scCategory').value.trim() || null) : null,
-        laborName: entryType === 'labor' ? ($('scLaborName').value.trim() || null) : null,
-        note:      $('scNote').value.trim() || null,
+        entryType: S.type,
+        category:  S.type === 'materials' ? (S.cat.trim() || null) : null,
+        laborName: S.type === 'labor' ? (S.labor.trim() || null) : null,
+        note:      S.note.trim() || null,
         status:    'pending',
         createdBy: email,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp(),
       };
-      if (scSystem === 'pc') row.folderId = projectId; else row.pmProjectId = projectId;
+      if (S.sys === 'pc') row.folderId = S.project; else row.pmProjectId = S.project;
       await db.collection('expenseInbox').add(row);
     }
     await scClearSharedCache();
-    $('scDoneTitle').textContent = scFiles.length > 1
-      ? scFiles.length + ' items sent to the Expense Inbox'
-      : 'Sent to the Expense Inbox';
-    $('scForm').classList.add('hidden');
-    $('scDone').style.display = 'block';
+    $('scDoneTitle').textContent = S.photos.length > 1 ? 'All ' + S.photos.length + ' sent!' : 'All sent!';
+    $('scWizard').classList.add('hidden');
+    $('scDone').classList.remove('hidden');
   } catch (e) {
-    scShowErr('Save failed: ' + (e.message || e));
-  } finally {
-    btn.disabled = false; btn.textContent = 'Send to Inbox';
+    S.err = 'Save failed: ' + (e.message || e);
+    if (btn) { btn.disabled = false; btn.textContent = 'Send to Inbox'; }
+    scRender();
   }
-}
+};
 
-function scReset() {
-  scFiles.forEach((f) => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
-  scFiles = [];
-  scRenderThumbs();
-  $('scNote').value = ''; $('scCategory').value = ''; $('scLaborName').value = '';
-  $('scDone').style.display = 'none';
-  $('scForm').classList.remove('hidden');
+// ── Render ──
+function scRender() {
+  const steps = scSteps();
+  const idx = steps.indexOf(S.step);
+  const head = HEAD[S.step] || { h: '', s: '' };
+
+  $('scDots').innerHTML = steps.map((k, i) =>
+    '<div class="sc-dot' + (i < idx ? ' done' : i === idx ? ' current' : '') + '"></div>').join('');
+  $('scStepNum').textContent = 'Step ' + (idx + 1) + ' of ' + steps.length;
+
+  let html = '<h1 class="sc-h1">' + scEsc(head.h) + '</h1><p class="sc-sub">' + scEsc(head.s) + '</p>';
+
+  if (S.step === 'photo') {
+    html += '<button type="button" class="sc-upload" onclick="document.getElementById(\'scFile\').click()">'
+      + '<span class="sc-upload-plus">＋</span>Take or upload a photo</button>';
+    if (S.photos.length) {
+      html += '<div class="sc-thumbs">' + S.photos.map((p, i) =>
+        '<div class="sc-thumb">'
+        + (p.previewUrl ? '<img src="' + p.previewUrl + '" alt="receipt">' : '<span class="sc-thumb-pdf">📄 ' + scEsc(p.file.name || 'file') + '</span>')
+        + '<button type="button" class="sc-thumb-rm" onclick="scRemovePhoto(' + i + ')">×</button></div>'
+      ).join('') + '</div>';
+    }
+  }
+
+  else if (S.step === 'system' || S.step === 'project' || S.step === 'type') {
+    let list, sel;
+    if (S.step === 'system') { list = SYSTEMS; sel = S.sys; }
+    else if (S.step === 'project') { list = scProjectOptions(); sel = S.project; }
+    else { list = TYPES[S.sys]; sel = S.type; }
+    if (S.step === 'project' && !list.length) {
+      html += '<p class="sc-sub">Loading projects…</p>';
+    }
+    html += '<div class="sc-options">' + list.map((o) => {
+      const on = o.v === sel;
+      return '<button type="button" class="sc-opt' + (on ? ' on' : '') + '" onclick="scChoose(\'' + S.step + '\',\'' + scEsc(o.v) + '\')">'
+        + '<div><div class="sc-opt-label">' + scEsc(o.l) + '</div>'
+        + (o.s ? '<div class="sc-opt-sub">' + scEsc(o.s) + '</div>' : '') + '</div>'
+        + '<span class="sc-radio">' + (on ? '<span>✓</span>' : '') + '</span></button>';
+    }).join('') + '</div>';
+  }
+
+  else if (S.step === 'category' || S.step === 'labor') {
+    const field = S.step === 'category' ? 'cat' : 'labor';
+    const ph = S.step === 'category' ? 'e.g. Cement' : 'e.g. Juan Dela Cruz';
+    html += '<input class="sc-text" id="scTextInput" value="' + scEsc(S[field]) + '" placeholder="' + ph + '" oninput="scSetField(\'' + field + '\', this.value)">';
+    if (S.step === 'category') {
+      html += '<div class="sc-chips">' + scCats().map((c) =>
+        '<button type="button" class="sc-chip' + (S.cat === c ? ' on' : '') + '" onclick="scPickCat(\'' + scEsc(c).replace(/'/g, "\\'") + '\')">' + scEsc(c) + '</button>'
+      ).join('') + '</div>';
+    }
+  }
+
+  else if (S.step === 'note') {
+    html += '<textarea class="sc-text" rows="5" placeholder="Optional — supplier, what it’s for…" oninput="scSetField(\'note\', this.value)">' + scEsc(S.note) + '</textarea>';
+  }
+
+  else if (S.step === 'review') {
+    const sysL  = (SYSTEMS.find((x) => x.v === S.sys) || {}).l || '—';
+    const typeL = (TYPES[S.sys].find((x) => x.v === S.type) || {}).l || '—';
+    const projL = (scProjectOptions().find((x) => x.v === S.project) || {}).l || '—';
+    const rows = [
+      ['Photos', S.photos.length + ' file' + (S.photos.length === 1 ? '' : 's')],
+      ['System', sysL], ['Project', projL], ['Type', typeL],
+    ];
+    if (S.type === 'materials') rows.push(['Material', S.cat || '—']);
+    if (S.type === 'labor') rows.push(['Worker', S.labor || '—']);
+    rows.push(['Note', S.note || '—']);
+    html += '<div class="sc-review">' + rows.map(([l, v]) =>
+      '<div class="sc-rrow"><span class="sc-rlabel">' + scEsc(l) + '</span><span class="sc-rvalue">' + scEsc(v) + '</span></div>'
+    ).join('') + '</div>'
+    + '<button type="button" class="sc-send" id="scSendBtn" onclick="scSend()">Send to Inbox</button>';
+  }
+
+  if (S.err) html += '<div class="sc-err">' + scEsc(S.err) + '</div>';
+  $('scBody').innerHTML = html;
+
+  // Footer: Back on any step past the first; Continue only on free-input steps
+  // (choice steps auto-advance, review has its own Send button).
+  const showContinue = ['photo', 'category', 'labor', 'note'].includes(S.step);
+  const canBack = idx > 0;
+  $('scFooter').classList.toggle('hidden', !(showContinue || canBack));
+  $('scBack').classList.toggle('hidden', !canBack);
+  $('scNext').classList.toggle('hidden', !showContinue);
+  $('scNext').textContent = S.step === 'note' ? 'Review' : 'Continue';
 }
 
 // ── Boot: auth gate, then pickers + shared files ──
 auth.onAuthStateChanged(async (user) => {
-  if (!user) { $('scGate').style.display = 'block'; $('scCard').style.display = 'none'; return; }
-  $('scGate').style.display = 'none';
-  $('scCard').style.display = 'block';
-  scSetSystem('pc');
+  if (!user) {
+    $('scGate').classList.remove('hidden');
+    $('scWizard').classList.add('hidden');
+    return;
+  }
+  $('scGate').classList.add('hidden');
+  $('scWizard').classList.remove('hidden');
+  scRender();
   await Promise.all([scLoadPickers(), scLoadSharedFiles()]);
+  scRender();
 });
 </script>
 </body>
