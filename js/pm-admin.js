@@ -106,7 +106,7 @@ function _pmLoadWsPanel(panelId) {
     switch(panelId) {
         case 'ws-panel-overview':  _pmLoadOverview();                    break;
         case 'ws-panel-week':      _pmLoadWeekBuilder();
-                                   if (window.expenseInboxRenderPM && _pmActiveProject) expenseInboxRenderPM(_pmActiveProject.id);
+                                   if (window.expenseInboxRenderPM && _pmActiveProject) expenseInboxRenderPM(_pmActiveProject.id, _pmActiveProject.name || '');
                                    break;
         case 'ws-panel-contracts': _pmLoadContractsTab();                 break;
         case 'ws-panel-materials': _pmLoadProcItems();                    break;

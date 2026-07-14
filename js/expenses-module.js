@@ -6190,7 +6190,7 @@ function mvpNavigate(state, folderId) {
         mvpSwitchTab('materials');
         // selectFolder loads all expenses/payroll for the folder
         if (typeof selectFolder === 'function') selectFolder(_mvpCurrentFolderId);
-        if (window.expenseInboxRenderPC) expenseInboxRenderPC(_mvpCurrentFolderId);
+        if (window.expenseInboxRenderPC) expenseInboxRenderPC(_mvpCurrentFolderId, folder ? folder.name : '');
     }
 }
 

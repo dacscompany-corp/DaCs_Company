@@ -831,8 +831,8 @@
                     </div>
                 </div>
 
-                <!-- Expense Inbox — receipts shared by admin, pending until encoded (expense-inbox.js) -->
-                <div id="eiPanelPC"></div>
+                <!-- Expense Inbox lives inside the Materials / Payroll tab panels
+                     below, routed by receipt type (expense-inbox.js) -->
 
                 <!-- Tab Navigation -->
                 <div class="mvp-tab-nav">
@@ -852,6 +852,8 @@
 
                 <!-- Tab: Materials -->
                 <div id="mvpTabMaterials" class="mvp-tab-panel">
+                    <!-- Expense Inbox: materials + overhead receipts (expense-inbox.js) -->
+                    <div id="eiPanelPCMaterials"></div>
                     <div class="mvp-tab-topbar">
                         <div class="exp-search-bar">
                             <div class="exp-search-input-wrap">
@@ -889,6 +891,8 @@
 
                 <!-- Tab: Payroll -->
                 <div id="mvpTabPayroll" class="mvp-tab-panel" style="display:none;">
+                    <!-- Expense Inbox: labor receipts (expense-inbox.js) -->
+                    <div id="eiPanelPCPayroll"></div>
                     <div class="mvp-tab-topbar">
                         <div class="exp-search-bar">
                             <div class="exp-search-input-wrap">
