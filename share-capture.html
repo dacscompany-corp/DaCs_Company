@@ -204,10 +204,34 @@ async function scClearSharedCache() {
   } catch (_) {}
 }
 
+// Whitelist: real raster images + PDF only. `accept="image/*"` on the input is
+// a UI hint the OS share sheet ignores, so validate here too. SVG is refused on
+// purpose — an image/svg+xml "receipt" can carry <script> that would run when
+// the receipt is later opened in a tab.
+const SC_MAX_BYTES = 25 * 1024 * 1024;                 // 25 MB per file
+const SC_ALLOWED_EXT = /\.(jpe?g|png|webp|heic|heif|pdf)$/i;
+function scRejectReason(file) {
+  const type = (file.type || '').toLowerCase();
+  const name = file.name || '';
+  if (/\.svg$/i.test(name) || type === 'image/svg+xml')
+    return 'SVG files aren’t allowed — please share a photo (JPG/PNG) or a PDF.';
+  const isImage = type.startsWith('image/');           // any raster image type
+  const isPdf   = type === 'application/pdf';
+  const extOk   = SC_ALLOWED_EXT.test(name);           // fallback when a shared file has no/blank type
+  if (!isImage && !isPdf && !extOk)
+    return 'That file type isn’t supported — please add a photo or a PDF.';
+  if (file.size > SC_MAX_BYTES)
+    return 'That file is too large (max 25 MB). Please add a smaller photo or PDF.';
+  return null;
+}
+
 function scPushFile(file) {
+  const bad = scRejectReason(file);
+  if (bad) { S.err = bad; return false; }
   const isImg = (file.type || '').startsWith('image/');
   S.photos.push({ file, previewUrl: isImg ? URL.createObjectURL(file) : null });
   S.err = '';
+  return true;
 }
 window.scRemovePhoto = function (i) {
   const p = S.photos.splice(i, 1)[0];

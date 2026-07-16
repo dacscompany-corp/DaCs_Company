@@ -40,7 +40,14 @@
 
     function _eiEsc(s) {
         return String(s == null ? '' : s)
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+    // Only http(s) URLs (our signed/public uploads links) may reach an href/src.
+    // Drops javascript:/data: so a crafted image_url can't execute on click.
+    function _eiSafeUrl(u) {
+        const s = String(u == null ? '' : u).trim();
+        return /^https?:\/\//i.test(s) ? s : '';
     }
     function _eiDate(ts) {
         if (!ts) return '';
@@ -190,10 +197,11 @@
             const ex     = !!st.expanded[it.id];
             const tCol   = _EI_TYPE_COLORS[it.entryType] || { bg: '#f3f2ef', fg: '#6f6e69' };
             const tLab   = labels[it.entryType] || it.entryType || '—';
+            const imgUrl = _eiEsc(_eiSafeUrl(it.imageUrl));
             const isPdf  = /\.pdf($|\?)/i.test(it.imageName || '') || /\.pdf($|\?)/i.test(it.imageUrl || '');
             const thumb  = isPdf
                 ? '<div style="width:86px;height:86px;border-radius:13px;border:1px solid #e2e1dc;background:#f3f2ef;display:flex;align-items:center;justify-content:center;font-size:28px;flex:none;">📄</div>'
-                : '<img src="' + _eiEsc(it.imageUrl) + '" alt="receipt" loading="lazy" style="width:86px;height:86px;border-radius:13px;border:1px solid #e2e1dc;object-fit:cover;flex:none;">';
+                : '<img src="' + imgUrl + '" alt="receipt" loading="lazy" style="width:86px;height:86px;border-radius:13px;border:1px solid #e2e1dc;object-fit:cover;flex:none;">';
             const sender = _eiEsc((it.createdBy || '').split('@')[0] || 'admin');
             const secondLabel = it.laborName ? 'Worker' : 'Category';
             const secondValue = _eiEsc(it.laborName || it.category || '—');
@@ -212,7 +220,7 @@
 
             return '<div style="border:1px solid ' + (ex ? '#cfe0d6' : '#e6e5df') + ';background:' + (isDone ? '#f8faf8' : '#fff') + ';border-radius:16px;padding:14px;transition:border-color .15s;' + (isDone ? 'opacity:.78;' : '') + '">'
                 + '<div style="display:flex;gap:14px;align-items:center;">'
-                +   '<a href="' + _eiEsc(it.imageUrl) + '" target="_blank" rel="noopener" style="flex:none;line-height:0;">' + thumb + '</a>'
+                +   '<a href="' + imgUrl + '" target="_blank" rel="noopener" style="flex:none;line-height:0;">' + thumb + '</a>'
                 +   '<div onclick="_eiToggleExpand(\'' + containerId + '\',\'' + it.id + '\')" style="flex:1;min-width:0;cursor:pointer;">'
                 +     '<div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">'
                 +       '<span style="width:8px;height:8px;border-radius:50%;flex:none;background:' + tCol.fg + ';"></span>'
@@ -231,7 +239,7 @@
                 +     '<span style="color:#9b9a94;">Sent by</span><span style="color:#3c3b36;font-weight:600;">' + sender + '</span>'
                 +     '<span style="color:#9b9a94;">Status</span><span>' + statusHtml + '</span>'
                 +   '</div>'
-                +   '<a href="' + _eiEsc(it.imageUrl) + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;margin-top:14px;padding:11px 18px;border:1.5px solid #157a52;border-radius:12px;font:700 13px \'IBM Plex Sans\';color:#157a52;text-decoration:none;">Open receipt →</a>'
+                +   '<a href="' + imgUrl + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;margin-top:14px;padding:11px 18px;border:1.5px solid #157a52;border-radius:12px;font:700 13px \'IBM Plex Sans\';color:#157a52;text-decoration:none;">Open receipt →</a>'
                 + '</div>'
                 + '</div>';
         };

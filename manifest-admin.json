@@ -20,7 +20,7 @@
       "text": "text",
       "url": "url",
       "files": [
-        { "name": "media", "accept": ["image/*", "application/pdf"] }
+        { "name": "media", "accept": ["image/*", "application/pdf"], "multiple": true }
       ]
     }
   },
