@@ -461,6 +461,7 @@ function showDashboard() {
         if (typeof window.syncNewClientsBadgeEager === 'function') window.syncNewClientsBadgeEager();
         if (typeof window.syncNewUsersBadgeEager === 'function') window.syncNewUsersBadgeEager();
         if (typeof window.syncUrgentBadgeEager === 'function') window.syncUrgentBadgeEager();
+        if (typeof window.eiSyncGlobalBadges === 'function') window.eiSyncGlobalBadges();
     }, 500);
 
     // Start real-time appointments listener only after auth is confirmed

@@ -312,8 +312,41 @@
             }
             _eiRender(containerId);
             _eiUpdateBadge(containerId);
+            if (typeof window.eiSyncGlobalBadges === 'function') window.eiSyncGlobalBadges();
         } catch (e) {
             alert('Could not update the inbox item: ' + (e.message || e));
+        }
+    };
+
+    // ── Global nav badge ──────────────────────────────────────────────
+    // Portal-wide "receipts waiting" count so owner/staff know a shared receipt
+    // arrived WITHOUT opening a project. One badge per system on its nav group:
+    //   Expenses group   (#expenses-group-badge) → pending Project Control receipts
+    //   Project Mgmt group (#pm-group-badge)     → pending Project Management receipts
+    // The per-tab badges (_eiUpdateBadge) still pinpoint the exact tab.
+    function _eiSetGroupBadge(id, count) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (count > 0) { el.textContent = count; el.style.display = 'inline-flex'; }
+        else { el.style.display = 'none'; }
+    }
+    window.eiSyncGlobalBadges = async function () {
+        // Owner + staff only — the same audience RLS lets read the inbox. Workers
+        // and team leaders don't encode receipts, so they get no badge.
+        const role = window.currentUserRole;
+        if (role !== 'owner' && role !== 'staff') return;
+        if (typeof db === 'undefined') return;
+        try {
+            const snap = await db.collection('expenseInbox').where('status', '==', 'pending').get();
+            let pc = 0, pm = 0;
+            snap.docs.forEach((d) => {
+                const sys = (d.data() || {}).system;
+                if (sys === 'pm') pm++; else pc++;   // anything not tagged pm counts as PC
+            });
+            _eiSetGroupBadge('expenses-group-badge', pc);
+            _eiSetGroupBadge('pm-group-badge', pm);
+        } catch (e) {
+            console.warn('expense-inbox: global badge', e.message || e);
         }
     };
 
