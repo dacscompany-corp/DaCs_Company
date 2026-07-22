@@ -384,4 +384,19 @@
         _eiLoad('eiPanelPortal', 'pc', folderId, label);
     };
 
+    // Project Control React portal — per-type panels, one inside each drill so a
+    // receipt appears in the same module where staff encodes it. Labor → Labor
+    // drill, Overhead → Overhead drill, and Materials is the catch-all (materials
+    // + any untyped row) so a stray receipt can never disappear. Each is
+    // ExpenseInboxMount({ kind }) in portal-app.compiled.js.
+    window.expenseInboxRenderPortalLabor = function (folderId, label) {
+        _eiLoad('eiPanelPortalLabor', 'pc', folderId, label, { types: ['labor'] });
+    };
+    window.expenseInboxRenderPortalMaterial = function (folderId, label) {
+        _eiLoad('eiPanelPortalMaterial', 'pc', folderId, label, { notTypes: ['labor', 'overhead'] });
+    };
+    window.expenseInboxRenderPortalOverhead = function (folderId, label) {
+        _eiLoad('eiPanelPortalOverhead', 'pc', folderId, label, { types: ['overhead'] });
+    };
+
 })();

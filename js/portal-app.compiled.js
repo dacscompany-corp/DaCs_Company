@@ -750,11 +750,13 @@ function PageHead({ project, projects, onSelectProject, period, onPeriod, onBack
     Ico.trash
   )));
 }
-function ExpenseInboxMount({ folderId, label }) {
+function ExpenseInboxMount({ folderId, label, kind }) {
   React.useEffect(() => {
-    if (window.expenseInboxRenderPortal) window.expenseInboxRenderPortal(folderId, label);
-  }, [folderId, label]);
-  return /* @__PURE__ */ React.createElement("div", { id: "eiPanelPortal" });
+    const fn = kind === "labor" ? window.expenseInboxRenderPortalLabor : kind === "material" ? window.expenseInboxRenderPortalMaterial : kind === "overhead" ? window.expenseInboxRenderPortalOverhead : window.expenseInboxRenderPortal;
+    if (fn) fn(folderId, label);
+  }, [folderId, label, kind]);
+  const id = kind === "labor" ? "eiPanelPortalLabor" : kind === "material" ? "eiPanelPortalMaterial" : kind === "overhead" ? "eiPanelPortalOverhead" : "eiPanelPortal";
+  return /* @__PURE__ */ React.createElement("div", { id });
 }
 function KPIStrip({ project }) {
   const [amountsHidden, setAmountsHidden] = React.useState(true);
@@ -1226,6 +1228,7 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, ocmP
 
   return h("section", { className: "drill" },
     h("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"),
+    h(ExpenseInboxMount, { folderId, label: project && project.name || "", kind: "overhead" }),
     head, ocmPanel, kpis, body, modal);
 }
 function _awId() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
@@ -1427,7 +1430,7 @@ function AdditionalWorksDrill({ project, onBack, childFolders, additionalWorksRa
     head, kpis, recordsPanel, modal, createModal);
 }
 function _esc2(s) { return String(s == null ? "" : s); }
-function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPayroll, activeFolder }) {
+function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPayroll, activeFolder, folderId }) {
   const rc = React.createElement;
   const [tab, setTab] = React.useState("all");
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -1647,6 +1650,7 @@ function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPa
 
   return rc("section", { className: "drill lc2-drill" },
     rc("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"),
+    rc(ExpenseInboxMount, { folderId, label: project && project.name || "", kind: "labor" }),
     rc("div", { className: "drill-head" },
       rc("div", null,
         rc("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Labor Cost \u00B7 Worker Tracker"),
@@ -1745,7 +1749,7 @@ function openRowSupportingDocs(m) {
     window.open(images[0], "_blank");
   }
 }
-function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder }) {
+function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder, folderId }) {
   const printMaterialReceipt = (m) => {
     const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     const amountFmt = "\u20B1 " + peso(m.amount);
@@ -1879,7 +1883,7 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder 
   };
   const pillBase = { padding: "6px 12px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", whiteSpace: "nowrap" };
   const pillActive = { ...pillBase, background: "#1A5C3A", color: "#fff", borderColor: "#1A5C3A" };
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("section", { className: "drill" }, /* @__PURE__ */ React.createElement("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"), /* @__PURE__ */ React.createElement("div", { className: "drill-head" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Material Cost \xB7 Transaction History"), /* @__PURE__ */ React.createElement("h2", null, "Materials", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "var(--sans)", color: "var(--brand-green)", fontWeight: 700, fontSize: "22px", letterSpacing: "0.02em", marginLeft: 18, background: "rgba(26,90,58,0.12)", padding: "8px 20px", borderRadius: "999px", whiteSpace: "nowrap", verticalAlign: "middle", fontVariantNumeric: "tabular-nums" } }, project.revenue > 0 ? (project.material / project.revenue * 100).toFixed(1) + "%" : "\u2014")), /* @__PURE__ */ React.createElement("div", { className: "sub" }, project.name, " \xB7 ", project.code)), /* @__PURE__ */ React.createElement("button", { className: "btn-primary", onClick: () => openAddEntry("material", childMonths, activeFolder) }, Ico.plus, " Add Expense")), /* @__PURE__ */ React.createElement("div", { className: "drill-stats" }, /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Purchase Order"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.po, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Delivery Receipt"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.dr, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Supplier Invoice"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.si, " / ", count)), _staff() ? null : /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Material Total \xB7 Actual"), /* @__PURE__ */ React.createElement("div", { className: "val total" }, "\u20B1 ", peso(project.material)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "14px 4px 4px" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", flex: "1 1 220px", minWidth: 200, maxWidth: 380 } }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("section", { className: "drill" }, /* @__PURE__ */ React.createElement("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"), /* @__PURE__ */ React.createElement(ExpenseInboxMount, { folderId, label: project && project.name || "", kind: "material" }), /* @__PURE__ */ React.createElement("div", { className: "drill-head" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Material Cost \xB7 Transaction History"), /* @__PURE__ */ React.createElement("h2", null, "Materials", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "var(--sans)", color: "var(--brand-green)", fontWeight: 700, fontSize: "22px", letterSpacing: "0.02em", marginLeft: 18, background: "rgba(26,90,58,0.12)", padding: "8px 20px", borderRadius: "999px", whiteSpace: "nowrap", verticalAlign: "middle", fontVariantNumeric: "tabular-nums" } }, project.revenue > 0 ? (project.material / project.revenue * 100).toFixed(1) + "%" : "\u2014")), /* @__PURE__ */ React.createElement("div", { className: "sub" }, project.name, " \xB7 ", project.code)), /* @__PURE__ */ React.createElement("button", { className: "btn-primary", onClick: () => openAddEntry("material", childMonths, activeFolder) }, Ico.plus, " Add Expense")), /* @__PURE__ */ React.createElement("div", { className: "drill-stats" }, /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Purchase Order"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.po, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Delivery Receipt"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.dr, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Supplier Invoice"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.si, " / ", count)), _staff() ? null : /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Material Total \xB7 Actual"), /* @__PURE__ */ React.createElement("div", { className: "val total" }, "\u20B1 ", peso(project.material)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "14px 4px 4px" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", flex: "1 1 220px", minWidth: 200, maxWidth: 380 } }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
@@ -2403,7 +2407,7 @@ function PortalApp() {
       onBackToGrid: () => setProjectId(null),
       parentFolder
     }
-  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project }), /* @__PURE__ */ React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId) }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { project, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, onBack: () => setView("dashboard") })));
+  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project }), /* @__PURE__ */ React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId) }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { project, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, onBack: () => setView("dashboard") })));
 }
 (function() {
   const mount = document.getElementById("dacsPortalRoot");
