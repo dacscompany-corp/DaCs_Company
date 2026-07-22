@@ -464,7 +464,8 @@ function foldersHealth(folder) {
   if (rem < 20) return { label: "WARNING", cls: "pc-fld-health-warning", barClr: "#A86B00" };
   return { label: "HEALTHY", cls: "pc-fld-health-healthy", barClr: "#1A5C3A" };
 }
-function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, overheadRaw, boqRaw, onPickFolder }) {
+function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, overheadRaw, boqRaw, onPickFolder, inboxByFolder }) {
+  const _ibx = inboxByFolder || {};
   const [openCards, setOpenCards] = React.useState({});
   const rc = React.createElement;
   const [current, setCurrent] = React.useState(null);
@@ -621,6 +622,7 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
           rc("button", { className: "pcf-combo-btn", onClick: () => setComboOpen((o) => !o) },
             rc("span", { className: "pcf-combo-icon" }, Ico.bldg),
             rc("span", { className: "pcf-combo-label" }, rc("span", { className: "pcf-combo-cap" }, "Active project"), rc("span", { className: "pcf-combo-name", style: c ? void 0 : { color: "#908A81", fontStyle: "italic" } }, c ? c.name : "Select a project…")),
+            c ? _inboxCountBadge(_ibx[c.id], { marginRight: 6 }) : null,
             rc("span", { className: "pcf-combo-chev" }, chevSvg)
           ),
           comboOpen && rc("div", { className: "pcf-combo-pop" },
@@ -634,6 +636,7 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
                 : filtered.map((o) => rc("button", { key: o.cc.id, className: "pcf-combo-item" + (o.i === idx ? " selected" : ""), onClick: () => { setCurrent(o.i); setComboOpen(false); setQuery(""); } },
                     rc("span", { className: "pcf-ci-dot", style: { background: DOT[o.cc.status] || "#B8B2A8" } }),
                     rc("span", { style: { minWidth: 0 } }, rc("span", { className: "pcf-ci-name" }, o.cc.name), rc("span", { className: "pcf-ci-meta" }, (o.cc.location ? o.cc.location + " · " : "") + (o.cc.periodCount === 1 ? "1 billing period" : o.cc.periodCount + " billing periods"))),
+                    _inboxCountBadge(_ibx[o.cc.id], { marginLeft: "auto" }),
                     o.i === idx ? rc("span", { className: "pcf-ci-check" }, "✓") : null
                   ))
             )
@@ -649,7 +652,7 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
       c && rc("section", { className: "pcf-panel" },
         rc("div", { className: "pcf-panel-head" },
           rc("div", { className: "pcf-ph-left" },
-            rc("h2", { className: "pcf-ph-title", style: { display: "flex", alignItems: "center", gap: 10 } }, c.name, rc("span", { className: "pc-help-tip tip-down", "data-tip": "This is a project folder. It holds all billing periods, labor costs, material costs, and documents for one construction project. Click 'Open Project' to manage it.", onClick: (e) => e.stopPropagation() }, "?")),
+            rc("h2", { className: "pcf-ph-title", style: { display: "flex", alignItems: "center", gap: 10 } }, c.name, _inboxCountBadge(_ibx[c.id]), rc("span", { className: "pc-help-tip tip-down", "data-tip": "This is a project folder. It holds all billing periods, labor costs, material costs, and documents for one construction project. Click 'Open Project' to manage it.", onClick: (e) => e.stopPropagation() }, "?")),
             rc("div", { className: "pcf-ph-loc" + (c.location ? "" : " muted") }, pinSvg, c.location || "No location set"),
             rc("div", null, rc("span", { className: "pcf-status-chip " + st.cls }, rc("span", { className: "pcf-dot" }), st.label))
           ),
@@ -703,7 +706,8 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
     window.aiSummarizeFolder && window.aiSummarizeFolder({ name: c.name, location: c.location, revenue: c.revenue, allocated: c.allocated, labor: c.labor, material: c.material, overhead: c.overhead || 0, coverCost: c.coverCost, remaining: c.remaining, spentPct: c.spentPct, periodCount: c.periodCount, statusLabel: c.h.label });
   } }, Ico.sparkles), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Edit folder", onClick: (e) => openEdit(c.id, e) }, Ico.pencil), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon pc-row-icon-danger", title: "Delete folder", onClick: (e) => openDelete(c.id, e) }, Ico.trash))))));
 }
-function PageHead({ project, projects, onSelectProject, period, onPeriod, onBackToGrid, parentFolder }) {
+function PageHead({ project, projects, onSelectProject, period, onPeriod, onBackToGrid, parentFolder, inboxByFolder }) {
+  const _ibx = inboxByFolder || {};
   const [open, setOpen] = React.useState(false);
   const [pOpen, setPOpen] = React.useState(false);
   const PERIODS = ["This Month", "Last 30 days", "Quarter to Date", "Year to Date", "All Time"];
@@ -719,7 +723,8 @@ function PageHead({ project, projects, onSelectProject, period, onPeriod, onBack
       }
     },
     /* @__PURE__ */ React.createElement("span", null, p.name),
-    /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-3)", marginLeft: "auto" } }, p.code)
+    _inboxCountBadge(_ibx[p.id], { marginLeft: "auto" }),
+    /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "var(--ink-3)", marginLeft: _ibx[p.id] ? 8 : "auto" } }, p.code)
   )))), /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement("button", { className: "pc-pill", onClick: () => setPOpen((o) => !o) }, Ico.calendar, /* @__PURE__ */ React.createElement("span", { className: "pc-pill-val" }, period), Ico.chevron), pOpen && /* @__PURE__ */ React.createElement("div", { className: "dropdown", style: dropdownStyle }, PERIODS.map((p) => /* @__PURE__ */ React.createElement(
     "button",
     {
@@ -791,18 +796,49 @@ function KPIStrip({ project }) {
   ];
   return /* @__PURE__ */ React.createElement("section", { className: "pc-kpi-strip" + (_staff() ? " staff-kpi-single" : ""), style: (amountsHidden && !_staff()) ? { position: "relative", padding: "8px 0", marginBottom: 12 } : { position: "relative" } }, (amountsHidden && !_staff()) ? /* @__PURE__ */ React.createElement("div", { className: "pc-kpi", style: { borderRight: 0 } }, /* @__PURE__ */ React.createElement("span", { className: "pc-kpi-lbl" }, "Financial summary hidden — click the eye to show")) : kpis.map((k, i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "pc-kpi" }, /* @__PURE__ */ React.createElement("span", { className: "pc-kpi-lbl" }, k.lbl), /* @__PURE__ */ React.createElement("span", { className: "pc-kpi-val" + (k.accent ? " pc-accent" : "") + (k.warn ? " pc-warn" : "") + (k.danger ? " pc-danger" : "") }, k.val), k.danger && /* @__PURE__ */ React.createElement("span", { className: "pc-over-badge" }, "Over \u20B1", COVER_LIMIT.toLocaleString("en-PH")))), _staff() ? null : /* @__PURE__ */ React.createElement("button", { type: "button", "aria-label": amountsHidden ? "Show amounts" : "Hide amounts", title: amountsHidden ? "Show amounts" : "Hide amounts", onClick: () => setAmountsHidden((h) => !h), style: { position: "absolute", top: 8, right: 12, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 28, height: 28, border: 0, borderRadius: 8, background: "transparent", color: "var(--text-light)", cursor: "pointer" } }, amountsHidden ? /* @__PURE__ */ React.createElement("svg", { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" }), /* @__PURE__ */ React.createElement("line", { x1: 1, y1: 1, x2: 23, y2: 23 })) : /* @__PURE__ */ React.createElement("svg", { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" }), /* @__PURE__ */ React.createElement("circle", { cx: 12, cy: 12, r: 3 }))));
 }
-function _flowInboxBadge(n) {
+// ── Receipt Mark ─────────────────────────────────────────────────────
+// The one mark for pending Expense-Inbox receipts. Styling lives in
+// css/admin-renovation.css (.rm / .rm-count / .rm-label); this only picks
+// the size. Design: "Mark Features.dc.html" → 1a "Solid signal".
+// The inbox glyph replaces the old 📥 emoji so it renders identically
+// on every OS and inherits the mark's colour.
+function _rmIcon() {
+  return /* @__PURE__ */ React.createElement(
+    "svg",
+    { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" },
+    /* @__PURE__ */ React.createElement("polyline", { points: "22 12 16 12 14 15 10 15 8 12 2 12" }),
+    /* @__PURE__ */ React.createElement("path", { d: "M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" })
+  );
+}
+// kind: "count" (bare number) | "label" (icon + text). sm = tighter scale.
+// Pulses once whenever the number goes UP — i.e. a receipt just arrived.
+function ReceiptMark({ n, kind, sm, suffix, style }) {
+  const prev = React.useRef(n);
+  const [pulse, setPulse] = React.useState(false);
+  React.useEffect(() => {
+    const rose = n > prev.current;
+    prev.current = n;
+    if (!rose) return;
+    setPulse(true);
+    const t = setTimeout(() => setPulse(false), 1900);
+    return () => clearTimeout(t);
+  }, [n]);
   if (!n) return null;
+  const cls = "rm rm-" + (kind === "label" ? "label" : "count") + (sm ? " rm-sm" : "") + (pulse ? " rm-new" : "");
   return /* @__PURE__ */ React.createElement(
     "span",
-    {
-      className: "pc-flow-inbox-badge",
-      title: n + " receipt" + (n === 1 ? "" : "s") + " waiting to be entered",
-      onClick: (e) => e.stopPropagation(),
-      style: { display: "inline-flex", alignItems: "center", gap: 5, marginLeft: 8, background: "#fbeceb", color: "#b4453a", borderRadius: 99, padding: "2px 10px", font: "700 11px 'IBM Plex Sans', sans-serif", whiteSpace: "nowrap" }
-    },
-    "📥 ", n, " to encode"
+    { className: cls, title: n + " receipt" + (n === 1 ? "" : "s") + " waiting in the Expense Inbox", style },
+    kind === "label" ? _rmIcon() : null,
+    suffix ? n + " " + suffix : String(n)
   );
+}
+// Cost cards (Labor / Material / Overhead) — icon + count, tight scale.
+function _flowInboxBadge(n) {
+  return /* @__PURE__ */ React.createElement(ReceiptMark, { n, kind: "label", sm: true, style: { marginLeft: 8 } });
+}
+// Project pickers (folder combo item, topbar switcher, active-project card).
+function _inboxCountBadge(n, extraStyle) {
+  return /* @__PURE__ */ React.createElement(ReceiptMark, { n, kind: "count", style: extraStyle });
 }
 function FlowCards({ project, onOpen, periodCount, additionalWorksTotal, additionalWorksCount, isAdditionalWorks, inboxPending }) {
   const ib = inboxPending || { labor: 0, material: 0, overhead: 0 };
@@ -1444,6 +1480,27 @@ function AdditionalWorksDrill({ project, onBack, childFolders, additionalWorksRa
     head, kpis, recordsPanel, modal, createModal);
 }
 function _esc2(s) { return String(s == null ? "" : s); }
+// Icons for the contract action toolbar, so each action reads at a glance
+// instead of being one of eight identical words. Every glyph is expressed as
+// plain paths (circles/rects/polylines converted) so one helper renders them
+// all. Design: "Labor Drill.dc.html" → 1a.
+const _LC_ICON_PATHS = {
+  ledger:    ["M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z", "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"],
+  statement: ["M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z", "M14 2v6h6", "M16 13H8", "M16 17H8"],
+  raise:     ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z", "M8 12l4-4 4 4", "M12 16V8"],
+  edit:      ["M12 20h9", "M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"],
+  print:     ["M6 9V2h12v7", "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2", "M6 14h12v8H6z"],
+  attach:    ["M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"],
+  eye:       ["M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z", "M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"],
+  trash:     ["M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"]
+};
+function _lcIcon(name) {
+  return /* @__PURE__ */ React.createElement(
+    "svg",
+    { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" },
+    (_LC_ICON_PATHS[name] || []).map((d, i) => /* @__PURE__ */ React.createElement("path", { key: i, d }))
+  );
+}
 function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPayroll, activeFolder, folderId }) {
   const rc = React.createElement;
   const [tab, setTab] = React.useState("all");
@@ -1584,15 +1641,27 @@ function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPa
           rc("div", { className: "lc2-cmeta" }, "Agreed \u20B1 " + peso(r.agreed) + " \u00B7 Paid \u20B1 " + peso(r.paid) + " \u00B7 " + (r.remaining < 0 ? "Over by \u20B1 " + peso(Math.abs(r.remaining)) : "Remaining \u20B1 " + peso(r.remaining)))
         ),
         cpays.length ? payRows(cpays) : rc("div", { className: "lc2-none" }, "No payments recorded against this contract yet."),
+        // Grouped by purpose — records · modify · documents — with Delete
+        // isolated at the far end so it can't be mistaken for a peer action.
         rc("div", { className: "lc2-cactions" },
-          rc("button", { onClick: () => window.lcOpenLedger && window.lcOpenLedger(r.c.id) }, "Ledger"),
-          rc("button", { onClick: () => window.lcOpenRaiseCap && window.lcOpenRaiseCap(r.c.id) }, "Raise cap"),
-          rc("button", { onClick: () => window.lcOpenEdit && window.lcOpenEdit(r.c.id) }, "Edit contract"),
-          rc("button", { onClick: () => window.lcOpenAgreement && window.lcOpenAgreement(r.c.id) }, "Print agreement"),
-          rc("button", { onClick: () => window.printWorkerLaborSOA && window.printWorkerLaborSOA(w, project.id) }, "Worker statement"),
-          rc("button", { onClick: (e) => window.lcAddFile && window.lcAddFile(r.c.id, e.currentTarget) }, "Add file"),
-          rc("button", { onClick: () => window.lcViewFiles && window.lcViewFiles(r.c.id) }, "View"),
-          rc("button", { className: "danger", onClick: () => window.lcDelete && window.lcDelete(r.c.id) }, "Delete")
+          rc("div", { className: "lc2-cgrp" },
+            rc("button", { className: "primary", onClick: () => window.lcOpenLedger && window.lcOpenLedger(r.c.id) }, _lcIcon("ledger"), "Ledger"),
+            rc("button", { onClick: () => window.printWorkerLaborSOA && window.printWorkerLaborSOA(w, project.id) }, _lcIcon("statement"), "Worker statement")
+          ),
+          rc("span", { className: "lc2-cdiv" }),
+          rc("div", { className: "lc2-cgrp" },
+            rc("button", { onClick: () => window.lcOpenRaiseCap && window.lcOpenRaiseCap(r.c.id) }, _lcIcon("raise"), "Raise cap"),
+            rc("button", { onClick: () => window.lcOpenEdit && window.lcOpenEdit(r.c.id) }, _lcIcon("edit"), "Edit contract")
+          ),
+          rc("span", { className: "lc2-cdiv" }),
+          rc("div", { className: "lc2-cgrp" },
+            rc("button", { onClick: () => window.lcOpenAgreement && window.lcOpenAgreement(r.c.id) }, _lcIcon("print"), "Print agreement"),
+            // e.currentTarget (not e.target) — the click can land on the icon,
+            // and lcAddFile anchors its picker to the button itself.
+            rc("button", { onClick: (e) => window.lcAddFile && window.lcAddFile(r.c.id, e.currentTarget) }, _lcIcon("attach"), "Add file"),
+            rc("button", { onClick: () => window.lcViewFiles && window.lcViewFiles(r.c.id) }, _lcIcon("eye"), "View")
+          ),
+          rc("button", { className: "danger", title: "Delete contract", onClick: () => window.lcDelete && window.lcDelete(r.c.id) }, _lcIcon("trash"), "Delete")
         )
       ));
     });
@@ -2362,6 +2431,16 @@ function PortalApp() {
     });
     return c;
   }, [inboxRaw, projectId]);
+  // folderId → total pending receipts, for the "receipts waiting" mark on every
+  // project picker (folders landing combo, topbar switcher).
+  const inboxByFolder = React.useMemo(() => {
+    const m = {};
+    inboxRaw.forEach((it) => {
+      if (it.status === "encoded" || !it.folderId) return;
+      m[it.folderId] = (m[it.folderId] || 0) + 1;
+    });
+    return m;
+  }, [inboxRaw]);
   const folderPayrollAll = React.useMemo(
     () => payrollRaw.filter((p) => childMonthIds.has(p.projectId)),
     [payrollRaw, childMonthIds]
@@ -2424,7 +2503,8 @@ function PortalApp() {
         expensesRaw,
         overheadRaw,
         boqRaw,
-        onPickFolder: setProjectId
+        onPickFolder: setProjectId,
+        inboxByFolder
       }
     )));
   }
@@ -2437,7 +2517,8 @@ function PortalApp() {
       period,
       onPeriod: setPeriod,
       onBackToGrid: () => setProjectId(null),
-      parentFolder
+      parentFolder,
+      inboxByFolder
     }
   ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project }), /* @__PURE__ */ React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId), inboxPending }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { project, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, onBack: () => setView("dashboard") })));
 }

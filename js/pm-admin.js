@@ -1150,9 +1150,24 @@ async function _pmLoadProjectsList() {
     try {
         const snap = await db.collection('constructionProjects').orderBy('clientName').get();
         _pmProjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Pending Expense-Inbox receipts per project → the "to encode" mark on
+        // each card. One batched read; never let it block or break the grid.
+        try {
+            const inboxSnap = await db.collection('expenseInbox')
+                .where('system', '==', 'pm').where('status', '==', 'pending').get();
+            const counts = {};
+            inboxSnap.docs.forEach(d => {
+                const pid = (d.data() || {}).pmProjectId;
+                if (pid) counts[pid] = (counts[pid] || 0) + 1;
+            });
+            _pmProjects.forEach(p => { p._inboxPending = counts[p.id] || 0; });
+        } catch (e) {
+            console.warn('PM: inbox counts failed', e.message || e);
+        }
         // Enrich each card with real progress / balance / cadence before rendering.
         await Promise.all(_pmProjects.map(_pmComputeProjectMetrics));
         _pmRenderProjectCards(_pmProjects);
+        _pmWatchInboxCounts();   // keep the "to encode" marks live from here on
     } catch(e) {
         grid.innerHTML = `<div class="pm-cards-empty">Error loading projects: ${_esc(e.message)}</div>`;
     }
@@ -1223,6 +1238,72 @@ async function _pmComputeProjectMetrics(p) {
     return p;
 }
 
+// ── Expense-Inbox "to encode" mark on the project cards ──────────────
+// The badge is ALWAYS rendered (hidden while the count is 0) so the realtime
+// watcher below can update it in place — re-rendering the whole grid on every
+// inbox change would fight with whatever the user is doing on the page.
+// Styling is the shared .rm Receipt Mark component in admin-renovation.css
+// ("Mark Features.dc.html" → 1a). The inbox glyph replaces the old 📥 emoji so
+// it renders identically on every OS; the count lives in its own text node so
+// the updater can rewrite it with textContent and never touch the markup.
+const _PM_INBOX_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>';
+
+function _pmInboxBadgeHtml(n) {
+    const c  = Number(n) || 0;
+    const tip = c > 0 ? `${c} receipt${c === 1 ? '' : 's'} waiting in the Expense Inbox` : '';
+    return `<span class="rm rm-label" data-pm-inbox title="${_esc(tip)}"${c > 0 ? '' : ' hidden'}>`
+         + _PM_INBOX_ICON
+         + `<span data-pm-inbox-n>${c} to encode</span></span>`;
+}
+
+function _pmApplyInboxCounts(counts) {
+    (_pmProjects || []).forEach(p => { p._inboxPending = counts[p.id] || 0; });
+    const grid = document.getElementById('pm-cards-grid');
+    if (!grid) return;
+    grid.querySelectorAll('[data-pm-id]').forEach(card => {
+        const n = counts[card.getAttribute('data-pm-id')] || 0;
+        const b = card.querySelector('[data-pm-inbox]');
+        if (!b) return;
+        const was  = Number(b.getAttribute('data-pm-inbox-was')) || 0;
+        const seen = b.hasAttribute('data-pm-inbox-was');
+        const t = b.querySelector('[data-pm-inbox-n]');
+        if (t) t.textContent = `${n} to encode`;
+        b.title = n > 0 ? `${n} receipt${n === 1 ? '' : 's'} waiting in the Expense Inbox` : '';
+        b.hidden = n === 0;
+        // Pulse only on a real increase, never on the first paint after render.
+        if (seen && n > was) {
+            b.classList.remove('rm-new');
+            void b.offsetWidth;
+            b.classList.add('rm-new');
+        } else if (n === 0) {
+            b.classList.remove('rm-new');
+        }
+        b.setAttribute('data-pm-inbox-was', n);
+    });
+}
+
+// Live pending counts. Subscribed once per page; the snapshot fires immediately
+// with current data and again on every share / mark-done, so the card marks stay
+// in step with the panels without a reload.
+let _pmInboxUnsub = null;
+function _pmWatchInboxCounts() {
+    if (_pmInboxUnsub || typeof db === 'undefined') return;
+    try {
+        _pmInboxUnsub = db.collection('expenseInbox')
+            .where('system', '==', 'pm').where('status', '==', 'pending')
+            .onSnapshot(snap => {
+                const counts = {};
+                snap.docs.forEach(d => {
+                    const pid = (d.data() || {}).pmProjectId;
+                    if (pid) counts[pid] = (counts[pid] || 0) + 1;
+                });
+                _pmApplyInboxCounts(counts);
+            }, e => console.warn('PM: inbox watch', e.message || e));
+    } catch (e) {
+        console.warn('PM: inbox watch', e.message || e);
+    }
+}
+
 function _pmRenderProjectCards(projects) {
     const grid = document.getElementById('pm-cards-grid');
     if (!grid) return;
@@ -1272,13 +1353,14 @@ function _pmRenderProjectCards(projects) {
               <div class="pm-card-stat-value num">${_fmt(m.thisFriday)}</div>
             </div>
           </div>
-          <div style="margin-top:13px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div class="pm-card-chips">
+            ${_pmInboxBadgeHtml(p._inboxPending)}
             ${cadenceBadge[m.cadence] || cadenceBadge.ontrack}
             ${(p._partner || p._partnerProfile)
                 ? (() => {
                     const at  = p._partner ? p._partner.acceptedAt : p._partnerProfile.partnerAgreementAcceptedAt;
                     const sig = p._partner ? p._partner.signature  : (p._partnerProfile.partnerAgreementSignature || '');
-                    return `<span title="Partner signed on ${_esc(_pmTsDateStr(at))}${sig ? ' — ' + _esc(sig) : ''}" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 9px;border-radius:20px;"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> Partner signed · ${_esc(_pmTsDateStr(at))}</span>
+                    return `<span title="Partner signed on ${_esc(_pmTsDateStr(at))}${sig ? ' — ' + _esc(sig) : ''}" style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 9px;border-radius:20px;"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> Signed · ${_esc(_pmTsDateShort(at))}</span>
                    <button data-pm-action="partner-agreement" style="font-size:11px;font-weight:600;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;border-radius:7px;padding:3px 9px;cursor:pointer;"><i data-lucide="file-text" style="width:11px;height:11px;vertical-align:-1px;"></i> View</button>`;
                   })()
                 : `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 9px;border-radius:20px;"><i data-lucide="clock" style="width:12px;height:12px;"></i> Partner: pending</span>`}
@@ -3726,6 +3808,19 @@ function _pmTsDateStr(ts) {
     const ms = _pmTsMs(ts);
     if (!ms) return '—';
     return new Date(ms).toLocaleDateString('en-PH', { month:'short', day:'numeric', year:'numeric' });
+}
+// Compact date for the project-card chips. Drops the year when it is the
+// current one ("Jul 2" not "Jul 2, 2026") so the signed chip fits on the chip
+// row instead of wrapping "View" onto a second line. The full date — and the
+// signature — still live in the chip's tooltip, so nothing is lost.
+function _pmTsDateShort(ts) {
+    const ms = _pmTsMs(ts);
+    if (!ms) return '—';
+    const d = new Date(ms);
+    const opts = (d.getFullYear() === new Date().getFullYear())
+        ? { month: 'short', day: 'numeric' }
+        : { month: 'short', day: 'numeric', year: 'numeric' };
+    return d.toLocaleDateString('en-PH', opts);
 }
 function _pmUid(p) { return p + Math.random().toString(36).slice(2, 9); }
 

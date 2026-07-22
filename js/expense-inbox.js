@@ -123,8 +123,10 @@
         if (!n) { if (b) b.remove(); return; }
         if (!b) {
             b = document.createElement('span');
-            b.className = 'ei-tab-badge';
-            b.style.cssText = "margin-left:6px;background:#b4453a;color:#fff;border-radius:99px;padding:1px 7px;font:800 10.5px 'IBM Plex Sans',sans-serif;";
+            // Same Receipt Mark as the top-nav tabs — this is the same idea on a
+            // different tab strip, so it shares the component, not a copy of it.
+            b.className = 'ei-tab-badge rm rm-count rm-sm';
+            b.style.marginLeft = '6px';
             btn.appendChild(b);
         }
         b.textContent = n;
@@ -324,29 +326,97 @@
     //   Expenses group   (#expenses-group-badge) → pending Project Control receipts
     //   Project Mgmt group (#pm-group-badge)     → pending Project Management receipts
     // The per-tab badges (_eiUpdateBadge) still pinpoint the exact tab.
-    function _eiSetGroupBadge(id, count) {
-        const el = document.getElementById(id);
+    // Shared Receipt Mark update: set the number, show/hide, and pulse once
+    // when the count has RISEN (a receipt just landed). Styling is the .rm
+    // component in css/admin-renovation.css — never inline here.
+    function _eiPaintMark(el, count, rose) {
         if (!el) return;
-        if (count > 0) { el.textContent = count; el.style.display = 'inline-flex'; }
-        else { el.style.display = 'none'; }
+        if (count > 0) {
+            el.textContent = count;
+            el.hidden = false;
+            if (rose) {
+                el.classList.remove('rm-new');
+                void el.offsetWidth;          // restart the animation
+                el.classList.add('rm-new');
+            }
+        } else {
+            el.hidden = true;
+            el.classList.remove('rm-new');
+        }
     }
-    window.eiSyncGlobalBadges = async function () {
-        // Owner + staff only — the same audience RLS lets read the inbox. Workers
-        // and team leaders don't encode receipts, so they get no badge.
+    function _eiSetGroupBadge(id, count, rose) {
+        _eiPaintMark(document.getElementById(id), count, rose);
+    }
+
+    // Latest counts, cached. The primary tabs bar (admin.js _buildTabsBar) is
+    // rebuilt on EVERY view switch, which wipes its badges — so it re-applies
+    // them from this cache instead of firing another read each time.
+    const _eiCounts = { pc: 0, pm: 0 };
+
+    // Primary top-nav tab marks, keyed by PRIMARY_NAV id:
+    //   'expenses' → Project Control tab      'pm' → Project Management tab
+    function _eiSetTabBadge(primaryId, count, rose) {
+        const els = document.querySelectorAll('[data-ptab-badge="' + primaryId + '"]');
+        for (let i = 0; i < els.length; i++) {
+            els[i].title = count + ' receipt' + (count === 1 ? '' : 's') + ' waiting in the Expense Inbox';
+            _eiPaintMark(els[i], count, rose);
+        }
+    }
+    window.eiSyncTabBadges = function () {
+        _eiSetTabBadge('expenses', _eiCounts.pc);
+        _eiSetTabBadge('pm', _eiCounts.pm);
+    };
+
+    // First paint must not pulse — a page load is not a fresh arrival.
+    let _eiSeeded = false;
+    function _eiApplyGlobalCounts(docs) {
+        let pc = 0, pm = 0;
+        docs.forEach((d) => {
+            const sys = (d.data() || {}).system;
+            if (sys === 'pm') pm++; else pc++;   // anything not tagged pm counts as PC
+        });
+        const pcRose = _eiSeeded && pc > _eiCounts.pc;
+        const pmRose = _eiSeeded && pm > _eiCounts.pm;
+        _eiSeeded = true;
+        _eiCounts.pc = pc;
+        _eiCounts.pm = pm;
+        _eiSetGroupBadge('expenses-group-badge', pc, pcRose);
+        _eiSetGroupBadge('pm-group-badge', pm, pmRose);
+        _eiSetTabBadge('expenses', pc, pcRose);
+        _eiSetTabBadge('pm', pm, pmRose);
+    }
+
+    // Owner + staff only — the same audience RLS lets read the inbox. Workers
+    // and team leaders don't encode receipts, so they get no badge.
+    function _eiBadgeAudience() {
         const role = window.currentUserRole;
-        if (role !== 'owner' && role !== 'staff') return;
-        if (typeof db === 'undefined') return;
+        return (role === 'owner' || role === 'staff') && typeof db !== 'undefined';
+    }
+
+    window.eiSyncGlobalBadges = async function () {
+        if (!_eiBadgeAudience()) return;
         try {
             const snap = await db.collection('expenseInbox').where('status', '==', 'pending').get();
-            let pc = 0, pm = 0;
-            snap.docs.forEach((d) => {
-                const sys = (d.data() || {}).system;
-                if (sys === 'pm') pm++; else pc++;   // anything not tagged pm counts as PC
-            });
-            _eiSetGroupBadge('expenses-group-badge', pc);
-            _eiSetGroupBadge('pm-group-badge', pm);
+            _eiApplyGlobalCounts(snap.docs);
         } catch (e) {
             console.warn('expense-inbox: global badge', e.message || e);
+        }
+    };
+
+    // Keep the nav marks live. Without this the counts only moved on page load,
+    // so a receipt shared while the admin was working stayed invisible — which
+    // defeats the point of a nav-level mark. Subscribed once per page.
+    let _eiGlobalUnsub = null;
+    window.eiWatchGlobalBadges = function () {
+        if (_eiGlobalUnsub || !_eiBadgeAudience()) return;
+        try {
+            _eiGlobalUnsub = db.collection('expenseInbox').where('status', '==', 'pending')
+                .onSnapshot(
+                    (snap) => _eiApplyGlobalCounts(snap.docs),
+                    (e) => console.warn('expense-inbox: global badge watch', e.message || e)
+                );
+        } catch (e) {
+            console.warn('expense-inbox: global badge watch', e.message || e);
         }
     };
 
