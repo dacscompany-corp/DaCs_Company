@@ -802,6 +802,22 @@ body.dark-mode .pmst-total { background: #11201a; border-top-color: #243029; }
   color: var(--pm-ink);
   margin-top: 3px;
 }
+/* Status chips (cadence · partner state · receipt mark) sit on a
+   bottom-anchored row: margin-top:auto eats the card's leftover height, so
+   this row and the Open Project button under it are pinned to the bottom.
+   Without it the button floats straight after the chips, and a card whose
+   chips wrap to a second line — a signed partner adds a "View" button —
+   pushes its button ~30px lower than its neighbours'.
+   Design: "PM Cards Alignment.dc.html". */
+.pm-card-chips {
+  margin-top: auto;
+  padding-top: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .pm-card-open-btn {
   width: 100%;
   padding: 10px;

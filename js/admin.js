@@ -462,6 +462,7 @@ function showDashboard() {
         if (typeof window.syncNewUsersBadgeEager === 'function') window.syncNewUsersBadgeEager();
         if (typeof window.syncUrgentBadgeEager === 'function') window.syncUrgentBadgeEager();
         if (typeof window.eiSyncGlobalBadges === 'function') window.eiSyncGlobalBadges();
+        if (typeof window.eiWatchGlobalBadges === 'function') window.eiWatchGlobalBadges();
     }, 500);
 
     // Start real-time appointments listener only after auth is confirmed
@@ -2301,11 +2302,19 @@ function _buildTabsBar(activePrimaryId) {
     const nav = _visibleNav();
 
     // Always show every section — no collapse/expand toggle.
+    // Project Control / Project Management carry an Expense-Inbox "receipts
+    // waiting" mark; it is filled from the cached counts right after this
+    // rebuild, since re-rendering the bar wipes whatever was in the spans.
     tabs.innerHTML =
         nav.map((p) => {
             const isActive = p.id === activePrimaryId;
-            return `<button class="portal-ptab${isActive ? ' active' : ''}" data-primary="${p.id}">${p.label}</button>`;
+            const badge = (p.id === 'expenses' || p.id === 'pm')
+                ? `<span class="rm rm-count rm-sm" data-ptab-badge="${p.id}" style="margin-left:6px;" hidden></span>`
+                : '';
+            return `<button class="portal-ptab${isActive ? ' active' : ''}" data-primary="${p.id}">${p.label}${badge}</button>`;
         }).join('');
+
+    if (typeof window.eiSyncTabBadges === 'function') window.eiSyncTabBadges();
 
     tabs.querySelectorAll('.portal-ptab').forEach(btn => {
         btn.addEventListener('click', () => {

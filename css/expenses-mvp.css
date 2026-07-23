@@ -3001,10 +3001,49 @@
 .lc2-rowbtn:hover { background: var(--surface-2); color: var(--ink-2); }
 .lc2-rowbtn svg { width: 15px; height: 15px; }
 .lc2-none { font-size: 12.5px; color: var(--ink-4); padding: 8px 0; }
-.lc2-cactions { display: flex; gap: 18px; margin-top: 12px; font-size: 12.5px; font-weight: 600; flex-wrap: wrap; }
-.lc2-cactions button { color: var(--ink-2); border: 0; background: transparent; cursor: pointer; padding: 0; }
-.lc2-cactions button:hover { color: var(--ink); }
-.lc2-cactions button.danger { color: #C0392B; margin-left: auto; }
+/* ── Contract action toolbar ──────────────────────────────────────────
+   Was eight identical flat text links in a single row: no hierarchy, no
+   icons, and a destructive Delete carrying exactly the same visual weight
+   as Ledger — easy to misfire, hard to scan. Now the actions are chips
+   grouped by purpose (records · modify · documents), divider-separated,
+   with Delete isolated at the far end in danger styling.
+   Design: "Labor Drill.dc.html" → 1a. */
+.lc2-cactions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #EEEEEE;
+}
+.lc2-cgrp { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lc2-cdiv { width: 1px; height: 22px; background: #E5E5E5; flex: none; }
+
+.lc2-cactions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid #E5E5E5;
+  border-radius: 9px;
+  background: #fff;
+  font: 600 12px var(--sans, 'Barlow', sans-serif);
+  color: #3A3A3C;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .12s, background .12s, color .12s;
+}
+.lc2-cactions button svg { width: 14px; height: 14px; flex: none; }
+.lc2-cactions button:hover { border-color: #A1A1A6; background: #F5F5F5; color: #1C1C1E; }
+
+/* Ledger is the action reached for most often — it carries the primary tint. */
+.lc2-cactions button.primary { background: #EAF2EC; border-color: transparent; color: #1A5C3A; }
+.lc2-cactions button.primary:hover { background: #dceae1; }
+
+/* Delete sits alone at the far end and never reads as a peer of the rest. */
+.lc2-cactions button.danger { color: #C0392B; border-color: #e7c4bf; margin-left: auto; }
+.lc2-cactions button.danger:hover { background: #FCEDED; border-color: #C0392B; color: #C0392B; }
 .lc2-empty { padding: 44px 20px; text-align: center; color: var(--ink-3); font-size: 14px; line-height: 1.5; }
 
 /* responsive */
