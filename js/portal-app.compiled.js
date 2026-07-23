@@ -1480,6 +1480,7 @@ function AdditionalWorksDrill({ project, onBack, childFolders, additionalWorksRa
     head, kpis, recordsPanel, modal, createModal);
 }
 function _esc2(s) { return String(s == null ? "" : s); }
+function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPayroll, activeFolder, folderId, pmPaidByContractId }) {
 // Icons for the contract action toolbar, so each action reads at a glance
 // instead of being one of eight identical words. Every glyph is expressed as
 // plain paths (circles/rects/polylines converted) so one helper renders them
@@ -1501,7 +1502,6 @@ function _lcIcon(name) {
     (_LC_ICON_PATHS[name] || []).map((d, i) => /* @__PURE__ */ React.createElement("path", { key: i, d }))
   );
 }
-function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPayroll, activeFolder, folderId }) {
   const rc = React.createElement;
   const [tab, setTab] = React.useState("all");
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -1568,9 +1568,15 @@ function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPa
   };
 
   // ---- contract math (per worker) ----
+  // "paid" combines this folder's own payroll entries with any payments logged
+  // against the same contract id through a linked Project Management project's
+  // Daily Expenses (weeklyBills) — otherwise a contract paid off in PM still
+  // reads as unpaid here, since the two systems keep separate payment ledgers.
   const _lcRows = (contracts || []).map((c) => {
     const agreed = Number(c.agreedAmount) || 0;
-    const paid = (folderPayroll || []).filter((p) => p.contractId === c.id).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const folderPaid = (folderPayroll || []).filter((p) => p.contractId === c.id).reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    const pmPaid = (pmPaidByContractId && pmPaidByContractId[c.id]) || 0;
+    const paid = folderPaid + pmPaid;
     const remaining = agreed - paid;
     const pct = agreed > 0 ? Math.min(100, Math.max(0, paid / agreed * 100)) : 0;
     return { c, agreed, paid, remaining, pct };
@@ -1700,6 +1706,9 @@ function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPa
     const payType = crows[0] && crows[0].c.payType;
     const initial = (w || "?").trim().charAt(0).toUpperCase() || "?";
     const isDone = hasContract && paid >= agreed && paid <= agreed;
+    // Match Project Management's Contracts card: once a contract is fully paid,
+    // show just the word "Completed" \u2014 no bar, no "paid of agreed" caption, no
+    // "Remaining \u20B10.00" \u2014 instead of the same info repeated three ways.
     return rc("div", { key: w, className: "lc2-acc" + (open ? " open" : "") },
       rc("div", { className: "lc2-acc-head", onClick: () => toggle(w) },
         rc("div", { className: "lc2-av" }, initial),
@@ -1710,17 +1719,21 @@ function LaborDrill({ project, onBack, laborTx, childMonths, contracts, folderPa
           )
         ),
         rc("div", { className: "lc2-mid" },
-          hasContract
-            ? rc(React.Fragment, null,
+          !hasContract
+            ? rc("div", { className: "lc2-mid-cap" }, pays.length + " payment" + (pays.length === 1 ? "" : "s") + " \u00B7 no capped contract")
+            : isDone
+            ? null
+            : rc(React.Fragment, null,
                 rc("div", { className: "lc2-bar" }, rc("div", { className: "lc2-bar-fill " + barcls, style: { width: pct.toFixed(1) + "%" } })),
                 rc("div", { className: "lc2-mid-cap" }, "\u20B1 " + peso(paid) + " paid of \u20B1 " + peso(agreed) + (crows.length === 1 && crows[0].c.scope ? " \u00B7 " + crows[0].c.scope : " \u00B7 " + crows.length + " contracts"))
               )
-            : rc("div", { className: "lc2-mid-cap" }, pays.length + " payment" + (pays.length === 1 ? "" : "s") + " \u00B7 no capped contract")
         ),
-        rc("div", { className: "lc2-rem" },
-          rc("div", { className: "lc2-rem-lbl" }, hasContract ? (remaining < 0 ? "Over by" : "Remaining") : "Total paid"),
-          rc("div", { className: "lc2-rem-val" + (remaining < 0 ? " neg" : (hasContract ? (isDone ? " muted" : "") : " muted")) }, remaining < 0 ? "\u2212 \u20B1 " + peso(Math.abs(remaining)) : "\u20B1 " + peso(hasContract ? remaining : totalPaidAll))
-        ),
+        isDone
+          ? null
+          : rc("div", { className: "lc2-rem" },
+              rc("div", { className: "lc2-rem-lbl" }, hasContract ? (remaining < 0 ? "Over by" : "Remaining") : "Total paid"),
+              rc("div", { className: "lc2-rem-val" + (remaining < 0 ? " neg" : (hasContract ? "" : " muted")) }, remaining < 0 ? "\u2212 \u20B1 " + peso(Math.abs(remaining)) : "\u20B1 " + peso(hasContract ? remaining : totalPaidAll))
+            ),
         rc("span", { className: "lc2-badge " + scls }, status + (status === "Ongoing" ? " \u00B7 " + pct.toFixed(0) + "%" : "")),
         rc("button", { className: "lc2-pay", onClick: (e) => { e.stopPropagation(); openAddEntry("labor", childMonths, activeFolder); } }, Ico.plus, " Pay"),
         rc("svg", { className: "lc2-chev", width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "#A1A1A6", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }))
@@ -2154,6 +2167,12 @@ function PortalApp() {
   const [invoicesRaw, setInvoicesRaw] = React.useState([]);
   const [laborContractsRaw, setLaborContractsRaw] = React.useState([]);
   const [inboxRaw, setInboxRaw] = React.useState([]);
+  // Project Management projects linked to a Project Control folder (folderId set
+  // via the PM "Add/Edit Construction Project" modal) — lets a labor contract's
+  // "paid" total also count payments logged through PM's Daily Expenses, which
+  // otherwise live only in weeklyBills and are invisible to this portal.
+  const [pmProjectsRaw, setPmProjectsRaw] = React.useState([]);
+  const [pmWeeklyBillsRaw, setPmWeeklyBillsRaw] = React.useState([]);
   const [projectId, setProjectId] = React.useState(null);
   React.useEffect(() => {
     window._activeProjectFolderId = projectId || null;
@@ -2297,6 +2316,10 @@ function PortalApp() {
         (s) => setLaborContractsRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
         skip
       ),
+      db.collection("constructionProjects").onSnapshot(
+        (s) => setPmProjectsRaw(s.docs.map((d) => ({ id: d.id, ...d.data() })).filter((p) => p.folderId)),
+        skip
+      ),
       db.collection("expenseInbox").where("system", "==", "pc").onSnapshot(
         (s) => setInboxRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))),
         skip
@@ -2418,6 +2441,46 @@ function PortalApp() {
     () => laborContractsRaw.filter((c) => c.folderId === projectId),
     [laborContractsRaw, projectId]
   );
+  // PM project(s) explicitly linked to this folder (folderId set in the PM
+  // project modal). Usually zero or one, but a folder isn't a unique key on
+  // constructionProjects.folderId, so this stays a list to be safe.
+  const linkedPmProjects = React.useMemo(
+    () => pmProjectsRaw.filter((p) => p.folderId === projectId),
+    [pmProjectsRaw, projectId]
+  );
+  React.useEffect(() => {
+    if (!linkedPmProjects.length || typeof db === "undefined") {
+      setPmWeeklyBillsRaw([]);
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      linkedPmProjects.map((p) =>
+        db.collection("constructionProjects").doc(p.id).collection("weeklyBills").get()
+          .then((s) => s.docs.map((d) => ({ id: d.id, ...d.data() })))
+          .catch(() => [])
+      )
+    ).then((groups) => {
+      if (!cancelled) setPmWeeklyBillsRaw(groups.flat());
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [linkedPmProjects]);
+  // Payments made through PM's Daily Expenses (weeklyBills entries), summed per
+  // labor contract id — merged into folder contracts' "paid" below so a contract
+  // paid off via Project Management also reads as paid/Completed here.
+  const pmPaidByContractId = React.useMemo(() => {
+    const map = {};
+    pmWeeklyBillsRaw.forEach((b) => {
+      (Array.isArray(b.entries) ? b.entries : []).forEach((e) => {
+        if (e.type === "labor" && e.contractId) {
+          map[e.contractId] = (map[e.contractId] || 0) + (Number(e.amount) || 0);
+        }
+      });
+    });
+    return map;
+  }, [pmWeeklyBillsRaw]);
   // Pending inbox receipts for this folder, grouped the same way the drill panels
   // route them: labor → Labor, overhead → Overhead, everything else (materials +
   // untyped) → Material. Drives the "to encode" mark on each module card.
@@ -2520,7 +2583,7 @@ function PortalApp() {
       parentFolder,
       inboxByFolder
     }
-  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project }), /* @__PURE__ */ React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId), inboxPending }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { project, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, onBack: () => setView("dashboard") })));
+  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project }), /* @__PURE__ */ React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId), inboxPending }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId, pmPaidByContractId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { project, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, onBack: () => setView("dashboard") })));
 }
 (function() {
   const mount = document.getElementById("dacsPortalRoot");

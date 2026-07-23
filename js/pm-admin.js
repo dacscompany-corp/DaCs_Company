@@ -1468,6 +1468,26 @@ window.pmRemoveTermsPdf = function() {
     _pmRenderTermsPdfState();
 };
 
+// Project Control folders, for the "link this PM project to a folder" picker.
+// Reuses the Expenses module's already-loaded list when available; falls back
+// to a one-off fetch so the picker still works if Expenses hasn't loaded yet.
+async function _pmFoldersForPicker() {
+    if (typeof expFolders !== 'undefined' && expFolders.length) return expFolders;
+    try {
+        const snap = await db.collection('folders').where('userId', '==', firebase.auth().currentUser.uid).get();
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) { console.warn('PM: folder picker load failed', e.message); return []; }
+}
+async function _pmPopulateFolderPicker(selectedId) {
+    const sel = document.getElementById('pmProjectFolderId');
+    if (!sel) return;
+    const folders = (await _pmFoldersForPicker()).slice()
+        .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    sel.innerHTML = '<option value="">— Not linked —</option>'
+        + folders.map(f => '<option value="' + f.id + '">' + _esc(f.name || 'Untitled folder') + '</option>').join('');
+    sel.value = selectedId || '';
+}
+
 window.pmOpenProjectModal = function() {
     document.getElementById('pmProjectModalTitle').textContent = 'Add Construction Project';
     document.getElementById('pmProjectId').value        = '';
@@ -1475,6 +1495,7 @@ window.pmOpenProjectModal = function() {
     document.getElementById('pmProjectName').value       = '';
     document.getElementById('pmProjectEmail').value      = '';
     const _npe = document.getElementById('pmProjectPartnerEmail'); if (_npe) _npe.value = '';
+    _pmPopulateFolderPicker('');
     document.getElementById('pmProjectStatus').value     = 'pending_agreement';
     document.getElementById('pmProjectStartDate').value  = '';
     document.getElementById('pmProjectAddress').value    = '';
@@ -1497,6 +1518,7 @@ window.pmEditProject = function(p) {
     document.getElementById('pmProjectName').value       = p.projectName || '';
     document.getElementById('pmProjectEmail').value      = p.clientEmail || '';
     const _epe = document.getElementById('pmProjectPartnerEmail'); if (_epe) _epe.value = p.partnerEmail || '';
+    _pmPopulateFolderPicker(p.folderId || '');
     document.getElementById('pmProjectStatus').value     = p.status      || 'active';
     document.getElementById('pmProjectStartDate').value  = p.startDate   || '';
     document.getElementById('pmProjectAddress').value    = p.address     || '';
@@ -1521,6 +1543,7 @@ window.pmSaveProject = async function() {
     // Lowercase so the project↔account link matches the lowercased login email.
     const clientEmail= document.getElementById('pmProjectEmail').value.trim().toLowerCase();
     const partnerEmail = (document.getElementById('pmProjectPartnerEmail')?.value || '').trim().toLowerCase();
+    const folderId   = document.getElementById('pmProjectFolderId')?.value || null;
     const status     = document.getElementById('pmProjectStatus').value;
     const startDate  = document.getElementById('pmProjectStartDate').value;
     const address    = document.getElementById('pmProjectAddress').value.trim();
@@ -1539,7 +1562,7 @@ window.pmSaveProject = async function() {
     if (!projectName) { _pmShowErr('err-pmProjectName','Project name is required.');      valid = false; }
     if (!valid) return;
 
-    const data = { clientName, projectName, clientEmail, partnerEmail, status, startDate, address, budget, plannedEndDate, managementFeePct,
+    const data = { clientName, projectName, clientEmail, partnerEmail, folderId, status, startDate, address, budget, plannedEndDate, managementFeePct,
                    partnerTerms,
                    updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
 
@@ -1950,6 +1973,7 @@ function _pmWeekSyncDraft() {
                 days: Number(e.days) || 0,
                 qty: Number(e.qty) || 0,
                 unit: e.unit || '',
+                ...(e.contractId ? { contractId: e.contractId } : {}),   // keep the pakyaw/contract link on reload
                 receipts: _pmEntryReceiptList(e)
             }));
         } else {
@@ -4809,12 +4833,14 @@ function _pmLcView(st) {
         sentence = 'Paid ' + peso(st.paid) + ' of ' + peso(st.agreed) + ' — nothing left';
         rAmt = '₱0'; rLbl = '✓ Fully paid';
         rCls = 'pm-lc-stat-done'; amtCls = 'pm-lc-amt-done'; barCls = 'pm-lc-bar-done'; barPct = 100;
+        // Row card view collapses all of the above down to a single word — see
+        // the `v.done` flag consumed by the row templates below.
     } else {
         sentence = 'Paid ' + peso(st.paid) + ' of ' + peso(st.agreed) + ' — <b>' + peso(st.remaining) + ' to go</b>';
         rAmt = peso(st.remaining); rLbl = 'In progress · ' + st.pct.toFixed(0) + '%';
         rCls = 'pm-lc-stat-on'; amtCls = ''; barCls = 'pm-lc-bar-ok';
     }
-    return { sentence, sentOver, rAmt, rLbl, rCls, amtCls, barCls, barPct };
+    return { sentence, sentOver, rAmt, rLbl, rCls, amtCls, barCls, barPct, done: st.status === 'Completed' };
 }
 
 function _pmRenderContracts() {
@@ -4862,11 +4888,14 @@ function _pmRenderContracts() {
                 + '<div class="pm-lc-rmain">'
                 + '<div class="pm-lc-rtitle"><span class="pm-lc-rscope">' + _esc(c.scope || 'Untitled job')
                 + '</span><span class="pm-lc-type ' + typeCls + '">' + typeLbl + '</span></div>'
-                + '<div class="pm-lc-rsent num' + (v.sentOver ? ' pm-lc-rsent-over' : '') + '">' + v.sentence + '</div>'
-                + '<div class="pm-lc-rbar"><div class="pm-lc-rbar-fill ' + v.barCls + '" style="width:' + v.barPct.toFixed(1) + '%"></div></div>'
+                + (v.done ? '' :
+                    '<div class="pm-lc-rsent num' + (v.sentOver ? ' pm-lc-rsent-over' : '') + '">' + v.sentence + '</div>'
+                    + '<div class="pm-lc-rbar"><div class="pm-lc-rbar-fill ' + v.barCls + '" style="width:' + v.barPct.toFixed(1) + '%"></div></div>')
                 + '</div>'
-                + '<div class="pm-lc-rright"><div class="pm-lc-ramt num ' + v.amtCls + '">' + v.rAmt + '</div>'
-                + '<div class="pm-lc-rstat ' + v.rCls + '">' + v.rLbl + '</div></div>'
+                + (v.done
+                    ? '<div class="pm-lc-rright"><div class="pm-lc-rstat ' + v.rCls + '">Completed</div></div>'
+                    : '<div class="pm-lc-rright"><div class="pm-lc-ramt num ' + v.amtCls + '">' + v.rAmt + '</div>'
+                    + '<div class="pm-lc-rstat ' + v.rCls + '">' + v.rLbl + '</div></div>')
                 + '<svg class="pm-lc-rchev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'
                 + '</div>';
         }).join('');
@@ -5187,11 +5216,14 @@ function _pmRenderOutsource() {
                 + '<div class="pm-lc-rmain">'
                 + '<div class="pm-lc-rtitle"><span class="pm-lc-rscope">' + _esc(c.scope || 'Untitled job')
                 + '</span><span class="pm-lc-type ' + typeCls + '">' + typeLbl + '</span></div>'
-                + '<div class="pm-lc-rsent num' + (v.sentOver ? ' pm-lc-rsent-over' : '') + '">' + v.sentence + '</div>'
-                + '<div class="pm-lc-rbar"><div class="pm-lc-rbar-fill ' + v.barCls + '" style="width:' + v.barPct.toFixed(1) + '%"></div></div>'
+                + (v.done ? '' :
+                    '<div class="pm-lc-rsent num' + (v.sentOver ? ' pm-lc-rsent-over' : '') + '">' + v.sentence + '</div>'
+                    + '<div class="pm-lc-rbar"><div class="pm-lc-rbar-fill ' + v.barCls + '" style="width:' + v.barPct.toFixed(1) + '%"></div></div>')
                 + '</div>'
-                + '<div class="pm-lc-rright"><div class="pm-lc-ramt num ' + v.amtCls + '">' + v.rAmt + '</div>'
-                + '<div class="pm-lc-rstat ' + v.rCls + '">' + v.rLbl + '</div></div>'
+                + (v.done
+                    ? '<div class="pm-lc-rright"><div class="pm-lc-rstat ' + v.rCls + '">Completed</div></div>'
+                    : '<div class="pm-lc-rright"><div class="pm-lc-ramt num ' + v.amtCls + '">' + v.rAmt + '</div>'
+                    + '<div class="pm-lc-rstat ' + v.rCls + '">' + v.rLbl + '</div></div>')
                 + '<svg class="pm-lc-rchev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'
                 + '</div>';
         }).join('');
@@ -5617,7 +5649,7 @@ function _pmRenderContractsTab() {
             ? { lbl: 'IN-HOUSE', bg: '#eef0f3', col: '#5b6b7e' }
             : { lbl: 'PAKYAW',   bg: '#efeaf8', col: '#5b3f96' };
         let sentPre, sentBold, sentSuf = '', sentColor = '#6f6e69', boldColor = '#1c1c1a',
-            rightAmt, rightLbl, rightColor, amtColor, barColor, barPct;
+            rightAmt, rightLbl, rightColor, amtColor, barColor, barPct, done = false;
         if (st.status === 'Over') {
             const over = paid - agreed;
             sentPre = 'Paid ' + _fmt(paid) + ' — '; sentBold = _fmt(over) + ' more'; sentSuf = ' than the ' + _fmt(agreed) + ' agreed';
@@ -5625,9 +5657,8 @@ function _pmRenderContractsTab() {
             rightAmt = '+' + _fmt(over); rightLbl = '⚠ Over agreed';
             rightColor = '#b4453a'; amtColor = '#b4453a'; barColor = '#b4453a'; barPct = 100;
         } else if (st.status === 'Completed') {
-            sentPre = 'Paid ' + _fmt(paid) + ' of ' + _fmt(agreed) + ' — nothing left'; sentBold = '';
-            rightAmt = _fmt(0); rightLbl = '✓ Fully paid';
-            rightColor = '#0f6342'; amtColor = '#0f6342'; barColor = '#157a52'; barPct = 100;
+            done = true;
+            rightColor = '#0f6342';
         } else {
             sentPre = 'Paid ' + _fmt(paid) + ' of ' + _fmt(agreed) + ' — '; sentBold = _fmt(remaining) + ' to go';
             rightAmt = _fmt(remaining); rightLbl = 'In progress · ' + pct.toFixed(0) + '%';
@@ -5640,11 +5671,14 @@ function _pmRenderContractsTab() {
             + '<span style="font-size:14.5px;font-weight:700;color:#1c1c1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + _esc(c.scope || 'Untitled job') + '</span>'
             + '<span style="font-size:9.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:2px 8px;border-radius:20px;flex:none;background:' + pill.bg + ';color:' + pill.col + ';">' + pill.lbl + '</span>'
             + '</div>'
-            + '<div style="font-size:12.5px;color:' + sentColor + ';margin-top:6px;">' + sentPre + '<b style="font-weight:700;color:' + boldColor + ';">' + sentBold + '</b>' + sentSuf + '</div>'
-            + '<div style="height:6px;max-width:260px;background:#eef0ec;border-radius:4px;overflow:hidden;margin-top:8px;"><div style="height:100%;border-radius:4px;background:' + barColor + ';width:' + barPct.toFixed(1) + '%;"></div></div>'
+            + (done ? '' :
+                '<div style="font-size:12.5px;color:' + sentColor + ';margin-top:6px;">' + sentPre + '<b style="font-weight:700;color:' + boldColor + ';">' + sentBold + '</b>' + sentSuf + '</div>'
+                + '<div style="height:6px;max-width:260px;background:#eef0ec;border-radius:4px;overflow:hidden;margin-top:8px;"><div style="height:100%;border-radius:4px;background:' + barColor + ';width:' + barPct.toFixed(1) + '%;"></div></div>')
             + '</div>'
-            + '<div style="text-align:right;flex:none;"><div style="font-size:20px;font-weight:700;color:' + amtColor + ';">' + rightAmt + '</div>'
-            + '<div style="font-size:11px;font-weight:600;color:' + rightColor + ';margin-top:3px;">' + rightLbl + '</div></div>'
+            + (done
+                ? '<div style="text-align:right;flex:none;"><div style="font-size:14px;font-weight:700;color:' + rightColor + ';">Completed</div></div>'
+                : '<div style="text-align:right;flex:none;"><div style="font-size:20px;font-weight:700;color:' + amtColor + ';">' + rightAmt + '</div>'
+                + '<div style="font-size:11px;font-weight:600;color:' + rightColor + ';margin-top:3px;">' + rightLbl + '</div></div>')
             + '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c4c9d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;"><polyline points="9 18 15 12 9 6"/></svg>'
             + '</div>';
     };
@@ -5666,7 +5700,12 @@ function _pmRenderContractsTab() {
         '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;">'
         + '<div><div style="font-size:22px;font-weight:700;color:#1c1c1a;letter-spacing:-0.01em;">Contracts</div>'
         + '<div style="font-size:13px;color:#8a8983;margin-top:3px;">In-house labor and outsourced jobs — both capped agreements, paid through your daily entries.</div></div>'
+        + '<div style="display:flex;gap:10px;flex:none;">'
+        + '<button type="button" onclick="pmPrintAllContracts()" style="flex:none;background:#fff;color:#3a3a36;border:1.5px solid #d8d7d0;border-radius:9px;padding:10px 16px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;display:inline-flex;align-items:center;gap:7px;" title="Print every Labor and Out Source contract">'
+        + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>'
+        + ' Print all contracts</button>'
         + '<button type="button" onclick="' + newFn + '" style="flex:none;background:' + t.accent + ';color:#fff;border:none;border-radius:9px;padding:10px 16px;font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;transition:filter .15s;" onmouseover="this.style.filter=\'brightness(1.08)\'" onmouseout="this.style.filter=\'\'">＋ ' + newBtnLbl + '</button>'
+        + '</div>'
         + '</div>'
         // segmented switch
         + '<div style="display:flex;gap:8px;background:#f6f5f2;border:1px solid #ecebe6;border-radius:13px;padding:5px;margin-bottom:6px;max-width:480px;">'
@@ -5690,6 +5729,158 @@ function _pmRenderContractsTab() {
         // sections
         + sectionsHtml;
 }
+
+// Print every Labor AND Out Source contract together (both sections, all
+// workers/vendors) — the "Contracts" tab only ever shows one segment at a
+// time on screen, but the printed record should be the whole picture.
+// Same document design as the Worker Statement of Account (printWorkerLaborSOA
+// in invoice-module.js): navy header + title block, bill-row, black-underline
+// items table, right-aligned totals box — this is that same family of document.
+window.pmPrintAllContracts = function() {
+    if (!_pmActiveProject) { _pmToast('Open a project first.', true); return; }
+    const esc = _esc;
+    const fmt = n => '&#8369;&nbsp;' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const rowsFor = (list, statOf) => {
+        const byW = {};
+        list.forEach(c => { const w = (c.workerName || '—').trim() || '—'; (byW[w] = byW[w] || []).push(c); });
+        const names = Object.keys(byW).sort((a, b) => a.localeCompare(b));
+        let n = 0;
+        return names.map(name => byW[name].slice().sort((a, b) => (a.scope || '').localeCompare(b.scope || '')).map(c => {
+            n++;
+            const st = statOf(c);
+            const typeLbl = c.payType === 'inhouse' ? 'In-house' : 'Pakyaw';
+            const statusLbl = st.status === 'Over' ? 'Over cap' : st.status === 'Completed' ? 'Completed' : st.pct.toFixed(0) + '% paid';
+            return `<tr>
+                <td style="text-align:center;">${n}</td>
+                <td>${esc(name)}</td>
+                <td>${esc(c.scope || 'Untitled job')}</td>
+                <td>${esc(typeLbl)}</td>
+                <td style="text-align:right;">${fmt(st.agreed)}</td>
+                <td style="text-align:right;">${fmt(st.paid)}</td>
+                <td style="text-align:right;font-weight:600;">${st.remaining < 0 ? '−' : ''}${fmt(Math.abs(st.remaining))}</td>
+                <td>${esc(statusLbl)}</td>
+            </tr>`;
+        }).join('')).join('');
+    };
+
+    const laborRows     = rowsFor(_pmLaborContracts, _pmContractStats);
+    const outsourceRows = rowsFor(_pmOutsourceContracts, _pmOcStats);
+    const allContracts  = [..._pmLaborContracts.map(c => ({ c, s: _pmContractStats(c) })), ..._pmOutsourceContracts.map(c => ({ c, s: _pmOcStats(c) }))];
+    const grandAgreed = allContracts.reduce((s, x) => s + x.s.agreed, 0);
+    const grandPaid   = allContracts.reduce((s, x) => s + x.s.paid, 0);
+
+    const sectionTable = (title, rows, count) => !count ? '' : `
+      <div class="lc-sec-title">${esc(title)} <span>${count} job${count === 1 ? '' : 's'}</span></div>
+      <table class="items">
+        <thead><tr>
+          <th style="width:26px;">#</th>
+          <th>Worker / Vendor</th>
+          <th>Job</th>
+          <th style="width:80px;">Type</th>
+          <th style="width:110px;text-align:right;">Agreed</th>
+          <th style="width:110px;text-align:right;">Paid</th>
+          <th style="width:110px;text-align:right;">Remaining</th>
+          <th style="width:100px;">Status</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+
+    const body = sectionTable('Labor', laborRows, _pmLaborContracts.length)
+               + sectionTable('Out Source', outsourceRows, _pmOutsourceContracts.length);
+
+    const projectLbl = _pmActiveProject.projectName || _pmActiveProject.clientName || 'Project';
+    const today = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+    const bizName = "DAC's Building Design Services";
+    const bizAddr = _pmActiveProject.address || '';
+
+    const w = window.open('', '_blank', 'width=900,height=1100');
+    if (!w) { alert('Please allow pop-ups to print the contracts list.'); return; }
+    w.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Contracts — ${esc(projectLbl)}</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:Arial,Helvetica,sans-serif; font-size:13px; color:#1a1a1a; background:#f5f5f5; -webkit-font-smoothing:antialiased; }
+.page { width:210mm; min-height:297mm; margin:24px auto; padding:24mm 22mm 20mm; background:#fff; box-shadow:0 2px 16px rgba(0,0,0,.10); }
+.inv-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:44px; padding-bottom:26px; border-bottom:3px solid #1e3a5f; }
+.inv-logo { display:block; height:72px; width:auto; max-width:180px; object-fit:contain; margin-bottom:16px; mix-blend-mode:multiply; }
+.inv-biz h1 { font-size:21px; font-weight:800; color:#1a1a2e; letter-spacing:.3px; line-height:1.3; }
+.inv-biz p  { font-size:12px; color:#666; margin-top:11px; line-height:1.8; letter-spacing:.2px; }
+.inv-title-block { text-align:right; }
+.inv-title-block h2 { font-size:23px; font-weight:800; color:#1e3a5f; letter-spacing:3px; line-height:1.2; }
+.inv-title-block .inv-sub { font-size:12px; font-weight:600; color:#7c3aed; margin-top:8px; letter-spacing:1px; }
+.inv-meta { margin-top:14px; font-size:12px; color:#555; line-height:2.1; letter-spacing:.3px; }
+.inv-meta strong { color:#1a1a1a; }
+.bill-row { display:flex; gap:48px; margin-bottom:34px; padding:6px 0 24px; border-bottom:1px solid #e5e7eb; }
+.bill-to h4 { font-size:9.5px; font-weight:700; color:#9ca3af; letter-spacing:2.5px; text-transform:uppercase; margin-bottom:10px; }
+.bill-to .name { font-size:16px; font-weight:700; color:#1a1a2e; margin-bottom:6px; letter-spacing:.2px; }
+.bill-to p { font-size:12px; color:#666; line-height:1.6; letter-spacing:.3px; }
+.lc-sec-title { font-size:11px; font-weight:700; color:#1e3a5f; letter-spacing:1.5px; text-transform:uppercase; margin:26px 0 10px; }
+.lc-sec-title span { font-size:11px; font-weight:500; color:#9ca3af; letter-spacing:.3px; text-transform:none; }
+table.items { width:100%; border-collapse:collapse; margin-bottom:8px; }
+table.items thead tr { background:#fff; color:#1a1a1a; border-bottom:2px solid #1a1a1a; }
+table.items thead th { padding:11px 10px; font-size:10px; font-weight:700; text-align:left; letter-spacing:1px; text-transform:uppercase; color:#555; }
+table.items tbody tr { border-bottom:1px solid #eef0f2; }
+table.items tbody td { padding:12px 10px; vertical-align:middle; font-size:12px; letter-spacing:.2px; }
+.totals-wrap { display:flex; justify-content:flex-end; margin:22px 0 32px; }
+table.totals { width:340px; border-collapse:collapse; font-size:13px; }
+table.totals td { padding:10px 14px; letter-spacing:.3px; }
+table.totals td:first-child { color:#666; }
+table.totals td:last-child { text-align:right; font-weight:600; color:#1a1a1a; }
+table.totals tr.grand td { font-size:16px; font-weight:800; color:#1a1a1a; background:#fff; border-top:2px solid #1a1a1a; border-bottom:2px solid #1a1a1a; padding:15px 14px; letter-spacing:.6px; }
+.sig-row { display:flex; justify-content:space-between; margin-top:60px; }
+.sig-block { text-align:center; width:190px; }
+.sig-line { border-top:1px solid #374151; padding-top:9px; font-size:11px; color:#666; letter-spacing:.3px; }
+.footer { text-align:center; margin-top:44px; font-size:9.5px; color:#b0b4bb; border-top:1px solid #eef0f2; padding-top:14px; letter-spacing:.5px; }
+@media print { body{background:#fff;} .page{margin:0;box-shadow:none;padding:16mm 14mm;width:100%;} @page{size:A4 landscape;margin:8mm;} }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="inv-header">
+    <div class="inv-biz">
+      <img class="inv-logo" src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo" onerror="this.style.display='none'">
+      <h1>${esc(bizName)}</h1>
+      <p>${esc(bizAddr)}</p>
+    </div>
+    <div class="inv-title-block">
+      <h2>CONTRACTS</h2>
+      <div class="inv-sub">Labor &amp; Out Source</div>
+      <div class="inv-meta">
+        Date: <strong>${esc(today)}</strong>
+      </div>
+    </div>
+  </div>
+  <div class="bill-row">
+    <div class="bill-to">
+      <h4>Project</h4>
+      <div class="name">${esc(projectLbl)}</div>
+      <p>${esc(_pmActiveProject.clientName || '')}</p>
+    </div>
+  </div>
+  ${body || '<div style="padding:30px 0;color:#9ca3af;">No contracts yet.</div>'}
+  <div class="totals-wrap">
+    <table class="totals">
+      <tr><td>Total Jobs</td><td>${allContracts.length}</td></tr>
+      <tr><td>Total Paid</td><td>${fmt(grandPaid)}</td></tr>
+      <tr class="grand"><td>TOTAL AGREED</td><td>${fmt(grandAgreed)}</td></tr>
+    </table>
+  </div>
+  <div class="sig-row">
+    <div class="sig-block"><div class="sig-line">Prepared by</div></div>
+    <div class="sig-block"><div class="sig-line">Reviewed by</div></div>
+    <div class="sig-block"><div class="sig-line">Approved by</div></div>
+  </div>
+  <div class="footer">${esc(bizName)} &bull; ${esc(bizAddr)}</div>
+</div>
+<script>window.onload=function(){window.print();};<\/script>
+</body>
+</html>`);
+    w.document.close();
+};
 
 // ══════════════════════════════════════════════════════════
 // PROJECT MANAGEMENT — REPORTS DASHBOARD
