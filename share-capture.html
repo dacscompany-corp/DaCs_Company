@@ -266,11 +266,24 @@ function scProjectOptions() {
   if (S.sys === 'pc') {
     return scFolders.map((f) => ({ v: f.id, l: f.name || 'Unnamed', s: f.parentFolderId ? 'Additional Works' : '' }));
   }
-  return scPmProjects.map((p) => ({
+  // One client can run several projects with the same name — show the address and
+  // start date so they are tellable apart, and fall back to a short id if even those
+  // match. An unidentifiable pick files the expense against the wrong project.
+  const opts = scPmProjects.map((p) => ({
     v: p.id,
     l: (p.clientName ? p.clientName + ' — ' : '') + (p.projectName || 'Unnamed'),
-    s: '',
+    s: [p.address, scStartedLabel(p.startDate)].filter(Boolean).join(' · '),
   }));
+  const seen = {};
+  opts.forEach((o) => { seen[o.l + '|' + o.s] = (seen[o.l + '|' + o.s] || 0) + 1; });
+  return opts.map((o) => (seen[o.l + '|' + o.s] > 1
+    ? { ...o, s: (o.s ? o.s + ' · ' : '') + 'ID ' + String(o.v).slice(0, 8) }
+    : o));
+}
+function scStartedLabel(d) {
+  if (!d) return '';
+  const t = new Date(String(d).slice(0, 10) + 'T00:00:00');
+  return isNaN(t) ? '' : 'Started ' + t.toLocaleDateString('en-PH', { month: 'short', year: 'numeric' });
 }
 function scCats() { return scDbCats.length ? scDbCats : DEFAULT_CATS; }
 

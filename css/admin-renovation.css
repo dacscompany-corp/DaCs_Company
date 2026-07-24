@@ -3512,3 +3512,87 @@ body,
 .portal-modules-row {
   background: #ffffff !important;
 }
+
+/* ============================================================
+   RECEIPT MARK  ·  pending Expense-Inbox receipts
+   Design: "Mark Features.dc.html" → direction 1a, "Solid signal".
+
+   ONE component for every surface that marks waiting receipts —
+   top nav tabs, sidebar nav groups, folder/project pickers, the
+   Labor/Material/Overhead cost cards, and PM project cards.
+   Before this there were four different reds, three shapes, emoji
+   glyphs, and IBM Plex Sans on an app that runs on Barlow.
+
+   Three sizes:
+     .rm.rm-dot    bare 8px dot        — presence only, no number
+     .rm.rm-count  pill with a number  — "4"
+     .rm.rm-label  icon + text pill    — "3 to encode"
+   Add .rm-sm for the tighter nav-tab / cost-card scale.
+============================================================ */
+:root { --rm-accent: #B4453A; }
+
+.rm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  background: var(--rm-accent);
+  color: #fff;
+  border-radius: 999px;
+  font-family: var(--sans);
+  font-variant-numeric: tabular-nums;   /* counts don't jitter as they change */
+  line-height: 1;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+/* Surfaces that toggle the mark from plain JS use the hidden attribute;
+   it has to beat the display:inline-flex above. */
+.rm[hidden] { display: none !important; }
+
+.rm-dot   { width: 8px; height: 8px; border-radius: 50%; padding: 0; }
+
+.rm-count { min-width: 20px; height: 20px; padding: 0 6px; font-size: 11px;   font-weight: 800; }
+.rm-count.rm-sm { min-width: 19px; height: 19px; font-size: 10.5px; }
+
+.rm-label { gap: 5px; padding: 4px 11px 4px 8px; font-size: 11.5px; font-weight: 700; }
+.rm-label.rm-sm { padding: 4px 10px 4px 7px; font-size: 11px; }
+
+.rm-label svg        { width: 13px; height: 13px; flex: none; }
+.rm-label.rm-sm svg  { width: 12px; height: 12px; }
+
+/* A fresh arrival pulses once, then rests — so a receipt landing while
+   you are on the page announces itself without becoming ambient noise. */
+@keyframes rmPulse {
+  0%   { box-shadow: 0 0 0 0   rgba(180, 69, 58, .45); }
+  70%  { box-shadow: 0 0 0 7px rgba(180, 69, 58, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(180, 69, 58, 0); }
+}
+.rm-new { animation: rmPulse 1.8s ease-out 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rm-new { animation: none; }
+}
+
+/* ============================================================
+   LABOR ACTION MODALS — Playfair Display throughout
+   (Ledger · Raise cap · Files)
+
+   Deliberately last in the last-loaded stylesheet, and deliberately
+   !important + descendant selector. Both are required here:
+
+   • This file already forces fonts on modal parts with !important
+     (body .exp-btn-secondary → Barlow, body .exp-form-group label →
+     Barlow). A plain rule anywhere loses to those.
+   • <button>, <input>, <select> and <textarea> never inherit
+     font-family from an ancestor, so the container alone would leave
+     "Close", "View", "Update cap" and the amount field on the browser
+     default face. The universal selector covers them without needing
+     a rule per control.
+============================================================ */
+body #laborLedgerModal,
+body #laborLedgerModal *,
+body .lcm-card,
+body .lcm-card * {
+  font-family: 'Playfair Display', 'Times New Roman', Georgia, serif !important;
+}

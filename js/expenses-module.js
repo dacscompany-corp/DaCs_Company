@@ -7950,23 +7950,120 @@ async function handleSaveLaborContract(e) {
         showExpNotif('Error: ' + err.message, 'error');
     } finally { showExpLoading('lcSaveBtn', false); }
 }
-async function lcOpenRaiseCap(id) {
+// Raise cap. Was a native browser prompt() — no branding, no sense of what the
+// change actually does, and no view of what the cap has been before. Now an
+// on-brand modal that previews the delta and the resulting remaining balance,
+// and lists the cap history. Design: "Labor Modals.dc.html" → 1a.
+function lcOpenRaiseCap(id) {
     const c = expLaborContracts.find(x => x.id === id); if (!c) return;
+    const st  = lcStats(c);
     const cur = parseFloat(c.agreedAmount) || 0;
-    const input = prompt('Raise cap for ' + (c.workerName || 'worker') + ' — ' + (c.scope || 'job')
-        + '\nCurrent agreed: ₱' + formatNum(cur) + '\n\nEnter the NEW agreed amount:', cur);
-    if (input === null) return;
-    const next = parseFloat(String(input).replace(/,/g, '')) || 0;
-    if (next <= 0) { showExpNotif('Enter a valid amount.', 'error'); return; }
-    try {
-        const hist = Array.isArray(c.capHistory) ? c.capHistory.slice() : [];
-        hist.push({ amount: next, at: new Date().toISOString(), note: next >= cur ? 'Raised cap' : 'Lowered cap' });
-        await db.collection('laborContracts').doc(id).update({
-            agreedAmount: next, capHistory: hist,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-        showExpNotif('Cap updated ✓', 'success');
-    } catch (err) { showExpNotif('Error: ' + err.message, 'error'); }
+
+    const existing = document.getElementById('lcCapOverlay');
+    if (existing) existing.remove();
+
+    // Cap history = entries carrying an amount (file uploads share capHistory).
+    const hist = (Array.isArray(c.capHistory) ? c.capHistory : []).filter(h => h && h.amount != null);
+    const histHtml = hist.length
+        ? hist.map(h => `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid #F0F0F0;">
+               <span style="font-size:12.5px;font-weight:500;color:#3A3A3C;">${_mvpEsc(h.note || 'Cap change')}</span>
+               <span style="font-size:12px;font-weight:400;color:#A1A1A6;">${h.at ? new Date(h.at).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : ''}</span>
+               <span style="font:500 12.5px var(--mono,'IBM Plex Mono',monospace);color:#1C1C1E;">₱${formatNum(parseFloat(h.amount) || 0)}</span>
+             </div>`).join('')
+        : `<div style="padding:8px 0;border-top:1px solid #F0F0F0;font-size:12.5px;font-weight:400;color:#A1A1A6;">No cap changes yet — this is the original agreed amount.</div>`;
+
+    const ov = document.createElement('div');
+    ov.id = 'lcCapOverlay';
+    ov.className = 'lcm-ov';
+    ov.onclick = e => { if (e.target === ov) ov.remove(); };
+    ov.innerHTML = `
+        <div class="lcm-card" style="max-width:440px;">
+          <div class="lcm-head">
+            <div>
+              <h3 class="lcm-title">Raise cap</h3>
+              <div class="lcm-sub">${_mvpEsc(c.workerName || 'Worker')} · ${_mvpEsc(c.scope || 'job')}</div>
+            </div>
+            <button type="button" class="lcm-x" data-cap-close aria-label="Close">&times;</button>
+          </div>
+          <div class="lcm-body">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#FAFBFA;border:1px solid #EEEEEE;border-radius:10px;">
+              <span style="font-size:12.5px;font-weight:600;color:#6C6C70;">Current agreed</span>
+              <span style="font-size:18px;color:#1C1C1E;font-variant-numeric:tabular-nums;">₱ ${formatNum(cur)}</span>
+            </div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#A1A1A6;margin:18px 0 8px;">New agreed amount</div>
+            <div style="display:flex;align-items:center;gap:8px;border:1.5px solid #1A5C3A;border-radius:10px;padding:11px 14px;box-shadow:0 0 0 3px rgba(26,90,58,.12);">
+              <span style="font-size:18px;color:#6C6C70;">₱</span>
+              <input id="lcCapInput" type="text" inputmode="decimal" value="${formatNum(cur)}"
+                style="flex:1;border:0;outline:none;background:transparent;font-family:var(--serif);font-size:18px;color:#1C1C1E;font-variant-numeric:tabular-nums;width:100%;">
+            </div>
+            <div id="lcCapDelta" style="margin-top:12px;"></div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#A1A1A6;margin:22px 0 2px;">Cap history</div>
+            <div>${histHtml}</div>
+          </div>
+          <div class="lcm-foot">
+            <button type="button" class="lcm-btn" data-cap-close>Cancel</button>
+            <button type="button" class="lcm-btn primary" id="lcCapSave">Update cap</button>
+          </div>
+        </div>`;
+    document.body.appendChild(ov);
+
+    const input = ov.querySelector('#lcCapInput');
+    const delta = ov.querySelector('#lcCapDelta');
+    const parse = () => parseFloat(String(input.value).replace(/,/g, '')) || 0;
+
+    // Live preview: how much the cap moves, and what that leaves after payments
+    // already made. Silent when unchanged so it never nags.
+    const renderDelta = () => {
+        const next = parse();
+        if (!next || next === cur) { delta.innerHTML = ''; return; }
+        const diff = next - cur;
+        const up   = diff > 0;
+        const rem  = next - st.paid;
+        const tone = up ? { bg: '#EAF2EC', fg: '#1A5C3A' } : { bg: '#FBECEB', fg: '#B4453A' };
+        const arrow = up
+            ? '<polyline points="5 12 12 5 19 12"/><line x1="12" y1="19" x2="12" y2="5"/>'
+            : '<polyline points="19 12 12 19 5 12"/><line x1="12" y1="5" x2="12" y2="19"/>';
+        delta.innerHTML =
+            `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:${tone.fg};background:${tone.bg};padding:5px 11px;border-radius:999px;">`
+          + `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${arrow}</svg>`
+          + `${up ? '+' : '−'}₱${formatNum(Math.abs(diff))} · new remaining ₱${formatNum(rem)}</span>`
+          + (rem < 0
+              ? `<div style="margin-top:8px;font-size:12px;font-weight:600;color:#B4453A;">This is below the ₱${formatNum(st.paid)} already paid — the contract would be over its cap.</div>`
+              : '');
+    };
+    input.addEventListener('input', renderDelta);
+
+    const close = () => ov.remove();
+    ov.querySelectorAll('[data-cap-close]').forEach(b => b.addEventListener('click', close));
+
+    const save = async () => {
+        const next = parse();
+        if (next <= 0) { showExpNotif('Enter a valid amount.', 'error'); return; }
+        const btn = ov.querySelector('#lcCapSave');
+        btn.disabled = true; btn.textContent = 'Saving…';
+        try {
+            const h = Array.isArray(c.capHistory) ? c.capHistory.slice() : [];
+            h.push({ amount: next, at: new Date().toISOString(), note: next >= cur ? 'Raised cap' : 'Lowered cap' });
+            await db.collection('laborContracts').doc(id).update({
+                agreedAmount: next, capHistory: h,
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            close();
+            showExpNotif('Cap updated ✓', 'success');
+        } catch (err) {
+            btn.disabled = false; btn.textContent = 'Update cap';
+            showExpNotif('Error: ' + err.message, 'error');
+        }
+    };
+    ov.querySelector('#lcCapSave').addEventListener('click', save);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') save(); });
+
+    // Esc closes, matching every other modal in the module.
+    const onKey = e => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+    document.addEventListener('keydown', onKey);
+
+    input.focus();
+    input.select();
 }
 async function lcDelete(id) {
     const paid = lcPaid(id);
@@ -8075,13 +8172,16 @@ window.lcOpenLedger = function(contractId) {
         const rcpt = imgs.length ? `<button class="lc-led-rcpt" onclick="lcLedgerViewReceipt('${p.id}')">View</button>` : '<span style="color:#c4c9d4;">—</span>';
         return `<tr>
             <td>${fmtD(p.paymentDate)}</td>
-            <td>${mlabel(p.payMilestone)}</td>
-            <td class="num">₱${formatNum(amt)}</td>
+            <td style="color:#A1A1A6;">${mlabel(p.payMilestone)}</td>
+            <td class="num amt">₱${formatNum(amt)}</td>
             <td class="num ${running < 0 ? 'lc-neg' : ''}">₱${formatNum(running)}</td>
-            <td>${rcpt}</td>
+            <td class="num">${rcpt}</td>
         </tr>`;
-    }).join('') : '<tr><td colspan="5" style="text-align:center;color:#9ca3af;padding:18px;">No payments linked to this contract yet.</td></tr>';
+    }).join('') : '<tr><td colspan="5" style="text-align:center;color:#A1A1A6;padding:22px;">No payments linked to this contract yet.</td></tr>';
     const badge = st.status === 'Completed' ? 'lc-badge-done' : st.status === 'Over' ? 'lc-badge-over' : 'lc-badge-ongoing';
+    // Drawn-down share of the cap, clamped so an overpaid contract shows a full
+    // (red) bar rather than overflowing its track.
+    const pctPaid = st.agreed > 0 ? Math.min(100, Math.max(0, st.paid / st.agreed * 100)) : 0;
     body.innerHTML = `
         <div class="lc-led-head">
             <span class="lc-type lc-type-${c.payType === 'inhouse' ? 'in' : 'pk'}">${c.payType === 'inhouse' ? 'In-house' : 'Pakyaw'}</span>
@@ -8092,10 +8192,11 @@ window.lcOpenLedger = function(contractId) {
             <div><span>Paid</span><strong>₱${formatNum(st.paid)}</strong></div>
             <div><span>Remaining</span><strong class="${st.remaining < 0 ? 'lc-neg' : ''}">₱${formatNum(st.remaining)}</strong></div>
         </div>
-        <table class="lc-led-table">
-            <thead><tr><th>Date</th><th>Milestone</th><th class="num">Amount</th><th class="num">Remaining after</th><th>Receipt</th></tr></thead>
+        <div class="lc-led-bar"><i class="${st.remaining < 0 ? 'over' : ''}" style="width:${pctPaid}%;"></i></div>
+        <div class="lc-led-scroll"><table class="lc-led-table">
+            <thead><tr><th>Date</th><th>Milestone</th><th class="num">Amount</th><th class="num">Remaining after</th><th class="num">Receipt</th></tr></thead>
             <tbody>${rowsHtml}</tbody>
-        </table>`;
+        </table></div>`;
     openExpModal('laborLedgerModal');
 };
 window.lcLedgerViewReceipt = function(payId) {
@@ -8198,43 +8299,70 @@ window.lcViewFiles = function(contractId) {
     const existing = document.getElementById('lcFilesOverlay');
     if (existing) existing.remove();
 
+    // Empty state explains what belongs here and offers the upload directly,
+    // instead of the old bare "No files uploaded yet." line.
     const itemsHtml = !files.length
-        ? '<div style="padding:32px;text-align:center;color:#9ca3af;font-size:13px;">No files uploaded yet.</div>'
+        ? `<div class="lcm-empty">
+               <div class="lcm-empty-icon">
+                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+               </div>
+               <div class="lcm-empty-title">No files yet</div>
+               <div class="lcm-empty-sub">Attach receipts, permits, or the signed agreement to keep this contract's paperwork in one place.</div>
+               <button type="button" class="lcm-btn primary" data-files-upload style="margin-top:18px;">
+                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Upload file
+               </button>
+             </div>`
         : files.map((h, i) => {
             const url = h.fileUrl;
             const name = h.fileName || ('File ' + (i + 1));
             const img = isImg(url);
-            return `<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid #f0f0f0;">
+            return `<div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #F0F0F0;">
                 ${ img
-                    ? `<a href="${_mvpEsc(url)}" target="_blank" rel="noopener" style="flex:none;">
-                         <img src="${_mvpEsc(url)}" alt="${_mvpEsc(name)}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;">
+                    ? `<a href="${_mvpEsc(url)}" target="_blank" rel="noopener" style="flex:none;line-height:0;">
+                         <img src="${_mvpEsc(url)}" alt="${_mvpEsc(name)}" style="width:56px;height:56px;object-fit:cover;border-radius:10px;border:1px solid #E5E5E5;">
                        </a>`
-                    : `<a href="${_mvpEsc(url)}" target="_blank" rel="noopener" style="flex:none;width:56px;height:56px;border-radius:8px;border:1px solid #e5e7eb;background:#f9fafb;display:flex;align-items:center;justify-content:center;font-size:11px;color:#6b7280;">PDF</a>`
+                    : `<a href="${_mvpEsc(url)}" target="_blank" rel="noopener" style="flex:none;width:56px;height:56px;border-radius:10px;border:1px solid #E5E5E5;background:#FAFBFA;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:#6C6C70;">PDF</a>`
                 }
                 <div style="flex:1;min-width:0;">
-                    <div style="font-size:13px;font-weight:600;color:#111827;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_mvpEsc(name)}</div>
-                    <div style="font-size:11px;color:#9ca3af;margin-top:2px;">${h.at ? new Date(h.at).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : ''}</div>
+                    <div style="font-size:13px;font-weight:600;color:#1C1C1E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_mvpEsc(name)}</div>
+                    <div style="font-size:11.5px;font-weight:400;color:#A1A1A6;margin-top:3px;">${h.at ? new Date(h.at).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : ''}</div>
                 </div>
-                <a href="${_mvpEsc(url)}" target="_blank" rel="noopener" style="flex:none;padding:6px 12px;border-radius:7px;border:1px solid #e5e7eb;background:#f9fafb;font-size:12px;font-weight:600;color:#374151;text-decoration:none;">Open</a>
+                <a href="${_mvpEsc(url)}" target="_blank" rel="noopener" class="lc-led-rcpt" style="text-decoration:none;">Open</a>
             </div>`;
         }).join('');
 
     const ov = document.createElement('div');
     ov.id = 'lcFilesOverlay';
-    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    ov.className = 'lcm-ov';
     ov.onclick = e => { if (e.target === ov) ov.remove(); };
     ov.innerHTML = `
-        <div style="background:#fff;border-radius:14px;width:100%;max-width:480px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.25);overflow:hidden;">
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e5e7eb;">
-                <div style="font-size:15px;font-weight:700;color:#111827;">${_mvpEsc(c.workerName || 'Contract')} — Files</div>
-                <button onclick="document.getElementById('lcFilesOverlay').remove()" style="background:none;border:none;font-size:1.4rem;color:#9ca3af;cursor:pointer;line-height:1;">&times;</button>
+        <div class="lcm-card" style="max-width:480px;">
+            <div class="lcm-head">
+                <div>
+                    <h3 class="lcm-title">Files</h3>
+                    <div class="lcm-sub">${_mvpEsc(c.workerName || 'Contract')} · ${_mvpEsc(c.scope || 'job')}</div>
+                </div>
+                <button type="button" class="lcm-x" data-files-close aria-label="Close">&times;</button>
             </div>
-            <div style="overflow-y:auto;flex:1;">${itemsHtml}</div>
-            <div style="padding:12px 16px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;">
-                <button onclick="document.getElementById('lcFilesOverlay').remove()" style="padding:8px 18px;border-radius:8px;border:1px solid #d1d5db;background:#f9fafb;color:#374151;font-size:13px;font-weight:600;cursor:pointer;">Close</button>
+            <div class="lcm-body"${files.length ? '' : ' style="padding:0;"'}>${itemsHtml}</div>
+            <div class="lcm-foot">
+                <button type="button" class="lcm-btn primary" data-files-close>Close</button>
             </div>
         </div>`;
     document.body.appendChild(ov);
+
+    ov.querySelectorAll('[data-files-close]').forEach(b => b.addEventListener('click', () => ov.remove()));
+    // Empty-state upload reuses the existing Add file picker. The rect must be
+    // read BEFORE the overlay is removed — lcAddFile positions its menu from
+    // getBoundingClientRect(), and a detached node reports all zeros, which
+    // would pin the picker to the top-left corner. Pass a stand-in holding the
+    // captured rect (that method is all lcAddFile uses of the anchor).
+    const up = ov.querySelector('[data-files-upload]');
+    if (up) up.addEventListener('click', e => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        ov.remove();
+        window.lcAddFile(contractId, { getBoundingClientRect: () => rect });
+    });
 };
 
 window.lcOpenNew            = lcOpenNew;
