@@ -26,7 +26,6 @@ let _pmOvBills        = [];       // weekly bills for the active project (overvi
 let _pmOvReqs         = [];       // payment requests for the active project (overview date filter)
 let _pmOvContractVal  = 0;        // contract value (range-independent) for the KPI refresh
 let _pmOvProgressVal  = 0;        // milestone progress % (range-independent) for the KPI refresh
-let _pmOvFundTotal    = 0;        // total revolving fund SET for the project (all weeks)
 // ── This-week inline bill builder ──
 let _pmWeekBills      = [];       // all weeklyBills docs for the active project
 let _pmWeekEntries    = [];       // current draft line entries {id,type,details,amount}
@@ -146,16 +145,6 @@ function _pmOvShort(n) {
     if (n >= 1000)    return sign + '₱' + Math.round(n / 1000) + 'k';
     return sign + '₱' + Math.round(n);
 }
-// The Revolving fund card measures against the TOTAL FUND SET, not the Project
-// Budget, so it can't use _kpiPctText (which always divides by the contract).
-// Returns '' when no fund is set, which makes kpi() render no pill at all rather
-// than dividing by zero.
-function _pmOvFundPctText(val) {
-    if (!(_pmOvFundTotal > 0)) return '';
-    const p = Math.abs(Number(val) || 0) / _pmOvFundTotal * 100;
-    return (p >= 10 ? p.toFixed(0) : p.toFixed(1)) + '% of fund set';
-}
-
 async function _pmLoadOverview() {
     if (!_pmActiveProject) { switchView('pmProjects'); return; }
     const root = document.getElementById('pm-ov-root');
@@ -163,27 +152,18 @@ async function _pmLoadOverview() {
     const pid = _pmActiveProject.id;
     try {
         const base = db.collection('constructionProjects').doc(pid);
-        const [msSnap, billsSnap, paySnap, fundSnap] = await Promise.all([
+        const [msSnap, billsSnap, paySnap] = await Promise.all([
             base.collection('milestones').get(),
             base.collection('weeklyBills').get(),
             db.collection('paymentRequests').where('constructionProjectId', '==', pid).get(),
-            // Best-effort: the fund table may not exist on older projects, and a
-            // failure here must never take the whole overview down with it.
-            base.collection('revolvingFundRequests').get().catch(() => ({ docs: [] })),
         ]);
         const ms    = msSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const bills = billsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const reqs  = paySnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        const funds = fundSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         _pmOvBills = bills;
         _pmOvReqs  = reqs;
         _pmOvContractVal = Number(_pmActiveProject.budget) || 0;
         _pmOvProgressVal = _pmOvProgress(ms);
-        // Total fund SET across every week. The card subtracts the Direct cost
-        // currently on screen, so the two tiles always reconcile. NOTE: this is
-        // deliberately NOT the Money tab's "Gross profit" — that one subtracts only
-        // the cost of weeks that have a fund entry, which is a different figure.
-        _pmOvFundTotal = funds.reduce((s, r) => s + (Number(r.amount) || 0), 0);
         root.innerHTML = _pmOvHtml(_pmActiveProject, ms, bills, reqs);
     } catch(e) {
         console.warn('PM: overview load failed', e.message);
@@ -529,13 +509,13 @@ function _pmOvHtml(p, ms, bills, reqs) {
     // `pctVal` (optional) renders a "% of budget" pill under the amount — solid
     // fill + white text so it reads clearly instead of blending into the card.
     // `pctTextOverride` (optional) replaces the "% of budget" text with a fixed
-    // label (e.g. "5% of Remaining cash receipt") for cards whose percentage
+    // label (e.g. "5% of remaining cash") for cards whose percentage
     // isn't a share of the Project Budget.
     const kpi = (label, val, valColor, bg, border, valId, pctVal, pctId, pctTextOverride) => `
       <div style="flex:1;min-width:150px;background:${bg};border:1px solid ${border};border-radius:16px;padding:15px 17px;">
         <div style="font:600 11.5px 'IBM Plex Sans';color:#7c7b75;">${label}</div>
         <div class="num"${valId ? ` id="${valId}"` : ''} style="font:700 22px 'IBM Plex Sans';color:${valColor};margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${val}</div>
-        ${(pctVal != null || pctTextOverride) ? `<div${pctId ? ` id="${pctId}"` : ''} style="display:inline-block;font:800 11.5px 'IBM Plex Sans';color:#fff;background:${valColor};border-radius:999px;padding:3px 10px;margin-top:8px;letter-spacing:.02em;">${pctTextOverride || _kpiPctText(pctVal)}</div>` : ''}
+        ${(pctVal != null || pctTextOverride) ? `<div${pctId ? ` id="${pctId}"` : ''} style="display:inline-block;font:800 11.5px 'IBM Plex Sans';color:#fff;background:${valColor};border-radius:999px;padding:3px 10px;margin-top:8px;letter-spacing:.02em;white-space:nowrap;">${pctTextOverride || _kpiPctText(pctVal)}</div>` : ''}
       </div>`;
     // Warranty retention = a FIXED 5% automatically withheld from the Remaining
     // cash receipt (not a share of the Project Budget). Profit share = one 50%
@@ -546,20 +526,21 @@ function _pmOvHtml(p, ms, bills, reqs) {
     const profitShare = (netCash - warrantyRetention) / 2;
     const retColor = warrantyRetention < 0 ? '#8f352c' : '#9a6c12';
     const psColor  = profitShare < 0 ? '#8f352c' : '#0f6342';
-    // Revolving fund − direct cost: the fund collected so far minus the SAME direct
-    // cost shown in the tile beside it, so the two always reconcile on screen. Its
-    // percentage is a share of the fund SET, not the Project Budget, so it supplies
-    // its own pill text through kpi()'s pctTextOverride.
-    const fundNet   = _pmOvFundTotal - directCost;
-    const fundColor = fundNet < 0 ? '#8f352c' : '#0f6342';
+    // Two deliberate rows of three, not one wrapping strip: row 1 is what the job
+    // COSTS (budget vs direct vs indirect), row 2 is what happens to the CASH
+    // (collected, retained, shared). Each row is its own flex container so the
+    // grouping holds instead of depending on where the viewport happens to wrap —
+    // they still wrap internally on a narrow screen.
     const ovTiles = `
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
       ${kpi('Project Budget', contractValue > 0 ? _fmt(contractValue) : '—', '#0f6342', '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-contract')}
       ${kpi('Direct cost', _fmt(directCost), '#44525f', '#eef0f3', '#d6dde4', 'pm-ov-kpi-direct', directCost, 'pm-ov-kpi-direct-pct')}
+      ${kpi('Indirect cost', _fmt(bd.overhead), '#7a5a48', '#f7f1ed', '#e6d7cd', 'pm-ov-kpi-indirect', bd.overhead, 'pm-ov-kpi-indirect-pct')}
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
       ${kpi('Remaining cash receipt', (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), netColor, '#fbf3e2', '#f0e2c5', 'pm-ov-kpi-net', netCash, 'pm-ov-kpi-net-pct')}
-      ${kpi('Warranty retention', (warrantyRetention < 0 ? '−' : '') + _fmt(Math.abs(warrantyRetention)), retColor, '#fbf2dc', '#ecd8a6', 'pm-ov-kpi-retention', null, 'pm-ov-kpi-retention-pct', '5% of Remaining cash receipt')}
-      ${kpi('Profit share', (profitShare < 0 ? '−' : '') + _fmt(Math.abs(profitShare)), psColor, '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-profitshare', null, 'pm-ov-kpi-profitshare-pct', '50% of Remaining after retention')}
-      ${kpi('Revolving fund − direct cost', (fundNet < 0 ? '−' : '') + _fmt(Math.abs(fundNet)), fundColor, '#eef2fb', '#d6e0f4', 'pm-ov-kpi-fund', null, 'pm-ov-kpi-fund-pct', _pmOvFundPctText(fundNet))}
+      ${kpi('Warranty retention', (warrantyRetention < 0 ? '−' : '') + _fmt(Math.abs(warrantyRetention)), retColor, '#fbf2dc', '#ecd8a6', 'pm-ov-kpi-retention', null, 'pm-ov-kpi-retention-pct', '5% of remaining cash')}
+      ${kpi('Profit share', (profitShare < 0 ? '−' : '') + _fmt(Math.abs(profitShare)), psColor, '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-profitshare', null, 'pm-ov-kpi-profitshare-pct', '50% after retention')}
     </div>`;
 
     // % of the project budget consumed by this category (categoryAmount / budget).
@@ -875,21 +856,9 @@ window.pmOvApplyRange = function() {
     // Contract value is range-independent — re-set so it stays correct.
     const cv = document.getElementById('pm-ov-kpi-contract');
     if (cv) cv.textContent = _pmOvContractVal > 0 ? _fmt(_pmOvContractVal) : '—';
-    // Revolving fund − direct cost uses the SAME direct cost shown beside it, so it
-    // has to recompute with the range. Its pill measures against the total fund SET
-    // (not the Project Budget), so its text is built here instead of by setBpct.
-    const fundNet = _pmOvFundTotal - directCost;
-    const fundColorNow = fundNet < 0 ? '#8f352c' : '#0f6342';
-    const fundEl = document.getElementById('pm-ov-kpi-fund');
-    if (fundEl) {
-        fundEl.textContent = (fundNet < 0 ? '−' : '') + _fmt(Math.abs(fundNet));
-        fundEl.style.color = fundColorNow;
-    }
-    const fundPctEl = document.getElementById('pm-ov-kpi-fund-pct');
-    if (fundPctEl) {
-        fundPctEl.style.background = fundColorNow;
-        fundPctEl.textContent = _pmOvFundPctText(fundNet);
-    }
+    // Indirect cost = the overhead recorded in Daily Expenses for the bills in range.
+    // Its pill is a share of the Project Budget, so setBpct handles the text below.
+    setAmt('pm-ov-kpi-indirect', bd.overhead);
     setAmt('pm-ov-kpi-direct', directCost);
     const netEl = document.getElementById('pm-ov-kpi-net');
     if (netEl) {
@@ -940,8 +909,9 @@ window.pmOvApplyRange = function() {
     // Direct cost / Remaining cash receipt KPI cards — % of Project Budget.
     // Warranty retention / Profit share show a FIXED "5% of.../50% of..." label
     // (set once at initial render) — nothing to update here since it never changes.
-    setBpct('pm-ov-kpi-direct-pct', directCost);
-    setBpct('pm-ov-kpi-net-pct',    netCash);
+    setBpct('pm-ov-kpi-direct-pct',   directCost);
+    setBpct('pm-ov-kpi-net-pct',      netCash);
+    setBpct('pm-ov-kpi-indirect-pct', bd.overhead);
     const setCnt = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n + ' ' + (n === 1 ? 'entry' : 'entries'); };
     setCnt('pm-ov-labor-cnt',     bd.laborCount);
     setCnt('pm-ov-materials-cnt', bd.matCount);
@@ -2533,9 +2503,9 @@ function _pmWeekApplyCat() {
     _pmWeekRenderAttach();
 }
 
-// Highlight the active view-filter pill (All / Labor / Materials / Mat + Labor).
+// Highlight the active view-filter pill (All / Labor / Materials / Out Source / Overhead).
 function _pmWeekApplyViewFilter() {
-    ['all', 'labor', 'materials', 'both'].forEach(f => {
+    ['all'].concat(PM_ENTRY_TYPES).forEach(f => {
         const b = document.getElementById('pmw-vf-' + f);
         if (b) b.classList.toggle('active', _pmWeekViewFilter === f);
     });
@@ -2677,10 +2647,13 @@ window.pmWeekCancelEdit = function() {
 function _pmWeekCatStyle(type) {
     if (type === 'materials') return { name: 'MATERIALS',   tag: 'MATERIAL',  accent: '#5b6b7e', headBg: '#eef0f3', headBorder: '#d8dee6', text: '#3f4d5e', count: '#7e8a98' };
     if (type === 'both')      return { name: 'OUT SOURCE', tag: 'OUTSOURCE', accent: '#7a5bb5', headBg: '#efeaf8', headBorder: '#e0d5f3', text: '#5b3f96', count: '#9882bd' };
+    if (type === 'overhead')  return { name: 'OVERHEAD',   tag: 'OVERHEAD',  accent: '#b0907f', headBg: '#f7f1ed', headBorder: '#e6d7cd', text: '#7a5a48', count: '#a98d7c' };
     return { name: 'LABOR', tag: 'LABOR', accent: '#157a52', headBg: '#eaf4ef', headBorder: '#c6e6d5', text: '#0f6342', count: '#5e9d80' };
 }
 
-const _PMW_GROUP_TYPES = ['labor', 'materials', 'both'];
+// Drives which groups the entry list and the per-category statements render.
+// 'overhead' MUST be here or overhead lines are saved but never shown.
+const _PMW_GROUP_TYPES = ['labor', 'materials', 'both', 'overhead'];
 
 function _pmWeekEntryRow(e) {
     const st = _pmWeekCatStyle(e.type);
@@ -2806,9 +2779,13 @@ function _pmWeekRecompute() {
     _pmSet('pmw-today-labor',     _pmPeso(t.labor));
     _pmSet('pmw-today-materials', _pmPeso(t.matsPure));
     _pmSet('pmw-today-both',      _pmPeso(t.combined));
+    _pmSet('pmw-today-overhead',  _pmPeso(t.overhead));
     _pmSet('pmw-today-grand',     _pmPeso(t.grand));
     const bothRow = document.getElementById('pmw-today-both-row');
     if (bothRow) bothRow.style.display = t.combined > 0 ? '' : 'none';
+    // Same rule as Out Source: only take up a rail line once there's something in it.
+    const ovhRow = document.getElementById('pmw-today-overhead-row');
+    if (ovhRow) ovhRow.style.display = t.overhead > 0 ? '' : 'none';
 }
 
 function _pmWeekStatusMeta(status) {
