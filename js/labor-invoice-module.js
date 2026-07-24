@@ -347,7 +347,7 @@
 
         // Build project options
         const projOpts = _projects.map(p =>
-            `<option value="${_esc(p.id)}" ${d.constructionProjectId === p.id ? 'selected' : ''}>${_esc(p.clientName || '—')} — ${_esc(p.projectName || '—')}</option>`
+            `<option value="${_esc(p.id)}" ${d.constructionProjectId === p.id ? 'selected' : ''}>${_esc(_projLabel(p))}</option>`
         ).join('');
 
         // Build weekly bill checkboxes if editing and a project was saved
@@ -910,7 +910,11 @@
         const logoHtml = _buildLogoHtml(_defaults.logos);
 
         const proj = _projects.find(p => p.id === inv.constructionProjectId);
-        const projLabel = proj ? `${proj.clientName || '—'} — ${proj.projectName || '—'}` : '—';
+        // Address included so the printed invoice names the site; no id suffix here —
+        // this one is client-facing.
+        const projLabel = proj
+            ? `${proj.clientName || '—'} — ${proj.projectName || '—'}` + (proj.address ? ` · ${proj.address}` : '')
+            : '—';
 
         const itemRows = (inv.items || []).map((item, idx) => `
             <tr>
@@ -1157,6 +1161,19 @@ ${previewOnly ? '' : '<script>window.onload=function(){window.print();};<\\/scri
     function _pEsc(s) {
         return String(s || '')
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // One client can run several projects sharing a name — append the address, and a
+    // short id if that still collides, so no two options read identically. Picking the
+    // wrong one files the invoice against the wrong project.
+    function _projLabel(p) {
+        const base = `${p.clientName || '—'} — ${p.projectName || '—'}`;
+        const full = p.address ? `${base} · ${p.address}` : base;
+        const dup  = _projects.filter(q => {
+            const b = `${q.clientName || '—'} — ${q.projectName || '—'}`;
+            return (q.address ? `${b} · ${q.address}` : b) === full;
+        }).length > 1;
+        return dup ? `${full} · ID ${String(p.id).slice(0, 8)}` : full;
     }
 
     function _tsToMs(ts) {

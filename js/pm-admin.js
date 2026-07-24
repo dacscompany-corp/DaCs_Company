@@ -4445,29 +4445,35 @@ function _pmPayRenderTable(reqs) {
         rejected: '<span class="pm-badge pm-badge-unpaid">Rejected</span>',
     };
     tbody.innerHTML = reqs.map(r => {
-        const isSelfPay = r.source === 'self_payment';
+        // A row is "client paid" if the client settled it directly — either via the
+        // website (self_payment) or paid offline and an admin recorded it here
+        // (manual_payment). Both stand outside the admin-issued-bill "Strict" flow.
+        const isSelfPay   = r.source === 'self_payment';
+        const isManualPay = r.source === 'manual_payment';
+        const isClientPaid = isSelfPay || isManualPay;
         const dateStr = r.weekEndingDate ? new Date(r.weekEndingDate+'T00:00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '—';
         const carry   = r.carryover ? _fmt(r.carryover) : '₱0';
         const total   = _fmt(r.totalAmount || ((r.amount||0)+(r.carryover||0)));
         const badge   = statusBadge[r.status] || `<span class="pm-badge pm-badge-unpaid">${_esc(r.status||'—')}</span>`;
-        // Self-payments are client-initiated and stand-alone — the "Strict" concept
-        // (admin-issued weekly bills) doesn't apply, so flag them instead.
-        const strictBadge = isSelfPay
+        // Client-paid rows are stand-alone — the "Strict" concept (admin-issued
+        // weekly bills) doesn't apply, so flag them as paid instead.
+        const strictBadge = isClientPaid
             ? '<span class="pm-badge pm-badge-partial">Client paid</span>'
             : (r.strict
                 ? '<span class="pm-badge pm-badge-strict">Strict</span>'
                 : '<span style="color:#9ca3af;font-size:12px;">—</span>');
-        // Self-pay rows get a Review action (see receipt → approve/reject); admin-issued
-        // bills keep Edit + Strict.
-        const actions = isSelfPay
+        // Client-paid rows get a read-only View (self-pay: Review the receipt when
+        // still pending); admin-issued bills keep Edit + Strict.
+        const actions = isClientPaid
             ? `<button class="pm-tbl-btn pm-tbl-btn-edit" data-pm-action="review"><i data-lucide="receipt" style="width:12px;height:12px;"></i> ${r.status === 'submitted' ? 'Review' : 'View'}</button>`
             : `<button class="pm-tbl-btn pm-tbl-btn-edit" data-pm-action="edit"><i data-lucide="pencil" style="width:12px;height:12px;"></i> Edit</button>
                <button class="pm-tbl-btn ${r.strict ? 'pm-tbl-btn-delete' : 'pm-tbl-btn-strict'}" data-pm-action="toggle-strict">
                  <i data-lucide="${r.strict ? 'unlock' : 'lock'}" style="width:12px;height:12px;"></i> ${r.strict ? 'Unstrict' : 'Strict'}
                </button>`;
+        const paidNote = isSelfPay ? 'Self payment' : (isManualPay ? 'Recorded by admin' : '');
 
         return `<tr data-pm-id="${_esc(r.id)}">
-            <td><strong>${_esc(dateStr)}</strong>${isSelfPay ? '<div style="font-size:11px;color:#6b7280;">Self payment</div>' : ''}</td>
+            <td><strong>${_esc(dateStr)}</strong>${paidNote ? '<div style="font-size:11px;color:#6b7280;">' + paidNote + '</div>' : ''}</td>
             <td>${_fmt(r.amount)}</td>
             <td>${carry}</td>
             <td><strong>${total}</strong></td>
@@ -4568,6 +4574,64 @@ window.pmToggleStrict = async function(id, makeStrict) {
           .update({ strict: makeStrict, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
         _pmLoadPayments();
     } catch(e) { alert('Error: ' + e.message); }
+};
+
+// ── Manually record an offline client payment ──────────────────────────────
+// For payments made outside the website (cash, bank transfer, GCash handed over
+// directly): the admin records a completed payment here. It lands as a verified,
+// client-paid row (source 'manual_payment') — no bill is issued and nothing waits.
+window.pmOpenAddPaymentModal = function() {
+    if (!_pmActiveProject) { alert('Select a project first.'); return; }
+    document.getElementById('pmAddPayDate').value   = _nextFriday();
+    document.getElementById('pmAddPayAmount').value = '';
+    document.getElementById('pmAddPayRef').value    = '';
+    document.getElementById('pmAddPayNotes').value  = '';
+    ['err-pmAddPayDate','err-pmAddPayAmount'].forEach(_pmClearErr);
+    document.getElementById('pmAddPaymentModal').style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
+};
+
+window.pmSaveManualPayment = async function() {
+    const weekEndingDate = document.getElementById('pmAddPayDate').value;
+    const amount = parseFloat(document.getElementById('pmAddPayAmount').value) || 0;
+    const ref    = document.getElementById('pmAddPayRef').value.trim();
+    const notes  = document.getElementById('pmAddPayNotes').value.trim();
+    let valid = true;
+    if (!weekEndingDate) { _pmShowErr('err-pmAddPayDate','Select the week / payment date.'); valid = false; }
+    if (amount <= 0)     { _pmShowErr('err-pmAddPayAmount','Enter the amount received.');     valid = false; }
+    if (!valid) return;
+
+    const btn = document.querySelector('#pmAddPaymentModal .pm-btn-primary');
+    btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+        await db.collection('paymentRequests').add({
+            kind:        'construction',
+            source:      'manual_payment',
+            status:      'verified',            // already paid — no review needed
+            weekEndingDate,
+            billingPeriod: 'Week of ' + weekEndingDate,
+            amount, totalAmount: amount, amountPaid: amount, paidAmount: amount,
+            carryover: 0,
+            referenceNumber: ref,
+            notes,
+            clientEmail: _pmActiveProject.clientEmail || '',
+            clientName:  _pmActiveProject.clientName  || '',
+            projectName: _pmActiveProject.projectName || '',
+            constructionProjectId: _pmActiveProject.id,
+            verifiedBy: (auth.currentUser && auth.currentUser.email) || 'admin',
+            verifiedAt: firebase.firestore.FieldValue.serverTimestamp(),
+            createdAt:  firebase.firestore.FieldValue.serverTimestamp(),
+            updatedAt:  firebase.firestore.FieldValue.serverTimestamp(),
+        });
+        pmCloseModal('pmAddPaymentModal');
+        _pmLoadPayments();
+    } catch(e) {
+        alert('Save failed: ' + e.message);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i data-lucide="check" style="width:14px;height:14px;"></i> Add Payment';
+        if (window.lucide) lucide.createIcons();
+    }
 };
 
 // ── Client self-payment review (receipt verify) ───────────────────────────

@@ -3573,3 +3573,26 @@ body,
 @media (prefers-reduced-motion: reduce) {
   .rm-new { animation: none; }
 }
+
+/* ============================================================
+   LABOR ACTION MODALS — Playfair Display throughout
+   (Ledger · Raise cap · Files)
+
+   Deliberately last in the last-loaded stylesheet, and deliberately
+   !important + descendant selector. Both are required here:
+
+   • This file already forces fonts on modal parts with !important
+     (body .exp-btn-secondary → Barlow, body .exp-form-group label →
+     Barlow). A plain rule anywhere loses to those.
+   • <button>, <input>, <select> and <textarea> never inherit
+     font-family from an ancestor, so the container alone would leave
+     "Close", "View", "Update cap" and the amount field on the browser
+     default face. The universal selector covers them without needing
+     a rule per control.
+============================================================ */
+body #laborLedgerModal,
+body #laborLedgerModal *,
+body .lcm-card,
+body .lcm-card * {
+  font-family: 'Playfair Display', 'Times New Roman', Georgia, serif !important;
+}

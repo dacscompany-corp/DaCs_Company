@@ -13,6 +13,17 @@
     let _allConClients   = [];
     let _allPortalClients = [];
     let _conProjects     = [];
+    // One client can run several projects sharing a name — append the address, and a
+    // short id if that still collides, so no two dropdown options read identically.
+    function _conProjLabel(p) {
+        const base = (p.clientName ? p.clientName + ' — ' : '') + (p.projectName || p.id);
+        const full = p.address ? base + ' · ' + p.address : base;
+        const dup  = _conProjects.filter(q => {
+            const b = (q.clientName ? q.clientName + ' — ' : '') + (q.projectName || q.id);
+            return (q.address ? b + ' · ' + q.address : b) === full;
+        }).length > 1;
+        return dup ? full + ' · ID ' + String(p.id).slice(0, 8) : full;
+    }
     let _boqProjects     = [];
     let _loading         = false;
     let _activeTab       = 'all';
@@ -1276,7 +1287,7 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
             _conProjects.forEach(p => {
                 const opt = document.createElement('option');
                 opt.value       = p.id;
-                opt.textContent = (p.clientName ? p.clientName + ' — ' : '') + (p.projectName || p.id);
+                opt.textContent = _conProjLabel(p);
                 sel.appendChild(opt);
             });
         }
@@ -1406,23 +1417,32 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         const roleSel = document.getElementById('cc-edit-role');
         if (roleSel) roleSel.value = c.isPartner ? 'partner' : 'client';
 
-        const sel = document.getElementById('cc-edit-project');
-        if (sel) {
-            sel.innerHTML = '<option value="">Loading projects…</option>';
+        // Linked projects are READ-ONLY here. The client↔project link lives on the
+        // PROJECT (constructionProjects.clientEmail / partnerEmail) and is set from
+        // Project Management. One account can own several projects, so a single
+        // dropdown could not represent the relationship — and editing it here
+        // silently unlinked the client's OTHER projects, one per save. This panel
+        // just shows what's linked; linking happens where the project is defined.
+        const listEl = document.getElementById('cc-edit-projects-list');
+        if (listEl) {
+            listEl.innerHTML = '<span style="color:#9ca3af;">Loading…</span>';
             if (!_conProjects.length) {
                 try {
                     const snap = await db.collection('constructionProjects').orderBy('projectName').get();
                     _conProjects = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                } catch (e) { console.warn('Could not load projects for edit dropdown'); }
+                } catch (e) { console.warn('Could not load projects for edit modal'); }
             }
-            sel.innerHTML = '<option value="">— No project linked —</option>';
-            _conProjects.forEach(p => {
-                const opt = document.createElement('option');
-                opt.value = p.id;
-                opt.textContent = (p.clientName ? p.clientName + ' — ' : '') + (p.projectName || p.id);
-                if ((p.clientEmail || '').toLowerCase() === c.email.toLowerCase()) opt.selected = true;
-                sel.appendChild(opt);
-            });
+            const emailLc = (c.email || '').toLowerCase();
+            const mine = _conProjects.filter(p =>
+                (p.clientEmail  || '').toLowerCase() === emailLc ||
+                (p.partnerEmail || '').toLowerCase() === emailLc);
+            listEl.innerHTML = mine.length
+                ? mine.map(p => {
+                    const name = _esc(p.projectName || 'Untitled project');
+                    const loc  = p.address ? '<span style="color:#9ca3af;"> · ' + _esc(p.address) + '</span>' : '';
+                    return '<span style="display:flex;align-items:center;gap:7px;"><span style="width:6px;height:6px;border-radius:50%;background:#16a34a;flex:none;"></span>' + name + loc + '</span>';
+                }).join('')
+                : '<span style="color:#9ca3af;">No projects linked yet.</span>';
         }
 
         modal.style.display = 'flex';
@@ -1449,7 +1469,6 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
 
         const firstName = (document.getElementById('cc-edit-firstname')?.value || '').trim();
         const lastName  = (document.getElementById('cc-edit-lastname')?.value  || '').trim();
-        const projectId = (document.getElementById('cc-edit-project')?.value   || '');
         const accountRole = (document.getElementById('cc-edit-role')?.value === 'partner') ? 'partner' : 'client';
 
         let valid = true;
@@ -1465,28 +1484,12 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         try {
             await db.collection('constructionClientUsers').doc(uid).update({ firstName, lastName, role: accountRole });
 
-            // Handle project link changes
-            const prevProj = _conProjects.find(p => (p.clientEmail || '').toLowerCase() === c.email.toLowerCase());
-            const newProj  = _conProjects.find(p => p.id === projectId);
-
-            if (prevProj && prevProj.id !== (newProj?.id || '')) {
-                await db.collection('constructionProjects').doc(prevProj.id).update({ clientEmail: '', clientName: '' });
-                prevProj.clientEmail = '';
-                prevProj.clientName  = '';
-            }
-            if (newProj) {
-                await db.collection('constructionProjects').doc(newProj.id).update({
-                    clientEmail: c.email,
-                    clientName : firstName + ' ' + lastName
-                });
-                newProj.clientEmail = c.email;
-                newProj.clientName  = firstName + ' ' + lastName;
-            }
-
+            // Project links are NOT edited here — they live on the project
+            // (constructionProjects.clientEmail) and are managed from Project
+            // Management. This modal only edits the person + account type.
             c.firstName = firstName;
             c.lastName  = lastName;
             c.name      = firstName + ' ' + lastName;
-            c.project   = newProj?.projectName || '';
             c.role      = accountRole;
             c.isPartner = accountRole === 'partner';
 
