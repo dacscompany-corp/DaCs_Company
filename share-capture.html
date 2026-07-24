@@ -156,7 +156,7 @@ const HEAD = {
   system:   { h: 'Which system is this for?',  s: 'Not sure? Most site receipts are Project Control.' },
   project:  { h: 'Which project?',             s: 'Pick the project this expense belongs to.' },
   type:     { h: 'What kind of expense?',      s: 'Choose the closest match — staff can fix it later.' },
-  category: { h: 'What material is it?',       s: 'A short name is enough. Tap a suggestion or type your own.' },
+  category: { h: 'Which job is this for?',      s: 'Tap the job from the project’s labor contracts, or type your own.' },
   labor:    { h: 'Whose labor is this?',       s: 'Type the worker or laborer’s name.' },
   note:     { h: 'Anything staff should know?',s: 'Optional — supplier name, what it’s for, etc.' },
   review:   { h: 'Quick check before sending', s: 'Make sure this looks right, then send.' },
@@ -165,7 +165,7 @@ const DEFAULT_CATS = ['Cement', 'Rebar', 'Electrical', 'Plumbing', 'Paint', 'Har
 
 // ── State ──
 let S = scFresh();
-let scFolders = [], scPmProjects = [], scDbCats = [];
+let scFolders = [], scPmProjects = [], scRoles = [];
 
 function scFresh() {
   return { step: 'photo', sys: 'pc', type: 'materials', project: '', cat: '', labor: '', note: '', photos: [], err: '' };
@@ -249,14 +249,12 @@ $('scFile').addEventListener('change', (e) => {
 // ── Data loads ──
 async function scLoadPickers() {
   try {
-    const [fSnap, pSnap, cSnap] = await Promise.all([
+    const [fSnap, pSnap] = await Promise.all([
       db.collection('folders').orderBy('name').get(),
       db.collection('constructionProjects').orderBy('clientName').get(),
-      db.collection('categories').get().catch(() => ({ docs: [] })),
     ]);
     scFolders    = fSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
     scPmProjects = pSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    scDbCats     = cSnap.docs.map((d) => (d.data() || {}).name).filter(Boolean);
     if (S.step === 'project' || S.step === 'category') scRender();
   } catch (e) {
     S.err = 'Could not load projects: ' + (e.message || e);
@@ -286,12 +284,37 @@ function scStartedLabel(d) {
   const t = new Date(String(d).slice(0, 10) + 'T00:00:00');
   return isNaN(t) ? '' : 'Started ' + t.toLocaleDateString('en-PH', { month: 'short', year: 'numeric' });
 }
-function scCats() { return scDbCats.length ? scDbCats : DEFAULT_CATS; }
+// Suggestions are the chosen project's labor-contract ROLES ("the job, e.g. Tiling
+// & masonry") — the same thing the Expenses screen now tags a material with, so a
+// receipt captured here lands on a category staff can actually pick when encoding.
+// The two systems keep their contracts in different places:
+//   pc → top-level laborContracts, filtered by folderId
+//   pm → constructionProjects/{id}/laborContracts (pm_labor_contracts)
+// Best-effort: any failure just falls back to DEFAULT_CATS rather than blocking.
+async function scLoadRoles() {
+  scRoles = [];
+  if (!S.project) return;
+  try {
+    const snap = S.sys === 'pc'
+      ? await db.collection('laborContracts').where('folderId', '==', S.project).get()
+      : await db.collection('constructionProjects').doc(S.project).collection('laborContracts').get();
+    const set = new Set();
+    snap.docs.forEach((d) => {
+      const s = ((d.data() || {}).scope || '').trim();
+      if (s) set.add(s);
+    });
+    scRoles = Array.from(set).sort((a, b) => a.localeCompare(b));
+  } catch (e) {
+    scRoles = [];   // leave the defaults in place
+  }
+  if (S.step === 'category') scRender();
+}
+function scCats() { return scRoles.length ? scRoles : DEFAULT_CATS; }
 
 // ── Navigation ──
 window.scChoose = function (stepKey, val) {
-  if (stepKey === 'system') { S.sys = val; S.type = TYPES[val][0].v; S.project = ''; }
-  else if (stepKey === 'project') S.project = val;
+  if (stepKey === 'system') { S.sys = val; S.type = TYPES[val][0].v; S.project = ''; scRoles = []; }
+  else if (stepKey === 'project') { S.project = val; scLoadRoles(); }   // async, fills in before/at the category step
   else if (stepKey === 'type') S.type = val;
   S.err = '';
   const steps = scSteps();
@@ -406,7 +429,7 @@ function scRender() {
 
   else if (S.step === 'category' || S.step === 'labor') {
     const field = S.step === 'category' ? 'cat' : 'labor';
-    const ph = S.step === 'category' ? 'e.g. Cement' : 'e.g. Juan Dela Cruz';
+    const ph = S.step === 'category' ? 'e.g. Tiling & masonry' : 'e.g. Juan Dela Cruz';
     html += '<input class="sc-text" id="scTextInput" value="' + scEsc(S[field]) + '" placeholder="' + ph + '" oninput="scSetField(\'' + field + '\', this.value)">';
     if (S.step === 'category') {
       html += '<div class="sc-chips">' + scCats().map((c) =>
