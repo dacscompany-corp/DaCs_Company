@@ -2911,12 +2911,22 @@ function cmWeekRange(end) {
 // client-inclusive of any combined (supply & install) amount, so pure
 // materials = materials − combined; the combined bucket is reported on its own.
 function cmOvBreakdown(bills) {
-    let labor = 0, materials = 0, combined = 0;
+    let labor = 0, materials = 0, combined = 0, overhead = 0;
     // Per-category ENTRY counts: prefer the per-line `entries` array (each line is
-    // one entry, typed labor/materials/both); else count a bill once per category
-    // that has a nonzero amount.
-    let laborCount = 0, matCount = 0, combinedCount = 0;
+    // one entry, typed labor/materials/both/overhead); else count a bill once per
+    // category that has a nonzero amount.
+    let laborCount = 0, matCount = 0, combinedCount = 0, overheadCount = 0;
     (bills || []).forEach(b => {
+        // Overhead (site rent, utilities, fuel, permits) is a billable direct cost
+        // stored in its own field. Older bills predate it and simply contribute 0.
+        let ov = Number(b.overhead) || 0;
+        if (!ov && Array.isArray(b.entries)) {
+            ov = b.entries.filter(e => e.type === 'overhead').reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        }
+        overhead += ov || 0;
+        if (Array.isArray(b.entries) && b.entries.length) {
+            overheadCount += b.entries.filter(e => e.type === 'overhead').length;
+        } else if (ov > 0) { overheadCount++; }
         // Prefer the stored `combined` field; 0 is treated as "missing" too (a
         // `default 0` column leaves old bills at 0), so we still derive the supply &
         // install portion from the 'both' line entries (the stored `materials` folds it in).
@@ -2940,11 +2950,12 @@ function cmOvBreakdown(bills) {
             if (c > 0)              combinedCount++;
         }
     });
-    const direct = labor + materials + combined;
+    const direct = labor + materials + combined + overhead;
     const pct = v => direct > 0 ? Math.round(v / direct * 100) : 0;
-    return { labor, materials, combined, direct,
+    return { labor, materials, combined, overhead, direct,
              laborPct: pct(labor), matPct: pct(materials), combinedPct: pct(combined),
-             laborCount, matCount, combinedCount };
+             overheadPct: pct(overhead),
+             laborCount, matCount, combinedCount, overheadCount };
 }
 
 function cmOvWeekLabel(dateStr) {

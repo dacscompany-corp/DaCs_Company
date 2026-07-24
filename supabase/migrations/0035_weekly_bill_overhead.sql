@@ -1,0 +1,37 @@
+-- ════════════════════════════════════════════════════════════════════
+-- 0035_weekly_bill_overhead.sql
+--
+-- OVERHEAD AS A DAILY-EXPENSE CATEGORY.
+--
+-- Overhead (site rent, utilities, fuel, permits, transport) is now recorded in
+-- Daily Expenses alongside Labor / Materials / Out Source, instead of living in
+-- a separate ledger. It is a BILLABLE direct cost: it feeds direct_cost_total,
+-- and the management fee is charged on it like any other direct cost.
+--
+--     direct = labor + materials + overhead
+--     fee    = direct x management_fee_pct
+--     grand  = direct + fee
+--
+-- `overhead` is stored as its own column (in addition to being folded into
+-- direct_cost_total) so the admin and client breakdowns can show it as its own
+-- line — exactly the pattern `combined` already follows for supply & install.
+--
+-- ── Note on the numbering gap ──────────────────────────────────────
+-- 0034 was written and withdrawn within the same session: it added
+-- overhead_expenses.construction_project_id for a separate PM overhead ledger,
+-- an approach that was replaced by this one before shipping. This file is
+-- numbered 0035 rather than reusing 0034 so it still runs on a database where
+-- that withdrawn migration happened to be applied. If 0034 WAS applied, its
+-- column is harmless: nothing reads or writes it, and it is nullable.
+--
+-- ── Pre-existing drift (not introduced here) ───────────────────────
+-- weekly_bills.entries / combined / direct_cost_total / management_fee_pct are
+-- written by js/pm-admin.js but exist only in the live database — they were
+-- added by hand and never captured in a migration. This file deliberately does
+-- not backfill them; that is a separate cleanup.
+--
+-- Idempotent — safe on the live database and on a fresh rebuild.
+-- ════════════════════════════════════════════════════════════════════
+
+alter table weekly_bills
+  add column if not exists overhead numeric;

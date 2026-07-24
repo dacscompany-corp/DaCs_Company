@@ -26,12 +26,17 @@ let _pmOvBills        = [];       // weekly bills for the active project (overvi
 let _pmOvReqs         = [];       // payment requests for the active project (overview date filter)
 let _pmOvContractVal  = 0;        // contract value (range-independent) for the KPI refresh
 let _pmOvProgressVal  = 0;        // milestone progress % (range-independent) for the KPI refresh
+let _pmOvFundTotal    = 0;        // total revolving fund SET for the project (all weeks)
 // ── This-week inline bill builder ──
 let _pmWeekBills      = [];       // all weeklyBills docs for the active project
 let _pmWeekEntries    = [];       // current draft line entries {id,type,details,amount}
 let _pmWeekDate       = null;     // selected Friday (YYYY-MM-DD)
 let _pmWeekEditingId  = null;     // doc id when the selected week already has a saved bill
-let _pmWeekCat        = 'labor';  // active category tab: 'labor' | 'materials' | 'both'
+let _pmWeekCat        = 'labor';  // active category tab: 'labor' | 'materials' | 'both' | 'overhead'
+// The daily-expense entry types. Anything unrecognised falls back to 'labor',
+// which is how every one of these checks behaved before 'overhead' was added.
+const PM_ENTRY_TYPES = ['labor', 'materials', 'both', 'overhead'];
+function _pmEntryType(v) { return PM_ENTRY_TYPES.indexOf(v) >= 0 ? v : 'labor'; }
 let _pmWeekStagedReceipts = [];  // [{ file, dataUrl, url }] staged in the add-row, attached to the next line
 let _pmWeekEditEntryId   = null;  // id of the entry currently loaded into the add-row for editing
 let _pmWeekViewFilter    = 'all'; // entry list view filter: 'all' | 'labor' | 'materials'
@@ -141,6 +146,26 @@ function _pmOvShort(n) {
     if (n >= 1000)    return sign + '₱' + Math.round(n / 1000) + 'k';
     return sign + '₱' + Math.round(n);
 }
+// KPI-card share-of-budget text, e.g. "71% of budget". Mirrors the wording of
+// the direct-cost breakdown pills. The % is always the MAGNITUDE; a negative
+// amount is conveyed by the pill's red colour (_pmOvPctColor), not an arrow.
+// Returns '' when no project budget is set, so the pill is simply omitted.
+// `base`/`unit` let a card measure against something other than the contract —
+// the revolving-fund card compares against the total fund set, not the budget.
+function _pmOvPctText(val, base, unit) {
+    const b = (base == null) ? _pmOvContractVal : base;
+    if (!(b > 0)) return '';
+    const p = Math.abs(Number(val) || 0) / b * 100;
+    return (p >= 10 ? p.toFixed(0) : p.toFixed(1)) + '% of ' + (unit || 'budget');
+}
+function _pmOvPctColor(val, fallback) {
+    return (Number(val) || 0) < 0 ? '#8f352c' : fallback;
+}
+function _pmOvPctPill(val, id, color, border, base, unit) {
+    const txt = _pmOvPctText(val, base, unit);
+    if (!txt) return '';
+    return `<div id="${id}" style="display:inline-block;font:700 10.5px 'IBM Plex Sans';color:${_pmOvPctColor(val, color)};background:#fff;border:1px solid ${border};border-radius:999px;padding:2px 9px;margin-top:9px;white-space:nowrap;">${txt}</div>`;
+}
 
 async function _pmLoadOverview() {
     if (!_pmActiveProject) { switchView('pmProjects'); return; }
@@ -149,18 +174,27 @@ async function _pmLoadOverview() {
     const pid = _pmActiveProject.id;
     try {
         const base = db.collection('constructionProjects').doc(pid);
-        const [msSnap, billsSnap, paySnap] = await Promise.all([
+        const [msSnap, billsSnap, paySnap, fundSnap] = await Promise.all([
             base.collection('milestones').get(),
             base.collection('weeklyBills').get(),
             db.collection('paymentRequests').where('constructionProjectId', '==', pid).get(),
+            // Best-effort: the fund table may not exist on older projects, and a
+            // failure here must never take the whole overview down with it.
+            base.collection('revolvingFundRequests').get().catch(() => ({ docs: [] })),
         ]);
         const ms    = msSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const bills = billsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const reqs  = paySnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const funds = fundSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         _pmOvBills = bills;
         _pmOvReqs  = reqs;
         _pmOvContractVal = Number(_pmActiveProject.budget) || 0;
         _pmOvProgressVal = _pmOvProgress(ms);
+        // Total fund SET across every week. The card subtracts the Direct cost
+        // currently on screen, so the two tiles always reconcile. NOTE: this is
+        // deliberately NOT the Money tab's "Gross profit" — that one subtracts only
+        // the cost of weeks that have a fund entry, which is a different figure.
+        _pmOvFundTotal = funds.reduce((s, r) => s + (Number(r.amount) || 0), 0);
         root.innerHTML = _pmOvHtml(_pmActiveProject, ms, bills, reqs);
     } catch(e) {
         console.warn('PM: overview load failed', e.message);
@@ -487,19 +521,25 @@ function _pmOvHtml(p, ms, bills, reqs) {
 
     // New design layout, but the ORIGINAL tinted KPI colors (bg / border / value).
     // `valId` lets pmOvApplyRange() update the value when the date range changes.
-    const kpi = (label, val, valColor, bg, border, valId) => `
+    // `pctHtml` is the optional share-of-budget pill under the value.
+    const kpi = (label, val, valColor, bg, border, valId, pctHtml) => `
       <div style="flex:1;min-width:150px;background:${bg};border:1px solid ${border};border-radius:16px;padding:15px 17px;">
         <div style="font:600 11.5px 'IBM Plex Sans';color:#7c7b75;">${label}</div>
         <div class="num"${valId ? ` id="${valId}"` : ''} style="font:700 22px 'IBM Plex Sans';color:${valColor};margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${val}</div>
+        ${pctHtml || ''}
       </div>`;
     // Contract value (confidential) lives on the construction-project doc itself.
     const contractValue = Number(p.budget) || 0;
+    // Fund set minus the SAME direct cost shown in the tile beside it, so the two
+    // always add up on screen (it therefore moves with the date range too).
+    const fundNet = _pmOvFundTotal - directCost;
     const ovTiles = `
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
       ${kpi('Project Budget', contractValue > 0 ? _fmt(contractValue) : '—', '#0f6342', '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-contract')}
+      ${kpi('Direct cost', _fmt(directCost), '#44525f', '#eef0f3', '#d6dde4', 'pm-ov-kpi-direct', _pmOvPctPill(directCost, 'pm-ov-pct-direct', '#44525f', '#d6dde4'))}
+      ${kpi('Remaining cash receipt', (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), netColor, '#fbf3e2', '#f0e2c5', 'pm-ov-kpi-net', _pmOvPctPill(netCash, 'pm-ov-pct-net', netColor, '#f0e2c5'))}
+      ${kpi('Revolving fund − direct cost', (fundNet < 0 ? '−' : '') + _fmt(Math.abs(fundNet)), fundNet < 0 ? '#8f352c' : '#0f6342', '#eef2fb', '#d6e0f4', 'pm-ov-kpi-fund', _pmOvPctPill(fundNet, 'pm-ov-pct-fund', '#0f6342', '#d6e0f4', _pmOvFundTotal, 'fund set'))}
       ${kpi('Progress', progress + '%', '#0f6342', '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-progress')}
-      ${kpi('Direct cost', _fmt(directCost), '#44525f', '#eef0f3', '#d6dde4', 'pm-ov-kpi-direct')}
-      ${kpi('Remaining cash receipt', (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), netColor, '#fbf3e2', '#f0e2c5', 'pm-ov-kpi-net')}
     </div>`;
 
     // % of the project budget consumed by this category (categoryAmount / budget).
@@ -607,12 +647,22 @@ function _pmOvHtml(p, ms, bills, reqs) {
 // client-inclusive of any combined (supply & install) amount, so pure materials
 // = materials − combined; the combined bucket is reported on its own.
 function _pmOvBreakdown(bills) {
-    let labor = 0, materials = 0, combined = 0;
+    let labor = 0, materials = 0, combined = 0, overhead = 0;
     // Per-category ENTRY counts. Prefer the per-line `entries` array (each line is
     // one entry, typed labor/materials/both); else fall back to counting a bill as
     // one entry per category it has a nonzero amount in.
-    let laborCount = 0, matCount = 0, combinedCount = 0;
+    let laborCount = 0, matCount = 0, combinedCount = 0, overheadCount = 0;
     bills.forEach(b => {
+        // Overhead is a billable direct cost in its own field; bills saved before
+        // it existed contribute 0 and fall back to their 'overhead' line entries.
+        let ov = Number(b.overhead) || 0;
+        if (!ov && Array.isArray(b.entries)) {
+            ov = b.entries.filter(e => e.type === 'overhead').reduce((s, e) => s + (Number(e.amount) || 0), 0);
+        }
+        overhead += ov || 0;
+        if (Array.isArray(b.entries) && b.entries.length) {
+            overheadCount += b.entries.filter(e => e.type === 'overhead').length;
+        } else if (ov > 0) { overheadCount++; }
         // Prefer the stored `combined` field; for bills saved before it existed,
         // derive it from the 'both' line entries (the stored `materials` folds it in).
         // 0 is treated as "missing" (a `default 0` column leaves old bills at 0),
@@ -638,9 +688,9 @@ function _pmOvBreakdown(bills) {
             if (c > 0)              combinedCount++;
         }
     });
-    const direct = labor + materials + combined;
+    const direct = labor + materials + combined + overhead;
     const pct = v => direct > 0 ? Math.round(v / direct * 100) : 0;
-    return { labor, materials, combined, direct,
+    return { labor, materials, combined, overhead, overheadPct: pct(overhead), overheadCount, direct,
              laborPct: pct(labor), matPct: pct(materials), combinedPct: pct(combined),
              laborCount, matCount, combinedCount };
 }
@@ -807,6 +857,25 @@ window.pmOvApplyRange = function() {
     if (cv) cv.textContent = _pmOvContractVal > 0 ? _fmt(_pmOvContractVal) : '—';
     const pr = document.getElementById('pm-ov-kpi-progress');
     if (pr) pr.textContent = _pmOvProgressVal + '%';
+    // Fund set minus the direct cost for THIS range, so it keeps reconciling with
+    // the Direct cost tile whatever period is selected.
+    const fundNet = _pmOvFundTotal - directCost;
+    const fundEl = document.getElementById('pm-ov-kpi-fund');
+    if (fundEl) {
+        fundEl.textContent = (fundNet < 0 ? '−' : '') + _fmt(Math.abs(fundNet));
+        fundEl.style.color = fundNet < 0 ? '#8f352c' : '#0f6342';
+    }
+    // Share-of-budget pills follow their card's value (direct cost & remaining
+    // cash move with the range; the fund balance doesn't, but re-set it anyway).
+    const setPct = (id, val, fallback, base, unit) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = _pmOvPctText(val, base, unit);
+        el.style.color = _pmOvPctColor(val, fallback);
+    };
+    setPct('pm-ov-pct-direct', directCost, '#44525f');
+    setPct('pm-ov-pct-net',    netCash,    netColor);
+    setPct('pm-ov-pct-fund',   fundNet,    '#0f6342', _pmOvFundTotal, 'fund set');
     setAmt('pm-ov-kpi-direct', directCost);
     const netEl = document.getElementById('pm-ov-kpi-net');
     if (netEl) {
@@ -868,7 +937,7 @@ function _pmBillEntries(b) {
     if (b.materials) synth.push({ type: 'materials', details: 'Materials total', amount: Number(b.materials) });
     return synth;
 }
-function _pmDvCat(e)      { return e.type === 'both' ? 'both' : (e.type === 'materials' ? 'materials' : 'labor'); }
+function _pmDvCat(e)      { return _pmEntryType(e.type); }
 function _pmDvDateLabel(s){ const d = new Date(s + 'T00:00:00'); return isNaN(d) ? (s || '—') : d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }); }
 function _pmDvWeekday(s)  { const d = new Date(s + 'T00:00:00'); return isNaN(d) ? '' : d.toLocaleDateString('en-PH', { weekday: 'long' }); }
 function _pmDvRangeLabel(mode) {
@@ -913,29 +982,32 @@ function _pmDvRender() {
     const rangeLabel = _pmDvRangeLabel(mode);
     const bills = _pmOvFilterBills(mode).slice()
         .sort((a, b) => (b.weekEndingDate || '').localeCompare(a.weekEndingDate || ''));
-    const CAT = { labor: '#157a52', materials: '#c79024', both: '#8b6fc4' };
+    const CAT = { labor: '#157a52', materials: '#c79024', both: '#8b6fc4', overhead: '#b0907f' };
 
     // Range totals + counts (ignore filter/search) — feed the hero + chip counts.
-    let gL = 0, gM = 0, gB = 0, cL = 0, cM = 0, cB = 0;
+    let gL = 0, gM = 0, gB = 0, gO = 0, cL = 0, cM = 0, cB = 0, cO = 0;
     bills.forEach(b => _pmBillEntries(b).forEach(e => {
         const t = _pmDvCat(e), a = Number(e.amount) || 0;
-        if (t === 'labor') { gL += a; cL++; } else if (t === 'both') { gB += a; cB++; } else { gM += a; cM++; }
+        if (t === 'labor') { gL += a; cL++; }
+        else if (t === 'both') { gB += a; cB++; }
+        else if (t === 'overhead') { gO += a; cO++; }
+        else { gM += a; cM++; }
     }));
-    const grand = gL + gM + gB;
+    const grand = gL + gM + gB + gO;
     const pr = v => grand ? Math.round(v / grand * 100) + '%' : '0%';
 
     // Filtered/searched day cards (each bill = a day).
     const q = _pmDvQuery.trim().toLowerCase();
     let shownTotal = 0;
     const dayHtml = bills.map(b => {
-        let dl = 0, dm = 0, db = 0;
+        let dl = 0, dm = 0, db = 0, do_ = 0;
         const ents = _pmBillEntries(b)
             .filter(e => _pmDvFilter === 'all' || _pmDvCat(e) === _pmDvFilter)
             .filter(e => !q || (e.details || '').toLowerCase().includes(q) || String(e.amount || '').includes(q));
         if (!ents.length) return '';
         const rows = ents.map(e => {
             const t = _pmDvCat(e), a = Number(e.amount) || 0;
-            if (t === 'labor') dl += a; else if (t === 'both') db += a; else dm += a;
+            if (t === 'labor') dl += a; else if (t === 'both') db += a; else if (t === 'overhead') do_ += a; else dm += a;
             const urls = (typeof _pmEntryReceiptList === 'function' ? _pmEntryReceiptList(e) : []).map(r => r.url || r.dataUrl).filter(Boolean);
             const rcpt = urls.map((u, i) => `<a href="${_esc(u)}" target="_blank" rel="noopener" class="pm-dv-noprint" style="display:inline-flex;align-items:center;gap:4px;font:600 11px 'IBM Plex Sans';color:#0f6342;text-decoration:none;background:#eaf4ef;border-radius:6px;padding:${isMobile ? '3px 8px;margin-top:6px;margin-right:6px;' : '4px 9px;'}white-space:nowrap;flex:none;">↗ receipt${urls.length > 1 ? ' ' + (i + 1) : ''}</a>`).join('');
             if (isMobile) {
@@ -1015,7 +1087,7 @@ function _pmDvRender() {
         const dotHtml = dot ? `<span style="width:8px;height:8px;border-radius:50%;background:${dot};flex:none;"></span>` : '';
         return `<button onclick="pmDvSetFilter('${key}')" style="${style}">${dotHtml}${label} <span style="${cStyle}">${count}</span></button>`;
     };
-    const chips = [chip('all', 'All', cL + cM + cB, null), chip('labor', 'Labor', cL, '#157a52'), chip('materials', 'Materials', cM, '#c79024'), chip('both', 'Out Source', cB, '#8b6fc4')].join('');
+    const chips = [chip('all', 'All', cL + cM + cB + cO, null), chip('labor', 'Labor', cL, '#157a52'), chip('materials', 'Materials', cM, '#c79024'), chip('both', 'Out Source', cB, '#8b6fc4'), chip('overhead', 'Overhead', cO, '#b0907f')].join('');
 
     // Styled range dropdown — full-width on mobile, right-aligned 260px on desktop.
     const caret = '<svg width="' + (isMobile ? '12' : '11') + '" height="' + (isMobile ? '12' : '11') + '" viewBox="0 0 24 24" fill="none" stroke="#9b9a94" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
@@ -1671,6 +1743,8 @@ async function _pmDeleteProjectCascade(id) {
     // NOTE: no overheadExpenses sweep here. overheadExpenses.folderId points at a
     // `folders` row (Project Control), never at a constructionProjects id — the two
     // are different id spaces, so a query by this id could only ever match nothing.
+    // PM overhead is not stored there at all: it's an entry type inside weeklyBills,
+    // which this cascade already deletes.
 
     await db.collection('constructionProjects').doc(id).delete();
 }
@@ -1967,7 +2041,7 @@ function _pmWeekSyncDraft() {
         if (Array.isArray(bill.entries) && bill.entries.length) {
             _pmWeekEntries = bill.entries.map(e => ({
                 id: _pmUid('we_'),
-                type: (e.type === 'materials' || e.type === 'both') ? e.type : 'labor',
+                type: _pmEntryType(e.type),
                 details: e.details || '',
                 amount: Number(e.amount) || 0,
                 days: Number(e.days) || 0,
@@ -2064,7 +2138,7 @@ window.pmWeekAddEntry = function() {
     const daysEl = document.getElementById('pm-week-days');
     const qtyEl  = document.getElementById('pm-week-qty');
     const unitEl = document.getElementById('pm-week-unit');
-    const type   = (_pmWeekCat === 'materials' || _pmWeekCat === 'both') ? _pmWeekCat : 'labor';   // from the segmented control
+    const type   = _pmEntryType(_pmWeekCat);   // from the segmented control
     const details= (detEl ? detEl.value : '').trim();
     const amount = amtEl ? (parseInt(String(amtEl.value).replace(/[^0-9]/g,''), 10) || 0) : 0;
     // Days is Labor-only; quantity + unit is Materials-only. Both are purely
@@ -2123,7 +2197,7 @@ function _pmWeekMeta(e) {
 
 // Switch the active category in the segmented control (Labor / Materials / Mat + Labor).
 window.pmWeekSetCat = function(cat) {
-    _pmWeekCat = (cat === 'materials' || cat === 'both') ? cat : 'labor';
+    _pmWeekCat = _pmEntryType(cat);
     _pmWeekApplyCat();
     const det = document.getElementById('pm-week-details');
     if (det) det.focus();
@@ -2132,20 +2206,23 @@ window.pmWeekSetCat = function(cat) {
 // Reflect _pmWeekCat in the UI (segmented highlight, prompt, adaptive fields).
 function _pmWeekApplyCat() {
     const cat = _pmWeekCat;
-    [['labor', 'pmw-seg-labor'], ['materials', 'pmw-seg-materials'], ['both', 'pmw-seg-both']].forEach(([c, id]) => {
+    [['labor', 'pmw-seg-labor'], ['materials', 'pmw-seg-materials'], ['both', 'pmw-seg-both'], ['overhead', 'pmw-seg-overhead']].forEach(([c, id]) => {
         const el = document.getElementById(id);
         if (el) el.classList.toggle('active', cat === c);
     });
     const det = document.getElementById('pm-week-details');
     if (det) det.placeholder = cat === 'labor' ? 'Labor details (e.g. Masonry crew)'
         : cat === 'both' ? 'Supply & install (e.g. Aluminum windows)'
+        : cat === 'overhead' ? 'Overhead details (e.g. Site office rent)'
         : 'Materials details (e.g. Cement)';
     // Add-card header reflects the active category (label + colored dot).
     const addLabel = document.getElementById('pmw-addcard-label');
     if (addLabel) addLabel.textContent = cat === 'both' ? 'New out source entry'
+        : cat === 'overhead' ? 'New overhead entry'
         : cat === 'materials' ? 'New materials entry' : 'New labor entry';
     const addDot = document.getElementById('pmw-addcard-dot');
     if (addDot) addDot.style.background = cat === 'both' ? '#7a5bb5'
+        : cat === 'overhead' ? '#b0907f'
         : cat === 'materials' ? '#5b6b7e' : '#157a52';
     // Days is Labor-only; quantity + unit is Materials-only; Mat + Labor has neither.
     const daysWrap = document.getElementById('pm-week-days-wrap');
@@ -2172,7 +2249,7 @@ function _pmWeekApplyViewFilter() {
 }
 
 window.pmWeekViewFilter = function(f) {
-    _pmWeekViewFilter = (f === 'labor' || f === 'materials' || f === 'both') ? f : 'all';
+    _pmWeekViewFilter = PM_ENTRY_TYPES.indexOf(f) >= 0 ? f : 'all';
     if (_pmWeekViewDay) {
         const bill = _pmWeekBills.find(b => b.id === _pmWeekViewDay);
         if (bill) _pmWeekRenderReadonly(bill);
@@ -2278,7 +2355,7 @@ window.pmWeekEditEntry = function(id) {
     const en = _pmWeekEntries.find(e => e.id === id);
     if (!en) return;
     _pmWeekEditEntryId = id;
-    _pmWeekCat = (en.type === 'materials' || en.type === 'both') ? en.type : 'labor';
+    _pmWeekCat = _pmEntryType(en.type);
     _pmWeekStagedReceipts = _pmEntryReceiptList(en).map(r => ({ file: r.file || null, dataUrl: r.dataUrl || '', url: r.url || '' }));
     _pmWeekApplyCat();   // tab highlight, field visibility, list, attach thumb
     const detEl  = document.getElementById('pm-week-details'); if (detEl)  detEl.value  = en.details || '';
@@ -2412,13 +2489,18 @@ function _pmWeekTotals() {
     const labor    = _pmWeekEntries.filter(e=>e.type==='labor').reduce((s,e)=>s+e.amount,0);
     const matsPure = _pmWeekEntries.filter(e=>e.type==='materials').reduce((s,e)=>s+e.amount,0);
     const combined = _pmWeekEntries.filter(e=>e.type==='both').reduce((s,e)=>s+e.amount,0);
+    // Overhead (site rent, utilities, fuel, permits) is a BILLABLE direct cost here:
+    // it joins `direct`, so the management fee is charged on it like labor and
+    // materials. Kept in its own field as well so the breakdowns can show it as a
+    // separate line — the same pattern `combined` follows.
+    const overhead = _pmWeekEntries.filter(e=>e.type==='overhead').reduce((s,e)=>s+e.amount,0);
     // `mats` is the client-facing materials figure and folds in combined (supply &
     // install) so all client/billing code stays correct. The admin overview reads
     // the separate `combined` field to report pure materials vs combined.
     const mats   = matsPure + combined;
-    const direct = labor + mats;
+    const direct = labor + mats + overhead;
     const fee = direct * (_pmFeePct()/100);
-    return { labor, matsPure, combined, mats, direct, fee, grand: direct + fee };
+    return { labor, matsPure, combined, overhead, mats, direct, fee, grand: direct + fee };
 }
 
 function _pmWeekRecompute() {
@@ -2592,7 +2674,7 @@ window.pmCatView = function(type) {
     if (!_pmActiveProject) { alert('Select a project first.'); return; }
     const host = document.getElementById('pmw-statement');
     if (!host) return;
-    const t      = (type === 'materials' || type === 'both') ? type : 'labor';
+    const t      = _pmEntryType(type);
     const label  = t === 'both' ? 'Out Source' : t === 'materials' ? 'Materials' : 'Labor';
     const accent = t === 'both' ? '#7a5bb5' : t === 'materials' ? '#5b6b7e' : '#157a52';
     const code   = t === 'both' ? 'MLB' : t === 'materials' ? 'MAT' : 'LAB';
@@ -3133,7 +3215,8 @@ window.pmWeekSave = async function() {
             labor: t.labor,
             materials: t.mats,              // client-facing, includes combined
             combined: t.combined,          // supply & install portion (admin breakdown)
-            directCostTotal: t.direct,     // labor + materials; client prefers this field
+            overhead: t.overhead,          // site running costs — billable, already inside directCostTotal
+            directCostTotal: t.direct,     // labor + materials + overhead; client prefers this field
             managementFee: t.fee,
             grandTotal: t.grand,
             entries: _pmWeekEntries.map(e => {

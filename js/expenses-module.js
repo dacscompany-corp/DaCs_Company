@@ -138,18 +138,57 @@ async function loadCategories() {
     }
 }
 
+// ── Category options: labor-contract roles + the manual list ──────────
+// A material is tagged with the JOB it was bought for, so the primary source is
+// the active folder's labor contracts (`scope` = "the job, e.g. Tiling & masonry").
+// The hand-managed `categories` list stays below it, so nothing that was already
+// in use disappears and ⚙ Manage keeps working.
+//
+// `current` is ALWAYS included, even when it matches neither group. That is not
+// cosmetic: the save paths read the <select>'s .value straight back, so an option
+// that isn't rendered would be saved as "" and silently wipe the category of an
+// older expense. Never drop this.
+function _expCatEsc(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+function _expContractRoles() {
+    const set = new Set();
+    (expLaborContracts || []).forEach(c => {
+        const s = (c && c.scope != null ? String(c.scope) : '').trim();
+        if (s) set.add(s);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+function _expCategoryOptionsHtml(current, placeholder) {
+    const cur   = (current == null ? '' : String(current)).trim();
+    const roles = _expContractRoles();
+    const opt = name =>
+        '<option value="' + _expCatEsc(name) + '"' + (name === cur ? ' selected' : '') + '>'
+        + _expCatEsc(name) + '</option>';
+
+    let html = '<option value="">' + _expCatEsc(placeholder || 'Select category…') + '</option>';
+    if (roles.length) {
+        html += '<optgroup label="Labor contract roles">' + roles.map(opt).join('') + '</optgroup>';
+    }
+    // The old hand-managed `categories` list is deliberately NOT offered here: it had
+    // filled up with payment methods (Cash, Gcash, Lalamove, Downpayment…) rather than
+    // material categories. Expenses are tagged by the JOB the material was bought for.
+    //
+    // Whatever this row already had is still rendered and selected, so opening an old
+    // expense cannot blank a category recorded before this change — the save paths read
+    // .value straight back, so an unrendered option would be written as "". Keep this.
+    if (cur && roles.indexOf(cur) === -1) {
+        html += '<optgroup label="Currently set">' + opt(cur) + '</optgroup>';
+    }
+    return html;
+}
+
 function refreshCategoryDropdown() {
     const sel = document.getElementById('expCategory');
     if (!sel) return;
-    const current = sel.value;
-    sel.innerHTML = '<option value="">Select category…</option>';
-    expCategories.forEach(cat => {
-        const opt = document.createElement('option');
-        opt.value = cat.name;
-        opt.textContent = cat.name;
-        if (cat.name === current) opt.selected = true;
-        sel.appendChild(opt);
-    });
+    sel.innerHTML = _expCategoryOptionsHtml(sel.value);
 }
 
 function renderCategoryManager() {
@@ -1709,11 +1748,9 @@ function _highlightMatch(text, query) {
 function populateExpSearchCategories() {
     const sel = document.getElementById('expSearchCategory');
     if (!sel) return;
-    const current = sel.value;
-    sel.innerHTML = '<option value="">All Categories</option>' +
-        expCategories.map(c =>
-            `<option value="${c.name}" ${c.name === current ? 'selected' : ''}>${c.name}</option>`
-        ).join('');
+    // Same two groups as the entry form, so a role you can tag with is also a role
+    // you can filter by.
+    sel.innerHTML = _expCategoryOptionsHtml(sel.value, 'All Categories');
 }
 
 function populateMonthDropdown() {
@@ -3617,11 +3654,11 @@ async function openEditExpenseModal(id) {
     document.getElementById('editExpNotes').value    = e.notes  || '';
     const _editPmEl = document.getElementById('editExpPaymentMethod');
     if (_editPmEl) _editPmEl.value = e.paymentMethod || '';
+    // Pass the stored category through so it stays selected even if it is neither a
+    // current contract role nor still in the manual list — otherwise saving this
+    // form would write "" over a category recorded before either list changed.
     const sel = document.getElementById('editExpCategory');
-    sel.innerHTML = '<option value="">Select category…</option>' +
-        expCategories.map(c =>
-            `<option value="${c.name}" ${c.name === e.category ? 'selected' : ''}>${c.name}</option>`
-        ).join('');
+    sel.innerHTML = _expCategoryOptionsHtml(e.category);
     // Pre-populate Supporting Documents state labels (PO / DR / SI / PR)
     const _editDocFields = {
         editExpDocPOState: e.poImageUrl,
@@ -7478,6 +7515,10 @@ window.lcSyncFromPortal = function(folderId, contracts, payroll) {
     expLaborContracts = Array.isArray(contracts) ? contracts : [];
     if (Array.isArray(payroll)) expPayroll = payroll;   // raw payroll docs (have totalSalary + contractId)
     if (typeof lcPopulatePayrollPicker === 'function') lcPopulatePayrollPicker();
+    // Contract roles feed the expense Category dropdown — rebuild it now that the
+    // active folder's contracts are known.
+    if (typeof refreshCategoryDropdown === 'function') refreshCategoryDropdown();
+    if (typeof populateExpSearchCategories === 'function') populateExpSearchCategories();
 };
 
 // Subscribe to the active folder's contracts (called from subscribeFolderData).
@@ -7491,6 +7532,10 @@ function subscribeLaborContracts(folderId) {
                 .sort((a, b) => (a.workerName || '').localeCompare(b.workerName || '')
                              || (a.scope || '').localeCompare(b.scope || ''));
             lcPopulatePayrollPicker();
+            // Roles drive the expense Category dropdown; this is a live listener, so
+            // adding a contract makes its job selectable without a reload.
+            refreshCategoryDropdown();
+            populateExpSearchCategories();
         }, err => console.error('laborContracts listener:', err));
     expUnsubscribers.push(unsub);
 }

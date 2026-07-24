@@ -29,7 +29,7 @@
 
     const _EI_TYPE_LABELS = {
         pc: { materials: 'Materials', labor: 'Labor', overhead: 'Overhead' },
-        pm: { labor: 'Labor', materials: 'Materials', both: 'Out Source' },
+        pm: { labor: 'Labor', materials: 'Materials', both: 'Out Source', overhead: 'Overhead' },
     };
     const _EI_TYPE_COLORS = {
         materials: { bg: '#eef1f4', fg: '#44536b' },
