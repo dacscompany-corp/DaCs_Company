@@ -139,7 +139,10 @@
       "Bash(pkill -f \"serve -l 8899\")",
       "Bash(pkill -f \"http.server 8899\")",
       "Bash(git restore *)",
-      "Bash(npm test *)"
+      "Bash(npm test *)",
+      "Bash(git config *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(clear)"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",

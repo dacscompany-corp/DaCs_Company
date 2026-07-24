@@ -146,25 +146,14 @@ function _pmOvShort(n) {
     if (n >= 1000)    return sign + '₱' + Math.round(n / 1000) + 'k';
     return sign + '₱' + Math.round(n);
 }
-// KPI-card share-of-budget text, e.g. "71% of budget". Mirrors the wording of
-// the direct-cost breakdown pills. The % is always the MAGNITUDE; a negative
-// amount is conveyed by the pill's red colour (_pmOvPctColor), not an arrow.
-// Returns '' when no project budget is set, so the pill is simply omitted.
-// `base`/`unit` let a card measure against something other than the contract —
-// the revolving-fund card compares against the total fund set, not the budget.
-function _pmOvPctText(val, base, unit) {
-    const b = (base == null) ? _pmOvContractVal : base;
-    if (!(b > 0)) return '';
-    const p = Math.abs(Number(val) || 0) / b * 100;
-    return (p >= 10 ? p.toFixed(0) : p.toFixed(1)) + '% of ' + (unit || 'budget');
-}
-function _pmOvPctColor(val, fallback) {
-    return (Number(val) || 0) < 0 ? '#8f352c' : fallback;
-}
-function _pmOvPctPill(val, id, color, border, base, unit) {
-    const txt = _pmOvPctText(val, base, unit);
-    if (!txt) return '';
-    return `<div id="${id}" style="display:inline-block;font:700 10.5px 'IBM Plex Sans';color:${_pmOvPctColor(val, color)};background:#fff;border:1px solid ${border};border-radius:999px;padding:2px 9px;margin-top:9px;white-space:nowrap;">${txt}</div>`;
+// The Revolving fund card measures against the TOTAL FUND SET, not the Project
+// Budget, so it can't use _kpiPctText (which always divides by the contract).
+// Returns '' when no fund is set, which makes kpi() render no pill at all rather
+// than dividing by zero.
+function _pmOvFundPctText(val) {
+    if (!(_pmOvFundTotal > 0)) return '';
+    const p = Math.abs(Number(val) || 0) / _pmOvFundTotal * 100;
+    return (p >= 10 ? p.toFixed(0) : p.toFixed(1)) + '% of fund set';
 }
 
 async function _pmLoadOverview() {
@@ -509,37 +498,68 @@ function _pmOvHtml(p, ms, bills, reqs) {
         <div style="font:800 23px 'IBM Plex Sans';letter-spacing:-.02em;color:#1c1c1a;">Overview</div>
         <div style="font:400 13px 'IBM Plex Sans';color:#8a8983;margin-top:3px;">Cost-Plus contract · ${_pmFeePct()}% management fee</div>
       </div>
-      <div class="pmw-dd" id="pm-ov-dd">
-        <button class="pmw-dd-btn" onclick="pmOvToggleRange(event)"><span id="pm-ov-dd-label">All time</span>${_ddChevron}</button>
-        <div class="pmw-dd-menu" id="pm-ov-dd-menu" style="display:none;">
-          ${_ddFixed}
-          ${_ddWeekGroups ? '<div class="pmw-dd-sep"></div>' + _ddWeekGroups : ''}
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button type="button" onclick="pmOvPrintReport()" style="display:inline-flex;align-items:center;gap:7px;background:#fff;color:#3a3a36;border:1.5px solid #d8d7d0;border-radius:9px;padding:9px 14px;font:700 12.5px 'IBM Plex Sans';cursor:pointer;white-space:nowrap;" title="Print this Overview as a report">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          Print report</button>
+        <div class="pmw-dd" id="pm-ov-dd">
+          <button class="pmw-dd-btn" onclick="pmOvToggleRange(event)"><span id="pm-ov-dd-label">All time</span>${_ddChevron}</button>
+          <div class="pmw-dd-menu" id="pm-ov-dd-menu" style="display:none;">
+            ${_ddFixed}
+            ${_ddWeekGroups ? '<div class="pmw-dd-sep"></div>' + _ddWeekGroups : ''}
+          </div>
+          <input type="hidden" id="pm-ov-range" value="all">
         </div>
-        <input type="hidden" id="pm-ov-range" value="all">
       </div>
     </div>`;
 
+    // Contract value (confidential) lives on the construction-project doc itself.
+    const contractValue = Number(p.budget) || 0;
+    // Both Direct cost and Remaining cash receipt are shown as a % of the
+    // Project Budget — always the SAME denominator (contractValue), so the two
+    // percentages track how much of the budget has been spent vs. is still
+    // outstanding to collect, and both climb together as billing progresses.
+    const _kpiBudgetPct = (val) => contractValue > 0 ? Math.abs(Number(val) || 0) / contractValue * 100 : 0;
+    const _kpiPctText = (val) => {
+        const pct = _kpiBudgetPct(val);
+        return (pct >= 10 ? pct.toFixed(0) : pct.toFixed(1)) + '% of budget';
+    };
     // New design layout, but the ORIGINAL tinted KPI colors (bg / border / value).
     // `valId` lets pmOvApplyRange() update the value when the date range changes.
-    // `pctHtml` is the optional share-of-budget pill under the value.
-    const kpi = (label, val, valColor, bg, border, valId, pctHtml) => `
+    // `pctVal` (optional) renders a "% of budget" pill under the amount — solid
+    // fill + white text so it reads clearly instead of blending into the card.
+    // `pctTextOverride` (optional) replaces the "% of budget" text with a fixed
+    // label (e.g. "5% of Remaining cash receipt") for cards whose percentage
+    // isn't a share of the Project Budget.
+    const kpi = (label, val, valColor, bg, border, valId, pctVal, pctId, pctTextOverride) => `
       <div style="flex:1;min-width:150px;background:${bg};border:1px solid ${border};border-radius:16px;padding:15px 17px;">
         <div style="font:600 11.5px 'IBM Plex Sans';color:#7c7b75;">${label}</div>
         <div class="num"${valId ? ` id="${valId}"` : ''} style="font:700 22px 'IBM Plex Sans';color:${valColor};margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${val}</div>
-        ${pctHtml || ''}
+        ${(pctVal != null || pctTextOverride) ? `<div${pctId ? ` id="${pctId}"` : ''} style="display:inline-block;font:800 11.5px 'IBM Plex Sans';color:#fff;background:${valColor};border-radius:999px;padding:3px 10px;margin-top:8px;letter-spacing:.02em;">${pctTextOverride || _kpiPctText(pctVal)}</div>` : ''}
       </div>`;
-    // Contract value (confidential) lives on the construction-project doc itself.
-    const contractValue = Number(p.budget) || 0;
-    // Fund set minus the SAME direct cost shown in the tile beside it, so the two
-    // always add up on screen (it therefore moves with the date range too).
-    const fundNet = _pmOvFundTotal - directCost;
+    // Warranty retention = a FIXED 5% automatically withheld from the Remaining
+    // cash receipt (not a share of the Project Budget). Profit share = one 50%
+    // half of whatever's left after that retention is set aside. Both follow
+    // netCash's sign (an over-collected/negative balance produces a negative
+    // retention & profit share too).
+    const warrantyRetention = netCash * 0.05;
+    const profitShare = (netCash - warrantyRetention) / 2;
+    const retColor = warrantyRetention < 0 ? '#8f352c' : '#9a6c12';
+    const psColor  = profitShare < 0 ? '#8f352c' : '#0f6342';
+    // Revolving fund − direct cost: the fund collected so far minus the SAME direct
+    // cost shown in the tile beside it, so the two always reconcile on screen. Its
+    // percentage is a share of the fund SET, not the Project Budget, so it supplies
+    // its own pill text through kpi()'s pctTextOverride.
+    const fundNet   = _pmOvFundTotal - directCost;
+    const fundColor = fundNet < 0 ? '#8f352c' : '#0f6342';
     const ovTiles = `
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
       ${kpi('Project Budget', contractValue > 0 ? _fmt(contractValue) : '—', '#0f6342', '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-contract')}
-      ${kpi('Direct cost', _fmt(directCost), '#44525f', '#eef0f3', '#d6dde4', 'pm-ov-kpi-direct', _pmOvPctPill(directCost, 'pm-ov-pct-direct', '#44525f', '#d6dde4'))}
-      ${kpi('Remaining cash receipt', (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), netColor, '#fbf3e2', '#f0e2c5', 'pm-ov-kpi-net', _pmOvPctPill(netCash, 'pm-ov-pct-net', netColor, '#f0e2c5'))}
-      ${kpi('Revolving fund − direct cost', (fundNet < 0 ? '−' : '') + _fmt(Math.abs(fundNet)), fundNet < 0 ? '#8f352c' : '#0f6342', '#eef2fb', '#d6e0f4', 'pm-ov-kpi-fund', _pmOvPctPill(fundNet, 'pm-ov-pct-fund', '#0f6342', '#d6e0f4', _pmOvFundTotal, 'fund set'))}
-      ${kpi('Progress', progress + '%', '#0f6342', '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-progress')}
+      ${kpi('Direct cost', _fmt(directCost), '#44525f', '#eef0f3', '#d6dde4', 'pm-ov-kpi-direct', directCost, 'pm-ov-kpi-direct-pct')}
+      ${kpi('Remaining cash receipt', (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), netColor, '#fbf3e2', '#f0e2c5', 'pm-ov-kpi-net', netCash, 'pm-ov-kpi-net-pct')}
+      ${kpi('Warranty retention', (warrantyRetention < 0 ? '−' : '') + _fmt(Math.abs(warrantyRetention)), retColor, '#fbf2dc', '#ecd8a6', 'pm-ov-kpi-retention', null, 'pm-ov-kpi-retention-pct', '5% of Remaining cash receipt')}
+      ${kpi('Profit share', (profitShare < 0 ? '−' : '') + _fmt(Math.abs(profitShare)), psColor, '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-profitshare', null, 'pm-ov-kpi-profitshare-pct', '50% of Remaining after retention')}
+      ${kpi('Revolving fund − direct cost', (fundNet < 0 ? '−' : '') + _fmt(Math.abs(fundNet)), fundColor, '#eef2fb', '#d6e0f4', 'pm-ov-kpi-fund', null, 'pm-ov-kpi-fund-pct', _pmOvFundPctText(fundNet))}
     </div>`;
 
     // % of the project budget consumed by this category (categoryAmount / budget).
@@ -852,48 +872,76 @@ window.pmOvApplyRange = function() {
     const paid    = _pmOvPaid(_pmOvReqs);
     const netCash = paid - directCost;
     const netColor = netCash >= 0 ? '#0f6342' : '#8f352c';
-    // Contract value & progress are range-independent — re-set so they stay correct.
+    // Contract value is range-independent — re-set so it stays correct.
     const cv = document.getElementById('pm-ov-kpi-contract');
     if (cv) cv.textContent = _pmOvContractVal > 0 ? _fmt(_pmOvContractVal) : '—';
-    const pr = document.getElementById('pm-ov-kpi-progress');
-    if (pr) pr.textContent = _pmOvProgressVal + '%';
-    // Fund set minus the direct cost for THIS range, so it keeps reconciling with
-    // the Direct cost tile whatever period is selected.
+    // Revolving fund − direct cost uses the SAME direct cost shown beside it, so it
+    // has to recompute with the range. Its pill measures against the total fund SET
+    // (not the Project Budget), so its text is built here instead of by setBpct.
     const fundNet = _pmOvFundTotal - directCost;
+    const fundColorNow = fundNet < 0 ? '#8f352c' : '#0f6342';
     const fundEl = document.getElementById('pm-ov-kpi-fund');
     if (fundEl) {
         fundEl.textContent = (fundNet < 0 ? '−' : '') + _fmt(Math.abs(fundNet));
-        fundEl.style.color = fundNet < 0 ? '#8f352c' : '#0f6342';
+        fundEl.style.color = fundColorNow;
     }
-    // Share-of-budget pills follow their card's value (direct cost & remaining
-    // cash move with the range; the fund balance doesn't, but re-set it anyway).
-    const setPct = (id, val, fallback, base, unit) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        el.textContent = _pmOvPctText(val, base, unit);
-        el.style.color = _pmOvPctColor(val, fallback);
-    };
-    setPct('pm-ov-pct-direct', directCost, '#44525f');
-    setPct('pm-ov-pct-net',    netCash,    netColor);
-    setPct('pm-ov-pct-fund',   fundNet,    '#0f6342', _pmOvFundTotal, 'fund set');
+    const fundPctEl = document.getElementById('pm-ov-kpi-fund-pct');
+    if (fundPctEl) {
+        fundPctEl.style.background = fundColorNow;
+        fundPctEl.textContent = _pmOvFundPctText(fundNet);
+    }
     setAmt('pm-ov-kpi-direct', directCost);
     const netEl = document.getElementById('pm-ov-kpi-net');
     if (netEl) {
         netEl.textContent = (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash));
         netEl.style.color = netColor;
     }
+    // Remaining-cash-receipt's pill fill can flip green/red with the sign of
+    // netCash — keep its background in sync (setBpct below only sets the text).
+    const netPctEl = document.getElementById('pm-ov-kpi-net-pct');
+    if (netPctEl) netPctEl.style.background = netColor;
+
+    // Warranty retention (5% of netCash) and Profit share (half of what's left
+    // after that retention) — same formula as the initial render, kept in sync
+    // as the date range changes.
+    const warrantyRetention = netCash * 0.05;
+    const profitShare = (netCash - warrantyRetention) / 2;
+    const retColorNow = warrantyRetention < 0 ? '#8f352c' : '#9a6c12';
+    const retEl = document.getElementById('pm-ov-kpi-retention');
+    if (retEl) {
+        retEl.textContent = (warrantyRetention < 0 ? '−' : '') + _fmt(Math.abs(warrantyRetention));
+        retEl.style.color = retColorNow;
+    }
+    const retPctEl = document.getElementById('pm-ov-kpi-retention-pct');
+    if (retPctEl) retPctEl.style.background = retColorNow;
+
+    const psColorNow = profitShare < 0 ? '#8f352c' : '#0f6342';
+    const psEl = document.getElementById('pm-ov-kpi-profitshare');
+    if (psEl) {
+        psEl.textContent = (profitShare < 0 ? '−' : '') + _fmt(Math.abs(profitShare));
+        psEl.style.color = psColorNow;
+    }
+    const psPctEl = document.getElementById('pm-ov-kpi-profitshare-pct');
+    if (psPctEl) psPctEl.style.background = psColorNow;
 
     setAmt('pm-ov-direct',    bd.direct);
     setAmt('pm-ov-labor',     bd.labor);
     setAmt('pm-ov-materials', bd.materials);
     setAmt('pm-ov-combined',  bd.combined);
     // Keep the "% of budget" labels in sync with the range-filtered amounts.
-    const _bpct = (val) => (_pmOvContractVal > 0 ? (() => { const p = (Number(val) || 0) / _pmOvContractVal * 100; return (p >= 10 ? p.toFixed(0) : p.toFixed(1)) + '% of budget'; })() : '');
+    // Math.abs so a negative Remaining-cash-receipt (over-collected) still
+    // reads as a plain positive percentage, matching the KPI cards' own render.
+    const _bpct = (val) => (_pmOvContractVal > 0 ? (() => { const p = Math.abs(Number(val) || 0) / _pmOvContractVal * 100; return (p >= 10 ? p.toFixed(0) : p.toFixed(1)) + '% of budget'; })() : '');
     const setBpct = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = _bpct(val); };
     setBpct('pm-ov-labor-bpct',     bd.labor);
     setBpct('pm-ov-materials-bpct', bd.materials);
     setBpct('pm-ov-combined-bpct',  bd.combined);
     setBpct('pm-ov-direct-bpct',    bd.direct);
+    // Direct cost / Remaining cash receipt KPI cards — % of Project Budget.
+    // Warranty retention / Profit share show a FIXED "5% of.../50% of..." label
+    // (set once at initial render) — nothing to update here since it never changes.
+    setBpct('pm-ov-kpi-direct-pct', directCost);
+    setBpct('pm-ov-kpi-net-pct',    netCash);
     const setCnt = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n + ' ' + (n === 1 ? 'entry' : 'entries'); };
     setCnt('pm-ov-labor-cnt',     bd.laborCount);
     setCnt('pm-ov-materials-cnt', bd.matCount);
@@ -947,6 +995,251 @@ function _pmDvRangeLabel(mode) {
     if (mode && mode.indexOf('wk:') === 0) return _pmWeekOfMonthLabel(mode.slice(3));
     return 'All time';
 }
+
+// Printable PDF-style report of the whole Overview screen — KPI cards,
+// direct-cost breakdown, and payment status — same data as the live
+// dashboard (always all-time, regardless of whatever range filter happens
+// to be selected on screen, so a printed report is always a complete record).
+window.pmOvPrintReport = function() {
+    if (!_pmActiveProject) { _pmToast('Open a project first.', true); return; }
+    const p = _pmActiveProject;
+    const bills = _pmOvBills || [];
+    const reqs  = _pmOvReqs  || [];
+    const esc = _esc;
+    const fmt = n => '&#8369;' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const contractValue = Number(p.budget) || 0;
+    const paid = _pmOvPaid(reqs);
+    const directCost = bills.reduce((s, b) => {
+        const dct = Number(b.directCostTotal) || 0;
+        if (dct) return s + dct;
+        const lm = (Number(b.labor) || 0) + (Number(b.materials) || 0);
+        if (lm) return s + lm;
+        return s + ((Number(b.grandTotal) || 0) - (Number(b.managementFee) || 0));
+    }, 0);
+    const bd = _pmOvBreakdown(bills);
+    const netCash = paid - directCost;
+    const warrantyRetention = netCash * 0.05;
+    const profitShare = (netCash - warrantyRetention) / 2;
+    const donutOutstanding = Math.max(0, contractValue - paid);
+    const donutTotal = contractValue > 0 ? contractValue : paid;
+    const donutPaidPct = donutTotal > 0 ? Math.round(paid / donutTotal * 100) : 0;
+    const pctOfBudget = (val) => contractValue > 0 ? (Math.abs(Number(val) || 0) / contractValue * 100) : 0;
+    const pctText = (val) => { const pc = pctOfBudget(val); return (pc >= 10 ? pc.toFixed(0) : pc.toFixed(1)) + '% of budget'; };
+
+    const projectLbl = p.projectName || p.clientName || 'Project';
+    const bizName = "DAC's Building Design Services";
+    const today = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+
+    // ── icon badges (inline SVG, one per KPI/category — no external icon font) ──
+    const ico = {
+        budget:   '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>',
+        cost:     '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M8 7h8M8 11h8M8 15h5"/>',
+        receipt:  '<path d="M14 2H6a2 2 0 0 0-2 2v16l3-2 3 2 3-2 3 2 3-2V8Z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>',
+        shield:   '<path d="M12 2 4 5v6c0 5.2 3.4 9.7 8 11 4.6-1.3 8-5.8 8-11V5Z"/><path d="M9 12l2 2 4-4"/>',
+        pie:      '<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10Z"/>',
+        people:   '<circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 13.3A5 5 0 0 1 22 20"/>',
+        box:      '<path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v9l9 5 9-5V8"/><path d="M12 13v9"/>',
+        handshake:'<path d="m11 17 2 2a1.4 1.4 0 0 0 2-2l-2-2"/><path d="m14 14 2.5 2.5a1.4 1.4 0 0 0 2-2L15 11"/><path d="m6 12 4.5 4.5a1.4 1.4 0 0 0 2-2L9 11"/><path d="M2 11l6-6 3 3 5-2 4 4-6 6"/>',
+    };
+    const iconBadge = (name, color, bg) => `
+      <div style="width:54px;height:54px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ico[name]}</svg>
+      </div>`;
+
+    // Equal-width, equal-height cards: min-width:0 on a grid/flex child lets it
+    // shrink below its content's natural width so equal columns actually hold;
+    // display:flex + flex-direction:column on the card itself so short cards
+    // (no pct pill) stretch to match the tallest one instead of looking short.
+    const kpiCard = (icon, iconColor, iconBg, label, val, valColor, bg, border, pctLabel, pctBg) => `
+      <div style="min-width:0;">
+        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;border:1.5px solid ${border};background:${bg};border-radius:12px;padding:22px 14px;text-align:center;">
+          ${iconBadge(icon, iconColor, iconBg)}
+          <div style="font:700 11px 'Times New Roman',Times,serif;color:#3a3a36;text-transform:uppercase;letter-spacing:.07em;">${esc(label)}</div>
+          <div style="font:700 21px 'Times New Roman',Times,serif;color:${valColor};margin-top:10px;white-space:nowrap;">${val}</div>
+          <div style="flex:1;"></div>
+          ${pctLabel ? `<div style="display:inline-block;font:700 10.5px 'Times New Roman',Times,serif;color:${valColor};background:${pctBg};border:1px solid ${border};border-radius:999px;padding:4px 11px;margin-top:12px;">${esc(pctLabel)}</div>` : ''}
+        </div>
+      </div>`;
+
+    const catIcon = (name, color, bg) => `
+      <span style="display:inline-flex;width:32px;height:32px;border-radius:50%;background:${bg};align-items:center;justify-content:center;flex:none;margin-right:12px;vertical-align:middle;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${ico[name]}</svg>
+      </span>`;
+
+    const bdRow = (icon, label, barColor, iconColor, iconBg, val, pct, count) => `
+      <tr>
+        <td style="padding:14px 0;">
+          <div style="display:flex;align-items:center;">${catIcon(icon, iconColor, iconBg)}
+            <div>
+              <div style="font:700 14px 'Times New Roman',Times,serif;color:#26342c;">${esc(label)}</div>
+              <div style="font:400 11.5px 'Times New Roman',Times,serif;color:#9aa8a0;">${count} ${count === 1 ? 'entry' : 'entries'}</div>
+            </div>
+          </div>
+          <div style="height:8px;background:#eef0ec;border-radius:99px;overflow:hidden;margin-top:10px;margin-left:44px;"><div style="height:100%;width:${Math.min(100, pct)}%;background:${barColor};border-radius:99px;"></div></div>
+        </td>
+        <td style="padding:14px 0;text-align:right;font:700 15px 'Times New Roman',Times,serif;color:#1a1a1a;white-space:nowrap;">${fmt(val)}</td>
+        <td style="padding:14px 0 14px 14px;text-align:right;width:70px;">
+          <span style="display:inline-block;font:700 12px 'Times New Roman',Times,serif;color:${iconColor};background:${iconBg};border-radius:999px;padding:4px 10px;">${pctOfBudget(val).toFixed(0)}%</span>
+        </td>
+      </tr>`;
+
+    const netColor = netCash >= 0 ? '#0f6342' : '#8f352c';
+    const retColor = warrantyRetention < 0 ? '#8f352c' : '#9a6c12';
+    const psColor  = profitShare < 0 ? '#8f352c' : '#0f6342';
+
+    // ── payment-status donut, pure SVG (stroke-dasharray ring — prints reliably,
+    // no canvas / no external chart lib needed inside a popup window) ──
+    const R = 78, C = 2 * Math.PI * R;
+    const paidLen = C * (donutPaidPct / 100);
+    const donutSvg = `
+      <svg width="220" height="220" viewBox="0 0 220 220">
+        <circle cx="110" cy="110" r="${R}" fill="none" stroke="#e6c878" stroke-width="32"/>
+        <circle cx="110" cy="110" r="${R}" fill="none" stroke="#157a52" stroke-width="32"
+          stroke-dasharray="${paidLen} ${C - paidLen}" stroke-dashoffset="${C / 4}" transform="rotate(0 110 110)"/>
+        <circle cx="110" cy="110" r="52" fill="#fff"/>
+        <text x="110" y="105" text-anchor="middle" font-family="'Times New Roman',Times,serif" font-weight="700" font-size="32" fill="#0f6342">${donutPaidPct}%</text>
+        <text x="110" y="127" text-anchor="middle" font-family="'Times New Roman',Times,serif" font-weight="600" font-size="11" letter-spacing="1.5" fill="#9b9a94">PAID</text>
+      </svg>`;
+
+    const w = window.open('', '_blank', 'width=980,height=1200');
+    if (!w) { alert('Please allow pop-ups to print the report.'); return; }
+    w.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Project Financial Overview Report — ${esc(projectLbl)}</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; font-family:'Times New Roman',Times,serif !important; }
+body { font-size:15px; color:#1a1a1a; background:#e9ece9; -webkit-font-smoothing:antialiased; }
+.frame { width:210mm; margin:24px auto; padding:12px; background:#fff; box-shadow:0 2px 16px rgba(0,0,0,.10); border:2.5px solid #0f6342; border-radius:4px; }
+.frame-inner { border:1px solid #c6e6d5; border-radius:2px; padding:34px 40px 30px; }
+.head { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:22px; border-bottom:2px solid #e5e7eb; flex-wrap:wrap; gap:16px; }
+.head-brand { display:flex; align-items:center; gap:16px; }
+.head-logo { height:64px; width:auto; object-fit:contain; }
+.head-brand-text .l1 { font:800 28px 'Times New Roman',Times,serif; color:#0f6342; letter-spacing:.5px; }
+.head-brand-text .l2 { font:700 12.5px 'Times New Roman',Times,serif; color:#6b6b6b; letter-spacing:2px; margin-top:2px; }
+.head-title { text-align:center; flex:1 1 100%; padding-top:8px; order:3; }
+.head-title h1 { font:700 26px 'Times New Roman',Times,serif; color:#0f6342; letter-spacing:.5px; }
+.head-title .sub { font:400 14px 'Times New Roman',Times,serif; color:#4b4b46; margin-top:6px; font-style:italic; }
+.head-meta { border:1px solid #d8d7d0; border-radius:6px; padding:12px 18px; font:400 12.5px 'Times New Roman',Times,serif; color:#3a3a36; line-height:2; white-space:nowrap; }
+.head-meta b { display:inline-block; min-width:104px; font-weight:700; }
+.sec-divider { display:flex; align-items:center; gap:16px; margin:32px 0 18px; }
+.sec-divider .ln { flex:1; height:1px; background:#c6e6d5; }
+.sec-divider .lbl { font:700 16.5px 'Times New Roman',Times,serif; color:#0f6342; letter-spacing:2.5px; }
+.panel { border:1.5px solid #c6e6d5; border-radius:10px; padding:24px 26px; }
+.panel-title { font:700 16px 'Times New Roman',Times,serif; color:#1a1a1a; letter-spacing:.3px; }
+table.bd tbody tr { border-bottom:1px solid #eef0f2; }
+table.bd tfoot td { border-top:2px solid #1a1a1a; padding-top:16px; font:800 15px 'Times New Roman',Times,serif; }
+.foot-grid { display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:0; border:1.5px solid #c6e6d5; border-radius:10px; margin-top:26px; overflow:hidden; }
+.foot-cell { padding:20px 24px; border-left:1px solid #eef0ec; }
+.foot-cell:first-child { border-left:none; }
+.foot-title { font:700 12px 'Times New Roman',Times,serif; color:#0f6342; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:10px; }
+.foot-notes { font:400 13px 'Times New Roman',Times,serif; color:#4b4b46; line-height:1.8; }
+.legend-row { display:flex; align-items:center; gap:10px; font:400 13.5px 'Times New Roman',Times,serif; color:#3a3a36; margin-bottom:9px; }
+.legend-sw { width:24px; height:9px; border-radius:4px; flex:none; }
+.sig-img { height:44px; display:block; margin-bottom:2px; }
+.sig-line { border-top:1px solid #1a1a1a; padding-top:7px; margin-top:10px; width:160px; }
+.sig-name { font:700 13px 'Times New Roman',Times,serif; color:#1a1a1a; }
+.sig-dept { font:400 12px 'Times New Roman',Times,serif; color:#8a8983; margin-top:2px; }
+@media print { body{background:#fff;} .frame{margin:0;box-shadow:none;width:100%;border-width:2px;} @page{size:A4 portrait;margin:8mm;} }
+</style>
+</head>
+<body>
+<div class="frame"><div class="frame-inner">
+
+  <div class="head">
+    <div class="head-brand">
+      <img class="head-logo" src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo" onerror="this.style.display='none'">
+      <div class="head-brand-text"><div class="l1">DACS</div><div class="l2">BUILDING SOLUTIONS</div></div>
+    </div>
+    <div class="head-title">
+      <h1>PROJECT FINANCIAL OVERVIEW REPORT</h1>
+      <div class="sub">${esc(projectLbl)} · Cost-Plus Contract &bull; ${esc(_pmFeePct())}% Management Fee</div>
+    </div>
+    <div class="head-meta">
+      <div><b>Report Period :</b> All Time</div>
+      <div><b>Generated On :</b> ${esc(today)}</div>
+      <div><b>Prepared By :</b> DACS System</div>
+    </div>
+  </div>
+
+  <div class="sec-divider"><span class="ln"></span><span class="lbl">KEY SUMMARY</span><span class="ln"></span></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+    ${kpiCard('budget', '#0f6342', '#dcefe3', 'Project Budget', contractValue > 0 ? fmt(contractValue) : '—', '#0f6342', '#eaf4ef', '#c6e6d5')}
+    ${kpiCard('cost', '#1e3a5f', '#dde5ef', 'Direct Cost', fmt(directCost), '#1e3a5f', '#eef0f3', '#d6dde4', pctText(directCost), '#eef0f3')}
+    ${kpiCard('receipt', '#8f352c', '#f6dedb', 'Remaining Cash Receipt', (netCash < 0 ? '−' : '') + fmt(Math.abs(netCash)), netColor, '#fbf3e2', '#f0e2c5', pctText(netCash), '#f6dedb')}
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;max-width:66%;">
+    ${kpiCard('shield', '#b4892a', '#f6e6bd', 'Warranty Retention', (warrantyRetention < 0 ? '−' : '') + fmt(Math.abs(warrantyRetention)), retColor, '#fbf2dc', '#ecd8a6', '5% of Remaining Cash Receipt', '#f6e6bd')}
+    ${kpiCard('pie', '#0f6342', '#dcefe3', 'Profit Share', (profitShare < 0 ? '−' : '') + fmt(Math.abs(profitShare)), psColor, '#eaf4ef', '#c6e6d5', '50% of Remaining After Retention', '#dcefe3')}
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px;margin-top:26px;">
+    <div class="panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <span class="panel-title">Direct-Cost Breakdown</span>
+        <span style="font:400 12.5px 'Times New Roman',Times,serif;color:#9b9a94;">All time &bull; ${_pmOvWeekGroups().length} week${_pmOvWeekGroups().length === 1 ? '' : 's'}</span>
+      </div>
+      <table class="bd" style="width:100%;border-collapse:collapse;">
+        <thead><tr>
+          <td style="font:700 11px 'Times New Roman',Times,serif;color:#9b9a94;letter-spacing:1px;text-transform:uppercase;padding-bottom:10px;">Category</td>
+          <td style="font:700 11px 'Times New Roman',Times,serif;color:#9b9a94;letter-spacing:1px;text-transform:uppercase;padding-bottom:10px;text-align:right;">Amount</td>
+          <td style="font:700 11px 'Times New Roman',Times,serif;color:#9b9a94;letter-spacing:1px;text-transform:uppercase;padding-bottom:10px;text-align:right;">% of Budget</td>
+        </tr></thead>
+        <tbody>
+          ${bdRow('people', 'Labor', '#157a52', '#0f6342', '#dcefe3', bd.labor, pctOfBudget(bd.labor), bd.laborCount)}
+          ${bdRow('box', 'Materials', '#c79024', '#9a6c12', '#fbf2dc', bd.materials, pctOfBudget(bd.materials), bd.matCount)}
+          ${bdRow('handshake', 'Out Source', '#8b6fc4', '#6b4fa8', '#f1ecfa', bd.combined, pctOfBudget(bd.combined), bd.combinedCount)}
+        </tbody>
+        <tfoot><tr><td>Direct Cost Total</td><td style="text-align:right;">${fmt(bd.direct)}</td>
+          <td style="text-align:right;"><span style="display:inline-block;font:700 12px 'Times New Roman',Times,serif;color:#fff;background:#1a1a1a;border-radius:999px;padding:4px 11px;">${pctOfBudget(bd.direct).toFixed(0)}%</span></td></tr></tfoot>
+      </table>
+    </div>
+    <div class="panel">
+      <div class="panel-title" style="margin-bottom:18px;">Payment Status</div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:48px;">
+        ${donutSvg}
+        <div style="text-align:left;">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+            <span style="width:14px;height:14px;border-radius:4px;background:#157a52;flex:none;"></span>
+            <div><div style="font:400 12px 'Times New Roman',Times,serif;color:#3a3a36;">Paid</div><div style="font:700 16px 'Times New Roman',Times,serif;">${fmt(paid)}</div></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="width:14px;height:14px;border-radius:4px;background:#e6c878;flex:none;"></span>
+            <div><div style="font:400 12px 'Times New Roman',Times,serif;color:#3a3a36;">Outstanding</div><div style="font:700 16px 'Times New Roman',Times,serif;">${fmt(donutOutstanding)}</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot-grid">
+    <div class="foot-cell">
+      <div class="foot-title">Notes</div>
+      <div class="foot-notes">This report summarizes the project's financial status based on available data for the selected period. All amounts are in Philippine Peso (PHP).</div>
+    </div>
+    <div class="foot-cell">
+      <div class="foot-title">Legend</div>
+      <div class="legend-row"><span class="legend-sw" style="background:#157a52;"></span>Labor Costs</div>
+      <div class="legend-row"><span class="legend-sw" style="background:#c79024;"></span>Material Costs</div>
+      <div class="legend-row"><span class="legend-sw" style="background:#8b6fc4;"></span>Outsourced Costs</div>
+    </div>
+    <div class="foot-cell">
+      <div class="foot-title">Prepared By</div>
+      <img class="sig-img" src="${window.location.origin}/assets/images/dacs-signature.png" alt="" onerror="this.style.display='none'">
+      <div class="sig-line"></div>
+      <div class="sig-name">DACS System</div>
+      <div class="sig-dept">Finance Department</div>
+    </div>
+  </div>
+
+</div></div>
+<script>window.onload=function(){window.print();};<\/script>
+</body>
+</html>`);
+    w.document.close();
+};
 
 // "View" — open the redesigned data-input sub-page (fresh: filters reset).
 window.pmOvViewData = function() {
@@ -5209,6 +5502,161 @@ window.pmLcLedgerViewFiles = function() {
     _pmContractFilesViewer(c, 'labor', _pmLcLedgerId);
 };
 
+// Per-worker/vendor Statement of Account — same document design as the
+// Project Control SOA (printWorkerLaborSOA in invoice-module.js), but sourced
+// from THIS contract's own weeklyBills entries, since PM keeps its own
+// separate payment ledger (see pmPrintAllContracts above for why).
+function _pmPrintContractSOA(c, entryType) {
+    if (!c) return;
+    const rows = [];
+    (_pmWeekBills || []).forEach(b => (Array.isArray(b.entries) ? b.entries : []).forEach(e => {
+        if (e.type === entryType && e.contractId === c.id) rows.push({ date: b.weekEndingDate, details: e.details || 'Payment', amount: Number(e.amount) || 0 });
+    }));
+    rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    if (!rows.length) { _pmToast('No payments recorded for this contract yet.', true); return; }
+
+    const esc = _esc;
+    const fmt = n => '&#8369;&nbsp;' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const fmtDate = d => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return d || '—'; } };
+
+    let itemRows = '', rowNum = 0, grandTotal = 0;
+    rows.forEach(r => {
+        rowNum++;
+        grandTotal += r.amount;
+        itemRows += `<tr>
+            <td style="text-align:center;">${rowNum}</td>
+            <td style="text-align:center;">${fmtDate(r.date)}</td>
+            <td>${esc(r.details)}</td>
+            <td style="text-align:right;font-weight:600;">${fmt(r.amount)}</td>
+        </tr>`;
+    });
+
+    const agreed = Number(c.agreedAmount) || 0;
+    let stLabel = '', stColor = '', stBg = '';
+    if (agreed > 0 && grandTotal >= agreed) {
+        if (grandTotal > agreed) { stLabel = 'Over cap'; stColor = '#b91c1c'; stBg = '#fee2e2'; }
+        else { stLabel = 'Completed'; stColor = '#15803d'; stBg = '#dcfce7'; }
+    } else if (agreed > 0) {
+        stLabel = 'Ongoing · ' + Math.round(grandTotal / agreed * 100) + '%'; stColor = '#1d4ed8'; stBg = '#dbeafe';
+    }
+    const stPill = stLabel
+        ? `<div style="display:inline-block;margin-top:8px;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;background:${stBg};color:${stColor};">${esc(stLabel)}</div>`
+        : '';
+
+    const typeLbl = c.payType === 'inhouse' ? 'In-house' : 'Pakyaw';
+    const projectLbl = (_pmActiveProject && (_pmActiveProject.projectName || _pmActiveProject.clientName)) || 'Project';
+    const bizName = "DAC's Building Design Services";
+    const bizAddr = (_pmActiveProject && _pmActiveProject.address) || '';
+    const today = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+    const firstDate = fmtDate(rows[0].date), lastDate = fmtDate(rows[rows.length - 1].date);
+
+    const w = window.open('', '_blank', 'width=870,height=1100');
+    if (!w) { alert('Please allow pop-ups to print the statement.'); return; }
+    w.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Statement of Account — ${esc(c.workerName || 'Worker')}</title>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:Arial,Helvetica,sans-serif; font-size:13px; color:#1a1a1a; background:#f5f5f5; -webkit-font-smoothing:antialiased; }
+.page { width:210mm; min-height:297mm; margin:24px auto; padding:24mm 22mm 20mm; background:#fff; box-shadow:0 2px 16px rgba(0,0,0,.10); }
+.inv-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:44px; padding-bottom:26px; border-bottom:3px solid #1e3a5f; }
+.inv-logo { display:block; height:72px; width:auto; max-width:180px; object-fit:contain; margin-bottom:16px; mix-blend-mode:multiply; }
+.inv-biz h1 { font-size:21px; font-weight:800; color:#1a1a2e; letter-spacing:.3px; line-height:1.3; }
+.inv-biz p  { font-size:12px; color:#666; margin-top:11px; line-height:1.8; letter-spacing:.2px; }
+.inv-title-block { text-align:right; }
+.inv-title-block h2 { font-size:23px; font-weight:800; color:#1e3a5f; letter-spacing:3px; line-height:1.2; }
+.inv-title-block .inv-sub { font-size:12px; font-weight:600; color:#7c3aed; margin-top:8px; letter-spacing:1px; }
+.inv-meta { margin-top:14px; font-size:12px; color:#555; line-height:2.1; letter-spacing:.3px; }
+.inv-meta strong { color:#1a1a1a; }
+.bill-row { display:flex; gap:48px; margin-bottom:34px; padding:6px 0 24px; border-bottom:1px solid #e5e7eb; }
+.bill-to h4 { font-size:9.5px; font-weight:700; color:#9ca3af; letter-spacing:2.5px; text-transform:uppercase; margin-bottom:10px; }
+.bill-to .name { font-size:16px; font-weight:700; color:#1a1a2e; margin-bottom:6px; letter-spacing:.2px; }
+.bill-to p { font-size:12px; color:#666; line-height:1.6; letter-spacing:.3px; }
+table.items { width:100%; border-collapse:collapse; margin-bottom:22px; }
+table.items thead tr { background:#fff; color:#1a1a1a; border-bottom:2px solid #1a1a1a; }
+table.items thead th { padding:13px 12px; font-size:10px; font-weight:700; text-align:left; letter-spacing:1.2px; text-transform:uppercase; color:#555; }
+table.items tbody tr { border-bottom:1px solid #eef0f2; }
+table.items tbody td { padding:15px 12px; vertical-align:middle; font-size:12.5px; letter-spacing:.2px; }
+.totals-wrap { display:flex; justify-content:flex-end; margin-bottom:32px; }
+table.totals { width:340px; border-collapse:collapse; font-size:13px; }
+table.totals td { padding:10px 14px; letter-spacing:.3px; }
+table.totals td:first-child { color:#666; }
+table.totals td:last-child { text-align:right; font-weight:600; color:#1a1a1a; }
+table.totals tr.grand td { font-size:16px; font-weight:800; color:#1a1a1a; background:#fff; border-top:2px solid #1a1a1a; border-bottom:2px solid #1a1a1a; padding:15px 14px; letter-spacing:.6px; }
+.sig-row { display:flex; justify-content:space-between; margin-top:60px; }
+.sig-block { text-align:center; width:190px; }
+.sig-line { border-top:1px solid #374151; padding-top:9px; font-size:11px; color:#666; letter-spacing:.3px; }
+.footer { text-align:center; margin-top:44px; font-size:9.5px; color:#b0b4bb; border-top:1px solid #eef0f2; padding-top:14px; letter-spacing:.5px; }
+@media print { body{background:#fff;} .page{margin:0;box-shadow:none;padding:16mm 14mm;width:100%;} @page{size:A4 portrait;margin:8mm;} }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="inv-header">
+    <div class="inv-biz">
+      <img class="inv-logo" src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo" onerror="this.style.display='none'">
+      <h1>${esc(bizName)}</h1>
+      <p>${esc(bizAddr)}</p>
+    </div>
+    <div class="inv-title-block">
+      <h2>STATEMENT OF ACCOUNT</h2>
+      <div class="inv-sub">${entryType === 'both' ? 'Out Source' : 'Labor'} &amp; Payroll</div>
+      ${stPill}
+      <div class="inv-meta">
+        Date: <strong>${esc(today)}</strong><br>
+        Period: <strong>${esc(firstDate === lastDate ? firstDate : firstDate + ' – ' + lastDate)}</strong>
+      </div>
+    </div>
+  </div>
+  <div class="bill-row">
+    <div class="bill-to">
+      <h4>${entryType === 'both' ? 'Vendor' : 'Worker'}</h4>
+      <div class="name">${esc(c.workerName || 'Worker')}</div>
+      <p>${esc(typeLbl)} · ${esc(c.scope || 'Untitled job')}</p>
+    </div>
+    <div class="bill-to">
+      <h4>Project</h4>
+      <div class="name" style="font-size:13px;">${esc(projectLbl)}</div>
+    </div>
+  </div>
+  <table class="items">
+    <thead>
+      <tr>
+        <th style="width:28px;">#</th>
+        <th style="width:110px;text-align:center;">Date</th>
+        <th>Details</th>
+        <th style="width:130px;text-align:right;">Amount</th>
+      </tr>
+    </thead>
+    <tbody>${itemRows}</tbody>
+  </table>
+  <div class="totals-wrap">
+    <table class="totals">
+      <tr><td>Agreed Amount</td><td>${fmt(agreed)}</td></tr>
+      <tr><td>Total Entries</td><td>${rows.length}</td></tr>
+      <tr class="grand"><td>TOTAL PAID</td><td>${fmt(grandTotal)}</td></tr>
+    </table>
+  </div>
+  <div class="sig-row">
+    <div class="sig-block"><div class="sig-line">Prepared by</div></div>
+    <div class="sig-block"><div class="sig-line">Received by — ${esc(c.workerName || 'Worker')}</div></div>
+    <div class="sig-block"><div class="sig-line">Approved by</div></div>
+  </div>
+  <div class="footer">${esc(bizName)} &bull; ${esc(bizAddr)}</div>
+</div>
+<script>window.onload=function(){window.print();};<\/script>
+</body>
+</html>`);
+    w.document.close();
+}
+
+window.pmLcPrintSOA = function() {
+    const c = _pmLaborContracts.find(x => x.id === _pmLcLedgerId);
+    _pmPrintContractSOA(c, 'labor');
+};
+
 window.pmLcLedgerUpload = async function(input) {
     const file = input && input.files && input.files[0];
     if (!file || !_pmLcLedgerId) return;
@@ -5531,6 +5979,11 @@ window.pmOcLedgerViewFiles = function() {
     const c = _pmOutsourceContracts.find(x => x.id === _pmOcLedgerId);
     if (!c) return;
     _pmContractFilesViewer(c, 'outsource', _pmOcLedgerId);
+};
+
+window.pmOcPrintSOA = function() {
+    const c = _pmOutsourceContracts.find(x => x.id === _pmOcLedgerId);
+    _pmPrintContractSOA(c, 'both');
 };
 
 window._pmAddFileMenu = function(btn, type) {
