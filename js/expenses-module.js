@@ -153,33 +153,40 @@ function _expCatEsc(s) {
         .replace(/&/g, '&amp;').replace(/</g, '&lt;')
         .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-function _expContractRoles() {
+// Category choices come from the folder's labor contracts. The category IS the
+// role/job (scope), with the worker's name in parentheses so several contracts
+// sharing a generic scope like "Worker" stay tellable apart → "Worker (Aeee)".
+// Scope-only when a contract has no name; name-only if it somehow has no scope.
+function _expContractLabels() {
     const set = new Set();
     (expLaborContracts || []).forEach(c => {
-        const s = (c && c.scope != null ? String(c.scope) : '').trim();
-        if (s) set.add(s);
+        const name  = (c && c.workerName != null ? String(c.workerName) : '').trim();
+        const scope = (c && c.scope      != null ? String(c.scope)      : '').trim();
+        const label = scope && name ? scope + ' (' + name + ')' : (scope || name);
+        if (label) set.add(label);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
 }
 function _expCategoryOptionsHtml(current, placeholder) {
-    const cur   = (current == null ? '' : String(current)).trim();
-    const roles = _expContractRoles();
+    const cur     = (current == null ? '' : String(current)).trim();
+    const workers = _expContractLabels();
     const opt = name =>
         '<option value="' + _expCatEsc(name) + '"' + (name === cur ? ' selected' : '') + '>'
         + _expCatEsc(name) + '</option>';
 
     let html = '<option value="">' + _expCatEsc(placeholder || 'Select category…') + '</option>';
-    if (roles.length) {
-        html += '<optgroup label="Labor contract roles">' + roles.map(opt).join('') + '</optgroup>';
+    if (workers.length) {
+        html += '<optgroup label="Labor contract workers">' + workers.map(opt).join('') + '</optgroup>';
     }
     // The old hand-managed `categories` list is deliberately NOT offered here: it had
     // filled up with payment methods (Cash, Gcash, Lalamove, Downpayment…) rather than
-    // material categories. Expenses are tagged by the JOB the material was bought for.
+    // material categories. Expenses are tagged by the worker/job they belong to.
     //
     // Whatever this row already had is still rendered and selected, so opening an old
     // expense cannot blank a category recorded before this change — the save paths read
-    // .value straight back, so an unrendered option would be written as "". Keep this.
-    if (cur && roles.indexOf(cur) === -1) {
+    // .value straight back, so an unrendered option would be written as "". Keep this:
+    // it is what preserves every already-input value ("Worker", "Others", …).
+    if (cur && workers.indexOf(cur) === -1) {
         html += '<optgroup label="Currently set">' + opt(cur) + '</optgroup>';
     }
     return html;
@@ -2219,25 +2226,30 @@ function compressImageToBase64(file) {
 async function handleAddExpense(e) {
     e.preventDefault();
 
-    // Build split list from checked sources
-    const checkedBoxes = Array.from(document.querySelectorAll('input[name="expFundingSrc"]:checked'));
-    const checkedSources = checkedBoxes.map(cb => _expSources.find(s => s.id === cb.value)).filter(Boolean);
-
-    // Additional Works has no monthly budget / Cover Expenses concept —
-    // always record straight against the current period as a normal expense.
+    // Auto-pick the billing period this expense is charged to (the "Which budget
+    // pays for this?" picker was removed). Preference mirrors what that picker
+    // defaulted to, so behaviour is unchanged in the common single-period case:
+    //   1. Additional Works       → the current period (no monthly-budget concept)
+    //   2. the active period       → if it still has remaining budget
+    //   3. the first fundable one  → otherwise
+    //   4. nothing fundable left   → Cover Expenses (the overflow logic below still runs)
+    const checkedSources = [];
     if (_expIsAdditionalWorks() && expCurrentProject) {
-        checkedSources.length = 0;
         checkedSources.push({ id: expCurrentProject.id, remain: Infinity, label: 'Additional Works' });
+    } else {
+        const fundable = (_expSources || []).filter(s => s.remain > 0);
+        const active   = expCurrentProject && fundable.find(s => s.id === expCurrentProject.id);
+        const pick     = active || fundable[0] || null;
+        if (pick) {
+            checkedSources.push(pick);
+        } else {
+            // No remaining budget anywhere → record as a Cover Expense.
+            const fsSel      = document.getElementById('expFundingSourceSelect');
+            const fallbackId = (fsSel && fsSel.value) ? fsSel.value : (expCurrentProject ? expCurrentProject.id : null);
+            if (!fallbackId) { showExpNotif('No billing period to charge this to — add a billing period first.', 'error'); return; }
+            checkedSources.push({ id: fallbackId, remain: 0, label: 'Cover Expenses' });
+        }
     }
-
-    // Fallback to hidden select or current project
-    const fsSel = document.getElementById('expFundingSourceSelect');
-    if (!checkedSources.length && _expCoverExpensesMode) {
-        const fallbackId = (fsSel && fsSel.value) ? fsSel.value : (expCurrentProject ? expCurrentProject.id : null);
-        if (!fallbackId) { showExpNotif('No funding source selected.', 'error'); return; }
-        checkedSources.push({ id: fallbackId, remain: 0, label: 'Cover Expenses' });
-    }
-    if (!checkedSources.length) { showExpNotif('Select at least one funding source.', 'error'); return; }
 
     const totalAmt   = parseFloat((document.getElementById('expAmount').value || '').replace(/,/g, '')) || 0;
     const expName    = document.getElementById('expName').value.trim();
@@ -4003,30 +4015,10 @@ function _updateExpBudgetBanner() {
 
     _expCoverExpensesMode = false;
     banner.style.display = 'none';
-
-    // Build checkbox list
-    if (fsWrap) {
-        fsWrap.style.display = 'block';
-        const list = document.getElementById('expFundingCheckList');
-        if (list) {
-            const visibleSources = _expSources.filter(s => s.remain > 0);
-            // If the active period isn't among the fundable sources, default to the first
-            // one so a source is always selected (otherwise the save has nothing to charge).
-            const pMatches = p && visibleSources.some(s => s.id === p.id);
-            list.innerHTML = visibleSources.map((s, i) => {
-                const isChecked = pMatches ? s.id === p.id : i === 0;
-                const remClass  = s.remain < s.budget * 0.1 ? 'is-low' : '';
-                return '<label class="exp-funding-check-item' + (isChecked ? ' is-checked' : '') + '">'
-                    + '<input type="checkbox" name="expFundingSrc" value="' + s.id + '"'
-                    + (isChecked ? ' checked' : '')
-                    + ' onchange="expFundingCheckChanged(this)">'
-                    + '<span class="exp-funding-check-item__label">' + s.label + '</span>'
-                    + '<span class="exp-funding-check-item__remain ' + remClass + '">₱' + formatNum(s.remain) + ' left</span>'
-                    + '</label>';
-            }).join('');
-        }
-    }
-    _updateExpSplitPreview();
+    // The funding-source picker was removed — the billing period is auto-selected at
+    // save time (see handleAddExpense). `_expSources` built above is exactly what that
+    // auto-pick reads; there is no checklist to render here anymore.
+    if (fsWrap) fsWrap.style.display = 'none';
 }
 
 function expFundingCheckChanged(cb) {

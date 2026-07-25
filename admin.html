@@ -3524,18 +3524,17 @@
             <div class="aer-body">
                 <div id="expBudgetBanner" style="display:none;"></div>
 
-                <!-- 1 · funding source (list rendered by expenses-module.js) -->
+                <!-- Funding source is auto-selected at save time (handleAddExpense);
+                     the "Which budget pays for this?" picker was removed. The hidden
+                     select + split-preview element are kept because the Cover-Expenses
+                     fallback and the form-reset code still reference them. -->
                 <div id="expFundingSourceWrap" style="display:none;">
-                    <div class="aer-step"><span class="aer-num">1</span><b>Which budget pays for this?</b></div>
-                    <div class="aer-hint">Tick one. Tick more than one to split the cost between budgets.</div>
-                    <div id="expFundingCheckList" class="exp-funding-check-list"></div>
-                    <!-- hidden select kept for single-source fallback in save logic -->
-                    <select id="expFundingSourceSelect" style="display:none;"></select>
+                    <select id="expFundingSourceSelect"></select>
                 </div>
                 <div id="expSplitPreview" style="display:none;"></div>
 
                 <!-- 2 · what -->
-                <div class="aer-step"><span class="aer-num">2</span><b>What did you buy?</b></div>
+                <div class="aer-step"><span class="aer-num">1</span><b>What did you buy?</b></div>
                 <div class="aer-fg">
                     <label class="aer-lbl" for="expName">Item</label>
                     <input class="aer-in" type="text" id="expName" required placeholder="e.g. Cement, tiles, steel bars">
@@ -3557,7 +3556,7 @@
                 </div>
 
                 <!-- 3 · how much -->
-                <div class="aer-step"><span class="aer-num">3</span><b>How much did it cost?</b></div>
+                <div class="aer-step"><span class="aer-num">2</span><b>How much did it cost?</b></div>
                 <div class="aer-row" style="margin-bottom:16px;">
                     <div><label class="aer-lbl" for="expQty">Quantity</label><input class="aer-in aer-center" type="number" id="expQty" value="1" min="0.01" step="any" required></div>
                     <div><label class="aer-lbl" for="expUnitCost">Price each (₱)</label><input class="aer-in aer-center" type="text" inputmode="decimal" id="expUnitCost" placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
