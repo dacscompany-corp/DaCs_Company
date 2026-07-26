@@ -2862,9 +2862,13 @@
 .lc-type-in { background: #eef2ff; color: #4338ca; }
 .lc-scope { font-size: 0.78rem; color: #6b7280; margin-top: 2px; }
 .lc-badge { flex: none; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; white-space: nowrap; }
-.lc-badge-ongoing { background: #eff6ff; color: #1d4ed8; }
-.lc-badge-done { background: #ecfdf5; color: #047857; }
-.lc-badge-over { background: #fef2f2; color: #b91c1c; }
+/* Contract status — ONE convention everywhere (see also .lc2-badge-* below,
+   .pm-lc-stat-* in pm-admin.css, and .ws-pill in print-utils.js): blue while
+   the job is running, green when it finishes cleanly, red reserved for the
+   over-cap alert. */
+.lc-badge-ongoing { background: #DBEAFE; color: #1D4ED8; }
+.lc-badge-done { background: #E7F3EC; color: #157A52; }
+.lc-badge-over { background: #FBECEB; color: #B4453A; }
 .lc-figs { display: flex; gap: 0.5rem; margin-bottom: 0.55rem; }
 .lc-figs > div { flex: 1; min-width: 0; }
 .lc-figs span { display: block; font-size: 0.66rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.03em; }
@@ -2872,9 +2876,9 @@
 .lc-neg { color: #b91c1c !important; }
 .lc-bar-wrap { height: 7px; background: #f1f3f5; border-radius: 4px; overflow: hidden; margin-bottom: 0.7rem; }
 .lc-bar-fill { height: 100%; border-radius: 4px; transition: width 0.2s; }
-.lc-bar-ok { background: #3b82f6; }
-.lc-bar-done { background: #10b981; }
-.lc-bar-over { background: #ef4444; }
+.lc-bar-ok { background: #3B82F6; }
+.lc-bar-done { background: #157A52; }
+.lc-bar-over { background: #B4453A; }
 .lc-card-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 .lc-mini-btn { font-size: 0.72rem; font-weight: 600; color: #374151; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 7px; padding: 4px 9px; cursor: pointer; transition: background 0.15s, color 0.15s, border-color 0.15s; }
 .lc-mini-btn:hover { background: #eef2ff; color: #4338ca; border-color: #c7d2fe; }
@@ -3093,9 +3097,9 @@
 .lc2-mid { flex: 1; min-width: 120px; }
 .lc2-bar { height: 7px; background: var(--hair-2); border-radius: 4px; overflow: hidden; }
 .lc2-bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
-.lc2-bar-ok { background: var(--brand-green); }
+.lc2-bar-ok { background: #3B82F6; }
 .lc2-bar-done { background: #157A52; }
-.lc2-bar-over { background: #C0392B; }
+.lc2-bar-over { background: #B4453A; }
 .lc2-mid-cap { font-size: 11.5px; color: var(--ink-4); margin-top: 6px; }
 .lc2-rem { text-align: right; flex: 0 0 130px; }
 .lc2-rem-lbl { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-4); font-weight: 600; }
@@ -3103,9 +3107,12 @@
 .lc2-rem-val.neg { color: #C0392B; }
 .lc2-rem-val.muted { color: var(--ink-4); }
 .lc2-badge { font-size: 11px; font-weight: 700; padding: 4px 11px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }
-.lc2-badge-ongoing { background: #EAF2EC; color: #1A5C3A; }
-.lc2-badge-done { background: #E2F2E9; color: #157A52; }
-.lc2-badge-over { background: #FCEDED; color: #C0392B; }
+/* Same convention as .lc-badge-* above. "Ongoing" used to be a green almost
+   identical to "done" — blue now, so a finished contract can't be mistaken
+   for a running one. */
+.lc2-badge-ongoing { background: #DBEAFE; color: #1D4ED8; }
+.lc2-badge-done { background: #E7F3EC; color: #157A52; }
+.lc2-badge-over { background: #FBECEB; color: #B4453A; }
 .lc2-badge-none { background: #F0F0F0; color: #9CA3AF; }
 .lc2-pay { display: inline-flex; align-items: center; gap: 5px; background: var(--brand-green); color: #fff; font-weight: 600; font-size: 12.5px; padding: 8px 13px; border-radius: 9px; flex-shrink: 0; border: 0; cursor: pointer; }
 .lc2-pay:hover { background: var(--brand-green-dark); }

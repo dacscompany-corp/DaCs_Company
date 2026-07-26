@@ -57,6 +57,32 @@ let _expSearch = { name: '', category: '', amtMin: '', amtMax: '', month: '' };
 let _paySearch = { name: '' };
 let _projectsUnsub = null;
 
+// ── Payroll payment method ───────────────────────────────────
+// Stored lowercase (payroll.payment_method, migrations 0037 + 0038); '' / null
+// only on rows saved before the field existed — the form now requires one.
+const PAY_METHOD_LABELS = { cash: 'Cash', gcash: 'GCash', bank_transfer: 'Bank Transfer', cheque: 'Cheque' };
+function payMethodLabel(v) { return PAY_METHOD_LABELS[v] || '—'; }
+
+// ── Payroll period attribution ───────────────────────────────
+// Payment date is OPTIONAL — payments get logged before the voucher date is
+// known. A dateless row still belongs to the billing period it was charged
+// to (its projectId), so period views resolve the date from the project when
+// the row has none. Without this a dateless entry vanishes from the payroll
+// table and its cost silently drops out of the period's Spent total.
+const _PAY_MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function _payPeriodDate(pr) {
+    if (pr && pr.paymentDate) return new Date(pr.paymentDate);
+    const proj = expProjects.find(p => p.id === (pr || {}).projectId);
+    if (!proj || !proj.month || !proj.year) return null;
+    const mi = _PAY_MONTH_NAMES.indexOf(proj.month);
+    return mi < 0 ? null : new Date(Number(proj.year), mi, 1);
+}
+// True when a payroll row falls in the given billing month/year.
+function _payInPeriod(pr, month, year) {
+    const d = _payPeriodDate(pr);
+    return !!d && _PAY_MONTH_NAMES[d.getMonth()] === month && d.getFullYear() === Number(year);
+}
+
 
 // Formats a budget text input with commas as the user types
 function fmtBudgetInput(el) {
@@ -910,11 +936,9 @@ function _updateBillingSummary(projects) {
             const d = new Date(e.dateTime);
             return _bsMonthNames[d.getMonth()] === m && d.getFullYear() === y;
         }).reduce((s, e) => s + (e.amount || 0), 0);
-        const pays = expPayroll.filter(pr => {
-            if (!pr.paymentDate) return false;
-            const d = new Date(pr.paymentDate);
-            return _bsMonthNames[d.getMonth()] === m && d.getFullYear() === y;
-        }).reduce((s, pr) => s + (pr.totalSalary || 0), 0);
+        const pays = expPayroll
+            .filter(pr => _payInPeriod(pr, m, y))
+            .reduce((s, pr) => s + (pr.totalSalary || 0), 0);
         return exps + pays;
     };
 
@@ -1317,11 +1341,7 @@ function updateBudgetOverview() {
             const d = new Date(e.dateTime);
             return _monthNames[d.getMonth()] === _periodMonth && d.getFullYear() === Number(_periodYear);
         });
-        periodPayroll = expPayroll.filter(pr => {
-            if (!pr.paymentDate) return false;
-            const d = new Date(pr.paymentDate);
-            return _monthNames[d.getMonth()] === _periodMonth && d.getFullYear() === Number(_periodYear);
-        });
+        periodPayroll = expPayroll.filter(pr => _payInPeriod(pr, _periodMonth, _periodYear));
     }
     const exps    = periodExpenses.reduce((s, e) => s + (e.amount || 0), 0);
     const pay     = periodPayroll.reduce((s, p) => s + (p.totalSalary || 0), 0);
@@ -1790,12 +1810,9 @@ function renderPayrollTable() {
         return;
     }
     // When a specific month/project is selected (not folder view), restrict to that period's payroll
-    const _payMonthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
     const _payPeriodSource = expCurrentProject && !expCurrentFolder ? expPayroll.filter(pr => {
         if (!expCurrentProject.folderId) return true;
-        if (!pr.paymentDate) return false;
-        const d = new Date(pr.paymentDate);
-        return _payMonthNames[d.getMonth()] === expCurrentProject.month && d.getFullYear() === Number(expCurrentProject.year);
+        return _payInPeriod(pr, expCurrentProject.month, expCurrentProject.year);
     }) : expPayroll;
 
     const name = _paySearch.name || '';
@@ -2642,7 +2659,8 @@ async function handleAddPayroll(e) {
     if (totalSalary <= 0) { showExpNotif(_payLamsam ? 'Enter the lump-sum total amount.' : 'Enter days worked and daily rate.', 'error'); return; }
     const workerName  = document.getElementById('payWorkerName').value.trim();
     const role        = document.getElementById('payRole').value.trim();
-    const paymentDate = document.getElementById('payDate').value;
+    const paymentDate = document.getElementById('payDate').value;   // optional
+    const paymentMethod = (document.getElementById('payMethod') || {}).value || null;
     const notes       = document.getElementById('payNotes').value.trim();
     const laborType   = (document.querySelector('input[name="payLaborType"]:checked') || {}).value || 'direct';
     // Statutory burden follows the worker class it was paid for (see payToggleContractForType).
@@ -2678,6 +2696,7 @@ async function handleAddPayroll(e) {
         const receiptImages = [];
         for (const item of validReceipts) receiptImages.push(await compressImageToBase64(item.file));
 
+        const _splitStamp = String(Date.now());
         const batch = db.batch();
         splits.forEach((sp, idx) => {
             const ref = db.collection('payroll').doc();
@@ -2688,12 +2707,16 @@ async function handleAddPayroll(e) {
                 daysWorked: splits.length > 1 ? 0 : d, dailyRate: r,
                 totalSalary: sp.amount,
                 paymentDate, notes,
+                ...(paymentMethod && { paymentMethod }),
                 receiptImages: idx === 0 ? receiptImages : [],
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
                 ...(contractId && { contractId }),
                 ...(payMilestone && { payMilestone }),
                 ...(sp.coverExpense && { coverExpense: true }),
-                ...(splits.length > 1 && { splitGroup: paymentDate + '_' + workerName, splitIndex: idx + 1, splitTotal: splits.length })
+                // Dates are optional, so a dateless split falls back to the save
+                // timestamp — otherwise two dateless splits for the same worker
+                // would share one splitGroup key.
+                ...(splits.length > 1 && { splitGroup: (paymentDate || _splitStamp) + '_' + workerName, splitIndex: idx + 1, splitTotal: splits.length })
             });
         });
         await batch.commit();
@@ -2851,6 +2874,9 @@ function openProjectModal(id) {
     const _pmYear       = Number(_pm.year);
 
     const _filterByPeriod = (items, dateField) => items.filter(item => {
+        // Payroll dates are optional — a dateless row falls back to the period
+        // of the project it was charged to (see _payInPeriod).
+        if (dateField === 'paymentDate') return _payInPeriod(item, _pmMonth, _pmYear);
         const raw = item[dateField];
         if (!raw) return false;
         const d = new Date(raw);
@@ -3152,7 +3178,7 @@ function openWorkerSummaryModal(workerName) {
 
     const entries = pool
         .filter(p => (p.workerName || '').toLowerCase() === (workerName || '').toLowerCase())
-        .sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
+        .sort((a, b) => new Date(b.paymentDate || 0) - new Date(a.paymentDate || 0));
 
     if (!entries.length) {
         showExpNotif('No payroll entries found for "' + workerName + '".', 'error');
@@ -3167,7 +3193,8 @@ function openWorkerSummaryModal(workerName) {
     }, 0);
     const role    = entries[0].role || '—';
     const fmtAmt  = n => '₱' + Number(n||0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const fmtDate = d => { try { return new Date(d).toLocaleDateString('en-PH', { year:'numeric', month:'short', day:'numeric' }); } catch(e) { return d||'—'; } };
+    // Payment date is optional — no date (or a junk one) reads as '—', never "Invalid Date".
+    const fmtDate = d => { if (!d) return '—'; const t = new Date(d); return isNaN(t) ? (d||'—') : t.toLocaleDateString('en-PH', { year:'numeric', month:'short', day:'numeric' }); };
     const esc     = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
     const _projs   = (typeof expProjects !== 'undefined' ? expProjects : []);
@@ -3227,6 +3254,10 @@ function openWorkerSummaryModal(workerName) {
                         <span class="wrs-info-label">Daily Rate</span>
                         <span class="wrs-info-value">${_payRecIsLamsam(p) ? 'Lump Sum' : fmtAmt(p.dailyRate)}</span>
                     </div>
+                    <div class="wrs-entry-info-cell">
+                        <span class="wrs-info-label">Paid Via</span>
+                        <span class="wrs-info-value">${esc(payMethodLabel(p.paymentMethod))}</span>
+                    </div>
                 </div>
                 ${p.notes ? `<div class="wrs-entry-notes-row"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>${esc(p.notes)}</div>` : ''}
                 <div class="wrs-entry-total-row">
@@ -3263,177 +3294,149 @@ function printWorkerReceiptSummary(workerName) {
 
     const entries = allPay
         .filter(p => (p.workerName || '').toLowerCase() === (workerName || '').toLowerCase())
-        .sort((a, b) => new Date(a.paymentDate) - new Date(b.paymentDate));
+        .sort((a, b) => new Date(a.paymentDate || 0) - new Date(b.paymentDate || 0));
 
     if (!entries.length) return;
 
     const totalPaid   = entries.reduce((s, p) => s + (p.totalSalary || 0), 0);
     const totalDays   = entries.reduce((s, p) => s + (Number(p.daysWorked) || 0), 0);
     const fmtAmt      = n => '&#8369;&nbsp;' + Number(n||0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const fmtDate     = d => { try { return new Date(d).toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' }); } catch(e) { return d||'—'; } };
-    const fmtDateSh   = d => { try { return new Date(d).toLocaleDateString('en-PH', { year:'numeric', month:'short', day:'numeric' }); } catch(e) { return d||'—'; } };
+    // Payment date is optional — no date (or a junk one) reads as '—', never "Invalid Date".
+    const fmtDate     = d => { if (!d) return '—'; const t = new Date(d); return isNaN(t) ? (d||'—') : t.toLocaleDateString('en-PH', { year:'numeric', month:'long', day:'numeric' }); };
+    const fmtDateSh   = d => { if (!d) return '—'; const t = new Date(d); return isNaN(t) ? (d||'—') : t.toLocaleDateString('en-PH', { year:'numeric', month:'short', day:'numeric' }); };
     const esc         = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 
     const _projs   = (typeof expProjects !== 'undefined' ? expProjects : []);
     const _folders = (typeof expFolders  !== 'undefined' ? expFolders  : []);
     const bizName  = (typeof _defaults !== 'undefined' && _defaults && _defaults.businessName) ? _defaults.businessName : "DAC's Building Design Services";
     const bizAddr  = (typeof _defaults !== 'undefined' && _defaults && _defaults.businessAddress) ? _defaults.businessAddress : '';
+    const bizTin   = (typeof _defaults !== 'undefined' && _defaults && _defaults.businessTin) ? _defaults.businessTin : '';
     const today    = new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'});
+    const docRef   = window.dacsStatementRef('PS', workerName);
 
-    const entriesHTML = entries.map((p, idx) => {
-        const imgs = p.receiptImages?.length ? p.receiptImages : (p.receiptURL ? [p.receiptURL] : []);
-        const imgsHTML = imgs.length
-            ? `<div style="margin-top:10px;"><div style="font-size:9px;font-weight:700;color:#6b7280;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;">Receipts (${imgs.length})</div><div style="display:flex;flex-wrap:wrap;gap:8px;">${imgs.map(src =>
-                `<img src="${esc(src)}" style="max-width:160px;max-height:120px;border:1px solid #e5e7eb;border-radius:5px;object-fit:cover;" alt="receipt">`
-              ).join('')}</div></div>`
-            : `<div style="margin-top:8px;padding:8px 10px;background:#fef2f2;border-radius:5px;font-size:11px;color:#ef4444;font-weight:600;">&#9888; No receipt attached</div>`;
+    // Project / period label for one payroll row.
+    const _projLabel = (p) => {
+        const proj   = _projs.find(pr => pr.id === p.projectId) || null;
+        const folder = proj && proj.folderId ? _folders.find(f => f.id === proj.folderId) || null : null;
+        if (!proj)   return '—';
+        const period = ((proj.month || '') + ' ' + (proj.year || '')).trim();
+        return folder ? esc(folder.name) + (period ? ' — ' + esc(period) : '') : esc(period || '—');
+    };
 
-        const proj      = _projs.find(pr => pr.id === p.projectId) || null;
-        const folder    = proj && proj.folderId ? _folders.find(f => f.id === proj.folderId) || null : null;
-        const projLabel = folder ? esc(folder.name) : (proj ? esc((proj.month||'') + ' ' + (proj.year||'')) : '—');
-        const periodTxt = proj ? `${esc(proj.month||'')} ${esc(proj.year||'')}` : '';
-
-        return `
-        <div style="margin-bottom:16px;border:1.5px solid #e5e7eb;border-radius:8px;overflow:hidden;page-break-inside:avoid;">
-            <div style="background:#f8fafc;padding:8px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e5e7eb;">
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <span style="background:#1e3a5f;color:#fff;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;">Entry #${idx+1}</span>
-                    <span style="font-size:11px;color:#374151;font-weight:600;">${projLabel}${periodTxt ? ' &mdash; ' + periodTxt : ''}</span>
-                </div>
-                <span style="font-size:11px;color:#6b7280;">${fmtDate(p.paymentDate)}</span>
-            </div>
-            <div style="padding:12px 14px;">
-                <table style="width:100%;border-collapse:collapse;margin-bottom:10px;">
-                    <thead>
-                        <tr style="background:#1e3a5f;color:#fff;">
-                            <th style="padding:7px 10px;font-size:11px;font-weight:700;text-align:left;">Description</th>
-                            <th style="padding:7px 10px;font-size:11px;font-weight:700;text-align:center;">Days</th>
-                            <th style="padding:7px 10px;font-size:11px;font-weight:700;text-align:right;">Daily Rate</th>
-                            <th style="padding:7px 10px;font-size:11px;font-weight:700;text-align:right;">Total</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr style="border-bottom:1px solid #e9ecef;">
-                            <td style="padding:9px 10px;font-size:12px;">${esc(p.role||'Labor')} — ${esc(p.workerName||'—')}${p.notes ? `<div style="font-size:10px;color:#92400e;margin-top:2px;">${esc(p.notes)}</div>` : ''}</td>
-                            <td style="padding:9px 10px;font-size:12px;text-align:center;">${p.daysWorked||0}</td>
-                            <td style="padding:9px 10px;font-size:12px;text-align:right;">${fmtAmt(p.dailyRate)}</td>
-                            <td style="padding:9px 10px;font-size:13px;font-weight:800;text-align:right;color:#1a1a2e;">${fmtAmt(p.totalSalary)}</td>
-                        </tr>
-                    </tbody>
-                </table>
-                ${imgsHTML}
-            </div>
-        </div>`;
-    }).join('');
-
-    // Summary table
+    // ── All payments, one row each, with a ruled TOTAL row ──
     const summaryTableHTML = `
-        <table style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+        <table class="ws-tbl">
             <thead>
-                <tr style="background:#f1f5f9;">
-                    <th style="padding:7px 10px;font-size:10px;font-weight:700;color:#6b7280;text-align:left;border-bottom:2px solid #e2e8f0;">#</th>
-                    <th style="padding:7px 10px;font-size:10px;font-weight:700;color:#6b7280;text-align:left;border-bottom:2px solid #e2e8f0;">Date</th>
-                    <th style="padding:7px 10px;font-size:10px;font-weight:700;color:#6b7280;text-align:left;border-bottom:2px solid #e2e8f0;">Project / Period</th>
-                    <th style="padding:7px 10px;font-size:10px;font-weight:700;color:#6b7280;text-align:center;border-bottom:2px solid #e2e8f0;">Days</th>
-                    <th style="padding:7px 10px;font-size:10px;font-weight:700;color:#6b7280;text-align:right;border-bottom:2px solid #e2e8f0;">Amount</th>
+                <tr>
+                    <th style="width:28px;">#</th>
+                    <th style="width:92px;">Petsa</th>
+                    <th>Proyekto / Panahon</th>
+                    <th style="width:124px;">Bayad sa / Paid via</th>
+                    <th style="width:116px;" class="ws-r">Halaga</th>
                 </tr>
             </thead>
             <tbody>
-                ${entries.map((p, i) => {
-                    const proj2   = _projs.find(pr => pr.id === p.projectId) || null;
-                    const folder2 = proj2 && proj2.folderId ? _folders.find(f => f.id === proj2.folderId) || null : null;
-                    const lbl2    = folder2 ? esc(folder2.name) : (proj2 ? esc((proj2.month||'') + ' ' + (proj2.year||'')) : '—');
-                    return `<tr style="border-bottom:1px solid #e9ecef;${i%2===1?'background:#f8fafc;':''}">
-                        <td style="padding:7px 10px;font-size:11px;color:#6b7280;">${i+1}</td>
-                        <td style="padding:7px 10px;font-size:11px;">${fmtDateSh(p.paymentDate)}</td>
-                        <td style="padding:7px 10px;font-size:11px;">${lbl2}</td>
-                        <td style="padding:7px 10px;font-size:11px;text-align:center;">${p.daysWorked||0}</td>
-                        <td style="padding:7px 10px;font-size:11px;text-align:right;font-weight:700;">${fmtAmt(p.totalSalary)}</td>
-                    </tr>`;
-                }).join('')}
-                <tr style="background:#1e3a5f;color:#fff;">
-                    <td colspan="3" style="padding:8px 10px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;">TOTAL</td>
-                    <td style="padding:8px 10px;font-size:11px;font-weight:700;text-align:center;">${totalDays}</td>
-                    <td style="padding:8px 10px;font-size:13px;font-weight:800;text-align:right;">${fmtAmt(totalPaid)}</td>
+                ${entries.map((p, i) => `<tr>
+                        <td class="ws-muted">${i+1}</td>
+                        <td>${fmtDateSh(p.paymentDate)}</td>
+                        <td>${_projLabel(p)}</td>
+                        <td>${esc(window.dacsPayMethodLabel(p.paymentMethod))}</td>
+                        <td class="ws-amt">${fmtAmt(p.totalSalary)}</td>
+                    </tr>`).join('')}
+                <tr class="ws-tbl-total">
+                    <td colspan="3">Kabuuan / Total</td>
+                    <td></td>
+                    <td class="ws-r">${fmtAmt(totalPaid)}</td>
                 </tr>
             </tbody>
         </table>`;
+
+    // ── Three figures under the table ──
+    const avgPay   = entries.length ? totalPaid / entries.length : 0;
+    const projCount = new Set(entries.map(p => {
+        const pr = _projs.find(x => x.id === p.projectId);
+        return (pr && pr.folderId) || p.projectId;
+    }).filter(Boolean)).size;
+    const lastDated = [...entries].reverse().find(p => p.paymentDate);
+    const statsHTML = `
+        <div class="ws-stats">
+            <div class="ws-stat"><div class="l">Average bawat bayad</div><div class="v">${fmtAmt(avgPay)}</div></div>
+            <div class="ws-stat"><div class="l">Bilang ng proyekto</div><div class="v">${projCount}</div></div>
+            <div class="ws-stat"><div class="l">Huling bayad</div><div class="v">${lastDated ? fmtDateSh(lastDated.paymentDate) : '—'}</div></div>
+        </div>`;
+
+    // ── Receipt appendix — the images are the proof the summary rests on, so
+    // they stay even though the design sheet shows only the ledger. ──
+    const withReceipts = entries.filter(p => (p.receiptImages && p.receiptImages.length) || p.receiptURL);
+    const receiptsHTML = entries.map((p, idx) => {
+        const imgs = p.receiptImages?.length ? p.receiptImages : (p.receiptURL ? [p.receiptURL] : []);
+        return `
+        <div class="ws-rcpt-card">
+            <div class="ws-rcpt-hd">
+                <span class="ws-rcpt-no">Entry ${idx+1} · ${fmtAmt(p.totalSalary)}</span>
+                <span class="ws-rcpt-meta">${_projLabel(p)} · ${fmtDate(p.paymentDate)}</span>
+            </div>
+            ${imgs.length
+                ? `<div class="ws-rcpt-imgs">${imgs.map(src => `<img src="${esc(src)}" alt="resibo">`).join('')}</div>`
+                : '<div class="ws-rcpt-none">Walang nakalakip na resibo / No receipt attached</div>'}
+        </div>`;
+    }).join('');
 
     const w = window.open('', '_blank', 'width=820,height=1050');
     if (!w) { alert('Please allow pop-ups to print.'); return; }
     w.document.write(`<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <title>Payroll Summary — ${esc(workerName)}</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#111;background:#f5f5f5;}
-.page{width:210mm;min-height:297mm;margin:24px auto;padding:14mm 16mm 12mm;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.13);border-radius:4px;}
-@media print{body{background:#fff;}.page{margin:0;box-shadow:none;padding:8mm 10mm;border-radius:0;}@page{size:A4 portrait;margin:8mm;}}
-</style></head><body>
+<style>${window.dacsStatementCSS()}</style>
+</head><body>
 <div class="page">
-
-  <!-- Header -->
-  ${window.dacsPrintHeader('Payroll Summary', `Labor &amp; Payroll<br>Printed: ${today}`)}
-
-  <!-- Worker Info Band -->
-  <div style="display:flex;gap:0;margin-bottom:18px;border:1.5px solid #e5e7eb;border-radius:6px;overflow:hidden;">
-    <div style="flex:2;padding:11px 14px;border-right:1px solid #e5e7eb;">
-      <div style="font-size:9px;font-weight:700;color:#6b7280;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:4px;">Worker Name</div>
-      <div style="font-size:15px;font-weight:800;color:#1a1a2e;">${esc(workerName)}</div>
+${window.dacsStatementHead({
+    title: 'Payroll<br>Summary',
+    kicker: 'Buong Talaan ng Manggagawa',
+    bizName, bizAddr, bizTin,
+    meta: [{ k: 'Reference', v: docRef }, { k: 'Naprint / Printed', v: today }]
+})}
+  <div class="ws-band" style="grid-template-columns:2fr 1fr 1.2fr;">
+    <div>
+      <div class="ws-lbl">Manggagawa</div>
+      <div class="ws-band-v">${esc(workerName)}</div>
+      <div class="ws-band-s">${esc(entries[0].role || 'Payroll')} · ${totalDays} araw</div>
     </div>
-    <div style="flex:1;padding:11px 14px;border-right:1px solid #e5e7eb;">
-      <div style="font-size:9px;font-weight:700;color:#6b7280;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:4px;">Role</div>
-      <div style="font-size:13px;font-weight:700;color:#1a1a2e;">${esc(entries[0].role||'—')}</div>
+    <div>
+      <div class="ws-lbl">Mga Entry</div>
+      <div class="ws-band-v sm">${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}</div>
     </div>
-    <div style="flex:1;padding:11px 14px;border-right:1px solid #e5e7eb;">
-      <div style="font-size:9px;font-weight:700;color:#6b7280;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:4px;">Total Entries</div>
-      <div style="font-size:13px;font-weight:700;color:#1a1a2e;">${entries.length} entries</div>
-    </div>
-    <div style="flex:1;padding:11px 14px;border-right:1px solid #e5e7eb;">
-      <div style="font-size:9px;font-weight:700;color:#6b7280;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:4px;">Total Days</div>
-      <div style="font-size:13px;font-weight:700;color:#1a1a2e;">${totalDays} days</div>
-    </div>
-    <div style="flex:1;padding:11px 14px;background:#1e3a5f;color:#fff;">
-      <div style="font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:4px;opacity:.8;">Total Paid</div>
-      <div style="font-size:14px;font-weight:800;">${fmtAmt(totalPaid)}</div>
+    <div>
+      <div class="ws-lbl">Kabuuang Bayad</div>
+      <div class="ws-band-v sm">${fmtAmt(totalPaid)}</div>
     </div>
   </div>
-
-  <!-- Summary Table -->
-  <div style="font-size:10px;font-weight:700;color:#6b7280;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:8px;">Payment Summary</div>
-  ${summaryTableHTML}
-
-  <!-- Detailed Entries -->
-  <div style="font-size:10px;font-weight:700;color:#6b7280;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:10px;margin-top:20px;">Detailed Payroll Entries</div>
-  ${entriesHTML}
-
-  <!-- Acknowledgment -->
-  <div style="border:1.5px dashed #d1d5db;border-radius:6px;padding:14px 16px;margin-top:8px;page-break-inside:avoid;">
-    <div style="font-size:10px;font-weight:700;color:#6b7280;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:10px;">Acknowledgment</div>
-    <div style="font-size:12px;color:#374151;margin-bottom:18px;line-height:1.6;">
-      I, <strong>${esc(workerName)}</strong>, hereby acknowledge receipt of the total amount of <strong>${fmtAmt(totalPaid)}</strong>
-      covering ${entries.length} payroll ${entries.length === 1 ? 'entry' : 'entries'} totaling <strong>${totalDays} days</strong> of labor rendered.
-    </div>
-    <div style="display:flex;justify-content:space-between;gap:24px;">
-      <div style="flex:1;text-align:center;">
-        <div style="height:40px;"></div>
-        <div style="border-top:1.5px solid #374151;padding-top:5px;font-size:11px;color:#6b7280;">Worker's Signature</div>
-        <div style="font-size:12px;font-weight:700;color:#1a1a2e;margin-top:2px;">${esc(workerName)}</div>
+  <div class="ws-body">
+    <div class="ws-lbl ws-sec">Lahat ng bayad / All payments</div>
+    ${summaryTableHTML}
+    ${statsHTML}
+    <div class="ws-panel" style="grid-template-columns:1fr 1fr;">
+      <div>
+        <div class="ws-lbl">Paraan ng Bayad / Paid via</div>
+        ${window.dacsPayMethodSplit(entries, fmtAmt) || '<div class="ws-modes">Hindi nakatala / Not recorded</div>'}
       </div>
-      <div style="flex:1;text-align:center;">
-        <div style="height:40px;"></div>
-        <div style="border-top:1.5px solid #374151;padding-top:5px;font-size:11px;color:#6b7280;">Prepared by</div>
-      </div>
-      <div style="flex:1;text-align:center;">
-        <div style="height:40px;"></div>
-        <div style="border-top:1.5px solid #374151;padding-top:5px;font-size:11px;color:#6b7280;">Approved by</div>
+      <div>
+        <div class="ws-lbl">Patunay / Proof</div>
+        <div class="ws-kv">
+          <span class="k">May resibo</span><span class="v">${withReceipts.length} / ${entries.length}</span>
+          <span class="k">Kabuuang araw</span><span class="v">${totalDays}</span>
+        </div>
       </div>
     </div>
+    <div class="ws-lbl ws-sec" style="margin-top:26px;">Mga Resibo / Receipts</div>
+    ${receiptsHTML}
   </div>
-
-  <div style="margin-top:16px;padding-top:10px;border-top:1px solid #e5e7eb;text-align:center;font-size:10px;color:#9ca3af;">
-    ${esc(bizName)}${bizAddr ? ' &bull; ' + esc(bizAddr) : ''} &bull; Printed ${today}
-  </div>
+${window.dacsStatementSigns([
+    { label: 'Inihanda ni / Prepared by' },
+    { label: 'Nagsuri / Checked by' },
+    { label: 'Inaprubahan ni / Approved by' }
+])}
+${window.dacsStatementFoot([bizName, bizAddr].filter(Boolean).join(' · '), docRef + ' · Naprint ' + today)}
 </div>
 <script>window.onload=function(){window.print();};<\/script>
 </body></html>`);
@@ -3784,6 +3787,7 @@ async function openEditPayrollModal(id) {
     // Ensure paymentDate is in datetime-local format (YYYY-MM-DDTHH:mm)
     const _payDt = p.paymentDate || '';
     document.getElementById('editPayDate').value = _payDt.includes('T') ? _payDt : (_payDt ? _payDt + 'T00:00' : '');
+    const _eMethod = document.getElementById('editPayMethod'); if (_eMethod) _eMethod.value = p.paymentMethod || '';
     document.getElementById('editPayNotes').value      = p.notes       || '';
     if (typeof lcPopulatePayrollPicker === 'function') lcPopulatePayrollPicker();
     const _ecSel = document.getElementById('editPayContract');
@@ -3880,7 +3884,8 @@ async function handleEditPayroll(ev) {
             laborType,
             liabilityFor,   // null unless laborType === 'liability'
             daysWorked:    d, dailyRate: r, totalSalary: eTotal,
-            paymentDate:   document.getElementById('editPayDate').value,
+            paymentDate:   document.getElementById('editPayDate').value,   // optional
+            paymentMethod: (document.getElementById('editPayMethod') || {}).value || null,
             notes:         document.getElementById('editPayNotes').value.trim(),
             receiptImages: finalImages,
             contractId:    editContractId,
@@ -5155,6 +5160,7 @@ function printTransactionReceipt(type, id) {
             <tr><td class="rc-label">Days Worked</td><td class="rc-value">${record.daysWorked || 0} days</td></tr>
             <tr><td class="rc-label">Daily Rate</td><td class="rc-value">₱${formatNum(record.dailyRate)}</td></tr>
             <tr><td class="rc-label">Payment Date</td><td class="rc-value">${payDate}</td></tr>
+            <tr><td class="rc-label">Mode of Payment</td><td class="rc-value">${payMethodLabel(record.paymentMethod)}</td></tr>
             ${record.notes ? `<tr><td class="rc-label">Notes</td><td class="rc-value">${record.notes}</td></tr>` : ''}`;
         amountLabel = 'Total Salary';
         amountValue = '₱' + formatNum(record.totalSalary);
@@ -8200,7 +8206,8 @@ window.lcOpenLedger = function(contractId) {
     const body = document.getElementById('lcLedgerBody');
     if (!body) return;
     const mlabel = m => m === 'advance' ? 'Advance' : m === 'progress' ? 'Progress' : m === 'final' ? 'Final' : '—';
-    const fmtD = d => { try { return new Date(d).toLocaleDateString('en-PH', { year:'numeric', month:'short', day:'numeric' }); } catch(e){ return d || '—'; } };
+    // Payment date is optional — no date (or a junk one) reads as '—', never "Invalid Date".
+    const fmtD = d => { if (!d) return '—'; const t = new Date(d); return isNaN(t) ? (d || '—') : t.toLocaleDateString('en-PH', { year:'numeric', month:'short', day:'numeric' }); };
     let running = st.agreed;
     const rowsHtml = rows.length ? rows.map(p => {
         const amt = parseFloat(p.totalSalary) || 0;

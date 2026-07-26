@@ -1604,6 +1604,7 @@
             <div class="pm-workspace-info">
               <div class="pm-workspace-client" id="ws-client-name">—</div>
               <div class="pm-workspace-project" id="ws-project-name">—</div>
+              <div class="pm-workspace-loc" id="ws-project-loc" style="display:none;"></div>
             </div>
             <div class="pm-workspace-status" id="ws-status-badge"></div>
             <button id="pm-push-bell" class="pm-push-bell" style="display:none;" onclick="pmPushToggle()" title="Get a daily 11:59 PM summary of this project">
@@ -3799,6 +3800,19 @@
 
                 <!-- amount -->
                 <div class="apr-sec"><b>Amount</b><span class="ln"></span></div>
+                <div style="margin-bottom:16px;">
+                    <label class="apr-lbl" for="payMethod">Mode of Payment</label>
+                    <div class="apr-selwrap">
+                        <select id="payMethod" required>
+                            <option value="">— Select mode of payment —</option>
+                            <option value="cash">Cash</option>
+                            <option value="gcash">GCash</option>
+                            <option value="bank_transfer">Bank Transfer</option>
+                            <option value="cheque">Cheque</option>
+                        </select>
+                        <svg class="apr-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                </div>
                 <label class="apr-lbl">Labor category <small>— where this cost is counted</small></label>
                 <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
                     <label class="apr-cat"><input type="radio" name="payLaborType" value="direct" checked onchange="payToggleContractForType('add')"><span class="apr-badge">D</span><div><div class="apr-cat-t">Direct</div><div class="apr-cat-s">On-site workers — mason, carpenter, laborer, painter</div></div></label>
@@ -3819,7 +3833,7 @@
 
                 <!-- date & proof -->
                 <div class="apr-sec"><b>Date &amp; proof</b><span class="ln"></span></div>
-                <div style="margin-bottom:14px;"><label class="apr-lbl" for="payDate">Payment date</label><input class="apr-in" type="datetime-local" id="payDate" required></div>
+                <div style="margin-bottom:14px;"><label class="apr-lbl" for="payDate">Payment date <small>— optional</small></label><input class="apr-in" type="datetime-local" id="payDate"></div>
                 <div style="margin-bottom:14px;">
                     <label class="apr-lbl">Receipts <small>— photo of voucher / payslip, optional</small></label>
                     <label class="apr-drop" for="payReceipt">
@@ -4063,6 +4077,19 @@
 
                 <!-- amount -->
                 <div class="apr-sec"><b>Amount</b><span class="ln"></span></div>
+                <div style="margin-bottom:16px;">
+                    <label class="apr-lbl" for="editPayMethod">Mode of Payment</label>
+                    <div class="apr-selwrap">
+                        <select id="editPayMethod" required>
+                            <option value="">— Select mode of payment —</option>
+                            <option value="cash">Cash</option>
+                            <option value="gcash">GCash</option>
+                            <option value="bank_transfer">Bank Transfer</option>
+                            <option value="cheque">Cheque</option>
+                        </select>
+                        <svg class="apr-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                </div>
                 <label class="apr-lbl">Labor category <small>— where this cost is counted</small></label>
                 <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">
                     <label class="apr-cat"><input type="radio" name="editPayLaborType" value="direct" checked onchange="payToggleContractForType('edit')"><span class="apr-badge">D</span><div><div class="apr-cat-t">Direct</div><div class="apr-cat-s">On-site workers — mason, carpenter, laborer, painter</div></div></label>
@@ -4083,7 +4110,7 @@
 
                 <!-- date & proof -->
                 <div class="apr-sec"><b>Date &amp; proof</b><span class="ln"></span></div>
-                <div style="margin-bottom:14px;"><label class="apr-lbl" for="editPayDate">Payment date</label><input class="apr-in" type="datetime-local" id="editPayDate" required></div>
+                <div style="margin-bottom:14px;"><label class="apr-lbl" for="editPayDate">Payment date <small>— optional</small></label><input class="apr-in" type="datetime-local" id="editPayDate"></div>
                 <div style="margin-bottom:14px;">
                     <label class="apr-lbl">Receipts <small>— remove or add images</small></label>
                     <div id="editPayReceiptGrid" class="exp-receipt-grid" style="display:none;margin-bottom:0.5rem;"></div>

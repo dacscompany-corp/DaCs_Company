@@ -898,6 +898,22 @@ body.dark-mode .pmst-total { background: #11201a; border-top-color: #243029; }
   margin-top: 0;
 }
 .pm-workspace-project::before { content: '\00B7\00A0'; color: #c4c2ba; }
+/* Job-site address. The pin is the identifier — without it "Vincent Cruz ·
+   Los Churreros · Brgy. Poblacion" reads as three interchangeable names. */
+.pm-workspace-loc {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  font-size: 12px;
+  color: var(--pm-muted-2);
+  min-width: 0;
+  max-width: 34ch;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pm-workspace-loc::before { content: '\00B7\00A0'; color: #c4c2ba; flex-shrink: 0; }
+.pm-workspace-loc i, .pm-workspace-loc svg {
+  width: 12px; height: 12px; flex-shrink: 0;
+  align-self: center; color: #9a9890;
+}
+.pm-workspace-loc span { overflow: hidden; text-overflow: ellipsis; }
 .pm-workspace-status { margin-left: auto; }
 .pm-workspace-status .pm-badge { padding: 5px 11px; font-size: 11px; border-radius: 7px; }
 
@@ -1913,7 +1929,9 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
 .pm-lc-empty { text-align: center; color: #9b9a94; font: 400 12.5px 'IBM Plex Sans'; padding: 22px 10px; }
 
 /* shared bar fills (panel rows + ledger banner) */
-.pm-lc-bar-ok   { background: #3b82f6; }
+/* Contract progress bar — same convention as the badges (expenses-mvp.css
+   .lc-badge-*): neutral while running, green when done, red only over cap. */
+.pm-lc-bar-ok   { background: #3B82F6; }
 .pm-lc-bar-done { background: #157a52; }
 .pm-lc-bar-over { background: #b4453a; }
 .pm-lc-type { font: 700 9.5px 'IBM Plex Sans'; letter-spacing: .03em; text-transform: uppercase; padding: 2px 8px; border-radius: 20px; flex: none; }
@@ -1954,11 +1972,11 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
 .pm-lc-rbar-fill { height: 100%; border-radius: 4px; }
 .pm-lc-rright { text-align: right; flex: none; }
 .pm-lc-ramt { font: 700 20px 'IBM Plex Sans'; color: #1c1c1a; }
-.pm-lc-amt-done { color: #0f6342; }
+.pm-lc-amt-done { color: #157A52; }
 .pm-lc-amt-over { color: #b4453a; }
 .pm-lc-rstat { font: 600 11px 'IBM Plex Sans'; margin-top: 3px; }
-.pm-lc-stat-on { color: #1d4ed8; }
-.pm-lc-stat-done { color: #0f6342; font-weight: 700; }
+.pm-lc-stat-on { color: #1D4ED8; }
+.pm-lc-stat-done { color: #157A52; font-weight: 700; }
 .pm-lc-stat-over { color: #b4453a; font-weight: 700; }
 .pm-lc-rchev { color: #c4c9d4; flex: none; }
 

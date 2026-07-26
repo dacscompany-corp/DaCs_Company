@@ -925,3 +925,247 @@ window.DACS_AGR_DEFAULT_SECTIONS = {
 // Warm the template cache as soon as the shim is up, so signing modals and
 // prints render the current admin-edited text (falls back to standard).
 try { if (typeof db !== 'undefined') window.dacsLoadAgreementTemplates(); } catch (_) {}
+
+
+// ════════════════════════════════════════════════════════════════════
+// WORKER STATEMENTS — shared "Modernist" document theme
+// ════════════════════════════════════════════════════════════════════
+// One visual language for the three worker-facing printouts:
+//   Statement of Account   → printWorkerLaborSOA        (invoice-module.js)
+//   Acknowledge Invoice    → printSinglePayrollInvoice  (invoice-module.js)
+//   Payroll Summary        → printWorkerReceiptSummary  (expenses-module.js)
+//
+// Flat ink-on-paper: no rounded corners, no fills except one grey panel, rules
+// instead of boxes, wide-tracked uppercase micro-labels, tabular figures, and
+// bilingual Tagalog/English headings (the workers read the Tagalog).
+//
+// It survives the global grayscale print filter at the top of this file by
+// design — the only colour is the small red kicker and the status pill, which
+// both stay legible as dark grey.
+
+window.DACS_WS_INK = '#201e1d';
+
+// Payment method → printable label. Self-contained here (this file loads on
+// every page); expenses-module.js has its own copy for on-screen use.
+window.dacsPayMethodLabel = function (v) {
+    return ({ cash: 'Cash', gcash: 'GCash', bank_transfer: 'Bank Transfer', cheque: 'Cheque' })[v] || '—';
+};
+
+/** The whole stylesheet, as the inner text of a <style> tag. */
+window.dacsStatementCSS = function () {
+    return `
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Archivo',system-ui,'Segoe UI',Arial,Helvetica,sans-serif;background:#f3f2f2;color:#201e1d;
+     font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;}
+.page{width:210mm;min-height:297mm;margin:24px auto;padding:19mm 17mm 15mm;background:#fff;
+      box-shadow:0 2px 16px rgba(32,30,29,.14);display:flex;flex-direction:column;}
+
+/* ── letterhead ── */
+.ws-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:32px;
+       border-bottom:2px solid #201e1d;padding-bottom:20px;}
+.ws-hd-l{display:flex;flex-direction:column;gap:12px;}
+.ws-logo{height:56px;width:auto;max-width:190px;object-fit:contain;object-position:left center;display:block;}
+.ws-biz{font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;line-height:1.3;}
+.ws-biz-sub{font-size:10.5px;color:#605d5d;line-height:1.6;margin-top:4px;}
+.ws-hd-r{text-align:right;flex-shrink:0;}
+.ws-title{font-size:26px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;line-height:1;}
+.ws-kicker{font-size:10px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:#ec3013;margin-top:8px;}
+.ws-meta{font-size:10.5px;color:#605d5d;line-height:1.9;margin-top:12px;}
+.ws-meta strong{color:#201e1d;}
+
+/* ── micro label ── */
+.ws-lbl{font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:#7d7979;}
+
+/* ── info band: cells divided by hairlines, flush to the text edges ── */
+.ws-band{display:grid;border-bottom:1px solid #d7d3d3;}
+.ws-band>div{padding:16px 20px;border-right:1px solid #d7d3d3;}
+.ws-band>div:first-child{padding-left:0;}
+.ws-band>div:last-child{padding-right:0;border-right:none;}
+.ws-band .ws-lbl{margin-bottom:6px;}
+.ws-band-v{font-size:15px;font-weight:700;}
+.ws-band-v.sm{font-size:12.5px;font-weight:600;line-height:1.4;}
+.ws-band-s{font-size:10.5px;color:#605d5d;margin-top:3px;}
+/* Status pill — the same three tints the on-screen badges use (.lc-badge-* in
+   expenses-mvp.css): blue while running, green for a clean finish, red only for
+   the over-cap alert. All three are filled tints so they read at one weight. */
+.ws-pill{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.14em;
+         text-transform:uppercase;padding:5px 10px;
+         color:#1D4ED8;background:#DBEAFE;}
+.ws-pill-ok{color:#157A52;background:#E7F3EC;}
+.ws-pill-alert{color:#B4453A;background:#FBECEB;}
+
+.ws-body{flex:1;display:flex;flex-direction:column;margin-top:26px;}
+.ws-sec{margin-bottom:10px;}
+
+/* ── entry table ── */
+table.ws-tbl{width:100%;border-collapse:collapse;font-size:11.5px;}
+table.ws-tbl thead tr{border-bottom:2px solid #201e1d;}
+table.ws-tbl th{text-align:left;padding:0 8px 10px;font-size:9px;font-weight:700;
+                letter-spacing:.16em;text-transform:uppercase;color:#605d5d;}
+table.ws-tbl tbody tr{border-bottom:1px solid #eae9e9;}
+table.ws-tbl td{padding:10px 8px;vertical-align:top;}
+table.ws-tbl th:first-child,table.ws-tbl td:first-child{padding-left:0;}
+table.ws-tbl th:last-child,table.ws-tbl td:last-child{padding-right:0;}
+table.ws-tbl tr.ws-tbl-total td{padding:14px 8px;border-top:2px solid #201e1d;border-bottom:none;
+                                font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;}
+table.ws-tbl tr.ws-tbl-total td.ws-r{font-size:17px;letter-spacing:0;text-transform:none;}
+.ws-muted{color:#7d7979;}
+/* The alignment helpers must out-specify \`table.ws-tbl th\`'s text-align:left,
+   or a right-aligned amount column keeps a left-aligned header. */
+.ws-r,table.ws-tbl th.ws-r,table.ws-tbl td.ws-r{text-align:right;}
+.ws-c,table.ws-tbl th.ws-c,table.ws-tbl td.ws-c{text-align:center;}
+.ws-amt,table.ws-tbl td.ws-amt{text-align:right;font-weight:600;}
+
+/* ── totals stack ── */
+.ws-tot-wrap{display:flex;justify-content:flex-end;margin-top:22px;}
+.ws-tot{width:320px;}
+.ws-tot-row{display:flex;justify-content:space-between;font-size:11.5px;padding:7px 0;color:#605d5d;}
+.ws-tot-row b{color:#201e1d;font-weight:600;}
+.ws-tot-row.rule{border-bottom:1px solid #d7d3d3;}
+.ws-grand{display:flex;justify-content:space-between;align-items:baseline;padding:14px 0;
+          border-top:2px solid #201e1d;border-bottom:2px solid #201e1d;margin-top:4px;}
+.ws-grand .l{font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;}
+.ws-grand .v{font-size:19px;font-weight:700;}
+
+/* ── grey summary panel ── */
+.ws-panel{display:grid;grid-template-columns:1fr 1fr;gap:28px;background:#eae9e9;padding:18px 22px;margin-top:24px;}
+.ws-panel .ws-lbl{margin-bottom:10px;}
+.ws-kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:11.5px;}
+.ws-kv .k{color:#7d7979;}
+.ws-kv .v{font-weight:600;}
+.ws-split{display:grid;grid-template-columns:1fr auto auto;gap:5px 14px;font-size:11.5px;}
+.ws-split .k{color:#7d7979;}
+.ws-split .n{color:#7d7979;text-align:right;}
+.ws-split .v{font-weight:600;text-align:right;}
+.ws-modes{font-size:11.5px;line-height:1.9;color:#605d5d;}
+.ws-modes .on{color:#201e1d;font-weight:700;text-decoration:underline;}
+.ws-modes .sep{color:#bab6b6;}
+
+/* ── note, boxed acknowledgement ── */
+.ws-note{border-left:2px solid #ec3013;padding:2px 0 2px 16px;margin-top:24px;}
+.ws-note-t{font-size:11.5px;line-height:1.6;color:#444141;}
+.ws-box{border:1px solid #d7d3d3;padding:20px 22px;margin-top:24px;}
+.ws-box p{font-size:12px;line-height:1.65;color:#444141;}
+.ws-box strong{color:#201e1d;}
+
+/* ── stat tiles ── */
+.ws-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:28px;}
+.ws-stat{border-top:2px solid #201e1d;padding-top:12px;}
+.ws-stat .l{font-size:9px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#7d7979;}
+.ws-stat .v{font-size:17px;font-weight:700;margin-top:6px;}
+
+/* ── signature row ── */
+.ws-signs{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;margin-top:44px;}
+.ws-sign-sp{height:34px;}
+.ws-sign-l{border-top:1px solid #201e1d;padding-top:8px;font-size:9.5px;letter-spacing:.14em;
+           text-transform:uppercase;color:#7d7979;}
+.ws-sign-n{font-size:11px;font-weight:600;margin-top:2px;}
+
+/* ── footer rule ── */
+.ws-foot{border-top:1px solid #d7d3d3;margin-top:26px;padding-top:12px;display:flex;
+         justify-content:space-between;gap:16px;font-size:9px;letter-spacing:.12em;
+         text-transform:uppercase;color:#9b9797;}
+
+/* ── receipt appendix (kept from the old summary — proof of payment) ── */
+.ws-rcpt-card{border:1px solid #d7d3d3;padding:14px 16px;margin-top:12px;}
+.ws-rcpt-hd{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+            border-bottom:1px solid #eae9e9;padding-bottom:8px;margin-bottom:10px;}
+.ws-rcpt-no{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;}
+.ws-rcpt-meta{font-size:10.5px;color:#605d5d;}
+.ws-rcpt-imgs{display:flex;flex-wrap:wrap;gap:8px;}
+.ws-rcpt-imgs img{width:148px;height:110px;object-fit:cover;border:1px solid #d7d3d3;display:block;}
+.ws-rcpt-none{font-size:10.5px;color:#ae1800;}
+
+@media print{
+  body{background:#fff;}
+  /* @page (print-utils' global rule) supplies the sheet margin — the page box
+     itself goes edge to edge so the inset isn't applied twice. */
+  .page{width:100%;min-height:0;margin:0;padding:0;box-shadow:none;}
+  tr,.ws-signs,.ws-panel,.ws-box,.ws-stats,.ws-tot-wrap,.ws-note,.ws-rcpt-card{
+      break-inside:avoid;page-break-inside:avoid;}
+  thead{display:table-header-group;}
+}`;
+};
+
+/**
+ * Letterhead: logo + business block on the left, document title + reference on
+ * the right.  o = { title, kicker, bizName, bizAddr, bizTin, meta:[{k,v}] }
+ * Everything is escaped EXCEPT `title`, which takes raw HTML so the document
+ * name can break across two lines ('Payroll<br>Summary') — pass a literal, never
+ * a database value.
+ */
+window.dacsStatementHead = function (o) {
+    const e = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const sub = [o.bizAddr, o.bizTin ? 'TIN ' + o.bizTin : ''].filter(Boolean).map(e).join('<br>');
+    const meta = (o.meta || []).map(m => e(m.k) + ' <strong>' + e(m.v) + '</strong>').join('<br>');
+    return `<div class="ws-hd">
+  <div class="ws-hd-l">
+    <img class="ws-logo" src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC'S Building Design Services" onerror="this.style.display='none'">
+    <div>
+      <div class="ws-biz">${e(o.bizName)}</div>
+      ${sub ? `<div class="ws-biz-sub">${sub}</div>` : ''}
+    </div>
+  </div>
+  <div class="ws-hd-r">
+    <div class="ws-title">${o.title}</div>
+    ${o.kicker ? `<div class="ws-kicker">${e(o.kicker)}</div>` : ''}
+    ${meta ? `<div class="ws-meta">${meta}</div>` : ''}
+  </div>
+</div>`;
+};
+
+/** Pill classes for a contract status label: green for a clean finish, red for
+ *  the over-cap alert, neutral outline for anything still in progress. */
+window.dacsStatusPillClass = function (label) {
+    const s = String(label || '').toLowerCase();
+    if (s.indexOf('over') >= 0)      return 'ws-pill ws-pill-alert';
+    if (s.indexOf('completed') >= 0) return 'ws-pill ws-pill-ok';
+    return 'ws-pill';
+};
+
+/** Three ruled signature blocks. items = [{label, name}] */
+window.dacsStatementSigns = function (items) {
+    const e = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return '<div class="ws-signs">' + (items || []).map(it =>
+        '<div><div class="ws-sign-sp"></div><div class="ws-sign-l">' + e(it.label) + '</div>'
+        + (it.name ? '<div class="ws-sign-n">' + e(it.name) + '</div>' : '')
+        + '</div>').join('') + '</div>';
+};
+
+/** Footer rule: business on the left, document reference on the right. */
+window.dacsStatementFoot = function (left, right) {
+    const e = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return '<div class="ws-foot"><span>' + e(left) + '</span><span>' + e(right) + '</span></div>';
+};
+
+/**
+ * "Paraan ng Bayad / Paid via" breakdown — count and peso total per payment
+ * method, in the fixed Cash → GCash → Bank Transfer → Cheque order the form
+ * offers. Entries saved before migration 0037 have no method and group under
+ * "Hindi nakatala"; the block is omitted entirely when none of them do.
+ */
+window.dacsPayMethodSplit = function (entries, fmtAmt) {
+    const order = ['cash', 'gcash', 'bank_transfer', 'cheque', ''];
+    const tally = {};
+    (entries || []).forEach(p => {
+        const k = order.indexOf(p.paymentMethod) >= 0 ? (p.paymentMethod || '') : '';
+        if (!tally[k]) tally[k] = { n: 0, sum: 0 };
+        tally[k].n++;
+        tally[k].sum += Number(p.totalSalary) || 0;
+    });
+    const rows = order.filter(k => tally[k]).map(k =>
+        '<span class="k">' + (k ? window.dacsPayMethodLabel(k) : 'Hindi nakatala') + '</span>'
+        + '<span class="n">' + tally[k].n + ' entry</span>'
+        + '<span class="v">' + fmtAmt(tally[k].sum) + '</span>');
+    return rows.length ? '<div class="ws-split">' + rows.join('') + '</div>' : '';
+};
+
+/** Deterministic document reference — same worker, same year → same number on
+ *  every reprint. Not a database sequence; the SOA/invoice numbers that ARE
+ *  sequential come from _generateInvoiceNo() in invoice-module.js. */
+window.dacsStatementRef = function (prefix, seed) {
+    let h = 0;
+    String(seed || '').toUpperCase().split('').forEach(c => { h = (h * 31 + c.charCodeAt(0)) >>> 0; });
+    return prefix + '-' + new Date().getFullYear() + '-' + String(h % 10000).padStart(4, '0');
+};

@@ -1427,10 +1427,10 @@ ${previewOnly ? '' : '<script>window.onload=function(){window.print();};<\\/scri
         const folder   = proj && proj.folderId ? _folders.find(f => f.id === proj.folderId) || null : null;
         const projectName = folder ? folder.name : (proj ? (proj.month + ' ' + proj.year) : 'Labor & Payroll');
 
+        // Blank, not '—': the letterhead omits an address/TIN line it doesn't have.
         const bizName = _defaults.businessName    || "DAC's Building Design Services";
-        const bizTin  = _defaults.businessTin     || '—';
-        const bizAddr = _defaults.businessAddress || '—';
-        const pd      = _defaults.paymentDetails  || {};
+        const bizTin  = _defaults.businessTin     || '';
+        const bizAddr = _defaults.businessAddress || '';
 
         const esc     = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         const fmt     = n => '&#8369;&nbsp;' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1440,15 +1440,14 @@ ${previewOnly ? '' : '<script>window.onload=function(){window.print();};<\\/scri
         const today     = new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'});
         const totalSalary = p.totalSalary || (Number(p.dailyRate||0) * Number(p.daysWorked||0));
 
-        const payBlock = pd.method === 'gcash'
-            ? `<div class="pd-row"><span class="pd-lbl">Payment Via</span><span class="pd-val">GCash</span></div>
-               <div class="pd-row"><span class="pd-lbl">GCash No.</span><span class="pd-val">${esc(pd.gcashNumber||'—')}</span></div>
-               <div class="pd-row"><span class="pd-lbl">Account Name</span><span class="pd-val">${esc(pd.gcashName||'—')}</span></div>`
-            : `<div class="pd-row"><span class="pd-lbl">Payment Via</span><span class="pd-val">Bank Transfer</span></div>
-               <div class="pd-row"><span class="pd-lbl">Bank</span><span class="pd-val">${esc(pd.bank||'—')}</span></div>
-               <div class="pd-row"><span class="pd-lbl">Account No.</span><span class="pd-val">${esc(pd.accountNo||'—')}</span></div>
-               <div class="pd-row"><span class="pd-lbl">Account Name</span><span class="pd-val">${esc(pd.accountName||'—')}</span></div>
-               <div class="pd-row"><span class="pd-lbl">Branch</span><span class="pd-val">${esc(pd.branch||'—')}</span></div>`;
+        // "Paraan ng Bayad" prints the four channels form-style with the one this
+        // entry actually used underlined — how a paper voucher ticks a box.
+        // Cheque is on the form but not (yet) a saved value, so it never matches.
+        const _method = p.paymentMethod || '';
+        const _modes  = [['cash','Cash'], ['gcash','GCash'], ['bank_transfer','Bank Transfer'], ['cheque','Cheque']];
+        const modeRow = '<div class="ws-modes">' + _modes.map(([k, lbl]) =>
+            k === _method ? '<strong class="on">' + lbl + '</strong>' : lbl
+        ).join(' <span class="sep">/</span> ') + '</div>';
 
         const w = window.open('','_blank','width=720,height=960');
         if (!w) { alert('Please allow pop-ups to print the invoice.'); return; }
@@ -1458,164 +1457,86 @@ ${previewOnly ? '' : '<script>window.onload=function(){window.print();};<\\/scri
 <head>
 <meta charset="utf-8">
 <title>Acknowledge Invoice — ${esc(p.workerName||'Worker')}</title>
-<style>
-* { box-sizing:border-box; margin:0; padding:0; }
-body { font-family:Arial,Helvetica,sans-serif; font-size:13px; color:#111; background:#f5f5f5; }
-.page { width:210mm; min-height:297mm; margin:24px auto; padding:14mm 16mm 12mm; background:#fff; box-shadow:0 2px 14px rgba(0,0,0,.13); border-radius:4px; }
-
-/* Header */
-.hdr { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:14px; border-bottom:3px solid #1e3a5f; margin-bottom:16px; }
-.hdr-biz h1 { font-size:17px; font-weight:800; color:#1a1a2e; }
-.hdr-biz p  { font-size:11px; color:#555; margin-top:3px; line-height:1.5; }
-.hdr-right { text-align:right; }
-.hdr-right .inv-title { font-size:20px; font-weight:900; color:#1e3a5f; letter-spacing:2px; text-transform:uppercase; }
-.hdr-right .inv-sub { font-size:11px; font-weight:700; color:#7c3aed; margin-top:3px; letter-spacing:.5px; text-transform:uppercase; }
-.hdr-right .inv-meta { font-size:11px; color:#444; margin-top:6px; line-height:1.7; }
-.hdr-right .inv-meta strong { color:#111; }
-
-/* Worker info band */
-.info-band { display:flex; gap:0; margin-bottom:18px; border:1.5px solid #e5e7eb; border-radius:6px; overflow:hidden; }
-.info-cell { flex:1; padding:11px 14px; border-right:1px solid #e5e7eb; }
-.info-cell:last-child { border-right:none; }
-.info-cell .lbl { font-size:9px; font-weight:700; color:#6b7280; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:4px; }
-.info-cell .val { font-size:13px; font-weight:700; color:#1a1a2e; }
-.info-cell .val.muted { font-weight:400; color:#444; font-size:12px; }
-
-/* Breakdown table */
-.section-title { font-size:10px; font-weight:700; color:#6b7280; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:8px; }
-table.breakdown { width:100%; border-collapse:collapse; margin-bottom:16px; }
-table.breakdown thead tr { background:#1e3a5f; color:#fff; }
-table.breakdown thead th { padding:8px 10px; font-size:11px; font-weight:700; text-align:left; }
-table.breakdown tbody td { padding:10px 10px; border-bottom:1px solid #e9ecef; font-size:12px; }
-table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
-.text-right { text-align:right; }
-.text-center { text-align:center; }
-
-/* Total */
-.total-wrap { display:flex; justify-content:flex-end; margin-bottom:18px; }
-.total-box { background:#1e3a5f; color:#fff; border-radius:6px; padding:10px 20px; text-align:right; min-width:220px; }
-.total-box .total-lbl { font-size:11px; letter-spacing:1px; text-transform:uppercase; opacity:.8; margin-bottom:4px; }
-.total-box .total-amt { font-size:20px; font-weight:800; }
-
-/* Notes */
-.notes-box { background:#fffbeb; border:1px solid #fde68a; border-radius:6px; padding:10px 14px; margin-bottom:18px; font-size:12px; color:#92400e; }
-.notes-box .notes-lbl { font-size:9px; font-weight:700; color:#b45309; letter-spacing:1px; text-transform:uppercase; margin-bottom:4px; }
-
-/* Payment details */
-.pay-box { background:#f1f5f9; border-radius:6px; padding:11px 14px; margin-bottom:20px; }
-.pay-box .section-title { margin-bottom:8px; }
-.pd-row { display:flex; justify-content:space-between; font-size:12px; padding:2px 0; }
-.pd-lbl { color:#6b7280; }
-.pd-val { font-weight:600; color:#111; }
-
-/* Acknowledgment */
-.ack-box { border:1.5px dashed #d1d5db; border-radius:6px; padding:14px 16px; margin-bottom:16px; }
-.ack-box .ack-title { font-size:10px; font-weight:700; color:#6b7280; letter-spacing:1.2px; text-transform:uppercase; margin-bottom:10px; }
-.ack-text { font-size:12px; color:#374151; margin-bottom:16px; line-height:1.6; }
-.sig-row { display:flex; justify-content:space-between; gap:24px; margin-top:10px; }
-.sig-block { flex:1; text-align:center; }
-.sig-space { height:40px; }
-.sig-line { border-top:1.5px solid #374151; padding-top:5px; font-size:11px; color:#6b7280; }
-.sig-name { font-size:12px; font-weight:700; color:#1a1a2e; margin-top:2px; }
-
-/* Footer */
-.footer { text-align:center; font-size:10px; color:#9ca3af; border-top:1px solid #e5e7eb; padding-top:10px; margin-top:4px; }
-
-@media print {
-  body { background:#fff; }
-  .page { margin:0; box-shadow:none; padding:8mm 10mm; width:100%; border-radius:0; }
-  @page { size:A4 portrait; margin:8mm; }
-}
-</style>
+<style>${window.dacsStatementCSS()}</style>
 </head>
 <body>
 <div class="page">
-
-  <!-- Header -->
-  ${window.dacsPrintHeader('Acknowledge Invoice', `Labor &amp; Payroll<br>No: ${esc(invoiceNo)} &nbsp;·&nbsp; Date: ${esc(today)}`)}
-
-  <!-- Worker Info -->
-  <div class="info-band">
-    <div class="info-cell">
-      <div class="lbl">Worker Name</div>
-      <div class="val">${esc(p.workerName||'—')}</div>
+${window.dacsStatementHead({
+    title: 'Acknowledge<br>Invoice',
+    kicker: 'Resibo ng Bayad',
+    bizName, bizAddr, bizTin,
+    meta: [{ k: 'Invoice No.', v: invoiceNo }, { k: 'Petsa / Date', v: today }]
+})}
+  <div class="ws-band" style="grid-template-columns:1.5fr 1fr 1.4fr 1fr;">
+    <div>
+      <div class="ws-lbl">Manggagawa</div>
+      <div class="ws-band-v">${esc(p.workerName||'—')}</div>
     </div>
-    <div class="info-cell">
-      <div class="lbl">Role</div>
-      <div class="val">${esc(p.role||'—')}</div>
+    <div>
+      <div class="ws-lbl">Trabaho / Role</div>
+      <div class="ws-band-v sm">${esc(p.role||'—')}</div>
     </div>
-    <div class="info-cell">
-      <div class="lbl">Project</div>
-      <div class="val muted">${esc(projectName)}</div>
+    <div>
+      <div class="ws-lbl">Proyekto</div>
+      <div class="ws-band-v sm">${esc(projectName)}</div>
     </div>
-    <div class="info-cell">
-      <div class="lbl">Payment Date</div>
-      <div class="val muted">${fmtDate(p.paymentDate)}</div>
-    </div>
-  </div>
-
-  <!-- Breakdown -->
-  <div class="section-title">Salary Breakdown</div>
-  <table class="breakdown">
-    <thead>
-      <tr>
-        <th>Description</th>
-        <th class="text-center">Days Worked</th>
-        <th class="text-right">Daily Rate</th>
-        <th class="text-right">Total Salary</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>${esc(p.role||'Labor')} — ${esc(p.workerName||'—')}</td>
-        <td class="text-center">${p.daysWorked||0}</td>
-        <td class="text-right">${fmt(p.dailyRate)}</td>
-        <td class="text-right" style="font-weight:700;">${fmt(totalSalary)}</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <!-- Total -->
-  <div class="total-wrap">
-    <div class="total-box">
-      <div class="total-lbl">Total Amount Due</div>
-      <div class="total-amt">${fmt(totalSalary)}</div>
+    <div>
+      <div class="ws-lbl">Petsa ng Bayad</div>
+      <div class="ws-band-v sm">${fmtDate(p.paymentDate)}</div>
     </div>
   </div>
-
-  ${p.notes ? `<div class="notes-box"><div class="notes-lbl">Notes / Details</div>${esc(p.notes)}</div>` : ''}
-
-  <!-- Payment Details -->
-  <div class="pay-box">
-    <div class="section-title">Payment Details</div>
-    ${payBlock}
-  </div>
-
-  <!-- Acknowledgment -->
-  <div class="ack-box">
-    <div class="ack-title">Acknowledgment</div>
-    <div class="ack-text">
-      I, <strong>${esc(p.workerName||'the undersigned')}</strong>, hereby acknowledge receipt of the amount of
-      <strong>${fmt(totalSalary)}</strong> as full payment for labor rendered on the above project.
-    </div>
-    <div class="sig-row">
-      <div class="sig-block">
-        <div class="sig-space"></div>
-        <div class="sig-line">Worker's Signature</div>
-        <div class="sig-name">${esc(p.workerName||'—')}</div>
-      </div>
-      <div class="sig-block">
-        <div class="sig-space"></div>
-        <div class="sig-line">Prepared by</div>
-      </div>
-      <div class="sig-block">
-        <div class="sig-space"></div>
-        <div class="sig-line">Approved by</div>
+  <div class="ws-body">
+    <div class="ws-lbl ws-sec">Salary breakdown</div>
+    <table class="ws-tbl">
+      <thead>
+        <tr>
+          <th>Deskripsyon / Description</th>
+          <th style="width:78px;" class="ws-c">Araw</th>
+          <th style="width:112px;" class="ws-r">Daily Rate</th>
+          <th style="width:126px;" class="ws-r">Kabuuan</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${esc(p.role||'Labor')} — ${esc(p.workerName||'—')}</td>
+          <td class="ws-c">${p.daysWorked||0}</td>
+          <td class="ws-r">${Number(p.dailyRate)||0 ? fmt(p.dailyRate) : '<span class="ws-muted">Lump sum</span>'}</td>
+          <td class="ws-amt">${fmt(totalSalary)}</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="ws-tot-wrap">
+      <div class="ws-tot">
+        <div class="ws-grand" style="margin-top:0;"><span class="l">Kabuuang Babayaran</span><span class="v">${fmt(totalSalary)}</span></div>
       </div>
     </div>
+    ${p.notes ? `<div class="ws-note"><div class="ws-lbl" style="margin-bottom:6px;">Tala / Notes</div><div class="ws-note-t">${esc(p.notes)}</div></div>` : ''}
+    <div class="ws-panel">
+      <div>
+        <div class="ws-lbl">Paraan ng Bayad</div>
+        ${modeRow}
+      </div>
+      <div>
+        <div class="ws-lbl">Detalye</div>
+        <div class="ws-kv">
+          <span class="k">Naitala</span><span class="v">${esc(window.dacsPayMethodLabel(p.paymentMethod))}</span>
+          <span class="k">Tatanggap</span><span class="v">${esc(p.workerName||'—')}</span>
+        </div>
+      </div>
+    </div>
+    <div class="ws-box">
+      <div class="ws-lbl" style="margin-bottom:10px;">Pagkilala / Acknowledgement</div>
+      <p>Ako, si <strong>${esc(p.workerName||'ang nakalagda sa ibaba')}</strong>, ay kinikilalang natanggap ko ang halagang
+      <strong>${fmt(totalSalary)}</strong> bilang buong bayad sa trabahong naibigay sa proyektong nakasaad sa itaas.
+      Wala na akong iba pang hinihinging bayad para sa mga araw na ito.</p>
+    </div>
   </div>
-
-  <div class="footer">${esc(bizName)} &bull; ${esc(bizAddr)}</div>
+${window.dacsStatementSigns([
+    { label: 'Pirma ng Manggagawa', name: p.workerName || '' },
+    { label: 'Inihanda ni / Prepared by' },
+    { label: 'Inaprubahan ni / Approved by' }
+])}
+${window.dacsStatementFoot([bizName, bizAddr].filter(Boolean).join(' · '), invoiceNo + ' · Pahina 1 / 1')}
 </div>
 <script>window.onload=function(){window.print();};<\/script>
 </body>
@@ -1656,104 +1577,66 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
             .sort((a, b) => new Date(a.paymentDate || 0) - new Date(b.paymentDate || 0));
         if (!entries.length) { alert('No labor entries found for ' + workerName + ' in this project.'); return; }
 
-        // Payment details come straight from the saved invoice defaults — the
-        // statement prints immediately, no Mode-of-Payment popup (owner's call:
-        // keep the new statement DESIGN, drop the per-print selection step).
-        const d0 = _defaults.paymentDetails || {};
-        const pd = (d0.method === 'gcash')
-            ? { method: 'ewallet', ewalletProvider: 'GCash', ewalletNumber: d0.gcashNumber || '', ewalletName: d0.gcashName || '' }
-            : (d0.method ? d0 : { method: 'cash' });
-
         const role    = (entries.find(e => e.role) || {}).role || '—';
+        // Blank, not '—': the letterhead omits an address/TIN line it doesn't have.
         const bizName = _defaults.businessName    || "DAC's Building Design Services";
-        const bizTin  = _defaults.businessTin     || '—';
-        const bizAddr = _defaults.businessAddress || '—';
+        const bizTin  = _defaults.businessTin     || '';
+        const bizAddr = _defaults.businessAddress || '';
 
         const fmt     = n => '&#8369;&nbsp;' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         const esc     = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
         const fmtDate = d => { if (!d) return '—'; try { return new Date(d).toLocaleDateString('en-PH',{year:'numeric',month:'short',day:'numeric'}); } catch(e){ return d; } };
         const cap     = s => { s = String(s || ''); return s ? s.charAt(0).toUpperCase() + s.slice(1) : '—'; };
 
-        let itemRows = '', rowNum = 0, grandTotal = 0;
+        // One row per payment. The category cell carries the labour class and
+        // the role, with the days × rate breakdown trailing in grey — a lump-sum
+        // (pakyaw) row has no daily rate to show, so it just reads "Lump sum".
+        let itemRows = '', rowNum = 0, grandTotal = 0, totalDays = 0;
         entries.forEach(p => {
             rowNum++;
             grandTotal += (p.totalSalary || 0);
+            totalDays  += Number(p.daysWorked) || 0;
+            const days = Number(p.daysWorked) || 0;
+            const rate = Number(p.dailyRate)  || 0;
+            const detail = (days && rate)
+                ? ' <span class="ws-muted">· ' + days + ' araw × ' + fmt(rate) + '</span>'
+                : ' <span class="ws-muted">· Lump sum</span>';
             itemRows += `<tr>
-                <td style="text-align:center;">${rowNum}</td>
-                <td style="text-align:center;">${fmtDate(p.paymentDate)}</td>
-                <td>${esc(cap(p.laborType || 'direct'))}</td>
-                <td style="text-align:center;">${p.daysWorked || 0}</td>
-                <td style="text-align:right;">${fmt(p.dailyRate)}</td>
-                <td style="text-align:right;font-weight:600;">${fmt(p.totalSalary)}</td>
+                <td class="ws-muted">${rowNum}</td>
+                <td>${fmtDate(p.paymentDate)}</td>
+                <td>${esc(cap(p.laborType || 'direct'))}${p.role ? ' — ' + esc(p.role) : ''}${detail}</td>
+                <td>${esc(window.dacsPayMethodLabel(p.paymentMethod))}</td>
+                <td class="ws-amt">${fmt(p.totalSalary)}</td>
             </tr>`;
         });
 
-        const firstDate = fmtDate(entries[0].paymentDate);
-        const lastDate  = fmtDate(entries[entries.length - 1].paymentDate);
-        const rangeLbl  = firstDate === lastDate ? firstDate : (firstDate + ' – ' + lastDate);
-
-        // Payment mode: Cash · E-wallet · Bank · Check. Reads _defaults.paymentDetails.
-        // Existing data used method 'gcash' → treated as an E-wallet (provider GCash).
-        const _pdRow = (l, v) => `<div><span class="lbl">${l}: </span><span class="val">${esc(v || '—')}</span></div>`;
-        // "Mode of Payment" prints ALL options form-style — the active one bold
-        // + underlined, the rest grayed: Cash / GCash / E-Wallet / Bank Transfer / Check.
-        const _pdModeRow = (sel) => {
-            const opts = ['Cash', 'E-Wallet', 'Bank Transfer', 'Cheque'];
-            return '<div><span class="lbl">Mode of Payment: </span>'
-                + opts.map(o => o === sel
-                    ? '<span class="val" style="font-weight:700;text-decoration:underline;">' + o + '</span>'
-                    : '<span class="val">' + o + '</span>')
-                  .join(' <span class="val">/</span> ')
-                + '</div>';
-        };
-        const payBlock = (function () {
-            const m = (pd.method || 'bank').toLowerCase();
-            if (m === 'cash') {
-                return _pdModeRow('Cash');
-            }
-            if (m === 'ewallet' || m === 'gcash' || m === 'e-wallet') {
-                return _pdModeRow('E-Wallet')
-                     + _pdRow('Account Name', pd.ewalletName || pd.gcashName);
-            }
-            if (m === 'check' || m === 'cheque') {
-                return _pdModeRow('Cheque')
-                     + _pdRow('Bank', pd.checkBank || pd.bank)
-                     + _pdRow('Check No.', pd.checkNumber)
-                     + _pdRow('Payee', pd.checkPayee || pd.accountName);
-            }
-            // default: bank
-            return _pdModeRow('Bank Transfer')
-                 + _pdRow('Bank', pd.bank)
-                 + _pdRow('Account No.', pd.accountNo)
-                 + _pdRow('Account Name', pd.accountName)
-                 + (pd.branch ? _pdRow('Branch', pd.branch) : '');
-        })();
+        // Left half of the grey panel: what was ACTUALLY paid and how, tallied
+        // from the entries (payroll.payment_method, migration 0037).
+        const splitBlock = window.dacsPayMethodSplit(entries, fmt);
 
         const invoiceNo = await _generateInvoiceNo();
         const today     = new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'});
-        const logoHtml  = _buildLogoHtml(_defaults.logos);
 
         // Contract status (Completed / Over cap / Ongoing) from this worker's contract(s).
         const _allC      = (typeof expLaborContracts !== 'undefined' ? expLaborContracts : []);
         const _entryCids = new Set(entries.map(p => p.contractId).filter(Boolean));
         const _wContracts = _allC.filter(c => (c.workerName || '') === workerName || _entryCids.has(c.id));
 
-        let _stLabel = '', _stColor = '', _stBg = '';
+        let _stLabel = '';
         if (_wContracts.length) {
             const _agreed = _wContracts.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
             const _wcSet  = new Set(_wContracts.map(c => c.id));
             const _paid   = entries.filter(p => p.contractId && _wcSet.has(p.contractId)).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
             if (_agreed > 0 && _paid >= _agreed) {
-                if (_paid > _agreed) { _stLabel = 'Over cap'; _stColor = '#b91c1c'; _stBg = '#fee2e2'; }
-                else                 { _stLabel = 'Completed'; _stColor = '#15803d'; _stBg = '#dcfce7'; }
+                _stLabel = _paid > _agreed ? 'Over cap' : 'Completed';
             } else {
                 const _pct = _agreed > 0 ? Math.round(_paid / _agreed * 100) : 0;
-                _stLabel = 'Ongoing · ' + _pct + '%'; _stColor = '#1d4ed8'; _stBg = '#dbeafe';
+                _stLabel = 'Ongoing · ' + _pct + '%';
             }
         }
         const _stPill = _stLabel
-            ? `<div style="display:inline-block;margin-top:8px;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;background:${_stBg};color:${_stColor};">${esc(_stLabel)}</div>`
-            : '';
+            ? `<div class="${window.dacsStatusPillClass(_stLabel)}">${esc(_stLabel)}</div>`
+            : '<div class="ws-band-v sm">—</div>';
 
         // Contract type for this worker (shown under the name): Pakyaw / In-house.
         // If they have contracts of one type, show it; mixed → "Pakyaw & In-house";
@@ -1767,121 +1650,78 @@ table.breakdown tbody tr:nth-child(even) { background:#f8fafc; }
         const w = window.open('','_blank','width=870,height=1100');
         if (!w) { alert('Please allow pop-ups to print the statement.'); return; }
 
-        // Always print in color — force the browser to keep background colors
-        // on the page instead of silently dropping them (browsers strip
-        // background-color by default when printing unless told otherwise).
-        const _colorStyle = `
-* { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; color-adjust:exact !important; }
-table.items thead tr { background:#1e3a5f !important; }
-table.items thead th { color:#fff !important; }
-table.totals tr.grand td { background:#1e3a5f !important; color:#fff !important; border-color:#1e3a5f !important; }
-.pay-box { border-left:4px solid #1e3a5f; }
-`;
-
         w.document.write(`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Statement of Account — ${esc(workerName)}</title>
-<style>
-* { box-sizing:border-box; margin:0; padding:0; }
-body { font-family:Arial,Helvetica,sans-serif; font-size:13px; color:#1a1a1a; background:#f5f5f5; -webkit-font-smoothing:antialiased; }
-.page { width:210mm; min-height:297mm; margin:24px auto; padding:24mm 22mm 20mm; background:#fff; box-shadow:0 2px 16px rgba(0,0,0,.10); }
-.inv-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:44px; padding-bottom:26px; border-bottom:3px solid #1e3a5f; }
-.inv-logo { display:block; height:72px; width:auto; max-width:180px; object-fit:contain; margin-bottom:16px; mix-blend-mode:multiply; }
-.inv-biz h1 { font-size:21px; font-weight:800; color:#1a1a2e; letter-spacing:.3px; line-height:1.3; }
-.inv-biz p  { font-size:12px; color:#666; margin-top:11px; line-height:1.8; letter-spacing:.2px; }
-.inv-title-block { text-align:right; }
-.inv-title-block h2 { font-size:23px; font-weight:800; color:#1e3a5f; letter-spacing:3px; line-height:1.2; }
-.inv-title-block .inv-sub { font-size:12px; font-weight:600; color:#7c3aed; margin-top:8px; letter-spacing:1px; }
-.inv-meta { margin-top:14px; font-size:12px; color:#555; line-height:2.1; letter-spacing:.3px; }
-.inv-meta strong { color:#1a1a1a; }
-.bill-row { display:flex; gap:48px; margin-bottom:34px; padding:6px 0 24px; border-bottom:1px solid #e5e7eb; }
-.bill-to h4 { font-size:9.5px; font-weight:700; color:#9ca3af; letter-spacing:2.5px; text-transform:uppercase; margin-bottom:10px; }
-.bill-to .name { font-size:16px; font-weight:700; color:#1a1a2e; margin-bottom:6px; letter-spacing:.2px; }
-.bill-to p { font-size:12px; color:#666; line-height:1.6; letter-spacing:.3px; }
-table.items { width:100%; border-collapse:collapse; margin-bottom:22px; }
-table.items thead tr { background:#fff; color:#1a1a1a; border-bottom:2px solid #1a1a1a; }
-table.items thead th { padding:13px 12px; font-size:10px; font-weight:700; text-align:left; letter-spacing:1.2px; text-transform:uppercase; color:#555; }
-table.items tbody tr { border-bottom:1px solid #eef0f2; }
-table.items tbody td { padding:15px 12px; vertical-align:middle; font-size:12.5px; letter-spacing:.2px; }
-.totals-wrap { display:flex; justify-content:flex-end; margin-bottom:32px; }
-table.totals { width:340px; border-collapse:collapse; font-size:13px; }
-table.totals td { padding:10px 14px; letter-spacing:.3px; }
-table.totals td:first-child { color:#666; }
-table.totals td:last-child { text-align:right; font-weight:600; color:#1a1a1a; }
-table.totals tr.grand td { font-size:16px; font-weight:800; color:#1a1a1a; background:#fff; border-top:2px solid #1a1a1a; border-bottom:2px solid #1a1a1a; padding:15px 14px; letter-spacing:.6px; }
-.pay-box { background:#f7f8fa; border:1px solid #eef0f2; border-radius:10px; padding:20px 24px; margin-bottom:30px; }
-.pay-box h4 { font-size:9.5px; font-weight:700; color:#9ca3af; letter-spacing:2.5px; text-transform:uppercase; margin-bottom:14px; }
-.pay-grid { display:grid; grid-template-columns:1fr 1fr; gap:11px 32px; font-size:12.5px; }
-.pay-grid .lbl { color:#888; letter-spacing:.3px; }
-.pay-grid .val { font-weight:600; color:#1a1a1a; letter-spacing:.2px; }
-.sig-row { display:flex; justify-content:space-between; margin-top:60px; }
-.sig-block { text-align:center; width:190px; }
-.sig-line { border-top:1px solid #374151; padding-top:9px; font-size:11px; color:#666; letter-spacing:.3px; }
-.footer { text-align:center; margin-top:44px; font-size:9.5px; color:#b0b4bb; border-top:1px solid #eef0f2; padding-top:14px; letter-spacing:.5px; }
-@media print { body{background:#fff;} .page{margin:0;box-shadow:none;padding:16mm 14mm;width:100%;} @page{size:A4 portrait;margin:8mm;} }
-${_colorStyle}
-</style>
+<style>${window.dacsStatementCSS()}</style>
 </head>
 <body>
 <div class="page">
-  <div class="inv-header">
-    <div class="inv-biz">
-      <img class="inv-logo" src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo" onerror="this.style.display='none'">
-      <h1>${esc(bizName)}</h1>
-      <p>${esc(bizAddr)}</p>
+${window.dacsStatementHead({
+    title: 'Statement<br>of Account',
+    kicker: 'Labor & Payroll',
+    bizName, bizAddr, bizTin,
+    meta: [{ k: 'SOA No.', v: invoiceNo }, { k: 'Petsa / Date', v: today }]
+})}
+  <div class="ws-band" style="grid-template-columns:1.6fr 1.4fr 1fr;">
+    <div>
+      <div class="ws-lbl">Manggagawa / Worker</div>
+      <div class="ws-band-v">${esc(workerName)}</div>
+      <div class="ws-band-s">${esc(_contractType)}${role !== '—' ? ' · ' + esc(role) : ''}</div>
     </div>
-    <div class="inv-title-block">
-      <h2>STATEMENT OF ACCOUNT</h2>
-      <div class="inv-sub">Labor &amp; Payroll</div>
+    <div>
+      <div class="ws-lbl">Proyekto / Project</div>
+      <div class="ws-band-v sm">${esc(projectName)}</div>
+    </div>
+    <div>
+      <div class="ws-lbl">Kalagayan / Status</div>
       ${_stPill}
-      <div class="inv-meta">
-        SOA No: <strong>${esc(invoiceNo)}</strong><br>
-        Date: <strong>${esc(today)}</strong>
+    </div>
+  </div>
+  <div class="ws-body">
+    <div class="ws-lbl ws-sec">Mga Naibayad / Labor entries</div>
+    <table class="ws-tbl">
+      <thead>
+        <tr>
+          <th style="width:28px;">#</th>
+          <th style="width:92px;">Petsa</th>
+          <th>Kategorya / Category</th>
+          <th style="width:132px;">Bayad sa / Paid via</th>
+          <th style="width:116px;" class="ws-r">Halaga</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+    <div class="ws-tot-wrap">
+      <div class="ws-tot">
+        <div class="ws-tot-row${totalDays ? '' : ' rule'}"><span>Bilang ng entry / Entries</span><b>${entries.length}</b></div>
+        ${totalDays ? `<div class="ws-tot-row rule"><span>Kabuuang araw / Total days</span><b>${totalDays}</b></div>` : ''}
+        <div class="ws-grand"><span class="l">Kabuuan / Total</span><span class="v">${fmt(grandTotal)}</span></div>
       </div>
     </div>
   </div>
-  <div class="bill-row">
-    <div class="bill-to">
-      <h4>Worker</h4>
-      <div class="name">${esc(workerName)}</div>
-      <p>${esc(_contractType)}</p>
+  <div class="ws-panel">
+    <div>
+      <div class="ws-lbl">Paraan ng Bayad / Paid via</div>
+      ${splitBlock || '<div class="ws-modes">Hindi nakatala / Not recorded</div>'}
     </div>
-    <div class="bill-to">
-      <h4>Project</h4>
-      <div class="name" style="font-size:13px;">${esc(projectName)}</div>
+    <div>
+      <div class="ws-lbl">Tatanggap / Payee</div>
+      <div class="ws-kv">
+        <span class="k">Pangalan</span><span class="v">${esc(workerName)}</span>
+        <span class="k">Trabaho</span><span class="v">${esc(role)}</span>
+        <span class="k">Kontrata</span><span class="v">${esc(_contractType)}</span>
+      </div>
     </div>
   </div>
-  <table class="items">
-    <thead>
-      <tr>
-        <th style="width:28px;">#</th>
-        <th style="width:110px;text-align:center;">Date</th>
-        <th>Category</th>
-        <th style="width:55px;text-align:center;">Days</th>
-        <th style="width:120px;text-align:right;">Daily Rate</th>
-        <th style="width:130px;text-align:right;">Amount</th>
-      </tr>
-    </thead>
-    <tbody>${itemRows}</tbody>
-  </table>
-  <div class="totals-wrap">
-    <table class="totals">
-      <tr><td>Total Entries</td><td>${entries.length}</td></tr>
-      <tr class="grand"><td>TOTAL AMOUNT</td><td>${fmt(grandTotal)}</td></tr>
-    </table>
-  </div>
-  <div class="pay-box">
-    <h4>Payment Details</h4>
-    <div class="pay-grid">${payBlock}</div>
-  </div>
-  <div class="sig-row">
-    <div class="sig-block"><div class="sig-line">Prepared by</div></div>
-    <div class="sig-block"><div class="sig-line">Received by — ${esc(workerName)}</div></div>
-    <div class="sig-block"><div class="sig-line">Approved by</div></div>
-  </div>
-  <div class="footer">${esc(bizName)} &bull; ${esc(bizAddr)}</div>
+${window.dacsStatementSigns([
+    { label: 'Inihanda ni / Prepared by' },
+    { label: 'Tinanggap ni / Received by', name: workerName },
+    { label: 'Inaprubahan ni / Approved by' }
+])}
+${window.dacsStatementFoot([bizName, bizAddr].filter(Boolean).join(' · '), invoiceNo + ' · Pahina 1 / 1')}
 </div>
 <script>window.onload=function(){window.print();};<\/script>
 </body>

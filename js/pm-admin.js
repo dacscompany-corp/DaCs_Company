@@ -79,6 +79,17 @@ function _pmInitWorkspace() {
     const p = _pmActiveProject;
     _pmSet('ws-client-name', p.clientName || '—');
     _pmSet('ws-project-name', p.projectName || '');
+    // Job-site address. The projects list shows it on each card; the workspace
+    // dropped it, so once you were inside a project nothing said where it is.
+    // Hidden entirely when the project has no address on record.
+    const locEl = document.getElementById('ws-project-loc');
+    if (locEl) {
+        const addr = (p.address || '').trim();
+        locEl.style.display = addr ? '' : 'none';
+        locEl.title = addr;                       // full text when the line is ellipsised
+        locEl.innerHTML = '<i data-lucide="map-pin"></i><span></span>';
+        locEl.querySelector('span').textContent = addr;
+    }
     const statusBadge = { pending_agreement:'pm-badge-pending', ready:'pm-badge-client', active:'pm-badge-paid', 'on-hold':'pm-badge-partial', completed:'pm-badge-client', terminated:'pm-badge-terminated' };
     const statusLabel = { pending_agreement:'Pending Agreement', ready:'Ready to Start', active:'Active', 'on-hold':'On Hold', completed:'Completed', terminated:'Terminated' };
     const el = document.getElementById('ws-status-badge');
@@ -5628,38 +5639,40 @@ function _pmPrintContractSOA(c, entryType) {
 
     const esc = _esc;
     const fmt = n => '&#8369;&nbsp;' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const fmtDate = d => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return d || '—'; } };
+    const fmtDate = d => { if (!d) return '—'; const t = new Date(d + 'T00:00:00'); return isNaN(t) ? (d || '—') : t.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }); };
 
     let itemRows = '', rowNum = 0, grandTotal = 0;
     rows.forEach(r => {
         rowNum++;
         grandTotal += r.amount;
         itemRows += `<tr>
-            <td style="text-align:center;">${rowNum}</td>
-            <td style="text-align:center;">${fmtDate(r.date)}</td>
+            <td class="ws-muted">${rowNum}</td>
+            <td>${fmtDate(r.date)}</td>
             <td>${esc(r.details)}</td>
-            <td style="text-align:right;font-weight:600;">${fmt(r.amount)}</td>
+            <td class="ws-amt">${fmt(r.amount)}</td>
         </tr>`;
     });
 
-    const agreed = Number(c.agreedAmount) || 0;
-    let stLabel = '', stColor = '', stBg = '';
-    if (agreed > 0 && grandTotal >= agreed) {
-        if (grandTotal > agreed) { stLabel = 'Over cap'; stColor = '#b91c1c'; stBg = '#fee2e2'; }
-        else { stLabel = 'Completed'; stColor = '#15803d'; stBg = '#dcfce7'; }
-    } else if (agreed > 0) {
-        stLabel = 'Ongoing · ' + Math.round(grandTotal / agreed * 100) + '%'; stColor = '#1d4ed8'; stBg = '#dbeafe';
-    }
+    // Contract cap → status. A capped (pakyaw) job is the whole point of this
+    // document, so the drawdown against the cap leads the totals stack.
+    const agreed    = Number(c.agreedAmount) || 0;
+    const remaining = agreed - grandTotal;
+    let stLabel = '';
+    if (agreed > 0 && grandTotal >= agreed)      stLabel = grandTotal > agreed ? 'Over cap' : 'Completed';
+    else if (agreed > 0)                         stLabel = 'Ongoing · ' + Math.round(grandTotal / agreed * 100) + '%';
     const stPill = stLabel
-        ? `<div style="display:inline-block;margin-top:8px;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700;background:${stBg};color:${stColor};">${esc(stLabel)}</div>`
-        : '';
+        ? `<div class="${window.dacsStatusPillClass(stLabel)}">${esc(stLabel)}</div>`
+        : '<div class="ws-band-v sm">—</div>';
 
-    const typeLbl = c.payType === 'inhouse' ? 'In-house' : 'Pakyaw';
+    const isVendor   = entryType === 'both';
+    const typeLbl    = c.payType === 'inhouse' ? 'In-house' : 'Pakyaw';
     const projectLbl = (_pmActiveProject && (_pmActiveProject.projectName || _pmActiveProject.clientName)) || 'Project';
-    const bizName = "DAC's Building Design Services";
-    const bizAddr = (_pmActiveProject && _pmActiveProject.address) || '';
-    const today = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
-    const firstDate = fmtDate(rows[0].date), lastDate = fmtDate(rows[rows.length - 1].date);
+    const bizName    = "DAC's Building Design Services";
+    const bizAddr    = (_pmActiveProject && _pmActiveProject.address) || '';
+    const today      = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+    const firstDate  = fmtDate(rows[0].date), lastDate = fmtDate(rows[rows.length - 1].date);
+    const periodLbl  = firstDate === lastDate ? firstDate : (firstDate + ' – ' + lastDate);
+    const docRef     = window.dacsStatementRef(isVendor ? 'OSA' : 'LSA', (c.workerName || '') + (c.scope || ''));
 
     const w = window.open('', '_blank', 'width=870,height=1100');
     if (!w) { alert('Please allow pop-ups to print the statement.'); return; }
@@ -5668,94 +5681,59 @@ function _pmPrintContractSOA(c, entryType) {
 <head>
 <meta charset="utf-8">
 <title>Statement of Account — ${esc(c.workerName || 'Worker')}</title>
-<style>
-* { box-sizing:border-box; margin:0; padding:0; }
-body { font-family:Arial,Helvetica,sans-serif; font-size:13px; color:#1a1a1a; background:#f5f5f5; -webkit-font-smoothing:antialiased; }
-.page { width:210mm; min-height:297mm; margin:24px auto; padding:24mm 22mm 20mm; background:#fff; box-shadow:0 2px 16px rgba(0,0,0,.10); }
-.inv-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:44px; padding-bottom:26px; border-bottom:3px solid #1e3a5f; }
-.inv-logo { display:block; height:72px; width:auto; max-width:180px; object-fit:contain; margin-bottom:16px; mix-blend-mode:multiply; }
-.inv-biz h1 { font-size:21px; font-weight:800; color:#1a1a2e; letter-spacing:.3px; line-height:1.3; }
-.inv-biz p  { font-size:12px; color:#666; margin-top:11px; line-height:1.8; letter-spacing:.2px; }
-.inv-title-block { text-align:right; }
-.inv-title-block h2 { font-size:23px; font-weight:800; color:#1e3a5f; letter-spacing:3px; line-height:1.2; }
-.inv-title-block .inv-sub { font-size:12px; font-weight:600; color:#7c3aed; margin-top:8px; letter-spacing:1px; }
-.inv-meta { margin-top:14px; font-size:12px; color:#555; line-height:2.1; letter-spacing:.3px; }
-.inv-meta strong { color:#1a1a1a; }
-.bill-row { display:flex; gap:48px; margin-bottom:34px; padding:6px 0 24px; border-bottom:1px solid #e5e7eb; }
-.bill-to h4 { font-size:9.5px; font-weight:700; color:#9ca3af; letter-spacing:2.5px; text-transform:uppercase; margin-bottom:10px; }
-.bill-to .name { font-size:16px; font-weight:700; color:#1a1a2e; margin-bottom:6px; letter-spacing:.2px; }
-.bill-to p { font-size:12px; color:#666; line-height:1.6; letter-spacing:.3px; }
-table.items { width:100%; border-collapse:collapse; margin-bottom:22px; }
-table.items thead tr { background:#fff; color:#1a1a1a; border-bottom:2px solid #1a1a1a; }
-table.items thead th { padding:13px 12px; font-size:10px; font-weight:700; text-align:left; letter-spacing:1.2px; text-transform:uppercase; color:#555; }
-table.items tbody tr { border-bottom:1px solid #eef0f2; }
-table.items tbody td { padding:15px 12px; vertical-align:middle; font-size:12.5px; letter-spacing:.2px; }
-.totals-wrap { display:flex; justify-content:flex-end; margin-bottom:32px; }
-table.totals { width:340px; border-collapse:collapse; font-size:13px; }
-table.totals td { padding:10px 14px; letter-spacing:.3px; }
-table.totals td:first-child { color:#666; }
-table.totals td:last-child { text-align:right; font-weight:600; color:#1a1a1a; }
-table.totals tr.grand td { font-size:16px; font-weight:800; color:#1a1a1a; background:#fff; border-top:2px solid #1a1a1a; border-bottom:2px solid #1a1a1a; padding:15px 14px; letter-spacing:.6px; }
-.sig-row { display:flex; justify-content:space-between; margin-top:60px; }
-.sig-block { text-align:center; width:190px; }
-.sig-line { border-top:1px solid #374151; padding-top:9px; font-size:11px; color:#666; letter-spacing:.3px; }
-.footer { text-align:center; margin-top:44px; font-size:9.5px; color:#b0b4bb; border-top:1px solid #eef0f2; padding-top:14px; letter-spacing:.5px; }
-@media print { body{background:#fff;} .page{margin:0;box-shadow:none;padding:16mm 14mm;width:100%;} @page{size:A4 portrait;margin:8mm;} }
-</style>
+<style>${window.dacsStatementCSS()}</style>
 </head>
 <body>
 <div class="page">
-  <div class="inv-header">
-    <div class="inv-biz">
-      <img class="inv-logo" src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo" onerror="this.style.display='none'">
-      <h1>${esc(bizName)}</h1>
-      <p>${esc(bizAddr)}</p>
+${window.dacsStatementHead({
+    title: 'Statement<br>of Account',
+    kicker: (isVendor ? 'Out Source' : 'Labor') + ' & Payroll',
+    bizName, bizAddr,
+    meta: [{ k: 'SOA No.', v: docRef }, { k: 'Petsa / Date', v: today }, { k: 'Panahon / Period', v: periodLbl }]
+})}
+  <div class="ws-band" style="grid-template-columns:1.6fr 1.4fr 1fr;">
+    <div>
+      <div class="ws-lbl">${isVendor ? 'Kontratista / Vendor' : 'Manggagawa / Worker'}</div>
+      <div class="ws-band-v">${esc(c.workerName || 'Worker')}</div>
+      <div class="ws-band-s">${esc(typeLbl)} · ${esc(c.scope || 'Untitled job')}</div>
     </div>
-    <div class="inv-title-block">
-      <h2>STATEMENT OF ACCOUNT</h2>
-      <div class="inv-sub">${entryType === 'both' ? 'Out Source' : 'Labor'} &amp; Payroll</div>
+    <div>
+      <div class="ws-lbl">Proyekto / Project</div>
+      <div class="ws-band-v sm">${esc(projectLbl)}</div>
+    </div>
+    <div>
+      <div class="ws-lbl">Kalagayan / Status</div>
       ${stPill}
-      <div class="inv-meta">
-        Date: <strong>${esc(today)}</strong><br>
-        Period: <strong>${esc(firstDate === lastDate ? firstDate : firstDate + ' – ' + lastDate)}</strong>
+    </div>
+  </div>
+  <div class="ws-body">
+    <div class="ws-lbl ws-sec">Mga Naibayad / Payments made</div>
+    <table class="ws-tbl">
+      <thead>
+        <tr>
+          <th style="width:28px;">#</th>
+          <th style="width:100px;">Petsa</th>
+          <th>Detalye / Details</th>
+          <th style="width:126px;" class="ws-r">Halaga</th>
+        </tr>
+      </thead>
+      <tbody>${itemRows}</tbody>
+    </table>
+    <div class="ws-tot-wrap">
+      <div class="ws-tot">
+        <div class="ws-tot-row"><span>Napagkasunduan / Agreed amount</span><b>${fmt(agreed)}</b></div>
+        <div class="ws-tot-row"><span>Bilang ng entry / Entries</span><b>${rows.length}</b></div>
+        <div class="ws-tot-row rule"><span>${remaining < 0 ? 'Lampas / Over cap' : 'Natitira / Remaining'}</span><b>${fmt(Math.abs(remaining))}</b></div>
+        <div class="ws-grand"><span class="l">Kabuuang Bayad / Total paid</span><span class="v">${fmt(grandTotal)}</span></div>
       </div>
     </div>
   </div>
-  <div class="bill-row">
-    <div class="bill-to">
-      <h4>${entryType === 'both' ? 'Vendor' : 'Worker'}</h4>
-      <div class="name">${esc(c.workerName || 'Worker')}</div>
-      <p>${esc(typeLbl)} · ${esc(c.scope || 'Untitled job')}</p>
-    </div>
-    <div class="bill-to">
-      <h4>Project</h4>
-      <div class="name" style="font-size:13px;">${esc(projectLbl)}</div>
-    </div>
-  </div>
-  <table class="items">
-    <thead>
-      <tr>
-        <th style="width:28px;">#</th>
-        <th style="width:110px;text-align:center;">Date</th>
-        <th>Details</th>
-        <th style="width:130px;text-align:right;">Amount</th>
-      </tr>
-    </thead>
-    <tbody>${itemRows}</tbody>
-  </table>
-  <div class="totals-wrap">
-    <table class="totals">
-      <tr><td>Agreed Amount</td><td>${fmt(agreed)}</td></tr>
-      <tr><td>Total Entries</td><td>${rows.length}</td></tr>
-      <tr class="grand"><td>TOTAL PAID</td><td>${fmt(grandTotal)}</td></tr>
-    </table>
-  </div>
-  <div class="sig-row">
-    <div class="sig-block"><div class="sig-line">Prepared by</div></div>
-    <div class="sig-block"><div class="sig-line">Received by — ${esc(c.workerName || 'Worker')}</div></div>
-    <div class="sig-block"><div class="sig-line">Approved by</div></div>
-  </div>
-  <div class="footer">${esc(bizName)} &bull; ${esc(bizAddr)}</div>
+${window.dacsStatementSigns([
+    { label: 'Inihanda ni / Prepared by' },
+    { label: 'Tinanggap ni / Received by', name: c.workerName || '' },
+    { label: 'Inaprubahan ni / Approved by' }
+])}
+${window.dacsStatementFoot([bizName, bizAddr].filter(Boolean).join(' · '), docRef + ' · Pahina 1 / 1')}
 </div>
 <script>window.onload=function(){window.print();};<\/script>
 </body>
@@ -6369,11 +6347,12 @@ function _pmRenderContractsTab() {
             rightColor = '#b4453a'; amtColor = '#b4453a'; barColor = '#b4453a'; barPct = 100;
         } else if (st.status === 'Completed') {
             done = true;
-            rightColor = '#0f6342';
+            rightColor = '#157A52';
         } else {
+            // In progress is blue — green means finished, red means over cap.
             sentPre = 'Paid ' + _fmt(paid) + ' of ' + _fmt(agreed) + ' — '; sentBold = _fmt(remaining) + ' to go';
             rightAmt = _fmt(remaining); rightLbl = 'In progress · ' + pct.toFixed(0) + '%';
-            rightColor = '#1d4ed8'; amtColor = '#1c1c1a'; barColor = '#3b82f6'; barPct = Math.min(100, pct);
+            rightColor = '#1D4ED8'; amtColor = '#1c1c1a'; barColor = '#3B82F6'; barPct = Math.min(100, pct);
         }
         return '<div onclick="' + ledgerFn + '(\'' + c.id + '\')" style="display:flex;align-items:center;gap:16px;padding:14px 6px;border-top:1px solid #f0efec;cursor:pointer;border-radius:8px;transition:background .12s;"'
             + ' onmouseover="this.style.background=\'#faf9f7\'" onmouseout="this.style.background=\'\'">'
