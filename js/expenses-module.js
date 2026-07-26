@@ -8005,7 +8005,7 @@ function lcOpenRaiseCap(id) {
         ? hist.map(h => `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid #F0F0F0;">
                <span style="font-size:12.5px;font-weight:500;color:#3A3A3C;">${_mvpEsc(h.note || 'Cap change')}</span>
                <span style="font-size:12px;font-weight:400;color:#A1A1A6;">${h.at ? new Date(h.at).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : ''}</span>
-               <span style="font:500 12.5px var(--mono,'IBM Plex Mono',monospace);color:#1C1C1E;">₱${formatNum(parseFloat(h.amount) || 0)}</span>
+               <span class="num" style="font:500 12.5px var(--mono,'IBM Plex Mono',monospace);color:#1C1C1E;">₱${formatNum(parseFloat(h.amount) || 0)}</span>
              </div>`).join('')
         : `<div style="padding:8px 0;border-top:1px solid #F0F0F0;font-size:12.5px;font-weight:400;color:#A1A1A6;">No cap changes yet — this is the original agreed amount.</div>`;
 
@@ -8025,13 +8025,13 @@ function lcOpenRaiseCap(id) {
           <div class="lcm-body">
             <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#FAFBFA;border:1px solid #EEEEEE;border-radius:10px;">
               <span style="font-size:12.5px;font-weight:600;color:#6C6C70;">Current agreed</span>
-              <span style="font-size:18px;color:#1C1C1E;font-variant-numeric:tabular-nums;">₱ ${formatNum(cur)}</span>
+              <span class="num" style="font-size:18px;color:#1C1C1E;font-variant-numeric:tabular-nums;">₱ ${formatNum(cur)}</span>
             </div>
             <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#A1A1A6;margin:18px 0 8px;">New agreed amount</div>
             <div style="display:flex;align-items:center;gap:8px;border:1.5px solid #1A5C3A;border-radius:10px;padding:11px 14px;box-shadow:0 0 0 3px rgba(26,90,58,.12);">
               <span style="font-size:18px;color:#6C6C70;">₱</span>
-              <input id="lcCapInput" type="text" inputmode="decimal" value="${formatNum(cur)}"
-                style="flex:1;border:0;outline:none;background:transparent;font-family:var(--serif);font-size:18px;color:#1C1C1E;font-variant-numeric:tabular-nums;width:100%;">
+              <input id="lcCapInput" class="num" type="text" inputmode="decimal" value="${formatNum(cur)}"
+                style="flex:1;border:0;outline:none;background:transparent;font-size:18px;color:#1C1C1E;font-variant-numeric:tabular-nums;width:100%;">
             </div>
             <div id="lcCapDelta" style="margin-top:12px;"></div>
             <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#A1A1A6;margin:22px 0 2px;">Cap history</div>

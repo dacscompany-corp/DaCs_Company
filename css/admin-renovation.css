@@ -3596,3 +3596,15 @@ body .lcm-card,
 body .lcm-card * {
   font-family: 'Playfair Display', 'Times New Roman', Georgia, serif !important;
 }
+/* …but the FIGURES read better in the design system's monospace numerals than in
+   a serif. The blanket rule above forces Playfair onto every child; these
+   class-specific selectors are more specific, so they win the numbers back to
+   IBM Plex Mono (labels stay Playfair). */
+body #laborLedgerModal td.num,
+body #laborLedgerModal td.amt,
+body #laborLedgerModal .lc-led-sum strong,
+body .lcm-card .num,
+body .lcm-card .amt {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  font-variant-numeric: tabular-nums;
+}

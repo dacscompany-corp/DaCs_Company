@@ -464,6 +464,17 @@
   padding: 18px 22px;
   overflow-y: auto;
   flex: 1;
+  min-height: 0; /* allow the body to shrink inside a flex column so it scrolls
+                    rather than pushing the footer past the 90vh box */
+}
+/* Some modals wrap the body + footer in a <form>. A plain block <form> breaks the
+   box's flex column, so the body's flex:1/overflow can't work and a tall form
+   pushes the footer (Save/Cancel) off-screen. Make the form the flex column. */
+.pm-modal-box > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 .pm-modal-footer {
   padding: 14px 22px;

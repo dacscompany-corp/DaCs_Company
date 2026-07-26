@@ -4677,7 +4677,7 @@
             <div class="pm-lc-step2col">
               <div class="pm-form-group">
                 <label class="pm-field-label">Worker name <span class="pm-req">*</span></label>
-                <input type="text" id="pmLcWorker" class="pm-input" list="pmLcWorkerNames" placeholder="e.g. Aerol" autocomplete="off">
+                <input type="text" id="pmLcWorker" class="pm-input" list="pmLcWorkerNames" placeholder="e.g. Aerol" autocomplete="off" oninput="pmLcAgrSyncWorkerName()">
                 <datalist id="pmLcWorkerNames"></datalist>
               </div>
               <div class="pm-form-group">
@@ -4717,6 +4717,31 @@
               <label class="pm-field-label">Notes (optional)</label>
               <textarea id="pmLcNotes" class="pm-input" rows="2" placeholder="Additional details…"></textarea>
             </div>
+
+            <!-- ── Worker Agreement — upload the signed PDF (same as Project Control) ── -->
+            <div class="pm-form-group" style="margin-top:14px;border:1.5px solid #e5e7eb;border-radius:10px;padding:14px 16px;background:#fafafa;">
+              <label class="pm-field-label" style="margin:0 0 8px;display:block;">Worker Agreement <span style="color:#9ca3af;font-weight:400;">(upload the signed agreement PDF)</span></label>
+              <input type="file" id="pmLcAgrPdfInput" accept="application/pdf,.pdf" onchange="pmLcAgrPdfPick(this)" style="display:none;">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <button type="button" onclick="document.getElementById('pmLcAgrPdfInput').click()"
+                  style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border:1.5px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+                  <i data-lucide="upload" style="width:15px;height:15px;"></i> Upload PDF
+                </button>
+                <a id="pmLcAgrPdfLink" href="#" target="_blank" rel="noopener" style="display:none;font-size:12.5px;font-weight:700;color:#7c3aed;text-decoration:none;">View current PDF</a>
+                <span id="pmLcAgrPdfName" style="font-size:12.5px;color:#6b7280;">No PDF attached.</span>
+                <button type="button" id="pmLcAgrPdfRemoveBtn" onclick="pmLcAgrPdfRemove()" style="display:none;font-size:12px;font-weight:600;color:#dc2626;background:none;border:none;cursor:pointer;font-family:inherit;">Remove</button>
+              </div>
+              <div style="display:flex;gap:32px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px dashed #e5e7eb;">
+                <div style="min-width:150px;">
+                  <div id="pmLcAgrWorkerName" style="font-size:13px;font-weight:700;color:#111827;">—</div>
+                  <div style="font-size:10.5px;color:#9ca3af;letter-spacing:.04em;text-transform:uppercase;margin-top:2px;">Worker (printed name)</div>
+                </div>
+                <div style="min-width:150px;">
+                  <div id="pmLcAgrCompanyName" style="font-size:13px;font-weight:700;color:#111827;">DAC's Building &amp; Design Services</div>
+                  <div style="font-size:10.5px;color:#9ca3af;letter-spacing:.04em;text-transform:uppercase;margin-top:2px;">Company</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -4742,6 +4767,7 @@
       <button type="button" class="pm-btn pm-lc-btn-danger" onclick="pmLcLedgerDelete()">Delete</button>
       <button type="button" class="pm-btn pm-btn-secondary" onclick="_pmAddFileMenu(this,'lc')" title="Add a file or photo"><i data-lucide="paperclip" style="width:13px;height:13px;vertical-align:-2px;"></i> Add file</button>
       <button type="button" class="pm-btn pm-btn-secondary" onclick="pmLcLedgerViewFiles()" title="View uploaded photos/files"><i data-lucide="eye" style="width:13px;height:13px;vertical-align:-2px;"></i> View</button>
+      <button type="button" id="pmLcLedgerAgrBtn" class="pm-btn pm-btn-secondary" style="display:none;" onclick="pmLcLedgerViewAgreement()" title="Open the signed worker agreement PDF"><i data-lucide="file-text" style="width:13px;height:13px;vertical-align:-2px;"></i> View agreement</button>
       <button type="button" class="pm-btn pm-btn-secondary" onclick="pmLcPrintSOA()" title="Print this worker's Statement of Account"><i data-lucide="printer" style="width:13px;height:13px;vertical-align:-2px;"></i> Print SOA</button>
       <span style="flex:1"></span>
       <button type="button" class="pm-btn pm-btn-primary" onclick="pmCloseModal('pmLaborLedgerModal')">Close</button>

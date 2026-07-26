@@ -235,9 +235,10 @@ function _pmOvHtml(p, ms, bills, reqs) {
     // pure materials figure subtracts the separately-tracked `combined` bucket.
     const bd = _pmOvBreakdown(bills);
 
-    // Net cash = what the client has paid minus what's actually been spent
-    // on labor + materials (direct cost). Positive = cash buffer in hand;
-    // negative = costs have outrun collections (real exposure).
+    // Remaining cash receipt = what the client has paid minus the TOTAL PROJECT
+    // COST. directCost already includes overhead, so it equals the total spend —
+    // i.e. this is paid − Total. Positive = cash buffer; negative = costs have
+    // outrun collections (real exposure).
     const netCash  = paid - directCost;
     const netColor = netCash >= 0 ? '#0f6342' : '#8f352c';
     const netSub   = netCash >= 0 ? 'paid over direct cost' : 'over by ' + _pmOvShort(-netCash);
@@ -504,43 +505,75 @@ function _pmOvHtml(p, ms, bills, reqs) {
         const pct = _kpiBudgetPct(val);
         return (pct >= 10 ? pct.toFixed(0) : pct.toFixed(1)) + '% of budget';
     };
-    // New design layout, but the ORIGINAL tinted KPI colors (bg / border / value).
-    // `valId` lets pmOvApplyRange() update the value when the date range changes.
-    // `pctVal` (optional) renders a "% of budget" pill under the amount — solid
-    // fill + white text so it reads clearly instead of blending into the card.
-    // `pctTextOverride` (optional) replaces the "% of budget" text with a fixed
-    // label (e.g. "5% of remaining cash") for cards whose percentage
-    // isn't a share of the Project Budget.
-    const kpi = (label, val, valColor, bg, border, valId, pctVal, pctId, pctTextOverride) => `
-      <div style="flex:1;min-width:150px;background:${bg};border:1px solid ${border};border-radius:16px;padding:15px 17px;">
-        <div style="font:600 11.5px 'IBM Plex Sans';color:#7c7b75;">${label}</div>
-        <div class="num"${valId ? ` id="${valId}"` : ''} style="font:700 22px 'IBM Plex Sans';color:${valColor};margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${val}</div>
-        ${(pctVal != null || pctTextOverride) ? `<div${pctId ? ` id="${pctId}"` : ''} style="display:inline-block;font:800 11.5px 'IBM Plex Sans';color:#fff;background:${valColor};border-radius:999px;padding:3px 10px;margin-top:8px;letter-spacing:.02em;white-space:nowrap;">${pctTextOverride || _kpiPctText(pctVal)}</div>` : ''}
-      </div>`;
-    // Warranty retention = a FIXED 5% automatically withheld from the Remaining
-    // cash receipt (not a share of the Project Budget). Profit share = one 50%
-    // half of whatever's left after that retention is set aside. Both follow
-    // netCash's sign (an over-collected/negative balance produces a negative
-    // retention & profit share too).
+    // Warranty retention = a FIXED 5% withheld from the Remaining cash receipt.
+    // Profit share = one 50% half of whatever's left after that retention.
     const warrantyRetention = netCash * 0.05;
     const profitShare = (netCash - warrantyRetention) / 2;
     const retColor = warrantyRetention < 0 ? '#8f352c' : '#9a6c12';
     const psColor  = profitShare < 0 ? '#8f352c' : '#0f6342';
-    // Two deliberate rows of three, not one wrapping strip: row 1 is what the job
-    // COSTS (budget vs direct vs indirect), row 2 is what happens to the CASH
-    // (collected, retained, shared). Each row is its own flex container so the
-    // grouping holds instead of depending on where the viewport happens to wrap —
-    // they still wrap internally on a narrow screen.
+
+    // ── KPI strip: design layout (gauge + icon cards) on TINTED colour cards ───
+    // Circular budget gauge on the LEFT (Total Project Cost as a % of contract);
+    // a 3×2 grid of colour cards on the right, each with a white icon chip and
+    // either a progress bar (% of budget) or a fixed pill.
+    // Total Project Cost = ALL spend counted once (labor + materials + overhead).
+    // directCost already includes overhead, so it IS the total; the Direct-cost card
+    // shows only the PURE labor+materials slice, so Direct + Indirect = Total exactly.
+    const totalCost  = directCost;
+    const pureDirect = Math.max(0, directCost - bd.overhead);
+    const _heroPct  = _kpiBudgetPct(totalCost);
+    const _heroTurn = Math.max(0, Math.min(_heroPct / 100, 1));
+    const _ico = {
+        budget:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f6342" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+        direct:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#44525f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"/><rect x="4" y="10" width="4" height="8"/><rect x="10" y="6" width="4" height="12"/><rect x="16" y="13" width="4" height="5"/></svg>',
+        indirect: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7a5a48" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+        cash:     '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f6342" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>',
+        shield:   '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9a6c12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+        trend:    '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f6342" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg>',
+    };
+    // card shell — tinted background, white icon chip for contrast, caller footer.
+    const card = (icon, label, valColor, value, valId, footer, cardBg, cardBorder) => `
+      <div style="background:${cardBg};border:1px solid ${cardBorder};border-radius:16px;padding:16px 17px 15px;display:flex;flex-direction:column;">
+        <div style="display:flex;align-items:center;gap:9px;margin-bottom:12px;">
+          <span style="width:31px;height:31px;border-radius:9px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 1px 2px rgba(0,0,0,.06);">${icon}</span>
+          <span style="font:600 11.5px 'IBM Plex Sans';color:#7c7b75;">${label}</span>
+        </div>
+        <div class="num"${valId ? ` id="${valId}"` : ''} style="font:700 21px 'IBM Plex Sans';color:${valColor};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${value}</div>
+        ${footer || ''}
+      </div>`;
+    const barFooter = (barId, pctId, val, color) => {
+        const pct = _kpiBudgetPct(val);
+        return `<div style="height:6px;background:rgba(0,0,0,.06);border-radius:99px;margin-top:12px;overflow:hidden;"><div id="${barId}" style="width:${Math.min(pct, 100)}%;height:100%;background:${color};border-radius:99px;min-width:${pct > 0 ? '4px' : '0'};"></div></div>`
+             + `<div id="${pctId}" style="font:600 10.5px 'IBM Plex Sans';color:${color};margin-top:7px;">${_kpiPctText(val)}</div>`;
+    };
+    // On a tinted card the pill is a translucent-white chip so it still reads.
+    const pillFooter = (pillId, text, color) =>
+        `<div id="${pillId}" style="display:inline-flex;align-items:center;gap:5px;font:700 10.5px 'IBM Plex Sans';color:${color};background:rgba(255,255,255,.75);border-radius:999px;padding:4px 10px;margin-top:12px;align-self:flex-start;white-space:nowrap;">${text}</div>`;
+    const subFooter = (text) =>
+        `<div style="font:500 11px 'IBM Plex Sans';color:#9a9992;margin-top:7px;">${text}</div>`;
+
     const ovTiles = `
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
-      ${kpi('Project Budget', contractValue > 0 ? _fmt(contractValue) : '—', '#0f6342', '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-contract')}
-      ${kpi('Direct cost', _fmt(directCost), '#44525f', '#eef0f3', '#d6dde4', 'pm-ov-kpi-direct', directCost, 'pm-ov-kpi-direct-pct')}
-      ${kpi('Indirect cost', _fmt(bd.overhead), '#7a5a48', '#f7f1ed', '#e6d7cd', 'pm-ov-kpi-indirect', bd.overhead, 'pm-ov-kpi-indirect-pct')}
-    </div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
-      ${kpi('Remaining cash receipt', (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), netColor, '#fbf3e2', '#f0e2c5', 'pm-ov-kpi-net', netCash, 'pm-ov-kpi-net-pct')}
-      ${kpi('Warranty retention', (warrantyRetention < 0 ? '−' : '') + _fmt(Math.abs(warrantyRetention)), retColor, '#fbf2dc', '#ecd8a6', 'pm-ov-kpi-retention', null, 'pm-ov-kpi-retention-pct', '5% of remaining cash')}
-      ${kpi('Profit share', (profitShare < 0 ? '−' : '') + _fmt(Math.abs(profitShare)), psColor, '#eaf4ef', '#c6e6d5', 'pm-ov-kpi-profitshare', null, 'pm-ov-kpi-profitshare-pct', '50% after retention')}
+    <style>@media (max-width:820px){.pm-ov-kpigrid{grid-template-columns:1fr!important;}.pm-ov-metricgrid{grid-template-columns:repeat(2,1fr)!important;}}@media (max-width:520px){.pm-ov-metricgrid{grid-template-columns:1fr!important;}}</style>
+    <div class="pm-ov-kpigrid" style="display:grid;grid-template-columns:236px 1fr;gap:14px;align-items:stretch;margin-bottom:14px;">
+      <div style="background:#eef2f6;border:1px solid #dbe3ea;border-radius:18px;padding:26px 22px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;">
+        <div style="font:600 11.5px 'IBM Plex Sans';color:#5b6b7e;letter-spacing:.05em;text-transform:uppercase;">Total Project Cost</div>
+        <div id="pm-ov-hero-gauge" style="width:140px;height:140px;border-radius:50%;margin:20px 0 18px;background:conic-gradient(#334155 0turn ${_heroTurn}turn,#dce3ea ${_heroTurn}turn 1turn);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 3px rgba(51,65,85,.12);">
+          <div style="width:104px;height:104px;border-radius:50%;background:#eef2f6;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+            <div id="pm-ov-hero-pct" style="font:700 24px 'IBM Plex Sans';color:#334155;line-height:1;">${Math.round(_heroPct)}%</div>
+            <div style="font:500 9.5px 'IBM Plex Sans';color:#8794a3;letter-spacing:.06em;margin-top:3px;">OF BUDGET</div>
+          </div>
+        </div>
+        <div class="num" id="pm-ov-kpi-totalcost" style="font:700 25px 'IBM Plex Sans';color:#334155;white-space:nowrap;">${_fmt(totalCost)}</div>
+        <div id="pm-ov-hero-sub" style="font:500 11.5px 'IBM Plex Sans';color:#8794a3;margin-top:5px;">of ${_fmt(contractValue)} budget</div>
+      </div>
+      <div class="pm-ov-metricgrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+        ${card(_ico.budget, 'Project Budget', '#0f6342', contractValue > 0 ? _fmt(contractValue) : '—', 'pm-ov-kpi-contract', subFooter('Contract value'), '#eaf4ef', '#c6e6d5')}
+        ${card(_ico.direct, 'Direct cost', '#44525f', _fmt(pureDirect), 'pm-ov-kpi-direct', barFooter('pm-ov-bar-direct', 'pm-ov-kpi-direct-pct', pureDirect, '#44525f'), '#eef0f3', '#d6dde4')}
+        ${card(_ico.indirect, 'Indirect cost', '#7a5a48', _fmt(bd.overhead), 'pm-ov-kpi-indirect', barFooter('pm-ov-bar-indirect', 'pm-ov-kpi-indirect-pct', bd.overhead, '#7a5a48'), '#f7f1ed', '#e6d7cd')}
+        ${card(_ico.cash, 'Remaining cash receipt', netColor, (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), 'pm-ov-kpi-net', barFooter('pm-ov-bar-net', 'pm-ov-kpi-net-pct', netCash, netColor), '#fbf3e2', '#f0e2c5')}
+        ${card(_ico.shield, 'Warranty retention', retColor, (warrantyRetention < 0 ? '−' : '') + _fmt(Math.abs(warrantyRetention)), 'pm-ov-kpi-retention', pillFooter('pm-ov-kpi-retention-pct', '5% of remaining cash', '#9a6c12'), '#fbf2dc', '#ecd8a6')}
+        ${card(_ico.trend, 'Profit share', psColor, (profitShare < 0 ? '−' : '') + _fmt(Math.abs(profitShare)), 'pm-ov-kpi-profitshare', pillFooter('pm-ov-kpi-profitshare-pct', '50% after retention', '#0f6342'), '#eaf4ef', '#c6e6d5')}
+      </div>
     </div>`;
 
     // % of the project budget consumed by this category (categoryAmount / budget).
@@ -856,42 +889,61 @@ window.pmOvApplyRange = function() {
     // Contract value is range-independent — re-set so it stays correct.
     const cv = document.getElementById('pm-ov-kpi-contract');
     if (cv) cv.textContent = _pmOvContractVal > 0 ? _fmt(_pmOvContractVal) : '—';
-    // Indirect cost = the overhead recorded in Daily Expenses for the bills in range.
-    // Its pill is a share of the Project Budget, so setBpct handles the text below.
+
+    // Cost cards + Total.
     setAmt('pm-ov-kpi-indirect', bd.overhead);
-    setAmt('pm-ov-kpi-direct', directCost);
+    const pureDirect = Math.max(0, directCost - bd.overhead);   // labor + materials
+    setAmt('pm-ov-kpi-direct', pureDirect);
+    const totalCost = directCost;   // all spend, counted once (= pureDirect + overhead)
+    setAmt('pm-ov-kpi-totalcost', totalCost);
+
+    // Progress bars (share of Project Budget), width clamped to 100%.
+    const _bpNum = (val) => (_pmOvContractVal > 0 ? Math.abs(Number(val) || 0) / _pmOvContractVal * 100 : 0);
+    const setBar = (id, val, color) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const p = _bpNum(val);
+        el.style.width = Math.min(p, 100) + '%';
+        el.style.minWidth = p > 0 ? '4px' : '0';
+        if (color) el.style.background = color;
+    };
+    setBar('pm-ov-bar-direct',   pureDirect);
+    setBar('pm-ov-bar-indirect', bd.overhead);
+    setBar('pm-ov-bar-net',      netCash, netColor);
+
+    // Hero gauge — Total Project Cost as a % of budget (donut + centre figure).
+    const heroPct  = _bpNum(totalCost);
+    const heroTurn = Math.max(0, Math.min(heroPct / 100, 1));
+    const gauge = document.getElementById('pm-ov-hero-gauge');
+    if (gauge) gauge.style.background = 'conic-gradient(#334155 0turn ' + heroTurn + 'turn,#dce3ea ' + heroTurn + 'turn 1turn)';
+    const heroPctEl = document.getElementById('pm-ov-hero-pct');
+    if (heroPctEl) heroPctEl.textContent = Math.round(heroPct) + '%';
+    const heroSub = document.getElementById('pm-ov-hero-sub');
+    if (heroSub) heroSub.textContent = 'of ' + (_pmOvContractVal > 0 ? _fmt(_pmOvContractVal) : '₱0.00') + ' budget';
+
+    // Remaining cash receipt — value + its bar-caption colour follow the sign.
     const netEl = document.getElementById('pm-ov-kpi-net');
     if (netEl) {
         netEl.textContent = (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash));
         netEl.style.color = netColor;
     }
-    // Remaining-cash-receipt's pill fill can flip green/red with the sign of
-    // netCash — keep its background in sync (setBpct below only sets the text).
     const netPctEl = document.getElementById('pm-ov-kpi-net-pct');
-    if (netPctEl) netPctEl.style.background = netColor;
+    if (netPctEl) netPctEl.style.color = netColor;
 
-    // Warranty retention (5% of netCash) and Profit share (half of what's left
-    // after that retention) — same formula as the initial render, kept in sync
-    // as the date range changes.
+    // Warranty retention (5% of netCash) and Profit share (half of what's left).
+    // Pills keep their fixed translucent styling; only the big value colour reacts.
     const warrantyRetention = netCash * 0.05;
     const profitShare = (netCash - warrantyRetention) / 2;
-    const retColorNow = warrantyRetention < 0 ? '#8f352c' : '#9a6c12';
     const retEl = document.getElementById('pm-ov-kpi-retention');
     if (retEl) {
         retEl.textContent = (warrantyRetention < 0 ? '−' : '') + _fmt(Math.abs(warrantyRetention));
-        retEl.style.color = retColorNow;
+        retEl.style.color = warrantyRetention < 0 ? '#8f352c' : '#9a6c12';
     }
-    const retPctEl = document.getElementById('pm-ov-kpi-retention-pct');
-    if (retPctEl) retPctEl.style.background = retColorNow;
-
-    const psColorNow = profitShare < 0 ? '#8f352c' : '#0f6342';
     const psEl = document.getElementById('pm-ov-kpi-profitshare');
     if (psEl) {
         psEl.textContent = (profitShare < 0 ? '−' : '') + _fmt(Math.abs(profitShare));
-        psEl.style.color = psColorNow;
+        psEl.style.color = profitShare < 0 ? '#8f352c' : '#0f6342';
     }
-    const psPctEl = document.getElementById('pm-ov-kpi-profitshare-pct');
-    if (psPctEl) psPctEl.style.background = psColorNow;
 
     setAmt('pm-ov-direct',    bd.direct);
     setAmt('pm-ov-labor',     bd.labor);
@@ -906,10 +958,8 @@ window.pmOvApplyRange = function() {
     setBpct('pm-ov-materials-bpct', bd.materials);
     setBpct('pm-ov-combined-bpct',  bd.combined);
     setBpct('pm-ov-direct-bpct',    bd.direct);
-    // Direct cost / Remaining cash receipt KPI cards — % of Project Budget.
-    // Warranty retention / Profit share show a FIXED "5% of.../50% of..." label
-    // (set once at initial render) — nothing to update here since it never changes.
-    setBpct('pm-ov-kpi-direct-pct',   directCost);
+    // The three progress-bar captions (Total shown by the hero gauge instead).
+    setBpct('pm-ov-kpi-direct-pct',   pureDirect);
     setBpct('pm-ov-kpi-net-pct',      netCash);
     setBpct('pm-ov-kpi-indirect-pct', bd.overhead);
     const setCnt = (id, n) => { const el = document.getElementById(id); if (el) el.textContent = n + ' ' + (n === 1 ? 'entry' : 'entries'); };
@@ -5327,6 +5377,47 @@ function _pmRenderContracts() {
 }
 
 // ── Create / edit / raise cap / delete ─────────────────────
+// ── Worker Agreement — per-contract signed PDF (mirrors Project Control) ──
+// Upload the signed agreement PDF against a pakyaw/in-house contract. Stored in
+// the `workerAgreements/` bucket path; the row keeps the URL + filename + a
+// signed flag. The Supabase shim resolves the private URL to a signed link on use.
+let _pmLcAgrFile = null, _pmLcAgrUrl = '', _pmLcAgrName = '';
+function _pmLcAgrRenderState() {
+    const nameEl = document.getElementById('pmLcAgrPdfName');
+    const rmEl   = document.getElementById('pmLcAgrPdfRemoveBtn');
+    const link   = document.getElementById('pmLcAgrPdfLink');
+    if (link) { if (_pmLcAgrUrl && !_pmLcAgrFile) { link.href = _pmLcAgrUrl; link.style.display = ''; } else link.style.display = 'none'; }
+    if (!nameEl) return;
+    if (_pmLcAgrFile)     { nameEl.textContent = _pmLcAgrFile.name + ' (new — will upload on save)'; nameEl.style.color = '#111827'; if (rmEl) rmEl.style.display = ''; }
+    else if (_pmLcAgrUrl) { nameEl.textContent = _pmLcAgrName || 'Signed agreement attached.'; nameEl.style.color = '#111827'; if (rmEl) rmEl.style.display = ''; }
+    else                  { nameEl.textContent = 'No PDF attached.'; nameEl.style.color = '#6b7280'; if (rmEl) rmEl.style.display = 'none'; }
+}
+window.pmLcAgrPdfPick = function(input) {
+    const f = input && input.files && input.files[0];
+    if (!f) return;
+    if (f.type && f.type.indexOf('pdf') === -1 && !/\.pdf$/i.test(f.name)) { _pmToast('Please choose a PDF file.', true); input.value = ''; return; }
+    _pmLcAgrFile = f; _pmLcAgrRenderState();
+};
+window.pmLcAgrPdfRemove = function() {
+    _pmLcAgrFile = null; _pmLcAgrUrl = ''; _pmLcAgrName = '';
+    const input = document.getElementById('pmLcAgrPdfInput'); if (input) input.value = '';
+    _pmLcAgrRenderState();
+};
+window.pmLcAgrSyncWorkerName = function() {
+    const wn = document.getElementById('pmLcAgrWorkerName'), src = document.getElementById('pmLcWorker');
+    if (wn && src) wn.textContent = src.value.trim() || '—';
+};
+// Fill the agreement section for a new (contract = null) or existing contract.
+function _pmLcAgrPopulate(contract) {
+    _pmLcAgrFile = null;
+    _pmLcAgrUrl  = (contract && (contract.agreementPdfUrl || '')) || '';
+    _pmLcAgrName = (contract && (contract.agreementPdfName || '')) || '';
+    const input = document.getElementById('pmLcAgrPdfInput'); if (input) input.value = '';
+    const wn = document.getElementById('pmLcAgrWorkerName');
+    if (wn) wn.textContent = (contract && contract.workerName) || '—';
+    _pmLcAgrRenderState();
+}
+
 window.pmLcOpenNew = function() {
     if (!_pmActiveProject) { _pmToast('Open a project first.', true); return; }
     document.getElementById('pmLcId').value = '';
@@ -5336,6 +5427,7 @@ window.pmLcOpenNew = function() {
     document.getElementById('pmLcNotes').value = '';
     const pk = document.querySelector('input[name="pmLcPayType"][value="pakyaw"]'); if (pk) pk.checked = true;
     const t = document.getElementById('pmLcModalTitle'); if (t) t.textContent = 'New Labor Contract';
+    _pmLcAgrPopulate(null);
     _pmPopulateContractPicker();
     document.getElementById('pmLaborContractModal').style.display = 'flex';
 };
@@ -5348,6 +5440,7 @@ window.pmLcOpenEdit = function(id) {
     document.getElementById('pmLcNotes').value = c.notes || '';
     const r = document.querySelector('input[name="pmLcPayType"][value="' + (c.payType === 'inhouse' ? 'inhouse' : 'pakyaw') + '"]'); if (r) r.checked = true;
     const t = document.getElementById('pmLcModalTitle'); if (t) t.textContent = 'Edit Labor Contract';
+    _pmLcAgrPopulate(c);
     _pmPopulateContractPicker();
     document.getElementById('pmLaborContractModal').style.display = 'flex';
 };
@@ -5363,6 +5456,32 @@ window.pmLcSave = async function(e) {
     if (!workerName) { _pmToast('Enter the worker name.', true); return; }
     if (agreedAmount <= 0) { _pmToast('Enter the agreed amount (cap).', true); return; }
     try {
+        // Worker Agreement: upload a newly-picked PDF; keep an existing one; clear
+        // when removed. IMPORTANT: only write the agreement columns when there is an
+        // actual agreement action — a plain contract with no PDF leaves them
+        // untouched, so basic contract saving still works even before migration 0036
+        // has been applied (the new columns won't exist until then).
+        let agrFields = null;
+        if (_pmLcAgrFile) {
+            const safe = String(_pmLcAgrFile.name || 'agreement.pdf').replace(/[^\w.\-]+/g, '_');
+            const ref  = storage.ref('workerAgreements/pm_' + _pmActiveProject.id + '_' + Date.now() + '_' + safe);
+            await ref.put(_pmLcAgrFile);
+            const url = await ref.getDownloadURL();
+            agrFields = {
+                agreementSigned    : true,
+                agreementSignedAt  : new Date(),
+                agreementSignature : workerName,
+                agreementPdfUrl    : url,
+                agreementPdfName   : _pmLcAgrFile.name || 'Worker Agreement.pdf'
+            };
+        } else if (id) {
+            // Editing: only clear if this contract actually HAD an agreement and the
+            // user removed it. A no-op edit never touches the agreement columns.
+            const exAgr = _pmLaborContracts.find(x => x.id === id);
+            if (exAgr && (exAgr.agreementPdfUrl || exAgr.agreementSigned) && !_pmLcAgrUrl) {
+                agrFields = { agreementSigned: false, agreementPdfUrl: '', agreementPdfName: '', agreementSignedAt: null };
+            }
+        }
         if (id) {
             const ex = _pmLaborContracts.find(x => x.id === id);
             const upd = { workerName, scope, agreedAmount, payType, notes, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
@@ -5371,10 +5490,12 @@ window.pmLcSave = async function(e) {
                 h.push({ amount: agreedAmount, at: new Date().toISOString(), note: 'Edited cap' });
                 upd.capHistory = h;
             }
+            if (agrFields) Object.assign(upd, agrFields);
             await _pmLcCol().doc(id).update(upd);
         } else {
             await _pmLcCol().add({ workerName, scope, agreedAmount, payType, notes, status: 'ongoing', category: 'labor',
                 capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
+                ...(agrFields || {}),
                 createdAt: firebase.firestore.FieldValue.serverTimestamp() });
         }
         pmCloseModal('pmLaborContractModal');
@@ -5465,7 +5586,11 @@ window.pmLcOpenLedger = function(id) {
         + '<div class="pm-lc-led-pbar"><div class="' + v.barCls + '" style="width:' + v.barPct.toFixed(0) + '%"></div></div>'
         + '<div class="pm-lc-led-sub num">' + subLine + '</div></div>'
         + '<div class="pm-lc-led-list">' + listHtml + '</div>';
+    // Show "View agreement" only when this contract has a signed PDF attached.
+    const agrBtn = document.getElementById('pmLcLedgerAgrBtn');
+    if (agrBtn) agrBtn.style.display = (c.agreementPdfUrl && String(c.agreementPdfUrl).trim()) ? '' : 'none';
     document.getElementById('pmLaborLedgerModal').style.display = 'flex';
+    if (window.lucide) lucide.createIcons();
 };
 
 // In-ledger actions (rows themselves have no buttons — tap row → ledger → manage)
@@ -5477,6 +5602,15 @@ window.pmLcLedgerViewFiles = function() {
     const c = _pmLaborContracts.find(x => x.id === _pmLcLedgerId);
     if (!c) return;
     _pmContractFilesViewer(c, 'labor', _pmLcLedgerId);
+};
+// Open the signed Worker Agreement PDF. window.open is wrapped by the Supabase
+// shim, so passing the stored (private) URL resolves to a signed link.
+window.pmLcLedgerViewAgreement = function() {
+    if (!_pmLcLedgerId) return;
+    const c = _pmLaborContracts.find(x => x.id === _pmLcLedgerId);
+    const url = c && c.agreementPdfUrl && String(c.agreementPdfUrl).trim();
+    if (!url) { _pmToast('No signed agreement attached to this contract.', true); return; }
+    window.open(url, '_blank');
 };
 
 // Per-worker/vendor Statement of Account — same document design as the
