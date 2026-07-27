@@ -412,8 +412,15 @@ function _dacsFillWorkerForm(pdf, d, font) {
     set('pay_type',        d.payType);
     set('contract_amount', d.amount);
     // Page 13 acknowledgement block.
-    set('ack_employee_name',  d.worker);
-    set('ack_project_branch', d.project);
+    set('ack_employee_name',   d.worker);
+    set('ack_project_branch',  d.project);
+    set('ack_position_trade',  d.trade);
+    // Orientation date — the contract's own date, or today (resolved by the
+    // caller). Matched by suffix too, so a template that names it
+    // `orientation_date` instead of `ack_orientation_date` still fills.
+    if (d.orientationDate) {
+        names.forEach(n => { if (/orientation_date$/i.test(n)) set(n, d.orientationDate); });
+    }
 
     // The worker signs EVERY policy page over their printed name, so fill every
     // sign-off line the manual has: p03_printed_name, p05..p11_printed_name,
@@ -423,11 +430,14 @@ function _dacsFillWorkerForm(pdf, d, font) {
     set('worker_name', d.printedName);
 
     // Left blank ON PURPOSE:
-    //   *_date, ack_orientation_date — dated by hand at signing, same rule as
-    //     the signature itself (never pre-stamped).
+    //   the per-signature *_date fields (p03_date, ack_date…) — dated by hand at
+    //     signing, same rule as the signature itself (never pre-stamped).
+    //     ack_orientation_date is NOT one of these: orientation happens before
+    //     signing, so it is contract data and prints (see above).
     //   grace_period_minutes, official_tools — company policy blanks, not
     //     contract data; nothing in a labor contract supplies them.
-    //   ack_position_trade — no trade/position field exists on the contract.
+    // ack_position_trade comes from labor_contracts.trade (migration 0039) —
+    // it stays blank only when the contract itself has no trade recorded.
 
     // Scope of work flows across the three lines the form provides.
     const scopeNames = ['scope_of_work_1', 'scope_of_work_2', 'scope_of_work_3'].filter(n => names.has(n));

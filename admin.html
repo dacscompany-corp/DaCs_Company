@@ -3706,6 +3706,11 @@
 .apr-scope .apr-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 .apr-scope #payFundingSourceWrap{margin-bottom:20px;}
 .apr-scope #paySplitPreview{margin-bottom:14px;}
+.apr-scope #payContractSplitPreview{margin-top:10px;}
+/* fully paid / over cap — muted, so it reads as "nothing left" not "plenty left" */
+.apr-scope .exp-funding-check-item__remain.is-settled,
+.apr-scope .exp-funding-check-item.is-checked .exp-funding-check-item__remain.is-settled{color:#B4453C;}
+.apr-scope #payContractList:empty::after{content:'No labor contracts in this project yet.';display:block;font-size:12.5px;color:#8a9b90;padding:10px 2px;}
 .apr-scope .exp-funding-check-list{display:flex;flex-direction:column;gap:8px;}
 .apr-scope .exp-funding-check-item{display:flex;align-items:center;gap:11px;padding:11px 14px;border:1.5px solid #E5E5E5;background:#fff;border-radius:11px;cursor:pointer;margin:0;}
 .apr-scope .exp-funding-check-item.is-checked{border-color:#1A5C3A;background:#F4F8F5;}
@@ -3781,12 +3786,10 @@
                     <div><label class="apr-lbl">Role / position</label><input class="apr-in" type="text" id="payRole" placeholder="e.g. Mason, Carpenter"></div>
                 </div>
                 <div id="payContractRow" style="margin-bottom:10px;">
-                    <label class="apr-lbl">Pay against contract <small>— pakyaw / capped job, optional</small></label>
-                    <div class="apr-selwrap">
-                        <select id="payContract" onchange="lcUpdateRemainingHint('payContract','payContractRemaining')"><option value="">— None (normal payroll) —</option></select>
-                        <svg class="apr-chev" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                    </div>
+                    <label class="apr-lbl">Pay against contract <small>— pakyaw / capped job, optional · tick more than one to split</small></label>
+                    <div id="payContractList" class="exp-funding-check-list"></div>
                     <div id="payContractRemaining" class="lc-remaining-hint" style="display:none;"></div>
+                    <div id="payContractSplitPreview" style="display:none;"></div>
                 </div>
                 <div id="payMilestoneRow" style="display:none;margin-bottom:20px;">
                     <label class="apr-lbl">Milestone <small>— tag this payment, optional</small></label>
@@ -3992,6 +3995,7 @@
                 <div class="exp-form-group"><label>Worker Name</label><input type="text" id="lcWorker" list="lcWorkerNames" required placeholder="Full name" autocomplete="off" oninput="if(window.lcAgrSyncWorkerName)lcAgrSyncWorkerName()"><datalist id="lcWorkerNames"></datalist></div>
                 <div class="exp-form-group"><label>Scope / Job</label><input type="text" id="lcScope" placeholder="e.g. Tiling &amp; masonry"></div>
             </div>
+            <div class="exp-form-group"><label>Position / Trade <span style="color:#9ca3af;font-weight:400;">(prints on the policy manual)</span></label><input type="text" id="lcTrade" list="lcTradeNames" placeholder="e.g. Mason, Carpenter, Foreman" autocomplete="off"><datalist id="lcTradeNames"></datalist></div>
             <div class="exp-form-group">
                 <label>Pay Type</label>
                 <div class="lt-radio-group">

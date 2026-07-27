@@ -2606,6 +2606,8 @@ function payFundingCheckChanged(cb) {
 }
 
 function _updatePaySplitPreview() {
+    // The amount drives BOTH splits — funding sources here, contracts below.
+    if (typeof _updatePayContractPreview === 'function') _updatePayContractPreview();
     const preview = document.getElementById('paySplitPreview');
     if (!preview) return;
     const totalRaw = (document.getElementById('payTotal') || {}).value || '0';
@@ -2668,27 +2670,38 @@ async function handleAddPayroll(e) {
         ? ((document.querySelector('input[name="payLiabilityFor"]:checked') || {}).value || 'direct')
         : null;
     // Overhead / indirect pay can't be charged against a pakyaw contract.
-    const contractId  = laborType === 'indirect' ? null : ((document.getElementById('payContract') || {}).value || null);
-    const payMilestone = contractId ? ((document.getElementById('payMilestone') || {}).value || null) : null;
+    const contractIds  = laborType === 'indirect' ? [] : lcCheckedContractIds();
+    const payMilestone = contractIds.length ? ((document.getElementById('payMilestone') || {}).value || null) : null;
 
-    // Pakyaw/capped contract: warn (but allow) if this draws the contract over its cap.
-    if (contractId && !lcConfirmOverCap(contractId, totalSalary)) return;
+    // One payment, several contracts: split it pro-rata by what each still owes.
+    // Each leg becomes its own payroll row, because the drawdown (lcPaid) sums
+    // rows by contractId — a single row could only ever credit one contract.
+    const contractAlloc = lcAllocateAcrossContracts(contractIds, totalSalary);
+    // Pakyaw/capped contract: warn (but allow) if this draws a contract over its cap.
+    if (contractAlloc.length && !lcConfirmOverCapMulti(contractAlloc)) return;
 
-    // Priority split: lowest remaining first; overflow → Cover Expenses
-    const sortedSources = [...checkedSources].sort((a, b) => a.remain - b.remain);
-    let left = totalSalary;
+    // Priority split: lowest remaining first; overflow → Cover Expenses.
+    // `remain` is decremented as each leg is charged, so two contract legs can't
+    // both spend the same period's last peso.
+    const sortedSources = [...checkedSources].sort((a, b) => a.remain - b.remain)
+        .map(s => ({ id: s.id, remain: s.remain }));
+    const fid = expCurrentProject?.folderId;
+    const coverProj = fid ? expProjects.find(p => p.folderId === fid && p.fundingType === 'president') : null;
     const splits = [];
-    for (const s of sortedSources) {
-        if (left <= 0) break;
-        const charge = s.remain > 0 ? Math.min(s.remain, left) : 0;
-        if (charge > 0) { left -= charge; splits.push({ projectId: s.id, amount: charge, coverExpense: false }); }
-    }
-    if (left > 0) {
-        const fid = expCurrentProject?.folderId;
-        const coverProj = fid ? expProjects.find(p => p.folderId === fid && p.fundingType === 'president') : null;
-        const coverId = coverProj?.id || expCurrentProject?.id || splits[splits.length - 1]?.projectId;
-        splits.push({ projectId: coverId, amount: left, coverExpense: true });
-    }
+    const chargeToSources = (amount, contractId) => {
+        let left = amount;
+        for (const s of sortedSources) {
+            if (left <= 0) break;
+            const charge = s.remain > 0 ? Math.min(s.remain, left) : 0;
+            if (charge > 0) { s.remain -= charge; left -= charge; splits.push({ projectId: s.id, amount: charge, coverExpense: false, contractId }); }
+        }
+        if (left > 0) {
+            const coverId = coverProj?.id || expCurrentProject?.id || sortedSources[0]?.id;
+            splits.push({ projectId: coverId, amount: left, coverExpense: true, contractId });
+        }
+    };
+    if (contractAlloc.length) contractAlloc.forEach(a => chargeToSources(a.amount, a.contractId));
+    else chargeToSources(totalSalary, null);
 
     try {
         showExpLoading('addPayrollBtn', true);
@@ -2710,7 +2723,7 @@ async function handleAddPayroll(e) {
                 ...(paymentMethod && { paymentMethod }),
                 receiptImages: idx === 0 ? receiptImages : [],
                 createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                ...(contractId && { contractId }),
+                ...(sp.contractId && { contractId: sp.contractId }),
                 ...(payMilestone && { payMilestone }),
                 ...(sp.coverExpense && { coverExpense: true }),
                 // Dates are optional, so a dateless split falls back to the save
@@ -2721,11 +2734,13 @@ async function handleAddPayroll(e) {
         });
         await batch.commit();
 
-        const msg = splits.length > 1 ? `Split into ${splits.length} records ✓` : 'Payroll entry added! ✓';
+        const msg = contractAlloc.length > 1
+            ? `Split across ${contractAlloc.length} contracts (${splits.length} records) ✓`
+            : (splits.length > 1 ? `Split into ${splits.length} records ✓` : 'Payroll entry added! ✓');
         showExpNotif(msg, 'success');
         refreshOvAllData();
         document.getElementById('addPayrollForm').reset();
-        lcUpdateRemainingHint('payContract', 'payContractRemaining');   // clear contract hint
+        lcResetContractPicks();   // untick the contracts + clear hint/preview
         if (typeof payResetMilestone === 'function') payResetMilestone();
         if (typeof payToggleMode === 'function') payToggleMode(); // reset Daily/Lamsam UI to default
         document.getElementById('paySplitPreview').style.display = 'none';
@@ -3937,8 +3952,7 @@ function openExpModal(id)  {
     if (id === 'addPayrollModal' && typeof payToggleMode === 'function') payToggleMode(); // sync Daily/Lamsam UI
     if (id === 'addPayrollModal' && typeof lcPopulatePayrollPicker === 'function') {
         lcPopulatePayrollPicker();
-        const sel = document.getElementById('payContract'); if (sel) sel.value = '';
-        lcUpdateRemainingHint('payContract', 'payContractRemaining');
+        lcResetContractPicks();   // a fresh entry never inherits the last one's ticks
         payToggleContractForType('add');   // keep the picker in sync with the labor category
         if (typeof payResetMilestone === 'function') payResetMilestone();
     }
@@ -7575,6 +7589,11 @@ function lcFillWorkerDatalist() {
     ['lcWorkerNames', 'payWorkerNames', 'editPayWorkerNames'].forEach(id => {
         const dl = document.getElementById(id); if (dl) dl.innerHTML = opts;
     });
+    // Trades already used on this folder — typing "Mason" once is enough.
+    const trades = [...new Set(expLaborContracts.map(c => (c.trade || '').trim()).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b));
+    const tdl = document.getElementById('lcTradeNames');
+    if (tdl) tdl.innerHTML = trades.map(t => '<option value="' + _mvpEsc(t) + '">').join('');
 }
 // ── Worker Agreement (piecework rates + company rules) ─────────────
 // Template lives in settings/workerAgreement { text, pdfUrl, pdfName } and is
@@ -7765,6 +7784,15 @@ function lcViewAgreementCurrent() {
     if (c) lcViewAgreement(c);
 }
 
+// Orientation date as it prints on the manual: always TODAY, read fresh on every
+// print — the manual is handed over on the day it is printed, so the owner's
+// call was to drop the date picker rather than keep a field to maintain.
+// LOCAL date, never toISOString(): PH is UTC+8, so a print before 08:00 would
+// otherwise carry yesterday's date.
+function lcOrientationDateLabel() {
+    return new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
 // Build + auto-print the Worker Agreement PDF (contract + company policy).
 async function lcViewAgreement(c) {
     const esc = _mvpEsc;
@@ -7789,6 +7817,8 @@ async function lcViewAgreement(c) {
             project  : projName,
             worker   : c.workerName || '',
             scope    : c.scope || '',
+            trade    : c.trade || '',
+            orientationDate: lcOrientationDateLabel(),
             payType  : c.payType === 'inhouse' ? 'In-house' : 'Pakyaw',
             amount   : (Number(c.agreedAmount) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
             printedName: c.workerName || ''
@@ -7857,6 +7887,8 @@ async function lcViewAgreement(c) {
       + '<h2>Contract Details</h2><table>'
       + '<tr><td class="k">Worker</td><td>' + esc(c.workerName || '—') + '</td></tr>'
       + '<tr><td class="k">Scope of work</td><td>' + esc(c.scope || '—') + '</td></tr>'
+      + (c.trade ? '<tr><td class="k">Position / Trade</td><td>' + esc(c.trade) + '</td></tr>' : '')
+      + '<tr><td class="k">Orientation date</td><td>' + esc(lcOrientationDateLabel()) + '</td></tr>'
       + '<tr><td class="k">Agreed amount (cap)</td><td>₱ ' + (Number(c.agreedAmount) || 0).toLocaleString('en-PH') + '</td></tr>'
       + '<tr><td class="k">Pay type</td><td>' + (c.payType === 'inhouse' ? 'In-house (capped)' : 'Pakyaw (piecework)') + '</td></tr>'
       + (c.notes ? '<tr><td class="k">Notes</td><td>' + esc(c.notes) + '</td></tr>' : '')
@@ -7887,6 +7919,7 @@ function lcOpenNew() {
     document.getElementById('lcId').value = '';
     document.getElementById('lcWorker').value = '';
     document.getElementById('lcScope').value = '';
+    const tNew = document.getElementById('lcTrade'); if (tNew) tNew.value = '';
     document.getElementById('lcAmount').value = '';
     document.getElementById('lcNotes').value = '';
     const pk = document.querySelector('input[name="lcPayType"][value="pakyaw"]'); if (pk) pk.checked = true;
@@ -7900,6 +7933,7 @@ function lcOpenEdit(id) {
     document.getElementById('lcId').value = c.id;
     document.getElementById('lcWorker').value = c.workerName || '';
     document.getElementById('lcScope').value = c.scope || '';
+    const tEdit = document.getElementById('lcTrade'); if (tEdit) tEdit.value = c.trade || '';
     document.getElementById('lcAmount').value = c.agreedAmount ? Number(c.agreedAmount).toLocaleString('en-PH') : '';
     document.getElementById('lcNotes').value = c.notes || '';
     const r = document.querySelector('input[name="lcPayType"][value="' + (c.payType === 'inhouse' ? 'inhouse' : 'pakyaw') + '"]'); if (r) r.checked = true;
@@ -7919,6 +7953,7 @@ async function handleSaveLaborContract(e) {
     if (!folderId) { showExpNotif('No project folder selected.', 'error'); return; }
     const workerName = document.getElementById('lcWorker').value.trim();
     const scope = document.getElementById('lcScope').value.trim();
+    const trade = ((document.getElementById('lcTrade') || {}).value || '').trim();
     const agreedAmount = parseFloat((document.getElementById('lcAmount').value || '').replace(/,/g, '')) || 0;
     const notes = document.getElementById('lcNotes').value.trim();
     const payType = (document.querySelector('input[name="lcPayType"]:checked') || {}).value || 'pakyaw';
@@ -7952,7 +7987,7 @@ async function handleSaveLaborContract(e) {
 
         if (id) {
             const existing = expLaborContracts.find(x => x.id === id);
-            const update = { workerName, scope, agreedAmount, payType, notes,
+            const update = { workerName, scope, trade, agreedAmount, payType, notes,
                              updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
             if (existing && (parseFloat(existing.agreedAmount) || 0) !== agreedAmount) {
                 const hist = Array.isArray(existing.capHistory) ? existing.capHistory.slice() : [];
@@ -7965,14 +8000,15 @@ async function handleSaveLaborContract(e) {
             } catch (colErr) {
                 // Fallback if the DB doesn't have the newer agreement_pdf_name column
                 // yet: retry without it so remove/edit still persists.
-                if (/agreement_pdf_name|column/i.test(colErr.message || '')) {
+                if (/agreement_pdf_name|trade|column/i.test(colErr.message || '')) {
                     const u2 = { ...update }; delete u2.agreementPdfName;
+                    if (/trade/i.test(colErr.message || '')) delete u2.trade;   // migration 0039 not applied yet
                     await db.collection('laborContracts').doc(id).update(u2);
                 } else { throw colErr; }
             }
         } else {
             const addDoc = {
-                userId: _uid(), folderId, workerName, scope, agreedAmount, payType, notes,
+                userId: _uid(), folderId, workerName, scope, trade, agreedAmount, payType, notes,
                 status: 'ongoing',
                 capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
                 ...(agrFields || { agreementSigned: false }),
@@ -7981,8 +8017,9 @@ async function handleSaveLaborContract(e) {
             try {
                 await db.collection('laborContracts').add(addDoc);
             } catch (colErr) {
-                if (/agreement_pdf_name|column/i.test(colErr.message || '')) {
+                if (/agreement_pdf_name|trade|column/i.test(colErr.message || '')) {
                     delete addDoc.agreementPdfName;
+                    if (/trade/i.test(colErr.message || '')) delete addDoc.trade;   // migration 0039 not applied yet
                     await db.collection('laborContracts').add(addDoc);
                 } else { throw colErr; }
             }
@@ -8121,40 +8158,125 @@ async function lcDelete(id) {
 }
 
 // ── Payroll-form contract picker ───────────────────────────
+// ADD form: a checkbox list, because one payment often covers SEVERAL contracts
+// (a "10% DP" across a worker's ceiling + demolition + drywall + pullout jobs).
+// EDIT form keeps a single select — an existing payroll row IS one contract's
+// drawdown, and lcPaid() sums rows by contractId, so a row can only carry one.
 function lcPopulatePayrollPicker() {
     lcFillWorkerDatalist();
-    ['payContract', 'editPayContract'].forEach(selId => {
-        const sel = document.getElementById(selId);
-        if (!sel) return;
+
+    const sel = document.getElementById('editPayContract');
+    if (sel) {
         const cur = sel.value;
-        const opts = ['<option value="">— None (normal payroll) —</option>'].concat(
-            expLaborContracts.map(c => {
-                const st = lcStats(c);
-                return '<option value="' + c.id + '">'
-                    + _mvpEsc(c.workerName || 'Worker') + ' · ' + _mvpEsc(c.scope || 'job')
-                    + ' (remaining ₱' + formatNum(st.remaining) + ')</option>';
-            }));
-        sel.innerHTML = opts.join('');
+        sel.innerHTML = ['<option value="">— None (normal payroll) —</option>'].concat(
+            expLaborContracts.map(c => '<option value="' + c.id + '">' + _mvpEsc(lcPickerLabel(c))
+                + ' (remaining ₱' + formatNum(lcStats(c).remaining) + ')</option>')).join('');
         if (cur && expLaborContracts.some(c => c.id === cur)) sel.value = cur;
+    }
+
+    const list = document.getElementById('payContractList');
+    if (list) {
+        const keep = new Set(lcCheckedContractIds());   // survive a live-data refresh mid-entry
+        list.innerHTML = expLaborContracts.map(c => {
+            const st = lcStats(c);
+            const on = keep.has(c.id);
+            return '<label class="exp-funding-check-item' + (on ? ' is-checked' : '') + '">'
+                + '<input type="checkbox" name="payContractPick" value="' + c.id + '"' + (on ? ' checked' : '')
+                + ' onchange="payContractCheckChanged(this)">'
+                + '<span class="exp-funding-check-item__label">' + _mvpEsc(lcPickerLabel(c)) + '</span>'
+                + '<span class="exp-funding-check-item__remain' + (st.remaining <= 0 ? ' is-settled' : '')
+                + '">₱' + formatNum(st.remaining) + ' left</span>'
+                + '</label>';
+        }).join('');
+    }
+}
+function lcPickerLabel(c) {
+    return (c.workerName || 'Worker') + ' · ' + (c.scope || 'job');
+}
+function lcCheckedContractIds() {
+    return Array.from(document.querySelectorAll('input[name="payContractPick"]:checked')).map(cb => cb.value);
+}
+function lcResetContractPicks() {
+    document.querySelectorAll('input[name="payContractPick"]').forEach(cb => {
+        cb.checked = false;
+        const item = cb.closest('.exp-funding-check-item'); if (item) item.classList.remove('is-checked');
+    });
+    lcUpdateRemainingHint('payContract', 'payContractRemaining');
+}
+window.payContractCheckChanged = function(cb) {
+    const item = cb.closest('.exp-funding-check-item');
+    if (item) item.classList.toggle('is-checked', cb.checked);
+    lcUpdateRemainingHint('payContract', 'payContractRemaining');
+};
+
+// Split ONE payment across the ticked contracts, pro-rata by what is still owed
+// on each: ₱13,000 against ₱130,000 of remaining work gives every contract its
+// 10%. Contracts already paid out carry no weight, so an all-settled pick falls
+// back to an even split rather than silently dropping the payment. The last leg
+// absorbs the rounding so the legs always re-add to the exact amount paid.
+function lcAllocateAcrossContracts(ids, total) {
+    const picked = (ids || []).map(id => expLaborContracts.find(c => c.id === id)).filter(Boolean);
+    if (!picked.length || !(total > 0)) return [];
+    const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+    const weights = picked.map(c => Math.max(0, lcStats(c).remaining));
+    const sum = weights.reduce((s, w) => s + w, 0);
+    let assigned = 0;
+    return picked.map((c, i) => {
+        const amount = (i === picked.length - 1)
+            ? r2(total - assigned)
+            : r2(sum > 0 ? total * weights[i] / sum : total / picked.length);
+        if (i < picked.length - 1) assigned += amount;
+        return { contract: c, contractId: c.id, amount };
     });
 }
+
+// Show the per-contract breakdown before saving — the same preview the funding
+// -source split uses, so a wrong tick is caught before it becomes payroll rows.
+function _updatePayContractPreview() {
+    const box = document.getElementById('payContractSplitPreview');
+    if (!box) return;
+    const ids   = lcCheckedContractIds();
+    const total = parseFloat((((document.getElementById('payTotal') || {}).value) || '').replace(/,/g, '')) || 0;
+    const alloc = ids.length > 1 ? lcAllocateAcrossContracts(ids, total) : [];
+    if (!alloc.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.style.display = 'block';
+    box.innerHTML = '<div class="exp-split-preview">'
+        + '<div class="exp-split-preview__header">💡 Split across ' + alloc.length + ' contracts</div>'
+        + alloc.map(a => '<div class="exp-split-preview__row">'
+            + '<span class="exp-split-preview__name">' + _mvpEsc(a.contract.scope || a.contract.workerName || 'Contract') + '</span>'
+            + '<span class="exp-split-preview__amt">₱' + formatNum(a.amount) + '</span></div>').join('')
+        + '<div class="exp-split-preview__total"><span>Total</span><span>₱' + formatNum(total) + '</span></div>'
+        + '</div>';
+}
+
 function lcUpdateRemainingHint(selId, hintId) {
-    const sel = document.getElementById(selId);
     const hint = document.getElementById(hintId);
-    // Milestone row shows only when a contract is selected.
-    const msRow = document.getElementById(selId === 'editPayContract' ? 'editPayMilestoneRow' : 'payMilestoneRow');
-    if (!sel || !hint) return;
-    const c = expLaborContracts.find(x => x.id === sel.value);
-    if (!c) {
+    const isEdit = selId === 'editPayContract';
+    // Milestone row shows only when at least one contract is picked.
+    const msRow = document.getElementById(isEdit ? 'editPayMilestoneRow' : 'payMilestoneRow');
+    if (!hint) return;
+    const ids = isEdit
+        ? [((document.getElementById(selId) || {}).value) || ''].filter(Boolean)
+        : lcCheckedContractIds();
+    const picked = ids.map(id => expLaborContracts.find(x => x.id === id)).filter(Boolean);
+    if (!picked.length) {
         hint.style.display = 'none'; hint.innerHTML = '';
         if (msRow) msRow.style.display = 'none';
+        if (!isEdit) _updatePayContractPreview();
         return;
     }
-    const st = lcStats(c);
     hint.style.display = '';
-    hint.innerHTML = 'Remaining on this contract: <strong class="' + (st.remaining < 0 ? 'lc-neg' : '')
-        + '">₱' + formatNum(st.remaining) + '</strong> of ₱' + formatNum(st.agreed) + ' agreed';
+    if (picked.length === 1) {
+        const st = lcStats(picked[0]);
+        hint.innerHTML = 'Remaining on this contract: <strong class="' + (st.remaining < 0 ? 'lc-neg' : '')
+            + '">₱' + formatNum(st.remaining) + '</strong> of ₱' + formatNum(st.agreed) + ' agreed';
+    } else {
+        const rem = picked.reduce((s, c) => s + lcStats(c).remaining, 0);
+        hint.innerHTML = 'Splitting across <strong>' + picked.length + ' contracts</strong> · <strong class="'
+            + (rem < 0 ? 'lc-neg' : '') + '">₱' + formatNum(rem) + '</strong> remaining in total';
+    }
     if (msRow) msRow.style.display = '';
+    if (!isEdit) _updatePayContractPreview();
 }
 // Overhead / indirect pay never draws down a pakyaw contract, so the picker is
 // hidden (and any earlier pick discarded) the moment that category is chosen.
@@ -8167,9 +8289,13 @@ window.payToggleContractForType = function(which) {
     const type = (document.querySelector('input[name="' + name + '"]:checked') || {}).value || 'direct';
     const row = document.getElementById(rowId);
     if (type === 'indirect') {
-        const sel = document.getElementById(selId);
-        if (sel) sel.value = '';
-        lcUpdateRemainingHint(selId, hintId);   // also hides the milestone row
+        if (isEdit) {
+            const sel = document.getElementById(selId);
+            if (sel) sel.value = '';
+            lcUpdateRemainingHint(selId, hintId);   // also hides the milestone row
+        } else {
+            lcResetContractPicks();                 // untick every contract + hide the milestone row
+        }
         if (row) row.style.display = 'none';
     } else if (row) {
         row.style.display = '';
@@ -8179,6 +8305,21 @@ window.payToggleContractForType = function(which) {
     const burdenRow = document.getElementById(isEdit ? 'editPayLiabilityForRow' : 'payLiabilityForRow');
     if (burdenRow) burdenRow.style.display = (type === 'liability') ? '' : 'none';
 };
+// Over-cap guard for a split payment: ONE confirm listing every contract the
+// split pushes over its cap, instead of a dialog per contract.
+function lcConfirmOverCapMulti(alloc) {
+    const over = alloc.map(a => {
+        const agreed = parseFloat(a.contract.agreedAmount) || 0;
+        const after  = lcPaid(a.contractId) + a.amount;
+        return (agreed > 0 && after > agreed) ? { name: lcPickerLabel(a.contract), agreed, after } : null;
+    }).filter(Boolean);
+    if (!over.length) return true;
+    return confirm('This payment takes ' + over.length + (over.length === 1 ? ' contract' : ' contracts')
+        + ' over the agreed cap:\n\n'
+        + over.map(o => '· ' + o.name + ' — ₱' + formatNum(o.after) + ' of ₱' + formatNum(o.agreed)
+            + ' (over by ₱' + formatNum(o.after - o.agreed) + ')').join('\n')
+        + '\n\nSave anyway?');
+}
 // Over-cap guard — returns true to proceed. excludeRowId lets edits ignore their own old amount.
 function lcConfirmOverCap(contractId, addAmount, excludeRowId) {
     const c = expLaborContracts.find(x => x.id === contractId);

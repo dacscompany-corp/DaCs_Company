@@ -128,6 +128,20 @@ Hierarchy: **`folders` → `projects` (a month) → `expenses` / `payroll`**. Mo
 | `coverExpense?` / `splitGroup?` / `splitIndex?` / `splitTotal?` | — | as expenses |
 | `createdAt` | ts | |
 
+### `laborContracts/{id}` → `labor_contracts` — pakyaw / in-house capped pay (migration 0014)
+| Field | Type | Notes |
+|---|---|---|
+| `userId`, `folderId` | string | folder-scoped (spans every billing period inside it) |
+| `workerName`, `scope`, `notes` | string | `scope` = the JOB ("Tiling & masonry") |
+| `trade` | string | worker's **position / trade** ("Mason") — fills `ack_position_trade` on the policy manual (migration 0039) |
+| `orientationDate` | string | migration 0040 — **column exists but nothing writes it**; the agreement fills `ack_orientation_date` with **today's date at print time** (no date picker) |
+| `agreedAmount` | number | the cap; payroll rows draw it down via `payroll.contractId` |
+| `payType` | string | `pakyaw` \| `inhouse` (label only) |
+| `status` | string | `ongoing` \| `completed` |
+| `capHistory` | json | `[{amount, at, note}]` when the cap is raised |
+| `agreementSigned`, `agreementSignedAt`, `agreementSignature`, `agreementPdfUrl`, `agreementPdfName` | — | signed Worker Agreement (migration 0023) |
+| `createdAt`, `updatedAt` | ts | |
+
 ### `categories/{id}` — expense categories
 `userId`, `name`, `color`, `createdAt`
 

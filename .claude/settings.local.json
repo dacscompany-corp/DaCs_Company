@@ -149,7 +149,8 @@
       "Bash(node \"C:/Users/JOHNAE~1/AppData/Local/Temp/claude/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/c8378670-4839-4162-a561-c3b7a3637bf6/scratchpad/pdftext.js\" \"C:/Users/John Aerol Tapales/Downloads/DACS-Worker-Agreement.pdf\")",
       "Bash(node \"C:/Users/JOHNAE~1/AppData/Local/Temp/claude/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/c8378670-4839-4162-a561-c3b7a3637bf6/scratchpad/testform.js\")",
       "Bash(sed -i \"s|Worker-Agreement-FILLABLE.pdf|Worker-Agreement-FILLABLE \\(1\\).pdf|; s|filled-out.pdf|C:/Users/JOHNAE~1/AppData/Local/Temp/claude/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/c8378670-4839-4162-a561-c3b7a3637bf6/scratchpad/filled-v2.pdf|g\" \"C:/Users/JOHNAE~1/AppData/Local/Temp/claude/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/c8378670-4839-4162-a561-c3b7a3637bf6/scratchpad/testform2.js\")",
-      "Bash(node \"C:/Users/JOHNAE~1/AppData/Local/Temp/claude/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/c8378670-4839-4162-a561-c3b7a3637bf6/scratchpad/testform2.js\")"
+      "Bash(node \"C:/Users/JOHNAE~1/AppData/Local/Temp/claude/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/c8378670-4839-4162-a561-c3b7a3637bf6/scratchpad/testform2.js\")",
+      "Bash(node \"C:/Users/JOHNAE~1/AppData/Local/Temp/claude/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/3f6796f3-d36c-4a7a-a79d-8c6b80affb89/scratchpad/alloc-check.js\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
