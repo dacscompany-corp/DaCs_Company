@@ -1615,6 +1615,13 @@ function _lcIcon(name) {
 
   const toggle = (w) => setOpenW((s) => ({ ...s, [w]: !s[w] }));
 
+  // Staff must never see peso amounts. Every money figure on this screen is
+  // shown to them as a percentage of the agreed contract instead — the same
+  // thing the progress bar and the "Ongoing · 17%" badge already convey.
+  // Returns "—" when there is no contract to measure against (an uncapped
+  // payment has no denominator, so no honest percentage exists).
+  const _pctTxt = (part, whole) => (whole > 0 ? (part / whole * 100).toFixed(1) + "%" : "—");
+
   const payRows = (list) => {
     const sorted = [...list].sort((a, b) => new Date(b.dateTime || b.date || 0) - new Date(a.dateTime || a.date || 0));
     return rc("table", { className: "lc2-tx" },
@@ -1644,7 +1651,9 @@ function _lcIcon(name) {
       blocks.push(rc("div", { key: r.c.id, className: "lc2-cblock" },
         rc("div", { className: "lc2-cblock-head" },
           rc("div", { className: "lc2-cscope" }, r.c.scope || "Untitled job"),
-          rc("div", { className: "lc2-cmeta" }, "Agreed \u20B1 " + peso(r.agreed) + " \u00B7 Paid \u20B1 " + peso(r.paid) + " \u00B7 " + (r.remaining < 0 ? "Over by \u20B1 " + peso(Math.abs(r.remaining)) : "Remaining \u20B1 " + peso(r.remaining)))
+          rc("div", { className: "lc2-cmeta" }, _staff()
+            ? "Paid " + _pctTxt(r.paid, r.agreed) + " \u00B7 " + (r.remaining < 0 ? "Over by " + _pctTxt(Math.abs(r.remaining), r.agreed) : "Remaining " + _pctTxt(r.remaining, r.agreed))
+            : "Agreed \u20B1 " + peso(r.agreed) + " \u00B7 Paid \u20B1 " + peso(r.paid) + " \u00B7 " + (r.remaining < 0 ? "Over by \u20B1 " + peso(Math.abs(r.remaining)) : "Remaining \u20B1 " + peso(r.remaining)))
         ),
         cpays.length ? payRows(cpays) : rc("div", { className: "lc2-none" }, "No payments recorded against this contract yet."),
         // Grouped by purpose — records · modify · documents — with Delete
@@ -1677,7 +1686,11 @@ function _lcIcon(name) {
       blocks.push(rc("div", { key: "_uncap", className: "lc2-cblock" },
         rc("div", { className: "lc2-cblock-head" },
           rc("div", { className: "lc2-cscope" }, "Other (uncapped) payments"),
-          rc("div", { className: "lc2-cmeta" }, "Total \u20B1 " + peso(uncapTot))
+          // No contract behind these, so there is nothing to take a percentage
+          // OF \u2014 staff get the payment count instead of an invented ratio.
+          rc("div", { className: "lc2-cmeta" }, _staff()
+            ? uncapPays.length + " payment" + (uncapPays.length === 1 ? "" : "s")
+            : "Total \u20B1 " + peso(uncapTot))
         ),
         payRows(uncapPays)
       ));
@@ -1725,10 +1738,13 @@ function _lcIcon(name) {
             ? null
             : rc(React.Fragment, null,
                 rc("div", { className: "lc2-bar" }, rc("div", { className: "lc2-bar-fill " + barcls, style: { width: pct.toFixed(1) + "%" } })),
-                rc("div", { className: "lc2-mid-cap" }, "\u20B1 " + peso(paid) + " paid of \u20B1 " + peso(agreed) + (crows.length === 1 && crows[0].c.scope ? " \u00B7 " + crows[0].c.scope : " \u00B7 " + crows.length + " contracts"))
+                rc("div", { className: "lc2-mid-cap" }, (_staff() ? pct.toFixed(0) + "% paid" : "\u20B1 " + peso(paid) + " paid of \u20B1 " + peso(agreed)) + (crows.length === 1 && crows[0].c.scope ? " \u00B7 " + crows[0].c.scope : " \u00B7 " + crows.length + " contracts"))
               )
         ),
-        isDone
+        // The Remaining column is a peso figure with no useful percentage form
+        // of its own \u2014 the status badge already reads "Ongoing \u00B7 17%" \u2014 so for
+        // staff it is dropped entirely rather than restated.
+        (isDone || _staff())
           ? null
           : rc("div", { className: "lc2-rem" },
               rc("div", { className: "lc2-rem-lbl" }, hasContract ? (remaining < 0 ? "Over by" : "Remaining") : "Total paid"),
@@ -1766,14 +1782,17 @@ function _lcIcon(name) {
               rc("span", { className: "pcf-soa-amt" }, "\u20B1 ", peso(wk.total)))))
           )
         ),
-        _staff() ? null : rc("button", { className: "lc2-ghost", onClick: () => window.lcOpenNew && window.lcOpenNew() }, Ico.plus, " New Contract"),
+        rc("button", { className: "lc2-ghost", onClick: () => window.lcOpenNew && window.lcOpenNew() }, Ico.plus, " New Contract"),
         rc("button", { className: "btn-primary", onClick: () => openAddEntry("labor", childMonths, activeFolder) }, Ico.plus, " Add Payment")
       )
     ),
     _lcRows.length ? rc("div", { className: "lc2-totals" },
-      rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Total Agreed"), rc("div", { className: "lc2-tval" }, "\u20B1 " + peso(_lcTotAgreed))),
-      rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Paid So Far"), rc("div", { className: "lc2-tval" }, "\u20B1 " + peso(_lcTotPaid))),
-      rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Remaining to Pay"), rc("div", { className: "lc2-tval" + (_lcTotRem < 0 ? " neg" : " accent") }, _lcTotRem < 0 ? "\u2212 \u20B1 " + peso(Math.abs(_lcTotRem)) : "\u20B1 " + peso(_lcTotRem))),
+      // Total Agreed is the denominator every other figure is measured against,
+      // so it has no percentage form \u2014 staff see a dash, not "100%", which
+      // would read as "fully paid".
+      rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Total Agreed"), rc("div", { className: "lc2-tval" }, _staff() ? rc("span", { style: { color: "#908A81" } }, "\u2014") : "\u20B1 " + peso(_lcTotAgreed))),
+      rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Paid So Far"), rc("div", { className: "lc2-tval" }, _staff() ? _pctTxt(_lcTotPaid, _lcTotAgreed) : "\u20B1 " + peso(_lcTotPaid))),
+      rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Remaining to Pay"), rc("div", { className: "lc2-tval" + (_lcTotRem < 0 ? " neg" : " accent") }, _staff() ? (_lcTotRem < 0 ? "\u2212 " + _pctTxt(Math.abs(_lcTotRem), _lcTotAgreed) : _pctTxt(_lcTotRem, _lcTotAgreed)) : (_lcTotRem < 0 ? "\u2212 \u20B1 " + peso(Math.abs(_lcTotRem)) : "\u20B1 " + peso(_lcTotRem)))),
       rc("div", { className: "lc2-tcell lc2-tcell-last" }, rc("div", { className: "lc2-tlbl" }, "Contracts"), rc("div", { className: "lc2-tval" }, String(_lcRows.length), rc("span", { style: { fontSize: 13, color: "var(--ink-4)", fontFamily: "var(--sans)", fontWeight: 400 } }, " \u00B7 " + _lcWorkers.length + " workers")))
     ) : null,
     rc("div", { className: "lc2-toolbar" },

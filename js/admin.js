@@ -372,8 +372,9 @@ function applyRoleBasedUI() {
 
     if (currentUserRole === 'staff') {
         // Staff can access all expense + construction views, but NOT the
-        // admin-only User Navigator or Client Accounts pages.
-        ['userNavigator', 'clientAccounts'].forEach(view => {
+        // admin-only User Navigator or Client Accounts pages — nor Reports,
+        // which is wall-to-wall peso amounts (staff must not see money).
+        ['userNavigator', 'clientAccounts', 'expReports'].forEach(view => {
             const el = document.querySelector(`.nav-item[data-view="${view}"]`);
             if (el) el.style.display = 'none';
         });
@@ -2272,7 +2273,10 @@ function _visibleNav() {
         })
         .map(p => {
             if (role === 'staff' && p.id === 'expenses') {
-                return { ...p, modules: p.modules.filter(m => m.view !== 'clientAccounts') };
+                // Reports is a money dashboard end to end — hidden from staff
+                // along with Client Accounts.
+                const hidden = ['clientAccounts', 'expReports'];
+                return { ...p, modules: p.modules.filter(m => !hidden.includes(m.view)) };
             }
             return p;
         });

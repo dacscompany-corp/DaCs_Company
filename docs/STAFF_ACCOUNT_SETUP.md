@@ -22,7 +22,7 @@ This guide walks you through creating a **staff** account that only sees the **E
 | Feedback               | ✅  | ✅  |
 | **Budget Overview**    | ✅  | ❌  |
 | **Expenses**           | ✅  | ✅  |
-| **Reports**            | ✅  | ✅  |
+| **Reports**            | ✅  | ❌  |
 | Construction — Current Batch    | ✅  | ✅  |
 | Construction — Urgent Requests  | ✅  | ✅  |
 | Construction — Batch History    | ✅  | ✅  |
@@ -40,8 +40,28 @@ Staff KPIs visible (inside Expenses module):
 > **Contract Value / Total Budget Received are confidential, not just hidden.**
 > These values are stored in owner-only Firestore collections (`folderBudgets`,
 > `projectBudgets`) — staff cannot read them even via the API/console, not merely
-> hidden in the UI. See **Confidential financials** below. User Navigator and
-> Client Accounts are hidden from the staff navigation and blocked in `switchView`.
+> hidden in the UI. See **Confidential financials** below. User Navigator,
+> Client Accounts and Reports are hidden from the staff navigation and blocked
+> in `switchView`. Reports is a spending/budget dashboard from top to bottom —
+> there is no partial version of it that is safe for staff.
+
+### Labor screen — summaries are percentages, detail is not
+
+The line here is **rolled-up totals vs. the individual records behind them**.
+Owner view is unaffected throughout; all of this is `_staff()`-gated in
+`js/portal-app.compiled.js`.
+
+- **Percentage for staff** — the Total Agreed / Paid So Far / Remaining to Pay
+  cards, the collapsed row caption (`17% paid · Worker`), and each contract's
+  meta line (`Paid 16.7% · Remaining 83.3%`), via `_pctTxt`.
+  Total Agreed shows `—`, not `100%`, which would read as "fully paid".
+  Uncapped payments show a payment count — with no contract there is nothing to
+  take a percentage of.
+- **Removed for staff** — the per-row *Remaining* column. The badge already
+  says `Ongoing · 17%`; restating it in pesos added nothing.
+- **Full peso amounts, all roles** — the payment history table, Ledger, Worker
+  Statement (SOA) and the per-payment receipt/invoice. Staff need these to do
+  the recording; only the Reports module is withheld entirely.
 
 ---
 

@@ -5237,9 +5237,14 @@
         if (typeof currentUserRole !== 'undefined' && currentUserRole !== null) {
             if (currentUserRole === 'staff') {
                 // Staff can access all expense/construction views, but NOT the
-                // admin-only User Navigator, Client Accounts or System Errors pages.
-                const blocked = ['userNavigator', 'clientAccounts', 'sysErrors'];
-                if (blocked.includes(view)) view = 'dashboard';
+                // admin-only User Navigator, Client Accounts or System Errors
+                // pages — nor Reports, which is entirely peso amounts. Blocking
+                // it here (not just in the nav) also stops a stale link, a hash
+                // route or a leftover button from reaching it.
+                const blocked = ['userNavigator', 'clientAccounts', 'sysErrors', 'expReports'];
+                // Reports lives inside Project Control, so bounce it back there
+                // rather than throwing the user out to the Appointments dashboard.
+                if (blocked.includes(view)) view = (view === 'expReports') ? 'dacsPortal' : 'dashboard';
             } else if (currentUserRole === 'worker' || currentUserRole === 'teamLeader') {
                 const allowed = ['consBatch','consUrgent','consBatchHistory'];
                 if (!allowed.includes(view)) view = 'consBatch';

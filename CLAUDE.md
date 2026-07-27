@@ -52,10 +52,47 @@ Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 
 ---
 
+## Finishing a change
+
+This repo **fans out**: no imports, no type checker, nothing tells you about the fifth call site.
+Before writing code, grep for every place the thing is **saved, rendered, printed and exported**,
+and list the files. A change that touches only the file you opened is almost always incomplete.
+
+### Adding a data field
+
+| Leg | Where | When |
+|---|---|---|
+| DB column | new migration (see §Verifying for the number) | **Always** — missing column = silent save failure |
+| Shim registry | `REG` in `js/supabase-config.js` | Only if it's a new collection, or needs `ts:` / `json:` / `rename:` / `jsonbData` |
+| Form input | the owning module's edit form | Always |
+| Save path | usually **two** — create *and* edit | Always |
+| Render | the on-screen table or card | Always |
+| Print / export | `js/print-utils.js`, `js/invoice-module.js` | If it lands on a voucher, invoice or report |
+| Staff hiding | `_staff()` in `portal-app.compiled.js`, equivalents elsewhere | **If it is a peso amount** |
+| Both portals | `Client Management.html` **and** `Dacs Partnership.html` | If a client or partner sees it |
+| Schema doc | `docs/DATABASE_SCHEMA.md` | Always |
+
+Tracer: `payroll.payment_method` (migrations 0037/0038) landed in seven files —
+`expenses-module.js`, `print-utils.js`, `portal-app.compiled.js`, `invoice-module.js`,
+`DATABASE_SCHEMA.md`, plus the two migrations.
+
+### Adding a nav section / module
+
+1. `PRIMARY_NAV` entry — `js/admin.js` (id, label, icon, `defaultView`, `modules[]`)
+2. `_FOCUS_SUBVIEWS` — `js/admin.js` — **the one that gets missed.** Skip it and drill-down views
+   are blocked for `allowed_modules` accounts (e.g. `admin-pm@`) while the owner account looks fine
+3. The `*_VIEWS` group in `admin.html` (`EXP_VIEWS`, `PM_VIEWS`, …), in sync with `switchView()`
+4. Role filter in `_visibleNav()` — `js/admin.js` — decide staff / worker / teamLeader access
+5. Section markup + `<script>` tag in `admin.html`
+6. RLS policies for any new table, in the same migration
+7. Module map in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) §4
+
+---
+
 ## Verifying
 
 **Run `npm test` after ANY change that touches money code** (`portal-app.compiled.js`,
-`expenses-module.js`, `overhead-module.js`). It's `tests/money-math.test.js` — 42 checks that
+`expenses-module.js`, `overhead-module.js`). It's `tests/money-math.test.js` — 46 checks that
 extract the live functions and enforce every invariant above; exits 1 on breakage, runs in ~1s.
 If it fails with "SLICE NOT FOUND", the source was restructured — update the extraction markers
 in the test file, never delete the test.

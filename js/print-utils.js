@@ -386,52 +386,212 @@ function _dacsEnsurePdfJs() {
 // This fills those lines from the contract record (anchor-text positioning),
 // and — when the worker signed digitally — stamps the signature + date on
 // EVERY signature line of the manual.
+// Fill the pakyaw contract page when the template is a real fillable PDF —
+// named AcroForm fields (contract_ref_no, project, worker, pay_type,
+// scope_of_work_1..3, contract_amount, worker_name, date). Returns false when
+// the template has no such form, so the caller can fall back to text stamping.
+// The values are FLATTENED into the page: a printed contract must not stay
+// editable, and flattened text renders in every viewer and on paper.
+function _dacsFillWorkerForm(pdf, d, font) {
+    let form, fields;
+    try { form = pdf.getForm(); fields = form.getFields(); } catch (_) { return false; }
+    if (!fields || !fields.length) return false;
+
+    const names = new Set();
+    fields.forEach(f => { try { names.add(f.getName()); } catch (_) {} });
+    // Only OUR form — never touch an unrelated PDF that happens to have fields.
+    if (!names.has('worker') && !names.has('contract_ref_no')) return false;
+
+    const set = (name, value) => {
+        if (!value || !names.has(name)) return;
+        try { form.getTextField(name).setText(String(value)); } catch (_) {}
+    };
+    set('contract_ref_no', d.ref);
+    set('project',         d.project);
+    set('worker',          d.worker);
+    set('pay_type',        d.payType);
+    set('contract_amount', d.amount);
+    // Page 13 acknowledgement block.
+    set('ack_employee_name',  d.worker);
+    set('ack_project_branch', d.project);
+
+    // The worker signs EVERY policy page over their printed name, so fill every
+    // sign-off line the manual has: p03_printed_name, p05..p11_printed_name,
+    // ack_printed_name — and `worker_name` from the first fillable revision.
+    // Matching by suffix means pages added later fill themselves.
+    names.forEach(n => { if (/_printed_name$/.test(n)) set(n, d.printedName); });
+    set('worker_name', d.printedName);
+
+    // Left blank ON PURPOSE:
+    //   *_date, ack_orientation_date — dated by hand at signing, same rule as
+    //     the signature itself (never pre-stamped).
+    //   grace_period_minutes, official_tools — company policy blanks, not
+    //     contract data; nothing in a labor contract supplies them.
+    //   ack_position_trade — no trade/position field exists on the contract.
+
+    // Scope of work flows across the three lines the form provides.
+    const scopeNames = ['scope_of_work_1', 'scope_of_work_2', 'scope_of_work_3'].filter(n => names.has(n));
+    if (d.scope && scopeNames.length) {
+        const size = 10;
+        const widths = scopeNames.map(n => {
+            try {
+                const r = form.getTextField(n).acroField.getWidgets()[0].getRectangle();
+                return Math.max(40, r.width - 8);
+            } catch (_) { return 420; }
+        });
+        const parts = new Array(scopeNames.length).fill('');
+        let slot = 0;
+        String(d.scope).split(/\s+/).forEach(word => {
+            if (slot >= parts.length) { parts[parts.length - 1] += ' ' + word; return; }   // overflow: keep it on the last line
+            const t = parts[slot] ? parts[slot] + ' ' + word : word;
+            if (font.widthOfTextAtSize(t, size) > widths[slot] && parts[slot]) { slot++; if (slot < parts.length) parts[slot] = word; else parts[parts.length - 1] += ' ' + word; }
+            else parts[slot] = t;
+        });
+        scopeNames.forEach((n, i) => { if (parts[i]) { try { form.getTextField(n).setText(parts[i]); } catch (_) {} } });
+    }
+
+    try { form.flatten(); }
+    catch (e) {
+        // Flattening can fail if a field's appearance can't be regenerated; the
+        // values are still set, so leave them as live form fields rather than
+        // losing them.
+        try { console.warn('[worker-agreement] filled the form but could not flatten it:', e.message || e); } catch (_) {}
+    }
+    return true;
+}
+
 async function _dacsWorkerAgrStampBlob(pdfUrl, d) {
     const PDFLib = await _dacsEnsurePdfLib();
-    const bytes = await (await fetch(pdfUrl)).arrayBuffer();
-    const lines = await _dacsScanPdfLines(bytes);
+    // The storage bucket is private (migration 0027) — an unsigned fetch comes
+    // back as a JSON error body, which then fails to parse as a PDF and drops
+    // the whole print through to the "show the blank template" fallback. The
+    // error path already signed; this one never did.
+    const src = (typeof window.dacsMaybeSignUrl === 'function') ? await window.dacsMaybeSignUrl(pdfUrl) : pdfUrl;
+    const resp = await fetch(src);
+    if (!resp.ok) throw new Error('Could not download the agreement PDF (HTTP ' + resp.status + ')');
+    const bytes = await resp.arrayBuffer();
     const pdf = await PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
     const pages = pdf.getPages();
     const font  = await pdf.embedFont(PDFLib.StandardFonts.Helvetica);
     const fontB = await pdf.embedFont(PDFLib.StandardFonts.HelveticaBold);
     const fontI = await pdf.embedFont(PDFLib.StandardFonts.TimesRomanItalic);
+
+    // ── Preferred path: the template is a real fillable PDF form ──────────
+    // Named AcroForm fields beat every kind of anchor hunting: no text to read,
+    // no coordinates to guess, and it keeps working if the page is redesigned.
+    if (_dacsFillWorkerForm(pdf, d, font)) {
+        return { blob: new Blob([await pdf.save()], { type: 'application/pdf' }), noText: false, missed: [] };
+    }
+
+    // ── Fallback: stamp onto a flat template by reading its text ──────────
+    const geom = await _dacsScanPdfGeom(bytes);
+    const lines = geom.lines.slice().sort((a, b) => (a.page - b.page) || (b.y - a.y));  // reading order
+    const rules = geom.rules;
     const ink = PDFLib.rgb(0.08, 0.10, 0.16);
 
     // The details form lives on the page titled "Detalye ng Pakyaw Labor Contract".
-    const formLine = lines.find(L => /Detalye\s+ng\s+Pakyaw\s+Labor\s+Contract/i.test(L.raw));
+    const formLine = lines.find(L => /DETALYENGPAKYAW/i.test(L.flat));
     const formPage = formLine ? formLine.page : -1;
 
-    // Write a value on the blank line to the RIGHT of a label (wraps onto the
-    // form's extra ruled lines when long, e.g. Scope of Work).
-    const put = (re, value, opts = {}) => {
-        if (!value) return;
-        for (const L of lines) {
-            if (formPage >= 0 && L.page !== formPage) continue;
-            const m = L.raw.match(re);
-            if (!m) continue;
-            const pg = pages[L.page]; if (!pg) return;
-            const pw = pg.getSize().width;
-            const x = Math.max(L.xAt(m.index + m[0].length) + 10, pw * 0.40);
-            const size = opts.size || 10, maxW = pw - x - 46, step = 15.5;
-            let cur = '', yy = L.y + 2;
-            String(value).split(/\s+/).forEach(wd => {
-                const t = cur ? cur + ' ' + wd : wd;
-                if (fontB.widthOfTextAtSize(t, size) > maxW && cur) {
-                    pg.drawText(cur, { x, y: yy, size, font: fontB, color: ink });
-                    cur = wd; yy -= step;
-                } else cur = t;
-            });
-            if (cur) pg.drawText(cur, { x, y: yy, size, font: fontB, color: ink });
-            return;
-        }
+    // The blank fill-in lines of the form page, top-to-bottom.
+    const formRules = rules
+        .filter(r => formPage < 0 || r.page === formPage)
+        .sort((a, b) => b.y - a.y);
+
+    // The rule a label points at: nearest one BELOW the label whose span covers
+    // the label's x (two-column layout — the left label must not grab the right
+    // column's line). `after` walks further down for wrapped values.
+    const ruleFor = (page, lx, ly, after) => {
+        const top = after ? after.y : ly - 1;
+        return formRules.find(r => r.page === page && r.y < top && r.y > top - 46
+            && lx >= r.x - 8 && lx <= r.x + r.w) || null;
     };
 
-    put(/Contract\s+Ref\s+No\.?/i, d.ref);
-    put(/^Project\b/i,             d.project);
-    put(/^Worker\b/i,              d.worker);
-    put(/Scope\s+of\s+Work/i,      d.scope);
-    put(/^Pay\s+Type\b/i,          d.payType);
-    put(/Agreed\s+Contract\s+Amount/i, d.amount);
+    // Write a value onto the form's blank line for a label. The redesigned
+    // manual (bilingual, Tagalog first) puts that line UNDERNEATH the label, so
+    // the rule is located and written on directly; when no rule is found this
+    // falls back to the old manual's layout — value to the RIGHT of the label,
+    // on the same baseline. `res` is tried in order, so the Tagalog anchor wins
+    // over a loose English word that could also appear in body text.
+    const put = (res, value, opts = {}) => {
+        if (!value) return false;
+        for (const re of [].concat(res)) {
+            for (const L of lines) {
+                if (formPage >= 0 && L.page !== formPage) continue;
+                if (/PIRMA|LAGDA/i.test(L.flat)) continue;             // signature lines are not fields
+                const m = L.flat.match(re);
+                if (!m) continue;
+                const pg = pages[L.page]; if (!pg) return false;
+                const pw = pg.getSize().width;
+                const size = opts.size || 10;
+                const lx = L.xAt(L.flatIdx[m.index]);                  // label's own left edge
+                const endRaw = (L.flatIdx[m.index + m[0].length - 1] ?? L.flatIdx[m.index]) + 1;
+                let rule = ruleFor(L.page, lx, L.y, null);
+
+                let x, yy, maxW, step = 15.5;
+                if (rule) { x = rule.x + 3; yy = rule.y + 3.5; maxW = rule.w - 6; }
+                else {
+                    x = Math.max(L.xAt(endRaw) + 10, pw * 0.40);
+                    yy = L.y + 2; maxW = pw - x - 46;
+                }
+
+                let cur = '';
+                const flush = () => {
+                    if (!cur) return;
+                    pg.drawText(cur, { x, y: yy, size, font: fontB, color: ink });
+                    cur = '';
+                };
+                String(value).split(/\s+/).forEach(wd => {
+                    const t = cur ? cur + ' ' + wd : wd;
+                    if (fontB.widthOfTextAtSize(t, size) > maxW && cur) {
+                        flush();
+                        if (rule) {                                    // continue on the next ruled line
+                            const next = ruleFor(L.page, lx, L.y, rule);
+                            if (next) { rule = next; x = rule.x + 3; yy = rule.y + 3.5; maxW = rule.w - 6; }
+                            else yy -= step;
+                        } else yy -= step;
+                        cur = wd;
+                    } else cur = t;
+                });
+                flush();
+                return true;
+            }
+        }
+        return false;
+    };
+
+    // Bilingual anchors: the redesigned manual labels every field in Tagalog
+    // first ("PROYEKTO PROJECT"), which the old `^`-anchored English patterns
+    // could never match — they only ever saw the start of the row.
+    // NOTE: matched against `L.flat` — the row with ALL whitespace stripped —
+    // so no pattern here may contain a space.
+    const missed = [];
+    const field = (name, res, value) => { if (value && !put(res, value)) missed.push(name); };
+    // English anchor FIRST, Tagalog as the fallback — the two manuals differ:
+    //   old : "Contract Ref No." with the blank line to its RIGHT, and
+    //         "Blg. ng Kontrata" on a SEPARATE row below it. Anchoring on the
+    //         Tagalog row there would write a full line too low.
+    //   new : "BLG. NG KONTRATA CONTRACT REF NO." on ONE row, line underneath —
+    //         both anchors land on that same row, so either works.
+    field('ref',     [/CONTRACTREF\.?NO/i,      /BLG\.?NGKONTRATA/i],      d.ref);
+    field('project', [/PROJECT/i,               /PROYEKTO/i],              d.project);
+    field('worker',  [/WORKER/i,                /MANGGAGAWA/i],            d.worker);
+    field('scope',   [/SCOPEOFWORK/i,           /SAKLAWNGTRABAHO/i],       d.scope);
+    field('payType', [/PAYTYPE/i,               /URINGBAYAD/i],            d.payType);
+    field('amount',  [/AGREEDCONTRACTAMOUNT/i,  /NAPAGKASUNDUANGHALAGA/i], d.amount);
+
+    // When a field can't be placed the page prints blank with no other clue, so
+    // dump what the scan actually saw — that is the only way to tell a renamed
+    // label apart from a PDF whose text can't be read at all.
+    if (missed.length) {
+        try {
+            console.warn('[worker-agreement] could not fill: ' + missed.join(', ')
+                + ' · formPage=' + formPage + ' · rules=' + formRules.length
+                + ' · textRows=' + lines.filter(L => formPage < 0 || L.page === formPage).length);
+            console.warn('[worker-agreement] rows on the form page:',
+                lines.filter(L => formPage < 0 || L.page === formPage).map(L => L.raw));
+        } catch (_) {}
+    }
 
     // PRINTED NAME on every signature line — the labels read "…sa Ibabaw ng
     // Nakalimbag na Pangalan" (signature over printed name), so the name is
@@ -439,17 +599,42 @@ async function _dacsWorkerAgrStampBlob(pdfUrl, d) {
     // signature and no date are ever stamped (owner's call).
     if (d.printedName) {
         lines.forEach(L => {
-            if (!/Pirma\s+ng\s+(Manggagawa|Empleyado)/i.test(L.raw)) return;
+            if (!/(PIRMA|LAGDA)NG(MANGGAGAWA|EMPLEYADO)/i.test(L.flat)) return;
             const pg = pages[L.page]; if (!pg) return;
-            pg.drawText(String(d.printedName), { x: L.xAt(0) + 10, y: L.y + 16, size: 10.5, font: fontB, color: ink });
+            // The caption sits UNDER its line: prefer the real rule just above it
+            // (the redesign moved the gap), else the old fixed offset.
+            const above = rules
+                .filter(r => r.page === L.page && r.y > L.y && r.y < L.y + 26
+                    && L.xAt(0) >= r.x - 8 && L.xAt(0) <= r.x + r.w)
+                .sort((a, b) => a.y - b.y)[0];
+            pg.drawText(String(d.printedName), {
+                x: (above ? above.x : L.xAt(0)) + 10,
+                y: above ? above.y + 3.5 : L.y + 16,
+                size: 10.5, font: fontB, color: ink,
+            });
         });
     }
-    return new Blob([await pdf.save()], { type: 'application/pdf' });
+
+    // A PDF exported through "Microsoft Print to PDF" (or any flatten-to-outlines
+    // export) has NO text layer — every letter is a vector path. Nothing can be
+    // located on it, so the form prints blank with no error. Say so out loud
+    // rather than handing the user an empty contract.
+    const formRows = lines.filter(L => formPage < 0 || L.page === formPage).length;
+    return {
+        blob: new Blob([await pdf.save()], { type: 'application/pdf' }),
+        noText: lines.length === 0 || (formPage < 0 && formRows === 0),
+        missed,
+    };
 }
 
 // Open the filled worker agreement in ONE native PDF tab (same UX as the
 // signed partnership agreement). Falls back to the raw template on failure.
 window.dacsWorkerAgreementView = async function (pdfUrl, d) {
+    // Which file is actually being stamped: a contract's OWN attached PDF wins
+    // over the global template, so swapping the template does nothing for a
+    // contract that carries its own — the usual "I changed it and nothing
+    // happened" cause.
+    try { console.log('[worker-agreement] base PDF:', pdfUrl, '· details:', d); } catch (_) {}
     const w = window.open('', '_blank');
     if (!w) { alert('Please allow pop-ups to open the agreement.'); return; }
     try {
@@ -458,8 +643,15 @@ window.dacsWorkerAgreementView = async function (pdfUrl, d) {
         w.document.close();
     } catch (_) {}
     try {
-        const blob = await _dacsWorkerAgrStampBlob(pdfUrl, d || {});
-        w.location.href = URL.createObjectURL(blob);
+        const res = await _dacsWorkerAgrStampBlob(pdfUrl, d || {});
+        w.location.href = URL.createObjectURL(res.blob);
+        if (res.noText) {
+            alert('This agreement PDF has no text layer — it was exported with the text '
+                + 'flattened into images/outlines (e.g. "Microsoft Print to PDF"), so the '
+                + 'contract details cannot be placed on the form and it prints blank.\n\n'
+                + 'Re-export the manual with Chrome/Edge → Print → "Save as PDF", then '
+                + 're-upload it under Worker Agreement Template.');
+        }
     } catch (e) {
         console.warn('Worker agreement stamping failed — opening the template:', e.message || e);
         // Bucket is private (migration 0027) — resolve to a signed URL before navigating.
@@ -531,16 +723,74 @@ window.dacsAgrPdfSections = async function (url) {
     return secs;
 };
 
+// Matrix helpers for the path scan below (PDF "cm" concatenates onto the CTM).
+function _dacsMulM(A, B) {
+    return [
+        A[0] * B[0] + A[1] * B[2],            A[0] * B[1] + A[1] * B[3],
+        A[2] * B[0] + A[3] * B[2],            A[2] * B[1] + A[3] * B[3],
+        A[4] * B[0] + A[5] * B[2] + B[4],     A[4] * B[1] + A[5] * B[3] + B[5],
+    ];
+}
+function _dacsApplyM(m, x, y) { return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]; }
+
+// Collect a page's blank fill-in RULES — the thin horizontal lines a form puts
+// under (or after) a label. Needed because the redesigned policy manual draws
+// the rule BELOW the label instead of to its right, so anchor text alone can no
+// longer say where a value goes. Handles both stroked segments and the hairline
+// rectangles an HTML→PDF renderer emits for `border-bottom`.
+// Returns [{ x, w, y }] in page user space (same space as the text items).
+async function _dacsPageRules(pdfjs, page) {
+    const out = [];
+    const OPS = pdfjs.OPS; if (!OPS) return out;
+    let ops; try { ops = await page.getOperatorList(); } catch (_) { return out; }
+    let ctm = [1, 0, 0, 1, 0, 0];
+    const stack = [];
+    const add = (x1, y1, x2, y2) => {
+        if (Math.abs(y2 - y1) > 1.5) return;                 // not horizontal
+        if (Math.abs(x2 - x1) < 35) return;                  // too short to be a fill-in line
+        out.push({ x: Math.min(x1, x2), w: Math.abs(x2 - x1), y: (y1 + y2) / 2 });
+    };
+    for (let i = 0; i < ops.fnArray.length; i++) {
+        const fn = ops.fnArray[i];
+        if (fn === OPS.save)      { stack.push(ctm.slice()); continue; }
+        if (fn === OPS.restore)   { ctm = stack.pop() || [1, 0, 0, 1, 0, 0]; continue; }
+        if (fn === OPS.transform) { ctm = _dacsMulM(ops.argsArray[i], ctm); continue; }
+        if (fn !== OPS.constructPath) continue;
+        const pathOps = ops.argsArray[i][0], co = ops.argsArray[i][1];
+        let k = 0, cx = 0, cy = 0;
+        for (const op of pathOps) {
+            if (op === OPS.moveTo)        { cx = co[k++]; cy = co[k++]; }
+            else if (op === OPS.lineTo)   {
+                const nx = co[k++], ny = co[k++];
+                const a = _dacsApplyM(ctm, cx, cy), b = _dacsApplyM(ctm, nx, ny);
+                add(a[0], a[1], b[0], b[1]);
+                cx = nx; cy = ny;
+            }
+            else if (op === OPS.curveTo)  { k += 6; }
+            else if (op === OPS.curveTo2 || op === OPS.curveTo3) { k += 4; }
+            else if (op === OPS.rectangle) {
+                const rx = co[k++], ry = co[k++], rw = co[k++], rh = co[k++];
+                const a = _dacsApplyM(ctm, rx, ry), b = _dacsApplyM(ctm, rx + rw, ry + rh);
+                if (Math.abs(b[1] - a[1]) <= 3) add(a[0], (a[1] + b[1]) / 2, b[0], (a[1] + b[1]) / 2);
+            }
+        }
+    }
+    return out;
+}
+
 // Scan the PDF's text into LINES with per-character x positions, so labels
 // that share one row (e.g. "PARTNER — SIGNATURE…" and "DATE & TIME SIGNED"
-// side by side) each get their own precise anchor x.
+// side by side) each get their own precise anchor x — plus the page's blank
+// rules, for forms whose value line sits under the label.
 // Each line: { page (0-based), y, raw, xAt(charIdx) }.
-async function _dacsScanPdfLines(bytes) {
+async function _dacsScanPdfGeom(bytes) {
     const pdfjs = await _dacsEnsurePdfJs();
     const doc = await pdfjs.getDocument({ data: bytes.slice(0) }).promise;   // slice: pdf.js consumes the buffer
-    const lines = [];
+    const lines = [], rules = [];
     for (let p = 1; p <= doc.numPages; p++) {
         const page = await doc.getPage(p);
+        try { (await _dacsPageRules(pdfjs, page)).forEach(r => rules.push({ page: p - 1, x: r.x, w: r.w, y: r.y })); }
+        catch (_) {}
         const tc = await page.getTextContent();
         const rows = new Map();   // rounded y → parts
         tc.items.forEach(it => {
@@ -558,8 +808,18 @@ async function _dacsScanPdfLines(bytes) {
                 ranges.push({ start: raw.length, end: raw.length + pt.s.length, x: pt.x, w: pt.w, len: pt.s.length });
                 raw += pt.s;
             });
+            // Whitespace-free twin of the row + a map back to raw indices.
+            // Letter-spaced headings and labels come out of pdf.js as one item
+            // PER GLYPH ("B L G . N G K O N T R A T A"), which defeats any
+            // regex written against normal words — matching happens on `flat`.
+            let flat = '';
+            const flatIdx = [];
+            for (let i = 0; i < raw.length; i++) {
+                if (/\s/.test(raw[i])) continue;
+                flatIdx.push(i); flat += raw[i];
+            }
             lines.push({
-                page: p - 1, y, raw,
+                page: p - 1, y, raw, flat, flatIdx,
                 // x of a character index — interpolates inside an item using its width
                 xAt(idx) {
                     for (const r of ranges) {
@@ -576,8 +836,9 @@ async function _dacsScanPdfLines(bytes) {
         try { page.cleanup(); } catch (_) {}
     }
     try { doc.destroy(); } catch (_) {}
-    return lines;
+    return { lines, rules };
 }
+async function _dacsScanPdfLines(bytes) { return (await _dacsScanPdfGeom(bytes)).lines; }
 
 // STAMP the e-signature onto the uploaded agreement PDF itself — ON the
 // template's own signature lines (found by anchor text). The name and drawn
