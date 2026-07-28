@@ -1087,10 +1087,22 @@ table.bd tfoot td { border-top:2px solid #1a1a1a; padding-top:16px; font:800 15p
 .sig-line { border-top:1px solid #1a1a1a; padding-top:7px; margin-top:10px; width:160px; }
 .sig-name { font:700 13px 'Times New Roman',Times,serif; color:#1a1a1a; }
 .sig-dept { font:400 12px 'Times New Roman',Times,serif; color:#8a8983; margin-top:2px; }
-@media print { body{background:#fff;} .frame{margin:0;box-shadow:none;width:100%;border-width:2px;} @page{size:A4 portrait;margin:8mm;} }
+.page-num { text-align:center; font:400 10.5px 'Times New Roman',Times,serif; color:#b0b4bb; margin-top:24px; letter-spacing:1px; }
+.mini-head { display:flex; align-items:center; justify-content:space-between; padding-bottom:16px; margin-bottom:24px; border-bottom:2px solid #e5e7eb; }
+.mini-head-brand { display:flex; align-items:center; gap:12px; }
+.mini-head-logo { height:36px; width:auto; object-fit:contain; }
+.mini-head-title { font:700 14px 'Times New Roman',Times,serif; color:#0f6342; letter-spacing:.3px; }
+.mini-head-sub { font:400 11.5px 'Times New Roman',Times,serif; color:#8a8983; margin-top:2px; }
+@media print {
+  body{background:#fff;}
+  .frame{margin:0;box-shadow:none;width:100%;border-width:2px;}
+  .frame + .frame{page-break-before:always;}
+  @page{size:A4 portrait;margin:8mm;}
+}
 </style>
 </head>
 <body>
+
 <div class="frame"><div class="frame-inner">
 
   <div class="head">
@@ -1120,7 +1132,21 @@ table.bd tfoot td { border-top:2px solid #1a1a1a; padding-top:16px; font:800 15p
     ${kpiCard('pie', '#0f6342', '#dcefe3', 'Profit Share', (profitShare < 0 ? '−' : '') + fmt(Math.abs(profitShare)), psColor, '#eaf4ef', '#c6e6d5', '50% of Remaining After Retention', '#dcefe3')}
   </div>
 
-  <div style="display:flex;flex-direction:column;gap:20px;margin-top:26px;">
+  <div class="page-num">Page 1 of 3 &nbsp;&bull;&nbsp; Key Summary</div>
+
+</div></div>
+
+<div class="frame"><div class="frame-inner">
+
+  <div class="mini-head">
+    <div class="mini-head-brand">
+      <img class="mini-head-logo" src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo" onerror="this.style.display='none'">
+      <div><div class="mini-head-title">PROJECT FINANCIAL OVERVIEW REPORT</div><div class="mini-head-sub">${esc(projectLbl)} &bull; ${esc(today)}</div></div>
+    </div>
+  </div>
+
+  <div class="sec-divider"><span class="ln"></span><span class="lbl">COST &amp; PAYMENT DETAIL</span><span class="ln"></span></div>
+  <div style="display:flex;flex-direction:column;gap:20px;">
     <div class="panel">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
         <span class="panel-title">Direct-Cost Breakdown</span>
@@ -1159,6 +1185,20 @@ table.bd tfoot td { border-top:2px solid #1a1a1a; padding-top:16px; font:800 15p
     </div>
   </div>
 
+  <div class="page-num">Page 2 of 3 &nbsp;&bull;&nbsp; Cost &amp; Payment Detail</div>
+
+</div></div>
+
+<div class="frame"><div class="frame-inner">
+
+  <div class="mini-head">
+    <div class="mini-head-brand">
+      <img class="mini-head-logo" src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo" onerror="this.style.display='none'">
+      <div><div class="mini-head-title">PROJECT FINANCIAL OVERVIEW REPORT</div><div class="mini-head-sub">${esc(projectLbl)} &bull; ${esc(today)}</div></div>
+    </div>
+  </div>
+
+  <div class="sec-divider"><span class="ln"></span><span class="lbl">NOTES &amp; SIGN-OFF</span><span class="ln"></span></div>
   <div class="foot-grid">
     <div class="foot-cell">
       <div class="foot-title">Notes</div>
@@ -1179,7 +1219,10 @@ table.bd tfoot td { border-top:2px solid #1a1a1a; padding-top:16px; font:800 15p
     </div>
   </div>
 
+  <div class="page-num">Page 3 of 3 &nbsp;&bull;&nbsp; Notes &amp; Sign-Off</div>
+
 </div></div>
+
 <script>window.onload=function(){window.print();};<\/script>
 </body>
 </html>`);
@@ -6432,6 +6475,7 @@ let _pmRptState = {
     bills: [],        // weeklyBills docs (across selected project or all projects)
     contracts: [],    // laborContracts docs (for worker-name resolution)
     projects: [],      // the PM project(s) currently in scope
+    payReqs: [],       // paymentRequests docs (across selected project or all projects) — cash-receipt section, always all-time
 };
 
 const _pmRptCharts = {};
@@ -6563,26 +6607,35 @@ async function loadPMRptData() {
     if (!scopeProjects.length) {
         _pmRptState.bills = [];
         _pmRptState.contracts = [];
+        _pmRptState.payReqs = [];
         renderPMReportsDashboard();
         return;
     }
 
     try {
         const results = await Promise.all(scopeProjects.map(async (p) => {
-            const [billsSnap, lcSnap] = await Promise.all([
+            // paymentRequests fetched alongside bills/contracts — same query
+            // Overview uses (_pmLoadOverview) — powers the Cash Receipt section
+            // below, which mirrors Overview's Remaining cash receipt / Warranty
+            // retention / Profit share so nothing on Overview is Reports-invisible.
+            const [billsSnap, lcSnap, payReqSnap] = await Promise.all([
                 _pmRptCol(p.id).get(),
                 _pmRptLcCol(p.id).get(),
+                db.collection('paymentRequests').where('constructionProjectId', '==', p.id).get(),
             ]);
             const bills = billsSnap.docs.map(d => ({ id: d.id, projectId: p.id, ...d.data() }));
             const contracts = lcSnap.docs.map(d => ({ id: d.id, projectId: p.id, ...d.data() }));
-            return { bills, contracts };
+            const payReqs = payReqSnap.docs.map(d => ({ id: d.id, projectId: p.id, ...d.data() }));
+            return { bills, contracts, payReqs };
         }));
         _pmRptState.bills = results.flatMap(r => r.bills);
         _pmRptState.contracts = results.flatMap(r => r.contracts);
+        _pmRptState.payReqs = results.flatMap(r => r.payReqs);
     } catch (err) {
         console.error('PM Reports fetch error:', err);
         _pmRptState.bills = [];
         _pmRptState.contracts = [];
+        _pmRptState.payReqs = [];
     }
     _pmRptState.loading = false;
     renderPMReportsDashboard();
@@ -6814,8 +6867,74 @@ function _pmRptRenderKPIs(groups) {
         + '</div>'
         + '</div>';
 
+    // ── Cash Receipt: what the client has actually paid, mirrored from
+    // Overview (Remaining cash receipt / Warranty retention / Profit share)
+    // so nothing visible there is invisible here. ALWAYS all-time — these
+    // read straight off _pmRptState.payReqs, not the period-filtered `groups`,
+    // same as Overview (which has no period filter at all). Sums across every
+    // project in scope, so "All Projects" gets a genuine company-wide figure.
+    const cr = _pmRptCashReceipt();
+    const crOver = cr.netCash < 0;
+    html += _group('Cash Receipt <span class="rpt-group-note">(all-time)</span>');
+    html += '<div class="rpt-grid rpt-grid-2">'
+        + '<div class="rpt-kpi-card">'
+        +   '<div class="rpt-kpi-dotrow">'
+        +     '<span class="rpt-kpi-ico--dark"><i data-lucide="wallet"></i></span>'
+        +     '<span class="rpt-kpi-label">Total Paid</span>'
+        +   '</div>'
+        +   '<div class="rpt-kpi-val">&#8369;' + formatNum(cr.paid) + '</div>'
+        +   '<div class="rpt-kpi-sub">collected to date</div>'
+        + '</div>'
+        + '<div class="rpt-kpi-card' + (cr.outstanding > 0 ? '' : ' rpt-kpi-card--muted') + '">'
+        +   '<div class="rpt-kpi-dotrow"><span class="rpt-kpi-label">Outstanding</span></div>'
+        +   '<div class="rpt-kpi-val">&#8369;' + formatNum(cr.outstanding) + '</div>'
+        +   '<div class="rpt-kpi-sub">client still owes</div>'
+        + '</div>'
+        + '</div>';
+    html += '<div class="rpt-grid rpt-grid-3" style="margin-top:12px;">'
+        + '<div class="rpt-kpi-card' + (crOver ? ' rpt-kpi-card--over' : '') + '">'
+        +   '<div class="rpt-kpi-dotrow"><span class="rpt-kpi-label">Remaining Cash Receipt</span></div>'
+        +   '<div class="rpt-kpi-val">' + (crOver ? '&minus;' : '+') + '&#8369;' + formatNum(Math.abs(cr.netCash)) + '</div>'
+        +   '<div class="rpt-kpi-sub">Paid &minus; Direct Cost</div>'
+        + '</div>'
+        + '<div class="rpt-kpi-card">'
+        +   '<div class="rpt-kpi-dotrow"><span class="rpt-kpi-label">Warranty Retention</span></div>'
+        +   '<div class="rpt-kpi-val">' + (cr.warrantyRetention < 0 ? '&minus;' : '') + '&#8369;' + formatNum(Math.abs(cr.warrantyRetention)) + '</div>'
+        +   '<div class="rpt-kpi-sub">5% of Remaining Cash Receipt</div>'
+        + '</div>'
+        + '<div class="rpt-kpi-card">'
+        +   '<div class="rpt-kpi-dotrow"><span class="rpt-kpi-label">Profit Share</span></div>'
+        +   '<div class="rpt-kpi-val">' + (cr.profitShare < 0 ? '&minus;' : '') + '&#8369;' + formatNum(Math.abs(cr.profitShare)) + '</div>'
+        +   '<div class="rpt-kpi-sub">50% of Remaining after retention</div>'
+        + '</div>'
+        + '</div>';
+
     row.innerHTML = html;
     if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// Cash-receipt figures for the current Reports scope (one project or "All
+// Projects") — same formulas as Overview (_pmOvHtml), always all-time so this
+// section reads consistently regardless of the period/year tabs above it.
+function _pmRptCashReceipt() {
+    const reqs = _pmRptState.payReqs || [];
+    const paid = _pmOvPaid(reqs);
+    const outstanding = _pmOvOutstanding(reqs);
+    // Direct cost, all-time, across every bill in scope — same fallback chain
+    // as Overview's `directCost` (prefers directCostTotal, then labor+materials,
+    // then grandTotal-fee) so this figure matches Overview exactly when scoped
+    // to a single project.
+    const directCost = (_pmRptState.bills || []).reduce((s, b) => {
+        const dct = Number(b.directCostTotal) || 0;
+        if (dct) return s + dct;
+        const lm = (Number(b.labor) || 0) + (Number(b.materials) || 0);
+        if (lm) return s + lm;
+        return s + ((Number(b.grandTotal) || 0) - (Number(b.managementFee) || 0));
+    }, 0);
+    const netCash = paid - directCost;
+    const warrantyRetention = netCash * 0.05;
+    const profitShare = (netCash - warrantyRetention) / 2;
+    return { paid, outstanding, directCost, netCash, warrantyRetention, profitShare };
 }
 
 function _pmRptRenderTrendChart(groups) {
@@ -7022,6 +7141,7 @@ window.printPMReportsDashboard = function () {
     const groups = _pmRptComputePeriodGroups(_pmRptState.period, _pmRptState.year,
         _pmRptState.projects, _pmRptState.bills);
     const t = _pmRptTotals(groups);
+    const cr = _pmRptCashReceipt();   // all-time — same figures as the on-screen Cash Receipt section
 
     const periodLabels = { weekly: 'Weekly', monthly: 'Monthly', quarterly: 'Quarterly',
         semi: 'Semi-Annual', annual: 'Annual' };
@@ -7140,6 +7260,22 @@ window.printPMReportsDashboard = function () {
     <thead><tr><th>Category</th><th class="n">Amount</th><th class="c">% of Total Spend</th></tr></thead>
     <tbody>${catRows}</tbody>
   </table>
+
+  <div class="section-title">Cash Receipt (All-Time)</div>
+  <div class="kpis">
+    ${kpi('Total Paid', peso(cr.paid), 'collected to date')}
+    ${kpi('Outstanding', peso(cr.outstanding), 'client still owes')}
+    <div class="kpi ${cr.netCash < 0 ? 'over' : 'hi'}">
+      <div class="kpi-l">Remaining Cash Receipt</div>
+      <div class="kpi-v">${cr.netCash < 0 ? '−' : '+'}${peso(Math.abs(cr.netCash))}</div>
+      <div class="kpi-s">Paid − Direct Cost</div>
+    </div>
+    ${kpi('Warranty Retention', (cr.warrantyRetention < 0 ? '−' : '') + peso(Math.abs(cr.warrantyRetention)), '5% of Remaining Cash Receipt')}
+  </div>
+  <div class="kpis" style="grid-template-columns:1fr 3fr;">
+    ${kpi('Profit Share', (cr.profitShare < 0 ? '−' : '') + peso(Math.abs(cr.profitShare)), '50% of Remaining after retention')}
+    <div></div>
+  </div>
 
   <div class="footer">
     <span>Official report generated by the DAC's Admin System. For internal use only.</span>
