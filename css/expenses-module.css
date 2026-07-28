@@ -2177,6 +2177,7 @@ mark.exp-search-highlight {
     white-space: nowrap;
 }
 .rpt-group-rule { flex: 1; height: 1px; background: #e7e6e2; }
+.rpt-group-note { font-weight: 500; text-transform: none; letter-spacing: 0; color: #c7c6c0; margin-left: 0.35rem; }
 
 /* The container is now just a stack — the inner grids do the layout.
    Project Control (#rptKpiRow) and Project Management (#pmRptKpiRow) share the
@@ -2190,6 +2191,8 @@ mark.exp-search-highlight {
 #pmRptKpiRow .rpt-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 #rptKpiRow .rpt-grid-4,
 #pmRptKpiRow .rpt-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+#rptKpiRow .rpt-grid-3,
+#pmRptKpiRow .rpt-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 
 /* Large card (Contract & Funding) with a corner icon chip */
 #rptKpiRow .rpt-kpi-card--lg,
@@ -2332,14 +2335,18 @@ mark.exp-search-highlight {
 /* Responsive: 4-up → 2-up → 1-up; the two big pairs stack on phones */
 @media (max-width: 1100px) {
     #rptKpiRow .rpt-grid-4,
-    #pmRptKpiRow .rpt-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #pmRptKpiRow .rpt-grid-4,
+    #rptKpiRow .rpt-grid-3,
+    #pmRptKpiRow .rpt-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .rpt-chart-duo { grid-template-columns: 1fr; }
 }
 @media (max-width: 700px) {
     #rptKpiRow .rpt-grid-2,
     #rptKpiRow .rpt-grid-4,
+    #rptKpiRow .rpt-grid-3,
     #pmRptKpiRow .rpt-grid-2,
-    #pmRptKpiRow .rpt-grid-4 { grid-template-columns: 1fr; }
+    #pmRptKpiRow .rpt-grid-4,
+    #pmRptKpiRow .rpt-grid-3 { grid-template-columns: 1fr; }
     .rpt-header-card .rpt-topbar { padding: 12px 14px; }
     .rpt-header-row2 { padding: 10px 14px; }
 }
