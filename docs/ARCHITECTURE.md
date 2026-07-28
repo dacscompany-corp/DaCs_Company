@@ -5,21 +5,23 @@ the other files in `docs/`; this one is the map you read first.
 
 **Stack:** plain HTML + vanilla JS (no build step, no framework except React-via-CDN on one
 screen) → a Firestore-compatibility shim → **Supabase** (Postgres + Auth + Storage + Realtime).
-Deployed on Vercel. There is also an Android TWA wrapper.
+Deployed on Vercel. An Android TWA wrapper exists but is **not in use by clients** (confirmed
+2026-07-12); treat it as dormant, not as a supported surface.
 
 ---
 
 ## 1. Entry points and audiences
 
-Five HTML pages. Each is a separate app; they share `js/supabase-config.js` and little else.
+Six HTML pages. Each is a separate app; they share `js/supabase-config.js` and little else.
 
 | Page | Audience | Loads | Notes |
 |---|---|---|---|
 | `index.html` | Public | `script.js` | Marketing site, appointments, testimonials |
-| `admin.html` | **Owner + Staff** | ~17 modules | The whole back office. By far the biggest surface |
+| `admin.html` | **Owner + Staff** | ~19 modules | The whole back office. By far the biggest surface |
 | `client.html` | **Design client** | `client-app.js`, `client-payment.js` | BOQ / design-side client portal |
 | `Client Management.html` | **Construction client** | `client-management-app.js`, `client-payment.js` | |
 | `Dacs Partnership.html` | **Partner** | `client-management-app.js`, `client-payment.js` | Same JS as above, different HTML |
+| `share-capture.html` | **Owner + Staff (phone)** | self-contained | PWA **share target** (`manifest-admin.json`). Share a receipt photo from any app → tag it → `expense_inbox` |
 
 > **Client Management.html and Dacs Partnership.html are two live audiences sharing one JS
 > file.** An HTML edit made for one usually has to be mirrored into the other. Forgetting is a
@@ -75,12 +77,19 @@ This surprises everyone. There are two unrelated notions of "project":
 | Sub-unit | `projects` = **billing periods** (confusingly named) | `weekly_bills` (one row **per day**) |
 | Costs | `payroll` + `expenses`, tied to a billing period | `weekly_bills.entries` (jsonb) |
 | Contracts | `labor_contracts` | `pm_labor_contracts` |
-| Overhead | `overhead_expenses.folder_id` | — none — |
+| Overhead | `overhead_expenses.folder_id` | `weekly_bills.overhead` (a Daily Expenses category, since `0035`) |
 | UI | `portal-app.compiled.js` (React) | `pm-admin.js` |
 
 **`folders.id` and `construction_projects.id` are different id spaces.** Querying one with the
 other's id silently matches nothing — that exact bug lived in the PM delete-cascade for months.
 `overhead_expenses.folder_id` is a **`folders`** FK; it never points at a construction project.
+
+The one bridge between them is `construction_projects.folder_id` (`0033`) — **nullable and
+opt-in**, set by an admin so labor-contract "paid" totals can be reconciled across the two
+ledgers. Most rows are null; it is not a general-purpose join.
+
+PM overhead is a **billable direct cost**: it feeds `direct_cost_total` and the management fee is
+charged on it, unlike Project Control overhead. Same word, different behaviour.
 
 Also note: **`projects` means billing period**, not project. Read it that way everywhere.
 
@@ -99,6 +108,8 @@ Also note: **`projects` means billing period**, not project. Read it that way ev
 | Payment Requests | `payment-requests.js` | |
 | Construction (procurement) | `construction-module.js` | Batches, requests, inventory |
 | Clients | `client-accounts.js`, `user-navigator.js` | |
+| Expense Inbox | `expense-inbox.js` | Shared receipt photos awaiting encoding — serves **both** project systems (`system: 'pc'` / `'pm'`). No amounts stored |
+| System Errors | `error-log.js` | **Owner-only** reader for `client_errors`. The reporter is `supabase-config.js` §13 |
 | AI | `ai-summary.js`, `ai-assistant.js` | Folder briefings, health check |
 
 **Project Control is compiled React.** See the build trap in §8.
@@ -158,11 +169,16 @@ Four invariants, each of which cost real debugging to establish:
 **Cover Expenses** are a separate concept: costs charged to the company because a billing period
 had no budget (`fundingType: 'president'`), with a ₱10,000 warning threshold (`COVER_LIMIT`).
 
+**OCM allowance** (`folders.ocm_pct`, `0030`) is what the *contract priced* for overhead — OCM =
+Overhead, Contingencies & Miscellaneous, typically 8–12% of the contract in a PH BOQ. It is a
+**budget to compare against, not a cost**: the Overhead drill shows "priced ₱X · spent ₱Y (Z%
+used)" and flags overruns. It never enters Spent, Earned or Profit. Null/0 = not configured.
+
 ---
 
 ## 7. Data model at a glance
 
-~45 tables. Grouped:
+~48 tables. Grouped:
 
 - **Identity** — `profiles` (3 logical collections), `agreement_events`, `push_subscriptions`
 - **Project Control** — `folders`, `folder_budgets`, `projects`, `project_budgets`, `expenses`,
@@ -173,6 +189,8 @@ had no budget (`fundingType: 'president'`), with a ₱10,000 warning threshold (
 - **Billing** — `boq_documents`, `boq_templates`, `invoices`(+`items`), `labor_invoices`(+`items`),
   `payment_requests`
 - **Procurement** — `requests`(+`items`), `batches`, `inventory`
+- **Intake / ops** — `expense_inbox` (shared receipts pending encoding, `0031`),
+  `client_errors` (production error self-reports, `0028`)
 - **Misc** — `notifications`, `appointments`, `testimonials`, `sowa_requests`,
   `termination_requests`, `settings`, `stats` (kv tables)
 
@@ -184,14 +202,24 @@ had no budget (`fundingType: 'president'`), with a ₱10,000 warning threshold (
 ## 8. Known traps
 
 **The portal build trap.** `js/portal-app.compiled.js` is the **live source of truth** and is
-edited **directly**. `src/portal-app.jsx.stale-*` is stale. **Never run `npm run build`** — it
-would overwrite the live portal with the old source.
+edited **directly**. **Never run `npm run build`** — the `build` script in `package.json` is a
+hard-fail stub that refuses to run, and as of 2026-07-28 the stale JSX it built from
+(`src/portal-app.jsx.stale-2026-06-03`, `js/dacs-portal/*.jsx`) has been deleted, so there is no
+source left to rebuild from.
 
 **Schema drift.** The live database has been patched by hand beyond the migrations more than
 once. `0020_schema_drift_catchup.sql` captured one round; `0025` (overhead columns) and `0026`
-(`payroll.liability_for`) captured another. **Before adding a field, check the table actually has
-the column** — the shim maps camelCase straight to snake_case and the save fails otherwise.
-Duplicate migration numbers exist (two 0006s, 0016s, 0017s, 0018s, 0019s, 0020s, 0021s, 0022s, 0023s).
+(`payroll.liability_for`) captured another. Known *uncaptured* drift: `weekly_bills.entries` /
+`combined` / `direct_cost_total` / `management_fee_pct` are written by `pm-admin.js` but exist
+only in the live DB. **Before adding a field, check the table actually has the column** — the shim
+maps camelCase straight to snake_case and the save fails otherwise.
+
+**Migration numbering.** Highest on disk is `0040`; **next number = highest + 1**, never reuse,
+never a Supabase SQL-editor one-off. Nine numbers are duplicated (two 0006s, 0016s, 0017s, 0018s,
+0019s, 0020s, 0021s, 0022s, 0023s) — each pair was audited and plain filename sort is safe.
+**`0034` is a deliberate gap** (written and withdrawn in the same session; see the header of
+`0035`). The canonical order and the full duplicate audit live in
+[`supabase/migrations/README.md`](../supabase/migrations/README.md).
 
 **Two HTML files, one JS.** Mirror portal HTML edits into both `Client Management.html` and
 `Dacs Partnership.html`.
@@ -213,19 +241,47 @@ or fetching it from a **worker/server** context where the shim isn't loaded.
 
 ---
 
-## 9. Where to look next
+## 9. Verifying a change
+
+No imports, no type checker, no framework — **nothing tells you about the fifth call site.** The
+safety net is small and manual:
+
+| Tool | When | What it does |
+|---|---|---|
+| `npm test` | **After any change to money code** — `portal-app.compiled.js`, `expenses-module.js`, `overhead-module.js` | `tests/money-math.test.js` — 46 checks that extract the live functions and enforce every invariant in §6. Exits 1 on breakage, ~1s |
+| `node --check <file>` | Any JS edit | Syntax errors in files the test doesn't cover |
+| Browser | Always | `admin.html`, logged in as owner |
+| CI | Every push + PR | `.github/workflows/ci.yml` runs both of the above |
+
+If the test fails with **"SLICE NOT FOUND"**, the source was restructured — update the extraction
+markers in the test file, **never delete the test**. Red CI on a `salvs` merge usually means the
+merge reverted a money rule or the staff amount-hiding.
+
+**When a user says "it broke", query the errors first.** Production errors self-report into
+`client_errors` (migration `0028`, reporter in `supabase-config.js` §13), readable in the
+**System Errors** panel (`error-log.js`, owner-only) or directly:
+
+```sql
+select at, page, kind, message, source, line from client_errors order by at desc limit 100;
+```
+
+---
+
+## 10. Where to look next
 
 | Topic | Doc |
 |---|---|
 | Overhead, the money rules, pakyaw interaction | [OVERHEAD_MODULE.md](OVERHEAD_MODULE.md) |
 | Expenses / Budget Overview | [EXPENSES_README.md](EXPENSES_README.md) |
-| Project Management module | [../PROJECT_MANAGEMENT_MVP.md](../PROJECT_MANAGEMENT_MVP.md) |
+| Project Management module | [PROJECT_MANAGEMENT_MVP.md](PROJECT_MANAGEMENT_MVP.md) |
 | Additional Works | [ADDITIONAL_WORKS_ARCHITECTURE.md](ADDITIONAL_WORKS_ARCHITECTURE.md) |
 | Pakyaw labor contracts | [labor-contracts-plan.md](labor-contracts-plan.md) |
 | Agreement gates (6 of them) | [partnership-agreement-system-alignment.md](partnership-agreement-system-alignment.md) |
 | Staff accounts | [STAFF_ACCOUNT_SETUP.md](STAFF_ACCOUNT_SETUP.md) |
+| Project Control cost/profit chart | [project-control-chart.md](project-control-chart.md) |
 | Field-by-field schema | [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md) |
-| Android build | [../BUILD_APK.md](../BUILD_APK.md) |
+| Migration order + duplicate audit | [../supabase/migrations/README.md](../supabase/migrations/README.md) |
+| Android build | [../android/BUILD_APK.md](../android/BUILD_APK.md) |
 
 > Several of those predate the Supabase migration and still say "Firestore" — the *field maps and
 > flows* remain accurate; the *storage layer* described in them does not.

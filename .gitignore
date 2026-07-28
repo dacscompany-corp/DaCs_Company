@@ -39,7 +39,7 @@ app/
 
 # ── Exclude generated files ─────────────────────────────────
 # package.json is TRACKED on purpose: it carries the disabled-build guard
-# (npm run build must fail — see src/README.md) and the `npm test` script.
+# (npm run build must fail — see README.md §13) and the `npm test` script.
 sw.js
 package-lock.json
 *.apk

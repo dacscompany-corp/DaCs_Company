@@ -150,7 +150,21 @@
       "Bash(node \"C:/Users/JOHNAE~1/AppData/Local/Temp/claude/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/c8378670-4839-4162-a561-c3b7a3637bf6/scratchpad/testform.js\")",
       "Bash(sed -i \"s|Worker-Agreement-FILLABLE.pdf|Worker-Agreement-FILLABLE \\(1\\).pdf|; s|filled-out.pdf|C:/Users/JOHNAE~1/AppData/Local/Temp/claude/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/c8378670-4839-4162-a561-c3b7a3637bf6/scratchpad/filled-v2.pdf|g\" \"C:/Users/JOHNAE~1/AppData/Local/Temp/claude/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/c8378670-4839-4162-a561-c3b7a3637bf6/scratchpad/testform2.js\")",
       "Bash(node \"C:/Users/JOHNAE~1/AppData/Local/Temp/claude/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/c8378670-4839-4162-a561-c3b7a3637bf6/scratchpad/testform2.js\")",
-      "Bash(node \"C:/Users/JOHNAE~1/AppData/Local/Temp/claude/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/3f6796f3-d36c-4a7a-a79d-8c6b80affb89/scratchpad/alloc-check.js\")"
+      "Bash(node \"C:/Users/JOHNAE~1/AppData/Local/Temp/claude/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/3f6796f3-d36c-4a7a-a79d-8c6b80affb89/scratchpad/alloc-check.js\")",
+      "Bash(node -e \"console.log\\(JSON.stringify\\(require\\('./package.json'\\).scripts,null,2\\)\\)\")",
+      "Bash(grep -nE \"^// ── [A-Z].*──|^// =+$\" js/expenses-module.js)",
+      "Bash(grep -v \"^.*=\\\\+$\")",
+      "Bash(grep -nE \"^/\\\\* ─|^// ── [A-Z]|_pmTab|data-pmtab\" js/pm-admin.js)",
+      "Bash(grep -nE \"^#{1,3} |gate\" docs/partnership-agreement-system-alignment.md)",
+      "Bash(git status *)",
+      "Bash(git rm *)",
+      "Bash(grep -v '\\\\.js$')",
+      "Bash(mkdir -p android)",
+      "Bash(git mv *)",
+      "Bash(mv app-release-bundle.aab app-release-signed.apk app-release-signed.apk.idsig app-release-unsigned-aligned.apk android.keystore build.gradle settings.gradle gradle.properties gradlew gradlew.bat generate-icons.py manifest-checksum.txt store_icon.png android/)",
+      "Bash(mv gradle *)",
+      "PowerShell(Move-Item -Path gradle -Destination android\\\\gradle -Force)",
+      "PowerShell(Move-Item -Path app -Destination android\\\\app -Force)"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",

@@ -1,7 +1,7 @@
 {
   "scripts": {
     "test": "node tests/money-math.test.js",
-    "build": "node -e \"console.error('\\n*** BUILD DISABLED (2026-07-03) ***\\njs/portal-app.compiled.js IS the source of truth — edit it directly.\\nsrc/portal-app.jsx went stale on 2026-06-03 (missing labor contracts + later fixes);\\nrebuilding from it would wipe the live portal. See src/README.md.\\n'); process.exit(1)\"",
+    "build": "node -e \"console.error('\\n*** BUILD DISABLED (2026-07-03) ***\\njs/portal-app.compiled.js IS the source of truth — edit it directly.\\nThe stale JSX source was deleted on 2026-07-28; there is nothing to build from.\\nSee README.md section 13.\\n'); process.exit(1)\"",
     "build:watch": "npm run build",
     "build:prod": "npm run build"
   },

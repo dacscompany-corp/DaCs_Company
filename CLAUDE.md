@@ -10,8 +10,8 @@ Plain HTML + vanilla JS, **no build step**. Open the file, edit it, refresh the 
 ## Hard rules
 
 **Never run `npm run build`.** `js/portal-app.compiled.js` is the live source of truth for
-Project Control and is edited **directly**. `src/portal-app.jsx.stale-*` is stale — a build would
-overwrite the live portal with old code.
+Project Control and is edited **directly**. The script is a hard-fail stub and the stale JSX it
+built from was deleted on 2026-07-28 — there is no `src/` and no JSX source. Don't recreate one.
 
 **A new data field needs a real DB column.** `js/supabase-config.js` is a Firestore-compat shim
 over Supabase: it maps camelCase fields straight to snake_case columns. Writing a field whose
