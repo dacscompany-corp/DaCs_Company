@@ -107,6 +107,222 @@ window.dacsPrintHeader = function(docTitle, docSubtitle) {
 };
 
 /**
+ * Project Control — "Print Summary" on the folder overview.
+ *
+ * Prints what Project Control actually tracks: the contract, the three cost
+ * modules and the profit line. It deliberately does NOT print billing periods —
+ * the old document was built from them and read as empty on jobs that don't use
+ * billing.
+ *
+ * This function does no money maths. Every figure is computed by the portal
+ * (_projSpent / _projMargin in portal-app.compiled.js) and passed in already
+ * settled, so the printed page can never disagree with the screen.
+ *
+ * d = {
+ *   name, code, location, printedAt,
+ *   contract, labor, material, overhead, spent,
+ *   laborDirect, laborLiability,            // Labor breakdown
+ *   materialCount, docsAttached, docsExpected,
+ *   overheadIndirect, overheadExpenses,     // Overhead breakdown
+ *   earned, profit, marginPct, isForecast, completePct,
+ *   allocated, coverCost, periodCount, additionalWorks
+ * }
+ */
+window.dacsPrintProjectCostSummary = function (d) {
+    const peso = (n) => (Number(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const esc  = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const contract = Number(d.contract) || 0;
+    // Share of contract — the same basis as the on-screen formula chip.
+    const share = (v) => contract > 0 ? ((Number(v) || 0) / contract * 100).toFixed(1) + '%' : '—';
+    const profit = Number(d.profit) || 0;
+    const isLoss = profit < 0;
+    // No accomplishment data => the figure assumes the job runs to completion and
+    // must never be presented as earned. Same rule as the overview banner.
+    const profitLbl = (isLoss ? 'Gross Loss' : 'Gross Profit') + (d.isForecast ? ' · Forecast' : ' · Earned');
+    const revLbl    = d.isForecast ? 'Contract Revenue' : 'Earned Revenue';
+    const revSub    = d.isForecast
+        ? 'Full contract · not yet earned'
+        : (Number(d.completePct) || 0).toFixed(1) + '% of contract accomplished';
+
+    const mod = (label, amount, sub, rows) => `
+        <tr class="data-row">
+            <td style="text-align:center;color:#6b7280">${label.charAt(0)}</td>
+            <td>
+                <div style="font-weight:700;font-size:0.85rem">${label}</div>
+                ${sub ? `<div style="font-size:0.72rem;color:#9ca3af;margin-top:1px">${sub}</div>` : ''}
+                ${rows.map((r) => `<div style="font-size:0.72rem;color:#6b7280;margin-top:3px">${r[0]}: <strong>${r[1]}</strong></div>`).join('')}
+            </td>
+            <td style="text-align:center">${share(amount)}</td>
+            <td style="text-align:right;font-weight:700">₱${peso(amount)}</td>
+        </tr>`;
+
+    const html = `<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8">
+<title>Project Cost Summary — ${esc(d.name || '')}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Segoe UI',Arial,sans-serif; background:#f0f0f0; color:#1a1a1a; font-size:13px; }
+  .page { max-width:820px; margin:20px auto; background:#fff; box-shadow:0 2px 16px rgba(0,0,0,0.15); }
+  .co-header { padding:20px 28px 0; }
+  .proj-bar { background:#f8f9fa; border-bottom:3px solid #1a5c3a; padding:10px 24px; display:flex; justify-content:space-between; align-items:center; }
+  .proj-name { font-size:1rem; font-weight:800; }
+  .proj-meta { font-size:0.72rem; color:#6b7280; margin-top:2px; }
+  .print-info { text-align:right; font-size:0.7rem; color:#9ca3af; }
+  .summary-bar { display:flex; border-bottom:2px solid #e5e7eb; }
+  .sum-pill { flex:1; padding:10px 16px; text-align:center; border-right:1px solid #e5e7eb; }
+  .sum-pill:last-child { border-right:none; }
+  .sum-pill-label { font-size:0.6rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#9ca3af; margin-bottom:3px; }
+  .sum-pill-val { font-size:1rem; font-weight:800; }
+  table { width:100%; border-collapse:collapse; }
+  .col-hdr th { background:#1a5c3a; color:#fff; font-size:0.72rem; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; padding:8px 10px; border:1px solid #14492e; text-align:center; }
+  .col-hdr th.desc { text-align:left; }
+  .data-row td { padding:9px 10px; border:1px solid #e5e7eb; vertical-align:top; }
+  .data-row:nth-child(even) td { background:#fafafa; }
+  .total-row td { background:#f3f4f6; font-weight:800; padding:9px 10px; border:1px solid #e5e7eb; }
+  .profit-wrap { padding:18px 24px; }
+  .profit-title { font-size:0.68rem; font-weight:800; letter-spacing:0.1em; text-transform:uppercase; color:#9ca3af; margin-bottom:10px; }
+  .eq { display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+  .eq-item { min-width:150px; }
+  .eq-lbl { font-size:0.72rem; color:#6b7280; }
+  .eq-sub { font-size:0.64rem; color:#9ca3af; margin-top:1px; }
+  .eq-val { font-size:1rem; font-weight:800; margin-top:3px; font-variant-numeric:tabular-nums; }
+  .eq-op { font-size:1.2rem; color:#9ca3af; font-weight:700; }
+  .meta-row { display:flex; gap:0; border-top:2px solid #e5e7eb; }
+  .meta-cell { flex:1; padding:9px 16px; border-right:1px solid #e5e7eb; }
+  .meta-cell:last-child { border-right:none; }
+  .meta-lbl { font-size:0.6rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#9ca3af; }
+  .meta-val { font-size:0.85rem; font-weight:700; margin-top:2px; }
+  .footer { padding:14px 24px 18px; display:flex; justify-content:space-between; align-items:flex-end; border-top:1px solid #e5e7eb; }
+  .footer-left { font-size:0.66rem; color:#9ca3af; line-height:1.6; }
+  .footer-brand { font-size:0.78rem; font-weight:800; color:#1a5c3a; }
+  @media print {
+    body { background:#fff; }
+    .page { box-shadow:none; margin:0; max-width:100%; }
+    .col-hdr th { background:#1a5c3a !important; color:#fff !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .data-row:nth-child(even) td, .total-row td { background:#fafafa !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  }
+</style></head><body>
+<div class="page">
+  <div class="co-header">
+    ${window.dacsPrintHeader('Project Cost Summary', 'Printed: ' + esc(d.printedAt || ''))}
+  </div>
+
+  <div class="proj-bar">
+    <div>
+      <div class="proj-name">${esc(d.name || '')}</div>
+      <div class="proj-meta">${esc(d.code || '')}${d.location ? ' &nbsp;·&nbsp; ' + esc(d.location) : ''}</div>
+    </div>
+    <div class="print-info">Printed on<br><strong>${esc(d.printedAt || '')}</strong></div>
+  </div>
+
+  <div class="summary-bar">
+    <div class="sum-pill">
+      <div class="sum-pill-label">Total Contract</div>
+      <div class="sum-pill-val" style="color:#374151">₱${peso(contract)}</div>
+    </div>
+    <div class="sum-pill">
+      <div class="sum-pill-label">Total Actual Cost</div>
+      <div class="sum-pill-val" style="color:#d97706">₱${peso(d.spent)}</div>
+    </div>
+    <div class="sum-pill">
+      <div class="sum-pill-label">${profitLbl}</div>
+      <div class="sum-pill-val" style="color:${isLoss ? '#991b1b' : '#166534'}">₱${peso(profit)}</div>
+    </div>
+    <div class="sum-pill">
+      <div class="sum-pill-label">${d.isForecast ? 'Forecast Margin' : 'Earned Margin'}</div>
+      <div class="sum-pill-val" style="color:${isLoss ? '#991b1b' : '#166534'}">${d.marginPct == null ? '—' : (Number(d.marginPct) || 0).toFixed(1) + '%'}</div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr class="col-hdr">
+        <th style="width:6%">#</th>
+        <th class="desc" style="width:60%">Cost Module</th>
+        <th style="width:14%">% of Contract</th>
+        <th style="width:20%">Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${mod('Labor Cost', d.labor, 'Wages and payroll for workers on site', [
+          ['Direct', '₱' + peso(d.laborDirect)],
+          ['Liability', '₱' + peso(d.laborLiability)]
+      ])}
+      ${mod('Material Cost', d.material, 'Materials purchased, with supporting documents', [
+          ['Transactions', String(d.materialCount || 0)],
+          ['Files attached', (d.docsAttached || 0) + ' / ' + (d.docsExpected || 0)]
+      ])}
+      ${mod('Overhead Cost', d.overhead, 'Support people and site operating costs', [
+          ['Indirect labor', '₱' + peso(d.overheadIndirect)],
+          ['Operating costs', '₱' + peso(d.overheadExpenses)]
+      ])}
+    </tbody>
+    <tfoot>
+      <tr class="total-row">
+        <td colspan="2" style="text-align:right;letter-spacing:0.06em">TOTAL ACTUAL COST:</td>
+        <td style="text-align:center">${share(d.spent)}</td>
+        <td style="text-align:right">₱${peso(d.spent)}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="profit-wrap">
+    <div class="profit-title">Profit Computation</div>
+    <div class="eq">
+      <div class="eq-item">
+        <div class="eq-lbl">${revLbl}</div>
+        <div class="eq-sub">${revSub}</div>
+        <div class="eq-val">₱${peso(d.earned)}</div>
+      </div>
+      <div class="eq-op">−</div>
+      <div class="eq-item">
+        <div class="eq-lbl">Actual Cost</div>
+        <div class="eq-sub">Labor + Material + Overhead</div>
+        <div class="eq-val">₱${peso(d.spent)}</div>
+      </div>
+      <div class="eq-op">=</div>
+      <div class="eq-item">
+        <div class="eq-lbl">${profitLbl}</div>
+        <div class="eq-sub">${d.marginPct == null ? '' : (Number(d.marginPct) || 0).toFixed(1) + '% margin'}</div>
+        <div class="eq-val" style="color:${isLoss ? '#991b1b' : '#166534'}">₱${peso(profit)}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="meta-row">
+    <div class="meta-cell">
+      <div class="meta-lbl">Fund Allocated</div>
+      <div class="meta-val">₱${peso(d.allocated)}</div>
+    </div>
+    <div class="meta-cell">
+      <div class="meta-lbl">Remaining</div>
+      <div class="meta-val">₱${peso((Number(d.allocated) || 0) - (Number(d.spent) || 0))}</div>
+    </div>
+    <div class="meta-cell">
+      <div class="meta-lbl">Cover Expenses</div>
+      <div class="meta-val">₱${peso(d.coverCost)}</div>
+    </div>
+    <div class="meta-cell">
+      <div class="meta-lbl">Additional Works</div>
+      <div class="meta-val">₱${peso(d.additionalWorks)}</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-left">Official project cost summary generated by the DAC's Admin System.<br>This document is for internal use only.</div>
+    <div class="footer-brand">DAC's Building Design Services</div>
+  </div>
+</div>
+<script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };<\/script>
+</body></html>`;
+
+    const win = window.open('', '_blank', 'width=900,height=1000');
+    if (!win) { alert('Pop-up blocked. Please allow pop-ups for this site.'); return; }
+    win.document.write(html);
+    win.document.close();
+};
+
+/**
  * ONE shared, formal letterhead-style AGREEMENT PDF used by every agreement /
  * terms-and-conditions document across the whole app, so they all look identical.
  * Opens a print window and auto-prints.

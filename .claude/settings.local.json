@@ -164,7 +164,9 @@
       "Bash(mv app-release-bundle.aab app-release-signed.apk app-release-signed.apk.idsig app-release-unsigned-aligned.apk android.keystore build.gradle settings.gradle gradle.properties gradlew gradlew.bat generate-icons.py manifest-checksum.txt store_icon.png android/)",
       "Bash(mv gradle *)",
       "PowerShell(Move-Item -Path gradle -Destination android\\\\gradle -Force)",
-      "PowerShell(Move-Item -Path app -Destination android\\\\app -Force)"
+      "PowerShell(Move-Item -Path app -Destination android\\\\app -Force)",
+      "Bash(git ls-tree *)",
+      "Bash(awk -F: '$1>2100 && $1<2500')"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",

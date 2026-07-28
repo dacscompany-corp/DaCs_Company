@@ -5282,15 +5282,23 @@ function printTransactionReceipt(type, id) {
 // ─────────────────────────────────────────────────────────-----------------------------------------------------------
 // FULL BILLING SUMMARY PRINTER
 // ─────────────────────────────────────────────────────────-----------------------------------------------------------
-function printFullBillingSummary() {
+// folderId — the folder to print. Project Control passes the folder it has open;
+// the Expenses module's own print buttons pass nothing and fall back to whatever
+// that module has selected. Without the argument a print launched from Project
+// Control used the Expenses selection instead, so it reported a different job.
+function printFullBillingSummary(folderId) {
     const _prtBaseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
-    const folder = expCurrentFolder;
-    const fid    = folder?.id || expCurrentProject?.folderId;
+    const fid    = folderId || expCurrentFolder?.id || expCurrentProject?.folderId;
     const projects = fid
         ? expProjects.filter(p => p.folderId === fid)
         : (expCurrentProject ? [expCurrentProject] : []);
 
-    if (!projects.length) { showExpNotif('No billing data to print.', 'error'); return; }
+    if (!projects.length) {
+        showExpNotif(fid
+            ? 'This project has no billing periods yet — nothing to summarise.'
+            : 'No billing data to print.', 'error');
+        return;
+    }
 
     const folderObj = fid ? expFolders.find(f => f.id === fid) : null;
     const title     = folderObj ? folderObj.name : (expCurrentProject ? expCurrentProject.month + ' ' + expCurrentProject.year : 'Billing Summary');
@@ -5326,6 +5334,11 @@ function printFullBillingSummary() {
 
     let itemNo = 1;
     let bodyRows = '';
+    // Column totals for the footer. The grand-total row sits under MATERIAL &
+    // CONSUMABLES and LABOR & EQUIPMENT, so it has to total those columns —
+    // it used to repeat Received/Spent there, which no column added up to.
+    let matGrand = 0;
+    let labGrand = 0;
 
     typeOrder.forEach(ft => {
         if (!sections[ft]) return;
@@ -5352,10 +5365,20 @@ function printFullBillingSummary() {
             const bal   = isCover ? -spent : recv - spent;
             grandBalance += bal;
 
-            const projExp = expExpenses.filter(e => e.projectId === p.id);
-            const projPay = expPayroll.filter(r => r.projectId === p.id);
-            const matCost = projExp.reduce((s, e) => s + (e.amount || 0), 0);
-            const labCost = projPay.reduce((s, r) => s + (r.totalSalary || 0), 0);
+            // Read the ALL-projects fetch, not expExpenses/expPayroll — those are
+            // listeners scoped to the one billing period open in the Expenses
+            // module (see subscribeExpenses), so every other row printed "—" and
+            // the columns came up short against Current Fund Spent. These are the
+            // same arrays _spent is derived from, so mat + lab now reconciles
+            // with the balance column exactly.
+            const _srcExp = _ovAllExpenses.length ? _ovAllExpenses : expExpenses;
+            const _srcPay = _ovAllPayroll.length  ? _ovAllPayroll  : expPayroll;
+            const projExp = _srcExp.filter(e => e.projectId === p.id);
+            const projPay = _srcPay.filter(r => r.projectId === p.id);
+            const matCost = projExp.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+            const labCost = projPay.reduce((s, r) => s + (parseFloat(r.totalSalary) || 0), 0);
+            matGrand += matCost;
+            labGrand += labCost;
 
             const subLabel = ft === 'progress'
                 ? `Progress Billing #${p.billingNumber || (idx + 1)}`
@@ -5396,7 +5419,7 @@ function printFullBillingSummary() {
 
     const html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8">
-<title>Bill of Quantities — ${title}</title>
+<title>Billing Summary — ${title}</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { font-family:'Segoe UI',Arial,sans-serif; background:#f0f0f0; color:#1a1a1a; font-size:13px; }
@@ -5505,8 +5528,8 @@ function printFullBillingSummary() {
       <tfoot>
         <tr class="grand-total">
           <td colspan="4" style="text-align:right;letter-spacing:0.06em">GRAND TOTAL BALANCE:</td>
-          <td style="text-align:right">₱${formatNum(totalReceived)}</td>
-          <td style="text-align:right">₱${formatNum(totalSpent)}</td>
+          <td style="text-align:right">${matGrand > 0 ? '₱' + formatNum(matGrand) : '—'}</td>
+          <td style="text-align:right">${labGrand > 0 ? '₱' + formatNum(labGrand) : '—'}</td>
           <td style="text-align:right">
             <span style="background:${gBg};color:${gColor};padding:3px 10px;border-radius:4px;font-size:0.88rem">
               ${grandBalance < 0 ? '-' : grandBalance > 0 ? '+' : ''}₱${formatNum(Math.abs(grandBalance))}

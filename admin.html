@@ -278,7 +278,10 @@
                     <div class="portal-brand-sub">Building Design Services</div>
                 </div>
             </div>
-            <div class="portal-topnav-spacer"></div>
+            <!-- Primary tabs live INSIDE the top bar, between the brand and the
+                 account tools. On phones the bar wraps and they drop to their own
+                 row (see admin-renovation.css §Primary tabs). -->
+            <nav class="portal-primary-tabs" id="portalPrimaryTabs"></nav>
             <div class="portal-topnav-tools">
                 <div class="cons-notification-bell" id="consNotificationBell">
                     <button class="portal-icon-btn cons-notif-bell-trigger" aria-label="Notifications" onclick="toggleNotificationDropdown(event)">
@@ -293,7 +296,6 @@
                 </button>
             </div>
         </header>
-        <nav class="portal-primary-tabs" id="portalPrimaryTabs"></nav>
         <div class="portal-modules-row" id="portalModulesRow"></div>
 
         <!-- ════════════ DASHBOARD ════════════ -->

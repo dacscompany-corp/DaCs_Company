@@ -59,7 +59,14 @@
   /* Folder / card grids in the portal: one column on phones */
   .dacs-portal-scope .pc-fld-grid,
   .dacs-portal-scope .pc-period-grid,
+  .dacs-portal-scope .pc-cost-grid,
+  .dacs-portal-scope .pc-wide-row,
+  .dacs-portal-scope .pc-rpt-row,
   .dacs-portal-scope .pc-flow-cards { grid-template-columns: 1fr !important; }
+  /* Cost columns stack: drop the painted column dividers for horizontal rules */
+  .dacs-portal-scope .pc-cost-grid { background-image: none !important; }
+  .dacs-portal-scope .pc-cost-col { border-right: 0 !important; border-bottom: 1px solid var(--brand-hair) !important; }
+  .dacs-portal-scope .pc-cost-col:last-child { border-bottom: 0 !important; }
   /* Status pills/badges keep their shape — never squashed into a circle */
   .dacs-portal-scope .pc-pill,
   .dacs-portal-scope .pc-over-badge,

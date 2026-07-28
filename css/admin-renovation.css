@@ -402,7 +402,6 @@ button.btn-primary:hover,
   color: var(--text-light);
   margin-top: 2px;
 }
-.portal-topnav-spacer { flex: 1; }
 .portal-topnav-tools {
   display: flex;
   align-items: center;
@@ -453,7 +452,11 @@ button.btn-primary:hover,
   text-overflow: ellipsis;
 }
 
-/* ── Primary tabs ── */
+/* ── Primary tabs ──
+   They sit INSIDE .portal-topnav, between the brand and the account tools.
+   The base rules below are the standalone-bar styling (kept for any page that
+   still renders the nav on its own row); the .portal-topnav > override that
+   follows is what applies on admin.html. */
 .portal-primary-tabs {
   background: var(--bg-white);
   padding: 0 40px;
@@ -482,6 +485,29 @@ button.btn-primary:hover,
 }
 .portal-primary-tabs::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* In-header placement. align-self/align-items:stretch plus the negative
+   vertical margin cancel the top bar's 16px padding, so each tab runs the full
+   height of the bar and its active underline lands exactly on the header's own
+   bottom border — the same indicator the standalone row had. */
+.portal-topnav > .portal-primary-tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+  align-self: stretch;
+  align-items: stretch;
+  margin: -16px 0;
+  padding: 0;
+  gap: 2px;
+  background: transparent;
+  border-bottom: 0;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.portal-topnav > .portal-primary-tabs .portal-ptab {
+  padding: 0 18px;
+  align-items: center;
 }
 .portal-ptab {
   padding: 14px 22px 16px;
@@ -645,6 +671,19 @@ button.btn-primary:hover,
   .portal-topnav,
   .portal-primary-tabs,
   .portal-modules-row { padding-left: 20px; padding-right: 20px; }
+  /* Too narrow for brand + tabs + tools on one line: let the bar wrap so the
+     tabs take their own row underneath, as they did before they moved in.
+     No negative margins here — the bar's padding changes again at 768px and
+     460px, and tying the underline to it would drift at each breakpoint. */
+  .portal-topnav { flex-wrap: wrap; }
+  .portal-topnav > .portal-primary-tabs {
+    order: 3;
+    flex: 1 0 100%;
+    align-self: auto;
+    margin: 0;
+    padding: 0;
+    border-top: 1px solid var(--brand-hair);
+  }
   .content-view, .dashboard-header { padding-left: 20px; padding-right: 20px; }
   .portal-brand-text { display: none; }
   .portal-user-pill { display: none; }
@@ -657,43 +696,55 @@ button.btn-primary:hover,
    PROJECT CONTROL — Redesigned dashboard (pc-* namespace)
 ═════════════════════════════════════════════════════════════ */
 
+/* Header stacks: eyebrow row → title + controls on one line → code/location.
+   The controls sit level with the title (not below it) so the meta row runs the
+   full width. Design: "Project Control Overview.dc.html". */
 .dacs-portal-scope .pc-head {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  gap: 28px;
-  flex-wrap: wrap;
-  margin-bottom: 36px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  margin-bottom: 26px;
 }
 .dacs-portal-scope .pc-head-eyebrow {
   font-family: var(--sans);
-  font-size: 12px;
-  letter-spacing: 0.2em;
+  font-size: 11px;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
-  color: var(--brand-green);
+  color: var(--brand-green-light);
   font-weight: 700;
-  margin-bottom: 8px;
+  margin-bottom: 14px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
+}
+.dacs-portal-scope .pc-head-main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
 }
 .dacs-portal-scope .pc-head-title {
   font-family: var(--serif);
-  font-size: 46px;
-  font-weight: 500;
-  letter-spacing: -0.025em;
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
   color: var(--text-primary);
   line-height: 1.05;
   margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .dacs-portal-scope .pc-head-sub {
   font-family: var(--sans);
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--text-light);
-  margin-top: 10px;
+  margin-top: 12px;
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 .dacs-portal-scope .pc-head-sub .pc-code {
   font-family: var(--mono);
@@ -707,25 +758,34 @@ button.btn-primary:hover,
 }
 .dacs-portal-scope .pc-head-controls {
   display: flex;
-  gap: 10px;
+  gap: 6px;
   align-items: center;
   flex-wrap: wrap;
+  flex: none;
 }
 
 .dacs-portal-scope .pc-pill {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
   background: #fff;
   border: 1px solid var(--brand-hair);
   border-radius: 10px;
-  padding: 11px 16px;
+  padding: 9px 12px;
   font-family: var(--sans);
-  font-size: 14px;
-  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
   cursor: pointer;
   transition: border-color .15s, box-shadow .15s;
   box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+.dacs-portal-scope .pc-pill > svg { color: var(--text-light); flex: none; }
+.dacs-portal-scope .pc-pill .pc-pill-val {
+  font-family: var(--serif);
+  font-size: 12.5px;
+  color: var(--text-primary);
 }
 .dacs-portal-scope .pc-pill:hover {
   border-color: var(--brand-green-light);
@@ -1627,6 +1687,429 @@ button.btn-primary:hover,
 @media (max-width: 720px) {
   .dacs-portal-scope .pc-sm-contract { flex-direction: column; align-items: flex-start; gap: 6px; }
   .dacs-portal-scope .pc-summarize-stacked .pc-sm-equation { flex-wrap: wrap; gap: 12px; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   PROJECT CONTROL — Overview redesign
+   Design source: "Project Control Overview.dc.html" (Claude Design).
+   Three blocks: the Gross Profit banner with its attached figure panel,
+   the single "Actual Cost" card holding the three cost modules, and the
+   compact Billing & Reports row.
+═════════════════════════════════════════════════════════════ */
+
+/* Header icon buttons sit slightly larger than the table-row ones */
+.dacs-portal-scope .pc-head-controls .pc-row-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  margin-right: 0;
+}
+.dacs-portal-scope .pc-head-controls .pc-btn-ghost {
+  padding: 9px 12px;
+  gap: 6px;
+}
+
+/* Shared rotating chevron */
+.dacs-portal-scope .pc-chev {
+  display: inline-flex;
+  align-items: center;
+  transition: transform .15s ease;
+  flex: none;
+}
+.dacs-portal-scope .pc-chev.is-open { transform: rotate(180deg); }
+
+/* ── Gross Profit banner → attached figure panel ── */
+.dacs-portal-scope .pc-eye-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.35);
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .15s;
+}
+.dacs-portal-scope .pc-eye-toggle:hover { background: rgba(255,255,255,.22); }
+
+/* The KPI row inside the stacked banner: the wrapper already draws the border,
+   radius and shadow, so the strip drops its own. */
+.dacs-portal-scope .pc-kpi-strip.pc-kpi-attached {
+  border: 0;
+  border-top: 1px solid var(--brand-hair);
+  border-radius: 0;
+  box-shadow: none;
+  margin-bottom: 0;
+  padding: 18px 0;
+}
+
+.dacs-portal-scope .pc-sm-mathbar {
+  border-top: 1px solid var(--brand-hair);
+  padding: 0 28px 0;
+}
+.dacs-portal-scope .pc-sm-math-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-light);
+  cursor: pointer;
+}
+.dacs-portal-scope .pc-sm-math-toggle:hover { color: var(--brand-green); }
+.dacs-portal-scope .pc-summarize-stacked .pc-sm-mathbar .pc-sm-equation { padding: 0 0 18px; }
+
+/* ── Actual Cost card ── */
+.dacs-portal-scope .pc-cost {
+  background: #fff;
+  border: 1px solid var(--brand-hair);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  margin-bottom: 18px;
+}
+/* align-items:start is what keeps a collapsed column collapsed — the grid
+   default (stretch) would grow all three to match whichever one is open, so
+   opening Labor left Material and Overhead as tall empty boxes.
+   Because the columns no longer share a height, the dividers can't live on the
+   columns themselves (they would stop short). They are painted on the grid
+   instead, at the two column boundaries, so they always run the full height. */
+.dacs-portal-scope .pc-cost-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  background-image:
+    linear-gradient(var(--brand-hair), var(--brand-hair)),
+    linear-gradient(var(--brand-hair), var(--brand-hair));
+  background-size: 1px 100%, 1px 100%;
+  background-position: calc(100% / 3) 0, calc(200% / 3) 0;
+  background-repeat: no-repeat;
+}
+.dacs-portal-scope .pc-cost-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 24px 20px;
+  cursor: pointer;
+  transition: background .15s;
+  min-width: 0;
+}
+.dacs-portal-scope .pc-cost-col:hover,
+.dacs-portal-scope .pc-cost-col.is-open { background: #FAFAF9; }
+.dacs-portal-scope .pc-cost-col:focus-visible {
+  outline: 2px solid var(--brand-green);
+  outline-offset: -2px;
+}
+.dacs-portal-scope .pc-cost-col-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+/* Second way in: the whole column toggles, and so does this. The button keeps a
+   real hit area rather than relying on the bare 16px glyph. */
+.dacs-portal-scope .pc-cost-chev {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--brand-green);
+  cursor: pointer;
+  transition: background .15s;
+}
+.dacs-portal-scope .pc-cost-chev:hover { background: rgba(26, 92, 58, 0.10); }
+.dacs-portal-scope .pc-cost-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--brand-accent-soft);
+  color: var(--brand-green);
+}
+.dacs-portal-scope .pc-cost-icon.pc-icon-amber  { background: #F4EBD9; color: #8B6914; }
+.dacs-portal-scope .pc-cost-icon.pc-icon-blue   { background: #E3EEF6; color: #1E5582; }
+.dacs-portal-scope .pc-cost-icon.pc-icon-purple { background: #EFEAF7; color: #6B3F8F; }
+.dacs-portal-scope .pc-cost-icon.pc-icon-teal   { background: #E3F3EE; color: #157A52; }
+.dacs-portal-scope .pc-cost-col-title {
+  font-family: var(--serif);
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dacs-portal-scope .pc-cost-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: var(--text-primary);
+}
+.dacs-portal-scope .pc-cost-amount .cur {
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-light);
+}
+.dacs-portal-scope .pc-cost-amount .num {
+  font-family: var(--sans);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
+}
+.dacs-portal-scope .pc-cost-amount .pct {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--brand-green);
+  background: rgba(26,90,58,.10);
+  padding: 2px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.dacs-portal-scope .pc-cost-col .pc-labor-formula { align-self: flex-start; }
+.dacs-portal-scope .pc-cost-bar {
+  height: 6px;
+  background: #F1EFEA;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.dacs-portal-scope .pc-cost-bar-fill { height: 100%; border-radius: 999px; transition: width .3s ease; }
+
+.dacs-portal-scope .pc-cost-body {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding-top: 10px;
+  border-top: 1px solid #F1EFEA;
+}
+.dacs-portal-scope .pc-cost-sub {
+  font-family: var(--sans);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-light);
+  font-weight: 600;
+}
+.dacs-portal-scope .pc-cost-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--serif);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.dacs-portal-scope .pc-cost-row .lbl { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.dacs-portal-scope .pc-cost-row .dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--brand-green);
+  flex: none;
+}
+.dacs-portal-scope .pc-cost-row .dot.b { opacity: .6; }
+.dacs-portal-scope .pc-cost-row .dot.c { opacity: .35; }
+.dacs-portal-scope .pc-cost-row .val {
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.dacs-portal-scope .pc-cost-note {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--text-light);
+}
+.dacs-portal-scope .pc-cost-foot {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--brand-hair);
+  background: #FAFAF9;
+  flex-wrap: wrap;
+}
+.dacs-portal-scope .pc-cost-foot .lbl {
+  font-family: var(--sans);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-light);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dacs-portal-scope .pc-cost-foot .val {
+  font-family: var(--sans);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--brand-green);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.dacs-portal-scope .pc-cost-foot .note {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+/* Stacked share bar — Labor · Material · Overhead against the contract */
+.dacs-portal-scope .pc-cost-stack {
+  flex: 1 1 160px;
+  min-width: 120px;
+  height: 10px;
+  background: #EFEDE8;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+}
+.dacs-portal-scope .pc-cost-stack > div { height: 100%; }
+
+/* ── Billing Periods · Additional Works ── */
+.dacs-portal-scope .pc-wide-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 18px;
+  margin-bottom: 26px;
+}
+.dacs-portal-scope .pc-wide-card {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  background: #fff;
+  border: 1px solid var(--brand-hair);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  padding: 18px 22px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.dacs-portal-scope .pc-wide-title {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+.dacs-portal-scope .pc-wide-val {
+  margin-left: auto;
+  flex: none;
+  white-space: nowrap;
+  font-family: var(--sans);
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.dacs-portal-scope .pc-wide-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--brand-hair);
+  background: #fff;
+  color: var(--text-primary);
+  font-family: var(--serif);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+.dacs-portal-scope .pc-wide-cta:hover { background: var(--brand-surface-2); }
+.dacs-portal-scope .pc-wide-cta--soft {
+  border: 1.5px solid #CDE7D8;
+  background: #F0FAF4;
+  color: #1A5C3F;
+}
+.dacs-portal-scope .pc-wide-cta--soft:hover { background: #E6F4EC; }
+
+/* ── Billing & Reports ── */
+.dacs-portal-scope .pc-section-label {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-light);
+  margin: 0 2px 12px;
+}
+.dacs-portal-scope .pc-rpt-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.dacs-portal-scope .pc-rpt-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--brand-hair);
+  border-radius: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  min-width: 0;
+  transition: border-color .15s, background .15s;
+}
+.dacs-portal-scope .pc-rpt-card:hover { border-color: var(--brand-green-light); background: #FAFAF9; }
+.dacs-portal-scope .pc-rpt-card .pc-cost-icon { width: 30px; height: 30px; }
+.dacs-portal-scope .pc-rpt-text { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.dacs-portal-scope .pc-rpt-text .t {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--serif);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.dacs-portal-scope .pc-rpt-text .s {
+  font-family: var(--sans);
+  font-size: 11.5px;
+  color: var(--text-light);
+}
+.dacs-portal-scope .pc-rpt-arrow { margin-left: auto; color: var(--brand-green); display: inline-flex; flex: none; }
+
+@media (max-width: 1100px) {
+  /* Stacked: the painted vertical dividers would cut across the rows */
+  .dacs-portal-scope .pc-cost-grid { grid-template-columns: 1fr; background-image: none; }
+  .dacs-portal-scope .pc-cost-col { border-bottom: 1px solid var(--brand-hair); }
+  .dacs-portal-scope .pc-cost-col:last-child { border-bottom: 0; }
+  .dacs-portal-scope .pc-rpt-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .dacs-portal-scope .pc-head-main { align-items: flex-start; }
+  .dacs-portal-scope .pc-head-controls { width: 100%; }
+  .dacs-portal-scope .pc-cost-foot .note { white-space: normal; }
+  .dacs-portal-scope .pc-wide-val { margin-left: 0; }
 }
 
 /* ════════════════════════════════════════════════════════════
