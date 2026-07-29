@@ -3106,7 +3106,11 @@
 .lc2-rem-val { font-family: var(--serif); font-size: 21px; font-weight: 600; color: var(--brand-green); font-variant-numeric: tabular-nums; }
 .lc2-rem-val.neg { color: #C0392B; }
 .lc2-rem-val.muted { color: var(--ink-4); }
-.lc2-badge { font-size: 11px; font-weight: 700; padding: 4px 11px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }
+/* Sized up from 11px/4px — the status is the fastest read on the row (is this
+   job running, done, or over cap?) and it was the smallest thing on it. Bumped
+   on the base rule, not on -ongoing alone: a bigger "In progress" sitting next
+   to a smaller "Completed" would read as a different kind of thing. */
+.lc2-badge { font-size: 14px; font-weight: 700; padding: 7px 16px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; letter-spacing: 0.01em; }
 /* Same convention as .lc-badge-* above. "Ongoing" used to be a green almost
    identical to "done" — blue now, so a finished contract can't be mistaken
    for a running one. */
@@ -3121,9 +3125,48 @@
 .lc2-acc.open .lc2-chev { transform: rotate(180deg); }
 
 /* expanded body — merged contract + payment history */
-.lc2-acc-body { padding: 0 14px 22px 74px; }
-.lc2-cblock { margin-bottom: 18px; }
-.lc2-cblock:last-child { margin-bottom: 0; }
+.lc2-acc-body { padding: 0 14px 22px 74px; display: flex; flex-direction: column; gap: 14px; }
+
+/* ── Numbered job cards ───────────────────────────────────────────────
+   Was every contract under a worker expanded at once — four payment
+   tables stacked, four sets of identical column headers, no way to tell
+   which balance belonged to which job. Now each contract is a numbered
+   card owning its own balance and status, one open at a time; the rest
+   collapse to a single scannable line.
+   Design: "Labor Contract Block - 2a.dc.html" → 2a. */
+.lc2-jobs-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lc2-jobs-lbl { font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+.lc2-jobs-hint { font-size: 12px; color: var(--ink-4); }
+
+.lc2-job { border: 1px solid var(--hair); border-radius: 14px; background: var(--surface); overflow: hidden; transition: border-color .12s, box-shadow .12s; }
+.lc2-job:not(.open):hover { border-color: var(--ink-4); }
+.lc2-job.open { border-color: #D8E2DB; box-shadow: 0 4px 16px rgba(0, 0, 0, .06); }
+.lc2-job-head { display: flex; align-items: center; gap: 14px; padding: 14px 18px; cursor: pointer; color: var(--ink-4); }
+.lc2-job-head:focus-visible { outline: 2px solid var(--brand-green); outline-offset: -2px; }
+.lc2-job.open .lc2-job-head { background: #F7FAF8; border-bottom: 1px solid #E8EFEA; color: var(--brand-green); }
+
+/* The number is the card's handle — it's how a job gets referred to out
+   loud ("job 3 is the one over cap"), so it stays visible when closed. */
+.lc2-num { width: 26px; height: 26px; border-radius: 8px; background: #F0F0EE; color: var(--ink-3); font-size: 12px; font-weight: 700; display: grid; place-items: center; flex: none; }
+.lc2-job.open .lc2-num { background: var(--brand-green); color: #fff; }
+
+.lc2-job-id { flex: 1; min-width: 0; }
+.lc2-job-name { font-size: 15px; font-weight: 700; color: var(--ink); }
+.lc2-job.open .lc2-job-name { font-size: 16px; }
+.lc2-job-sub { font-size: 12px; color: var(--ink-3); margin-top: 1px; }
+.lc2-job-rem { text-align: right; white-space: nowrap; }
+.lc2-job-rem-lbl { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-4); font-weight: 600; }
+.lc2-job.open .lc2-job-rem-lbl { color: var(--brand-green); font-weight: 700; }
+.lc2-job-rem-val { font-family: var(--serif); font-size: 19px; font-weight: 600; color: var(--brand-green); font-variant-numeric: tabular-nums; }
+.lc2-job.open .lc2-job-rem-val { font-size: 20px; font-weight: 700; }
+.lc2-job-rem-val.neg { color: #C0392B; }
+.lc2-job-chev { flex: none; transition: transform .2s; }
+.lc2-job.open .lc2-job-chev { transform: rotate(180deg); }
+.lc2-job-body { padding: 14px 18px 0; }
+
+/* The uncapped-payments block is the only .lc2-cblock left; .lc2-acc-body's
+   flex gap spaces it, so it carries no margin of its own. */
+.lc2-cblock { margin-bottom: 0; }
 .lc2-cblock-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
 .lc2-cscope { font-weight: 700; color: var(--ink-2); font-size: 13.5px; }
 .lc2-cmeta { font-size: 12px; color: var(--ink-3); }
@@ -3132,6 +3175,9 @@
 .lc2-tx th.r, .lc2-tx td.r { text-align: right; }
 .lc2-tx td { padding: 9px 0; border-top: 1px solid #F0F0F0; font-size: 13.5px; color: var(--ink-2); vertical-align: middle; }
 .lc2-tx td.amt { font-family: var(--serif); font-variant-numeric: tabular-nums; color: var(--ink); font-size: 15px; }
+/* "Paid so far · of ₱ 75,000 agreed" — the job's running total, set apart
+   from the payment rows by a heavier rule so it doesn't read as one. */
+.lc2-tx tfoot td { border-top: 1px solid var(--hair); font-size: 12.5px; font-weight: 700; color: var(--ink); padding-bottom: 0; }
 .lc2-mile { background: var(--surface-2); padding: 2px 9px; border-radius: 999px; font-size: 11.5px; color: var(--ink-3); }
 .lc2-rowbtn { width: 28px; height: 28px; border-radius: 7px; display: inline-grid; place-items: center; color: var(--ink-4); border: 0; background: transparent; cursor: pointer; margin-left: 2px; }
 .lc2-rowbtn:hover { background: var(--surface-2); color: var(--ink-2); }
@@ -3152,6 +3198,14 @@
   margin-top: 16px;
   padding-top: 14px;
   border-top: 1px solid #EEEEEE;
+}
+/* Inside a job card the toolbar is the card's own footer, so it spans the
+   full width (cancelling the body's 18px side padding) and gets its own
+   tint rather than floating loose under the table. */
+.lc2-job-body .lc2-cactions {
+  margin: 14px -18px 0;
+  padding: 14px 18px 16px;
+  background: #FCFCFB;
 }
 .lc2-cgrp { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .lc2-cdiv { width: 1px; height: 22px; background: #E5E5E5; flex: none; }
@@ -3192,4 +3246,11 @@
   .lc2-id { flex: 1 1 auto; }
   .lc2-mid { flex: 1 1 100%; order: 5; }
   .lc2-acc-body { padding-left: 14px; }
+  /* Number + name keep the first line; balance and badge drop below it
+     rather than squeezing the job name to two characters. */
+  .lc2-job-head { flex-wrap: wrap; gap: 10px 12px; }
+  .lc2-job-id { flex: 1 1 60%; }
+  .lc2-job-rem { flex: 1 1 auto; text-align: left; order: 5; }
+  .lc2-job-head .lc2-badge { order: 6; }
+  .lc2-job-chev { margin-left: auto; }
 }

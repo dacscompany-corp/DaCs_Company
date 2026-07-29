@@ -281,8 +281,9 @@ short-lived signed URL transparently (click interceptor for `<a>`, MutationObser
 Migration `0032` prevents overwrite.
 
 **Print & PDF** — ~20 generators across the app. `print-utils.js` wraps `window.open` once so
-**every** printed document comes out grayscale, A4 portrait, with uniform margins — vouchers,
-invoices, SOAs, agreements, weekly reports, BOQ reports.
+**every** printed document comes out A4 portrait with uniform margins and its colours intact —
+vouchers, invoices, SOAs, agreements, weekly reports, BOQ reports. Colour survives because the
+injected sheet sets `print-color-adjust: exact`, overriding the browser's ink-saving default.
 
 **Expense Inbox** ([expense-inbox.js](js/expense-inbox.js) + [share-capture.html](share-capture.html))
 — admin shares a receipt photo from the phone share sheet; it lands in `expense_inbox` tagged by

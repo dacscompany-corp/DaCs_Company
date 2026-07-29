@@ -1772,11 +1772,43 @@ function _lcIcon(name) {
     (_LC_ICON_PATHS[name] || []).map((d, i) => /* @__PURE__ */ React.createElement("path", { key: i, d }))
   );
 }
+// Per-JOB status badge. Same vocabulary as the worker-level badge one level up,
+// because each job carries its own cap and can finish (or blow past it) while
+// the worker as a whole is still running.
+function _lcJobState(agreed, paid) {
+  const pct = agreed > 0 ? Math.min(100, Math.max(0, paid / agreed * 100)) : 0;
+  if (agreed <= 0) return { label: "No cap", cls: "lc2-badge-none", pct: 0 };
+  if (paid > agreed) return { label: "Over cap", cls: "lc2-badge-over", pct };
+  if (paid >= agreed) return { label: "Completed", cls: "lc2-badge-done", pct };
+  // Percent first: it's the number the eye is hunting for, and leading with it
+  // lines the figures up down the column instead of burying each one behind a
+  // word of a different length.
+  return { label: pct.toFixed(0) + "% · In progress", cls: "lc2-badge-ongoing", pct };
+}
+// "Jul 27, 2026" — date only. fmtDateTime appends the clock time, which is
+// noise on a "latest payment" caption.
+function _lcDayLabel(v) {
+  if (!v) return "";
+  const s = String(v);
+  const d = new Date(s.includes("T") && s.length > 10 ? s : s.slice(0, 10) + "T00:00:00");
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+// "Jobs agreed with Mark". Worker names fall back to "—" when unknown, which
+// would read as "Jobs agreed with —", so only use a real word.
+function _lcFirstName(n) {
+  const first = String(n || "").trim().split(/\s+/)[0] || "";
+  return /[A-Za-zÀ-ɏ]/.test(first) ? first : "this worker";
+}
   const rc = React.createElement;
   const [tab, setTab] = React.useState("all");
   const [searchQuery, setSearchQuery] = React.useState("");
   const [soaOpen, setSoaOpen] = React.useState(false);
   const [openW, setOpenW] = React.useState({});
+  // Which job is open inside each worker — one at a time, so the body is never
+  // four payment tables stacked on top of each other. Keyed by worker name;
+  // an absent key means "untouched" and the first job opens by default.
+  const [openJob, setOpenJob] = React.useState({});
   const soaRef = React.useRef(null);
   React.useEffect(() => {
     if (!soaOpen) return;
@@ -1885,69 +1917,134 @@ function _lcIcon(name) {
 
   const toggle = (w) => setOpenW((s) => ({ ...s, [w]: !s[w] }));
 
+  // Contract action toolbar, footer of an open job card. Grouped by purpose —
+  // records · modify · documents — with Delete isolated at the far end so it
+  // can't be mistaken for a peer action.
+  const _lcJobActions = (w, r) => rc("div", { className: "lc2-cactions" },
+    rc("div", { className: "lc2-cgrp" },
+      rc("button", { className: "primary", onClick: () => window.lcOpenLedger && window.lcOpenLedger(r.c.id) }, _lcIcon("ledger"), "Ledger"),
+      rc("button", { onClick: () => window.printWorkerLaborSOA && window.printWorkerLaborSOA(w, project.id) }, _lcIcon("statement"), "Worker statement")
+    ),
+    rc("span", { className: "lc2-cdiv" }),
+    rc("div", { className: "lc2-cgrp" },
+      rc("button", { onClick: () => window.lcOpenRaiseCap && window.lcOpenRaiseCap(r.c.id) }, _lcIcon("raise"), "Raise cap"),
+      rc("button", { onClick: () => window.lcOpenEdit && window.lcOpenEdit(r.c.id) }, _lcIcon("edit"), "Edit contract")
+    ),
+    rc("span", { className: "lc2-cdiv" }),
+    rc("div", { className: "lc2-cgrp" },
+      rc("button", { onClick: () => window.lcOpenAgreement && window.lcOpenAgreement(r.c.id) }, _lcIcon("print"), "Print agreement"),
+      // e.currentTarget (not e.target) — the click can land on the icon, and
+      // lcAddFile anchors its picker to the button itself.
+      rc("button", { onClick: (e) => window.lcAddFile && window.lcAddFile(r.c.id, e.currentTarget) }, _lcIcon("attach"), "Add file"),
+      rc("button", { onClick: () => window.lcViewFiles && window.lcViewFiles(r.c.id) }, _lcIcon("eye"), "View")
+    ),
+    rc("button", { className: "danger", title: "Delete contract", onClick: () => window.lcDelete && window.lcDelete(r.c.id) }, _lcIcon("trash"), "Delete")
+  );
+
   // Staff must never see peso amounts. Every money figure on this screen is
   // shown to them as a percentage of the agreed contract instead — the same
-  // thing the progress bar and the "Ongoing · 17%" badge already convey.
+  // thing the progress bar and the "17% · Ongoing" badge already convey.
   // Returns "—" when there is no contract to measure against (an uncapped
   // payment has no denominator, so no honest percentage exists).
   const _pctTxt = (part, whole) => (whole > 0 ? (part / whole * 100).toFixed(1) + "%" : "—");
 
-  const payRows = (list) => {
+  // `agreed` is the denominator staff figures are expressed against \u2014 they see
+  // every payment as a share of the job's cap, never a peso amount. Pass 0 for
+  // uncapped payments: there is no honest percentage without a cap, so the
+  // column falls back to "\u2014". `paidTotal` is the job's true paid figure
+  // (folder + linked PM payments), which is why it is passed in rather than
+  // summed off the visible \u2014 tab- and search-filtered \u2014 rows.
+  const payRows = (list, agreed, paidTotal) => {
     const sorted = [...list].sort((a, b) => new Date(b.dateTime || b.date || 0) - new Date(a.dateTime || a.date || 0));
     return rc("table", { className: "lc2-tx" },
       rc("thead", null, rc("tr", null,
-        rc("th", null, "Date"),
-        rc("th", null, "Milestone"),
+        rc("th", null, "When it was paid"),
+        rc("th", null, "For"),
         rc("th", { className: "r" }, "Amount"),
         rc("th", { className: "r" }, "")
       )),
       rc("tbody", null, sorted.map((p, i) => rc("tr", { key: p.id || i },
         rc("td", null, fmtDateTime(p.dateTime || p.date)),
         rc("td", null, rc("span", { className: "lc2-mile" }, p.payMilestone ? (p.payMilestone.charAt(0).toUpperCase() + p.payMilestone.slice(1)) : "Payment")),
-        rc("td", { className: "r amt" }, "\u20B1 ", peso(Number(p.amount) || 0)),
+        rc("td", { className: "r amt" }, _staff() ? _pctTxt(Number(p.amount) || 0, agreed) : "\u20B1 " + peso(Number(p.amount) || 0)),
         rc("td", { className: "r" },
           rc("button", { className: "lc2-rowbtn", title: "Receipt / Invoice", onClick: () => window.printSinglePayrollInvoice && window.printSinglePayrollInvoice(p.id) }, Ico.receipt || "\u{1F9FE}"),
           rc("button", { className: "lc2-rowbtn", title: "Edit", onClick: () => window.openEditPayrollModal && window.openEditPayrollModal(p.id) }, Ico.pencil || "\u270E"),
           rc("button", { className: "lc2-rowbtn", title: "Delete", onClick: () => window.deletePayroll && window.deletePayroll(p.id) }, Ico.trash || "\u{1F5D1}")
         )
-      )))
+      ))),
+      agreed > 0 ? rc("tfoot", null, rc("tr", null,
+        rc("td", null, _staff() ? "Paid so far \u00B7 of the agreed job" : "Paid so far \u00B7 of \u20B1 " + peso(agreed) + " agreed"),
+        rc("td", null, ""),
+        rc("td", { className: "r amt" }, _staff() ? _pctTxt(paidTotal, agreed) : "\u20B1 " + peso(paidTotal)),
+        rc("td", null, "")
+      )) : null
     );
   };
 
+  // Every contract under a worker is its own numbered card carrying its own
+  // balance. One card is open at a time; the rest collapse to a single
+  // scannable line, so a worker with four jobs never renders as four stacked
+  // payment tables. Design: "Labor Contract Block - 2a.dc.html" → 2a.
   const workerBody = (w, crows, pays) => {
     const blocks = [];
-    crows.forEach((r) => {
+    // Absent key = untouched, so job 1 starts open. An explicit null means the
+    // user closed the last open job and wants them all shut.
+    const openId = Object.prototype.hasOwnProperty.call(openJob, w)
+      ? openJob[w]
+      : (crows[0] && crows[0].c.id);
+    const toggleJob = (id, isOpen) => setOpenJob((s) => ({ ...s, [w]: isOpen ? null : id }));
+    if (crows.length) {
+      blocks.push(rc("div", { key: "_jobshead", className: "lc2-jobs-head" },
+        rc("div", { className: "lc2-jobs-lbl" }, "Jobs agreed with " + _lcFirstName(w) + " — " + crows.length),
+        crows.length > 1 ? rc("div", { className: "lc2-jobs-hint" }, "Tap a job to open it") : null
+      ));
+    }
+    crows.forEach((r, i) => {
+      const isOpen = r.c.id === openId;
       const cpays = pays.filter((p) => p.contractId === r.c.id);
-      blocks.push(rc("div", { key: r.c.id, className: "lc2-cblock" },
-        rc("div", { className: "lc2-cblock-head" },
-          rc("div", { className: "lc2-cscope" }, r.c.scope || "Untitled job"),
-          rc("div", { className: "lc2-cmeta" }, _staff()
-            ? "Paid " + _pctTxt(r.paid, r.agreed) + " \u00B7 " + (r.remaining < 0 ? "Over by " + _pctTxt(Math.abs(r.remaining), r.agreed) : "Remaining " + _pctTxt(r.remaining, r.agreed))
-            : "Agreed \u20B1 " + peso(r.agreed) + " \u00B7 Paid \u20B1 " + peso(r.paid) + " \u00B7 " + (r.remaining < 0 ? "Over by \u20B1 " + peso(Math.abs(r.remaining)) : "Remaining \u20B1 " + peso(r.remaining)))
+      const st = _lcJobState(r.agreed, r.paid);
+      const nPay = cpays.length + " payment" + (cpays.length === 1 ? "" : "s");
+      // Latest payment date, compared as raw strings — they are ISO, so they
+      // sort correctly, and Math.max over Date objects would give NaN.
+      const latest = cpays.reduce((best, p) => {
+        const v = String(p.dateTime || p.date || "");
+        return v > best ? v : best;
+      }, "");
+      // Open, the money is spelled out in the table below, so the caption
+      // carries recency instead. Closed, this line IS the balance.
+      const sub = isOpen
+        ? nPay + (latest ? " · latest " + _lcDayLabel(latest) : "")
+        : nPay + " · " + (_staff()
+            ? _pctTxt(r.paid, r.agreed) + " paid"
+            : "₱ " + peso(r.paid) + " paid of ₱ " + peso(r.agreed));
+      blocks.push(rc("div", { key: r.c.id, className: "lc2-job" + (isOpen ? " open" : "") },
+        rc("div", {
+          className: "lc2-job-head",
+          role: "button",
+          tabIndex: 0,
+          "aria-expanded": isOpen,
+          onClick: () => toggleJob(r.c.id, isOpen),
+          onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleJob(r.c.id, isOpen); } }
+        },
+          rc("span", { className: "lc2-num" }, String(i + 1)),
+          rc("div", { className: "lc2-job-id" },
+            rc("div", { className: "lc2-job-name" }, r.c.scope || "Untitled job"),
+            rc("div", { className: "lc2-job-sub" }, sub)
+          ),
+          // Peso balance — dropped outright for staff, the same way the worker
+          // header's Remaining column is. The badge still carries the percent.
+          _staff() ? null : rc("div", { className: "lc2-job-rem" },
+            rc("div", { className: "lc2-job-rem-lbl" }, r.remaining < 0 ? "Over by" : "Still to pay"),
+            rc("div", { className: "lc2-job-rem-val" + (r.remaining < 0 ? " neg" : "") }, "₱ " + peso(Math.abs(r.remaining)))
+          ),
+          rc("span", { className: "lc2-badge " + st.cls }, st.label),
+          rc("svg", { className: "lc2-job-chev", width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }))
         ),
-        cpays.length ? payRows(cpays) : rc("div", { className: "lc2-none" }, "No payments recorded against this contract yet."),
-        // Grouped by purpose — records · modify · documents — with Delete
-        // isolated at the far end so it can't be mistaken for a peer action.
-        rc("div", { className: "lc2-cactions" },
-          rc("div", { className: "lc2-cgrp" },
-            rc("button", { className: "primary", onClick: () => window.lcOpenLedger && window.lcOpenLedger(r.c.id) }, _lcIcon("ledger"), "Ledger"),
-            rc("button", { onClick: () => window.printWorkerLaborSOA && window.printWorkerLaborSOA(w, project.id) }, _lcIcon("statement"), "Worker statement")
-          ),
-          rc("span", { className: "lc2-cdiv" }),
-          rc("div", { className: "lc2-cgrp" },
-            rc("button", { onClick: () => window.lcOpenRaiseCap && window.lcOpenRaiseCap(r.c.id) }, _lcIcon("raise"), "Raise cap"),
-            rc("button", { onClick: () => window.lcOpenEdit && window.lcOpenEdit(r.c.id) }, _lcIcon("edit"), "Edit contract")
-          ),
-          rc("span", { className: "lc2-cdiv" }),
-          rc("div", { className: "lc2-cgrp" },
-            rc("button", { onClick: () => window.lcOpenAgreement && window.lcOpenAgreement(r.c.id) }, _lcIcon("print"), "Print agreement"),
-            // e.currentTarget (not e.target) — the click can land on the icon,
-            // and lcAddFile anchors its picker to the button itself.
-            rc("button", { onClick: (e) => window.lcAddFile && window.lcAddFile(r.c.id, e.currentTarget) }, _lcIcon("attach"), "Add file"),
-            rc("button", { onClick: () => window.lcViewFiles && window.lcViewFiles(r.c.id) }, _lcIcon("eye"), "View")
-          ),
-          rc("button", { className: "danger", title: "Delete contract", onClick: () => window.lcDelete && window.lcDelete(r.c.id) }, _lcIcon("trash"), "Delete")
-        )
+        isOpen ? rc("div", { className: "lc2-job-body" },
+          cpays.length ? payRows(cpays, r.agreed, r.paid) : rc("div", { className: "lc2-none" }, "No payments recorded against this contract yet."),
+          _lcJobActions(w, r)
+        ) : null
       ));
     });
     const uncapPays = pays.filter((p) => !p.contractId);
@@ -1962,7 +2059,7 @@ function _lcIcon(name) {
             ? uncapPays.length + " payment" + (uncapPays.length === 1 ? "" : "s")
             : "Total \u20B1 " + peso(uncapTot))
         ),
-        payRows(uncapPays)
+        payRows(uncapPays, 0, uncapTot)
       ));
     }
     if (!blocks.length) blocks.push(rc("div", { key: "_empty", className: "lc2-none" }, "No payments yet."));
@@ -2008,19 +2105,19 @@ function _lcIcon(name) {
             ? null
             : rc(React.Fragment, null,
                 rc("div", { className: "lc2-bar" }, rc("div", { className: "lc2-bar-fill " + barcls, style: { width: pct.toFixed(1) + "%" } })),
-                rc("div", { className: "lc2-mid-cap" }, (_staff() ? pct.toFixed(0) + "% paid" : "\u20B1 " + peso(paid) + " paid of \u20B1 " + peso(agreed)) + (crows.length === 1 && crows[0].c.scope ? " \u00B7 " + crows[0].c.scope : " \u00B7 " + crows.length + " contracts"))
+                rc("div", { className: "lc2-mid-cap" }, (_staff() ? pct.toFixed(0) + "% paid" : "\u20B1 " + peso(paid) + " paid of \u20B1 " + peso(agreed)) + (crows.length === 1 && crows[0].c.scope ? " \u00B7 " + crows[0].c.scope : " \u00B7 " + crows.length + (crows.length === 1 ? " job" : " jobs")))
               )
         ),
         // The Remaining column is a peso figure with no useful percentage form
-        // of its own \u2014 the status badge already reads "Ongoing \u00B7 17%" \u2014 so for
+        // of its own \u2014 the status badge already reads "17% \u00B7 Ongoing" \u2014 so for
         // staff it is dropped entirely rather than restated.
         (isDone || _staff())
           ? null
           : rc("div", { className: "lc2-rem" },
-              rc("div", { className: "lc2-rem-lbl" }, hasContract ? (remaining < 0 ? "Over by" : "Remaining") : "Total paid"),
+              rc("div", { className: "lc2-rem-lbl" }, hasContract ? (remaining < 0 ? "Over by" : "Still to pay") : "Total paid"),
               rc("div", { className: "lc2-rem-val" + (remaining < 0 ? " neg" : (hasContract ? "" : " muted")) }, remaining < 0 ? "\u2212 \u20B1 " + peso(Math.abs(remaining)) : "\u20B1 " + peso(hasContract ? remaining : totalPaidAll))
             ),
-        rc("span", { className: "lc2-badge " + scls }, status + (status === "Ongoing" ? " \u00B7 " + pct.toFixed(0) + "%" : "")),
+        rc("span", { className: "lc2-badge " + scls }, (status === "Ongoing" ? pct.toFixed(0) + "% \u00B7 " : "") + status),
         rc("button", { className: "lc2-pay", onClick: (e) => { e.stopPropagation(); openAddEntry("labor", childMonths, activeFolder); } }, Ico.plus, " Pay"),
         rc("svg", { className: "lc2-chev", width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "#A1A1A6", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }))
       ),

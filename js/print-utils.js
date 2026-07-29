@@ -1,22 +1,30 @@
 // ════════════════════════════════════════════════════════════════════
-// GLOBAL: force EVERY printed document to grayscale (black & white).
+// GLOBAL: normalize EVERY printed document — A4 portrait, uniform margins,
+// full colour.
 // All print/PDF outputs in the app open a blank popup via window.open() and
 // write their own HTML. We wrap window.open once here (this file loads on every
-// page) so any such popup gets a grayscale @media print rule injected — no need
-// to touch each of the ~10 print generators. Screen view keeps its colors; only
-// the printed/saved-PDF output is desaturated.
+// page) so any such popup gets the shared @media print rules injected — no need
+// to touch each of the ~10 print generators.
+//
+// Printing is IN COLOUR. There used to be a `filter:grayscale(100%)` here that
+// desaturated every document; it was removed on request. Do not reintroduce it —
+// `print-color-adjust:exact` below is what makes background fills, brand green
+// and status colours actually reach the paper instead of being dropped by the
+// browser's ink-saving default.
 (function () {
     if (window.__dacsBwPrintPatched) return;
     window.__dacsBwPrintPatched = true;
 
     const BW_STYLE_ID = 'dacs-bw-print-style';
     // One global print stylesheet injected into EVERY print popup, so all PDFs come
-    // out grayscale AND consistently positioned/presentable without editing each of
-    // the ~20 document generators. Uses !important so it layers over their own CSS.
+    // out consistently positioned/presentable, with their colours intact, without
+    // editing each of the ~20 document generators. Uses !important so it layers
+    // over their own CSS.
     const BW_TAG =
         '<style id="' + BW_STYLE_ID + '">' +
         '@media print{' +
-          'html{-webkit-filter:grayscale(100%)!important;filter:grayscale(100%)!important;}' +
+          // Print colours as authored — no grayscale filter, no ink-saving drop-out.
+          'html{-webkit-filter:none!important;filter:none!important;}' +
           '*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;box-shadow:none!important;}' +
           // A4 with comfortable, uniform margins so nothing is jammed to the edge.
           '@page{size:A4 portrait;margin:14mm 12mm;}' +
@@ -131,190 +139,183 @@ window.dacsPrintHeader = function(docTitle, docSubtitle) {
 window.dacsPrintProjectCostSummary = function (d) {
     const peso = (n) => (Number(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const esc  = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const contract = Number(d.contract) || 0;
+    const num  = (v) => Number(v) || 0;
+
+    const contract = num(d.contract);
+    const spent    = num(d.spent);
+    const profit   = num(d.profit);
+    const isLoss   = profit < 0;
+    const accent   = isLoss ? '#991b1b' : '#1a5c3a';
+
     // Share of contract — the same basis as the on-screen formula chip.
-    const share = (v) => contract > 0 ? ((Number(v) || 0) / contract * 100).toFixed(1) + '%' : '—';
-    const profit = Number(d.profit) || 0;
-    const isLoss = profit < 0;
+    const share = (v) => contract > 0 ? (num(v) / contract * 100).toFixed(1) + '%' : '—';
+    // Share of the money actually spent — drives each module's bar.
+    const mix   = (v) => spent > 0 ? num(v) / spent * 100 : 0;
+
     // No accomplishment data => the figure assumes the job runs to completion and
     // must never be presented as earned. Same rule as the overview banner.
-    const profitLbl = (isLoss ? 'Gross Loss' : 'Gross Profit') + (d.isForecast ? ' · Forecast' : ' · Earned');
-    const revLbl    = d.isForecast ? 'Contract Revenue' : 'Earned Revenue';
-    const revSub    = d.isForecast
-        ? 'Full contract · not yet earned'
-        : (Number(d.completePct) || 0).toFixed(1) + '% of contract accomplished';
+    const profitHead = isLoss
+        ? (d.isForecast ? 'Loss if the job finishes here' : 'Loss earned so far')
+        : (d.isForecast ? 'Profit if the job finishes here' : 'Profit earned so far');
+    const profitLbl  = (isLoss ? 'Gross loss' : 'Gross profit') + (d.isForecast ? ' · forecast' : ' · earned');
+    const revLbl     = d.isForecast ? 'Contract revenue' : 'Earned revenue';
+    const revSub     = d.isForecast ? 'Full contract · not yet earned' : num(d.completePct).toFixed(1) + '% of contract accomplished';
+    const profitSub  = d.isForecast ? 'Forecast — not yet earned' : 'Earned against accomplishment';
+    const marginTxt  = d.marginPct == null ? '—' : num(d.marginPct).toFixed(1) + '%';
+    const logo       = window.location.origin + '/assets/images/DACS-TRANSPARENT.png';
 
-    const mod = (label, amount, sub, rows) => `
-        <tr class="data-row">
-            <td style="text-align:center;color:#6b7280">${label.charAt(0)}</td>
-            <td>
-                <div style="font-weight:700;font-size:0.85rem">${label}</div>
-                ${sub ? `<div style="font-size:0.72rem;color:#9ca3af;margin-top:1px">${sub}</div>` : ''}
-                ${rows.map((r) => `<div style="font-size:0.72rem;color:#6b7280;margin-top:3px">${r[0]}: <strong>${r[1]}</strong></div>`).join('')}
-            </td>
-            <td style="text-align:center">${share(amount)}</td>
-            <td style="text-align:right;font-weight:700">₱${peso(amount)}</td>
-        </tr>`;
+    // ── A big headline figure in the "Where does the money stand?" grid ──
+    const big = (label, value, sub, color) =>
+        '<div style="padding-bottom:12px;border-bottom:1px solid #e3e6ea">'
+        + '<div class="k">' + label + '</div>'
+        + '<div style="font-size:26px;font-weight:700;margin-top:7px;font-variant-numeric:tabular-nums;letter-spacing:-0.015em;' + (color ? 'color:' + color : '') + '">' + value + '</div>'
+        + (sub ? '<div style="font-size:10px;color:#8a919c;margin-top:4px">' + sub + '</div>' : '')
+        + '</div>';
 
-    const html = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8">
-<title>Project Cost Summary — ${esc(d.name || '')}</title>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:'Segoe UI',Arial,sans-serif; background:#f0f0f0; color:#1a1a1a; font-size:13px; }
-  .page { max-width:820px; margin:20px auto; background:#fff; box-shadow:0 2px 16px rgba(0,0,0,0.15); }
-  .co-header { padding:20px 28px 0; }
-  .proj-bar { background:#f8f9fa; border-bottom:3px solid #1a5c3a; padding:10px 24px; display:flex; justify-content:space-between; align-items:center; }
-  .proj-name { font-size:1rem; font-weight:800; }
-  .proj-meta { font-size:0.72rem; color:#6b7280; margin-top:2px; }
-  .print-info { text-align:right; font-size:0.7rem; color:#9ca3af; }
-  .summary-bar { display:flex; border-bottom:2px solid #e5e7eb; }
-  .sum-pill { flex:1; padding:10px 16px; text-align:center; border-right:1px solid #e5e7eb; }
-  .sum-pill:last-child { border-right:none; }
-  .sum-pill-label { font-size:0.6rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#9ca3af; margin-bottom:3px; }
-  .sum-pill-val { font-size:1rem; font-weight:800; }
-  table { width:100%; border-collapse:collapse; }
-  .col-hdr th { background:#1a5c3a; color:#fff; font-size:0.72rem; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; padding:8px 10px; border:1px solid #14492e; text-align:center; }
-  .col-hdr th.desc { text-align:left; }
-  .data-row td { padding:9px 10px; border:1px solid #e5e7eb; vertical-align:top; }
-  .data-row:nth-child(even) td { background:#fafafa; }
-  .total-row td { background:#f3f4f6; font-weight:800; padding:9px 10px; border:1px solid #e5e7eb; }
-  .profit-wrap { padding:18px 24px; }
-  .profit-title { font-size:0.68rem; font-weight:800; letter-spacing:0.1em; text-transform:uppercase; color:#9ca3af; margin-bottom:10px; }
-  .eq { display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
-  .eq-item { min-width:150px; }
-  .eq-lbl { font-size:0.72rem; color:#6b7280; }
-  .eq-sub { font-size:0.64rem; color:#9ca3af; margin-top:1px; }
-  .eq-val { font-size:1rem; font-weight:800; margin-top:3px; font-variant-numeric:tabular-nums; }
-  .eq-op { font-size:1.2rem; color:#9ca3af; font-weight:700; }
-  .meta-row { display:flex; gap:0; border-top:2px solid #e5e7eb; }
-  .meta-cell { flex:1; padding:9px 16px; border-right:1px solid #e5e7eb; }
-  .meta-cell:last-child { border-right:none; }
-  .meta-lbl { font-size:0.6rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#9ca3af; }
-  .meta-val { font-size:0.85rem; font-weight:700; margin-top:2px; }
-  .footer { padding:14px 24px 18px; display:flex; justify-content:space-between; align-items:flex-end; border-top:1px solid #e5e7eb; }
-  .footer-left { font-size:0.66rem; color:#9ca3af; line-height:1.6; }
-  .footer-brand { font-size:0.78rem; font-weight:800; color:#1a5c3a; }
-  @media print {
-    body { background:#fff; }
-    .page { box-shadow:none; margin:0; max-width:100%; }
-    .col-hdr th { background:#1a5c3a !important; color:#fff !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    .data-row:nth-child(even) td, .total-row td { background:#fafafa !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  }
-</style></head><body>
-<div class="page">
-  <div class="co-header">
-    ${window.dacsPrintHeader('Project Cost Summary', 'Printed: ' + esc(d.printedAt || ''))}
-  </div>
+    // ── One spending row: name, proportional bar, amount ──
+    const spendRow = (label, sub, amount, color, detail, last) => {
+        const pct = mix(amount);
+        const rule = last ? 'border-bottom:1.5px solid #14181f;' : 'border-bottom:1px solid #eceef1;';
+        return '<div style="display:grid;grid-template-columns:150px 1fr 130px;align-items:center;gap:16px;padding:13px 0;' + rule + '">'
+            + '<div><div style="font-size:12.5px;font-weight:700">' + label + '</div>'
+            +   '<div style="font-size:9.5px;color:#8a919c;margin-top:2px">' + sub + '</div></div>'
+            + '<div><div style="height:12px;background:#eceef1"><div class="sw" style="width:' + pct.toFixed(1) + '%;height:12px;background:' + color + '"></div></div>'
+            +   '<div style="font-size:9.5px;color:#5b636f;margin-top:5px">' + pct.toFixed(1) + '% of spending · ' + detail + '</div></div>'
+            + '<div style="text-align:right;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums">₱' + peso(amount) + '</div>'
+            + '</div>';
+    };
 
-  <div class="proj-bar">
-    <div>
-      <div class="proj-name">${esc(d.name || '')}</div>
-      <div class="proj-meta">${esc(d.code || '')}${d.location ? ' &nbsp;·&nbsp; ' + esc(d.location) : ''}</div>
-    </div>
-    <div class="print-info">Printed on<br><strong>${esc(d.printedAt || '')}</strong></div>
-  </div>
+    const stat = (label, value) =>
+        '<div><div class="k" style="letter-spacing:0.13em">' + label + '</div>'
+        + '<div style="font-size:14px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums">₱' + peso(value) + '</div></div>';
 
-  <div class="summary-bar">
-    <div class="sum-pill">
-      <div class="sum-pill-label">Total Contract</div>
-      <div class="sum-pill-val" style="color:#374151">₱${peso(contract)}</div>
-    </div>
-    <div class="sum-pill">
-      <div class="sum-pill-label">Total Actual Cost</div>
-      <div class="sum-pill-val" style="color:#d97706">₱${peso(d.spent)}</div>
-    </div>
-    <div class="sum-pill">
-      <div class="sum-pill-label">${profitLbl}</div>
-      <div class="sum-pill-val" style="color:${isLoss ? '#991b1b' : '#166534'}">₱${peso(profit)}</div>
-    </div>
-    <div class="sum-pill">
-      <div class="sum-pill-label">${d.isForecast ? 'Forecast Margin' : 'Earned Margin'}</div>
-      <div class="sum-pill-val" style="color:${isLoss ? '#991b1b' : '#166534'}">${d.marginPct == null ? '—' : (Number(d.marginPct) || 0).toFixed(1) + '%'}</div>
-    </div>
-  </div>
+    const eqCell = (label, value, sub, opts) => {
+        const o = opts || {};
+        return '<div style="flex:' + (o.flex || 1) + ';padding:14px 18px;' + (o.style || '') + '">'
+            + '<div class="k" style="letter-spacing:0.13em;' + (o.labelColor ? 'color:' + o.labelColor : '') + '">' + label + '</div>'
+            + '<div style="font-size:16px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums;' + (o.valueColor ? 'color:' + o.valueColor : '') + '">₱' + peso(value) + '</div>'
+            + '<div style="font-size:9px;color:' + (o.subColor || '#9aa1ab') + ';margin-top:3px">' + sub + '</div>'
+            + '</div>';
+    };
 
-  <table>
-    <thead>
-      <tr class="col-hdr">
-        <th style="width:6%">#</th>
-        <th class="desc" style="width:60%">Cost Module</th>
-        <th style="width:14%">% of Contract</th>
-        <th style="width:20%">Amount</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${mod('Labor Cost', d.labor, 'Wages and payroll for workers on site', [
-          ['Direct', '₱' + peso(d.laborDirect)],
-          ['Liability', '₱' + peso(d.laborLiability)]
-      ])}
-      ${mod('Material Cost', d.material, 'Materials purchased, with supporting documents', [
-          ['Transactions', String(d.materialCount || 0)],
-          ['Files attached', (d.docsAttached || 0) + ' / ' + (d.docsExpected || 0)]
-      ])}
-      ${mod('Overhead Cost', d.overhead, 'Support people and site operating costs', [
-          ['Indirect labor', '₱' + peso(d.overheadIndirect)],
-          ['Operating costs', '₱' + peso(d.overheadExpenses)]
-      ])}
-    </tbody>
-    <tfoot>
-      <tr class="total-row">
-        <td colspan="2" style="text-align:right;letter-spacing:0.06em">TOTAL ACTUAL COST:</td>
-        <td style="text-align:center">${share(d.spent)}</td>
-        <td style="text-align:right">₱${peso(d.spent)}</td>
-      </tr>
-    </tfoot>
-  </table>
+    const metaLine = [esc(d.code || ''), esc(d.location || '')].filter(Boolean).join(' · ');
 
-  <div class="profit-wrap">
-    <div class="profit-title">Profit Computation</div>
-    <div class="eq">
-      <div class="eq-item">
-        <div class="eq-lbl">${revLbl}</div>
-        <div class="eq-sub">${revSub}</div>
-        <div class="eq-val">₱${peso(d.earned)}</div>
-      </div>
-      <div class="eq-op">−</div>
-      <div class="eq-item">
-        <div class="eq-lbl">Actual Cost</div>
-        <div class="eq-sub">Labor + Material + Overhead</div>
-        <div class="eq-val">₱${peso(d.spent)}</div>
-      </div>
-      <div class="eq-op">=</div>
-      <div class="eq-item">
-        <div class="eq-lbl">${profitLbl}</div>
-        <div class="eq-sub">${d.marginPct == null ? '' : (Number(d.marginPct) || 0).toFixed(1) + '% margin'}</div>
-        <div class="eq-val" style="color:${isLoss ? '#991b1b' : '#166534'}">₱${peso(profit)}</div>
-      </div>
-    </div>
-  </div>
+    const headHtml =
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+        + '<div>'
+        +   '<div style="display:flex;align-items:center;gap:11px">'
+        +     '<img src="' + logo + '" alt="DAC&#39;s" style="height:38px;width:auto;object-fit:contain">'
+        +     '<div style="font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#5b636f">DAC&#39;s Building Design Services</div>'
+        +   '</div>'
+        +   '<div style="font-size:30px;font-weight:700;letter-spacing:-0.015em;margin-top:20px">' + esc(d.name || '') + '</div>'
+        +   '<div style="font-size:11px;color:#6b7280;margin-top:6px">Project cost summary' + (metaLine ? ' · ' + metaLine : '') + '</div>'
+        + '</div>'
+        + '<div style="text-align:right;font-size:9.5px;color:#8a919c;line-height:1.7;padding-top:4px">' + esc(d.printedAt || '') + '<br>Page 1 of 1</div>'
+        + '</div>'
+        + '<div class="sw" style="height:3px;background:#14181f;margin-top:22px"></div>';
 
-  <div class="meta-row">
-    <div class="meta-cell">
-      <div class="meta-lbl">Fund Allocated</div>
-      <div class="meta-val">₱${peso(d.allocated)}</div>
-    </div>
-    <div class="meta-cell">
-      <div class="meta-lbl">Remaining</div>
-      <div class="meta-val">₱${peso((Number(d.allocated) || 0) - (Number(d.spent) || 0))}</div>
-    </div>
-    <div class="meta-cell">
-      <div class="meta-lbl">Cover Expenses</div>
-      <div class="meta-val">₱${peso(d.coverCost)}</div>
-    </div>
-    <div class="meta-cell">
-      <div class="meta-lbl">Additional Works</div>
-      <div class="meta-val">₱${peso(d.additionalWorks)}</div>
-    </div>
-  </div>
+    const standHtml =
+        '<div style="margin-top:28px">'
+        + '<div class="q">Where does the money stand?</div>'
+        + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px 40px;margin-top:16px">'
+        +   big('The contract is worth', '₱' + peso(contract), '')
+        +   big('We have spent', '₱' + peso(spent), share(spent) + ' of the contract')
+        +   big(profitHead, '₱' + peso(profit), profitSub, accent)
+        +   big('That is a margin of', marginTxt, 'On ' + (d.isForecast ? 'contract' : 'earned') + ' revenue', accent)
+        + '</div></div>';
 
-  <div class="footer">
-    <div class="footer-left">Official project cost summary generated by the DAC's Admin System.<br>This document is for internal use only.</div>
-    <div class="footer-brand">DAC's Building Design Services</div>
-  </div>
-</div>
-<script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };<\/script>
-</body></html>`;
+    const spendHtml =
+        '<div style="margin-top:32px">'
+        + '<div class="q">What was the money spent on?</div>'
+        + '<div style="margin-top:14px">'
+        +   spendRow('Labor', 'Wages on site', d.labor, '#1a5c3a',
+                'direct ' + peso(d.laborDirect) + ' · liability ' + peso(d.laborLiability), false)
+        +   spendRow('Materials', 'Purchases with documents', d.material, '#5f7a6c',
+                (d.materialCount || 0) + ' transactions · ' + (d.docsAttached || 0) + ' of ' + (d.docsExpected || 0) + ' files attached', false)
+        +   spendRow('Overhead', 'Support &amp; site running costs', d.overhead, '#8d97a2',
+                'indirect ' + peso(d.overheadIndirect) + ' · operating ' + peso(d.overheadExpenses), true)
+        +   '<div style="display:grid;grid-template-columns:150px 1fr 130px;align-items:baseline;gap:16px;padding:12px 0 0">'
+        +     '<div style="font-size:10.5px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase">Total spent</div>'
+        +     '<div style="font-size:10px;color:#5b636f">' + share(spent) + ' of the contract value</div>'
+        +     '<div style="text-align:right;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums">₱' + peso(spent) + '</div>'
+        +   '</div>'
+        + '</div></div>';
+
+    const profitHtml =
+        '<div style="margin-top:32px">'
+        + '<div class="q">How is the profit worked out?</div>'
+        + '<div style="display:flex;align-items:stretch;margin-top:14px;border:1px solid #e3e6ea">'
+        +   eqCell(revLbl, d.earned, revSub, { style: 'border-right:1px solid #e3e6ea' })
+        +   '<div style="display:flex;align-items:center;padding:0 12px;font-size:17px;color:#9aa1ab;font-weight:700">−</div>'
+        +   eqCell('Total actual cost', spent, 'Labor + Material + Overhead', { style: 'border-left:1px solid #e3e6ea;border-right:1px solid #e3e6ea' })
+        +   '<div style="display:flex;align-items:center;padding:0 12px;font-size:17px;color:#9aa1ab;font-weight:700">=</div>'
+        +   eqCell(profitLbl, profit, marginTxt + ' margin', {
+                flex: 1.1,
+                style: 'border-left:1px solid #e3e6ea;background:#f4f6f5',
+                labelColor: accent, valueColor: accent, subColor: '#5b636f'
+            })
+        + '</div></div>';
+
+    const fundsHtml =
+        '<div style="margin-top:30px">'
+        + '<div class="q">What about the funds and extras?</div>'
+        + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:14px">'
+        +   stat('Allocated', d.allocated)
+        +   stat('Remaining', num(d.allocated) - spent)
+        +   stat('Cover expenses', d.coverCost)
+        +   stat('Additional works', d.additionalWorks)
+        + '</div></div>';
+
+    const basisNote = d.isForecast
+        ? 'The profit above is a forecast: no accomplishment report is on file, so the sheet assumes the full contract will be delivered.'
+        : 'The profit above is earned: revenue is recognised against the accomplishment reported to date.';
+
+    const notesHtml =
+        '<div style="margin-top:26px;padding-top:11px;border-top:1px solid #e3e6ea;font-size:8.8px;color:#7d848f;line-height:1.7">'
+        + '<strong style="color:#5b636f">Plain-language notes.</strong> ' + basisNote
+        + ' Overhead means support people and site running costs — it is never counted as Labor and never draws down a pakyaw contract.'
+        + ' Cover expenses were absorbed by the company because the billing period had no budget.'
+        + ' Materials expect four documents each (PO, DR, SI, Payment); ' + (d.docsAttached || 0) + ' of ' + (d.docsExpected || 0) + ' are on file.'
+        + '</div>';
+
+    const signHtml =
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;margin-top:28px">'
+        + '<div><div style="height:26px;border-bottom:1px solid #14181f"></div>'
+        +   '<div style="font-size:8.5px;letter-spacing:0.12em;text-transform:uppercase;color:#8a919c;margin-top:6px">Prepared by — Signature over printed name</div></div>'
+        + '<div><div style="height:26px;border-bottom:1px solid #14181f"></div>'
+        +   '<div style="font-size:8.5px;letter-spacing:0.12em;text-transform:uppercase;color:#8a919c;margin-top:6px">Reviewed by — Authorized representative</div></div>'
+        + '</div>';
+
+    const footHtml =
+        '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:20px;padding-top:10px;border-top:1px solid #d9dce1">'
+        + '<div style="font-size:8.5px;color:#9aa1ab">Official project cost summary generated by the DAC&#39;s Admin System · Confidential, internal use only</div>'
+        + '<div style="font-size:9.5px;font-weight:700;color:#1a5c3a">DAC&#39;s Building Design Services</div>'
+        + '</div>';
+
+    const css = [
+        '* { margin:0; padding:0; box-sizing:border-box; }',
+        'body { font-family:"Helvetica Neue",Helvetica,Arial,sans-serif; background:#eceef0; color:#14181f; }',
+        '.sheet { width:210mm; min-height:297mm; margin:16px auto; background:#fff; box-shadow:0 3px 22px rgba(0,0,0,0.14); padding:14mm 13mm 9mm; display:flex; flex-direction:column; }',
+        '.k { font-size:9px; font-weight:700; letter-spacing:0.14em; text-transform:uppercase; color:#8a919c; }',
+        '.q { font-size:13px; font-weight:700; }',
+        '@media print {',
+        '  body { background:#fff; }',
+        '  .sheet { margin:0; box-shadow:none; width:auto; min-height:0; }',
+        '  .sw { -webkit-print-color-adjust:exact; print-color-adjust:exact; }',
+        '  @page { size:A4; margin:0; }',
+        '}'
+    ].join('\n');
+
+    const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">'
+        + '<title>Project Cost Summary — ' + esc(d.name || '') + '</title>'
+        + '<style>' + css + '</style></head><body>'
+        + '<div class="sheet">'
+        +   headHtml + standHtml + spendHtml + profitHtml + fundsHtml + notesHtml
+        +   '<div style="flex:1"></div>'
+        +   signHtml + footHtml
+        + '</div>'
+        + '<script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };<\/script>'
+        + '</body></html>';
 
     const win = window.open('', '_blank', 'width=900,height=1000');
     if (!win) { alert('Pop-up blocked. Please allow pop-ups for this site.'); return; }
@@ -1426,9 +1427,9 @@ try { if (typeof db !== 'undefined') window.dacsLoadAgreementTemplates(); } catc
 // instead of boxes, wide-tracked uppercase micro-labels, tabular figures, and
 // bilingual Tagalog/English headings (the workers read the Tagalog).
 //
-// It survives the global grayscale print filter at the top of this file by
-// design — the only colour is the small red kicker and the status pill, which
-// both stay legible as dark grey.
+// The palette is deliberately restrained — the only colour is the small red
+// kicker and the status pill. That was chosen back when printing was forced to
+// grayscale; it now prints in colour, and both elements read correctly either way.
 
 window.DACS_WS_INK = '#201e1d';
 
