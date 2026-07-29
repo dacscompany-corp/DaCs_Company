@@ -193,9 +193,24 @@ function _expContractLabels() {
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
 }
+// The hand-managed `categories` list (⚙ Manage). Names only, de-duplicated
+// against the contract labels so a category that matches a job isn't offered
+// twice.
+function _expManualLabels(workers) {
+    const seen = new Set(workers);
+    const out = [];
+    (expCategories || []).forEach(c => {
+        const name = (c && c.name != null ? String(c.name) : '').trim();
+        if (!name || seen.has(name)) return;
+        seen.add(name);
+        out.push(name);
+    });
+    return out.sort((a, b) => a.localeCompare(b));
+}
 function _expCategoryOptionsHtml(current, placeholder) {
     const cur     = (current == null ? '' : String(current)).trim();
     const workers = _expContractLabels();
+    const manual  = _expManualLabels(workers);
     const opt = name =>
         '<option value="' + _expCatEsc(name) + '"' + (name === cur ? ' selected' : '') + '>'
         + _expCatEsc(name) + '</option>';
@@ -204,15 +219,20 @@ function _expCategoryOptionsHtml(current, placeholder) {
     if (workers.length) {
         html += '<optgroup label="Labor contract workers">' + workers.map(opt).join('') + '</optgroup>';
     }
-    // The old hand-managed `categories` list is deliberately NOT offered here: it had
-    // filled up with payment methods (Cash, Gcash, Lalamove, Downpayment…) rather than
-    // material categories. Expenses are tagged by the worker/job they belong to.
-    //
+    // The hand-managed list was hidden here for a while, because it had filled up
+    // with payment methods (Cash, Gcash, Downpayment…) rather than material
+    // categories. Hiding it made ⚙ Manage a dead end: you could add "Painting
+    // Materials", get a success toast, and never be able to pick it. It is offered
+    // again — delete the stale payment-method chips in ⚙ Manage rather than
+    // suppressing the whole list.
+    if (manual.length) {
+        html += '<optgroup label="Custom categories">' + manual.map(opt).join('') + '</optgroup>';
+    }
     // Whatever this row already had is still rendered and selected, so opening an old
     // expense cannot blank a category recorded before this change — the save paths read
     // .value straight back, so an unrendered option would be written as "". Keep this:
     // it is what preserves every already-input value ("Worker", "Others", …).
-    if (cur && workers.indexOf(cur) === -1) {
+    if (cur && workers.indexOf(cur) === -1 && manual.indexOf(cur) === -1) {
         html += '<optgroup label="Currently set">' + opt(cur) + '</optgroup>';
     }
     return html;
@@ -2560,97 +2580,49 @@ function clearPayReceiptPreview() {
     if (input) input.value = '';
 }
 
-function _updatePayBudgetBanner() {
-    const fsWrap = document.getElementById('payFundingSourceWrap');
+// Rebuild the list of billing periods this folder can charge to. There is no
+// longer a picker to render — the "Charge to billing period" checkboxes were
+// removed from the Add Payroll modal, mirroring the same removal in the
+// expenses modal — but handleAddPayroll still needs the periods and their
+// remaining budget to auto-pick one, so the list is kept up to date on open.
+function _refreshPayFundingSources() {
     const p   = expCurrentProject;
     const fid = p?.folderId || expCurrentFolder?.id;
-    if (!p && !fid) { if (fsWrap) fsWrap.style.display = 'none'; return; }
+    if (!p && !fid) { _expSources = []; return; }
 
     const folderMonths = expProjects.filter(m => m.folderId === fid && m.fundingType !== 'president' && (m.monthlyBudget || 0) > 0);
-    const sources = folderMonths.map(m => {
+    // Re-use _expSources so the split logic works off the same shape the
+    // expenses modal builds.
+    _expSources = folderMonths.map(m => {
         const spent = expExpenses.filter(e => e.projectId === m.id).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0)
                     + expPayroll.filter(pr => pr.projectId === m.id).reduce((s, pr) => s + (parseFloat(pr.totalSalary) || 0), 0);
         return { id: m.id, label: m.month + ' ' + m.year + ' · ' + _fundingLabel(m), remain: (m.monthlyBudget || 0) - spent, budget: m.monthlyBudget || 0 };
     });
-
-    if (fsWrap) {
-        const visibleSources = sources.filter(s => s.remain > 0);
-        fsWrap.style.display = visibleSources.length ? 'block' : 'none';
-        const list = document.getElementById('payFundingCheckList');
-        if (list) {
-            // If the active period isn't among the fundable sources, default to the first
-            // one so a source is always selected (otherwise the save has nothing to charge).
-            const pMatches = p && visibleSources.some(s => s.id === p.id);
-            list.innerHTML = visibleSources.map((s, i) => {
-                const isChecked = pMatches ? s.id === p.id : i === 0;
-                const remClass  = s.remain < s.budget * 0.1 ? 'is-low' : '';
-                return '<label class="exp-funding-check-item' + (isChecked ? ' is-checked' : '') + '">'
-                    + '<input type="checkbox" name="payFundingSrc" value="' + s.id + '"'
-                    + (isChecked ? ' checked' : '')
-                    + ' onchange="payFundingCheckChanged(this)">'
-                    + '<span class="exp-funding-check-item__label">' + s.label + '</span>'
-                    + '<span class="exp-funding-check-item__remain ' + remClass + '">₱' + formatNum(s.remain) + ' left</span>'
-                    + '</label>';
-            }).join('');
-        }
-    }
-    // Re-use _expSources so split logic works (same sources array)
-    _expSources = sources;
     _updatePaySplitPreview();
 }
 
-function payFundingCheckChanged(cb) {
-    const item = cb.closest('.exp-funding-check-item');
-    if (item) item.classList.toggle('is-checked', cb.checked);
-    _updatePaySplitPreview();
-}
-
+// "Split" here now means the CONTRACT split only (one payment across several
+// pakyaw contracts). The funding-source split preview went with the picker.
 function _updatePaySplitPreview() {
-    // The amount drives BOTH splits — funding sources here, contracts below.
     if (typeof _updatePayContractPreview === 'function') _updatePayContractPreview();
-    const preview = document.getElementById('paySplitPreview');
-    if (!preview) return;
-    const totalRaw = (document.getElementById('payTotal') || {}).value || '0';
-    const total    = parseFloat(totalRaw.replace(/,/g, '')) || 0;
-    const checked  = Array.from(document.querySelectorAll('input[name="payFundingSrc"]:checked'))
-                        .map(cb => _expSources.find(s => s.id === cb.value))
-                        .filter(Boolean);
-    if (!checked.length || total <= 0) { preview.style.display = 'none'; return; }
-
-    const totalAvailable = checked.reduce((s, src) => s + Math.max(src.remain, 0), 0);
-    const overBudget     = total > totalAvailable;
-    if (checked.length === 1 && !overBudget) { preview.style.display = 'none'; return; }
-
-    const sorted = [...checked].sort((a, b) => a.remain - b.remain);
-    let left = total;
-    const splits = [];
-    for (const s of sorted) {
-        if (left <= 0) break;
-        const charge = Math.min(s.remain > 0 ? s.remain : 0, left);
-        if (charge > 0) { left -= charge; splits.push({ label: s.label, charge, isCover: false }); }
-    }
-    if (left > 0) splits.push({ label: '🏦 Cover Expenses', charge: left, isCover: true });
-
-    preview.style.display = 'block';
-    preview.innerHTML = '<div class="exp-split-preview">'
-        + '<div class="exp-split-preview__header">' + (overBudget ? '⚠️ Over Budget' : '💡 Split Preview') + '</div>'
-        + splits.map(sp => '<div class="exp-split-preview__row"><span class="exp-split-preview__name">' + sp.label + '</span>'
-            + '<span class="exp-split-preview__amt' + (sp.isCover ? ' is-over' : '') + '">₱' + formatNum(sp.charge) + '</span></div>').join('')
-        + '<div class="exp-split-preview__total"><span>Total</span><span>₱' + formatNum(total) + '</span></div>'
-        + (overBudget ? '<div class="exp-split-preview__warn">⚠ ₱' + formatNum(total - totalAvailable) + ' over budget — excess charged to Cover Expenses</div>' : '')
-        + '</div>';
 }
 
 async function handleAddPayroll(e) {
     e.preventDefault();
 
-    // Build split list from checked sources
-    const checkedBoxes = Array.from(document.querySelectorAll('input[name="payFundingSrc"]:checked'));
-    const checkedSources = checkedBoxes.map(cb => _expSources.find(s => s.id === cb.value)).filter(Boolean);
-    if (!checkedSources.length) {
-        if (!expCurrentProject) { showExpNotif('Select a project first.', 'error'); return; }
-        checkedSources.push({ id: expCurrentProject.id, remain: Infinity, label: 'Current Period' });
-    }
+    // Auto-pick the billing period this payment is charged to (the "Charge to
+    // billing period" picker was removed). Preference mirrors what that picker
+    // defaulted to, so behaviour is unchanged in the common case:
+    //   1. the active period      → if it still has remaining budget
+    //   2. the first fundable one → otherwise
+    //   3. nothing fundable left  → the active period at remain: Infinity, so
+    //      payroll never silently becomes a Cover Expense. This is what the old
+    //      no-checkbox fallback did, and it is what keeps Additional Works
+    //      (whose auto-period has no budget, so it is never a source) clean.
+    if (!expCurrentProject) { showExpNotif('Select a project first.', 'error'); return; }
+    const _fundable = (_expSources || []).filter(s => s.remain > 0);
+    const _active   = _fundable.find(s => s.id === expCurrentProject.id);
+    const checkedSources = [_active || _fundable[0] || { id: expCurrentProject.id, remain: Infinity, label: 'Current Period' }];
 
     const _payLamsam = _payIsLamsam();
     const d = parseFloat((document.getElementById('payDays') || {}).value) || 0;
@@ -2743,7 +2715,6 @@ async function handleAddPayroll(e) {
         lcResetContractPicks();   // untick the contracts + clear hint/preview
         if (typeof payResetMilestone === 'function') payResetMilestone();
         if (typeof payToggleMode === 'function') payToggleMode(); // reset Daily/Lamsam UI to default
-        document.getElementById('paySplitPreview').style.display = 'none';
         clearPayReceiptPreview();
         closeExpModal('addPayrollModal');
     } catch (err) {
@@ -3934,7 +3905,7 @@ function openExpModal(id)  {
         expCurrentFolder  = null;
         // Rebuild the funding-source list for THIS period (same as the legacy guard path),
         // so the save has a valid source to charge instead of erroring or using a stale one.
-        if (id === 'addPayrollModal') _updatePayBudgetBanner();
+        if (id === 'addPayrollModal') _refreshPayFundingSources();
         else                          _updateExpBudgetBanner();
     }
     _legacyModalOpen = false;
@@ -3973,7 +3944,7 @@ function closeExpModal(id) {
 function guardExpModal(modalId) {
     if (!expCurrentProject && !expCurrentFolder) { showExpNotif('Please select a project first.', 'error'); return; }
     if (modalId === 'addExpenseModal') _updateExpBudgetBanner();
-    if (modalId === 'addPayrollModal') _updatePayBudgetBanner();
+    if (modalId === 'addPayrollModal') _refreshPayFundingSources();
     _legacyModalOpen = true;   // legacy path: keep the file-scoped current project
     openExpModal(modalId);
 }

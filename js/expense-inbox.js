@@ -91,6 +91,11 @@
             items: list,
             filter:   same ? prev.filter   : 'pending',
             expanded: same ? prev.expanded : {},
+            // Starts CLOSED. The panel sits on top of the screen staff actually
+            // came here to use, so it opens only when asked; the header carries a
+            // "to do" count so a closed panel still says whether anything is
+            // waiting. Reopening the same project keeps whatever was chosen.
+            collapsed: same ? prev.collapsed : true,
             loadError: loadError || null,
         };
         _eiRender(containerId);
@@ -159,13 +164,34 @@
                 : 'background:transparent;color:#8a938c;')
             + '">' + label + '</button>';
 
+        const open = !st.collapsed;
+
+        // The one thing a closed panel must still answer: is anything waiting?
+        // A count when there is, a quiet "all done" when there isn't — so a
+        // closed inbox never looks the same as an empty one.
+        const todoMark = pending.length
+            ? '<span style="background:#fbeceb;color:#b4453a;border-radius:99px;padding:4px 12px;font:700 12.5px \'IBM Plex Sans\';white-space:nowrap;flex:none;">' + pending.length + ' to do</span>'
+            : '<span style="color:#157a52;font:700 12.5px \'IBM Plex Sans\';white-space:nowrap;flex:none;">all done 🎉</span>';
+
+        const chevron =
+            '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#77857d" stroke-width="2.2" '
+            + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" '
+            + 'style="flex:none;transition:transform .2s;transform:rotate(' + (open ? '180deg' : '0deg') + ');">'
+            + '<polyline points="6 9 12 15 18 9"></polyline></svg>';
+
         const header =
-            '<div style="display:flex;align-items:flex-start;gap:12px;">'
+            '<div role="button" tabindex="0" aria-expanded="' + (open ? 'true' : 'false') + '"'
+            + ' onclick="_eiToggleCollapse(\'' + containerId + '\')"'
+            + ' onkeydown="_eiKeyToggle(event,\'' + containerId + '\')"'
+            + ' title="' + (open ? 'Hide the receipt list' : 'Show the receipt list') + '"'
+            + ' style="display:flex;align-items:center;gap:12px;cursor:pointer;">'
             + '<div style="width:42px;height:42px;border-radius:12px;background:#eaf4ef;display:flex;align-items:center;justify-content:center;font-size:21px;flex:none;">📥</div>'
             + '<div style="flex:1;min-width:0;">'
             +   '<div style="font:800 20px \'IBM Plex Sans\';color:#16211c;letter-spacing:-.3px;">Expense Inbox</div>'
             +   '<div style="font:400 13.5px \'IBM Plex Sans\';color:#77857d;margin-top:2px;line-height:1.45;">Receipts your admin sent. Open each one, enter it in the books, then tap the circle to mark it done.</div>'
             + '</div>'
+            + todoMark
+            + chevron
             + '</div>';
 
         const progress =
@@ -278,11 +304,27 @@
                 + '<div style="display:flex;flex-direction:column;gap:10px;' + (st.label ? '' : 'margin-top:18px;') + '">' + shown.map(card).join('') + '</div>';
         }
 
+        // Closed, the card is just the header — tighter padding so it reads as a
+        // bar rather than a mostly-empty box.
         box.innerHTML =
-            '<div style="background:#fff;border:1px solid #e2e1dc;border-radius:20px;padding:24px 24px 20px;box-shadow:0 12px 34px rgba(20,40,30,.05);margin-bottom:16px;font-family:\'IBM Plex Sans\',sans-serif;">'
-            + header + progress + filterBar + body
+            '<div style="background:#fff;border:1px solid #e2e1dc;border-radius:20px;padding:' + (open ? '24px 24px 20px' : '18px 24px') + ';box-shadow:0 12px 34px rgba(20,40,30,.05);margin-bottom:16px;font-family:\'IBM Plex Sans\',sans-serif;">'
+            + header + (open ? (progress + filterBar + body) : '')
             + '</div>';
     }
+
+    window._eiToggleCollapse = function (containerId) {
+        const st = _eiState[containerId];
+        if (!st) return;
+        st.collapsed = !st.collapsed;
+        _eiRender(containerId);
+    };
+    // Enter / Space on the header behaves like a click — it is a div acting as a
+    // button, so the keyboard behaviour has to be supplied by hand.
+    window._eiKeyToggle = function (e, containerId) {
+        if (!e || (e.key !== 'Enter' && e.key !== ' ')) return;
+        e.preventDefault();
+        window._eiToggleCollapse(containerId);
+    };
 
     window._eiSetFilter = function (containerId, f) {
         if (_eiState[containerId]) { _eiState[containerId].filter = f; _eiRender(containerId); }

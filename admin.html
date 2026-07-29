@@ -3706,8 +3706,6 @@
 .apr-scope .apr-box textarea{resize:vertical;}
 .apr-scope .apr-box input:focus,.apr-scope .apr-box select:focus,.apr-scope .apr-box textarea:focus{border-color:#1A5C3A;box-shadow:0 0 0 3px rgba(26,92,58,.14);outline:none;}
 .apr-scope .apr-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
-.apr-scope #payFundingSourceWrap{margin-bottom:20px;}
-.apr-scope #paySplitPreview{margin-bottom:14px;}
 .apr-scope #payContractSplitPreview{margin-top:10px;}
 /* fully paid / over cap — muted, so it reads as "nothing left" not "plenty left" */
 .apr-scope .exp-funding-check-item__remain.is-settled,
@@ -3773,13 +3771,8 @@
 
             <!-- body -->
             <div class="apr-body">
-                <!-- charge to billing period (funding sources, rendered by JS) -->
-                <div id="payFundingSourceWrap" style="display:none;">
-                    <div class="apr-sec"><b>Charge to billing period</b><small>— tick more than one to split</small><span class="ln"></span></div>
-                    <div id="payFundingCheckList" class="exp-funding-check-list"></div>
-                    <select id="payFundingSourceSelect" style="display:none;"></select>
-                </div>
-                <div id="paySplitPreview" style="display:none;"></div>
+                <!-- "Charge to billing period" removed: the period is auto-picked
+                     at save time (see handleAddPayroll), same as the expenses modal. -->
 
                 <!-- worker -->
                 <div class="apr-sec"><b>Worker</b><span class="ln"></span></div>

@@ -139,6 +139,31 @@ const peso = (n, opts = {}) => {
   return n.toLocaleString("en-PH", { maximumFractionDigits: 0 });
 };
 const _staff = () => typeof window !== "undefined" && window.currentUserRole === "staff";
+// ── Recently opened project folders ──────────────────────────────────────
+// Ids of the last few folders actually opened, most recent first, kept in
+// localStorage so the order survives a reload. A convenience only — never a
+// source of truth: every id is re-matched against the folders the user can
+// currently see before it is shown, so a deleted (or hidden) project can't
+// linger in the list. Storage failures are swallowed; a browser with
+// localStorage blocked just gets the plain alphabetical list.
+const _PC_RECENT_KEY = "dacs.pc.recentFolders";
+const _PC_RECENT_MAX = 4;
+function _pcRecentIds() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(_PC_RECENT_KEY) || "[]");
+    return Array.isArray(raw) ? raw.filter((x) => typeof x === "string") : [];
+  } catch (_) {
+    return [];
+  }
+}
+function _pcTouchFolder(id) {
+  if (!id) return;
+  try {
+    const key = String(id);
+    const next = [key, ..._pcRecentIds().filter((x) => x !== key)].slice(0, _PC_RECENT_MAX);
+    localStorage.setItem(_PC_RECENT_KEY, JSON.stringify(next));
+  } catch (_) {}
+}
 const Ico = {
   search: /* @__PURE__ */ React.createElement("svg", { width: "16", height: "16", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("circle", { cx: "11", cy: "11", r: "8" }), /* @__PURE__ */ React.createElement("path", { d: "m21 21-4.3-4.3" })),
   bell: /* @__PURE__ */ React.createElement("svg", { width: "18", height: "18", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" }), /* @__PURE__ */ React.createElement("path", { d: "M10.3 21a1.94 1.94 0 0 0 3.4 0" })),
@@ -645,6 +670,31 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
     const pinSvg = rc("svg", { viewBox: "0 0 24 24", width: 14, height: 14, fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round" }, rc("path", { d: "M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" }), rc("circle", { cx: 12, cy: 10, r: 2.5 }));
     const warnSvg = rc("svg", { viewBox: "0 0 24 24", width: 17, height: 17, fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" }, rc("path", { d: "M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" }), rc("line", { x1: 12, y1: 9, x2: 12, y2: 13 }), rc("line", { x1: 12, y1: 17, x2: 12.01, y2: 17 }));
     const chevSvg = rc("svg", { viewBox: "0 0 24 24", width: 18, height: 18, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }));
+    // ── Project list: recently opened first ──
+    const comboItem = (o) => rc("button", { key: o.cc.id, className: "pcf-combo-item" + (o.i === idx ? " selected" : ""), onClick: () => { setCurrent(o.i); setComboOpen(false); setQuery(""); } },
+      rc("span", { className: "pcf-ci-dot", style: { background: DOT[o.cc.status] || "#B8B2A8" } }),
+      rc("span", { style: { minWidth: 0 } }, rc("span", { className: "pcf-ci-name" }, o.cc.name), rc("span", { className: "pcf-ci-meta" }, (o.cc.location ? o.cc.location + " · " : "") + (o.cc.periodCount === 1 ? "1 billing period" : o.cc.periodCount + " billing periods"))),
+      _inboxCountBadge(_ibx[o.cc.id], { marginLeft: "auto" }),
+      o.i === idx ? rc("span", { className: "pcf-ci-check" }, "✓") : null
+    );
+    // Folders opened recently float to the top, in the order they were opened.
+    // Intersecting with `filtered` is what keeps a stale id out: an id that no
+    // longer matches a visible project simply drops out of both lists.
+    const _rank = /* @__PURE__ */ new Map(_pcRecentIds().map((id, i) => [id, i]));
+    const _recentOnes = filtered.filter((o) => _rank.has(o.cc.id)).sort((a, b) => _rank.get(a.cc.id) - _rank.get(b.cc.id));
+    const _restOnes = filtered.filter((o) => !_rank.has(o.cc.id));
+    const _groupLbl = (t) => rc("div", { key: "g_" + t, className: "pcf-combo-group" }, t);
+    // While searching, the headings would label a list the user is already
+    // narrowing by hand — the recency order still applies, just unlabelled.
+    const _comboSections = !_recentOnes.length
+      ? filtered.map(comboItem)
+      : q
+      ? [..._recentOnes.map(comboItem), ..._restOnes.map(comboItem)]
+      : [
+          _groupLbl("Recently opened"),
+          ..._recentOnes.map(comboItem),
+          ...(_restOnes.length ? [_groupLbl("All projects"), ..._restOnes.map(comboItem)] : [])
+        ];
     return rc(React.Fragment, null,
       header,
       rc("div", { className: "pcf-switch" },
@@ -663,13 +713,7 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
             rc("div", { className: "pcf-combo-list" },
               filtered.length === 0
                 ? rc("div", { className: "pcf-combo-empty" }, "No projects match.")
-                : filtered.map((o) => rc("button", { key: o.cc.id, className: "pcf-combo-item" + (o.i === idx ? " selected" : ""), onClick: () => { setCurrent(o.i); setComboOpen(false); setQuery(""); } },
-                    rc("span", { className: "pcf-ci-dot", style: { background: DOT[o.cc.status] || "#B8B2A8" } }),
-                    rc("span", { style: { minWidth: 0 } }, rc("span", { className: "pcf-ci-name" }, o.cc.name), rc("span", { className: "pcf-ci-meta" }, (o.cc.location ? o.cc.location + " · " : "") + (o.cc.periodCount === 1 ? "1 billing period" : o.cc.periodCount + " billing periods"))),
-                    _inboxCountBadge(_ibx[o.cc.id], { marginLeft: "auto" }),
-                    o.i === idx ? rc("span", { className: "pcf-ci-check" }, "✓") : null
-                  ))
-            )
+                : _comboSections)
           )
         ),
         rc("div", { className: "pcf-stepper" },
@@ -2310,13 +2354,29 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
   }, [materialTx, searchQuery, docFilter]);
   const MAT_PALETTE = ["#157a52", "#c8a45a", "#7f9cb0", "#9fb98a", "#b0907f", "#8a7fb0", "#5e9d80", "#c0564a"];
   const matCatColor = (name) => { let n = 0; const x = String(name || ""); for (let i = 0; i < x.length; i++) n = (n * 31 + x.charCodeAt(i)) >>> 0; return MAT_PALETTE[n % MAT_PALETTE.length]; };
+  // Groups are ordered by the NEWEST entry each one holds, most recent first —
+  // so the category you just added to rises to the top of the table instead of
+  // sitting wherever its running total happened to rank. (It used to sort by
+  // total spend, which is why "Bank" stayed pinned at the top no matter what
+  // you entered: it simply had the biggest number.)
+  // Rows INSIDE a group stay newest-first too, from allMaterialTx's date sort.
   const byCategory = React.useMemo(() => {
     const map = /* @__PURE__ */ new Map();
     filteredTx.forEach((m) => {
       const cat = (m.category || "Uncategorized").trim() || "Uncategorized";
-      map.set(cat, (map.get(cat) || 0) + (Number(m.amount) || 0));
+      const cur = map.get(cat) || { amt: 0, latest: "" };
+      cur.amt += Number(m.amount) || 0;
+      // dateTime is a full ISO timestamp, so plain string compare orders it
+      // correctly and is precise to the minute — `date` is only the day.
+      const when = String(m.dateTime || m.date || "");
+      if (when > cur.latest) cur.latest = when;
+      map.set(cat, cur);
     });
-    return Array.from(map.entries()).map(([cat, amt]) => ({ cat, amt })).sort((a, b) => b.amt - a.amt);
+    return Array.from(map.entries())
+      .map(([cat, v]) => ({ cat, amt: v.amt, latest: v.latest }))
+      // Same-day categories fall back to the name, so the order is never
+      // arbitrary when two groups share their newest date.
+      .sort((a, b) => b.latest.localeCompare(a.latest) || a.cat.localeCompare(b.cat));
   }, [filteredTx]);
   const groupedTx = React.useMemo(() => {
     const order = byCategory.map((r) => r.cat);
@@ -2990,7 +3050,10 @@ function PortalApp() {
         expensesRaw,
         overheadRaw,
         boqRaw,
-        onPickFolder: setProjectId,
+        // Opening a folder is what marks it "recent" — merely flicking through
+        // the selector or the arrows doesn't, or the list would reshuffle
+        // underneath you while you were still browsing it.
+        onPickFolder: (id) => { _pcTouchFolder(id); setProjectId(id); },
         inboxByFolder
       }
     )));

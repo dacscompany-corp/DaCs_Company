@@ -3792,6 +3792,10 @@ body .doc-upload.attached .doc-upload-state {
 .dacs-portal-scope .pcf-ci-meta { font-size:12px; color:#908A81; margin-top:2px; display:block; }
 .dacs-portal-scope .pcf-ci-check { margin-left:auto; color:#226B4A; font-weight:700; }
 .dacs-portal-scope .pcf-combo-empty { padding:26px 14px; text-align:center; color:#908A81; font-size:13px; }
+/* Section labels splitting "Recently opened" from "All projects". Quiet on
+   purpose — they orient, they aren't options, so they must not read as one. */
+.dacs-portal-scope .pcf-combo-group { padding:10px 11px 5px; font-size:10.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:#A8A29A; }
+.dacs-portal-scope .pcf-combo-group + .pcf-combo-item { margin-top:0; }
 .dacs-portal-scope .pcf-stepper { display:flex; gap:8px; flex:none; }
 .dacs-portal-scope .pcf-step-btn { width:50px; border-radius:12px; background:#fff; border:1px solid #DBD7CF; color:#57534E; display:grid; place-items:center; box-shadow:var(--shadow-sm); cursor:pointer; transition:background .15s, color .15s, border-color .15s; }
 .dacs-portal-scope .pcf-step-btn:hover { background:#F6F4F0; color:#1B1A18; border-color:#C9C4BB; }
