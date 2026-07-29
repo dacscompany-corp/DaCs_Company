@@ -1527,45 +1527,44 @@
             <div class="rpt-kpi-row" id="pmRptKpiRow">
                 <div class="rpt-empty-state"><i data-lucide="bar-chart-2" class="rpt-empty-ico"></i><p>Loading project data…</p></div>
             </div>
-            <!-- SPENDING TREND -->
+            <!-- BUDGET VS ACTUAL -->
+            <div class="section-card" style="margin-top:1rem;">
+                <div class="card-header">
+                    <div>
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <h2 style="margin:0;">Budget vs Actual</h2>
+                        <span class="pc-help-tip" data-tip="This chart tracks cumulative spending (green) against the project's total budget (dashed line) over time — since PM projects have one overall budget, not a separate budget per period. The point turns red once cumulative spend passes the budget line.">?</span>
+                      </div>
+                      <p class="card-subtitle">Cumulative spend-to-date vs. total project budget</p>
+                    </div>
+                </div>
+                <div class="chart-wrapper" style="height:260px"><canvas id="pmRptBvaChart"></canvas></div>
+            </div>
+            <!-- MONTHLY SPENDING TREND -->
             <div class="section-card" style="margin-top:1rem;">
                 <div class="card-header">
                     <div>
                       <div style="display:flex;align-items:center;gap:8px;">
                         <h2 id="pmRptTrendTitle" style="margin:0;">Monthly Spending Trend</h2>
-                        <span class="pc-help-tip" data-tip="This chart shows how much was spent each period on Labor, Materials, and Outsource — from Daily Expenses entries. See the Budget vs Actual chart below for how this compares to the project's total budget.">?</span>
+                        <span class="pc-help-tip" data-tip="This chart shows how much was spent each period on Labor, Materials, and Outsource — from Daily Expenses entries. See the Budget vs Actual chart above for how this compares to the project's total budget.">?</span>
                       </div>
                       <p class="card-subtitle" id="pmRptTrendSubtitle">Labor vs Materials vs Outsource per period</p>
                     </div>
                 </div>
                 <div class="chart-wrapper" style="height:260px"><canvas id="pmRptTrendChart"></canvas></div>
             </div>
-            <!-- CATEGORY BREAKDOWN + BUDGET VS ACTUAL (side by side) -->
-            <div class="rpt-chart-duo" style="margin-top:1rem;">
-                <div class="section-card">
-                    <div class="card-header">
-                      <div>
-                        <div style="display:flex;align-items:center;gap:8px;">
-                          <h2 style="margin:0;">Category Breakdown</h2>
-                          <span class="pc-help-tip" data-tip="This donut chart shows how total spending is split across Labor, Materials, Outsource, and Management Fee — based on each Daily Expenses entry's type.">?</span>
-                        </div>
-                        <p class="card-subtitle">By entry type</p>
+            <!-- CATEGORY BREAKDOWN -->
+            <div class="section-card" style="margin-top:1rem;">
+                <div class="card-header">
+                    <div>
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <h2 style="margin:0;">Category Breakdown</h2>
+                        <span class="pc-help-tip" data-tip="This donut chart shows how total spending is split across Labor, Materials, Outsource, and Management Fee — based on each Daily Expenses entry's type.">?</span>
                       </div>
+                      <p class="card-subtitle">By entry type</p>
                     </div>
-                    <div class="chart-wrapper" style="height:260px"><canvas id="pmRptCategoryChart"></canvas></div>
                 </div>
-                <div class="section-card">
-                    <div class="card-header">
-                      <div>
-                        <div style="display:flex;align-items:center;gap:8px;">
-                          <h2 style="margin:0;">Budget vs Actual</h2>
-                          <span class="pc-help-tip" data-tip="This chart tracks cumulative spending (green) against the project's total budget (dashed line) over time — since PM projects have one overall budget, not a separate budget per period. The point turns red once cumulative spend passes the budget line.">?</span>
-                        </div>
-                        <p class="card-subtitle">Cumulative spend-to-date vs. total project budget</p>
-                      </div>
-                    </div>
-                    <div class="chart-wrapper" style="height:260px"><canvas id="pmRptBvaChart"></canvas></div>
-                </div>
+                <div class="chart-wrapper" style="height:260px"><canvas id="pmRptCategoryChart"></canvas></div>
             </div>
             <!-- EXPENSE DETAIL TABLE -->
             <div class="section-card rpt-table-card" id="pmRptExpDetailCard" style="display:none">

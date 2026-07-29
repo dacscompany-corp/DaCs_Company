@@ -920,23 +920,25 @@
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #374151 !important;
+  color: var(--brand-green) !important;
   margin-bottom: 22px;
   padding: 7px 16px 7px 12px;
   border-radius: 999px;
-  border: 1.5px solid #d1d5db !important;
-  background: transparent !important;
+  border: 1.5px solid rgba(26, 92, 58, 0.30) !important;
+  background: rgba(26, 92, 58, 0.08) !important;
   cursor: pointer;
-  transition: background .15s, border-color .15s;
+  transition: background .15s, border-color .15s, box-shadow .15s, transform .15s;
   text-decoration: none;
 }
 .back-btn:hover,
 .dacs-portal-scope .back-btn:hover {
-  background: #f3f4f6 !important;
-  border-color: #9ca3af !important;
+  background: rgba(26, 92, 58, 0.14) !important;
+  border-color: rgba(26, 92, 58, 0.45) !important;
+  box-shadow: 0 2px 10px rgba(26, 92, 58, 0.15);
+  transform: translateX(-2px);
 }
 
 /* Tooltip on back-btn */
