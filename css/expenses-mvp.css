@@ -3068,12 +3068,11 @@
 
 /* merged toolbar */
 .lc2-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
-.lc2-ghost { display: inline-flex; align-items: center; gap: 6px; background: var(--surface); color: var(--ink-2); font-weight: 600; font-size: 13px; padding: 9px 14px; border-radius: 10px; border: 1.5px solid var(--hair); cursor: pointer; }
-.lc2-ghost:hover { border-color: var(--ink-4); }
-.lc2-ghost.open { border-color: var(--brand-green); color: var(--brand-green); }
+.lc2-ghost { display: inline-flex; align-items: center; gap: 6px; background: rgba(26, 92, 58, 0.08); color: var(--brand-green); font-weight: 700; font-size: 13px; padding: 9px 16px 9px 14px; border-radius: 999px; border: 1.5px solid rgba(26, 92, 58, 0.30); cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
+.lc2-ghost:hover, .lc2-ghost.open { background: rgba(26, 92, 58, 0.14); border-color: rgba(26, 92, 58, 0.45); box-shadow: 0 2px 10px rgba(26, 92, 58, 0.15); }
 .lc2-ghost svg { width: 14px; height: 14px; }
-.lc2-export { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 8px 14px; border-radius: 10px; border: 1.5px solid #cde7d8; background: #F4F8F5; color: var(--brand-green); font-size: 12.5px; font-weight: 600; cursor: pointer; }
-.lc2-export:hover { background: #E9F3EC; }
+.lc2-export { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 9px 16px 9px 14px; border-radius: 999px; border: 1.5px solid rgba(26, 92, 58, 0.30); background: rgba(26, 92, 58, 0.08); color: var(--brand-green); font-size: 12.5px; font-weight: 700; cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
+.lc2-export:hover { background: rgba(26, 92, 58, 0.14); border-color: rgba(26, 92, 58, 0.45); box-shadow: 0 2px 10px rgba(26, 92, 58, 0.15); }
 .lc2-export svg { width: 14px; height: 14px; }
 
 /* worker accordion list */
@@ -3107,8 +3106,8 @@
 .lc2-badge-done { background: #E2F2E9; color: #157A52; }
 .lc2-badge-over { background: #FCEDED; color: #C0392B; }
 .lc2-badge-none { background: #F0F0F0; color: #9CA3AF; }
-.lc2-pay { display: inline-flex; align-items: center; gap: 5px; background: var(--brand-green); color: #fff; font-weight: 600; font-size: 12.5px; padding: 8px 13px; border-radius: 9px; flex-shrink: 0; border: 0; cursor: pointer; }
-.lc2-pay:hover { background: var(--brand-green-dark); }
+.lc2-pay { display: inline-flex; align-items: center; gap: 5px; background: var(--brand-green); color: #fff; font-weight: 700; font-size: 12.5px; padding: 8px 15px 8px 13px; border-radius: 999px; flex-shrink: 0; border: 0; cursor: pointer; transition: background .15s, box-shadow .15s; }
+.lc2-pay:hover { background: var(--brand-green-dark); box-shadow: 0 2px 10px rgba(26, 92, 58, 0.15); }
 .lc2-pay svg { width: 13px; height: 13px; }
 .lc2-chev { flex-shrink: 0; transition: transform 0.2s; }
 .lc2-acc.open .lc2-chev { transform: rotate(180deg); }
