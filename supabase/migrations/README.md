@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0039** — highest on disk is
-  `0038_payroll_payment_method_cheque.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0042** — highest on disk is
+  `0041_reimbursements.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble.
 - Migrations are **immutable once applied**: never edit or rename an applied file
   (docs and code comments reference them by name). Fix mistakes with a new migration.
@@ -51,9 +51,11 @@ Everything through **0027** is applied to the live database
 (hqbgduyonlbbsvjuapre) — 0025/0026 applied 2026-07-12; 0027 pending the JS deploy
 (see the deploy-order warning inside 0027 itself).
 
-**Unverified past 0027.** 0028–0038 exist on disk and were presumably applied as they
-were written, but nobody has confirmed it against the live DB since 2026-07-12. Get the
-truth before relying on this line:
+**Unverified past 0027.** 0028–0040 exist on disk and were presumably applied as they
+were written, but nobody has confirmed it against the live DB since 2026-07-12.
+**`0041_reimbursements.sql` (Client Reimbursement Tracker) is NOT applied yet** — the
+Reimbursement tab in Project Control cannot save until it is. Get the truth before
+relying on this line:
 
 ```sql
 select version, name

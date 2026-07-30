@@ -72,6 +72,10 @@
   min-height: 100%;
 }
 
+/* Strips browser chrome off bare buttons. NOTE this is (0,1,1), so it beats a
+   plain component class like `.lc2-ghost` (0,1,0) and flattens it to plain
+   text. Any button style meant to survive in here must be written scoped —
+   `.dacs-portal-scope .my-btn` — the way every .pcf-* button already is. */
 .dacs-portal-scope button { font: inherit; cursor: pointer; border: 0; background: transparent; color: inherit; padding: 0; }
 .dacs-portal-scope a { color: inherit; text-decoration: none; }
 .dacs-portal-scope input,

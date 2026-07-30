@@ -47,6 +47,10 @@ Profit   = Earned − Spent
 - Profit uses **earned** revenue. With no accomplishment data it falls back to the contract and
   must be labelled **"Forecast"**, never "Earned".
 - Company overhead (G&A) is never charged to a job.
+- **`reimbursements` (0041) is outside the money model.** It tracks expenses the owner/admin
+  advanced and whether the client paid them back. Nothing may feed it into Spent / Earned /
+  Profit, or turn a status change into an invoice, payment or accounting entry — that isolation
+  *is* the feature. Owner-only; staff never see it.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 

@@ -18,6 +18,8 @@
     <link rel="stylesheet" href="css/dacs-portal.css">
     <!-- Overhead Module Styles -->
     <link rel="stylesheet" href="css/overhead-module.css">
+    <!-- Client Reimbursement Tracker Styles -->
+    <link rel="stylesheet" href="css/reimbursement-module.css">
     <!-- Construction Module Styles -->
     <link rel="stylesheet" href="css/construction-module.css">
     <link rel="stylesheet" href="css/construction-module-items.css">
@@ -146,6 +148,9 @@
                     </a>
                     <a href="#" class="nav-item nav-child" data-view="expOverhead">
                         <span class="nav-icon-wrap"><i data-lucide="building-2" class="nav-icon"></i></span><span>Overhead</span>
+                    </a>
+                    <a href="#" class="nav-item nav-child" data-view="reimbursements">
+                        <span class="nav-icon-wrap"><i data-lucide="hand-coins" class="nav-icon"></i></span><span>Reimbursement</span>
                     </a>
                 </div>
             </div>
@@ -1369,6 +1374,251 @@
                 </div>
                 <div style="padding:16px 22px;border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;">
                     <button onclick="document.getElementById('boqGuideModal').style.display='none'" style="padding:9px 22px;border-radius:8px;border:none;background:#059669;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Got it!</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════════════ CLIENT REIMBURSEMENT TRACKER (Project Control) ════════════
+             Tracks project expenses the owner/admin (architect) advanced and whether
+             the CLIENT paid them back. Documentation / monitoring only — this screen
+             creates no invoice, payment, expense or accounting entry, and nothing it
+             stores feeds the money math. Owner-only (see js/reimbursement-module.js).
+        -->
+        <div id="reimbursementsView" class="content-view" style="display: none;">
+
+            <div class="rb-note">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span><strong>Tracking only.</strong> This page records expenses you paid for a client out of your own funds and whether they have paid you back. It never creates an invoice, a payment, an expense or an accounting entry, and it does not affect any project cost, budget or report.</span>
+            </div>
+
+            <!-- Topbar: filters + create -->
+            <div class="rb-topbar">
+                <div class="rb-filters">
+                    <select id="rbFilterProject" onchange="rbOnProjectFilter(this.value)" aria-label="Filter by project">
+                        <option value="">All Projects</option>
+                    </select>
+                    <select id="rbFilterClient" onchange="rbOnClientFilter(this.value)" aria-label="Filter by client">
+                        <option value="">All Clients</option>
+                    </select>
+                    <select id="rbFilterCategory" onchange="rbOnCategoryFilter(this.value)" aria-label="Filter by expense category">
+                        <option value="">All Categories</option>
+                    </select>
+                    <select id="rbFilterStatus" onchange="rbOnStatusFilter(this.value)" aria-label="Filter by status">
+                        <option value="">All Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="sent_to_client">Sent to Client</option>
+                        <option value="partially_reimbursed">Partially Reimbursed</option>
+                        <option value="reimbursed">Reimbursed</option>
+                        <option value="cancelled">Cancelled</option>
+                    </select>
+                    <label for="rbFilterFrom">From</label>
+                    <input type="date" id="rbFilterFrom" onchange="rbOnFromFilter(this.value)" title="Expense date from">
+                    <label for="rbFilterTo">To</label>
+                    <input type="date" id="rbFilterTo" onchange="rbOnToFilter(this.value)" title="Expense date to">
+                    <div class="rb-search-wrap">
+                        <input type="text" id="rbSearchInput" placeholder="Search ID, client, description…" oninput="rbOnSearch(this.value)">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    </div>
+                    <button type="button" class="rb-clear-btn" onclick="rbClearFilters()">Clear</button>
+                </div>
+                <button type="button" class="rb-btn rb-btn-primary" onclick="rbOpenForm()">
+                    <i data-lucide="plus" style="width:15px;height:15px;"></i> New Reimbursement
+                </button>
+            </div>
+
+            <!-- Tracking totals for the filtered set (not a finance report) -->
+            <div class="rb-kpi-row">
+                <div class="rb-kpi">
+                    <span class="rb-kpi-label">Total Advanced</span>
+                    <span class="rb-kpi-value" id="rbKpiAdvanced">₱0.00</span>
+                    <span class="rb-kpi-sub">paid by owner/admin</span>
+                </div>
+                <div class="rb-kpi rb-kpi-out">
+                    <span class="rb-kpi-label">Awaiting Reimbursement</span>
+                    <span class="rb-kpi-value" id="rbKpiOutstanding">₱0.00</span>
+                    <span class="rb-kpi-sub">not yet paid back</span>
+                </div>
+                <div class="rb-kpi rb-kpi-done">
+                    <span class="rb-kpi-label">Reimbursed</span>
+                    <span class="rb-kpi-value" id="rbKpiBack">₱0.00</span>
+                    <span class="rb-kpi-sub">returned by clients</span>
+                </div>
+                <div class="rb-kpi">
+                    <span class="rb-kpi-label">Records</span>
+                    <span class="rb-kpi-value" id="rbKpiCount">0</span>
+                    <span class="rb-kpi-sub" id="rbKpiCountSub">all records</span>
+                </div>
+            </div>
+
+            <!-- Reimbursement list -->
+            <div class="rb-card">
+                <div class="rb-card-head">
+                    <span class="rb-card-title">Reimbursement Records</span>
+                    <span class="rb-hint">View, edit or update the status of any record.</span>
+                </div>
+                <div class="rb-table-scroll">
+                    <table class="rb-table">
+                        <thead>
+                            <tr>
+                                <th>Reimbursement ID</th>
+                                <th>Project</th>
+                                <th>Client</th>
+                                <th>Owner/Admin</th>
+                                <th>Category</th>
+                                <th>Description</th>
+                                <th class="rb-num">Amount</th>
+                                <th>Expense Date</th>
+                                <th>Date Recorded</th>
+                                <th>Status</th>
+                                <th>Remarks</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="rbTableBody">
+                            <tr><td colspan="12" class="rb-empty">Loading…</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reimbursement — Create / Edit -->
+        <div id="rbFormModal" class="rb-modal" onclick="if(event.target===this)rbCloseForm()">
+            <div class="rb-modal-box">
+                <div class="rb-modal-head">
+                    <div>
+                        <h3 class="rb-modal-title" id="rbFormTitle">New Reimbursement</h3>
+                        <div class="rb-modal-ref" id="rbFormRef"></div>
+                    </div>
+                    <button type="button" class="rb-modal-x" aria-label="Close" onclick="rbCloseForm()">&times;</button>
+                </div>
+                <form onsubmit="rbSaveForm(event)">
+                    <div class="rb-modal-body">
+                        <input type="hidden" id="rbEditingId">
+                        <input type="hidden" id="rbReceiptUrl">
+                        <input type="hidden" id="rbReceiptName">
+
+                        <div class="rb-section">Project &amp; client</div>
+                        <div class="rb-grid">
+                            <div class="rb-field">
+                                <label for="rbFolderId">Project <span class="rb-req">*</span></label>
+                                <select id="rbFolderId" onchange="rbOnFolderChange(this.value)">
+                                    <option value="">Select project…</option>
+                                </select>
+                            </div>
+                            <div class="rb-field">
+                                <label for="rbClientName">Client name</label>
+                                <input type="text" id="rbClientName" placeholder="e.g. Mr. Dela Cruz">
+                            </div>
+                            <div class="rb-field">
+                                <label for="rbClientEmail">Client email</label>
+                                <input type="email" id="rbClientEmail" placeholder="client@email.com">
+                            </div>
+                            <div class="rb-field">
+                                <label for="rbPaidByName">Paid by — Owner/Admin (Architect)</label>
+                                <input type="text" id="rbPaidByName" placeholder="Who advanced the money">
+                            </div>
+                            <div class="rb-field">
+                                <label for="rbPaidBy">Owner/Admin email</label>
+                                <input type="email" id="rbPaidBy" placeholder="architect@email.com">
+                            </div>
+                        </div>
+
+                        <div class="rb-section">Expense</div>
+                        <div class="rb-grid">
+                            <div class="rb-field">
+                                <label for="rbExpenseCategory">Expense category <span class="rb-req">*</span></label>
+                                <input type="text" id="rbExpenseCategory" list="rbCategoryList" placeholder="e.g. Permits &amp; Government Fees">
+                                <datalist id="rbCategoryList"></datalist>
+                            </div>
+                            <div class="rb-field">
+                                <label for="rbAmount">Amount <span class="rb-req">*</span></label>
+                                <input type="text" id="rbAmount" inputmode="decimal" placeholder="0.00">
+                            </div>
+                            <div class="rb-field">
+                                <label for="rbExpenseDate">Expense date <span class="rb-req">*</span></label>
+                                <input type="date" id="rbExpenseDate">
+                            </div>
+                            <div class="rb-field rb-field-wide">
+                                <label for="rbDescription">Description <span class="rb-req">*</span></label>
+                                <input type="text" id="rbDescription" placeholder="What was paid for">
+                            </div>
+                        </div>
+
+                        <div class="rb-section">Receipt / invoice (optional)</div>
+                        <div class="rb-receipt-row">
+                            <input type="file" id="rbReceiptFile" accept="image/*,application/pdf" onchange="rbPickReceipt(this)" style="font-size:12.5px;">
+                        </div>
+                        <div class="rb-receipt-row" id="rbReceiptPreview" style="margin-top:10px;">
+                            <span class="rb-hint">No receipt attached.</span>
+                        </div>
+
+                        <div class="rb-section">Notes</div>
+                        <div class="rb-field">
+                            <label for="rbNotes" class="rb-hint">Anything worth remembering about this advance</label>
+                            <textarea id="rbNotes" placeholder="Optional"></textarea>
+                        </div>
+
+                        <div id="rbInitialStatusBox" style="margin-top:14px;">
+                            <span class="rb-hint">New records start as <strong>Pending</strong>. Use <em>Update Status</em> afterwards so every change is kept in the record's history.</span>
+                        </div>
+                    </div>
+                    <div class="rb-modal-foot">
+                        <button type="button" class="rb-btn" onclick="rbCloseForm()">Cancel</button>
+                        <button type="submit" class="rb-btn rb-btn-primary" id="rbSaveBtn">Save Record</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Reimbursement — Update status (confirmation dialog) -->
+        <div id="rbStatusModal" class="rb-modal" onclick="if(event.target===this)rbCloseStatus()">
+            <div class="rb-modal-box rb-modal-sm">
+                <div class="rb-modal-head">
+                    <div>
+                        <h3 class="rb-modal-title">Update Status</h3>
+                        <div class="rb-modal-ref" id="rbStatusRef"></div>
+                    </div>
+                    <button type="button" class="rb-modal-x" aria-label="Close" onclick="rbCloseStatus()">&times;</button>
+                </div>
+                <div class="rb-modal-body">
+                    <div class="rb-field" style="margin-bottom:12px;">
+                        <label>Current status</label>
+                        <div id="rbStatusCurrent"></div>
+                    </div>
+                    <div class="rb-field">
+                        <label for="rbStatusNew">New status</label>
+                        <select id="rbStatusNew" onchange="rbOnStatusPick(this.value)"></select>
+                    </div>
+                    <div class="rb-field" id="rbStatusPaidBox" style="display:none;margin-top:12px;">
+                        <label for="rbStatusPaid">Amount reimbursed so far</label>
+                        <input type="text" id="rbStatusPaid" inputmode="decimal" placeholder="0.00">
+                    </div>
+                    <div class="rb-field" style="margin-top:12px;">
+                        <label for="rbStatusRemark">Remark (optional)</label>
+                        <textarea id="rbStatusRemark" placeholder="e.g. Client paid via bank transfer"></textarea>
+                    </div>
+                    <div class="rb-hint" id="rbStatusHint" style="margin-top:10px;"></div>
+                    <div class="rb-d-hint" id="rbStatusIsolation" style="margin-top:10px;"></div>
+                </div>
+                <div class="rb-modal-foot">
+                    <button type="button" class="rb-btn" onclick="rbCloseStatus()">Cancel</button>
+                    <button type="button" class="rb-btn rb-btn-primary" id="rbStatusConfirmBtn" onclick="rbConfirmStatus()">Confirm Update</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reimbursement — Detail drawer -->
+        <div id="rbDetailDrawer" class="rb-drawer" onclick="if(event.target===this)rbCloseDetail()">
+            <div class="rb-drawer-box">
+                <div class="rb-modal-head">
+                    <h3 class="rb-modal-title">Reimbursement Details</h3>
+                    <button type="button" class="rb-modal-x" aria-label="Close" onclick="rbCloseDetail()">&times;</button>
+                </div>
+                <div class="rb-modal-body" id="rbDetailBody"></div>
+                <div class="rb-modal-foot">
+                    <button type="button" class="rb-btn" id="rbDetailEditBtn">Edit</button>
+                    <button type="button" class="rb-btn rb-btn-primary" id="rbDetailStatusBtn">Update Status</button>
                 </div>
             </div>
         </div>
@@ -4456,6 +4706,7 @@
 <script src="js/print-utils.js"></script>
 <script src="js/expenses-module.js?v=20260707c"></script>
 <script src="js/overhead-module.js"></script>
+<script src="js/reimbursement-module.js"></script>
 <script src="js/construction-module.js"></script>
 <script src="js/boq-module.js"></script>
 <script src="js/user-navigator.js"></script>
@@ -5206,6 +5457,7 @@
         expExpenses:      'Expenses',
         expReports:       'Reports',
         expOverhead:      'Overhead Expenses',
+        reimbursements:   'Client Reimbursement',
         consBatch:        'Current Batch',
         consUrgent:       'Urgent Requests',
         consBatchHistory: 'Batch History',
@@ -5239,10 +5491,15 @@
                 // pages — nor Reports, which is entirely peso amounts. Blocking
                 // it here (not just in the nav) also stops a stale link, a hash
                 // route or a leftover button from reaching it.
-                const blocked = ['userNavigator', 'clientAccounts', 'sysErrors', 'expReports'];
-                // Reports lives inside Project Control, so bounce it back there
-                // rather than throwing the user out to the Appointments dashboard.
-                if (blocked.includes(view)) view = (view === 'expReports') ? 'dacsPortal' : 'dashboard';
+                // Client Reimbursement is peso amounts end to end (and owner-only
+                // by RLS, migration 0041), so it is blocked here too.
+                const blocked = ['userNavigator', 'clientAccounts', 'sysErrors', 'expReports', 'reimbursements'];
+                // Reports and Reimbursement live inside Project Control, so bounce
+                // them back there rather than throwing the user out to the
+                // Appointments dashboard.
+                if (blocked.includes(view)) {
+                    view = (view === 'expReports' || view === 'reimbursements') ? 'dacsPortal' : 'dashboard';
+                }
             } else if (currentUserRole === 'worker' || currentUserRole === 'teamLeader') {
                 const allowed = ['consBatch','consUrgent','consBatchHistory'];
                 if (!allowed.includes(view)) view = 'consBatch';
@@ -5296,6 +5553,7 @@
         if (view === 'expReports'   && typeof initReportsDashboard  === 'function') initReportsDashboard();
         if (view === 'pmReports'    && typeof initPMReportsDashboard === 'function') initPMReportsDashboard();
         if (view === 'expOverhead'  && typeof initOverheadModule     === 'function') initOverheadModule();
+        if (view === 'reimbursements' && typeof initReimbursementModule === 'function') initReimbursementModule();
         if (CONS_VIEWS.includes(view) && typeof initConstructionModule === 'function') initConstructionModule(view);
         // Cross-module project context: if a folder is open in Project Control,
         // auto-open the same folder's BOQ instead of dropping the user on the

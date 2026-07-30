@@ -148,6 +148,38 @@ Hierarchy: **`folders` → `projects` (a month) → `expenses` / `payroll`**. Mo
 ### `overheadExpenses/{id}` (`overhead-module.js`) — company overhead
 `userId`, `category`, `amount` (number), `date` (string), `description`, `createdAt`
 
+### `reimbursements/{id}` (`reimbursement-module.js`) — Client Reimbursement Tracker (migration 0041)
+Expenses the **owner/admin (architect) advanced** for a project, and whether the **client** has
+paid them back. Direction is Client → Owner/Admin (**not** employee reimbursement).
+**Tracking only** — nothing here is read by the money model (Labor / Material / Overhead / Spent /
+Earned / Profit), and no invoice, payment request, expense, payroll row or journal entry is ever
+created from it. `status: 'reimbursed'` is a **label**, not a transaction.
+
+| Field | Type | Notes |
+|---|---|---|
+| `userId` | string | owner (`owner_id`) |
+| `refNo` | string | display reference `RB-2026-0001`, generated app-side from the highest sequence loaded — **not a key** |
+| `folderId` | string | parent **`folders`** row (Project Control), never `construction_projects` |
+| `projectName` | string | folder name snapshotted at save time, display only |
+| `clientEmail`, `clientName` | string | who owes the money back; pre-filled from `folders.clientEmail`, editable |
+| `paidBy`, `paidByName` | string | the owner/admin who advanced the money (defaults to the signed-in account) |
+| `expenseCategory` | string | free text with presets in a datalist |
+| `description` | string | what was paid for |
+| `amount` | number | amount advanced |
+| `amountReimbursed` | number | paid back so far; only meaningful for `partially_reimbursed` / `reimbursed` |
+| `expenseDate` | string | `YYYY-MM-DD` (a real `date` column), when the advance was paid out |
+| `receiptUrl`, `receiptName` | string | optional receipt/invoice in the private `uploads` bucket under `reimbursementReceipts/` (signed on use) |
+| `notes` | string | free-form note from the create/edit form |
+| `remarks` | string | latest status remark (the Remarks column in the list) |
+| `status` | string | `pending` \| `sent_to_client` \| `partially_reimbursed` \| `reimbursed` \| `cancelled` |
+| `history` | json | append-only `[{ at, by, status, from, note }]` — status changes + edits |
+| `deletedAt` | ts | soft delete; every read filters it. **No UI deletes** — the MVP cancels instead |
+| `createdBy`, `createdAt`, `updatedAt` | — | |
+
+**Rules:** **owner-only** (`owner_id = auth.uid()`, like `folder_budgets`) — staff are blocked in
+the sidebar, the top nav, `switchView` **and** RLS, because every column is a peso amount or the
+context for one. No client-read policy: the MVP has no client-facing surface.
+
 ---
 
 ## 3. BOQ / Accomplishment Reports (`boq-module.js`)

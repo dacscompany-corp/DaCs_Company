@@ -4,10 +4,13 @@
 # Two jobs, ~30 seconds total, no dependencies to install:
 #   1. syntax   — node --check on every JS file (catches the "one bad
 #                 character broke the whole admin page" class of bug)
-#   2. money    — tests/money-math.test.js: 42 checks that extract the
+#   2. money    — tests/money-math.test.js: 46 checks that extract the
 #                 LIVE money functions and enforce every invariant in
 #                 CLAUDE.md (one bucket per peso, pakyaw protection,
 #                 earned margins, zero-profit recognition, …)
+#                 plus tests/reimbursement.test.js: the Client Reimbursement
+#                 Tracker must stay ISOLATED — a write to any collection other
+#                 than `reimbursements` fails the build.
 #
 # If the money job fails, a financial rule was broken (or the source was
 # restructured — the failure says which; see tests/money-math.test.js).
@@ -42,3 +45,6 @@ jobs:
 
       - name: Money math invariants
         run: node tests/money-math.test.js
+
+      - name: Reimbursement tracker isolation
+        run: node tests/reimbursement.test.js

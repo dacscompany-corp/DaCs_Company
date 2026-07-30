@@ -102,6 +102,7 @@ Also note: **`projects` means billing period**, not project. Read it that way ev
 | Project Control | `portal-app.compiled.js` | Folder grid, per-project cost/profit, drills (labor, material, overhead, periods, additional works) |
 | Budget Overview / Expenses | `expenses-module.js` (8.1k lines — the biggest) | Folders, billing periods, payroll, expenses, pakyaw labor contracts |
 | Overhead | `overhead-module.js` | Company + project overhead ([OVERHEAD_MODULE.md](OVERHEAD_MODULE.md)) |
+| Reimbursement | `reimbursement-module.js` | Client Reimbursement Tracker (`0041`) — expenses the **owner/admin advanced** and whether the **client** paid them back. **Deliberately isolated:** no invoice, payment, expense, payroll or journal side effects, and no money math reads it. Owner-only (staff blocked in nav, switchView and RLS) |
 | Project Management | `pm-admin.js` | Construction projects, weekly bills, procurement, milestones, revolving fund |
 | Accomplishment / BOQ | `boq-module.js` | BOQ + accomplishment reports (`percentCompletion` per line item) |
 | Invoices | `invoice-module.js`, `labor-invoice-module.js` | |
@@ -182,7 +183,8 @@ used)" and flags overruns. It never enters Spent, Earned or Profit. Null/0 = not
 
 - **Identity** — `profiles` (3 logical collections), `agreement_events`, `push_subscriptions`
 - **Project Control** — `folders`, `folder_budgets`, `projects`, `project_budgets`, `expenses`,
-  `payroll`, `labor_contracts`, `overhead_expenses`, `categories`, `additional_works`
+  `payroll`, `labor_contracts`, `overhead_expenses`, `categories`, `additional_works`,
+  `reimbursements` (tracking only, `0041` — never read by the money model)
 - **Project Management** — `construction_projects`, `weekly_bills`, `procurement_items`,
   `pm_labor_contracts`, `milestones`, `accomplishment_reports`, `daily_logs`, `walkthroughs`,
   `revolving_fund*`, `partner_agreements`

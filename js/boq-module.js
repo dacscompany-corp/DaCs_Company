@@ -568,6 +568,37 @@
         return html;
     }
 
+    // Options for a rate-type <select> ("Enter value" / By owner / N/A).
+    //
+    // A rate override is stored as free text and rendered verbatim, so a row can
+    // legitimately carry wording this dropdown never offered — 'by MadHouse',
+    // 'included in Carpentry Works', 'existing', 'retained', or a blank cell
+    // (see tools/boq-import/*, which import whole BOQs straight from a PDF).
+    //
+    // When such a row was opened for editing, NO option matched, so the browser
+    // fell back to the first one ("Enter value") and boqSaveLineItem then wrote
+    // materialOverride = null with a 0 rate — silently erasing the wording and
+    // leaving a bare dash in the report. Editing a row's % complete was enough
+    // to lose it. (Audited on PRADO RESIDENCE, 2026-07-30: 11 rows.)
+    //
+    // Fix: whatever the row already carries is offered as its own option and
+    // pre-selected, so an edit round-trips it unchanged. `by owner` and N/A keep
+    // working exactly as before.
+    function rateTypeOptions(override) {
+        const ov    = override == null ? '' : String(override);
+        const known = ['', 'value', 'by owner', 'not applicable'];
+        // A whitespace-only override is the "deliberately blank cell" convention:
+        // truthy (so it counts as ₱0) but printing as nothing. Label it, or it
+        // would show up in the dropdown as an unpickable empty row.
+        const custom = (ov && known.indexOf(ov) === -1)
+            ? `<option value="${escAttr(ov)}" selected>${escHtml(ov.trim() || '(blank)')}</option>`
+            : '';
+        return `<option value="value" ${ov ? '' : 'selected'}>Enter value</option>`
+             + `<option value="by owner" ${ov === 'by owner' ? 'selected' : ''}>By owner</option>`
+             + `<option value="not applicable" ${ov === 'not applicable' ? 'selected' : ''}>N/A</option>`
+             + custom;
+    }
+
     // Returns the 0-based display index of a line item, skipping group headers
     function itemDisplayIdx(lineItems, liId) {
         let count = 0;
@@ -613,12 +644,8 @@
         }
 
         if (editMode) {
-            const matSel = li.materialOverride
-                ? `<option value="value">Enter value</option><option value="by owner" ${li.materialOverride==='by owner'?'selected':''}>By owner</option><option value="not applicable" ${li.materialOverride==='not applicable'?'selected':''}>N/A</option>`
-                : `<option value="value" selected>Enter value</option><option value="by owner">By owner</option><option value="not applicable">N/A</option>`;
-            const labSel = li.laborOverride
-                ? `<option value="value">Enter value</option><option value="by owner" ${li.laborOverride==='by owner'?'selected':''}>By owner</option><option value="not applicable" ${li.laborOverride==='not applicable'?'selected':''}>N/A</option>`
-                : `<option value="value" selected>Enter value</option><option value="by owner">By owner</option><option value="not applicable">N/A</option>`;
+            const matSel = rateTypeOptions(li.materialOverride);
+            const labSel = rateTypeOptions(li.laborOverride);
 
             const _liKeys = `onkeydown="if(event.key==='Enter')boqSaveLineItem('${ciId}','${siId}','${li.id}');else if(event.key==='Escape')boqCancelEditLI('${ciId}','${siId}','${li.id}')"`;
 

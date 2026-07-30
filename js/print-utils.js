@@ -149,137 +149,98 @@ window.dacsPrintProjectCostSummary = function (d) {
 
     // Share of contract — the same basis as the on-screen formula chip.
     const share = (v) => contract > 0 ? (num(v) / contract * 100).toFixed(1) + '%' : '—';
-    // Share of the money actually spent — drives each module's bar.
+    // Share of the money actually spent — drives each module's bar and pill.
     const mix   = (v) => spent > 0 ? num(v) / spent * 100 : 0;
 
     // No accomplishment data => the figure assumes the job runs to completion and
     // must never be presented as earned. Same rule as the overview banner.
-    const profitHead = isLoss
-        ? (d.isForecast ? 'Loss if the job finishes here' : 'Loss earned so far')
-        : (d.isForecast ? 'Profit if the job finishes here' : 'Profit earned so far');
-    const profitLbl  = (isLoss ? 'Gross loss' : 'Gross profit') + (d.isForecast ? ' · forecast' : ' · earned');
-    const revLbl     = d.isForecast ? 'Contract revenue' : 'Earned revenue';
-    const revSub     = d.isForecast ? 'Full contract · not yet earned' : num(d.completePct).toFixed(1) + '% of contract accomplished';
-    const profitSub  = d.isForecast ? 'Forecast — not yet earned' : 'Earned against accomplishment';
-    const marginTxt  = d.marginPct == null ? '—' : num(d.marginPct).toFixed(1) + '%';
-    const logo       = window.location.origin + '/assets/images/DACS-TRANSPARENT.png';
+    const profitLbl = isLoss ? 'Gross loss' : 'Gross profit';
+    const profitSub = d.isForecast ? 'Forecast — not yet earned' : 'Earned against accomplishment';
+    const revLbl    = d.isForecast ? 'Contract revenue' : 'Earned revenue';
+    const revSub    = d.isForecast ? 'Full contract · not yet earned' : num(d.completePct).toFixed(1) + '% accomplished';
+    const marginTxt = d.marginPct == null ? '—' : num(d.marginPct).toFixed(1) + '%';
+    const logo      = window.location.origin + '/assets/images/DACS-TRANSPARENT.png';
+    // Date the project was started, when the folder carries one.
+    const started   = d.startedAt || d.dateStarted || d.startDate || '';
 
-    // ── A big headline figure in the "Where does the money stand?" grid ──
+    // ── A headline figure in the "Where does the money stand?" grid ──
     const big = (label, value, sub, color) =>
         '<div style="padding-bottom:12px;border-bottom:1px solid #e3e6ea">'
         + '<div class="k">' + label + '</div>'
-        + '<div style="font-size:26px;font-weight:700;margin-top:7px;font-variant-numeric:tabular-nums;letter-spacing:-0.015em;' + (color ? 'color:' + color : '') + '">' + value + '</div>'
-        + (sub ? '<div style="font-size:10px;color:#8a919c;margin-top:4px">' + sub + '</div>' : '')
+        + '<div style="font-size:27px;font-weight:700;margin-top:7px;font-variant-numeric:tabular-nums;letter-spacing:-0.015em;' + (color ? 'color:' + color : '') + '">' + value + '</div>'
+        + '<div style="font-size:10.5px;color:#8a919c;margin-top:4px">' + sub + '</div>'
         + '</div>';
 
-    // ── One spending row: name, proportional bar, amount ──
+    // ── One spending row: share pill, name, proportional bar, amount ──
     const spendRow = (label, sub, amount, color, detail, last) => {
         const pct = mix(amount);
-        const rule = last ? 'border-bottom:1.5px solid #14181f;' : 'border-bottom:1px solid #eceef1;';
-        return '<div style="display:grid;grid-template-columns:150px 1fr 130px;align-items:center;gap:16px;padding:13px 0;' + rule + '">'
-            + '<div><div style="font-size:12.5px;font-weight:700">' + label + '</div>'
-            +   '<div style="font-size:9.5px;color:#8a919c;margin-top:2px">' + sub + '</div></div>'
-            + '<div><div style="height:12px;background:#eceef1"><div class="sw" style="width:' + pct.toFixed(1) + '%;height:12px;background:' + color + '"></div></div>'
-            +   '<div style="font-size:9.5px;color:#5b636f;margin-top:5px">' + pct.toFixed(1) + '% of spending · ' + detail + '</div></div>'
+        return '<div style="display:grid;grid-template-columns:190px 1fr 140px;align-items:center;gap:18px;padding:14px 0;'
+            + (last ? 'border-bottom:1.5px solid #14181f' : 'border-bottom:1px solid #eceef1') + '">'
+            + '<div style="display:flex;align-items:center;gap:10px">'
+            +   '<div><div style="font-size:12.5px;font-weight:700">' + label + '</div>'
+            +     '<div style="font-size:9.5px;color:#8a919c;margin-top:2px">' + sub + '</div></div>'
+            +   '<span class="sw" style="flex:none;margin-left:auto;display:inline-flex;align-items:center;justify-content:center;min-width:46px;padding:4px 8px;border-radius:9px;background:' + color + ';color:#fff;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums">' + pct.toFixed(1) + '%</span>'
+            + '</div>'
+            + '<div style="display:flex;flex-direction:column;gap:5px">'
+            +   '<div style="height:12px;background:#eceef1"><div class="sw" style="width:' + pct.toFixed(1) + '%;height:12px;background:' + color + '"></div></div>'
+            +   '<div style="font-size:10.5px;color:#5b636f">' + detail + '</div>'
+            + '</div>'
             + '<div style="text-align:right;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums">₱' + peso(amount) + '</div>'
             + '</div>';
     };
 
-    const stat = (label, value) =>
-        '<div><div class="k" style="letter-spacing:0.13em">' + label + '</div>'
-        + '<div style="font-size:14px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums">₱' + peso(value) + '</div></div>';
-
-    const eqCell = (label, value, sub, opts) => {
-        const o = opts || {};
-        return '<div style="flex:' + (o.flex || 1) + ';padding:14px 18px;' + (o.style || '') + '">'
-            + '<div class="k" style="letter-spacing:0.13em;' + (o.labelColor ? 'color:' + o.labelColor : '') + '">' + label + '</div>'
-            + '<div style="font-size:16px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums;' + (o.valueColor ? 'color:' + o.valueColor : '') + '">₱' + peso(value) + '</div>'
-            + '<div style="font-size:9px;color:' + (o.subColor || '#9aa1ab') + ';margin-top:3px">' + sub + '</div>'
-            + '</div>';
-    };
-
-    const metaLine = [esc(d.code || ''), esc(d.location || '')].filter(Boolean).join(' · ');
+    const metaField = (label, value) =>
+        '<div><div style="font-size:8.5px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#a4abb4">' + label + '</div>'
+        + '<div style="font-size:11.5px;font-weight:600;margin-top:3px">' + value + '</div></div>';
 
     const headHtml =
-        '<div style="display:flex;justify-content:space-between;align-items:flex-start">'
-        + '<div>'
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px">'
+        + '<div style="display:flex;flex-direction:column;gap:18px">'
         +   '<div style="display:flex;align-items:center;gap:11px">'
         +     '<img src="' + logo + '" alt="DAC&#39;s" style="height:38px;width:auto;object-fit:contain">'
         +     '<div style="font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#5b636f">DAC&#39;s Building Design Services</div>'
         +   '</div>'
-        +   '<div style="font-size:30px;font-weight:700;letter-spacing:-0.015em;margin-top:20px">' + esc(d.name || '') + '</div>'
-        +   '<div style="font-size:11px;color:#6b7280;margin-top:6px">Project cost summary' + (metaLine ? ' · ' + metaLine : '') + '</div>'
+        +   '<div style="display:flex;flex-direction:column;gap:6px">'
+        +     '<div style="font-size:30px;font-weight:700;letter-spacing:-0.015em;line-height:1.05">' + esc(d.name || '') + '</div>'
+        +     '<div style="font-size:11px;color:#6b7280">Project cost summary'
+        +       (d.code ? ' · ' + esc(d.code) : '') + (d.location ? ' · ' + esc(d.location) : '') + '</div>'
+        +   '</div>'
         + '</div>'
-        + '<div style="text-align:right;font-size:9.5px;color:#8a919c;line-height:1.7;padding-top:4px">' + esc(d.printedAt || '') + '<br>Page 1 of 1</div>'
+        + '<div style="display:flex;flex-direction:column;gap:9px;align-items:flex-end;text-align:right;padding-top:2px">'
+        +   (started ? metaField('Project started', esc(started)) : '')
+        +   metaField('Printed', esc(d.printedAt || '') + ' · Page 1 of 1')
         + '</div>'
-        + '<div class="sw" style="height:3px;background:#14181f;margin-top:22px"></div>';
+        + '</div>'
+        + '<div class="sw" style="height:3px;background:#14181f;margin-top:20px"></div>';
 
     const standHtml =
-        '<div style="margin-top:28px">'
-        + '<div class="q">Where does the money stand?</div>'
-        + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px 40px;margin-top:16px">'
-        +   big('The contract is worth', '₱' + peso(contract), '')
-        +   big('We have spent', '₱' + peso(spent), share(spent) + ' of the contract')
-        +   big(profitHead, '₱' + peso(profit), profitSub, accent)
+        '<div style="display:flex;flex-direction:column;gap:14px;margin-top:22px">'
+        + '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px 40px">'
+        +   big('Total contract', '₱' + peso(contract), 'Approved contract value')
+        +   big('Fund spent', '₱' + peso(spent), share(spent) + ' of the contract')
+        +   big(profitLbl, '₱' + peso(profit), profitSub, accent)
         +   big('That is a margin of', marginTxt, 'On ' + (d.isForecast ? 'contract' : 'earned') + ' revenue', accent)
         + '</div></div>';
 
     const spendHtml =
-        '<div style="margin-top:32px">'
+        '<div style="display:flex;flex-direction:column;gap:12px;margin-top:24px">'
         + '<div class="q">What was the money spent on?</div>'
-        + '<div style="margin-top:14px">'
+        + '<div style="display:flex;flex-direction:column">'
         +   spendRow('Labor', 'Wages on site', d.labor, '#1a5c3a',
                 'direct ' + peso(d.laborDirect) + ' · liability ' + peso(d.laborLiability), false)
         +   spendRow('Materials', 'Purchases with documents', d.material, '#5f7a6c',
                 (d.materialCount || 0) + ' transactions · ' + (d.docsAttached || 0) + ' of ' + (d.docsExpected || 0) + ' files attached', false)
         +   spendRow('Overhead', 'Support &amp; site running costs', d.overhead, '#8d97a2',
                 'indirect ' + peso(d.overheadIndirect) + ' · operating ' + peso(d.overheadExpenses), true)
-        +   '<div style="display:grid;grid-template-columns:150px 1fr 130px;align-items:baseline;gap:16px;padding:12px 0 0">'
-        +     '<div style="font-size:10.5px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase">Total spent</div>'
-        +     '<div style="font-size:10px;color:#5b636f">' + share(spent) + ' of the contract value</div>'
-        +     '<div style="text-align:right;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums">₱' + peso(spent) + '</div>'
+        +   '<div class="sw" style="display:grid;grid-template-columns:190px 1fr 140px;align-items:center;gap:18px;padding:13px 14px;margin:0 -14px;background:#e2f3ff">'
+        +     '<div style="font-size:14px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase">Total spent</div>'
+        +     '<div style="font-size:11.5px;color:#3c434e">' + share(spent) + ' of the contract value</div>'
+        +     '<div style="text-align:right;font-size:19px;font-weight:700;font-variant-numeric:tabular-nums">₱' + peso(spent) + '</div>'
         +   '</div>'
         + '</div></div>';
 
-    const profitHtml =
-        '<div style="margin-top:32px">'
-        + '<div class="q">How is the profit worked out?</div>'
-        + '<div style="display:flex;align-items:stretch;margin-top:14px;border:1px solid #e3e6ea">'
-        +   eqCell(revLbl, d.earned, revSub, { style: 'border-right:1px solid #e3e6ea' })
-        +   '<div style="display:flex;align-items:center;padding:0 12px;font-size:17px;color:#9aa1ab;font-weight:700">−</div>'
-        +   eqCell('Total actual cost', spent, 'Labor + Material + Overhead', { style: 'border-left:1px solid #e3e6ea;border-right:1px solid #e3e6ea' })
-        +   '<div style="display:flex;align-items:center;padding:0 12px;font-size:17px;color:#9aa1ab;font-weight:700">=</div>'
-        +   eqCell(profitLbl, profit, marginTxt + ' margin', {
-                flex: 1.1,
-                style: 'border-left:1px solid #e3e6ea;background:#f4f6f5',
-                labelColor: accent, valueColor: accent, subColor: '#5b636f'
-            })
-        + '</div></div>';
-
-    const fundsHtml =
-        '<div style="margin-top:30px">'
-        + '<div class="q">What about the funds and extras?</div>'
-        + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:14px">'
-        +   stat('Allocated', d.allocated)
-        +   stat('Remaining', num(d.allocated) - spent)
-        +   stat('Cover expenses', d.coverCost)
-        +   stat('Additional works', d.additionalWorks)
-        + '</div></div>';
-
-    const basisNote = d.isForecast
-        ? 'The profit above is a forecast: no accomplishment report is on file, so the sheet assumes the full contract will be delivered.'
-        : 'The profit above is earned: revenue is recognised against the accomplishment reported to date.';
-
-    const notesHtml =
-        '<div style="margin-top:26px;padding-top:11px;border-top:1px solid #e3e6ea;font-size:8.8px;color:#7d848f;line-height:1.7">'
-        + '<strong style="color:#5b636f">Plain-language notes.</strong> ' + basisNote
-        + ' Overhead means support people and site running costs — it is never counted as Labor and never draws down a pakyaw contract.'
-        + ' Cover expenses were absorbed by the company because the billing period had no budget.'
-        + ' Materials expect four documents each (PO, DR, SI, Payment); ' + (d.docsAttached || 0) + ' of ' + (d.docsExpected || 0) + ' are on file.'
-        + '</div>';
-
     const signHtml =
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;margin-top:28px">'
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;margin-top:26px">'
         + '<div><div style="height:26px;border-bottom:1px solid #14181f"></div>'
         +   '<div style="font-size:8.5px;letter-spacing:0.12em;text-transform:uppercase;color:#8a919c;margin-top:6px">Prepared by — Signature over printed name</div></div>'
         + '<div><div style="height:26px;border-bottom:1px solid #14181f"></div>'
@@ -295,9 +256,9 @@ window.dacsPrintProjectCostSummary = function (d) {
     const css = [
         '* { margin:0; padding:0; box-sizing:border-box; }',
         'body { font-family:"Helvetica Neue",Helvetica,Arial,sans-serif; background:#eceef0; color:#14181f; }',
-        '.sheet { width:210mm; min-height:297mm; margin:16px auto; background:#fff; box-shadow:0 3px 22px rgba(0,0,0,0.14); padding:14mm 13mm 9mm; display:flex; flex-direction:column; }',
+        '.sheet { width:210mm; min-height:297mm; margin:16px auto; background:#fff; box-shadow:0 3px 22px rgba(0,0,0,0.14); padding:13mm 13mm 8mm; display:flex; flex-direction:column; }',
         '.k { font-size:9px; font-weight:700; letter-spacing:0.14em; text-transform:uppercase; color:#8a919c; }',
-        '.q { font-size:13px; font-weight:700; }',
+        '.q { font-size:13.5px; font-weight:700; }',
         '@media print {',
         '  body { background:#fff; }',
         '  .sheet { margin:0; box-shadow:none; width:auto; min-height:0; }',
@@ -310,7 +271,7 @@ window.dacsPrintProjectCostSummary = function (d) {
         + '<title>Project Cost Summary — ' + esc(d.name || '') + '</title>'
         + '<style>' + css + '</style></head><body>'
         + '<div class="sheet">'
-        +   headHtml + standHtml + spendHtml + profitHtml + fundsHtml + notesHtml
+        +   headHtml + standHtml + spendHtml
         +   '<div style="flex:1"></div>'
         +   signHtml + footHtml
         + '</div>'

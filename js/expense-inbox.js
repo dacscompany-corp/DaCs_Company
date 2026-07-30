@@ -267,7 +267,13 @@
                 +     '<span style="color:#9b9a94;">Sent by</span><span style="color:#3c3b36;font-weight:600;">' + sender + '</span>'
                 +     '<span style="color:#9b9a94;">Status</span><span>' + statusHtml + '</span>'
                 +   '</div>'
-                +   '<a href="' + imgUrl + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;margin-top:14px;padding:11px 18px;border:1.5px solid #157a52;border-radius:12px;font:700 13px \'IBM Plex Sans\';color:#157a52;text-decoration:none;">Open receipt →</a>'
+                +   '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">'
+                +     '<a href="' + imgUrl + '" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:11px 18px;border:1.5px solid #157a52;border-radius:12px;font:700 13px \'IBM Plex Sans\';color:#157a52;text-decoration:none;">Open receipt →</a>'
+                +     '<button type="button" onclick="_eiDownload(this,\'' + imgUrl + '\',\'' + _eiEsc(it.imageName || '') + '\')" title="Save this receipt to your device" '
+                +       'style="display:inline-flex;align-items:center;gap:7px;padding:11px 18px;border:1.5px solid #cdd5cf;background:#fff;border-radius:12px;font:700 13px \'IBM Plex Sans\';color:#3c3b36;cursor:pointer;">'
+                +       '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>'
+                +       'Download</button>'
+                +   '</div>'
                 + '</div>'
                 + '</div>';
         };
@@ -335,6 +341,24 @@
         if (!st) return;
         st.expanded[id] = !st.expanded[id];
         _eiRender(containerId);
+    };
+
+    // Save the receipt instead of opening it. The button reports its own state
+    // because the fetch is not instant on a phone connection, and a button that
+    // looks inert invites a second tap and a second download.
+    window._eiDownload = async function (btn, url, name) {
+        if (!url || (btn && btn.disabled)) return;
+        const label = btn ? btn.lastChild : null;
+        const was = label ? label.textContent : '';
+        if (btn) { btn.disabled = true; btn.style.opacity = '.6'; btn.style.cursor = 'wait'; }
+        if (label) label.textContent = 'Saving…';
+        try {
+            if (window.dacsDownloadUpload) await window.dacsDownloadUpload(url, name);
+            else window.open(url, '_blank');
+        } finally {
+            if (btn) { btn.disabled = false; btn.style.opacity = ''; btn.style.cursor = 'pointer'; }
+            if (label) label.textContent = was || 'Download';
+        }
     };
 
     window._eiMark = async function (containerId, id, done) {

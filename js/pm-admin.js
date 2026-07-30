@@ -1027,9 +1027,10 @@ function _pmDvRangeLabel(mode) {
     return 'All time';
 }
 
-// Printable PDF-style report of the whole Overview screen — KPI cards,
-// direct-cost breakdown, and payment status — same data as the live
-// dashboard (always all-time, regardless of whatever range filter happens
+// Printable PDF-style report of the whole Overview screen — one A4 page,
+// plain-language labels, sans-serif ("Option D — Simple"): what came in, what
+// went out, what is left, and what happens to what is left. Same data as the
+// live dashboard (always all-time, regardless of whatever range filter happens
 // to be selected on screen, so a printed report is always a complete record).
 window.pmOvPrintReport = function() {
     if (!_pmActiveProject) { _pmToast('Open a project first.', true); return; }
@@ -1037,10 +1038,13 @@ window.pmOvPrintReport = function() {
     const bills = _pmOvBills || [];
     const reqs  = _pmOvReqs  || [];
     const esc = _esc;
-    const fmt = n => '&#8369;' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const peso  = n => '&#8369;' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const round = n => '&#8369;' + Math.round(Number(n) || 0).toLocaleString('en-PH');
 
     const contractValue = Number(p.budget) || 0;
     const paid = _pmOvPaid(reqs);
+    // Total spend — same figure the on-screen KPI uses (directCostTotal already
+    // folds in overhead, so this is every peso spent, counted once).
     const directCost = bills.reduce((s, b) => {
         const dct = Number(b.directCostTotal) || 0;
         if (dct) return s + dct;
@@ -1051,267 +1055,189 @@ window.pmOvPrintReport = function() {
     const bd = _pmOvBreakdown(bills);
     const netCash = paid - directCost;
     const warrantyRetention = netCash * 0.05;
-    const profitShare = (netCash - warrantyRetention) / 2;
-    const donutOutstanding = Math.max(0, contractValue - paid);
-    const donutTotal = contractValue > 0 ? contractValue : paid;
-    const donutPaidPct = donutTotal > 0 ? Math.round(paid / donutTotal * 100) : 0;
-    const pctOfBudget = (val) => contractValue > 0 ? (Math.abs(Number(val) || 0) / contractValue * 100) : 0;
-    const pctText = (val) => { const pc = pctOfBudget(val); return (pc >= 10 ? pc.toFixed(0) : pc.toFixed(1)) + '% of budget'; };
+    const distributable = netCash - warrantyRetention;
+    const profitShare = distributable / 2;
+    const entries = (bd.laborCount || 0) + (bd.matCount || 0) + (bd.combinedCount || 0) + (bd.overheadCount || 0);
+    const weeks = _pmOvWeekGroups().length;
+
+    // Two denominators: the budget bar measures spend against the contract,
+    // the category bars measure each category against total spend.
+    const pctBudget = v => contractValue > 0 ? Math.min(100, Math.abs(Number(v) || 0) / contractValue * 100) : 0;
+    const pctCost   = v => directCost > 0 ? Math.abs(Number(v) || 0) / directCost * 100 : 0;
+    // "% of budget" — the old report's wording, and its one-decimal rule for
+    // anything under 10% so a small line never reads as a flat 0%.
+    const pctText   = v => contractValue > 0
+        ? ((pctBudget(v) >= 10 ? pctBudget(v).toFixed(0) : pctBudget(v).toFixed(1)) + '% of budget')
+        : '&mdash;';
+    const pctOfCost = v => (pctCost(v) >= 10 ? pctCost(v).toFixed(0) : pctCost(v).toFixed(1)) + '% of total cost';
 
     const projectLbl = p.projectName || p.clientName || 'Project';
-    const bizName = "DAC's Building Design Services";
     const today = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+    const logo = window.location.origin + '/assets/images/DACS-TRANSPARENT.png';
+    const sig  = window.location.origin + '/assets/images/dacs-signature.png';
 
-    // ── icon badges (inline SVG, one per KPI/category — no external icon font) ──
-    const ico = {
-        budget:   '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>',
-        cost:     '<rect x="4" y="3" width="16" height="18" rx="1"/><path d="M8 7h8M8 11h8M8 15h5"/>',
-        receipt:  '<path d="M14 2H6a2 2 0 0 0-2 2v16l3-2 3 2 3-2 3 2 3-2V8Z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>',
-        shield:   '<path d="M12 2 4 5v6c0 5.2 3.4 9.7 8 11 4.6-1.3 8-5.8 8-11V5Z"/><path d="M9 12l2 2 4-4"/>',
-        pie:      '<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10Z"/>',
-        people:   '<circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.9 3.1-7 7-7s7 3.1 7 7"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 13.3A5 5 0 0 1 22 20"/>',
-        box:      '<path d="M21 8 12 3 3 8l9 5 9-5Z"/><path d="M3 8v9l9 5 9-5V8"/><path d="M12 13v9"/>',
-        handshake:'<path d="m11 17 2 2a1.4 1.4 0 0 0 2-2l-2-2"/><path d="m14 14 2.5 2.5a1.4 1.4 0 0 0 2-2L15 11"/><path d="m6 12 4.5 4.5a1.4 1.4 0 0 0 2-2L9 11"/><path d="M2 11l6-6 3 3 5-2 4 4-6 6"/>',
-    };
-    const iconBadge = (name, color, bg) => `
-      <div style="width:54px;height:54px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;margin:0 auto 12px;">
-        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ico[name]}</svg>
+    // "Remaining Cash Receipt" flips red when costs have outrun collections.
+    const leftPos    = netCash >= 0;
+    const leftCol    = leftPos ? '#0f6342' : '#8f352c';
+    const pureDirect = Math.max(0, directCost - (bd.overhead || 0));
+
+    const S = { h2: 'font:700 17px Helvetica,Arial,sans-serif;' };
+
+    // One KPI card. The settlement pair (retention / profit share) passes
+    // `small` so the second row reads as a footnote to the four figures above it.
+    const kpi = (label, val, bg, border, valCol, sub, small) => `
+      <div style="border:1px solid ${border};background:${bg};border-radius:16px;padding:${small ? '18px 18px 16px' : '20px 20px 18px'};">
+        <div style="font:600 12px Helvetica,Arial,sans-serif;color:#7c7b75;">${label}</div>
+        <div style="font:700 ${small ? '21px' : '27px'} Helvetica,Arial,sans-serif;color:${valCol};margin-top:${small ? '8px' : '9px'};font-variant-numeric:tabular-nums;">${val}</div>
+        <div style="font:400 11.5px Helvetica,Arial,sans-serif;color:#9a9992;margin-top:7px;">${sub}</div>
       </div>`;
 
-    // Equal-width, equal-height cards: min-width:0 on a grid/flex child lets it
-    // shrink below its content's natural width so equal columns actually hold;
-    // display:flex + flex-direction:column on the card itself so short cards
-    // (no pct pill) stretch to match the tallest one instead of looking short.
-    const kpiCard = (icon, iconColor, iconBg, label, val, valColor, bg, border, pctLabel, pctBg) => `
-      <div style="min-width:0;">
-        <div style="height:100%;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;border:1.5px solid ${border};background:${bg};border-radius:12px;padding:22px 14px;text-align:center;">
-          ${iconBadge(icon, iconColor, iconBg)}
-          <div style="font:700 11px 'Times New Roman',Times,serif;color:#3a3a36;text-transform:uppercase;letter-spacing:.07em;">${esc(label)}</div>
-          <div style="font:700 21px 'Times New Roman',Times,serif;color:${valColor};margin-top:10px;white-space:nowrap;">${val}</div>
-          <div style="flex:1;"></div>
-          ${pctLabel ? `<div style="display:inline-block;font:700 10.5px 'Times New Roman',Times,serif;color:${valColor};background:${pctBg};border:1px solid ${border};border-radius:999px;padding:4px 11px;margin-top:12px;">${esc(pctLabel)}</div>` : ''}
+    // One cost row: category, share pill, amount, proportional bar. Rows with
+    // nothing spent are dropped; min-width keeps a fraction-of-a-percent line
+    // visible as a stub instead of an empty track.
+    const costRow = (name, amount, barCol, pillFg, pillBg) => (Number(amount) || 0) === 0 ? '' : `
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;">
+          <div style="font:700 14.5px Helvetica,Arial,sans-serif;">${esc(name)}</div>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span style="font:700 11.5px Helvetica,Arial,sans-serif;color:${pillFg};background:${pillBg};border-radius:999px;padding:4px 11px;white-space:nowrap;">${pctOfCost(amount)}</span>
+            <div style="font:700 16px Helvetica,Arial,sans-serif;font-variant-numeric:tabular-nums;">${round(amount)}</div>
+          </div>
+        </div>
+        <div style="height:12px;border-radius:99px;background:#eef0ec;overflow:hidden;margin-top:9px;">
+          <div style="height:100%;width:${Math.min(100, pctCost(amount)).toFixed(1)}%;min-width:4px;background:${barCol};border-radius:99px;"></div>
         </div>
       </div>`;
 
-    const catIcon = (name, color, bg) => `
-      <span style="display:inline-flex;width:32px;height:32px;border-radius:50%;background:${bg};align-items:center;justify-content:center;flex:none;margin-right:12px;vertical-align:middle;">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${ico[name]}</svg>
-      </span>`;
-
-    const bdRow = (icon, label, barColor, iconColor, iconBg, val, pct, count) => `
-      <tr>
-        <td style="padding:14px 0;">
-          <div style="display:flex;align-items:center;">${catIcon(icon, iconColor, iconBg)}
-            <div>
-              <div style="font:700 14px 'Times New Roman',Times,serif;color:#26342c;">${esc(label)}</div>
-              <div style="font:400 11.5px 'Times New Roman',Times,serif;color:#9aa8a0;">${count} ${count === 1 ? 'entry' : 'entries'}</div>
-            </div>
-          </div>
-          <div style="height:8px;background:#eef0ec;border-radius:99px;overflow:hidden;margin-top:10px;margin-left:44px;"><div style="height:100%;width:${Math.min(100, pct)}%;background:${barColor};border-radius:99px;"></div></div>
-        </td>
-        <td style="padding:14px 0;text-align:right;font:700 15px 'Times New Roman',Times,serif;color:#1a1a1a;white-space:nowrap;">${fmt(val)}</td>
-        <td style="padding:14px 0 14px 14px;text-align:right;width:70px;">
-          <span style="display:inline-block;font:700 12px 'Times New Roman',Times,serif;color:${iconColor};background:${iconBg};border-radius:999px;padding:4px 10px;">${pctOfBudget(val).toFixed(0)}%</span>
-        </td>
-      </tr>`;
-
-    const netColor = netCash >= 0 ? '#0f6342' : '#8f352c';
-    const retColor = warrantyRetention < 0 ? '#8f352c' : '#9a6c12';
-    const psColor  = profitShare < 0 ? '#8f352c' : '#0f6342';
-
-    // ── payment-status donut, pure SVG (stroke-dasharray ring — prints reliably,
-    // no canvas / no external chart lib needed inside a popup window) ──
-    const R = 78, C = 2 * Math.PI * R;
-    const paidLen = C * (donutPaidPct / 100);
-    const donutSvg = `
-      <svg width="220" height="220" viewBox="0 0 220 220">
-        <circle cx="110" cy="110" r="${R}" fill="none" stroke="#e6c878" stroke-width="32"/>
-        <circle cx="110" cy="110" r="${R}" fill="none" stroke="#157a52" stroke-width="32"
-          stroke-dasharray="${paidLen} ${C - paidLen}" stroke-dashoffset="${C / 4}" transform="rotate(0 110 110)"/>
-        <circle cx="110" cy="110" r="52" fill="#fff"/>
-        <text x="110" y="105" text-anchor="middle" font-family="'Times New Roman',Times,serif" font-weight="700" font-size="32" fill="#0f6342">${donutPaidPct}%</text>
-        <text x="110" y="127" text-anchor="middle" font-family="'Times New Roman',Times,serif" font-weight="600" font-size="11" letter-spacing="1.5" fill="#9b9a94">PAID</text>
-      </svg>`;
-
-    const w = window.open('', '_blank', 'width=980,height=1200');
+    const w = window.open('', '_blank', 'width=900,height=1180');
     if (!w) { alert('Please allow pop-ups to print the report.'); return; }
-    w.document.write(`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
+
+    w.document.write(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <title>Project Financial Overview Report — ${esc(projectLbl)}</title>
 <style>
-* { box-sizing:border-box; margin:0; padding:0; font-family:'Times New Roman',Times,serif !important; }
-body { font-size:15px; color:#1a1a1a; background:#e9ece9; -webkit-font-smoothing:antialiased; }
-.frame { width:210mm; margin:24px auto; padding:12px; background:#fff; box-shadow:0 2px 16px rgba(0,0,0,.10); border:2.5px solid #0f6342; border-radius:4px; }
-.frame-inner { border:1px solid #c6e6d5; border-radius:2px; padding:34px 40px 30px; }
-.head { display:flex; justify-content:space-between; align-items:flex-start; padding-bottom:22px; border-bottom:2px solid #e5e7eb; flex-wrap:wrap; gap:16px; }
-.head-brand { display:flex; align-items:center; gap:16px; }
-.head-logo { height:64px; width:auto; object-fit:contain; }
-.head-brand-text .l1 { font:800 28px 'Times New Roman',Times,serif; color:#0f6342; letter-spacing:.5px; }
-.head-brand-text .l2 { font:700 12.5px 'Times New Roman',Times,serif; color:#6b6b6b; letter-spacing:2px; margin-top:2px; }
-.head-title { text-align:center; flex:1 1 100%; padding-top:8px; order:3; }
-.head-title h1 { font:700 26px 'Times New Roman',Times,serif; color:#0f6342; letter-spacing:.5px; }
-.head-title .sub { font:400 14px 'Times New Roman',Times,serif; color:#4b4b46; margin-top:6px; font-style:italic; }
-.head-meta { border:1px solid #d8d7d0; border-radius:6px; padding:12px 18px; font:400 12.5px 'Times New Roman',Times,serif; color:#3a3a36; line-height:2; white-space:nowrap; }
-.head-meta b { display:inline-block; min-width:104px; font-weight:700; }
-.sec-divider { display:flex; align-items:center; gap:16px; margin:32px 0 18px; }
-.sec-divider .ln { flex:1; height:1px; background:#c6e6d5; }
-.sec-divider .lbl { font:700 16.5px 'Times New Roman',Times,serif; color:#0f6342; letter-spacing:2.5px; }
-.panel { border:1.5px solid #c6e6d5; border-radius:10px; padding:24px 26px; }
-.panel-title { font:700 16px 'Times New Roman',Times,serif; color:#1a1a1a; letter-spacing:.3px; }
-table.bd tbody tr { border-bottom:1px solid #eef0f2; }
-table.bd tfoot td { border-top:2px solid #1a1a1a; padding-top:16px; font:800 15px 'Times New Roman',Times,serif; }
-.foot-grid { display:grid; grid-template-columns:1.3fr 1fr 1fr; gap:0; border:1.5px solid #c6e6d5; border-radius:10px; margin-top:26px; overflow:hidden; }
-.foot-cell { padding:20px 24px; border-left:1px solid #eef0ec; }
-.foot-cell:first-child { border-left:none; }
-.foot-title { font:700 12px 'Times New Roman',Times,serif; color:#0f6342; letter-spacing:1.5px; text-transform:uppercase; margin-bottom:10px; }
-.foot-notes { font:400 13px 'Times New Roman',Times,serif; color:#4b4b46; line-height:1.8; }
-.legend-row { display:flex; align-items:center; gap:10px; font:400 13.5px 'Times New Roman',Times,serif; color:#3a3a36; margin-bottom:9px; }
-.legend-sw { width:24px; height:9px; border-radius:4px; flex:none; }
-.sig-img { height:44px; display:block; margin-bottom:2px; }
-.sig-line { border-top:1px solid #1a1a1a; padding-top:7px; margin-top:10px; width:160px; }
-.sig-name { font:700 13px 'Times New Roman',Times,serif; color:#1a1a1a; }
-.sig-dept { font:400 12px 'Times New Roman',Times,serif; color:#8a8983; margin-top:2px; }
-.page-num { text-align:center; font:400 10.5px 'Times New Roman',Times,serif; color:#b0b4bb; margin-top:24px; letter-spacing:1px; }
-.mini-head { display:flex; align-items:center; justify-content:space-between; padding-bottom:16px; margin-bottom:24px; border-bottom:2px solid #e5e7eb; }
-.mini-head-brand { display:flex; align-items:center; gap:12px; }
-.mini-head-logo { height:36px; width:auto; object-fit:contain; }
-.mini-head-title { font:700 14px 'Times New Roman',Times,serif; color:#0f6342; letter-spacing:.3px; }
-.mini-head-sub { font:400 11.5px 'Times New Roman',Times,serif; color:#8a8983; margin-top:2px; }
-@media print {
-  body{background:#fff;}
-  .frame{margin:0;box-shadow:none;width:100%;border-width:2px;}
-  .frame + .frame{page-break-before:always;}
-  @page{size:A4 portrait;margin:8mm;}
-}
-</style>
-</head>
-<body>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:#eceeec;color:#1f2420;font-family:Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+  /* One A4 sheet, never more. The margin lives on @page (NOT on the sheet) so
+     the printable area the browser gives us and the box we lay out into are the
+     same 186 x 273mm — a sheet padded to a full 297mm is taller than the
+     printable area and always breaks onto a second page. .fit is that box, and
+     is what the auto-shrink below scales. */
+  .sheet{width:210mm;margin:18px auto;background:#fff;padding:12mm;
+         box-shadow:0 3px 20px rgba(0,0,0,.12);}
+  .fit{min-height:273mm;display:flex;flex-direction:column;}
+  @media print{
+    body{background:#fff;}
+    .sheet{margin:0;padding:0;width:auto;box-shadow:none;}
+    @page{size:A4 portrait;margin:12mm;}
+  }
+</style></head><body>
+<div class="sheet"><div class="fit" id="fit">
 
-<div class="frame"><div class="frame-inner">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <img src="${logo}" alt="" style="height:42px;width:auto;object-fit:contain;" onerror="this.style.display='none'">
+      <div style="font:700 14px Helvetica,Arial,sans-serif;color:#0f6342;">DAC&rsquo;s Building Design Services</div>
+    </div>
+    <div style="font:400 12px Helvetica,Arial,sans-serif;color:#7d7f7a;">${esc(today)}</div>
+  </div>
 
-  <div class="head">
-    <div class="head-brand">
-      <img class="head-logo" src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo" onerror="this.style.display='none'">
-      <div class="head-brand-text"><div class="l1">DACS</div><div class="l2">BUILDING SOLUTIONS</div></div>
+  <div style="margin-top:20px;">
+    <div style="font:700 30px Helvetica,Arial,sans-serif;letter-spacing:-.01em;">Project Financial Overview Report</div>
+    <div style="font:400 14px Helvetica,Arial,sans-serif;color:#6b6d68;margin-top:8px;">${esc(projectLbl)} &middot; Cost-Plus Contract &bull; ${esc(_pmFeePct())}% Management Fee</div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:18px;">
+    ${kpi('Paid', round(paid), '#eaf4ef', '#c6e6d5', '#1f2420', pctText(paid))}
+    ${kpi('Total Cost', round(directCost), '#eef0f3', '#d6dde4', '#44525f', 'Direct ' + round(pureDirect) + ' + indirect ' + round(bd.overhead || 0))}
+    ${kpi('Indirect Cost', round(bd.overhead || 0), '#f7f1ed', '#e6d7cd', '#7a5a48', 'Site running &amp; support costs')}
+    ${kpi('Remaining Cash Receipt', (leftPos ? '' : '&minus;') + round(Math.abs(netCash)), '#fbf3e2', '#f0e2c5', leftCol, pctText(netCash))}
+    ${kpi('Warranty Retention (5%)', peso(warrantyRetention), '#fbf2dc', '#ecd8a6', '#9a6c12', 'Released after final acceptance', true)}
+    ${kpi('Profit Share', peso(distributable), '#eaf4ef', '#c6e6d5', '#0f6342', 'Split in two &mdash; ' + peso(profitShare) + ' each', true)}
+  </div>
+
+  ${contractValue > 0 ? `
+  <div style="display:flex;align-items:center;gap:14px;margin-top:16px;">
+    <div style="flex:1;height:22px;border-radius:6px;background:#eef0ec;display:flex;overflow:hidden;">
+      <div style="width:${pctBudget(directCost).toFixed(1)}%;background:#157a52;"></div>
     </div>
-    <div class="head-title">
-      <h1>PROJECT FINANCIAL OVERVIEW REPORT</h1>
-      <div class="sub">${esc(projectLbl)} · Cost-Plus Contract &bull; ${esc(_pmFeePct())}% Management Fee</div>
+    <div style="font:400 12.5px Helvetica,Arial,sans-serif;color:#6b6d68;white-space:nowrap;">
+      <b style="color:#1f2420;">${Math.round(pctBudget(directCost))}%</b> of budget
     </div>
-    <div class="head-meta">
-      <div><b>Report Period :</b> All Time</div>
-      <div><b>Generated On :</b> ${esc(today)}</div>
-      <div><b>Prepared By :</b> DACS System</div>
+  </div>` : `
+  <div style="font:400 12.5px Helvetica,Arial,sans-serif;color:#8a8c86;margin-top:16px;">No project budget recorded &mdash; % of budget is not available.</div>`}
+
+  <div style="${S.h2}margin:28px 0 4px;">Direct-Cost Breakdown</div>
+  <div style="font:400 12.5px Helvetica,Arial,sans-serif;color:#6b6d68;">${entries} recorded ${entries === 1 ? 'entry' : 'entries'} over ${weeks} ${weeks === 1 ? 'week' : 'weeks'}.</div>
+
+  <div style="display:flex;flex-direction:column;gap:15px;margin-top:16px;">
+    ${costRow('Labor', bd.labor, '#157a52', '#0f6342', '#eaf4ef')}
+    ${costRow('Materials', bd.materials, '#c79024', '#9a6c12', '#fdf4e3')}
+    ${costRow('Out Source', bd.combined, '#8b6fc4', '#6b4fa8', '#f3eefb')}
+    ${costRow('Indirect Cost', bd.overhead, '#7a5a48', '#7a5a48', '#f7f1ed')}
+    ${directCost === 0 ? '<div style="font:400 13px Helvetica,Arial,sans-serif;color:#8a8c86;">Nothing has been spent on this project yet.</div>' : `
+    <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #dfe3df;padding-top:12px;">
+      <div style="font:700 14.5px Helvetica,Arial,sans-serif;">Total Cost</div>
+      <div style="font:700 18px Helvetica,Arial,sans-serif;font-variant-numeric:tabular-nums;">${round(directCost)}</div>
+    </div>`}
+  </div>
+
+  <div style="font:400 11.5px Helvetica,Arial,sans-serif;color:#8a8c86;margin-top:18px;">
+    This report summarizes the project&rsquo;s financial status based on available data for the selected period.
+    All amounts are in Philippine Peso (PHP).
+  </div>
+
+  <div style="flex:1;min-height:14px;"></div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px;border-top:1px solid #dfe3df;padding-top:14px;">
+    <div>
+      <img src="${sig}" alt="" style="height:36px;width:auto;object-fit:contain;display:block;margin-bottom:2px;" onerror="this.style.display='none'">
+      <div style="border-top:1px solid #1f2420;padding-top:7px;font:700 13px Helvetica,Arial,sans-serif;">DACS System</div>
+      <div style="font:400 11.5px Helvetica,Arial,sans-serif;color:#8a8c86;margin-top:3px;">Prepared by &middot; Finance Department</div>
+    </div>
+    <div>
+      <div style="height:38px;"></div>
+      <div style="border-top:1px solid #1f2420;padding-top:7px;font:700 13px Helvetica,Arial,sans-serif;">Client / Partner</div>
+      <div style="font:400 11.5px Helvetica,Arial,sans-serif;color:#8a8c86;margin-top:3px;">Received by &middot; sign and date</div>
     </div>
   </div>
 
-  <div class="sec-divider"><span class="ln"></span><span class="lbl">KEY SUMMARY</span><span class="ln"></span></div>
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
-    ${kpiCard('budget', '#0f6342', '#dcefe3', 'Project Budget', contractValue > 0 ? fmt(contractValue) : '—', '#0f6342', '#eaf4ef', '#c6e6d5')}
-    ${kpiCard('cost', '#1e3a5f', '#dde5ef', 'Direct Cost', fmt(directCost), '#1e3a5f', '#eef0f3', '#d6dde4', pctText(directCost), '#eef0f3')}
-    ${kpiCard('receipt', '#8f352c', '#f6dedb', 'Remaining Cash Receipt', (netCash < 0 ? '−' : '') + fmt(Math.abs(netCash)), netColor, '#fbf3e2', '#f0e2c5', pctText(netCash), '#f6dedb')}
+  <div style="display:flex;justify-content:space-between;margin-top:12px;font:400 10.5px Helvetica,Arial,sans-serif;color:#a9aba5;">
+    <span>DAC&rsquo;s Building Design Services &middot; for the client and partner of this project</span>
+    <span>Page 1 of 1</span>
   </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;max-width:66%;">
-    ${kpiCard('shield', '#b4892a', '#f6e6bd', 'Warranty Retention', (warrantyRetention < 0 ? '−' : '') + fmt(Math.abs(warrantyRetention)), retColor, '#fbf2dc', '#ecd8a6', '5% of Remaining Cash Receipt', '#f6e6bd')}
-    ${kpiCard('pie', '#0f6342', '#dcefe3', 'Profit Share', (profitShare < 0 ? '−' : '') + fmt(Math.abs(profitShare)), psColor, '#eaf4ef', '#c6e6d5', '50% of Remaining After Retention', '#dcefe3')}
-  </div>
-
-  <div class="page-num">Page 1 of 3 &nbsp;&bull;&nbsp; Key Summary</div>
 
 </div></div>
-
-<div class="frame"><div class="frame-inner">
-
-  <div class="mini-head">
-    <div class="mini-head-brand">
-      <img class="mini-head-logo" src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo" onerror="this.style.display='none'">
-      <div><div class="mini-head-title">PROJECT FINANCIAL OVERVIEW REPORT</div><div class="mini-head-sub">${esc(projectLbl)} &bull; ${esc(today)}</div></div>
-    </div>
-  </div>
-
-  <div class="sec-divider"><span class="ln"></span><span class="lbl">COST &amp; PAYMENT DETAIL</span><span class="ln"></span></div>
-  <div style="display:flex;flex-direction:column;gap:20px;">
-    <div class="panel">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-        <span class="panel-title">Direct-Cost Breakdown</span>
-        <span style="font:400 12.5px 'Times New Roman',Times,serif;color:#9b9a94;">All time &bull; ${_pmOvWeekGroups().length} week${_pmOvWeekGroups().length === 1 ? '' : 's'}</span>
-      </div>
-      <table class="bd" style="width:100%;border-collapse:collapse;">
-        <thead><tr>
-          <td style="font:700 11px 'Times New Roman',Times,serif;color:#9b9a94;letter-spacing:1px;text-transform:uppercase;padding-bottom:10px;">Category</td>
-          <td style="font:700 11px 'Times New Roman',Times,serif;color:#9b9a94;letter-spacing:1px;text-transform:uppercase;padding-bottom:10px;text-align:right;">Amount</td>
-          <td style="font:700 11px 'Times New Roman',Times,serif;color:#9b9a94;letter-spacing:1px;text-transform:uppercase;padding-bottom:10px;text-align:right;">% of Budget</td>
-        </tr></thead>
-        <tbody>
-          ${bdRow('people', 'Labor', '#157a52', '#0f6342', '#dcefe3', bd.labor, pctOfBudget(bd.labor), bd.laborCount)}
-          ${bdRow('box', 'Materials', '#c79024', '#9a6c12', '#fbf2dc', bd.materials, pctOfBudget(bd.materials), bd.matCount)}
-          ${bdRow('handshake', 'Out Source', '#8b6fc4', '#6b4fa8', '#f1ecfa', bd.combined, pctOfBudget(bd.combined), bd.combinedCount)}
-        </tbody>
-        <tfoot><tr><td>Direct Cost Total</td><td style="text-align:right;">${fmt(bd.direct)}</td>
-          <td style="text-align:right;"><span style="display:inline-block;font:700 12px 'Times New Roman',Times,serif;color:#fff;background:#1a1a1a;border-radius:999px;padding:4px 11px;">${pctOfBudget(bd.direct).toFixed(0)}%</span></td></tr></tfoot>
-      </table>
-    </div>
-    <div class="panel">
-      <div class="panel-title" style="margin-bottom:18px;">Payment Status</div>
-      <div style="display:flex;align-items:center;justify-content:center;gap:48px;">
-        ${donutSvg}
-        <div style="text-align:left;">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
-            <span style="width:14px;height:14px;border-radius:4px;background:#157a52;flex:none;"></span>
-            <div><div style="font:400 12px 'Times New Roman',Times,serif;color:#3a3a36;">Paid</div><div style="font:700 16px 'Times New Roman',Times,serif;">${fmt(paid)}</div></div>
-          </div>
-          <div style="display:flex;align-items:center;gap:10px;">
-            <span style="width:14px;height:14px;border-radius:4px;background:#e6c878;flex:none;"></span>
-            <div><div style="font:400 12px 'Times New Roman',Times,serif;color:#3a3a36;">Outstanding</div><div style="font:700 16px 'Times New Roman',Times,serif;">${fmt(donutOutstanding)}</div></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="page-num">Page 2 of 3 &nbsp;&bull;&nbsp; Cost &amp; Payment Detail</div>
-
-</div></div>
-
-<div class="frame"><div class="frame-inner">
-
-  <div class="mini-head">
-    <div class="mini-head-brand">
-      <img class="mini-head-logo" src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo" onerror="this.style.display='none'">
-      <div><div class="mini-head-title">PROJECT FINANCIAL OVERVIEW REPORT</div><div class="mini-head-sub">${esc(projectLbl)} &bull; ${esc(today)}</div></div>
-    </div>
-  </div>
-
-  <div class="sec-divider"><span class="ln"></span><span class="lbl">NOTES &amp; SIGN-OFF</span><span class="ln"></span></div>
-  <div class="foot-grid">
-    <div class="foot-cell">
-      <div class="foot-title">Notes</div>
-      <div class="foot-notes">This report summarizes the project's financial status based on available data for the selected period. All amounts are in Philippine Peso (PHP).</div>
-    </div>
-    <div class="foot-cell">
-      <div class="foot-title">Legend</div>
-      <div class="legend-row"><span class="legend-sw" style="background:#157a52;"></span>Labor Costs</div>
-      <div class="legend-row"><span class="legend-sw" style="background:#c79024;"></span>Material Costs</div>
-      <div class="legend-row"><span class="legend-sw" style="background:#8b6fc4;"></span>Outsourced Costs</div>
-    </div>
-    <div class="foot-cell">
-      <div class="foot-title">Prepared By</div>
-      <img class="sig-img" src="${window.location.origin}/assets/images/dacs-signature.png" alt="" onerror="this.style.display='none'">
-      <div class="sig-line"></div>
-      <div class="sig-name">DACS System</div>
-      <div class="sig-dept">Finance Department</div>
-    </div>
-  </div>
-
-  <div class="page-num">Page 3 of 3 &nbsp;&bull;&nbsp; Notes &amp; Sign-Off</div>
-
-</div></div>
-
-<script>window.onload=function(){window.print();};<\/script>
-</body>
-</html>`);
+<script>
+(function(){
+  // Auto-shrink: if the content is taller than one printable page (long project
+  // name, an extra cost row, a wide peso figure), scale it down just enough to
+  // fit rather than letting the sign-off block fall onto a second page.
+  // Measured against a 273mm probe — the element can't be measured against
+  // itself, it just grows to whatever its content needs. CSS zoom reflows the
+  // layout, so re-measure a few times until it clears; images load late and
+  // change the height, and min-height is re-scaled so the sign-off block stays
+  // pinned to the bottom of the page after a shrink.
+  var Z = 1;
+  function fitPage(){
+    var el = document.getElementById('fit');
+    var probe = document.createElement('div');
+    probe.style.cssText = 'position:absolute;top:0;left:-9999px;width:1px;height:273mm;';
+    document.body.appendChild(probe);
+    var avail = probe.getBoundingClientRect().height;
+    probe.parentNode.removeChild(probe);
+    for (var i = 0; i < 5; i++) {
+      var h = el.getBoundingClientRect().height;
+      if (h <= avail + 1) break;
+      Z = Math.max(0.55, Z * (avail / h));
+      el.style.zoom = Z;
+      el.style.minHeight = (273 / Z) + 'mm';
+    }
+  }
+  function go(){ fitPage(); setTimeout(function(){ fitPage(); window.print(); }, 150); }
+  if (document.readyState === 'complete') go(); else window.addEventListener('load', go);
+})();
+<\/script>
+</body></html>`);
     w.document.close();
 };
 

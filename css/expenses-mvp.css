@@ -3071,11 +3071,17 @@
 .lc2-tval.neg { color: #C0392B; }
 
 /* merged toolbar */
+/* The `.dacs-portal-scope` twin on each of these is not decoration: the portal
+   resets bare buttons with `.dacs-portal-scope button` (0,1,1), which outranks a
+   lone class (0,1,0) and would render these as plain text. Keep both selectors. */
+
 .lc2-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
-.lc2-ghost { display: inline-flex; align-items: center; gap: 6px; background: rgba(26, 92, 58, 0.08); color: var(--brand-green); font-weight: 700; font-size: 13px; padding: 9px 16px 9px 14px; border-radius: 999px; border: 1.5px solid rgba(26, 92, 58, 0.30); cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
+.lc2-ghost,
+.dacs-portal-scope .lc2-ghost { display: inline-flex; align-items: center; gap: 6px; background: rgba(26, 92, 58, 0.08); color: var(--brand-green); font-weight: 700; font-size: 13px; padding: 9px 16px 9px 14px; border-radius: 999px; border: 1.5px solid rgba(26, 92, 58, 0.30); cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
 .lc2-ghost:hover, .lc2-ghost.open { background: rgba(26, 92, 58, 0.14); border-color: rgba(26, 92, 58, 0.45); box-shadow: 0 2px 10px rgba(26, 92, 58, 0.15); }
 .lc2-ghost svg { width: 14px; height: 14px; }
-.lc2-export { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 9px 16px 9px 14px; border-radius: 999px; border: 1.5px solid rgba(26, 92, 58, 0.30); background: rgba(26, 92, 58, 0.08); color: var(--brand-green); font-size: 12.5px; font-weight: 700; cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
+.lc2-export,
+.dacs-portal-scope .lc2-export { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 9px 16px 9px 14px; border-radius: 999px; border: 1.5px solid rgba(26, 92, 58, 0.30); background: rgba(26, 92, 58, 0.08); color: var(--brand-green); font-size: 12.5px; font-weight: 700; cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
 .lc2-export:hover { background: rgba(26, 92, 58, 0.14); border-color: rgba(26, 92, 58, 0.45); box-shadow: 0 2px 10px rgba(26, 92, 58, 0.15); }
 .lc2-export svg { width: 14px; height: 14px; }
 
@@ -3117,7 +3123,8 @@
 .lc2-badge-done { background: #E7F3EC; color: #157A52; }
 .lc2-badge-over { background: #FBECEB; color: #B4453A; }
 .lc2-badge-none { background: #F0F0F0; color: #9CA3AF; }
-.lc2-pay { display: inline-flex; align-items: center; gap: 5px; background: var(--brand-green); color: #fff; font-weight: 700; font-size: 12.5px; padding: 8px 15px 8px 13px; border-radius: 999px; flex-shrink: 0; border: 0; cursor: pointer; transition: background .15s, box-shadow .15s; }
+.lc2-pay,
+.dacs-portal-scope .lc2-pay { display: inline-flex; align-items: center; gap: 5px; background: var(--brand-green); color: #fff; font-weight: 700; font-size: 12.5px; padding: 8px 15px 8px 13px; border-radius: 999px; flex-shrink: 0; border: 0; cursor: pointer; transition: background .15s, box-shadow .15s; }
 .lc2-pay:hover { background: var(--brand-green-dark); box-shadow: 0 2px 10px rgba(26, 92, 58, 0.15); }
 .lc2-pay svg { width: 13px; height: 13px; }
 .lc2-chev { flex-shrink: 0; transition: transform 0.2s; }
@@ -3178,7 +3185,8 @@
    from the payment rows by a heavier rule so it doesn't read as one. */
 .lc2-tx tfoot td { border-top: 1px solid var(--hair); font-size: 12.5px; font-weight: 700; color: var(--ink); padding-bottom: 0; }
 .lc2-mile { background: var(--surface-2); padding: 2px 9px; border-radius: 999px; font-size: 11.5px; color: var(--ink-3); }
-.lc2-rowbtn { width: 28px; height: 28px; border-radius: 7px; display: inline-grid; place-items: center; color: var(--ink-4); border: 0; background: transparent; cursor: pointer; margin-left: 2px; }
+.lc2-rowbtn,
+.dacs-portal-scope .lc2-rowbtn { width: 28px; height: 28px; border-radius: 7px; display: inline-grid; place-items: center; color: var(--ink-4); border: 0; background: transparent; cursor: pointer; margin-left: 2px; }
 .lc2-rowbtn:hover { background: var(--surface-2); color: var(--ink-2); }
 .lc2-rowbtn svg { width: 15px; height: 15px; }
 .lc2-none { font-size: 12.5px; color: var(--ink-4); padding: 8px 0; }
@@ -3209,7 +3217,8 @@
 .lc2-cgrp { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .lc2-cdiv { width: 1px; height: 22px; background: #E5E5E5; flex: none; }
 
-.lc2-cactions button {
+.lc2-cactions button,
+.dacs-portal-scope .lc2-cactions button {
   display: inline-flex;
   align-items: center;
   gap: 6px;

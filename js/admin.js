@@ -372,9 +372,10 @@ function applyRoleBasedUI() {
 
     if (currentUserRole === 'staff') {
         // Staff can access all expense + construction views, but NOT the
-        // admin-only User Navigator or Client Accounts pages — nor Reports,
-        // which is wall-to-wall peso amounts (staff must not see money).
-        ['userNavigator', 'clientAccounts', 'expReports'].forEach(view => {
+        // admin-only User Navigator or Client Accounts pages — nor Reports and
+        // Client Reimbursement, which are wall-to-wall peso amounts (staff must
+        // not see money; reimbursements is owner-only by RLS too, 0041).
+        ['userNavigator', 'clientAccounts', 'expReports', 'reimbursements'].forEach(view => {
             const el = document.querySelector(`.nav-item[data-view="${view}"]`);
             if (el) el.style.display = 'none';
         });
@@ -747,6 +748,7 @@ function switchView(view) {
         expExpenses:      'Expenses',
         expReports:       'Reports',
         expOverhead:      'Overhead Expenses',
+        reimbursements:   'Client Reimbursement',
         boqBuilder:       'Accomplishment Report',
         clientAccounts:   'Client Accounts',
         paymentRequests:  'Payment Requests',
@@ -2188,6 +2190,9 @@ const PRIMARY_NAV = [
         { view: 'dacsPortal',  label: 'Overview',         icon: 'line-chart' },
         { view: 'expReports',  label: 'Reports',          icon: 'file-bar-chart' },
         { view: 'expOverhead', label: 'Overhead',         icon: 'building-2' },
+        // Client Reimbursement Tracker — expenses the owner/admin advanced and
+        // whether the client paid them back. Tracking only; owner-only (0041).
+        { view: 'reimbursements', label: 'Reimbursement', icon: 'hand-coins' },
         // Merged from the former standalone "Billing & Reports" module — these
         // are the full editors (create/edit BOQ, payments, invoices), not copies.
         { view: 'boqBuilder',      label: 'Accomplishment',   icon: 'file-spreadsheet' },
@@ -2274,8 +2279,9 @@ function _visibleNav() {
         .map(p => {
             if (role === 'staff' && p.id === 'expenses') {
                 // Reports is a money dashboard end to end — hidden from staff
-                // along with Client Accounts.
-                const hidden = ['clientAccounts', 'expReports'];
+                // along with Client Accounts. Reimbursement is the same: every
+                // column is a peso amount, and its RLS is owner-only (0041).
+                const hidden = ['clientAccounts', 'expReports', 'reimbursements'];
                 return { ...p, modules: p.modules.filter(m => !hidden.includes(m.view)) };
             }
             return p;

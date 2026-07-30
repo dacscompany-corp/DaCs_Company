@@ -80,6 +80,10 @@ const REG = {
   pushSubscriptions:{ table: 'push_subscriptions', rename: OWNER, ts: ['createdAt'] },
   categories:     { table: 'categories',     rename: OWNER, ts: ['createdAt'] },
   overheadExpenses:{ table: 'overhead_expenses', rename: OWNER, ts: ['createdAt'] },
+  // Client Reimbursement Tracker (0041) — owner-advanced project expenses and
+  // whether the client paid them back. Documentation only: no money math, no
+  // invoice/payment side effects. Owner-only by RLS.
+  reimbursements: { table: 'reimbursements', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['history'] },
 
   boqDocuments:   { table: 'boq_documents', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['costItems', 'terms'] },
   boqTemplates:   { table: 'boq_templates', rename: OWNER, ts: ['createdAt'], json: ['costItems'] },
@@ -684,6 +688,38 @@ document.addEventListener('click', function (ev) {
   ev.stopPropagation();
   window.open(a.href, '_blank'); // routes through the signing wrapper above
 }, true);
+
+// Save a stored upload to the user's device instead of opening it in a tab.
+// A plain <a download> can't do this: the file lives on the Supabase origin, and
+// the download attribute is ignored cross-origin (the browser just navigates) —
+// which is also why the anchor interceptor above exists. So fetch it (the fetch
+// wrapper below signs it), hand the browser a same-origin blob: URL, and let the
+// download attribute do its job. Falls back to opening the file if the fetch
+// fails, so the button is never a dead end.
+window.dacsDownloadUpload = async function (urlOrPath, filename) {
+  const nameFrom = (u) => {
+    try { return decodeURIComponent(String(u).split('?')[0].split('/').pop() || ''); }
+    catch (_) { return ''; }
+  };
+  const fname = String(filename || nameFrom(urlOrPath) || 'receipt')
+    .replace(/[\\/:*?"<>|]+/g, '').trim() || 'receipt';
+  try {
+    const res = await fetch(urlOrPath);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+    return true;
+  } catch (e) {
+    console.warn('download failed — opening instead:', e.message || e);
+    window.open(urlOrPath, '_blank');
+    return false;
+  }
+};
 
 // <img>/<iframe> src — rewrite as elements appear or change. No loop risk:
 // the signed URL (…/object/sign/…) no longer matches the public pattern.
