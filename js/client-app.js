@@ -965,12 +965,20 @@ function renderBoqContent(doc) {
 
 function renderBoqFooter(doc) {
     const terms = doc.terms || {};
-    if (!terms.payments && !terms.exclusions && !terms.duration) return '';
+    // Custom sections the admin added in the Accomplishment Report editor
+    // (boq.terms.custom). Unchecked or empty ones are left off, matching what
+    // the printed sheet and the PDF show — the client must not see a different
+    // set of terms from the one on the paper they signed.
+    const custom = (Array.isArray(terms.custom) ? terms.custom : []).filter(s =>
+        s && s.include !== false && (String(s.title || '').trim() || String(s.body || '').trim()));
+    if (!terms.payments && !terms.exclusions && !terms.duration && !custom.length) return '';
     let n = 1;
     let html = '<div class="report-terms">';
-    if (terms.payments)   html += `<div class="report-terms-section"><span class="report-terms-title">${toRoman(n++)}. Terms of Payment</span><div class="report-terms-body">${escHtml(terms.payments)}</div></div>`;
-    if (terms.exclusions) html += `<div class="report-terms-section"><span class="report-terms-title">${toRoman(n++)}. Exclusions</span><div class="report-terms-body">${escHtml(terms.exclusions)}</div></div>`;
-    if (terms.duration)   html += `<div class="report-terms-section"><span class="report-terms-title">${toRoman(n++)}. Duration</span><div class="report-terms-body">${escHtml(terms.duration)}</div></div>`;
+    const sec = (title, body) => `<div class="report-terms-section"><span class="report-terms-title">${toRoman(n++)}. ${escHtml(title)}</span><div class="report-terms-body">${escHtml(body)}</div></div>`;
+    if (terms.includePayments   !== false && terms.payments)   html += sec('Terms of Payment', terms.payments);
+    if (terms.includeExclusions !== false && terms.exclusions) html += sec('Exclusions', terms.exclusions);
+    if (terms.includeDuration   !== false && terms.duration)   html += sec('Duration', terms.duration);
+    custom.forEach(s => { html += sec(s.title || 'Additional Terms', s.body || ''); });
     html += '</div>';
     return html;
 }

@@ -244,7 +244,22 @@
     background: none; border: none; font-size: 1.4rem; line-height: 1;
     color: #9ca3af; cursor: pointer;
 }
-.rb-modal-body { padding: 18px 20px; overflow-y: auto; flex: 1; }
+/* The form modal nests body+foot inside a <form>, so the form — not the body —
+   is the box's flex child. Without this it is a plain block that grows to its
+   content height, overflows the box's `overflow:hidden` and gets cut off: no
+   scrollbar, and the footer (Save Record) never renders. Make the form the
+   scrolling column itself. The status/detail modals have no form wrapper and
+   were always fine. */
+.rb-modal-box > form {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+/* min-height:0 is what actually enables the scroll: a flex item refuses to
+   shrink below its content's height until you say it may, so overflow-y:auto
+   would otherwise never have anything to scroll. */
+.rb-modal-body { padding: 18px 20px; overflow-y: auto; flex: 1; min-height: 0; }
 .rb-modal-foot {
     display: flex;
     justify-content: flex-end;
@@ -252,6 +267,7 @@
     padding: 14px 20px;
     border-top: 1px solid #ecebe6;
     background: #fbfbfa;
+    flex: none;
 }
 
 /* ── Form fields ────────────────────────────────────────────── */

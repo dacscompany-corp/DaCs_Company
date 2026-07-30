@@ -66,7 +66,15 @@
         terms: {
             payments:   '50% DOWNPAYMENT\n40% PROGRESS BILLING\n  15% Progress Billing No. 1\n  15% Progress Billing No. 2\n  10% Progress Billing No. 3\n10% UPON TURNOVER/COC',
             exclusions: 'Fire Protection Works (Sprinkler, Smoke Detectors, etc)\nMattress, Beddings and Pillows\nPanel Board and other electrical works not mentioned\nPlumbing works not mentioned\nAppliances (TV, Refrigerator, Stove, Range Hood, Water Heater, Filters and etc)\nA/C Supply and Install\nDecors and Accessories (Wall Paintings, Vases, Displays and etc)\nRetained Wall, Ceiling and Floor Finishes\nWindow Treatments (Blinds and Curtains)',
-            duration:   '45 - 60 Days'
+            duration:   '45 - 60 Days',
+            // Sections the user adds themselves: [{ title, body, include }].
+            // Rides inside the existing `terms` jsonb column on boq_documents
+            // (REG json: ['costItems','terms']), so this needs no migration.
+            custom:     [],
+            // Which signature blocks print. Kept in `terms` for the same reason
+            // as `custom` — it is the only jsonb column on the table, and a new
+            // top-level field would mean a migration for two booleans.
+            signOff:    { client: true, contractor: true }
         },
         isDirty:         false,
         unsub:           null,
@@ -306,6 +314,14 @@
                 boq.clientEmail = d.clientEmail || '';
                 boq.status      = d.status || 'draft';
                 boq.terms       = d.terms  || boq.terms;
+                // Documents saved before custom sections existed have no `custom`
+                // key; normalise so every later read can assume an array.
+                if (!Array.isArray(boq.terms.custom)) boq.terms.custom = [];
+                // Same for the signature toggles — an older document has no
+                // signOff, and both blocks printed, so default both to on.
+                if (!boq.terms.signOff || typeof boq.terms.signOff !== 'object') {
+                    boq.terms.signOff = { client: true, contractor: true };
+                }
             } else {
                 const folder = boq.folders.find(f => f.id === folderId);
                 boq.doc = null;
@@ -327,7 +343,9 @@
                     duration:          '45 - 60 Days',
                     includePayments:   true,
                     includeExclusions: true,
-                    includeDuration:   true
+                    includeDuration:   true,
+                    custom:            [],
+                    signOff:           { client: true, contractor: true }
                 };
             }
             await loadMobilizationExpenses(folderId);
@@ -440,13 +458,39 @@
                         </label>
                         <textarea id="boqTermsExclusions" class="boq-terms-textarea" rows="7" placeholder="List exclusions (one per line)...">${escHtml(boq.terms.exclusions)}</textarea>
                     </div>
-                    <div class="boq-terms-group">
+                    <div class="boq-terms-group boq-terms-wide">
                         <label class="boq-terms-label">
                             <input type="checkbox" id="boqIncludeDuration" class="boq-terms-chk" ${boq.terms.includeDuration !== false ? 'checked' : ''}>
                             III. Duration
                         </label>
                         <textarea id="boqTermsDuration" class="boq-terms-textarea" rows="2" placeholder="e.g. 45 - 60 Days">${escHtml(boq.terms.duration)}</textarea>
                     </div>
+                    <div id="boqTermsCustom" class="boq-terms-contents">${boqCustomTermsHTML()}</div>
+                </div>
+                <button type="button" class="boq-terms-add" onclick="boqAddTermSection()">
+                    <i data-lucide="plus"></i> Add section
+                </button>
+            </div>
+
+            <div class="boq-terms-panel">
+                <div class="boq-section-title">Signature Block
+                    <span class="boq-terms-note">(uncheck to leave a signature line off the printed report)</span>
+                </div>
+                <div class="boq-sign-grid">
+                    <label class="boq-terms-label">
+                        <input type="checkbox" id="boqSignClient" class="boq-terms-chk" ${boq.terms.signOff.client !== false ? 'checked' : ''}>
+                        <span>
+                            <span class="boq-sign-name">${escHtml(boq.header.ownerName || 'Client name not set')}</span>
+                            <span class="boq-sign-role">Client / Owner</span>
+                        </span>
+                    </label>
+                    <label class="boq-terms-label">
+                        <input type="checkbox" id="boqSignContractor" class="boq-terms-chk" ${boq.terms.signOff.contractor !== false ? 'checked' : ''}>
+                        <span>
+                            <span class="boq-sign-name">DAC&rsquo;S BUILDING DESIGN SERVICES</span>
+                            <span class="boq-sign-role">Contractor / Prepared By</span>
+                        </span>
+                    </label>
                 </div>
             </div>
 
@@ -1460,16 +1504,120 @@
         const chkP = el('boqIncludePayments');
         const chkE = el('boqIncludeExclusions');
         const chkD = el('boqIncludeDuration');
-        if (tp || te || td) {
+        const sgC  = el('boqSignClient');
+        const sgK  = el('boqSignContractor');
+        // Pull the custom rows out of the DOM before the object below is rebuilt.
+        harvestCustomTerms();
+        if (tp || te || td || sgC || sgK) {
             boq.terms = {
                 payments:          tp ? tp.value : boq.terms.payments,
                 exclusions:        te ? te.value : boq.terms.exclusions,
                 duration:          td ? td.value : boq.terms.duration,
                 includePayments:   chkP ? chkP.checked : (boq.terms.includePayments !== false),
                 includeExclusions: chkE ? chkE.checked : (boq.terms.includeExclusions !== false),
-                includeDuration:   chkD ? chkD.checked : (boq.terms.includeDuration !== false)
+                includeDuration:   chkD ? chkD.checked : (boq.terms.includeDuration !== false),
+                // This assignment REPLACES boq.terms, so anything not listed here
+                // is lost on save — custom sections and the signature toggles
+                // both have to be carried across explicitly.
+                custom:            Array.isArray(boq.terms.custom) ? boq.terms.custom : [],
+                signOff: {
+                    client:     sgC ? sgC.checked : (boq.terms.signOff || {}).client     !== false,
+                    contractor: sgK ? sgK.checked : (boq.terms.signOff || {}).contractor !== false
+                }
             };
         }
+    }
+
+    // ── Custom Terms & Conditions sections ─────────────────────
+    // Terms of Payment / Exclusions / Duration are the three built-ins and stay
+    // put. Anything else a report needs — Warranty, Site conditions, Variation
+    // orders — is added here and can be removed again. Each carries its own
+    // include checkbox, so a section can be kept on file but left off the
+    // printout. Stored in boq.terms.custom, inside the existing `terms` jsonb
+    // column, so no migration is involved.
+    function boqCustomTermsHTML() {
+        const list = Array.isArray(boq.terms.custom) ? boq.terms.custom : [];
+        return list.map((s, i) => `
+            <div class="boq-terms-group boq-terms-custom">
+                <label class="boq-terms-label">
+                    <input type="checkbox" class="boq-terms-chk boq-tc-inc" ${s.include !== false ? 'checked' : ''}>
+                    <input type="text" class="boq-tc-title" value="${escHtml(s.title || '')}"
+                           placeholder="Section title — e.g. Warranty">
+                    <button type="button" class="boq-terms-del" title="Remove this section"
+                            onclick="boqRemoveTermSection(${i})"><i data-lucide="trash-2"></i></button>
+                </label>
+                <textarea class="boq-terms-textarea boq-tc-body" rows="4"
+                          placeholder="One line per item…">${escHtml(s.body || '')}</textarea>
+            </div>`).join('');
+    }
+
+    // Read the custom rows back out of the DOM. Run before every add/remove so
+    // half-typed edits survive the re-render, and again on save.
+    function harvestCustomTerms() {
+        const host = document.getElementById('boqTermsCustom');
+        if (!host) return;
+        boq.terms.custom = Array.from(host.querySelectorAll('.boq-terms-custom')).map(node => ({
+            title:   (node.querySelector('.boq-tc-title') || {}).value ? node.querySelector('.boq-tc-title').value.trim() : '',
+            body:    (node.querySelector('.boq-tc-body')  || {}).value || '',
+            include: !node.querySelector('.boq-tc-inc') || node.querySelector('.boq-tc-inc').checked
+        }));
+    }
+
+    // Repaint only the custom list — repainting the whole editor would throw
+    // away unsaved edits in the header and the three built-in sections.
+    function renderCustomTerms() {
+        const host = document.getElementById('boqTermsCustom');
+        if (!host) return;
+        host.innerHTML = boqCustomTermsHTML();
+        if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+    }
+
+    window.boqAddTermSection = function () {
+        harvestCustomTerms();
+        if (!Array.isArray(boq.terms.custom)) boq.terms.custom = [];
+        boq.terms.custom.push({ title: '', body: '', include: true });
+        markDirty();
+        renderCustomTerms();
+        const rows = document.querySelectorAll('#boqTermsCustom .boq-tc-title');
+        if (rows.length) rows[rows.length - 1].focus();
+    };
+
+    window.boqRemoveTermSection = function (i) {
+        harvestCustomTerms();
+        const s = (boq.terms.custom || [])[i];
+        if (!s) return;
+        const name = s.title ? '"' + s.title + '"' : 'this section';
+        if (!confirm('Remove ' + name + ' from the Terms & Conditions?')) return;
+        boq.terms.custom.splice(i, 1);
+        markDirty();
+        renderCustomTerms();
+    };
+
+    // Built-ins + custom, in print order, with blank/unchecked ones dropped.
+    // Shared by the print sheet and the PDF export so the two can never
+    // disagree about what the document contains.
+    function boqTermSections() {
+        const t = boq.terms || {};
+        const out = [];
+        if (t.includePayments   !== false) out.push({ title: 'Terms of Payment', body: t.payments   || '', lettered: false });
+        if (t.includeExclusions !== false) out.push({ title: 'Exclusions',       body: t.exclusions || '', lettered: true  });
+        if (t.includeDuration   !== false) out.push({ title: 'Duration',         body: t.duration   || '45 - 60 Days', lettered: false });
+        (Array.isArray(t.custom) ? t.custom : []).forEach(s => {
+            if (s && s.include !== false && (String(s.title || '').trim() || String(s.body || '').trim())) {
+                out.push({ title: (s.title || 'Additional Terms').trim(), body: s.body || '', lettered: false });
+            }
+        });
+        return out;
+    }
+
+    // Roman numeral for the section heading. The old code used a 5-entry lookup;
+    // custom sections can push past that, so generate it properly.
+    function boqRoman(n) {
+        const map = [[10,'X'],[9,'IX'],[5,'V'],[4,'IV'],[1,'I']];
+        let v = Number(n) || 0, out = '';
+        if (v < 1 || v > 39) return String(n);
+        map.forEach(([val, sym]) => { while (v >= val) { out += sym; v -= val; } });
+        return out;
     }
 
     // ── Save to Firestore ──────────────────────────────────────
@@ -1898,44 +2046,23 @@
 
         const fs = 7.5;
 
-        let termSectionIdx = 1;
-        // I. TERMS OF PAYMENT
-        if (boq.terms.includePayments !== false) {
+        // Same section list the print sheet uses, so a custom section added in
+        // the editor shows up in both outputs. Sections can now run past the
+        // bottom of the page, so break before one that would not fit.
+        boqTermSections().forEach((s, i) => {
+            if (pageH - fy < 24) { doc.addPage(); fy = M; }
             doc.setFont('helvetica', 'bold'); doc.setFontSize(fs); doc.setTextColor(0, 0, 0);
-            doc.text(`${termSectionIdx++}.  TERMS OF PAYMENT`, M, fy); fy += 5;
+            doc.text(`${boqRoman(i + 1)}.  ${String(s.title || '').toUpperCase()}`, M, fy); fy += 5;
             doc.setFont('helvetica', 'normal'); doc.setFontSize(fs);
-            const paymentLines = (boq.terms.payments || '').split('\n');
-            paymentLines.forEach(line => {
-                const wrapped = doc.splitTextToSize(line, usableW - 4);
+            String(s.body || '').split('\n').forEach((line, j) => {
+                const text = s.lettered ? `${String.fromCharCode(97 + j)}. ${line}` : line;
+                const wrapped = doc.splitTextToSize(text, usableW - (s.lettered ? 8 : 4));
+                if (pageH - fy < 12) { doc.addPage(); fy = M; }
                 doc.text(wrapped, M + 4, fy);
                 fy += wrapped.length * 4;
             });
             fy += 3;
-        }
-
-        // II. EXCLUSIONS
-        if (boq.terms.includeExclusions !== false) {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(fs);
-            doc.text(`${termSectionIdx++}.  EXCLUSIONS`, M, fy); fy += 5;
-            doc.setFont('helvetica', 'normal'); doc.setFontSize(fs);
-            const exclLines = (boq.terms.exclusions || '').split('\n');
-            exclLines.forEach((line, i) => {
-                const wrapped = doc.splitTextToSize(`${String.fromCharCode(97 + i)}. ${line}`, usableW - 8);
-                doc.text(wrapped, M + 4, fy);
-                fy += wrapped.length * 4;
-            });
-            fy += 3;
-        }
-
-        // III. DURATION
-        if (boq.terms.includeDuration !== false) {
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(fs);
-            doc.text(`${termSectionIdx++}.  DURATION`, M, fy); fy += 5;
-            doc.setFont('helvetica', 'normal');
-            const durLines = doc.splitTextToSize((boq.terms.duration || '45 - 60 Days'), usableW - 8);
-            doc.text(durLines, M + 4, fy);
-            fy += durLines.length * 4 + 4;
-        }
+        });
 
         // ── Save ──────────────────────────────────────────────
         // Add disclaimer to footer on last page only
@@ -2141,21 +2268,22 @@
         });
 
         // ── Terms ────────────────────────────────────────────
-        const payLines  = (boq.terms.payments   || '').split('\n').map(l => `<div class="pr-term-ln">${escHtml(l)}</div>`).join('');
-        const exclLines = (boq.terms.exclusions || '').split('\n').map((l, i) => `<div class="pr-term-ln">${String.fromCharCode(97+i)}. ${escHtml(l)}</div>`).join('');
-        let printTermIdx = 1;
-        const _prTermRoman = ['I', 'II', 'III', 'IV', 'V'];
-        const _prTermSections = [
-            { include: boq.terms.includePayments  !== false, title: 'Terms of Payment', body: payLines },
-            { include: boq.terms.includeExclusions !== false, title: 'Exclusions',       body: exclLines },
-            { include: boq.terms.includeDuration  !== false, title: 'Duration',          body: `<div class="pr-term-ln">${escHtml(boq.terms.duration || '45 - 60 Days')}</div>` }
-        ];
-        const termsSectionsHTML = _prTermSections.filter(s => s.include).map(s => {
-            const roman = _prTermRoman[printTermIdx - 1] || String(printTermIdx);
-            printTermIdx++;
+        // Signature blocks are opt-out; a document saved before the toggles
+        // existed has no signOff and keeps both, as it always printed.
+        const _sg = boq.terms.signOff || {};
+        const sgClient     = _sg.client     !== false;
+        const sgContractor = _sg.contractor !== false;
+
+        // boqTermSections() is the single source of truth for what prints —
+        // built-ins plus whatever custom sections the user added — so the sheet
+        // and the PDF export can never fall out of step.
+        const termsSectionsHTML = boqTermSections().map((s, i) => {
+            const lines = String(s.body || '').split('\n').map((l, j) =>
+                `<div class="pr-term-ln">${s.lettered ? String.fromCharCode(97 + j) + '. ' : ''}${escHtml(l)}</div>`
+            ).join('');
             return `<div class="pr-term-sec">
-              <div class="pr-term-hd">${roman}.&nbsp; ${s.title}</div>
-              ${s.body}
+              <div class="pr-term-hd">${boqRoman(i + 1)}.&nbsp; ${escHtml(s.title)}</div>
+              ${lines}
             </div>`;
         }).join('');
 
@@ -2249,6 +2377,11 @@
   .pr-sig{margin-top:14px;display:flex;justify-content:space-between;gap:24px;}
   .pr-sig-col{flex:1;text-align:center;font-size:7.5pt;}
   .pr-sig-line{border-top:1.5px solid #111;margin-top:28px;padding-top:3px;font-weight:700;font-size:8pt;}
+  /* The signature image fills the 28px the blank column leaves for a wet
+     signature, so both rules stay on the same baseline. If the file fails to
+     load, onerror drops .pr-sig-signed and the 28px gap comes back. */
+  .pr-sig-img{display:block;height:28px;width:auto;max-width:70%;margin:0 auto;object-fit:contain;object-position:center bottom;}
+  .pr-sig-signed .pr-sig-line{margin-top:0;}
   .pr-sig-role{color:#555;font-size:7pt;margin-top:2px;}
 
   /* ── Disclaimer ── */
@@ -2348,16 +2481,20 @@
   ${termsSectionsHTML ? `<div class="pr-terms">${termsSectionsHTML}</div>` : ''}
 
   <!-- Signatures -->
+  ${(sgClient || sgContractor) ? `
   <div class="pr-sig">
+    ${sgClient ? `
     <div class="pr-sig-col">
       <div class="pr-sig-line">${escHtml(h.ownerName || '\u00a0')}</div>
       <div class="pr-sig-role">Client / Owner</div>
-    </div>
-    <div class="pr-sig-col">
+    </div>` : ''}
+    ${sgContractor ? `
+    <div class="pr-sig-col pr-sig-signed">
+      <img class="pr-sig-img" src="${window.location.origin}/assets/images/dacs-signature.png" alt="" onerror="this.style.display='none';this.parentNode.classList.remove('pr-sig-signed');">
       <div class="pr-sig-line">DAC'S BUILDING DESIGN SERVICES</div>
       <div class="pr-sig-role">Contractor / Prepared By</div>
-    </div>
-  </div>
+    </div>` : ''}
+  </div>` : ''}
 
   <div class="pr-disc">
     Disclaimer: This document does not constitute a formal contract and is not legally binding.

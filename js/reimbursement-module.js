@@ -388,6 +388,8 @@
             +   '<button class="rb-icon-btn" title="View details" onclick="rbOpenDetail(\'' + id + '\')"><i data-lucide="eye"></i></button>'
             +   '<button class="rb-icon-btn" title="Edit" onclick="rbOpenForm(\'' + id + '\')"><i data-lucide="pencil"></i></button>'
             +   '<button class="rb-icon-btn" title="Update status" onclick="rbOpenStatus(\'' + id + '\')"><i data-lucide="refresh-cw"></i></button>'
+            +   '<button class="rb-icon-btn" title="' + (_rbOutstanding(r) > 0 && r.status !== 'cancelled' ? 'Print invoice' : 'Print receipt')
+            +     '" onclick="rbPrintInvoice(\'' + id + '\')"><i data-lucide="printer"></i></button>'
             + '</td>'
             + '</tr>';
     }
@@ -678,8 +680,14 @@
 
         const editBtn = document.getElementById('rbDetailEditBtn');
         const stBtn   = document.getElementById('rbDetailStatusBtn');
+        const prBtn   = document.getElementById('rbDetailPrintBtn');
         if (editBtn) editBtn.onclick = function () { window.rbCloseDetail(); window.rbOpenForm(r.id); };
         if (stBtn)   stBtn.onclick   = function () { window.rbCloseDetail(); window.rbOpenStatus(r.id); };
+        // Label follows the document the record will actually produce.
+        if (prBtn) {
+            prBtn.textContent = (_rbOutstanding(r) > 0 && r.status !== 'cancelled') ? 'Print Invoice' : 'Print Receipt';
+            prBtn.onclick = function () { window.rbPrintInvoice(r.id); };
+        }
 
         drawer.style.display = 'flex';
         if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
@@ -688,6 +696,166 @@
     window.rbCloseDetail = function () {
         const d = document.getElementById('rbDetailDrawer');
         if (d) d.style.display = 'none';
+    };
+
+    // ── Invoice / Receipt document ─────────────────────────────────
+    // A PRINT-ONLY document for one advance. It writes nothing: no invoice
+    // row, no payment, no accounting entry, no status change — the isolation
+    // of this module (CLAUDE.md) is the feature, and a printed page must not
+    // become a back door into the money model. Everything below is rendered
+    // from the record already on screen.
+    //
+    // The same button produces one of two documents, because a reimbursement
+    // record means different things at different points in its life:
+    //   • still owed  → INVOICE  (a claim on the client)
+    //   • paid back   → RECEIPT  (an acknowledgement of settlement)
+    window.rbPrintInvoice = async function (id) {
+        const r = _rbRow(id);
+        if (!r) { _rbToast('Record not found.', 'error'); return; }
+
+        const esc = _rbEsc;
+        const amount   = _rbNum(r.amount);
+        const paidBack = _rbPaidBack(r);
+        const balance  = _rbOutstanding(r);
+        const settled  = r.status === 'reimbursed' || (balance <= 0 && paidBack > 0);
+        const cancelled = r.status === 'cancelled';
+        const meta     = _rbStatusMeta(r.status);
+
+        const docKind = cancelled ? 'Cancelled Record' : settled ? 'Reimbursement<br>Receipt' : 'Reimbursement<br>Invoice';
+        const kicker  = cancelled ? 'Hindi na sinisingil'
+                      : settled   ? 'Resibo ng Bayad-Balik'
+                                  : 'Singil para sa Bayad-Balik';
+
+        const bizName = (typeof _defaults !== 'undefined' && _defaults && _defaults.businessName)    || "DAC's Building Design Services";
+        const bizAddr = (typeof _defaults !== 'undefined' && _defaults && _defaults.businessAddress) || '';
+        const bizTin  = (typeof _defaults !== 'undefined' && _defaults && _defaults.businessTin)     || '';
+
+        const refNo   = r.refNo || '—';
+        const today   = new Date().toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+        const project = r.projectName || (_rbFolder(r.folderId) || {}).name || '—';
+        const payer   = r.paidByName || r.paidBy || '—';
+
+        // Sign the stored receipt so it renders inside the popup, which has no
+        // access to the signing layer in supabase-config.js. Best-effort: a
+        // failure downgrades to a "on file" line rather than a broken image.
+        let receiptImg = '';
+        const rcptUrl = _rbSafeUrl(r.receiptUrl);
+        if (rcptUrl) {
+            let shown = '';
+            try {
+                shown = window.dacsSignedUrl ? await window.dacsSignedUrl(rcptUrl) : rcptUrl;
+            } catch (e) { console.warn('receipt sign failed:', e.message || e); }
+            const isPdf = /\.pdf($|\?)/i.test(r.receiptName || '') || /\.pdf($|\?)/i.test(rcptUrl);
+            receiptImg = '<div class="ws-box" style="margin-top:22px;">'
+                + '<div class="ws-lbl ws-sec">Katibayan / Supporting receipt</div>'
+                + (shown && !isPdf
+                    ? '<img src="' + esc(shown) + '" alt="" style="max-width:100%;max-height:70mm;object-fit:contain;display:block;" onerror="this.style.display=\'none\'">'
+                    : '<div class="ws-note-t">' + esc(r.receiptName || 'Receipt') + ' &mdash; on file with this record.</div>')
+                + '</div>';
+        }
+
+        const w = window.open('', '_blank', 'width=920,height=1180');
+        if (!w) { _rbToast('Please allow pop-ups to print the document.', 'error'); return; }
+
+        w.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>${settled ? 'Reimbursement Receipt' : 'Reimbursement Invoice'} — ${esc(refNo)}</title>
+<style>${window.dacsStatementCSS()}</style>
+</head>
+<body>
+<div class="page">
+${window.dacsStatementHead({
+    title: docKind,
+    kicker: kicker,
+    bizName, bizAddr, bizTin,
+    meta: [
+        { k: 'Reference No.', v: refNo },
+        { k: 'Petsa / Date',  v: today }
+    ]
+})}
+  <div class="ws-band" style="grid-template-columns:1.4fr 1.4fr 1.2fr 1fr;">
+    <div>
+      <div class="ws-lbl">Kliyente / Client</div>
+      <div class="ws-band-v">${esc(_rbClientLabel(r))}</div>
+      ${r.clientEmail ? `<div class="ws-band-s">${esc(r.clientEmail)}</div>` : ''}
+    </div>
+    <div>
+      <div class="ws-lbl">Proyekto / Project</div>
+      <div class="ws-band-v sm">${esc(project)}</div>
+    </div>
+    <div>
+      <div class="ws-lbl">Inunang bayad ni / Advanced by</div>
+      <div class="ws-band-v sm">${esc(payer)}</div>
+    </div>
+    <div>
+      <div class="ws-lbl">Katayuan / Status</div>
+      <div><span class="${window.dacsStatusPillClass(settled ? 'completed' : cancelled ? 'over' : meta.label)}">${esc(meta.label)}</span></div>
+    </div>
+  </div>
+
+  <div class="ws-body">
+    <div class="ws-lbl ws-sec">Ginastos / Expense advanced for the client</div>
+    <table class="ws-tbl">
+      <thead>
+        <tr>
+          <th>Deskripsyon / Description</th>
+          <th style="width:150px;">Kategorya / Category</th>
+          <th style="width:110px;" class="ws-c">Petsa</th>
+          <th style="width:120px;" class="ws-r">Halaga</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${esc(r.description || '—')}</td>
+          <td>${esc(r.expenseCategory || '—')}</td>
+          <td class="ws-c">${esc(_rbDay(r.expenseDate))}</td>
+          <td class="ws-r ws-amt">${_rbAmt(amount)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="ws-tot-wrap">
+      <div class="ws-tot">
+        <div class="ws-tot-row"><span>Inunang bayad / Total advanced</span><b>${_rbAmt(amount)}</b></div>
+        <div class="ws-tot-row rule"><span>Naibalik na / Reimbursed to date</span><b>${_rbAmt(paidBack)}</b></div>
+        <div class="ws-grand">
+          <span class="l">${cancelled ? 'Hindi sinisingil / Not claimed'
+                          : settled   ? 'Bayad na / Fully settled'
+                                      : 'Babayaran / Balance due'}</span>
+          <span class="v">${_rbAmt(cancelled ? 0 : balance)}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+${receiptImg}
+${(r.remarks || r.notes) ? `
+  <div class="ws-box" style="margin-top:22px;">
+    <div class="ws-lbl ws-sec">Paalala / Remarks</div>
+    <div class="ws-note-t">${esc(r.remarks || r.notes)}</div>
+  </div>` : ''}
+
+  <div class="ws-note">
+    <div class="ws-note-t">
+      <strong>Tracking document only.</strong> This records money the owner/admin advanced on the
+      client&rsquo;s behalf and whether it has been paid back. It is not a project billing document:
+      it does not form part of the project cost, budget, accomplishment or any accounting entry,
+      and issuing it changes nothing in the record.
+    </div>
+  </div>
+
+  <div style="flex:1;min-height:12px;"></div>
+${window.dacsStatementSigns([
+    { label: 'Inihanda ni / Prepared by', name: payer === '—' ? '' : payer },
+    { label: settled ? 'Kinumpirma ni / Confirmed by' : 'Tinanggap ni / Received by', name: r.clientName || '' }
+])}
+${window.dacsStatementFoot([bizName, bizAddr].filter(Boolean).join(' · '), refNo + ' · Pahina 1 / 1')}
+</div>
+<script>window.onload=function(){window.print();};<\/script>
+</body>
+</html>`);
+        w.document.close();
     };
 
     // ── Update status (with confirmation) ──────────────────────────
