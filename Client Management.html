@@ -552,22 +552,9 @@
           </div><!-- /cm-profile-right -->
         </div><!-- /cm-profile-grid -->
 
-        <!-- ── Termination Zone ── -->
-        <div class="cm-termination-zone">
-          <div class="cm-termination-zone-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            Project Termination
-          </div>
-          <p>If you wish to end this project early, you may submit a termination request. The system will calculate all consumed labor costs, materials used, and the equivalent management fee. Any remaining balance must be settled before the project is officially closed.</p>
-          <button class="cm-termination-request-btn" onclick="cmOpenTerminationModal()" id="cm-term-open-btn">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            Request Termination
-          </button>
-          <div id="cm-term-status" class="cm-term-submitted-note" style="display:none;">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            Termination request submitted — pending admin review. You will be notified once processed.
-          </div>
-        </div>
+        <!-- Termination Zone removed — terminating a project is an admin-only
+             decision, raised from Project Management → Project Termination.
+             The client is notified and billed the final balance from there. -->
       </div>
 
       <!-- ── Notifications History ── -->
@@ -1836,36 +1823,8 @@ function cmHandleProgressPhotoUpload(event){
   </div>
 </div>
 
-<!-- ══════════ TERMINATION CONFIRMATION MODAL ══════════ -->
-<div id="cm-termination-modal" class="cm-termination-overlay" style="display:none;">
-  <div class="cm-termination-card">
-    <div class="cm-termination-header">
-      <div class="cm-termination-header-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      </div>
-      <div class="cm-termination-header-text">
-        <h3>Request Project Termination</h3>
-        <p>Review your calculated final balance before submitting</p>
-      </div>
-    </div>
-    <div class="cm-termination-body">
-      <div id="cm-term-cost-breakdown">
-        <!-- populated by JS -->
-      </div>
-      <div class="cm-term-warn-box">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <span>This action submits a termination request to the Manager. Your account remains active until the request is reviewed. The final balance must be settled before project closure.</span>
-      </div>
-    </div>
-    <div class="cm-termination-footer">
-      <button class="cm-term-cancel-btn" onclick="cmCloseTerminationModal()">Cancel</button>
-      <button class="cm-term-confirm-btn" onclick="cmConfirmTermination()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:middle;margin-right:5px;"><polyline points="20 6 9 17 4 12"/></svg>
-        Submit Request
-      </button>
-    </div>
-  </div>
-</div>
+<!-- Termination confirmation modal removed — see the note in the profile
+     section above. Terminating is admin-initiated only. -->
 
 </body>
 </html>

@@ -986,12 +986,19 @@
     // ══════════════════════════════════════════════════════
     // AUTO-GENERATE INVOICE FROM APPROVED TERMINATION REQUEST
     // ══════════════════════════════════════════════════════
-    // Called from termination-requests.js when an admin approves a
-    // termination. Mirrors invGenerateFromPaymentRequest but the line item
-    // describes the unpaid balance owed at project termination. Carries
-    // `terminationRequestId` for audit trail.
+    // Called from termination-requests.js when an admin closes a project
+    // out — either COMPLETED (finished properly) or TERMINATED (cut short).
+    // Mirrors invGenerateFromPaymentRequest, but the line item describes the
+    // balance still owed at closeout. Carries `terminationRequestId` for the
+    // audit trail.
+    //
+    // The amount is identical for both endings — this is a cost-plus system,
+    // so the client owes actual direct costs + management fee either way and
+    // `budget` is an estimate, never a price. Only the wording differs, and
+    // it matters: a client who finished a project should not receive a
+    // document that says their project was terminated.
 
-    window.invGenerateFromTermination = async function (req) {
+    window.invGenerateFromCloseout = async function (req) {
         try {
             if (!_ownerUid) await _resolveOwnerUid();
             if (!_defaults || !Object.keys(_defaults).length) await _loadDefaults();
@@ -1000,7 +1007,14 @@
             const amount    = Number(req.remainingBalance) || 0;
             if (amount <= 0) return null;
             const pd        = _defaults.paymentDetails || {};
-            const desc      = `Final balance — Project terminated: ${req.projectName || 'Untitled'}`;
+            const done      = req.outcome === 'completed';
+            const proj      = req.projectName || 'Untitled';
+            const desc      = done
+                ? `Final balance — Project completed: ${proj}`
+                : `Final balance — Project terminated: ${proj}`;
+            const noteText  = done
+                ? 'Final invoice issued upon completion of construction project. Please settle the remaining balance to close out the project.'
+                : 'Final invoice issued upon termination of construction project. Please settle the remaining balance.';
 
             const data = {
                 userId:          _ownerUid,
@@ -1016,7 +1030,7 @@
                 subtotal:        amount,
                 totalAmount:     amount,
                 paymentDetails:  { ...pd },
-                notes:           'Final invoice issued upon termination of construction project. Please settle the remaining balance.',
+                notes:           noteText,
                 status:          'issued',
                 terminationRequestId: req.id || '',
                 clientEmail:     req.clientEmail || '',
@@ -1033,26 +1047,30 @@
 
             _invoices.unshift({ id: ref.id, ...data });
 
-            // Notify the client. They're already getting a termination_approved
+            // Notify the client. They're already getting the closeout
             // notification from termination-requests.js; this is the matching
             // "and here's what you owe" message. Two distinct events, two
             // notifications, both navigate to different sections.
             if (req.clientUid) {
+                const peso = '₱' + amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 db.collection('notifications').doc(req.clientUid).collection('items').add({
                     type:      'invoice_issued',
-                    message:   `Final invoice ${data.invoiceNo} (₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}) has been issued for the terminated project "${req.projectName || ''}".`,
+                    message:   `Final invoice ${data.invoiceNo} (${peso}) has been issued for the ${done ? 'completed' : 'terminated'} project "${proj}".`,
                     isRead:    false,
                     relatedId: ref.id,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                }).catch(e => console.warn('termination invoice notify error:', e));
+                }).catch(e => console.warn('closeout invoice notify error:', e));
             }
 
             return ref.id;
         } catch (e) {
-            console.error('InvoiceModule: termination auto-generate error', e);
+            console.error('InvoiceModule: closeout auto-generate error', e);
             return null;
         }
     };
+
+    // Back-compat alias — the old name meant "terminated" only.
+    window.invGenerateFromTermination = window.invGenerateFromCloseout;
 
     window.invPrintById = function (inv) { _doPrint(inv); };
 
@@ -1538,7 +1556,7 @@ ${window.dacsStatementSigns([
 ])}
 ${window.dacsStatementFoot([bizName, bizAddr].filter(Boolean).join(' · '), invoiceNo + ' · Pahina 1 / 1')}
 </div>
-<script>window.onload=function(){window.print();};<\/script>
+${window.dacsStatementPrintScript()}
 </body>
 </html>`);
         w.document.close();
@@ -1622,18 +1640,51 @@ ${window.dacsStatementFoot([bizName, bizAddr].filter(Boolean).join(' · '), invo
         const _entryCids = new Set(entries.map(p => p.contractId).filter(Boolean));
         const _wContracts = _allC.filter(c => (c.workerName || '') === workerName || _entryCids.has(c.id));
 
-        let _stLabel = '';
-        if (_wContracts.length) {
-            const _agreed = _wContracts.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
-            const _wcSet  = new Set(_wContracts.map(c => c.id));
-            const _paid   = entries.filter(p => p.contractId && _wcSet.has(p.contractId)).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
+        // Contract position — hoisted out of the status-pill branch below because
+        // the Contract band also needs it. Same arithmetic the Worker Tracker row
+        // uses in portal-app.compiled.js (agreed = Σ agreedAmount, paid = Σ of the
+        // entries drawn against those contracts) so the two never disagree.
+        let _stLabel = '', _agreed = 0, _paid = 0, _remaining = 0, _pct = 0;
+        const _jobs = _wContracts.length;
+        if (_jobs) {
+            _agreed = _wContracts.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
+            const _wcSet = new Set(_wContracts.map(c => c.id));
+            _paid = entries.filter(p => p.contractId && _wcSet.has(p.contractId)).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
+            _remaining = _agreed - _paid;
+            _pct = _agreed > 0 ? Math.min(100, Math.max(0, _paid / _agreed * 100)) : 0;
             if (_agreed > 0 && _paid >= _agreed) {
                 _stLabel = _paid > _agreed ? 'Over cap' : 'Completed';
             } else {
-                const _pct = _agreed > 0 ? Math.round(_paid / _agreed * 100) : 0;
-                _stLabel = 'Ongoing · ' + _pct + '%';
+                _stLabel = 'Ongoing · ' + Math.round(_pct) + '%';
             }
         }
+
+        // The Contract band. Only meaningful with a capped contract — a plain
+        // payroll worker has no agreed total, so there is no balance to state and
+        // the band is omitted rather than printed with zeros.
+        const _over = _remaining < 0;
+        const _done = !_over && _agreed > 0 && _paid >= _agreed;
+        // Colour state, keyed off the SAME label the status pill uses, so the
+        // band and the pill above it can never show two colours for one status.
+        //   (default) blue = running · st-done green = finished · st-over red
+        const _bandState = _over ? ' st-over' : (_done ? ' st-done' : '');
+        const _dueLabel  = _over ? 'Lumampas / Over cap'
+                         : _done ? 'Wala nang bayarin / Nothing left'
+                         : 'Natitira / Still to pay';
+        const _bandNote  = _over ? 'lumampas / over cap' : 'nabayaran / paid';
+        const _contractBand = (_jobs && _agreed > 0) ? `
+  <div class="ws-contract${_bandState}">
+    <div class="ws-contract-top">
+      <div class="ws-lbl">Kontrata / Contract</div>
+      <div class="ws-contract-jobs">${_jobs} ${_jobs === 1 ? 'trabaho / job' : 'trabaho / jobs'} · ${Math.round(_pct)}% ${_bandNote}</div>
+    </div>
+    <div class="ws-contract-bar"><div class="ws-contract-fill" style="width:${_pct.toFixed(1)}%;"></div></div>
+    <div class="ws-contract-grid">
+      <div class="ws-contract-cell"><span class="k">Kabuuang kontrata / Contract</span><span class="v">${fmt(_agreed)}</span></div>
+      <div class="ws-contract-cell"><span class="k">Nabayaran na / Paid to date</span><span class="v">${fmt(_paid)}</span></div>
+      <div class="ws-contract-cell due"><span class="k">${_dueLabel}</span><span class="v">${fmt(Math.abs(_remaining))}</span></div>
+    </div>
+  </div>` : '';
         const _stPill = _stLabel
             ? `<div class="${window.dacsStatusPillClass(_stLabel)}">${esc(_stLabel)}</div>`
             : '<div class="ws-band-v sm">—</div>';
@@ -1680,6 +1731,7 @@ ${window.dacsStatementHead({
       ${_stPill}
     </div>
   </div>
+${_contractBand}
   <div class="ws-body">
     <div class="ws-lbl ws-sec">Mga Naibayad / Labor entries</div>
     <table class="ws-tbl">
@@ -1723,7 +1775,7 @@ ${window.dacsStatementSigns([
 ])}
 ${window.dacsStatementFoot([bizName, bizAddr].filter(Boolean).join(' · '), invoiceNo + ' · Pahina 1 / 1')}
 </div>
-<script>window.onload=function(){window.print();};<\/script>
+${window.dacsStatementPrintScript()}
 </body>
 </html>`);
         w.document.close();
@@ -1948,7 +2000,7 @@ table.totals tr.grand td { font-size:15px; font-weight:800; color:#111; backgrou
   </div>
   <div class="footer">${esc(bizName)} &bull; ${esc(bizAddr)}</div>
 </div>
-<script>window.onload=function(){window.print();};<\/script>
+${window.dacsStatementPrintScript()}
 </body>
 </html>`);
         w.document.close();

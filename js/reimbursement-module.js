@@ -852,7 +852,7 @@ ${window.dacsStatementSigns([
 ])}
 ${window.dacsStatementFoot([bizName, bizAddr].filter(Boolean).join(' · '), refNo + ' · Pahina 1 / 1')}
 </div>
-<script>window.onload=function(){window.print();};<\/script>
+${window.dacsStatementPrintScript()}
 </body>
 </html>`);
         w.document.close();

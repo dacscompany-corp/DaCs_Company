@@ -104,6 +104,7 @@ Also note: **`projects` means billing period**, not project. Read it that way ev
 | Overhead | `overhead-module.js` | Company + project overhead ([OVERHEAD_MODULE.md](OVERHEAD_MODULE.md)) |
 | Reimbursement | `reimbursement-module.js` | Client Reimbursement Tracker (`0041`) — expenses the **owner/admin advanced** and whether the **client** paid them back. **Deliberately isolated:** no invoice, payment, expense, payroll or journal side effects, and no money math reads it. Owner-only (staff blocked in nav, switchView and RLS) |
 | Project Management | `pm-admin.js` | Construction projects, weekly bills, procurement, milestones, revolving fund |
+| Project Closeout | `termination-requests.js` | Ends a construction project — **`completed`** (work finished) or **`terminated`** (stopped early). Same final bill either way (cost-plus: actual costs + fee; `budget` is an estimate, not a price); only the status, badge and client wording differ. Writes `termination_requests`, sets the project status, auto-issues the final invoice via `invGenerateFromCloseout`, notifies the client. **Admin-initiated only** since `0042` — the client's Termination Zone and its RLS insert policy are gone. Owner-only (staff blocked in the UI) |
 | Accomplishment / BOQ | `boq-module.js` | BOQ + accomplishment reports (`percentCompletion` per line item) |
 | Invoices | `invoice-module.js`, `labor-invoice-module.js` | |
 | Payment Requests | `payment-requests.js` | |

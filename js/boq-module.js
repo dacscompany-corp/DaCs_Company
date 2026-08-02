@@ -2390,9 +2390,18 @@
 
   /* ── Print overrides ── */
   @page{size:A4 portrait;margin:0;}
+  /* Keep the four summary rows together. Without this the table breaks between
+     them and TOTAL PROJECT COST is stranded alone at the foot of page 1 while
+     DISCOUNT and the rest carry over — the block now moves down as a unit. */
+  .pr-sum{break-inside:avoid;page-break-inside:avoid;}
   @media print{
     body{background:#fff;}
     .page{width:100%;margin:0;padding:8mm 10mm 10mm;box-shadow:none;min-height:auto;}
+    /* A thead repeats itself at the top of every printed page by default. On
+       page 2 that header sits above nothing but the totals and reads as an
+       empty table, so demote it to an ordinary row group: it still renders
+       first, but only once. */
+    .pr-tbl thead{display:table-row-group;}
   }
 </style>
 </head>
@@ -2441,7 +2450,9 @@
     </thead>
     <tbody>
       ${tableRows}
-      ${window.currentUserRole === 'staff' ? '' : `
+    </tbody>
+    ${window.currentUserRole === 'staff' ? '' : `
+    <tbody class="pr-sum">
       <tr class="pr-grand">
         <td class="pr-transparent"></td>
         <td class="pr-transparent"></td>
@@ -2473,8 +2484,8 @@
         <td class="pr-transparent"></td>
         <td colspan="5" style="text-align:right;font-weight:900">TOTAL ACCOMPLISHMENT TO DATE</td>
         <td class="c-amt">${fmt(totalAcc)}</td>
-      </tr>`}
-    </tbody>
+      </tr>
+    </tbody>`}
   </table>
 
   <!-- Terms -->
@@ -2512,7 +2523,22 @@
         win.document.write(html);
         win.document.close();
         win.focus();
-        win.onload = function () { win.print(); win.onafterprint = function () { win.close(); }; };
+        // Chrome stamps the document title across the top of every printed page
+        // (and the URL / page numbers along the bottom) whenever "Headers and
+        // footers" is ticked in the print dialog — it overrides @page{margin:0}
+        // to make room for them. The checkbox itself can't be reached from code,
+        // but the text it prints CAN: blanking the title empties that centre
+        // line. Restored afterwards so the window keeps its name if the dialog
+        // is cancelled.
+        win.onload = function () {
+            const realTitle = win.document.title;
+            // Register the restore BEFORE printing: window.print() blocks in
+            // Chrome but not in every browser, so restoring straight after the
+            // call could put the title back while the preview is still reading it.
+            win.onafterprint = function () { win.document.title = realTitle; win.close(); };
+            win.document.title = ' ';
+            win.print();
+        };
     };
 
     // ── HTML helpers ───────────────────────────────────────────

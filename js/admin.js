@@ -758,7 +758,7 @@ function switchView(view) {
         consBatchHistory: 'Batch History',
         consInventory:    'Inventory',
         userNavigator:    'User Navigator',
-        terminationRequests: 'Termination Requests',
+        terminationRequests: 'Project Closeout',
         pmReports:        'Reports',
     };
     const _pt = document.getElementById('pageTitle');
@@ -2212,7 +2212,7 @@ const PRIMARY_NAV = [
     { id: 'pm', label: 'Project Management', sub: 'Projects', defaultView: 'pmProjects',
       modules: [
         { view: 'pmProjects',          label: 'Projects',             icon: 'folder-open' },
-        { view: 'terminationRequests', label: 'Termination Requests', icon: 'alert-triangle' },
+        { view: 'terminationRequests', label: 'Project Closeout',     icon: 'check-circle' },
         { view: 'pmReports',           label: 'Reports',              icon: 'file-bar-chart' },
       ]
     },

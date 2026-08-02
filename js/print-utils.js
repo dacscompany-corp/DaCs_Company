@@ -1355,7 +1355,7 @@ window.DACS_AGR_DEFAULT_SECTIONS = {
         { heading: '4. Payment Terms', body: 'The Manager records project costs daily; entries roll into a weekly summary (Sunday–Saturday) visible in the Client’s portal. The Client is notified, and payment for each week’s bill is due by Friday, per the billing schedule shown in the portal. Payment covers labor, materials, out source works, and the management fee at the project’s agreed rate. The Client may pay suppliers directly or fund the system’s revolving fund for petty purchases.' },
         { heading: '5. Revolving Fund', body: 'An optional revolving fund (petty cash) may be established by the Client for minor and urgent site purchases. The system tracks deductions from the fund with receipts as proof, calculates the remaining balance weekly, and prompts the Client to replenish the fund when the balance falls below the required threshold.' },
         { heading: '6. Responsibilities & System Rules', body: 'Quality control: the Manager logs defective materials, and the system records return and replacement actions. Labor: all workers are managed by the Manager, and payroll is funded and approved by the Client. Price variability: material and labor costs are subject to market fluctuations — quoted estimates are not guaranteed fixed prices. Records & privacy: portal views are convenience summaries of the Company’s official electronic records, supporting documents are available on request, and client data is handled in accordance with the Data Privacy Act of 2012 (R.A. 10173); account credentials are personal.' },
-        { heading: '7. Termination', body: 'Either party may request early project termination through the system. Upon termination, the system computes the total consumed labor costs, total materials used, and the equivalent management fee; the final payable balance must be settled in full before the project is officially closed. Termination requests are subject to review and confirmation by the Manager.' },
+        { heading: '7. Project Closeout — Completion & Termination', body: 'A project is closed out in the system by the Manager, in one of two ways. COMPLETION: the agreed works are finished and the project is marked completed. EARLY TERMINATION: the project is stopped before the works are finished. The Client may request an early end to the project in writing to the Manager, but termination takes effect only once the Manager confirms and records it. Under either closeout, and consistent with the Cost-Plus model in Section 3, the system computes the total labor costs and materials actually consumed plus the management fee at the project’s agreed rate; a final invoice is issued for any remaining balance, which must be settled in full before the project is officially closed. Because costs are billed as incurred, no portion of the project budget is charged for works that were never performed.' },
         { heading: '8. Agreement Confirmation', body: 'By accepting this Agreement, the Client confirms having fully read, understood, and voluntarily agreed to all terms and conditions set forth in this Cost-Plus Project Management Agreement with DAC’s Building Design Services. This digital acceptance serves as a binding confirmation equivalent to a written signature.' }
     ],
     partner: [
@@ -1411,10 +1411,23 @@ body{font-family:'Archivo',system-ui,'Segoe UI',Arial,Helvetica,sans-serif;backg
       box-shadow:0 2px 16px rgba(32,30,29,.14);display:flex;flex-direction:column;}
 
 /* ── letterhead ── */
+/* Vertical rhythm note: A4 at 96dpi is ~1123px tall, and .page reserves 19mm +
+   15mm of padding, leaving ~994px of content. The spacing below is tuned so a
+   statement with a full letterhead, the contract band and ~12 entry rows still
+   lands on ONE page. Loosen these and the signature block drops to page 2. */
 .ws-hd{display:flex;justify-content:space-between;align-items:flex-start;gap:32px;
-       border-bottom:2px solid #201e1d;padding-bottom:20px;}
-.ws-hd-l{display:flex;flex-direction:column;gap:12px;}
-.ws-logo{height:56px;width:auto;max-width:190px;object-fit:contain;object-position:left center;display:block;}
+       border-bottom:2px solid #201e1d;padding-bottom:14px;}
+.ws-hd-l{display:flex;flex-direction:column;gap:9px;}
+/* Uses DACS-LETTERHEAD.png, not DACS-TRANSPARENT.png.
+   The original is a 2048x2048 square whose artwork only fills the middle 62.5%
+   vertically — 298px of empty canvas above it and 471px below. Raising the CSS
+   height on that file just scales the emptiness: at 88px the visible mark was
+   only 55px. DACS-LETTERHEAD.png is the same artwork trimmed to its ink bounds
+   (1862x1311), so the full 88px is mark. Same CSS height, 1.6x the logo.
+   The square original is untouched — ~40 other places use it (favicons, portal
+   headers, other print templates) and are laid out for its 1:1 ratio.
+   Shared by all five statements (SOA, payroll, expenses, PM, reimbursement). */
+.ws-logo{height:88px;width:auto;max-width:240px;object-fit:contain;object-position:left center;display:block;}
 .ws-biz{font-size:14px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;line-height:1.3;}
 .ws-biz-sub{font-size:10.5px;color:#605d5d;line-height:1.6;margin-top:4px;}
 .ws-hd-r{text-align:right;flex-shrink:0;}
@@ -1428,7 +1441,7 @@ body{font-family:'Archivo',system-ui,'Segoe UI',Arial,Helvetica,sans-serif;backg
 
 /* ── info band: cells divided by hairlines, flush to the text edges ── */
 .ws-band{display:grid;border-bottom:1px solid #d7d3d3;}
-.ws-band>div{padding:16px 20px;border-right:1px solid #d7d3d3;}
+.ws-band>div{padding:13px 20px;border-right:1px solid #d7d3d3;}
 .ws-band>div:first-child{padding-left:0;}
 .ws-band>div:last-child{padding-right:0;border-right:none;}
 .ws-band .ws-lbl{margin-bottom:6px;}
@@ -1444,16 +1457,19 @@ body{font-family:'Archivo',system-ui,'Segoe UI',Arial,Helvetica,sans-serif;backg
 .ws-pill-ok{color:#157A52;background:#E7F3EC;}
 .ws-pill-alert{color:#B4453A;background:#FBECEB;}
 
-.ws-body{flex:1;display:flex;flex-direction:column;margin-top:26px;}
-.ws-sec{margin-bottom:10px;}
+.ws-body{flex:1;display:flex;flex-direction:column;margin-top:18px;}
+.ws-sec{margin-bottom:8px;}
 
 /* ── entry table ── */
 table.ws-tbl{width:100%;border-collapse:collapse;font-size:11.5px;}
 table.ws-tbl thead tr{border-bottom:2px solid #201e1d;}
-table.ws-tbl th{text-align:left;padding:0 8px 10px;font-size:9px;font-weight:700;
+table.ws-tbl th{text-align:left;padding:0 8px 8px;font-size:9px;font-weight:700;
                 letter-spacing:.16em;text-transform:uppercase;color:#605d5d;}
 table.ws-tbl tbody tr{border-bottom:1px solid #eae9e9;}
-table.ws-tbl td{padding:10px 8px;vertical-align:top;}
+/* Row padding is the single biggest lever on total height — every 1px here
+   costs ~2px per entry. 7px keeps 11.5px text comfortable while buying back
+   ~54px on a nine-row statement. */
+table.ws-tbl td{padding:7px 8px;vertical-align:top;}
 table.ws-tbl th:first-child,table.ws-tbl td:first-child{padding-left:0;}
 table.ws-tbl th:last-child,table.ws-tbl td:last-child{padding-right:0;}
 table.ws-tbl tr.ws-tbl-total td{padding:14px 8px;border-top:2px solid #201e1d;border-bottom:none;
@@ -1467,19 +1483,54 @@ table.ws-tbl tr.ws-tbl-total td.ws-r{font-size:17px;letter-spacing:0;text-transf
 .ws-amt,table.ws-tbl td.ws-amt{text-align:right;font-weight:600;}
 
 /* ── totals stack ── */
-.ws-tot-wrap{display:flex;justify-content:flex-end;margin-top:22px;}
+.ws-tot-wrap{display:flex;justify-content:flex-end;margin-top:14px;}
 .ws-tot{width:320px;}
-.ws-tot-row{display:flex;justify-content:space-between;font-size:11.5px;padding:7px 0;color:#605d5d;}
+.ws-tot-row{display:flex;justify-content:space-between;font-size:11.5px;padding:5px 0;color:#605d5d;}
 .ws-tot-row b{color:#201e1d;font-weight:600;}
 .ws-tot-row.rule{border-bottom:1px solid #d7d3d3;}
-.ws-grand{display:flex;justify-content:space-between;align-items:baseline;padding:14px 0;
+.ws-grand{display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;
           border-top:2px solid #201e1d;border-bottom:2px solid #201e1d;margin-top:4px;}
 .ws-grand .l{font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;}
 .ws-grand .v{font-size:19px;font-weight:700;}
 
+/* ── contract band (highlighted, sits directly under the info band) ──
+   The worker's capped (pakyaw) contract position, mirroring the Worker
+   Tracker row in Project Control: agreed total, paid to date, and what is
+   STILL TO PAY. The entries table below only ever lists money already paid,
+   so without this the statement cannot answer "how much is left?" — which is
+   the first thing the payee wants to know, hence the placement and weight.
+   Rendered only when the worker actually has a capped contract.
+
+   Colour-coded to the SAME three states as the status pill above it
+   (.ws-pill / -ok / -alert), driven by one set of --c* custom properties per
+   state: blue while running, green for a clean finish, red for over cap. Tying
+   it to the pill means the sheet never shows two different colours for one
+   status, and adds no fourth hue to the document.                            */
+.ws-contract{--cInk:#1D4ED8; --cBg:#F2F6FE; --cEdge:#CBDDF9; --cTrack:#DBEAFE;
+             margin-top:14px;background:var(--cBg);border:1px solid var(--cEdge);
+             border-left:5px solid var(--cInk);padding:13px 20px 14px;}
+.ws-contract.st-done{--cInk:#157A52; --cBg:#EFF7F2; --cEdge:#C9E3D4; --cTrack:#DCEDE4;}
+.ws-contract.st-over{--cInk:#B4453A; --cBg:#FBECEB; --cEdge:#F0D5D2; --cTrack:#F6DEDB;}
+
+.ws-contract-top{display:flex;justify-content:space-between;align-items:baseline;gap:16px;}
+.ws-contract .ws-lbl{color:var(--cInk);}
+.ws-contract-jobs{font-size:10.5px;color:var(--cInk);font-weight:700;white-space:nowrap;opacity:.85;}
+.ws-contract-bar{height:8px;background:var(--cTrack);margin:9px 0 11px;overflow:hidden;}
+.ws-contract-fill{height:100%;background:var(--cInk);}
+.ws-contract-grid{display:grid;grid-template-columns:1fr 1fr 1.15fr;gap:16px;align-items:end;}
+.ws-contract-cell .k{font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;
+                     color:#7d7979;display:block;margin-bottom:5px;}
+.ws-contract-cell .v{font-size:14px;font-weight:700;color:#201e1d;white-space:nowrap;
+                     font-variant-numeric:tabular-nums;}
+/* The balance is the headline of this band — set apart, larger, and the only
+   figure carrying the state colour, so it reads before the two it derives from. */
+.ws-contract-cell.due{border-left:1px solid var(--cEdge);padding-left:16px;}
+.ws-contract-cell.due .k{color:var(--cInk);}
+.ws-contract-cell.due .v{font-size:20px;letter-spacing:-.01em;color:var(--cInk);}
+
 /* ── grey summary panel ── */
-.ws-panel{display:grid;grid-template-columns:1fr 1fr;gap:28px;background:#eae9e9;padding:18px 22px;margin-top:24px;}
-.ws-panel .ws-lbl{margin-bottom:10px;}
+.ws-panel{display:grid;grid-template-columns:1fr 1fr;gap:28px;background:#eae9e9;padding:14px 22px;margin-top:16px;}
+.ws-panel .ws-lbl{margin-bottom:8px;}
 .ws-kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:11.5px;}
 .ws-kv .k{color:#7d7979;}
 .ws-kv .v{font-weight:600;}
@@ -1505,14 +1556,14 @@ table.ws-tbl tr.ws-tbl-total td.ws-r{font-size:17px;letter-spacing:0;text-transf
 .ws-stat .v{font-size:17px;font-weight:700;margin-top:6px;}
 
 /* ── signature row ── */
-.ws-signs{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;margin-top:44px;}
-.ws-sign-sp{height:34px;}
+.ws-signs{display:grid;grid-template-columns:repeat(3,1fr);gap:32px;margin-top:26px;}
+.ws-sign-sp{height:26px;}
 .ws-sign-l{border-top:1px solid #201e1d;padding-top:8px;font-size:9.5px;letter-spacing:.14em;
            text-transform:uppercase;color:#7d7979;}
 .ws-sign-n{font-size:11px;font-weight:600;margin-top:2px;}
 
 /* ── footer rule ── */
-.ws-foot{border-top:1px solid #d7d3d3;margin-top:26px;padding-top:12px;display:flex;
+.ws-foot{border-top:1px solid #d7d3d3;margin-top:14px;padding-top:10px;display:flex;
          justify-content:space-between;gap:16px;font-size:9px;letter-spacing:.12em;
          text-transform:uppercase;color:#9b9797;}
 
@@ -1531,7 +1582,7 @@ table.ws-tbl tr.ws-tbl-total td.ws-r{font-size:17px;letter-spacing:0;text-transf
   /* @page (print-utils' global rule) supplies the sheet margin — the page box
      itself goes edge to edge so the inset isn't applied twice. */
   .page{width:100%;min-height:0;margin:0;padding:0;box-shadow:none;}
-  tr,.ws-signs,.ws-panel,.ws-box,.ws-stats,.ws-tot-wrap,.ws-note,.ws-rcpt-card{
+  tr,.ws-signs,.ws-panel,.ws-box,.ws-stats,.ws-tot-wrap,.ws-note,.ws-rcpt-card,.ws-contract{
       break-inside:avoid;page-break-inside:avoid;}
   thead{display:table-header-group;}
 }`;
@@ -1550,7 +1601,7 @@ window.dacsStatementHead = function (o) {
     const meta = (o.meta || []).map(m => e(m.k) + ' <strong>' + e(m.v) + '</strong>').join('<br>');
     return `<div class="ws-hd">
   <div class="ws-hd-l">
-    <img class="ws-logo" src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC'S Building Design Services" onerror="this.style.display='none'">
+    <img class="ws-logo" src="${window.location.origin}/assets/images/DACS-LETTERHEAD.png" alt="DAC'S Building Design Services" onerror="this.src='${window.location.origin}/assets/images/DACS-TRANSPARENT.png'">
     <div>
       <div class="ws-biz">${e(o.bizName)}</div>
       ${sub ? `<div class="ws-biz-sub">${sub}</div>` : ''}
@@ -1586,6 +1637,37 @@ window.dacsStatementSigns = function (items) {
 window.dacsStatementFoot = function (left, right) {
     const e = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     return '<div class="ws-foot"><span>' + e(left) + '</span><span>' + e(right) + '</span></div>';
+};
+
+/** The print trigger for every statement — replaces a bare
+ *  `window.onload = () => window.print()`.
+ *
+ *  Statements must come out as ONE page. The spacing in dacsStatementCSS is
+ *  tuned for that, but the entry table is unbounded: a worker with twenty
+ *  payments will always outgrow a fixed sheet no matter how tight the padding.
+ *  So before opening the print dialog this measures the flowed content and, only
+ *  if it genuinely overruns A4, shrinks the sheet just enough to fit.
+ *
+ *  Measured by removing min-height and reading scrollHeight, which is the real
+ *  content height including the sheet's own padding — summing children instead
+ *  would be wrong, because adjacent margins collapse.
+ *
+ *  `zoom` (not `transform:scale`) because it reflows the layout, so the print
+ *  engine still paginates correctly rather than clipping a scaled layer.
+ *  Clamped at MIN so a pathological document degrades to two readable pages
+ *  instead of one unreadable one. */
+window.dacsStatementPrintScript = function (minScale) {
+    const MIN = Number(minScale) || 0.72;
+    return '<scr' + 'ipt>(function(){function fit(){try{' +
+        'var p=document.querySelector(".page");if(!p){window.print();return;}' +
+        'var prev=p.style.minHeight;p.style.minHeight="0";' +
+        'var need=p.scrollHeight;p.style.minHeight=prev;' +
+        'var avail=Math.round((297/25.4)*96);' +
+        'if(need>avail+1){var k=Math.max(' + MIN + ',avail/need);' +
+        'p.style.zoom=k;p.setAttribute("data-fit",k.toFixed(3));}' +
+        '}catch(e){}window.print();}' +
+        'if(document.readyState==="complete")fit();' +
+        'else window.addEventListener("load",fit);})();</scr' + 'ipt>';
 };
 
 /**

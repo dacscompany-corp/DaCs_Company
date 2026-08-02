@@ -762,9 +762,12 @@ const _NOTIF_META = {
     // SOA modal is launched; termination has no admin view yet so dest is blank.
     'sowa_request':      { icon: 'clipboard',     label: 'SOA Requested',            color: 'amber', dest: 'payment' },
     'sowa_ready':        { icon: 'clipboard-check', label: 'SOA Ready',              color: 'green', dest: 'payment' },
+    // 'termination' is legacy — clients can no longer raise one (migration
+    // 0042). Kept so old notifications still render with an icon and label.
     'termination':          { icon: 'alert-triangle', label: 'Termination Request',     color: 'red',   dest: 'termination' },
-    'termination_approved': { icon: 'check-circle',   label: 'Termination Approved',    color: 'green', dest: '' },
+    'termination_approved': { icon: 'alert-triangle', label: 'Project Terminated',      color: 'red',   dest: '' },
     'termination_rejected': { icon: 'x-circle',       label: 'Termination Rejected',    color: 'red',   dest: '' },
+    'project_completed':    { icon: 'check-circle',   label: 'Project Completed',       color: 'green', dest: '' },
 };
 
 function renderNotificationDropdown() {

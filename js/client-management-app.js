@@ -5191,113 +5191,18 @@ window.cmProjTermsAccept = async function() {
 };
 
 // ══════════════════════════════════════════════════════════════════
-// TERMINATION REQUEST
+// TERMINATION — removed from the client portal
+// ──────────────────────────────────────────────────────────────────
+// Terminating a project is an admin-only decision. A client can no
+// longer open one: the Termination Zone and its confirm modal are gone
+// from both Client Management.html and Dacs Partnership.html, the RLS
+// insert policy was dropped in migration 0042, and the three functions
+// that lived here — cmOpenTerminationModal, cmCloseTerminationModal and
+// cmConfirmTermination — went with them.
+//
+// The admin flow is js/termination-requests.js (Project Management →
+// Project Closeout), which handles BOTH endings — completed (finished)
+// and terminated (cut short). The client is still told either way: they
+// receive the project_completed / termination_approved notification and
+// the final invoice from there.
 // ══════════════════════════════════════════════════════════════════
-
-window.cmOpenTerminationModal = function() {
-    const totalLabor     = cmWeeklyBills.reduce((s, b) => s + (b.labor || 0), 0);
-    const totalMaterials = cmWeeklyBills.reduce((s, b) =>
-        s + (b.materials || 0) + (b.delivery || 0) + (b.consumables || 0) + (b.other || 0), 0);
-    const directCosts    = totalLabor + totalMaterials;
-    const mgmtFee        = directCosts * cmFeeRate();
-    const grandTotal     = directCosts + mgmtFee;
-    const totalPaid      = cmWeeklyBills
-        .filter(b => b.status === 'Paid')
-        .reduce((s, b) => s + (b.totalDue || 0), 0);
-    const remaining      = Math.max(0, grandTotal - totalPaid);
-
-    const breakdown = document.getElementById('cm-term-cost-breakdown');
-    if (breakdown) {
-        breakdown.innerHTML = `
-            <div class="cm-term-cost-row">
-                <span class="cm-term-cost-label">Total Labor Costs</span>
-                <span class="cm-term-cost-value">${cmFmt(totalLabor)}</span>
-            </div>
-            <div class="cm-term-cost-row">
-                <span class="cm-term-cost-label">Total Materials &amp; Supplies</span>
-                <span class="cm-term-cost-value">${cmFmt(totalMaterials)}</span>
-            </div>
-            <div class="cm-term-cost-row">
-                <span class="cm-term-cost-label">Management Fee (${cmFeePct()}%)</span>
-                <span class="cm-term-cost-value">${cmFmt(mgmtFee)}</span>
-            </div>
-            <div class="cm-term-cost-row">
-                <span class="cm-term-cost-label">Total Already Paid</span>
-                <span class="cm-term-cost-value" style="color:#15803d;">− ${cmFmt(totalPaid)}</span>
-            </div>
-            <div class="cm-term-total-row">
-                <span class="cm-term-total-label">Final Balance Due</span>
-                <span class="cm-term-total-value">${cmFmt(remaining)}</span>
-            </div>`;
-    }
-
-    const modal = document.getElementById('cm-termination-modal');
-    if (modal) modal.style.display = '';
-};
-
-window.cmCloseTerminationModal = function() {
-    const modal = document.getElementById('cm-termination-modal');
-    if (modal) modal.style.display = 'none';
-};
-
-window.cmConfirmTermination = async function() {
-    const confirmBtn = document.querySelector('.cm-term-confirm-btn');
-    if (confirmBtn) { confirmBtn.disabled = true; confirmBtn.textContent = 'Submitting…'; }
-
-    try {
-        if (cmCurrentUser && cmProjectData) {
-            const totalLabor     = cmWeeklyBills.reduce((s, b) => s + (b.labor || 0), 0);
-            const totalMaterials = cmWeeklyBills.reduce((s, b) =>
-                s + (b.materials || 0) + (b.delivery || 0) + (b.consumables || 0) + (b.other || 0), 0);
-            const directCosts    = totalLabor + totalMaterials;
-            const mgmtFee        = directCosts * cmFeeRate();
-            const grandTotal     = directCosts + mgmtFee;
-            const totalPaid      = cmWeeklyBills
-                .filter(b => b.status === 'Paid')
-                .reduce((s, b) => s + (b.totalDue || 0), 0);
-
-            const trRef = await db.collection('terminationRequests').add({
-                clientUid        : cmCurrentUser.uid,
-                clientEmail      : cmCurrentUser.email,
-                clientName       : (cmCurrentProfile?.firstName || '') + ' ' + (cmCurrentProfile?.lastName || ''),
-                projectId        : cmProjectData.id,
-                projectName      : cmProjectData.projectName || '',
-                totalLabor,
-                totalMaterials,
-                managementFee    : mgmtFee,
-                grandTotal,
-                totalPaid,
-                remainingBalance : Math.max(0, grandTotal - totalPaid),
-                status           : 'pending',
-                requestedAt      : firebase.firestore.FieldValue.serverTimestamp()
-            });
-
-            // Notify admin via notification. `isRead` is canonical (last task)
-            // and `relatedId` lets the admin bell jump straight to this request
-            // in the Termination Requests review screen.
-            const ownerUid = cmProjectData.userId || cmProjectData.ownerUid;
-            if (ownerUid) {
-                await cmNotifyOwnerAndStaff(ownerUid, {
-                    title      : 'Termination Request',
-                    message    : `Client ${cmCurrentUser.email} has requested project termination for "${cmProjectData.projectName || 'project'}".`,
-                    type       : 'termination',
-                    isRead     : false,
-                    relatedId  : trRef.id,
-                    createdAt  : firebase.firestore.FieldValue.serverTimestamp()
-                });
-            }
-        }
-
-        cmCloseTerminationModal();
-        const statusEl  = document.getElementById('cm-term-status');
-        const openBtn   = document.getElementById('cm-term-open-btn');
-        if (statusEl) statusEl.style.display = '';
-        if (openBtn)  openBtn.style.display  = 'none';
-        cmShowToast('Termination request submitted. The admin will review and contact you.');
-
-    } catch (e) {
-        console.error('Termination request error:', e.message);
-        if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'Submit Request'; }
-        cmShowToast('Failed to submit request. Please try again.');
-    }
-};

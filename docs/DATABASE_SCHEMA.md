@@ -315,8 +315,23 @@ Same shape as `invoices`; `items` are labor lines auto-built from `weeklyBills` 
 ### `sowaRequests/{id}` — Statement of Work Accomplished request
 `clientEmail`, `clientName`, `clientUid`, `ownerUid`, `status` (`pending`/viewed/shared), `requestedAt`
 
-### `terminationRequests/{id}` — client requests project termination
-`clientUid`, `clientEmail`, `clientName`, `projectId`, `projectName`, `totalLabor`, `totalMaterials`, `managementFee`, `grandTotal`, `totalPaid`, `remainingBalance`, `status` (`pending`/approved/rejected), `requestedAt`
+### `terminationRequests/{id}` — project **closeout** record (**admin-initiated**)
+Despite the name, this table records a project ending **either way**:
+
+| `outcome` | Meaning | Project status set to |
+|---|---|---|
+| `completed` | The good ending — the work finished | `completed` |
+| `terminated` | Cut short — the work stopped early | `terminated` |
+
+`clientUid`, `clientEmail`, `clientName`, `projectId`, `projectName`, `totalLabor`, `totalMaterials`, `directCost`, `managementFee`, `grandTotal`, `totalPaid`, `remainingBalance`, `status` (`pending`/approved/rejected), `outcome` (`completed`/`terminated`, default `terminated`), `initiatedBy` (`admin`/`client`, default `client`), `requestedAt`, `decidedAt`, `decidedBy`, `rejectedReason`
+
+**The money is identical for both outcomes.** This is a cost-plus system: the client owes actual direct costs + the management fee, and `construction_projects.budget` is an estimate, never a fixed price. Completing a project does **not** bill the remaining contract. Only the status, the badge and the client-facing wording differ — and that wording matters, since nobody who finished a project should receive a document saying it was terminated.
+
+**Rules:** owner-only in practice. The client may **read** their own rows (they see the record + final invoice) but **cannot insert** — the client INSERT policy was dropped in migration 0042. Closing out is an admin decision made from Project Management → Project Closeout (`js/termination-requests.js`); the portal's client-side Termination Zone was removed. Staff are blocked in the UI too (`_trStaff()`), since every figure here is a peso amount.
+
+`project_name`, `direct_cost`, `decided_at`, `decided_by`, `rejected_reason`, `initiated_by`, `outcome` were added in **0042** — the code had been writing four of them since 0001 against columns that never existed, so every approval was failing on the missing column. Closing out also stamps `construction_projects.terminated_at` / `terminated_by` / `termination_request_id` (added in 0042; they double as the generic closeout stamp for both outcomes) and `invoices.created_by` / `termination_request_id`.
+
+`status = 'pending'` only ever holds client requests raised **before** 0042; nothing new lands there, and approving one always resolves to `outcome = 'terminated'`.
 
 ---
 

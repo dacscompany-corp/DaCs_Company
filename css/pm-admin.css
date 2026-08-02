@@ -711,6 +711,79 @@ body.dark-mode .pmst-total { background: #11201a; border-top-color: #243029; }
   border-color: var(--pm-green);
   transform: translateY(-2px);
 }
+
+/* ── Closed-out projects: the "finish mark" ───────────────────────
+   Imported from the Claude Design project, "Projects List - Final".
+   Only the finish mark was taken from that comp — the tab bar, the
+   card money panel and the rest of its page redesign were not.
+
+   A project that has been completed or terminated is no longer
+   running. It stays in the grid (you still need its records) but is
+   visually retired: a strip across the head of the card names the
+   outcome, and the live figures are dimmed so a finished job never
+   reads as active.                                                  */
+.pm-project-card.pm-card-closed {
+  padding-top: 0;
+  overflow: hidden;   /* lets the strip meet the card's rounded corners */
+}
+
+.pm-card-finish {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 18px;
+  margin: 0 -18px;    /* cancel the card's side padding — strip is full-bleed */
+  border-bottom: 1px solid;
+}
+.pm-card-finish-tick {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pm-card-finish-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.pm-card-finish-when {
+  font-size: 12px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Completed — the design's green */
+.pm-card-completed                     { border-color: #dfeae3; }
+.pm-card-completed .pm-card-finish     { background: #eef5f0; border-bottom-color: #dfeae3; }
+.pm-card-completed .pm-card-finish-tick{ background: #15653f; }
+.pm-card-completed .pm-card-finish-label { color: #15653f; }
+.pm-card-completed .pm-card-finish-when  { color: #5d7a6b; }
+
+/* Terminated — same strip, muted. Not in the comp (it only covered the
+   good ending); derived to sit at the same weight. */
+.pm-card-terminated                      { border-color: #e6e2df; }
+.pm-card-terminated .pm-card-finish      { background: #f4f2f1; border-bottom-color: #e6e2df; }
+.pm-card-terminated .pm-card-finish-tick { background: #8a8781; }
+.pm-card-terminated .pm-card-finish-label{ color: #6b6862; }
+.pm-card-terminated .pm-card-finish-when { color: #8a847b; }
+
+/* Dim what is no longer live — the amounts, the progress bar and the
+   billing stats. The client + project name stay at full strength so
+   the card is still scannable. */
+.pm-card-closed .pm-card-progress,
+.pm-card-closed .pm-card-progress-pct,
+.pm-card-closed .pm-card-contract,
+.pm-card-closed .pm-card-stats { opacity: .55; }
+.pm-card-closed:hover     { transform: none; }
+.pm-card-completed:hover  { border-color: #bfe0cd; }
+.pm-card-terminated:hover { border-color: #dcd9d3; }
 .pm-card-top {
   display: flex;
   align-items: flex-start;

@@ -37,8 +37,12 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800&family=Playfair+Display:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Source Serif 4 + Inter Tight: used ONLY by the Project Closeout dialog
+         (.trdc-* in css/closeout-dialog.css). Scoped there, not site-wide. -->
+    <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Renovation: site-wide design refresh (must load LAST so overrides win) -->
     <link rel="stylesheet" href="css/admin-renovation.css">
+    <link rel="stylesheet" href="css/closeout-dialog.css">
     <!-- Mobile (iOS/Android) responsiveness layer — loads AFTER everything so it overrides module grids at phone widths -->
     <link rel="stylesheet" href="css/admin-mobile.css">
 </head>
@@ -1661,21 +1665,37 @@
           </div>
         </div><!-- /pmProjectsView -->
 
-        <!-- TERMINATION REQUESTS — admin review for client-submitted terminations -->
+        <!-- PROJECT CLOSEOUT — admin-initiated (complete / terminate);
+             clients cannot raise one. See js/termination-requests.js -->
         <div id="terminationRequestsView" class="content-view" style="display:none;">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px;">
             <div>
               <div style="font-size:11.5px;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;margin-bottom:6px;">Project Management</div>
-              <h1 style="font-family:'Playfair Display',serif;font-size:34px;font-weight:700;color:#111827;letter-spacing:-0.01em;margin:0 0 6px;">Termination Requests</h1>
-              <div style="font-size:13.5px;color:#6b7280;">Review and act on client-submitted project termination requests.</div>
+              <h1 style="font-family:'Playfair Display',serif;font-size:34px;font-weight:700;color:#111827;letter-spacing:-0.01em;margin:0 0 6px;">Project Closeout</h1>
+              <div style="font-size:13.5px;color:#6b7280;">Close a project and issue its final bill — <b>Complete</b> when the work is finished, <b>Terminate</b> when it stopped early. Only you can do this; clients cannot.</div>
             </div>
-            <span id="tr-pending-badge" style="display:none;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;background:#fef3c7;color:#92400e;font-size:12.5px;font-weight:700;">0</span>
+            <div id="tr-closeout-actions" style="display:flex;align-items:center;gap:10px;flex:none;">
+              <span id="tr-pending-badge" style="display:none;align-items:center;gap:6px;padding:6px 12px;border-radius:99px;background:#fef3c7;color:#92400e;font-size:12.5px;font-weight:700;">0</span>
+              <!-- Owner-only; the wrapper is hidden for staff by initTerminationRequests().
+                   Complete is the primary, green action — most projects end this way. -->
+              <button onclick="trOpenCloseout('complete')" style="display:inline-flex;align-items:center;gap:7px;padding:10px 17px;border:none;border-radius:9px;background:#1A5C3A;color:#fff;font-size:13.5px;font-weight:600;cursor:pointer;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                Complete a Project
+              </button>
+              <button onclick="trOpenCloseout('terminate')" style="display:inline-flex;align-items:center;gap:7px;padding:10px 15px;border:1.5px solid #fecaca;border-radius:9px;background:#fff;color:#991b1b;font-size:13.5px;font-weight:600;cursor:pointer;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Terminate Early
+              </button>
+            </div>
           </div>
 
           <div style="display:flex;gap:8px;margin-bottom:14px;">
             <button class="tr-filter-pill tr-filter-active" data-filter="all"      onclick="trFilter('all')"      style="padding:6px 14px;border-radius:99px;border:1.5px solid #e5e7eb;background:#fff;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">All</button>
+            <button class="tr-filter-pill"                  data-filter="completed"  onclick="trFilter('completed')"  style="padding:6px 14px;border-radius:99px;border:1.5px solid #e5e7eb;background:#fff;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">Completed</button>
+            <button class="tr-filter-pill"                  data-filter="terminated" onclick="trFilter('terminated')" style="padding:6px 14px;border-radius:99px;border:1.5px solid #e5e7eb;background:#fff;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">Terminated</button>
+            <!-- Pending / Rejected only ever hold client requests raised before
+                 closeout became admin-only. Kept so they can be closed out. -->
             <button class="tr-filter-pill"                  data-filter="pending"  onclick="trFilter('pending')"  style="padding:6px 14px;border-radius:99px;border:1.5px solid #e5e7eb;background:#fff;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">Pending</button>
-            <button class="tr-filter-pill"                  data-filter="approved" onclick="trFilter('approved')" style="padding:6px 14px;border-radius:99px;border:1.5px solid #e5e7eb;background:#fff;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">Approved</button>
             <button class="tr-filter-pill"                  data-filter="rejected" onclick="trFilter('rejected')" style="padding:6px 14px;border-radius:99px;border:1.5px solid #e5e7eb;background:#fff;color:#374151;font-size:12.5px;font-weight:600;cursor:pointer;">Rejected</button>
           </div>
 
@@ -1684,7 +1704,7 @@
             <table style="width:100%;border-collapse:collapse;min-width:560px;">
               <thead style="background:#f9fafb;">
                 <tr>
-                  <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Requested</th>
+                  <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Date</th>
                   <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Client</th>
                   <th style="padding:12px 14px;text-align:left;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Project</th>
                   <th style="padding:12px 14px;text-align:right;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:0.08em;">Grand Total</th>
@@ -1703,12 +1723,21 @@
           <div id="tr-detail-modal" style="display:none;position:fixed;inset:0;background:rgba(17,24,39,0.55);z-index:1000;align-items:center;justify-content:center;padding:20px;" onclick="if(event.target===this)trCloseDetail()">
             <div style="background:#fff;border-radius:16px;width:100%;max-width:560px;max-height:90vh;overflow:auto;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);">
               <div style="padding:20px 24px;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;">
-                <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#111827;">Termination Request</div>
+                <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#111827;">Closeout Record</div>
                 <button onclick="trCloseDetail()" aria-label="Close" style="background:none;border:none;font-size:22px;line-height:1;color:#6b7280;cursor:pointer;padding:4px 8px;">&times;</button>
               </div>
               <div id="tr-detail-body" style="padding:22px 24px;"></div>
               <div id="tr-detail-footer" style="padding:16px 24px;border-top:1px solid #e5e7eb;display:flex;gap:10px;justify-content:flex-end;background:#fafafa;border-radius:0 0 16px 16px;"></div>
             </div>
+          </div>
+
+          <!-- Closeout flow: project picker → final-balance confirm.
+               Card markup is rendered wholesale by js/termination-requests.js
+               so each step controls its own title, body and footer; styling is
+               css/closeout-dialog.css, imported from the Claude Design project
+               "Complete Project Dialog - Final.dc.html". -->
+          <div id="tr-terminate-modal" class="trdc-overlay" role="dialog" aria-modal="true" aria-labelledby="tr-terminate-title" onclick="if(event.target===this)trCloseCloseout()">
+            <div id="tr-terminate-card" class="trdc-card"></div>
           </div>
         </div><!-- /terminationRequestsView -->
 
@@ -5546,6 +5575,11 @@
         if (view === 'appointments' && typeof displayAllAppointments === 'function') displayAllAppointments();
         if (view === 'analytics'    && typeof refreshAnalytics       === 'function') refreshAnalytics();
         if (view === 'feedback'     && typeof loadFeedback            === 'function') loadFeedback();
+        // Project Closeout registers a view-scoped listener, so runViewCleanups()
+        // above tears it down on every navigation. Without this line nothing ever
+        // restarts it and the table sits on "Loading…" forever. init is
+        // idempotent — it unsubscribes any existing listener first.
+        if (view === 'terminationRequests' && typeof initTerminationRequests === 'function') initTerminationRequests();
 
         if (EXP_VIEWS.includes(view)) {
             if (typeof _syncAllEmptyStates === 'function') _syncAllEmptyStates();

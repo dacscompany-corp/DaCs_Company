@@ -1055,6 +1055,11 @@ window.pmOvPrintReport = function() {
     const bd = _pmOvBreakdown(bills);
     const netCash = paid - directCost;
     const warrantyRetention = netCash * 0.05;
+    // `distributable` is the whole pool left after retention; `profitShare` is
+    // ONE party's half of it. "Profit Share" must render profitShare — the
+    // printed report used to show the undivided pool under that label, which
+    // read as double the figure on the Overview and Reports KPIs. The pool is
+    // still shown, in the card's subtitle, so nothing is lost.
     const distributable = netCash - warrantyRetention;
     const profitShare = distributable / 2;
     const entries = (bd.laborCount || 0) + (bd.matCount || 0) + (bd.combinedCount || 0) + (bd.overheadCount || 0);
@@ -1152,7 +1157,7 @@ window.pmOvPrintReport = function() {
     ${kpi('Indirect Cost', round(bd.overhead || 0), '#f7f1ed', '#e6d7cd', '#7a5a48', 'Site running &amp; support costs')}
     ${kpi('Remaining Cash Receipt', (leftPos ? '' : '&minus;') + round(Math.abs(netCash)), '#fbf3e2', '#f0e2c5', leftCol, pctText(netCash))}
     ${kpi('Warranty Retention (5%)', peso(warrantyRetention), '#fbf2dc', '#ecd8a6', '#9a6c12', 'Released after final acceptance', true)}
-    ${kpi('Profit Share', peso(distributable), '#eaf4ef', '#c6e6d5', '#0f6342', 'Split in two &mdash; ' + peso(profitShare) + ' each', true)}
+    ${kpi('Profit Share', peso(profitShare), '#eaf4ef', '#c6e6d5', '#0f6342', '50% of ' + peso(distributable) + ' after retention', true)}
   </div>
 
   ${contractValue > 0 ? `
@@ -1538,6 +1543,26 @@ async function _pmLoadProjectsList() {
     }
 }
 
+// The "finish mark" — the strip across the head of a closed-out project card.
+// Ported from the Claude Design comp "Projects List - Final": a filled tick in a
+// circle, the outcome in small caps, and the date pushed to the right.
+//
+// The date slot shows when the project was CLOSED OUT (`terminatedAt`, which the
+// closeout stamps for both outcomes). The comp put a signed-on date there, but
+// this card already carries a "Signed · <date>" chip below, so repeating it
+// would say the same thing twice — and on a finished card the useful date is
+// when it finished. It is omitted entirely rather than guessed when absent:
+// migration 0042 adds the column, so older closeouts genuinely have no date.
+function _pmFinishMark(kind, p) {
+    const label = kind === 'completed' ? 'Finished' : 'Terminated';
+    const when  = _pmTsMs(p.terminatedAt) ? _pmTsDateStr(p.terminatedAt) : '';
+    return `<div class="pm-card-finish">
+      <span class="pm-card-finish-tick">${kind === 'completed' ? '&check;' : '&times;'}</span>
+      <span class="pm-card-finish-label">${label}</span>
+      ${when ? `<span class="pm-card-finish-when">Closed ${_esc(when)}</span>` : ''}
+    </div>`;
+}
+
 // Compute card metrics (progress %, balance due, this Friday, cadence) from the
 // project's milestones + payment requests. Mutates the project object with `_m`.
 // Any failure falls back to safe zeros so one bad project never blanks the grid.
@@ -1687,11 +1712,22 @@ function _pmRenderProjectCards(projects) {
         partial:  '<span class="pm-badge pm-badge-partial">Partial last week</span>',
         overdue:  '<span class="pm-badge pm-badge-strict">Overdue</span>',
     };
+    // A project that has been closed out is not "On track" — it isn't running
+    // at all. The closeout badge REPLACES the cadence chip so the card can't
+    // claim both, and the card is dimmed so a finished job reads as finished
+    // at a glance in the grid.
+    const closeoutBadge = {
+        completed:  '<span class="pm-badge pm-badge-paid">✓ Completed</span>',
+        terminated: '<span class="pm-badge pm-badge-terminated">Terminated</span>',
+    };
+
     grid.innerHTML = projects.map(p => {
         const m       = p._m || { progressPct: 0, balanceDue: 0, thisFriday: 0, cadence: 'ontrack' };
         const balCls  = m.balanceDue > 0 ? 'color:var(--pm-danger);' : '';
         const contractVal = Number(p.budget) || 0;
-        return `<div class="pm-project-card" data-pm-id="${_esc(p.id)}">
+        const closed  = closeoutBadge[p.status] ? p.status : null;
+        return `<div class="pm-project-card${closed ? ' pm-card-closed pm-card-' + closed : ''}" data-pm-id="${_esc(p.id)}">
+          ${closed ? _pmFinishMark(closed, p) : ''}
           <div class="pm-card-top">
             <div class="pm-card-names">
               <div class="pm-card-client">${_esc(p.clientName||'Unnamed Client')}</div>
@@ -1720,7 +1756,7 @@ function _pmRenderProjectCards(projects) {
           </div>
           <div class="pm-card-chips">
             ${_pmInboxBadgeHtml(p._inboxPending)}
-            ${cadenceBadge[m.cadence] || cadenceBadge.ontrack}
+            ${closed ? closeoutBadge[closed] : (cadenceBadge[m.cadence] || cadenceBadge.ontrack)}
             ${(p._partner || p._partnerProfile)
                 ? (() => {
                     const at  = p._partner ? p._partner.acceptedAt : p._partnerProfile.partnerAgreementAcceptedAt;
@@ -5704,7 +5740,7 @@ ${window.dacsStatementSigns([
 ])}
 ${window.dacsStatementFoot([bizName, bizAddr].filter(Boolean).join(' · '), docRef + ' · Pahina 1 / 1')}
 </div>
-<script>window.onload=function(){window.print();};<\/script>
+${window.dacsStatementPrintScript()}
 </body>
 </html>`);
     w.document.close();
@@ -6535,7 +6571,7 @@ table.totals tr.grand td { font-size:16px; font-weight:800; color:#1a1a1a; backg
   </div>
   <div class="footer">${esc(bizName)} &bull; ${esc(bizAddr)}</div>
 </div>
-<script>window.onload=function(){window.print();};<\/script>
+${window.dacsStatementPrintScript()}
 </body>
 </html>`);
     w.document.close();
