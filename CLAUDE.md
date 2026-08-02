@@ -51,6 +51,16 @@ Profit   = Earned − Spent
   advanced and whether the client paid them back. Nothing may feed it into Spent / Earned /
   Profit, or turn a status change into an invoice, payment or accounting entry — that isolation
   *is* the feature. Owner-only; staff never see it.
+- **Warranty retention (0043) is an internal company reserve, outside the money model.**
+  On completion the company sets aside 5% of the project's remaining cash (`netCash × 5%`,
+  `netCash = paid − directCost`) to fund warranty work, company expenses and project management.
+  **Client billing is deliberately not involved** — this is the company reserving part of its own
+  margin, not money withheld from a client. Don't "fix" it into a billing deduction. Closing a
+  project as `completed` freezes it into `warranty_retentions`; draws sit in
+  `warranty_fund_expenses`. **A draw charges no project's Spent** (it has no job to charge, and
+  G&A is never charged to a job), and negative net cash contributes **zero** — only
+  `contributed_amount` is ever summed. Only `js/warranty-fund.js` may touch those tables.
+  Owner-only; staff never see it.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 

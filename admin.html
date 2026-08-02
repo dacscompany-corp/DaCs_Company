@@ -20,6 +20,8 @@
     <link rel="stylesheet" href="css/overhead-module.css">
     <!-- Client Reimbursement Tracker Styles -->
     <link rel="stylesheet" href="css/reimbursement-module.css">
+    <!-- Warranty Retention Register + Fund Styles -->
+    <link rel="stylesheet" href="css/warranty-fund.css?v=20260803f">
     <!-- Construction Module Styles -->
     <link rel="stylesheet" href="css/construction-module.css">
     <link rel="stylesheet" href="css/construction-module-items.css">
@@ -42,7 +44,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter+Tight:wght@400;500;600;700&display=swap" rel="stylesheet">
     <!-- Renovation: site-wide design refresh (must load LAST so overrides win) -->
     <link rel="stylesheet" href="css/admin-renovation.css">
-    <link rel="stylesheet" href="css/closeout-dialog.css">
+    <link rel="stylesheet" href="css/closeout-dialog.css?v=20260803f">
     <!-- Mobile (iOS/Android) responsiveness layer — loads AFTER everything so it overrides module grids at phone widths -->
     <link rel="stylesheet" href="css/admin-mobile.css">
 </head>
@@ -218,6 +220,9 @@
                 <div class="nav-group-children">
                     <a href="#" class="nav-item nav-child" data-view="pmProjects">
                         <span class="nav-icon-wrap"><i data-lucide="folder-open" class="nav-icon"></i></span><span>Projects</span>
+                    </a>
+                    <a href="#" class="nav-item nav-child" data-view="warrantyFund">
+                        <span class="nav-icon-wrap"><i data-lucide="shield-check" class="nav-icon"></i></span><span>Warranty Fund</span>
                     </a>
                 </div>
             </div>
@@ -1740,6 +1745,261 @@
             <div id="tr-terminate-card" class="trdc-card"></div>
           </div>
         </div><!-- /terminationRequestsView -->
+
+        <!-- ════════════ WARRANTY RESERVE (RETENTION REGISTER + FUND) ════════════
+             An INTERNAL COMPANY RESERVE. On completion the company sets aside
+             5% of the project's remaining cash (paid − direct cost) to fund
+             warranty work, company expenses and project management. The figure
+             is frozen at closeout, accumulates across projects, and draws are
+             recorded against the pool. Client billing is deliberately not
+             involved — this is the company reserving part of its own margin.
+
+             Whether a project is still inside its warranty year is DERIVED
+             from the date, not stored: there is no button to press and no
+             badge to keep current. The only manual action is Void, because it
+             is the only one that changes a total.
+
+             Tracking / monitoring only: nothing here creates an invoice,
+             payment, expense or accounting entry, and nothing feeds the money
+             math. Owner-only (js/warranty-fund.js, migrations 0043 + 0044).
+        -->
+        <div id="warrantyFundView" class="content-view" style="display: none;">
+          <div class="wf-page">
+
+            <!-- ══ LEFT COLUMN ══════════════════════════════════════ -->
+            <div class="wf-main">
+
+              <div class="wf-head">
+                <h1 class="wf-title">Warranty Fund</h1>
+                <p class="wf-sub">Money you keep aside from finished projects, for repairs and callbacks later.</p>
+              </div>
+
+              <!-- Soonest-expiring warranty. Hidden unless something is
+                   actually close to ending — an alert that is always on
+                   stops being an alert. Filled by _wfRenderAlert(). -->
+              <div class="wf-alert" id="wfAlert" style="display:none;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="wf-alert-ico"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                <span id="wfAlertText"></span>
+              </div>
+
+              <div class="wf-tabs">
+                <button type="button" class="wf-tab wf-tab-on" id="wfTab-register" onclick="wfSwitchTab('register')">
+                  Money set aside <span class="wf-tab-n" id="wfTabNSet">0</span>
+                </button>
+                <button type="button" class="wf-tab" id="wfTab-draws" onclick="wfSwitchTab('draws')">
+                  Money spent <span class="wf-tab-n" id="wfTabNSpent">0</span>
+                </button>
+              </div>
+
+              <!-- ── Money set aside ── -->
+              <div id="wfPane-register">
+                <div class="wf-filters">
+                  <div class="wf-search-wrap">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="wf-search-ico"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input type="text" id="wfSearch" placeholder="Find a project or client…" oninput="wfApplyFilters()">
+                  </div>
+                  <!-- Cover state is DERIVED from the date, not stored, so the
+                       first two options filter on that; "Not counted" is the
+                       only stored status worth filtering. -->
+                  <select id="wfFilterStatus" onchange="wfApplyFilters()">
+                    <option value="">Show all</option>
+                    <option value="within">Still covered</option>
+                    <option value="ended">Cover ended</option>
+                    <option value="void">Not counted</option>
+                  </select>
+                  <!-- Back-fill for projects finished before this page existed. -->
+                  <button type="button" class="wf-btn" id="wfSyncBtn" onclick="wfSyncCompleted()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="wf-btn-ico"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>Check for new
+                  </button>
+                </div>
+
+                <div id="wfSyncStatus" class="wf-sync-status" style="display:none;"></div>
+
+                <div class="wf-card">
+                  <div class="wf-card-head">
+                    <span class="wf-card-title">Finished projects</span>
+                    <span class="wf-hint">Added automatically at closeout</span>
+                  </div>
+                  <div class="wf-table-scroll">
+                    <table class="wf-table">
+                      <thead>
+                        <tr>
+                          <th>Project &amp; client</th>
+                          <th class="wf-num">Set aside</th>
+                          <th>Cover ends</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody id="wfRegisterBody">
+                        <tr><td colspan="4" class="wf-empty">Loading…</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ── Money spent ── -->
+              <div id="wfPane-draws" style="display:none;">
+                <div class="wf-card">
+                  <div class="wf-card-head">
+                    <span class="wf-card-title">Money spent</span>
+                    <span class="wf-hint">Cancelling puts the money back; the record stays</span>
+                  </div>
+                  <div class="wf-table-scroll">
+                    <table class="wf-table">
+                      <thead>
+                        <tr>
+                          <th>What it was for</th>
+                          <th>Project</th>
+                          <th class="wf-num">Amount</th>
+                          <th>Date</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody id="wfDrawsBody">
+                        <tr><td colspan="5" class="wf-empty">Loading…</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ══ RIGHT COLUMN ═════════════════════════════════════ -->
+            <div class="wf-side">
+
+              <!-- Left to spend -->
+              <div class="wf-side-card">
+                <div class="wf-money-head">
+                  <div class="wf-money-label">Left to spend</div>
+                  <div class="wf-money-value" id="wfKpiAvailable">₱0.00</div>
+                  <div class="wf-money-note" id="wfKpiAvailableSub">This is a running total you keep, not a separate bank account.</div>
+                </div>
+                <div class="wf-money-body">
+                  <div class="wf-money-row">
+                    <span class="wf-money-ico wf-money-in">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 7 7 17"/><path d="M17 17H7V7"/></svg>
+                    </span>
+                    <div class="wf-money-text">
+                      <div class="wf-money-t1" id="wfInLabel">Came in from 0 finished projects</div>
+                      <div class="wf-money-t2">5% of each project's leftover cash</div>
+                    </div>
+                    <span class="wf-money-amt" id="wfKpiAccrued">₱0.00</span>
+                  </div>
+                  <div class="wf-money-row">
+                    <span class="wf-money-ico wf-money-out">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
+                    </span>
+                    <div class="wf-money-text">
+                      <div class="wf-money-t1" id="wfOutLabel">Nothing spent yet</div>
+                      <div class="wf-money-t2" id="wfOutLatest">&nbsp;</div>
+                    </div>
+                    <span class="wf-money-amt wf-money-amt-out" id="wfKpiDrawn">₱0.00</span>
+                  </div>
+
+                  <div class="wf-rule"></div>
+
+                  <div class="wf-money-total">
+                    <span>What's left</span>
+                    <span class="wf-money-total-amt" id="wfKpiLeft">₱0.00</span>
+                  </div>
+
+                  <!-- Spent vs remaining, as one bar. Widths set by JS. -->
+                  <div class="wf-split" id="wfSplit">
+                    <div class="wf-split-out" id="wfSplitOut" style="width:0%"></div>
+                    <div class="wf-split-in"  id="wfSplitIn"  style="width:100%"></div>
+                  </div>
+
+                  <button type="button" class="wf-btn wf-btn-primary wf-btn-block" onclick="wfOpenDrawForm()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="wf-btn-ico"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Record money spent
+                  </button>
+                </div>
+              </div>
+
+              <!-- Still under warranty -->
+              <div class="wf-side-card wf-side-pad">
+                <div class="wf-side-title">Still under warranty</div>
+                <div class="wf-side-note" id="wfWarrantySub">Nothing recorded yet.</div>
+                <div class="wf-bars" id="wfWarrantyBars"></div>
+              </div>
+
+              <!-- Where the money comes from -->
+              <div class="wf-note">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <div><strong>Where does this money come from?</strong><br>When a project is finished, 5% of what's left over (paid minus costs) is set aside here. Nothing on this page creates an invoice, a payment or an expense, and it never changes a project's budget or report.</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Warranty Fund — Record / Edit a draw -->
+        <div id="wfDrawModal" class="wf-modal" onclick="if(event.target===this)wfCloseDrawForm()">
+            <div class="wf-modal-box">
+                <div class="wf-modal-head">
+                    <div>
+                        <h3 class="wf-modal-title" id="wfDrawTitle">Record a Draw</h3>
+                        <div class="wf-modal-ref" id="wfDrawRef"></div>
+                    </div>
+                    <button type="button" class="wf-modal-x" aria-label="Close" onclick="wfCloseDrawForm()">&times;</button>
+                </div>
+                <form onsubmit="wfSaveDraw(event)">
+                    <div class="wf-modal-body">
+                        <div class="wf-grid">
+                            <div class="wf-field wf-field-wide">
+                                <label for="wfExpDescription">Description</label>
+                                <input type="text" id="wfExpDescription" placeholder="What was this spent on?" required>
+                            </div>
+                            <div class="wf-field">
+                                <label for="wfExpCategory">Category</label>
+                                <input type="text" id="wfExpCategory" list="wfCategoryList" placeholder="e.g. Warranty Rectification" required>
+                                <datalist id="wfCategoryList"></datalist>
+                            </div>
+                            <div class="wf-field">
+                                <label for="wfExpAmount">Amount (₱)</label>
+                                <input type="number" id="wfExpAmount" step="0.01" min="0" placeholder="0.00" required>
+                            </div>
+                            <div class="wf-field">
+                                <label for="wfExpDate">Date</label>
+                                <input type="date" id="wfExpDate" required>
+                            </div>
+                            <div class="wf-field">
+                                <label for="wfExpSource">Attributed to</label>
+                                <select id="wfExpSource"></select>
+                            </div>
+                            <div class="wf-field wf-field-wide">
+                                <label for="wfExpNotes">Notes (optional)</label>
+                                <textarea id="wfExpNotes" placeholder="Anything worth recording about this draw."></textarea>
+                            </div>
+                            <!-- Receipt is captured as a URL for now; the module
+                                 reads/writes these two fields, and an uploader can
+                                 be added later without a schema change. -->
+                            <input type="hidden" id="wfExpReceiptUrl">
+                            <input type="hidden" id="wfExpReceiptName">
+                        </div>
+                    </div>
+                    <div class="wf-modal-foot">
+                        <span class="wf-foot-note" id="wfDrawAvailable"></span>
+                        <button type="button" class="wf-btn" onclick="wfCloseDrawForm()">Cancel</button>
+                        <button type="submit" class="wf-btn wf-btn-primary" id="wfDrawSave">Save Draw</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Warranty Fund — Retention detail drawer -->
+        <div id="wfDetailDrawer" class="wf-drawer" onclick="if(event.target===this)wfCloseDetail()">
+            <div class="wf-drawer-box">
+                <div class="wf-modal-head">
+                    <h3 class="wf-modal-title">Retention Details</h3>
+                    <button type="button" class="wf-modal-x" aria-label="Close" onclick="wfCloseDetail()">&times;</button>
+                </div>
+                <div class="wf-modal-body" id="wfDetailBody"></div>
+                <div class="wf-modal-foot">
+                    <button type="button" class="wf-btn" onclick="wfCloseDetail()">Close</button>
+                </div>
+            </div>
+        </div>
 
         <!-- ════════════ PROJECT MANAGEMENT REPORTS ════════════ -->
         <div id="pmReportsView" class="content-view" style="display:none;">
@@ -4732,7 +4992,10 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-config.js"></script>
-<script src="js/admin.js"></script>
+<!-- ?v= is a cache-buster, same convention as expenses-module.js below. Bump
+     it whenever a change to this file must reach an already-open browser —
+     admin.js carries PRIMARY_NAV, so a stale copy silently hides new tabs. -->
+<script src="js/admin.js?v=20260803f"></script>
 <script src="js/print-utils.js"></script>
 <script src="js/expenses-module.js?v=20260707c"></script>
 <script src="js/overhead-module.js"></script>
@@ -4747,7 +5010,12 @@
 <script src="js/pm-admin.js"></script>
 <script src="js/expense-inbox.js"></script>
 <script src="js/push-notify.js"></script>
-<script src="js/termination-requests.js"></script>
+<!-- Warranty Fund loads BEFORE the closeout module: termination-requests.js
+     reads window.WF_CONST and calls window.wfRecordCloseout(). Both are
+     resolved lazily, so this order is for clarity rather than correctness —
+     the closeout still works if this file is missing. -->
+<script src="js/warranty-fund.js?v=20260803f"></script>
+<script src="js/termination-requests.js?v=20260803f"></script>
 <script src="js/error-log.js"></script>
 <script src="js/ai-summary.js"></script>
 <script src="js/ai-assistant.js"></script>
@@ -5488,6 +5756,7 @@
         expReports:       'Reports',
         expOverhead:      'Overhead Expenses',
         reimbursements:   'Client Reimbursement',
+        warrantyFund:     'Warranty Fund',
         consBatch:        'Current Batch',
         consUrgent:       'Urgent Requests',
         consBatchHistory: 'Batch History',
@@ -5522,13 +5791,17 @@
                 // it here (not just in the nav) also stops a stale link, a hash
                 // route or a leftover button from reaching it.
                 // Client Reimbursement is peso amounts end to end (and owner-only
-                // by RLS, migration 0041), so it is blocked here too.
-                const blocked = ['userNavigator', 'clientAccounts', 'sysErrors', 'expReports', 'reimbursements'];
+                // by RLS, migration 0041), so it is blocked here too — as is the
+                // Warranty Fund, for the same reason (0043).
+                const blocked = ['userNavigator', 'clientAccounts', 'sysErrors', 'expReports',
+                                 'reimbursements', 'warrantyFund'];
                 // Reports and Reimbursement live inside Project Control, so bounce
                 // them back there rather than throwing the user out to the
-                // Appointments dashboard.
+                // Appointments dashboard. Warranty Fund lives in Project
+                // Management, so it bounces to the projects grid instead.
                 if (blocked.includes(view)) {
-                    view = (view === 'expReports' || view === 'reimbursements') ? 'dacsPortal' : 'dashboard';
+                    if (view === 'warrantyFund') view = 'pmProjects';
+                    else view = (view === 'expReports' || view === 'reimbursements') ? 'dacsPortal' : 'dashboard';
                 }
             } else if (currentUserRole === 'worker' || currentUserRole === 'teamLeader') {
                 const allowed = ['consBatch','consUrgent','consBatchHistory'];
@@ -5580,6 +5853,7 @@
         // restarts it and the table sits on "Loading…" forever. init is
         // idempotent — it unsubscribes any existing listener first.
         if (view === 'terminationRequests' && typeof initTerminationRequests === 'function') initTerminationRequests();
+        if (view === 'warrantyFund' && typeof initWarrantyFundModule === 'function') initWarrantyFundModule();
 
         if (EXP_VIEWS.includes(view)) {
             if (typeof _syncAllEmptyStates === 'function') _syncAllEmptyStates();

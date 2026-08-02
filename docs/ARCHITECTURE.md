@@ -105,6 +105,7 @@ Also note: **`projects` means billing period**, not project. Read it that way ev
 | Reimbursement | `reimbursement-module.js` | Client Reimbursement Tracker (`0041`) — expenses the **owner/admin advanced** and whether the **client** paid them back. **Deliberately isolated:** no invoice, payment, expense, payroll or journal side effects, and no money math reads it. Owner-only (staff blocked in nav, switchView and RLS) |
 | Project Management | `pm-admin.js` | Construction projects, weekly bills, procurement, milestones, revolving fund |
 | Project Closeout | `termination-requests.js` | Ends a construction project — **`completed`** (work finished) or **`terminated`** (stopped early). Same final bill either way (cost-plus: actual costs + fee; `budget` is an estimate, not a price); only the status, badge and client wording differ. Writes `termination_requests`, sets the project status, auto-issues the final invoice via `invGenerateFromCloseout`, notifies the client. **Admin-initiated only** since `0042` — the client's Termination Zone and its RLS insert policy are gone. Owner-only (staff blocked in the UI) |
+| Warranty Fund | `warranty-fund.js` | Warranty Retention register + fund (`0043`) — an **internal company reserve**. On completion the company sets aside 5% of the project's remaining cash (`paid − directCost`) to fund warranty work, company expenses and project management; the figure is **frozen at closeout**, accumulates across projects, and draws are recorded against the pool. **Client billing is deliberately not involved** — the company reserves part of its own margin. Tracked, not banked: the pesos stay with normal company funds. Negative net cash contributes zero. **Deliberately isolated** like Reimbursement: no invoice, payment, expense, payroll or journal side effects, no money math reads it, and **a draw charges no project's Spent**. Owner-only (staff blocked in nav, switchView and RLS) |
 | Accomplishment / BOQ | `boq-module.js` | BOQ + accomplishment reports (`percentCompletion` per line item) |
 | Invoices | `invoice-module.js`, `labor-invoice-module.js` | |
 | Payment Requests | `payment-requests.js` | |
@@ -188,7 +189,9 @@ used)" and flags overruns. It never enters Spent, Earned or Profit. Null/0 = not
   `reimbursements` (tracking only, `0041` — never read by the money model)
 - **Project Management** — `construction_projects`, `weekly_bills`, `procurement_items`,
   `pm_labor_contracts`, `milestones`, `accomplishment_reports`, `daily_logs`, `walkthroughs`,
-  `revolving_fund*`, `partner_agreements`
+  `revolving_fund*`, `partner_agreements`,
+  `warranty_retentions` + `warranty_fund_expenses` (tracking only, `0043` — never read by the
+  money model)
 - **Billing** — `boq_documents`, `boq_templates`, `invoices`(+`items`), `labor_invoices`(+`items`),
   `payment_requests`
 - **Procurement** — `requests`(+`items`), `batches`, `inventory`

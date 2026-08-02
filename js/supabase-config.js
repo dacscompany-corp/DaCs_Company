@@ -84,6 +84,16 @@ const REG = {
   // whether the client paid them back. Documentation only: no money math, no
   // invoice/payment side effects. Owner-only by RLS.
   reimbursements: { table: 'reimbursements', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['history'] },
+  // Warranty Retention register + fund (0043) — the retention figure frozen
+  // when a construction project is closed out as COMPLETED, and the draws
+  // made against the accumulated pool. Documentation only, exactly like
+  // reimbursements above: no money math, no invoice/payment side effects.
+  // Owner-only by RLS. `releaseDue` is a plain date column, not a timestamp,
+  // so it stays out of `ts` (wrapping it would shift it a day in UTC+8).
+  warrantyRetentions:   { table: 'warranty_retentions', rename: OWNER,
+                          ts: ['createdAt', 'updatedAt', 'completedAt', 'releasedAt'], json: ['history'] },
+  warrantyFundExpenses: { table: 'warranty_fund_expenses', rename: OWNER,
+                          ts: ['createdAt', 'updatedAt'], json: ['history'] },
 
   boqDocuments:   { table: 'boq_documents', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['costItems', 'terms'] },
   boqTemplates:   { table: 'boq_templates', rename: OWNER, ts: ['createdAt'], json: ['costItems'] },

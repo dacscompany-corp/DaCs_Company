@@ -176,6 +176,79 @@ created from it. `status: 'reimbursed'` is a **label**, not a transaction.
 | `deletedAt` | ts | soft delete; every read filters it. **No UI deletes** — the MVP cancels instead |
 | `createdBy`, `createdAt`, `updatedAt` | — | |
 
+### `warrantyRetentions/{id}` (`warranty-fund.js`) — Warranty Retention register (migration 0043)
+The warranty retention **frozen when a construction project is closed out as `completed`**, one row
+per project. Written only by `window.wfRecordCloseout()`, which `termination-requests.js` calls at
+the end of a completion, or by `window.wfSyncCompleted()` — the **back-fill** for projects that were
+already `completed` before this register existed and would otherwise never get a row. The back-fill
+values each project through `window.trComputeCloseout` (the closeout's own function, reused so the
+two can't drift), skips projects already registered, and is safely re-runnable. Back-filled rows
+carry a `backfilled` note in `history` because their `completedAt` is the best date available
+(`terminatedAt` / `updatedAt`), not a recorded completion timestamp.
+
+**This is an internal company reserve, by design.** On completion the company sets aside 5% of the
+project's remaining cash — `netCash = totalPaid − directCost`, `retention = netCash × 5%` — to fund
+warranty work, company expenses and project management. **Client billing is deliberately not
+involved:** the company is reserving part of its own margin, not withholding from a client. The
+reserve is tracked here but the pesos stay with normal company funds, so a row is a **reserve
+figure, not a separate account balance**. `totalPaid` / `directCost` / `netCashAtCloseout` are
+stored so it stays re-derivable.
+
+`netCash` goes **negative** when direct costs outran payments. `retentionAmount` keeps the raw
+signed value for the record; **only `contributedAmount` (clamped to ≥ 0) is ever summed** into the
+fund.
+
+**Tracking only** — same isolation as `reimbursements` above: no money math reads it, and no
+invoice, payment request, expense, payroll row or journal entry is ever created from it.
+
+| Field | Type | Notes |
+|---|---|---|
+| `userId` | string | owner (`owner_id`) |
+| `refNo` | string | display reference `WR-2026-0001`, generated app-side — **not a key** |
+| `projectId` | string | parent **`construction_projects`** row (PM), never `folders`. **Unique** among live rows — a re-closeout updates the snapshot instead of stacking a second contribution |
+| `projectName`, `clientName`, `clientEmail` | string | snapshotted at closeout, display only |
+| `closeoutId` | string | the `terminationRequests` row that produced this snapshot |
+| `totalPaid` | number | cash actually received, as the closeout computed it |
+| `directCost` | number | labor + materials + site overhead |
+| `netCashAtCloseout` | number | `totalPaid − directCost`; **may be negative** |
+| `retentionPct` | number | the rate applied, in percent (5) |
+| `retentionAmount` | number | raw `netCashAtCloseout × pct/100`; **may be negative** — record only |
+| `contributedAmount` | number | `max(0, retentionAmount)`. **The only column the fund totals** |
+| `completedAt` | ts | when the project was closed out |
+| `warrantyMonths` | number | defects liability period (12) |
+| `releaseDue` | string | `YYYY-MM-DD` (a real `date` column — **not** in the shim's `ts` list, or UTC+8 would shift it), stamped at `completedAt + warrantyMonths`. Whether a project is **still inside its warranty year is derived from this vs today**, never stored |
+| `status` | string | `active` (counts) \| `void` (excluded). **Void is the only manual action on the register** — it is the only one that changes a total. Legacy `held`/`released`/`consumed` from the first build stay valid in the check constraint and read as `active`; **0044** migrated existing rows and moved the default |
+| `releasedAt`, `releasedBy`, `releaseNote` | — | written by the first build's Release button, which no longer exists. Kept so historical rows keep their data; nothing reads them |
+| `notes` | string | free-form |
+| `history` | json | append-only `[{ at, by, status, from, note }]` |
+| `deletedAt` | ts | soft delete; every read filters it |
+| `createdBy`, `createdAt`, `updatedAt` | — | |
+
+### `warrantyFundExpenses/{id}` (`warranty-fund.js`) — draws against the fund (migration 0043)
+Expenses recorded against the accumulated retention pool. **A draw charges no project's Spent** —
+it has no job to charge, and company overhead is never charged to a job. Same isolation as above.
+
+Fund arithmetic (computed only in `_wfTotals()`): `available = (held + released) − drawn`, where
+`drawn` excludes `cancelled` rows. Overdrawing is permitted — the fund is an accrual — but the UI
+confirms it first and flags the KPI red.
+
+| Field | Type | Notes |
+|---|---|---|
+| `userId` | string | owner (`owner_id`) |
+| `refNo` | string | display reference `WF-2026-0001` — **not a key** |
+| `sourceRetentionId` | string | optional `warrantyRetentions` row this draw is attributed to; `null` = general fund. `on delete set null`, so removing a register row never destroys the spend record |
+| `sourceProjectName` | string | snapshotted for display |
+| `category` | string | free text with presets in a datalist |
+| `description` | string | what was spent on |
+| `amount` | number | |
+| `expenseDate` | string | `YYYY-MM-DD` (a real `date` column) |
+| `receiptUrl`, `receiptName` | string | optional; public-format URL in `uploads` (signed on use, 0027) |
+| `notes` | string | free-form |
+| `status` | string | `recorded` \| `cancelled`. Cancelling reverses the draw's effect on the fund; the row stays |
+| `history` | json | append-only `[{ at, by, status, from, note }]` |
+| `deletedAt` | ts | soft delete; every read filters it |
+| `createdBy`, `createdAt`, `updatedAt` | — | |
+
 **Rules:** **owner-only** (`owner_id = auth.uid()`, like `folder_budgets`) — staff are blocked in
 the sidebar, the top nav, `switchView` **and** RLS, because every column is a peso amount or the
 context for one. No client-read policy: the MVP has no client-facing surface.

@@ -228,6 +228,37 @@
 .trdc-warn-text { font-size: 13px; line-height: 1.55; color: var(--trdc-warn-ink); }
 .trdc-warn-text strong { font-weight: 600; }
 
+/* ── Warranty retention (completion only) ──────────────────── */
+/* Amber, like the overpayment notice: this is information to register,
+   not an action. Deliberately quieter than .trdc-hero — the retention is
+   an accrual, and must never out-shout the amount actually being billed. */
+.trdc-retention {
+  margin-top: 14px;
+  padding: 13px 16px;
+  border-radius: 10px;
+  background: var(--trdc-warn-bg);
+  border: 1px solid var(--trdc-warn-edge);
+}
+.trdc-retention-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--trdc-warn-icon);
+}
+.trdc-retention-amount {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  color: var(--trdc-warn-ink);
+  margin: 3px 0 4px;
+}
+.trdc-retention-note { font-size: 12px; line-height: 1.55; color: var(--trdc-warn-ink); }
+/* Nothing set aside — no amount to show, so the note carries it alone. */
+.trdc-retention-none { background: var(--trdc-panel); border-color: var(--trdc-edge); }
+.trdc-retention-none .trdc-retention-label { color: var(--trdc-muted); }
+.trdc-retention-none .trdc-retention-note  { color: var(--trdc-muted); margin-top: 3px; }
+
 /* ── Footer ────────────────────────────────────────────────── */
 .trdc-foot {
   display: flex; align-items: center; justify-content: space-between;

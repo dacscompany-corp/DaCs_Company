@@ -372,10 +372,11 @@ function applyRoleBasedUI() {
 
     if (currentUserRole === 'staff') {
         // Staff can access all expense + construction views, but NOT the
-        // admin-only User Navigator or Client Accounts pages — nor Reports and
-        // Client Reimbursement, which are wall-to-wall peso amounts (staff must
-        // not see money; reimbursements is owner-only by RLS too, 0041).
-        ['userNavigator', 'clientAccounts', 'expReports', 'reimbursements'].forEach(view => {
+        // admin-only User Navigator or Client Accounts pages — nor Reports,
+        // Client Reimbursement and the Warranty Fund, which are wall-to-wall
+        // peso amounts (staff must not see money; reimbursements is owner-only
+        // by RLS too, 0041, and the warranty tables likewise, 0043).
+        ['userNavigator', 'clientAccounts', 'expReports', 'reimbursements', 'warrantyFund'].forEach(view => {
             const el = document.querySelector(`.nav-item[data-view="${view}"]`);
             if (el) el.style.display = 'none';
         });
@@ -749,6 +750,7 @@ function switchView(view) {
         expReports:       'Reports',
         expOverhead:      'Overhead Expenses',
         reimbursements:   'Client Reimbursement',
+        warrantyFund:     'Warranty Fund',
         boqBuilder:       'Accomplishment Report',
         clientAccounts:   'Client Accounts',
         paymentRequests:  'Payment Requests',
@@ -2213,6 +2215,10 @@ const PRIMARY_NAV = [
       modules: [
         { view: 'pmProjects',          label: 'Projects',             icon: 'folder-open' },
         { view: 'terminationRequests', label: 'Project Closeout',     icon: 'check-circle' },
+        // Warranty Retention register + fund — the retention frozen when a
+        // project completes, and draws against the accumulated pool.
+        // Tracking only; owner-only (0043).
+        { view: 'warrantyFund',        label: 'Warranty Fund',        icon: 'shield-check' },
         { view: 'pmReports',           label: 'Reports',              icon: 'file-bar-chart' },
       ]
     },
@@ -2282,6 +2288,12 @@ function _visibleNav() {
                 // along with Client Accounts. Reimbursement is the same: every
                 // column is a peso amount, and its RLS is owner-only (0041).
                 const hidden = ['clientAccounts', 'expReports', 'reimbursements'];
+                return { ...p, modules: p.modules.filter(m => !hidden.includes(m.view)) };
+            }
+            if (role === 'staff' && p.id === 'pm') {
+                // Warranty Fund is peso amounts end to end and owner-only by
+                // RLS (0043) — same reasoning as Reimbursement above.
+                const hidden = ['warrantyFund'];
                 return { ...p, modules: p.modules.filter(m => !hidden.includes(m.view)) };
             }
             return p;

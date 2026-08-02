@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0042** — highest on disk is
-  `0041_reimbursements.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0045** — highest on disk is
+  `0044_warranty_status_simplify.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble.
 - Migrations are **immutable once applied**: never edit or rename an applied file
   (docs and code comments reference them by name). Fix mistakes with a new migration.
@@ -54,7 +54,11 @@ Everything through **0027** is applied to the live database
 **Unverified past 0027.** 0028–0040 exist on disk and were presumably applied as they
 were written, but nobody has confirmed it against the live DB since 2026-07-12.
 **`0041_reimbursements.sql` (Client Reimbursement Tracker) is NOT applied yet** — the
-Reimbursement tab in Project Control cannot save until it is. Get the truth before
+Reimbursement tab in Project Control cannot save until it is.
+**`0043_warranty_retention_fund.sql` IS applied** — confirmed 2026-08-03, when a write
+came back with an RLS rejection rather than a missing-table error. **`0044_warranty_status_simplify.sql`
+is NOT applied yet**: until it lands, the register's check constraint still rejects
+`status = 'active'`, so voiding or restoring a record will fail. Get the truth before
 relying on this line:
 
 ```sql

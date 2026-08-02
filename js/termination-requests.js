@@ -51,6 +51,11 @@
     let _currentId = null;
     let _currentReq = null;
 
+    // Warranty-retention constants. js/warranty-fund.js OWNS these values —
+    // read lazily through window so script load order can't freeze a stale
+    // fallback, and so this file keeps working if that module isn't loaded.
+    const _wfConst = () => (window.WF_CONST || { pct: 5, months: 12 });
+
     // Closeout-flow state
     let _termMode     = 'complete';  // 'complete' | 'terminate'
     let _termProjects = [];    // pickable projects (not already closed out)
@@ -395,6 +400,13 @@
         };
     }
 
+    // Exposed for js/warranty-fund.js, whose back-fill has to value a project
+    // that was completed BEFORE the register existed. It must produce the same
+    // totalPaid / directCost the closeout would have, so this is deliberately
+    // the one implementation rather than a second copy of the ladder above —
+    // a duplicate would drift the moment either side changed.
+    window.trComputeCloseout = _computeCloseout;
+
     // The client's auth uid, needed to notify them and to stamp the final
     // invoice. Projects only store clientEmail, so match on that.
     async function _resolveClientUid(email) {
@@ -603,7 +615,42 @@
                 <div class="trdc-warn-icon">!</div>
                 <div class="trdc-warn-text">Overpaid by <strong>${_fmtPHP(overpaid)}</strong>. Handle the refund or credit separately.</div>
               </div>` : ''}
+
+              ${m.outcome === 'completed' ? _retentionNote(c) : ''}
             </div>`;
+    }
+
+    // Warranty retention preview — completion only. A terminated project never
+    // reached the warranty stage, so it contributes nothing.
+    //
+    // This is the SAME derived figure the Overview KPI shows (5% of paid −
+    // direct cost), and confirming the closeout freezes it into the register
+    // (migration 0043). It is an accrual, not cash withheld: the client is
+    // still invoiced the full amount above. Say so on the card, so nobody
+    // reads it as money being held back from this final bill.
+    function _retentionNote(c) {
+        const { pct, months } = _wfConst();
+        const net = (Number(c.totalPaid) || 0) - (Number(c.directCost) || 0);
+        const amt = net * (pct / 100);
+        // Negative net cash means costs outran payments. Nothing is set aside,
+        // and the register stores 0 as the contribution — flag it rather than
+        // print a negative "retention" the owner might read as a debt.
+        if (amt <= 0) {
+            return `
+              <div class="trdc-retention trdc-retention-none">
+                <div class="trdc-retention-label">Warranty retention</div>
+                <div class="trdc-retention-note">Nothing to set aside — costs ran ahead of payments on this job.</div>
+              </div>`;
+        }
+        return `
+              <div class="trdc-retention">
+                <div class="trdc-retention-label">Warranty retention (${pct}%)</div>
+                <div class="trdc-retention-amount">${_fmtPHP(amt)}</div>
+                <div class="trdc-retention-note">
+                  Set aside to the company warranty reserve for ${months} months.
+                  Recorded for tracking — it is not deducted from the final invoice above.
+                </div>
+              </div>`;
     }
 
     // Collapsible cost breakdown — the design's <sc-if> binding, in plain DOM.
@@ -701,6 +748,32 @@
                 remainingBalance: c.remainingBalance,
                 outcome         : m.outcome,
             });
+
+            // Freeze the warranty retention into the register (0043) — only on
+            // a COMPLETED project; a terminated one never reached warranty.
+            //
+            // Delegated to js/warranty-fund.js because that module is the only
+            // thing allowed to write those tables (the isolation rule in
+            // CLAUDE.md). Deliberately NOT awaited into the failure path: the
+            // project is already closed out and the client already notified by
+            // this point, so a register hiccup must not surface as "closeout
+            // failed" or roll anything back. It is a tracking record, and the
+            // Warranty Fund screen can re-snapshot a missing project later.
+            if (m.outcome === 'completed' && typeof window.wfRecordCloseout === 'function') {
+                try {
+                    await window.wfRecordCloseout({
+                        projectId  : p.id,
+                        projectName: p.projectName || '',
+                        clientName : p.clientName || '',
+                        clientEmail: p.clientEmail || '',
+                        closeoutId : ref.id,
+                        totalPaid  : c.totalPaid,
+                        directCost : c.directCost,
+                    });
+                } catch (e) {
+                    console.error('warranty retention snapshot failed:', e);
+                }
+            }
 
             window.trCloseCloseout();
             alert(`Project ${m.past}.${c.remainingBalance > 0 ? ' Final invoice for ' + _fmtPHP(c.remainingBalance) + ' issued to the client.' : ''}`);
