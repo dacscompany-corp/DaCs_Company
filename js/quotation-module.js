@@ -438,8 +438,39 @@
         qtRenderList();
     };
 
-    // No-op until Task 10 defines the real one.
-    function qtLoadRevisions() {}
+    // ── Task 10: Revisions — snapshot on send, history, diff ────────────
+    function qtLoadRevisions(quotationId) {
+        if (qtState.revUnsub) { qtState.revUnsub(); qtState.revUnsub = null; }
+        if (!quotationId) { qtState.revisions = []; qtRenderRevisions(); return; }
+        qtState.revUnsub = db.collection('quotationRevisions')
+            .where('quotationId', '==', quotationId)
+            .onSnapshot(snap => {
+                qtState.revisions = snap.docs
+                    .map(d => ({ id: d.id, ...d.data() }))
+                    .sort((a, b) => (b.revNo || 0) - (a.revNo || 0));
+                qtRenderRevisions();
+            }, err => console.error('[QT] revisions load error:', err));
+    }
+
+    // The frozen copy. Everything the print sheet needs to reproduce the
+    // document exactly as it was sent — so a revision prints from itself,
+    // never from the live record.
+    function qtSnapshotOf(q) {
+        return {
+            quoteNo: q.quoteNo, revNo: q.revNo,
+            quoteDate: q.quoteDate, validUntil: q.validUntil,
+            clientName: q.clientName, clientEmail: q.clientEmail,
+            clientAddress: q.clientAddress, clientTin: q.clientTin,
+            projectName: q.projectName, location: q.location,
+            subject: q.subject, scopeNote: q.scopeNote,
+            sections: JSON.parse(JSON.stringify(q.sections || [])),
+            discount: q.discount, discountType: q.discountType,
+            vatMode: q.vatMode, vatPct: q.vatPct,
+            totalAmount: q.totalAmount,
+            terms: JSON.parse(JSON.stringify(q.terms || {})),
+            preparedBy: q.preparedBy
+        };
+    }
 
     // ── Task 8: Terms editor helpers ──────────────────────────────────
     function qtTerms() {
@@ -595,6 +626,7 @@
         qtRenderTotals();
         qtRenderTerms();
         qtRenderOutcome();
+        qtRenderRevisions();
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
@@ -613,6 +645,18 @@
         if (!qtState.current) return;
         qtCollectHeader();
         const q = qtState.current;
+
+        // Editing a quotation that has already been sent creates a new
+        // revision. The bump happens on save; the next Send freezes it.
+        if (q.status === 'sent' && qtState.isDirty && qtState.revisions.length
+            && qtState.revisions[0].revNo === q.revNo) {
+            if (confirm(`This quotation was already sent as Rev ${q.revNo}.\n\nSaving creates Rev ${q.revNo + 1}. Continue?`)) {
+                q.revNo = (q.revNo || 1) + 1;
+            } else {
+                return false;
+            }
+        }
+
         q.totalAmount = qtGrandTotal(q);
 
         // Only the columns that exist in migration 0045. The shim maps
@@ -784,8 +828,44 @@
         </div>`;
     }
 
-    // Replaced with the real snapshotting version in Task 10.
-    window.qtSendQuote = function () { window.qtSetStatus('sent'); };
+    window.qtSendQuote = async function () {
+        const q = qtState.current;
+        if (!q) return;
+
+        // Save first so the snapshot matches what is stored, and so a brand
+        // new quotation has an id to hang the revision off.
+        const ok = await window.qtSave();
+        if (!ok) return;            // the save failed — never freeze a snapshot of unsaved data
+        if (!q.id) { qtToast('Save the quotation before sending', 'error'); return; }
+
+        const note = prompt('What changed in this revision? (optional)') || '';
+
+        try {
+            // The snapshot is written BEFORE the status flips. If this insert
+            // fails, the quotation stays where it was and the user is told —
+            // never a "sent" quote with no frozen copy behind it.
+            await db.collection('quotationRevisions').add({
+                quotationId: q.id, userId: qtUid(),
+                revNo: q.revNo || 1,
+                snapshot: qtSnapshotOf(q),
+                totalAmount: qtParseNum(q.totalAmount),
+                sentAt: firebase.firestore.FieldValue.serverTimestamp(),
+                note,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        } catch (e) {
+            console.error('[QT] snapshot failed:', e);
+            qtToast('Could not freeze this revision — status unchanged: ' + (e.message || e), 'error');
+            return;
+        }
+
+        const from = q.status;
+        q.status = 'sent';
+        qtPushHistory('sent', from, note ? 'Rev ' + q.revNo + ': ' + note : 'Rev ' + q.revNo);
+        await window.qtSave();
+        qtToast(`Sent — Rev ${q.revNo} frozen`);
+        qtRenderEditor();
+    };
 
     // ── Task 6: Section tree editor and the totals panel ───────────────
     function qtSections() { return (qtState.current && qtState.current.sections) || []; }
@@ -1078,6 +1158,104 @@
             </div>` : ''}
         </div>`;
     }
+
+    // ── Task 10: Revisions panel and diff ────────────────────────────────
+    function qtRenderRevisions() {
+        const pane = qtEl('qtRevisionsPane');
+        if (!pane) return;
+        const revs = qtState.revisions || [];
+        if (!revs.length) {
+            pane.innerHTML = `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;">
+                <h3 style="font-size:.95rem;margin:0 0 .3rem;">Revision history</h3>
+                <p class="qt-sub">No revisions yet. Sending this quotation freezes Rev 1.</p></div>`;
+            return;
+        }
+        pane.innerHTML = `
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;">
+            <h3 style="font-size:.95rem;margin:0 0 .6rem;">Revision history</h3>
+            <table class="qt-table">
+                <thead><tr><th>Rev</th><th>Sent</th><th class="qt-amt">Total</th><th>Note</th><th></th></tr></thead>
+                <tbody>${revs.map((r, i) => `
+                <tr>
+                    <td><strong>Rev ${r.revNo}</strong></td>
+                    <td>${qtEscHtml(qtTsDate(r.sentAt))}</td>
+                    <td class="qt-amt">₱${qtFmt(r.totalAmount)}</td>
+                    <td>${qtEscHtml(r.note || '')}</td>
+                    <td>
+                        <button class="qt-btn" onclick="qtViewRevision('${r.id}')">View</button>
+                        ${i < revs.length - 1 ? `<button class="qt-btn" onclick="qtShowDiff('${r.id}')">Diff</button>` : ''}
+                    </td>
+                </tr>`).join('')}</tbody>
+            </table>
+            <div id="qtDiffPane"></div>
+        </div>`;
+    }
+
+    function qtTsDate(ts) {
+        if (!ts) return '—';
+        const d = ts.toDate ? ts.toDate() : new Date(ts);
+        const p = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    }
+
+    window.qtShowDiff = function (revId) {
+        const revs = qtState.revisions;
+        const i = revs.findIndex(r => r.id === revId);
+        if (i < 0 || i >= revs.length - 1) return;
+        const curr = revs[i].snapshot, prev = revs[i + 1].snapshot;
+        // Snapshots carry their own totalAmount at the row level.
+        curr.totalAmount = revs[i].totalAmount;
+        prev.totalAmount = revs[i + 1].totalAmount;
+        const d = qtDiffSnapshots(prev, curr);
+
+        const row = (l, tag, delta) => `<li>${tag} <strong>${qtEscHtml(l.description || l.id)}</strong>
+            <span class="qt-sub">${qtEscHtml(l.path)}</span> — ₱${qtFmt(delta)}</li>`;
+
+        qtEl('qtDiffPane').innerHTML = `
+        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:.8rem;margin-top:.8rem;">
+            <h4 style="font-size:.85rem;margin:0 0 .4rem;">Rev ${revs[i + 1].revNo} → Rev ${revs[i].revNo}</h4>
+            <ul style="margin:0 0 .5rem 1rem;font-size:.82rem;">
+                ${d.added.map(l => row(l, '<span style="color:#047857;">added</span>', l.amount)).join('')}
+                ${d.removed.map(l => row(l, '<span style="color:#b91c1c;">deleted</span>', -l.amount)).join('')}
+                ${d.changed.map(c => `<li><span style="color:#b45309;">changed</span>
+                    <strong>${qtEscHtml(c.to.description || c.id)}</strong>
+                    <span class="qt-sub">${qtEscHtml(c.to.path)}</span> —
+                    ${qtEscHtml(c.from.qty)} × ₱${qtFmt(c.from.unitPrice)} (${qtEscHtml(c.from.state)})
+                    → ${qtEscHtml(c.to.qty)} × ₱${qtFmt(c.to.unitPrice)} (${qtEscHtml(c.to.state)})
+                    — <strong>₱${qtFmt(c.delta)}</strong></li>`).join('')}
+                ${(!d.added.length && !d.removed.length && !d.changed.length)
+                    ? '<li class="qt-sub">No line-level changes — only header, terms or totals fields differ.</li>' : ''}
+            </ul>
+            <p style="margin:0;font-weight:700;">Net change: ₱${qtFmt(d.delta)}</p>
+        </div>`;
+    };
+
+    window.qtViewRevision = function (revId) {
+        const r = (qtState.revisions || []).find(x => x.id === revId);
+        if (!r) return;
+        const root = qtEl('quoteRevisionView');
+        if (!root) return;
+        root.innerHTML = `
+        <div class="qt-header">
+            <div>
+                <h2 class="qt-title">${qtEscHtml(r.snapshot.quoteNo)} — Rev ${r.revNo}</h2>
+                <p class="qt-sub">Frozen ${qtEscHtml(qtTsDate(r.sentAt))} · read-only</p>
+            </div>
+            <div style="display:flex;gap:.5rem;">
+                <button class="qt-btn" onclick="switchView('quoteEditor')">← Back to current</button>
+                <button class="qt-btn qt-btn-primary" onclick="qtPrintSheet(qtRevisionSnapshot('${r.id}'))">Print this revision</button>
+            </div>
+        </div>
+        <pre style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;overflow:auto;font-size:.75rem;">${qtEscHtml(JSON.stringify(r.snapshot, null, 2))}</pre>`;
+        switchView('quoteRevision');
+    };
+
+    // Lets the print module (Task 12) render a frozen revision from itself
+    // rather than from the live record.
+    window.qtRevisionSnapshot = function (revId) {
+        const r = (qtState.revisions || []).find(x => x.id === revId);
+        return r ? r.snapshot : null;
+    };
 
     Object.assign(window, { qtToast, qtNewId, qtMarkDirty, qtRenderImages, qtRenderTerms, qtLoadDefaultTerms, qtStatusOf, qtIsOverdue, qtRenderOutcome, qtPushHistory });
 
