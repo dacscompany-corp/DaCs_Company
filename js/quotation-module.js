@@ -641,15 +641,19 @@
     }
 
     // ── Step 4: Save ──────────────────────────────────────────────────
-    window.qtSave = async function () {
+    window.qtSave = async function (opts) {
         if (!qtState.current) return;
         qtCollectHeader();
         const q = qtState.current;
 
         // Editing a quotation that has already been sent creates a new
         // revision. The bump happens on save; the next Send freezes it.
-        if (q.status === 'sent' && qtState.isDirty && qtState.revisions.length
-            && qtState.revisions[0].revNo === q.revNo) {
+        // A sent quote always HAS a revision — an empty list means the listener
+        // has not loaded yet, so prompt rather than silently skipping the bump.
+        const latest = qtState.revisions[0];
+        // A status transition is not a content edit — it must not create a revision.
+        if (!(opts && opts.skipRevBump) && q.status === 'sent' && qtState.isDirty
+            && (!latest || latest.revNo === q.revNo)) {
             if (confirm(`This quotation was already sent as Rev ${q.revNo}.\n\nSaving creates Rev ${q.revNo + 1}. Continue?`)) {
                 q.revNo = (q.revNo || 1) + 1;
             } else {
@@ -761,7 +765,7 @@
         qtPushHistory(status, prevStatus, note);
         qtMarkDirty();
 
-        const ok = await window.qtSave();
+        const ok = await window.qtSave({ skipRevBump: true });
         if (!ok) {
             // The write failed — put the record back so the panel cannot show a
             // status the database never accepted.
