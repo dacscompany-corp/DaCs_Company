@@ -390,6 +390,9 @@
     window.qtSaveTermsAsDefault = async function () {
         qtCollectHeader();
         try {
+            // Note: `{ merge: true }` is a no-op for the kv-backed `settings` collection
+            // in the Supabase shim (js/supabase-config.js) — it always fully overwrites.
+            // This document only ever holds `{ userId, terms }`, so the behaviour is safe.
             await db.collection('settings').doc('quotationDefaults')
                 .set({ userId: qtUid(), terms: qtState.current.terms }, { merge: true });
             qtToast('Saved as your default terms');
@@ -400,9 +403,16 @@
 
     // ── Step 2: Open / new / back ──────────────────────────────────────
     window.qtNewQuote = async function () {
-        qtState.current   = qtBlankQuote();
-        const saved = await qtLoadDefaultTerms();
-        if (saved) qtState.current.terms = saved;
+        // Nothing is published to qtState until the defaults have loaded, so a
+        // slow read can never write into a quotation the user opened meanwhile.
+        const before = qtState.current;
+        const fresh  = qtBlankQuote();
+        const saved  = await qtLoadDefaultTerms();
+        // The user navigated (opened a quote, or clicked New again) while we
+        // were fetching — abandon rather than yanking them somewhere else.
+        if (qtState.current !== before) return;
+        if (saved) fresh.terms = saved;
+        qtState.current   = fresh;
         qtState.revisions = [];
         qtState.isDirty   = false;
         switchView('quoteEditor');
