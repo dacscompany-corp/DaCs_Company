@@ -49,13 +49,16 @@
         const map = new Map();
         const sign = window.dacsMaybeSignUrl;
         if (typeof sign !== 'function') return map;
+        const urls = [];
         for (const sec of (d.sections || [])) {
             for (const im of (sec.images || [])) {
-                if (!im.url || map.has(im.url)) continue;
-                try { map.set(im.url, await sign(im.url)); }
-                catch (e) { map.set(im.url, im.url); }   // fall back to the stored URL
+                if (im.url && !urls.includes(im.url)) urls.push(im.url);
             }
         }
+        await Promise.all(urls.map(async u => {
+            try { map.set(u, await sign(u)); }
+            catch (e) { map.set(u, u); }   // fall back to the stored URL
+        }));
         return map;
     }
 
@@ -165,6 +168,13 @@
             if (!confirm(`This quotation lapsed on ${d.validUntil}.\n\nPrint it anyway?`)) return;
         }
 
+        // Open the window synchronously, while the click's transient user
+        // activation is still valid. Signing first would spend that budget on
+        // network round-trips and get a legitimate print blocked.
+        const w = window.open('', '_blank');
+        if (!w) { if (window.qtToast) window.qtToast('Pop-up blocked — allow pop-ups to print', 'error'); return; }
+        w.document.write('<!DOCTYPE html><meta charset="UTF-8"><title>Preparing…</title><p style="font:14px system-ui;padding:2rem">Preparing quotation…</p>');
+
         const imgMap = await qtSignImages(d);
 
         const esc = window.qtEscHtml;
@@ -247,8 +257,7 @@
 <script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script>
 </body></html>`;
 
-        const w = window.open('', '_blank');
-        if (!w) { if (window.qtToast) window.qtToast('Pop-up blocked — allow pop-ups to print', 'error'); return; }
+        w.document.open();
         w.document.write(html);
         w.document.close();
     };
@@ -256,15 +265,16 @@
     // ── PDF export ────────────────────────────────────────────────────
     // jsPDF and autotable load from CDN on first use only, exactly as
     // boqExportPDF() does — they are ~300KB and most sessions never export.
+    let _qtPdfReady = false;
     window.qtExportPDF = function (snapshot) {
-        if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
+        if (!_qtPdfReady) {
             if (window.qtToast) window.qtToast('Loading PDF library…');
             const s1 = document.createElement('script');
             s1.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
             s1.onload = function () {
                 const s2 = document.createElement('script');
                 s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
-                s2.onload = function () { qtGeneratePDF(snapshot); };
+                s2.onload = function () { _qtPdfReady = true; qtGeneratePDF(snapshot); };
                 s2.onerror = function () { if (window.qtToast) window.qtToast('Could not load the PDF library', 'error'); };
                 document.head.appendChild(s2);
             };
