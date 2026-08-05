@@ -200,12 +200,159 @@
         return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     }
 
+    // Display status. 'expired' is DERIVED, never stored — extending the
+    // validity date fixes it and no cron is needed.
+    function qtStatusOf(q) { return qtIsExpired(q) ? 'expired' : (q.status || 'draft'); }
+
+    function qtIsOverdue(q) {
+        return q.status === 'sent' && q.followUpDate && q.followUpDate < qtTodayKey();
+    }
+
+    function qtLoadList() {
+        if (qtState.unsub) { qtState.unsub(); qtState.unsub = null; }
+        qtState.unsub = db.collection('quotations')
+            .where('userId', '==', qtUid())
+            .onSnapshot(snap => {
+                qtState.list = snap.docs
+                    .map(d => ({ id: d.id, ...d.data() }))
+                    .filter(q => !q.deletedAt);          // soft delete
+                if (!qtState.current) qtRenderList();
+            }, err => {
+                console.error('[QT] list load error:', err);
+                qtToast('Could not load quotations: ' + err.message, 'error');
+            });
+
+        if (typeof window.registerViewCleanup === 'function') {
+            window.registerViewCleanup(() => {
+                if (qtState.unsub)    { qtState.unsub();    qtState.unsub = null; }
+                if (qtState.revUnsub) { qtState.revUnsub(); qtState.revUnsub = null; }
+            });
+        }
+    }
+
+    // Win rate deliberately ignores draft/sent — an undecided quote is not
+    // a loss. Pending value excludes expired quotes: an expired price is
+    // not a live opportunity.
+    function qtPipelineStats(list) {
+        const yr = new Date().getFullYear();
+        const s = { draft: 0, sent: 0, won: 0, lost: 0, expired: 0,
+                    pendingValue: 0, wonValueYear: 0, winRate: 0, overdue: 0 };
+        (list || []).forEach(q => {
+            const st = qtStatusOf(q);
+            s[st] = (s[st] || 0) + 1;
+            if (st === 'sent') s.pendingValue += qtParseNum(q.totalAmount);
+            if (q.status === 'won' && String(q.quoteDate || '').startsWith(String(yr))) {
+                s.wonValueYear += qtParseNum(q.totalAmount);
+            }
+            if (qtIsOverdue(q)) s.overdue++;
+        });
+        const decided = s.won + s.lost;
+        s.winRate = decided ? (s.won / decided) * 100 : 0;
+        return s;
+    }
+
+    function qtFilteredList() {
+        const f = qtState.filters, term = (f.search || '').toLowerCase();
+        return qtState.list
+            .filter(q => f.status === 'all' || qtStatusOf(q) === f.status)
+            .filter(q => f.year === 'all' || String(q.quoteDate || '').startsWith(f.year))
+            .filter(q => !term
+                || (q.quoteNo     || '').toLowerCase().includes(term)
+                || (q.clientName  || '').toLowerCase().includes(term)
+                || (q.projectName || '').toLowerCase().includes(term))
+            // Overdue follow-ups pinned to the top, then newest first.
+            .sort((a, b) => (qtIsOverdue(b) - qtIsOverdue(a))
+                         || String(b.quoteDate || '').localeCompare(String(a.quoteDate || '')));
+    }
+
+    function qtRenderList() {
+        const root = qtEl('quoteListView');
+        if (!root) return;
+        const stats = qtPipelineStats(qtState.list);
+        const rows  = qtFilteredList();
+        const years = [...new Set(qtState.list.map(q => String(q.quoteDate || '').slice(0, 4)).filter(Boolean))].sort().reverse();
+
+        root.innerHTML = `
+        <div class="qt-header">
+            <div>
+                <h2 class="qt-title">Quotations</h2>
+                <p class="qt-sub">Client estimates and proposals${stats.overdue ? ` · <strong>${stats.overdue} follow-up${stats.overdue > 1 ? 's' : ''} overdue</strong>` : ''}</p>
+            </div>
+            <button class="qt-btn qt-btn-primary" onclick="qtNewQuote()">+ New Quotation</button>
+        </div>
+
+        <div class="qt-stats">
+            ${qtStatCard('Draft',        stats.draft)}
+            ${qtStatCard('Sent',         stats.sent)}
+            ${qtStatCard('Expired',      stats.expired)}
+            ${qtStatCard('Won',          stats.won)}
+            ${qtStatCard('Lost',         stats.lost)}
+            ${qtStatCard('Win rate',     stats.winRate.toFixed(0) + '%')}
+            ${qtStatCard('Pending value','₱' + qtFmt(stats.pendingValue))}
+            ${qtStatCard('Won this year','₱' + qtFmt(stats.wonValueYear))}
+        </div>
+
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem;">
+            <select class="qt-btn" onchange="qtSetFilter('status', this.value)">
+                ${['all','draft','sent','expired','won','lost'].map(v =>
+                    `<option value="${v}"${qtState.filters.status === v ? ' selected' : ''}>${v === 'all' ? 'All statuses' : v}</option>`).join('')}
+            </select>
+            <select class="qt-btn" onchange="qtSetFilter('year', this.value)">
+                <option value="all">All years</option>
+                ${years.map(y => `<option value="${y}"${qtState.filters.year === y ? ' selected' : ''}>${y}</option>`).join('')}
+            </select>
+            <input class="qt-btn" style="font-weight:400;" placeholder="Search no. / client / project"
+                   value="${qtEscHtml(qtState.filters.search)}"
+                   oninput="qtSetFilter('search', this.value)">
+        </div>
+
+        ${rows.length ? `
+        <table class="qt-table">
+            <thead><tr>
+                <th>Quote No.</th><th>Client</th><th>Project</th>
+                <th>Date</th><th>Valid until</th><th class="qt-amt">Total</th>
+                <th>Status</th><th></th>
+            </tr></thead>
+            <tbody>${rows.map(qtListRow).join('')}</tbody>
+        </table>` : `
+        <div class="qt-empty">
+            <p><strong>No quotations yet</strong></p>
+            <p>Create one to send a client an itemized estimate.</p>
+        </div>`}`;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function qtStatCard(label, value) {
+        return `<div class="qt-stat"><div class="qt-stat-label">${label}</div><div class="qt-stat-value">${value}</div></div>`;
+    }
+
+    function qtListRow(q) {
+        const st = qtStatusOf(q);
+        return `<tr class="${qtIsOverdue(q) ? 'qt-row-overdue' : ''}">
+            <td><strong>${qtEscHtml(q.quoteNo || '—')}</strong>${(q.revNo || 1) > 1 ? ` <span class="qt-sub">Rev ${q.revNo}</span>` : ''}</td>
+            <td>${qtEscHtml(q.clientName || '—')}</td>
+            <td>${qtEscHtml(q.projectName || '—')}</td>
+            <td>${qtEscHtml(q.quoteDate || '—')}</td>
+            <td>${qtEscHtml(q.validUntil || '—')}${qtIsOverdue(q) ? ' <span class="qt-pill qt-pill-expired">follow up</span>' : ''}</td>
+            <td class="qt-amt">₱${qtFmt(q.totalAmount)}</td>
+            <td><span class="qt-pill qt-pill-${st}">${st}</span></td>
+            <td><button class="qt-btn" onclick="qtOpenQuote('${q.id}')">Open</button></td>
+        </tr>`;
+    }
+
+    window.qtSetFilter = function (key, value) {
+        qtState.filters[key] = value;
+        qtRenderList();
+    };
+    // Replaced with the real editor in Task 5.
+    window.qtOpenQuote = function (id) { console.log('[QT] open', id); };
+    window.qtNewQuote  = function () { console.log('[QT] new'); };
+
     window.initQuotationModule = function (view) {
         if (!qtUid() || !qtIsOwner()) return;
-        if (view === 'quoteList' || !view) {
-            const root = qtEl('quoteListView');
-            if (root) root.innerHTML = '<div class="qt-empty">Quotations — list renders in Task 4.</div>';
-        }
+        qtLoadList();
+        if (view === 'quoteList' || !view) qtRenderList();
     };
 
     Object.assign(window, { qtToast, qtNewId });
