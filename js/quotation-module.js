@@ -783,6 +783,76 @@
         qtMarkDirty(); qtRenderTotals();
     };
 
-    Object.assign(window, { qtToast, qtNewId, qtMarkDirty });
+    // ── Task 7: Section reference images ─────────────────────────────────
+    const QT_MAX_IMG_MB = 5;
+
+    window.qtUploadImages = async function (sIdx, fileList) {
+        const sec = qtSections()[sIdx];
+        if (!sec) return;
+        sec.images = sec.images || [];
+        const files = Array.from(fileList || []);
+        for (const f of files) {
+            if (!/^image\//.test(f.type)) { qtToast(`${f.name} is not an image`, 'error'); continue; }
+            if (f.size > QT_MAX_IMG_MB * 1024 * 1024) {
+                qtToast(`${f.name} is over ${QT_MAX_IMG_MB}MB`, 'error'); continue;
+            }
+            try {
+                const path = `quotations/${qtUid()}/${Date.now()}-${f.name.replace(/[^\w.\-]/g, '_')}`;
+                const ref  = storage.ref().child(path);
+                await ref.put(f);
+                const url  = await ref.getDownloadURL();
+                sec.images.push({ url, name: f.name, caption: '' });
+                qtMarkDirty();
+            } catch (e) {
+                // Per-file failure must never block saving the quotation.
+                console.error('[QT] image upload failed:', e);
+                qtToast(`Upload failed for ${f.name}: ${e.message || e}`, 'error');
+            }
+        }
+        qtRenderImages(sIdx);
+    };
+
+    window.qtRemoveImage = function (sIdx, idx) {
+        if (!confirm('Remove this image from the quotation?')) return;
+        // Removes the reference only — the stored file is left in the bucket
+        // so an earlier revision that still points at it keeps rendering.
+        qtSections()[sIdx].images.splice(idx, 1);
+        qtMarkDirty(); qtRenderImages(sIdx);
+    };
+
+    window.qtSetImageCaption = function (sIdx, idx, text) {
+        qtSections()[sIdx].images[idx].caption = text;
+        qtMarkDirty();
+    };
+
+    function qtRenderImages(sIdx) {
+        const host = qtEl('qtImages-' + sIdx);
+        const sec  = qtSections()[sIdx];
+        if (!host || !sec) return;
+        const imgs = sec.images || [];
+        host.innerHTML = `
+        <div style="margin-top:.6rem;">
+            <label class="qt-btn" style="display:inline-block;cursor:pointer;">
+                + Reference image
+                <input type="file" accept="image/*" multiple hidden
+                       onchange="qtUploadImages(${sIdx}, this.files); this.value='';">
+            </label>
+            <span class="qt-sub" style="margin-left:.5rem;">Renders and photos printed with this section (max ${QT_MAX_IMG_MB}MB each)</span>
+            ${imgs.length ? `<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.5rem;">
+                ${imgs.map((im, i) => `
+                <div style="width:150px;">
+                    <img src="${qtEscHtml(im.url)}" alt="${qtEscHtml(im.name)}"
+                         style="width:150px;height:105px;object-fit:cover;border:1px solid #e5e7eb;border-radius:8px;">
+                    <input class="qt-btn" style="width:100%;font-weight:400;font-size:.75rem;margin-top:.2rem;"
+                           placeholder="Caption" value="${qtEscHtml(im.caption)}"
+                           oninput="qtSetImageCaption(${sIdx}, ${i}, this.value)">
+                    <button class="qt-btn qt-btn-danger" style="width:100%;margin-top:.2rem;font-size:.75rem;"
+                            onclick="qtRemoveImage(${sIdx}, ${i})">Remove</button>
+                </div>`).join('')}
+            </div>` : ''}
+        </div>`;
+    }
+
+    Object.assign(window, { qtToast, qtNewId, qtMarkDirty, qtRenderImages });
 
 })();
