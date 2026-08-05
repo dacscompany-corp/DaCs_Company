@@ -650,11 +650,13 @@
             qtState.isDirty = false;
             qtToast('Quotation saved');
             qtRenderEditor();
+            return true;
         } catch (e) {
             console.error('[QT] save failed:', e);
             // Surface the real Postgres message — a missing column fails the
             // entire save, and a generic "could not save" hides which one.
             qtToast('Save failed: ' + (e.message || e), 'error');
+            return false;
         }
     };
 
@@ -696,6 +698,11 @@
         const q = qtState.current;
         if (!q || q.status === status) return;
 
+        // Capture previous state for rollback if save fails.
+        const prevStatus    = q.status;
+        const prevNote      = q.statusNote;
+        const prevDecided   = q.decidedAt;
+
         // WON creates NOTHING. No folder, no construction project, no invoice,
         // no contract value — converting a won quote into a project is a
         // manual admin action (migration 0045 isolation contract).
@@ -703,13 +710,23 @@
         if (status === 'lost') {
             note = prompt('Reason for loss (optional):') || '';
         }
-        const from = q.status;
+
         q.status     = status;
-        q.statusNote = note || q.statusNote || '';
+        q.statusNote = (status === 'lost') ? note : '';
         q.decidedAt  = (status === 'won' || status === 'lost') ? new Date().toISOString() : null;
-        qtPushHistory(status, from, note);
+        qtPushHistory(status, prevStatus, note);
         qtMarkDirty();
-        await window.qtSave();
+
+        const ok = await window.qtSave();
+        if (!ok) {
+            // The write failed — put the record back so the panel cannot show a
+            // status the database never accepted.
+            q.status     = prevStatus;
+            q.statusNote = prevNote;
+            q.decidedAt  = prevDecided;
+            if (Array.isArray(q.history)) q.history.pop();   // drop the entry we just appended
+            qtToast('Status not saved — reverted', 'error');
+        }
         qtRenderEditor();
     };
 
