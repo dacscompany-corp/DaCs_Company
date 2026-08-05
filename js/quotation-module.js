@@ -798,7 +798,7 @@
             }
             try {
                 const path = `quotations/${qtUid()}/${Date.now()}-${f.name.replace(/[^\w.\-]/g, '_')}`;
-                const ref  = storage.ref().child(path);
+                const ref  = storage.ref(path);
                 await ref.put(f);
                 const url  = await ref.getDownloadURL();
                 sec.images.push({ url, name: f.name, caption: '' });
