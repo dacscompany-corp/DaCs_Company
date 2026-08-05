@@ -337,7 +337,8 @@
             <td>${qtEscHtml(q.validUntil || '—')}${qtIsOverdue(q) ? ' <span class="qt-pill qt-pill-expired">follow up</span>' : ''}</td>
             <td class="qt-amt">₱${qtFmt(q.totalAmount)}</td>
             <td><span class="qt-pill qt-pill-${st}">${st}</span></td>
-            <td><button class="qt-btn" onclick="qtOpenQuote('${q.id}')">Open</button></td>
+            <td><button class="qt-btn" onclick="qtOpenQuote('${q.id}')">Open</button>
+            <button class="qt-btn" onclick="qtOpenQuote('${q.id}'); setTimeout(qtPrintSheet, 200);">Print</button></td>
         </tr>`;
     }
 
@@ -583,6 +584,7 @@
             <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
                 <button class="qt-btn" onclick="qtBackToList()">← Back</button>
                 <button class="qt-btn qt-btn-primary" onclick="qtSave()">Save</button>
+                <button class="qt-btn" onclick="qtPrintSheet()">Print</button>
             </div>
         </div>
 
@@ -1372,5 +1374,7 @@
     };
 
     Object.assign(window, { qtToast, qtNewId, qtMarkDirty, qtRenderImages, qtRenderTerms, qtLoadDefaultTerms, qtStatusOf, qtIsOverdue, qtRenderOutcome, qtPushHistory, qtLoadPresets, qtRenderPresetBar });
+
+    window.qtState = qtState;   // read-only use by quotation-print.js
 
 })();
