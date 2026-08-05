@@ -345,16 +345,219 @@
         qtState.filters[key] = value;
         qtRenderList();
     };
-    // Replaced with the real editor in Task 5.
-    window.qtOpenQuote = function (id) { console.log('[QT] open', id); };
-    window.qtNewQuote  = function () { console.log('[QT] new'); };
 
+    // ── Step 1: Blank quote factory and editor state ──────────────────
+    function qtBlankQuote() {
+        const today = qtTodayKey();
+        const d = new Date(); d.setDate(d.getDate() + 30);
+        const p = n => String(n).padStart(2, '0');
+        const validUntil = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+        return {
+            id: null,
+            quoteNo: qtNextQuoteNo(qtState.list), revNo: 1,
+            quoteDate: today, validUntil,
+            clientName: '', clientEmail: '', clientAddress: '', clientTin: '',
+            projectName: '', location: '', subject: 'Project Estimate', scopeNote: '',
+            sections: [],
+            discount: 0, discountType: 'amount',
+            vatMode: 'none', vatPct: 12,
+            totalAmount: 0,
+            status: 'draft', statusNote: '', decidedAt: null,
+            followUpDate: '', followUpNote: '',
+            terms: qtDefaultTerms(), preparedBy: '', history: []
+        };
+    }
+
+    // Overwritten from settings/quotationDefaults in Task 8.
+    function qtDefaultTerms() {
+        return { validityNote: '', payment: '', deliveryTimeline: '', warranty: '',
+                 exclusions: '', conditions: [], signOff: { preparedBy: true, clientApproval: true } };
+    }
+
+    function qtMarkDirty() { qtState.isDirty = true; }
+
+    // ── Step 2: Open / new / back ──────────────────────────────────────
+    window.qtNewQuote = function () {
+        qtState.current   = qtBlankQuote();
+        qtState.revisions = [];
+        qtState.isDirty   = false;
+        switchView('quoteEditor');
+        qtRenderEditor();
+    };
+
+    window.qtOpenQuote = function (id) {
+        const q = qtState.list.find(x => x.id === id);
+        if (!q) { qtToast('Quotation not found', 'error'); return; }
+        qtState.current   = JSON.parse(JSON.stringify(q));   // edit a copy
+        qtState.revisions = [];
+        qtState.isDirty   = false;
+        switchView('quoteEditor');
+        qtRenderEditor();
+        qtLoadRevisions(id);                                  // defined in Task 10
+    };
+
+    window.qtBackToList = function () {
+        if (qtState.isDirty && !confirm('You have unsaved changes. Leave anyway?')) return;
+        qtState.current = null;
+        qtState.isDirty = false;
+        switchView('quoteList');
+        qtRenderList();
+    };
+
+    // No-op until Task 10 defines the real one.
+    function qtLoadRevisions() {}
+
+    // ── Step 3: Header form renderer ───────────────────────────────────
+    function qtField(label, key, type, extra) {
+        const v = qtState.current[key];
+        return `<label style="display:block;font-size:.75rem;color:#6b7280;font-weight:600;margin-bottom:.15rem;">${label}</label>
+                <input class="qt-btn" style="font-weight:400;width:100%;margin-bottom:.6rem;"
+                       type="${type || 'text'}" data-qt-key="${key}"
+                       value="${qtEscHtml(v === null || v === undefined ? '' : v)}"
+                       ${extra || ''} oninput="qtMarkDirty()">`;
+    }
+
+    function qtRenderEditor() {
+        const root = qtEl('quoteEditorView');
+        const q = qtState.current;
+        if (!root || !q) return;
+        const st = qtStatusOf(q);
+
+        root.innerHTML = `
+        <div class="qt-header">
+            <div>
+                <h2 class="qt-title">${qtEscHtml(q.quoteNo || 'New Quotation')}
+                    ${q.revNo > 1 ? `<span class="qt-sub">Rev ${q.revNo}</span>` : ''}
+                    <span class="qt-pill qt-pill-${st}">${st}</span></h2>
+                <p class="qt-sub">${qtEscHtml(q.projectName || 'Untitled project')}</p>
+            </div>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+                <button class="qt-btn" onclick="qtBackToList()">← Back</button>
+                <button class="qt-btn qt-btn-primary" onclick="qtSave()">Save</button>
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin-top:1rem;">
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;">
+                <h3 style="font-size:.85rem;margin:0 0 .75rem;">Client</h3>
+                ${qtField('Client name',  'clientName')}
+                ${qtField('Email',        'clientEmail', 'email')}
+                ${qtField('Address',      'clientAddress')}
+                ${qtField('TIN',          'clientTin')}
+            </div>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;">
+                <h3 style="font-size:.85rem;margin:0 0 .75rem;">Project</h3>
+                ${qtField('Project name', 'projectName')}
+                ${qtField('Location',     'location')}
+                ${qtField('Subject',      'subject')}
+                ${qtField('Prepared by',  'preparedBy')}
+            </div>
+            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;">
+                <h3 style="font-size:.85rem;margin:0 0 .75rem;">Document</h3>
+                ${qtField('Quote no.',    'quoteNo')}
+                ${qtField('Quote date',   'quoteDate',  'date')}
+                ${qtField('Valid until',  'validUntil', 'date')}
+            </div>
+        </div>
+
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;">
+            <label style="display:block;font-size:.75rem;color:#6b7280;font-weight:600;margin-bottom:.15rem;">Scope note</label>
+            <textarea class="qt-btn" style="font-weight:400;width:100%;min-height:60px;" data-qt-key="scopeNote"
+                      oninput="qtMarkDirty()">${qtEscHtml(q.scopeNote)}</textarea>
+        </div>
+
+        <div id="qtSectionsPane"></div>   <!-- Task 6 -->
+        <div id="qtTotalsPane"></div>     <!-- Task 6 -->
+        <div id="qtTermsPane"></div>      <!-- Task 8 -->
+        <div id="qtOutcomePane"></div>    <!-- Task 9 -->
+        <div id="qtRevisionsPane"></div>  <!-- Task 10 -->
+        `;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    // Reads every [data-qt-key] input back into qtState.current.
+    function qtCollectHeader() {
+        const root = qtEl('quoteEditorView');
+        if (!root || !qtState.current) return;
+        root.querySelectorAll('[data-qt-key]').forEach(inp => {
+            qtState.current[inp.dataset.qtKey] = inp.value;
+        });
+    }
+
+    // ── Step 4: Save ──────────────────────────────────────────────────
+    window.qtSave = async function () {
+        if (!qtState.current) return;
+        qtCollectHeader();
+        const q = qtState.current;
+        q.totalAmount = qtGrandTotal(q);
+
+        // Only the columns that exist in migration 0045. The shim maps
+        // camelCase straight to snake_case, so ANY stray key fails the whole
+        // save — never spread an arbitrary object in here.
+        const payload = {
+            userId: qtUid(),
+            quoteNo: q.quoteNo, revNo: q.revNo,
+            quoteDate: q.quoteDate || null, validUntil: q.validUntil || null,
+            clientName: q.clientName, clientEmail: q.clientEmail,
+            clientAddress: q.clientAddress, clientTin: q.clientTin,
+            projectName: q.projectName, location: q.location,
+            subject: q.subject, scopeNote: q.scopeNote,
+            sections: q.sections || [],
+            discount: qtParseNum(q.discount), discountType: q.discountType || 'amount',
+            vatMode: q.vatMode || 'none', vatPct: qtParseNum(q.vatPct),
+            totalAmount: q.totalAmount,
+            status: q.status || 'draft', statusNote: q.statusNote || '',
+            decidedAt: q.decidedAt || null,
+            followUpDate: q.followUpDate || null, followUpNote: q.followUpNote || '',
+            terms: q.terms || {}, preparedBy: q.preparedBy || '',
+            history: q.history || [],
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        try {
+            if (q.id) {
+                await db.collection('quotations').doc(q.id).update(payload);
+            } else {
+                payload.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                payload.createdBy = (window.auth.currentUser && window.auth.currentUser.email) || '';
+                const ref = await db.collection('quotations').add(payload);
+                q.id = ref.id;
+            }
+            qtState.isDirty = false;
+            qtToast('Quotation saved');
+            qtRenderEditor();
+        } catch (e) {
+            console.error('[QT] save failed:', e);
+            // Surface the real Postgres message — a missing column fails the
+            // entire save, and a generic "could not save" hides which one.
+            qtToast('Save failed: ' + (e.message || e), 'error');
+        }
+    };
+
+    // ── Step 5: Ctrl+S and the dirty guard ─────────────────────────────
     window.initQuotationModule = function (view) {
         if (!qtUid() || !qtIsOwner()) return;
         qtLoadList();
         if (view === 'quoteList' || !view) qtRenderList();
+        if (view === 'quoteEditor' && qtState.current) qtRenderEditor();
+
+        // Attach once — init runs on EVERY view switch, so without this guard
+        // Ctrl+S fires qtSave() N times and the unload guards stack.
+        if (!window._qtHandlersWired) {
+            window._qtHandlersWired = true;
+            window.addEventListener('beforeunload', e => {
+                if (qtState.isDirty) { e.preventDefault(); e.returnValue = ''; }
+            });
+            document.addEventListener('keydown', e => {
+                if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                    const v = qtEl('quoteEditorView');
+                    if (v && v.style.display !== 'none') { e.preventDefault(); window.qtSave(); }
+                }
+            });
+        }
     };
 
-    Object.assign(window, { qtToast, qtNewId });
+    Object.assign(window, { qtToast, qtNewId, qtMarkDirty });
 
 })();
