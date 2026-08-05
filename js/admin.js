@@ -376,7 +376,9 @@ function applyRoleBasedUI() {
         // Client Reimbursement and the Warranty Fund, which are wall-to-wall
         // peso amounts (staff must not see money; reimbursements is owner-only
         // by RLS too, 0041, and the warranty tables likewise, 0043).
-        ['userNavigator', 'clientAccounts', 'expReports', 'reimbursements', 'warrantyFund'].forEach(view => {
+        // Quotations is the same story (0045) — hide the sidebar link too,
+        // not just the top-nav tab from _visibleNav().
+        ['userNavigator', 'clientAccounts', 'expReports', 'reimbursements', 'warrantyFund', 'quoteList'].forEach(view => {
             const el = document.querySelector(`.nav-item[data-view="${view}"]`);
             if (el) el.style.display = 'none';
         });
@@ -2222,6 +2224,15 @@ const PRIMARY_NAV = [
         { view: 'pmReports',           label: 'Reports',              icon: 'file-bar-chart' },
       ]
     },
+    // Outgoing client quotations. Pre-sales: a quotation exists before any
+    // project does, and belongs to NEITHER project system — hence its own
+    // top-level tab rather than a slot under Project Control.
+    // Owner-only (0045), like Reimbursement and Warranty Fund.
+    { id: 'quotations', label: 'Quotations', sub: 'Estimates & Proposals', defaultView: 'quoteList',
+      modules: [
+        { view: 'quoteList', label: 'Quotations', icon: 'file-text' },
+      ]
+    },
     { id: 'appointments', label: 'Appointments', sub: 'Workflow', defaultView: 'dashboard',
       modules: [
         // Dashboard is the primary's default landing — clicking the "Appointments"
@@ -2253,6 +2264,7 @@ function _activeFocus() {
 const _FOCUS_SUBVIEWS = {
     pm:       ['pmWorkspace'],
     expenses: ['expOverview', 'expExpenses', 'laborInvoices'],
+    quotations: ['quoteEditor', 'quoteRevision'],
 };
 // All views reachable inside the focused module(s) — used by the switchView guard.
 window.focusAllowedViews = function () {
@@ -2278,7 +2290,9 @@ function _visibleNav() {
     const role = currentUserRole;
     let nav = PRIMARY_NAV
         .filter(p => {
-            if (role === 'staff') return p.id !== 'users';
+            // Quotations is peso amounts end to end and owner-only by RLS
+            // (0045) — same reasoning as Reimbursement and Warranty Fund.
+            if (role === 'staff') return p.id !== 'users' && p.id !== 'quotations';
             if (role === 'worker' || role === 'teamLeader') return p.id === 'construction';
             return true;
         })

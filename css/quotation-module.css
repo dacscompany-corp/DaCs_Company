@@ -1,0 +1,39 @@
+/* ════════════════════════════════════════════════════════════════════
+   QUOTATIONS MODULE — list, editor, revision viewer.
+   Print styles live in the generated print window, not here.
+   ════════════════════════════════════════════════════════════════════ */
+.qt-header      { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; flex-wrap:wrap; }
+.qt-title       { font-size:1.35rem; font-weight:700; color:#111827; margin:0; }
+.qt-sub         { font-size:.85rem; color:#6b7280; margin:.15rem 0 0; }
+
+.qt-stats       { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.75rem; margin:1rem 0; }
+.qt-stat        { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:.75rem .9rem; }
+.qt-stat-label  { font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; }
+.qt-stat-value  { font-size:1.15rem; font-weight:700; color:#111827; margin-top:.2rem; }
+
+.qt-table       { width:100%; border-collapse:collapse; background:#fff; font-size:.85rem; }
+.qt-table th    { text-align:left; padding:.6rem .7rem; background:#f9fafb; border-bottom:1px solid #e5e7eb;
+                  font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; color:#6b7280; }
+.qt-table td    { padding:.6rem .7rem; border-bottom:1px solid #f3f4f6; }
+.qt-table tr.qt-row-overdue { background:#fffbeb; }
+.qt-amt         { text-align:right; font-variant-numeric:tabular-nums; }
+
+.qt-pill        { display:inline-block; padding:.15rem .5rem; border-radius:999px; font-size:.72rem; font-weight:600; }
+.qt-pill-draft  { background:#f3f4f6; color:#4b5563; }
+.qt-pill-sent   { background:#dbeafe; color:#1d4ed8; }
+.qt-pill-won    { background:#d1fae5; color:#047857; }
+.qt-pill-lost   { background:#fee2e2; color:#b91c1c; }
+.qt-pill-expired{ background:#fef3c7; color:#b45309; }
+
+.qt-btn         { padding:.45rem .9rem; border-radius:8px; border:1px solid #d1d5db; background:#fff;
+                  font-size:.82rem; font-weight:600; cursor:pointer; }
+.qt-btn-primary { background:#059669; border-color:#059669; color:#fff; }
+.qt-btn-danger  { background:#fff; border-color:#fca5a5; color:#b91c1c; }
+
+.qt-empty       { text-align:center; padding:3rem 1rem; color:#6b7280; }
+
+.qt-toast       { position:fixed; bottom:1.25rem; left:50%; transform:translateX(-50%) translateY(1rem);
+                  background:#111827; color:#fff; padding:.7rem 1.1rem; border-radius:8px; font-size:.85rem;
+                  opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:10000; }
+.qt-toast-show  { opacity:1; transform:translateX(-50%) translateY(0); }
+.qt-toast-error { background:#b91c1c; }

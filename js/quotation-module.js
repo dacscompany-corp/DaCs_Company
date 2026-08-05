@@ -157,4 +157,57 @@
         qtFlattenLines, qtDiffSnapshots
     });
 
+    // ── State ─────────────────────────────────────────────────────────
+    const qtState = {
+        list:      [],     // all live quotations for this owner
+        presets:   [],     // client + scope presets
+        current:   null,   // the quotation open in the editor
+        revisions: [],     // revisions of the current quotation
+        filters:   { status: 'all', year: 'all', search: '' },
+        isDirty:   false,
+        unsub:     null,
+        revUnsub:  null
+    };
+
+    function qtUid() {
+        return (window.auth && window.auth.currentUser && window.auth.currentUser.uid) || null;
+    }
+    // Owner-only. Staff are already blocked in _visibleNav and switchView;
+    // this is the module's own third gate (RLS is the fourth).
+    function qtIsOwner() {
+        return typeof window.currentUserRole === 'undefined'
+            || window.currentUserRole === null
+            || window.currentUserRole === 'owner';
+    }
+    function qtEl(id) { return document.getElementById(id); }
+
+    function qtToast(msg, type) {
+        let t = qtEl('qtToast');
+        if (!t) {
+            t = document.createElement('div');
+            t.id = 'qtToast';
+            document.body.appendChild(t);
+        }
+        t.textContent = msg;
+        t.className = 'qt-toast qt-toast-show' + (type === 'error' ? ' qt-toast-error' : '');
+        clearTimeout(t._timer);
+        t._timer = setTimeout(() => t.classList.remove('qt-toast-show'), 3200);
+    }
+
+    // Stable ids for tree nodes. The revision diff matches lines by these,
+    // so they must survive a save/load round-trip — never regenerate them.
+    function qtNewId() {
+        return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    }
+
+    window.initQuotationModule = function (view) {
+        if (!qtUid() || !qtIsOwner()) return;
+        if (view === 'quoteList' || !view) {
+            const root = qtEl('quoteListView');
+            if (root) root.innerHTML = '<div class="qt-empty">Quotations — list renders in Task 4.</div>';
+        }
+    };
+
+    Object.assign(window, { qtToast, qtNewId });
+
 })();
