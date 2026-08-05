@@ -594,6 +594,7 @@
         qtRenderSections();
         qtRenderTotals();
         qtRenderTerms();
+        qtRenderOutcome();
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
@@ -679,6 +680,95 @@
             });
         }
     };
+
+    // ── Task 9: Outcome panel — status, follow-ups, history ──────────────
+    function qtPushHistory(status, from, note) {
+        const q = qtState.current;
+        if (!Array.isArray(q.history)) q.history = [];
+        q.history.push({
+            at: new Date().toISOString(),
+            by: (window.auth.currentUser && window.auth.currentUser.email) || '',
+            status, from: from || null, note: note || ''
+        });
+    }
+
+    window.qtSetStatus = async function (status) {
+        const q = qtState.current;
+        if (!q || q.status === status) return;
+
+        // WON creates NOTHING. No folder, no construction project, no invoice,
+        // no contract value — converting a won quote into a project is a
+        // manual admin action (migration 0045 isolation contract).
+        let note = '';
+        if (status === 'lost') {
+            note = prompt('Reason for loss (optional):') || '';
+        }
+        const from = q.status;
+        q.status     = status;
+        q.statusNote = note || q.statusNote || '';
+        q.decidedAt  = (status === 'won' || status === 'lost') ? new Date().toISOString() : null;
+        qtPushHistory(status, from, note);
+        qtMarkDirty();
+        await window.qtSave();
+        qtRenderEditor();
+    };
+
+    window.qtSetOutcomeField = function (key, value) {
+        qtState.current[key] = value;
+        qtMarkDirty();
+    };
+
+    function qtRenderOutcome() {
+        const pane = qtEl('qtOutcomePane');
+        const q = qtState.current;
+        if (!pane || !q) return;
+        const st = qtStatusOf(q);
+        const overdue = qtIsOverdue(q);
+
+        pane.innerHTML = `
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;">
+            <h3 style="font-size:.95rem;margin:0 0 .6rem;">Outcome</h3>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
+                <span class="qt-pill qt-pill-${st}">${st}</span>
+                ${q.status === 'draft' ? '<button class="qt-btn qt-btn-primary" onclick="qtSendQuote()">Send →</button>' : ''}
+                ${q.status === 'sent'  ? `<button class="qt-btn qt-btn-primary" onclick="qtSetStatus('won')">Mark Won</button>
+                                          <button class="qt-btn qt-btn-danger"  onclick="qtSetStatus('lost')">Mark Lost</button>` : ''}
+                ${(q.status === 'won' || q.status === 'lost') ? `<button class="qt-btn" onclick="qtSetStatus('sent')">Reopen</button>` : ''}
+            </div>
+            ${st === 'expired' ? `<p class="qt-sub" style="color:#b45309;margin:.5rem 0 0;">
+                This quotation lapsed on ${qtEscHtml(q.validUntil)}. Extend the validity date and save — that creates a new revision.</p>` : ''}
+            ${q.statusNote ? `<p class="qt-sub" style="margin:.5rem 0 0;">Note: ${qtEscHtml(q.statusNote)}</p>` : ''}
+
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem;margin-top:.9rem;">
+                <div>
+                    <label style="display:block;font-size:.75rem;color:#6b7280;font-weight:600;">Follow-up date</label>
+                    <input class="qt-btn" style="font-weight:400;width:100%;" type="date"
+                           value="${qtEscHtml(q.followUpDate || '')}"
+                           onchange="qtSetOutcomeField('followUpDate', this.value)">
+                    ${overdue ? '<p class="qt-sub" style="color:#b45309;">Overdue — pinned to the top of the list</p>' : ''}
+                </div>
+                <div>
+                    <label style="display:block;font-size:.75rem;color:#6b7280;font-weight:600;">Follow-up note</label>
+                    <input class="qt-btn" style="font-weight:400;width:100%;"
+                           value="${qtEscHtml(q.followUpNote || '')}"
+                           oninput="qtSetOutcomeField('followUpNote', this.value)">
+                </div>
+            </div>
+            <p class="qt-sub" style="margin:.5rem 0 0;">Reminders are an in-app flag only — nothing is emailed to the client.</p>
+
+            ${(q.history || []).length ? `
+            <details style="margin-top:.9rem;">
+                <summary class="qt-sub" style="cursor:pointer;">Status history (${q.history.length})</summary>
+                <ul style="margin:.4rem 0 0 1rem;font-size:.8rem;color:#4b5563;">
+                    ${q.history.slice().reverse().map(h =>
+                        `<li>${qtEscHtml(String(h.at).slice(0, 16).replace('T', ' '))} — ${qtEscHtml(h.from || '·')} → <strong>${qtEscHtml(h.status)}</strong>${h.note ? ' · ' + qtEscHtml(h.note) : ''}${h.by ? ' · ' + qtEscHtml(h.by) : ''}</li>`).join('')}
+                </ul>
+            </details>` : ''}
+        </div>`;
+    }
+
+    // Replaced with the real snapshotting version in Task 10.
+    window.qtSendQuote = function () { window.qtSetStatus('sent'); };
 
     // ── Task 6: Section tree editor and the totals panel ───────────────
     function qtSections() { return (qtState.current && qtState.current.sections) || []; }
@@ -972,6 +1062,6 @@
         </div>`;
     }
 
-    Object.assign(window, { qtToast, qtNewId, qtMarkDirty, qtRenderImages, qtRenderTerms, qtLoadDefaultTerms });
+    Object.assign(window, { qtToast, qtNewId, qtMarkDirty, qtRenderImages, qtRenderTerms, qtLoadDefaultTerms, qtStatusOf, qtIsOverdue, qtRenderOutcome, qtPushHistory });
 
 })();
