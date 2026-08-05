@@ -43,12 +43,19 @@
         return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
     }
 
+    // Raw value of a line, ignoring its state. A `removed` line still prints
+    // its own amount so a client can see what the deletion was worth.
+    function qtRawLineAmount(line) {
+        if (!line) return 0;
+        return qtParseNum(line.qty) * qtParseNum(line.unitPrice);
+    }
+
     // Only a `normal` line contributes. optional / waived / removed all
     // count zero — but the row KEEPS its qty and unitPrice, which is what
     // lets qtDiffSnapshots value a deletion.
     function qtLineAmount(line) {
         if (!line || (line.state && line.state !== 'normal')) return 0;
-        return qtParseNum(line.qty) * qtParseNum(line.unitPrice);
+        return qtRawLineAmount(line);
     }
 
     function qtGroupTotal(group) {
@@ -151,7 +158,7 @@
 
     // Expose the calc engine for the rest of the module and the console.
     Object.assign(window, {
-        qtParseNum, qtFmt, qtEscHtml, qtTodayKey, qtLineAmount, qtGroupTotal,
+        qtParseNum, qtFmt, qtEscHtml, qtTodayKey, qtLineAmount, qtRawLineAmount, qtGroupTotal,
         qtSectionTotal, qtProjectCost, qtDiscountAmount, qtSubTotal,
         qtVatAmount, qtGrandTotal, qtIsExpired, qtNextQuoteNo,
         qtFlattenLines, qtDiffSnapshots

@@ -56,7 +56,7 @@ const src = read('js/quotation-module.js');
 const M = evalWith(
   slice(src, '// ==== QT CALC ENGINE START ====', '// ==== QT CALC ENGINE END ====', 'quotation-module.js'),
   { window: {} },
-  ['qtParseNum','qtLineAmount','qtGroupTotal','qtSectionTotal','qtProjectCost',
+  ['qtParseNum','qtLineAmount','qtRawLineAmount','qtGroupTotal','qtSectionTotal','qtProjectCost',
    'qtDiscountAmount','qtSubTotal','qtVatAmount','qtGrandTotal','qtIsExpired',
    'qtNextQuoteNo','qtFlattenLines','qtDiffSnapshots','qtTodayKey']
 );
@@ -113,6 +113,16 @@ test('removed line contributes zero', () => {
 test('removed line KEEPS its price in the data (deletion is valuable)', () => {
   const l = line('X', 3, 9602, 'removed');
   eq(l.qty * l.unitPrice, 28806, 'raw price still recoverable');
+});
+// The print sheet needs a line's value REGARDLESS of state — a removed line
+// prints struck through but still shows what it was worth. Without this the
+// print module would reimplement qty x price outside the tested engine.
+test('raw line amount ignores state', () => {
+  eq(M.qtRawLineAmount(line('X', 3, 9602, 'removed')), 28806);
+  eq(M.qtRawLineAmount(line('X', 3, 9602)), 28806);
+});
+test('raw line amount is zero for a missing line', () => {
+  eq(M.qtRawLineAmount(null), 0);
 });
 test('blank and junk numbers parse to zero, never NaN', () => {
   eq(M.qtParseNum(''), 0);

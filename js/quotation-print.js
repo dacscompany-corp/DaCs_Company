@@ -34,8 +34,35 @@
         return isNaN(d) ? key : d.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
     }
 
+    // ── Image signing ─────────────────────────────────────────────────
+    // The `uploads` bucket is PRIVATE (migration 0027). supabase-config.js §11b
+    // swaps stored URLs for signed ones via a MutationObserver — but that
+    // observer watches THIS document only, and the print sheet is written into
+    // a separate window that never loads the shim. So every image has to be
+    // resolved HERE, in the parent page, before the HTML string is built;
+    // otherwise the client-facing sheet prints broken-image icons.
+    //
+    // The result is a lookup map, NEVER written back onto `im.url`: signed URLs
+    // expire, and persisting one would push a dead link into the database and
+    // into every future revision snapshot.
+    async function qtSignImages(d) {
+        const map = new Map();
+        const sign = window.dacsMaybeSignUrl;
+        if (typeof sign !== 'function') return map;
+        for (const sec of (d.sections || [])) {
+            for (const im of (sec.images || [])) {
+                if (!im.url || map.has(im.url)) continue;
+                try { map.set(im.url, await sign(im.url)); }
+                catch (e) { map.set(im.url, im.url); }   // fall back to the stored URL
+            }
+        }
+        return map;
+    }
+
     // ── Table rows ────────────────────────────────────────────────────
-    function qtRowsHtml(d) {
+    // `imgMap` maps each stored image URL to a short-lived signed one, resolved
+    // by the caller in the PARENT page — see qtSignImages below for why.
+    function qtRowsHtml(d, imgMap) {
         const esc = window.qtEscHtml, fmt = window.qtFmt;
         let html = '';
         (d.sections || []).forEach((sec, si) => {
@@ -48,7 +75,7 @@
 
             (sec.images || []).forEach(im => {
                 html += `<tr class="p-img"><td></td><td colspan="5">
-                    <img src="${esc(im.url)}" alt="${esc(im.name || '')}">
+                    <img src="${esc((imgMap && imgMap.get(im.url)) || im.url)}" alt="${esc(im.name || '')}">
                     ${im.caption ? `<div class="p-cap">${esc(im.caption)}</div>` : ''}
                 </td></tr>`;
             });
@@ -68,7 +95,7 @@
                               : state === 'optional' ? ' p-optional' : '';
                     const amtCell = lump ? ''
                         : state === 'waived'  ? 'WAIVED'
-                        : state === 'removed' ? fmt(window.qtParseNum(l.qty) * window.qtParseNum(l.unitPrice))
+                        : state === 'removed' ? fmt(window.qtRawLineAmount(l))
                         : fmt(window.qtLineAmount(l));
                     html += `<tr class="p-l3${cls}">
                         <td></td>
@@ -125,14 +152,20 @@
     }
 
     // ── Entry point ───────────────────────────────────────────────────
-    window.qtPrintSheet = function (snapshot) {
+    // async only because the private-bucket images must be signed before the
+    // sheet is built. Every call site is an inline handler that ignores the
+    // return value, so no caller changes.
+    window.qtPrintSheet = async function (snapshot) {
         const d = snapshot || qtDoc();
         if (!d) { if (window.qtToast) window.qtToast('Nothing to print', 'error'); return; }
 
-        // An expired price should not go out by accident.
+        // An expired price should not go out by accident. Asked BEFORE any
+        // signing work, so declining costs nothing.
         if (!snapshot && window.qtIsExpired && window.qtIsExpired(d)) {
             if (!confirm(`This quotation lapsed on ${d.validUntil}.\n\nPrint it anyway?`)) return;
         }
+
+        const imgMap = await qtSignImages(d);
 
         const esc = window.qtEscHtml;
         const base = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
@@ -198,7 +231,7 @@
 
   <table class="p-items">
     <thead><tr><th>#</th><th>DESCRIPTION</th><th>QTY</th><th>UNIT</th><th>UNIT PRICE</th><th>AMOUNT</th></tr></thead>
-    <tbody>${qtRowsHtml(d)}</tbody>
+    <tbody>${qtRowsHtml(d, imgMap)}</tbody>
   </table>
 
   ${qtTotalsHtml(d)}
