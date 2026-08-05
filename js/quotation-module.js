@@ -592,6 +592,7 @@
                 <button class="qt-btn" onclick="qtBackToList()">← Back</button>
                 <button class="qt-btn qt-btn-primary" onclick="qtSave()">Save</button>
                 <button class="qt-btn" onclick="qtPrintSheet()">Print</button>
+                <button class="qt-btn" onclick="qtExportPDF()">PDF</button>
             </div>
         </div>
 
@@ -1367,6 +1368,7 @@
             <div style="display:flex;gap:.5rem;">
                 <button class="qt-btn" onclick="switchView('quoteEditor')">← Back to current</button>
                 <button class="qt-btn qt-btn-primary" onclick="qtPrintSheet(qtRevisionSnapshot('${r.id}'))">Print this revision</button>
+                <button class="qt-btn" onclick="qtExportPDF(qtRevisionSnapshot('${r.id}'))">PDF</button>
             </div>
         </div>
         <pre style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;overflow:auto;font-size:.75rem;">${qtEscHtml(JSON.stringify(r.snapshot, null, 2))}</pre>`;

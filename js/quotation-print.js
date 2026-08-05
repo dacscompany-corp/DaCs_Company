@@ -253,4 +253,119 @@
         w.document.close();
     };
 
+    // ── PDF export ────────────────────────────────────────────────────
+    // jsPDF and autotable load from CDN on first use only, exactly as
+    // boqExportPDF() does — they are ~300KB and most sessions never export.
+    window.qtExportPDF = function (snapshot) {
+        if (typeof window.jspdf === 'undefined' && typeof window.jsPDF === 'undefined') {
+            if (window.qtToast) window.qtToast('Loading PDF library…');
+            const s1 = document.createElement('script');
+            s1.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+            s1.onload = function () {
+                const s2 = document.createElement('script');
+                s2.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js';
+                s2.onload = function () { qtGeneratePDF(snapshot); };
+                s2.onerror = function () { if (window.qtToast) window.qtToast('Could not load the PDF library', 'error'); };
+                document.head.appendChild(s2);
+            };
+            s1.onerror = function () { if (window.qtToast) window.qtToast('Could not load the PDF library', 'error'); };
+            document.head.appendChild(s1);
+            return;
+        }
+        qtGeneratePDF(snapshot);
+    };
+
+    function qtGeneratePDF(snapshot) {
+        const d = snapshot || qtDoc();
+        if (!d) { if (window.qtToast) window.qtToast('Nothing to export', 'error'); return; }
+        if (!snapshot && window.qtIsExpired && window.qtIsExpired(d)
+            && !confirm(`This quotation lapsed on ${d.validUntil}.\n\nExport it anyway?`)) return;
+
+        const fmt = window.qtFmt;
+        const jsPDF = (window.jspdf || window).jsPDF;
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const M = 12;
+        let y = M;
+
+        doc.setFontSize(13).setFont(undefined, 'bold');
+        doc.text(COMPANY.name, M, y + 4);
+        doc.setFontSize(12);
+        doc.text((d.subject || 'PROJECT ESTIMATE').toUpperCase(), 210 - M, y + 4, { align: 'right' });
+        y += 10;
+
+        doc.setFontSize(8.5).setFont(undefined, 'normal');
+        [['CLIENT', d.clientName], ['PROJECT', d.projectName], ['LOCATION', d.location],
+         ['QUOTE NO.', (d.quoteNo || '') + (d.revNo > 1 ? ' (Rev ' + d.revNo + ')' : '')],
+         ['DATE', qtPrettyDate(d.quoteDate)], ['VALID UNTIL', qtPrettyDate(d.validUntil)]
+        ].forEach(([k, v]) => {
+            if (!v) return;
+            doc.setFont(undefined, 'bold').text(k, M, y);
+            doc.setFont(undefined, 'normal').text(String(v), M + 28, y);
+            y += 4.4;
+        });
+        y += 2;
+
+        // Flatten the tree into autotable rows, preserving the visual levels.
+        const body = [];
+        (d.sections || []).forEach((sec, si) => {
+            body.push([{ content: `${si + 1}. ${sec.label || 'SECTION'}`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [245, 245, 245] } },
+                       { content: fmt(window.qtSectionTotal(sec)), styles: { fontStyle: 'bold', halign: 'right' } }]);
+            const lump = sec.pricing === 'lump';
+            (sec.groups || []).forEach(g => {
+                body.push(['', { content: g.label || '', colSpan: 4, styles: { fontStyle: 'bold' } },
+                           { content: lump && g.lumpAmount ? fmt(g.lumpAmount) : (lump ? '' : fmt(window.qtGroupTotal(g))), styles: { halign: 'right' } }]);
+                (g.lines || []).forEach(l => {
+                    const st = l.state || 'normal';
+                    const amt = lump ? ''
+                        : st === 'waived'  ? 'WAIVED'
+                        : st === 'removed' ? fmt(window.qtRawLineAmount(l))
+                        : fmt(window.qtLineAmount(l));
+                    const label = (l.description || '')
+                        + (st === 'optional' ? ' (optional)' : '')
+                        + (st === 'removed'  ? '  [REMOVED]'  : '');
+                    body.push(['', '   ' + label, l.qty || '', l.unit || '',
+                               lump ? '' : fmt(l.unitPrice),
+                               { content: amt, styles: { halign: 'right' } }]);
+                });
+            });
+        });
+
+        doc.autoTable({
+            startY: y, margin: { left: M, right: M },
+            head: [['#', 'DESCRIPTION', 'QTY', 'UNIT', 'UNIT PRICE', 'AMOUNT']],
+            body,
+            styles: { fontSize: 7.5, cellPadding: 1.4 },
+            headStyles: { fillColor: [240, 240, 240], textColor: 20, fontSize: 7 },
+            columnStyles: { 0: { cellWidth: 8 }, 2: { cellWidth: 12, halign: 'center' },
+                            3: { cellWidth: 14, halign: 'center' }, 4: { cellWidth: 22, halign: 'right' },
+                            5: { cellWidth: 26, halign: 'right' } }
+        });
+
+        y = doc.lastAutoTable.finalY + 6;
+        const pc = window.qtProjectCost(d.sections), disc = window.qtDiscountAmount(d),
+              sub = window.qtSubTotal(d), vat = window.qtVatAmount(d), tot = window.qtGrandTotal(d);
+        const totRows = [['PROJECT COST', fmt(pc)]];
+        if (disc) totRows.push(['LESS: DISCOUNT', '(' + fmt(disc) + ')']);
+        totRows.push(['SUB TOTAL', fmt(sub)]);
+        totRows.push(['PLUS: VAT', d.vatMode === 'none' ? 'Not applicable'
+                      : d.vatMode === 'inclusive' ? '(incl. ' + fmt(vat) + ')' : fmt(vat)]);
+        totRows.push(['TOTAL PROJECT COST', fmt(tot)]);
+
+        doc.autoTable({
+            startY: y, margin: { left: 210 - M - 78 },
+            body: totRows, theme: 'grid',
+            styles: { fontSize: 8.5, cellPadding: 1.6 },
+            columnStyles: { 0: { cellWidth: 48 }, 1: { cellWidth: 30, halign: 'right' } },
+            didParseCell: function (data) {
+                if (data.row.index === totRows.length - 1) {
+                    data.cell.styles.fontStyle = 'bold';
+                    data.cell.styles.fillColor = [234, 247, 239];
+                }
+            }
+        });
+
+        const name = `${(d.quoteNo || 'quotation')}${d.revNo > 1 ? '-rev' + d.revNo : ''}.pdf`;
+        doc.save(name.replace(/[^\w.\-]/g, '_'));
+    }
+
 })();
