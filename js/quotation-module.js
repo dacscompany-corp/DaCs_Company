@@ -376,9 +376,33 @@
 
     function qtMarkDirty() { qtState.isDirty = true; }
 
+    // ── Task 8: Terms defaults loader ──────────────────────────────────
+    // Standard clauses are typed once and reused, following the
+    // settings/invoiceDefaults precedent in labor-invoice-module.js.
+    async function qtLoadDefaultTerms() {
+        try {
+            const doc = await db.collection('settings').doc('quotationDefaults').get();
+            if (doc.exists && doc.data() && doc.data().terms) return doc.data().terms;
+        } catch (e) { console.warn('[QT] no saved default terms:', e.message); }
+        return null;
+    }
+
+    window.qtSaveTermsAsDefault = async function () {
+        qtCollectHeader();
+        try {
+            await db.collection('settings').doc('quotationDefaults')
+                .set({ userId: qtUid(), terms: qtState.current.terms }, { merge: true });
+            qtToast('Saved as your default terms');
+        } catch (e) {
+            qtToast('Could not save defaults: ' + (e.message || e), 'error');
+        }
+    };
+
     // ── Step 2: Open / new / back ──────────────────────────────────────
-    window.qtNewQuote = function () {
+    window.qtNewQuote = async function () {
         qtState.current   = qtBlankQuote();
+        const saved = await qtLoadDefaultTerms();
+        if (saved) qtState.current.terms = saved;
         qtState.revisions = [];
         qtState.isDirty   = false;
         switchView('quoteEditor');
@@ -407,6 +431,36 @@
     // No-op until Task 10 defines the real one.
     function qtLoadRevisions() {}
 
+    // ── Task 8: Terms editor helpers ──────────────────────────────────
+    function qtTerms() {
+        const q = qtState.current;
+        if (!q.terms) q.terms = qtDefaultTerms();
+        if (!Array.isArray(q.terms.conditions)) q.terms.conditions = [];
+        if (!q.terms.signOff) q.terms.signOff = { preparedBy: true, clientApproval: true };
+        return q.terms;
+    }
+
+    window.qtSetTerm = function (key, value) { qtTerms()[key] = value; qtMarkDirty(); };
+    window.qtSetSignOff = function (key, on)  { qtTerms().signOff[key] = on; qtMarkDirty(); };
+
+    window.qtAddCondition = function () {
+        qtTerms().conditions.push({ title: '', body: '', include: true });
+        qtMarkDirty(); qtRenderTerms();
+    };
+    window.qtSetCondition = function (i, field, value) {
+        qtTerms().conditions[i][field] = value; qtMarkDirty();
+    };
+    window.qtDeleteCondition = function (i) {
+        if (!confirm('Delete this condition?')) return;
+        qtTerms().conditions.splice(i, 1); qtMarkDirty(); qtRenderTerms();
+    };
+    window.qtMoveCondition = function (i, dir) {
+        const arr = qtTerms().conditions, j = i + dir;
+        if (j < 0 || j >= arr.length) return;
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+        qtMarkDirty(); qtRenderTerms();
+    };
+
     // ── Step 3: Header form renderer ───────────────────────────────────
     function qtField(label, key, type, extra) {
         const v = qtState.current[key];
@@ -415,6 +469,60 @@
                        type="${type || 'text'}" data-qt-key="${key}"
                        value="${qtEscHtml(v === null || v === undefined ? '' : v)}"
                        ${extra || ''} oninput="qtMarkDirty()">`;
+    }
+
+    function qtTermArea(label, key, hint) {
+        return `<label style="display:block;font-size:.75rem;color:#6b7280;font-weight:600;margin:.6rem 0 .15rem;">${label}
+                ${hint ? `<span style="font-weight:400;">— ${hint}</span>` : ''}</label>
+                <textarea class="qt-btn" style="font-weight:400;width:100%;min-height:56px;"
+                          oninput="qtSetTerm('${key}', this.value)">${qtEscHtml(qtTerms()[key])}</textarea>`;
+    }
+
+    function qtRenderTerms() {
+        const pane = qtEl('qtTermsPane');
+        if (!pane || !qtState.current) return;
+        const t = qtTerms();
+        pane.innerHTML = `
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <h3 style="font-size:.95rem;margin:0;">Terms &amp; conditions</h3>
+                <button class="qt-btn" onclick="qtSaveTermsAsDefault()">Save as my defaults</button>
+            </div>
+            ${qtTermArea('Validity',          'validityNote',     'e.g. valid for thirty (30) calendar days from issuance')}
+            ${qtTermArea('Payment terms',     'payment',          'downpayment, progress billing, turnover')}
+            ${qtTermArea('Delivery timeline', 'deliveryTimeline', 'e.g. 14 to 21 days upon approval / payment, whichever comes last')}
+            ${qtTermArea('Warranty',          'warranty',         'what is covered, for how long, and what is excluded')}
+            ${qtTermArea('Exclusions',        'exclusions',       'one per line')}
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:1rem;">
+                <h4 style="font-size:.85rem;margin:0;">Numbered conditions</h4>
+                <button class="qt-btn" onclick="qtAddCondition()">+ Condition</button>
+            </div>
+            ${t.conditions.map((c, i) => `
+            <div style="border:1px solid #f3f4f6;border-radius:8px;padding:.6rem;margin-top:.5rem;">
+                <div style="display:flex;gap:.4rem;align-items:center;">
+                    <span class="qt-sub" style="width:1.5rem;">${i + 1}.</span>
+                    <input class="qt-btn" style="flex:1;font-weight:600;" placeholder="Title"
+                           value="${qtEscHtml(c.title)}" oninput="qtSetCondition(${i},'title',this.value)">
+                    <label class="qt-sub" style="display:flex;gap:.25rem;align-items:center;">
+                        <input type="checkbox" ${c.include !== false ? 'checked' : ''}
+                               onchange="qtSetCondition(${i},'include',this.checked)"> print
+                    </label>
+                    <button class="qt-btn" onclick="qtMoveCondition(${i},-1)">↑</button>
+                    <button class="qt-btn" onclick="qtMoveCondition(${i},1)">↓</button>
+                    <button class="qt-btn qt-btn-danger" onclick="qtDeleteCondition(${i})">×</button>
+                </div>
+                <textarea class="qt-btn" style="font-weight:400;width:100%;min-height:52px;margin-top:.4rem;"
+                          placeholder="Body" oninput="qtSetCondition(${i},'body',this.value)">${qtEscHtml(c.body)}</textarea>
+            </div>`).join('')}
+
+            <div style="margin-top:1rem;display:flex;gap:1rem;flex-wrap:wrap;">
+                <label class="qt-sub"><input type="checkbox" ${t.signOff.preparedBy !== false ? 'checked' : ''}
+                       onchange="qtSetSignOff('preparedBy', this.checked)"> Print "Submitted by" block</label>
+                <label class="qt-sub"><input type="checkbox" ${t.signOff.clientApproval !== false ? 'checked' : ''}
+                       onchange="qtSetSignOff('clientApproval', this.checked)"> Print "Client approval / date" block</label>
+            </div>
+        </div>`;
     }
 
     function qtRenderEditor() {
@@ -475,6 +583,7 @@
 
         qtRenderSections();
         qtRenderTotals();
+        qtRenderTerms();
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
@@ -853,6 +962,6 @@
         </div>`;
     }
 
-    Object.assign(window, { qtToast, qtNewId, qtMarkDirty, qtRenderImages });
+    Object.assign(window, { qtToast, qtNewId, qtMarkDirty, qtRenderImages, qtRenderTerms, qtLoadDefaultTerms });
 
 })();
