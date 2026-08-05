@@ -473,6 +473,9 @@
         <div id="qtRevisionsPane"></div>  <!-- Task 10 -->
         `;
 
+        qtRenderSections();
+        qtRenderTotals();
+
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
@@ -556,6 +559,204 @@
                 }
             });
         }
+    };
+
+    // ── Task 6: Section tree editor and the totals panel ───────────────
+    function qtSections() { return (qtState.current && qtState.current.sections) || []; }
+
+    window.qtAddSection = function () {
+        qtSections().push({ id: qtNewId(), label: '', pricing: 'rated', lumpAmount: '', images: [], groups: [] });
+        qtMarkDirty(); qtRenderSections(); qtRenderTotals();
+    };
+    window.qtAddGroup = function (sIdx) {
+        qtSections()[sIdx].groups.push({ id: qtNewId(), label: '', lumpAmount: '', lines: [] });
+        qtMarkDirty(); qtRenderSections(); qtRenderTotals();
+    };
+    window.qtAddLine = function (sIdx, gIdx) {
+        qtSections()[sIdx].groups[gIdx].lines.push({
+            id: qtNewId(), description: '', qty: 1, unit: 'set', unitPrice: 0, state: 'normal'
+        });
+        qtMarkDirty(); qtRenderSections(); qtRenderTotals();
+    };
+
+    window.qtDeleteNode = function (kind, sIdx, gIdx, lIdx) {
+        // A line is DELETED here only while drafting. To retire a line from a
+        // sent quote, set its state to 'removed' instead — that keeps the
+        // price in the data so the revision diff can value the deletion.
+        if (!confirm('Delete this ' + kind + '?')) return;
+        if (kind === 'section') qtSections().splice(sIdx, 1);
+        else if (kind === 'group') qtSections()[sIdx].groups.splice(gIdx, 1);
+        else qtSections()[sIdx].groups[gIdx].lines.splice(lIdx, 1);
+        qtMarkDirty(); qtRenderSections(); qtRenderTotals();
+    };
+
+    window.qtMoveNode = function (kind, sIdx, gIdx, lIdx, dir) {
+        const arr = kind === 'section' ? qtSections()
+                  : kind === 'group'   ? qtSections()[sIdx].groups
+                  :                      qtSections()[sIdx].groups[gIdx].lines;
+        const i = kind === 'section' ? sIdx : kind === 'group' ? gIdx : lIdx;
+        const j = i + dir;
+        if (j < 0 || j >= arr.length) return;
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+        qtMarkDirty(); qtRenderSections();
+    };
+
+    window.qtSetNodeField = function (kind, sIdx, gIdx, lIdx, field, value) {
+        const node = kind === 'section' ? qtSections()[sIdx]
+                   : kind === 'group'   ? qtSections()[sIdx].groups[gIdx]
+                   :                      qtSections()[sIdx].groups[gIdx].lines[lIdx];
+        node[field] = value;
+        qtMarkDirty(); qtRenderTotals();
+        if (field === 'state') qtRenderSections();   // restyle the row
+    };
+
+    window.qtSetPricing = function (sIdx, mode) {
+        qtSections()[sIdx].pricing = mode;
+        qtMarkDirty(); qtRenderSections(); qtRenderTotals();
+    };
+
+    const QT_STATES = ['normal', 'optional', 'waived', 'removed'];
+
+    function qtRenderSections() {
+        const pane = qtEl('qtSectionsPane');
+        if (!pane || !qtState.current) return;
+        const secs = qtSections();
+
+        pane.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:1.25rem 0 .5rem;">
+            <h3 style="font-size:.95rem;margin:0;">Itemized estimate</h3>
+            <button class="qt-btn" onclick="qtAddSection()">+ Section</button>
+        </div>
+        ${secs.length ? secs.map((sec, si) => `
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-bottom:.75rem;">
+            <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+                <input class="qt-btn" style="flex:1;min-width:180px;font-weight:700;" placeholder="SECTION NAME"
+                       value="${qtEscHtml(sec.label)}"
+                       oninput="qtSetNodeField('section',${si},0,0,'label',this.value)">
+                <select class="qt-btn" onchange="qtSetPricing(${si}, this.value)">
+                    <option value="rated"${sec.pricing === 'rated' ? ' selected' : ''}>Rated (qty × price)</option>
+                    <option value="lump"${sec.pricing === 'lump'  ? ' selected' : ''}>Lump sum (LOT)</option>
+                </select>
+                ${sec.pricing === 'lump' ? `
+                <input class="qt-btn qt-amt" style="width:140px;" placeholder="LOT amount"
+                       value="${qtEscHtml(sec.lumpAmount)}"
+                       oninput="qtSetNodeField('section',${si},0,0,'lumpAmount',this.value)">` : ''}
+                <span class="qt-stat-value">₱${qtFmt(qtSectionTotal(sec))}</span>
+                <button class="qt-btn" onclick="qtMoveNode('section',${si},0,0,-1)">↑</button>
+                <button class="qt-btn" onclick="qtMoveNode('section',${si},0,0,1)">↓</button>
+                <button class="qt-btn qt-btn-danger" onclick="qtDeleteNode('section',${si},0,0)">Delete</button>
+            </div>
+            ${sec.pricing === 'lump' && sec.lumpAmount !== '' && sec.lumpAmount !== null
+              ? `<p class="qt-sub" style="margin:.4rem 0 0;">This section is priced as one LOT. The group amounts below are a printed breakdown and do <strong>not</strong> add to the total.</p>` : ''}
+
+            <div id="qtImages-${si}"></div>   <!-- Task 7 -->
+
+            ${(sec.groups || []).map((g, gi) => `
+            <div style="border-top:1px solid #f3f4f6;margin-top:.75rem;padding-top:.75rem;">
+                <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+                    <input class="qt-btn" style="flex:1;min-width:160px;font-weight:600;" placeholder="Group / sub-item"
+                           value="${qtEscHtml(g.label)}"
+                           oninput="qtSetNodeField('group',${si},${gi},0,'label',this.value)">
+                    ${sec.pricing === 'lump' ? `
+                    <input class="qt-btn qt-amt" style="width:130px;" placeholder="Amount"
+                           value="${qtEscHtml(g.lumpAmount)}"
+                           oninput="qtSetNodeField('group',${si},${gi},0,'lumpAmount',this.value)">` : `
+                    <span class="qt-sub">₱${qtFmt(qtGroupTotal(g))}</span>`}
+                    <button class="qt-btn" onclick="qtMoveNode('group',${si},${gi},0,-1)">↑</button>
+                    <button class="qt-btn" onclick="qtMoveNode('group',${si},${gi},0,1)">↓</button>
+                    <button class="qt-btn qt-btn-danger" onclick="qtDeleteNode('group',${si},${gi},0)">×</button>
+                </div>
+                <table class="qt-table" style="margin-top:.5rem;">
+                    <thead><tr>
+                        <th style="width:38%">Description</th><th style="width:70px">Qty</th>
+                        <th style="width:80px">Unit</th>
+                        ${sec.pricing === 'rated' ? '<th style="width:110px">Unit price</th><th class="qt-amt" style="width:110px">Amount</th>' : '<th colspan="2"></th>'}
+                        <th style="width:110px">State</th><th style="width:40px"></th>
+                    </tr></thead>
+                    <tbody>${(g.lines || []).map((l, li) => qtLineRow(sec, si, gi, li, l)).join('')}</tbody>
+                </table>
+                <button class="qt-btn" style="margin-top:.4rem;" onclick="qtAddLine(${si},${gi})">+ Line</button>
+            </div>`).join('')}
+
+            <button class="qt-btn" style="margin-top:.75rem;" onclick="qtAddGroup(${si})">+ Group</button>
+        </div>`).join('') : `<div class="qt-empty">No sections yet. Add one to start itemizing.</div>`}`;
+
+        if (typeof qtRenderImages === 'function') qtSections().forEach((_, si) => qtRenderImages(si));
+    }
+
+    function qtLineRow(sec, si, gi, li, l) {
+        const struck = l.state === 'removed' ? 'text-decoration:line-through;opacity:.55;' : '';
+        const faded  = (l.state === 'optional' || l.state === 'waived') ? 'opacity:.7;' : '';
+        return `<tr style="${struck}${faded}">
+            <td><input class="qt-btn" style="width:100%;font-weight:400;" value="${qtEscHtml(l.description)}"
+                       oninput="qtSetNodeField('line',${si},${gi},${li},'description',this.value)"></td>
+            <td><input class="qt-btn" style="width:100%;font-weight:400;" value="${qtEscHtml(l.qty)}"
+                       oninput="qtSetNodeField('line',${si},${gi},${li},'qty',this.value)"></td>
+            <td><input class="qt-btn" style="width:100%;font-weight:400;" value="${qtEscHtml(l.unit)}"
+                       oninput="qtSetNodeField('line',${si},${gi},${li},'unit',this.value)"></td>
+            ${sec.pricing === 'rated' ? `
+            <td><input class="qt-btn qt-amt" style="width:100%;font-weight:400;" value="${qtEscHtml(l.unitPrice)}"
+                       oninput="qtSetNodeField('line',${si},${gi},${li},'unitPrice',this.value)"></td>
+            <td class="qt-amt">${qtFmt(qtLineAmount(l))}</td>` : '<td colspan="2" class="qt-sub">scope only</td>'}
+            <td><select class="qt-btn" style="width:100%;"
+                        onchange="qtSetNodeField('line',${si},${gi},${li},'state',this.value)">
+                ${QT_STATES.map(s => `<option value="${s}"${(l.state || 'normal') === s ? ' selected' : ''}>${s}</option>`).join('')}
+            </select></td>
+            <td><button class="qt-btn qt-btn-danger" onclick="qtDeleteNode('line',${si},${gi},${li})">×</button></td>
+        </tr>`;
+    }
+
+    function qtRenderTotals() {
+        const pane = qtEl('qtTotalsPane');
+        const q = qtState.current;
+        if (!pane || !q) return;
+        const pc = qtProjectCost(q.sections), disc = qtDiscountAmount(q),
+              sub = qtSubTotal(q), vat = qtVatAmount(q), total = qtGrandTotal(q);
+
+        pane.innerHTML = `
+        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;max-width:460px;margin-left:auto;">
+            <table style="width:100%;font-size:.88rem;">
+                <tr><td>Project Cost</td><td class="qt-amt">₱${qtFmt(pc)}</td></tr>
+                <tr>
+                    <td>Less: Discount
+                        <select class="qt-btn" style="padding:.15rem .4rem;" onchange="qtSetTotalsField('discountType', this.value)">
+                            <option value="amount"${q.discountType === 'amount'  ? ' selected' : ''}>₱</option>
+                            <option value="percent"${q.discountType === 'percent' ? ' selected' : ''}>%</option>
+                        </select>
+                        <input class="qt-btn qt-amt" style="width:90px;padding:.15rem .4rem;font-weight:400;"
+                               value="${qtEscHtml(q.discount)}" oninput="qtSetTotalsField('discount', this.value)">
+                    </td>
+                    <td class="qt-amt">(${qtFmt(disc)})</td>
+                </tr>
+                <tr style="border-top:1px solid #e5e7eb;"><td><strong>Sub-total</strong></td><td class="qt-amt"><strong>₱${qtFmt(sub)}</strong></td></tr>
+                <tr>
+                    <td>Plus: VAT
+                        <select class="qt-btn" style="padding:.15rem .4rem;" onchange="qtSetTotalsField('vatMode', this.value)">
+                            <option value="none"${q.vatMode === 'none' ? ' selected' : ''}>Not applicable</option>
+                            <option value="exclusive"${q.vatMode === 'exclusive' ? ' selected' : ''}>Exclusive (add)</option>
+                            <option value="inclusive"${q.vatMode === 'inclusive' ? ' selected' : ''}>Inclusive (built in)</option>
+                        </select>
+                        <input class="qt-btn qt-amt" style="width:60px;padding:.15rem .4rem;font-weight:400;"
+                               value="${qtEscHtml(q.vatPct)}" oninput="qtSetTotalsField('vatPct', this.value)">%
+                    </td>
+                    <td class="qt-amt">${q.vatMode === 'none' ? '—' : (q.vatMode === 'inclusive' ? '(incl. ' + qtFmt(vat) + ')' : qtFmt(vat))}</td>
+                </tr>
+                <tr style="border-top:2px solid #111827;">
+                    <td><strong>TOTAL</strong></td>
+                    <td class="qt-amt"><strong>₱${qtFmt(total)}</strong></td>
+                </tr>
+            </table>
+            <p class="qt-sub" style="margin:.5rem 0 0;">
+                ${q.vatMode === 'none' ? 'Prints as “VAT not applicable”.'
+                 : q.vatMode === 'exclusive' ? 'VAT is added on top of the discounted sub-total.'
+                 : 'VAT is already inside the total and is shown broken out.'}
+            </p>
+        </div>`;
+    }
+
+    window.qtSetTotalsField = function (key, value) {
+        qtState.current[key] = value;
+        qtMarkDirty(); qtRenderTotals();
     };
 
     Object.assign(window, { qtToast, qtNewId, qtMarkDirty });
