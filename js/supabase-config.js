@@ -97,6 +97,9 @@ const REG = {
 
   boqDocuments:   { table: 'boq_documents', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['costItems', 'terms'] },
   boqTemplates:   { table: 'boq_templates', rename: OWNER, ts: ['createdAt'], json: ['costItems'] },
+  quotations:         { table: 'quotations',          rename: OWNER, ts: ['createdAt','updatedAt'], json: ['sections','terms','history'] },
+  quotationRevisions: { table: 'quotation_revisions', rename: OWNER, ts: ['createdAt','sentAt'],    json: ['snapshot'] },
+  quotationPresets:   { table: 'quotation_presets',   rename: OWNER, ts: ['createdAt','updatedAt'], json: ['data'] },
   additionalWorks:{ table: 'additional_works', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['categories'] },
 
   invoices:       { table: 'invoices', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['paymentDetails'],
