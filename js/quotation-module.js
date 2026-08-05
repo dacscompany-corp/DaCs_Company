@@ -615,6 +615,8 @@
                       oninput="qtMarkDirty()">${qtEscHtml(q.scopeNote)}</textarea>
         </div>
 
+        <div id="qtPresetBar"></div>     <!-- Task 11 -->
+
         <div id="qtSectionsPane"></div>   <!-- Task 6 -->
         <div id="qtTotalsPane"></div>     <!-- Task 6 -->
         <div id="qtTermsPane"></div>      <!-- Task 8 -->
@@ -627,6 +629,7 @@
         qtRenderTerms();
         qtRenderOutcome();
         qtRenderRevisions();
+        qtRenderPresetBar();
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
@@ -712,6 +715,7 @@
     window.initQuotationModule = function (view) {
         if (!qtUid() || !qtIsOwner()) return;
         qtLoadList();
+        qtLoadPresets();
         if (view === 'quoteList' || !view) qtRenderList();
         if (view === 'quoteEditor' && qtState.current) qtRenderEditor();
 
@@ -730,6 +734,111 @@
             });
         }
     };
+
+    // ── Task 11: Client and scope presets ─────────────────────────────────
+    function qtLoadPresets() {
+        db.collection('quotationPresets')
+            .where('userId', '==', qtUid())
+            .get()
+            .then(snap => {
+                qtState.presets = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+                                           .filter(p => !p.deletedAt);
+                qtRenderPresetBar();
+            })
+            .catch(e => console.error('[QT] presets load error:', e));
+    }
+
+    window.qtSavePreset = async function (kind, sIdx) {
+        qtCollectHeader();
+        const q = qtState.current;
+        let data, suggested;
+        if (kind === 'client') {
+            data = { clientName: q.clientName, clientEmail: q.clientEmail,
+                     clientAddress: q.clientAddress, clientTin: q.clientTin };
+            suggested = q.clientName || 'Client';
+        } else {
+            const sec = qtSections()[sIdx];
+            if (!sec) return;
+            // Deep copy, then re-id every node — a preset inserted twice must
+            // not produce duplicate ids, or the revision diff pairs the wrong
+            // lines together.
+            const copy = JSON.parse(JSON.stringify(sec));
+            copy.id = qtNewId();
+            (copy.groups || []).forEach(g => {
+                g.id = qtNewId();
+                (g.lines || []).forEach(l => { l.id = qtNewId(); });
+            });
+            data = { sections: [copy] };
+            suggested = sec.label || 'Scope block';
+        }
+        const name = prompt('Save preset as:', suggested);
+        if (!name) return;
+        try {
+            await db.collection('quotationPresets').add({
+                userId: qtUid(), kind, name, data,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            qtToast('Preset saved');
+            qtLoadPresets();
+        } catch (e) {
+            qtToast('Could not save preset: ' + (e.message || e), 'error');
+        }
+    };
+
+    window.qtInsertPreset = function (id) {
+        const p = (qtState.presets || []).find(x => x.id === id);
+        if (!p || !qtState.current) return;
+        if (p.kind === 'client') {
+            Object.assign(qtState.current, p.data);
+            qtRenderEditor();
+        } else {
+            const copy = JSON.parse(JSON.stringify(p.data.sections || []));
+            copy.forEach(sec => {
+                sec.id = qtNewId();
+                (sec.groups || []).forEach(g => {
+                    g.id = qtNewId();
+                    (g.lines || []).forEach(l => { l.id = qtNewId(); });
+                });
+                qtSections().push(sec);
+            });
+            qtRenderSections(); qtRenderTotals();
+        }
+        qtMarkDirty();
+        qtToast(`Inserted "${p.name}"`);
+    };
+
+    window.qtDeletePreset = async function (id) {
+        if (!confirm('Delete this preset?')) return;
+        try {
+            await db.collection('quotationPresets').doc(id)
+                .update({ deletedAt: new Date().toISOString() });
+            qtLoadPresets();
+        } catch (e) { qtToast('Could not delete preset: ' + (e.message || e), 'error'); }
+    };
+
+    function qtRenderPresetBar() {
+        const host = qtEl('qtPresetBar');
+        if (!host) return;
+        const clients = (qtState.presets || []).filter(p => p.kind === 'client');
+        const scopes  = (qtState.presets || []).filter(p => p.kind === 'scope');
+        host.innerHTML = `
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.75rem;">
+            <select class="qt-btn" onchange="if(this.value){qtInsertPreset(this.value);this.value='';}">
+                <option value="">Insert client preset…</option>
+                ${clients.map(p => `<option value="${p.id}">${qtEscHtml(p.name)}</option>`).join('')}
+            </select>
+            <button class="qt-btn" onclick="qtSavePreset('client')">Save client as preset</button>
+            <select class="qt-btn" onchange="if(this.value){qtInsertPreset(this.value);this.value='';}">
+                <option value="">Insert scope preset…</option>
+                ${scopes.map(p => `<option value="${p.id}">${qtEscHtml(p.name)}</option>`).join('')}
+            </select>
+            ${(clients.length + scopes.length)
+                ? `<select class="qt-btn qt-btn-danger" onchange="if(this.value){qtDeletePreset(this.value);this.value='';}">
+                     <option value="">Delete a preset…</option>
+                     ${[...clients, ...scopes].map(p => `<option value="${p.id}">${qtEscHtml(p.kind)}: ${qtEscHtml(p.name)}</option>`).join('')}
+                   </select>` : ''}
+        </div>`;
+    }
 
     // ── Task 9: Outcome panel — status, follow-ups, history ──────────────
     function qtPushHistory(status, from, note) {
@@ -978,6 +1087,7 @@
                 <span class="qt-stat-value" id="qtSecTot-${si}">₱${qtFmt(qtSectionTotal(sec))}</span>
                 <button class="qt-btn" onclick="qtMoveNode('section',${si},0,0,-1)">↑</button>
                 <button class="qt-btn" onclick="qtMoveNode('section',${si},0,0,1)">↓</button>
+                <button class="qt-btn" onclick="qtSavePreset('scope',${si})">Save as preset</button>
                 <button class="qt-btn qt-btn-danger" onclick="qtDeleteNode('section',${si},0,0)">Delete</button>
             </div>
             ${sec.pricing === 'lump' && sec.lumpAmount !== '' && sec.lumpAmount !== null && sec.lumpAmount !== undefined
@@ -1261,6 +1371,6 @@
         return r ? r.snapshot : null;
     };
 
-    Object.assign(window, { qtToast, qtNewId, qtMarkDirty, qtRenderImages, qtRenderTerms, qtLoadDefaultTerms, qtStatusOf, qtIsOverdue, qtRenderOutcome, qtPushHistory });
+    Object.assign(window, { qtToast, qtNewId, qtMarkDirty, qtRenderImages, qtRenderTerms, qtLoadDefaultTerms, qtStatusOf, qtIsOverdue, qtRenderOutcome, qtPushHistory, qtLoadPresets, qtRenderPresetBar });
 
 })();
