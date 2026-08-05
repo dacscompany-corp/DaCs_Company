@@ -608,7 +608,31 @@
         node[field] = value;
         qtMarkDirty(); qtRenderTotals();
         if (field === 'state') qtRenderSections();   // restyle the row
+        if (field === 'qty' || field === 'unitPrice' || field === 'lumpAmount') {
+            qtRefreshAmounts(sIdx, gIdx, lIdx);       // patch stale money cells without losing focus
+        }
     };
+
+    // Patches the line/group/section money cells painted by qtRenderSections
+    // in place, using textContent — no HTML re-parse, no lost focus/cursor.
+    // Guarded with null checks: the cells don't exist in every pricing mode
+    // (e.g. a lump section has no per-line Amount cell).
+    function qtRefreshAmounts(sIdx, gIdx, lIdx) {
+        const sec = qtSections()[sIdx];
+        if (!sec) return;
+        const secTotEl = qtEl(`qtSecTot-${sIdx}`);
+        if (secTotEl) secTotEl.textContent = '₱' + qtFmt(qtSectionTotal(sec));
+
+        const g = (sec.groups || [])[gIdx];
+        if (!g) return;
+        const grpTotEl = qtEl(`qtGrpTot-${sIdx}-${gIdx}`);
+        if (grpTotEl) grpTotEl.textContent = '₱' + qtFmt(qtGroupTotal(g));
+
+        const l = (g.lines || [])[lIdx];
+        if (!l) return;
+        const amtEl = qtEl(`qtAmt-${sIdx}-${gIdx}-${lIdx}`);
+        if (amtEl) amtEl.textContent = qtFmt(qtLineAmount(l));
+    }
 
     window.qtSetPricing = function (sIdx, mode) {
         qtSections()[sIdx].pricing = mode;
@@ -641,12 +665,12 @@
                 <input class="qt-btn qt-amt" style="width:140px;" placeholder="LOT amount"
                        value="${qtEscHtml(sec.lumpAmount)}"
                        oninput="qtSetNodeField('section',${si},0,0,'lumpAmount',this.value)">` : ''}
-                <span class="qt-stat-value">₱${qtFmt(qtSectionTotal(sec))}</span>
+                <span class="qt-stat-value" id="qtSecTot-${si}">₱${qtFmt(qtSectionTotal(sec))}</span>
                 <button class="qt-btn" onclick="qtMoveNode('section',${si},0,0,-1)">↑</button>
                 <button class="qt-btn" onclick="qtMoveNode('section',${si},0,0,1)">↓</button>
                 <button class="qt-btn qt-btn-danger" onclick="qtDeleteNode('section',${si},0,0)">Delete</button>
             </div>
-            ${sec.pricing === 'lump' && sec.lumpAmount !== '' && sec.lumpAmount !== null
+            ${sec.pricing === 'lump' && sec.lumpAmount !== '' && sec.lumpAmount !== null && sec.lumpAmount !== undefined
               ? `<p class="qt-sub" style="margin:.4rem 0 0;">This section is priced as one LOT. The group amounts below are a printed breakdown and do <strong>not</strong> add to the total.</p>` : ''}
 
             <div id="qtImages-${si}"></div>   <!-- Task 7 -->
@@ -661,7 +685,7 @@
                     <input class="qt-btn qt-amt" style="width:130px;" placeholder="Amount"
                            value="${qtEscHtml(g.lumpAmount)}"
                            oninput="qtSetNodeField('group',${si},${gi},0,'lumpAmount',this.value)">` : `
-                    <span class="qt-sub">₱${qtFmt(qtGroupTotal(g))}</span>`}
+                    <span class="qt-sub" id="qtGrpTot-${si}-${gi}">₱${qtFmt(qtGroupTotal(g))}</span>`}
                     <button class="qt-btn" onclick="qtMoveNode('group',${si},${gi},0,-1)">↑</button>
                     <button class="qt-btn" onclick="qtMoveNode('group',${si},${gi},0,1)">↓</button>
                     <button class="qt-btn qt-btn-danger" onclick="qtDeleteNode('group',${si},${gi},0)">×</button>
@@ -697,7 +721,7 @@
             ${sec.pricing === 'rated' ? `
             <td><input class="qt-btn qt-amt" style="width:100%;font-weight:400;" value="${qtEscHtml(l.unitPrice)}"
                        oninput="qtSetNodeField('line',${si},${gi},${li},'unitPrice',this.value)"></td>
-            <td class="qt-amt">${qtFmt(qtLineAmount(l))}</td>` : '<td colspan="2" class="qt-sub">scope only</td>'}
+            <td class="qt-amt" id="qtAmt-${si}-${gi}-${li}">${qtFmt(qtLineAmount(l))}</td>` : '<td colspan="2" class="qt-sub">scope only</td>'}
             <td><select class="qt-btn" style="width:100%;"
                         onchange="qtSetNodeField('line',${si},${gi},${li},'state',this.value)">
                 ${QT_STATES.map(s => `<option value="${s}"${(l.state || 'normal') === s ? ' selected' : ''}>${s}</option>`).join('')}
