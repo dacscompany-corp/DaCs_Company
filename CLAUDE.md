@@ -61,6 +61,11 @@ Profit   = Earned − Spent
   G&A is never charged to a job), and negative net cash contributes **zero** — only
   `contributed_amount` is ever summed. Only `js/warranty-fund.js` may touch those tables.
   Owner-only; staff never see it.
+- **`quotations` (0045) is outside the money model.** A quotation is a *proposal*, not revenue.
+  Nothing may feed it into Spent / Earned / Profit, and marking a quote **Won** must never create
+  a folder, construction project, invoice or contract value — converting a won quote into a
+  project is a manual admin action. Only `js/quotation-module.js` and `js/quotation-print.js` may
+  touch those tables. Owner-only; staff never see it.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 

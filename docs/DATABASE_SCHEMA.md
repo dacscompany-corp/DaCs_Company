@@ -277,7 +277,78 @@ context for one. No client-read policy: the MVP has no client-facing surface.
 
 ---
 
-## 4. Invoices (`invoice-module.js`, `labor-invoice-module.js`)
+## 4. Quotations (`quotation-module.js`, `quotation-print.js`) — migration 0045
+
+A quotation is a **sales document produced before any project exists** — an itemized estimate
+DAC's sends to a prospect, tracked draft → sent → won | lost.
+
+**Deliberately isolated — same rule as `reimbursements` (0041) and `warrantyRetentions` (0043).**
+**No money math reads these tables** (Labor / Material / Overhead / Spent / Earned / Profit all
+ignore them). A row here creates no folder, no `constructionProjects` row, no invoice, no payment
+request, no expense, no payroll row, no journal entry. **Marking a quote Won changes a status
+string and nothing else** — converting a won quote into a real project is a manual admin action.
+Nothing outside `js/quotation-module.js` and `js/quotation-print.js` may read or write these
+tables.
+
+**Rules:** **owner-only** (`owner_id = auth.uid()`, mirrors `warrantyRetentions`) — every
+meaningful column is a peso amount or the context for one, and staff must not see peso amounts. No
+client-read policy; the client never sees this inside the system.
+
+### `quotations/{id}` — the quotation
+| Field | Type | Notes |
+|---|---|---|
+| `userId` | string | owner (`owner_id`) |
+| `quoteNo` | string | display reference `Q-2026-0001`, generated app-side from the highest sequence used that year — **not a key** |
+| `revNo` | number | current revision number, starts at 1 |
+| `quoteDate` | string | `YYYY-MM-DD` (a real `date` column) |
+| `validUntil` | string | `YYYY-MM-DD` (a real `date` column). Drives the **computed** `expired` state — nothing ever writes it; the app derives `status === 'sent' && validUntil < today` |
+| `clientName`, `clientEmail`, `clientAddress`, `clientTin` | string | |
+| `projectName`, `location`, `subject`, `scopeNote` | string | header |
+| `sections` | json | 3-level tree: `[{ id, label, pricing, lumpAmount, images:[], groups:[{ id, label, lumpAmount, lines:[{ id, description, qty, unit, unitPrice, state }] }] }]`. One client-facing rate per line — deliberately **no** material/labor split; that is internal costing and belongs in the BOQ, never on a document a client reads |
+| `discount` | number | |
+| `discountType` | string | `amount` \| `percent` |
+| `vatMode` | string | `none` (prints "VAT not applicable") \| `exclusive` (VAT at `vatPct` added to the sub-total) \| `inclusive` (total unchanged, VAT component shown broken out) |
+| `vatPct` | number | default 12 |
+| `totalAmount` | number | final total after discount and VAT; denormalised for list sorting and pipeline stats, recomputed by the app on every save |
+| `status` | string | `draft` \| `sent` \| `won` \| `lost` |
+| `statusNote` | string | |
+| `decidedAt` | ts | stamped when status moves to `won`/`lost`, cleared if it moves back — powers win-rate-over-time without scanning `history` |
+| `followUpDate` | string | `YYYY-MM-DD`; in-app reminder only, **nothing is emailed** |
+| `followUpNote` | string | |
+| `terms` | json | `{ validityNote, payment, deliveryTimeline, warranty, exclusions, conditions:[{title,body,include}], signOff:{preparedBy,clientApproval} }` |
+| `preparedBy` | string | |
+| `history` | json | append-only `[{ at, by, status, from, note }]`, same convention as `reimbursements.history` |
+| `deletedAt` | ts | soft delete; every read filters it |
+| `createdBy`, `createdAt`, `updatedAt` | — | |
+
+### `quotationRevisions/{id}` — immutable revision snapshots
+Every **send** freezes a full copy. The module only ever inserts here; there is no edit or delete
+path. Rows disappear only with the parent quotation.
+
+| Field | Type | Notes |
+|---|---|---|
+| `userId` | string | owner (`owner_id`), denormalised so the RLS check stays single-table |
+| `quotationId` | string | parent `quotations` row |
+| `revNo` | number | unique per `quotationId` |
+| `snapshot` | json | full copy of the quotation tree at send time |
+| `totalAmount` | number | |
+| `sentAt` | ts | |
+| `note` | string | |
+| `createdAt` | ts | |
+
+### `quotationPresets/{id}` — reusable client and scope blocks
+| Field | Type | Notes |
+|---|---|---|
+| `userId` | string | owner (`owner_id`) |
+| `kind` | string | `client` → `data` is `{ clientName, clientEmail, clientAddress, clientTin }`. `scope` → `data` is `{ sections: [ …same shape as quotations.sections ] }` |
+| `name` | string | |
+| `data` | json | see `kind` above |
+| `deletedAt` | ts | soft delete; every read filters it |
+| `createdAt`, `updatedAt` | — | |
+
+---
+
+## 5. Invoices (`invoice-module.js`, `labor-invoice-module.js`)
 
 ### `invoices/{id}` — sales/material invoices
 | Field | Type | Notes |
@@ -299,7 +370,7 @@ Same shape as `invoices`; `items` are labor lines auto-built from `weeklyBills` 
 
 ---
 
-## 5. Payment Requests (`paymentRequests` — **one collection, TWO workflows**)
+## 6. Payment Requests (`paymentRequests` — **one collection, TWO workflows**)
 
 ⚠️ This collection is shared by two different systems with **different status vocabularies**.
 
@@ -333,7 +404,7 @@ Same shape as `invoices`; `items` are labor lines auto-built from `weeklyBills` 
 
 ---
 
-## 6. Construction Project Management
+## 7. Construction Project Management
 
 ### `constructionProjects/{id}` (`pm-admin.js`)
 | Field | Type | Notes |
@@ -361,7 +432,7 @@ Same shape as `invoices`; `items` are labor lines auto-built from `weeklyBills` 
 
 ---
 
-## 7. Construction Procurement / Inventory (`construction-module.js`)
+## 8. Construction Procurement / Inventory (`construction-module.js`)
 
 ### `requests/{id}` — material requests (created by **workers**)
 | Field | Type | Notes |
@@ -383,7 +454,7 @@ Same shape as `invoices`; `items` are labor lines auto-built from `weeklyBills` 
 
 ---
 
-## 8. Requests from Clients
+## 9. Requests from Clients
 
 ### `sowaRequests/{id}` — Statement of Work Accomplished request
 `clientEmail`, `clientName`, `clientUid`, `ownerUid`, `status` (`pending`/viewed/shared), `requestedAt`
@@ -408,7 +479,7 @@ Despite the name, this table records a project ending **either way**:
 
 ---
 
-## 9. Notifications, Public & Settings
+## 10. Notifications, Public & Settings
 
 ### `notifications/{userId}/items/{id}` — cross-system messaging
 `type` (e.g. `report_shared`, `report_approved`, `payment_*`, `sowa_request`, `termination_approved`), `message`, `isRead` (bool), `relatedId?`, `createdAt`.
@@ -435,7 +506,7 @@ Despite the name, this table records a project ending **either way**:
 
 ---
 
-## 10. ⚠️ Defined in rules but UNUSED by code (planned SOA module)
+## 11. ⚠️ Defined in rules but UNUSED by code (planned SOA module)
 `soa_requests`, `soa_records`, `payments`, `billings` have full security rules in `firestore.rules` but **no JavaScript references them**. Either finish the module or remove the rules to shrink attack surface. (The live "SOWA" feature uses `sowaRequests` — camelCase — instead.)
 
 ---

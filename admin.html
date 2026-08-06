@@ -27,6 +27,8 @@
     <link rel="stylesheet" href="css/construction-module-items.css">
     <!-- BOQ Module Styles -->
     <link rel="stylesheet" href="css/boq-module.css">
+    <!-- Quotations Module Styles -->
+    <link rel="stylesheet" href="css/quotation-module.css">
     <!-- User Navigator Styles -->
     <link rel="stylesheet" href="css/user-navigator.css">
     <link rel="stylesheet" href="css/payment-requests.css">
@@ -172,6 +174,9 @@
                 <div class="nav-group-children">
                     <a href="#" class="nav-item nav-child" data-view="boqBuilder">
                         <span class="nav-icon-wrap"><i data-lucide="file-spreadsheet" class="nav-icon"></i></span><span>Accomplishment Report</span>
+                    </a>
+                    <a href="#" class="nav-item nav-child" data-view="quoteList">
+                        <span class="nav-icon-wrap"><i data-lucide="file-text" class="nav-icon"></i></span><span>Quotations</span>
                     </a>
                     <a href="#" class="nav-item nav-child" data-view="clientAccounts">
                         <span class="nav-icon-wrap"><i data-lucide="user-circle" class="nav-icon"></i></span><span>Client Accounts</span><span id="clients-child-badge" style="display:none;" class="pr-nav-badge"></span>
@@ -2567,6 +2572,12 @@
         <div id="boqBuilderView" class="content-view" style="display: none;">
             <!-- Rendered dynamically by boq-module.js -->
         </div>
+
+        <!-- ════════════ QUOTATIONS ════════════ -->
+        <!-- Rendered dynamically by js/quotation-module.js -->
+        <div id="quoteListView"     class="content-view" style="display: none;"></div>
+        <div id="quoteEditorView"   class="content-view" style="display: none;"></div>
+        <div id="quoteRevisionView" class="content-view" style="display: none;"></div>
 
         <!-- ════════════ USER NAVIGATOR ════════════ -->
         <!-- ════════════ SYSTEM ERRORS VIEW (owner-only; client_errors, 0028/0029) ════════════ -->
@@ -4995,13 +5006,15 @@
 <!-- ?v= is a cache-buster, same convention as expenses-module.js below. Bump
      it whenever a change to this file must reach an already-open browser —
      admin.js carries PRIMARY_NAV, so a stale copy silently hides new tabs. -->
-<script src="js/admin.js?v=20260803f"></script>
+<script src="js/admin.js?v=20260805a"></script>
 <script src="js/print-utils.js"></script>
 <script src="js/expenses-module.js?v=20260707c"></script>
 <script src="js/overhead-module.js"></script>
 <script src="js/reimbursement-module.js"></script>
 <script src="js/construction-module.js"></script>
 <script src="js/boq-module.js"></script>
+<script src="js/quotation-module.js"></script>
+<script src="js/quotation-print.js"></script>
 <script src="js/user-navigator.js"></script>
 <script src="js/client-accounts.js"></script>
 <script src="js/payment-requests.js"></script>
@@ -5746,6 +5759,7 @@
     const BOQ_VIEWS  = ['boqBuilder'];
     const UN_VIEWS   = ['userNavigator','clientAccounts'];
     const PM_VIEWS   = ['pmProjects','pmWorkspace'];
+    const QUOTE_VIEWS = ['quoteList','quoteEditor','quoteRevision'];
     const TITLES = {
         dashboard:        'Dashboard',
         appointments:     'Appointments',
@@ -5771,6 +5785,9 @@
         pmProjects:       'Project Management',
         pmWorkspace:      'Project Workspace',
         pmReports:        'Reports',
+        quoteList:        'Quotations',
+        quoteEditor:      'Quotation',
+        quoteRevision:    'Quotation Revision',
     };
 
     window.switchView = function(view) {
@@ -5794,7 +5811,8 @@
                 // by RLS, migration 0041), so it is blocked here too — as is the
                 // Warranty Fund, for the same reason (0043).
                 const blocked = ['userNavigator', 'clientAccounts', 'sysErrors', 'expReports',
-                                 'reimbursements', 'warrantyFund'];
+                                 'reimbursements', 'warrantyFund',
+                                 'quoteList', 'quoteEditor', 'quoteRevision'];
                 // Reports and Reimbursement live inside Project Control, so bounce
                 // them back there rather than throwing the user out to the
                 // Appointments dashboard. Warranty Fund lives in Project
@@ -5886,6 +5904,7 @@
         if (view === 'invoices'        && typeof initInvoiceModule  === 'function') initInvoiceModule();
         if (view === 'laborInvoices'   && typeof initLaborInvoiceModule === 'function') initLaborInvoiceModule();
         if (PM_VIEWS.includes(view)   && typeof initPMModule       === 'function') initPMModule(view);
+        if (QUOTE_VIEWS.includes(view) && typeof initQuotationModule === 'function') initQuotationModule(view);
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     };
