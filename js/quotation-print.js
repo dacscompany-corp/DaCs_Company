@@ -17,6 +17,12 @@
         tin:     ''    // e.g. '000-000-000-000'
     };
 
+    // The bold label beside the logo. Deliberately the DOCUMENT type, not the
+    // company name — the logo already identifies the sender, and the owner
+    // wanted the header to say what the sheet IS (2026-08-06). COMPANY.name is
+    // still what signs the document, in the "Submitted by" block below.
+    const DOC_LABEL = 'PROJECT QUOTATION';
+
     function qtDoc() {
         // The live quotation, shaped like a snapshot.
         const q = (window.qtState && window.qtState.current) || window._qtCurrentForPrint;
@@ -32,6 +38,24 @@
         if (!key) return '';
         const d = new Date(key + 'T00:00:00');
         return isNaN(d) ? key : d.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+    }
+
+    // The quotation's reference images. Migration 0046 moved these from
+    // per-section to ONE document-level list, printed once above the itemized
+    // estimate. A revision snapshot frozen before 0046 has no `images` key, so
+    // fall back to whatever its sections carried — an old sheet must still
+    // reprint exactly as it was sent. Capped so a legacy document with images
+    // on ten sections cannot print a ten-photo wall.
+    const QT_MAX_PRINT_IMAGES = 4;
+    function qtDocImages(d) {
+        if (d && Array.isArray(d.images) && d.images.length) {
+            return d.images.slice(0, QT_MAX_PRINT_IMAGES);
+        }
+        const legacy = [];
+        ((d && d.sections) || []).forEach(sec => (sec.images || []).forEach(im => {
+            if (im && im.url && legacy.length < QT_MAX_PRINT_IMAGES) legacy.push(im);
+        }));
+        return legacy;
     }
 
     // ── Image signing ─────────────────────────────────────────────────
@@ -50,10 +74,8 @@
         const sign = window.dacsMaybeSignUrl;
         if (typeof sign !== 'function') return map;
         const urls = [];
-        for (const sec of (d.sections || [])) {
-            for (const im of (sec.images || [])) {
-                if (im.url && !urls.includes(im.url)) urls.push(im.url);
-            }
+        for (const im of qtDocImages(d)) {
+            if (im.url && !urls.includes(im.url)) urls.push(im.url);
         }
         await Promise.all(urls.map(async u => {
             try { map.set(u, await sign(u)); }
@@ -62,33 +84,48 @@
         return map;
     }
 
+    // What a group / sub-item row prints in the AMOUNT column: NOTHING, in
+    // every pricing mode. The section row carries the only sub-total on the
+    // sheet — a per-group figure beside it read to clients as a separate
+    // charge on top of the section, not as a breakdown of it.
+    //
+    // This deliberately drops the earlier "a LOT section prints its groups as
+    // a breakdown" shape (spec §7 in quotation-module.js). Owner's call,
+    // 2026-08-06. Only the printed cell changed: qtSectionTotal still sums the
+    // group lump amounts when a LOT section has no amount of its own, so the
+    // section row and the TOTAL are unaffected.
+    function qtGroupPrintAmount() { return ''; }
+
     // ── Table rows ────────────────────────────────────────────────────
     // `imgMap` maps each stored image URL to a short-lived signed one, resolved
     // by the caller in the PARENT page — see qtSignImages below for why.
+    // Does this quotation print its line-level pricing? (migration 0047)
+    // Absent on rows and revision snapshots written before 0047, and those
+    // always printed their rates — so anything but an explicit false is true.
+    function qtShowsLinePricing(d) { return !d || d.showLinePricing !== false; }
+
     function qtRowsHtml(d, imgMap) {
         const esc = window.qtEscHtml, fmt = window.qtFmt;
+        // With pricing off the UNIT PRICE column is dropped entirely, so the
+        // table is 5 wide instead of 6 and every colspan shifts with it. The
+        // AMOUNT column stays either way — it carries the section totals.
+        const rates = qtShowsLinePricing(d);
+        const cols  = rates ? 6 : 5;
+        const descSpan = cols - 2;                 // desc + qty + unit (+ rate)
         let html = '';
         (d.sections || []).forEach((sec, si) => {
             const lump = sec.pricing === 'lump';
             html += `<tr class="p-l1">
                 <td class="c-no">${si + 1}</td>
-                <td class="c-desc" colspan="4"><strong>${esc(sec.label || 'SECTION')}</strong></td>
+                <td class="c-desc" colspan="${descSpan}"><strong>${esc(sec.label || 'SECTION')}</strong></td>
                 <td class="c-amt"><strong>${fmt(window.qtSectionTotal(sec))}</strong></td>
             </tr>`;
-
-            (sec.images || []).forEach(im => {
-                html += `<tr class="p-img"><td></td><td colspan="5">
-                    <img src="${esc((imgMap && imgMap.get(im.url)) || im.url)}" alt="${esc(im.name || '')}">
-                    ${im.caption ? `<div class="p-cap">${esc(im.caption)}</div>` : ''}
-                </td></tr>`;
-            });
 
             (sec.groups || []).forEach(g => {
                 html += `<tr class="p-l2">
                     <td></td>
-                    <td class="c-desc" colspan="4">${esc(g.label || '')}</td>
-                    <td class="c-amt">${lump && g.lumpAmount !== '' && g.lumpAmount !== undefined && g.lumpAmount !== null
-                        ? fmt(g.lumpAmount) : (lump ? '' : fmt(window.qtGroupTotal(g)))}</td>
+                    <td class="c-desc" colspan="${descSpan}">${esc(g.label || '')}</td>
+                    <td class="c-amt">${qtGroupPrintAmount(sec, g)}</td>
                 </tr>`;
 
                 (g.lines || []).forEach(l => {
@@ -96,7 +133,9 @@
                     const cls = state === 'removed'  ? ' p-removed'
                               : state === 'waived'   ? ' p-waived'
                               : state === 'optional' ? ' p-optional' : '';
-                    const amtCell = lump ? ''
+                    // WAIVED still prints with the rates hidden: "included at
+                    // no charge" is information about the offer, not a rate.
+                    const amtCell = (lump || !rates) ? (state === 'waived' ? 'WAIVED' : '')
                         : state === 'waived'  ? 'WAIVED'
                         : state === 'removed' ? fmt(window.qtRawLineAmount(l))
                         : fmt(window.qtLineAmount(l));
@@ -105,13 +144,31 @@
                         <td class="c-desc">${esc(l.description || '')}${state === 'optional' ? ' <em>(optional)</em>' : ''}</td>
                         <td class="c-qty">${esc(l.qty || '')}</td>
                         <td class="c-unit">${esc(l.unit || '')}</td>
-                        <td class="c-rate">${lump ? '' : fmt(l.unitPrice)}</td>
+                        ${rates ? `<td class="c-rate">${lump ? '' : fmt(l.unitPrice)}</td>` : ''}
                         <td class="c-amt">${amtCell}</td>
                     </tr>`;
                 });
             });
+
+            // Blank band between sections, like the BOQ report's spacer row.
+            if (si < (d.sections || []).length - 1) {
+                html += `<tr class="p-spacer"><td colspan="${cols}"></td></tr>`;
+            }
         });
         return html;
+    }
+
+    // ── Reference image strip ─────────────────────────────────────────
+    // One row above the itemized estimate. They share the width, so a single
+    // render prints large and four print as a quarter-width strip.
+    function qtImagesHtml(d, imgMap) {
+        const esc = window.qtEscHtml, imgs = qtDocImages(d);
+        if (!imgs.length) return '';
+        return `<div class="p-imgs">${imgs.map(im => `
+            <figure class="p-img-fig">
+                <img src="${esc((imgMap && imgMap.get(im.url)) || im.url)}" alt="${esc(im.name || '')}">
+                ${im.caption ? `<figcaption class="p-cap">${esc(im.caption)}</figcaption>` : ''}
+            </figure>`).join('')}</div>`;
     }
 
     // ── Terms ─────────────────────────────────────────────────────────
@@ -121,15 +178,18 @@
             ? `<div class="p-term"><div class="p-term-hd">${esc(title)}</div>
                ${String(body).split('\n').map(l => `<div>${esc(l)}</div>`).join('')}</div>` : '';
         const conds = (t.conditions || []).filter(c => c.include !== false);
-        return `
+        const body = `
         ${block('VALIDITY',         t.validityNote)}
         ${block('PAYMENT TERMS',    t.payment)}
         ${block('DELIVERY TIMELINE',t.deliveryTimeline)}
         ${block('WARRANTY',         t.warranty)}
         ${block('EXCLUSIONS',       t.exclusions)}
-        ${conds.length ? `<div class="p-term"><div class="p-term-hd">GENERAL TERMS &amp; CONDITIONS</div>
+        ${conds.length ? `<div class="p-term"><div class="p-term-hd">General Terms &amp; Conditions</div>
             <ol>${conds.map(c => `<li><strong>${esc(c.title)}</strong> ${esc(c.body)}</li>`).join('')}</ol>
         </div>` : ''}`;
+        // The rule above the terms belongs to the block, not to each entry —
+        // with every field blank it would otherwise print as a stray line.
+        return body.trim() ? `<div class="p-terms">${body}</div>` : '';
     }
 
     // ── Totals ────────────────────────────────────────────────────────
@@ -138,17 +198,17 @@
         const pc = window.qtProjectCost(d.sections), disc = window.qtDiscountAmount(d),
               sub = window.qtSubTotal(d), vat = window.qtVatAmount(d), tot = window.qtGrandTotal(d);
         const vatRow = d.vatMode === 'none'
-            ? `<tr><td>PLUS: VAT</td><td class="c-amt">Not applicable</td></tr>`
+            ? `<tr><td>Plus: VAT:</td><td>Not applicable</td></tr>`
             : d.vatMode === 'inclusive'
-            ? `<tr><td>VAT (${window.qtParseNum(d.vatPct)}%, included)</td><td class="c-amt">${fmt(vat)}</td></tr>`
-            : `<tr><td>PLUS: VAT (${window.qtParseNum(d.vatPct)}%)</td><td class="c-amt">${fmt(vat)}</td></tr>`;
+            ? `<tr><td>VAT (${window.qtParseNum(d.vatPct)}%, included):</td><td>${fmt(vat)}</td></tr>`
+            : `<tr><td>Plus: VAT (${window.qtParseNum(d.vatPct)}%):</td><td>${fmt(vat)}</td></tr>`;
         return `
         <table class="p-tot">
-            <tr><td>PROJECT COST</td><td class="c-amt">${fmt(pc)}</td></tr>
-            ${disc ? `<tr><td>LESS: DISCOUNT</td><td class="c-amt">(${fmt(disc)})</td></tr>` : ''}
-            <tr class="p-sub"><td>SUB TOTAL</td><td class="c-amt">${fmt(sub)}</td></tr>
+            <tr><td>Project Cost:</td><td>${fmt(pc)}</td></tr>
+            ${disc ? `<tr><td>Less: Discount:</td><td>(${fmt(disc)})</td></tr>` : ''}
+            <tr class="p-sub"><td>Sub-total:</td><td>${fmt(sub)}</td></tr>
             ${vatRow}
-            <tr class="p-grand"><td>TOTAL PROJECT COST</td><td class="c-amt">${fmt(tot)}</td></tr>
+            <tr class="p-grand"><td>Total Project Cost:</td><td>${fmt(tot)}</td></tr>
         </table>
         <p class="p-vatnote">${d.vatMode === 'exclusive' ? '*VAT is added to the sub-total above.'
             : d.vatMode === 'inclusive' ? '*Total is VAT inclusive.' : '*VAT not applicable.'}</p>`;
@@ -183,78 +243,192 @@
         const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <title>${esc(d.subject || 'Project Estimate')} — ${esc(d.projectName || '')}</title>
 <style>
+  /* Colours and weights mirror the BOQ report (boqPrintReport in
+     js/boq-module.js) so both documents read as one family. Every tinted
+     surface carries print-color-adjust:exact — without it the browser drops
+     the fills at print time and the sheet comes out plain white. */
   *{margin:0;padding:0;box-sizing:border-box;}
-  body{font-family:'Segoe UI',Arial,sans-serif;font-size:9pt;color:#111;background:#e8e8e8;}
-  .page{width:210mm;min-height:297mm;background:#fff;margin:12px auto;padding:12mm 14mm;box-shadow:0 2px 16px rgba(0,0,0,.18);}
-  .p-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #111;padding-bottom:8px;}
-  .p-logo{height:52px;}
-  .p-co{font-size:12pt;font-weight:700;}
-  .p-title{font-size:14pt;font-weight:700;text-align:right;}
-  .p-meta{width:100%;border-collapse:collapse;margin-top:10px;font-size:8.5pt;}
-  .p-meta td{border:1px solid #d0d0d0;padding:4px 6px;}
-  .p-meta .k{background:#f2f2f2;font-weight:700;width:22%;}
-  .p-scope{margin-top:10px;font-size:8.5pt;white-space:pre-wrap;}
-  table.p-items{width:100%;border-collapse:collapse;margin-top:12px;font-size:8pt;}
-  table.p-items th{background:#f2f2f2;border:1px solid #c8c8c8;padding:4px;text-align:center;font-size:7.5pt;}
-  table.p-items td{border:1px solid #e0e0e0;padding:3px 5px;vertical-align:top;}
-  .c-no{width:26px;text-align:center;} .c-qty{width:38px;text-align:center;}
-  .c-unit{width:44px;text-align:center;} .c-rate{width:72px;text-align:right;}
-  .c-amt{width:88px;text-align:right;font-variant-numeric:tabular-nums;}
-  tr.p-l1 td{background:#fafafa;}
-  tr.p-l2 td{padding-left:14px;font-weight:600;}
-  tr.p-l3 td.c-desc{padding-left:26px;}
+  body{font-family:'Segoe UI',Arial,sans-serif;font-size:8.5pt;color:#111;background:#e8e8e8;}
+  .page{width:210mm;min-height:297mm;background:#fff;margin:12px auto;padding:12mm 14mm 14mm;
+        box-shadow:0 2px 16px rgba(0,0,0,.18);}
+
+  /* ── Company header ── */
+  .p-head{display:flex;align-items:center;justify-content:space-between;gap:20px;
+          border-bottom:3px solid #1a5c3a;padding-bottom:12px;margin-bottom:12px;}
+  /* Logo stacked ABOVE its label. */
+  .p-head-l{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;}
+  /* height + width:auto keeps the logo's own aspect ratio — never set both, or
+     it stretches. object-fit:contain is the belt to that braces. */
+  .p-logo{height:132px;width:auto;max-width:78mm;object-fit:contain;flex-shrink:0;}
+  .p-co{font-size:18px;font-weight:800;color:#1a1a2e;letter-spacing:.06em;text-transform:uppercase;
+        line-height:1.2;text-align:center;white-space:nowrap;}
+  .p-co-sub{font-size:8pt;color:#6b7280;margin-top:3px;text-align:center;}
+  .p-head-r{text-align:right;flex-shrink:0;min-width:150px;}
+  .p-title{font-size:13px;font-weight:800;color:#1a5c3a;text-transform:uppercase;letter-spacing:.05em;}
+  .p-title-sub{font-size:8pt;color:#9ca3af;margin-top:4px;}
+
+  /* ── Document info box — black labels, same as the BOQ report ── */
+  .p-meta{width:100%;border-collapse:collapse;margin-bottom:9px;border:2px solid #111;}
+  .p-meta td{padding:3px 7px;border:1px solid #111;font-size:8pt;vertical-align:middle;}
+  .p-meta .k{background:#111;color:#fff;font-weight:800;text-transform:uppercase;white-space:nowrap;
+             -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .p-meta .v{font-weight:700;color:#111;background:#fff;}
+
+  .p-scope{margin-bottom:9px;font-size:8pt;white-space:pre-wrap;border-left:3px solid #fbbf24;
+           padding:5px 9px;background:#fffdf3;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  .p-scope-hd{font-weight:800;text-transform:uppercase;font-size:7.5pt;margin-bottom:2px;}
+
+  /* ── Items table ── */
+  table.p-items{width:100%;border-collapse:collapse;font-size:7.5pt;table-layout:fixed;}
+  table.p-items th{background:#fbbf24;color:#000;font-weight:800;font-size:6.5pt;text-transform:uppercase;
+                   letter-spacing:.03em;border:1px solid #f59e0b;padding:4px;text-align:center;
+                   -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  table.p-items td{border:1px solid #888;padding:3px 5px;vertical-align:middle;overflow:hidden;}
+  .c-no{width:30px;text-align:center;} .c-qty{width:34px;text-align:center;}
+  .c-unit{width:40px;text-align:center;} .c-rate{width:70px;text-align:right;}
+  .c-amt{width:86px;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+
+  /* section — red, same #c81e1e as the BOQ level-1 row */
+  tr.p-l1 td{background:#c81e1e;color:#fff;font-weight:800;font-size:7.5pt;text-transform:uppercase;
+             border-color:#991b1b;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  /* group / sub-item — light grey */
+  tr.p-l2 td{background:#e5e7eb;color:#111;font-weight:700;font-size:7pt;
+             -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  tr.p-l3 td{background:#fff;font-size:7pt;}
+  tr.p-l3 td.c-desc{padding-left:16px;}
   tr.p-removed td{text-decoration:line-through;color:#999;}
-  tr.p-waived  td.c-amt{font-weight:700;}
-  tr.p-optional td{color:#666;}
-  tr.p-img img{max-width:150mm;max-height:70mm;object-fit:contain;margin:4px 0;}
-  .p-cap{font-size:7.5pt;color:#555;}
-  table.p-tot{margin-left:auto;margin-top:12px;border-collapse:collapse;width:78mm;font-size:8.5pt;}
-  table.p-tot td{border:1px solid #d0d0d0;padding:4px 6px;}
-  .p-sub td{font-weight:700;} .p-grand td{font-weight:700;background:#eaf7ef;font-size:9.5pt;}
-  .p-vatnote{text-align:right;font-size:7.5pt;color:#555;margin-top:3px;}
-  .p-term{margin-top:10px;font-size:8pt;} .p-term-hd{font-weight:700;background:#f2f2f2;padding:3px 5px;}
-  .p-term ol{margin:4px 0 0 18px;} .p-term li{margin-bottom:3px;}
-  .p-sign{display:flex;gap:30mm;margin-top:18mm;font-size:8.5pt;}
-  .p-sign div{flex:1;border-top:1px solid #111;padding-top:3px;}
-  .p-rev{position:fixed;top:6mm;right:10mm;font-size:7.5pt;color:#666;}
-  @media print{body{background:#fff;} .page{margin:0;box-shadow:none;} @page{size:A4;margin:0;}}
+  tr.p-waived td.c-amt{font-weight:800;}
+  tr.p-optional td{color:#6b7280;font-style:italic;}
+  /* blank band between sections, like the BOQ report's spacer */
+  tr.p-spacer td{height:5px;background:#fff;border:none;padding:0;
+                 -webkit-print-color-adjust:exact;print-color-adjust:exact;}
+
+  /* ── Reference images — one strip, above the itemized estimate ── */
+  .p-imgs{display:flex;gap:5mm;margin-bottom:9px;align-items:flex-start;justify-content:center;
+          break-inside:avoid;page-break-inside:avoid;}
+  .p-img-fig{flex:1 1 0;min-width:0;max-width:90mm;text-align:center;}
+  .p-img-fig img{width:100%;height:auto;max-height:62mm;object-fit:contain;border:1px solid #d0d0d0;}
+  .p-cap{font-size:7pt;color:#555;margin-top:2px;font-style:italic;}
+
+  /* ── Totals — the BOQ Summary panel's shape: no fills, hairline rules
+        between rows, one heavy rule above the final figure. Nothing here
+        depends on background printing, so it survives any printer. ── */
+  table.p-tot{margin-left:auto;margin-top:10px;border-collapse:collapse;width:88mm;font-size:8.5pt;}
+  table.p-tot td{border:none;border-bottom:1px solid #f0f0f0;padding:5px 0;vertical-align:middle;}
+  table.p-tot td:first-child{font-weight:700;color:#374151;}
+  table.p-tot td:last-child{text-align:right;font-weight:800;color:#1f2937;
+                            white-space:nowrap;font-variant-numeric:tabular-nums;}
+  tr.p-sub td{font-weight:800;}
+  tr.p-grand td{border-top:2px solid #1f2937;border-bottom:none;padding-top:7px;
+                font-size:10pt;font-weight:900;color:#1f2937;text-transform:uppercase;}
+  .p-vatnote{text-align:right;font-size:7pt;color:#555;margin-top:3px;font-style:italic;}
+
+  /* ── Terms ── */
+  .p-terms{margin-top:10px;font-size:7.5pt;border-top:1.5px solid #ccc;padding-top:7px;}
+  .p-term{margin-bottom:7px;}
+  .p-term-hd{font-weight:800;font-size:8pt;margin-bottom:3px;text-transform:uppercase;color:#111;}
+  .p-term div{margin-left:10px;line-height:1.55;color:#222;}
+  .p-term ol{margin:3px 0 0 20px;} .p-term li{margin-bottom:2px;line-height:1.55;}
+
+  /* ── Signatures ── */
+  .p-sig{margin-top:14px;display:flex;justify-content:space-between;gap:24px;}
+  .p-sig-col{flex:1;text-align:center;font-size:7.5pt;}
+  .p-sig-line{border-top:1.5px solid #111;margin-top:28px;padding-top:3px;font-weight:700;font-size:8pt;}
+  /* The signature image fills the 28px the blank column leaves for a wet
+     signature, so both rules stay on the same baseline. If the file fails to
+     load, onerror drops .p-sig-signed and the 28px gap comes back. */
+  .p-sig-img{display:block;height:28px;width:auto;max-width:70%;margin:0 auto;
+             object-fit:contain;object-position:center bottom;}
+  .p-sig-signed .p-sig-line{margin-top:0;}
+  .p-sig-role{color:#555;font-size:7pt;margin-top:2px;}
+
+  .p-disc{margin-top:10px;font-size:6.5pt;color:#666;text-align:center;font-style:italic;
+          border-top:1px solid #ddd;padding-top:6px;line-height:1.6;}
+  .p-rev{position:fixed;top:6mm;right:10mm;font-size:7pt;color:#666;}
+
+  @page{size:A4 portrait;margin:0;}
+  /* Keep the summary block from being split across a page break. */
+  table.p-tot{break-inside:avoid;page-break-inside:avoid;}
+  @media print{
+    body{background:#fff;}
+    .page{width:100%;margin:0;padding:8mm 10mm 10mm;box-shadow:none;min-height:auto;}
+    /* A thead repeats at the top of every printed page by default. On page 2
+       it can sit above nothing but the totals and read as an empty table, so
+       demote it to an ordinary row group: it still renders first, but once. */
+    table.p-items thead{display:table-row-group;}
+  }
 </style></head><body>
 <div class="page">
   <div class="p-rev">${esc(d.quoteNo || '')}${d.revNo > 1 ? ' · Rev ' + d.revNo : ''}</div>
+
   <div class="p-head">
-    <div>
-      <img class="p-logo" src="${base}${COMPANY.logo}" alt="">
-      <div class="p-co">${esc(COMPANY.name)}</div>
-      <div style="font-size:8pt;color:#555;">${esc(qtCompanyLine())}</div>
+    <div class="p-head-l">
+      <img class="p-logo" src="${base}${COMPANY.logo}" alt="" onerror="this.style.display='none'">
+      <div>
+        <div class="p-co">${esc(DOC_LABEL)}</div>
+        ${qtCompanyLine() ? `<div class="p-co-sub">${esc(qtCompanyLine())}</div>` : ''}
+      </div>
     </div>
-    <div class="p-title">${esc((d.subject || 'PROJECT ESTIMATE').toUpperCase())}</div>
+    <div class="p-head-r">
+      <div class="p-title">${esc((d.subject || 'PROJECT ESTIMATE').toUpperCase())}</div>
+      <div class="p-title-sub">${esc(d.quoteNo || '')}${d.revNo > 1 ? ' · Rev ' + d.revNo : ''}</div>
+    </div>
   </div>
 
   <table class="p-meta">
-    <tr><td class="k">CLIENT</td><td>${esc(d.clientName || '')}</td><td class="k">QUOTE NO.</td><td>${esc(d.quoteNo || '')}${d.revNo > 1 ? ' (Rev ' + d.revNo + ')' : ''}</td></tr>
-    <tr><td class="k">PROJECT</td><td>${esc(d.projectName || '')}</td><td class="k">DATE</td><td>${esc(qtPrettyDate(d.quoteDate))}</td></tr>
-    <tr><td class="k">LOCATION</td><td>${esc(d.location || '')}</td><td class="k">VALID UNTIL</td><td>${esc(qtPrettyDate(d.validUntil))}</td></tr>
-    ${d.clientAddress || d.clientTin ? `<tr><td class="k">ADDRESS</td><td>${esc(d.clientAddress || '')}</td><td class="k">TIN</td><td>${esc(d.clientTin || '')}</td></tr>` : ''}
+    <colgroup><col style="width:80px"><col style="width:32%"><col style="width:80px"><col></colgroup>
+    <tr><td class="k">Client</td><td class="v">${esc(d.clientName || '')}</td><td class="k">Quote No.</td><td class="v">${esc(d.quoteNo || '')}${d.revNo > 1 ? ' (Rev ' + d.revNo + ')' : ''}</td></tr>
+    <tr><td class="k">Project</td><td class="v">${esc(d.projectName || '')}</td><td class="k">Date</td><td class="v">${esc(qtPrettyDate(d.quoteDate))}</td></tr>
+    <tr><td class="k">Location</td><td class="v">${esc(d.location || '')}</td><td class="k">Valid Until</td><td class="v">${esc(qtPrettyDate(d.validUntil))}</td></tr>
+    ${d.clientAddress || d.clientTin ? `<tr><td class="k">Address</td><td class="v">${esc(d.clientAddress || '')}</td><td class="k">TIN</td><td class="v">${esc(d.clientTin || '')}</td></tr>` : ''}
   </table>
 
-  ${d.scopeNote ? `<div class="p-scope"><strong>SCOPE OF WORK</strong><br>${esc(d.scopeNote)}</div>` : ''}
+  ${d.scopeNote ? `<div class="p-scope"><div class="p-scope-hd">Scope of Work</div>${esc(d.scopeNote)}</div>` : ''}
+
+  ${qtImagesHtml(d, imgMap)}
 
   <table class="p-items">
-    <thead><tr><th>#</th><th>DESCRIPTION</th><th>QTY</th><th>UNIT</th><th>UNIT PRICE</th><th>AMOUNT</th></tr></thead>
+    <colgroup><col class="c-no"><col><col class="c-qty"><col class="c-unit">${qtShowsLinePricing(d) ? '<col class="c-rate">' : ''}<col class="c-amt"></colgroup>
+    <thead><tr><th>#</th><th>DESCRIPTION</th><th>QTY</th><th>UNIT</th>${qtShowsLinePricing(d) ? '<th>UNIT PRICE</th>' : ''}<th>AMOUNT</th></tr></thead>
     <tbody>${qtRowsHtml(d, imgMap)}</tbody>
   </table>
 
   ${qtTotalsHtml(d)}
   ${qtTermsHtml(d)}
 
-  <div class="p-sign">
-    ${(d.terms && d.terms.signOff && d.terms.signOff.preparedBy !== false)
-      ? `<div>${esc(d.preparedBy || '')}<br><span style="font-size:7.5pt;color:#666;">SUBMITTED BY</span></div>` : ''}
-    ${(d.terms && d.terms.signOff && d.terms.signOff.clientApproval !== false)
-      ? `<div><span style="font-size:7.5pt;color:#666;">CLIENT APPROVAL / DATE</span></div>` : ''}
+  ${(d.terms && d.terms.signOff && (d.terms.signOff.preparedBy !== false || d.terms.signOff.clientApproval !== false)) ? `
+  <div class="p-sig">
+    ${d.terms.signOff.preparedBy !== false ? `
+    <div class="p-sig-col p-sig-signed">
+      <img class="p-sig-img" src="${base}assets/images/dacs-signature.png" alt=""
+           onerror="this.style.display='none';this.parentNode.classList.remove('p-sig-signed');">
+      <div class="p-sig-line">${esc(d.preparedBy || COMPANY.name)}</div>
+      <div class="p-sig-role">Submitted By</div>
+    </div>` : ''}
+    ${d.terms.signOff.clientApproval !== false ? `
+    <div class="p-sig-col">
+      <div class="p-sig-line">${esc(d.clientName || ' ')}</div>
+      <div class="p-sig-role">Client Approval / Date</div>
+    </div>` : ''}
+  </div>` : ''}
+
+  <div class="p-disc">
+    This is a price proposal, not a contract, and is not legally binding. Prices hold until the validity
+    date shown above and are subject to change thereafter. A formal contract is issued upon approval.
+    &nbsp;|&nbsp; Printed on ${esc(new Date().toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true }))}
   </div>
 </div>
-<script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script>
+<script>
+  // Chrome stamps the document title across the top of every printed page when
+  // "Headers and footers" is ticked. The checkbox can't be reached from code,
+  // but the text it prints CAN: blanking the title empties that centre line.
+  window.onload=function(){
+    var real=document.title;
+    window.onafterprint=function(){document.title=real;};
+    document.title=' ';
+    setTimeout(function(){window.print();},400);
+  };
+<\/script>
 </body></html>`;
 
         w.document.open();
@@ -285,7 +459,27 @@
         qtGeneratePDF(snapshot);
     };
 
-    function qtGeneratePDF(snapshot) {
+    // Loads an image through a canvas so jsPDF gets raw pixel data. Resolves
+    // null on any failure — a missing logo must never block the export.
+    function qtLoadImageData(src) {
+        return new Promise(resolve => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                try {
+                    const c = document.createElement('canvas');
+                    c.width = img.naturalWidth; c.height = img.naturalHeight;
+                    c.getContext('2d').drawImage(img, 0, 0);
+                    resolve({ url: c.toDataURL('image/png'), w: img.naturalWidth, h: img.naturalHeight });
+                } catch (e) { resolve(null); }      // tainted canvas
+            };
+            img.onerror = () => resolve(null);
+            img.src = src;
+        });
+    }
+
+    // async only for the logo. Every call site ignores the return value.
+    async function qtGeneratePDF(snapshot) {
         const d = snapshot || qtDoc();
         if (!d) { if (window.qtToast) window.qtToast('Nothing to export', 'error'); return; }
         if (!snapshot && window.qtIsExpired && window.qtIsExpired(d)
@@ -294,85 +488,235 @@
         const fmt = window.qtFmt;
         const jsPDF = (window.jspdf || window).jsPDF;
         const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+        const pageW = doc.internal.pageSize.getWidth();   // 210mm
         const M = 12;
+        const base = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
         let y = M;
 
-        doc.setFontSize(13).setFont(undefined, 'bold');
-        doc.text(COMPANY.name, M, y + 4);
-        doc.setFontSize(12);
-        doc.text((d.subject || 'PROJECT ESTIMATE').toUpperCase(), 210 - M, y + 4, { align: 'right' });
-        y += 10;
+        // ── Header — logo with its label underneath, title on the right ──
+        // logoH is the LOGO's height; its width is derived from the image's own
+        // aspect ratio, never fixed, so the mark can't come out stretched.
+        const logo   = await qtLoadImageData(base + COMPANY.logo);
+        const coLine = qtCompanyLine();
+        const logoH  = 34;
+        let logoW = 0, logoCx = M;
+        if (logo) {
+            logoW  = logoH * (logo.w / logo.h);
+            logoCx = M + logoW / 2;
+            doc.addImage(logo.url, 'PNG', M, y, logoW, logoH);
+        }
 
-        doc.setFontSize(8.5).setFont(undefined, 'normal');
-        [['CLIENT', d.clientName], ['PROJECT', d.projectName], ['LOCATION', d.location],
-         ['QUOTE NO.', (d.quoteNo || '') + (d.revNo > 1 ? ' (Rev ' + d.revNo + ')' : '')],
-         ['DATE', qtPrettyDate(d.quoteDate)], ['VALID UNTIL', qtPrettyDate(d.validUntil)]
-        ].forEach(([k, v]) => {
-            if (!v) return;
-            doc.setFont(undefined, 'bold').text(k, M, y);
-            doc.setFont(undefined, 'normal').text(String(v), M + 28, y);
-            y += 4.4;
+        // The label sits centred beneath the logo — but the mark is narrow and
+        // the wording is not, so clamp the centre to keep the text inside the
+        // left margin. Without this "PROJECT QUOTATION" hangs off the page.
+        doc.setFont('helvetica', 'bold').setFontSize(15).setTextColor(26, 26, 46);
+        const lblCx = Math.max(logoCx, M + doc.getTextWidth(DOC_LABEL) / 2);
+        let blockH = logoH + 7;
+        doc.text(DOC_LABEL, lblCx, y + logoH + 5.5, { align: 'center' });
+        if (coLine) {
+            doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(107, 114, 128);
+            doc.text(coLine, lblCx, y + logoH + 10, { align: 'center' });
+            blockH = logoH + 11.5;
+        }
+
+        // Right-hand title, centred against the whole left block.
+        const midY = y + blockH / 2;
+        doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(26, 92, 58);
+        doc.text((d.subject || 'PROJECT ESTIMATE').toUpperCase(), pageW - M, midY, { align: 'right' });
+        doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(156, 163, 175);
+        doc.text((d.quoteNo || '') + (d.revNo > 1 ? ' · Rev ' + d.revNo : ''),
+                 pageW - M, midY + 5, { align: 'right' });
+        doc.setTextColor(0, 0, 0);
+
+        // Accent rule under the header — the same green as the print sheet.
+        y += blockH + 2;
+        doc.setDrawColor(26, 92, 58).setLineWidth(0.8).line(M, y, pageW - M, y);
+        y += 4;
+
+        // ── Document info box — black labels, matching the print sheet ──
+        const metaRows = [
+            ['CLIENT',   d.clientName  || ''],
+            ['PROJECT',  d.projectName || ''],
+            ['LOCATION', d.location    || ''],
+            ['QUOTE NO.', (d.quoteNo || '') + (d.revNo > 1 ? ' (Rev ' + d.revNo + ')' : '')],
+            ['DATE',       qtPrettyDate(d.quoteDate)],
+            ['VALID UNTIL',qtPrettyDate(d.validUntil)]
+        ];
+        doc.autoTable({
+            startY: y, margin: { left: M, right: M },
+            body: metaRows, theme: 'grid',
+            styles: { fontSize: 7.5, cellPadding: 1.4, lineColor: [17, 17, 17], lineWidth: 0.2 },
+            columnStyles: { 0: { cellWidth: 26, fillColor: [17, 17, 17], textColor: [255, 255, 255], fontStyle: 'bold' },
+                            1: { cellWidth: 'auto', fontStyle: 'bold' } }
         });
-        y += 2;
+        y = doc.lastAutoTable.finalY + 3;
+
+        if (d.scopeNote) {
+            doc.autoTable({
+                startY: y, margin: { left: M, right: M },
+                body: [[{ content: 'SCOPE OF WORK\n' + d.scopeNote }]], theme: 'plain',
+                styles: { fontSize: 7.5, cellPadding: 1.6, fillColor: [255, 253, 243] }
+            });
+            y = doc.lastAutoTable.finalY + 3;
+        }
+
+        // ── Reference images — one strip, sharing the usable width ─────
+        // The bucket is private, so the URLs are signed first (same map the
+        // print sheet uses). Any image that fails to load is skipped: a
+        // broken render must never cost the client their price list.
+        const refImgs = qtDocImages(d);
+        if (refImgs.length) {
+            const signed = await qtSignImages(d);
+            const loaded = await Promise.all(refImgs.map(im =>
+                qtLoadImageData(signed.get(im.url) || im.url).then(data => ({ data, im }))));
+            const ok = loaded.filter(r => r.data);
+            if (ok.length) {
+                const gap    = 4;
+                const usable = pageW - M * 2;
+                const cellW  = (usable - gap * (ok.length - 1)) / ok.length;
+                // Uniform row height: the tallest each image may be at cellW,
+                // clamped so a portrait render can't swallow the page.
+                const boxH = Math.min(58, ...ok.map(r => cellW * (r.data.h / r.data.w)));
+                ok.forEach((r, i) => {
+                    const scale = Math.min(cellW / r.data.w, boxH / r.data.h);
+                    const w = r.data.w * scale, h = r.data.h * scale;
+                    const x = M + i * (cellW + gap) + (cellW - w) / 2;
+                    doc.addImage(r.data.url, 'PNG', x, y, w, h);
+                    if (r.im.caption) {
+                        doc.setFont('helvetica', 'italic').setFontSize(6).setTextColor(85, 85, 85);
+                        doc.text(String(r.im.caption), M + i * (cellW + gap) + cellW / 2, y + boxH + 3,
+                                 { align: 'center', maxWidth: cellW });
+                        doc.setTextColor(0, 0, 0);
+                    }
+                });
+                y += boxH + (ok.some(r => r.im.caption) ? 6 : 3);
+            }
+        }
 
         // Flatten the tree into autotable rows, preserving the visual levels.
-        const body = [];
+        // `rowKind` runs parallel to `body` so didParseCell can colour each row
+        // the same way the print sheet's .p-l1 / .p-l2 / .p-l3 classes do.
+        // Same rule as the print sheet: with pricing off the UNIT PRICE column
+        // is dropped and every colspan shifts by one (migration 0047).
+        const rates    = qtShowsLinePricing(d);
+        const descSpan = rates ? 4 : 3;
+        const body = [], rowKind = [];
         (d.sections || []).forEach((sec, si) => {
-            body.push([{ content: `${si + 1}. ${sec.label || 'SECTION'}`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [245, 245, 245] } },
-                       { content: fmt(window.qtSectionTotal(sec)), styles: { fontStyle: 'bold', halign: 'right' } }]);
+            body.push([{ content: `${si + 1}. ${sec.label || 'SECTION'}`, colSpan: descSpan + 1 },
+                       { content: fmt(window.qtSectionTotal(sec)), styles: { halign: 'right' } }]);
+            rowKind.push('l1');
             const lump = sec.pricing === 'lump';
             (sec.groups || []).forEach(g => {
-                body.push(['', { content: g.label || '', colSpan: 4, styles: { fontStyle: 'bold' } },
-                           { content: lump && g.lumpAmount ? fmt(g.lumpAmount) : (lump ? '' : fmt(window.qtGroupTotal(g))), styles: { halign: 'right' } }]);
+                body.push(['', { content: g.label || '', colSpan: descSpan },
+                           { content: qtGroupPrintAmount(sec, g), styles: { halign: 'right' } }]);
+                rowKind.push('l2');
                 (g.lines || []).forEach(l => {
                     const st = l.state || 'normal';
-                    const amt = lump ? ''
+                    const amt = (lump || !rates) ? (st === 'waived' ? 'WAIVED' : '')
                         : st === 'waived'  ? 'WAIVED'
                         : st === 'removed' ? fmt(window.qtRawLineAmount(l))
                         : fmt(window.qtLineAmount(l));
                     const label = (l.description || '')
                         + (st === 'optional' ? ' (optional)' : '')
                         + (st === 'removed'  ? '  [REMOVED]'  : '');
-                    body.push(['', '   ' + label, l.qty || '', l.unit || '',
-                               lump ? '' : fmt(l.unitPrice),
-                               { content: amt, styles: { halign: 'right' } }]);
+                    const row = ['', '   ' + label, l.qty || '', l.unit || ''];
+                    if (rates) row.push(lump ? '' : fmt(l.unitPrice));
+                    row.push({ content: amt, styles: { halign: 'right' } });
+                    body.push(row);
+                    rowKind.push(st === 'optional' || st === 'removed' ? 'l3-muted' : 'l3');
                 });
             });
+            if (si < (d.sections || []).length - 1) {
+                body.push(new Array(descSpan + 2).fill(''));
+                rowKind.push('spacer');
+            }
         });
+
+        const itemCols = { 0: { cellWidth: 9, halign: 'center' }, 1: { cellWidth: 'auto' },
+                           2: { cellWidth: 12, halign: 'center' },
+                           3: { cellWidth: 14, halign: 'center' } };
+        if (rates) itemCols[4] = { cellWidth: 22, halign: 'right' };
+        itemCols[rates ? 5 : 4] = { cellWidth: 26, halign: 'right' };
 
         doc.autoTable({
             startY: y, margin: { left: M, right: M },
-            head: [['#', 'DESCRIPTION', 'QTY', 'UNIT', 'UNIT PRICE', 'AMOUNT']],
+            head: [rates ? ['#', 'DESCRIPTION', 'QTY', 'UNIT', 'UNIT PRICE', 'AMOUNT']
+                         : ['#', 'DESCRIPTION', 'QTY', 'UNIT', 'AMOUNT']],
             body,
-            styles: { fontSize: 7.5, cellPadding: 1.4 },
-            headStyles: { fillColor: [240, 240, 240], textColor: 20, fontSize: 7 },
-            columnStyles: { 0: { cellWidth: 8 }, 2: { cellWidth: 12, halign: 'center' },
-                            3: { cellWidth: 14, halign: 'center' }, 4: { cellWidth: 22, halign: 'right' },
-                            5: { cellWidth: 26, halign: 'right' } }
-        });
-
-        y = doc.lastAutoTable.finalY + 6;
-        const pc = window.qtProjectCost(d.sections), disc = window.qtDiscountAmount(d),
-              sub = window.qtSubTotal(d), vat = window.qtVatAmount(d), tot = window.qtGrandTotal(d);
-        const totRows = [['PROJECT COST', fmt(pc)]];
-        if (disc) totRows.push(['LESS: DISCOUNT', '(' + fmt(disc) + ')']);
-        totRows.push(['SUB TOTAL', fmt(sub)]);
-        totRows.push(['PLUS: VAT', d.vatMode === 'none' ? 'Not applicable'
-                      : d.vatMode === 'inclusive' ? '(incl. ' + fmt(vat) + ')' : fmt(vat)]);
-        totRows.push(['TOTAL PROJECT COST', fmt(tot)]);
-
-        doc.autoTable({
-            startY: y, margin: { left: 210 - M - 78 },
-            body: totRows, theme: 'grid',
-            styles: { fontSize: 8.5, cellPadding: 1.6 },
-            columnStyles: { 0: { cellWidth: 48 }, 1: { cellWidth: 30, halign: 'right' } },
+            styles: { fontSize: 7, cellPadding: 1.3, lineColor: [136, 136, 136], lineWidth: 0.1 },
+            headStyles: { fillColor: [251, 191, 36], textColor: [0, 0, 0], fontStyle: 'bold',
+                          fontSize: 6.5, halign: 'center', lineColor: [245, 158, 11] },
+            columnStyles: itemCols,
             didParseCell: function (data) {
-                if (data.row.index === totRows.length - 1) {
-                    data.cell.styles.fontStyle = 'bold';
-                    data.cell.styles.fillColor = [234, 247, 239];
+                if (data.section !== 'body') return;
+                switch (rowKind[data.row.index]) {
+                    case 'l1':       // section — red, same #c81e1e as the sheet
+                        data.cell.styles.fillColor = [200, 30, 30];
+                        data.cell.styles.textColor = [255, 255, 255];
+                        data.cell.styles.fontStyle = 'bold';
+                        data.cell.styles.lineColor = [153, 27, 27];
+                        break;
+                    case 'l2':       // group — light grey
+                        data.cell.styles.fillColor = [229, 231, 235];
+                        data.cell.styles.fontStyle = 'bold';
+                        break;
+                    case 'l3-muted':
+                        data.cell.styles.textColor = [107, 114, 128];
+                        data.cell.styles.fontStyle = 'italic';
+                        break;
+                    case 'spacer':
+                        data.cell.styles.fillColor = [255, 255, 255];
+                        data.cell.styles.lineWidth = 0;
+                        data.cell.styles.cellPadding = { top: 0.8, bottom: 0.8, left: 0, right: 0 };
+                        break;
                 }
             }
         });
+
+        y = doc.lastAutoTable.finalY + 4;
+        const pc = window.qtProjectCost(d.sections), disc = window.qtDiscountAmount(d),
+              sub = window.qtSubTotal(d), vat = window.qtVatAmount(d), tot = window.qtGrandTotal(d);
+        const totRows = [['Project Cost:', fmt(pc)]];
+        if (disc) totRows.push(['Less: Discount:', '(' + fmt(disc) + ')']);
+        totRows.push(['Sub-total:', fmt(sub)]);
+        totRows.push(['Plus: VAT:', d.vatMode === 'none' ? 'Not applicable'
+                      : d.vatMode === 'inclusive' ? '(incl. ' + fmt(vat) + ')' : fmt(vat)]);
+        totRows.push(['TOTAL PROJECT COST:', fmt(tot)]);
+        const lastIdx = totRows.length - 1;
+
+        // No fills — the BOQ Summary panel's shape. Hairline under each row,
+        // one heavy rule above the final figure, drawn by hand because
+        // autotable can't style individual cell borders.
+        doc.autoTable({
+            startY: y, margin: { left: pageW - M - 88 },
+            body: totRows, theme: 'plain',
+            styles: { fontSize: 8.5, cellPadding: { top: 1.9, bottom: 1.9, left: 0, right: 0 } },
+            columnStyles: { 0: { cellWidth: 52, fontStyle: 'bold', textColor: [55, 65, 81] },
+                            1: { cellWidth: 36, halign: 'right', fontStyle: 'bold', textColor: [31, 41, 55] } },
+            didParseCell: function (data) {
+                if (data.section === 'body' && data.row.index === lastIdx) {
+                    data.cell.styles.fontSize = 10;
+                }
+            },
+            didDrawCell: function (data) {
+                if (data.section !== 'body') return;
+                const c = data.cell;
+                if (data.row.index === lastIdx) {
+                    doc.setDrawColor(31, 41, 55).setLineWidth(0.5);
+                    doc.line(c.x, c.y, c.x + c.width, c.y);            // heavy rule ABOVE
+                } else {
+                    doc.setDrawColor(232, 232, 232).setLineWidth(0.15);
+                    doc.line(c.x, c.y + c.height, c.x + c.width, c.y + c.height);
+                }
+            }
+        });
+
+        y = doc.lastAutoTable.finalY + 3;
+        doc.setFont('helvetica', 'italic').setFontSize(6.5).setTextColor(85, 85, 85);
+        doc.text(d.vatMode === 'exclusive' ? '*VAT is added to the sub-total above.'
+               : d.vatMode === 'inclusive' ? '*Total is VAT inclusive.' : '*VAT not applicable.',
+                 pageW - M, y, { align: 'right' });
+        doc.setTextColor(0, 0, 0);
 
         const name = `${(d.quoteNo || 'quotation')}${d.revNo > 1 ? '-rev' + d.revNo : ''}.pdf`;
         doc.save(name.replace(/[^\w.\-]/g, '_'));

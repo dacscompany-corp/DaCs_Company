@@ -63,9 +63,11 @@
     }
 
     // Lump rules (spec §7): a section's own lumpAmount WINS and the group
-    // amounts beneath it are a display breakdown that must not re-add —
-    // the reference document's REPAIR SERVICE 200,126 = KIOSK 92,707 +
-    // ELECTRICAL 107,419 shape. With no section amount, groups sum.
+    // amounts beneath it must not re-add. With no section amount, groups sum.
+    //
+    // Those group amounts are an EDITOR-ONLY working figure. They stopped
+    // printing on 2026-08-06 — see qtGroupPrintAmount in quotation-print.js.
+    // This function is unchanged by that: it is the math, not the sheet.
     function qtSectionTotal(section) {
         if (!section) return 0;
         const groups = section.groups || [];
@@ -285,7 +287,9 @@
                 <h2 class="qt-title">Quotations</h2>
                 <p class="qt-sub">Client estimates and proposals${stats.overdue ? ` · <strong>${stats.overdue} follow-up${stats.overdue > 1 ? 's' : ''} overdue</strong>` : ''}</p>
             </div>
-            <button class="qt-btn qt-btn-primary" onclick="qtNewQuote()">+ New Quotation</button>
+            <button class="qt-btn qt-btn-primary" onclick="qtNewQuote()">
+                <i data-lucide="plus"></i> New Quotation
+            </button>
         </div>
 
         <div class="qt-stats">
@@ -299,32 +303,41 @@
             ${qtStatCard('Won this year','₱' + qtFmt(stats.wonValueYear))}
         </div>
 
-        <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.75rem;">
-            <select class="qt-btn" onchange="qtSetFilter('status', this.value)">
+        <div class="qt-filters">
+            <select class="qt-select" onchange="qtSetFilter('status', this.value)">
                 ${['all','draft','sent','expired','won','lost'].map(v =>
                     `<option value="${v}"${qtState.filters.status === v ? ' selected' : ''}>${v === 'all' ? 'All statuses' : v}</option>`).join('')}
             </select>
-            <select class="qt-btn" onchange="qtSetFilter('year', this.value)">
+            <select class="qt-select" onchange="qtSetFilter('year', this.value)">
                 <option value="all">All years</option>
                 ${years.map(y => `<option value="${y}"${qtState.filters.year === y ? ' selected' : ''}>${y}</option>`).join('')}
             </select>
-            <input class="qt-btn" style="font-weight:400;" placeholder="Search no. / client / project"
+            <input class="qt-input qt-search" placeholder="Search no. / client / project"
                    value="${qtEscHtml(qtState.filters.search)}"
                    oninput="qtSetFilter('search', this.value)">
         </div>
 
         ${rows.length ? `
-        <table class="qt-table">
-            <thead><tr>
-                <th>Quote No.</th><th>Client</th><th>Project</th>
-                <th>Date</th><th>Valid until</th><th class="qt-amt">Total</th>
-                <th>Status</th><th></th>
-            </tr></thead>
-            <tbody>${rows.map(qtListRow).join('')}</tbody>
-        </table>` : `
+        <div class="qt-panel">
+            <div class="qt-section-title">Quotation Register
+                <span class="qt-section-note">${rows.length} of ${qtState.list.length} shown</span>
+            </div>
+            <div class="qt-table-scroll">
+                <table class="qt-table">
+                    <thead>
+                        <tr class="qt-thead-row">
+                            <th>Quote No.</th><th>Client</th><th>Project</th>
+                            <th>Date</th><th>Valid until</th><th class="qt-amt">Total</th>
+                            <th>Status</th><th class="qt-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows.map(qtListRow).join('')}</tbody>
+                </table>
+            </div>
+        </div>` : `
         <div class="qt-empty">
-            <p><strong>No quotations yet</strong></p>
-            <p>Create one to send a client an itemized estimate.</p>
+            <p class="qt-empty-title">No quotations yet</p>
+            <p class="qt-empty-sub">Create one to send a client an itemized estimate.</p>
         </div>`}`;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -336,7 +349,7 @@
 
     function qtListRow(q) {
         const st = qtStatusOf(q);
-        return `<tr class="${qtIsOverdue(q) ? 'qt-row-overdue' : ''}">
+        return `<tr class="qt-list-row${qtIsOverdue(q) ? ' qt-row-overdue' : ''}">
             <td><strong>${qtEscHtml(q.quoteNo || '—')}</strong>${(q.revNo || 1) > 1 ? ` <span class="qt-sub">Rev ${q.revNo}</span>` : ''}</td>
             <td>${qtEscHtml(q.clientName || '—')}</td>
             <td>${qtEscHtml(q.projectName || '—')}</td>
@@ -344,8 +357,10 @@
             <td>${qtEscHtml(q.validUntil || '—')}${qtIsOverdue(q) ? ' <span class="qt-pill qt-pill-expired">follow up</span>' : ''}</td>
             <td class="qt-amt">₱${qtFmt(q.totalAmount)}</td>
             <td><span class="qt-pill qt-pill-${st}">${st}</span></td>
-            <td><button class="qt-btn" onclick="qtOpenQuote('${q.id}')">Open</button>
-            <button class="qt-btn" onclick="qtOpenQuote('${q.id}'); setTimeout(qtPrintSheet, 200);">Print</button></td>
+            <td class="qt-center">
+                <button class="qt-icon-btn qt-icon-btn-edit" title="Open" onclick="qtOpenQuote('${q.id}')"><i data-lucide="pencil"></i></button>
+                <button class="qt-icon-btn" title="Print" onclick="qtOpenQuote('${q.id}'); setTimeout(qtPrintSheet, 200);"><i data-lucide="printer"></i></button>
+            </td>
         </tr>`;
     }
 
@@ -366,6 +381,8 @@
             quoteDate: today, validUntil,
             clientName: '', clientEmail: '', clientAddress: '', clientTin: '',
             projectName: '', location: '', subject: 'Project Estimate', scopeNote: '',
+            images: [],          // document-level renders/photos, max QT_MAX_IMAGES
+            showLinePricing: true,   // print unit price + line amounts (0047)
             sections: [],
             discount: 0, discountType: 'amount',
             vatMode: 'none', vatPct: 12,
@@ -431,6 +448,7 @@
         const q = qtState.list.find(x => x.id === id);
         if (!q) { qtToast('Quotation not found', 'error'); return; }
         qtState.current   = JSON.parse(JSON.stringify(q));   // edit a copy
+        qtHoistLegacyImages(qtState.current);                 // 0045 → 0046 shape
         qtState.revisions = [];
         qtState.isDirty   = false;
         switchView('quoteEditor');
@@ -471,6 +489,8 @@
             clientAddress: q.clientAddress, clientTin: q.clientTin,
             projectName: q.projectName, location: q.location,
             subject: q.subject, scopeNote: q.scopeNote,
+            images: JSON.parse(JSON.stringify(q.images || [])),
+            showLinePricing: q.showLinePricing !== false,
             sections: JSON.parse(JSON.stringify(q.sections || [])),
             discount: q.discount, discountType: q.discountType,
             vatMode: q.vatMode, vatPct: q.vatPct,
@@ -513,18 +533,20 @@
     // ── Step 3: Header form renderer ───────────────────────────────────
     function qtField(label, key, type, extra) {
         const v = qtState.current[key];
-        return `<label style="display:block;font-size:.75rem;color:#6b7280;font-weight:600;margin-bottom:.15rem;">${label}</label>
-                <input class="qt-btn" style="font-weight:400;width:100%;margin-bottom:.6rem;"
-                       type="${type || 'text'}" data-qt-key="${key}"
-                       value="${qtEscHtml(v === null || v === undefined ? '' : v)}"
-                       ${extra || ''} oninput="qtMarkDirty()">`;
+        return `<div class="qt-form-group">
+                    <label>${label}</label>
+                    <input class="qt-input" type="${type || 'text'}" data-qt-key="${key}"
+                           value="${qtEscHtml(v === null || v === undefined ? '' : v)}"
+                           ${extra || ''} oninput="qtMarkDirty()">
+                </div>`;
     }
 
     function qtTermArea(label, key, hint) {
-        return `<label style="display:block;font-size:.75rem;color:#6b7280;font-weight:600;margin:.6rem 0 .15rem;">${label}
-                ${hint ? `<span style="font-weight:400;">— ${hint}</span>` : ''}</label>
-                <textarea class="qt-btn" style="font-weight:400;width:100%;min-height:56px;"
-                          oninput="qtSetTerm('${key}', this.value)">${qtEscHtml(qtTerms()[key])}</textarea>`;
+        return `<div class="qt-form-group">
+                    <label>${label}${hint ? ` <span class="qt-section-note">— ${hint}</span>` : ''}</label>
+                    <textarea class="qt-textarea" rows="3"
+                              oninput="qtSetTerm('${key}', this.value)">${qtEscHtml(qtTerms()[key])}</textarea>
+                </div>`;
     }
 
     function qtRenderTerms() {
@@ -532,46 +554,59 @@
         if (!pane || !qtState.current) return;
         const t = qtTerms();
         pane.innerHTML = `
-        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <h3 style="font-size:.95rem;margin:0;">Terms &amp; conditions</h3>
-                <button class="qt-btn" onclick="qtSaveTermsAsDefault()">Save as my defaults</button>
+        <div class="qt-panel">
+            <div class="qt-section-title">Terms &amp; Conditions
+                <button class="qt-btn qt-btn-sm" onclick="qtSaveTermsAsDefault()">
+                    <i data-lucide="bookmark"></i> Save as my defaults
+                </button>
             </div>
-            ${qtTermArea('Validity',          'validityNote',     'e.g. valid for thirty (30) calendar days from issuance')}
-            ${qtTermArea('Payment terms',     'payment',          'downpayment, progress billing, turnover')}
-            ${qtTermArea('Delivery timeline', 'deliveryTimeline', 'e.g. 14 to 21 days upon approval / payment, whichever comes last')}
-            ${qtTermArea('Warranty',          'warranty',         'what is covered, for how long, and what is excluded')}
-            ${qtTermArea('Exclusions',        'exclusions',       'one per line')}
+            <div class="qt-form-grid-2">
+                ${qtTermArea('Validity',          'validityNote',     'e.g. valid for thirty (30) calendar days from issuance')}
+                ${qtTermArea('Payment terms',     'payment',          'downpayment, progress billing, turnover')}
+                ${qtTermArea('Delivery timeline', 'deliveryTimeline', 'e.g. 14 to 21 days upon approval / payment, whichever comes last')}
+                ${qtTermArea('Warranty',          'warranty',         'what is covered, for how long, and what is excluded')}
+            </div>
+            ${qtTermArea('Exclusions', 'exclusions', 'one per line')}
 
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:1rem;">
-                <h4 style="font-size:.85rem;margin:0;">Numbered conditions</h4>
-                <button class="qt-btn" onclick="qtAddCondition()">+ Condition</button>
+            <div class="qt-section-title" style="margin-top:1.25rem;">Numbered Conditions
+                <button class="qt-btn-ghost-add" onclick="qtAddCondition()">
+                    <i data-lucide="plus"></i> Add condition
+                </button>
             </div>
             ${t.conditions.map((c, i) => `
-            <div style="border:1px solid #f3f4f6;border-radius:8px;padding:.6rem;margin-top:.5rem;">
-                <div style="display:flex;gap:.4rem;align-items:center;">
-                    <span class="qt-sub" style="width:1.5rem;">${i + 1}.</span>
-                    <input class="qt-btn" style="flex:1;font-weight:600;" placeholder="Title"
+            <div class="qt-term-block">
+                <div class="qt-term-head">
+                    <span class="qt-term-no">${i + 1}.</span>
+                    <input class="qt-label-input" placeholder="Title"
                            value="${qtEscHtml(c.title)}" oninput="qtSetCondition(${i},'title',this.value)">
-                    <label class="qt-sub" style="display:flex;gap:.25rem;align-items:center;">
-                        <input type="checkbox" ${c.include !== false ? 'checked' : ''}
-                               onchange="qtSetCondition(${i},'include',this.checked)"> print
+                    <label class="qt-check-label">
+                        <input type="checkbox" class="qt-check" ${c.include !== false ? 'checked' : ''}
+                               onchange="qtSetCondition(${i},'include',this.checked)"> Print
                     </label>
-                    <button class="qt-btn" onclick="qtMoveCondition(${i},-1)">↑</button>
-                    <button class="qt-btn" onclick="qtMoveCondition(${i},1)">↓</button>
-                    <button class="qt-btn qt-btn-danger" onclick="qtDeleteCondition(${i})">×</button>
+                    <button class="qt-icon-btn" title="Move up"   onclick="qtMoveCondition(${i},-1)"><i data-lucide="chevron-up"></i></button>
+                    <button class="qt-icon-btn" title="Move down" onclick="qtMoveCondition(${i},1)"><i data-lucide="chevron-down"></i></button>
+                    <button class="qt-icon-btn qt-icon-btn-del" title="Delete" onclick="qtDeleteCondition(${i})"><i data-lucide="trash-2"></i></button>
                 </div>
-                <textarea class="qt-btn" style="font-weight:400;width:100%;min-height:52px;margin-top:.4rem;"
+                <textarea class="qt-textarea" style="margin-top:.45rem;min-height:52px;"
                           placeholder="Body" oninput="qtSetCondition(${i},'body',this.value)">${qtEscHtml(c.body)}</textarea>
             </div>`).join('')}
 
-            <div style="margin-top:1rem;display:flex;gap:1rem;flex-wrap:wrap;">
-                <label class="qt-sub"><input type="checkbox" ${t.signOff.preparedBy !== false ? 'checked' : ''}
-                       onchange="qtSetSignOff('preparedBy', this.checked)"> Print "Submitted by" block</label>
-                <label class="qt-sub"><input type="checkbox" ${t.signOff.clientApproval !== false ? 'checked' : ''}
-                       onchange="qtSetSignOff('clientApproval', this.checked)"> Print "Client approval / date" block</label>
+            <div class="qt-section-title" style="margin-top:1.25rem;">Signature Block
+                <span class="qt-section-note">(uncheck to leave a signature line off the printed sheet)</span>
+            </div>
+            <div class="qt-signoff-grid">
+                <label class="qt-check-label">
+                    <input type="checkbox" class="qt-check" ${t.signOff.preparedBy !== false ? 'checked' : ''}
+                           onchange="qtSetSignOff('preparedBy', this.checked)"> Print “Submitted by” block
+                </label>
+                <label class="qt-check-label">
+                    <input type="checkbox" class="qt-check" ${t.signOff.clientApproval !== false ? 'checked' : ''}
+                           onchange="qtSetSignOff('clientApproval', this.checked)"> Print “Client approval / date” block
+                </label>
             </div>
         </div>`;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
     function qtRenderEditor() {
@@ -581,52 +616,51 @@
         const st = qtStatusOf(q);
 
         root.innerHTML = `
-        <div class="qt-header">
-            <div>
-                <h2 class="qt-title">${qtEscHtml(q.quoteNo || 'New Quotation')}
-                    ${q.revNo > 1 ? `<span class="qt-sub">Rev ${q.revNo}</span>` : ''}
-                    <span class="qt-pill qt-pill-${st}">${st}</span></h2>
-                <p class="qt-sub">${qtEscHtml(q.projectName || 'Untitled project')}</p>
+        <div class="qt-toolbar">
+            <div class="qt-toolbar-left">
+                <button class="qt-back-btn" onclick="qtBackToList()">
+                    <i data-lucide="arrow-left"></i> Quotations
+                </button>
+                <span class="qt-breadcrumb-sep">/</span>
+                <h3 class="qt-doc-title">${qtEscHtml(q.quoteNo || 'New Quotation')}</h3>
+                ${q.revNo > 1 ? `<span class="qt-doc-sub">Rev ${q.revNo}</span>` : ''}
+                <span class="qt-pill qt-pill-${st}">${st}</span>
+                <span class="qt-doc-sub">${qtEscHtml(q.projectName || 'Untitled project')}</span>
             </div>
-            <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
-                <button class="qt-btn" onclick="qtBackToList()">← Back</button>
-                <button class="qt-btn qt-btn-primary" onclick="qtSave()">Save</button>
-                <button class="qt-btn" onclick="qtPrintSheet()">Print</button>
-                <button class="qt-btn" onclick="qtExportPDF()">PDF</button>
+            <div class="qt-toolbar-right">
+                <button class="qt-btn qt-btn-outline" onclick="qtPrintSheet()"><i data-lucide="printer"></i> Print</button>
+                <button class="qt-btn qt-btn-outline" onclick="qtExportPDF()"><i data-lucide="file-down"></i> Export PDF</button>
+                <button class="qt-btn qt-btn-primary" onclick="qtSave()"><i data-lucide="save"></i> Save</button>
             </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem;margin-top:1rem;">
-            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;">
-                <h3 style="font-size:.85rem;margin:0 0 .75rem;">Client</h3>
+        <div class="qt-panel">
+            <div class="qt-section-title">Document Info</div>
+            <div class="qt-form-grid">
                 ${qtField('Client name',  'clientName')}
-                ${qtField('Email',        'clientEmail', 'email')}
-                ${qtField('Address',      'clientAddress')}
-                ${qtField('TIN',          'clientTin')}
-            </div>
-            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;">
-                <h3 style="font-size:.85rem;margin:0 0 .75rem;">Project</h3>
                 ${qtField('Project name', 'projectName')}
+                ${qtField('Quote no.',    'quoteNo')}
+
+                ${qtField('Email',        'clientEmail', 'email')}
                 ${qtField('Location',     'location')}
+                ${qtField('Quote date',   'quoteDate',  'date')}
+
+                ${qtField('Address',      'clientAddress')}
                 ${qtField('Subject',      'subject')}
+                ${qtField('Valid until',  'validUntil', 'date')}
+
+                ${qtField('TIN',          'clientTin')}
                 ${qtField('Prepared by',  'preparedBy')}
             </div>
-            <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;">
-                <h3 style="font-size:.85rem;margin:0 0 .75rem;">Document</h3>
-                ${qtField('Quote no.',    'quoteNo')}
-                ${qtField('Quote date',   'quoteDate',  'date')}
-                ${qtField('Valid until',  'validUntil', 'date')}
+            <div class="qt-form-group" style="margin-top:.85rem;">
+                <label>Scope note</label>
+                <textarea class="qt-textarea" rows="3" data-qt-key="scopeNote"
+                          oninput="qtMarkDirty()">${qtEscHtml(q.scopeNote)}</textarea>
             </div>
+            <div id="qtPresetBar"></div>     <!-- Task 11 -->
         </div>
 
-        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;">
-            <label style="display:block;font-size:.75rem;color:#6b7280;font-weight:600;margin-bottom:.15rem;">Scope note</label>
-            <textarea class="qt-btn" style="font-weight:400;width:100%;min-height:60px;" data-qt-key="scopeNote"
-                      oninput="qtMarkDirty()">${qtEscHtml(q.scopeNote)}</textarea>
-        </div>
-
-        <div id="qtPresetBar"></div>     <!-- Task 11 -->
-
+        <div id="qtImagesPane"></div>     <!-- Task 7 — one set per document -->
         <div id="qtSectionsPane"></div>   <!-- Task 6 -->
         <div id="qtTotalsPane"></div>     <!-- Task 6 -->
         <div id="qtTermsPane"></div>      <!-- Task 8 -->
@@ -634,6 +668,7 @@
         <div id="qtRevisionsPane"></div>  <!-- Task 10 -->
         `;
 
+        qtRenderImages();
         qtRenderSections();
         qtRenderTotals();
         qtRenderTerms();
@@ -687,6 +722,8 @@
             clientAddress: q.clientAddress, clientTin: q.clientTin,
             projectName: q.projectName, location: q.location,
             subject: q.subject, scopeNote: q.scopeNote,
+            images: q.images || [],
+            showLinePricing: q.showLinePricing !== false,
             sections: q.sections || [],
             discount: qtParseNum(q.discount), discountType: q.discountType || 'amount',
             vatMode: q.vatMode || 'none', vatPct: qtParseNum(q.vatPct),
@@ -832,22 +869,26 @@
         const clients = (qtState.presets || []).filter(p => p.kind === 'client');
         const scopes  = (qtState.presets || []).filter(p => p.kind === 'scope');
         host.innerHTML = `
-        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-top:.75rem;">
-            <select class="qt-btn" onchange="if(this.value){qtInsertPreset(this.value);this.value='';}">
+        <div class="qt-filters" style="margin:1rem 0 0;">
+            <select class="qt-select" onchange="if(this.value){qtInsertPreset(this.value);this.value='';}">
                 <option value="">Insert client preset…</option>
                 ${clients.map(p => `<option value="${p.id}">${qtEscHtml(p.name)}</option>`).join('')}
             </select>
-            <button class="qt-btn" onclick="qtSavePreset('client')">Save client as preset</button>
-            <select class="qt-btn" onchange="if(this.value){qtInsertPreset(this.value);this.value='';}">
+            <button class="qt-btn qt-btn-sm" onclick="qtSavePreset('client')">
+                <i data-lucide="bookmark"></i> Save client as preset
+            </button>
+            <select class="qt-select" onchange="if(this.value){qtInsertPreset(this.value);this.value='';}">
                 <option value="">Insert scope preset…</option>
                 ${scopes.map(p => `<option value="${p.id}">${qtEscHtml(p.name)}</option>`).join('')}
             </select>
             ${(clients.length + scopes.length)
-                ? `<select class="qt-btn qt-btn-danger" onchange="if(this.value){qtDeletePreset(this.value);this.value='';}">
+                ? `<select class="qt-select" onchange="if(this.value){qtDeletePreset(this.value);this.value='';}">
                      <option value="">Delete a preset…</option>
                      ${[...clients, ...scopes].map(p => `<option value="${p.id}">${qtEscHtml(p.kind)}: ${qtEscHtml(p.name)}</option>`).join('')}
                    </select>` : ''}
         </div>`;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
     // ── Task 9: Outcome panel — status, follow-ups, history ──────────────
@@ -910,45 +951,49 @@
         const overdue = qtIsOverdue(q);
 
         pane.innerHTML = `
-        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;">
-            <h3 style="font-size:.95rem;margin:0 0 .6rem;">Outcome</h3>
-            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
-                <span class="qt-pill qt-pill-${st}">${st}</span>
-                ${q.status === 'draft' ? '<button class="qt-btn qt-btn-primary" onclick="qtSendQuote()">Send →</button>' : ''}
-                ${q.status === 'sent'  ? `<button class="qt-btn qt-btn-primary" onclick="qtSetStatus('won')">Mark Won</button>
-                                          <button class="qt-btn qt-btn-danger"  onclick="qtSetStatus('lost')">Mark Lost</button>` : ''}
-                ${(q.status === 'won' || q.status === 'lost') ? `<button class="qt-btn" onclick="qtSetStatus('sent')">Reopen</button>` : ''}
+        <div class="qt-panel">
+            <div class="qt-section-title">Outcome
+                <span class="qt-section-note">marking a quote Won creates nothing — converting it into a project is a manual step</span>
             </div>
-            ${st === 'expired' ? `<p class="qt-sub" style="color:#b45309;margin:.5rem 0 0;">
+            <div class="qt-actions-row">
+                <span class="qt-pill qt-pill-${st}">${st}</span>
+                ${q.status === 'draft' ? '<button class="qt-btn qt-btn-primary" onclick="qtSendQuote()"><i data-lucide="send"></i> Send</button>' : ''}
+                ${q.status === 'sent'  ? `<button class="qt-btn qt-btn-primary" onclick="qtSetStatus('won')"><i data-lucide="check"></i> Mark Won</button>
+                                          <button class="qt-btn qt-btn-danger"  onclick="qtSetStatus('lost')"><i data-lucide="x"></i> Mark Lost</button>` : ''}
+                ${(q.status === 'won' || q.status === 'lost') ? `<button class="qt-btn" onclick="qtSetStatus('sent')"><i data-lucide="rotate-ccw"></i> Reopen</button>` : ''}
+            </div>
+            ${st === 'expired' ? `<p class="qt-warn">
                 This quotation lapsed on ${qtEscHtml(q.validUntil)}. Extend the validity date and save — that creates a new revision.</p>` : ''}
-            ${q.statusNote ? `<p class="qt-sub" style="margin:.5rem 0 0;">Note: ${qtEscHtml(q.statusNote)}</p>` : ''}
+            ${q.statusNote ? `<p class="qt-sub">Note: ${qtEscHtml(q.statusNote)}</p>` : ''}
 
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.75rem;margin-top:.9rem;">
-                <div>
-                    <label style="display:block;font-size:.75rem;color:#6b7280;font-weight:600;">Follow-up date</label>
-                    <input class="qt-btn" style="font-weight:400;width:100%;" type="date"
+            <div class="qt-form-grid-2">
+                <div class="qt-form-group">
+                    <label>Follow-up date</label>
+                    <input class="qt-input" type="date"
                            value="${qtEscHtml(q.followUpDate || '')}"
                            onchange="qtSetOutcomeField('followUpDate', this.value)">
-                    ${overdue ? '<p class="qt-sub" style="color:#b45309;">Overdue — pinned to the top of the list</p>' : ''}
+                    ${overdue ? '<span class="qt-warn">Overdue — pinned to the top of the list</span>' : ''}
                 </div>
-                <div>
-                    <label style="display:block;font-size:.75rem;color:#6b7280;font-weight:600;">Follow-up note</label>
-                    <input class="qt-btn" style="font-weight:400;width:100%;"
+                <div class="qt-form-group">
+                    <label>Follow-up note</label>
+                    <input class="qt-input"
                            value="${qtEscHtml(q.followUpNote || '')}"
                            oninput="qtSetOutcomeField('followUpNote', this.value)">
                 </div>
             </div>
-            <p class="qt-sub" style="margin:.5rem 0 0;">Reminders are an in-app flag only — nothing is emailed to the client.</p>
+            <p class="qt-total-note">Reminders are an in-app flag only — nothing is emailed to the client.</p>
 
             ${(q.history || []).length ? `
             <details style="margin-top:.9rem;">
                 <summary class="qt-sub" style="cursor:pointer;">Status history (${q.history.length})</summary>
-                <ul style="margin:.4rem 0 0 1rem;font-size:.8rem;color:#4b5563;">
+                <ul class="qt-history">
                     ${q.history.slice().reverse().map(h =>
                         `<li>${qtEscHtml(String(h.at).slice(0, 16).replace('T', ' '))} — ${qtEscHtml(h.from || '·')} → <strong>${qtEscHtml(h.status)}</strong>${h.note ? ' · ' + qtEscHtml(h.note) : ''}${h.by ? ' · ' + qtEscHtml(h.by) : ''}</li>`).join('')}
                 </ul>
             </details>` : ''}
         </div>`;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
     window.qtSendQuote = async function () {
@@ -994,7 +1039,8 @@
     function qtSections() { return (qtState.current && qtState.current.sections) || []; }
 
     window.qtAddSection = function () {
-        qtSections().push({ id: qtNewId(), label: '', pricing: 'rated', lumpAmount: '', images: [], groups: [] });
+        // No `images` key — reference images are per DOCUMENT since 0046.
+        qtSections().push({ id: qtNewId(), label: '', pricing: 'rated', lumpAmount: '', groups: [] });
         qtMarkDirty(); qtRenderSections(); qtRenderTotals();
     };
     window.qtAddGroup = function (sIdx) {
@@ -1049,13 +1095,16 @@
     function qtRefreshAmounts(sIdx, gIdx, lIdx) {
         const sec = qtSections()[sIdx];
         if (!sec) return;
+        const secTot = '₱ ' + qtFmt(qtSectionTotal(sec));
         const secTotEl = qtEl(`qtSecTot-${sIdx}`);
-        if (secTotEl) secTotEl.textContent = '₱' + qtFmt(qtSectionTotal(sec));
+        if (secTotEl) secTotEl.textContent = secTot;
+        const secSubEl = qtEl(`qtSecSub-${sIdx}`);      // the subtotal band under the section
+        if (secSubEl) secSubEl.textContent = secTot;
 
         const g = (sec.groups || [])[gIdx];
         if (!g) return;
         const grpTotEl = qtEl(`qtGrpTot-${sIdx}-${gIdx}`);
-        if (grpTotEl) grpTotEl.textContent = '₱' + qtFmt(qtGroupTotal(g));
+        if (grpTotEl) grpTotEl.textContent = '₱ ' + qtFmt(qtGroupDisplayTotal(sec, g));
 
         const l = (g.lines || [])[lIdx];
         if (!l) return;
@@ -1070,93 +1119,167 @@
 
     const QT_STATES = ['normal', 'optional', 'waived', 'removed'];
 
+    // Section / group numbering, matching the BOQ report's I. / A. / 1. tree.
+    const QT_ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X',
+                      'XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'];
+    const QT_ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+    function qtRoman(n) { return QT_ROMAN[n] || String(n + 1); }
+    function qtAlpha(n) { return QT_ALPHA[n] || String.fromCharCode(65 + n); }
+
+    // The estimate is ONE table with the BOQ's three row levels — red section
+    // rows, grey group rows, white line rows and a pale-yellow subtotal band.
+    // Eight columns; every colspan below has to keep adding up to eight.
+    const QT_COLS = 8;
+
     function qtRenderSections() {
         const pane = qtEl('qtSectionsPane');
         if (!pane || !qtState.current) return;
         const secs = qtSections();
 
         pane.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin:1.25rem 0 .5rem;">
-            <h3 style="font-size:.95rem;margin:0;">Itemized estimate</h3>
-            <button class="qt-btn" onclick="qtAddSection()">+ Section</button>
-        </div>
-        ${secs.length ? secs.map((sec, si) => `
-        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-bottom:.75rem;">
-            <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
-                <input class="qt-btn" style="flex:1;min-width:180px;font-weight:700;" placeholder="SECTION NAME"
-                       value="${qtEscHtml(sec.label)}"
-                       oninput="qtSetNodeField('section',${si},0,0,'label',this.value)">
-                <select class="qt-btn" onchange="qtSetPricing(${si}, this.value)">
-                    <option value="rated"${sec.pricing === 'rated' ? ' selected' : ''}>Rated (qty × price)</option>
-                    <option value="lump"${sec.pricing === 'lump'  ? ' selected' : ''}>Lump sum (LOT)</option>
-                </select>
-                ${sec.pricing === 'lump' ? `
-                <input class="qt-btn qt-amt" style="width:140px;" placeholder="LOT amount"
-                       value="${qtEscHtml(sec.lumpAmount)}"
-                       oninput="qtSetNodeField('section',${si},0,0,'lumpAmount',this.value)">` : ''}
-                <span class="qt-stat-value" id="qtSecTot-${si}">₱${qtFmt(qtSectionTotal(sec))}</span>
-                <button class="qt-btn" onclick="qtMoveNode('section',${si},0,0,-1)">↑</button>
-                <button class="qt-btn" onclick="qtMoveNode('section',${si},0,0,1)">↓</button>
-                <button class="qt-btn" onclick="qtSavePreset('scope',${si})">Save as preset</button>
-                <button class="qt-btn qt-btn-danger" onclick="qtDeleteNode('section',${si},0,0)">Delete</button>
+        <div class="qt-panel">
+            <div class="qt-section-title">Itemized Estimate
+                <label class="qt-check-label" title="Affects the printed sheet and the PDF only — you always see the rates here while editing">
+                    <input type="checkbox" class="qt-check" ${qtState.current.showLinePricing !== false ? 'checked' : ''}
+                           onchange="qtSetPrintPricing(this.checked)">
+                    Print unit prices &amp; line amounts
+                </label>
             </div>
-            ${sec.pricing === 'lump' && sec.lumpAmount !== '' && sec.lumpAmount !== null && sec.lumpAmount !== undefined
-              ? `<p class="qt-sub" style="margin:.4rem 0 0;">This section is priced as one LOT. The group amounts below are a printed breakdown and do <strong>not</strong> add to the total.</p>` : ''}
-
-            <div id="qtImages-${si}"></div>   <!-- Task 7 -->
-
-            ${(sec.groups || []).map((g, gi) => `
-            <div style="border-top:1px solid #f3f4f6;margin-top:.75rem;padding-top:.75rem;">
-                <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
-                    <input class="qt-btn" style="flex:1;min-width:160px;font-weight:600;" placeholder="Group / sub-item"
-                           value="${qtEscHtml(g.label)}"
-                           oninput="qtSetNodeField('group',${si},${gi},0,'label',this.value)">
-                    ${sec.pricing === 'lump' ? `
-                    <input class="qt-btn qt-amt" style="width:130px;" placeholder="Amount"
-                           value="${qtEscHtml(g.lumpAmount)}"
-                           oninput="qtSetNodeField('group',${si},${gi},0,'lumpAmount',this.value)">` : `
-                    <span class="qt-sub" id="qtGrpTot-${si}-${gi}">₱${qtFmt(qtGroupTotal(g))}</span>`}
-                    <button class="qt-btn" onclick="qtMoveNode('group',${si},${gi},0,-1)">↑</button>
-                    <button class="qt-btn" onclick="qtMoveNode('group',${si},${gi},0,1)">↓</button>
-                    <button class="qt-btn qt-btn-danger" onclick="qtDeleteNode('group',${si},${gi},0)">×</button>
-                </div>
-                <table class="qt-table" style="margin-top:.5rem;">
-                    <thead><tr>
-                        <th style="width:38%">Description</th><th style="width:70px">Qty</th>
-                        <th style="width:80px">Unit</th>
-                        ${sec.pricing === 'rated' ? '<th style="width:110px">Unit price</th><th class="qt-amt" style="width:110px">Amount</th>' : '<th colspan="2"></th>'}
-                        <th style="width:110px">State</th><th style="width:40px"></th>
-                    </tr></thead>
-                    <tbody>${(g.lines || []).map((l, li) => qtLineRow(sec, si, gi, li, l)).join('')}</tbody>
+            ${qtState.current.showLinePricing === false ? `
+            <p class="qt-print-hint"><strong>Section totals only.</strong> The printed sheet and PDF drop the Unit Price
+            column and leave each line's amount blank — the client sees what is included and what each section costs,
+            not the rate behind every line. Nothing about the total changes.</p>` : ''}
+            <div class="qt-table-scroll">
+                <table class="qt-table qt-table-wide">
+                    <thead>
+                        <tr class="qt-thead-row">
+                            <th class="qt-col-no">Item No.</th>
+                            <th class="qt-col-desc">Descriptions</th>
+                            <th class="qt-col-qty qt-center">QTY</th>
+                            <th class="qt-col-unit qt-center">Unit</th>
+                            <th class="qt-col-rate qt-amt">Unit Price</th>
+                            <th class="qt-col-amount qt-amt">Amount</th>
+                            <th class="qt-col-state">State</th>
+                            <th class="qt-col-actions qt-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>${secs.length ? secs.map(qtSectionRows).join('')
+                        : `<tr class="qt-empty-row"><td colspan="${QT_COLS}">No sections yet. Click "Add Section" below to start itemizing.</td></tr>`}</tbody>
                 </table>
-                <button class="qt-btn" style="margin-top:.4rem;" onclick="qtAddLine(${si},${gi})">+ Line</button>
-            </div>`).join('')}
+            </div>
+            <div style="padding:0.8rem 0 0.2rem;">
+                <button class="qt-btn-add" onclick="qtAddSection()">
+                    <i data-lucide="plus-circle"></i> Add Section
+                </button>
+            </div>
+        </div>`;
 
-            <button class="qt-btn" style="margin-top:.75rem;" onclick="qtAddGroup(${si})">+ Group</button>
-        </div>`).join('') : `<div class="qt-empty">No sections yet. Add one to start itemizing.</div>`}`;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
 
-        if (typeof qtRenderImages === 'function') qtSections().forEach((_, si) => qtRenderImages(si));
+    // One section: its red level-1 row, the reference-image strip, every group
+    // and line beneath it, then the subtotal band.
+    function qtSectionRows(sec, si) {
+        const isLump = sec.pricing === 'lump';
+        const hasLumpAmount = isLump && sec.lumpAmount !== '' && sec.lumpAmount !== null && sec.lumpAmount !== undefined;
+
+        return `
+        <tr class="qt-row-l1">
+            <td class="qt-col-no qt-l1-no">${qtRoman(si)}.</td>
+            <td class="qt-col-desc" colspan="3">
+                <div class="qt-l1-cell">
+                    <input class="qt-label-input" placeholder="SECTION NAME"
+                           value="${qtEscHtml(sec.label)}"
+                           oninput="qtSetNodeField('section',${si},0,0,'label',this.value)">
+                    <select class="qt-cell-select" style="width:auto;" onchange="qtSetPricing(${si}, this.value)">
+                        <option value="rated"${!isLump ? ' selected' : ''}>Rated (qty × price)</option>
+                        <option value="lump"${isLump  ? ' selected' : ''}>Lump sum (LOT)</option>
+                    </select>
+                </div>
+            </td>
+            <td class="qt-col-rate qt-amt">${isLump ? `
+                <input class="qt-cell-input qt-amt" placeholder="LOT amount"
+                       value="${qtEscHtml(sec.lumpAmount)}"
+                       oninput="qtSetNodeField('section',${si},0,0,'lumpAmount',this.value)">` : ''}</td>
+            <td class="qt-col-amount qt-amt qt-l1-total" id="qtSecTot-${si}">₱ ${qtFmt(qtSectionTotal(sec))}</td>
+            <td class="qt-col-state"></td>
+            <td class="qt-col-actions qt-l1-actions">
+                <button class="qt-icon-btn qt-icon-btn-add" title="Add group"     onclick="qtAddGroup(${si})"><i data-lucide="plus"></i></button>
+                <button class="qt-icon-btn"                 title="Save as preset" onclick="qtSavePreset('scope',${si})"><i data-lucide="bookmark"></i></button>
+                <button class="qt-icon-btn"                 title="Move up"       onclick="qtMoveNode('section',${si},0,0,-1)"><i data-lucide="chevron-up"></i></button>
+                <button class="qt-icon-btn"                 title="Move down"     onclick="qtMoveNode('section',${si},0,0,1)"><i data-lucide="chevron-down"></i></button>
+                <button class="qt-icon-btn qt-icon-btn-del" title="Delete section" onclick="qtDeleteNode('section',${si},0,0)"><i data-lucide="trash-2"></i></button>
+            </td>
+        </tr>
+        ${hasLumpAmount ? `
+        <tr class="qt-row-note"><td colspan="${QT_COLS}">
+            This section is priced as one LOT. The group amounts below are working figures only — they do <strong>not</strong> add to the total, and they are <strong>not</strong> printed on the client's sheet.
+        </td></tr>` : ''}
+        ${(sec.groups || []).map((g, gi) => qtGroupRows(sec, si, g, gi)).join('')}
+        <tr class="qt-row-subtotal">
+            <td colspan="5" class="qt-subtotal-label">Subtotal — ${qtRoman(si)}. ${qtEscHtml(sec.label || '')}</td>
+            <td class="qt-col-amount qt-amt" id="qtSecSub-${si}">₱ ${qtFmt(qtSectionTotal(sec))}</td>
+            <td colspan="2"></td>
+        </tr>`;
+    }
+
+    // What the group's Amount cell shows. In a LOT section the group carries
+    // its own printed amount; in a rated section it is the sum of its lines.
+    function qtGroupDisplayTotal(sec, g) {
+        return (sec && sec.pricing === 'lump') ? qtParseNum(g && g.lumpAmount) : qtGroupTotal(g);
+    }
+
+    function qtGroupRows(sec, si, g, gi) {
+        const isLump = sec.pricing === 'lump';
+        return `
+        <tr class="qt-row-l2">
+            <td class="qt-col-no qt-l2-no">${qtAlpha(gi)}.</td>
+            <td class="qt-col-desc" colspan="3">
+                <input class="qt-label-input" placeholder="Group / sub-item"
+                       value="${qtEscHtml(g.label)}"
+                       oninput="qtSetNodeField('group',${si},${gi},0,'label',this.value)">
+            </td>
+            <td class="qt-col-rate qt-amt">${isLump ? `
+                <input class="qt-cell-input qt-amt" placeholder="Amount"
+                       value="${qtEscHtml(g.lumpAmount)}"
+                       oninput="qtSetNodeField('group',${si},${gi},0,'lumpAmount',this.value)">` : ''}</td>
+            <td class="qt-col-amount qt-amt" id="qtGrpTot-${si}-${gi}">₱ ${qtFmt(qtGroupDisplayTotal(sec, g))}</td>
+            <td class="qt-col-state"></td>
+            <td class="qt-col-actions">
+                <button class="qt-icon-btn qt-icon-btn-add" title="Add line"  onclick="qtAddLine(${si},${gi})"><i data-lucide="plus"></i></button>
+                <button class="qt-icon-btn"                 title="Move up"   onclick="qtMoveNode('group',${si},${gi},0,-1)"><i data-lucide="chevron-up"></i></button>
+                <button class="qt-icon-btn"                 title="Move down" onclick="qtMoveNode('group',${si},${gi},0,1)"><i data-lucide="chevron-down"></i></button>
+                <button class="qt-icon-btn qt-icon-btn-del" title="Delete group" onclick="qtDeleteNode('group',${si},${gi},0)"><i data-lucide="trash-2"></i></button>
+            </td>
+        </tr>
+        ${(g.lines || []).map((l, li) => qtLineRow(sec, si, gi, li, l)).join('')}`;
     }
 
     function qtLineRow(sec, si, gi, li, l) {
-        const struck = l.state === 'removed' ? 'text-decoration:line-through;opacity:.55;' : '';
-        const faded  = (l.state === 'optional' || l.state === 'waived') ? 'opacity:.7;' : '';
-        return `<tr style="${struck}${faded}">
-            <td><input class="qt-btn" style="width:100%;font-weight:400;" value="${qtEscHtml(l.description)}"
+        const state = l.state || 'normal';
+        return `<tr class="qt-row-l3 qt-row-${state}">
+            <td class="qt-col-no qt-l3-no">${li + 1}</td>
+            <td class="qt-col-desc"><input class="qt-cell-input" placeholder="Description"
+                       value="${qtEscHtml(l.description)}"
                        oninput="qtSetNodeField('line',${si},${gi},${li},'description',this.value)"></td>
-            <td><input class="qt-btn" style="width:100%;font-weight:400;" value="${qtEscHtml(l.qty)}"
+            <td class="qt-col-qty"><input class="qt-cell-input qt-center" value="${qtEscHtml(l.qty)}"
                        oninput="qtSetNodeField('line',${si},${gi},${li},'qty',this.value)"></td>
-            <td><input class="qt-btn" style="width:100%;font-weight:400;" value="${qtEscHtml(l.unit)}"
+            <td class="qt-col-unit"><input class="qt-cell-input qt-center" value="${qtEscHtml(l.unit)}"
                        oninput="qtSetNodeField('line',${si},${gi},${li},'unit',this.value)"></td>
             ${sec.pricing === 'rated' ? `
-            <td><input class="qt-btn qt-amt" style="width:100%;font-weight:400;" value="${qtEscHtml(l.unitPrice)}"
+            <td class="qt-col-rate"><input class="qt-cell-input qt-amt" value="${qtEscHtml(l.unitPrice)}"
                        oninput="qtSetNodeField('line',${si},${gi},${li},'unitPrice',this.value)"></td>
-            <td class="qt-amt" id="qtAmt-${si}-${gi}-${li}">${qtFmt(qtLineAmount(l))}</td>` : '<td colspan="2" class="qt-sub">scope only</td>'}
-            <td><select class="qt-btn" style="width:100%;"
+            <td class="qt-col-amount qt-amt" id="qtAmt-${si}-${gi}-${li}">${qtFmt(qtLineAmount(l))}</td>`
+            : `<td colspan="2" class="qt-cell-muted">scope only</td>`}
+            <td class="qt-col-state"><select class="qt-cell-select"
                         onchange="qtSetNodeField('line',${si},${gi},${li},'state',this.value)">
-                ${QT_STATES.map(s => `<option value="${s}"${(l.state || 'normal') === s ? ' selected' : ''}>${s}</option>`).join('')}
+                ${QT_STATES.map(s => `<option value="${s}"${state === s ? ' selected' : ''}>${s}</option>`).join('')}
             </select></td>
-            <td><button class="qt-btn qt-btn-danger" onclick="qtDeleteNode('line',${si},${gi},${li})">×</button></td>
+            <td class="qt-col-actions">
+                <button class="qt-icon-btn"                 title="Move up"   onclick="qtMoveNode('line',${si},${gi},${li},-1)"><i data-lucide="chevron-up"></i></button>
+                <button class="qt-icon-btn"                 title="Move down" onclick="qtMoveNode('line',${si},${gi},${li},1)"><i data-lucide="chevron-down"></i></button>
+                <button class="qt-icon-btn qt-icon-btn-del" title="Delete line" onclick="qtDeleteNode('line',${si},${gi},${li})"><i data-lucide="trash-2"></i></button>
+            </td>
         </tr>`;
     }
 
@@ -1168,39 +1291,46 @@
               sub = qtSubTotal(q), vat = qtVatAmount(q), total = qtGrandTotal(q);
 
         pane.innerHTML = `
-        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;max-width:460px;margin-left:auto;">
-            <table style="width:100%;font-size:.88rem;">
-                <tr><td>Project Cost</td><td class="qt-amt">₱${qtFmt(pc)}</td></tr>
-                <tr>
-                    <td>Less: Discount
-                        <select class="qt-btn" style="padding:.15rem .4rem;" onchange="qtSetTotalsField('discountType', this.value)">
+        <div class="qt-panel qt-panel-narrow">
+            <div class="qt-section-title">Summary</div>
+            <div class="qt-totals-grid">
+                <div class="qt-total-row">
+                    <span class="qt-total-label">Project Cost:</span>
+                    <span class="qt-total-value">₱ ${qtFmt(pc)}</span>
+                </div>
+                <div class="qt-total-row">
+                    <span class="qt-total-label">Less: Discount
+                        <select class="qt-mini-select" onchange="qtSetTotalsField('discountType', this.value)">
                             <option value="amount"${q.discountType === 'amount'  ? ' selected' : ''}>₱</option>
                             <option value="percent"${q.discountType === 'percent' ? ' selected' : ''}>%</option>
                         </select>
-                        <input class="qt-btn qt-amt" style="width:90px;padding:.15rem .4rem;font-weight:400;"
-                               value="${qtEscHtml(q.discount)}" oninput="qtSetTotalsField('discount', this.value)">
-                    </td>
-                    <td class="qt-amt">(${qtFmt(disc)})</td>
-                </tr>
-                <tr style="border-top:1px solid #e5e7eb;"><td><strong>Sub-total</strong></td><td class="qt-amt"><strong>₱${qtFmt(sub)}</strong></td></tr>
-                <tr>
-                    <td>Plus: VAT
-                        <select class="qt-btn" style="padding:.15rem .4rem;" onchange="qtSetTotalsField('vatMode', this.value)">
+                        <input class="qt-mini-input" value="${qtEscHtml(q.discount)}"
+                               oninput="qtSetTotalsField('discount', this.value)">
+                    </span>
+                    <span class="qt-total-value qt-total-muted">(${qtFmt(disc)})</span>
+                </div>
+                <div class="qt-total-row">
+                    <span class="qt-total-label">Sub-total:</span>
+                    <span class="qt-total-value">₱ ${qtFmt(sub)}</span>
+                </div>
+                <div class="qt-total-row">
+                    <span class="qt-total-label">Plus: VAT
+                        <select class="qt-mini-select" onchange="qtSetTotalsField('vatMode', this.value)">
                             <option value="none"${q.vatMode === 'none' ? ' selected' : ''}>Not applicable</option>
                             <option value="exclusive"${q.vatMode === 'exclusive' ? ' selected' : ''}>Exclusive (add)</option>
                             <option value="inclusive"${q.vatMode === 'inclusive' ? ' selected' : ''}>Inclusive (built in)</option>
                         </select>
-                        <input class="qt-btn qt-amt" style="width:60px;padding:.15rem .4rem;font-weight:400;"
-                               value="${qtEscHtml(q.vatPct)}" oninput="qtSetTotalsField('vatPct', this.value)">%
-                    </td>
-                    <td class="qt-amt">${q.vatMode === 'none' ? '—' : (q.vatMode === 'inclusive' ? '(incl. ' + qtFmt(vat) + ')' : qtFmt(vat))}</td>
-                </tr>
-                <tr style="border-top:2px solid #111827;">
-                    <td><strong>TOTAL</strong></td>
-                    <td class="qt-amt"><strong>₱${qtFmt(total)}</strong></td>
-                </tr>
-            </table>
-            <p class="qt-sub" style="margin:.5rem 0 0;">
+                        <input class="qt-mini-input" style="width:56px;" value="${qtEscHtml(q.vatPct)}"
+                               oninput="qtSetTotalsField('vatPct', this.value)">%
+                    </span>
+                    <span class="qt-total-value qt-total-muted">${q.vatMode === 'none' ? '—' : (q.vatMode === 'inclusive' ? '(incl. ' + qtFmt(vat) + ')' : qtFmt(vat))}</span>
+                </div>
+                <div class="qt-total-row qt-total-row-final">
+                    <span class="qt-total-label">TOTAL:</span>
+                    <span class="qt-total-value">₱ ${qtFmt(total)}</span>
+                </div>
+            </div>
+            <p class="qt-total-note">
                 ${q.vatMode === 'none' ? 'Prints as “VAT not applicable”.'
                  : q.vatMode === 'exclusive' ? 'VAT is added on top of the discounted sub-total.'
                  : 'VAT is already inside the total and is shown broken out.'}
@@ -1213,15 +1343,55 @@
         qtMarkDirty(); qtRenderTotals();
     };
 
-    // ── Task 7: Section reference images ─────────────────────────────────
-    const QT_MAX_IMG_MB = 5;
+    // Presentation only (migration 0047). The editor ALWAYS shows the rates —
+    // you cannot price a job you cannot see — so this changes nothing here
+    // beyond the hint; it is read by the print sheet and the PDF.
+    window.qtSetPrintPricing = function (on) {
+        if (!qtState.current) return;
+        qtState.current.showLinePricing = !!on;
+        qtMarkDirty(); qtRenderSections();
+    };
 
-    window.qtUploadImages = async function (sIdx, fileList) {
-        const sec = qtSections()[sIdx];
-        if (!sec) return;
-        sec.images = sec.images || [];
+    // ── Task 7: Reference images ─────────────────────────────────────────
+    // ONE set per quotation, not one per section. They print once, at the top
+    // of the sheet under the scope note and above the itemized estimate —
+    // the shape of a real quotation. Migration 0046 added the column.
+    const QT_MAX_IMG_MB  = 5;
+    const QT_MAX_IMAGES  = 4;
+
+    function qtImages() {
+        const q = qtState.current;
+        if (!q) return [];
+        if (!Array.isArray(q.images)) q.images = [];
+        return q.images;
+    }
+
+    // 0045 stored images inside each section. An old quotation must keep
+    // showing and printing its pictures, so pull them up on open — first
+    // QT_MAX_IMAGES wins. The section copies are LEFT IN PLACE: nothing is
+    // destroyed until the user saves, and the print sheet reads only the
+    // document-level list, so nothing prints twice in the meantime.
+    function qtHoistLegacyImages(q) {
+        if (!q || (Array.isArray(q.images) && q.images.length)) return;
+        const found = [];
+        (q.sections || []).forEach(sec => (sec.images || []).forEach(im => {
+            if (im && im.url && found.length < QT_MAX_IMAGES) found.push(im);
+        }));
+        if (found.length) {
+            q.images = JSON.parse(JSON.stringify(found));
+            console.log(`[QT] hoisted ${found.length} legacy section image(s) to the document`);
+        }
+    }
+
+    window.qtUploadImages = async function (fileList) {
+        if (!qtState.current) return;
+        const imgs  = qtImages();
         const files = Array.from(fileList || []);
         for (const f of files) {
+            if (imgs.length >= QT_MAX_IMAGES) {
+                qtToast(`Maximum ${QT_MAX_IMAGES} images — remove one first`, 'error');
+                break;
+            }
             if (!/^image\//.test(f.type)) { qtToast(`${f.name} is not an image`, 'error'); continue; }
             if (f.size > QT_MAX_IMG_MB * 1024 * 1024) {
                 qtToast(`${f.name} is over ${QT_MAX_IMG_MB}MB`, 'error'); continue;
@@ -1231,7 +1401,7 @@
                 const ref  = storage.ref(path);
                 await ref.put(f);
                 const url  = await ref.getDownloadURL();
-                sec.images.push({ url, name: f.name, caption: '' });
+                imgs.push({ url, name: f.name, caption: '' });
                 qtMarkDirty();
             } catch (e) {
                 // Per-file failure must never block saving the quotation.
@@ -1239,48 +1409,64 @@
                 qtToast(`Upload failed for ${f.name}: ${e.message || e}`, 'error');
             }
         }
-        qtRenderImages(sIdx);
+        qtRenderImages();
     };
 
-    window.qtRemoveImage = function (sIdx, idx) {
+    window.qtRemoveImage = function (idx) {
         if (!confirm('Remove this image from the quotation?')) return;
         // Removes the reference only — the stored file is left in the bucket
         // so an earlier revision that still points at it keeps rendering.
-        qtSections()[sIdx].images.splice(idx, 1);
-        qtMarkDirty(); qtRenderImages(sIdx);
+        qtImages().splice(idx, 1);
+        qtMarkDirty(); qtRenderImages();
     };
 
-    window.qtSetImageCaption = function (sIdx, idx, text) {
-        qtSections()[sIdx].images[idx].caption = text;
-        qtMarkDirty();
+    window.qtMoveImage = function (idx, dir) {
+        const arr = qtImages(), j = idx + dir;
+        if (j < 0 || j >= arr.length) return;
+        [arr[idx], arr[j]] = [arr[j], arr[idx]];
+        qtMarkDirty(); qtRenderImages();
     };
 
-    function qtRenderImages(sIdx) {
-        const host = qtEl('qtImages-' + sIdx);
-        const sec  = qtSections()[sIdx];
-        if (!host || !sec) return;
-        const imgs = sec.images || [];
+    window.qtSetImageCaption = function (idx, text) {
+        const im = qtImages()[idx];
+        if (im) { im.caption = text; qtMarkDirty(); }
+    };
+
+    function qtRenderImages() {
+        const host = qtEl('qtImagesPane');
+        if (!host || !qtState.current) return;
+        const imgs = qtImages();
+        const full = imgs.length >= QT_MAX_IMAGES;
         host.innerHTML = `
-        <div style="margin-top:.6rem;">
-            <label class="qt-btn" style="display:inline-block;cursor:pointer;">
-                + Reference image
-                <input type="file" accept="image/*" multiple hidden
-                       onchange="qtUploadImages(${sIdx}, this.files); this.value='';">
-            </label>
-            <span class="qt-sub" style="margin-left:.5rem;">Renders and photos printed with this section (max ${QT_MAX_IMG_MB}MB each)</span>
-            ${imgs.length ? `<div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.5rem;">
-                ${imgs.map((im, i) => `
-                <div style="width:150px;">
-                    <img src="${qtEscHtml(im.url)}" alt="${qtEscHtml(im.name)}"
-                         style="width:150px;height:105px;object-fit:cover;border:1px solid #e5e7eb;border-radius:8px;">
-                    <input class="qt-btn" style="width:100%;font-weight:400;font-size:.75rem;margin-top:.2rem;"
-                           placeholder="Caption" value="${qtEscHtml(im.caption)}"
-                           oninput="qtSetImageCaption(${sIdx}, ${i}, this.value)">
-                    <button class="qt-btn qt-btn-danger" style="width:100%;margin-top:.2rem;font-size:.75rem;"
-                            onclick="qtRemoveImage(${sIdx}, ${i})">Remove</button>
-                </div>`).join('')}
-            </div>` : ''}
+        <div class="qt-panel">
+            <div class="qt-section-title">Reference Images
+                <span class="qt-section-note">${imgs.length} of ${QT_MAX_IMAGES} · printed once, above the itemized estimate (max ${QT_MAX_IMG_MB}MB each)</span>
+            </div>
+            <div class="qt-images-panel">
+                ${full ? `<span class="qt-images-hint">Maximum of ${QT_MAX_IMAGES} images reached — remove one to add another.</span>` : `
+                <label class="qt-upload-label">
+                    <i data-lucide="image-plus"></i> Add image
+                    <input type="file" accept="image/*" multiple hidden
+                           onchange="qtUploadImages(this.files); this.value='';">
+                </label>`}
+                ${imgs.length ? `<div class="qt-images-grid">
+                    ${imgs.map((im, i) => `
+                    <div class="qt-image-card">
+                        <img src="${qtEscHtml(im.url)}" alt="${qtEscHtml(im.name)}">
+                        <input class="qt-image-caption" placeholder="Caption" value="${qtEscHtml(im.caption)}"
+                               oninput="qtSetImageCaption(${i}, this.value)">
+                        <div class="qt-image-actions">
+                            <button class="qt-icon-btn" title="Move left"  onclick="qtMoveImage(${i},-1)"><i data-lucide="chevron-left"></i></button>
+                            <button class="qt-icon-btn" title="Move right" onclick="qtMoveImage(${i},1)"><i data-lucide="chevron-right"></i></button>
+                            <button class="qt-icon-btn qt-icon-btn-del" title="Remove" onclick="qtRemoveImage(${i})"><i data-lucide="trash-2"></i></button>
+                        </div>
+                    </div>`).join('')}
+                </div>`
+                : `<span class="qt-images-hint">No images yet. Renders or site photos go here.</span>`}
+            </div>
         </div>`;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
     // ── Task 10: Revisions panel and diff ────────────────────────────────
@@ -1289,30 +1475,40 @@
         if (!pane) return;
         const revs = qtState.revisions || [];
         if (!revs.length) {
-            pane.innerHTML = `<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;">
-                <h3 style="font-size:.95rem;margin:0 0 .3rem;">Revision history</h3>
+            pane.innerHTML = `<div class="qt-panel">
+                <div class="qt-section-title">Revision History</div>
                 <p class="qt-sub">No revisions yet. Sending this quotation freezes Rev 1.</p></div>`;
             return;
         }
         pane.innerHTML = `
-        <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;">
-            <h3 style="font-size:.95rem;margin:0 0 .6rem;">Revision history</h3>
-            <table class="qt-table">
-                <thead><tr><th>Rev</th><th>Sent</th><th class="qt-amt">Total</th><th>Note</th><th></th></tr></thead>
-                <tbody>${revs.map((r, i) => `
-                <tr>
-                    <td><strong>Rev ${r.revNo}</strong></td>
-                    <td>${qtEscHtml(qtTsDate(r.sentAt))}</td>
-                    <td class="qt-amt">₱${qtFmt(r.totalAmount)}</td>
-                    <td>${qtEscHtml(r.note || '')}</td>
-                    <td>
-                        <button class="qt-btn" onclick="qtViewRevision('${r.id}')">View</button>
-                        ${i < revs.length - 1 ? `<button class="qt-btn" onclick="qtShowDiff('${r.id}')">Diff</button>` : ''}
-                    </td>
-                </tr>`).join('')}</tbody>
-            </table>
+        <div class="qt-panel">
+            <div class="qt-section-title">Revision History
+                <span class="qt-section-note">each frozen copy prints from itself, never from the live record</span>
+            </div>
+            <div class="qt-table-scroll">
+                <table class="qt-table">
+                    <thead>
+                        <tr class="qt-thead-row">
+                            <th>Rev</th><th>Sent</th><th class="qt-amt">Total</th><th>Note</th><th class="qt-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>${revs.map((r, i) => `
+                    <tr class="qt-list-row">
+                        <td><strong>Rev ${r.revNo}</strong></td>
+                        <td>${qtEscHtml(qtTsDate(r.sentAt))}</td>
+                        <td class="qt-amt">₱ ${qtFmt(r.totalAmount)}</td>
+                        <td>${qtEscHtml(r.note || '')}</td>
+                        <td class="qt-center">
+                            <button class="qt-btn qt-btn-sm" onclick="qtViewRevision('${r.id}')">View</button>
+                            ${i < revs.length - 1 ? `<button class="qt-btn qt-btn-sm" onclick="qtShowDiff('${r.id}')">Diff</button>` : ''}
+                        </td>
+                    </tr>`).join('')}</tbody>
+                </table>
+            </div>
             <div id="qtDiffPane"></div>
         </div>`;
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
     function qtTsDate(ts) {
@@ -1336,12 +1532,12 @@
             <span class="qt-sub">${qtEscHtml(l.path)}</span> — ₱${qtFmt(delta)}</li>`;
 
         qtEl('qtDiffPane').innerHTML = `
-        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:.8rem;margin-top:.8rem;">
-            <h4 style="font-size:.85rem;margin:0 0 .4rem;">Rev ${revs[i + 1].revNo} → Rev ${revs[i].revNo}</h4>
-            <ul style="margin:0 0 .5rem 1rem;font-size:.82rem;">
-                ${d.added.map(l => row(l, '<span style="color:#047857;">added</span>', l.amount)).join('')}
-                ${d.removed.map(l => row(l, '<span style="color:#b91c1c;">deleted</span>', -l.amount)).join('')}
-                ${d.changed.map(c => `<li><span style="color:#b45309;">changed</span>
+        <div class="qt-diff">
+            <h4>Rev ${revs[i + 1].revNo} → Rev ${revs[i].revNo}</h4>
+            <ul>
+                ${d.added.map(l => row(l, '<span class="qt-tag-added">added</span>', l.amount)).join('')}
+                ${d.removed.map(l => row(l, '<span class="qt-tag-removed">deleted</span>', -l.amount)).join('')}
+                ${d.changed.map(c => `<li><span class="qt-tag-changed">changed</span>
                     <strong>${qtEscHtml(c.to.description || c.id)}</strong>
                     <span class="qt-sub">${qtEscHtml(c.to.path)}</span> —
                     ${qtEscHtml(c.from.qty)} × ₱${qtFmt(c.from.unitPrice)} (${qtEscHtml(c.from.state)})
@@ -1350,7 +1546,7 @@
                 ${(!d.added.length && !d.removed.length && !d.changed.length)
                     ? '<li class="qt-sub">No line-level changes — only header, terms or totals fields differ.</li>' : ''}
             </ul>
-            <p style="margin:0;font-weight:700;">Net change: ₱${qtFmt(d.delta)}</p>
+            <p class="qt-diff-net">Net change: ₱ ${qtFmt(d.delta)}</p>
         </div>`;
     };
 
@@ -1360,19 +1556,23 @@
         const root = qtEl('quoteRevisionView');
         if (!root) return;
         root.innerHTML = `
-        <div class="qt-header">
-            <div>
-                <h2 class="qt-title">${qtEscHtml(r.snapshot.quoteNo)} — Rev ${r.revNo}</h2>
-                <p class="qt-sub">Frozen ${qtEscHtml(qtTsDate(r.sentAt))} · read-only</p>
+        <div class="qt-toolbar">
+            <div class="qt-toolbar-left">
+                <button class="qt-back-btn" onclick="switchView('quoteEditor')">
+                    <i data-lucide="arrow-left"></i> Back to current
+                </button>
+                <span class="qt-breadcrumb-sep">/</span>
+                <h3 class="qt-doc-title">${qtEscHtml(r.snapshot.quoteNo)} — Rev ${r.revNo}</h3>
+                <span class="qt-doc-sub">Frozen ${qtEscHtml(qtTsDate(r.sentAt))} · read-only</span>
             </div>
-            <div style="display:flex;gap:.5rem;">
-                <button class="qt-btn" onclick="switchView('quoteEditor')">← Back to current</button>
-                <button class="qt-btn qt-btn-primary" onclick="qtPrintSheet(qtRevisionSnapshot('${r.id}'))">Print this revision</button>
-                <button class="qt-btn" onclick="qtExportPDF(qtRevisionSnapshot('${r.id}'))">PDF</button>
+            <div class="qt-toolbar-right">
+                <button class="qt-btn qt-btn-outline" onclick="qtExportPDF(qtRevisionSnapshot('${r.id}'))"><i data-lucide="file-down"></i> Export PDF</button>
+                <button class="qt-btn qt-btn-primary" onclick="qtPrintSheet(qtRevisionSnapshot('${r.id}'))"><i data-lucide="printer"></i> Print this revision</button>
             </div>
         </div>
-        <pre style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:1rem;margin-top:1rem;overflow:auto;font-size:.75rem;">${qtEscHtml(JSON.stringify(r.snapshot, null, 2))}</pre>`;
+        <pre class="qt-snapshot">${qtEscHtml(JSON.stringify(r.snapshot, null, 2))}</pre>`;
         switchView('quoteRevision');
+        if (typeof lucide !== 'undefined') lucide.createIcons();
     };
 
     // Lets the print module (Task 12) render a frozen revision from itself
