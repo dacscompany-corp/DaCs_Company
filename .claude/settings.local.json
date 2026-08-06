@@ -177,7 +177,12 @@
       "Bash(bash \"C:/Users/John Aerol Tapales/.claude/plugins/cache/claude-plugins-official/superpowers/6.2.0/skills/subagent-driven-development/scripts/review-package\" docs/superpowers/plans/2026-08-05-quotations-module.md 4a2e8aabc32ed922b37f7bcd28327fae3a5c1494 04c1faa)",
       "Bash(bash \"C:/Users/John Aerol Tapales/.claude/plugins/cache/claude-plugins-official/superpowers/6.2.0/skills/subagent-driven-development/scripts/review-package\" docs/superpowers/plans/2026-08-05-quotations-module.md 04c1faa 2e84957)",
       "Bash(bash \"C:/Users/John Aerol Tapales/.claude/plugins/cache/claude-plugins-official/superpowers/6.2.0/skills/subagent-driven-development/scripts/review-package\" docs/superpowers/plans/2026-08-05-quotations-module.md df99f4efb0cdec59a2881d092e23eb061dfaf0b1 2e84957)",
-      "mcp__plugin_supabase_supabase__execute_sql"
+      "mcp__plugin_supabase_supabase__execute_sql",
+      "mcp__plugin_chrome-devtools-mcp_chrome-devtools__list_pages",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:5501/admin.html --max-time 4)",
+      "mcp__plugin_supabase_supabase__list_projects",
+      "mcp__plugin_supabase_supabase__list_migrations",
+      "mcp__plugin_supabase_supabase__apply_migration"
     ],
     "additionalDirectories": [
       "c:\\Users\\yuich\\DaCs_Company",
