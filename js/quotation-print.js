@@ -104,6 +104,75 @@
     // always printed their rates — so anything but an explicit false is true.
     function qtShowsLinePricing(d) { return !d || d.showLinePricing !== false; }
 
+    // Does this quotation print the header logo? (migration 0048)
+    // Same rule: absent on anything written before 0048, and those all printed
+    // the logo — so only an explicit false turns it off.
+    function qtShowsLogo(d) { return !d || d.showLogo !== false; }
+
+    // ── Signature blocks ──────────────────────────────────────────────
+    // Up to three columns: PREPARED BY (who built the quotation), SUBMITTED BY
+    // (who signs it out) and CLIENT APPROVAL. Each is switched independently
+    // from the editor — they are different people and different roles.
+    //
+    // NAMING TRAP: the stored key for the SUBMITTED BY column is
+    // `signOff.preparedBy`. That misnomer is frozen into every row written
+    // since 0045, when the sheet had ONE company column and it was fed by the
+    // "Prepared by" field. Renaming it would switch that column back on for
+    // every quotation that had it turned off. The PREPARED BY column added on
+    // 2026-08-11 uses `signOff.prepared` instead. Don't "fix" either name.
+    //
+    // `prepared` is OPT-IN (absent = off) because it is new: a quotation
+    // already sent to a client must not grow a signature column on a reprint.
+    // The other two are OPT-OUT (absent = on), matching what they always did.
+    function qtSigOn(so, name) {
+        if (name === 'prepared')  return !!so.prepared;
+        if (name === 'submitted') return so.preparedBy !== false;
+        return so.clientApproval !== false;
+    }
+
+    function qtSigHtml(d, base) {
+        const esc = window.qtEscHtml;
+        const so  = (d && d.terms && d.terms.signOff) || null;
+        // No signOff object at all means a document written before the switches
+        // existed. It printed no signature block then, so it must not grow one
+        // now — a reprint has to match the copy the client already holds.
+        if (!so) return '';
+
+        const cols = [];
+
+        // Author. Deliberately NO signature image: the company mark belongs to
+        // whoever signs the document out, not to whoever priced it. Skipped
+        // when the field is blank rather than printing an unlabelled rule.
+        if (qtSigOn(so, 'prepared') && String(d.preparedBy || '').trim()) {
+            cols.push(`<div class="p-sig-col">
+      <div class="p-sig-line">${esc(d.preparedBy)}</div>
+      <div class="p-sig-role">Prepared By</div>
+    </div>`);
+        }
+
+        // Signer. submittedBy owns this line; preparedBy is the fallback so
+        // every quotation written before the two were split — and every
+        // revision frozen before it — still prints the name it always did.
+        if (qtSigOn(so, 'submitted')) {
+            cols.push(`<div class="p-sig-col p-sig-signed">
+      <img class="p-sig-img" src="${base}assets/images/dacs-signature.png" alt=""
+           onerror="this.style.display='none';this.parentNode.classList.remove('p-sig-signed');">
+      <div class="p-sig-line">${esc(d.submittedBy || d.preparedBy || COMPANY.name)}</div>
+      <div class="p-sig-role">Submitted By</div>
+    </div>`);
+        }
+
+        if (qtSigOn(so, 'client')) {
+            cols.push(`<div class="p-sig-col">
+      <div class="p-sig-line">${esc(d.clientName || '\u00a0')}</div>
+      <div class="p-sig-role">Client Approval / Date</div>
+    </div>`);
+        }
+
+        return cols.length ? `<div class="p-sig">${cols.join('')}</div>` : '';
+    }
+
+
     function qtRowsHtml(d, imgMap) {
         const esc = window.qtEscHtml, fmt = window.qtFmt;
         // With pricing off the UNIT PRICE column is dropped entirely, so the
@@ -253,8 +322,10 @@
         box-shadow:0 2px 16px rgba(0,0,0,.18);}
 
   /* ── Company header ── */
+  /* No rule under the header — owner's call, 2026-08-11. The padding stays so
+     the info box keeps its distance from the title. */
   .p-head{display:flex;align-items:center;justify-content:space-between;gap:20px;
-          border-bottom:3px solid #1a5c3a;padding-bottom:12px;margin-bottom:12px;}
+          padding-bottom:12px;margin-bottom:12px;}
   /* Logo stacked ABOVE its label. */
   .p-head-l{display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;}
   /* height + width:auto keeps the logo's own aspect ratio — never set both, or
@@ -363,7 +434,7 @@
 
   <div class="p-head">
     <div class="p-head-l">
-      <img class="p-logo" src="${base}${COMPANY.logo}" alt="" onerror="this.style.display='none'">
+      ${qtShowsLogo(d) ? `<img class="p-logo" src="${base}${COMPANY.logo}" alt="" onerror="this.style.display='none'">` : ''}
       <div>
         <div class="p-co">${esc(DOC_LABEL)}</div>
         ${qtCompanyLine() ? `<div class="p-co-sub">${esc(qtCompanyLine())}</div>` : ''}
@@ -396,21 +467,7 @@
   ${qtTotalsHtml(d)}
   ${qtTermsHtml(d)}
 
-  ${(d.terms && d.terms.signOff && (d.terms.signOff.preparedBy !== false || d.terms.signOff.clientApproval !== false)) ? `
-  <div class="p-sig">
-    ${d.terms.signOff.preparedBy !== false ? `
-    <div class="p-sig-col p-sig-signed">
-      <img class="p-sig-img" src="${base}assets/images/dacs-signature.png" alt=""
-           onerror="this.style.display='none';this.parentNode.classList.remove('p-sig-signed');">
-      <div class="p-sig-line">${esc(d.preparedBy || COMPANY.name)}</div>
-      <div class="p-sig-role">Submitted By</div>
-    </div>` : ''}
-    ${d.terms.signOff.clientApproval !== false ? `
-    <div class="p-sig-col">
-      <div class="p-sig-line">${esc(d.clientName || ' ')}</div>
-      <div class="p-sig-role">Client Approval / Date</div>
-    </div>` : ''}
-  </div>` : ''}
+  ${qtSigHtml(d, base)}
 
   <div class="p-disc">
     This is a price proposal, not a contract, and is not legally binding. Prices hold until the validity
@@ -496,9 +553,13 @@
         // ── Header — logo with its label underneath, title on the right ──
         // logoH is the LOGO's height; its width is derived from the image's own
         // aspect ratio, never fixed, so the mark can't come out stretched.
-        const logo   = await qtLoadImageData(base + COMPANY.logo);
+        // Skipped entirely when the document has the logo turned off (0048).
+        const logo   = qtShowsLogo(d) ? await qtLoadImageData(base + COMPANY.logo) : null;
         const coLine = qtCompanyLine();
-        const logoH  = 34;
+        // No logo — switched off, or the file failed to load — means no logo
+        // band either: the label block starts at the top margin instead of
+        // leaving 34mm of white space where the mark would have been.
+        const logoH  = logo ? 34 : 0;
         let logoW = 0, logoCx = M;
         if (logo) {
             logoW  = logoH * (logo.w / logo.h);
@@ -528,10 +589,10 @@
                  pageW - M, midY + 5, { align: 'right' });
         doc.setTextColor(0, 0, 0);
 
-        // Accent rule under the header — the same green as the print sheet.
-        y += blockH + 2;
-        doc.setDrawColor(26, 92, 58).setLineWidth(0.8).line(M, y, pageW - M, y);
-        y += 4;
+        // No accent rule under the header — matches the print sheet, which
+        // dropped its green border on 2026-08-11. The advance stays so the
+        // info box sits where it always did.
+        y += blockH + 6;
 
         // ── Document info box — black labels, matching the print sheet ──
         const metaRows = [

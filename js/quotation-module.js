@@ -383,13 +383,16 @@
             projectName: '', location: '', subject: 'Project Estimate', scopeNote: '',
             images: [],          // document-level renders/photos, max QT_MAX_IMAGES
             showLinePricing: true,   // print unit price + line amounts (0047)
+            showLogo: true,          // print the logo in the header (0048)
             sections: [],
             discount: 0, discountType: 'amount',
             vatMode: 'none', vatPct: 12,
             totalAmount: 0,
             status: 'draft', statusNote: '', decidedAt: null,
             followUpDate: '', followUpNote: '',
-            terms: qtDefaultTerms(), preparedBy: '', history: []
+            // preparedBy = who built it (internal). submittedBy = who signs it
+            // out, and is what the sheet prints (0049).
+            terms: qtDefaultTerms(), preparedBy: '', submittedBy: '', history: []
         };
     }
 
@@ -491,12 +494,13 @@
             subject: q.subject, scopeNote: q.scopeNote,
             images: JSON.parse(JSON.stringify(q.images || [])),
             showLinePricing: q.showLinePricing !== false,
+            showLogo: q.showLogo !== false,
             sections: JSON.parse(JSON.stringify(q.sections || [])),
             discount: q.discount, discountType: q.discountType,
             vatMode: q.vatMode, vatPct: q.vatPct,
             totalAmount: q.totalAmount,
             terms: JSON.parse(JSON.stringify(q.terms || {})),
-            preparedBy: q.preparedBy
+            preparedBy: q.preparedBy, submittedBy: q.submittedBy
         };
     }
 
@@ -509,8 +513,62 @@
         return q.terms;
     }
 
+    // ── Signature blocks ─────────────────────────────────────────────────
+    // Three independent columns on the printed sheet. Each has a switch, and
+    // each switch appears TWICE — in Document Info (next to the names) and in
+    // the Terms panel — so the UI name is mapped to the stored key here, once.
+    //
+    // `submitted` maps to the legacy key `preparedBy`. That misnomer has been
+    // written into every row since 0045, when the sheet had one company column
+    // and it was fed by the "Prepared by" field. Renaming the key would silently
+    // switch that column back on for every quotation that had it turned off, so
+    // it stays — the mapping absorbs the history. Don't "fix" it.
+    const QT_SIGN_KEY = {
+        submitted: 'preparedBy',       // legacy name, "Submitted By" column
+        prepared:  'prepared',         // "Prepared By" column, added 2026-08-11
+        client:    'clientApproval'
+    };
+
+    // Defaults differ ON PURPOSE. The two original columns default ON — absent
+    // means a row written before the flag existed, and those printed both. The
+    // Prepared By column defaults OFF: it is new, so defaulting it on would add
+    // a column to quotations that have already gone out to clients.
+    const QT_SIGN_DEFAULT = { submitted: true, prepared: false, client: true };
+
+    function qtSignOn(name) {
+        const q = qtState.current;
+        const so = q && q.terms && q.terms.signOff;
+        const v  = so ? so[QT_SIGN_KEY[name]] : undefined;
+        return v === undefined || v === null ? QT_SIGN_DEFAULT[name] : v !== false;
+    }
+
     window.qtSetTerm = function (key, value) { qtTerms()[key] = value; qtMarkDirty(); };
-    window.qtSetSignOff = function (key, on)  { qtTerms().signOff[key] = on; qtMarkDirty(); };
+
+    // The single entry point for every signature switch, wherever it is drawn.
+    // Mirrors every other copy of that switch by hand instead of re-rendering —
+    // a redraw of Document Info would discard whatever is half-typed in it.
+    window.qtSetSignBlock = function (name, on) {
+        if (!qtState.current || !QT_SIGN_KEY[name]) return;
+        qtTerms().signOff[QT_SIGN_KEY[name]] = !!on;
+        const root = qtEl('quoteEditorView');
+        if (root) {
+            root.querySelectorAll(`[data-sign="${name}"]`).forEach(b => { b.checked = !!on; });
+        }
+        qtSyncSignHints();
+        qtMarkDirty();
+    };
+
+    // Shows each block's "it is off" note, plus the one warning worth making
+    // loud: both company columns on, but no separate Submitted by name, prints
+    // the SAME person twice.
+    function qtSyncSignHints() {
+        const q = qtState.current || {};
+        const show = (id, on) => { const e = qtEl(id); if (e) e.style.display = on ? '' : 'none'; };
+        show('qtSubmittedByHint', !qtSignOn('submitted'));
+        show('qtPreparedByHint',  !qtSignOn('prepared'));
+        show('qtSignDupWarn', qtSignOn('submitted') && qtSignOn('prepared')
+                              && !String(q.submittedBy || '').trim());
+    }
 
     window.qtAddCondition = function () {
         qtTerms().conditions.push({ title: '', body: '', include: true });
@@ -596,12 +654,19 @@
             </div>
             <div class="qt-signoff-grid">
                 <label class="qt-check-label">
-                    <input type="checkbox" class="qt-check" ${t.signOff.preparedBy !== false ? 'checked' : ''}
-                           onchange="qtSetSignOff('preparedBy', this.checked)"> Print “Submitted by” block
+                    <input type="checkbox" class="qt-check" data-sign="prepared"
+                           ${qtSignOn('prepared') ? 'checked' : ''}
+                           onchange="qtSetSignBlock('prepared', this.checked)"> Print “Prepared by” block
                 </label>
                 <label class="qt-check-label">
-                    <input type="checkbox" class="qt-check" ${t.signOff.clientApproval !== false ? 'checked' : ''}
-                           onchange="qtSetSignOff('clientApproval', this.checked)"> Print “Client approval / date” block
+                    <input type="checkbox" class="qt-check" data-sign="submitted"
+                           ${qtSignOn('submitted') ? 'checked' : ''}
+                           onchange="qtSetSignBlock('submitted', this.checked)"> Print “Submitted by” block
+                </label>
+                <label class="qt-check-label">
+                    <input type="checkbox" class="qt-check" data-sign="client"
+                           ${qtSignOn('client') ? 'checked' : ''}
+                           onchange="qtSetSignBlock('client', this.checked)"> Print “Client approval / date” block
                 </label>
             </div>
         </div>`;
@@ -635,7 +700,48 @@
         </div>
 
         <div class="qt-panel">
-            <div class="qt-section-title">Document Info</div>
+            <div class="qt-section-title">Document Info
+                <span class="qt-title-checks">
+                    <label class="qt-check-label" title="Affects the printed sheet and the PDF only. Turn it off when the sheet goes out on pre-printed letterhead that already carries the mark">
+                        <input type="checkbox" class="qt-check" ${q.showLogo !== false ? 'checked' : ''}
+                               onchange="qtSetPrintLogo(this.checked)">
+                        Print company logo
+                    </label>
+                    <label class="qt-check-label" title="Same switch as Terms &amp; Conditions → Signature Block. Off leaves the “Submitted By” signature column off the printed sheet">
+                        <input type="checkbox" class="qt-check" data-sign="submitted"
+                               ${qtSignOn('submitted') ? 'checked' : ''}
+                               onchange="qtSetSignBlock('submitted', this.checked)">
+                        Print “Submitted by” block
+                    </label>
+                    <label class="qt-check-label" title="Same switch as Terms &amp; Conditions → Signature Block. Adds a separate “Prepared By” signature column to the printed sheet">
+                        <input type="checkbox" class="qt-check" data-sign="prepared"
+                               ${qtSignOn('prepared') ? 'checked' : ''}
+                               onchange="qtSetSignBlock('prepared', this.checked)">
+                        Print “Prepared by” block
+                    </label>
+                </span>
+            </div>
+            <p class="qt-print-hint" id="qtLogoHint" style="${q.showLogo === false ? '' : 'display:none;'}">
+                <strong>Header logo off.</strong> The printed sheet and PDF leave the logo out — the
+                "PROJECT QUOTATION" label and everything below the header are unchanged. Use this when
+                you print on letterhead paper that already shows the mark.
+            </p>
+            <p class="qt-print-hint" id="qtSubmittedByHint" style="${qtSignOn('submitted') ? 'display:none;' : ''}">
+                <strong>“Submitted by” block off.</strong> The printed sheet drops that signature
+                column — no signature, no name, no line.
+            </p>
+            <p class="qt-print-hint" id="qtPreparedByHint" style="${qtSignOn('prepared') ? 'display:none;' : ''}">
+                <strong>“Prepared by” block off.</strong> The name in <em>Prepared by</em> stays an
+                internal record and does not appear on the printed sheet. Tick the box above to give
+                it its own signature column beside <em>Submitted by</em>.
+            </p>
+            <p class="qt-print-hint qt-warn-hint" id="qtSignDupWarn"
+               style="${qtSignOn('submitted') && qtSignOn('prepared') && !String(q.submittedBy || '').trim() ? '' : 'display:none;'}">
+                <strong>Heads up — the same name will print twice.</strong> Both signature columns are
+                on, but <em>Submitted by</em> is empty, so it falls back to <em>Prepared by</em> and the
+                sheet shows that person in both columns. Fill in <em>Submitted by</em>, or switch one
+                of the two blocks off.
+            </p>
             <div class="qt-form-grid">
                 ${qtField('Client name',  'clientName')}
                 ${qtField('Project name', 'projectName')}
@@ -651,7 +757,16 @@
 
                 ${qtField('TIN',          'clientTin')}
                 ${qtField('Prepared by',  'preparedBy')}
+                ${qtField('Submitted by', 'submittedBy', 'text',
+                          `placeholder="${qtEscHtml(q.preparedBy || "DAC'S CONSTRUCTION")}"`)}
             </div>
+            <p class="qt-field-note">
+                Two different people, two separate signature columns on the printed sheet — switch
+                either one on or off with the boxes above. <strong>Prepared by</strong> is who built
+                the quotation; <strong>Submitted by</strong> is who signs it out. Leave
+                <em>Submitted by</em> blank and that column falls back to <em>Prepared by</em>, then
+                to the company name, so nothing you have already sent changes.
+            </p>
             <div class="qt-form-group" style="margin-top:.85rem;">
                 <label>Scope note</label>
                 <textarea class="qt-textarea" rows="3" data-qt-key="scopeNote"
@@ -667,6 +782,16 @@
         <div id="qtOutcomePane"></div>    <!-- Task 9 -->
         <div id="qtRevisionsPane"></div>  <!-- Task 10 -->
         `;
+
+        // The duplicate-name warning depends on what is TYPED in Submitted by,
+        // so it has to re-check as you type. Bound here rather than inlined in
+        // qtField: state is only collected back on save, and the check needs
+        // the live value.
+        const sb = root.querySelector('[data-qt-key="submittedBy"]');
+        if (sb) sb.addEventListener('input', () => {
+            qtState.current.submittedBy = sb.value;
+            qtSyncSignHints();
+        });
 
         qtRenderImages();
         qtRenderSections();
@@ -724,6 +849,7 @@
             subject: q.subject, scopeNote: q.scopeNote,
             images: q.images || [],
             showLinePricing: q.showLinePricing !== false,
+            showLogo: q.showLogo !== false,
             sections: q.sections || [],
             discount: qtParseNum(q.discount), discountType: q.discountType || 'amount',
             vatMode: q.vatMode || 'none', vatPct: qtParseNum(q.vatPct),
@@ -732,6 +858,7 @@
             decidedAt: q.decidedAt || null,
             followUpDate: q.followUpDate || null, followUpNote: q.followUpNote || '',
             terms: q.terms || {}, preparedBy: q.preparedBy || '',
+            submittedBy: q.submittedBy || '',
             history: q.history || [],
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         };
@@ -1350,6 +1477,18 @@
         if (!qtState.current) return;
         qtState.current.showLinePricing = !!on;
         qtMarkDirty(); qtRenderSections();
+    };
+
+    // Presentation only (migration 0048). Read by the print sheet and the PDF.
+    // Deliberately does NOT re-render the editor: the Document Info inputs are
+    // uncommitted until qtCollectHeader runs, so a full redraw here would throw
+    // away whatever the user is halfway through typing. Toggle the hint by hand.
+    window.qtSetPrintLogo = function (on) {
+        if (!qtState.current) return;
+        qtState.current.showLogo = !!on;
+        const hint = qtEl('qtLogoHint');
+        if (hint) hint.style.display = on ? 'none' : '';
+        qtMarkDirty();
     };
 
     // ── Task 7: Reference images ─────────────────────────────────────────
