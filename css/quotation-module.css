@@ -105,6 +105,28 @@
 /* .qt-section-title uppercases and letter-spaces its contents — undo that for
    a control sitting inside it, or the label reads as a heading. */
 .qt-section-title .qt-check-label { text-transform: none; letter-spacing: 0; font-size: 0.78rem; }
+/* Two or more switches in one heading: keep them together on the right instead
+   of letting space-between fling them to opposite ends of the bar. */
+.qt-title-checks { display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap; }
+
+/* Explanatory note under a form grid — same voice as .qt-print-hint but quiet,
+   because it describes the fields rather than warning about output. */
+.qt-field-note {
+    margin-top: 0.6rem;
+    font-size: 0.75rem;
+    line-height: 1.55;
+    color: #6b7280;
+}
+.qt-field-note strong { color: #374151; }
+
+/* A hint warning about a mistake, not just describing behaviour. .qt-print-hint
+   is already amber, so this has to leave that palette to read as different. */
+.qt-warn-hint {
+    background: #fef2f2;
+    border-color: #fecaca;
+    border-left: 3px solid #dc2626;
+    color: #991b1b;
+}
 
 /* ── Header form grid ─────────────────────────────────────────────── */
 .qt-form-grid {
