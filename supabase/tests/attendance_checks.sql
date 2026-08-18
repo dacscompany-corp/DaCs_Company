@@ -542,9 +542,72 @@ begin;
 rollback;
 
 
+-- ╔══════════════════════════════════════════════════════════════════╗
+-- ║ 13. REGRESSION (0051) — a worker resolves to their OWNER, not to  ║
+-- ║     themselves. 0050 used data_owner_id(), which only resolves    ║
+-- ║     staff, so every worker saw an EMPTY project picker.           ║
+-- ╚══════════════════════════════════════════════════════════════════╝
+begin;
+  insert into attendance_projects (owner_id, name, is_active)
+  values ('<OWNER_UUID>'::uuid, 'ZZ Owner Project', true);
+
+  set local role authenticated;
+  set local request.jwt.claims =
+    '{"sub":"<WORKER_UUID>","email":"worker@example.com","role":"authenticated"}';
+
+  do $$
+  declare v_resolved uuid; n int;
+  begin
+    -- the helper must return the OWNER, not the worker
+    select attendance_data_owner() into v_resolved;
+    assert v_resolved = '<OWNER_UUID>'::uuid,
+      format('attendance_data_owner() returned %s, expected the owner <OWNER_UUID>', v_resolved);
+
+    -- and the picker must therefore be non-empty
+    select count(*) into n from attendance_projects where name = 'ZZ Owner Project';
+    assert n = 1,
+      'worker cannot see their OWNER''s active project — the picker is empty and Time In is impossible';
+
+    raise notice 'BLOCK 13 OK — worker resolves to owner, picker populated';
+  end $$;
+rollback;
+
+
+-- ╔══════════════════════════════════════════════════════════════════╗
+-- ║ 14. A worker with NO owner fails LOUDLY and specifically.         ║
+-- ╚══════════════════════════════════════════════════════════════════╝
+begin;
+  insert into attendance_projects (owner_id, name, is_active)
+  values ('<OWNER_UUID>'::uuid, 'ZZ Owner Project', true);
+
+  update profiles set owner_id = null where id = '<WORKER_UUID>'::uuid;
+
+  set local role authenticated;
+  set local request.jwt.claims =
+    '{"sub":"<WORKER_UUID>","email":"worker@example.com","role":"authenticated"}';
+
+  do $$
+  declare a bigint; v_msg text := '';
+  begin
+    -- read the id as the OWNER would see it is impossible here, so use a
+    -- known-good id fetched before the role switch is not available —
+    -- instead call with a deliberately arbitrary id: the owner check
+    -- fires before the project lookup, so the id never matters.
+    begin
+      perform attendance_time_in(1::bigint, timestamptz '2026-08-17 07:45:00+08',
+                'p/i.jpg', gen_random_uuid());
+    exception when others then v_msg := sqlerrm;
+    end;
+    assert v_msg = 'NO_OWNER_ASSIGNED',
+      format('an ownerless worker should fail with NO_OWNER_ASSIGNED, got "%s"', v_msg);
+    raise notice 'BLOCK 14 OK — ownerless worker fails loudly';
+  end $$;
+rollback;  -- the owner_id change is rolled back with everything else
+
+
 -- ════════════════════════════════════════════════════════════════════
--- Expected output: thirteen notices —
---   BLOCK 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10b, 11, 12 ... OK
+-- Expected output: fifteen notices —
+--   BLOCK 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10b, 11, 12, 13, 14 ... OK
 --
 -- Then confirm nothing was left behind (every block rolls back):
 --   select count(*) from attendance_projects where name like 'ZZ %';
