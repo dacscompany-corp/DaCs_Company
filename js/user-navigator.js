@@ -81,6 +81,7 @@
                     email    : d.email || '',
                     role     : d.role || 'owner',
                     status   : d.status || 'active',
+                    position : d.position || '',
                     lastLogin: d.lastLogin || d.last_login || null,
                     createdAt: d.createdAt || null,
                     agreementAccepted  : d.agreementAccepted === true,
@@ -271,8 +272,10 @@
         if (clientFields) clientFields.style.display = 'none';
         const dnEl   = document.getElementById('un-edit-displayname');
         const roleEl = document.getElementById('un-edit-role');
+        const posEl  = document.getElementById('un-edit-position');
         if (dnEl)   dnEl.value   = user.name || '';
         if (roleEl) roleEl.value = user.role || '';
+        if (posEl)  posEl.value  = user.position || '';
 
         modal.style.display = 'flex';
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -305,7 +308,9 @@
         if (!role)        _fe('err-un-edit-role',        'Please select a role.');
         if (!valid) return;
 
-        const updates = { displayName, role };
+        const position    = (document.getElementById('un-edit-position')?.value || '').trim();
+
+        const updates = { displayName, role, position };
         const newName = displayName;
 
         const btn = document.getElementById('un-edit-submit-btn');
@@ -313,8 +318,9 @@
 
         try {
             await db.collection('users').doc(uid).update(updates);
-            user.name = newName;
-            user.role = role;
+            user.name     = newName;
+            user.role     = role;
+            user.position = position;
             _renderStats(_allUsers);
             unFilterUsers();
             unCloseEditModal();
@@ -666,7 +672,7 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         if (!modal) return;
 
         ['emp-create-firstname','emp-create-lastname','emp-create-email',
-         'emp-create-password','emp-create-confirm'].forEach(id => {
+         'emp-create-password','emp-create-confirm','emp-create-position'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
@@ -710,6 +716,10 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         const role      = (document.getElementById('emp-create-role')?.value      || '');
         const password  = (document.getElementById('emp-create-password')?.value  || '');
         const confirm   = (document.getElementById('emp-create-confirm')?.value   || '');
+        // Position / trade. Deliberately NOT validated as required: MVP §3 lists
+        // it for workers, but a staff or engineer account has no trade to enter
+        // and a blocking validation would make those accounts uncreatable.
+        const position  = (document.getElementById('emp-create-position')?.value  || '').trim();
         const termsAgreed = !!document.getElementById('emp-create-terms-agree')?.checked;
 
         let valid = true;
@@ -746,14 +756,19 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
             // signs on their first login to the admin portal.
             const acceptedAt = new Date();
             try {
+                // `position` rides along on BOTH branches — the admin-create-user
+                // Edge Function builds its profileRow from a fixed whitelist, so
+                // the field cannot be passed through it without a function deploy.
                 if (termsAgreed) {
                     await db.collection('users').doc(uid).update({
+                        position,
                         agreementAccepted   : true,
                         agreementAcceptedAt : acceptedAt,
                         agreementSignature  : firstName + ' ' + lastName
                     });
                 } else {
                     await db.collection('users').doc(uid).update({
+                        position,
                         agreementAccepted   : false,
                         agreementAcceptedAt : null
                     });

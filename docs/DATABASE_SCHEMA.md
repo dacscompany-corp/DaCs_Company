@@ -31,9 +31,9 @@
 | `status` | string | user-navigator | `active` / inactive |
 | `ownerUid` | string | user-navigator | for `staff`/workers → points to the owner whose data they share |
 | `createdAt` | ts | — | |
-| `termsAccepted` | bool | user-navigator | `true` once the employee agreed to the T&C at account creation (migration 0020) |
-| `termsAcceptedAt` | ts | user-navigator | when the T&C were accepted (migration 0020) |
-| `termsSnapshot` | string | user-navigator | copy of the exact T&C text agreed to (migration 0020) |
+| `position` | string | user-navigator | **(0050)** worker's trade ("Mason"). Shown on the worker's app profile and **snapshotted onto every attendance record** |
+| `workerNo` | number | *trigger* | **(0050)** assigned by `profiles_worker_no_trg` for `worker`/`teamLeader` rows; displayed `W-0042`. **Never set by the client** |
+| ~~`termsAccepted`~~ / ~~`termsAcceptedAt`~~ / ~~`termsSnapshot`~~ | — | — | **REMOVED.** Added by `0020_employee_terms.sql`, dropped by `0022_drop_terms_columns.sql` (verified against live 2026-07-03: the gate never fired, `terms_accepted` was `false` on every row). Acceptance evidence lives in `agreement_events` (0021). Listed here only so the columns are not "re-added" by someone reading an old copy of this doc |
 | `agreementAccepted` / `agreementAcceptedAt` / `agreementSignature` / `agreementSignatureImage` | bool/ts/string | first-login agreement gate for non-owner admins (reuses migrations 0001/0016/0017 columns): starts `false`, flips true when the employee reads + e-signs on first login. The T&C document (text or one global PDF) lives in `settings/employeeTerms`. |
 **Rules:** anyone signed-in can **read**; you may only create/update your **own** doc and **cannot set/modify `role`**.
 
@@ -512,7 +512,70 @@ Despite the name, this table records a project ending **either way**:
 
 ---
 
-## 11. ⚠️ Defined in rules but UNUSED by code (planned SOA module)
+## 11. Attendance (`0050`) — worker Time In / Time Out
+
+> **Deliberately isolated**, like `reimbursements` (0041), the warranty fund (0043) and
+> `quotations` (0045). No money math reads these tables; attendance hours are **not** the basis of
+> pay (labour is pakyaw, capped by `labor_contracts.agreed_amount`). There is no peso column here,
+> so the staff amount-hiding rule does not apply. Written only by the native Android worker app
+> (via RPC) and read by `js/attendance-admin.js` (phase C).
+
+**All writes go through `attendance_time_in()` / `attendance_time_out()`.** Workers hold `select`
+on their own rows and have **no** `insert`/`update` policy at all — that is what forces the RPC path.
+Both functions are **idempotent on a client-generated `event_id`**, so the Android offline queue can
+replay a submission without duplicating it.
+
+### `attendance_projects/{id}` — the picker list
+| Field | Type | Notes |
+|---|---|---|
+| `id` | bigint identity | displayed `P-0004` |
+| `ownerId` | uuid | tenant |
+| `name` | string | unique per owner, case-insensitive |
+| `isActive` | boolean | `false` hides it from the worker's picker only — past records keep their snapshot |
+| `createdAt`, `updatedAt` | ts | |
+
+### `attendance_records/{id}` — one row per worker per work date
+| Field | Type | Notes |
+|---|---|---|
+| `id` | uuid | |
+| `ownerId`, `workerId` | uuid | |
+| `workerName`, `workerPosition` | string | **snapshot** at Time In — a rename must not rewrite history |
+| `workDate` | date | `(captured_at at time zone 'Asia/Manila')::date`, computed **server-side**. PH is UTC+8; a UTC date key rolls back a day |
+| `sessionSeq` | number | always `1` in the MVP; reserved so split shifts need no data migration |
+| `status` | string | `working` \| `complete` \| `abandoned`. **`no_record` is the absence of a row**, never stored |
+| `timeinProjectId` / `timeinProjectName` | bigint / string | id + snapshot |
+| `timeinAt` | ts | the worker's captured instant |
+| `timeinPhotoPath` | string | `attendance` bucket object path, **not** a URL |
+| `timeinDescription` | string | optional |
+| `timeinLat`, `timeinLng`, `timeinAccuracyM` | number | nullable, **admin-only** — never shown to the worker |
+| `timeinEventId` | uuid | client-generated at tap; **unique**. The idempotency key |
+| `timeinWasOffline` | boolean | captured with no signal |
+| `timeinReceivedAt` | ts | server clock. Skew vs `timeinAt` is only meaningful when `wasOffline` is false |
+| `timeout*` | — | same shape, all nullable. **Stored independently** — the worker may change site mid-day |
+| `totalMinutes` | number | computed **server-side** on Time Out, so worker and admin cannot disagree |
+
+`unique (worker_id, work_date, session_seq)` is the one-record-per-day guarantee. A Time Out more
+than **18 hours** after its Time In raises `SHIFT_TOO_LONG` rather than silently recording a
+forgotten-clock-out as a 33-hour day.
+
+### `attendance_terms_acceptances/{id}` — versioned T&C acceptance
+| Field | Type | Notes |
+|---|---|---|
+| `workerId` | uuid | |
+| `termsVersion` | string | unique with `workerId`; changing the Terms forces re-acceptance |
+| `acceptedAt` | ts | the Profile screen shows the newest |
+
+The fast "has accepted?" flag only. The **evidence** belongs in `agreement_events` (0021) with
+`audience='worker'`, `doc_type='attendance_terms'` — same split that table's header prescribes.
+
+### Storage
+Private bucket `attendance`, path `{worker_id}/{work_date}/{in|out}-{event_id}.jpg`. Worker policies
+are scoped to their own uuid prefix; there is **no `update` or `delete` policy**, so a photo is
+write-once. Photos are files, never base64.
+
+---
+
+## 12. ⚠️ Defined in rules but UNUSED by code (planned SOA module)
 `soa_requests`, `soa_records`, `payments`, `billings` have full security rules in `firestore.rules` but **no JavaScript references them**. Either finish the module or remove the rules to shrink attack surface. (The live "SOWA" feature uses `sowaRequests` — camelCase — instead.)
 
 ---

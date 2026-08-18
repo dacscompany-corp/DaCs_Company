@@ -115,6 +115,7 @@ Also note: **`projects` means billing period**, not project. Read it that way ev
 | Expense Inbox | `expense-inbox.js` | Shared receipt photos awaiting encoding — serves **both** project systems (`system: 'pc'` / `'pm'`). No amounts stored |
 | System Errors | `error-log.js` | **Owner-only** reader for `client_errors`. The reporter is `supabase-config.js` §13 |
 | AI | `ai-summary.js`, `ai-assistant.js` | Folder briefings, health check |
+| Attendance | *(phase C — `attendance-admin.js`, not yet written)* | Construction worker Time In / Time Out (`0050`). **The worker client is a separate native Android app** (Kotlin + Compose, repo `Documents/Dacs Attendance`), **not** the Bubblewrap TWA in `android/` — that one wraps the *client portal* and is untouched. This module is the admin half only: today's attendance, worker detail with both photos, project management and reports. **Deliberately isolated** like Reimbursement, Warranty Fund and Quotations: no invoice, payment, expense, payroll or journal side effects, and no money math reads it. Attendance hours are **not** the basis of pay — labour is pakyaw, capped by `labor_contracts.agreed_amount`. There is no peso column, so the staff amount-hiding rule does not apply. Workers write only through the `attendance_time_in` / `attendance_time_out` RPCs; they hold no insert or update policy |
 
 **Project Control is compiled React.** See the build trap in §8.
 
