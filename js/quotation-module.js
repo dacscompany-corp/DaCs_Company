@@ -402,7 +402,53 @@
                  exclusions: '', conditions: [], signOff: { preparedBy: true, clientApproval: true } };
     }
 
-    function qtMarkDirty() { qtState.isDirty = true; }
+    function qtMarkDirty() { qtState.isDirty = true; qtSyncTopbar(); }
+
+    // The header inputs are only read back into qtState on save (qtCollectHeader),
+    // so anything that reacts to a name AS IT IS TYPED — the print-option
+    // sub-lines, the "Prints as" preview, the duplicate-name warning — has to
+    // read the live DOM value and fall back to state when the field isn't drawn.
+    function qtLiveVal(key) {
+        const root = qtEl('quoteEditorView');
+        const inp  = root && root.querySelector(`[data-qt-key="${key}"]`);
+        if (inp) return inp.value;
+        const q = qtState.current;
+        const v = q ? q[key] : '';
+        return v === null || v === undefined ? '' : String(v);
+    }
+
+    // Whole days from one YYYY-MM-DD key to another. Built from local parts on
+    // purpose — Date.parse on a bare date string is UTC, and PH is UTC+8.
+    function qtDaysBetween(fromKey, toKey) {
+        const p = k => { const a = String(k).split('-').map(Number); return new Date(a[0], a[1] - 1, a[2]); };
+        if (!fromKey || !toKey) return null;
+        return Math.round((p(toKey) - p(fromKey)) / 86400000);
+    }
+
+    function qtPlural(n, word) { return `${n} ${word}${n === 1 ? '' : 's'}`; }
+
+    // Keeps the sticky command bar honest: the live grand total, and whether
+    // what is on screen has reached the database yet.
+    function qtSyncTopbar() {
+        const q = qtState.current;
+        if (!q) return;
+        const tot = qtEl('qtTopTotal');
+        if (tot) tot.textContent = '₱ ' + qtFmt(qtGrandTotal(q));
+        const pill = qtEl('qtDirtyPill'), txt = qtEl('qtDirtyText');
+        if (pill) pill.classList.toggle('qt-dirty-on', !!qtState.isDirty);
+        if (txt)  txt.textContent = qtState.isDirty ? 'Unsaved' : 'Saved';
+    }
+
+    // The rail pins itself below the command bar. That bar wraps on narrow
+    // screens, so its height is measured rather than guessed.
+    function qtSyncStickyOffset() {
+        const root = qtEl('quoteEditorView');
+        const bar  = root && root.querySelector('.qt-topbar-sticky');
+        // offsetHeight is 0 while the view is hidden — leave the CSS fallback
+        // in place rather than pinning the rail to the top of the page.
+        if (!bar || !bar.offsetHeight) return;
+        root.style.setProperty('--qt-sticky-top', (bar.offsetHeight + 14) + 'px');
+    }
 
     // ── Task 8: Terms defaults loader ──────────────────────────────────
     // Standard clauses are typed once and reused, following the
@@ -558,16 +604,139 @@
         qtMarkDirty();
     };
 
-    // Shows each block's "it is off" note, plus the one warning worth making
+    // ── Printed-sheet switches ───────────────────────────────────────────
+    // Four switches, two homes each: the "Printed sheet options" card in the
+    // Document info rail, and — for the three signature ones — the "Signature
+    // columns" card beside Terms. Every copy carries data-opt-card (green tint
+    // when on), data-opt-sub (the one-line "this is what it does now") and,
+    // for the signature switches, data-sign so qtSetSignBlock can mirror it.
+    // That replaced four standing hint paragraphs: the card says what the
+    // switch is doing right now instead of what it would do if you flipped it.
+    function qtOptOn(key) {
+        const q = qtState.current || {};
+        if (key === 'logo')    return q.showLogo !== false;
+        if (key === 'pricing') return q.showLinePricing !== false;
+        return qtSignOn(key);
+    }
+
+    function qtOptSub(key) {
+        const on = qtOptOn(key);
+        if (key === 'logo') return on
+            ? 'On — the printed sheet and PDF carry the mark.'
+            : 'Off — for pre-printed letterhead that already shows it.';
+        if (key === 'pricing') return on
+            ? 'On — the client sees every rate.'
+            : 'Off — section totals only, no Unit Price column.';
+        if (key === 'submitted') {
+            if (!on) return 'Off — no name, no signature line.';
+            const who = qtLiveVal('submittedBy').trim() || qtLiveVal('preparedBy').trim();
+            return who ? `On — prints ${who}.` : "On — falls back to the company name.";
+        }
+        if (key === 'prepared') {
+            if (!on) return 'Off — the name stays an internal record.';
+            const who = qtLiveVal('preparedBy').trim();
+            return who ? `On — prints ${who}.` : 'On — no name filled in yet.';
+        }
+        return '';
+    }
+
+    // Repaints every copy of every switch, plus the one warning worth making
     // loud: both company columns on, but no separate Submitted by name, prints
     // the SAME person twice.
     function qtSyncSignHints() {
-        const q = qtState.current || {};
-        const show = (id, on) => { const e = qtEl(id); if (e) e.style.display = on ? '' : 'none'; };
-        show('qtSubmittedByHint', !qtSignOn('submitted'));
-        show('qtPreparedByHint',  !qtSignOn('prepared'));
-        show('qtSignDupWarn', qtSignOn('submitted') && qtSignOn('prepared')
-                              && !String(q.submittedBy || '').trim());
+        const root = qtEl('quoteEditorView');
+        if (!root) return;
+        root.querySelectorAll('[data-opt-card]').forEach(el =>
+            el.classList.toggle('qt-opt-on', qtOptOn(el.dataset.optCard)));
+        root.querySelectorAll('[data-opt-sub]').forEach(el =>
+            { el.textContent = qtOptSub(el.dataset.optSub); });
+        const warn = qtEl('qtSignDupWarn');
+        if (warn) warn.style.display = (qtSignOn('submitted') && qtSignOn('prepared')
+                                        && !qtLiveVal('submittedBy').trim()) ? '' : 'none';
+        qtRenderSigPreview();
+    }
+
+    // One option card: the checkbox, its label, and the live sub-line.
+    function qtOptCard(key, label, handler, extraAttrs) {
+        return `<label class="qt-opt${qtOptOn(key) ? ' qt-opt-on' : ''}" data-opt-card="${key}">
+            <input type="checkbox" ${qtOptOn(key) ? 'checked' : ''} ${extraAttrs || ''}
+                   onchange="${handler}">
+            <span class="qt-opt-body">
+                <span class="qt-opt-title">${label}</span>
+                <span class="qt-opt-sub" data-opt-sub="${key}">${qtEscHtml(qtOptSub(key))}</span>
+            </span>
+        </label>`;
+    }
+
+    function qtRenderPrintOptions() {
+        const host = qtEl('qtPrintOptsPane');
+        if (!host || !qtState.current) return;
+        host.innerHTML = `
+        <div class="qt-panel qt-panel-sm">
+            <div class="qt-section-title">Printed sheet options</div>
+            <div class="qt-opt-list">
+                ${qtOptCard('logo', 'Company logo', 'qtSetPrintLogo(this.checked)')}
+                ${qtOptCard('submitted', '&ldquo;Submitted by&rdquo; signature column',
+                            "qtSetSignBlock('submitted', this.checked)", 'data-sign="submitted"')}
+                ${qtOptCard('prepared', '&ldquo;Prepared by&rdquo; signature column',
+                            "qtSetSignBlock('prepared', this.checked)", 'data-sign="prepared"')}
+                ${qtOptCard('pricing', 'Unit prices &amp; line amounts', 'qtSetPrintPricing(this.checked)')}
+            </div>
+            <p class="qt-print-hint qt-warn-hint" id="qtSignDupWarn"
+               style="margin:0.75rem 0 0;${qtSignOn('submitted') && qtSignOn('prepared')
+                        && !String(qtState.current.submittedBy || '').trim() ? '' : 'display:none;'}">
+                <strong>The same name will print twice.</strong> Both company columns are on but
+                <em>Submitted by</em> is empty, so it falls back to <em>Prepared by</em>. Fill it in,
+                or switch one column off.
+            </p>
+        </div>`;
+    }
+
+    // The rail card beside Terms: the same three signature switches, plus a
+    // miniature of the columns the sheet will actually print.
+    function qtRenderSignPane() {
+        const host = qtEl('qtSignPane');
+        if (!host || !qtState.current) return;
+        const row = (key, label, handler) => `<label class="qt-opt qt-opt-row${
+                qtOptOn(key) ? ' qt-opt-on' : ''}" data-opt-card="${key}">
+            <input type="checkbox" data-sign="${key}" ${qtOptOn(key) ? 'checked' : ''}
+                   onchange="${handler}">${label}</label>`;
+        host.innerHTML = `
+        <div class="qt-panel qt-panel-sm">
+            <div class="qt-section-title">Signature columns</div>
+            <p class="qt-total-note" style="margin:0 0 0.75rem;">
+                The same switches as <em>Printed sheet options</em> — set them here or up there,
+                whichever you happen to be near.
+            </p>
+            <div class="qt-opt-list">
+                ${row('prepared',  'Prepared by',            "qtSetSignBlock('prepared', this.checked)")}
+                ${row('submitted', 'Submitted by',           "qtSetSignBlock('submitted', this.checked)")}
+                ${row('client',    'Client approval / date', "qtSetSignBlock('client', this.checked)")}
+            </div>
+            <div class="qt-sig-box">
+                <div class="qt-sig-box-label">Prints as</div>
+                <div class="qt-sig-cols" id="qtSigPreview"></div>
+            </div>
+        </div>`;
+        qtRenderSigPreview();
+    }
+
+    function qtRenderSigPreview() {
+        const host = qtEl('qtSigPreview');
+        if (!host) return;
+        const cols = [];
+        if (qtSignOn('prepared')) {
+            cols.push([qtLiveVal('preparedBy').trim() || '—', 'Prepared by']);
+        }
+        if (qtSignOn('submitted')) {
+            cols.push([qtLiveVal('submittedBy').trim() || qtLiveVal('preparedBy').trim()
+                       || "DAC'S CONSTRUCTION", 'Submitted by']);
+        }
+        if (qtSignOn('client')) cols.push(['CLIENT', 'Approved / date']);
+        host.innerHTML = cols.length
+            ? cols.map(c => `<div class="qt-sig-col">${qtEscHtml(String(c[0]).toUpperCase())}
+                             <span>${c[1]}</span></div>`).join('')
+            : '<span class="qt-sig-none">Every column is off — the sheet ends at the totals.</span>';
     }
 
     window.qtAddCondition = function () {
@@ -589,13 +758,21 @@
     };
 
     // ── Step 3: Header form renderer ───────────────────────────────────
-    function qtField(label, key, type, extra) {
+    // opts: { hint }  grey suffix on the label
+    //       { span }  make the field span both columns of a 2-up grid
+    //       { warn }  amber field + label (a date that has already lapsed)
+    //       { note }  a line under the input, in the same amber
+    function qtField(label, key, type, extra, opts) {
+        const o = opts || {};
         const v = qtState.current[key];
-        return `<div class="qt-form-group">
-                    <label>${label}</label>
-                    <input class="qt-input" type="${type || 'text'}" data-qt-key="${key}"
+        return `<div class="qt-form-group${o.span ? ' qt-span-2' : ''}">
+                    <label${o.warn ? ' class="qt-label-warn"' : ''}>${label}${
+                        o.hint ? ` <span class="qt-field-hint">${o.hint}</span>` : ''}</label>
+                    <input class="qt-input${o.warn ? ' qt-input-warn' : ''}" type="${type || 'text'}"
+                           data-qt-key="${key}"
                            value="${qtEscHtml(v === null || v === undefined ? '' : v)}"
                            ${extra || ''} oninput="qtMarkDirty()">
+                    ${o.note ? `<span class="qt-field-warn-note">${o.note}</span>` : ''}
                 </div>`;
     }
 
@@ -611,9 +788,12 @@
         const pane = qtEl('qtTermsPane');
         if (!pane || !qtState.current) return;
         const t = qtTerms();
+        // Two cards, one column. The signature switches used to live at the
+        // bottom of this panel; they moved to the rail (qtRenderSignPane) so
+        // the "Prints as" preview sits beside them.
         pane.innerHTML = `
         <div class="qt-panel">
-            <div class="qt-section-title">Terms &amp; Conditions
+            <div class="qt-section-title">Standard clauses
                 <button class="qt-btn qt-btn-sm" onclick="qtSaveTermsAsDefault()">
                     <i data-lucide="bookmark"></i> Save as my defaults
                 </button>
@@ -625,14 +805,16 @@
                 ${qtTermArea('Warranty',          'warranty',         'what is covered, for how long, and what is excluded')}
             </div>
             ${qtTermArea('Exclusions', 'exclusions', 'one per line')}
+        </div>
 
-            <div class="qt-section-title" style="margin-top:1.25rem;">Numbered Conditions
+        <div class="qt-panel">
+            <div class="qt-section-title">Numbered conditions
                 <button class="qt-btn-ghost-add" onclick="qtAddCondition()">
                     <i data-lucide="plus"></i> Add condition
                 </button>
             </div>
-            ${t.conditions.map((c, i) => `
-            <div class="qt-term-block">
+            ${t.conditions.length ? t.conditions.map((c, i) => `
+            <div class="qt-term-block" style="margin-top:${i ? '0.6rem' : '0'};">
                 <div class="qt-term-head">
                     <span class="qt-term-no">${i + 1}.</span>
                     <input class="qt-label-input" placeholder="Title"
@@ -647,159 +829,180 @@
                 </div>
                 <textarea class="qt-textarea" style="margin-top:.45rem;min-height:52px;"
                           placeholder="Body" oninput="qtSetCondition(${i},'body',this.value)">${qtEscHtml(c.body)}</textarea>
-            </div>`).join('')}
-
-            <div class="qt-section-title" style="margin-top:1.25rem;">Signature Block
-                <span class="qt-section-note">(uncheck to leave a signature line off the printed sheet)</span>
-            </div>
-            <div class="qt-signoff-grid">
-                <label class="qt-check-label">
-                    <input type="checkbox" class="qt-check" data-sign="prepared"
-                           ${qtSignOn('prepared') ? 'checked' : ''}
-                           onchange="qtSetSignBlock('prepared', this.checked)"> Print “Prepared by” block
-                </label>
-                <label class="qt-check-label">
-                    <input type="checkbox" class="qt-check" data-sign="submitted"
-                           ${qtSignOn('submitted') ? 'checked' : ''}
-                           onchange="qtSetSignBlock('submitted', this.checked)"> Print “Submitted by” block
-                </label>
-                <label class="qt-check-label">
-                    <input type="checkbox" class="qt-check" data-sign="client"
-                           ${qtSignOn('client') ? 'checked' : ''}
-                           onchange="qtSetSignBlock('client', this.checked)"> Print “Client approval / date” block
-                </label>
-            </div>
+            </div>`).join('')
+            : '<p class="qt-total-note" style="margin:0;">No numbered conditions yet — the sheet prints the standard clauses only.</p>'}
         </div>`;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
+    // A band heading: Playfair title, plain-English note, hairline rule.
+    function qtBand(title, note) {
+        return `<div class="qt-band">
+            <h2>${title}</h2>
+            <span class="qt-band-note">${note}</span>
+            <span class="qt-band-rule"></span>
+        </div>`;
+    }
+
+    // ── The editor shell ─────────────────────────────────────────────────
+    // Five bands — Document info, Itemized estimate, Terms, Outcome,
+    // Revisions — each split into the work (left) and a sticky rail (right)
+    // holding the readout or the switches that describe it. Imported from the
+    // "Quotation Editor Layout" design, 2026-08-17.
     function qtRenderEditor() {
         const root = qtEl('quoteEditorView');
         const q = qtState.current;
         if (!root || !q) return;
         const st = qtStatusOf(q);
+        const lapsed = st === 'expired' && q.validUntil
+                     ? qtDaysBetween(q.validUntil, qtTodayKey()) : null;
 
         root.innerHTML = `
-        <div class="qt-toolbar">
-            <div class="qt-toolbar-left">
-                <button class="qt-back-btn" onclick="qtBackToList()">
-                    <i data-lucide="arrow-left"></i> Quotations
-                </button>
-                <span class="qt-breadcrumb-sep">/</span>
-                <h3 class="qt-doc-title">${qtEscHtml(q.quoteNo || 'New Quotation')}</h3>
-                ${q.revNo > 1 ? `<span class="qt-doc-sub">Rev ${q.revNo}</span>` : ''}
-                <span class="qt-pill qt-pill-${st}">${st}</span>
-                <span class="qt-doc-sub">${qtEscHtml(q.projectName || 'Untitled project')}</span>
-            </div>
-            <div class="qt-toolbar-right">
-                <button class="qt-btn qt-btn-outline" onclick="qtPrintSheet()"><i data-lucide="printer"></i> Print</button>
-                <button class="qt-btn qt-btn-outline" onclick="qtExportPDF()"><i data-lucide="file-down"></i> Export PDF</button>
-                <button class="qt-btn qt-btn-primary" onclick="qtSave()"><i data-lucide="save"></i> Save</button>
+        <div class="qt-topbar-sticky">
+            <div class="qt-toolbar">
+                <div class="qt-toolbar-left">
+                    <button class="qt-back-btn" onclick="qtBackToList()">
+                        <i data-lucide="arrow-left"></i> Quotations
+                    </button>
+                    <span class="qt-breadcrumb-sep">/</span>
+                    <h3 class="qt-doc-title">${qtEscHtml(q.quoteNo || 'New Quotation')}</h3>
+                    ${q.revNo > 1 ? `<span class="qt-doc-sub">Rev ${q.revNo}</span>` : ''}
+                    <span class="qt-pill qt-pill-${st}">${st}</span>
+                    <span class="qt-topbar-div"></span>
+                    <span class="qt-topbar-meta">${qtEscHtml(q.projectName || 'Untitled project')}${
+                        q.location ? ' · ' + qtEscHtml(q.location) : ''}</span>
+                </div>
+                <div class="qt-toolbar-right">
+                    <div class="qt-topbar-total">
+                        <div class="qt-topbar-total-label">Quotation total</div>
+                        <div class="qt-topbar-total-value" id="qtTopTotal">₱ ${qtFmt(qtGrandTotal(q))}</div>
+                    </div>
+                    <span class="qt-dirty${qtState.isDirty ? ' qt-dirty-on' : ''}" id="qtDirtyPill">
+                        <span class="qt-dirty-dot"></span><span id="qtDirtyText">${qtState.isDirty ? 'Unsaved' : 'Saved'}</span>
+                    </span>
+                    <button class="qt-btn qt-btn-outline" onclick="qtPrintSheet()"><i data-lucide="printer"></i> Print</button>
+                    <button class="qt-btn qt-btn-outline" onclick="qtExportPDF()"><i data-lucide="file-down"></i> Export PDF</button>
+                    <button class="qt-btn qt-btn-primary" onclick="qtSave()"><i data-lucide="save"></i> Save</button>
+                </div>
             </div>
         </div>
 
-        <div class="qt-panel">
-            <div class="qt-section-title">Document Info
-                <span class="qt-title-checks">
-                    <label class="qt-check-label" title="Affects the printed sheet and the PDF only. Turn it off when the sheet goes out on pre-printed letterhead that already carries the mark">
-                        <input type="checkbox" class="qt-check" ${q.showLogo !== false ? 'checked' : ''}
-                               onchange="qtSetPrintLogo(this.checked)">
-                        Print company logo
-                    </label>
-                    <label class="qt-check-label" title="Same switch as Terms &amp; Conditions → Signature Block. Off leaves the “Submitted By” signature column off the printed sheet">
-                        <input type="checkbox" class="qt-check" data-sign="submitted"
-                               ${qtSignOn('submitted') ? 'checked' : ''}
-                               onchange="qtSetSignBlock('submitted', this.checked)">
-                        Print “Submitted by” block
-                    </label>
-                    <label class="qt-check-label" title="Same switch as Terms &amp; Conditions → Signature Block. Adds a separate “Prepared By” signature column to the printed sheet">
-                        <input type="checkbox" class="qt-check" data-sign="prepared"
-                               ${qtSignOn('prepared') ? 'checked' : ''}
-                               onchange="qtSetSignBlock('prepared', this.checked)">
-                        Print “Prepared by” block
-                    </label>
-                </span>
-            </div>
-            <p class="qt-print-hint" id="qtLogoHint" style="${q.showLogo === false ? '' : 'display:none;'}">
-                <strong>Header logo off.</strong> The printed sheet and PDF leave the logo out — the
-                "PROJECT QUOTATION" label and everything below the header are unchanged. Use this when
-                you print on letterhead paper that already shows the mark.
-            </p>
-            <p class="qt-print-hint" id="qtSubmittedByHint" style="${qtSignOn('submitted') ? 'display:none;' : ''}">
-                <strong>“Submitted by” block off.</strong> The printed sheet drops that signature
-                column — no signature, no name, no line.
-            </p>
-            <p class="qt-print-hint" id="qtPreparedByHint" style="${qtSignOn('prepared') ? 'display:none;' : ''}">
-                <strong>“Prepared by” block off.</strong> The name in <em>Prepared by</em> stays an
-                internal record and does not appear on the printed sheet. Tick the box above to give
-                it its own signature column beside <em>Submitted by</em>.
-            </p>
-            <p class="qt-print-hint qt-warn-hint" id="qtSignDupWarn"
-               style="${qtSignOn('submitted') && qtSignOn('prepared') && !String(q.submittedBy || '').trim() ? '' : 'display:none;'}">
-                <strong>Heads up — the same name will print twice.</strong> Both signature columns are
-                on, but <em>Submitted by</em> is empty, so it falls back to <em>Prepared by</em> and the
-                sheet shows that person in both columns. Fill in <em>Submitted by</em>, or switch one
-                of the two blocks off.
-            </p>
-            <div class="qt-form-grid">
-                ${qtField('Client name',  'clientName')}
-                ${qtField('Project name', 'projectName')}
-                ${qtField('Quote no.',    'quoteNo')}
+        ${qtBand('Document info', "Client, project, and everything that prints in the sheet header")}
+        <div class="qt-split">
+            <div class="qt-stack">
+                <div class="qt-panel">
+                    <div class="qt-section-title">Client<span id="qtClientPresetBar"></span></div>
+                    <div class="qt-form-grid-wide">
+                        ${qtField('Client name', 'clientName')}
+                        ${qtField('TIN', 'clientTin', 'text',
+                                  'placeholder="000-000-000-000"', { hint: 'optional' })}
+                        ${qtField('Address', 'clientAddress', 'text', 'placeholder="Street, barangay, city"')}
+                        ${qtField('Email', 'clientEmail', 'email', 'placeholder="name@email.com"')}
+                    </div>
+                </div>
 
-                ${qtField('Email',        'clientEmail', 'email')}
-                ${qtField('Location',     'location')}
-                ${qtField('Quote date',   'quoteDate',  'date')}
+                <div class="qt-panel">
+                    <div class="qt-section-title">Project</div>
+                    <div class="qt-form-grid-wide">
+                        ${qtField('Project name', 'projectName')}
+                        ${qtField('Location', 'location')}
+                        ${qtField('Subject', 'subject', 'text', '',
+                                  { span: true, hint: "prints as the sheet's subject line" })}
+                        <div class="qt-form-group qt-span-2">
+                            <label>Scope note</label>
+                            <textarea class="qt-textarea" rows="3" data-qt-key="scopeNote"
+                                      placeholder="One short paragraph describing what this estimate covers."
+                                      oninput="qtMarkDirty()">${qtEscHtml(q.scopeNote)}</textarea>
+                        </div>
+                    </div>
+                </div>
 
-                ${qtField('Address',      'clientAddress')}
-                ${qtField('Subject',      'subject')}
-                ${qtField('Valid until',  'validUntil', 'date')}
+                <div class="qt-panel">
+                    <div class="qt-section-title">Document &amp; signatories</div>
+                    <div class="qt-form-grid-3">
+                        ${qtField('Quote no.', 'quoteNo')}
+                        ${qtField('Quote date', 'quoteDate', 'date')}
+                        ${qtField('Valid until', 'validUntil', 'date', '', {
+                            warn: lapsed !== null,
+                            note: lapsed === null ? '' :
+                                  `Lapsed ${qtPlural(lapsed, 'day')} ago — extend and save to issue Rev ${(q.revNo || 1) + 1}.`
+                        })}
+                        ${qtField('Prepared by', 'preparedBy', 'text', '', { hint: 'who built it' })}
+                        ${qtField('Submitted by', 'submittedBy', 'text',
+                                  `placeholder="${qtEscHtml(q.preparedBy || "DAC'S CONSTRUCTION")}"`,
+                                  { hint: 'who signs it out' })}
+                        <p class="qt-field-foot">Leave <strong>Submitted by</strong> blank and that
+                            column falls back to Prepared by, then to the company name.</p>
+                    </div>
+                </div>
+            </div>
 
-                ${qtField('TIN',          'clientTin')}
-                ${qtField('Prepared by',  'preparedBy')}
-                ${qtField('Submitted by', 'submittedBy', 'text',
-                          `placeholder="${qtEscHtml(q.preparedBy || "DAC'S CONSTRUCTION")}"`)}
+            <div class="qt-rail">
+                <div id="qtPrintOptsPane"></div>   <!-- print switches, all four -->
+                <div id="qtImagesPane"></div>      <!-- Task 7 — one set per document -->
             </div>
-            <p class="qt-field-note">
-                Two different people, two separate signature columns on the printed sheet — switch
-                either one on or off with the boxes above. <strong>Prepared by</strong> is who built
-                the quotation; <strong>Submitted by</strong> is who signs it out. Leave
-                <em>Submitted by</em> blank and that column falls back to <em>Prepared by</em>, then
-                to the company name, so nothing you have already sent changes.
-            </p>
-            <div class="qt-form-group" style="margin-top:.85rem;">
-                <label>Scope note</label>
-                <textarea class="qt-textarea" rows="3" data-qt-key="scopeNote"
-                          oninput="qtMarkDirty()">${qtEscHtml(q.scopeNote)}</textarea>
-            </div>
-            <div id="qtPresetBar"></div>     <!-- Task 11 -->
         </div>
 
-        <div id="qtImagesPane"></div>     <!-- Task 7 — one set per document -->
-        <div id="qtSectionsPane"></div>   <!-- Task 6 -->
-        <div id="qtTotalsPane"></div>     <!-- Task 6 -->
-        <div id="qtTermsPane"></div>      <!-- Task 8 -->
-        <div id="qtOutcomePane"></div>    <!-- Task 9 -->
-        <div id="qtRevisionsPane"></div>  <!-- Task 10 -->
+        ${qtBand('Itemized estimate', 'Sections, groups and lines — with the running summary alongside')}
+        <div class="qt-split">
+            <div id="qtSectionsPane" class="qt-stack"></div>   <!-- Task 6 -->
+            <div class="qt-rail">
+                <div id="qtTotalsPane"></div>                  <!-- Task 6 -->
+                <div id="qtExcludedPane"></div>
+            </div>
+        </div>
+
+        ${qtBand('Terms &amp; conditions', 'Standard clauses, numbered conditions and the signature columns')}
+        <div class="qt-split">
+            <div id="qtTermsPane" class="qt-stack"></div>      <!-- Task 8 -->
+            <div class="qt-rail"><div id="qtSignPane"></div></div>
+        </div>
+
+        ${qtBand('Outcome', 'Status, follow-up and the audit trail')}
+        <div class="qt-split">
+            <div id="qtOutcomePane" class="qt-stack"></div>    <!-- Task 9 -->
+            <div class="qt-rail"><div id="qtGlancePane"></div></div>
+        </div>
+
+        ${qtBand('Revisions', 'Frozen snapshots of every version already sent')}
+        <div class="qt-split">
+            <div id="qtRevisionsPane" class="qt-stack"></div>  <!-- Task 10 -->
+            <div class="qt-rail">
+                <div class="qt-panel qt-panel-sm">
+                    <div class="qt-section-title">How revisions work</div>
+                    <ol class="qt-howto">
+                        <li>Saving an already-sent quotation bumps the revision number.</li>
+                        <li>The next <strong>Send</strong> freezes a snapshot of everything on the sheet.</li>
+                        <li>A frozen revision always prints from itself, never from the live record.</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
         `;
 
-        // The duplicate-name warning depends on what is TYPED in Submitted by,
-        // so it has to re-check as you type. Bound here rather than inlined in
-        // qtField: state is only collected back on save, and the check needs
-        // the live value.
-        const sb = root.querySelector('[data-qt-key="submittedBy"]');
-        if (sb) sb.addEventListener('input', () => {
-            qtState.current.submittedBy = sb.value;
-            qtSyncSignHints();
+        // The option sub-lines, the "Prints as" preview and the duplicate-name
+        // warning all quote a name as it is TYPED. State is only collected back
+        // on save (qtCollectHeader), so those two fields re-sync on input.
+        ['preparedBy', 'submittedBy'].forEach(key => {
+            const inp = root.querySelector(`[data-qt-key="${key}"]`);
+            if (inp) inp.addEventListener('input', () => {
+                qtState.current[key] = inp.value;
+                qtSyncSignHints();
+            });
         });
 
+        qtRenderPrintOptions();
         qtRenderImages();
         qtRenderSections();
-        qtRenderTotals();
+        qtRenderTotals();        // paints qtExcludedPane too
         qtRenderTerms();
+        qtRenderSignPane();
         qtRenderOutcome();
+        qtRenderGlance();
         qtRenderRevisions();
         qtRenderPresetBar();
+        qtSyncStickyOffset();
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
@@ -906,6 +1109,9 @@
                     if (v && v.style.display !== 'none') { e.preventDefault(); window.qtSave(); }
                 }
             });
+            // The command bar wraps at narrow widths, which changes how far
+            // down the sticky rail has to sit. Re-measure instead of guessing.
+            window.addEventListener('resize', qtSyncStickyOffset);
         }
     };
 
@@ -990,30 +1196,45 @@
         } catch (e) { qtToast('Could not delete preset: ' + (e.message || e), 'error'); }
     };
 
+    // Two hosts, one renderer: client presets sit in the Client card's heading,
+    // scope presets in the Itemized estimate heading — each next to the thing it
+    // fills in. qtRenderSections repaints its own heading, so it calls this
+    // again afterwards; this function never calls back into it.
     function qtRenderPresetBar() {
-        const host = qtEl('qtPresetBar');
-        if (!host) return;
         const clients = (qtState.presets || []).filter(p => p.kind === 'client');
         const scopes  = (qtState.presets || []).filter(p => p.kind === 'scope');
-        host.innerHTML = `
-        <div class="qt-filters" style="margin:1rem 0 0;">
-            <select class="qt-select" onchange="if(this.value){qtInsertPreset(this.value);this.value='';}">
-                <option value="">Insert client preset…</option>
-                ${clients.map(p => `<option value="${p.id}">${qtEscHtml(p.name)}</option>`).join('')}
-            </select>
-            <button class="qt-btn qt-btn-sm" onclick="qtSavePreset('client')">
-                <i data-lucide="bookmark"></i> Save client as preset
-            </button>
-            <select class="qt-select" onchange="if(this.value){qtInsertPreset(this.value);this.value='';}">
-                <option value="">Insert scope preset…</option>
-                ${scopes.map(p => `<option value="${p.id}">${qtEscHtml(p.name)}</option>`).join('')}
-            </select>
-            ${(clients.length + scopes.length)
-                ? `<select class="qt-select" onchange="if(this.value){qtDeletePreset(this.value);this.value='';}">
-                     <option value="">Delete a preset…</option>
-                     ${[...clients, ...scopes].map(p => `<option value="${p.id}">${qtEscHtml(p.kind)}: ${qtEscHtml(p.name)}</option>`).join('')}
-                   </select>` : ''}
-        </div>`;
+        const opts = list => list.map(p =>
+            `<option value="${p.id}">${qtEscHtml(p.name)}</option>`).join('');
+
+        const clientHost = qtEl('qtClientPresetBar');
+        if (clientHost) {
+            clientHost.innerHTML = `
+            <span class="qt-title-checks">
+                <select class="qt-select" style="width:auto;"
+                        onchange="if(this.value){qtInsertPreset(this.value);this.value='';}">
+                    <option value="">Load client preset…</option>${opts(clients)}
+                </select>
+                <button class="qt-btn-ghost-add" onclick="qtSavePreset('client')">
+                    <i data-lucide="bookmark"></i> Save as preset
+                </button>
+                ${(clients.length + scopes.length)
+                    ? `<select class="qt-select" style="width:auto;"
+                               onchange="if(this.value){qtDeletePreset(this.value);this.value='';}">
+                         <option value="">Delete a preset…</option>
+                         ${[...clients, ...scopes].map(p =>
+                             `<option value="${p.id}">${qtEscHtml(p.kind)}: ${qtEscHtml(p.name)}</option>`).join('')}
+                       </select>` : ''}
+            </span>`;
+        }
+
+        const scopeHost = qtEl('qtScopePresetBar');
+        if (scopeHost) {
+            scopeHost.innerHTML = `
+            <select class="qt-select" style="width:auto;"
+                    onchange="if(this.value){qtInsertPreset(this.value);this.value='';}">
+                <option value="">Insert scope preset…</option>${opts(scopes)}
+            </select>`;
+        }
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
@@ -1070,28 +1291,47 @@
         qtMarkDirty();
     };
 
+    // The most recent frozen revision — the one the sheet last went out as.
+    function qtLatestRevision() { return (qtState.revisions || [])[0] || null; }
+
+    // Local YYYY-MM-DD for a Firestore/ISO timestamp, or '' when there is none.
+    function qtTsKey(ts) {
+        if (!ts) return '';
+        const d = ts.toDate ? ts.toDate() : new Date(ts);
+        if (isNaN(d)) return '';
+        const p = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    }
+
     function qtRenderOutcome() {
         const pane = qtEl('qtOutcomePane');
         const q = qtState.current;
         if (!pane || !q) return;
         const st = qtStatusOf(q);
         const overdue = qtIsOverdue(q);
+        const sentKey = qtTsKey((qtLatestRevision() || {}).sentAt);
+        const meta = [
+            sentKey ? 'Sent ' + sentKey : '',
+            q.validUntil ? (st === 'expired' ? 'lapsed ' : 'valid until ') + q.validUntil : ''
+        ].filter(Boolean).join(' · ');
 
         pane.innerHTML = `
         <div class="qt-panel">
-            <div class="qt-section-title">Outcome
-                <span class="qt-section-note">marking a quote Won creates nothing — converting it into a project is a manual step</span>
-            </div>
+            <div class="qt-section-title">Where this quotation stands</div>
             <div class="qt-actions-row">
                 <span class="qt-pill qt-pill-${st}">${st}</span>
+                ${meta ? `<span class="qt-doc-sub">${qtEscHtml(meta)}</span>` : ''}
+                <span style="flex:1;"></span>
                 ${q.status === 'draft' ? '<button class="qt-btn qt-btn-primary" onclick="qtSendQuote()"><i data-lucide="send"></i> Send</button>' : ''}
-                ${q.status === 'sent'  ? `<button class="qt-btn qt-btn-primary" onclick="qtSetStatus('won')"><i data-lucide="check"></i> Mark Won</button>
-                                          <button class="qt-btn qt-btn-danger"  onclick="qtSetStatus('lost')"><i data-lucide="x"></i> Mark Lost</button>` : ''}
+                ${q.status === 'sent'  ? `<button class="qt-btn qt-btn-primary" onclick="qtSetStatus('won')"><i data-lucide="check"></i> Mark won</button>
+                                          <button class="qt-btn qt-btn-danger"  onclick="qtSetStatus('lost')"><i data-lucide="x"></i> Mark lost</button>` : ''}
                 ${(q.status === 'won' || q.status === 'lost') ? `<button class="qt-btn" onclick="qtSetStatus('sent')"><i data-lucide="rotate-ccw"></i> Reopen</button>` : ''}
             </div>
-            ${st === 'expired' ? `<p class="qt-warn">
-                This quotation lapsed on ${qtEscHtml(q.validUntil)}. Extend the validity date and save — that creates a new revision.</p>` : ''}
-            ${q.statusNote ? `<p class="qt-sub">Note: ${qtEscHtml(q.statusNote)}</p>` : ''}
+            ${st === 'expired' ? `<div class="qt-callout">
+                <strong>Validity lapsed.</strong> Extend <em>Valid until</em> in Document info above
+                and save — that issues Rev ${(q.revNo || 1) + 1} and the sheet prints the new date.
+            </div>` : ''}
+            ${q.statusNote ? `<p class="qt-sub" style="margin-bottom:0.9rem;">Note: ${qtEscHtml(q.statusNote)}</p>` : ''}
 
             <div class="qt-form-grid-2">
                 <div class="qt-form-group">
@@ -1099,28 +1339,72 @@
                     <input class="qt-input" type="date"
                            value="${qtEscHtml(q.followUpDate || '')}"
                            onchange="qtSetOutcomeField('followUpDate', this.value)">
-                    ${overdue ? '<span class="qt-warn">Overdue — pinned to the top of the list</span>' : ''}
+                    ${overdue ? '<span class="qt-field-warn-note">Overdue — pinned to the top of the list</span>' : ''}
                 </div>
                 <div class="qt-form-group">
                     <label>Follow-up note</label>
-                    <input class="qt-input"
+                    <input class="qt-input" placeholder="What the next call is about"
                            value="${qtEscHtml(q.followUpNote || '')}"
                            oninput="qtSetOutcomeField('followUpNote', this.value)">
                 </div>
             </div>
             <p class="qt-total-note">Reminders are an in-app flag only — nothing is emailed to the client.</p>
+        </div>
 
-            ${(q.history || []).length ? `
-            <details style="margin-top:.9rem;">
-                <summary class="qt-sub" style="cursor:pointer;">Status history (${q.history.length})</summary>
-                <ul class="qt-history">
-                    ${q.history.slice().reverse().map(h =>
-                        `<li>${qtEscHtml(String(h.at).slice(0, 16).replace('T', ' '))} — ${qtEscHtml(h.from || '·')} → <strong>${qtEscHtml(h.status)}</strong>${h.note ? ' · ' + qtEscHtml(h.note) : ''}${h.by ? ' · ' + qtEscHtml(h.by) : ''}</li>`).join('')}
-                </ul>
-            </details>` : ''}
+        <div class="qt-panel">
+            <div class="qt-section-title">Status history</div>
+            ${(q.history || []).length
+                ? q.history.slice().reverse().map(h => `
+                <div class="qt-hist-row">
+                    <span class="qt-hist-at">${qtEscHtml(String(h.at).slice(0, 16).replace('T', ' '))}</span>
+                    <span class="qt-hist-move">${qtEscHtml(h.from || '·')} → ${qtEscHtml(h.status)}</span>
+                    <span class="qt-hist-note">${qtEscHtml(h.note || '')}${
+                        h.by ? `<span class="qt-hist-at"> · ${qtEscHtml(h.by)}</span>` : ''}</span>
+                </div>`).join('')
+                : '<p class="qt-total-note" style="margin:0;">Nothing yet — the first Send writes the opening entry.</p>'}
         </div>`;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    // Rail card beside Outcome: the total, what it moved by since the last
+    // frozen revision, and how long the client has been sitting on it.
+    function qtRenderGlance() {
+        const pane = qtEl('qtGlancePane');
+        const q = qtState.current;
+        if (!pane || !q) return;
+
+        // The baseline is the newest revision OLDER than the live one. When the
+        // current rev is itself already frozen (nothing edited since Send) that
+        // is revisions[1]; when saving has bumped the rev it is revisions[0].
+        const base = (qtState.revisions || []).find(r => (r.revNo || 0) < (q.revNo || 1));
+        const delta = base ? qtGrandTotal(q) - qtParseNum(base.totalAmount) : null;
+
+        const sentKey = qtTsKey((qtLatestRevision() || {}).sentAt);
+        const days = sentKey ? qtDaysBetween(sentKey, qtTodayKey()) : null;
+
+        pane.innerHTML = `
+        <div class="qt-panel qt-panel-sm">
+            <div class="qt-section-title">At a glance</div>
+            <div class="qt-glance">
+                <div>
+                    <div class="qt-glance-label">Quotation total</div>
+                    <div class="qt-glance-value">₱ ${qtFmt(qtGrandTotal(q))}</div>
+                </div>
+                ${delta === null ? '' : `
+                <div>
+                    <div class="qt-glance-label">Change from Rev ${base.revNo}</div>
+                    <div class="qt-glance-value qt-glance-sm ${delta < 0 ? 'qt-glance-down' : delta > 0 ? 'qt-glance-up' : ''}">${
+                        delta === 0 ? 'No change' : (delta < 0 ? '− ₱ ' : '+ ₱ ') + qtFmt(Math.abs(delta))}</div>
+                </div>`}
+                <div>
+                    <div class="qt-glance-label">Days since sent</div>
+                    <div class="qt-glance-value qt-glance-sm">${days === null ? 'Not sent yet' : days}</div>
+                </div>
+            </div>
+            <p class="qt-total-note">Marking a quote Won creates nothing — converting it into a
+               project is a manual step.</p>
+        </div>`;
     }
 
     window.qtSendQuote = async function () {
@@ -1263,19 +1547,27 @@
         if (!pane || !qtState.current) return;
         const secs = qtSections();
 
+        const groups = secs.reduce((n, s) => n + (s.groups || []).length, 0);
+        const lines  = secs.reduce((n, s) => n + (s.groups || [])
+                            .reduce((m, g) => m + (g.lines || []).length, 0), 0);
+
+        // The "print unit prices" switch used to live in this heading. It moved
+        // to the Printed sheet options card with the other three — the editor
+        // always shows the rates regardless, so it never belonged to this table.
         pane.innerHTML = `
         <div class="qt-panel">
-            <div class="qt-section-title">Itemized Estimate
-                <label class="qt-check-label" title="Affects the printed sheet and the PDF only — you always see the rates here while editing">
-                    <input type="checkbox" class="qt-check" ${qtState.current.showLinePricing !== false ? 'checked' : ''}
-                           onchange="qtSetPrintPricing(this.checked)">
-                    Print unit prices &amp; line amounts
-                </label>
+            <div class="qt-section-title">
+                <span class="qt-title-group">Itemized estimate
+                    <span class="qt-section-note">${qtPlural(secs.length, 'section')} · ${
+                        qtPlural(groups, 'group')} · ${qtPlural(lines, 'line')}</span>
+                </span>
+                <span class="qt-title-checks">
+                    <span id="qtScopePresetBar"></span>
+                    <button class="qt-btn-add qt-btn-sm" onclick="qtAddSection()">
+                        <i data-lucide="plus"></i> Add section
+                    </button>
+                </span>
             </div>
-            ${qtState.current.showLinePricing === false ? `
-            <p class="qt-print-hint"><strong>Section totals only.</strong> The printed sheet and PDF drop the Unit Price
-            column and leave each line's amount blank — the client sees what is included and what each section costs,
-            not the rate behind every line. Nothing about the total changes.</p>` : ''}
             <div class="qt-table-scroll">
                 <table class="qt-table qt-table-wide">
                     <thead>
@@ -1296,11 +1588,12 @@
             </div>
             <div style="padding:0.8rem 0 0.2rem;">
                 <button class="qt-btn-add" onclick="qtAddSection()">
-                    <i data-lucide="plus-circle"></i> Add Section
+                    <i data-lucide="plus-circle"></i> Add section
                 </button>
             </div>
         </div>`;
 
+        qtRenderPresetBar();     // the heading was just repainted over
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
@@ -1418,15 +1711,15 @@
               sub = qtSubTotal(q), vat = qtVatAmount(q), total = qtGrandTotal(q);
 
         pane.innerHTML = `
-        <div class="qt-panel qt-panel-narrow">
+        <div class="qt-panel qt-panel-sm">
             <div class="qt-section-title">Summary</div>
             <div class="qt-totals-grid">
                 <div class="qt-total-row">
-                    <span class="qt-total-label">Project Cost:</span>
+                    <span class="qt-total-label">Project cost</span>
                     <span class="qt-total-value">₱ ${qtFmt(pc)}</span>
                 </div>
                 <div class="qt-total-row">
-                    <span class="qt-total-label">Less: Discount
+                    <span class="qt-total-label">Less: discount
                         <select class="qt-mini-select" onchange="qtSetTotalsField('discountType', this.value)">
                             <option value="amount"${q.discountType === 'amount'  ? ' selected' : ''}>₱</option>
                             <option value="percent"${q.discountType === 'percent' ? ' selected' : ''}>%</option>
@@ -1437,7 +1730,7 @@
                     <span class="qt-total-value qt-total-muted">(${qtFmt(disc)})</span>
                 </div>
                 <div class="qt-total-row">
-                    <span class="qt-total-label">Sub-total:</span>
+                    <span class="qt-total-label">Sub-total</span>
                     <span class="qt-total-value">₱ ${qtFmt(sub)}</span>
                 </div>
                 <div class="qt-total-row">
@@ -1453,7 +1746,7 @@
                     <span class="qt-total-value qt-total-muted">${q.vatMode === 'none' ? '—' : (q.vatMode === 'inclusive' ? '(incl. ' + qtFmt(vat) + ')' : qtFmt(vat))}</span>
                 </div>
                 <div class="qt-total-row qt-total-row-final">
-                    <span class="qt-total-label">TOTAL:</span>
+                    <span class="qt-total-label">TOTAL</span>
                     <span class="qt-total-value">₱ ${qtFmt(total)}</span>
                 </div>
             </div>
@@ -1463,6 +1756,53 @@
                  : 'VAT is already inside the total and is shown broken out.'}
             </p>
         </div>`;
+
+        qtSyncTopbar();
+        qtRenderExcluded();      // same inputs, same refresh points
+    }
+
+    // What the total leaves out. optional / waived / removed lines keep their
+    // qty and rate (that is what lets a revision diff value a deletion), so the
+    // money they represent is invisible in the summary — this names it.
+    //
+    // The COUNT covers every section; the VALUE only rated ones. In a LOT
+    // section the line rates are a working figure that never reaches the
+    // section price, so adding them up would invent money.
+    function qtExcludedStats() {
+        const s = { optional: 0, waived: 0, removed: 0, value: 0, inLump: 0 };
+        const counted = ['optional', 'waived', 'removed'];
+        qtSections().forEach(sec => (sec.groups || []).forEach(g => (g.lines || []).forEach(l => {
+            const state = (l && l.state) || 'normal';
+            if (counted.indexOf(state) < 0) return;
+            s[state]++;
+            if (sec.pricing === 'lump') { s.inLump++; return; }
+            s.value += qtRawLineAmount(l);
+        })));
+        return s;
+    }
+
+    function qtRenderExcluded() {
+        const pane = qtEl('qtExcludedPane');
+        if (!pane || !qtState.current) return;
+        const s = qtExcludedStats();
+        const total = s.optional + s.waived + s.removed;
+
+        pane.innerHTML = `
+        <div class="qt-panel qt-panel-sm">
+            <div class="qt-section-title">Excluded from total</div>
+            ${total ? `
+            <div class="qt-kv-row">
+                <span class="qt-kv-label">${qtPlural(s.optional, 'optional line')}</span>
+                <span class="qt-kv-value">${s.value ? qtFmt(s.value) : '—'}</span>
+            </div>
+            <div class="qt-kv-row">
+                <span class="qt-kv-label">${s.waived} waived · ${s.removed} removed</span>
+                <span class="qt-kv-value">—</span>
+            </div>
+            ${s.inLump ? `<p class="qt-total-note">${qtPlural(s.inLump, 'line')} of these sit in a
+                LOT section, where line rates are a working figure — not counted in the value above.</p>` : ''}`
+            : '<p class="qt-total-note" style="margin:0;">Nothing excluded — every line counts toward the total.</p>'}
+        </div>`;
     }
 
     window.qtSetTotalsField = function (key, value) {
@@ -1471,23 +1811,24 @@
     };
 
     // Presentation only (migration 0047). The editor ALWAYS shows the rates —
-    // you cannot price a job you cannot see — so this changes nothing here
-    // beyond the hint; it is read by the print sheet and the PDF.
+    // you cannot price a job you cannot see — so this changes nothing in the
+    // table; it is read by the print sheet and the PDF.
+    //
+    // Neither of these re-renders: the Document info inputs are uncommitted
+    // until qtCollectHeader runs, so a full redraw would throw away whatever
+    // the user is halfway through typing. The option cards repaint by hand.
     window.qtSetPrintPricing = function (on) {
         if (!qtState.current) return;
         qtState.current.showLinePricing = !!on;
-        qtMarkDirty(); qtRenderSections();
+        qtSyncSignHints();
+        qtMarkDirty();
     };
 
     // Presentation only (migration 0048). Read by the print sheet and the PDF.
-    // Deliberately does NOT re-render the editor: the Document Info inputs are
-    // uncommitted until qtCollectHeader runs, so a full redraw here would throw
-    // away whatever the user is halfway through typing. Toggle the hint by hand.
     window.qtSetPrintLogo = function (on) {
         if (!qtState.current) return;
         qtState.current.showLogo = !!on;
-        const hint = qtEl('qtLogoHint');
-        if (hint) hint.style.display = on ? 'none' : '';
+        qtSyncSignHints();
         qtMarkDirty();
     };
 
@@ -1576,33 +1917,37 @@
         if (!host || !qtState.current) return;
         const imgs = qtImages();
         const full = imgs.length >= QT_MAX_IMAGES;
+        // Two-up thumbnails: the card lives in the 340px rail now, not across
+        // the full width, so the cards shrink to fit rather than wrapping.
         host.innerHTML = `
-        <div class="qt-panel">
-            <div class="qt-section-title">Reference Images
-                <span class="qt-section-note">${imgs.length} of ${QT_MAX_IMAGES} · printed once, above the itemized estimate (max ${QT_MAX_IMG_MB}MB each)</span>
+        <div class="qt-panel qt-panel-sm">
+            <div class="qt-section-title">Reference images
+                <span class="qt-section-note">${imgs.length} / ${QT_MAX_IMAGES}</span>
             </div>
-            <div class="qt-images-panel">
-                ${full ? `<span class="qt-images-hint">Maximum of ${QT_MAX_IMAGES} images reached — remove one to add another.</span>` : `
-                <label class="qt-upload-label">
-                    <i data-lucide="image-plus"></i> Add image
-                    <input type="file" accept="image/*" multiple hidden
-                           onchange="qtUploadImages(this.files); this.value='';">
-                </label>`}
-                ${imgs.length ? `<div class="qt-images-grid">
-                    ${imgs.map((im, i) => `
-                    <div class="qt-image-card">
-                        <img src="${qtEscHtml(im.url)}" alt="${qtEscHtml(im.name)}">
-                        <input class="qt-image-caption" placeholder="Caption" value="${qtEscHtml(im.caption)}"
-                               oninput="qtSetImageCaption(${i}, this.value)">
-                        <div class="qt-image-actions">
-                            <button class="qt-icon-btn" title="Move left"  onclick="qtMoveImage(${i},-1)"><i data-lucide="chevron-left"></i></button>
-                            <button class="qt-icon-btn" title="Move right" onclick="qtMoveImage(${i},1)"><i data-lucide="chevron-right"></i></button>
-                            <button class="qt-icon-btn qt-icon-btn-del" title="Remove" onclick="qtRemoveImage(${i})"><i data-lucide="trash-2"></i></button>
-                        </div>
-                    </div>`).join('')}
-                </div>`
-                : `<span class="qt-images-hint">No images yet. Renders or site photos go here.</span>`}
+            ${imgs.length ? `<div class="qt-imgs-mini">
+                ${imgs.map((im, i) => `
+                <div class="qt-image-card">
+                    <img src="${qtEscHtml(im.url)}" alt="${qtEscHtml(im.name)}">
+                    <input class="qt-image-caption" placeholder="Caption" value="${qtEscHtml(im.caption)}"
+                           oninput="qtSetImageCaption(${i}, this.value)">
+                    <div class="qt-image-actions">
+                        <button class="qt-icon-btn" title="Move left"  onclick="qtMoveImage(${i},-1)"><i data-lucide="chevron-left"></i></button>
+                        <button class="qt-icon-btn" title="Move right" onclick="qtMoveImage(${i},1)"><i data-lucide="chevron-right"></i></button>
+                        <button class="qt-icon-btn qt-icon-btn-del" title="Remove" onclick="qtRemoveImage(${i})"><i data-lucide="trash-2"></i></button>
+                    </div>
+                </div>`).join('')}
+            </div>`
+            : '<span class="qt-images-hint">No images yet. Renders or site photos go here.</span>'}
+            <div style="margin-top:0.75rem;">
+                ${full
+                    ? `<span class="qt-images-hint">Maximum of ${QT_MAX_IMAGES} reached — remove one to add another.</span>`
+                    : `<label class="qt-upload-label">
+                        <i data-lucide="image-plus"></i> Upload image
+                        <input type="file" accept="image/*" multiple hidden
+                               onchange="qtUploadImages(this.files); this.value='';">
+                       </label>`}
             </div>
+            <p class="qt-total-note">Printed once, above the itemized estimate. Max ${QT_MAX_IMG_MB}MB each.</p>
         </div>`;
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -1615,30 +1960,31 @@
         const revs = qtState.revisions || [];
         if (!revs.length) {
             pane.innerHTML = `<div class="qt-panel">
-                <div class="qt-section-title">Revision History</div>
+                <div class="qt-section-title">Frozen revisions</div>
                 <p class="qt-sub">No revisions yet. Sending this quotation freezes Rev 1.</p></div>`;
             return;
         }
         pane.innerHTML = `
         <div class="qt-panel">
-            <div class="qt-section-title">Revision History
-                <span class="qt-section-note">each frozen copy prints from itself, never from the live record</span>
+            <div class="qt-section-title">Frozen revisions
+                <span class="qt-section-note">each row prints from its own snapshot</span>
             </div>
             <div class="qt-table-scroll">
                 <table class="qt-table">
                     <thead>
                         <tr class="qt-thead-row">
-                            <th>Rev</th><th>Sent</th><th class="qt-amt">Total</th><th>Note</th><th class="qt-center">Actions</th>
+                            <th>Rev</th><th>Sent</th><th>Note</th><th class="qt-amt">Total</th><th class="qt-center">Actions</th>
                         </tr>
                     </thead>
                     <tbody>${revs.map((r, i) => `
                     <tr class="qt-list-row">
                         <td><strong>Rev ${r.revNo}</strong></td>
                         <td>${qtEscHtml(qtTsDate(r.sentAt))}</td>
-                        <td class="qt-amt">₱ ${qtFmt(r.totalAmount)}</td>
                         <td>${qtEscHtml(r.note || '')}</td>
+                        <td class="qt-amt">₱ ${qtFmt(r.totalAmount)}</td>
                         <td class="qt-center">
                             <button class="qt-btn qt-btn-sm" onclick="qtViewRevision('${r.id}')">View</button>
+                            <button class="qt-btn qt-btn-sm" onclick="qtPrintSheet(qtRevisionSnapshot('${r.id}'))">Print</button>
                             ${i < revs.length - 1 ? `<button class="qt-btn qt-btn-sm" onclick="qtShowDiff('${r.id}')">Diff</button>` : ''}
                         </td>
                     </tr>`).join('')}</tbody>
@@ -1721,7 +2067,7 @@
         return r ? r.snapshot : null;
     };
 
-    Object.assign(window, { qtToast, qtNewId, qtMarkDirty, qtRenderImages, qtRenderTerms, qtLoadDefaultTerms, qtStatusOf, qtIsOverdue, qtRenderOutcome, qtPushHistory, qtLoadPresets, qtRenderPresetBar });
+    Object.assign(window, { qtToast, qtNewId, qtMarkDirty, qtRenderImages, qtRenderTerms, qtLoadDefaultTerms, qtStatusOf, qtIsOverdue, qtRenderOutcome, qtPushHistory, qtLoadPresets, qtRenderPresetBar, qtRenderEditor, qtRenderExcluded, qtRenderGlance, qtRenderSignPane, qtRenderPrintOptions, qtSyncTopbar, qtExcludedStats });
 
     window.qtState = qtState;   // read-only use by quotation-print.js
 

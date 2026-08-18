@@ -85,7 +85,6 @@
     padding: 1.25rem 1.4rem;
     margin-bottom: 1.1rem;
 }
-.qt-panel-narrow { max-width: 480px; margin-left: auto; }
 .qt-section-title {
     font-size: 0.78rem;
     font-weight: 700;
@@ -105,9 +104,11 @@
 /* .qt-section-title uppercases and letter-spaces its contents — undo that for
    a control sitting inside it, or the label reads as a heading. */
 .qt-section-title .qt-check-label { text-transform: none; letter-spacing: 0; font-size: 0.78rem; }
-/* Two or more switches in one heading: keep them together on the right instead
+/* Two or more controls in one heading: keep them together on the right instead
    of letting space-between fling them to opposite ends of the bar. */
-.qt-title-checks { display: flex; align-items: center; gap: 1.1rem; flex-wrap: wrap; }
+.qt-title-checks { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+/* …and the title plus its count together on the left, for the same reason. */
+.qt-title-group  { display: flex; align-items: baseline; gap: 0.55rem; flex-wrap: wrap; min-width: 0; }
 
 /* Explanatory note under a form grid — same voice as .qt-print-hint but quiet,
    because it describes the fields rather than warning about output. */
@@ -217,6 +218,10 @@
 }
 .qt-btn-add:hover { background: #dcfce7; border-color: #4ade80; }
 .qt-btn-add svg, .qt-btn-add i { width: 15px; height: 15px; }
+/* .qt-btn-add is declared after .qt-btn-sm and would otherwise win the padding
+   at equal specificity — this pairing is what actually makes it small. */
+.qt-btn-add.qt-btn-sm { padding: 0.35rem 0.8rem; font-size: 0.78rem; }
+.qt-btn-add.qt-btn-sm svg, .qt-btn-add.qt-btn-sm i { width: 13px; height: 13px; }
 
 .qt-btn-ghost-add {
     display: inline-flex; align-items: center; gap: 0.4rem;
@@ -581,18 +586,9 @@
     cursor: pointer; -webkit-user-select: none; user-select: none;
 }
 .qt-check { width: 15px; height: 15px; flex-shrink: 0; accent-color: #4f46e5; cursor: pointer; }
-.qt-signoff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-@media (max-width: 768px) { .qt-signoff-grid { grid-template-columns: 1fr; } }
-.qt-signoff-grid .qt-check-label {
-    border: 1px solid #e5e7eb; border-radius: 9px;
-    padding: 0.7rem 0.85rem; background: #f9fafb;
-}
-
 /* ── Outcome / history ────────────────────────────────────────────── */
 .qt-actions-row { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-bottom: 0.9rem; }
 .qt-warn { font-size: 0.8rem; color: #b45309; margin: 0.5rem 0 0; }
-.qt-history { margin: 0.4rem 0 0 1.1rem; font-size: 0.8rem; color: #4b5563; }
-.qt-history li { margin-bottom: 0.2rem; }
 
 /* ── Diff panel ───────────────────────────────────────────────────── */
 .qt-diff {
@@ -634,6 +630,253 @@
 }
 .qt-empty-title { font-size: 1rem; font-weight: 800; color: #111827; font-family: 'Playfair Display', serif; margin: 0 0 0.3rem; }
 .qt-empty-sub { font-size: 0.85rem; color: #9ca3af; margin: 0; }
+
+/* ════════════════════════════════════════════════════════════════════
+   EDITOR SHELL — banded sections, two columns, a sticky rail.
+   Imported from the "Quotation Editor Layout" design, 2026-08-17.
+
+   The editor used to be one tall stack of full-width panels: you scrolled
+   past the entire itemized estimate to reach the totals, and the print
+   switches lived in panel headings far from the sheet they describe. The
+   shell below splits each band into the work (left) and the running
+   readout / switches (right, sticky), so the number you are changing and
+   the number it changes stay on screen together.
+
+   Nothing above .content-view is sticky (see admin-renovation.css §Top nav)
+   and .content-view has no top padding, so top:0 is the correct anchor for
+   the command bar. The rail's offset is measured from that bar at render
+   time into --qt-sticky-top — don't hard-code it, the bar wraps.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Sticky command bar ───────────────────────────────────────────── */
+.qt-topbar-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: #fff;
+    padding: 14px 0 10px;
+}
+.qt-topbar-sticky .qt-toolbar { margin-bottom: 0; }
+.qt-topbar-div { width: 1px; height: 20px; background: #e5e7eb; flex-shrink: 0; }
+.qt-topbar-meta {
+    font-size: 0.8rem;
+    color: #6b7280;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 280px;
+}
+.qt-topbar-total { text-align: right; padding-right: 0.25rem; }
+.qt-topbar-total-label {
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #9b9a94;
+}
+.qt-topbar-total-value {
+    font-size: 1.18rem;
+    font-weight: 800;
+    color: #111827;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* Saved / Unsaved. Green at rest, amber the moment anything is edited —
+   the editor only writes on Save, so this is the one honest signal that
+   what is on screen is not yet in the database. */
+.qt-dirty {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 5px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+    color: #15803d;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+}
+.qt-dirty-dot { width: 6px; height: 6px; border-radius: 50%; background: #16a34a; }
+.qt-dirty-on { color: #b45309; background: #fffbeb; border-color: #fde68a; }
+.qt-dirty-on .qt-dirty-dot { background: #d97706; }
+
+/* ── Band heading — a Playfair title, a plain-English note, a hairline ── */
+.qt-band {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    padding: 1.6rem 0 0.75rem;
+}
+.qt-band h2 {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.31rem;
+    font-weight: 800;
+    color: #111827;
+    margin: 0;
+    letter-spacing: -0.01em;
+}
+.qt-band-note { font-size: 0.82rem; color: #9b9a94; }
+.qt-band-rule { flex: 1; min-width: 40px; height: 1px; background: #e5e7eb; }
+
+/* ── Two-column band body ─────────────────────────────────────────── */
+.qt-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 18px;
+    align-items: start;
+}
+.qt-stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.qt-stack > .qt-panel { margin-bottom: 0; }
+.qt-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: sticky;
+    top: var(--qt-sticky-top, 96px);
+    min-width: 0;
+}
+.qt-rail > .qt-panel { margin-bottom: 0; }
+/* Below this the rail has nowhere useful to sit — it drops under the work
+   column and stops being sticky, rather than pinning a card over the table. */
+@media (max-width: 1180px) {
+    .qt-split { grid-template-columns: minmax(0, 1fr); }
+    .qt-rail  { position: static; }
+}
+
+/* Sidebar cards run tighter than the full-width work panels. */
+.qt-panel-sm { padding: 1.05rem 1.05rem 0.95rem; }
+.qt-panel-sm .qt-section-title { margin-bottom: 0.75rem; }
+
+/* ── Form grids inside the Document info cards ────────────────────── */
+.qt-form-grid-wide { display: grid; grid-template-columns: 1.4fr 1fr; gap: 0.85rem 1.1rem; }
+.qt-form-grid-3    { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.85rem 1.1rem; }
+@media (max-width: 860px) {
+    .qt-form-grid-wide,
+    .qt-form-grid-3 { grid-template-columns: 1fr; }
+}
+.qt-span-2 { grid-column: span 2; }
+@media (max-width: 860px) { .qt-span-2 { grid-column: auto; } }
+.qt-field-hint { font-weight: 500; color: #9ca3af; }
+.qt-field-foot {
+    font-size: 0.75rem;
+    color: #6b7280;
+    line-height: 1.5;
+    align-self: end;
+    padding-bottom: 0.5rem;
+}
+.qt-field-foot strong { color: #374151; }
+
+/* A date that has already lapsed. Amber, not red: the quotation is still
+   editable, it just cannot go out as it stands. */
+.qt-label-warn { color: #b45309 !important; }
+.qt-input-warn { border-color: #fcd34d !important; background: #fffbeb !important; }
+.qt-field-warn-note { font-size: 0.75rem; color: #b45309; font-weight: 600; }
+
+/* ── Print-option cards (Printed sheet options / Signature columns) ─ */
+.qt-opt {
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+    padding: 0.6rem 0.7rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #f9fafb;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+}
+.qt-opt > input[type="checkbox"] {
+    width: 16px; height: 16px; margin: 1px 0 0;
+    accent-color: #16a34a; flex-shrink: 0; cursor: pointer;
+}
+.qt-opt-body { min-width: 0; }
+.qt-opt-title { display: block; font-size: 0.81rem; font-weight: 700; color: #374151; }
+.qt-opt-sub   { display: block; font-size: 0.75rem; color: #9ca3af; line-height: 1.45; margin-top: 1px; }
+.qt-opt-on            { border-color: #dcfce7; background: #f0fdf4; }
+.qt-opt-on .qt-opt-title { color: #166534; }
+.qt-opt-on .qt-opt-sub   { color: #4d7c5f; }
+.qt-opt-row { align-items: center; font-size: 0.81rem; font-weight: 700; color: #374151; }
+.qt-opt-on.qt-opt-row { color: #166534; }
+.qt-opt-list { display: flex; flex-direction: column; gap: 0.55rem; }
+
+/* "Prints as" — a miniature of the signature columns the sheet will show. */
+.qt-sig-box {
+    margin-top: 0.85rem;
+    padding: 0.65rem 0.8rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #fafafa;
+}
+.qt-sig-box-label {
+    font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #9b9a94; margin-bottom: 0.5rem;
+}
+.qt-sig-cols { display: flex; gap: 0.5rem; }
+.qt-sig-col {
+    flex: 1; min-width: 0;
+    border-top: 1.5px solid #9ca3af;
+    padding-top: 0.3rem;
+    font-size: 0.6875rem; font-weight: 700; color: #374151;
+    overflow: hidden; text-overflow: ellipsis;
+}
+.qt-sig-col span { display: block; font-weight: 500; color: #9ca3af; }
+.qt-sig-none { font-size: 0.75rem; color: #9ca3af; font-style: italic; }
+
+/* ── Reference images in the rail ─────────────────────────────────── */
+.qt-imgs-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.qt-imgs-mini .qt-image-card { width: auto; padding: 7px; }
+.qt-imgs-mini .qt-image-card img { height: 74px; }
+
+/* ── Rail readouts: label ↔ value rows, and the at-a-glance figures ─ */
+.qt-kv-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.65rem; padding: 0.15rem 0;
+}
+.qt-kv-label { font-size: 0.78rem; color: #6b7280; }
+.qt-kv-value { font-size: 0.78rem; font-weight: 700; color: #374151; font-variant-numeric: tabular-nums; }
+.qt-glance { display: flex; flex-direction: column; gap: 0.75rem; }
+.qt-glance-label {
+    font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #9b9a94; margin-bottom: 2px;
+}
+.qt-glance-value { font-size: 1.18rem; font-weight: 800; color: #1c1c1a; font-variant-numeric: tabular-nums; }
+.qt-glance-sm    { font-size: 0.95rem; }
+.qt-glance-up    { color: #047857; }
+.qt-glance-down  { color: #b91c1c; }
+.qt-howto { margin: 0 0 0 1rem; padding: 0; font-size: 0.8rem; color: #4b5563; line-height: 1.65; }
+.qt-howto li { margin-bottom: 0.45rem; }
+.qt-howto li:last-child { margin-bottom: 0; }
+
+/* ── Status history — a readable grid, not a collapsed <details> ───── */
+.qt-hist-row {
+    display: grid;
+    grid-template-columns: 132px 132px minmax(0, 1fr);
+    gap: 0.75rem;
+    padding: 0.55rem 0;
+    border-bottom: 1px solid #f3f4f6;
+    font-size: 0.8rem;
+}
+.qt-hist-row:last-child { border-bottom: none; }
+.qt-hist-at   { color: #9ca3af; font-variant-numeric: tabular-nums; }
+.qt-hist-move { font-weight: 700; color: #1e40af; }
+.qt-hist-note { color: #4b5563; overflow-wrap: anywhere; }
+@media (max-width: 700px) { .qt-hist-row { grid-template-columns: 1fr; gap: 0.15rem; } }
+
+/* ── Outcome callout ──────────────────────────────────────────────── */
+.qt-callout {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-left: 3px solid #d97706;
+    border-radius: 8px;
+    padding: 0.65rem 0.8rem;
+    font-size: 0.81rem;
+    color: #92400e;
+    line-height: 1.5;
+    margin: 0 0 0.9rem;
+}
 
 /* ── Toast (mirrors .boq-toast) ───────────────────────────────────── */
 .qt-toast {

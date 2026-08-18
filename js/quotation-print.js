@@ -23,6 +23,37 @@
     // still what signs the document, in the "Submitted by" block below.
     const DOC_LABEL = 'PROJECT QUOTATION';
 
+    // ── Where the client pays ─────────────────────────────────────────
+    // The company's own collecting account, so it is the SAME on every
+    // quotation. That is why it sits here beside COMPANY instead of in the
+    // per-quote `terms` blob — same call as assets/images/dacs-signature.png.
+    //
+    // Editing this changes what prints on every FUTURE sheet, including a
+    // reprint of an old revision. That is deliberate: a client paying today
+    // must be shown today's account, never the one that was live when the
+    // quotation was frozen. Nothing here is stored per row.
+    //
+    // `qr` is optional. If the file is missing the <img> drops out via
+    // onerror and the bank line, name and number still print — a wrong or
+    // broken QR must never take the account number down with it.
+    //
+    // Set `show:false` to drop the block from every sheet.
+    const PAYMENT = {
+        show:   true,
+        bank:   'BDO',
+        name:   'CRISTHER DACOME',
+        number: '013570037929',
+        qr:     'assets/images/bdo-instapay-qr.png',
+        // Printed width of the QR artwork, in mm. Height follows the image's
+        // own aspect ratio, so a tall BDO card and a square crop both come out
+        // undistorted — this is the ONE number to turn if it prints too small
+        // or eats too much of the page foot. A full portrait card at 42mm
+        // stands about 82mm tall; a square crop at 55mm stays 55mm.
+        qrWidthMm: 55,
+        note:   'BDO to BDO transfers are free. Fees may apply for non-BDO transfers.',
+        remind: 'Please send proof of payment after every transfer.'
+    };
+
     function qtDoc() {
         // The live quotation, shaped like a snapshot.
         const q = (window.qtState && window.qtState.current) || window._qtCurrentForPrint;
@@ -261,6 +292,35 @@
         return body.trim() ? `<div class="p-terms">${body}</div>` : '';
     }
 
+    // ── Payment details ───────────────────────────────────────────────
+    // Sits at the foot of the sheet, under the signatures and above the
+    // small print. The QR is a plain <img> off the same origin as the sheet,
+    // exactly like the logo and the signature — no signing needed, since it
+    // is a repo asset and not a private-bucket upload.
+    function qtPaymentHtml(base) {
+        const esc = window.qtEscHtml;
+        if (!PAYMENT.show) return '';
+        // An account with no number is not payable — print nothing rather
+        // than a labelled empty box.
+        if (!String(PAYMENT.number || '').trim()) return '';
+        return `<div class="p-pay">
+    <div class="p-pay-body">
+      <div class="p-pay-hd">Payment Details</div>
+      <table class="p-pay-tbl">
+        <tr><td class="p-pay-k">Bank</td><td class="p-pay-v">${esc(PAYMENT.bank)}</td></tr>
+        <tr><td class="p-pay-k">Account Name</td><td class="p-pay-v">${esc(PAYMENT.name)}</td></tr>
+        <tr><td class="p-pay-k">Account No.</td><td class="p-pay-v p-pay-acct">${esc(PAYMENT.number)}</td></tr>
+      </table>
+      ${PAYMENT.note   ? `<div class="p-pay-note">${esc(PAYMENT.note)}</div>` : ''}
+      ${PAYMENT.remind ? `<div class="p-pay-note">${esc(PAYMENT.remind)}</div>` : ''}
+    </div>
+    ${PAYMENT.qr ? `<figure class="p-pay-qr">
+      <img src="${base}${esc(PAYMENT.qr)}" alt=""
+           onerror="this.parentNode.style.display='none';">
+    </figure>` : ''}
+  </div>`;
+    }
+
     // ── Totals ────────────────────────────────────────────────────────
     function qtTotalsHtml(d) {
         const fmt = window.qtFmt;
@@ -318,8 +378,10 @@
      the fills at print time and the sheet comes out plain white. */
   *{margin:0;padding:0;box-sizing:border-box;}
   body{font-family:'Segoe UI',Arial,sans-serif;font-size:8.5pt;color:#111;background:#e8e8e8;}
-  .page{width:210mm;min-height:297mm;background:#fff;margin:12px auto;padding:12mm 14mm 14mm;
-        box-shadow:0 2px 16px rgba(0,0,0,.18);}
+  /* position:relative anchors the .p-rev quote-number stamp in the on-screen
+     preview — without it the stamp escapes to the viewport corner. */
+  .page{position:relative;width:210mm;min-height:297mm;background:#fff;margin:12px auto;
+        padding:12mm 14mm 14mm;box-shadow:0 2px 16px rgba(0,0,0,.18);}
 
   /* ── Company header ── */
   /* No rule under the header — owner's call, 2026-08-11. The padding stays so
@@ -413,16 +475,58 @@
   .p-sig-signed .p-sig-line{margin-top:0;}
   .p-sig-role{color:#555;font-size:7pt;margin-top:2px;}
 
+  /* ── Payment details — bordered box at the foot of the sheet. Kept
+        whole across a page break: an account number split over two pages
+        is how a client mistypes it. ── */
+  .p-pay{margin-top:12px;border:1.5px solid #1a1a2e;padding:7px 9px;
+         display:flex;gap:10px;align-items:center;
+         break-inside:avoid;page-break-inside:avoid;}
+  .p-pay-body{flex:1;min-width:0;}
+  .p-pay-hd{font-weight:800;font-size:8pt;text-transform:uppercase;color:#111;
+            letter-spacing:.03em;margin-bottom:4px;}
+  table.p-pay-tbl{border-collapse:collapse;}
+  table.p-pay-tbl td{border:none;padding:1px 0;font-size:8pt;vertical-align:baseline;}
+  /* Wide enough for "ACCOUNT NAME" on ONE line — at 74px it wrapped and
+     pushed the value rows out of alignment. nowrap keeps it honest if a
+     longer label is ever added. */
+  .p-pay-k{width:92px;color:#555;font-size:7pt;text-transform:uppercase;
+           letter-spacing:.02em;white-space:nowrap;}
+  .p-pay-v{font-weight:700;color:#111;padding-left:8px !important;}
+  /* Tabular figures and wide tracking — the number is meant to be copied
+     by hand off a printed page. */
+  .p-pay-acct{font-size:10.5pt;font-weight:900;letter-spacing:.08em;
+              font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .p-pay-note{font-size:6.5pt;color:#555;font-style:italic;margin-top:3px;line-height:1.5;}
+  /* The artwork keeps its OWN aspect ratio: height is auto, never a fixed
+     square. A portrait BDO card squeezed into a 26mm square box printed the
+     QR about 8mm wide and no phone could read it. Width comes from
+     PAYMENT.qrWidthMm so it can be tuned in one place. */
+  .p-pay-qr{flex:0 0 auto;width:${PAYMENT.qrWidthMm}mm;text-align:center;}
+  /* max-height is a runaway guard only, deliberately far above any sane
+     card. Set it near the real height and it starts fighting the width:
+     contain would letterbox INSIDE the box and shrink the artwork again,
+     which is the bug this whole block exists to fix. */
+  .p-pay-qr img{width:100%;height:auto;max-height:120mm;object-fit:contain;display:block;}
+
   .p-disc{margin-top:10px;font-size:6.5pt;color:#666;text-align:center;font-style:italic;
           border-top:1px solid #ddd;padding-top:6px;line-height:1.6;}
-  .p-rev{position:fixed;top:6mm;right:10mm;font-size:7pt;color:#666;}
+  /* Screen-only. It used to be position:fixed so the quote number stamped
+     every printed page — but a fixed element repeats at a FIXED offset,
+     and with no per-page top margin it landed on top of the table rows on
+     page 2. The header already prints the same number at top-right, so the
+     stamp is dropped at print time rather than fought with. */
+  .p-rev{position:absolute;top:6mm;right:10mm;font-size:7pt;color:#666;}
 
-  @page{size:A4 portrait;margin:0;}
+  /* The margins live on @page, NOT on .page's padding. Padding is applied
+     once to the whole block, so it indents page 1 and leaves every later
+     page running into the paper's edge. @page applies to each sheet. */
+  @page{size:A4 portrait;margin:12mm 10mm 10mm;}
   /* Keep the summary block from being split across a page break. */
   table.p-tot{break-inside:avoid;page-break-inside:avoid;}
   @media print{
     body{background:#fff;}
-    .page{width:100%;margin:0;padding:8mm 10mm 10mm;box-shadow:none;min-height:auto;}
+    .page{width:100%;margin:0;padding:0;box-shadow:none;min-height:auto;}
+    .p-rev{display:none;}
     /* A thead repeats at the top of every printed page by default. On page 2
        it can sit above nothing but the totals and read as an empty table, so
        demote it to an ordinary row group: it still renders first, but once. */
@@ -468,6 +572,8 @@
   ${qtTermsHtml(d)}
 
   ${qtSigHtml(d, base)}
+
+  ${qtPaymentHtml(base)}
 
   <div class="p-disc">
     This is a price proposal, not a contract, and is not legally binding. Prices hold until the validity

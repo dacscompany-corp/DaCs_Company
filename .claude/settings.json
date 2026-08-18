@@ -38,7 +38,12 @@
       "Read(//c/Program Files/Android/Android Studio/jbr/bin/**)",
       "Bash(where keytool *)",
       "Bash(\"/c/Program Files/Android/Android Studio/jbr/bin/keytool.exe\" -printcert -jarfile app-release-signed.apk)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://dacs-company.vercel.app/client\")"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://dacs-company.vercel.app/client\")",
+      "Bash(node --check \"C:/Users/JOHNAE~1/AppData/Local/Temp/claude/c--Users-John-Aerol-Tapales-Documents-Dacs-Web/7c7b23e5-fb59-4509-bbae-02b1e3d7055e/scratchpad/import-los-churreros-quote.js\")",
+      "Bash(node -e ' *)",
+      "PowerShell($p = \"C:\\\\Users\\\\John Aerol Tapales\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-John-Aerol-Tapales-Documents-Dacs-Web\\\\7c7b23e5-fb59-4509-bbae-02b1e3d7055e\\\\scratchpad\\\\import-los-churreros-quote.js\"; if \\(Test-Path $p\\) { $c = Get-Content -Raw $p; $c | Set-Clipboard; \"Copied to clipboard: $\\($c.Length\\) chars\"; \"First line: \" + \\($c -split \"`n\"\\)[0] } else { \"NOT FOUND: $p\" })",
+      "PowerShell($p = \"C:\\\\Users\\\\John Aerol Tapales\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-John-Aerol-Tapales-Documents-Dacs-Web\\\\7c7b23e5-fb59-4509-bbae-02b1e3d7055e\\\\scratchpad\\\\import-los-churreros-quote.js\"; $c = [System.IO.File]::ReadAllText\\($p, [System.Text.Encoding]::UTF8\\); $c | Set-Clipboard; \"Copied: $\\($c.Length\\) chars\"; \"Peso sign present: \" + $c.Contains\\([char]0x20B1\\); \"Em dash present: \" + $c.Contains\\([char]0x2014\\); \"Sample: \" + $c.Substring\\($c.IndexOf\\('SM03'\\), 60\\))",
+      "PowerShell($d = \"c:\\\\Users\\\\John Aerol Tapales\\\\Documents\\\\Dacs Web\\\\assets\\\\images\"; Get-ChildItem $d -File | Select-Object Name, Length | Format-Table -AutoSize; \"---\"; if \\(Test-Path \"$d\\\\bdo-instapay-qr.png\"\\) { \"QR FILE EXISTS\" } else { \"QR FILE MISSING - this is why nothing renders\" })"
     ]
   }
 }
