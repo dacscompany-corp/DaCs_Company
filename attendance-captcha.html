@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>DAC's Attendance — verification</title>
+<!--
+  ════════════════════════════════════════════════════════════════════
+  TURNSTILE CHALLENGE HOST FOR THE ANDROID WORKER APP
+  ════════════════════════════════════════════════════════════════════
+  This page exists for ONE caller: the WebView on the login screen of the
+  native attendance app (Documents/Dacs Attendance).
+
+  WHY IT IS HERE AND NOT IN THE APP. Supabase Auth on this project has
+  captcha enforcement ON (Auth → Bot & Abuse Protection), which is
+  project-wide — the app cannot opt out of it without also removing the
+  protection from admin.html and client.html. Turnstile has no native
+  Android SDK, and a widget rendered from a file:// page has no origin
+  the sitekey can validate. Serving it from THIS domain is what makes the
+  token valid, because the sitekey is scoped to this hostname.
+
+  Same sitekey as every other login on the site, on purpose: one widget
+  configuration to keep in Cloudflare, not two.
+
+  The app reads the token through the DacsAttendanceBridge JS interface
+  it injects. The hash fallback is for a WebView that could not inject
+  one — it never runs in the app as shipped, but it keeps this page
+  testable in a normal browser (open it and watch location.hash).
+
+  NOT a login page. It collects no credentials and posts nowhere.
+
+  NO SUBRESOURCE INTEGRITY on the Turnstile script below, deliberately.
+  api.js is a versionless endpoint Cloudflare updates in place; pinning a
+  hash would break every login the day they ship a change. Same as every
+  other page on this site that loads it.
+-->
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #FFFFFF;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #1C1C1E;
+  }
+  .wrap {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    padding: 24px;
+    box-sizing: border-box;
+    text-align: center;
+  }
+  .en { font-size: 17px; font-weight: 600; }
+  .tl { font-size: 13.5px; color: #6C6C70; }
+  #err { display: none; font-size: 13.5px; color: #C0392B; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div>
+      <div class="en">One quick check</div>
+      <div class="tl">Sandaling pagsusuri bago mag-log in</div>
+    </div>
+    <div id="widget"></div>
+    <div id="err"></div>
+  </div>
+
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileReady&render=explicit" async defer></script>
+<script>
+(function () {
+  'use strict';
+
+  // Same widget as the other DAC's logins.
+  var SITEKEY = '0x4AAAAAADgIAGT-ZrooN5eY';
+
+  function bridge() {
+    return (typeof DacsAttendanceBridge !== 'undefined') ? DacsAttendanceBridge : null;
+  }
+
+  function sendToken(token) {
+    var b = bridge();
+    if (b && typeof b.onToken === 'function') { b.onToken(token); return; }
+    location.hash = 'token=' + encodeURIComponent(token);
+  }
+
+  function sendError(code) {
+    var b = bridge();
+    if (b && typeof b.onError === 'function') { b.onError(String(code)); return; }
+    location.hash = 'error=' + encodeURIComponent(code);
+  }
+
+  function showError(code) {
+    var el = document.getElementById('err');
+    el.textContent = 'Verification failed (' + code + '). / Hindi tumuloy ang pagsusuri.';
+    el.style.display = 'block';
+  }
+
+  window.onTurnstileReady = function () {
+    try {
+      turnstile.render('#widget', {
+        sitekey: SITEKEY,
+        theme: 'light',
+        callback: sendToken,
+        'error-callback': function (code) {
+          showError(code || 'error');
+          sendError(code || 'error');
+        },
+        // A Turnstile token is single-use and short-lived. Rather than
+        // hand the app a token that expires while it is signing in, ask
+        // for a fresh one and let the app try again.
+        'expired-callback': function () {
+          showError('expired');
+          sendError('expired');
+        },
+        'timeout-callback': function () {
+          showError('timeout');
+          sendError('timeout');
+        }
+      });
+    } catch (e) {
+      showError('render');
+      sendError('render');
+    }
+  };
+
+  // The script tag itself failing (no signal, blocked CDN) has no
+  // callback of its own, so time it out and tell the app.
+  setTimeout(function () {
+    if (typeof turnstile === 'undefined') {
+      showError('unavailable');
+      sendError('unavailable');
+    }
+  }, 15000);
+}());
+</script>
+</body>
+</html>
