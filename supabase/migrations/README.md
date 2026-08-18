@@ -69,6 +69,11 @@ RPCs. Nothing is dropped or rewritten, and every statement is idempotent, so re-
 run yet. Applying cleanly only proves the SQL parses; the tests are what prove the status machine,
 the idempotent replay and the UTC+8 date boundary actually behave.
 
+**`0051_attendance_worker_owner.sql` IS applied** — confirmed 2026-08-18. Fixes a defect in 0050
+(the worker project policy used `data_owner_id()`, which resolves only staff, so every worker saw an
+empty project picker) and backfills `profiles.owner_id` on worker rows that had NULL. Adds the
+attendance-local `attendance_data_owner()` helper and the `NO_OWNER_ASSIGNED` error.
+
 Get the truth before relying on this line:
 
 ```sql
