@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0045** — highest on disk is
-  `0044_warranty_status_simplify.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0051** — highest on disk is
+  `0050_attendance.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble.
 - Migrations are **immutable once applied**: never edit or rename an applied file
   (docs and code comments reference them by name). Fix mistakes with a new migration.
@@ -58,8 +58,16 @@ Reimbursement tab in Project Control cannot save until it is.
 **`0043_warranty_retention_fund.sql` IS applied** — confirmed 2026-08-03, when a write
 came back with an RLS rejection rather than a missing-table error. **`0044_warranty_status_simplify.sql`
 is NOT applied yet**: until it lands, the register's check constraint still rejects
-`status = 'active'`, so voiding or restoring a record will fail. Get the truth before
-relying on this line:
+`status = 'active'`, so voiding or restoring a record will fail.
+
+**`0050_attendance.sql` is NOT applied yet** (written 2026-08-18). It is purely additive —
+three new `attendance_*` tables, two new nullable `profiles` columns (`position`, `worker_no`),
+a private `attendance` storage bucket, and the `attendance_time_in` / `attendance_time_out`
+RPCs. Nothing is dropped or rewritten, and every statement is idempotent, so re-running is safe.
+Until it lands the Android worker app has no backend. Verify with
+`supabase/tests/attendance_checks.sql` (13 assert-based blocks) immediately after applying.
+
+Get the truth before relying on this line:
 
 ```sql
 select version, name

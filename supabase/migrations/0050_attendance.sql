@@ -177,9 +177,22 @@ create trigger attendance_records_touch before update on attendance_records
 
 
 -- ── 5. Terms acceptance — versioned ─────────────────────────────────
--- A NEW table, not the existing profiles.terms_* columns: those belong
--- to the partner / client sign-gate (0016-0020), a different document
--- and audience. Reusing them would break that gate.
+-- A NEW table. The profiles.terms_* cluster that 0020_employee_terms.sql
+-- added was DROPPED by 0022_drop_terms_columns.sql (verified against live
+-- 2026-07-03: the gate never fired and terms_accepted was false on every
+-- row). There is nothing left to reuse.
+--
+-- This table is the fast "has this worker accepted the CURRENT version?"
+-- flag the app's first-login gate reads — the same division of labour
+-- 0021_agreement_events.sql sets out in its own header: the flag lives
+-- next to the feature, the EVIDENCE lives in agreement_events.
+--
+-- Phase B should therefore ALSO append an immutable agreement_events row
+-- on acceptance, with audience = 'worker' and doc_type =
+-- 'attendance_terms', carrying doc_text/doc_sha256, ip and user_agent.
+-- That table already grants insert-self and is guarded against UPDATE and
+-- DELETE for everyone including service_role, so it is the right home for
+-- the audit trail and this table must not try to duplicate it.
 create table if not exists attendance_terms_acceptances (
   id            uuid primary key default gen_random_uuid(),
   worker_id     uuid not null references auth.users(id) on delete cascade,
