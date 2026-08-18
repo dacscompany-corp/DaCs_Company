@@ -80,7 +80,9 @@ trusting that one.
 empty project picker) and backfills `profiles.owner_id` on worker rows that had NULL. Adds the
 attendance-local `attendance_data_owner()` helper and the `NO_OWNER_ASSIGNED` error.
 
-**`0052_attendance_signin_throttle.sql` is NOT applied yet** — written 2026-08-19, still to be run.
+**`0052_attendance_signin_throttle.sql` IS applied** — confirmed 2026-08-19 against live: the table
+exists (RLS hides every row from `anon`), and both functions return `42501 permission denied` for
+`anon`, so the REVOKEs took and workers cannot probe which emails are locked out.
 Adds `attendance_signin_attempts` plus `attendance_signin_is_throttled()` /
 `attendance_signin_record()`, which the `attendance-signin` Edge Function calls. That function signs
 the Android worker app in server-side with the service_role key, because service-role callers skip
