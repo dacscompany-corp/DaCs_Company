@@ -107,8 +107,19 @@ Deno.serve(async (req) => {
 
   if (authErr || !auth?.session || !auth.user) {
     await record(false);
-    // Never distinguish "no such account" from "wrong password": that
-    // difference tells an attacker which emails are real.
+
+    // The CALLER is told one thing and the LOG is told another, on
+    // purpose. Every refusal looks identical from outside, because the
+    // difference between "no such account" and "wrong password" tells an
+    // attacker which emails are real. But the log has to be specific:
+    // this function's whole premise is that a service_role caller skips
+    // the captcha check, and if that ever stops being true every login
+    // would fail as "wrong password" with nothing to point at it. Never
+    // logs the password, only the reason GoTrue gave.
+    console.error(
+      `sign-in refused for ${email}: ${authErr?.code ?? "no-session"} / ${authErr?.message ?? ""}`,
+    );
+
     return fail("INVALID_CREDENTIALS", 401);
   }
 
