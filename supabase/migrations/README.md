@@ -60,12 +60,14 @@ came back with an RLS rejection rather than a missing-table error. **`0044_warra
 is NOT applied yet**: until it lands, the register's check constraint still rejects
 `status = 'active'`, so voiding or restoring a record will fail.
 
-**`0050_attendance.sql` is NOT applied yet** (written 2026-08-18). It is purely additive —
+**`0050_attendance.sql` IS applied** — confirmed 2026-08-18, pasted into the SQL editor and
+returned "Success. No rows returned" through the final `grant` on line 552. It is purely additive —
 three new `attendance_*` tables, two new nullable `profiles` columns (`position`, `worker_no`),
 a private `attendance` storage bucket, and the `attendance_time_in` / `attendance_time_out`
 RPCs. Nothing is dropped or rewritten, and every statement is idempotent, so re-running is safe.
-Until it lands the Android worker app has no backend. Verify with
-`supabase/tests/attendance_checks.sql` (13 assert-based blocks) immediately after applying.
+**Still unverified** — `supabase/tests/attendance_checks.sql` (13 assert-based blocks) has not been
+run yet. Applying cleanly only proves the SQL parses; the tests are what prove the status machine,
+the idempotent replay and the UTC+8 date boundary actually behave.
 
 Get the truth before relying on this line:
 
