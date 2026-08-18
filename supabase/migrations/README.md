@@ -65,9 +65,15 @@ returned "Success. No rows returned" through the final `grant` on line 552. It i
 three new `attendance_*` tables, two new nullable `profiles` columns (`position`, `worker_no`),
 a private `attendance` storage bucket, and the `attendance_time_in` / `attendance_time_out`
 RPCs. Nothing is dropped or rewritten, and every statement is idempotent, so re-running is safe.
-**Still unverified** — `supabase/tests/attendance_checks.sql` (13 assert-based blocks) has not been
-run yet. Applying cleanly only proves the SQL parses; the tests are what prove the status machine,
-the idempotent replay and the UTC+8 date boundary actually behave.
+**VERIFIED 2026-08-18** — all 15 blocks of `supabase/tests/attendance_checks.sql` pass against live.
+Assertion failures raise, so a clean run *is* the pass. Proven: the one-record-per-day constraint,
+idempotent replay on `event_id`, the UTC+8 midnight boundary, 7:45→17:30 = 585 minutes, the 18-hour
+`SHIFT_TOO_LONG` cap with night shifts still working, worker/staff RLS, and workers being unable to
+write `attendance_records` directly.
+
+**Caveat:** block 12 (cross-tenant) passed but proves little on this database — the only other
+profile available shares the same tenant root. Re-run with a genuinely separate owner before
+trusting that one.
 
 **`0051_attendance_worker_owner.sql` IS applied** — confirmed 2026-08-18. Fixes a defect in 0050
 (the worker project policy used `data_owner_id()`, which resolves only staff, so every worker saw an
