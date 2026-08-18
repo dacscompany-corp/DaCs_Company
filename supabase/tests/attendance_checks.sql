@@ -1,6 +1,6 @@
 -- ════════════════════════════════════════════════════════════════════
 -- Attendance — schema, RPC and RLS checks.
--- Run in the Supabase SQL editor AFTER applying 0050_attendance.sql.
+-- Run in the Supabase SQL editor AFTER applying 0050 and 0051.
 --
 -- Every block is wrapped in begin/rollback, so running this file leaves
 -- NO data behind. Failures raise loudly via `assert` — a silent pass
@@ -9,6 +9,15 @@
 -- Kept separate from rls_checks.sql on purpose: attendance is a
 -- deliberately isolated module (see the design spec, section 2), and its
 -- checks travel with it.
+--
+-- ── DATES ARE RELATIVE, NEVER HARDCODED ──────────────────────────────
+-- Every block anchors on `d0 := current_date - 30`, a safely past day.
+-- The first version of this file used fixed 2026-08-17/18/19/20 dates
+-- and broke the moment it was run on 2026-08-18: the RPC checks
+-- CAPTURED_IN_FUTURE *before* it looks the project up, so a tomorrow-
+-- dated call returned CAPTURED_IN_FUTURE where the test wanted
+-- PROJECT_UNAVAILABLE. The database was right; the test was wrong.
+-- Keep dates relative or this suite silently expires.
 --
 -- ── 0. Fill these in from your database ──────────────────────────────
 --    select id, email, role, owner_id, status from profiles
@@ -185,6 +194,7 @@ begin;
 
   do $$
   declare
+    d0      date := current_date - 30;   -- safely past; see header
     v_proj  bigint;
     v_event uuid := gen_random_uuid();
     v_a     attendance_records;
@@ -193,31 +203,30 @@ begin;
   begin
     select id into v_proj from attendance_projects where name = 'ZZ RPC Project';
 
-    -- first call
+    -- first call — 07:45 Manila on d0
     v_a := attendance_time_in(
       p_project_id  => v_proj,
-      p_captured_at => timestamptz '2026-08-17 07:45:00+08',
-      p_photo_path  => 'w/2026-08-17/in-x.jpg',
+      p_captured_at => (d0 + time '07:45') at time zone 'Asia/Manila',
+      p_photo_path  => 'w/in-x.jpg',
       p_event_id    => v_event,
       p_description => 'Started construction work at Block A.'
     );
     assert v_a.status = 'working', format('expected status working, got %s', v_a.status);
-    assert v_a.work_date = date '2026-08-17',
-      format('expected work_date 2026-08-17, got %s', v_a.work_date);
+    assert v_a.work_date = d0, format('expected work_date %s, got %s', d0, v_a.work_date);
     assert v_a.timein_project_name = 'ZZ RPC Project', 'project name was not snapshotted';
     assert v_a.total_minutes is null, 'total_minutes must stay null until Time Out';
 
     -- SAME event id replayed — must return the same row, not a new one
     v_b := attendance_time_in(
       p_project_id  => v_proj,
-      p_captured_at => timestamptz '2026-08-17 07:45:00+08',
-      p_photo_path  => 'w/2026-08-17/in-x.jpg',
+      p_captured_at => (d0 + time '07:45') at time zone 'Asia/Manila',
+      p_photo_path  => 'w/in-x.jpg',
       p_event_id    => v_event
     );
     assert v_b.id = v_a.id, 'replay created a DIFFERENT record — idempotency is broken';
 
     select count(*) into n from attendance_records
-     where worker_id = '<WORKER_UUID>'::uuid and work_date = date '2026-08-17';
+     where worker_id = '<WORKER_UUID>'::uuid and work_date = d0;
     assert n = 1, format('replay left %s rows, expected 1', n);
 
     raise notice 'BLOCK 6 OK — Time In happy path + idempotent replay';
@@ -237,21 +246,21 @@ begin;
     '{"sub":"<WORKER_UUID>","email":"worker@example.com","role":"authenticated"}';
 
   do $$
-  declare v_proj bigint; v_msg text := ''; n int;
+  declare d0 date := current_date - 30; v_proj bigint; v_msg text := ''; n int;
   begin
     select id into v_proj from attendance_projects where name = 'ZZ RPC Project';
 
-    perform attendance_time_in(v_proj, timestamptz '2026-08-17 07:45:00+08',
+    perform attendance_time_in(v_proj, (d0 + time '07:45') at time zone 'Asia/Manila',
               'p/in-1.jpg', gen_random_uuid());
     begin
-      perform attendance_time_in(v_proj, timestamptz '2026-08-17 09:00:00+08',
+      perform attendance_time_in(v_proj, (d0 + time '09:00') at time zone 'Asia/Manila',
                 'p/in-2.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
     assert v_msg = 'ALREADY_TIMED_IN', format('expected ALREADY_TIMED_IN, got "%s"', v_msg);
 
     select count(*) into n from attendance_records
-     where worker_id = '<WORKER_UUID>'::uuid and work_date = date '2026-08-17';
+     where worker_id = '<WORKER_UUID>'::uuid and work_date = d0;
     assert n = 1, format('duplicate Time In left %s rows', n);
 
     raise notice 'BLOCK 7 OK — duplicate Time In blocked';
@@ -275,21 +284,22 @@ begin;
 
   do $$
   declare
+    d0 date := current_date - 30;
     v_proj bigint; v_off bigint; v_msg text := '';
     d1 date; d2 date;
   begin
     select id into v_proj from attendance_projects where name = 'ZZ RPC Project';
     select id into v_off  from attendance_projects where name = 'ZZ RPC Inactive';
 
-    -- 2026-08-17 23:50+08 -> work_date 2026-08-17 (in UTC it is 15:50 same day)
-    d1 := (attendance_time_in(v_proj, timestamptz '2026-08-17 23:50:00+08',
+    -- 23:50 Manila on d0 -> work_date d0 (in UTC it is 15:50 the same day)
+    d1 := (attendance_time_in(v_proj, (d0 + time '23:50') at time zone 'Asia/Manila',
              'p/a.jpg', gen_random_uuid())).work_date;
-    assert d1 = date '2026-08-17', format('23:50 Manila gave work_date %s', d1);
+    assert d1 = d0, format('23:50 Manila gave work_date %s, expected %s', d1, d0);
 
-    -- 2026-08-18 00:10+08 -> work_date 2026-08-18 (in UTC it is 2026-08-17 16:10)
-    d2 := (attendance_time_in(v_proj, timestamptz '2026-08-18 00:10:00+08',
+    -- 00:10 Manila on d0+1 -> work_date d0+1 (in UTC it is 16:10 on d0)
+    d2 := (attendance_time_in(v_proj, ((d0 + 1) + time '00:10') at time zone 'Asia/Manila',
              'p/b.jpg', gen_random_uuid())).work_date;
-    assert d2 = date '2026-08-18', format('00:10 Manila gave work_date %s', d2);
+    assert d2 = d0 + 1, format('00:10 Manila gave work_date %s, expected %s', d2, d0 + 1);
     assert d1 <> d2, 'midnight boundary collapsed two days into one work_date';
 
     -- a capture in the future is rejected outright
@@ -300,10 +310,13 @@ begin;
     end;
     assert v_msg = 'CAPTURED_IN_FUTURE', format('expected CAPTURED_IN_FUTURE, got "%s"', v_msg);
 
-    -- an inactive project is not selectable
+    -- An inactive project is not selectable. NOTE the date: d0-1, safely in
+    -- the PAST. CAPTURED_IN_FUTURE is checked BEFORE the project lookup, so
+    -- a future-dated call here would return the wrong error and mask this
+    -- assertion entirely. That is exactly the bug this suite shipped with.
     v_msg := '';
     begin
-      perform attendance_time_in(v_off, timestamptz '2026-08-19 07:45:00+08',
+      perform attendance_time_in(v_off, ((d0 - 1) + time '07:45') at time zone 'Asia/Manila',
                 'p/d.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
@@ -329,6 +342,7 @@ begin;
 
   do $$
   declare
+    d0 date := current_date - 30;
     a bigint; b bigint;
     v_out uuid := gen_random_uuid();
     r attendance_records; r2 attendance_records;
@@ -337,13 +351,13 @@ begin;
     select id into a from attendance_projects where name = 'ZZ Site A';
     select id into b from attendance_projects where name = 'ZZ Site B';
 
-    perform attendance_time_in(a, timestamptz '2026-08-17 07:45:00+08',
+    perform attendance_time_in(a, (d0 + time '07:45') at time zone 'Asia/Manila',
               'p/in.jpg', gen_random_uuid());
 
     -- Time Out on a DIFFERENT project — MVP section 13 stores both independently
     r := attendance_time_out(
       p_project_id  => b,
-      p_captured_at => timestamptz '2026-08-17 17:30:00+08',
+      p_captured_at => (d0 + time '17:30') at time zone 'Asia/Manila',
       p_photo_path  => 'p/out.jpg',
       p_event_id    => v_out,
       p_description => 'Finished construction work at Block A.'
@@ -354,15 +368,15 @@ begin;
       format('7:45 AM to 5:30 PM must be 585 minutes (9h45m), got %s', r.total_minutes);
     assert r.timein_project_name  = 'ZZ Site A', 'Time In project was overwritten';
     assert r.timeout_project_name = 'ZZ Site B', 'Time Out project was not stored independently';
-    assert r.work_date = date '2026-08-17', 'work_date changed on Time Out';
+    assert r.work_date = d0, 'work_date changed on Time Out';
 
     -- replay returns the same row
-    r2 := attendance_time_out(b, timestamptz '2026-08-17 17:30:00+08',
+    r2 := attendance_time_out(b, (d0 + time '17:30') at time zone 'Asia/Manila',
             'p/out.jpg', v_out);
     assert r2.id = r.id, 'Time Out replay created a different record';
 
     select count(*) into n from attendance_records
-     where worker_id = '<WORKER_UUID>'::uuid and work_date = date '2026-08-17';
+     where worker_id = '<WORKER_UUID>'::uuid and work_date = d0;
     assert n = 1, format('expected 1 row after Time Out + replay, got %s', n);
 
     raise notice 'BLOCK 9 OK — Time Out, 585 minutes, independent projects, replay';
@@ -383,24 +397,24 @@ begin;
     '{"sub":"<WORKER_UUID>","email":"worker@example.com","role":"authenticated"}';
 
   do $$
-  declare a bigint; v_msg text := ''; n int;
+  declare d0 date := current_date - 30; a bigint; v_msg text := ''; n int;
   begin
     select id into a from attendance_projects where name = 'ZZ Site A';
 
     -- (a) Time Out with no Time In
     begin
-      perform attendance_time_out(a, timestamptz '2026-08-17 17:30:00+08',
+      perform attendance_time_out(a, (d0 + time '17:30') at time zone 'Asia/Manila',
                 'p/o.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
     assert v_msg = 'NOT_TIMED_IN', format('expected NOT_TIMED_IN, got "%s"', v_msg);
 
     -- (b) Time Out BEFORE Time In
-    perform attendance_time_in(a, timestamptz '2026-08-17 07:45:00+08',
+    perform attendance_time_in(a, (d0 + time '07:45') at time zone 'Asia/Manila',
               'p/i.jpg', gen_random_uuid());
     v_msg := '';
     begin
-      perform attendance_time_out(a, timestamptz '2026-08-17 06:00:00+08',
+      perform attendance_time_out(a, (d0 + time '06:00') at time zone 'Asia/Manila',
                 'p/o.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
@@ -408,18 +422,18 @@ begin;
       format('expected TIMEOUT_BEFORE_TIMEIN, got "%s"', v_msg);
 
     -- (c) Time Out twice with different event ids
-    perform attendance_time_out(a, timestamptz '2026-08-17 17:30:00+08',
+    perform attendance_time_out(a, (d0 + time '17:30') at time zone 'Asia/Manila',
               'p/o1.jpg', gen_random_uuid());
     v_msg := '';
     begin
-      perform attendance_time_out(a, timestamptz '2026-08-17 18:00:00+08',
+      perform attendance_time_out(a, (d0 + time '18:00') at time zone 'Asia/Manila',
                 'p/o2.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
     assert v_msg = 'ALREADY_COMPLETE', format('expected ALREADY_COMPLETE, got "%s"', v_msg);
 
     select count(*) into n from attendance_records
-     where worker_id = '<WORKER_UUID>'::uuid and work_date = date '2026-08-17';
+     where worker_id = '<WORKER_UUID>'::uuid and work_date = d0;
     assert n = 1, format('error paths left %s rows, expected 1', n);
 
     raise notice 'BLOCK 10 OK — Time Out error paths';
@@ -440,17 +454,17 @@ begin;
     '{"sub":"<WORKER_UUID>","email":"worker@example.com","role":"authenticated"}';
 
   do $$
-  declare a bigint; v_msg text := ''; r attendance_records;
+  declare d0 date := current_date - 30; a bigint; v_msg text := ''; r attendance_records;
   begin
     select id into a from attendance_projects where name = 'ZZ Site A';
 
-    -- timed in yesterday morning, never timed out
-    perform attendance_time_in(a, timestamptz '2026-08-17 07:45:00+08',
+    -- timed in on d0 morning, never timed out
+    perform attendance_time_in(a, (d0 + time '07:45') at time zone 'Asia/Manila',
               'p/i.jpg', gen_random_uuid());
 
     -- tries to time out the NEXT afternoon -> 33 hours later
     begin
-      perform attendance_time_out(a, timestamptz '2026-08-18 17:00:00+08',
+      perform attendance_time_out(a, ((d0 + 1) + time '17:00') at time zone 'Asia/Manila',
                 'p/o.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
@@ -458,15 +472,15 @@ begin;
       format('a 33-hour shift was accepted — expected SHIFT_TOO_LONG, got "%s"', v_msg);
 
     -- but a genuine NIGHT SHIFT crossing midnight still works:
-    -- 22:00 on the 19th -> 06:00 on the 20th is 8 hours.
-    perform attendance_time_in(a, timestamptz '2026-08-19 22:00:00+08',
+    -- 22:00 on d0+2 -> 06:00 on d0+3 is 8 hours.
+    perform attendance_time_in(a, ((d0 + 2) + time '22:00') at time zone 'Asia/Manila',
               'p/n-i.jpg', gen_random_uuid());
-    r := attendance_time_out(a, timestamptz '2026-08-20 06:00:00+08',
+    r := attendance_time_out(a, ((d0 + 3) + time '06:00') at time zone 'Asia/Manila',
            'p/n-o.jpg', gen_random_uuid());
     assert r.total_minutes = 480,
       format('night shift 22:00 to 06:00 must be 480 minutes, got %s', r.total_minutes);
-    assert r.work_date = date '2026-08-19',
-      format('night shift must stay on its Time In date, got %s', r.work_date);
+    assert r.work_date = d0 + 2,
+      format('night shift must stay on its Time In date %s, got %s', d0 + 2, r.work_date);
 
     raise notice 'BLOCK 10b OK — 33h rejected, night shift preserved';
   end $$;
@@ -489,11 +503,11 @@ begin;
     '{"sub":"<WORKER_UUID>","email":"worker@example.com","role":"authenticated"}';
 
   do $$
-  declare a bigint; v_msg text := '';
+  declare d0 date := current_date - 30; a bigint; v_msg text := '';
   begin
     select id into a from attendance_projects where name = 'ZZ Site A';
     begin
-      perform attendance_time_in(a, timestamptz '2026-08-17 07:45:00+08',
+      perform attendance_time_in(a, (d0 + time '07:45') at time zone 'Asia/Manila',
                 'p/i.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
@@ -507,6 +521,10 @@ rollback;  -- the status change is rolled back with everything else
 -- ╔══════════════════════════════════════════════════════════════════╗
 -- ║ 12. CROSS-TENANT — a worker cannot use another owner's project    ║
 -- ║     and cannot see another owner's records.                       ║
+-- ║                                                                    ║
+-- ║ NOTE: this only proves anything if <OTHER_UUID> belongs to a       ║
+-- ║ genuinely DIFFERENT tenant. If its owner_id resolves to the same   ║
+-- ║ root as <WORKER_UUID>, the block passes without testing isolation. ║
 -- ╚══════════════════════════════════════════════════════════════════╝
 begin;
   -- A project belonging to a DIFFERENT owner.
@@ -561,7 +579,7 @@ begin;
     -- the helper must return the OWNER, not the worker
     select attendance_data_owner() into v_resolved;
     assert v_resolved = '<OWNER_UUID>'::uuid,
-      format('attendance_data_owner() returned %s, expected the owner <OWNER_UUID>', v_resolved);
+      format('attendance_data_owner() returned %s, expected the owner', v_resolved);
 
     -- and the picker must therefore be non-empty
     select count(*) into n from attendance_projects where name = 'ZZ Owner Project';
@@ -587,14 +605,12 @@ begin;
     '{"sub":"<WORKER_UUID>","email":"worker@example.com","role":"authenticated"}';
 
   do $$
-  declare a bigint; v_msg text := '';
+  declare d0 date := current_date - 30; v_msg text := '';
   begin
-    -- read the id as the OWNER would see it is impossible here, so use a
-    -- known-good id fetched before the role switch is not available —
-    -- instead call with a deliberately arbitrary id: the owner check
-    -- fires before the project lookup, so the id never matters.
+    -- The owner check fires before the project lookup, so the project id
+    -- never matters here — pass an arbitrary one.
     begin
-      perform attendance_time_in(1::bigint, timestamptz '2026-08-17 07:45:00+08',
+      perform attendance_time_in(1::bigint, (d0 + time '07:45') at time zone 'Asia/Manila',
                 'p/i.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
