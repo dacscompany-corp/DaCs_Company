@@ -289,6 +289,59 @@
     box-shadow: 0 0 0 3px rgba(0,168,94,0.1);
 }
 .inv-input[readonly] { background: #f9fafb; color: #6b7280; }
+/* A hidden signature block keeps its typed name — greyed out, not wiped — so an
+   accidental untick costs nothing. Matches the readonly treatment. */
+.inv-input:disabled { background: #f9fafb; color: #9ca3af; cursor: not-allowed; }
+
+/* ── Header logo toggle (migration 0054) ───────────────────────────── */
+.inv-logo-toggle {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-top: 12px;
+    padding: 9px 12px;
+    background: #fafaf8;
+    border: 1px solid #ededea;
+    border-radius: 8px;
+}
+.inv-logo-toggle .inv-check { font-size: 12.5px; color: #374151 !important; }
+/* Thumbnails of what would print. The checkerboard shows through transparent
+   PNGs, which is how you spot a logo exported on a white plate. */
+.inv-logo-preview { display: flex; align-items: center; gap: 8px; transition: opacity .15s; }
+.inv-logo-preview img {
+    height: 26px;
+    max-width: 70px;
+    object-fit: contain;
+    border-radius: 4px;
+    background: repeating-conic-gradient(#e5e7eb 0% 25%, #fff 0% 50%) 0 0/8px 8px;
+}
+.inv-logo-preview.is-off { opacity: .3; filter: grayscale(1); }
+.inv-logo-none { font-size: 12px; color: #9ca3af; }
+.inv-logo-none a { color: #059669; font-weight: 600; text-decoration: none; }
+.inv-logo-none a:hover { text-decoration: underline; }
+
+/* ── Signatories (migration 0053) ──────────────────────────────────── */
+.inv-sig-hint { font-size: 12.5px; color: #6b7280; line-height: 1.5; margin: -4px 0 12px; }
+.inv-sig-hint em { font-style: normal; font-weight: 600; color: #374151; }
+/* Field caption on the left, its Show / E-sign switches on the right. */
+.inv-sig-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.inv-sig-head > label { margin-bottom: 0 !important; }
+.inv-sig-switches { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+/* Second line of a signature block — the company or position, subordinate to
+   the name above it, so it reads as one field pair rather than two fields. */
+.inv-input--sub { font-size: 12px; padding: 6px 10px; color: #4b5563; }
+.inv-check {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-weight: 500 !important;
+    color: #6b7280 !important;
+    cursor: pointer;
+    -webkit-user-select: none;
+    user-select: none;
+}
+.inv-check input { cursor: pointer; }
 
 .inv-input--sm { font-size: 12px; padding: 6px 8px; }
 .inv-input--num { text-align: right; width: 100%; }

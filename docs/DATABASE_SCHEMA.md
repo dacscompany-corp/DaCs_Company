@@ -366,6 +366,10 @@ path. Rows disappear only with the parent quotation.
 | `items` | array | `{description, qty, unitPrice, discount, amount}` |
 | `subtotal`, `totalAmount` | number | |
 | `paymentDetails` | object | `{method:'gcash', gcashNumber, gcashName}` **or** `{method:'bank', bank, accountNo, accountName, branch}` |
+| `docTitle` | string | **0055.** Presentation only. The heading printed opposite the letterhead. Empty = the house default `SALES INVOICE`, which lives as `_DOC_TITLE` in `invoice-module.js` and nowhere else; pre-0055 rows are empty and print unchanged. Rendered uppercase by both the sheet (`text-transform`) and the PDF (`toUpperCase`) — the stored value keeps the typed case. Never affects `invoiceNo`, `status` or any total. |
+| `partyLabel` | string | **0056.** Presentation only. The heading printed above the `clientName`/`clientTin`/`clientAddress` block. Empty = the house default `Bill To`, which lives as `_PARTY_LABEL` in `invoice-module.js` and nowhere else; pre-0056 rows are empty and print unchanged. The editor offers `Bill To` \| `Received From` (`_PARTY_LABELS`) and switches the three field labels to *Payer …* for the latter, but the column is free-form — a third heading is a one-line change, no migration. Read by the admin print sheet, the PDF export and the client-portal sheet in `client-payment.js`. Never affects `clientName`, `invoiceNo`, `status` or any total. |
+| `showLogo` | bool | **0054.** Presentation only. `true` (default) prints the company logo strip in the header; `false` omits it — for invoices going out on pre-printed letterhead that already carries the mark. *Which* logos exist and their order stays global in `settings/invoiceDefaults.logos`; this is only the per-document on/off. Missing = `true`, so pre-0054 invoices print unchanged. Mirrors `quotations.show_logo` (0048). |
+| `signatories` | object | **0053.** `{preparedBy, receivedBy, approvedBy}`, each `{name, org, esign, show}`. Presentation only. `name` + `org` (company or position) both print **above** the rule, the role label below it; `esign` stamps `assets/images/dacs-signature.png` above the name — for the company's own blocks, not the client's. A missing key or missing `show` reads as an unnamed line that prints, i.e. the blank line every pre-0053 invoice has, so nothing needed a backfill. Hiding all three drops the signature row entirely. Free-form jsonb — new keys need no migration. Never read by any money calculation. |
 | `notes` | string | |
 | `status` | string | `draft` \| issued |
 | `clientEmail?`, `clientUid?` | string | for client read access |
@@ -373,6 +377,7 @@ path. Rows disappear only with the parent quotation.
 
 ### `laborInvoices/{id}` — labor-only invoices
 Same shape as `invoices`; `items` are labor lines auto-built from `weeklyBills` entries. Defaults persist to `settings/invoiceDefaults`.
+**Exception:** no `signatories` — 0053 added named/hideable signature blocks to sales invoices only. The labor invoice still prints three fixed blank lines.
 
 ---
 
@@ -501,7 +506,7 @@ Despite the name, this table records a project ending **either way**:
 
 ### `settings/{id}`
 - `settings/paymentQR` — payment QR (clients can read)
-- `settings/invoiceDefaults` — `businessName/Tin/Address`, `vatRate`, `paymentDetails`
+- `settings/invoiceDefaults` — `businessName/Tin/Address`, `vatRate`, `paymentDetails`, `logos` (`{src, enabled}[]`, edited in the Business Settings modal), `signatories` + `showLogo` + `docTitle` (0053/0054/0055; all three pre-fill **new** sales invoices only — an existing one keeps whatever it was saved with)
 - `settings/employeeTerms` — one global employee agreement: `text` (fallback terms), `pdfUrl`/`pdfName` (optional global Terms PDF in the uploads bucket, `employeeTermsGlobal/…`; if set, every employee opens + e-signs it on first login), `updatedAt`
 - `settings/constructionClientTerms` — one global Client Management agreement: `text`, `pdfUrl`/`pdfName` (`constructionClientTermsGlobal/…`); if a PDF is set, every construction client opens + e-signs on next login
 - `settings/clientPortalTerms` — one global Client Portal agreement: `text`, `pdfUrl`/`pdfName` (`clientPortalTermsGlobal/…`); if a PDF is set, every customer-portal client opens + e-signs on next login

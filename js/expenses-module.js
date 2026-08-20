@@ -4388,11 +4388,16 @@ function _rptAllTimeGroups() {
     const allExps       = _src2Exp.filter(e => allProjIdSet.has(e.projectId));
     const allPay        = _src2Pay.filter(p => allProjIdSet.has(p.projectId));
     const clientProjs   = allProjs.filter(p => p.fundingType !== 'president');
-    const presProjIds   = new Set(allProjs.filter(p => p.fundingType === 'president').map(p => p.id));
 
     const budget     = clientProjs.reduce((s, p) => s + (parseFloat(p.monthlyBudget) || 0), 0);
-    const mats       = allExps.filter(e => !e.coverExpense).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-    const labor      = allPay.filter(p => !presProjIds.has(p.projectId)).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
+    // Cover money is SPENDING — it is the same work, paid out of the company's own
+    // pocket instead of the client's allocation, so it belongs in Materials and in
+    // Labor like any other cost. The Cover figure is a SUBSET of these, reported
+    // separately to answer "how much did we have to front", never a fourth bucket
+    // added on top. `budget` above deliberately stays client-funded only, so
+    // utilisation reads as "spend against what the client allocated".
+    const mats       = allExps.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+    const labor      = allPay.reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
     const totalSpent = mats + labor;
     const remaining  = budget - totalSpent;
     const usedPct    = budget > 0 ? (totalSpent / budget) * 100 : 0;
@@ -4632,10 +4637,16 @@ function _rptRenderKPIs(_groups) {
     const _srcExp = _ovAllExpenses.length ? _ovAllExpenses : expExpenses;
     const _srcPay = _ovAllPayroll.length  ? _ovAllPayroll  : expPayroll;
 
-    const totMats  = _srcExp.filter(e => _kpiProjIdSet.has(e.projectId) && !e.coverExpense).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+    // Cover money is SPENDING, on both sides. These two filters used to disagree —
+    // materials dropped only the coverExpense FLAG while labor dropped the whole
+    // president PERIOD — so cover material landed in Materials *and* in the Cover
+    // card (the same pesos twice on one row) while cover payroll landed in neither
+    // Labor nor Total Spent. Both now take everything in scope; `totCover` below is
+    // a subset of these totals, reported separately, never added to them.
+    const totMats  = _srcExp.filter(e => _kpiProjIdSet.has(e.projectId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
     // Same money model as Project Control: Labor = direct + direct burden;
     // Overhead = indirect pay + indirect burden + operating costs. Every peso once.
-    const _scopePay   = _srcPay.filter(p => _kpiProjIdSet.has(p.projectId) && !_kpiPresProjIds.has(p.projectId));
+    const _scopePay   = _srcPay.filter(p => _kpiProjIdSet.has(p.projectId));
     const totIndirect = _scopePay.filter(_rptIsOverheadPay).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
     const totLabor    = _scopePay.filter(p => !_rptIsOverheadPay(p)).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
     // Operating costs recorded against the folders in scope. Company-scope (G&A)
@@ -4723,8 +4734,10 @@ function _rptRenderKPIs(_groups) {
                 (totReceived > 0 ? ((totLabor / totReceived) * 100).toFixed(1) : '0.0') + '% of allocated budget', '#7f9cb0')
             + _cardDot('Overhead', '&#8369;' + formatNum(totOverhead),
                 '&#8369;' + formatNum(totIndirect) + ' indirect labor &middot; &#8369;' + formatNum(totOvhdExp) + ' operating', '#c8a45a')
+            // Cover is a slice of the three cards to its left, not a fourth bucket —
+            // the sub-line says so, so nobody adds it to Total Fund Spent again.
             + _cardDot('Cover Expenses', '&#8369;' + formatNum(totCover),
-                coverPctOfBudget.toFixed(1) + '% of allocated budget', '#b4453a', coverCls, coverState)
+                coverPctOfBudget.toFixed(1) + '% of allocated budget &middot; included above', '#b4453a', coverCls, coverState)
             + '</div>';
 
         // ── Totals & Balance: the two numbers the owner actually acts on ──
@@ -5847,11 +5860,14 @@ function printReportsDashboard() {
     const prtActivePeriods = _prtClientProjs.filter(p => (p.monthlyBudget || 0) > 0).length;
     const _prtSrcExp = _ovAllExpenses.length ? _ovAllExpenses : expExpenses;
     const _prtSrcPay = _ovAllPayroll.length  ? _ovAllPayroll  : expPayroll;
+    // Cover money is SPENDING on the printed sheet too — same rule as the on-screen
+    // KPI row, so a printed report and the screen it was printed from can never
+    // disagree. `totCoverPrt` below is a subset of these two, never added to them.
     const totMats          = _prtSrcExp
-        .filter(e => _prtProjIdSet.has(e.projectId) && !e.coverExpense)
+        .filter(e => _prtProjIdSet.has(e.projectId))
         .reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
     const totLabor         = _prtSrcPay
-        .filter(p => _prtProjIdSet.has(p.projectId) && !_prtPresProjIds.has(p.projectId))
+        .filter(p => _prtProjIdSet.has(p.projectId))
         .reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
     const totSpent         = totMats + totLabor;
     const totCoverPrt      = _prtSrcExp
@@ -5867,12 +5883,20 @@ function printReportsDashboard() {
     const utilizedPct     = totReceived > 0 ? (totSpent / totReceived) * 100 : 0;
     const contractPct     = contract   > 0  ? (totSpent / contract)    * 100 : 0;
     const rcvOfContract   = contract   > 0  ? (totReceived / contract) * 100 : 0;
-    // Total Budget Remaining = Total Contract − Total Fund Allocated (unbilled contract balance)
+    // Receivable Balance = Contract − Allocated: contract value not yet billed.
     const periodVariance  = contract - totReceived;
     const periodRemPct    = contract > 0 ? (periodVariance / contract) * 100 : 0;
-    // Current Spending = Total Contract − Current Fund Spent
-    const contractVariance= contract - totSpent;
-    const contractRemPct  = contract > 0 ? (contractVariance / contract) * 100 : 0;
+    // Funds Available = Allocated − Spent, the SAME figure the on-screen card
+    // shows and the same one the TOTAL row of the table below prints.
+    //
+    // This used to be "Budget Remaining" = contract − spent, a card that no
+    // longer exists anywhere on the site: it treats the whole contract as
+    // spendable (a planned margin of zero) and it silently CONTAINED the
+    // Receivable Balance printed beside it, so the unbilled amount appeared
+    // twice in one band. The screen was corrected; the printed sheet was not,
+    // and went on printing the deleted card until 2026-08-20.
+    const contractVariance= totReceived - totSpent;
+    const contractRemPct  = totReceived > 0 ? (contractVariance / totReceived) * 100 : 0;
 
     const printDate = new Date().toLocaleString('en-PH', {
         year: 'numeric', month: 'long', day: 'numeric',
@@ -6135,12 +6159,14 @@ function printReportsDashboard() {
     <div class="kpi-card${coverPctOfBudget >= 5 && totCoverPrt > 0 ? ' kpi-card--bad' : ''}">
       <div class="kpi-card-head"><span class="kpi-card-label">COVER EXPENSES</span></div>
       <div class="kpi-card-val"><span class="kpi-peso">₱</span><span class="kpi-num">${formatNum(totCoverPrt)}</span></div>
-      <div class="kpi-card-sub">${totCoverPrt <= 0 ? 'No cover expenses' : coverPctOfBudget.toFixed(1) + '% of allocated budget · ' + (coverPctOfBudget >= 5 ? 'BAD' : coverPctOfBudget >= 2 ? 'WARNING' : 'HEALTHY')}</div>
+      <div class="kpi-card-sub">${totCoverPrt <= 0 ? 'No cover expenses' : coverPctOfBudget.toFixed(1) + '% of allocated budget · included above · ' + (coverPctOfBudget >= 5 ? 'BAD' : coverPctOfBudget >= 2 ? 'WARNING' : 'HEALTHY')}</div>
     </div>
   </div>
 
   ${window.currentUserRole !== 'staff' ? `
-  <div class="variance-card ${periodVariance < 0 ? 'variance-card--danger' : ''}">
+  <!-- Overspending the allocation is the condition worth flagging in red, so the
+       band turns danger for that too — not only for an over-billed contract. -->
+  <div class="variance-card ${periodVariance < 0 || contractVariance < 0 ? 'variance-card--danger' : ''}">
     <div class="variance-card-title">REMAINING ALLOCATION</div>
     <div class="variance-cols">
       <div class="variance-col">
@@ -6151,10 +6177,10 @@ function printReportsDashboard() {
       </div>
       <div class="variance-divider"></div>
       <div class="variance-col">
-        <div class="variance-col-label">BUDGET REMAINING</div>
+        <div class="variance-col-label">FUNDS AVAILABLE</div>
         <div class="variance-col-val"><span class="kpi-peso">${contractVariance<0?'-':''}₱</span><span class="kpi-num">${formatNum(Math.abs(contractVariance))}</span></div>
         <div class="variance-bar-wrap"><div class="variance-bar-fill" style="width:${Math.max(Math.min(Math.abs(contractRemPct),100),2).toFixed(1)}%;background:${contractVariance<0?'rgba(239,68,68,0.8)':'rgba(255,255,255,0.6)'}"></div></div>
-        <div class="variance-col-sub">${contract > 0 ? contractRemPct.toFixed(1) + '% of contract · ' + (contractVariance<0?'over budget':'available') : 'No contract set'}</div>
+        <div class="variance-col-sub">${totReceived > 0 ? 'Allocated &minus; Spent · ' + contractRemPct.toFixed(1) + '% of allocated · ' + (contractVariance<0?'overspent beyond allocated funds':'available to spend') : 'Nothing allocated yet'}</div>
       </div>
     </div>
   </div>` : ''}

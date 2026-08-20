@@ -1456,7 +1456,7 @@ ${previewOnly ? `<div class="preview-bar"><span>Print Preview &mdash; Invoice ${
       <div class="inv-meta">Receipt No: <strong>${_e(inv.invoiceNo || '—')}</strong><br>Date: <strong>${_d(inv.date)}</strong></div></div>
   </div>
   <div class="bill-row"><div class="bill-to">
-    <h4>Bill To</h4>
+    <h4>${_e(String(inv.partyLabel || '').trim() || 'Bill To')}</h4>
     <div class="name">${_e(inv.clientName || '—')}</div>
     <p>${_e(inv.clientAddress || '')}</p>
     ${inv.clientTin ? `<p>TIN: ${_e(inv.clientTin)}</p>` : ''}

@@ -47,6 +47,15 @@ Profit   = Earned − Spent
 - Profit uses **earned** revenue. With no accomplishment data it falls back to the contract and
   must be labelled **"Forecast"**, never "Earned".
 - Company overhead (G&A) is never charged to a job.
+- **Cover money is Spent, and the Cover figure is a *subset* — never a fourth bucket.** A
+  president-funded period, or a row flagged `coverExpense`, is the same work paid from the
+  company's own pocket because the client's allocation ran out. It counts in Labor / Material
+  like any other cost; "Cover Expenses" reports how much of that total was fronted, and is
+  **never added on top of** Spent. Carving it out understates cost and overstates Profit.
+  Allocated stays client-funded only, so utilisation still reads as spend-vs-allocation.
+  Both filters must match — dropping the `coverExpense` **flag** from materials but the whole
+  president **period** from labor is what made Reports and Project Control disagree (fixed
+  2026-08-20; §I of `money-math.test.js` fences all six sites).
 - **`reimbursements` (0041) is outside the money model.** It tracks expenses the owner/admin
   advanced and whether the client paid them back. Nothing may feed it into Spent / Earned /
   Profit, or turn a status change into an invoice, payment or accounting entry — that isolation
