@@ -102,7 +102,7 @@ const REG = {
   quotationPresets:   { table: 'quotation_presets',   rename: OWNER, ts: ['createdAt','updatedAt'], json: ['data'] },
   additionalWorks:{ table: 'additional_works', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['categories'] },
 
-  invoices:       { table: 'invoices', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['paymentDetails'],
+  invoices:       { table: 'invoices', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['paymentDetails', 'signatories'],
                     children: { items: { table: 'invoice_items', fk: 'invoice_id', orderBy: 'position', rename: { unitPrice: 'unit_price' } } } },
   laborInvoices:  { table: 'labor_invoices', rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['paymentDetails'],
                     children: { items: { table: 'labor_invoice_items', fk: 'labor_invoice_id', orderBy: 'position', rename: { unitPrice: 'unit_price' } } } },

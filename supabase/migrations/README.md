@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0051** — highest on disk is
-  `0050_attendance.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0053** — highest on disk is
+  `0052_attendance_signin_throttle.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble.
 - Migrations are **immutable once applied**: never edit or rename an applied file
   (docs and code comments reference them by name). Fix mistakes with a new migration.
@@ -79,6 +79,16 @@ trusting that one.
 (the worker project policy used `data_owner_id()`, which resolves only staff, so every worker saw an
 empty project picker) and backfills `profiles.owner_id` on worker rows that had NULL. Adds the
 attendance-local `attendance_data_owner()` helper and the `NO_OWNER_ASSIGNED` error.
+
+**`0052_attendance_signin_throttle.sql` IS applied** — confirmed 2026-08-19 against live: the table
+exists (RLS hides every row from `anon`), and both functions return `42501 permission denied` for
+`anon`, so the REVOKEs took and workers cannot probe which emails are locked out.
+Adds `attendance_signin_attempts` plus `attendance_signin_is_throttled()` /
+`attendance_signin_record()`, which the `attendance-signin` Edge Function calls. That function signs
+the Android worker app in server-side with the service_role key, because service-role callers skip
+this project's Turnstile captcha check — Turnstile has no native Android SDK. The throttle is what
+stands in for the captcha on that path; note GoTrue's own per-IP limit is useless there, since it
+sees the Edge Function's IP for every worker. Apply this **before** deploying the function.
 
 Get the truth before relying on this line:
 

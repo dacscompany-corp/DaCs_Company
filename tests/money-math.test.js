@@ -313,6 +313,91 @@ console.log('\nH. OCM allowance (priced vs actual overhead)');
 }
 
 // ════════════════════════════════════════════════════════════════════
+// I. Cover / president money — spending, not a fourth bucket
+// ════════════════════════════════════════════════════════════════════
+// "Cover" (a president-funded period, or a row flagged coverExpense) is the
+// same work, paid out of the company's own pocket because the client's
+// allocation ran out. It is therefore SPENDING: it belongs in Labor and in
+// Material like any other cost, and the Cover figure reported beside them is
+// a SUBSET of those totals — never added on top.
+//
+// This went wrong once (fixed 2026-08-20): the Reports KPI row dropped only
+// the coverExpense FLAG from materials but the whole president PERIOD from
+// labor. Cover material then showed inside Materials AND inside Cover — the
+// same pesos twice on one row — while cover payroll showed in neither Labor
+// nor Total Spent, so Project Control and Reports disagreed on the total.
+console.log('\nI. Cover / president money');
+{
+  const folder = { id: 'f1', totalBudget: 1000000 };
+  const months = [
+    { id: 'm1', monthlyBudget: 500000, fundingType: 'progress'  },  // client-funded
+    { id: 'm2', monthlyBudget: 0,      fundingType: 'president' }   // the cover pool
+  ];
+  const labor = [
+    { projectId: 'm1', type: 'direct', liabilityFor: 'direct', amount: 200000 },
+    { projectId: 'm2', type: 'direct', liabilityFor: 'direct', amount: 40000  }   // cover payroll
+  ];
+  const material = [
+    { projectId: 'm1', amount: 100000, docs: {} },
+    { projectId: 'm2', amount: 60000,  docs: {} },                                // cover material
+    { projectId: 'm1', amount: 5000,   docs: {}, coverExpense: true }             // flagged overflow
+  ];
+  const p = portal.buildProject(folder, months, labor, material, []);
+
+  test('cover payroll counts as Labor', () => eq(p.labor, 240000));
+  test('cover material counts as Material', () => eq(p.material, 165000));
+  test('EVERY PESO ONCE: spent includes cover exactly once', () => eq(p.spent, 405000));
+  test('coverCost reports the overflow slice', () => eq(p.coverCost, 105000));
+  test('coverCost is a SUBSET of spent, never an addition', () =>
+    ok(p.coverCost < p.spent && p.spent === p.labor + p.material + p.overhead,
+       'cover must not be a fourth bucket added to spent'));
+  test('a project with no cover pool is unaffected', () => {
+    const q2 = portal.buildProject(folder, [months[0]], [labor[0]], [material[0]], []);
+    eq(q2.coverCost, 0); eq(q2.spent, 300000);
+  });
+}
+
+// The Reports module computes the same buckets INLINE, inside render functions
+// that cannot be extracted and called. These guards fail if either carve-out is
+// reintroduced there — the exact edit that caused the 2026-08-20 mismatch, and
+// the kind a merge silently reverts.
+{
+  const carveOuts = [
+    ['Reports KPI · materials',      "_srcExp.filter(e => _kpiProjIdSet.has(e.projectId) && !e.coverExpense)"],
+    ['Reports KPI · labor',          "_srcPay.filter(p => _kpiProjIdSet.has(p.projectId) && !_kpiPresProjIds.has(p.projectId))"],
+    ['All-time summary · materials', "allExps.filter(e => !e.coverExpense)"],
+    ['All-time summary · labor',     "allPay.filter(p => !presProjIds.has(p.projectId))"],
+    ['Printed report · materials',   "_prtProjIdSet.has(e.projectId) && !e.coverExpense"],
+    ['Printed report · labor',       "_prtProjIdSet.has(p.projectId) && !_prtPresProjIds.has(p.projectId)"]
+  ];
+  carveOuts.forEach(function (c) {
+    test(c[0] + ' does not carve cover out of the total', () =>
+      ok(expensesSrc.indexOf(c[1]) === -1,
+         'expenses-module.js re-excludes cover money here — Reports will disagree with Project Control again'));
+  });
+  test('Cover card still says it is included in the totals above', () =>
+    ok(expensesSrc.indexOf('included above') !== -1,
+       'the Cover sub-label must keep saying "included above", or it reads as a fourth bucket'));
+}
+
+// The printed report must show the SAME balance figure as the screen and as the
+// TOTAL row of its own table: Funds Available = Allocated - Spent. It used to
+// print "Budget Remaining" = contract - spent, a card deleted from the site,
+// which treated the whole contract as spendable AND already contained the
+// Receivable Balance printed next to it (the unbilled amount, twice in one band).
+{
+  test('printed report computes Funds Available as Allocated - Spent', () =>
+    ok(expensesSrc.indexOf('const contractVariance= totReceived - totSpent;') !== -1,
+       'the print sheet is back on contract - spent: it will disagree with the screen and with its own TOTAL row'));
+  test('printed report no longer prints the deleted "Budget Remaining" card', () =>
+    ok(expensesSrc.indexOf('BUDGET REMAINING') === -1,
+       'that card does not exist on the site; the print must not resurrect it'));
+  test('printed balance is a percentage of ALLOCATED, not of contract', () =>
+    ok(expensesSrc.indexOf('const contractRemPct  = totReceived > 0 ? (contractVariance / totReceived) * 100 : 0;') !== -1,
+       'percentage base drifted back to the contract'));
+}
+
+// ════════════════════════════════════════════════════════════════════
 console.log('\n──────────────────────────────────────');
 console.log(passed + ' passed, ' + failed + ' failed');
 if (failed) {

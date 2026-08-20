@@ -145,6 +145,7 @@
             <div class="inv-iactions">
                 <button class="inv-icon-btn" title="View receipt" onclick="window.invPreview('${inv.id}')"><i data-lucide="eye"></i></button>
                 <button class="inv-icon-btn" title="Print" onclick="window.invPrint('${inv.id}')"><i data-lucide="printer"></i></button>
+                <button class="inv-icon-btn" title="Export PDF" onclick="window.invExportPDF('${inv.id}')"><i data-lucide="file-down"></i></button>
                 <button class="inv-icon-btn" title="Edit" onclick="window.invShowForm('${inv.id}')"><i data-lucide="pencil"></i></button>
                 <button class="inv-icon-btn inv-icon-danger" title="Delete" onclick="window.invDelete('${inv.id}')"><i data-lucide="trash-2"></i></button>
             </div>
@@ -516,6 +517,43 @@
         document.getElementById('invGcashFields').style.display = method === 'gcash' ? '' : 'none';
     };
 
+    // Hide/unhide one signature block. The name field is greyed out rather than
+    // removed so the typed name survives an accidental untick — it is still
+    // saved, and reappears the moment the block is switched back on.
+    window.invToggleSig = function (key) {
+        const id  = key.charAt(0).toUpperCase() + key.slice(1);
+        const box = document.getElementById('invSigShow' + id);
+        if (!box) return;
+        ['invSigName', 'invSigOrg', 'invSigEsign'].forEach(prefix => {
+            const el = document.getElementById(prefix + id);
+            if (el) el.disabled = !box.checked;
+        });
+    };
+
+    // Dim the header thumbnails when the logo is switched off, so the form
+    // shows the same thing the printed sheet will.
+    window.invToggleLogoPreview = function () {
+        const on  = document.getElementById('invShowLogo')?.checked !== false;
+        const pre = document.getElementById('invLogoPreview');
+        if (pre) pre.classList.toggle('is-off', !on);
+    };
+
+    // Re-head the client block live (migration 0056), so the section title and
+    // the three field labels say the same thing the sheet will print. Labels
+    // only — no value is touched, so switching back and forth costs nothing.
+    window.invSyncPartyLabel = function () {
+        const label  = (document.getElementById('invPartyLabel')?.value || '').trim() || _PARTY_LABEL;
+        const fields = _partyFields(label);
+        const set = (id, text) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = text;
+        };
+        set('invPartyTitle',    label);
+        set('invPartyNameLbl',  fields.name);
+        set('invPartyTinLbl',   fields.tin);
+        set('invPartyAddrLbl',  fields.address);
+    };
+
     window.invShowForm = function (id) {
         _editId = id;
         const inv = id ? _invoices.find(i => i.id === id) : null;
@@ -526,6 +564,40 @@
         const isEdit = !!inv;
         const d      = inv || {};
         const pd     = d.paymentDetails || _defaults.paymentDetails || {};
+        // Saved defaults pre-fill NEW invoices only. An invoice written before
+        // 0053 stores `{}`, and inheriting the current defaults into it would
+        // silently re-sign a document that has already gone out — so on edit an
+        // empty blob stays empty and prints the blank lines it always did.
+        const sigs   = (d.signatories && Object.keys(d.signatories).length)
+                        ? d.signatories
+                        : (isEdit ? {} : (_defaults.signatories || {}));
+        // Invoices written before 0054 have no showLogo, and they have always
+        // printed the logo — so an existing one reads as ON rather than picking
+        // up a default that would change how it reprints.
+        const showLogo = d.showLogo != null
+                        ? d.showLogo !== false
+                        : (isEdit ? true : _defaults.showLogo !== false);
+        // Same rule for the heading (0055): a saved default seeds a NEW invoice,
+        // but an existing one keeps whatever it was titled — including the blank
+        // that pre-0055 rows carry, which prints the house default.
+        const docTitle = d.docTitle != null
+                        ? d.docTitle
+                        : (isEdit ? '' : (_defaults.docTitle || ''));
+        // Same rule again for the client-block heading (0056). Resolved to a
+        // concrete label rather than left blank, because a <select> has to have
+        // one of its options marked selected — '' is a storage convention, not
+        // a choice the dropdown can show.
+        const partyLabel = _partyLabel(
+            d.partyLabel != null ? d
+                                 : (isEdit ? {} : { partyLabel: _defaults.partyLabel || '' })
+        );
+        const partyFields = _partyFields(partyLabel);
+        // Thumbnails of the logos that would actually print, so the checkbox
+        // says what it is switching off rather than making you guess.
+        const logoThumbs = _normLogos(_defaults.logos)
+            .filter(l => l.enabled !== false)
+            .map(l => `<img src="${_esc(l.src)}" alt="" onerror="this.style.display='none'">`)
+            .join('');
         const vatRate = d.vatRate != null ? d.vatRate
                        : (_defaults.vatRate != null ? _defaults.vatRate : 12);
         const items  = (d.items && d.items.length) ? d.items
@@ -543,6 +615,9 @@
             <div class="inv-header-actions">
                 ${isEdit ? `<button class="inv-btn inv-btn-outline" onclick="window.invPrint('${inv.id}')">
                     <i data-lucide="printer" style="width:15px;height:15px;"></i> Print
+                </button>
+                <button class="inv-btn inv-btn-outline" onclick="window.invExportPDF('${inv.id}')">
+                    <i data-lucide="file-down" style="width:15px;height:15px;"></i> Export PDF
                 </button>` : ''}
                 <button class="inv-btn inv-btn-secondary" onclick="window.invSaveDraft()">Save Draft</button>
                 <button class="inv-btn inv-btn-primary" onclick="window.invIssue()">
@@ -576,6 +651,17 @@
                 </div>
             </div>
 
+            <div class="inv-logo-toggle">
+                <label class="inv-check" for="invShowLogo">
+                    <input type="checkbox" id="invShowLogo" ${showLogo ? 'checked' : ''}
+                           onchange="window.invToggleLogoPreview()">Print the logo in this invoice's header
+                </label>
+                ${logoThumbs
+                    ? `<div class="inv-logo-preview${showLogo ? '' : ' is-off'}" id="invLogoPreview">${logoThumbs}</div>`
+                    : `<span class="inv-logo-none">No logo uploaded —
+                        <a href="#" onclick="window.invOpenSettings();return false;">add one in Business Settings</a>.</span>`}
+            </div>
+
             <div class="inv-section-title" style="margin-top:20px;">Invoice Details</div>
             <div class="inv-form-grid inv-form-grid--3">
                 <div class="inv-field">
@@ -590,29 +676,55 @@
                     <input type="date" id="invDate" class="inv-input"
                            value="${d.date || _todayStr()}">
                 </div>
+                <div class="inv-field">
+                    <label for="invDocTitle">Document Title</label>
+                    <input type="text" id="invDocTitle" class="inv-input"
+                           placeholder="${_DOC_TITLE}" value="${_esc(docTitle)}">
+                </div>
             </div>
+            <p class="inv-sig-hint" style="margin-top:8px;">
+                The heading opposite the logo — leave it blank for
+                <em>${_DOC_TITLE}</em>, or set it to <em>Progress Billing</em>,
+                <em>Billing Statement</em>, <em>Proforma Invoice</em>… It prints in
+                capitals to match the letterhead.
+            </p>
 
-            <div class="inv-section-title" style="margin-top:20px;">Bill To</div>
+            <div class="inv-section-title" style="margin-top:20px;"
+                 id="invPartyTitle">${_esc(partyLabel)}</div>
             <div class="inv-form-grid inv-form-grid--3">
                 <div class="inv-field">
-                    <label>Client Name</label>
+                    <label for="invPartyLabel">Heading</label>
+                    <select id="invPartyLabel" class="inv-input"
+                            onchange="window.invSyncPartyLabel()">
+                        ${_PARTY_LABELS.map(l => `<option value="${_esc(l)}"${
+                            l === partyLabel ? ' selected' : ''}>${_esc(l)}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="inv-field">
+                    <label id="invPartyNameLbl" for="invClientName">${_esc(partyFields.name)}</label>
                     <input type="text" id="invClientName" class="inv-input"
                            placeholder="Full name"
                            value="${_esc(d.clientName || '')}">
                 </div>
                 <div class="inv-field">
-                    <label>Customer TIN</label>
+                    <label id="invPartyTinLbl" for="invClientTin">${_esc(partyFields.tin)}</label>
                     <input type="text" id="invClientTin" class="inv-input"
                            placeholder="000-000-000-000"
                            value="${_esc(d.clientTin || '')}">
                 </div>
                 <div class="inv-field inv-field--wide">
-                    <label>Customer Address</label>
+                    <label id="invPartyAddrLbl" for="invClientAddress">${_esc(partyFields.address)}</label>
                     <input type="text" id="invClientAddress" class="inv-input"
                            placeholder="Full address"
                            value="${_esc(d.clientAddress || '')}">
                 </div>
             </div>
+            <p class="inv-sig-hint" style="margin-top:8px;">
+                What this block is called on the printed sheet. Leave it on
+                <em>${_esc(_PARTY_LABEL)}</em> for an invoice; switch it to
+                <em>Received From</em> when the document is a receipt — it pairs
+                with an <em>Acknowledgement Receipt</em> title above.
+            </p>
 
             <div class="inv-section-title" style="margin-top:20px;">Items / Services</div>
             <div class="inv-items-wrap">
@@ -703,13 +815,48 @@
                 </div>
             </div>
 
+            <div class="inv-section-title" style="margin-top:24px;">Signatories</div>
+            <p class="inv-sig-hint">
+                Printed above each signature line: the name, then the company or
+                position under it. Untick <em>Show</em> to leave that block off the
+                invoice, or leave the fields blank for a line that gets signed by hand.
+                <em>E-sign</em> stamps the DAC'S signature above the rule — use it on
+                your own blocks, not on the client's.
+            </p>
+            <div class="inv-form-grid inv-form-grid--3">
+                ${_SIG_KEYS.map(({ key, label }) => {
+                    const s  = _sig(sigs, key);
+                    const id = key.charAt(0).toUpperCase() + key.slice(1);
+                    const off = s.show ? '' : 'disabled';
+                    return `<div class="inv-field">
+                        <div class="inv-sig-head">
+                            <label for="invSigName${id}">${label}</label>
+                            <span class="inv-sig-switches">
+                                <label class="inv-check" for="invSigShow${id}">
+                                    <input type="checkbox" id="invSigShow${id}" ${s.show ? 'checked' : ''}
+                                           onchange="window.invToggleSig('${key}')">Show
+                                </label>
+                                <label class="inv-check" for="invSigEsign${id}">
+                                    <input type="checkbox" id="invSigEsign${id}" ${s.esign ? 'checked' : ''}
+                                           ${off}>E-sign
+                                </label>
+                            </span>
+                        </div>
+                        <input type="text" id="invSigName${id}" class="inv-input"
+                               placeholder="Name (optional)" value="${_esc(s.name)}" ${off}>
+                        <input type="text" id="invSigOrg${id}" class="inv-input inv-input--sub"
+                               placeholder="Company or position (optional)" value="${_esc(s.org)}" ${off}>
+                    </div>`;
+                }).join('')}
+            </div>
+
             <div class="inv-section-title" style="margin-top:20px;">Notes / Memo</div>
             <textarea id="invNotes" class="inv-textarea" rows="3"
                       placeholder="Additional notes or instructions...">${_esc(d.notes || '')}</textarea>
 
             <label class="inv-save-defaults-label">
                 <input type="checkbox" id="invSaveDefaults">
-                Save business info &amp; payment details as defaults for future invoices
+                Save business info, payment details, signatories &amp; document title as defaults for future invoices
             </label>
 
         </div>
@@ -836,6 +983,28 @@
                     branch:      (document.getElementById('invBranch')?.value      || '').trim(),
                 };
             })(),
+            docTitle: (document.getElementById('invDocTitle')?.value || '').trim(),
+            // The house default is stored as '' (see 0056), never as the literal
+            // words — so re-heading every invoice that never overrode it stays a
+            // one-line change to _PARTY_LABEL.
+            partyLabel: (function () {
+                const v = (document.getElementById('invPartyLabel')?.value || '').trim();
+                return v === _PARTY_LABEL ? '' : v;
+            })(),
+            showLogo: document.getElementById('invShowLogo')?.checked !== false,
+            signatories: (function () {
+                const out = {};
+                _SIG_KEYS.forEach(({ key }) => {
+                    const id = key.charAt(0).toUpperCase() + key.slice(1);
+                    out[key] = {
+                        name:  (document.getElementById('invSigName' + id)?.value || '').trim(),
+                        org:   (document.getElementById('invSigOrg'  + id)?.value || '').trim(),
+                        esign: document.getElementById('invSigEsign' + id)?.checked === true,
+                        show:  document.getElementById('invSigShow'  + id)?.checked !== false
+                    };
+                });
+                return out;
+            })(),
             notes:  (document.getElementById('invNotes')?.value || '').trim(),
             status: status || 'draft'
         };
@@ -858,12 +1027,21 @@
                     businessTin:     data.businessTin,
                     businessAddress: data.businessAddress,
                     vatRate:         data.vatRate,
-                    paymentDetails:  data.paymentDetails
+                    paymentDetails:  data.paymentDetails,
+                    signatories:     data.signatories,
+                    showLogo:        data.showLogo,
+                    docTitle:        data.docTitle,
+                    partyLabel:      data.partyLabel
                 }, { merge: true });
                 _defaults = {
+                    ..._defaults,   // keep `logos`, which this form never edits
                     businessName: data.businessName, businessTin: data.businessTin,
                     businessAddress: data.businessAddress, vatRate: data.vatRate,
-                    paymentDetails: data.paymentDetails
+                    paymentDetails: data.paymentDetails,
+                    signatories: data.signatories,
+                    showLogo: data.showLogo,
+                    docTitle: data.docTitle,
+                    partyLabel: data.partyLabel
                 };
             } catch (e) { console.warn('InvoiceModule: could not save defaults', e); }
         }
@@ -943,6 +1121,12 @@
                 subtotal:        amount,
                 totalAmount:     amount,
                 paymentDetails:  { ...pd },
+                showLogo:        _defaults.showLogo !== false,
+                docTitle:        _defaults.docTitle || '',
+                partyLabel:      _defaults.partyLabel || '',
+                // Auto-generated invoices carry the saved signatories, so a
+                // system-issued invoice signs the same way a hand-written one does.
+                signatories:     { ..._defaults.signatories },
                 notes:           req.referenceNumber ? 'Ref. No.: ' + req.referenceNumber : '',
                 status:          'issued',
                 paymentRequestId: req.id   || '',
@@ -1030,6 +1214,10 @@
                 subtotal:        amount,
                 totalAmount:     amount,
                 paymentDetails:  { ...pd },
+                showLogo:        _defaults.showLogo !== false,
+                docTitle:        _defaults.docTitle || '',
+                partyLabel:      _defaults.partyLabel || '',
+                signatories:     { ..._defaults.signatories },
                 notes:           noteText,
                 status:          'issued',
                 terminationRequestId: req.id || '',
@@ -1113,6 +1301,39 @@
         _doPrint(inv, true);
     };
 
+    // Letterhead mark for the SALES INVOICE — left-aligned, sitting directly
+    // above the business name, which is the arrangement every DAC'S statement
+    // already uses (print-utils.js §ws-hd). The old centred strip above a rule
+    // read as a second, competing letterhead.
+    //
+    // Falls back to DACS-LETTERHEAD.png when nothing has been uploaded in
+    // Business Settings. That file is the artwork trimmed to its ink bounds;
+    // DACS-TRANSPARENT.png is a 2048² square whose mark fills only the middle
+    // 62.5% of the canvas, so at the same CSS height it renders a third smaller
+    // — the reason the statements switched files. Same logic here.
+    // The marks that belong in the letterhead, in print order. Shared by the
+    // print sheet and the PDF export so the two can never disagree about which
+    // logo an invoice carries.
+    function _letterheadSrcs(logos) {
+        const list = _normLogos(logos);
+        // Nothing uploaded at all → the built-in letterhead. Uploading logos and
+        // then unticking them is a deliberate "no mark", so that stays empty;
+        // the fallback only fills a blank, it never overrides a choice.
+        return list.length
+            ? list.filter(l => l.enabled !== false).map(l => l.src)
+            : [window.location.origin + '/assets/images/DACS-LETTERHEAD.png'];
+    }
+
+    function _buildLetterheadLogos(logos) {
+        const srcs = _letterheadSrcs(logos);
+        if (!srcs.length) return '';
+        return `<div class="inv-logo-row">${srcs.map(src =>
+            `<img class="inv-logo" src="${_pEsc(src)}" alt="" onerror="this.style.display='none'">`
+        ).join('')}</div>`;
+    }
+
+    // Centred strip used by the Receipt of Payment sheet, which has no business
+    // block under its mark and so still wants the logo across the top.
     function _buildLogoHtml(logos) {
         if (!logos || !logos.length) return '';
         // Normalize and filter to only enabled logos
@@ -1139,7 +1360,10 @@
         const bizTin   = inv.businessTin     || _defaults.businessTin     || '—';
         const bizAddr  = inv.businessAddress || _defaults.businessAddress || '—';
         const vatLabel = (inv.vatRate != null ? inv.vatRate : (_defaults.vatRate != null ? _defaults.vatRate : 12)) + '%';
-        const logoHtml = _buildLogoHtml(_defaults.logos);
+        // WHICH logos exist is a global setting; whether THIS invoice prints
+        // them is on the row (0054). An invoice written before 0054 has no flag
+        // and prints the logo, exactly as it always did.
+        const logoHtml = inv.showLogo === false ? '' : _buildLetterheadLogos(_defaults.logos);
 
         const itemRows = (inv.items || []).map((item, idx) => `
             <tr>
@@ -1151,6 +1375,28 @@
                 <td style="text-align:right;font-weight:600;">${_fmt(item.amount)}</td>
             </tr>`).join('');
 
+        // Signature blocks. Hidden blocks drop out entirely; if the invoice
+        // hides all three, the whole row goes rather than leaving a gap above
+        // the footer. `space-between` on one or two blocks would push them to
+        // the page edges, so the row switches to `space-around` when it isn't
+        // carrying the full set of three.
+        const sigBlocks = _SIG_KEYS
+            .map(({ key, label }) => ({ label, ...(_sig(inv.signatories, key)) }))
+            .filter(s => s.show);
+        const eSignSrc = window.location.origin + '/assets/images/dacs-signature.png';
+        const sigRow = !sigBlocks.length ? '' : `
+  <div class="sig-row"${sigBlocks.length < 3 ? ' style="justify-content:space-around;"' : ''}>
+    ${sigBlocks.map(s => `<div class="sig-block">
+      <div class="sig-mark">
+        ${s.esign ? `<img class="sig-img" src="${eSignSrc}" alt=""
+             onerror="this.style.display='none'">` : ''}
+        ${s.name ? `<div class="sig-name">${_pEsc(s.name)}</div>` : ''}
+        ${s.org  ? `<div class="sig-org">${_pEsc(s.org)}</div>`   : ''}
+      </div>
+      <div class="sig-line">${_pEsc(s.label)}</div>
+    </div>`).join('')}
+  </div>`;
+
         const w = window.open('', '_blank', 'width=870,height=1100');
         if (!w) { alert('Please allow pop-ups to print the invoice.'); return; }
 
@@ -1158,25 +1404,47 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>${previewOnly ? 'Preview' : 'Print'} — Invoice ${_pEsc(inv.invoiceNo || '')}</title>
+<title>${previewOnly ? 'Preview' : 'Print'} — ${_pEsc(_docTitle(inv))} ${_pEsc(inv.invoiceNo || '')}</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'IBM Plex Sans', Arial, Helvetica, sans-serif; font-size: 13px; color: #1c1c1a; background: #f1f0ed; }
-.page { width: 210mm; min-height: 297mm; margin: 20px auto; padding: 18mm 16mm 14mm; background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
+/* A column flex box so the footer can claim the leftover height with
+   margin-top:auto and sit on the bottom edge of the sheet — a short invoice
+   used to leave it floating directly under the signatures, halfway up the
+   page. min-height (not height) means a long invoice still grows normally,
+   and flex-shrink:0 on the children stops the items table being squeezed if
+   it ever does outgrow one sheet. */
+.page { width: 210mm; min-height: 297mm; margin: 20px auto; padding: 18mm 16mm 14mm;
+        background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.12);
+        display: flex; flex-direction: column; }
+.page > * { flex-shrink: 0; }
 
-/* Header */
-.inv-header  { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
-.inv-biz h1  { font-size:20px; font-weight:700; color:#1c1c1a; }
-.inv-biz p   { font-size:12px; color:#6f6e69; margin-top:4px; line-height:1.5; }
-.inv-title-block { text-align:right; }
-.inv-title-block h2 { font-size:22px; font-weight:700; color:#157a52; letter-spacing:2px; }
-.inv-meta    { margin-top:8px; font-size:12px; color:#444; line-height:1.8; }
+/* Letterhead — the 2px rule that used to sit under a centred logo strip now
+   closes the whole header, so the mark, the business block and the document
+   title read as one letterhead instead of two stacked ones. */
+.inv-header  { display:flex; justify-content:space-between; align-items:flex-start;
+               gap:32px; border-bottom:2px solid #1c1c1a; padding-bottom:14px; }
+.inv-logo-row { display:flex; align-items:center; gap:20px; margin-bottom:10px; }
+/* object-position:left keeps a wide mark flush to the text column below it.
+   mix-blend-mode:multiply drops the white plate on logos exported without
+   transparency, so they don't sit in a visible box. */
+.inv-logo    { height:82px; width:auto; max-width:240px; object-fit:contain;
+               object-position:left center; display:block; mix-blend-mode:multiply; }
+.inv-biz h1  { font-size:19px; font-weight:700; color:#1c1c1a; letter-spacing:.04em; line-height:1.25; }
+.inv-biz p   { font-size:11.5px; color:#6f6e69; margin-top:5px; line-height:1.6; }
+/* max-width, not flex-shrink:0 — an editable title (0055) can be longer than
+   "SALES INVOICE", and it has to wrap inside the right margin rather than run
+   off the sheet or crush the business block beside it. */
+.inv-title-block { text-align:right; flex-shrink:0; max-width:44%; }
+.inv-title-block h2 { font-size:22px; font-weight:700; color:#157a52; letter-spacing:2px;
+                      text-transform:uppercase; line-height:1.15; }
+.inv-meta    { margin-top:10px; font-size:12px; color:#444; line-height:1.8; }
 .inv-meta strong { color:#111; }
 
-/* Bill To */
+/* Bill To — the header already carries the heavy rule above it. */
 .bill-row { display:flex; gap:32px; margin-bottom:18px; padding:14px 0;
-            border-top:2px solid #1c1c1a; border-bottom:1px solid #ededea; }
+            border-bottom:1px solid #ededea; }
 .bill-to h4 { font-size:10px; font-weight:600; color:#9b9a94; letter-spacing:1.5px;
               text-transform:uppercase; margin-bottom:6px; }
 .bill-to .name { font-size:15px; font-weight:700; color:#1c1c1a; margin-bottom:3px; }
@@ -1215,14 +1483,34 @@ table.totals tr.grand td:last-child { border-radius:0 9px 9px 0; }
 .notes-box { font-size:12px; color:#555; margin-bottom:20px; line-height:1.6; }
 .notes-box strong { color:#374151; }
 
-/* Signature */
-.sig-row { display:flex; justify-content:space-between; margin-top:36px; }
-.sig-block { text-align:center; width:180px; }
+/* Signature — e-sign, name and company all stack ABOVE the rule; only the role
+   label sits under it. */
+/* margin-bottom is the minimum gap before the footer once the footer stops
+   floating and the page is full — see §Footer. */
+.sig-row { display:flex; justify-content:space-between; align-items:flex-end;
+           margin:36px 0 24px; }
+.sig-block { text-align:center; width:200px; max-width:32%; }
+/* min-height (not a fixed height) reserves room to sign an empty block by hand,
+   while a filled one grows DOWNWARD and pushes its own rule instead of
+   overflowing up into the payment box. justify-content:flex-end keeps the
+   contents sitting on the rule; align-items:flex-end on the row above then
+   keeps every rule level however many lines each block takes. */
+.sig-mark { min-height:52px; display:flex; flex-direction:column;
+            justify-content:flex-end; align-items:center; padding-bottom:3px; }
+/* The negative margin tucks the ink onto the name below it, the way a real
+   signature overlaps the printed name. multiply drops the PNG's white plate. */
+.sig-img  { height:34px; width:auto; max-width:85%; object-fit:contain;
+            display:block; margin-bottom:-5px; mix-blend-mode:multiply; }
+.sig-name { font-size:11.5px; font-weight:600; color:#1c1c1a; line-height:1.3; word-break:break-word; }
+.sig-org  { font-size:10px; color:#6f6e69; line-height:1.35; margin-top:1px; word-break:break-word; }
 .sig-line { border-top:1px solid #374151; padding-top:6px; font-size:11px; color:#6b7280; }
 
-/* Footer */
-.footer { text-align:center; margin-top:24px; font-size:10px; color:#9ca3af;
-          border-top:1px solid #e5e7eb; padding-top:10px; }
+/* Footer — margin-top:auto eats whatever column height is left over, pinning it
+   to the bottom edge of the sheet. On a page whose content already reaches the
+   bottom, auto resolves to 0 and the preceding block's own margin-bottom
+   supplies the gap. */
+.footer { text-align:center; margin-top:auto; padding-top:10px; font-size:10px;
+          color:#9ca3af; border-top:1px solid #e5e7eb; }
 
 /* Preview toolbar — hidden when printing */
 .preview-bar { display:flex; align-items:center; justify-content:space-between;
@@ -1235,30 +1523,35 @@ table.totals tr.grand td:last-child { border-radius:0 9px 9px 0; }
 
 @media print {
   body { background:#fff; }
-  .page { margin:0; box-shadow:none; padding:10mm 10mm; width:100%; }
+  /* @page margin 0 + the sheet's own padding means .page is EXACTLY one A4
+     sheet. With a page margin, min-height:297mm plus that margin overflows the
+     printable area and throws a blank second page — and the footer's
+     margin-top:auto would push against the wrong bottom edge. The white space
+     around the content is the padding below, not a page margin. */
+  @page { size:A4 portrait; margin:0; }
+  .page { margin:0; box-shadow:none; width:100%; padding:14mm 14mm 12mm; }
   .preview-bar { display:none !important; }
-  @page { size:A4 portrait; margin:8mm; }
 }
 </style>
 </head>
 <body>
 ${previewOnly ? `
 <div class="preview-bar">
-  <span>Print Preview — Invoice ${_pEsc(inv.invoiceNo || '')}</span>
+  <span>Print Preview — ${_pEsc(_docTitle(inv))} ${_pEsc(inv.invoiceNo || '')}</span>
   <button onclick="window.print()">Print</button>
 </div>` : ''}
 <div class="page">
 
-  ${logoHtml}
-
-  <!-- Header -->
+  <!-- Letterhead: mark over the business block on the left, document title on
+       the right — same arrangement as the SOA / payroll statements. -->
   <div class="inv-header">
     <div class="inv-biz">
+      ${logoHtml}
       <h1>${_pEsc(bizName)}</h1>
-      <p>Business Tax Id: ${_pEsc(bizTin)}<br>${_pEsc(bizAddr)}</p>
+      <p>${_pEsc(bizAddr)}${bizTin && bizTin !== '—' ? `<br>Business Tax Id: ${_pEsc(bizTin)}` : ''}</p>
     </div>
     <div class="inv-title-block">
-      <h2>SALES INVOICE</h2>
+      <h2>${_pEsc(_docTitle(inv))}</h2>
       <div class="inv-meta">
         Invoice No: <strong>${_pEsc(inv.invoiceNo || '—')}</strong><br>
         Date: <strong>${inv.date ? _fmtDate(inv.date) : '—'}</strong>
@@ -1266,10 +1559,10 @@ ${previewOnly ? `
     </div>
   </div>
 
-  <!-- Bill To -->
+  <!-- Bill To / Received From (0056) -->
   <div class="bill-row">
     <div class="bill-to">
-      <h4>Bill To</h4>
+      <h4>${_pEsc(_partyLabel(inv))}</h4>
       <div class="name">${_pEsc(inv.clientName || '—')}</div>
       <p>${_pEsc(inv.clientAddress || '—')}</p>
       ${inv.clientTin ? `<p>TIN: ${_pEsc(inv.clientTin)}</p>` : ''}
@@ -1318,12 +1611,7 @@ ${previewOnly ? `
 
   ${inv.notes ? `<div class="notes-box"><strong>Notes:</strong> ${_pEsc(inv.notes)}</div>` : ''}
 
-  <!-- Signatures -->
-  <div class="sig-row">
-    <div class="sig-block"><div class="sig-line">Prepared by</div></div>
-    <div class="sig-block"><div class="sig-line">Received by</div></div>
-    <div class="sig-block"><div class="sig-line">Approved by</div></div>
-  </div>
+  <!-- Signatures -->${sigRow}
 
   <!-- Footer -->
   <div class="footer">
@@ -1335,6 +1623,368 @@ ${previewOnly ? '' : '<script>window.onload=function(){window.print();};<\\/scri
 </body>
 </html>`);
         w.document.close();
+    }
+
+    // ══════════════════════════════════════════════════════
+    // PDF EXPORT
+    // ══════════════════════════════════════════════════════
+    // A real downloaded file, as opposed to invPrint()'s "print to PDF", which
+    // depends on the browser's dialog and loses the exact page geometry.
+    //
+    // jsPDF + autotable come off the CDN on FIRST USE ONLY — they are ~300KB
+    // and most sessions never export. Same lazy-load pattern as boq-module.js
+    // and quotation-print.js.
+    let _pdfReady = false;
+
+    window.invExportPDF = function (id) {
+        const inv = _invoices.find(i => i.id === id);
+        if (!inv) { alert('Invoice not found.'); return; }
+        if (_pdfReady) { _generatePDF(inv); return; }
+        _showToast('Loading PDF library…');
+        _loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')
+            .then(() => _loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js'))
+            .then(() => { _pdfReady = true; _generatePDF(inv); })
+            .catch(() => alert('Could not load the PDF library.\nCheck your internet connection and try again.'));
+    };
+
+    function _loadScript(src) {
+        return new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload  = resolve;
+            s.onerror = () => reject(new Error('failed to load ' + src));
+            document.head.appendChild(s);
+        });
+    }
+
+    // Reads an image through a canvas so jsPDF gets raw pixel data. Resolves
+    // null on ANY failure — a missing logo or e-signature must never cost the
+    // client their invoice.
+    function _pdfImg(src) {
+        return new Promise(resolve => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+                try {
+                    const c = document.createElement('canvas');
+                    c.width = img.naturalWidth; c.height = img.naturalHeight;
+                    c.getContext('2d').drawImage(img, 0, 0);
+                    resolve({ url: c.toDataURL('image/png'), w: img.naturalWidth, h: img.naturalHeight });
+                } catch (e) { resolve(null); }       // tainted canvas
+            };
+            img.onerror = () => resolve(null);
+            img.src = src;
+        });
+    }
+
+    // ── Embedded font, so the PDF can print ₱ ─────────────────────────
+    // jsPDF's built-in faces are WinAnsi-encoded and have no ₱ (U+20B1) — it
+    // comes out as a blank box, which is why the quotation PDF gave up and
+    // prints bare numbers. Roboto carries the glyph, so it is embedded and used
+    // for the whole document rather than mixing two typefaces on one page.
+    //
+    // ~330KB for the two faces, fetched ONCE per session and cached here, on
+    // top of jsPDF's own lazy load. If the fetch fails the export still runs —
+    // it falls back to Helvetica and the "PHP" spelling. A missing font must
+    // never cost the client their invoice.
+    const _PDF_FONT_BASE = 'https://cdn.jsdelivr.net/npm/@expo-google-fonts/roboto@0.2.3/';
+    let _pdfFont = null;        // null = untried, false = tried and failed
+
+    async function _ensurePdfFont() {
+        if (_pdfFont !== null) return _pdfFont;
+        try {
+            const [regular, bold] = await Promise.all([
+                _fetchB64(_PDF_FONT_BASE + 'Roboto_400Regular.ttf'),
+                _fetchB64(_PDF_FONT_BASE + 'Roboto_700Bold.ttf')
+            ]);
+            _pdfFont = { regular, bold };
+        } catch (e) {
+            console.warn('InvoiceModule: peso font unavailable, falling back to "PHP"', e);
+            _pdfFont = false;
+        }
+        return _pdfFont;
+    }
+
+    function _fetchB64(url) {
+        return fetch(url)
+            .then(r => { if (!r.ok) throw new Error(url + ' -> HTTP ' + r.status); return r.arrayBuffer(); })
+            .then(buf => {
+                // btoa wants a binary string. Chunked, because
+                // String.fromCharCode.apply on 160KB of bytes at once blows the
+                // engine's argument limit.
+                const bytes = new Uint8Array(buf);
+                let s = '';
+                for (let i = 0; i < bytes.length; i += 0x8000) {
+                    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+                }
+                return btoa(s);
+            });
+    }
+
+    // `peso` is false only when the font failed to load, in which case ₱ would
+    // render as an empty box and the ISO code is the honest substitute.
+    function _pdfAmt(n, peso) {
+        return (peso ? '₱ ' : 'PHP ') + (Number(n) || 0).toLocaleString('en-PH',
+            { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    async function _generatePDF(inv) {
+        try {
+            const jsPDF = (window.jspdf || window).jsPDF;
+            const doc   = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+            const pageW = doc.internal.pageSize.getWidth();    // 210mm
+            const pageH = doc.internal.pageSize.getHeight();   // 297mm
+            const M     = 15;
+            const usable = pageW - M * 2;
+
+            // Roboto if it loaded (gives us ₱), Helvetica + "PHP" if it didn't.
+            // FAM is threaded through every setFont call and the autotable
+            // styles so the document never mixes the two.
+            // Only the first export of a session waits on the font; say so,
+            // otherwise a slow connection looks like the button did nothing.
+            if (_pdfFont === null) _showToast('Preparing the PDF…');
+            const font = await _ensurePdfFont();
+            const FAM  = font ? 'Roboto' : 'helvetica';
+            if (font) {
+                doc.addFileToVFS('Roboto-Regular.ttf', font.regular);
+                doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+                doc.addFileToVFS('Roboto-Bold.ttf', font.bold);
+                doc.addFont('Roboto-Bold.ttf', 'Roboto', 'bold');
+            }
+            const amt = n => _pdfAmt(n, !!font);
+
+            // Same fallbacks as the print sheet, so the two documents can't
+            // disagree about the seller's details.
+            const pd      = Object.assign({}, _defaults.paymentDetails || {}, inv.paymentDetails || {});
+            const bizName = inv.businessName    || _defaults.businessName    || 'Business Name';
+            const bizTin  = inv.businessTin     || _defaults.businessTin     || '';
+            const bizAddr = inv.businessAddress || _defaults.businessAddress || '';
+
+            let y = M;
+
+            // ── Letterhead: mark over the business block on the left, the
+            // document title on the right — the print sheet's §inv-header.
+            const srcs  = inv.showLogo === false ? [] : _letterheadSrcs(_defaults.logos);
+            const marks = (await Promise.all(srcs.map(_pdfImg))).filter(Boolean);
+            let bizY = y;
+            if (marks.length) {
+                const H = 20;                       // 82px on the sheet ≈ 21mm
+                let x = M;
+                // Width comes from each image's own aspect ratio, never fixed,
+                // so a mark can't come out stretched.
+                marks.forEach(m => {
+                    const w = H * (m.w / m.h);
+                    doc.addImage(m.url, 'PNG', x, y, w, H);
+                    x += w + 6;
+                });
+                bizY = y + H + 5;
+            }
+
+            const leftW = usable * 0.58;            // leaves room for the title
+            doc.setFont(FAM, 'bold').setFontSize(13).setTextColor(28, 28, 26);
+            const nameLines = doc.splitTextToSize(bizName, leftW);
+            doc.text(nameLines, M, bizY + 4);
+            let leftY = bizY + 4 + (nameLines.length - 1) * 5.2;
+
+            doc.setFont(FAM, 'normal').setFontSize(8).setTextColor(111, 110, 105);
+            const subLines = doc.splitTextToSize(
+                bizAddr + (bizTin && bizTin !== '—' ? '\nBusiness Tax Id: ' + bizTin : ''), leftW);
+            doc.text(subLines, M, leftY + 5);
+            leftY += 5 + (subLines.length - 1) * 3.6;
+
+            // Wrapped, not clipped: a longer title than the default (0055) has
+            // to stay inside the right margin instead of running off the sheet.
+            doc.setFont(FAM, 'bold').setFontSize(15).setTextColor(21, 122, 82);
+            const titleLines = doc.splitTextToSize(_docTitle(inv), usable * 0.4);
+            doc.text(titleLines, pageW - M, y + 5, { align: 'right' });
+            const titleH = (titleLines.length - 1) * 6.5;
+
+            // Right-aligned "label value" pairs with the value in bold. jsPDF
+            // can't mix weights inside one text call, so the value is placed
+            // first and the label backed off by its measured width.
+            const kv = (label, value, ry) => {
+                doc.setFont(FAM, 'bold').setFontSize(8.5).setTextColor(17, 17, 17);
+                const vw = doc.getTextWidth(value);
+                doc.text(value, pageW - M, ry, { align: 'right' });
+                doc.setFont(FAM, 'normal').setTextColor(68, 68, 68);
+                doc.text(label, pageW - M - vw - 1.2, ry, { align: 'right' });
+            };
+            kv('Invoice No: ', inv.invoiceNo || '—', y + 12 + titleH);
+            kv('Date: ', inv.date ? _fmtDate(inv.date) : '—', y + 17 + titleH);
+
+            y = Math.max(leftY, y + 20 + titleH) + 5;
+            doc.setDrawColor(28, 28, 26).setLineWidth(0.6);
+            doc.line(M, y, pageW - M, y);
+
+            // ── Bill To / Received From (0056) ───────────────────────────
+            y += 7;
+            doc.setFont(FAM, 'bold').setFontSize(7).setTextColor(155, 154, 148);
+            doc.text(_partyLabel(inv).toUpperCase(), M, y);
+            doc.setFont(FAM, 'bold').setFontSize(11.5).setTextColor(28, 28, 26);
+            doc.text(inv.clientName || '—', M, y + 6);
+            let billY = y + 6;
+            const billSub = [inv.clientAddress || '', inv.clientTin ? 'TIN: ' + inv.clientTin : '']
+                .filter(Boolean).join('\n');
+            if (billSub) {
+                doc.setFont(FAM, 'normal').setFontSize(8.5).setTextColor(111, 110, 105);
+                const lines = doc.splitTextToSize(billSub, usable * 0.6);
+                doc.text(lines, M, billY + 5);
+                billY += 5 + (lines.length - 1) * 3.8;
+            }
+            y = billY + 5;
+            doc.setDrawColor(237, 237, 234).setLineWidth(0.2);
+            doc.line(M, y, pageW - M, y);
+            y += 5;
+
+            // ── Items ────────────────────────────────────────────────────
+            doc.autoTable({
+                startY: y, margin: { left: M, right: M },
+                head: [['#', 'ITEM DESCRIPTION / SERVICE', 'QTY', 'UNIT PRICE', 'DISC.(%)', 'AMOUNT']],
+                body: (inv.items || []).map((it, i) => [
+                    i + 1,
+                    it.description || '',
+                    it.qty != null ? String(it.qty) : '',
+                    amt(it.unitPrice),
+                    (it.discount || 0) + '%',
+                    amt(it.amount)
+                ]),
+                // `font: FAM` is what keeps the table in Roboto — autotable does
+                // not inherit the doc's current face, it resets to helvetica.
+                styles:     { font: FAM, fontSize: 8, cellPadding: 2, lineColor: [237, 237, 234],
+                              lineWidth: 0.1, textColor: [28, 28, 26] },
+                headStyles: { font: FAM, fillColor: [250, 250, 248], textColor: [140, 139, 133],
+                              fontStyle: 'bold', fontSize: 7, lineColor: [237, 237, 234] },
+                columnStyles: { 0: { cellWidth: 8,  halign: 'center' },
+                                1: { cellWidth: 'auto' },
+                                2: { cellWidth: 14, halign: 'center' },
+                                3: { cellWidth: 27, halign: 'right' },
+                                4: { cellWidth: 17, halign: 'center' },
+                                5: { cellWidth: 29, halign: 'right', fontStyle: 'bold' } }
+            });
+            y = doc.lastAutoTable.finalY + 5;
+
+            // ── Totals — right-aligned, the grand total on its green plate ──
+            const totW = 74;
+            const totX = pageW - M - totW;
+            doc.setFont(FAM, 'normal').setFontSize(9).setTextColor(85, 85, 85);
+            doc.text('Total Sales', totX + 2, y + 4);
+            doc.setFont(FAM, 'bold').setTextColor(17, 17, 17);
+            doc.text(amt(inv.subtotal || 0), pageW - M - 2, y + 4, { align: 'right' });
+            y += 8;
+
+            doc.setFillColor(234, 244, 239);
+            doc.roundedRect(totX, y, totW, 13, 2, 2, 'F');
+            doc.setFont(FAM, 'bold').setFontSize(9).setTextColor(15, 99, 66);
+            doc.text('TOTAL AMOUNT DUE', totX + 4, y + 8);
+            doc.setFontSize(11);
+            doc.text(amt(inv.totalAmount || 0), pageW - M - 4, y + 8.4, { align: 'right' });
+            y += 19;
+
+            // ── Payment details ──────────────────────────────────────────
+            const payRows = pd.method === 'gcash'
+                ? [['Payment Via', 'GCash'], ['GCash No.', pd.gcashNumber || '—'],
+                   ['Account Name', pd.gcashName || '—']]
+                : [['Payment Via', 'Bank Transfer'], ['Bank', pd.bank || '—'],
+                   ['Account No.', pd.accountNo || '—'], ['Account Name', pd.accountName || '—'],
+                   ['Branch', pd.branch || '—']];
+            const payLines = Math.ceil(payRows.length / 2);
+            const payH = 12 + payLines * 5;
+            doc.setFillColor(250, 250, 248).setDrawColor(237, 237, 234).setLineWidth(0.2);
+            doc.roundedRect(M, y, usable, payH, 2, 2, 'FD');
+            doc.setFont(FAM, 'bold').setFontSize(7).setTextColor(155, 154, 148);
+            doc.text('PAYMENT DETAILS', M + 4, y + 5.5);
+            payRows.forEach(([k, v], i) => {
+                const cx = M + 4 + (i % 2) * (usable / 2 - 2);
+                const cy = y + 11.5 + Math.floor(i / 2) * 5;
+                doc.setFont(FAM, 'normal').setFontSize(8).setTextColor(107, 114, 128);
+                doc.text(k + ': ', cx, cy);
+                doc.setFont(FAM, 'bold').setTextColor(17, 17, 17);
+                doc.text(String(v), cx + doc.getTextWidth(k + ': '), cy);
+            });
+            y += payH + 6;
+
+            if (inv.notes) {
+                doc.setFont(FAM, 'normal').setFontSize(8.5).setTextColor(85, 85, 85);
+                const nl = doc.splitTextToSize('Notes: ' + inv.notes, usable);
+                doc.text(nl, M, y + 3);
+                y += 3 + nl.length * 4;
+            }
+
+            // ── Signatures — e-sign, name and company above the rule, the
+            // role label under it. Same stacking as the print sheet. ───────
+            const blocks = _SIG_KEYS
+                .map(({ key, label }) => ({ label, ...(_sig(inv.signatories, key)) }))
+                .filter(s => s.show);
+            if (blocks.length) {
+                const stamps = await Promise.all(blocks.map(s =>
+                    s.esign ? _pdfImg(window.location.origin + '/assets/images/dacs-signature.png')
+                            : Promise.resolve(null)));
+
+                const blockW = Math.min(58, usable / blocks.length - 6);
+                // A signature row split across a page break is worse than a
+                // short page, so move the whole row down if it won't fit.
+                if (y + 34 > pageH - 22) { doc.addPage(); y = M; }
+                y += 12;
+
+                // Mirrors the sheet's .sig-row: a full set of three spreads
+                // edge to edge (space-between), while one or two sit centred in
+                // their share of the row (space-around) rather than hugging the
+                // left margin.
+                const spread = blocks.length >= 3;
+                const step   = usable / blocks.length;
+                const xOf = i => spread
+                    ? M + i * (blockW + (usable - blockW * blocks.length) / (blocks.length - 1))
+                    : M + step * i + (step - blockW) / 2;
+
+                const ruleY = y + 20;
+                blocks.forEach((s, i) => {
+                    const x  = xOf(i);
+                    const cx = x + blockW / 2;
+                    let ty = ruleY - 1.5;
+
+                    if (s.org) {
+                        doc.setFont(FAM, 'normal').setFontSize(7.5).setTextColor(111, 110, 105);
+                        const ol = doc.splitTextToSize(s.org, blockW);
+                        doc.text(ol, cx, ty, { align: 'center' });
+                        ty -= 3.2 + (ol.length - 1) * 3.2;
+                    }
+                    if (s.name) {
+                        doc.setFont(FAM, 'bold').setFontSize(8.5).setTextColor(28, 28, 26);
+                        const nl = doc.splitTextToSize(s.name, blockW);
+                        doc.text(nl, cx, ty, { align: 'center' });
+                        ty -= 3.6 + (nl.length - 1) * 3.6;
+                    }
+                    const stamp = stamps[i];
+                    if (stamp) {
+                        const h = 10, w = Math.min(blockW * 0.85, h * (stamp.w / stamp.h));
+                        doc.addImage(stamp.url, 'PNG', cx - w / 2, ty - h + 1.5, w, h);
+                    }
+
+                    doc.setDrawColor(55, 65, 81).setLineWidth(0.25);
+                    doc.line(x, ruleY, x + blockW, ruleY);
+                    doc.setFont(FAM, 'normal').setFontSize(8).setTextColor(107, 114, 128);
+                    doc.text(s.label, cx, ruleY + 4, { align: 'center' });
+                });
+                y = ruleY + 8;
+            }
+
+            // ── Footer on every page ─────────────────────────────────────
+            const foot = [bizName, bizAddr].filter(Boolean).join('  •  ');
+            const pages = doc.internal.getNumberOfPages();
+            for (let p = 1; p <= pages; p++) {
+                doc.setPage(p);
+                doc.setDrawColor(229, 231, 235).setLineWidth(0.2);
+                doc.line(M, pageH - 16, pageW - M, pageH - 16);
+                doc.setFont(FAM, 'normal').setFontSize(7).setTextColor(156, 163, 175);
+                doc.text(foot, pageW / 2, pageH - 11.5, { align: 'center', maxWidth: usable });
+                if (pages > 1) doc.text(`Page ${p} / ${pages}`, pageW - M, pageH - 11.5, { align: 'right' });
+            }
+
+            doc.save(String(inv.invoiceNo || 'invoice').replace(/[^\w.\-]/g, '_') + '.pdf');
+        } catch (e) {
+            console.error('InvoiceModule: PDF export failed', e);
+            alert('Could not build the PDF: ' + e.message);
+        }
     }
 
     // ══════════════════════════════════════════════════════
@@ -1400,6 +2050,68 @@ ${previewOnly ? '' : '<script>window.onload=function(){window.print();};<\\/scri
     function _pEsc(s) {
         return String(s || '')
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // ── Document title (migration 0055) ───────────────────────────────
+    // The heading opposite the letterhead. The house default lives HERE and
+    // nowhere else — an invoice stores '' rather than the literal words, so
+    // changing this one line re-titles every document that never overrode it.
+    const _DOC_TITLE = 'SALES INVOICE';
+
+    function _docTitle(inv) {
+        return String((inv && inv.docTitle) || '').trim().toUpperCase() || _DOC_TITLE;
+    }
+
+    // ── Client-block heading (migration 0056) ─────────────────────────
+    // What the name / TIN / address block under the letterhead is called.
+    // 'Bill To' on an invoice; 'Received From' when the same sheet goes out
+    // as an acknowledgement receipt — a receipt records money taken in, it
+    // doesn't bill anyone. Same storage rule as _DOC_TITLE: the house
+    // default lives HERE and nowhere else, and an invoice stores '' rather
+    // than the words, so changing this one line re-heads every document
+    // that never overrode it.
+    const _PARTY_LABEL  = 'Bill To';
+    // The dropdown, in the order it lists. Stored free-form (0056), so
+    // adding a third heading is this line and nothing else — no migration.
+    const _PARTY_LABELS = ['Bill To', 'Received From'];
+
+    // Screen labels for the three fields under the heading, per heading, so
+    // the form reads as one sentence instead of asking for a "client" on a
+    // receipt. Editor only: the columns, and what the sheet prints, are the
+    // same whichever heading is picked.
+    const _PARTY_FIELDS_DEFAULT = { name: 'Client Name', tin: 'Customer TIN', address: 'Customer Address' };
+    const _PARTY_FIELDS = {
+        'Received From': { name: 'Payer Name', tin: 'Payer TIN', address: 'Payer Address' }
+    };
+
+    function _partyLabel(inv) {
+        return String((inv && inv.partyLabel) || '').trim() || _PARTY_LABEL;
+    }
+    function _partyFields(label) {
+        return _PARTY_FIELDS[String(label || '').trim()] || _PARTY_FIELDS_DEFAULT;
+    }
+
+    // ── Signature blocks (migration 0053) ─────────────────────────────
+    // The three lines at the foot of the printed invoice. Order here is the
+    // order they print in, left to right.
+    const _SIG_KEYS = [
+        { key: 'preparedBy', label: 'Prepared by' },
+        { key: 'receivedBy', label: 'Received by' },
+        { key: 'approvedBy', label: 'Approved by' }
+    ];
+
+    // Read one block out of a stored `signatories` object. Anything missing —
+    // the whole column, the key, or just `show` — reads as an unnamed line that
+    // prints, which is exactly how invoices behaved before 0053. That fallback
+    // is why no backfill was needed.
+    function _sig(signatories, key) {
+        const s = (signatories && signatories[key]) || {};
+        return {
+            name:  String(s.name || '').trim(),
+            org:   String(s.org  || '').trim(),   // company or position, printed under the name
+            esign: s.esign === true,              // stamp assets/images/dacs-signature.png
+            show:  s.show !== false
+        };
     }
 
     function _tsToMs(ts) {
@@ -1909,7 +2621,11 @@ ${window.dacsStatementPrintScript()}
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
 body { font-family:Arial,Helvetica,sans-serif; font-size:13px; color:#111; background:#f5f5f5; }
-.page { width:210mm; min-height:297mm; margin:20px auto; padding:18mm 16mm 14mm; background:#fff; box-shadow:0 2px 12px rgba(0,0,0,.12); }
+/* Column flex + margin-top:auto on .footer — same footer pinning as the sales
+   invoice sheet above; see the comment there. */
+.page { width:210mm; min-height:297mm; margin:20px auto; padding:18mm 16mm 14mm; background:#fff; box-shadow:0 2px 12px rgba(0,0,0,.12);
+        display:flex; flex-direction:column; }
+.page > * { flex-shrink:0; }
 .inv-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:22px; }
 .inv-biz h1 { font-size:20px; font-weight:800; color:#1a1a2e; }
 .inv-biz p  { font-size:12px; color:#555; margin-top:4px; line-height:1.5; }
@@ -1941,8 +2657,9 @@ table.totals tr.grand td { font-size:15px; font-weight:800; color:#111; backgrou
 .sig-row { display:flex; justify-content:space-between; margin-top:36px; }
 .sig-block { text-align:center; width:180px; }
 .sig-line { border-top:1px solid #374151; padding-top:6px; font-size:11px; color:#6b7280; }
-.footer { text-align:center; margin-top:24px; font-size:10px; color:#9ca3af; border-top:1px solid #e5e7eb; padding-top:10px; }
-@media print { body{background:#fff;} .page{margin:0;box-shadow:none;padding:10mm 10mm;width:100%;} @page{size:A4 portrait;margin:8mm;} input{border:none!important;outline:none!important;-webkit-appearance:none;} }
+.footer { text-align:center; margin-top:auto; font-size:10px; color:#9ca3af; border-top:1px solid #e5e7eb; padding-top:10px; }
+.sig-row { margin-bottom:24px; }
+@media print { body{background:#fff;} .page{margin:0;box-shadow:none;width:100%;padding:14mm 14mm 12mm;} @page{size:A4 portrait;margin:0;} input{border:none!important;outline:none!important;-webkit-appearance:none;} }
 </style>
 </head>
 <body>
