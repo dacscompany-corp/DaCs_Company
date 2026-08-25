@@ -2279,7 +2279,13 @@ ${window.dacsStatementPrintScript()}
     // entries within a single project folder (all-time).
     // ══════════════════════════════════════════════════════
 
-    window.printWorkerLaborSOA = async function (workerName, folderId) {
+    // `category` (migration 0057) scopes which contracts back the statement:
+    // 'labor' (default) = in-house worker; 'outsource' = outside vendor. Without
+    // it a vendor sharing a worker's name would pull both kinds into one document.
+    window.printWorkerLaborSOA = async function (workerName, folderId, category) {
+        const _soaCat    = category === 'outsource' ? 'outsource' : 'labor';
+        const _soaIsVend = _soaCat === 'outsource';
+        const _catOf     = c => (c && c.category === 'outsource') ? 'outsource' : 'labor';
         if (!_ownerUid) await _resolveOwnerUid();
         if (!_defaults || !Object.keys(_defaults).length) await _loadDefaults();
 
@@ -2298,7 +2304,7 @@ ${window.dacsStatementPrintScript()}
         // still gathers the right entries.
         const _wcIds = new Set(
             (typeof expLaborContracts !== 'undefined' ? expLaborContracts : [])
-                .filter(c => (c.workerName || '') === workerName)
+                .filter(c => (c.workerName || '') === workerName && _catOf(c) === _soaCat)
                 .map(c => c.id)
         );
         let entries = _allPay
@@ -2348,7 +2354,8 @@ ${window.dacsStatementPrintScript()}
         const today     = new Date().toLocaleDateString('en-PH',{year:'numeric',month:'long',day:'numeric'});
 
         // Contract status (Completed / Over cap / Ongoing) from this worker's contract(s).
-        const _allC      = (typeof expLaborContracts !== 'undefined' ? expLaborContracts : []);
+        const _allC      = (typeof expLaborContracts !== 'undefined' ? expLaborContracts : [])
+            .filter(c => _catOf(c) === _soaCat);
         const _entryCids = new Set(entries.map(p => p.contractId).filter(Boolean));
         const _wContracts = _allC.filter(c => (c.workerName || '') === workerName || _entryCids.has(c.id));
 
@@ -2424,7 +2431,7 @@ ${window.dacsStatementPrintScript()}
 <div class="page">
 ${window.dacsStatementHead({
     title: 'Statement<br>of Account',
-    kicker: 'Labor & Payroll',
+    kicker: _soaIsVend ? 'Out Source' : 'Labor & Payroll',
     bizName, bizAddr, bizTin,
     meta: [{ k: 'SOA No.', v: invoiceNo }, { k: 'Petsa / Date', v: today }]
 })}

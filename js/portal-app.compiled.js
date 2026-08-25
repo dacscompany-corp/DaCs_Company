@@ -1853,6 +1853,37 @@ function _lcFirstName(n) {
   // four payment tables stacked on top of each other. Keyed by worker name;
   // an absent key means "untouched" and the first job opens by default.
   const [openJob, setOpenJob] = React.useState({});
+  // Labor ⇄ Out Source segment (migration 0057). `labor_contracts` holds both
+  // kinds; this picks which one the tracker is showing. Out Source contracts are
+  // VENDOR subcontracts — they are drawn down by the same payroll rows, so their
+  // pesos stay in the Labor bucket and the money model is untouched. The split
+  // below is DERIVED from each payment's contract, never stamped on the payroll row.
+  const [lcSeg, setLcSeg] = React.useState("labor");
+  const _isOutsourceC = (c) => (typeof window.lcIsOutsource === "function" ? window.lcIsOutsource(c) : !!c && c.category === "outsource");
+  const _osIds = React.useMemo(() => {
+    const set = /* @__PURE__ */ new Set();
+    (contracts || []).forEach((c) => { if (_isOutsourceC(c)) set.add(c.id); });
+    return set;
+  }, [contracts]);
+  const _segContracts = React.useMemo(
+    () => (contracts || []).filter((c) => _isOutsourceC(c) === (lcSeg === "outsource")),
+    [contracts, lcSeg]
+  );
+  const _lcCounts = React.useMemo(() => {
+    let os = 0, lab = 0;
+    (contracts || []).forEach((c) => { _isOutsourceC(c) ? os++ : lab++; });
+    return { labor: lab, outsource: os };
+  }, [contracts]);
+  // In-house vs outsourced, across the WHOLE labor bucket — a reading aid on the
+  // header, not a new bucket. Labor itself is still one number everywhere else.
+  const _laborSplit = React.useMemo(() => {
+    let os = 0, inh = 0;
+    (laborTx || []).forEach((t) => {
+      const a = Number(t.amount) || 0;
+      if (t.contractId && _osIds.has(t.contractId)) os += a; else inh += a;
+    });
+    return { outsource: os, inhouse: inh };
+  }, [laborTx, _osIds]);
   const soaRef = React.useRef(null);
   React.useEffect(() => {
     if (!soaOpen) return;
@@ -1882,6 +1913,9 @@ function _lcFirstName(n) {
   }, [childMonths]);
   const filtered = React.useMemo(() => {
     let result = tab === "all" ? laborTx : laborTx.filter((x) => x.type === tab);
+    // Out Source shows only payments tagged to a vendor contract; Labor shows
+    // everything else, untagged payroll included — so no payment ever vanishes.
+    result = result.filter((x) => (!!(x.contractId && _osIds.has(x.contractId))) === (lcSeg === "outsource"));
     if (searchQuery.trim()) {
       const q2 = searchQuery.trim().toLowerCase();
       result = result.filter(
@@ -1889,7 +1923,7 @@ function _lcFirstName(n) {
       );
     }
     return result;
-  }, [laborTx, tab, searchQuery]);
+  }, [laborTx, tab, searchQuery, lcSeg, _osIds]);
   const exportCsv = () => {
     const headers = ["Date", "Worker", "Role", "Category", "Hours", "Amount (PHP)"];
     const csvEsc = (v) => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"';
@@ -1918,7 +1952,7 @@ function _lcFirstName(n) {
   // against the same contract id through a linked Project Management project's
   // Daily Expenses (weeklyBills) — otherwise a contract paid off in PM still
   // reads as unpaid here, since the two systems keep separate payment ledgers.
-  const _lcRows = (contracts || []).map((c) => {
+  const _lcRows = (_segContracts || []).map((c) => {
     const agreed = Number(c.agreedAmount) || 0;
     const folderPaid = (folderPayroll || []).filter((p) => p.contractId === c.id).reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const pmPaid = (pmPaidByContractId && pmPaidByContractId[c.id]) || 0;
@@ -1967,7 +2001,7 @@ function _lcFirstName(n) {
   const _lcJobActions = (w, r) => rc("div", { className: "lc2-cactions" },
     rc("div", { className: "lc2-cgrp" },
       rc("button", { className: "primary", onClick: () => window.lcOpenLedger && window.lcOpenLedger(r.c.id) }, _lcIcon("ledger"), "Ledger"),
-      rc("button", { onClick: () => window.printWorkerLaborSOA && window.printWorkerLaborSOA(w, project.id) }, _lcIcon("statement"), "Worker statement")
+      rc("button", { onClick: () => window.printWorkerLaborSOA && window.printWorkerLaborSOA(w, project.id, lcSeg) }, _lcIcon("statement"), lcSeg === "outsource" ? "Vendor statement" : "Worker statement")
     ),
     rc("span", { className: "lc2-cdiv" }),
     rc("div", { className: "lc2-cgrp" },
@@ -2176,9 +2210,16 @@ function _lcFirstName(n) {
     rc(ExpenseInboxMount, { folderId, label: project && project.name || "", kind: "labor" }),
     rc("div", { className: "drill-head" },
       rc("div", null,
-        rc("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Labor Cost \u00B7 Worker Tracker"),
+        rc("div", { className: "eyebrow", style: { marginBottom: 8 } }, lcSeg === "outsource" ? "Labor Cost \u00B7 Out Source" : "Labor Cost \u00B7 Worker Tracker"),
         rc("h2", null, "Labor", rc("span", { style: { fontFamily: "var(--sans)", color: "var(--brand-green)", fontWeight: 700, fontSize: "22px", letterSpacing: "0.02em", marginLeft: 18, background: "rgba(26,90,58,0.12)", padding: "8px 20px", borderRadius: "999px", whiteSpace: "nowrap", verticalAlign: "middle", fontVariantNumeric: "tabular-nums" } }, pctChip)),
-        rc("div", { className: "sub" }, project.name, " \u00B7 ", project.code)
+        rc("div", { className: "sub" }, project.name, " \u00B7 ", project.code),
+        // Reading aid only. Out Source pesos ARE Labor \u2014 this splits the one
+        // bucket for the eye, it does not create a second one.
+        _laborSplit.outsource > 0 ? rc("div", { className: "sub", style: { marginTop: 4, fontSize: 12.5 } },
+          "In-house ", rc("b", null, _staff() ? _pctTxt(_laborSplit.inhouse, _laborSplit.inhouse + _laborSplit.outsource) : "\u20B1 " + peso(_laborSplit.inhouse)),
+          "  \u00B7  ",
+          rc("span", { style: { color: "#5b3f96" } }, "Out Source ", rc("b", null, _staff() ? _pctTxt(_laborSplit.outsource, _laborSplit.inhouse + _laborSplit.outsource) : "\u20B1 " + peso(_laborSplit.outsource)))
+        ) : null
       ),
       rc("div", { style: { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" } },
         rc("div", { ref: soaRef, style: { position: "relative" } },
@@ -2187,16 +2228,46 @@ function _lcFirstName(n) {
             " Worker Statement"),
           soaOpen && rc("div", { className: "pcf-soa-pop" },
             rc("div", { className: "pcf-soa-head" }, rc("div", { className: "t" }, "Worker Statement"), rc("div", { className: "s" }, "Select a worker to generate their SOA")),
-            rc("div", { className: "pcf-soa-list" }, workers.length === 0 ? rc("div", { className: "pcf-soa-empty" }, "No workers yet.") : workers.map((wk) => rc("button", { key: wk.name, type: "button", className: "pcf-soa-item", onClick: () => { setSoaOpen(false); window.printWorkerLaborSOA && window.printWorkerLaborSOA(wk.name, project.id); } },
+            rc("div", { className: "pcf-soa-list" }, workers.length === 0 ? rc("div", { className: "pcf-soa-empty" }, "No workers yet.") : workers.map((wk) => rc("button", { key: wk.name, type: "button", className: "pcf-soa-item", onClick: () => { setSoaOpen(false); window.printWorkerLaborSOA && window.printWorkerLaborSOA(wk.name, project.id, lcSeg); } },
               rc("span", { className: "pcf-soa-av" }, (wk.name || "?").trim().charAt(0).toUpperCase() || "?"),
               rc("span", { className: "pcf-soa-info" }, rc("span", { className: "pcf-soa-name" }, wk.name), rc("span", { className: "pcf-soa-sub" }, (wk.role || "\u2014") + " \u00B7 " + wk.count + " " + (wk.count === 1 ? "entry" : "entries"))),
               rc("span", { className: "pcf-soa-amt" }, "\u20B1 ", peso(wk.total)))))
           )
         ),
-        rc("button", { className: "lc2-ghost", onClick: () => window.lcOpenNew && window.lcOpenNew() }, Ico.plus, " New Contract"),
+        rc("button", { className: "lc2-ghost", onClick: () => window.lcOpenNew && window.lcOpenNew(lcSeg) }, Ico.plus, lcSeg === "outsource" ? " New Out Source contract" : " New Contract"),
         rc("button", { className: "btn-primary", onClick: () => openAddEntry("labor", childMonths, activeFolder) }, Ico.plus, " Add Payment")
       )
     ),
+    // Labor \u21c4 Out Source (migration 0057). Green = in-house workers,
+    // purple = outside vendors \u2014 the same colour language the PM module uses for
+    // the same idea, so the two systems read alike. Always rendered, even when a
+    // side is empty, or there would be no way back to it.
+    rc("div", { className: "lc2-seg", style: { display: "flex", gap: 8, background: "#f6f5f2", border: "1px solid #ecebe6", borderRadius: 13, padding: 5, margin: "0 0 14px", maxWidth: 480 } },
+      [["labor", "Labor", _lcCounts.labor, "#157a52", "#0f6342", "#eaf4ef"], ["outsource", "Out Source", _lcCounts.outsource, "#7a5bb5", "#5b3f96", "#efeaf8"]].map(
+        ([key, label, count, accent, accentDark, soft]) => {
+          const on = lcSeg === key;
+          return rc("button", {
+            key,
+            type: "button",
+            onClick: () => setLcSeg(key),
+            "aria-pressed": on,
+            style: {
+              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              borderRadius: 10, padding: 11, cursor: "pointer", fontSize: 13.5, fontWeight: 700,
+              fontFamily: "inherit", transition: "all .15s",
+              background: on ? soft : "transparent",
+              border: "1.5px solid " + (on ? accent : "transparent"),
+              color: on ? accentDark : "#7c7b75"
+            }
+          }, label, rc("span", { style: { fontSize: 11, fontWeight: 700, opacity: .85, background: "rgba(0,0,0,.06)", borderRadius: 20, padding: "1px 7px" } }, String(count)));
+        }
+      )
+    ),
+    !_lcRows.length ? rc("div", { style: { padding: "26px 6px", textAlign: "center", color: "#9b9a94", fontSize: 13.5 } },
+      lcSeg === "outsource"
+        ? "No Out Source contracts yet. Click \u201c+ New Out Source contract\u201d to cap a vendor\u2019s job \u2014 then tag a payroll entry to it."
+        : "No labor contracts yet."
+    ) : null,
     _lcRows.length ? rc("div", { className: "lc2-totals" },
       // Total Agreed is the denominator every other figure is measured against,
       // so it has no percentage form \u2014 staff see a dash, not "100%", which

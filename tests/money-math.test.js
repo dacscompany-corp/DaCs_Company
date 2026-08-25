@@ -397,6 +397,48 @@ console.log('\nI. Cover / president money');
        'percentage base drifted back to the contract'));
 }
 
+// == J. OUT SOURCE IS NOT A FOURTH BUCKET (migration 0057) ==========
+// Project Control Out Source contracts are VENDOR subcontracts living in the
+// SAME `labor_contracts` table as in-house labor, split only by `category`.
+// They are drawn down by the SAME payroll rows, so their pesos stay inside the
+// Labor bucket:
+//
+//     Labor = direct + (liability - liabilityIndirect)      <- unchanged
+//
+// The in-house / Out Source split shown in the Worker Tracker is a READING AID,
+// derived at render time from each payment's contract. It must never become a
+// fourth bucket in Spent, and must never be stamped on the payroll row (that
+// would need a backfill and would freeze history against later recategorising).
+{
+  test('Out Source contracts are split by `category`, not a separate table', () =>
+    ok(expensesSrc.indexOf("c.category === 'outsource'") !== -1,
+       'the category discriminator is gone - outsource and labor contracts have been split apart'));
+
+  test('the contract array stays MIXED so id lookups still resolve either kind', () =>
+    ok(expensesSrc.indexOf('function lcListByCategory(cat)') !== -1,
+       'lcListByCategory is gone; if expLaborContracts were filtered at the source, every .find(x => x.id === id) breaks for one kind'));
+
+  test('Out Source draws down through payroll, exactly like a labor contract', () =>
+    ok(/function lcPaid\(contractId, excludeRowId\)[\s\S]{0,400}expPayroll/.test(expensesSrc),
+       'lcPaid no longer sums payroll - the outsource drawdown path has been rerouted'));
+
+  test('the in-house / Out Source split is DERIVED, not a stored payroll field', () =>
+    ok(portalSrc.indexOf('_laborSplit') !== -1 && portalSrc.indexOf('_osIds') !== -1,
+       'the derived split is gone; if it became a payroll column it needs a migration and a backfill'));
+
+  test('the derived split reads the CONTRACT, never a flag on the payroll row', () =>
+    ok(portalSrc.indexOf('t.contractId && _osIds.has(t.contractId)') !== -1,
+       'the split stopped resolving through the contract - a stamped payroll flag freezes history'));
+
+  test('a vendor contract never carries a Worker Agreement', () =>
+    ok(expensesSrc.indexOf('vendors sign no Worker Agreement') !== -1,
+       'the Out Source branch that suppresses the agreement fields is gone'));
+
+  test('a vendor contract never carries a trade', () =>
+    ok(expensesSrc.indexOf("const trade = isOutsource ? ''") !== -1,
+       'Out Source contracts are writing a trade again - that is a worker field'));
+}
+
 // ════════════════════════════════════════════════════════════════════
 console.log('\n──────────────────────────────────────');
 console.log(passed + ' passed, ' + failed + ' failed');
