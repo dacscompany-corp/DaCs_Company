@@ -4542,16 +4542,26 @@
 </div>
 
 <!-- Labor Contract (pakyaw / in-house capped pay) -->
+<!-- Out Source (migration 0057) — purple accent, matching the PM module's
+     Out Source colour so the same idea reads the same way in both systems. -->
+<style>
+.lc-oc-badge{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.03em;
+  text-transform:uppercase;padding:2px 7px;border-radius:20px;background:#efeaf8;color:#5b3f96;
+  vertical-align:1px;margin-right:2px;}
+#laborContractModal.lc-modal-outsource .exp-modal-header h2{color:#5b3f96;}
+</style>
 <div id="laborContractModal" class="exp-modal">
     <div class="exp-modal-box">
         <div class="exp-modal-header"><h2 id="lcModalTitle">New Labor Contract</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('laborContractModal')">&times;</button></div>
         <form id="laborContractForm">
             <input type="hidden" id="lcId">
+            <!-- 'labor' | 'outsource' (migration 0057) — set by lcApplyCategoryMode() -->
+            <input type="hidden" id="lcCategory" value="labor">
             <div class="exp-form-row">
-                <div class="exp-form-group"><label>Worker Name</label><input type="text" id="lcWorker" list="lcWorkerNames" required placeholder="Full name" autocomplete="off" oninput="if(window.lcAgrSyncWorkerName)lcAgrSyncWorkerName()"><datalist id="lcWorkerNames"></datalist></div>
+                <div class="exp-form-group"><label id="lcWorkerLabel">Worker Name</label><input type="text" id="lcWorker" list="lcWorkerNames" required placeholder="Full name" autocomplete="off" oninput="if(window.lcAgrSyncWorkerName)lcAgrSyncWorkerName()"><datalist id="lcWorkerNames"></datalist><datalist id="lcVendorNames"></datalist></div>
                 <div class="exp-form-group"><label>Scope / Job</label><input type="text" id="lcScope" placeholder="e.g. Tiling &amp; masonry"></div>
             </div>
-            <div class="exp-form-group"><label>Position / Trade <span style="color:#9ca3af;font-weight:400;">(prints on the policy manual)</span></label><input type="text" id="lcTrade" list="lcTradeNames" placeholder="e.g. Mason, Carpenter, Foreman" autocomplete="off"><datalist id="lcTradeNames"></datalist></div>
+            <div class="exp-form-group" id="lcTradeRow"><label>Position / Trade <span style="color:#9ca3af;font-weight:400;">(prints on the policy manual)</span></label><input type="text" id="lcTrade" list="lcTradeNames" placeholder="e.g. Mason, Carpenter, Foreman" autocomplete="off"><datalist id="lcTradeNames"></datalist></div>
             <div class="exp-form-group">
                 <label>Pay Type</label>
                 <div class="lt-radio-group">
@@ -4563,7 +4573,8 @@
             <div class="exp-form-group"><label>Notes (optional)</label><textarea id="lcNotes" rows="2" placeholder="Additional details…"></textarea></div>
 
             <!-- ── Worker Agreement — upload the signed PDF ── -->
-            <div class="exp-form-group" style="border:1.5px solid #e5e7eb;border-radius:10px;padding:14px 16px;background:#fafafa;">
+            <!-- Hidden in Out Source mode: a vendor subcontract is not an employment record. -->
+            <div class="exp-form-group" id="lcAgreementRow" style="border:1.5px solid #e5e7eb;border-radius:10px;padding:14px 16px;background:#fafafa;">
                 <label style="margin:0 0 8px;display:block;">Worker Agreement <span style="color:#9ca3af;font-weight:400;">(upload the signed agreement PDF)</span></label>
                 <input type="file" id="lcAgrPdfInput" accept="application/pdf,.pdf" onchange="lcAgrPdfPick(this)" style="display:none;">
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">

@@ -185,7 +185,9 @@ function _expCatEsc(s) {
 // Scope-only when a contract has no name; name-only if it somehow has no scope.
 function _expContractLabels() {
     const set = new Set();
-    (expLaborContracts || []).forEach(c => {
+    // Labor contracts only — Out Source jobs (migration 0057) are vendor
+    // subcontracts and have no business being an expense category.
+    (typeof lcLaborOnly === 'function' ? lcLaborOnly() : (expLaborContracts || [])).forEach(c => {
         const name  = (c && c.workerName != null ? String(c.workerName) : '').trim();
         const scope = (c && c.scope      != null ? String(c.scope)      : '').trim();
         const label = scope && name ? scope + ' (' + name + ')' : (scope || name);
@@ -7593,11 +7595,36 @@ function lcStats(c) {
     if (agreed > 0 && paid >= agreed) status = paid > agreed ? 'Over' : 'Completed';
     return { agreed, paid, remaining, pct, status };
 }
+// ── Out Source vs in-house labor (migration 0057) ─────────────
+// `labor_contracts` holds BOTH kinds, split only by `category`. The array stays
+// MIXED on purpose: every `.find(x => x.id === id)` lookup in this file addresses
+// a contract by id and must keep resolving either kind. Only the places that
+// RENDER A LIST filter — miss one and vendor contracts leak into a labor screen.
+// A missing column (migration 0057 not applied) reads as undefined, which falls
+// to the 'labor' side, so the old behaviour survives an unapplied migration.
+function lcIsOutsource(c) { return !!c && c.category === 'outsource'; }
+function lcListByCategory(cat) {
+    return (expLaborContracts || []).filter(c => cat === 'outsource' ? lcIsOutsource(c) : !lcIsOutsource(c));
+}
+function lcLaborOnly()     { return lcListByCategory('labor'); }
+function lcOutsourceOnly() { return lcListByCategory('outsource'); }
+// The React portal (portal-app.compiled.js) splits the same way for its toggle.
+// Guarded: money-math.test.js extracts this slice and evals it headless, where
+// there is no `window`.
+if (typeof window !== 'undefined') window.lcIsOutsource = lcIsOutsource;
+
 // Worker names seen on this folder (payroll + contracts) — for autocomplete.
 function lcWorkerNames() {
     const set = new Set();
     expPayroll.forEach(p => { if (p.workerName) set.add(String(p.workerName).trim()); });
-    expLaborContracts.forEach(c => { if (c.workerName) set.add(String(c.workerName).trim()); });
+    lcLaborOnly().forEach(c => { if (c.workerName) set.add(String(c.workerName).trim()); });
+    return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b));
+}
+// Vendor names seen on this folder's OUT SOURCE contracts — a separate list, so
+// suggesting "Aluminum Supplier Co." while naming a mason never happens.
+function lcVendorNames() {
+    const set = new Set();
+    lcOutsourceOnly().forEach(c => { if (c.workerName) set.add(String(c.workerName).trim()); });
     return [...set].filter(Boolean).sort((a, b) => a.localeCompare(b));
 }
 
@@ -7610,10 +7637,14 @@ function lcFillWorkerDatalist() {
         const dl = document.getElementById(id); if (dl) dl.innerHTML = opts;
     });
     // Trades already used on this folder — typing "Mason" once is enough.
-    const trades = [...new Set(expLaborContracts.map(c => (c.trade || '').trim()).filter(Boolean))]
+    // Labor contracts only: an Out Source contract carries no trade.
+    const trades = [...new Set(lcLaborOnly().map(c => (c.trade || '').trim()).filter(Boolean))]
         .sort((a, b) => a.localeCompare(b));
     const tdl = document.getElementById('lcTradeNames');
     if (tdl) tdl.innerHTML = trades.map(t => '<option value="' + _mvpEsc(t) + '">').join('');
+    // Vendor autocomplete for the Out Source side of the same modal.
+    const vdl = document.getElementById('lcVendorNames');
+    if (vdl) vdl.innerHTML = lcVendorNames().map(n => '<option value="' + _mvpEsc(n) + '">').join('');
 }
 // ── Worker Agreement (piecework rates + company rules) ─────────────
 // Template lives in settings/workerAgreement { text, pdfUrl, pdfName } and is
@@ -7934,8 +7965,36 @@ async function lcViewAgreement(c) {
     w.document.close();
 }
 
-function lcOpenNew() {
+// One modal serves both kinds. This flips its chrome: an OUT SOURCE contract is a
+// VENDOR subcontract, so the worker-specific legs — Position / Trade and the signed
+// Worker Agreement — are hidden rather than filled with something meaningless.
+function lcApplyCategoryMode(cat) {
+    const os = cat === 'outsource';
+    const hidden = document.getElementById('lcCategory');
+    if (hidden) hidden.value = os ? 'outsource' : 'labor';
+
+    const tradeRow = document.getElementById('lcTradeRow');
+    if (tradeRow) tradeRow.style.display = os ? 'none' : '';
+    const agrRow = document.getElementById('lcAgreementRow');
+    if (agrRow) agrRow.style.display = os ? 'none' : '';
+
+    // Field labels + placeholders follow the vocabulary of the kind being edited.
+    const wLbl = document.getElementById('lcWorkerLabel');
+    if (wLbl) wLbl.textContent = os ? 'Vendor / Crew' : 'Worker Name';
+    const wIn = document.getElementById('lcWorker');
+    if (wIn) {
+        wIn.placeholder = os ? 'e.g. Aluminum Supplier Co.' : 'Full name';
+        wIn.setAttribute('list', os ? 'lcVendorNames' : 'lcWorkerNames');
+    }
+    const sIn = document.getElementById('lcScope');
+    if (sIn) sIn.placeholder = os ? 'e.g. Windows supply & install' : 'e.g. Tiling & masonry';
+    const box = document.getElementById('laborContractModal');
+    if (box) box.classList.toggle('lc-modal-outsource', os);
+}
+
+function lcOpenNew(category) {
     if (!lcActiveFolderId()) { showExpNotif('Open a project folder first.', 'error'); return; }
+    const os = category === 'outsource';
     document.getElementById('lcId').value = '';
     document.getElementById('lcWorker').value = '';
     document.getElementById('lcScope').value = '';
@@ -7943,7 +8002,8 @@ function lcOpenNew() {
     document.getElementById('lcAmount').value = '';
     document.getElementById('lcNotes').value = '';
     const pk = document.querySelector('input[name="lcPayType"][value="pakyaw"]'); if (pk) pk.checked = true;
-    const t = document.getElementById('lcModalTitle'); if (t) t.textContent = 'New Labor Contract';
+    const t = document.getElementById('lcModalTitle'); if (t) t.textContent = os ? 'New Out Source Contract' : 'New Labor Contract';
+    lcApplyCategoryMode(os ? 'outsource' : 'labor');
     lcFillWorkerDatalist();
     openExpModal('laborContractModal');
     lcAgrPopulate(null);
@@ -7957,7 +8017,9 @@ function lcOpenEdit(id) {
     document.getElementById('lcAmount').value = c.agreedAmount ? Number(c.agreedAmount).toLocaleString('en-PH') : '';
     document.getElementById('lcNotes').value = c.notes || '';
     const r = document.querySelector('input[name="lcPayType"][value="' + (c.payType === 'inhouse' ? 'inhouse' : 'pakyaw') + '"]'); if (r) r.checked = true;
-    const t = document.getElementById('lcModalTitle'); if (t) t.textContent = 'Edit Labor Contract';
+    const os = lcIsOutsource(c);
+    const t = document.getElementById('lcModalTitle'); if (t) t.textContent = os ? 'Edit Out Source Contract' : 'Edit Labor Contract';
+    lcApplyCategoryMode(os ? 'outsource' : 'labor');
     lcFillWorkerDatalist();
     openExpModal('laborContractModal');
     lcAgrPopulate(c);
@@ -7971,13 +8033,17 @@ async function handleSaveLaborContract(e) {
     const id = document.getElementById('lcId').value;
     const folderId = lcActiveFolderId();
     if (!folderId) { showExpNotif('No project folder selected.', 'error'); return; }
+    // 'labor' | 'outsource' (migration 0057). An Out Source contract is a vendor
+    // subcontract: no trade, and no Worker Agreement PDF.
+    const category = ((document.getElementById('lcCategory') || {}).value === 'outsource') ? 'outsource' : 'labor';
+    const isOutsource = category === 'outsource';
     const workerName = document.getElementById('lcWorker').value.trim();
     const scope = document.getElementById('lcScope').value.trim();
-    const trade = ((document.getElementById('lcTrade') || {}).value || '').trim();
+    const trade = isOutsource ? '' : ((document.getElementById('lcTrade') || {}).value || '').trim();
     const agreedAmount = parseFloat((document.getElementById('lcAmount').value || '').replace(/,/g, '')) || 0;
     const notes = document.getElementById('lcNotes').value.trim();
     const payType = (document.querySelector('input[name="lcPayType"]:checked') || {}).value || 'pakyaw';
-    if (!workerName) { showExpNotif('Enter the worker name.', 'error'); return; }
+    if (!workerName) { showExpNotif(isOutsource ? 'Enter the vendor / crew name.' : 'Enter the worker name.', 'error'); return; }
     if (agreedAmount <= 0) { showExpNotif('Enter the agreed amount (the cap).', 'error'); return; }
 
     try {
@@ -7987,7 +8053,9 @@ async function handleSaveLaborContract(e) {
         // Upload a newly-picked signed PDF; keep an existing one; or clear if removed.
         // A contract with an attached PDF counts as "signed".
         let agrFields = null;
-        if (_lcAgrFile) {
+        if (isOutsource) {
+            agrFields = null;                      // vendors sign no Worker Agreement
+        } else if (_lcAgrFile) {
             showExpLoading('lcSaveBtn', true);
             const safe = String(_lcAgrFile.name || 'agreement.pdf').replace(/[^\w.\-]+/g, '_');
             const ref  = storage.ref('workerAgreements/' + folderId + '_' + Date.now() + '_' + safe);
@@ -8007,7 +8075,7 @@ async function handleSaveLaborContract(e) {
 
         if (id) {
             const existing = expLaborContracts.find(x => x.id === id);
-            const update = { workerName, scope, trade, agreedAmount, payType, notes,
+            const update = { workerName, scope, trade, agreedAmount, payType, notes, category,
                              updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
             if (existing && (parseFloat(existing.agreedAmount) || 0) !== agreedAmount) {
                 const hist = Array.isArray(existing.capHistory) ? existing.capHistory.slice() : [];
@@ -8020,15 +8088,19 @@ async function handleSaveLaborContract(e) {
             } catch (colErr) {
                 // Fallback if the DB doesn't have the newer agreement_pdf_name column
                 // yet: retry without it so remove/edit still persists.
-                if (/agreement_pdf_name|trade|column/i.test(colErr.message || '')) {
+                if (/agreement_pdf_name|trade|category|column/i.test(colErr.message || '')) {
                     const u2 = { ...update }; delete u2.agreementPdfName;
                     if (/trade/i.test(colErr.message || '')) delete u2.trade;   // migration 0039 not applied yet
+                    if (/category/i.test(colErr.message || '')) {               // migration 0057 not applied yet
+                        delete u2.category;
+                        if (isOutsource) { showExpNotif('Out Source needs migration 0057 — saved as a labor contract.', 'error'); }
+                    }
                     await db.collection('laborContracts').doc(id).update(u2);
                 } else { throw colErr; }
             }
         } else {
             const addDoc = {
-                userId: _uid(), folderId, workerName, scope, trade, agreedAmount, payType, notes,
+                userId: _uid(), folderId, workerName, scope, trade, agreedAmount, payType, notes, category,
                 status: 'ongoing',
                 capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
                 ...(agrFields || { agreementSigned: false }),
@@ -8037,9 +8109,13 @@ async function handleSaveLaborContract(e) {
             try {
                 await db.collection('laborContracts').add(addDoc);
             } catch (colErr) {
-                if (/agreement_pdf_name|trade|column/i.test(colErr.message || '')) {
+                if (/agreement_pdf_name|trade|category|column/i.test(colErr.message || '')) {
                     delete addDoc.agreementPdfName;
                     if (/trade/i.test(colErr.message || '')) delete addDoc.trade;   // migration 0039 not applied yet
+                    if (/category/i.test(colErr.message || '')) {                   // migration 0057 not applied yet
+                        delete addDoc.category;
+                        if (isOutsource) { showExpNotif('Out Source needs migration 0057 — saved as a labor contract.', 'error'); }
+                    }
                     await db.collection('laborContracts').add(addDoc);
                 } else { throw colErr; }
             }
@@ -8185,25 +8261,34 @@ async function lcDelete(id) {
 function lcPopulatePayrollPicker() {
     lcFillWorkerDatalist();
 
+    // BOTH kinds are offered here: a payroll row is what draws down an Out Source
+    // contract too (migration 0057), so filtering them out would make a vendor
+    // contract impossible to pay. Labor first, then Out Source, each badged.
+    const ordered = lcLaborOnly().concat(lcOutsourceOnly());
+
     const sel = document.getElementById('editPayContract');
     if (sel) {
         const cur = sel.value;
         sel.innerHTML = ['<option value="">— None (normal payroll) —</option>'].concat(
-            expLaborContracts.map(c => '<option value="' + c.id + '">' + _mvpEsc(lcPickerLabel(c))
+            ordered.map(c => '<option value="' + c.id + '">'
+                + (lcIsOutsource(c) ? '[Out Source] ' : '') + _mvpEsc(lcPickerLabel(c))
                 + ' (remaining ₱' + formatNum(lcStats(c).remaining) + ')</option>')).join('');
-        if (cur && expLaborContracts.some(c => c.id === cur)) sel.value = cur;
+        if (cur && ordered.some(c => c.id === cur)) sel.value = cur;
     }
 
     const list = document.getElementById('payContractList');
     if (list) {
         const keep = new Set(lcCheckedContractIds());   // survive a live-data refresh mid-entry
-        list.innerHTML = expLaborContracts.map(c => {
+        list.innerHTML = ordered.map(c => {
             const st = lcStats(c);
             const on = keep.has(c.id);
+            const os = lcIsOutsource(c);
             return '<label class="exp-funding-check-item' + (on ? ' is-checked' : '') + '">'
                 + '<input type="checkbox" name="payContractPick" value="' + c.id + '"' + (on ? ' checked' : '')
                 + ' onchange="payContractCheckChanged(this)">'
-                + '<span class="exp-funding-check-item__label">' + _mvpEsc(lcPickerLabel(c)) + '</span>'
+                + '<span class="exp-funding-check-item__label">'
+                + (os ? '<span class="lc-oc-badge">OUT SOURCE</span> ' : '')
+                + _mvpEsc(lcPickerLabel(c)) + '</span>'
                 + '<span class="exp-funding-check-item__remain' + (st.remaining <= 0 ? ' is-settled' : '')
                 + '">₱' + formatNum(st.remaining) + ' left</span>'
                 + '</label>';

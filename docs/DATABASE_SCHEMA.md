@@ -128,7 +128,7 @@ Hierarchy: **`folders` → `projects` (a month) → `expenses` / `payroll`**. Mo
 | `coverExpense?` / `splitGroup?` / `splitIndex?` / `splitTotal?` | — | as expenses |
 | `createdAt` | ts | |
 
-### `laborContracts/{id}` → `labor_contracts` — pakyaw / in-house capped pay (migration 0014)
+### `laborContracts/{id}` → `labor_contracts` — pakyaw / in-house capped pay (migration 0014; `category` 0057)
 | Field | Type | Notes |
 |---|---|---|
 | `userId`, `folderId` | string | folder-scoped (spans every billing period inside it) |
@@ -137,6 +137,7 @@ Hierarchy: **`folders` → `projects` (a month) → `expenses` / `payroll`**. Mo
 | `orientationDate` | string | migration 0040 — **column exists but nothing writes it**; the agreement fills `ack_orientation_date` with **today's date at print time** (no date picker) |
 | `agreedAmount` | number | the cap; payroll rows draw it down via `payroll.contractId` |
 | `payType` | string | `pakyaw` \| `inhouse` (label only) |
+| `category` | string | migration 0057 — `labor` (in-house worker, the default) \| `outsource` (outside vendor, supply & install). **Same table, two kinds**, exactly as `pm_labor_contracts.category` (0016) splits the PM twin. Outsource rows are drawn down by the same `payroll.contractId` path and land in the **Labor** bucket — Out Source is *not* a fourth bucket, and the money invariants are unchanged. The in-house vs outsourced split in the Worker Tracker is derived at read time from this column, never stamped on the payroll row. Every list-render site must filter on it or vendor contracts leak into the labor screens |
 | `status` | string | `ongoing` \| `completed` |
 | `capHistory` | json | `[{amount, at, note}]` when the cap is raised |
 | `agreementSigned`, `agreementSignedAt`, `agreementSignature`, `agreementPdfUrl`, `agreementPdfName` | — | signed Worker Agreement (migration 0023) |

@@ -90,6 +90,15 @@ this project's Turnstile captcha check — Turnstile has no native Android SDK. 
 stands in for the captcha on that path; note GoTrue's own per-IP limit is useless there, since it
 sees the Edge Function's IP for every worker. Apply this **before** deploying the function.
 
+**`0057_labor_contract_category.sql` — applied by hand (2026-08-25), file written after the fact.**
+Adds `labor_contracts.category` ('labor' | 'outsource') for Project Control Out Source contracts,
+the twin of what 0016 did to `pm_labor_contracts`. The user ran the SQL in the editor before the
+file existed, so it will NOT appear in `supabase_migrations.schema_migrations` — check the column
+itself, not that table. Every statement is idempotent (`add column if not exists`, guarded
+`update`, `create index if not exists`), so re-running the file over the hand-applied change is
+safe. **Confirm the live column matches the file** (name `category`, `text`, default `'labor'`)
+before trusting the Out Source screens.
+
 Get the truth before relying on this line:
 
 ```sql
