@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="css/overhead-module.css">
     <!-- Client Reimbursement Tracker Styles -->
     <link rel="stylesheet" href="css/reimbursement-module.css">
+    <link rel="stylesheet" href="css/attendance-admin.css">
     <!-- Warranty Retention Register + Fund Styles -->
     <link rel="stylesheet" href="css/warranty-fund.css?v=20260803f">
     <!-- Construction Module Styles -->
@@ -2576,6 +2577,11 @@
         <!-- ════════════ QUOTATIONS ════════════ -->
         <!-- Rendered dynamically by js/quotation-module.js -->
         <div id="quoteListView"     class="content-view" style="display: none;"></div>
+
+        <!-- Attendance — rendered dynamically by js/attendance-admin.js.
+             attWorker is the drill-down from a row in attToday. -->
+        <div id="attTodayView"      class="content-view" style="display: none;"></div>
+        <div id="attWorkerView"     class="content-view" style="display: none;"></div>
         <div id="quoteEditorView"   class="content-view" style="display: none;"></div>
         <div id="quoteRevisionView" class="content-view" style="display: none;"></div>
 
@@ -5036,6 +5042,7 @@
 <script src="js/construction-module.js"></script>
 <script src="js/boq-module.js"></script>
 <script src="js/quotation-module.js"></script>
+<script src="js/attendance-admin.js"></script>
 <script src="js/quotation-print.js"></script>
 <script src="js/user-navigator.js"></script>
 <script src="js/client-accounts.js"></script>
@@ -5782,6 +5789,7 @@
     const UN_VIEWS   = ['userNavigator','clientAccounts'];
     const PM_VIEWS   = ['pmProjects','pmWorkspace'];
     const QUOTE_VIEWS = ['quoteList','quoteEditor','quoteRevision'];
+    const ATT_VIEWS   = ['attToday','attWorker'];
     const TITLES = {
         dashboard:        'Dashboard',
         appointments:     'Appointments',
@@ -5810,6 +5818,8 @@
         quoteList:        'Quotations',
         quoteEditor:      'Quotation',
         quoteRevision:    'Quotation Revision',
+        attToday:         "Today's Attendance",
+        attWorker:        'Worker Attendance',
     };
 
     window.switchView = function(view) {
@@ -5927,6 +5937,7 @@
         if (view === 'laborInvoices'   && typeof initLaborInvoiceModule === 'function') initLaborInvoiceModule();
         if (PM_VIEWS.includes(view)   && typeof initPMModule       === 'function') initPMModule(view);
         if (QUOTE_VIEWS.includes(view) && typeof initQuotationModule === 'function') initQuotationModule(view);
+        if (ATT_VIEWS.includes(view)   && typeof initAttendanceModule === 'function') initAttendanceModule(view);
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     };

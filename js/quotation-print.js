@@ -919,6 +919,186 @@
                  pageW - M, y, { align: 'right' });
         doc.setTextColor(0, 0, 0);
 
+        // ── Everything below the totals ──────────────────────────────
+        // The PDF used to stop at the VAT note, so the exported file was
+        // missing the terms, the signatures, the payment details and the small
+        // print — i.e. every part a client actually acts on. Added 2026-08-26.
+        // Each block mirrors its HTML twin (qtTermsHtml, qtSigHtml,
+        // qtPaymentHtml and the .p-disc footer) so the two sheets can't say
+        // different things; change one and change the other.
+        const pageH = doc.internal.pageSize.getHeight();
+        const CONTENT_W = pageW - 2 * M;
+        // Adds a page when the next block will not fit whole. Blocks are small
+        // enough that this never has to split one across pages.
+        const need = (h) => { if (y + h > pageH - M - 4) { doc.addPage(); y = M; } };
+
+        // ── Terms ────────────────────────────────────────────────────
+        const t = d.terms || {};
+        const termBlocks = [
+            ['VALIDITY',          t.validityNote],
+            ['PAYMENT TERMS',     t.payment],
+            ['DELIVERY TIMELINE', t.deliveryTimeline],
+            ['WARRANTY',          t.warranty],
+            ['EXCLUSIONS',        t.exclusions]
+        ].filter((b) => String(b[1] || '').trim());
+        const conds = (t.conditions || []).filter((c) => c.include !== false);
+
+        // Measure EVERY term block before drawing any of them, so the group can
+        // move to a fresh page as ONE unit. Breaking per block strands PAYMENT
+        // TERMS at the foot of a page with WARRANTY and EXCLUSIONS overleaf —
+        // the terms read as one section and have to stay together.
+        doc.setFont('helvetica', 'normal').setFontSize(7.5);
+        const measured = termBlocks.map(function (b) {
+            const lines = [];
+            String(b[1]).split('\n').forEach(function (raw) {
+                // A blank line in the source is a deliberate gap — keep it.
+                if (!raw.trim()) { lines.push(''); return; }
+                doc.splitTextToSize(raw, CONTENT_W).forEach((l) => lines.push(l));
+            });
+            return { title: b[0], lines: lines, h: 4 + lines.length * 3.3 + 2.4 };
+        });
+        // Rough allowance for the conditions list, measured the same way.
+        let condsH = 0;
+        const condLines = conds.map(function (c) {
+            const ls = doc.splitTextToSize((c.title ? c.title + ' ' : '') + (c.body || ''),
+                                           CONTENT_W - 6);
+            condsH += ls.length * 3.3 + 1.6;
+            return ls;
+        });
+        if (conds.length) condsH += 5;
+        const termsH = measured.reduce((s, m) => s + m.h, 0) + condsH;
+
+        if (measured.length || conds.length) {
+            y += 5;
+            // Only worth moving as a unit if it can actually fit on a fresh
+            // page. A terms list taller than a page still falls back to
+            // per-block breaks below rather than looping forever.
+            if (termsH <= pageH - 2 * M) need(termsH);
+        }
+
+        measured.forEach(function (m) {
+            need(m.h);                      // a no-op when the group already moved
+            doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(26, 26, 46);
+            doc.text(m.title, M, y);
+            y += 4;
+            doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(55, 65, 81);
+            m.lines.forEach(function (l) { if (l) doc.text(l, M, y); y += 3.3; });
+            y += 2.4;
+        });
+
+        if (conds.length) {
+            need(8);
+            doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(26, 26, 46);
+            doc.text('GENERAL TERMS & CONDITIONS', M, y);
+            y += 4;
+            conds.forEach(function (c, i) {
+                doc.setFont('helvetica', 'normal').setFontSize(7.5);
+                const lines = condLines[i];     // measured with the group above
+                need(lines.length * 3.3 + 2);
+                doc.setTextColor(55, 65, 81);
+                doc.text(String(i + 1) + '.', M, y);
+                lines.forEach(function (l, li) { doc.text(l, M + 5, y + li * 3.3); });
+                y += lines.length * 3.3 + 1.6;
+            });
+            y += 1;
+        }
+
+        // ── Signatures ───────────────────────────────────────────────
+        // Same gate as the sheet: no signOff object means a document written
+        // before the switches existed, and it must not grow a block now.
+        const so = (d.terms && d.terms.signOff) || null;
+        if (so) {
+            const sigCols = [];
+            if (qtSigOn(so, 'prepared') && String(d.preparedBy || '').trim()) {
+                sigCols.push({ name: d.preparedBy, role: 'Prepared By', signed: false });
+            }
+            if (qtSigOn(so, 'submitted')) {
+                sigCols.push({ name: d.submittedBy || d.preparedBy || COMPANY.name,
+                               role: 'Submitted By', signed: true });
+            }
+            if (qtSigOn(so, 'client')) {
+                sigCols.push({ name: d.clientName || '', role: 'Client Approval / Date', signed: false });
+            }
+            if (sigCols.length) {
+                // Only fetched when a column actually carries it, and a failed
+                // load resolves null — a missing file must never lose the names.
+                const sigImg = sigCols.some((c) => c.signed)
+                    ? await qtLoadImageData(base + 'assets/images/dacs-signature.png') : null;
+                const imgH  = sigImg ? 13 : 0;
+                need(imgH + 18);
+                y += 7;
+                const colW  = CONTENT_W / sigCols.length;
+                const lineY = y + imgH + 1;
+                sigCols.forEach(function (c, i) {
+                    const left = M + colW * i, cx = left + colW / 2;
+                    if (c.signed && sigImg) {
+                        const w = imgH * (sigImg.w / sigImg.h);
+                        doc.addImage(sigImg.url, 'PNG', cx - w / 2, lineY - imgH, w, imgH);
+                    }
+                    doc.setDrawColor(130, 130, 130).setLineWidth(0.3);
+                    doc.line(left + 5, lineY, left + colW - 5, lineY);
+                    doc.setFont('helvetica', 'bold').setFontSize(8.5).setTextColor(26, 26, 46);
+                    doc.text(c.name || ' ', cx, lineY + 4.2, { align: 'center' });
+                    doc.setFont('helvetica', 'normal').setFontSize(6.8).setTextColor(110, 110, 110);
+                    doc.text(c.role, cx, lineY + 8, { align: 'center' });
+                });
+                y = lineY + 12;
+            }
+        }
+
+        // ── Payment details ──────────────────────────────────────────
+        // An account with no number is not payable — print nothing rather than
+        // a labelled empty box. Same rule as the sheet.
+        if (PAYMENT.show && String(PAYMENT.number || '').trim()) {
+            const qr  = PAYMENT.qr ? await qtLoadImageData(base + PAYMENT.qr) : null;
+            const qrW = qr ? Math.min(PAYMENT.qrWidthMm || 55, CONTENT_W * 0.42) : 0;
+            const qrH = qr ? qrW * (qr.h / qr.w) : 0;
+            const notes = [PAYMENT.note, PAYMENT.remind].filter(Boolean);
+            const textH = 6 + 3 * 4.6 + notes.length * 3.4 + 5;
+            const boxH  = Math.max(qrH + 7, textH);
+            need(boxH + 6);
+            y += 4;
+            doc.setDrawColor(205, 205, 205).setLineWidth(0.3);
+            doc.rect(M, y, CONTENT_W, boxH);
+
+            let ty = y + 6;
+            doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(26, 26, 46);
+            doc.text('PAYMENT DETAILS', M + 5, ty);
+            ty += 5.4;
+            [['Bank', PAYMENT.bank], ['Account Name', PAYMENT.name],
+             ['Account No.', PAYMENT.number]].forEach(function (r) {
+                doc.setFont('helvetica', 'normal').setFontSize(7).setTextColor(120, 120, 120);
+                doc.text(String(r[0]).toUpperCase(), M + 5, ty);
+                doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(31, 41, 55);
+                doc.text(String(r[1] || ''), M + 33, ty);
+                ty += 4.6;
+            });
+            if (notes.length) {
+                ty += 1.2;
+                doc.setFont('helvetica', 'italic').setFontSize(6.2).setTextColor(120, 120, 120);
+                notes.forEach(function (n) {
+                    doc.splitTextToSize(String(n), CONTENT_W - qrW - 14).forEach(function (l) {
+                        doc.text(l, M + 5, ty); ty += 3.1;
+                    });
+                });
+            }
+            if (qr) doc.addImage(qr.url, 'PNG', pageW - M - qrW - 4, y + (boxH - qrH) / 2, qrW, qrH);
+            y += boxH;
+        }
+
+        // ── Small print ──────────────────────────────────────────────
+        const stamp = new Date().toLocaleString('en-PH', { year: 'numeric', month: 'long',
+            day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
+        const discText = 'This is a price proposal, not a contract, and is not legally binding. '
+            + 'Prices hold until the validity date shown above and are subject to change thereafter. '
+            + 'A formal contract is issued upon approval.   |   Printed on ' + stamp;
+        doc.setFont('helvetica', 'italic').setFontSize(6).setTextColor(130, 130, 130);
+        const dLines = doc.splitTextToSize(discText, CONTENT_W);
+        need(dLines.length * 2.8 + 6);
+        y += 5;
+        dLines.forEach(function (l) { doc.text(l, pageW / 2, y, { align: 'center' }); y += 2.8; });
+        doc.setTextColor(0, 0, 0);
+
         const name = `${(d.quoteNo || 'quotation')}${d.revNo > 1 ? '-rev' + d.revNo : ''}.pdf`;
         doc.save(name.replace(/[^\w.\-]/g, '_'));
     }
