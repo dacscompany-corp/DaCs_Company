@@ -379,8 +379,10 @@
             id: null,
             quoteNo: qtNextQuoteNo(qtState.list), revNo: 1,
             quoteDate: today, validUntil,
-            clientName: '', clientEmail: '', clientAddress: '', clientTin: '',
-            projectName: '', location: '', subject: 'Project Estimate', scopeNote: '',
+            clientName: '', clientEmail: '', clientAddress: '',
+            // area (0058) replaced clientTin on the sheet. Free-form — "4 SQM",
+            // "120 sqm (2 floors)". Nothing computes with it.
+            projectName: '', location: '', area: '', subject: 'Project Estimate', scopeNote: '',
             images: [],          // document-level renders/photos, max QT_MAX_IMAGES
             showLinePricing: true,   // print unit price + line amounts (0047)
             showLogo: true,          // print the logo in the header (0048)
@@ -535,8 +537,8 @@
             quoteNo: q.quoteNo, revNo: q.revNo,
             quoteDate: q.quoteDate, validUntil: q.validUntil,
             clientName: q.clientName, clientEmail: q.clientEmail,
-            clientAddress: q.clientAddress, clientTin: q.clientTin,
-            projectName: q.projectName, location: q.location,
+            clientAddress: q.clientAddress,
+            projectName: q.projectName, location: q.location, area: q.area,
             subject: q.subject, scopeNote: q.scopeNote,
             images: JSON.parse(JSON.stringify(q.images || [])),
             showLinePricing: q.showLinePricing !== false,
@@ -895,8 +897,6 @@
                     <div class="qt-section-title">Client<span id="qtClientPresetBar"></span></div>
                     <div class="qt-form-grid-wide">
                         ${qtField('Client name', 'clientName')}
-                        ${qtField('TIN', 'clientTin', 'text',
-                                  'placeholder="000-000-000-000"', { hint: 'optional' })}
                         ${qtField('Address', 'clientAddress', 'text', 'placeholder="Street, barangay, city"')}
                         ${qtField('Email', 'clientEmail', 'email', 'placeholder="name@email.com"')}
                     </div>
@@ -907,6 +907,8 @@
                     <div class="qt-form-grid-wide">
                         ${qtField('Project name', 'projectName')}
                         ${qtField('Location', 'location')}
+                        ${qtField('Area', 'area', 'text', 'placeholder="e.g. 4 SQM"',
+                                  { hint: 'prints in the sheet header' })}
                         ${qtField('Subject', 'subject', 'text', '',
                                   { span: true, hint: "prints as the sheet's subject line" })}
                         <div class="qt-form-group qt-span-2">
@@ -1047,8 +1049,11 @@
             quoteNo: q.quoteNo, revNo: q.revNo,
             quoteDate: q.quoteDate || null, validUntil: q.validUntil || null,
             clientName: q.clientName, clientEmail: q.clientEmail,
-            clientAddress: q.clientAddress, clientTin: q.clientTin,
-            projectName: q.projectName, location: q.location,
+            // clientTin is deliberately absent since 0058 — Area took its place on
+            // the sheet. The column still exists and keeps whatever old rows hold;
+            // omitting it here just means the save never touches it.
+            clientAddress: q.clientAddress,
+            projectName: q.projectName, location: q.location, area: q.area || '',
             subject: q.subject, scopeNote: q.scopeNote,
             images: q.images || [],
             showLinePricing: q.showLinePricing !== false,
@@ -1133,8 +1138,11 @@
         const q = qtState.current;
         let data, suggested;
         if (kind === 'client') {
+            // No `area` here on purpose: area describes the JOB, not the client.
+            // A client preset reused across three projects must not drag one
+            // project's floor area onto the other two.
             data = { clientName: q.clientName, clientEmail: q.clientEmail,
-                     clientAddress: q.clientAddress, clientTin: q.clientTin };
+                     clientAddress: q.clientAddress };
             suggested = q.clientName || 'Client';
         } else {
             const sec = qtSections()[sIdx];
