@@ -732,19 +732,29 @@
 
         // ── Document info box — black labels, matching the print sheet ──
         const metaRows = [
-            ['CLIENT',   d.clientName  || ''],
-            ['PROJECT',  d.projectName || ''],
-            ['LOCATION', d.location    || ''],
-            ['QUOTE NO.', (d.quoteNo || '') + (d.revNo > 1 ? ' (Rev ' + d.revNo + ')' : '')],
-            ['DATE',       qtPrettyDate(d.quoteDate)],
-            ['VALID UNTIL',qtPrettyDate(d.validUntil)]
+            // TWO columns of label/value, exactly like the sheet's p-meta table.
+            // It used to stack all six in one column AND omit Address and Area,
+            // so the PDF and the printed sheet showed different header blocks.
+            ['CLIENT',   d.clientName  || '', 'QUOTE NO.',
+             (d.quoteNo || '') + (d.revNo > 1 ? ' (Rev ' + d.revNo + ')' : '')],
+            ['PROJECT',  d.projectName || '', 'DATE',        qtPrettyDate(d.quoteDate)],
+            ['LOCATION', d.location    || '', 'VALID UNTIL', qtPrettyDate(d.validUntil)]
         ];
+        // Same gate as the sheet: the row is skipped when both cells are empty,
+        // so a quotation written before Area existed (0058) prints unchanged.
+        if (d.clientAddress || d.area) {
+            metaRows.push(['ADDRESS', d.clientAddress || '', 'AREA', d.area || '']);
+        }
+        const metaLabel = { cellWidth: 25, fillColor: [17, 17, 17],
+                            textColor: [255, 255, 255], fontStyle: 'bold' };
         doc.autoTable({
             startY: y, margin: { left: M, right: M },
             body: metaRows, theme: 'grid',
             styles: { fontSize: 7.5, cellPadding: 1.4, lineColor: [17, 17, 17], lineWidth: 0.2 },
-            columnStyles: { 0: { cellWidth: 26, fillColor: [17, 17, 17], textColor: [255, 255, 255], fontStyle: 'bold' },
-                            1: { cellWidth: 'auto', fontStyle: 'bold' } }
+            columnStyles: { 0: metaLabel,
+                            1: { cellWidth: 'auto', fontStyle: 'bold' },
+                            2: Object.assign({}, metaLabel),
+                            3: { cellWidth: 46, fontStyle: 'bold' } }
         });
         y = doc.lastAutoTable.finalY + 3;
 
@@ -799,7 +809,11 @@
         const descSpan = rates ? 4 : 3;
         const body = [], rowKind = [];
         (d.sections || []).forEach((sec, si) => {
-            body.push([{ content: `${si + 1}. ${sec.label || 'SECTION'}`, colSpan: descSpan + 1 },
+            // Uppercased to match the sheet, where `tr.p-l1 td` carries
+            // text-transform:uppercase — a label stored as "general
+            // requirements" printed lowercase here and SHOUTED there.
+            body.push([{ content: `${si + 1}. ${String(sec.label || 'SECTION').toUpperCase()}`,
+                         colSpan: descSpan + 1 },
                        { content: fmt(window.qtSectionTotal(sec)), styles: { halign: 'right' } }]);
             rowKind.push('l1');
             const lump = sec.pricing === 'lump';
