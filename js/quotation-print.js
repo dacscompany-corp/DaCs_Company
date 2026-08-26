@@ -115,17 +115,41 @@
         return map;
     }
 
-    // What a group / sub-item row prints in the AMOUNT column: NOTHING, in
-    // every pricing mode. The section row carries the only sub-total on the
-    // sheet — a per-group figure beside it read to clients as a separate
-    // charge on top of the section, not as a breakdown of it.
+    // What a group / sub-item row prints in the AMOUNT column.
     //
-    // This deliberately drops the earlier "a LOT section prints its groups as
-    // a breakdown" shape (spec §7 in quotation-module.js). Owner's call,
-    // 2026-08-06. Only the printed cell changed: qtSectionTotal still sums the
-    // group lump amounts when a LOT section has no amount of its own, so the
-    // section row and the TOTAL are unaffected.
-    function qtGroupPrintAmount() { return ''; }
+    // The rule is ARITHMETIC, not cosmetic: a group amount prints only when the
+    // groups genuinely ADD UP to the section total shown beside them. If they
+    // do, the client reads a breakdown. If they don't, the client reads a
+    // separate charge stacked on top of the section — which is exactly what
+    // went wrong before, and why every group cell was blanked outright on
+    // 2026-08-06 (owner's call). Restored with the adding-up condition
+    // attached, owner's call 2026-08-26.
+    //
+    // Mirrors qtSectionTotal in quotation-module.js exactly — if that changes,
+    // this has to change with it:
+    //   · LOT section WITH its own lumpAmount → that figure wins and the groups
+    //     beneath it are not its breakdown → print nothing.
+    //   · LOT section WITHOUT one            → the section IS the sum of the
+    //     group lump amounts → print each one.
+    //   · Rated section                      → the section IS the sum of the
+    //     group line totals → print each one.
+    // A zero prints blank: a "BY OWNER" group reading 0.00 is noise, and the
+    // WAIVED marker on its lines already says it.
+    //
+    // Both render paths call this — the HTML sheet and the jsPDF export — so
+    // they can never drift apart.
+    function qtGroupPrintAmount(sec, g) {
+        if (!sec || !g) return '';
+        let v;
+        if (sec.pricing === 'lump') {
+            const own = sec.lumpAmount;
+            if (own !== '' && own !== null && own !== undefined) return '';
+            v = window.qtParseNum(g.lumpAmount);
+        } else {
+            v = window.qtGroupTotal(g);
+        }
+        return v ? window.qtFmt(v) : '';
+    }
 
     // ── Table rows ────────────────────────────────────────────────────
     // `imgMap` maps each stored image URL to a short-lived signed one, resolved
@@ -222,9 +246,15 @@
             </tr>`;
 
             (sec.groups || []).forEach(g => {
+                // A group may carry its own qty / unit (optional, presentation
+                // only — never multiplied by anything). Blank prints an empty
+                // cell, which is the common case, so the label keeps the room.
                 html += `<tr class="p-l2">
                     <td></td>
-                    <td class="c-desc" colspan="${descSpan}">${esc(g.label || '')}</td>
+                    <td class="c-desc">${esc(g.label || '')}</td>
+                    <td class="c-qty">${esc(g.qty || '')}</td>
+                    <td class="c-unit">${esc(g.unit || '')}</td>
+                    ${rates ? '<td class="c-rate"></td>' : ''}
                     <td class="c-amt">${qtGroupPrintAmount(sec, g)}</td>
                 </tr>`;
 
@@ -774,8 +804,12 @@
             rowKind.push('l1');
             const lump = sec.pricing === 'lump';
             (sec.groups || []).forEach(g => {
-                body.push(['', { content: g.label || '', colSpan: descSpan },
-                           { content: qtGroupPrintAmount(sec, g), styles: { halign: 'right' } }]);
+                // Same shape as a line row so the optional group qty / unit land
+                // under the right headings. Empty strings print empty cells.
+                const grow = ['', g.label || '', g.qty || '', g.unit || ''];
+                if (rates) grow.push('');
+                grow.push({ content: qtGroupPrintAmount(sec, g), styles: { halign: 'right' } });
+                body.push(grow);
                 rowKind.push('l2');
                 (g.lines || []).forEach(l => {
                     const st = l.state || 'normal';

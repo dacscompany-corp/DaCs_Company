@@ -56,8 +56,8 @@ const src = read('js/quotation-module.js');
 const M = evalWith(
   slice(src, '// ==== QT CALC ENGINE START ====', '// ==== QT CALC ENGINE END ====', 'quotation-module.js'),
   { window: {} },
-  ['qtParseNum','qtLineAmount','qtRawLineAmount','qtGroupTotal','qtSectionTotal','qtProjectCost',
-   'qtDiscountAmount','qtSubTotal','qtVatAmount','qtGrandTotal','qtIsExpired',
+  ['qtParseNum','qtFmt','qtLineAmount','qtRawLineAmount','qtGroupTotal','qtSectionTotal',
+   'qtProjectCost','qtDiscountAmount','qtSubTotal','qtVatAmount','qtGrandTotal','qtIsExpired',
    'qtNextQuoteNo','qtFlattenLines','qtDiffSnapshots','qtTodayKey']
 );
 
@@ -280,6 +280,98 @@ test('diff detects a deleted line', () => {
 });
 test('diff reports the net peso delta between revisions', () => {
   eq(M.qtDiffSnapshots(revA, revB).delta, 64500 - 88806);
+});
+
+// ── Printed group amounts must ADD UP to the section beside them ─────
+// qtGroupPrintAmount (js/quotation-print.js) prints a group's amount only when
+// the groups are genuinely the section's breakdown. Print one that ISN'T and
+// the client reads it as a charge stacked on top of the section total — that is
+// what got every group cell blanked outright on 2026-08-06.
+//
+// The rule mirrors qtSectionTotal. These tests fail the moment the two drift.
+const P = evalWith(
+  slice(read('js/quotation-print.js'),
+        'function qtGroupPrintAmount', '// ── Table rows', 'quotation-print.js'),
+  { window: { qtParseNum: M.qtParseNum, qtGroupTotal: M.qtGroupTotal, qtFmt: M.qtFmt } },
+  ['qtGroupPrintAmount']
+);
+
+// Sums what the sheet actually PRINTS for a section's groups.
+const printedGroupSum = (sec) => (sec.groups || []).reduce((s, g) => {
+  const cell = P.qtGroupPrintAmount(sec, g);
+  return s + (cell === '' ? 0 : M.qtParseNum(cell));
+}, 0);
+
+const gLump = (id, amt) => ({ id, label: id, lumpAmount: amt, lines: [] });
+const gRated = (id, ...ls) => ({ id, label: id, lumpAmount: '', lines: ls });
+
+test('LOT section with its own amount prints NO group amounts', () => {
+  // 25,000 + 25,000 beside a 100,000 section is the 2026-08-06 misread.
+  const sec = { id: 'S', pricing: 'lump', lumpAmount: 100000,
+                groups: [gLump('D', 25000), gLump('H', 25000)] };
+  eq(P.qtGroupPrintAmount(sec, sec.groups[0]), '');
+  eq(P.qtGroupPrintAmount(sec, sec.groups[1]), '');
+  eq(printedGroupSum(sec), 0, 'nothing printed');
+});
+
+test('LOT section with NO amount of its own prints each group', () => {
+  const sec = { id: 'S', pricing: 'lump', lumpAmount: '',
+                groups: [gLump('D', 25000), gLump('H', 75000)] };
+  eq(printedGroupSum(sec), M.qtSectionTotal(sec), 'groups must foot to the section');
+  eq(M.qtSectionTotal(sec), 100000);
+});
+
+test('rated section prints each group, and they foot to the section', () => {
+  const sec = { id: 'S', pricing: 'rated', lumpAmount: '',
+                groups: [gRated('A', line('mob', 1, 5000), line('del', 1, 5000)),
+                         gRated('H', line('pm', 1, 40000))] };
+  eq(printedGroupSum(sec), M.qtSectionTotal(sec), 'groups must foot to the section');
+  eq(M.qtSectionTotal(sec), 50000);
+});
+
+test('a zero group prints blank, not 0.00 — BY OWNER rows stay quiet', () => {
+  const sec = { id: 'S', pricing: 'lump', lumpAmount: '',
+                groups: [gLump('D', 25000), gLump('E', ''), gLump('F', 0)] };
+  eq(P.qtGroupPrintAmount(sec, sec.groups[1]), '', 'empty group');
+  eq(P.qtGroupPrintAmount(sec, sec.groups[2]), '', 'zero group');
+  eq(printedGroupSum(sec), 25000);
+});
+
+test('waived lines do not inflate a printed rated group', () => {
+  const waived = { ...line('by owner', 1, 9999), state: 'waived' };
+  const sec = { id: 'S', pricing: 'rated', lumpAmount: '',
+                groups: [gRated('B', waived), gRated('D', line('haul', 1, 5000))] };
+  eq(P.qtGroupPrintAmount(sec, sec.groups[0]), '', 'all-waived group prints blank');
+  eq(printedGroupSum(sec), M.qtSectionTotal(sec), 'still foots');
+  eq(M.qtSectionTotal(sec), 5000);
+});
+
+// ── A group's optional qty / unit are LABELS, never multipliers ──────
+// Groups may carry their own qty and unit so the sheet can read
+// "Clearing & Hauling — 2 lot — 25,000.00". They are presentation only: a
+// group's money is its lumpAmount, or the sum of its lines. If qty ever starts
+// multiplying, a quotation silently doubles.
+test('group qty does NOT multiply a LOT group amount', () => {
+  const sec = { id: 'S', pricing: 'lump', lumpAmount: '',
+                groups: [{ id: 'D', label: 'Clearing & Hauling',
+                           qty: 5, unit: 'lot', lumpAmount: 25000, lines: [] }] };
+  eq(M.qtSectionTotal(sec), 25000, 'qty 5 must not make it 125,000');
+  eq(P.qtGroupPrintAmount(sec, sec.groups[0]), M.qtFmt(25000));
+});
+
+test('group qty does NOT multiply a rated group total', () => {
+  const sec = { id: 'S', pricing: 'rated', lumpAmount: '',
+                groups: [{ id: 'A', label: 'Mobilization', qty: 3, unit: 'set',
+                           lumpAmount: '', lines: [line('mob', 1, 5000)] }] };
+  eq(M.qtGroupTotal(sec.groups[0]), 5000, 'qty 3 must not make it 15,000');
+  eq(M.qtSectionTotal(sec), 5000);
+});
+
+test('a group with no qty / unit still totals normally', () => {
+  const sec = { id: 'S', pricing: 'lump', lumpAmount: '',
+                groups: [{ id: 'D', label: 'Clearing', lumpAmount: 25000, lines: [] }] };
+  eq(M.qtSectionTotal(sec), 25000);
+  eq(P.qtGroupPrintAmount(sec, sec.groups[0]), M.qtFmt(25000));
 });
 
 // ── Summary ──────────────────────────────────────────────────────────

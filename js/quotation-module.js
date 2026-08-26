@@ -1463,7 +1463,13 @@
         qtMarkDirty(); qtRenderSections(); qtRenderTotals();
     };
     window.qtAddGroup = function (sIdx) {
-        qtSections()[sIdx].groups.push({ id: qtNewId(), label: '', lumpAmount: '', lines: [] });
+        // qty / unit are OPTIONAL and PRESENTATION ONLY — they print in the
+        // QTY / UNIT columns beside the group label and are never multiplied by
+        // anything. A group's money is its lumpAmount (LOT) or the sum of its
+        // lines; setting qty 2 does NOT double it. Blank prints an empty cell.
+        qtSections()[sIdx].groups.push({
+            id: qtNewId(), label: '', qty: '', unit: '', lumpAmount: '', lines: []
+        });
         qtMarkDirty(); qtRenderSections(); qtRenderTotals();
     };
     window.qtAddLine = function (sIdx, gIdx) {
@@ -1642,6 +1648,10 @@
         ${hasLumpAmount ? `
         <tr class="qt-row-note"><td colspan="${QT_COLS}">
             This section is priced as one LOT. The group amounts below are working figures only — they do <strong>not</strong> add to the total, and they are <strong>not</strong> printed on the client's sheet.
+            <br><strong>Clear the LOT amount above</strong> to make the groups the breakdown instead: the section then adds up from them and each one prints.
+        </td></tr>` : isLump ? `
+        <tr class="qt-row-note"><td colspan="${QT_COLS}">
+            This section <strong>adds up from the group amounts</strong> below, and each one <strong>prints</strong> on the client's sheet. Type a LOT amount above to price it as a single figure instead.
         </td></tr>` : ''}
         ${(sec.groups || []).map((g, gi) => qtGroupRows(sec, si, g, gi)).join('')}
         <tr class="qt-row-subtotal">
@@ -1662,11 +1672,17 @@
         return `
         <tr class="qt-row-l2">
             <td class="qt-col-no qt-l2-no">${qtAlpha(gi)}.</td>
-            <td class="qt-col-desc" colspan="3">
+            <td class="qt-col-desc">
                 <input class="qt-label-input" placeholder="Group / sub-item"
                        value="${qtEscHtml(g.label)}"
                        oninput="qtSetNodeField('group',${si},${gi},0,'label',this.value)">
             </td>
+            <td class="qt-col-qty"><input class="qt-cell-input qt-center" placeholder="—"
+                       value="${qtEscHtml(g.qty || '')}"
+                       oninput="qtSetNodeField('group',${si},${gi},0,'qty',this.value)"></td>
+            <td class="qt-col-unit"><input class="qt-cell-input qt-center" placeholder="—"
+                       value="${qtEscHtml(g.unit || '')}"
+                       oninput="qtSetNodeField('group',${si},${gi},0,'unit',this.value)"></td>
             <td class="qt-col-rate qt-amt">${isLump ? `
                 <input class="qt-cell-input qt-amt" placeholder="Amount"
                        value="${qtEscHtml(g.lumpAmount)}"
