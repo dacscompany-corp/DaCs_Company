@@ -303,8 +303,10 @@ client-read policy; the client never sees this inside the system.
 | `revNo` | number | current revision number, starts at 1 |
 | `quoteDate` | string | `YYYY-MM-DD` (a real `date` column) |
 | `validUntil` | string | `YYYY-MM-DD` (a real `date` column). Drives the **computed** `expired` state — nothing ever writes it; the app derives `status === 'sent' && validUntil < today` |
-| `clientName`, `clientEmail`, `clientAddress`, `clientTin` | string | |
+| `clientName`, `clientEmail`, `clientAddress` | string | |
+| `clientTin` | string | **Retired by 0058** — Area took its cell on the printed sheet. The column is **not dropped** (old rows may hold a TIN) but nothing writes it: it is absent from the save payload, the revision snapshot, the client preset and the editor form. A client TIN belongs on an **invoice**, which has its own — see `invoices.clientTin`. Re-adding it is a UI change, not a migration |
 | `projectName`, `location`, `subject`, `scopeNote` | string | header |
+| `area` | string | **(0058)** floor area as it prints in the sheet header, in the cell TIN used to occupy. **Free-form text, not numeric** — real headers read `4 SQM`, `120 sqm (2 floors)`, `38 sqm GFA`. Nothing computes with it and **no rate is ever derived from it**; quotations stay outside the money model (0045). Absent on rows and revision snapshots written before 0058, and the header row is skipped when both it and `clientAddress` are empty, so older quotes print exactly as they always did — **no backfill needed**. Deliberately **not** part of a `client` preset: area describes the job, not the client |
 | `images` | json | **(0046)** document-level reference renders/photos `[{ url, name, caption }]`, printed **once** above the itemized estimate. Capped at **4 by the UI** (`QT_MAX_IMAGES`), not by the DB — trimming a 5th belongs where the user can be told. Supersedes the per-section `images` from 0045; the module hoists legacy ones on open (`qtHoistLegacyImages`) and the print sheet falls back to them for revision snapshots frozen before 0046 |
 | `sections` | json | 3-level tree: `[{ id, label, pricing, lumpAmount, groups:[{ id, label, lumpAmount, lines:[{ id, description, qty, unit, unitPrice, state }] }] }]`. One client-facing rate per line — deliberately **no** material/labor split; that is internal costing and belongs in the BOQ, never on a document a client reads. Rows written before 0046 may still carry a per-section `images:[]` — read-only legacy, see `images` above |
 | `showLinePricing` | bool | **(0047)** presentation only, default `true`. `false` → the print sheet and PDF drop the **Unit Price** column and leave each line's amount blank; section totals and the summary are unchanged. **No calculation ever reads it** — `qtGrandTotal` is identical either way. Absent on rows and revision snapshots written before 0047, so anything but an explicit `false` means true |
@@ -347,7 +349,7 @@ path. Rows disappear only with the parent quotation.
 | Field | Type | Notes |
 |---|---|---|
 | `userId` | string | owner (`owner_id`) |
-| `kind` | string | `client` → `data` is `{ clientName, clientEmail, clientAddress, clientTin }`. `scope` → `data` is `{ sections: [ …same shape as quotations.sections ] }` |
+| `kind` | string | `client` → `data` is `{ clientName, clientEmail, clientAddress }` (`clientTin` dropped by **0058**; `area` deliberately **not** added — it describes the job, not the client, and a preset reused across three projects must not drag one project's area onto the others). `scope` → `data` is `{ sections: [ …same shape as quotations.sections ] }` |
 | `name` | string | |
 | `data` | json | see `kind` above |
 | `deletedAt` | ts | soft delete; every read filters it |

@@ -555,7 +555,7 @@
     <tr><td class="k">Client</td><td class="v">${esc(d.clientName || '')}</td><td class="k">Quote No.</td><td class="v">${esc(d.quoteNo || '')}${d.revNo > 1 ? ' (Rev ' + d.revNo + ')' : ''}</td></tr>
     <tr><td class="k">Project</td><td class="v">${esc(d.projectName || '')}</td><td class="k">Date</td><td class="v">${esc(qtPrettyDate(d.quoteDate))}</td></tr>
     <tr><td class="k">Location</td><td class="v">${esc(d.location || '')}</td><td class="k">Valid Until</td><td class="v">${esc(qtPrettyDate(d.validUntil))}</td></tr>
-    ${d.clientAddress || d.clientTin ? `<tr><td class="k">Address</td><td class="v">${esc(d.clientAddress || '')}</td><td class="k">TIN</td><td class="v">${esc(d.clientTin || '')}</td></tr>` : ''}
+    ${d.clientAddress || d.area ? `<tr><td class="k">Address</td><td class="v">${esc(d.clientAddress || '')}</td><td class="k">Area</td><td class="v">${esc(d.area || '')}</td></tr>` : ''}
   </table>
 
   ${d.scopeNote ? `<div class="p-scope"><div class="p-scope-hd">Scope of Work</div>${esc(d.scopeNote)}</div>` : ''}

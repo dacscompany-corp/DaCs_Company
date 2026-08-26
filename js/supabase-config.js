@@ -207,7 +207,15 @@ function fromRow(cfg, row) {
   const tsCols = new Set((cfg.ts || []).map((f) => fieldToCol(cfg, f)));
   const out = {};
   for (const col in row) {
-    if (col === 'legacy_id' || col === 'kind') continue;
+    // `kind` is hidden ONLY where it is a discriminator — i.e. where the REG
+    // entry declares one (`profiles` is users / clientUsers /
+    // constructionClientUsers in one table). Everywhere else it is ordinary
+    // data and MUST come through: quotation_presets.kind ('client' | 'scope'),
+    // payment_requests.kind ('construction' | 'cost_plus'), client_errors.kind
+    // ('error' | 'unhandledrejection'). Stripping those deleted a real field on
+    // every read with no error — it is what made both preset dropdowns render
+    // empty on 2026-08-26. Fenced by tests/shim-fromrow.test.js.
+    if (col === 'legacy_id' || (col === 'kind' && cfg.kind)) continue;
     if (cfg.children && Object.values(cfg.children).some((c) => col === c.table)) continue;
     const camel = rev[col] || snakeToCamel(col);
     out[camel] = tsCols.has(col) ? wrapTs(row[col]) : row[col];
