@@ -1727,6 +1727,36 @@
         </tr>`;
     }
 
+    // The VAT cell's wording depends on the mode, and BOTH the full render and
+    // the in-place refresh have to say the same thing — so it lives in one place.
+    function qtVatCellText(q, vat) {
+        if (q.vatMode === 'none')      return '—';
+        if (q.vatMode === 'inclusive') return '(incl. ' + qtFmt(vat) + ')';
+        return qtFmt(vat);
+    }
+
+    // Patches the Summary panel's COMPUTED cells in place, using textContent —
+    // no innerHTML, so the input the user is typing in is never destroyed.
+    //
+    // qtRenderTotals rewrites the whole pane, which killed focus after every
+    // single keystroke in the discount and VAT % boxes: you typed one digit and
+    // had to click back in. Same fix, and the same reason, as qtRefreshAmounts
+    // does for the line money cells. Only the derived figures move here — the
+    // inputs and selects are left exactly as the user left them.
+    function qtRefreshTotals() {
+        const q = qtState.current;
+        if (!q || !qtEl('qtTotalsPane')) return;
+        const set = (id, text) => { const el = qtEl(id); if (el) el.textContent = text; };
+        const vat = qtVatAmount(q);
+        set('qtTotPc',    '₱ ' + qtFmt(qtProjectCost(q.sections)));
+        set('qtTotDisc',  '(' + qtFmt(qtDiscountAmount(q)) + ')');
+        set('qtTotSub',   '₱ ' + qtFmt(qtSubTotal(q)));
+        set('qtTotVat',   qtVatCellText(q, vat));
+        set('qtTotGrand', '₱ ' + qtFmt(qtGrandTotal(q)));
+        qtSyncTopbar();
+        qtRenderExcluded();      // same inputs, same refresh points
+    }
+
     function qtRenderTotals() {
         const pane = qtEl('qtTotalsPane');
         const q = qtState.current;
@@ -1740,7 +1770,7 @@
             <div class="qt-totals-grid">
                 <div class="qt-total-row">
                     <span class="qt-total-label">Project cost</span>
-                    <span class="qt-total-value">₱ ${qtFmt(pc)}</span>
+                    <span class="qt-total-value" id="qtTotPc">₱ ${qtFmt(pc)}</span>
                 </div>
                 <div class="qt-total-row">
                     <span class="qt-total-label">Less: discount
@@ -1751,11 +1781,11 @@
                         <input class="qt-mini-input" value="${qtEscHtml(q.discount)}"
                                oninput="qtSetTotalsField('discount', this.value)">
                     </span>
-                    <span class="qt-total-value qt-total-muted">(${qtFmt(disc)})</span>
+                    <span class="qt-total-value qt-total-muted" id="qtTotDisc">(${qtFmt(disc)})</span>
                 </div>
                 <div class="qt-total-row">
                     <span class="qt-total-label">Sub-total</span>
-                    <span class="qt-total-value">₱ ${qtFmt(sub)}</span>
+                    <span class="qt-total-value" id="qtTotSub">₱ ${qtFmt(sub)}</span>
                 </div>
                 <div class="qt-total-row">
                     <span class="qt-total-label">Plus: VAT
@@ -1767,11 +1797,11 @@
                         <input class="qt-mini-input" style="width:56px;" value="${qtEscHtml(q.vatPct)}"
                                oninput="qtSetTotalsField('vatPct', this.value)">%
                     </span>
-                    <span class="qt-total-value qt-total-muted">${q.vatMode === 'none' ? '—' : (q.vatMode === 'inclusive' ? '(incl. ' + qtFmt(vat) + ')' : qtFmt(vat))}</span>
+                    <span class="qt-total-value qt-total-muted" id="qtTotVat">${qtVatCellText(q, vat)}</span>
                 </div>
                 <div class="qt-total-row qt-total-row-final">
                     <span class="qt-total-label">TOTAL</span>
-                    <span class="qt-total-value">₱ ${qtFmt(total)}</span>
+                    <span class="qt-total-value" id="qtTotGrand">₱ ${qtFmt(total)}</span>
                 </div>
             </div>
             <p class="qt-total-note">
@@ -1830,8 +1860,15 @@
     }
 
     window.qtSetTotalsField = function (key, value) {
+        if (!qtState.current) return;
         qtState.current[key] = value;
-        qtMarkDirty(); qtRenderTotals();
+        qtMarkDirty();
+        // discount / vatPct come from TEXT boxes fired on every keystroke, so
+        // they must never repaint the pane — that is what made you retype after
+        // one digit. discountType / vatMode come from selects, which lose
+        // nothing on a redraw and DO change the row wording, so those repaint.
+        if (key === 'discount' || key === 'vatPct') qtRefreshTotals();
+        else qtRenderTotals();
     };
 
     // Presentation only (migration 0047). The editor ALWAYS shows the rates —
