@@ -2244,6 +2244,14 @@ const PRIMARY_NAV = [
         { view: 'feedback',     label: 'Feedback',     icon: 'message-square' },
       ]
     },
+    // Worker attendance, written by the native Android app through the
+    // RPCs in 0050/0051. Owner + staff only; workers use the app, not
+    // this portal, and must never see other workers' records.
+    { id: 'attendance', label: 'Attendance', sub: 'Workers · Time In / Out', defaultView: 'attToday',
+      modules: [
+        { view: 'attToday', label: "Today", icon: 'calendar-check' },
+      ]
+    },
     { id: 'users', label: 'Users', sub: 'People', defaultView: 'userNavigator',
       modules: [
         { view: 'userNavigator', label: 'Navigator', icon: 'user-round' },
@@ -2265,6 +2273,9 @@ const _FOCUS_SUBVIEWS = {
     pm:       ['pmWorkspace'],
     expenses: ['expOverview', 'expExpenses', 'laborInvoices'],
     quotations: ['quoteEditor', 'quoteRevision'],
+    // Drill-down from the today list into one worker's day. Without this
+    // an allowed_modules account can open the section but not any row.
+    attendance: ['attWorker'],
 };
 // All views reachable inside the focused module(s) — used by the switchView guard.
 window.focusAllowedViews = function () {
@@ -2293,6 +2304,9 @@ function _visibleNav() {
             // Quotations is peso amounts end to end and owner-only by RLS
             // (0045) — same reasoning as Reimbursement and Warranty Fund.
             if (role === 'staff') return p.id !== 'users' && p.id !== 'quotations';
+            // Workers record attendance in the app; they must never see
+            // the roll-up of everyone else's. RLS enforces it too — this
+            // just keeps the tab out of the nav.
             if (role === 'worker' || role === 'teamLeader') return p.id === 'construction';
             return true;
         })
