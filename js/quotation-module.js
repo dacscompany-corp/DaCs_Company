@@ -65,8 +65,9 @@
     // Lump rules (spec §7): a section's own lumpAmount WINS and the group
     // amounts beneath it must not re-add. With no section amount, groups sum.
     //
-    // Those group amounts are an EDITOR-ONLY working figure. They stopped
-    // printing on 2026-08-06 — see qtGroupPrintAmount in quotation-print.js.
+    // Those group amounts are an EDITOR-ONLY working figure. They are never
+    // printed on the client's sheet — blanked 2026-08-06, briefly restored,
+    // blanked again 2026-08-27; see qtGroupPrintAmount in quotation-print.js.
     // This function is unchanged by that: it is the math, not the sheet.
     function qtSectionTotal(section) {
         if (!section) return 0;
@@ -1647,11 +1648,11 @@
         </tr>
         ${hasLumpAmount ? `
         <tr class="qt-row-note"><td colspan="${QT_COLS}">
-            This section is priced as one LOT. The group amounts below are working figures only — they do <strong>not</strong> add to the total, and they are <strong>not</strong> printed on the client's sheet.
-            <br><strong>Clear the LOT amount above</strong> to make the groups the breakdown instead: the section then adds up from them and each one prints.
+            This section is priced as one LOT. The group amounts below are working figures only — they do <strong>not</strong> add to the total, and — like every group amount — they are <strong>not printed</strong> on the client's sheet.
+            <br><strong>Clear the LOT amount above</strong> to make the groups the breakdown instead: the section then adds up from them.
         </td></tr>` : isLump ? `
         <tr class="qt-row-note"><td colspan="${QT_COLS}">
-            This section <strong>adds up from the group amounts</strong> below, and each one <strong>prints</strong> on the client's sheet. Type a LOT amount above to price it as a single figure instead.
+            This section <strong>adds up from the group amounts</strong> below. Those amounts are working figures — they are <strong>never printed</strong> on the client's sheet, only the section total is. Type a LOT amount above to price it as a single figure instead.
         </td></tr>` : ''}
         ${(sec.groups || []).map((g, gi) => qtGroupRows(sec, si, g, gi)).join('')}
         <tr class="qt-row-subtotal">

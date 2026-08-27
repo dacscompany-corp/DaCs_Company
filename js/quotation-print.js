@@ -115,40 +115,27 @@
         return map;
     }
 
-    // What a group / sub-item row prints in the AMOUNT column.
+    // What a group / sub-item row prints in the AMOUNT column: NOTHING.
     //
-    // The rule is ARITHMETIC, not cosmetic: a group amount prints only when the
-    // groups genuinely ADD UP to the section total shown beside them. If they
-    // do, the client reads a breakdown. If they don't, the client reads a
-    // separate charge stacked on top of the section — which is exactly what
-    // went wrong before, and why every group cell was blanked outright on
-    // 2026-08-06 (owner's call). Restored with the adding-up condition
-    // attached, owner's call 2026-08-26.
+    // A group amount is an EDITOR-ONLY working figure. Printed beside the
+    // section total it reads to a client as a SEPARATE charge stacked on top
+    // of that total, not as a breakdown of it — so the section total is the
+    // only money the sheet shows at this level, and the line rows beneath it
+    // carry the detail.
     //
-    // Mirrors qtSectionTotal in quotation-module.js exactly — if that changes,
-    // this has to change with it:
-    //   · LOT section WITH its own lumpAmount → that figure wins and the groups
-    //     beneath it are not its breakdown → print nothing.
-    //   · LOT section WITHOUT one            → the section IS the sum of the
-    //     group lump amounts → print each one.
-    //   · Rated section                      → the section IS the sum of the
-    //     group line totals → print each one.
-    // A zero prints blank: a "BY OWNER" group reading 0.00 is noise, and the
-    // WAIVED marker on its lines already says it.
+    // History, so this doesn't get restored a third time:
+    //   · 2026-08-06 — blanked outright, owner's call, for the reason above.
+    //   · 2026-08-26 — restored, gated on the groups genuinely footing to the
+    //     section total (an arithmetic test, not a cosmetic one).
+    //   · 2026-08-27 — blanked again, owner's call. Even when the figures DO
+    //     foot, the sheet still reads as double-billing to a client skimming
+    //     it. Correct arithmetic was not enough; the column has to be empty.
     //
     // Both render paths call this — the HTML sheet and the jsPDF export — so
-    // they can never drift apart.
+    // they can never drift apart. The sec / g parameters stay in the signature:
+    // the callers pass them, and this rule has already swung twice.
     function qtGroupPrintAmount(sec, g) {
-        if (!sec || !g) return '';
-        let v;
-        if (sec.pricing === 'lump') {
-            const own = sec.lumpAmount;
-            if (own !== '' && own !== null && own !== undefined) return '';
-            v = window.qtParseNum(g.lumpAmount);
-        } else {
-            v = window.qtGroupTotal(g);
-        }
-        return v ? window.qtFmt(v) : '';
+        return '';
     }
 
     // ── Table rows ────────────────────────────────────────────────────
