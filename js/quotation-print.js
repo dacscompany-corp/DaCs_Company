@@ -575,7 +575,7 @@
     ${d.clientAddress || d.area ? `<tr><td class="k">Address</td><td class="v">${esc(d.clientAddress || '')}</td><td class="k">Area</td><td class="v">${esc(d.area || '')}</td></tr>` : ''}
   </table>
 
-  ${d.scopeNote ? `<div class="p-scope"><div class="p-scope-hd">Scope of Work</div>${esc(d.scopeNote)}</div>` : ''}
+  ${d.scopeNote ? `<div class="p-scope"><div class="p-scope-hd">Note:</div>${esc(d.scopeNote)}</div>` : ''}
 
   ${qtImagesHtml(d, imgMap)}
 
@@ -748,7 +748,7 @@
         if (d.scopeNote) {
             doc.autoTable({
                 startY: y, margin: { left: M, right: M },
-                body: [[{ content: 'SCOPE OF WORK\n' + d.scopeNote }]], theme: 'plain',
+                body: [[{ content: 'NOTE:\n' + d.scopeNote }]], theme: 'plain',
                 styles: { fontSize: 7.5, cellPadding: 1.6, fillColor: [255, 253, 243] }
             });
             y = doc.lastAutoTable.finalY + 3;
