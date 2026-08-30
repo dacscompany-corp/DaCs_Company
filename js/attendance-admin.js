@@ -80,6 +80,21 @@
         return data.signedUrl;
     }
 
+    /**
+     * The name to show for a worker.
+     *
+     * Falls back to the email local-part, then the worker number. A row
+     * an owner cannot identify is useless to them -- and profiles rows
+     * created before display_name was collected really do exist (two of
+     * them showed as "—" the first time this screen was opened).
+     */
+    function attWorkerName(w) {
+        if (w.display_name && w.display_name.trim()) return w.display_name.trim();
+        const local = (w.email || '').split('@')[0];
+        if (local) return local;
+        return attWorkerNo(w.worker_no);
+    }
+
     // ── A1 · Today's attendance ─────────────────────────────────────
 
     /**
@@ -216,7 +231,7 @@
                 ${rows.map(({ worker, record }) => `
                   <tr class="att-row${record ? '' : ' att-row--none'}" data-worker="${attEsc(worker.id)}">
                     <td>
-                      <div class="att-worker">${attEsc(worker.display_name || '—')}</div>
+                      <div class="att-worker">${attEsc(attWorkerName(worker))}</div>
                       <div class="att-meta">${attEsc(worker.position || '—')} · ${attWorkerNo(worker.worker_no)}</div>
                     </td>
                     <td>${attEsc(record ? (record.timein_project_name || '—') : '—')}</td>
@@ -304,6 +319,108 @@
             </div>`;
     }
 
+    // ── A4 · Projects ───────────────────────────────────────────────
+
+    /**
+     * The picker list the workers' app reads.
+     *
+     * Until this screen existed these rows could only be created by
+     * hand in the SQL editor, which blocked testing twice. Deactivating
+     * rather than deleting is deliberate: attendance_records snapshot
+     * the project NAME but also reference the id, and deleting a project
+     * a worker has already timed in against would orphan real records.
+     */
+    async function attLoadProjects() {
+        const { data, error } = await window.sbClient
+            .from('attendance_projects')
+            .select('id,name,is_active,created_at')
+            .order('is_active', { ascending: false })
+            .order('name');
+        if (error) throw error;
+        return data || [];
+    }
+
+    async function attRenderProjects(container) {
+        container.innerHTML = `
+            <div class="att-head">
+              <div>
+                <h2 class="att-title">Attendance Projects</h2>
+                <div class="att-sub">The list a worker picks from when timing in</div>
+              </div>
+            </div>
+            <form class="att-newproj" id="attNewProject">
+              <input class="att-input" id="attNewProjectName" maxlength="120"
+                     placeholder="New project name" required>
+              <button class="att-btn att-btn--primary" type="submit">Add project</button>
+            </form>
+            <div id="attProjectsBody" class="att-body">Loading…</div>`;
+
+        container.querySelector('#attNewProject').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = container.querySelector('#attNewProjectName');
+            const name = input.value.trim();
+            if (!name) return;
+
+            // owner_id is set explicitly: RLS lets an owner/staff insert
+            // for their own tenant, and currentDataUserId already
+            // resolves staff to the owner they work for.
+            const { error } = await window.sbClient.from('attendance_projects')
+                .insert({ owner_id: window.currentDataUserId, name, is_active: true });
+            if (error) { alert('Could not add project: ' + error.message); return; }
+            input.value = '';
+            attRenderProjects(container);
+        });
+
+        const body = container.querySelector('#attProjectsBody');
+        let rows;
+        try {
+            rows = await attLoadProjects();
+        } catch (e) {
+            body.innerHTML = `<div class="att-error">Could not load projects: ${attEsc(e.message || e)}</div>`;
+            return;
+        }
+
+        if (!rows.length) {
+            body.innerHTML = '<div class="att-empty">No projects yet. Add one above — ' +
+                             'until then the workers&rsquo; app has nothing to pick, ' +
+                             'and a worker cannot time in at all.</div>';
+            return;
+        }
+
+        body.innerHTML = `
+            <table class="att-table">
+              <thead><tr><th>Project</th><th>Status</th><th></th></tr></thead>
+              <tbody>
+                ${rows.map(p => `
+                  <tr>
+                    <td><div class="att-worker">${attEsc(p.name)}</div></td>
+                    <td>${p.is_active
+                        ? '<span class="att-pill att-pill--done">Active</span>'
+                        : '<span class="att-pill att-pill--none">Hidden</span>'}</td>
+                    <td class="att-right">
+                      <button class="att-btn" data-toggle="${attEsc(p.id)}"
+                              data-active="${p.is_active ? '1' : '0'}">
+                        ${p.is_active ? 'Deactivate' : 'Reactivate'}
+                      </button>
+                    </td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+            <div class="att-note">Deactivating hides a project from the workers' app.
+              Records already recorded against it are untouched.</div>`;
+
+        body.querySelectorAll('button[data-toggle]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const id = btn.getAttribute('data-toggle');
+                const nowActive = btn.getAttribute('data-active') === '1';
+                const { error } = await window.sbClient.from('attendance_projects')
+                    .update({ is_active: !nowActive }).eq('id', id);
+                if (error) { alert('Could not update project: ' + error.message); return; }
+                attRenderProjects(container);
+            });
+        });
+    }
+
     // ── Entry points ────────────────────────────────────────────────
 
     let _attWorkerId = null;
@@ -329,6 +446,11 @@
         if (view === 'attWorker') {
             const el = document.getElementById('attWorkerView');
             if (el && _attWorkerId) attRenderWorker(el, _attWorkerId, _attWorkDate);
+            return;
+        }
+        if (view === 'attProjects') {
+            const el = document.getElementById('attProjectsView');
+            if (el) attRenderProjects(el);
         }
     };
 })();

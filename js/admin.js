@@ -2249,7 +2249,8 @@ const PRIMARY_NAV = [
     // this portal, and must never see other workers' records.
     { id: 'attendance', label: 'Attendance', sub: 'Workers · Time In / Out', defaultView: 'attToday',
       modules: [
-        { view: 'attToday', label: "Today", icon: 'calendar-check' },
+        { view: 'attToday',    label: 'Today',    icon: 'calendar-check' },
+        { view: 'attProjects', label: 'Projects', icon: 'hard-hat' },
       ]
     },
     { id: 'users', label: 'Users', sub: 'People', defaultView: 'userNavigator',

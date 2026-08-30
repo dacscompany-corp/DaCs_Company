@@ -151,3 +151,34 @@
     color: #9A9A9E;
     font-size: 13.5px;
 }
+
+/* ── Projects (A4) ─────────────────────────────────────────────── */
+
+.att-newproj { display: flex; gap: 10px; margin-bottom: 16px; }
+
+.att-input {
+    flex: 1;
+    max-width: 380px;
+    border: 1px solid #E5E5E5;
+    border-radius: 10px;
+    padding: 9px 14px;
+    font-size: 14.5px;
+    background: #FAFAFA;
+}
+.att-input:focus { outline: none; border-color: #1A5C3A; background: #FFFFFF; }
+
+.att-btn--primary {
+    background: #1A5C3A;
+    border-color: #1A5C3A;
+    color: #FFFFFF;
+    font-weight: 600;
+}
+.att-btn--primary:hover { background: #134428; }
+
+.att-right { text-align: right; }
+
+.att-note {
+    margin-top: 12px;
+    font-size: 13px;
+    color: #6C6C70;
+}
