@@ -2251,6 +2251,7 @@ const PRIMARY_NAV = [
       modules: [
         { view: 'attToday',    label: 'Today',    icon: 'calendar-check' },
         { view: 'attProjects', label: 'Projects', icon: 'hard-hat' },
+        { view: 'attReports',  label: 'Reports',  icon: 'file-bar-chart' },
       ]
     },
     { id: 'users', label: 'Users', sub: 'People', defaultView: 'userNavigator',

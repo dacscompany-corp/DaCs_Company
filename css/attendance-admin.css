@@ -182,3 +182,11 @@
     font-size: 13px;
     color: #6C6C70;
 }
+
+.att-subhead {
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #6C6C70;
+    margin: 22px 0 8px;
+}

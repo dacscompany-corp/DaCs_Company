@@ -17,6 +17,86 @@
 (function () {
     'use strict';
 
+    // ==== ATT REPORT ENGINE START ====
+    // Pure functions only -- no DOM, no network, no module state. They
+    // are extracted and unit-tested by tests/attendance.test.js. Keep
+    // them that way, or the tests stop being able to load this block.
+
+    /** "9h 45m" from minutes. Null means nothing recorded, not zero. */
+    function attFormatHours(minutes) {
+        if (minutes === null || minutes === undefined) return '—';
+        const m = Math.max(0, Number(minutes) | 0);
+        return Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
+    }
+
+    /**
+     * Rolls records up per worker for the report.
+     *
+     * daysWorked counts rows that EXIST; hours sum only what the server
+     * computed. An open day (no Time Out yet) is a day worked with zero
+     * hours -- inventing a figure from the clock would put a number in a
+     * report that the database never agreed to.
+     */
+    function attRollUpByWorker(records) {
+        const by = new Map();
+        (records || []).forEach(r => {
+            const key = r.worker_id;
+            if (!by.has(key)) {
+                by.set(key, {
+                    workerId: key,
+                    name: r.worker_name || '—',
+                    position: r.worker_position || '',
+                    daysWorked: 0,
+                    totalMinutes: 0,
+                    openDays: 0
+                });
+            }
+            const row = by.get(key);
+            row.daysWorked += 1;
+            row.totalMinutes += Number(r.total_minutes || 0);
+            if (r.total_minutes === null || r.total_minutes === undefined) row.openDays += 1;
+        });
+        return Array.from(by.values()).sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    /** The same roll-up, per project, keyed on the snapshotted name. */
+    function attRollUpByProject(records) {
+        const by = new Map();
+        (records || []).forEach(r => {
+            const key = r.timein_project_name || '—';
+            if (!by.has(key)) by.set(key, { project: key, daysWorked: 0, totalMinutes: 0 });
+            const row = by.get(key);
+            row.daysWorked += 1;
+            row.totalMinutes += Number(r.total_minutes || 0);
+        });
+        return Array.from(by.values()).sort((a, b) => a.project.localeCompare(b.project));
+    }
+
+    /**
+     * One CSV cell.
+     *
+     * Excel treats a leading =, +, - or @ as a FORMULA, so a project
+     * named "=cmd" would execute on open. Prefixing a quote neutralises
+     * it -- the cell still reads correctly, and nothing runs.
+     */
+    function attCsvCell(value) {
+        let out = (value === null || value === undefined) ? '' : String(value);
+        if (/^[=+\-@\t\r]/.test(out)) out = "'" + out;
+        if (/[",\n\r]/.test(out)) out = '"' + out.replace(/"/g, '""') + '"';
+        return out;
+    }
+
+    // Excel is the destination for these files, and it is the one that
+    // cares about CRLF.
+    const CSV_EOL = '\r\n';
+
+    function attToCsv(headers, rows) {
+        // CRLF: Excel is the destination, and it is the one that cares.
+        return [headers.map(attCsvCell).join(','),
+                ...rows.map(r => r.map(attCsvCell).join(','))].join(CSV_EOL);
+    }
+    // ==== ATT REPORT ENGINE END ====
+
     const PHOTO_BUCKET = 'attendance';
 
     // Anything above this between capture and arrival, on a record that
@@ -421,6 +501,175 @@
         });
     }
 
+    // ── A5 / A6 · Reports ───────────────────────────────────────────
+
+    /** Local date key. Never toISOString — PH is UTC+8 (see CLAUDE.md). */
+    function attDateKey(d) {
+        const p = n => String(n).padStart(2, '0');
+        return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+    }
+
+    function attDefaultRange() {
+        const to = new Date();
+        const from = new Date();
+        from.setDate(from.getDate() - 6);   // the last 7 days, inclusive
+        return { from: attDateKey(from), to: attDateKey(to) };
+    }
+
+    async function attLoadRange(from, to) {
+        const { data, error } = await window.sbClient
+            .from('attendance_records')
+            .select('worker_id,worker_name,worker_position,work_date,status,' +
+                    'timein_at,timeout_at,timein_project_name,total_minutes,' +
+                    'timein_was_offline,timeout_was_offline')
+            .gte('work_date', from)
+            .lte('work_date', to)
+            .order('work_date', { ascending: false });
+        if (error) throw error;
+        return data || [];
+    }
+
+    /**
+     * Hands the browser a file.
+     *
+     * A Blob rather than a data: URI because a month of records exceeds
+     * what some browsers accept in a URL, and the failure mode there is a
+     * SILENTLY TRUNCATED report — worse than an error, because the
+     * numbers that remain still look plausible.
+     */
+    function attDownloadCsv(filename, csv) {
+        // BOM: without it Excel reads UTF-8 as Latin-1 and turns "ñ" into
+        // mojibake. Filipino names have ñ in them.
+        const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    async function attRenderReports(container) {
+        const range = attDefaultRange();
+        container.innerHTML =
+            '<div class="att-head">' +
+              '<div>' +
+                '<h2 class="att-title">Attendance Reports</h2>' +
+                '<div class="att-sub">Hours recorded. NOT a payroll figure — ' +
+                  'labour is pakyaw, capped by contract.</div>' +
+              '</div>' +
+            '</div>' +
+            '<form class="att-newproj" id="attRangeForm">' +
+              '<input class="att-input" type="date" id="attFrom" value="' + attEsc(range.from) + '">' +
+              '<input class="att-input" type="date" id="attTo" value="' + attEsc(range.to) + '">' +
+              '<button class="att-btn att-btn--primary" type="submit">Show</button>' +
+              '<button class="att-btn" type="button" id="attCsvWorker">CSV by worker</button>' +
+              '<button class="att-btn" type="button" id="attCsvDay">CSV by day</button>' +
+            '</form>' +
+            '<div id="attReportBody" class="att-body">Loading…</div>';
+
+        const body = container.querySelector('#attReportBody');
+        let rows = [];
+
+        async function run() {
+            const from = container.querySelector('#attFrom').value;
+            const to = container.querySelector('#attTo').value;
+            if (from > to) {
+                body.innerHTML = '<div class="att-error">The start date is after the end date.</div>';
+                return;
+            }
+            body.innerHTML = 'Loading…';
+            try {
+                rows = await attLoadRange(from, to);
+            } catch (e) {
+                body.innerHTML = '<div class="att-error">Could not load: ' +
+                                 attEsc(e.message || e) + '</div>';
+                return;
+            }
+
+            if (!rows.length) {
+                body.innerHTML = '<div class="att-empty">No attendance recorded in this range.</div>';
+                return;
+            }
+
+            const byWorker = attRollUpByWorker(rows);
+            const byProject = attRollUpByProject(rows);
+
+            body.innerHTML =
+                '<h3 class="att-subhead">By worker</h3>' +
+                '<table class="att-table"><thead><tr>' +
+                  '<th>Worker</th><th>Days</th><th>Hours</th><th></th>' +
+                '</tr></thead><tbody>' +
+                byWorker.map(function (w) {
+                    return '<tr>' +
+                        '<td><div class="att-worker">' + attEsc(w.name) + '</div>' +
+                            '<div class="att-meta">' + attEsc(w.position || '—') + '</div></td>' +
+                        '<td>' + w.daysWorked + '</td>' +
+                        '<td>' + attFormatHours(w.totalMinutes) + '</td>' +
+                        '<td>' + (w.openDays
+                            ? '<span class="att-badge att-badge--skew" ' +
+                              'title="Timed in but never timed out">' + w.openDays + ' not closed</span>'
+                            : '') + '</td>' +
+                    '</tr>';
+                }).join('') +
+                '</tbody></table>' +
+
+                '<h3 class="att-subhead">By project</h3>' +
+                '<table class="att-table"><thead><tr>' +
+                  '<th>Project</th><th>Days</th><th>Hours</th>' +
+                '</tr></thead><tbody>' +
+                byProject.map(function (p) {
+                    return '<tr>' +
+                        '<td>' + attEsc(p.project) + '</td>' +
+                        '<td>' + p.daysWorked + '</td>' +
+                        '<td>' + attFormatHours(p.totalMinutes) + '</td>' +
+                    '</tr>';
+                }).join('') +
+                '</tbody></table>';
+        }
+
+        container.querySelector('#attRangeForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            run();
+        });
+
+        container.querySelector('#attCsvWorker').addEventListener('click', function () {
+            const from = container.querySelector('#attFrom').value;
+            const to = container.querySelector('#attTo').value;
+            const csv = attToCsv(
+                ['Worker', 'Position', 'Days worked', 'Hours', 'Days not closed'],
+                attRollUpByWorker(rows).map(function (w) {
+                    return [w.name, w.position, w.daysWorked, attFormatHours(w.totalMinutes), w.openDays];
+                })
+            );
+            attDownloadCsv('attendance-by-worker-' + from + '-to-' + to + '.csv', csv);
+        });
+
+        container.querySelector('#attCsvDay').addEventListener('click', function () {
+            const from = container.querySelector('#attFrom').value;
+            const to = container.querySelector('#attTo').value;
+            const csv = attToCsv(
+                ['Work date', 'Worker', 'Position', 'Project', 'Time in', 'Time out',
+                 'Hours', 'Status', 'Captured offline'],
+                rows.map(function (r) {
+                    return [
+                        r.work_date, r.worker_name, r.worker_position, r.timein_project_name,
+                        attTime(r.timein_at), attTime(r.timeout_at),
+                        attFormatHours(r.total_minutes), r.status,
+                        // was_offline is ADMIN-facing only; the worker is
+                        // never shown it (design §6.3).
+                        (r.timein_was_offline || r.timeout_was_offline) ? 'yes' : 'no'
+                    ];
+                })
+            );
+            attDownloadCsv('attendance-by-day-' + from + '-to-' + to + '.csv', csv);
+        });
+
+        run();
+    }
+
     // ── Entry points ────────────────────────────────────────────────
 
     let _attWorkerId = null;
@@ -451,6 +700,11 @@
         if (view === 'attProjects') {
             const el = document.getElementById('attProjectsView');
             if (el) attRenderProjects(el);
+            return;
+        }
+        if (view === 'attReports') {
+            const el = document.getElementById('attReportsView');
+            if (el) attRenderReports(el);
         }
     };
 })();

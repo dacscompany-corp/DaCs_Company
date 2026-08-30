@@ -2583,6 +2583,7 @@
         <div id="attTodayView"      class="content-view" style="display: none;"></div>
         <div id="attWorkerView"     class="content-view" style="display: none;"></div>
         <div id="attProjectsView"   class="content-view" style="display: none;"></div>
+        <div id="attReportsView"    class="content-view" style="display: none;"></div>
         <div id="quoteEditorView"   class="content-view" style="display: none;"></div>
         <div id="quoteRevisionView" class="content-view" style="display: none;"></div>
 
@@ -5790,7 +5791,7 @@
     const UN_VIEWS   = ['userNavigator','clientAccounts'];
     const PM_VIEWS   = ['pmProjects','pmWorkspace'];
     const QUOTE_VIEWS = ['quoteList','quoteEditor','quoteRevision'];
-    const ATT_VIEWS   = ['attToday','attWorker','attProjects'];
+    const ATT_VIEWS   = ['attToday','attWorker','attProjects','attReports'];
     const TITLES = {
         dashboard:        'Dashboard',
         appointments:     'Appointments',
@@ -5822,6 +5823,7 @@
         attToday:         "Today's Attendance",
         attWorker:        'Worker Attendance',
         attProjects:      'Attendance Projects',
+        attReports:       'Attendance Reports',
     };
 
     window.switchView = function(view) {
