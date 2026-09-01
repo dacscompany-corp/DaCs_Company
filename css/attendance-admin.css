@@ -1,75 +1,368 @@
 /* ════════════════════════════════════════════════════════════════════
    ATTENDANCE ADMIN — styles for js/attendance-admin.js
 
+   Layout follows the "Attendance App" design canvas, artboards A1–A6:
+   A1 Today · A2 Detail · A3 Workers · A4 Create account · A5 Projects ·
+   A6 Reports. The portal chrome (top nav, module bar) is the existing
+   admin.html chrome — the design only replaces what lives inside a view.
+
    Colour carries the same meaning as it does in the worker app, on
    purpose: green = arrived / done, brown = leaving, grey = nothing yet.
    An owner comparing a phone screen with this one should not have to
    re-learn what the colours mean.
    ════════════════════════════════════════════════════════════════════ */
 
+:root {
+    --att-green:      #1A5C3A;
+    --att-green-dark: #134428;
+    --att-green-tint: #EAF2EC;
+    --att-gold:       #7C5E2A;
+    --att-gold-tint:  #F5EFE2;
+    --att-red:        #C0392B;
+    --att-red-tint:   #FBEDEB;
+    --att-red-line:   #F0DAD7;
+
+    --att-ink:        #1C1C1E;
+    --att-ink-2:      #3A3A3C;
+    --att-muted:      #6C6C70;
+    --att-faint:      #9A9A9E;
+
+    --att-line:       #E5E5E5;
+    --att-line-soft:  #F0F0EE;
+    --att-card:       #FFFFFF;
+    --att-field:      #FAFAFA;
+    --att-track:      #EFEEEA;
+
+    --att-shadow:     0 1px 2px rgba(0, 0, 0, .06);
+    --att-serif:      'Playfair Display', Georgia, serif;
+    --att-mono:       'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+    /* The hatch standing in for a photo that is missing or still loading. */
+    --att-hatch: repeating-linear-gradient(135deg,
+                 #EFEFEC, #EFEFEC 10px, #E7E7E3 10px, #E7E7E3 20px);
+}
+
+/* ── Page header ───────────────────────────────────────────────── */
+
 .att-head {
     display: flex;
-    align-items: flex-start;
+    align-items: flex-end;
     justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 18px;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
 }
 
-.att-title { font-size: 22px; font-weight: 700; margin: 0; }
-.att-sub   { font-size: 13.5px; color: #6C6C70; margin-top: 2px; }
+.att-title {
+    font-family: var(--att-serif);
+    font-size: 30px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    color: var(--att-ink);
+    margin: 0;
+}
+.att-sub { font-size: 14px; color: var(--att-muted); margin-top: 4px; }
+
+.att-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────── */
 
 .att-btn {
-    border: 1px solid #E5E5E5;
-    background: #FFFFFF;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--att-line);
+    background: var(--att-card);
+    color: var(--att-ink-2);
     border-radius: 10px;
-    padding: 8px 14px;
-    font-size: 14px;
+    padding: 10px 18px;
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.att-btn:hover { background: #F5F5F5; }
+.att-btn i, .att-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+.att-btn--primary {
+    background: var(--att-green);
+    border-color: var(--att-green);
+    color: #FFFFFF;
+}
+.att-btn--primary:hover { background: var(--att-green-dark); border-color: var(--att-green-dark); }
+
+.att-btn:disabled { opacity: 0.55; cursor: default; }
+
+/* A table-row action. Reads as a link, behaves as a button. */
+.att-link {
+    border: 0;
+    background: none;
+    padding: 0;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--att-green);
     cursor: pointer;
 }
-.att-btn:hover { background: #F7F7F5; }
+.att-link:hover { text-decoration: underline; }
+.att-link--danger { color: var(--att-red); }
 
-.att-summary {
-    background: #EAF2EC;
-    border: 1px solid #CBE0D2;
-    border-radius: 12px;
-    padding: 12px 16px;
-    margin-bottom: 14px;
-    font-size: 14.5px;
+/* ── Segmented control (A5 status, A6 period) ──────────────────── */
+
+.att-seg {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 4px;
+    background: var(--att-track);
+    border: 1px solid var(--att-line);
+    border-radius: 11px;
+}
+.att-seg-btn {
+    padding: 8px 16px;
+    font-family: inherit;
+    font-size: 13px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--att-ink-2);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.att-seg-btn.is-on {
+    border-color: var(--att-line);
+    background: var(--att-card);
+    color: var(--att-green);
+    font-weight: 600;
+    box-shadow: var(--att-shadow);
 }
 
-.att-table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+/* ── KPI cards (A1) ────────────────────────────────────────────── */
+
+.att-kpis {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.att-kpi {
+    background: var(--att-card);
+    border: 1px solid var(--att-line);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: var(--att-shadow);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+/* The absences are the reason the owner opened this screen — the one
+   card allowed to break the neutral border. */
+.att-kpi--alert { border-color: var(--att-red-line); }
+
+.att-kpi-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    color: #FFFFFF;
+}
+.att-kpi-icon i, .att-kpi-icon svg { width: 24px; height: 24px; }
+.att-kpi-icon--total   { background: linear-gradient(135deg, #7C5E2A, #A88B47); }
+.att-kpi-icon--in      { background: linear-gradient(135deg, #2A4D7A, #3F6EA8); }
+.att-kpi-icon--out     { background: linear-gradient(135deg, #1A5C3A, #267A4E); }
+.att-kpi-icon--working { background: linear-gradient(135deg, #267A4E, #3FA070); }
+.att-kpi-icon--none    { background: var(--att-red-tint); color: var(--att-red); }
+
+.att-kpi-num {
+    font-family: var(--att-serif);
+    font-size: 30px;
+    font-weight: 600;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: var(--att-ink);
+}
+.att-kpi--alert .att-kpi-num { color: var(--att-red); }
+.att-kpi-label { font-size: 13px; color: var(--att-ink-2); margin: 5px 0 0; }
+
+/* ── Stat cards (A6) ───────────────────────────────────────────── */
+
+.att-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+}
+.att-stat {
+    background: var(--att-card);
+    border: 1px solid var(--att-line);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: var(--att-shadow);
+}
+.att-stat-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--att-muted);
+}
+.att-stat-value {
+    font-family: var(--att-mono);
+    font-size: 32px;
+    margin-top: 8px;
+    color: var(--att-ink);
+}
+.att-stat-value--alert { color: var(--att-red); }
+
+/* ── Card shell ────────────────────────────────────────────────── */
+
+.att-card {
+    background: var(--att-card);
+    border: 1px solid var(--att-line);
+    border-radius: 14px;
+    box-shadow: var(--att-shadow);
+    overflow: hidden;
+}
+.att-card + .att-card { margin-top: 20px; }
+
+.att-card-head {
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--att-line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.att-card-title {
+    font-family: var(--att-serif);
+    font-size: 19px;
+    font-weight: 600;
+    color: var(--att-ink);
+    margin: 0;
+}
+.att-card-sub { font-size: 13px; color: var(--att-muted); margin: 3px 0 0; }
+.att-card-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.att-card-body { padding: 22px; }
+
+/* ── Filters ───────────────────────────────────────────────────── */
+
+.att-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--att-line);
+    border-radius: 9px;
+    padding: 8px 12px;
+    min-width: 250px;
+    color: var(--att-faint);
+    background: var(--att-card);
+}
+.att-search-wrap i, .att-search-wrap svg { width: 15px; height: 15px; flex-shrink: 0; }
+.att-search {
+    border: 0;
+    outline: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--att-ink);
+    width: 100%;
+}
+.att-search::placeholder { color: var(--att-faint); }
+
+.att-filter {
+    border: 1px solid var(--att-line);
+    border-radius: 9px;
+    padding: 8px 12px;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--att-ink-2);
+    background: var(--att-card);
+    cursor: pointer;
+}
+
+/* ── Tables ────────────────────────────────────────────────────── */
+
+.att-table { width: 100%; border-collapse: collapse; }
 .att-table th {
     text-align: left;
-    font-size: 11.5px;
-    letter-spacing: 0.08em;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: #6C6C70;
-    padding: 8px 10px;
-    border-bottom: 1px solid #E5E5E5;
+    color: var(--att-muted);
+    padding: 11px 22px;
+    border-bottom: 1px solid var(--att-line);
+    white-space: nowrap;
 }
-.att-table td { padding: 12px 10px; border-bottom: 1px solid #F0F0EE; vertical-align: top; }
+.att-table td {
+    padding: 13px 22px;
+    border-bottom: 1px solid var(--att-line-soft);
+    font-size: 14px;
+    color: var(--att-ink-2);
+    vertical-align: middle;
+}
+.att-table tbody tr:last-child td { border-bottom: 0; }
+
+.att-mono { font-family: var(--att-mono); color: var(--att-ink); }
+.att-right { text-align: right; }
+.att-actions { display: flex; gap: 14px; justify-content: flex-end; }
 
 .att-row { cursor: pointer; }
-.att-row:hover { background: #F7FBF8; }
+.att-row:hover { background: #FAFBFA; }
 /* A worker with no record is the row the owner is looking for, so it is
    dimmed rather than hidden — never omitted from the list. */
-.att-row--none td { color: #9A9A9E; }
-.att-row--none .att-worker { color: #3A3A3C; }
+.att-row--none td { color: var(--att-faint); }
+.att-row--none .att-worker { color: var(--att-ink-2); }
 
-.att-worker { font-weight: 600; }
-.att-meta   { font-size: 12.5px; color: #6C6C70; margin-top: 2px; }
+.att-worker { font-weight: 600; color: var(--att-ink); }
+.att-meta   { font-size: 12.5px; color: var(--att-muted); margin-top: 2px; }
+
+/* Two thumbnails per row: Time In, then Time Out. The second is dimmed
+   when there is no Time Out photo yet — the shape of the row stays the
+   same whether the day is finished or not, so the column never jumps. */
+.att-photos { display: flex; gap: 6px; }
+.att-thumb {
+    width: 34px;
+    height: 34px;
+    border-radius: 7px;
+    border: 1px solid var(--att-line);
+    background: repeating-linear-gradient(135deg,
+                #E4E4E0, #E4E4E0 5px, #DBDBD7 5px, #DBDBD7 10px);
+    flex-shrink: 0;
+}
+.att-thumb--empty { opacity: 0.35; }
+
+/* ── Pills & badges ────────────────────────────────────────────── */
 
 .att-pill {
     display: inline-block;
     border-radius: 999px;
-    padding: 3px 10px;
+    padding: 4px 11px;
     font-size: 12px;
     font-weight: 700;
+    white-space: nowrap;
 }
-.att-pill--done      { background: #EAF2EC; color: #1A5C3A; }
-.att-pill--working   { background: #F3EDE2; color: #7C5E2A; }
-.att-pill--none      { background: #F0F0EE; color: #6C6C70; }
-.att-pill--abandoned { background: #FDF5F4; color: #C0392B; }
+.att-pill--done      { background: var(--att-green-tint); color: var(--att-green); }
+.att-pill--working   { background: var(--att-gold-tint);  color: var(--att-gold); }
+.att-pill--none      { background: var(--att-line-soft);  color: var(--att-muted); }
+.att-pill--abandoned { background: var(--att-red-tint);   color: var(--att-red); }
+
+/* Which project system a row came from. Blue and slate rather than the
+   status palette above — "where it lives" is not a state of the work,
+   and colouring it green would read as "complete". */
+.att-pill--pc { background: #E8EEF6; color: #2A4D7A; }
+.att-pill--pm { background: #EDEBE6; color: #5C5344; }
 
 .att-badge {
     display: inline-block;
@@ -80,113 +373,375 @@
     margin-left: 4px;
 }
 /* Offline is a FACT, not an accusation — neutral grey, never red. */
-.att-badge--offline { background: #F0F0EE; color: #6C6C70; }
+.att-badge--offline { background: var(--att-line-soft); color: var(--att-muted); }
 /* A clock gap on an ONLINE capture is worth a look, so this one is red. */
-.att-badge--skew    { background: #FDF5F4; color: #C0392B; }
+.att-badge--skew    { background: var(--att-red-tint);   color: var(--att-red); }
+
+/* ── Messages ──────────────────────────────────────────────────── */
 
 .att-error {
-    background: #FDF5F4;
-    border: 1px solid #F0DAD7;
-    color: #C0392B;
-    border-radius: 12px;
-    padding: 14px 16px;
-}
-.att-empty { color: #6C6C70; padding: 18px 0; }
-
-/* ── Worker detail ─────────────────────────────────────────────── */
-
-.att-detail-head { margin-bottom: 16px; }
-
-.att-total {
-    background: #EAF2EC;
-    border: 1px solid #CBE0D2;
+    background: var(--att-red-tint);
+    border: 1px solid var(--att-red-line);
+    color: var(--att-red);
     border-radius: 14px;
-    padding: 14px 18px;
-    margin-bottom: 18px;
-    display: inline-block;
+    padding: 16px 20px;
+    font-size: 14px;
 }
-.att-total-label { font-size: 11.5px; letter-spacing: 0.08em; color: #6C6C70; }
-.att-total-value {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 26px;
-    font-weight: 700;
-    color: #1A5C3A;
+.att-empty {
+    color: var(--att-muted);
+    font-size: 14px;
+    padding: 28px 22px;
+    text-align: center;
 }
+.att-note { margin-top: 14px; font-size: 13px; line-height: 1.55; color: var(--att-muted); }
 
-.att-halves { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-@media (max-width: 720px) { .att-halves { grid-template-columns: 1fr; } }
-
-.att-half {
-    border: 1px solid #E5E5E5;
-    border-radius: 14px;
-    padding: 16px;
-    background: #FFFFFF;
-}
-.att-half-label {
-    font-size: 11.5px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #6C6C70;
-}
-.att-half-time {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 20px;
-    font-weight: 700;
-    margin: 2px 0 4px;
-}
-.att-half-project { font-size: 14px; color: #3A3A3C; margin-bottom: 10px; }
-.att-half-note    { font-size: 13.5px; color: #3A3A3C; margin-top: 10px; white-space: pre-wrap; }
-
-.att-photo {
-    width: 100%;
-    border-radius: 12px;
-    display: block;
-    background: #F0F0EE;
-}
-.att-photo--missing {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 160px;
-    color: #9A9A9E;
-    font-size: 13.5px;
-}
-
-/* ── Projects (A4) ─────────────────────────────────────────────── */
-
-.att-newproj { display: flex; gap: 10px; margin-bottom: 16px; }
-
-.att-input {
-    flex: 1;
-    max-width: 380px;
-    border: 1px solid #E5E5E5;
+/* The grey explainer block the design puts under a form or a card. */
+.att-info {
+    background: #F5F5F5;
     border-radius: 10px;
-    padding: 9px 14px;
-    font-size: 14.5px;
-    background: #FAFAFA;
-}
-.att-input:focus { outline: none; border-color: #1A5C3A; background: #FFFFFF; }
-
-.att-btn--primary {
-    background: #1A5C3A;
-    border-color: #1A5C3A;
-    color: #FFFFFF;
-    font-weight: 600;
-}
-.att-btn--primary:hover { background: #134428; }
-
-.att-right { text-align: right; }
-
-.att-note {
-    margin-top: 12px;
+    padding: 14px 16px;
+    display: flex;
+    gap: 11px;
+    align-items: flex-start;
     font-size: 13px;
-    color: #6C6C70;
+    line-height: 1.5;
+    color: var(--att-ink-2);
+}
+.att-info i, .att-info svg {
+    width: 18px;
+    height: 18px;
+    color: var(--att-green);
+    flex-shrink: 0;
+    margin-top: 1px;
 }
 
 .att-subhead {
+    font-family: var(--att-serif);
+    font-size: 19px;
+    font-weight: 600;
+    color: var(--att-ink);
+    margin: 0;
+}
+
+/* ── A2 · Worker detail ────────────────────────────────────────── */
+
+.att-crumbs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--att-muted);
+    margin-bottom: 14px;
+}
+.att-crumbs i, .att-crumbs svg { width: 14px; height: 14px; }
+
+.att-ident { display: flex; align-items: center; gap: 16px; }
+.att-avatar {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--att-green-tint);
+    color: var(--att-green);
+    display: grid;
+    place-items: center;
+    font-size: 20px;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+
+.att-detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 320px;
+    gap: 20px;
+    align-items: start;
+}
+
+.att-half {
+    background: var(--att-card);
+    border: 1px solid var(--att-line);
+    border-radius: 14px;
+    box-shadow: var(--att-shadow);
+    overflow: hidden;
+}
+.att-half-head {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--att-line);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.att-half-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+.att-half-icon i, .att-half-icon svg { width: 16px; height: 16px; }
+.att-half-icon--in  { background: var(--att-green-tint); color: var(--att-green); }
+.att-half-icon--out { background: var(--att-gold-tint);  color: var(--att-gold); }
+
+.att-half-title {
+    font-family: var(--att-serif);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--att-ink);
+    margin: 0;
+    flex: 1;
+}
+.att-half-time { font-family: var(--att-mono); font-size: 19px; color: var(--att-ink); }
+
+.att-photo-frame {
+    height: 300px;
+    background: var(--att-hatch);
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+}
+.att-photo { width: 100%; height: 100%; object-fit: cover; display: block; }
+.att-photo--missing {
+    font-family: var(--att-mono);
     font-size: 12px;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: #6C6C70;
-    margin: 22px 0 8px;
+    color: #8A8A86;
+}
+
+.att-half-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+.att-fact-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--att-muted);
+    margin-bottom: 4px;
+}
+.att-fact-strong { font-size: 15px; font-weight: 700; color: var(--att-ink); }
+.att-fact-text {
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--att-ink);
+    white-space: pre-wrap;
+}
+
+.att-side { display: flex; flex-direction: column; gap: 16px; }
+
+.att-total {
+    background: var(--att-green);
+    border-radius: 14px;
+    padding: 24px;
+    color: #FFFFFF;
+}
+.att-total-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    opacity: 0.75;
+}
+.att-total-value {
+    font-family: var(--att-mono);
+    font-size: 44px;
+    font-weight: 500;
+    line-height: 1.1;
+    margin-top: 8px;
+}
+.att-total-note { font-size: 13px; opacity: 0.8; margin-top: 6px; }
+
+.att-facts {
+    background: var(--att-card);
+    border: 1px solid var(--att-line);
+    border-radius: 14px;
+    box-shadow: var(--att-shadow);
+    overflow: hidden;
+}
+.att-fact {
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--att-line-soft);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.att-fact-key { font-size: 14px; color: var(--att-muted); }
+.att-fact-val { font-size: 14px; font-weight: 600; color: var(--att-ink); text-align: right; }
+.att-fact-foot {
+    padding: 15px 20px;
+    background: #FAFAF8;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--att-muted);
+}
+
+/* ── A5 · Projects ─────────────────────────────────────────────── */
+
+.att-proj-grid {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 20px;
+    align-items: start;
+}
+
+/* ── A6 · Report range toolbar ─────────────────────────────────── */
+
+.att-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+.att-toolbar label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--att-muted);
+}
+
+/* ── Fields ────────────────────────────────────────────────────── */
+
+.att-input {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--att-line);
+    border-radius: 10px;
+    padding: 0 14px;
+    height: 46px;
+    font-family: inherit;
+    font-size: 14.5px;
+    color: var(--att-ink);
+    background: var(--att-field);
+}
+.att-input:focus { outline: none; border-color: var(--att-green); background: var(--att-card); }
+.att-input::placeholder { color: var(--att-faint); }
+select.att-input { cursor: pointer; }
+
+/* A field inside a header or toolbar row sizes to its content — full
+   width there would push the buttons off the end of the row. Inside a
+   .att-field it fills its column instead. */
+.att-toolbar .att-input,
+.att-head-actions .att-input,
+.att-card-tools .att-input { width: auto; height: 42px; }
+
+.att-field { display: flex; flex-direction: column; gap: 7px; }
+.att-field label { font-size: 12.5px; font-weight: 600; color: var(--att-ink-2); }
+.att-req  { color: var(--att-red); }
+.att-hint { font-size: 11.5px; color: var(--att-muted); }
+
+/* Hidden until a message is put in it -- an empty red box under every
+   field would read as an error on a form nobody has touched yet. */
+.att-err {
+    display: none;
+    color: var(--att-red);
+    font-size: 11.5px;
+}
+.att-err--general {
+    background: var(--att-red-tint);
+    border: 1px solid var(--att-red-line);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+}
+
+/* ── A4 · Create worker modal ──────────────────────────────────── */
+
+.att-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(20, 20, 20, 0.45);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 1000;
+}
+.att-modal-box {
+    background: var(--att-card);
+    border-radius: 18px;
+    width: 100%;
+    max-width: 640px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.24);
+}
+.att-modal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 22px 28px;
+    border-bottom: 1px solid var(--att-line);
+}
+.att-modal-title {
+    font-family: var(--att-serif);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--att-ink);
+    margin: 0;
+}
+.att-modal-sub { font-size: 13.5px; color: var(--att-muted); margin: 3px 0 0; }
+.att-modal-x {
+    border: none;
+    background: none;
+    font-size: 24px;
+    line-height: 1;
+    color: var(--att-muted);
+    cursor: pointer;
+    padding: 0 4px;
+}
+.att-modal-x:hover { color: var(--att-ink); }
+
+/* The form owns the scrolling body AND the pinned footer, so the submit
+   button stays inside the form it submits. */
+.att-modal-form {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.att-modal-body {
+    padding: 26px 28px;
+    overflow-y: auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    align-content: start;
+}
+/* A field that owns the whole row (email, the info block, the errors). */
+.att-span { grid-column: 1 / -1; }
+
+.att-modal-foot {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 18px 28px;
+    border-top: 1px solid var(--att-line);
+    background: var(--att-field);
+}
+
+/* ── Responsive ────────────────────────────────────────────────── */
+
+@media (max-width: 1200px) {
+    .att-kpis  { grid-template-columns: repeat(3, 1fr); }
+    .att-stats { grid-template-columns: repeat(2, 1fr); }
+    .att-detail-grid { grid-template-columns: 1fr 1fr; }
+    .att-detail-grid .att-side { grid-column: 1 / -1; }
+    .att-proj-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 720px) {
+    .att-title { font-size: 24px; }
+    .att-kpis  { grid-template-columns: repeat(2, 1fr); }
+    .att-stats { grid-template-columns: 1fr; }
+    .att-detail-grid { grid-template-columns: 1fr; }
+    .att-modal-body { grid-template-columns: 1fr; }
+    .att-table th, .att-table td { padding: 11px 14px; }
+    .att-search-wrap { min-width: 0; flex: 1; }
 }

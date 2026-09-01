@@ -2250,6 +2250,7 @@ const PRIMARY_NAV = [
     { id: 'attendance', label: 'Attendance', sub: 'Workers · Time In / Out', defaultView: 'attToday',
       modules: [
         { view: 'attToday',    label: 'Today',    icon: 'calendar-check' },
+        { view: 'attWorkers',  label: 'Workers',  icon: 'user-round' },
         { view: 'attProjects', label: 'Projects', icon: 'hard-hat' },
         { view: 'attReports',  label: 'Reports',  icon: 'file-bar-chart' },
       ]

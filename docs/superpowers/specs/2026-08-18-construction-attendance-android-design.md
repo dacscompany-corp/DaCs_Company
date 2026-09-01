@@ -420,9 +420,10 @@ New file `js/attendance-admin.js`, plus a `docs/DATABASE_SCHEMA.md` entry.
 |---|---|---|
 | A1 | Today's Attendance | Worker · Project · Time In · Time Out · Status, with `Complete` / `Working` / `No record`. Workers with no row appear as `No record` — a left join against active workers, not a plain select |
 | A2 | Worker detail | Both photos, both project names, both descriptions, total hours, status. `offline-captured` and clock-skew badges |
-| A3 | Workers | List, add (reuses the existing `adminCreateUser` Edge Function), edit, activate/deactivate |
-| A4 | Projects | `P-000n` · name · workers today · status, with Edit and Activate/Deactivate |
-| A5/A6 | Reports | Daily / weekly / monthly by worker and project; CSV export |
+| A3 | Workers | List, add (reuses the existing `adminCreateUser` Edge Function), activate/deactivate |
+| A4 | Create account | Modal: names, email, role, position, password. Minted by the admin-create-user Edge Function |
+| A5 | Projects | **Read-only** (`0059`). Name · which system it came from · workers today. Attendance keeps no project list of its own — it reads `folders` (Project Control) and `construction_projects` (Project Management) through `attendance_projects_for_worker()`. Create/rename/close happens in the owning module |
+| A6 | Reports | Daily / weekly / monthly by worker and project; CSV export |
 
 **Not in the MVP but needed soon:** the MVP doc gives the admin no way to correct attendance. A
 forgotten Time Out leaves a record `working` forever and every report shows `—`. §9 records this as a

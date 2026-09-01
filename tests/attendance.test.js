@@ -57,7 +57,8 @@ const src = read('js/attendance-admin.js');
 const M = evalWith(
   slice(src, '// ==== ATT REPORT ENGINE START ====', '// ==== ATT REPORT ENGINE END ====', 'attendance-admin.js'),
   { window: {} },
-  ['attFormatHours', 'attRollUpByWorker', 'attRollUpByProject', 'attCsvCell', 'attToCsv']
+  ['attFormatHours', 'attRollUpByWorker', 'attRollUpByProject', 'attCsvCell', 'attToCsv',
+   'attWorkerNameKey', 'attWorkerRoster', 'attValidateNewWorker']
 );
 
 const rec = (o) => Object.assign({
@@ -162,6 +163,136 @@ test('a whole file has a header row and CRLF endings', () => {
 });
 
 console.log('\n──────────────────────────────────────');
+// ── A3 · Worker management roster ──────────────────────────────────
+//
+// A3 is NOT A1 with a different table. A1 answers "who is on site today"
+// and lists active workers only; A3 is where a worker is deactivated and
+// reactivated, so it MUST show the deactivated ones. A roster that hides
+// them is a one-way door: the button that brings someone back sits on the
+// screen that refuses to display them.
+
+test('A3 keeps deactivated workers -- otherwise nobody can be reactivated', () => {
+  const rows = M.attWorkerRoster([
+    { id: '1', display_name: 'Ana Cruz',  role: 'worker', status: 'active'   },
+    { id: '2', display_name: 'Ben Reyes', role: 'worker', status: 'inactive' },
+  ]);
+  eq(rows.length, 2, 'both rows survive');
+  ok(rows.some(r => r.id === '2'), 'the deactivated worker is still listed');
+});
+
+test("a missing status counts as active, matching coalesce(status,'active')", () => {
+  // Older profiles rows carry no status. The RPCs and attendance-signin
+  // both treat that as active; this screen must not disagree.
+  const rows = M.attWorkerRoster([{ id: '1', display_name: 'Ana', role: 'worker' }]);
+  eq(rows.length, 1);
+  eq(rows[0]._active, true, 'no status => active');
+});
+
+test('only worker and teamLeader appear -- never clients, staff or owners', () => {
+  const rows = M.attWorkerRoster([
+    { id: '1', display_name: 'Ana',   role: 'worker'     },
+    { id: '2', display_name: 'Lead',  role: 'teamLeader' },
+    { id: '3', display_name: 'Boss',  role: 'owner'      },
+    { id: '4', display_name: 'Staff', role: 'staff'      },
+    { id: '5', display_name: 'Cli',   role: 'client'     },
+  ]);
+  eq(rows.map(r => r.id).join(','), '1,2', 'teamLeader records attendance; the rest do not');
+});
+
+test('active sort above deactivated, then by name', () => {
+  const rows = M.attWorkerRoster([
+    { id: '1', display_name: 'Zoe', role: 'worker', status: 'inactive' },
+    { id: '2', display_name: 'Ben', role: 'worker', status: 'active'   },
+    { id: '3', display_name: 'Ana', role: 'worker', status: 'active'   },
+  ]);
+  eq(rows.map(r => r.display_name).join(','), 'Ana,Ben,Zoe');
+});
+
+test('the sort key falls back email-local then worker number, like the name does', () => {
+  // profiles rows predating display_name really exist (W-0001, W-0002).
+  eq(M.attWorkerNameKey({ display_name: 'Ana Cruz' }), 'ana cruz');
+  eq(M.attWorkerNameKey({ email: 'tjohnaerol@gmail.com' }), 'tjohnaerol');
+  eq(M.attWorkerNameKey({ worker_no: 1 }), 'w-0001');
+});
+
+console.log('\n──────────────────────────────────────');
+
+// A4 creates a real auth account through the admin-create-user Edge
+// Function. The rules that matter are the ones that decide WHO gets an
+// account and WHAT is sent -- everything below is pinned because getting
+// it wrong mints a privileged or unreachable account.
+
+const nw = (o) => Object.assign({
+  firstName: 'Juan', lastName: 'dela Cruz', email: 'juan@dacsbuilding.com',
+  role: 'worker', position: 'Mason', password: 'sikreto123', confirm: 'sikreto123'
+}, o);
+
+test('A4 accepts a complete worker', () => {
+  const r = M.attValidateNewWorker(nw());
+  ok(r.valid, 'a filled form is valid');
+  eq(Object.keys(r.errors).length, 0);
+});
+
+test('A4 mints workers and team leaders ONLY -- never staff, engineer or owner', () => {
+  // The whole point of the worker-only role list. Users -> Navigator is
+  // where privileged accounts are made, behind its own form; a second,
+  // less-guarded route to one is exactly what this must not become.
+  ok(M.attValidateNewWorker(nw({ role: 'worker'     })).valid);
+  ok(M.attValidateNewWorker(nw({ role: 'teamLeader' })).valid);
+  ['staff', 'engineer', 'owner', 'client', ''].forEach(role => {
+    const r = M.attValidateNewWorker(nw({ role }));
+    ok(!r.valid, role + ' must be rejected');
+    ok(!!r.errors.role, role + ' must be rejected on the role field');
+  });
+});
+
+test('A4 lowercases the email -- a case mismatch orphans the profile', () => {
+  // Login returns a lowercased email. If the profile stores "Juan@..."
+  // the account and its profile stop finding each other.
+  eq(M.attValidateNewWorker(nw({ email: '  JUAN@Dacsbuilding.COM  ' })).payload.email,
+     'juan@dacsbuilding.com');
+});
+
+test('A4 rejects a malformed email', () => {
+  // worker2@dacsbuilding (no TLD) is really in the live roster.
+  ok(!M.attValidateNewWorker(nw({ email: 'worker2@dacsbuilding' })).valid);
+  ok(!M.attValidateNewWorker(nw({ email: 'nope' })).valid);
+});
+
+test('A4 enforces 8 characters and a matching confirmation', () => {
+  ok(!M.attValidateNewWorker(nw({ password: 'short1', confirm: 'short1' })).valid);
+  const mismatch = M.attValidateNewWorker(nw({ confirm: 'sikreto124' }));
+  ok(!mismatch.valid);
+  ok(!!mismatch.errors.confirm, 'the mismatch is reported on the confirm field');
+});
+
+test('A4 requires both names', () => {
+  ok(!!M.attValidateNewWorker(nw({ firstName: '   ' })).errors.firstName);
+  ok(!!M.attValidateNewWorker(nw({ lastName:  ''    })).errors.lastName);
+});
+
+test('A4 leaves position optional -- a trade may not be decided yet', () => {
+  // Blocking on it would make an otherwise valid worker uncreatable,
+  // and they still need to be able to time in.
+  const r = M.attValidateNewWorker(nw({ position: '' }));
+  ok(r.valid, 'no position is still a valid worker');
+  eq(r.payload.position, '');
+});
+
+test('A4 never sends worker_no -- the 0050 trigger assigns it', () => {
+  // profiles_worker_no_trg pulls from worker_no_seq on insert. A number
+  // chosen in the browser races every other admin creating a worker.
+  const r = M.attValidateNewWorker(nw());
+  eq(r.payload.worker_no, undefined);
+  eq(r.payload.workerNo,  undefined);
+});
+
+test('A4 sends no role the Edge Function would refuse to gate', () => {
+  // kind is always 'admin' for these; role is the only thing separating a
+  // worker from an engineer, so an empty role must never reach the wire.
+  eq(M.attValidateNewWorker(nw({ role: '' })).valid, false);
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 if (failed) { failures.forEach(f => console.log('  · ' + f)); process.exit(1); }
 console.log('Attendance reports state only what the database computed.');

@@ -41,8 +41,24 @@ begin;
   begin
     select count(*) into n from information_schema.tables
      where table_schema = 'public'
-       and table_name in ('attendance_projects','attendance_records','attendance_terms_acceptances');
-    assert n = 3, format('expected 3 attendance tables, found %s', n);
+       and table_name in ('attendance_records','attendance_terms_acceptances');
+    assert n = 2, format('expected 2 attendance tables, found %s', n);
+
+    -- 0059 dropped attendance_projects: attendance now points at the two
+    -- real project systems. A resurrected third list is a regression.
+    select count(*) into n from information_schema.tables
+     where table_schema = 'public' and table_name = 'attendance_projects';
+    assert n = 0, 'attendance_projects is back - 0059 dropped it on purpose';
+
+    select count(*) into n from information_schema.columns
+     where table_schema = 'public' and table_name = 'attendance_records'
+       and column_name in ('timein_project_system','timein_folder_id','timein_pm_project_id',
+                           'timeout_project_system','timeout_folder_id','timeout_pm_project_id');
+    assert n = 6, format('expected the 6 dual-system project columns, found %s', n);
+
+    select count(*) into n from pg_proc
+     where proname in ('attendance_projects_for_worker','attendance_project_name');
+    assert n = 2, format('expected the 0059 project helpers, found %s', n);
 
     select count(*) into n from information_schema.columns
      where table_schema = 'public' and table_name = 'profiles'
@@ -90,9 +106,9 @@ rollback;
 -- ╚══════════════════════════════════════════════════════════════════╝
 begin;
   -- Seed as service role (bypasses RLS), then drop to the worker.
-  insert into attendance_projects (owner_id, name, is_active)
-  values ('<OWNER_UUID>'::uuid, 'ZZ Test Active',   true),
-         ('<OWNER_UUID>'::uuid, 'ZZ Test Inactive', false);
+  insert into construction_projects (owner_id, project_name, status)
+  values ('<OWNER_UUID>'::uuid, 'ZZ Test Active',   'active'),
+         ('<OWNER_UUID>'::uuid, 'ZZ Test Inactive', 'completed');
 
   insert into attendance_records
     (owner_id, worker_id, work_date, timein_project_name, timein_at,
@@ -114,9 +130,17 @@ begin;
     select count(*) into n from attendance_records;
     assert n = 1, format('worker should see exactly 1 own record, saw %s', n);
 
-    -- active projects only
-    select count(*) into n from attendance_projects where name like 'ZZ Test%';
+    -- The picker is the RPC now, and it must show the ACTIVE project only.
+    select count(*) into n from attendance_projects_for_worker()
+     where project_name like 'ZZ Test%';
     assert n = 1, format('worker should see only the ACTIVE test project, saw %s', n);
+
+    -- The security point of 0059: the picker returns names, and the
+    -- worker still has NO route to the tables behind it. folders carries
+    -- owner-confidential contract money; a select policy there would
+    -- hand every mason the contract amounts.
+    select count(*) into n from folders;
+    assert n = 0, format('worker can read %s folders rows - contract money is exposed', n);
 
     -- direct writes must be impossible
     begin
@@ -185,8 +209,8 @@ rollback;
 -- ║    The replay case is the whole reason this is an RPC.            ║
 -- ╚══════════════════════════════════════════════════════════════════╝
 begin;
-  insert into attendance_projects (owner_id, name, is_active)
-  values ('<OWNER_UUID>'::uuid, 'ZZ RPC Project', true);
+  insert into construction_projects (owner_id, project_name, status)
+  values ('<OWNER_UUID>'::uuid, 'ZZ RPC Project', 'active');
 
   set local role authenticated;
   set local request.jwt.claims =
@@ -195,16 +219,17 @@ begin;
   do $$
   declare
     d0      date := current_date - 30;   -- safely past; see header
-    v_proj  bigint;
+    v_proj  uuid;
     v_event uuid := gen_random_uuid();
     v_a     attendance_records;
     v_b     attendance_records;
     n       int;
   begin
-    select id into v_proj from attendance_projects where name = 'ZZ RPC Project';
+    select id into v_proj from construction_projects where project_name = 'ZZ RPC Project';
 
     -- first call — 07:45 Manila on d0
     v_a := attendance_time_in(
+      p_project_system => 'pm',
       p_project_id  => v_proj,
       p_captured_at => (d0 + time '07:45') at time zone 'Asia/Manila',
       p_photo_path  => 'w/in-x.jpg',
@@ -218,6 +243,7 @@ begin;
 
     -- SAME event id replayed — must return the same row, not a new one
     v_b := attendance_time_in(
+      p_project_system => 'pm',
       p_project_id  => v_proj,
       p_captured_at => (d0 + time '07:45') at time zone 'Asia/Manila',
       p_photo_path  => 'w/in-x.jpg',
@@ -238,22 +264,22 @@ rollback;
 -- ║ 7. Time In twice with DIFFERENT event ids -> ALREADY_TIMED_IN.    ║
 -- ╚══════════════════════════════════════════════════════════════════╝
 begin;
-  insert into attendance_projects (owner_id, name, is_active)
-  values ('<OWNER_UUID>'::uuid, 'ZZ RPC Project', true);
+  insert into construction_projects (owner_id, project_name, status)
+  values ('<OWNER_UUID>'::uuid, 'ZZ RPC Project', 'active');
 
   set local role authenticated;
   set local request.jwt.claims =
     '{"sub":"<WORKER_UUID>","email":"worker@example.com","role":"authenticated"}';
 
   do $$
-  declare d0 date := current_date - 30; v_proj bigint; v_msg text := ''; n int;
+  declare d0 date := current_date - 30; v_proj uuid; v_msg text := ''; n int;
   begin
-    select id into v_proj from attendance_projects where name = 'ZZ RPC Project';
+    select id into v_proj from construction_projects where project_name = 'ZZ RPC Project';
 
-    perform attendance_time_in(v_proj, (d0 + time '07:45') at time zone 'Asia/Manila',
+    perform attendance_time_in('pm', v_proj, (d0 + time '07:45') at time zone 'Asia/Manila',
               'p/in-1.jpg', gen_random_uuid());
     begin
-      perform attendance_time_in(v_proj, (d0 + time '09:00') at time zone 'Asia/Manila',
+      perform attendance_time_in('pm', v_proj, (d0 + time '09:00') at time zone 'Asia/Manila',
                 'p/in-2.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
@@ -274,9 +300,9 @@ rollback;
 -- ║    a future capture and an inactive project.                      ║
 -- ╚══════════════════════════════════════════════════════════════════╝
 begin;
-  insert into attendance_projects (owner_id, name, is_active)
-  values ('<OWNER_UUID>'::uuid, 'ZZ RPC Project',  true),
-         ('<OWNER_UUID>'::uuid, 'ZZ RPC Inactive', false);
+  insert into construction_projects (owner_id, project_name, status)
+  values ('<OWNER_UUID>'::uuid, 'ZZ RPC Project',  'active'),
+         ('<OWNER_UUID>'::uuid, 'ZZ RPC Inactive', 'completed');
 
   set local role authenticated;
   set local request.jwt.claims =
@@ -285,26 +311,26 @@ begin;
   do $$
   declare
     d0 date := current_date - 30;
-    v_proj bigint; v_off bigint; v_msg text := '';
+    v_proj uuid; v_off uuid; v_msg text := '';
     d1 date; d2 date;
   begin
-    select id into v_proj from attendance_projects where name = 'ZZ RPC Project';
-    select id into v_off  from attendance_projects where name = 'ZZ RPC Inactive';
+    select id into v_proj from construction_projects where project_name = 'ZZ RPC Project';
+    select id into v_off  from construction_projects where project_name = 'ZZ RPC Inactive';
 
     -- 23:50 Manila on d0 -> work_date d0 (in UTC it is 15:50 the same day)
-    d1 := (attendance_time_in(v_proj, (d0 + time '23:50') at time zone 'Asia/Manila',
+    d1 := (attendance_time_in('pm', v_proj, (d0 + time '23:50') at time zone 'Asia/Manila',
              'p/a.jpg', gen_random_uuid())).work_date;
     assert d1 = d0, format('23:50 Manila gave work_date %s, expected %s', d1, d0);
 
     -- 00:10 Manila on d0+1 -> work_date d0+1 (in UTC it is 16:10 on d0)
-    d2 := (attendance_time_in(v_proj, ((d0 + 1) + time '00:10') at time zone 'Asia/Manila',
+    d2 := (attendance_time_in('pm', v_proj, ((d0 + 1) + time '00:10') at time zone 'Asia/Manila',
              'p/b.jpg', gen_random_uuid())).work_date;
     assert d2 = d0 + 1, format('00:10 Manila gave work_date %s, expected %s', d2, d0 + 1);
     assert d1 <> d2, 'midnight boundary collapsed two days into one work_date';
 
     -- a capture in the future is rejected outright
     begin
-      perform attendance_time_in(v_proj, now() + interval '10 minutes',
+      perform attendance_time_in('pm', v_proj, now() + interval '10 minutes',
                 'p/c.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
@@ -316,7 +342,7 @@ begin;
     -- assertion entirely. That is exactly the bug this suite shipped with.
     v_msg := '';
     begin
-      perform attendance_time_in(v_off, ((d0 - 1) + time '07:45') at time zone 'Asia/Manila',
+      perform attendance_time_in('pm', v_off, ((d0 - 1) + time '07:45') at time zone 'Asia/Manila',
                 'p/d.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
@@ -332,9 +358,9 @@ rollback;
 -- ║    and the MVP's own worked example: 7:45 AM -> 5:30 PM = 585.    ║
 -- ╚══════════════════════════════════════════════════════════════════╝
 begin;
-  insert into attendance_projects (owner_id, name, is_active)
-  values ('<OWNER_UUID>'::uuid, 'ZZ Site A', true),
-         ('<OWNER_UUID>'::uuid, 'ZZ Site B', true);
+  insert into construction_projects (owner_id, project_name, status)
+  values ('<OWNER_UUID>'::uuid, 'ZZ Site A', 'active'),
+         ('<OWNER_UUID>'::uuid, 'ZZ Site B', 'active');
 
   set local role authenticated;
   set local request.jwt.claims =
@@ -343,19 +369,20 @@ begin;
   do $$
   declare
     d0 date := current_date - 30;
-    a bigint; b bigint;
+    a uuid; b uuid;
     v_out uuid := gen_random_uuid();
     r attendance_records; r2 attendance_records;
     n int;
   begin
-    select id into a from attendance_projects where name = 'ZZ Site A';
-    select id into b from attendance_projects where name = 'ZZ Site B';
+    select id into a from construction_projects where project_name = 'ZZ Site A';
+    select id into b from construction_projects where project_name = 'ZZ Site B';
 
-    perform attendance_time_in(a, (d0 + time '07:45') at time zone 'Asia/Manila',
+    perform attendance_time_in('pm', a, (d0 + time '07:45') at time zone 'Asia/Manila',
               'p/in.jpg', gen_random_uuid());
 
     -- Time Out on a DIFFERENT project — MVP section 13 stores both independently
     r := attendance_time_out(
+      p_project_system => 'pm',
       p_project_id  => b,
       p_captured_at => (d0 + time '17:30') at time zone 'Asia/Manila',
       p_photo_path  => 'p/out.jpg',
@@ -371,7 +398,7 @@ begin;
     assert r.work_date = d0, 'work_date changed on Time Out';
 
     -- replay returns the same row
-    r2 := attendance_time_out(b, (d0 + time '17:30') at time zone 'Asia/Manila',
+    r2 := attendance_time_out('pm', b, (d0 + time '17:30') at time zone 'Asia/Manila',
             'p/out.jpg', v_out);
     assert r2.id = r.id, 'Time Out replay created a different record';
 
@@ -389,32 +416,32 @@ rollback;
 -- ║     and Time Out before Time In.                                  ║
 -- ╚══════════════════════════════════════════════════════════════════╝
 begin;
-  insert into attendance_projects (owner_id, name, is_active)
-  values ('<OWNER_UUID>'::uuid, 'ZZ Site A', true);
+  insert into construction_projects (owner_id, project_name, status)
+  values ('<OWNER_UUID>'::uuid, 'ZZ Site A', 'active');
 
   set local role authenticated;
   set local request.jwt.claims =
     '{"sub":"<WORKER_UUID>","email":"worker@example.com","role":"authenticated"}';
 
   do $$
-  declare d0 date := current_date - 30; a bigint; v_msg text := ''; n int;
+  declare d0 date := current_date - 30; a uuid; v_msg text := ''; n int;
   begin
-    select id into a from attendance_projects where name = 'ZZ Site A';
+    select id into a from construction_projects where project_name = 'ZZ Site A';
 
     -- (a) Time Out with no Time In
     begin
-      perform attendance_time_out(a, (d0 + time '17:30') at time zone 'Asia/Manila',
+      perform attendance_time_out('pm', a, (d0 + time '17:30') at time zone 'Asia/Manila',
                 'p/o.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
     assert v_msg = 'NOT_TIMED_IN', format('expected NOT_TIMED_IN, got "%s"', v_msg);
 
     -- (b) Time Out BEFORE Time In
-    perform attendance_time_in(a, (d0 + time '07:45') at time zone 'Asia/Manila',
+    perform attendance_time_in('pm', a, (d0 + time '07:45') at time zone 'Asia/Manila',
               'p/i.jpg', gen_random_uuid());
     v_msg := '';
     begin
-      perform attendance_time_out(a, (d0 + time '06:00') at time zone 'Asia/Manila',
+      perform attendance_time_out('pm', a, (d0 + time '06:00') at time zone 'Asia/Manila',
                 'p/o.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
@@ -422,11 +449,11 @@ begin;
       format('expected TIMEOUT_BEFORE_TIMEIN, got "%s"', v_msg);
 
     -- (c) Time Out twice with different event ids
-    perform attendance_time_out(a, (d0 + time '17:30') at time zone 'Asia/Manila',
+    perform attendance_time_out('pm', a, (d0 + time '17:30') at time zone 'Asia/Manila',
               'p/o1.jpg', gen_random_uuid());
     v_msg := '';
     begin
-      perform attendance_time_out(a, (d0 + time '18:00') at time zone 'Asia/Manila',
+      perform attendance_time_out('pm', a, (d0 + time '18:00') at time zone 'Asia/Manila',
                 'p/o2.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
@@ -446,25 +473,25 @@ rollback;
 -- ║      The night-shift window must not silently produce a 33h day.  ║
 -- ╚══════════════════════════════════════════════════════════════════╝
 begin;
-  insert into attendance_projects (owner_id, name, is_active)
-  values ('<OWNER_UUID>'::uuid, 'ZZ Site A', true);
+  insert into construction_projects (owner_id, project_name, status)
+  values ('<OWNER_UUID>'::uuid, 'ZZ Site A', 'active');
 
   set local role authenticated;
   set local request.jwt.claims =
     '{"sub":"<WORKER_UUID>","email":"worker@example.com","role":"authenticated"}';
 
   do $$
-  declare d0 date := current_date - 30; a bigint; v_msg text := ''; r attendance_records;
+  declare d0 date := current_date - 30; a uuid; v_msg text := ''; r attendance_records;
   begin
-    select id into a from attendance_projects where name = 'ZZ Site A';
+    select id into a from construction_projects where project_name = 'ZZ Site A';
 
     -- timed in on d0 morning, never timed out
-    perform attendance_time_in(a, (d0 + time '07:45') at time zone 'Asia/Manila',
+    perform attendance_time_in('pm', a, (d0 + time '07:45') at time zone 'Asia/Manila',
               'p/i.jpg', gen_random_uuid());
 
     -- tries to time out the NEXT afternoon -> 33 hours later
     begin
-      perform attendance_time_out(a, ((d0 + 1) + time '17:00') at time zone 'Asia/Manila',
+      perform attendance_time_out('pm', a, ((d0 + 1) + time '17:00') at time zone 'Asia/Manila',
                 'p/o.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
@@ -473,9 +500,9 @@ begin;
 
     -- but a genuine NIGHT SHIFT crossing midnight still works:
     -- 22:00 on d0+2 -> 06:00 on d0+3 is 8 hours.
-    perform attendance_time_in(a, ((d0 + 2) + time '22:00') at time zone 'Asia/Manila',
+    perform attendance_time_in('pm', a, ((d0 + 2) + time '22:00') at time zone 'Asia/Manila',
               'p/n-i.jpg', gen_random_uuid());
-    r := attendance_time_out(a, ((d0 + 3) + time '06:00') at time zone 'Asia/Manila',
+    r := attendance_time_out('pm', a, ((d0 + 3) + time '06:00') at time zone 'Asia/Manila',
            'p/n-o.jpg', gen_random_uuid());
     assert r.total_minutes = 480,
       format('night shift 22:00 to 06:00 must be 480 minutes, got %s', r.total_minutes);
@@ -493,8 +520,8 @@ rollback;
 -- ║     the UI.                                                       ║
 -- ╚══════════════════════════════════════════════════════════════════╝
 begin;
-  insert into attendance_projects (owner_id, name, is_active)
-  values ('<OWNER_UUID>'::uuid, 'ZZ Site A', true);
+  insert into construction_projects (owner_id, project_name, status)
+  values ('<OWNER_UUID>'::uuid, 'ZZ Site A', 'active');
 
   update profiles set status = 'inactive' where id = '<WORKER_UUID>'::uuid;
 
@@ -503,11 +530,11 @@ begin;
     '{"sub":"<WORKER_UUID>","email":"worker@example.com","role":"authenticated"}';
 
   do $$
-  declare d0 date := current_date - 30; a bigint; v_msg text := '';
+  declare d0 date := current_date - 30; a uuid; v_msg text := '';
   begin
-    select id into a from attendance_projects where name = 'ZZ Site A';
+    select id into a from construction_projects where project_name = 'ZZ Site A';
     begin
-      perform attendance_time_in(a, (d0 + time '07:45') at time zone 'Asia/Manila',
+      perform attendance_time_in('pm', a, (d0 + time '07:45') at time zone 'Asia/Manila',
                 'p/i.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
@@ -528,8 +555,8 @@ rollback;  -- the status change is rolled back with everything else
 -- ╚══════════════════════════════════════════════════════════════════╝
 begin;
   -- A project belonging to a DIFFERENT owner.
-  insert into attendance_projects (owner_id, name, is_active)
-  values ('<OTHER_UUID>'::uuid, 'ZZ Foreign Project', true);
+  insert into construction_projects (owner_id, project_name, status)
+  values ('<OTHER_UUID>'::uuid, 'ZZ Foreign Project', 'active');
 
   insert into attendance_records
     (owner_id, worker_id, work_date, timein_project_name, timein_at,
@@ -542,12 +569,16 @@ begin;
     '{"sub":"<WORKER_UUID>","email":"worker@example.com","role":"authenticated"}';
 
   do $$
-  declare f bigint; n int;
+  declare f uuid; n int;
   begin
-    -- Read through the worker's own RLS view. A non-STRICT `select into`
-    -- with no visible row leaves f NULL rather than raising — so f being
-    -- NULL is exactly the proof we want: the project is invisible.
-    select id into f from attendance_projects where name = 'ZZ Foreign Project';
+    -- Ask the PICKER, not the table. Since 0059 the worker never selects
+    -- construction_projects directly (they have no policy on it at all),
+    -- so a table read would return zero rows for the wrong reason and
+    -- pass whatever the picker did. A non-STRICT `select into` with no
+    -- visible row leaves f NULL rather than raising — f being NULL is
+    -- exactly the proof we want: the project is not offered.
+    select project_id into f from attendance_projects_for_worker()
+     where project_name = 'ZZ Foreign Project';
     assert f is null, 'worker can SEE another owner''s project in the picker';
 
     -- and cannot read the foreign record
@@ -566,8 +597,8 @@ rollback;
 -- ║     staff, so every worker saw an EMPTY project picker.           ║
 -- ╚══════════════════════════════════════════════════════════════════╝
 begin;
-  insert into attendance_projects (owner_id, name, is_active)
-  values ('<OWNER_UUID>'::uuid, 'ZZ Owner Project', true);
+  insert into construction_projects (owner_id, project_name, status)
+  values ('<OWNER_UUID>'::uuid, 'ZZ Owner Project', 'active');
 
   set local role authenticated;
   set local request.jwt.claims =
@@ -582,7 +613,7 @@ begin;
       format('attendance_data_owner() returned %s, expected the owner', v_resolved);
 
     -- and the picker must therefore be non-empty
-    select count(*) into n from attendance_projects where name = 'ZZ Owner Project';
+    select count(*) into n from construction_projects where project_name = 'ZZ Owner Project';
     assert n = 1,
       'worker cannot see their OWNER''s active project — the picker is empty and Time In is impossible';
 
@@ -595,8 +626,8 @@ rollback;
 -- ║ 14. A worker with NO owner fails LOUDLY and specifically.         ║
 -- ╚══════════════════════════════════════════════════════════════════╝
 begin;
-  insert into attendance_projects (owner_id, name, is_active)
-  values ('<OWNER_UUID>'::uuid, 'ZZ Owner Project', true);
+  insert into construction_projects (owner_id, project_name, status)
+  values ('<OWNER_UUID>'::uuid, 'ZZ Owner Project', 'active');
 
   update profiles set owner_id = null where id = '<WORKER_UUID>'::uuid;
 
@@ -610,7 +641,7 @@ begin;
     -- The owner check fires before the project lookup, so the project id
     -- never matters here — pass an arbitrary one.
     begin
-      perform attendance_time_in(1::bigint, (d0 + time '07:45') at time zone 'Asia/Manila',
+      perform attendance_time_in('pm', gen_random_uuid(), (d0 + time '07:45') at time zone 'Asia/Manila',
                 'p/i.jpg', gen_random_uuid());
     exception when others then v_msg := sqlerrm;
     end;
@@ -626,7 +657,7 @@ rollback;  -- the owner_id change is rolled back with everything else
 --   BLOCK 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10b, 11, 12, 13, 14 ... OK
 --
 -- Then confirm nothing was left behind (every block rolls back):
---   select count(*) from attendance_projects where name like 'ZZ %';
+--   select count(*) from construction_projects where project_name like 'ZZ %';
 --   select count(*) from attendance_records  where timein_photo_path like 'p/%'
 --                                               or timein_photo_path like 'zz/%'
 --                                               or timein_photo_path like 'w/%';

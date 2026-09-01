@@ -521,7 +521,7 @@ Despite the name, this table records a project ending **either way**:
 
 ---
 
-## 11. Attendance (`0050`) — worker Time In / Time Out
+## 11. Attendance (`0050`, `0059`) — worker Time In / Time Out
 
 > **Deliberately isolated**, like `reimbursements` (0041), the warranty fund (0043) and
 > `quotations` (0045). No money math reads these tables; attendance hours are **not** the basis of
@@ -534,14 +534,33 @@ on their own rows and have **no** `insert`/`update` policy at all — that is wh
 Both functions are **idempotent on a client-generated `event_id`**, so the Android offline queue can
 replay a submission without duplicating it.
 
-### `attendance_projects/{id}` — the picker list
-| Field | Type | Notes |
-|---|---|---|
-| `id` | bigint identity | displayed `P-0004` |
-| `ownerId` | uuid | tenant |
-| `name` | string | unique per owner, case-insensitive |
-| `isActive` | boolean | `false` hides it from the worker's picker only — past records keep their snapshot |
-| `createdAt`, `updatedAt` | ts | |
+### The picker list — the **real** projects (`0059`)
+
+`attendance_projects` **was dropped in 0059.** Attendance kept a third notion of "project"
+alongside `folders` and `construction_projects`; it now uses those two directly, with the same
+`system` discriminator `0031_expense_inbox.sql` uses for the same problem:
+
+| `projectSystem` | id column | points at | module |
+|---|---|---|---|
+| `pc` | `timeinFolderId` | `folders` | Project Control |
+| `pm` | `timeinPmProjectId` | `construction_projects` | Project Management |
+
+A check constraint enforces that exactly one id is set and matches the system. Both FKs are
+**`on delete set null`, not cascade** — the opposite of 0031, on purpose: an inbox item is
+meaningless without its project, but an attendance record is a person's work history and must
+survive the project being deleted. `timeinProjectName` keeps the row readable afterwards.
+
+**`attendance_projects_for_worker()`** returns `(projectSystem, projectId, projectName)` — and
+only those three columns. Workers must **never** get a `select` policy on `folders`: that table
+is the Project Control project row and the money hanging off it (`folder_budgets.total_budget`,
+contract values) is owner-confidential. A three-column security-definer function cannot leak a
+fourth. Additional Works (`folders.parent_folder_id is not null`) are excluded — an AW folder is
+extra scope billed against the same physical site, not a second place a worker can stand.
+
+The two systems are scoped **differently**, and the function mirrors each one's own rule rather
+than inventing a stricter one: `folders` is owner-scoped (`folders_rw` uses `can_access(owner_id)`),
+while `construction_projects` is **role**-scoped (`cproj_admin` is `is_owner() or is_staff()` with
+no owner filter, and `owner_id` is nullable — many live rows carry NULL).
 
 ### `attendance_records/{id}` — one row per worker per work date
 | Field | Type | Notes |
@@ -552,7 +571,9 @@ replay a submission without duplicating it.
 | `workDate` | date | `(captured_at at time zone 'Asia/Manila')::date`, computed **server-side**. PH is UTC+8; a UTC date key rolls back a day |
 | `sessionSeq` | number | always `1` in the MVP; reserved so split shifts need no data migration |
 | `status` | string | `working` \| `complete` \| `abandoned`. **`no_record` is the absence of a row**, never stored |
-| `timeinProjectId` / `timeinProjectName` | bigint / string | id + snapshot |
+| `timeinProjectSystem` | string | `pc` \| `pm` — which project system the id below belongs to |
+| `timeinFolderId` / `timeinPmProjectId` | uuid | exactly one is set, matching `timeinProjectSystem`. `on delete set null`. **All three may be null** on a row recorded before `0059`, or one whose snapshotted name no longer resolves — `timeinProjectName` is then the only project reference. Rows written since always carry a system |
+| `timeinProjectName` | string | **snapshot** at Time In — survives a rename or a deleted project |
 | `timeinAt` | ts | the worker's captured instant |
 | `timeinPhotoPath` | string | `attendance` bucket object path, **not** a URL |
 | `timeinDescription` | string | optional |
@@ -560,7 +581,7 @@ replay a submission without duplicating it.
 | `timeinEventId` | uuid | client-generated at tap; **unique**. The idempotency key |
 | `timeinWasOffline` | boolean | captured with no signal |
 | `timeinReceivedAt` | ts | server clock. Skew vs `timeinAt` is only meaningful when `wasOffline` is false |
-| `timeout*` | — | same shape, all nullable. **Stored independently** — the worker may change site mid-day |
+| `timeout*` | — | same shape, all nullable (including the three project columns). **Stored independently** — the worker may change site mid-day |
 | `totalMinutes` | number | computed **server-side** on Time Out, so worker and admin cannot disagree |
 
 `unique (worker_id, work_date, session_seq)` is the one-record-per-day guarantee. A Time Out more
