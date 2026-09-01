@@ -613,7 +613,7 @@ async function adminCreateUser(payload) {
   });
   const out = await res.json();
   if (!res.ok) throw new Error(out.error || 'create user failed');
-  return out; // { uid, reused }
+  return out; // { uid }
 }
 window.adminCreateUser = adminCreateUser;
 

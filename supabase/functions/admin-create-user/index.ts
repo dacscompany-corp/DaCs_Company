@@ -7,7 +7,8 @@
 //
 // POST body: { email, password, kind, role?, ownerUid?, firstName?, lastName?,
 //              displayName?, agreementAccepted? }
-// → 200 { uid, reused }   |   4xx { error }
+// → 200 { uid }   |   409 { error } when the email already has an auth user
+//                 |   4xx { error }
 //
 // Deploy: supabase functions deploy admin-create-user
 // ════════════════════════════════════════════════════════════════════
@@ -68,26 +69,30 @@ Deno.serve(async (req) => {
   if (prof.role === "staff" && role === "owner")
     return json({ error: "staff cannot create owners" }, 403, c);
 
-  // 3) Create the auth user (reuse uid if the email already exists — mirrors old flow).
-  let uid: string;
-  let reused = false;
+  // 3) Create the auth user. A duplicate email REFUSES the whole request.
+  //
+  // This used to reuse the existing uid and carry on. It could not set the
+  // password while doing so -- createUser had already failed -- so the
+  // caller was told the account was created with the password they typed
+  // while auth.users quietly kept the old one. The person was then handed
+  // credentials that could never work, and nothing in the admin UI showed
+  // it: the profile row looked perfect because step 4 had written it.
+  //
+  // Setting the password on the reuse path would be worse, not better. It
+  // would turn this form into account takeover: type a colleague's email,
+  // choose a password, and their account is yours. The upsert below is the
+  // same weapon by another route -- it rewrites role, status and owner_id,
+  // so "Add Employee" on an owner's address demotes them to 'worker'.
+  //
+  // Both stop here, before a single row is written.
   const created = await admin.auth.admin.createUser({
     email, password, email_confirm: true,
   });
   if (created.error) {
-    if (/already.*registered|exists/i.test(created.error.message)) {
-      // find existing by email
-      const { data: list } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-      const found = list?.users?.find((u) => (u.email || "").toLowerCase() === email);
-      if (!found) return json({ error: created.error.message }, 400, c);
-      uid = found.id;
-      reused = true;
-    } else {
-      return json({ error: created.error.message }, 400, c);
-    }
-  } else {
-    uid = created.data.user!.id;
+    const duplicate = /already.*registered|exists/i.test(created.error.message);
+    return json({ error: created.error.message }, duplicate ? 409 : 400, c);
   }
+  const uid = created.data.user!.id;
 
   // 4) Upsert the profile row (service role bypasses RLS + the role-escalation guard).
   const profileRow: Record<string, unknown> = {
@@ -106,5 +111,5 @@ Deno.serve(async (req) => {
   const { error: pErr } = await admin.from("profiles").upsert(profileRow, { onConflict: "id" });
   if (pErr) return json({ error: pErr.message }, 400, c);
 
-  return json({ uid, reused }, 200, c);
+  return json({ uid }, 200, c);
 });
