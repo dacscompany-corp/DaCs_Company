@@ -98,8 +98,12 @@
 .pm-btn-primary {
   background: var(--pm-green);
   color: #fff;
+  /* Same-colour 1px border purely so a primary button measures the SAME HEIGHT
+     as the outlined secondary/danger ones beside it — .pm-btn sets border:none,
+     which left every primary button 2px short in a mixed footer row. */
+  border: 1px solid var(--pm-green);
 }
-.pm-btn-primary:hover { background: var(--pm-green-hover); }
+.pm-btn-primary:hover { background: var(--pm-green-hover); border-color: var(--pm-green-hover); }
 .pm-btn-secondary {
   background: #fff;
   color: var(--pm-ink-2);
@@ -1916,6 +1920,10 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
   .pm-modal-box { max-height: 92vh !important; }
   .pm-modal-footer { flex-direction: column-reverse !important; }
   .pm-modal-footer .pm-btn { width: 100% !important; justify-content: center !important; }
+  /* The ledger footers' flex:1 spacer only exists to push Close right on a wide
+     row. Stacked, it turns into an empty element that grows and splits the
+     buttons apart, so drop it. */
+  .pm-lc-led-foot > span { display: none !important; }
 }
 
 /* Compress the workspace tabs a touch on phones (they already scroll-x) */
@@ -1986,6 +1994,37 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
 .pm-lc-remaining { margin-top: 7px; display: inline-flex; align-items: center; gap: 6px; background: #eaf4ef; color: #0f6342; border-radius: 8px; padding: 5px 11px; font: 500 12px 'IBM Plex Sans'; }
 .pm-lc-remaining strong { font-weight: 700; }
 .pm-lc-neg { color: #b4453a !important; }
+
+/* ── Materials category: ⚙ manager (0060) ───────────────────────────
+   Adding happens inline from the dropdown; this panel only removes. */
+.pmw-matcat-gear {
+    border: 0; background: transparent; cursor: pointer;
+    color: #9b9a94; font-size: 13px; line-height: 1;
+    padding: 0 2px; margin-left: 6px; vertical-align: -1px;
+}
+.pmw-matcat-gear:hover { color: #0f6342; }
+
+.pmw-matcat-manager {
+    margin-top: 9px; padding: 11px 12px;
+    background: #faf9f7; border: 1px solid #e7e6e2; border-radius: 10px;
+}
+.pmw-matcat-manager-head {
+    font: 500 11px 'IBM Plex Sans'; color: #8a8983; margin-bottom: 9px;
+}
+.pmw-matcat-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.pmw-matcat-none { font: 400 12px 'IBM Plex Sans'; color: #9b9a94; }
+
+.pmw-matcat-chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: #fff; border: 1px solid #e7e6e2; border-radius: 999px;
+    padding: 5px 7px 5px 12px;
+    font: 500 12px 'IBM Plex Sans'; color: #4a4945;
+}
+.pmw-matcat-chip button {
+    border: 0; background: transparent; cursor: pointer;
+    color: #b3b2ac; font-size: 15px; line-height: 1; padding: 0 2px;
+}
+.pmw-matcat-chip button:hover { color: #b4453a; }
 
 /* collapsible panel */
 .pm-lc-panel { border: 1px solid #e7e6e2; border-radius: 14px; background: #fff; margin-bottom: 18px; overflow: hidden; }
@@ -2083,7 +2122,24 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
 .pm-lc-tl-amt { font: 700 14px 'IBM Plex Sans'; color: #1c1c1a; }
 .pm-lc-tl-meta { font: 400 11.5px 'IBM Plex Sans'; color: #9b9a94; margin-top: 2px; }
 .pm-lc-tl-meta-on { color: #0f6342; font-weight: 600; }
-.pm-lc-led-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Ledger footers carry up to 8 buttons and must stay on ONE row, so nothing
+   wraps here — the box is widened to 860px (see admin.html) and the buttons are
+   compacted to suit. justify-content is reset from .pm-modal-footer's flex-end
+   so the row packs from the left and the flex:1 spacer alone anchors Close to
+   the right. overflow-x is the safety valve: on a viewport too narrow for the
+   full row but too wide to have stacked yet, the footer scrolls sideways rather
+   than silently breaking back into two ragged rows. */
+.pm-lc-led-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  overflow-x: auto;
+}
+/* Compact enough that all 8 fit; flex:none stops the row from squeezing a
+   label into an ellipsis when it is one pixel short. */
+.pm-lc-led-foot .pm-btn { padding: 8px 12px; font-size: 12.5px; flex: none; }
 .pm-lc-btn-danger { color: #b4453a; background: #fff; border: 1px solid #f0cdc8; }
 .pm-lc-btn-danger:hover { background: #f8ecea; }
 
@@ -2115,4 +2171,163 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
   .pm-lc-ramt { font-size: 17px; }
   .pm-lc-rscope { font-size: 13px; }
   .pm-lc-step2col, .pm-lc-payopts { flex-direction: column; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   CONTRACTS TAB — worker cards (.pm-lcx-*)
+
+   The Unified Worker Ledger layout from Project Control (the .lc2-* block in
+   portal-app.compiled.js / expenses-mvp.css), rebuilt here for Project
+   Management: one collapsible card per worker/vendor carrying their combined
+   balance, with every job under them as its own numbered card.
+
+   BEHAVIOUR IS NOT PORTED. Project Control expands a job inline into a
+   payments table; here a job card still opens PM's Contract Ledger modal,
+   which is where this module's actions already live.
+
+   The segment accent (Labor green / Out Source purple) arrives as the
+   --lcx-* variables set on .pm-lcx-wrap by _pmRenderContractsTab(), so this
+   stylesheet is written once and themed twice.
+   ════════════════════════════════════════════════════════════ */
+.pm-lcx-wrap { margin-top: 18px; display: flex; flex-direction: column; gap: 14px; }
+
+/* ── worker card ── */
+.pm-lcx-acc {
+  border: 1px solid #ecebe6;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+  transition: border-color .15s, box-shadow .15s;
+}
+.pm-lcx-acc.open { border-color: #e2e0d9; box-shadow: 0 1px 3px rgba(28, 28, 26, 0.05); }
+.pm-lcx-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.pm-lcx-head:hover { background: #faf9f7; }
+.pm-lcx-av {
+  flex: none;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--lcx-soft, #eaf4ef);
+  color: var(--lcx-accent-dark, #0f6342);
+  font-size: 14px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.pm-lcx-id { flex: none; min-width: 148px; }
+.pm-lcx-name { font-size: 14.5px; font-weight: 700; color: #1c1c1a; }
+.pm-lcx-role { font-size: 11.5px; color: #9b9a94; margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+.pm-lcx-type {
+  font-size: 9.5px; font-weight: 700;
+  letter-spacing: .03em; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 20px;
+  background: #efeaf8; color: #5b3f96;
+}
+
+/* progress + caption. min-width:0 so a long caption shrinks instead of
+   pushing the money column off the card. */
+.pm-lcx-mid { flex: 1; min-width: 0; }
+.pm-lcx-bar { height: 8px; background: var(--lcx-track, #e3efe8); border-radius: 5px; overflow: hidden; }
+.pm-lcx-bar-fill { height: 100%; border-radius: 5px; background: var(--lcx-accent, #157a52); transition: width .25s; }
+.pm-lcx-cap { font-size: 11.5px; color: #8a8983; margin-top: 6px; }
+
+/* money column — shared by the header and the job cards */
+.pm-lcx-rem, .pm-lcx-job-rem { flex: none; text-align: right; }
+.pm-lcx-rem-lbl {
+  font-size: 9.5px; font-weight: 700;
+  letter-spacing: .05em; text-transform: uppercase;
+  color: #9b9a94;
+}
+.pm-lcx-rem-val { font-size: 19px; font-weight: 700; color: var(--lcx-accent-dark, #0f6342); margin-top: 1px; }
+.pm-lcx-rem-val.neg, .pm-lcx-job-rem-val.neg { color: #b4453a; }
+
+/* ── status badge ── */
+.pm-lcx-badge {
+  flex: none;
+  font-size: 11px; font-weight: 700;
+  padding: 5px 11px; border-radius: 20px;
+  white-space: nowrap;
+}
+.pm-lcx-badge-on   { background: #eff6ff; color: #1d4ed8; }
+.pm-lcx-badge-done { background: #eaf4ef; color: #0f6342; }
+.pm-lcx-badge-over { background: #fdeceb; color: #b4453a; }
+
+.pm-lcx-pay {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--lcx-accent, #157a52);
+  color: #fff; border: none; border-radius: 9px;
+  padding: 8px 14px;
+  font-family: inherit; font-size: 12.5px; font-weight: 700;
+  cursor: pointer; white-space: nowrap;
+  transition: filter .15s;
+}
+.pm-lcx-pay:hover { filter: brightness(1.08); }
+
+.pm-lcx-chev { flex: none; color: #a1a1a6; transition: transform .2s; }
+.pm-lcx-acc.open .pm-lcx-chev { transform: rotate(180deg); }
+
+/* ── jobs list ── */
+.pm-lcx-body { display: none; padding: 4px 18px 18px; }
+.pm-lcx-acc.open .pm-lcx-body { display: block; }
+.pm-lcx-jobs-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; padding: 6px 2px 10px;
+}
+.pm-lcx-jobs-lbl {
+  font-size: 10.5px; font-weight: 700;
+  letter-spacing: .05em; text-transform: uppercase;
+  color: #8a8983;
+}
+.pm-lcx-jobs-hint { font-size: 11.5px; color: #b0afa8; }
+
+.pm-lcx-job {
+  display: flex; align-items: center; gap: 14px;
+  padding: 13px 16px;
+  border: 1px solid #efeee9;
+  border-radius: 11px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+}
+.pm-lcx-job + .pm-lcx-job { margin-top: 8px; }
+.pm-lcx-job:hover { background: #faf9f7; border-color: #e2e0d9; }
+.pm-lcx-num {
+  flex: none;
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: #f4f3ef; color: #6f6e69;
+  font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.pm-lcx-job-id { flex: 1; min-width: 0; }
+.pm-lcx-job-name {
+  font-size: 13.5px; font-weight: 700; color: #1c1c1a;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pm-lcx-job-sub { font-size: 11.5px; color: #8a8983; margin-top: 3px; }
+.pm-lcx-job-rem-val { font-size: 15px; font-weight: 700; color: #1c1c1a; margin-top: 1px; }
+.pm-lcx-job-chev { flex: none; color: #c4c9d4; transform: rotate(-90deg); }
+
+/* ── narrow screens ──
+   The header is one dense row of six columns; below ~900px it wraps into a
+   readable stack rather than crushing the progress bar to nothing. */
+@media (max-width: 900px) {
+  .pm-lcx-head { flex-wrap: wrap; gap: 10px 12px; }
+  .pm-lcx-id { min-width: 0; flex: 1; }
+  .pm-lcx-mid { flex: 1 0 100%; order: 9; }
+  .pm-lcx-pay { order: 10; }
+  .pm-lcx-job { flex-wrap: wrap; }
+  .pm-lcx-job-id { flex: 1 0 60%; }
+}
+@media (max-width: 560px) {
+  .pm-lcx-head { padding: 13px 14px; }
+  .pm-lcx-body { padding: 4px 14px 14px; }
+  .pm-lcx-rem-val { font-size: 17px; }
+  .pm-lcx-jobs-hint { display: none; }
 }

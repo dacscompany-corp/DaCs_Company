@@ -211,6 +211,80 @@
         };
     }
 
+    /**
+     * The rules for EDITING an existing worker.
+     *
+     * Deliberately a smaller field set than attValidateNewWorker, and the
+     * omissions are all forced by the database rather than chosen:
+     *
+     * - NO role. The profiles_guard trigger (0019) refuses any role change
+     *   from an authenticated client unless BOTH the old and new values
+     *   are 'client' or 'partner'. worker and teamLeader are privileged,
+     *   so a Role dropdown here would throw "role may only be changed
+     *   between client and partner" on every save. Offering a control
+     *   that cannot work is worse than not offering it.
+     * - NO email. That lives on the auth user, not the profile; changing
+     *   it needs the service-role key, which the browser must never hold.
+     * - NO password. Same reason -- resetting one is an auth-admin call.
+     *
+     * Name and position ARE editable: profiles_admin_update (0019) lets
+     * owner/staff write other people's rows, and the guard only fires
+     * when role or owner_id actually change.
+     */
+    function attValidateEditWorker(input) {
+        const i = input || {};
+        const firstName = String(i.firstName || '').trim();
+        const lastName  = String(i.lastName  || '').trim();
+        const position  = String(i.position  || '').trim();
+        const status    = String(i.status || 'active');
+
+        const errors = {};
+        if (!firstName) errors.firstName = 'First name is required.';
+        if (!lastName)  errors.lastName  = 'Last name is required.';
+        if (status !== 'active' && status !== 'inactive') errors.status = 'Pick a status.';
+
+        return {
+            valid: Object.keys(errors).length === 0,
+            errors: errors,
+            // first_name / last_name / display_name move together. A row
+            // whose display_name disagrees with its parts is exactly how
+            // the nameless W-000n rows came to render as a worker number.
+            payload: {
+                first_name:   firstName,
+                last_name:    lastName,
+                display_name: (firstName + ' ' + lastName).trim(),
+                position:     position || null,
+                status:       status
+            }
+        };
+    }
+
+    /**
+     * Best-effort split of a display_name back into two fields.
+     *
+     * Only used when first_name/last_name are missing -- legacy rows.
+     * Anything created through A4 already has both stored, so this is a
+     * fallback, not the normal path.
+     *
+     * Everything but the LAST token becomes the first name, which suits
+     * "John Aerol Tapales" (given + middle + surname) and gets compound
+     * surnames wrong: "Juan Dela Cruz" splits as "Juan Dela" / "Cruz".
+     * No heuristic gets both right, and swapping the rule just moves the
+     * error onto the other name. This is a PREFILL the admin sees and
+     * corrects in the form before saving, so a wrong guess costs one
+     * edit -- guessing silently at save time would cost a wrong record.
+     */
+    function attSplitName(worker) {
+        const w = worker || {};
+        const first = String(w.first_name || '').trim();
+        const last  = String(w.last_name  || '').trim();
+        if (first || last) return { firstName: first, lastName: last };
+        const parts = String(w.display_name || '').trim().split(/\s+/).filter(Boolean);
+        if (!parts.length) return { firstName: '', lastName: '' };
+        if (parts.length === 1) return { firstName: parts[0], lastName: '' };
+        return { firstName: parts.slice(0, -1).join(' '), lastName: parts[parts.length - 1] };
+    }
+
     // ==== ATT REPORT ENGINE END ====
 
     const PHOTO_BUCKET = 'attendance';
@@ -862,6 +936,8 @@
                           : '<span class="att-pill att-pill--none">Deactivated</span>'}</td>
                       <td class="att-right">
                         <div class="att-actions">
+                          <button class="att-link" type="button"
+                                  data-edit="${attEsc(w.id)}">Edit</button>
                           <button class="att-link ${w._active ? 'att-link--danger' : ''}"
                                   type="button" data-toggle="${attEsc(w.id)}"
                                   data-active="${w._active ? '1' : '0'}">
@@ -878,13 +954,30 @@
               refuses an inactive account before it issues any tokens.
               Records already recorded against them are untouched.</div>`;
 
+        body.querySelectorAll('button[data-edit]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const w = rows.find(x => x.id === btn.getAttribute('data-edit'));
+                if (!w) return;
+                attOpenEditWorker(container.querySelector('#attWorkerModalHost'), w,
+                                  () => attRenderWorkers(container));
+            });
+        });
+
         body.querySelectorAll('button[data-toggle]').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const id = btn.getAttribute('data-toggle');
                 const nowActive = btn.getAttribute('data-active') === '1';
-                const { error } = await window.sbClient.from('profiles')
-                    .update({ status: nowActive ? 'inactive' : 'active' }).eq('id', id);
+                const { data, error } = await window.sbClient.from('profiles')
+                    .update({ status: nowActive ? 'inactive' : 'active' })
+                    .eq('id', id).select('id');
                 if (error) { alert('Could not update worker: ' + error.message); return; }
+                // Same zero-row trap the edit form guards against: an RLS
+                // refusal returns no error, just nothing changed.
+                if (!data || !data.length) {
+                    alert('Nothing was changed — the database refused the update. ' +
+                          'Check you are signed in as owner or staff.');
+                    return;
+                }
                 attRenderWorkers(container);
             });
         });
@@ -1084,6 +1177,152 @@
             } finally {
                 submitBtn.disabled = false;
                 submitBtn.textContent = 'Create account';
+            }
+        });
+    }
+
+    // ── A3b · Edit an existing worker ───────────────────────────────
+    //
+    // Writes straight to profiles, no Edge Function: this changes no auth
+    // credential, and profiles_admin_update (0019) already lets owner and
+    // staff update other people's rows. See attValidateEditWorker for why
+    // role, email and password are absent.
+
+    function attOpenEditWorker(host, worker, onSaved) {
+        const nm = attSplitName(worker);
+        const active = (worker.status || 'active') === 'active';
+
+        host.innerHTML = `
+            <div class="att-modal" id="attEditWorkerModal">
+              <div class="att-modal-box" role="dialog" aria-modal="true"
+                   aria-labelledby="attEditWorkerTitle">
+                <div class="att-modal-head">
+                  <div>
+                    <h3 class="att-modal-title" id="attEditWorkerTitle">Edit worker</h3>
+                    <p class="att-modal-sub">${attEsc(worker.email || 'no email on this account')}
+                      · ${attWorkerNo(worker.worker_no)}</p>
+                  </div>
+                  <button class="att-modal-x" type="button" id="attEwX" aria-label="Close">&times;</button>
+                </div>
+                <form class="att-modal-form" id="attEditWorkerForm" autocomplete="off">
+                  <div class="att-modal-body">
+                    <div class="att-field">
+                      <label for="attEwFirst">First name <span class="att-req">*</span></label>
+                      <input class="att-input" id="attEwFirst" type="text"
+                             value="${attEsc(nm.firstName)}">
+                      <div class="att-err" data-err="firstName"></div>
+                    </div>
+                    <div class="att-field">
+                      <label for="attEwLast">Last name <span class="att-req">*</span></label>
+                      <input class="att-input" id="attEwLast" type="text"
+                             value="${attEsc(nm.lastName)}">
+                      <div class="att-err" data-err="lastName"></div>
+                    </div>
+                    <div class="att-field">
+                      <label for="attEwPosition">Position / Trade</label>
+                      <input class="att-input" id="attEwPosition" type="text"
+                             placeholder="e.g. Mason, Carpenter"
+                             value="${attEsc(worker.position || '')}">
+                      <div class="att-hint">Shown on every future attendance record.</div>
+                    </div>
+                    <div class="att-field">
+                      <label>Status</label>
+                      <div class="att-seg" id="attEwStatus">
+                        <button class="att-seg-btn${active ? ' is-on' : ''}" type="button"
+                                data-status="active" style="flex:1;">Active</button>
+                        <button class="att-seg-btn${active ? '' : ' is-on'}" type="button"
+                                data-status="inactive" style="flex:1;">Deactivated</button>
+                      </div>
+                      <div class="att-err" data-err="status"></div>
+                    </div>
+                    <div class="att-info att-span">
+                      <i data-lucide="history"></i>
+                      <div>Renaming changes the roster from here on. Attendance already
+                        recorded keeps the name it was saved with — those are snapshots,
+                        and rewriting them would rewrite history.</div>
+                    </div>
+                    <div class="att-info att-span">
+                      <i data-lucide="lock"></i>
+                      <div><strong>Role, email and password are not editable here.</strong>
+                        Role is locked by a database guard that only permits
+                        client&nbsp;↔&nbsp;partner changes; email and password live on the
+                        login account and need the server-side admin key.</div>
+                    </div>
+                    <div class="att-err att-err--general att-span" id="attEwGeneral"></div>
+                  </div>
+                  <div class="att-modal-foot">
+                    <button class="att-btn" type="button" id="attEwCancel">Cancel</button>
+                    <button class="att-btn att-btn--primary" type="submit" id="attEwSubmit">
+                      Save changes
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>`;
+
+        attIcons();
+
+        const general = host.querySelector('#attEwGeneral');
+        const submitBtn = host.querySelector('#attEwSubmit');
+        const seg = host.querySelector('#attEwStatus');
+
+        seg.addEventListener('click', (e) => {
+            const btn = e.target.closest('.att-seg-btn');
+            if (!btn) return;
+            seg.querySelectorAll('.att-seg-btn').forEach(b => b.classList.toggle('is-on', b === btn));
+        });
+
+        function close() {
+            if (host._attEsc) { document.removeEventListener('keydown', host._attEsc); host._attEsc = null; }
+            host.innerHTML = '';
+        }
+        host._attEsc = (e) => { if (e.key === 'Escape') close(); };
+        document.addEventListener('keydown', host._attEsc);
+
+        host.querySelector('#attEwX').addEventListener('click', close);
+        host.querySelector('#attEwCancel').addEventListener('click', close);
+
+        host.querySelector('#attEditWorkerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            host.querySelectorAll('.att-err').forEach(el => { el.textContent = ''; el.style.display = 'none'; });
+
+            const check = attValidateEditWorker({
+                firstName: host.querySelector('#attEwFirst').value,
+                lastName:  host.querySelector('#attEwLast').value,
+                position:  host.querySelector('#attEwPosition').value,
+                status:    seg.querySelector('.att-seg-btn.is-on').getAttribute('data-status')
+            });
+            if (!check.valid) {
+                Object.keys(check.errors).forEach(k => {
+                    const el = host.querySelector('[data-err="' + k + '"]');
+                    if (el) { el.textContent = check.errors[k]; el.style.display = 'block'; }
+                });
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Saving…';
+            try {
+                // .select() so a row count comes back. Without it an update
+                // that RLS silently matched ZERO rows returns no error, and
+                // the form would report success over a save that never
+                // happened -- the exact failure 0019 was written to fix.
+                const { data, error } = await window.sbClient.from('profiles')
+                    .update(check.payload).eq('id', worker.id).select('id');
+                if (error) throw error;
+                if (!data || !data.length) {
+                    throw new Error('The database accepted the request but changed no row. ' +
+                                    'That usually means RLS refused it — check you are signed in as owner or staff.');
+                }
+                close();
+                if (onSaved) onSaved();
+            } catch (err) {
+                console.error('att A3b: edit worker', err);
+                general.textContent = (err && err.message) || 'Could not save the changes.';
+                general.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Save changes';
             }
         });
     }
@@ -1336,24 +1575,31 @@
                 '<h2 class="att-title">Attendance Reports</h2>' +
                 '<div class="att-sub" id="attRangeLabel"></div>' +
               '</div>' +
-              '<div class="att-head-actions">' +
-                '<div class="att-seg" id="attPeriod">' +
-                  '<button class="att-seg-btn" type="button" data-period="daily">Daily</button>' +
-                  '<button class="att-seg-btn is-on" type="button" data-period="weekly">Weekly</button>' +
-                  '<button class="att-seg-btn" type="button" data-period="monthly">Monthly</button>' +
-                '</div>' +
-                '<button class="att-btn" type="button" id="attCsvWorker">' +
-                  '<i data-lucide="download"></i>CSV by worker</button>' +
-                '<button class="att-btn att-btn--primary" type="button" id="attCsvDay">' +
-                  '<i data-lucide="download"></i>CSV by day</button>' +
-              '</div>' +
             '</div>' +
+            // Every control that shapes the report sits in ONE row: the
+            // presets, the two dates those presets rewrite, and the
+            // exports that carry the same range out. Splitting them
+            // between the header and a second bar put "Weekly" and the
+            // dates it fills in two different places on the screen.
+            //
+            // The seg and CSV buttons are type="button" on purpose --
+            // inside a form, a bare <button> submits, and "CSV by day"
+            // would re-run the query before writing the file.
             '<form class="att-toolbar" id="attRangeForm">' +
+              '<div class="att-seg" id="attPeriod">' +
+                '<button class="att-seg-btn" type="button" data-period="daily">Daily</button>' +
+                '<button class="att-seg-btn is-on" type="button" data-period="weekly">Weekly</button>' +
+                '<button class="att-seg-btn" type="button" data-period="monthly">Monthly</button>' +
+              '</div>' +
               '<label for="attFrom">From</label>' +
               '<input class="att-input" type="date" id="attFrom" value="' + attEsc(range.from) + '">' +
               '<label for="attTo">To</label>' +
               '<input class="att-input" type="date" id="attTo" value="' + attEsc(range.to) + '">' +
-              '<button class="att-btn" type="submit">Show</button>' +
+              '<button class="att-btn att-btn--primary" type="submit">Apply</button>' +
+              '<button class="att-btn" type="button" id="attCsvWorker">' +
+                '<i data-lucide="download"></i>CSV by worker</button>' +
+              '<button class="att-btn" type="button" id="attCsvDay">' +
+                '<i data-lucide="download"></i>CSV by day</button>' +
             '</form>' +
             '<div id="attReportBody">Loading…</div>';
 

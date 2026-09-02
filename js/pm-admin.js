@@ -2376,6 +2376,7 @@ function _pmWeekSyncDraft() {
                 days: Number(e.days) || 0,
                 qty: Number(e.qty) || 0,
                 unit: e.unit || '',
+                category: e.category || '',                              // materials category survives a reopen
                 ...(e.contractId ? { contractId: e.contractId } : {}),   // keep the pakyaw/contract link on reload
                 receipts: _pmEntryReceiptList(e)
             }));
@@ -2483,22 +2484,32 @@ window.pmWeekAddEntry = function() {
     const contractId = (type === 'labor') ? ((document.getElementById('pm-week-contract') || {}).value || '')
         : (type === 'both') ? ((document.getElementById('pm-week-outsource') || {}).value || '')
         : '';
+    // Materials only -- read even when the field is hidden would pick up a
+    // value left over from a previous Materials line and stamp it on a Labor
+    // one, so the type check is what keeps the two apart.
+    let category = (type === 'materials')
+        ? String((document.getElementById('pm-week-matcat') || {}).value || '').trim()
+        : '';
+    // Belt and braces: the "+ Add new category…" row reverts itself, but if
+    // it ever survived to here it would be stored as a literal category name.
+    if (category === _PM_MATCAT_NEW) category = '';
     if (_pmWeekEditEntryId) {
         // Update the line in place.
         const en = _pmWeekEntries.find(e => e.id === _pmWeekEditEntryId);
         if (en) {
             en.type = type; en.details = details || fallbackDetails; en.amount = amount;
             en.days = days; en.qty = qty; en.unit = unit;
-            en.receipts = receipts; en.contractId = contractId;
+            en.receipts = receipts; en.contractId = contractId; en.category = category;
         }
         _pmWeekEditEntryId = null;
     } else {
-        _pmWeekEntries.push({ id:_pmUid('we_'), type, details: details || fallbackDetails, amount, days, qty, unit, receipts, contractId });
+        _pmWeekEntries.push({ id:_pmUid('we_'), type, details: details || fallbackDetails, amount, days, qty, unit, receipts, contractId, category });
     }
     if (detEl)  detEl.value = '';
     if (amtEl)  amtEl.value = '';
     if (daysEl) daysEl.value = '';
     if (qtyEl)  qtyEl.value = '';
+    const mcSel = document.getElementById('pm-week-matcat'); if (mcSel) mcSel.value = '';
     const cSel = document.getElementById('pm-week-contract'); if (cSel) cSel.value = '';
     if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
     const oSel = document.getElementById('pm-week-outsource'); if (oSel) oSel.value = '';
@@ -2517,11 +2528,17 @@ window.pmWeekRemoveEntry = function(id) {
     _pmWeekRecompute();
 };
 
-// Meta line for an entry: "6 days" (labor) or "50 bags" (materials).
+// Meta line for an entry: "6 days" (labor) or "Cement · 50 bags" (materials).
+// Both the live entries list (_pmWeekEntryRow) and the saved read-only day
+// view (_pmWeekRoRow) render from here, so the category shows on both.
 function _pmWeekMeta(e) {
     if (e.type === 'labor') return e.days ? (e.days + (e.days === 1 ? ' day' : ' days')) : '';
     const q = e.qty ? String(e.qty) : '';
-    return q + (e.qty && e.unit ? ' ' + e.unit : (e.unit || ''));
+    const qty = q + (e.qty && e.unit ? ' ' + e.unit : (e.unit || ''));
+    // Category leads: it is what the line is FOR, where the quantity is only
+    // how much of it. Materials only -- nothing else carries one.
+    const cat = e.type === 'materials' ? String(e.category || '').trim() : '';
+    return cat && qty ? cat + ' · ' + qty : (cat || qty);
 }
 
 // Switch the active category in the segmented control (Labor / Materials / Mat + Labor).
@@ -2558,6 +2575,12 @@ function _pmWeekApplyCat() {
     if (daysWrap) daysWrap.style.display = cat === 'labor' ? '' : 'none';
     const qtyWrap = document.getElementById('pm-week-qty-wrap');
     if (qtyWrap) qtyWrap.style.display = cat === 'materials' ? '' : 'none';
+    // Category is Materials-only, mirroring Project Control. Repopulated on
+    // every switch because a labor contract added since the page loaded should
+    // be offered without a refresh.
+    const matCatWrap = document.getElementById('pm-week-matcat-wrap');
+    if (matCatWrap) matCatWrap.style.display = cat === 'materials' ? '' : 'none';
+    if (cat === 'materials') _pmPopulateMatCatPicker();
     // "Pay against contract" picker is Labor-only; the Out Source one is 'both'-only.
     const contractWrap = document.getElementById('pm-week-contract-wrap');
     if (contractWrap) contractWrap.style.display = cat === 'labor' ? '' : 'none';
@@ -2692,6 +2715,10 @@ window.pmWeekEditEntry = function(id) {
     const daysEl = document.getElementById('pm-week-days');    if (daysEl) daysEl.value = en.days || '';
     const qtyEl  = document.getElementById('pm-week-qty');     if (qtyEl)  qtyEl.value  = en.qty || '';
     const unitEl = document.getElementById('pm-week-unit');    if (unitEl && en.unit) unitEl.value = en.unit;
+    // Through the picker rather than a bare .value, so a category recorded
+    // before its contract was renamed is re-rendered as an option instead of
+    // falling back to blank and being saved away on the next Add.
+    if (en.type === 'materials') _pmPopulateMatCatPicker(en.category || '');
     const cSel = document.getElementById('pm-week-contract'); if (cSel) cSel.value = (en.type === 'labor' ? (en.contractId || '') : '');
     if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
     const oSel = document.getElementById('pm-week-outsource'); if (oSel) oSel.value = (en.type === 'both' ? (en.contractId || '') : '');
@@ -2974,7 +3001,8 @@ function _pmCatRows(type) {
             if (Array.isArray(b.entries) && b.entries.length) {
                 b.entries.filter(e => e.type === type).forEach(e => rows.push({
                     date: b.weekEndingDate, details: e.details, amount: Number(e.amount) || 0,
-                    days: Number(e.days) || 0, qty: Number(e.qty) || 0, unit: e.unit || ''
+                    days: Number(e.days) || 0, qty: Number(e.qty) || 0, unit: e.unit || '',
+                    category: e.category || ''
                 }));
             } else {
                 // Legacy bill without an entries[] array — synthesize from totals.
@@ -3034,10 +3062,15 @@ window.pmCatView = function(type) {
 
     const list = rows.length ? rows.map(r => {
         const b = badge(r.date);
-        const meta = r.days ? `${r.days} day${r.days === 1 ? '' : 's'}`
+        const base = r.days ? `${r.days} day${r.days === 1 ? '' : 's'}`
                    : (r.qty ? `${r.qty}${r.unit ? ' ' + _esc(r.unit) : ''}`
                    : `Daily bill · ${_esc(_pmShortDate(r.date))}`);
-        const search = `${r.details || ''} ${_pmShortDate(r.date)}`.toLowerCase();
+        // Category leads the sub-line here too, matching the entries list.
+        const cat  = String(r.category || '').trim();
+        const meta = cat ? _esc(cat) + ' · ' + base : base;
+        // Searchable by category as well -- "show me everything bought for
+        // Tiling" is the question this modal exists to answer.
+        const search = `${r.details || ''} ${cat} ${_pmShortDate(r.date)}`.toLowerCase();
         return `<div class="pmcv-row" data-pmcv-search="${_esc(search)}">
             <div class="pmcv-date"><div class="pmcv-date-day">${b.day}</div><div class="pmcv-date-mon">${_esc(b.mon)}</div></div>
             <div class="pmcv-main"><div class="pmcv-title">${_esc(r.details || '—')}</div><div class="pmcv-sub">${meta}</div></div>
@@ -3560,6 +3593,7 @@ window.pmWeekSave = async function() {
                 return { type:e.type, details:e.details, amount:e.amount,
                     ...(e.days ? { days:e.days } : {}),
                     ...(e.qty  ? { qty:e.qty, unit:e.unit || 'pcs' } : {}),
+                    ...(e.category ? { category: e.category } : {}),         // materials only; what it was bought for
                     ...(e.contractId ? { contractId: e.contractId } : {}),   // pakyaw/contract drawdown link
                     ...(urls.length ? { receipts: urls, receiptUrl: urls[0] } : {}) };  // receiptUrl kept for legacy readers
             }),
@@ -5233,6 +5267,9 @@ async function _pmLoadLaborContracts() {
     } catch (e) { console.warn('PM labor contracts load:', e.message); _pmLaborContracts = []; }
     _pmRenderContracts();
     _pmPopulateContractPicker();
+    // Not awaited: the contract-derived half of the material categories is
+    // ready now, and the custom list repaints the picker when it lands.
+    _pmLoadMatCategories();
     if (typeof _pmRenderContractsTab === 'function') _pmRenderContractsTab();   // refresh merged Contracts tab
 }
 
@@ -5246,6 +5283,21 @@ function _pmContractPaid(contractId) {
         });
     });
     return sum;
+}
+// How MANY daily entries were tagged to this contract. The Contracts tab's job
+// cards lead with "3 payments · …" the way Project Control's do, and a count is
+// not derivable from _pmContractPaid's total (three ₱0 entries and none both
+// sum to 0). `entryType` is 'labor' for a labor contract, 'both' for Out Source
+// — the same discriminator _pmContractPaid / _pmOcPaid use.
+function _pmContractPayCount(contractId, entryType) {
+    if (!contractId) return 0;
+    let n = 0;
+    (_pmWeekBills || []).forEach(b => {
+        (Array.isArray(b.entries) ? b.entries : []).forEach(e => {
+            if (e.type === entryType && e.contractId === contractId) n++;
+        });
+    });
+    return n;
 }
 function _pmContractStats(c) {
     const agreed = Number(c.agreedAmount) || 0;
@@ -5274,6 +5326,195 @@ function _pmPopulateContractPicker() {
     if (dl) dl.innerHTML = [...new Set(_pmLaborContracts.map(c => (c.workerName || '').trim()).filter(Boolean))]
         .map(n => '<option value="' + _esc(n) + '">').join('');
 }
+
+// ── Materials category picker ──────────────────────────────
+//
+// Two sources, both belonging to Project Management:
+//
+//   1. This project's LABOR contracts, as "scope (worker)" -- a material is
+//      tagged with the JOB it was bought for. Out Source contracts are
+//      already excluded from _pmLaborContracts.
+//   2. `pmCategories` (migration 0060) -- PM's OWN hand-managed list.
+//
+// Source 2 was briefly Project Control's `categories` table. That was wrong:
+// the two modules are parallel systems with separate id spaces and separate
+// audiences, and PC's list carries PC's habits -- payment methods, one-off
+// items, worker names, logistics lines. Serving it here put another module's
+// vocabulary in front of a PM admin, and made one team's cleanup break the
+// other team's dropdown. Do not re-point this at `categories`.
+//
+// The category is stored on the entry as the LABEL, not a row id. An id would
+// go stale the moment a contract is renamed or a category deleted, and the
+// string is what the eye reads on a saved bill.
+let _pmMatCategories = [];   // [{ id, name }] from pmCategories, name-sorted
+
+// Sentinel value for the "+ Add new category…" row. Not a legal category
+// name (a real one is trimmed and non-empty), so it can never collide.
+const _PM_MATCAT_NEW = '__pm_new_cat__';
+
+// The last REAL value the picker held. Picking the sentinel reverts to this,
+// so cancelling the prompt leaves the field exactly as it was.
+let _pmMatCatLastValue = '';
+
+async function _pmLoadMatCategories() {
+    const uid = (firebase.auth().currentUser || {}).uid;
+    if (!uid) { _pmMatCategories = []; return; }
+    try {
+        const snap = await db.collection('pmCategories').where('userId', '==', uid).get();
+        _pmMatCategories = snap.docs
+            .map(d => ({ id: d.id, name: String((d.data() || {}).name || '').trim() }))
+            .filter(c => c.name)
+            .sort((a, b) => a.name.localeCompare(b.name));
+    } catch (e) {
+        // Not fatal: the contract-derived group still populates, and the
+        // field is optional. A dead dropdown is better than a dead tab.
+        // This is also what you see if migration 0060 has not been applied.
+        console.warn('PM material categories load:', e.message);
+        _pmMatCategories = [];
+    }
+    _pmPopulateMatCatPicker();
+    _pmRenderMatCatManager();
+}
+
+/**
+ * Add a category from the inline "+ Add new category…" row.
+ *
+ * `prevValue` is what the dropdown was showing before the sentinel was
+ * picked. Every early return restores it -- leaving the select sitting on
+ * the sentinel would save the literal string "__pm_new_cat__" as a category
+ * on the next Add entry.
+ */
+window.pmMatCatPicked = async function(sel) {
+    if (!sel || sel.value !== _PM_MATCAT_NEW) return;
+    const prevValue = _pmMatCatLastValue || '';
+    sel.value = prevValue;
+
+    const raw = window.prompt('New material category');
+    if (raw === null) return;                       // cancelled
+    const name = String(raw).trim();
+    if (!name) return;
+
+    const clash = _pmMatCategories.find(c => c.name.toLowerCase() === name.toLowerCase());
+    if (clash) {
+        // Not an error worth a toast -- just select what they already have.
+        _pmPopulateMatCatPicker(clash.name);
+        _pmMatCatLastValue = clash.name;
+        return;
+    }
+    const uid = (firebase.auth().currentUser || {}).uid;
+    if (!uid) { _pmToast('Not signed in.', true); return; }
+    try {
+        const ref = await db.collection('pmCategories').add({
+            userId: uid, name,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        _pmMatCategories.push({ id: ref.id, name });
+        _pmMatCategories.sort((a, b) => a.name.localeCompare(b.name));
+        _pmPopulateMatCatPicker(name);              // saved AND selected
+        _pmMatCatLastValue = name;
+        _pmRenderMatCatManager();
+        _pmToast('"' + name + '" added.');
+    } catch (e) {
+        _pmToast('Could not add category: ' + (e.message || e), true);
+        _pmPopulateMatCatPicker(prevValue);
+    }
+};
+
+window.pmMatCatChanged = function(sel) {
+    if (!sel) return;
+    if (sel.value === _PM_MATCAT_NEW) { pmMatCatPicked(sel); return; }
+    _pmMatCatLastValue = sel.value || '';
+};
+
+// ── ⚙ manage panel (remove only; adding happens inline) ────
+window.pmMatCatToggleManager = function() {
+    const panel = document.getElementById('pm-week-matcat-manager');
+    if (!panel) return;
+    const open = panel.style.display !== 'none';
+    panel.style.display = open ? 'none' : 'block';
+    if (!open) _pmRenderMatCatManager();
+};
+
+function _pmRenderMatCatManager() {
+    const host = document.getElementById('pm-week-matcat-chips');
+    if (!host) return;
+    if (!_pmMatCategories.length) {
+        host.innerHTML = '<span class="pmw-matcat-none">No categories yet — add one from the dropdown.</span>';
+        return;
+    }
+    host.innerHTML = _pmMatCategories.map(c =>
+        '<span class="pmw-matcat-chip">' + _esc(c.name) +
+        '<button type="button" title="Delete" aria-label="Delete ' + _esc(c.name) + '"' +
+        ' onclick="pmMatCatDelete(\'' + _esc(c.id) + '\')">&times;</button></span>').join('');
+}
+
+window.pmMatCatDelete = async function(id) {
+    const cat = _pmMatCategories.find(c => c.id === id);
+    if (!cat) return;
+    // Deleting the NAME does not touch entries already saved with it --
+    // the entry stores the string, and the picker's "Currently set" group
+    // keeps rendering it. Say so, so nobody expects history to change.
+    if (!window.confirm('Delete "' + cat.name + '"?\n\nEntries already saved under it keep the name.')) return;
+    try {
+        await db.collection('pmCategories').doc(id).delete();
+        _pmMatCategories = _pmMatCategories.filter(c => c.id !== id);
+        _pmPopulateMatCatPicker();
+        _pmRenderMatCatManager();
+        _pmToast('Category deleted.');
+    } catch (e) {
+        _pmToast('Could not delete: ' + (e.message || e), true);
+    }
+};
+
+/** Contract-derived labels, in Project Control's "scope (worker)" format. */
+function _pmMatCatContractLabels() {
+    const set = new Set();
+    (_pmLaborContracts || []).forEach(c => {
+        const name  = (c && c.workerName != null ? String(c.workerName) : '').trim();
+        const scope = (c && c.scope      != null ? String(c.scope)      : '').trim();
+        const label = scope && name ? scope + ' (' + name + ')' : (scope || name);
+        if (label) set.add(label);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Rebuild the option list, keeping whatever is already selected.
+ *
+ * `keep` forces a value to be rendered even when it belongs to neither
+ * group -- the safeguard borrowed from Project Control. The save path reads
+ * .value straight back, so an option that isn't in the list would be written
+ * as "" and silently blank the category of an entry recorded before a
+ * contract was renamed or a category deleted. Never drop this.
+ */
+function _pmPopulateMatCatPicker(keep) {
+    const sel = document.getElementById('pm-week-matcat');
+    if (!sel) return;
+    let cur = String(keep != null ? keep : (sel.value || '')).trim();
+    // The sentinel is a control, never a value -- if it somehow survives to
+    // here (a repaint mid-prompt), treat it as "nothing selected".
+    if (cur === _PM_MATCAT_NEW) cur = '';
+    const contracts = _pmMatCatContractLabels();
+    const seen = new Set(contracts);
+    const custom = _pmMatCategories
+        .map(c => c.name)
+        .filter(n => !seen.has(n) && (seen.add(n), true))
+        .sort((a, b) => a.localeCompare(b));
+
+    const opt = n => '<option value="' + _esc(n) + '">' + _esc(n) + '</option>';
+    let html = '<option value="">— Uncategorized —</option>';
+    if (contracts.length) html += '<optgroup label="Labor contract workers">' + contracts.map(opt).join('') + '</optgroup>';
+    if (custom.length)    html += '<optgroup label="Custom categories">'      + custom.map(opt).join('')    + '</optgroup>';
+    if (cur && contracts.indexOf(cur) === -1 && custom.indexOf(cur) === -1) {
+        html += '<optgroup label="Currently set">' + opt(cur) + '</optgroup>';
+    }
+    // Last, so it reads as an action under the list rather than a category.
+    html += '<option value="' + _PM_MATCAT_NEW + '">+ Add new category…</option>';
+    sel.innerHTML = html;
+    sel.value = cur;
+    _pmMatCatLastValue = cur;   // what the sentinel reverts to
+}
+
 window.pmWeekContractHint = function() {
     const sel = document.getElementById('pm-week-contract');
     const hint = document.getElementById('pm-week-contract-remaining');
@@ -5619,14 +5860,34 @@ window.pmLcLedgerViewFiles = function() {
     if (!c) return;
     _pmContractFilesViewer(c, 'labor', _pmLcLedgerId);
 };
-// Open the signed Worker Agreement PDF. window.open is wrapped by the Supabase
-// shim, so passing the stored (private) URL resolves to a signed link.
-window.pmLcLedgerViewAgreement = function() {
+// Open the Worker Agreement PDF with THIS contract's details stamped onto its
+// "Detalye ng Pakyaw Labor Contract" page — the same route Project Control uses
+// (lcViewAgreement in expenses-module.js). Opening the stored URL raw is what
+// made the form print blank: the uploaded file is the empty manual, and nothing
+// fills it in. dacsWorkerAgreementView (print-utils.js, loaded before this file
+// in admin.html) resolves the private URL, stamps the fields and opens one PDF
+// tab; it falls back to the raw template on its own if the stamping fails.
+// Signature lines stay blank by design — the worker signs the printed copy.
+window.pmLcLedgerViewAgreement = async function() {
     if (!_pmLcLedgerId) return;
     const c = _pmLaborContracts.find(x => x.id === _pmLcLedgerId);
     const url = c && c.agreementPdfUrl && String(c.agreementPdfUrl).trim();
     if (!url) { _pmToast('No signed agreement attached to this contract.', true); return; }
-    window.open(url, '_blank');
+    if (typeof window.dacsWorkerAgreementView !== 'function') { window.open(url, '_blank'); return; }
+    // PM ids live in their own space (see CLAUDE.md), so the ref carries a PM-
+    // prefix rather than Project Control's LC-.
+    await window.dacsWorkerAgreementView(url, {
+        ref     : 'PM-' + String(c.id || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase(),
+        project : (_pmActiveProject && (_pmActiveProject.projectName || _pmActiveProject.clientName)) || '',
+        worker  : c.workerName || '',
+        scope   : c.scope || '',
+        // The manual is handed over on the day it is printed. LOCAL date parts,
+        // never toISOString() — PH is UTC+8 and a morning print would roll back.
+        orientationDate: new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }),
+        payType : c.payType === 'inhouse' ? 'In-house' : 'Pakyaw',
+        amount  : (Number(c.agreedAmount) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        printedName: c.workerName || ''
+    });
 };
 
 // Per-worker/vendor Statement of Account — same document design as the
@@ -6334,61 +6595,95 @@ function _pmRenderContractsTab() {
     const lab = segOn(isLabor, { soft:'#eaf4ef', accent:'#157a52', accentDark:'#0f6342' });
     const out = segOn(!isLabor, { soft:'#efeaf8', accent:'#7a5bb5', accentDark:'#5b3f96' });
 
-    const rowHtml = (c) => {
-        const st = statOf(c);
-        const agreed = st.agreed, paid = st.paid, remaining = st.remaining;
-        const pct = st.pct;
-        // type pill (we keep Pakyaw / In-house labels for both kinds)
-        const pill = c.payType === 'inhouse'
-            ? { lbl: 'IN-HOUSE', bg: '#eef0f3', col: '#5b6b7e' }
-            : { lbl: 'PAKYAW',   bg: '#efeaf8', col: '#5b3f96' };
-        let sentPre, sentBold, sentSuf = '', sentColor = '#6f6e69', boldColor = '#1c1c1a',
-            rightAmt, rightLbl, rightColor, amtColor, barColor, barPct, done = false;
-        if (st.status === 'Over') {
-            const over = paid - agreed;
-            sentPre = 'Paid ' + _fmt(paid) + ' — '; sentBold = _fmt(over) + ' more'; sentSuf = ' than the ' + _fmt(agreed) + ' agreed';
-            sentColor = '#b4453a'; boldColor = '#b4453a';
-            rightAmt = '+' + _fmt(over); rightLbl = '⚠ Over agreed';
-            rightColor = '#b4453a'; amtColor = '#b4453a'; barColor = '#b4453a'; barPct = 100;
-        } else if (st.status === 'Completed') {
-            done = true;
-            rightColor = '#157A52';
-        } else {
-            // In progress is blue — green means finished, red means over cap.
-            sentPre = 'Paid ' + _fmt(paid) + ' of ' + _fmt(agreed) + ' — '; sentBold = _fmt(remaining) + ' to go';
-            rightAmt = _fmt(remaining); rightLbl = 'In progress · ' + pct.toFixed(0) + '%';
-            rightColor = '#1D4ED8'; amtColor = '#1c1c1a'; barColor = '#3B82F6'; barPct = Math.min(100, pct);
-        }
-        return '<div onclick="' + ledgerFn + '(\'' + c.id + '\')" style="display:flex;align-items:center;gap:16px;padding:14px 6px;border-top:1px solid #f0efec;cursor:pointer;border-radius:8px;transition:background .12s;"'
-            + ' onmouseover="this.style.background=\'#faf9f7\'" onmouseout="this.style.background=\'\'">'
-            + '<div style="flex:1;min-width:0;">'
-            + '<div style="display:flex;align-items:center;gap:9px;">'
-            + '<span style="font-size:14.5px;font-weight:700;color:#1c1c1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + _esc(c.scope || 'Untitled job') + '</span>'
-            + '<span style="font-size:9.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:2px 8px;border-radius:20px;flex:none;background:' + pill.bg + ';color:' + pill.col + ';">' + pill.lbl + '</span>'
+    // ── Worker card + numbered job cards ──────────────────────────────
+    // Layout ported from Project Control's Unified Worker Ledger (the .lc2-*
+    // block in portal-app.compiled.js): each worker/vendor is one collapsible
+    // card carrying their combined balance, and every job under them is its own
+    // numbered card. BEHAVIOUR IS UNCHANGED — Project Control expands a job
+    // inline to a payments table, whereas here a job still opens PM's own
+    // Contract Ledger modal, which is where all of this module's actions live.
+    const entryType = isLabor ? 'labor' : 'both';
+    const chev = (cls) => '<svg class="' + cls + '" width="16" height="16" viewBox="0 0 24 24" fill="none"'
+        + ' stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+
+    // One badge convention for both the worker header and the job cards, so a
+    // card and the rows inside it can never disagree about what "done" means.
+    const badgeOf = (st, ongoingLbl) => {
+        if (st.status === 'Over')      return { cls: 'pm-lcx-badge-over', lbl: 'Over cap' };
+        if (st.status === 'Completed') return { cls: 'pm-lcx-badge-done', lbl: 'Completed' };
+        return { cls: 'pm-lcx-badge-on', lbl: st.pct.toFixed(0) + '% · ' + ongoingLbl };
+    };
+
+    const jobHtml = (c, i) => {
+        const st  = statOf(c);
+        const bdg = badgeOf(st, 'In progress');
+        const nPay = _pmContractPayCount(c.id, entryType);
+        const over = st.remaining < 0;
+        // Closed, this line IS the balance — same caption Project Control uses.
+        const sub = nPay + ' payment' + (nPay === 1 ? '' : 's')
+            + ' · ' + _fmt(st.paid) + ' paid of ' + _fmt(st.agreed);
+        return '<div class="pm-lcx-job" onclick="' + ledgerFn + '(\'' + c.id + '\')">'
+            + '<span class="pm-lcx-num">' + (i + 1) + '</span>'
+            + '<div class="pm-lcx-job-id">'
+            + '<div class="pm-lcx-job-name">' + _esc(c.scope || 'Untitled job') + '</div>'
+            + '<div class="pm-lcx-job-sub num">' + sub + '</div>'
             + '</div>'
-            + (done ? '' :
-                '<div style="font-size:12.5px;color:' + sentColor + ';margin-top:6px;">' + sentPre + '<b style="font-weight:700;color:' + boldColor + ';">' + sentBold + '</b>' + sentSuf + '</div>'
-                + '<div style="height:6px;max-width:260px;background:#eef0ec;border-radius:4px;overflow:hidden;margin-top:8px;"><div style="height:100%;border-radius:4px;background:' + barColor + ';width:' + barPct.toFixed(1) + '%;"></div></div>')
+            + '<div class="pm-lcx-job-rem">'
+            + '<div class="pm-lcx-rem-lbl">' + (over ? 'Over by' : 'Still to pay') + '</div>'
+            + '<div class="pm-lcx-job-rem-val num' + (over ? ' neg' : '') + '">' + _fmt(Math.abs(st.remaining)) + '</div>'
             + '</div>'
-            + (done
-                ? '<div style="text-align:right;flex:none;"><div style="font-size:14px;font-weight:700;color:' + rightColor + ';">Completed</div></div>'
-                : '<div style="text-align:right;flex:none;"><div style="font-size:20px;font-weight:700;color:' + amtColor + ';">' + rightAmt + '</div>'
-                + '<div style="font-size:11px;font-weight:600;color:' + rightColor + ';margin-top:3px;">' + rightLbl + '</div></div>')
-            + '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c4c9d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;"><polyline points="9 18 15 12 9 6"/></svg>'
+            + '<span class="pm-lcx-badge ' + bdg.cls + '">' + bdg.lbl + '</span>'
+            + chev('pm-lcx-job-chev')
             + '</div>';
     };
 
     const sectionsHtml = names.length ? names.map(name => {
         const cs = byW[name].slice().sort((a, b) => (a.scope || '').localeCompare(b.scope || ''));
         const initial = (name.replace(/[^A-Za-z0-9]/g, '')[0] || '—').toUpperCase();
-        return '<div style="padding-top:4px;">'
-            + '<div style="display:flex;align-items:center;gap:9px;padding:18px 0 2px;">'
-            + '<span style="flex:none;width:28px;height:28px;border-radius:50%;background:' + t.soft + ';color:' + t.accentDark + ';font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;">' + _esc(initial) + '</span>'
-            + '<span style="font-size:14px;font-weight:700;color:' + t.accentDark + ';">' + _esc(name) + '</span>'
-            + '<span style="font-size:12px;font-weight:500;color:#9b9a94;">· ' + cs.length + ' job' + (cs.length === 1 ? '' : 's') + '</span>'
+        // The worker's own roll-up is the SUM of their jobs — never re-derived
+        // from the entries, so a card and its rows always agree.
+        const wAgreed = cs.reduce((s, c) => s + statOf(c).agreed, 0);
+        const wPaid   = cs.reduce((s, c) => s + statOf(c).paid, 0);
+        const wRem    = wAgreed - wPaid;
+        const wPct    = wAgreed > 0 ? (wPaid / wAgreed) * 100 : 0;
+        const wSt     = { pct: wPct, status: wAgreed > 0 && wPaid >= wAgreed ? (wPaid > wAgreed ? 'Over' : 'Completed') : 'Ongoing' };
+        const bdg     = badgeOf(wSt, 'Ongoing');
+        const over    = wRem < 0;
+        // Pay type is a per-job field; it only belongs on the header when every
+        // job under this worker agrees, otherwise the header would state one
+        // job's terms as if they covered all of them.
+        const types   = [...new Set(cs.map(c => c.payType === 'inhouse' ? 'In-house' : 'Pakyaw'))];
+        const typeLbl = types.length === 1 ? types[0] : 'Mixed';
+        // First name only, matching Project Control's "Jobs agreed with Francis".
+        const first   = String(name).trim().split(/\s+/)[0] || name;
+        return '<div class="pm-lcx-acc open">'
+            + '<div class="pm-lcx-head" onclick="pmLcxToggle(this)">'
+            + '<span class="pm-lcx-av">' + _esc(initial) + '</span>'
+            + '<div class="pm-lcx-id">'
+            + '<div class="pm-lcx-name">' + _esc(name) + '</div>'
+            + '<div class="pm-lcx-role">— <span class="pm-lcx-type">' + _esc(typeLbl) + '</span></div>'
             + '</div>'
-            + cs.map(rowHtml).join('')
-            + '</div>';
+            + '<div class="pm-lcx-mid">'
+            + '<div class="pm-lcx-bar"><div class="pm-lcx-bar-fill" style="width:' + Math.min(100, Math.max(0, wPct)).toFixed(1) + '%"></div></div>'
+            + '<div class="pm-lcx-cap num">' + _fmt(wPaid) + ' paid of ' + _fmt(wAgreed) + ' · ' + cs.length + ' job' + (cs.length === 1 ? '' : 's') + '</div>'
+            + '</div>'
+            + '<div class="pm-lcx-rem">'
+            + '<div class="pm-lcx-rem-lbl">' + (over ? 'Over by' : 'Still to pay') + '</div>'
+            + '<div class="pm-lcx-rem-val num' + (over ? ' neg' : '') + '">' + _fmt(Math.abs(wRem)) + '</div>'
+            + '</div>'
+            + '<span class="pm-lcx-badge ' + bdg.cls + '">' + bdg.lbl + '</span>'
+            // PM is paid through the daily entries, so "Pay" hands the user to
+            // the Daily Expenses tab rather than opening a modal of its own.
+            + '<button type="button" class="pm-lcx-pay" onclick="event.stopPropagation();pmWsTab(\'week\');" title="Record a payment as a daily entry">＋ Pay</button>'
+            + chev('pm-lcx-chev')
+            + '</div>'
+            + '<div class="pm-lcx-body">'
+            + '<div class="pm-lcx-jobs-head">'
+            + '<div class="pm-lcx-jobs-lbl">Jobs agreed with ' + _esc(first) + ' — ' + cs.length + '</div>'
+            + (cs.length > 1 ? '<div class="pm-lcx-jobs-hint">Tap a job to open it</div>' : '')
+            + '</div>'
+            + cs.map(jobHtml).join('')
+            + '</div></div>';
     }).join('') : ('<div style="padding:34px 6px;text-align:center;color:#9b9a94;font-size:13.5px;">No ' + (isLabor ? 'labor' : 'out source') + ' contracts yet. Click “＋ ' + newBtnLbl + '” to cap a ' + (isLabor ? 'worker’s' : 'vendor’s') + ' job — then tag a daily ' + (isLabor ? 'Labor' : 'Out Source') + ' entry to it.</div>');
 
     root.innerHTML =
@@ -6421,9 +6716,21 @@ function _pmRenderContractsTab() {
         + '<div style="height:10px;background:' + t.barTrack + ';border-radius:6px;overflow:hidden;"><div style="height:100%;border-radius:6px;background:' + t.accent + ';width:' + totPct + '%;"></div></div>'
         + '<div style="font-size:11.5px;font-weight:600;color:' + t.accentDark + ';margin-top:6px;text-align:right;">' + totPct + '% paid so far</div>'
         + '</div></div>'
-        // sections
-        + sectionsHtml;
+        // Worker cards. The segment's accent rides in as CSS variables so the
+        // one .pm-lcx-* stylesheet serves both Labor (green) and Out Source
+        // (purple) without a duplicate themed copy of every rule.
+        + '<div class="pm-lcx-wrap" style="--lcx-accent:' + t.accent + ';--lcx-accent-dark:' + t.accentDark
+        + ';--lcx-soft:' + t.soft + ';--lcx-track:' + t.barTrack + ';">'
+        + sectionsHtml
+        + '</div>';
 }
+
+// Collapse / expand one worker card. Presentation only — the jobs inside keep
+// opening the Contract Ledger modal exactly as before.
+window.pmLcxToggle = function(headEl) {
+    const acc = headEl && headEl.closest('.pm-lcx-acc');
+    if (acc) acc.classList.toggle('open');
+};
 
 // Print every Labor AND Out Source contract together (both sections, all
 // workers/vendors) — the "Contracts" tab only ever shows one segment at a

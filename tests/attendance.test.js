@@ -58,7 +58,8 @@ const M = evalWith(
   slice(src, '// ==== ATT REPORT ENGINE START ====', '// ==== ATT REPORT ENGINE END ====', 'attendance-admin.js'),
   { window: {} },
   ['attFormatHours', 'attRollUpByWorker', 'attRollUpByProject', 'attCsvCell', 'attToCsv',
-   'attWorkerNameKey', 'attWorkerRoster', 'attValidateNewWorker']
+   'attWorkerNameKey', 'attWorkerRoster', 'attValidateNewWorker',
+   'attValidateEditWorker', 'attSplitName']
 );
 
 const rec = (o) => Object.assign({
@@ -291,6 +292,86 @@ test('A4 sends no role the Edge Function would refuse to gate', () => {
   // kind is always 'admin' for these; role is the only thing separating a
   // worker from an engineer, so an empty role must never reach the wire.
   eq(M.attValidateNewWorker(nw({ role: '' })).valid, false);
+});
+
+console.log('\nVI. A3b - editing an existing worker');
+
+const ew = (o) => Object.assign({
+  firstName: 'Juan', lastName: 'Dela Cruz', position: 'Mason', status: 'active'
+}, o);
+
+test('A3b accepts a complete edit', () => {
+  const r = M.attValidateEditWorker(ew());
+  ok(r.valid, JSON.stringify(r.errors));
+  eq(r.payload.display_name, 'Juan Dela Cruz');
+  eq(r.payload.first_name, 'Juan');
+  eq(r.payload.last_name, 'Dela Cruz');
+});
+
+test('A3b requires both names -- a nameless row renders as a worker number', () => {
+  ok(!!M.attValidateEditWorker(ew({ firstName: '   ' })).errors.firstName);
+  ok(!!M.attValidateEditWorker(ew({ lastName:  ''    })).errors.lastName);
+});
+
+test('A3b keeps display_name in step with its parts', () => {
+  const r = M.attValidateEditWorker(ew({ firstName: 'Ana', lastName: 'Reyes' }));
+  eq(r.payload.display_name, 'Ana Reyes');
+});
+
+test('A3b sends NO role -- profiles_guard (0019) rejects worker role changes', () => {
+  const p = M.attValidateEditWorker(ew({ role: 'teamLeader' })).payload;
+  eq(p.role, undefined);
+  eq(p.owner_id, undefined);
+});
+
+test('A3b sends no email or password -- those live on the auth user', () => {
+  const p = M.attValidateEditWorker(ew({ email: 'x@y.com', password: 'sikreto123' })).payload;
+  eq(p.email, undefined);
+  eq(p.password, undefined);
+});
+
+test('A3b stores an empty position as null, never an empty string', () => {
+  eq(M.attValidateEditWorker(ew({ position: '   ' })).payload.position, null);
+});
+
+test('A3b accepts only the two real statuses', () => {
+  ok(M.attValidateEditWorker(ew({ status: 'active'   })).valid);
+  ok(M.attValidateEditWorker(ew({ status: 'inactive' })).valid);
+  ok(!M.attValidateEditWorker(ew({ status: 'archived' })).valid);
+});
+
+test('A3b prefers the stored first_name/last_name over any guessing', () => {
+  const n = M.attSplitName({ first_name: 'Ana', last_name: 'Reyes', display_name: 'WRONG NAME' });
+  eq(n.firstName, 'Ana');
+  eq(n.lastName, 'Reyes');
+});
+
+test('A3b splits a legacy display_name on the LAST token', () => {
+  // "given + middle + surname" is the case this gets right.
+  eq(M.attSplitName({ display_name: 'John Aerol Tapales' }).firstName, 'John Aerol');
+  eq(M.attSplitName({ display_name: 'John Aerol Tapales' }).lastName,  'Tapales');
+  eq(M.attSplitName({ display_name: 'Ana Reyes' }).firstName, 'Ana');
+  eq(M.attSplitName({ display_name: 'Ana Reyes' }).lastName,  'Reyes');
+});
+
+test('A3b splits a COMPOUND surname wrongly, on purpose and visibly', () => {
+  // Pinned, not aspirational: no heuristic gets both this and the case
+  // above right. The split is a prefill the admin corrects in the form,
+  // so this is a known cost, not a silent bug.
+  eq(M.attSplitName({ display_name: 'Juan Dela Cruz' }).firstName, 'Juan Dela');
+  eq(M.attSplitName({ display_name: 'Juan Dela Cruz' }).lastName,  'Cruz');
+});
+
+test('A3b handles a single-word name without inventing a surname', () => {
+  eq(M.attSplitName({ display_name: 'Madonna' }).firstName, 'Madonna');
+  eq(M.attSplitName({ display_name: 'Madonna' }).lastName, '');
+});
+
+test('A3b survives a row with no name at all -- the W-000n case', () => {
+  const n = M.attSplitName({});
+  eq(n.firstName, '');
+  eq(n.lastName, '');
+  ok(!M.attValidateEditWorker(ew({ firstName: '', lastName: '' })).valid);
 });
 
 console.log(passed + ' passed, ' + failed + ' failed');

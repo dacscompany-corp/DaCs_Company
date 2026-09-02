@@ -2266,6 +2266,23 @@
                         </div>
                       </div>
                     </div>
+                    <!-- Materials-only. Built in pm-admin.js from THIS project's labor
+                         contracts plus pm_categories (migration 0060) — Project
+                         Management's own list. Project Control's `categories` is a
+                         separate module's vocabulary and is deliberately not shown. -->
+                    <div class="pmw-addcard-field pmw-contract-field" id="pm-week-matcat-wrap" style="display:none;">
+                      <label>Category <span style="font-weight:400;color:#9b9a94;">— what was it bought for (optional)</span>
+                        <button type="button" class="pmw-matcat-gear" onclick="pmMatCatToggleManager()"
+                                title="Manage categories" aria-label="Manage categories">&#9881;</button>
+                      </label>
+                      <select class="pmw-input" id="pm-week-matcat" onchange="pmMatCatChanged(this)">
+                        <option value="">— Uncategorized —</option>
+                      </select>
+                      <div class="pmw-matcat-manager" id="pm-week-matcat-manager" style="display:none;">
+                        <div class="pmw-matcat-manager-head">Manage categories — add new ones from the dropdown</div>
+                        <div class="pmw-matcat-chips" id="pm-week-matcat-chips"></div>
+                      </div>
+                    </div>
                     <div class="pmw-addcard-field pmw-contract-field" id="pm-week-contract-wrap" style="display:none;">
                       <label>Is this part of a job? <span style="font-weight:400;color:#9b9a94;">— pakyaw / capped contract (optional)</span></label>
                       <select class="pmw-input" id="pm-week-contract" onchange="pmWeekContractHint()">
@@ -5374,7 +5391,7 @@
 
 <!-- Labor Contract ledger -->
 <div id="pmLaborLedgerModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmLaborLedgerModal')" style="display:none;">
-  <div class="pm-modal-box pm-lc-led-box" style="max-width:640px;">
+  <div class="pm-modal-box pm-lc-led-box" style="max-width:860px;">
     <div class="pm-modal-header pm-lc-led-head">
       <h3 id="pmLcLedgerTitle">Contract Ledger</h3>
       <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmLaborLedgerModal')"><i data-lucide="x"></i></button>
@@ -5466,7 +5483,7 @@
 
 <!-- Out Source Contract ledger -->
 <div id="pmOutsourceLedgerModal" class="pm-modal-overlay" onclick="if(event.target===this)pmCloseModal('pmOutsourceLedgerModal')" style="display:none;">
-  <div class="pm-modal-box pm-lc-led-box" style="max-width:640px;">
+  <div class="pm-modal-box pm-lc-led-box" style="max-width:860px;">
     <div class="pm-modal-header pm-lc-led-head">
       <h3 id="pmOcLedgerTitle">Contract Ledger</h3>
       <button class="pm-modal-close" aria-label="Close" onclick="pmCloseModal('pmOutsourceLedgerModal')"><i data-lucide="x"></i></button>

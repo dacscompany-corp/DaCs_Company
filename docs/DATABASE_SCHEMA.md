@@ -143,8 +143,32 @@ Hierarchy: **`folders` → `projects` (a month) → `expenses` / `payroll`**. Mo
 | `agreementSigned`, `agreementSignedAt`, `agreementSignature`, `agreementPdfUrl`, `agreementPdfName` | — | signed Worker Agreement (migration 0023) |
 | `createdAt`, `updatedAt` | ts | |
 
-### `categories/{id}` — expense categories
+### `categories/{id}` — expense categories — **Project Control only**
 `userId`, `name`, `color`, `createdAt`
+
+Read by `expenses-module.js` for the Project Control materials category dropdown, alongside
+labels derived from the folder's labor contracts. **Project Management does not read this
+table** — it has its own list below.
+
+### `pmCategories/{id}` (migration 0060) — material categories, **Project Management only**
+`userId`, `name`, `createdAt`
+
+PM's own hand-managed list for the Daily Expenses → Materials category. A deliberate twin of
+`categories` rather than a shared table: the two modules are parallel systems with separate id
+spaces and separate audiences, and PC's list carries PC's habits (payment methods, one-off items,
+worker names, logistics lines). Sharing one table put another module's vocabulary in front of a
+PM admin and let one team's cleanup break the other team's dropdown.
+
+- **Owner-scoped, not project-scoped** — one list across every PM project, so a category typed on
+  one job is offered on the next.
+- No `color` column (unlike `categories`): the PM picker is a plain `<select>` with no chip dots.
+- Unique on `(owner_id, lower(name))` — the UI dedupe check cannot survive two admins adding the
+  same name at once.
+- The **name**, not this row's id, is what gets stored on a materials line (inside the
+  `weeklyBills.entries` jsonb). Deleting a category therefore leaves saved entries reading
+  correctly; the picker's "Currently set" group keeps rendering the orphaned value so reopening
+  such an entry cannot silently blank it.
+- Outside the money model — a label on a line, never an amount.
 
 ### `overheadExpenses/{id}` (`overhead-module.js`) — company overhead
 `userId`, `category`, `amount` (number), `date` (string), `description`, `createdAt`

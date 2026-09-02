@@ -79,6 +79,10 @@ const REG = {
   laborContracts: { table: 'labor_contracts', rename: OWNER, ts: ['createdAt', 'updatedAt', 'agreementSignedAt'], json: ['capHistory'] },
   pushSubscriptions:{ table: 'push_subscriptions', rename: OWNER, ts: ['createdAt'] },
   categories:     { table: 'categories',     rename: OWNER, ts: ['createdAt'] },
+  // Project MANAGEMENT's own material categories (0060). Deliberately a
+  // separate list from `categories` above, which is Project Control's —
+  // two parallel modules, two vocabularies, neither editing the other's.
+  pmCategories:   { table: 'pm_categories',  rename: OWNER, ts: ['createdAt'] },
   overheadExpenses:{ table: 'overhead_expenses', rename: OWNER, ts: ['createdAt'] },
   // Client Reimbursement Tracker (0041) — owner-advanced project expenses and
   // whether the client paid them back. Documentation only: no money math, no

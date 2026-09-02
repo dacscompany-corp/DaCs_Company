@@ -146,9 +146,12 @@
 
 /* ── KPI cards (A1) ────────────────────────────────────────────── */
 
+/* auto-fit rather than repeat(5, 1fr): the tile decides when to wrap,
+   at the width it stops being readable, instead of at a breakpoint
+   somebody guessed. Five tiles still sit on one row on a laptop. */
 .att-kpis {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
     gap: 16px;
     margin-bottom: 24px;
 }
@@ -196,9 +199,11 @@
 
 /* ── Stat cards (A6) ───────────────────────────────────────────── */
 
+/* Same 215px floor as the KPI tiles -- they carry the same shape of
+   figure, so they should break to a second row at the same width. */
 .att-stats {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
     gap: 16px;
     margin-bottom: 20px;
 }
@@ -449,9 +454,15 @@
     flex-shrink: 0;
 }
 
+/* Three equal tracks, not two halves and a fixed 320px rail. The
+   Time In and Time Out cards each hold a photo, and the side column
+   holds the total plus four facts -- at 320px the facts wrapped onto
+   two lines while the photos had room to spare. 310px is the floor at
+   which a photo is still worth looking at; below it the side column
+   drops under the two halves on its own. */
 .att-detail-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr 320px;
+    grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
     gap: 20px;
     align-items: start;
 }
@@ -576,9 +587,13 @@
 
 /* ── A5 · Projects ─────────────────────────────────────────────── */
 
+/* Equal tracks rather than a table and a fixed 400px rail. The table
+   is three narrow columns and never needed the extra width, while the
+   "Where these come from" card is three paragraphs of prose that read
+   badly in a 400px gutter -- this screen is mostly explanation. */
 .att-proj-grid {
     display: grid;
-    grid-template-columns: 1fr 400px;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
     gap: 20px;
     align-items: start;
 }
@@ -728,19 +743,16 @@ select.att-input { cursor: pointer; }
 
 /* ── Responsive ────────────────────────────────────────────────── */
 
-@media (max-width: 1200px) {
-    .att-kpis  { grid-template-columns: repeat(3, 1fr); }
-    .att-stats { grid-template-columns: repeat(2, 1fr); }
-    .att-detail-grid { grid-template-columns: 1fr 1fr; }
-    .att-detail-grid .att-side { grid-column: 1 / -1; }
-    .att-proj-grid { grid-template-columns: 1fr; }
-}
+/* The four content grids -- .att-kpis, .att-stats, .att-detail-grid and
+   .att-proj-grid -- are NOT reflowed here. They use auto-fit with a
+   minmax floor, so they rewrap at the width their own content stops
+   fitting rather than at a breakpoint chosen in advance. A rule here
+   would override that floor and put the tiles back on a fixed count.
+   What is left are the things a track count cannot express. */
 
 @media (max-width: 720px) {
     .att-title { font-size: 24px; }
-    .att-kpis  { grid-template-columns: repeat(2, 1fr); }
-    .att-stats { grid-template-columns: 1fr; }
-    .att-detail-grid { grid-template-columns: 1fr; }
+    /* Fixed 1fr 1fr, so this one does need collapsing by hand. */
     .att-modal-body { grid-template-columns: 1fr; }
     .att-table th, .att-table td { padding: 11px 14px; }
     .att-search-wrap { min-width: 0; flex: 1; }
