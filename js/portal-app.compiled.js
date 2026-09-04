@@ -2010,7 +2010,9 @@ function _lcFirstName(n) {
     ),
     rc("span", { className: "lc2-cdiv" }),
     rc("div", { className: "lc2-cgrp" },
-      rc("button", { onClick: () => window.lcOpenAgreement && window.lcOpenAgreement(r.c.id) }, _lcIcon("print"), "Print agreement"),
+      // Prints the WORKER's one agreement (every job of theirs, at their combined
+      // amount) — not this job alone. Same sheet from whichever job it is opened.
+      rc("button", { onClick: () => window.lcOpenAgreement && window.lcOpenAgreement(r.c.id) }, _lcIcon("print"), lcSeg === "outsource" ? "Print agreement" : "Worker agreement"),
       // e.currentTarget (not e.target) — the click can land on the icon, and
       // lcAddFile anchors its picker to the button itself.
       rc("button", { onClick: (e) => window.lcAddFile && window.lcAddFile(r.c.id, e.currentTarget) }, _lcIcon("attach"), "Add file"),
@@ -2164,6 +2166,14 @@ function _lcFirstName(n) {
     const payType = crows[0] && crows[0].c.payType;
     const initial = (w || "?").trim().charAt(0).toUpperCase() || "?";
     const isDone = hasContract && paid >= agreed && paid <= agreed;
+    // Which jobs ONE agreement covers, asked of the module that builds the sheet
+    // (lcWorkerContracts) rather than guessed from this card — nameless
+    // contracts share a "—" card but never share an agreement. Out Source is a
+    // vendor subcontract and has no worker agreement at all. Staff never see it:
+    // the sheet states the agreed amount in pesos, and staff see no peso figure
+    // anywhere on this screen.
+    const agrJobs = (hasContract && !_staff() && lcSeg !== "outsource" && window.lcWorkerContracts)
+      ? window.lcWorkerContracts(crows[0].c) : [];
     // Match Project Management's Contracts card: once a contract is fully paid,
     // show just the word "Completed" \u2014 no bar, no "paid of agreed" caption, no
     // "Remaining \u20B10.00" \u2014 instead of the same info repeated three ways.
@@ -2196,6 +2206,19 @@ function _lcFirstName(n) {
               rc("div", { className: "lc2-rem-val" + (remaining < 0 ? " neg" : (hasContract ? "" : " muted")) }, remaining < 0 ? "\u2212 \u20B1 " + peso(Math.abs(remaining)) : "\u20B1 " + peso(hasContract ? remaining : totalPaidAll))
             ),
         rc("span", { className: "lc2-badge " + scls }, (status === "Ongoing" ? pct.toFixed(0) + "% \u00B7 " : "") + status),
+        // ONE work agreement per worker (lcViewAgreement in expenses-module.js):
+        // the sheet lists every job in this card and its agreed amount is their
+        // total, so the button belongs on the worker header rather than on each
+        // job. Out Source is a VENDOR subcontract — it has no worker agreement,
+        // which is why the contract modal hides that row for it too.
+        agrJobs.length
+          ? rc("button", {
+              className: "lc2-agr",
+              title: "Open " + w + "’s work agreement — all " + agrJobs.length + " job" + (agrJobs.length === 1 ? "" : "s")
+                + ", ₱ " + peso(agrJobs.reduce((s, j) => s + (Number(j.agreedAmount) || 0), 0)) + " total",
+              onClick: (e) => { e.stopPropagation(); window.lcOpenAgreement && window.lcOpenAgreement(agrJobs[0].id); }
+            }, _lcIcon("print"), " Agreement")
+          : null,
         rc("button", { className: "lc2-pay", onClick: (e) => { e.stopPropagation(); openAddEntry("labor", childMonths, activeFolder); } }, Ico.plus, " Pay"),
         rc("svg", { className: "lc2-chev", width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "#A1A1A6", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }))
       ),

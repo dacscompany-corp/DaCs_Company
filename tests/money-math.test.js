@@ -61,6 +61,7 @@ function evalWith(src, ctx, names) {
 const portalSrc = read('js/portal-app.compiled.js');
 const expensesSrc = read('js/expenses-module.js');
 const overheadSrc = read('js/overhead-module.js');
+const pmSrc = read('js/pm-admin.js');
 
 // portal helpers: classifier, money helpers, buildProject, BOQ math
 const portal = evalWith(
@@ -438,6 +439,227 @@ console.log('\nI. Cover / president money');
     ok(expensesSrc.indexOf("const trade = isOutsource ? ''") !== -1,
        'Out Source contracts are writing a trade again - that is a worker field'));
 }
+
+// == K. ONE WORK AGREEMENT PER WORKER ==============================
+// A worker hired for several capped jobs signs ONE pakyaw contract, not one
+// sheet per job: the form's "SAKLAW NG TRABAHO / SCOPE OF WORK" lists every
+// job and "NAPAGKASUNDUANG HALAGA / AGREED CONTRACT AMOUNT" is the SUM of
+// their caps. This is a PRINTING rule, not a money rule — each job still draws
+// down its own cap, and nothing here may ever add a peso to Spent.
+//
+// Two grouping rules are load-bearing, and are what these tests fence:
+//   * the sheet covers exactly the jobs the WORKER CARD shows — trimmed name,
+//     case-SENSITIVE — so a job typed "francis febra" stays its own card and is
+//     never swept into someone else's contract amount;
+//   * Project Control's contract array is MIXED across categories, so a VENDOR
+//     subcontract must never land on a worker's agreement.
+{
+  const pcFixtures = [
+    { id: 'a1', folderId: 'f1', workerName: 'Francis Febra',  scope: 'Architectural/Interior Finishing Works', agreedAmount: 50000, payType: 'pakyaw' },
+    { id: 'b2', folderId: 'f1', workerName: 'Francis Febra ', scope: 'Carpentry Works', agreedAmount: 35000, payType: 'pakyaw' },
+    { id: 'c3', folderId: 'f1', workerName: 'Francis Febra',  scope: 'Civil Works',     agreedAmount: 40000, payType: 'pakyaw' },
+    { id: 'd4', folderId: 'f1', workerName: 'Francis Febra',  scope: 'Owner Supply',    agreedAmount: 30000, payType: 'pakyaw' },
+    { id: 'e5', folderId: 'f1', workerName: 'Francis Febra',  scope: 'Plumbing Works',  agreedAmount: 45000, payType: 'pakyaw' },
+    // Same NAME, vendor side of the same table — must never join the sheet.
+    { id: 'v6', folderId: 'f1', workerName: 'Francis Febra',  scope: 'Windows supply & install', agreedAmount: 90000, category: 'outsource' },
+    // Same person, different capitalisation: its own card, so its own sheet.
+    { id: 'x7', folderId: 'f1', workerName: 'francis febra',  scope: 'Painting', agreedAmount: 12000, payType: 'pakyaw' },
+    { id: 'n8', folderId: 'f1', workerName: '', scope: 'Nameless one', agreedAmount: 1000, payType: 'pakyaw' },
+    { id: 'n9', folderId: 'f1', workerName: '', scope: 'Nameless two', agreedAmount: 2000, payType: 'pakyaw' },
+  ];
+  const pc = evalWith(
+    slice(expensesSrc, 'function lcWorkerContracts(',
+          '// Orientation date as it prints on the manual', 'js/expenses-module.js'),
+    {
+      lcIsOutsource: (c) => !!c && c.category === 'outsource',
+      lcOrientationDateLabel: () => 'September 4, 2026',
+      expFolders: [{ id: 'f1', name: 'Los Churreros', code: 'LC-01' }],
+      expLaborContracts: pcFixtures,
+    },
+    ['lcWorkerContracts', 'lcWorkerAgreementDetails']);
+  const FF = pcFixtures[2];                                   // opened from job 3 of 5
+
+  test('PC: one sheet covers every LABOR job the worker holds', () =>
+    eq(pc.lcWorkerContracts(FF).length, 5, 'jobs on the sheet'));
+
+  test('PC: AGREED CONTRACT AMOUNT is the SUM of the caps, never one job', () =>
+    eq(pc.lcWorkerAgreementDetails(pc.lcWorkerContracts(FF)).amount, '200,000.00', 'combined amount'));
+
+  test('PC: SCOPE OF WORK lists every job, numbered', () =>
+    eq(pc.lcWorkerAgreementDetails(pc.lcWorkerContracts(FF)).scope,
+       '1) Architectural/Interior Finishing Works  2) Carpentry Works  3) Civil Works  4) Owner Supply  5) Plumbing Works',
+       'combined scope'));
+
+  test('PC: a VENDOR subcontract never lands on a worker agreement', () =>
+    ok(!pc.lcWorkerContracts(FF).some((c) => c.category === 'outsource'),
+       'an Out Source job leaked onto the worker sheet — the category filter is gone'));
+
+  test('PC: a vendor sheet covers only vendor jobs', () => {
+    const v = pc.lcWorkerContracts(pcFixtures[5]);
+    eq(v.length, 1, 'vendor jobs');
+    eq(v[0].id, 'v6', 'vendor job');
+  });
+
+  test('PC: a differently-CASED name stays its own worker, matching its card', () =>
+    eq(pc.lcWorkerContracts(pcFixtures[6]).length, 1, 'lowercase-name jobs'));
+
+  test('PC: nameless contracts share a card but NEVER share an agreement', () =>
+    eq(pc.lcWorkerContracts(pcFixtures[7]).length, 1, 'nameless jobs on one sheet'));
+
+  test('PC: a single job prints unnumbered, at its own amount', () => {
+    const one = pc.lcWorkerAgreementDetails(pc.lcWorkerContracts(pcFixtures[6]));
+    eq(one.scope, 'Painting', 'single scope');
+    eq(one.amount, '12,000.00', 'single amount');
+  });
+
+  test('PC: pay type reads Mixed when the jobs disagree, never one job’s terms', () => {
+    const cs = pc.lcWorkerContracts(FF);
+    eq(pc.lcWorkerAgreementDetails(cs).payType, 'Pakyaw', 'all pakyaw');
+    eq(pc.lcWorkerAgreementDetails(cs.concat([{ scope: 'z', agreedAmount: 0, payType: 'inhouse' }])).payType,
+       'Mixed', 'mixed pay types');
+  });
+
+  const pmFixtures = [
+    { id: 'a1', workerName: 'Francis Febra',  scope: 'Architectural/Interior Finishing Works', agreedAmount: 50000, payType: 'pakyaw' },
+    { id: 'b2', workerName: 'Francis Febra ', scope: 'Carpentry Works', agreedAmount: 35000, payType: 'pakyaw' },
+    { id: 'c3', workerName: 'Francis Febra',  scope: 'Civil Works',     agreedAmount: 40000, payType: 'pakyaw' },
+    { id: 'd4', workerName: 'Francis Febra',  scope: 'Owner Supply',    agreedAmount: 30000, payType: 'pakyaw' },
+    { id: 'e5', workerName: 'Francis Febra',  scope: 'Plumbing Works',  agreedAmount: 45000, payType: 'pakyaw' },
+    { id: 'z9', workerName: 'Mark Frias',     scope: 'Masonry',         agreedAmount: 10000, payType: 'inhouse' },
+  ];
+  const pm = evalWith(
+    slice(pmSrc, 'function _pmWorkerContracts(', 'async function _pmOpenWorkerAgreement(', 'js/pm-admin.js'),
+    { _pmActiveProject: { id: 'p1', projectName: 'Los Churreros' }, _pmLaborContracts: pmFixtures },
+    ['_pmWorkerContracts', '_pmWorkerAgreementDetails']);
+  const PMFF = pmFixtures[2];
+
+  test('PM: one sheet covers every job the worker holds on the project', () =>
+    eq(pm._pmWorkerContracts(PMFF).length, 5, 'jobs on the sheet'));
+
+  test('PM: AGREED CONTRACT AMOUNT is the SUM of the caps', () =>
+    eq(pm._pmWorkerAgreementDetails(pm._pmWorkerContracts(PMFF)).amount, '200,000.00', 'combined amount'));
+
+  test('PM: SCOPE OF WORK lists every job, numbered', () =>
+    eq(pm._pmWorkerAgreementDetails(pm._pmWorkerContracts(PMFF)).scope,
+       '1) Architectural/Interior Finishing Works  2) Carpentry Works  3) Civil Works  4) Owner Supply  5) Plumbing Works',
+       'combined scope'));
+
+  test('PM: another worker keeps their own sheet', () =>
+    eq(pm._pmWorkerContracts(pmFixtures[5]).length, 1, 'Mark’s jobs'));
+
+  test('PM and PC agree on the same worker’s combined amount', () =>
+    eq(pm._pmWorkerAgreementDetails(pm._pmWorkerContracts(PMFF)).amount,
+       pc.lcWorkerAgreementDetails(pc.lcWorkerContracts(FF)).amount,
+       'the two modules disagree about what the worker agreed to'));
+
+  test('the sheet prints agreed CAPS — it never restates what was paid', () => {
+    // If either sheet started summing PAYMENTS it would be restating Spent on a
+    // document that is not part of the money model.
+    ok(slice(expensesSrc, 'function lcWorkerAgreementDetails(', '\n}\n', 'js/expenses-module.js')
+        .indexOf('lcPaid') === -1, 'the PC sheet is reading payments — it prints agreed caps only');
+    ok(slice(pmSrc, 'function _pmWorkerAgreementDetails(', '\n}\n', 'js/pm-admin.js')
+        .indexOf('_pmContractPaid') === -1, 'the PM sheet is reading payments — it prints agreed caps only');
+  });
+}
+
+
+// == L. ONE PAYMENT, SEVERAL JOBS — THE SPLIT ======================
+// A day's labor pay often covers several of a worker's capped jobs at once.
+// Ticking more than one splits the amount pro-rata by what each job still
+// owes, and each leg is saved as its own row/entry, because the drawdown sums
+// by contractId — one row could only ever credit one job.
+//
+// The invariant that matters for the money model: THE LEGS RE-ADD TO THE
+// AMOUNT ENTERED. If they did not, splitting a payment would quietly change
+// Spent. Project Control (lcAllocateAcrossContracts) and Project Management
+// (_pmAllocateAcrossContracts) must agree — the same payment split in the two
+// modules has to land the same way.
+{
+  const mkPC = (rows) => evalWith(
+    slice(expensesSrc, 'function lcAllocateAcrossContracts(', '\n// Show the per-contract breakdown', 'js/expenses-module.js'),
+    { expLaborContracts: rows, lcStats: (c) => ({ remaining: c.remaining }) },
+    ['lcAllocateAcrossContracts']).lcAllocateAcrossContracts;
+  const mkPM = (rows) => evalWith(
+    slice(pmSrc, 'function _pmAllocateAcrossContracts(', '\n// What each ticked job will be charged', 'js/pm-admin.js'),
+    { _pmLaborContracts: rows, _pmContractStats: (c) => ({ remaining: c.remaining }) },
+    ['_pmAllocateAcrossContracts'])._pmAllocateAcrossContracts;
+
+  const rows = [
+    { id: 'a', remaining: 50000 },
+    { id: 'b', remaining: 30000 },
+    { id: 'c', remaining: 20000 },
+  ];
+  const ids = ['a', 'b', 'c'];
+  const sum = (legs) => legs.reduce((s, l) => s + l.amount, 0);
+
+  test('split is pro-rata by what each job still owes', () => {
+    const legs = mkPM(rows)(ids, 10000);
+    eq(legs[0].amount, 5000, 'job a (50% of the remaining work)');
+    eq(legs[1].amount, 3000, 'job b');
+    eq(legs[2].amount, 2000, 'job c');
+  });
+
+  test('the legs re-add to the amount entered — Spent cannot drift', () => {
+    [10000, 13000, 1, 7777.77, 99999.99].forEach((total) => {
+      eq(sum(mkPM(rows)(ids, total)), total, 'PM legs for ' + total);
+      eq(sum(mkPC(rows)(ids, total)), total, 'PC legs for ' + total);
+    });
+  });
+
+  test('an awkward amount puts the rounding on the LAST leg, not nowhere', () => {
+    const legs = mkPM(rows)(ids, 1);
+    eq(legs.length, 3, 'legs');
+    eq(sum(legs), 1, 'total');
+    ok(legs.every((l) => l.amount >= 0), 'a leg went negative');
+  });
+
+  test('all jobs settled falls back to an EVEN split, never a dropped payment', () => {
+    const settled = [{ id: 'a', remaining: 0 }, { id: 'b', remaining: 0 }];
+    const legs = mkPM(settled)(['a', 'b'], 900);
+    eq(legs.length, 2, 'legs');
+    eq(sum(legs), 900, 'total');
+    eq(legs[0].amount, 450, 'even leg');
+  });
+
+  test('an over-drawn job carries no NEGATIVE weight in the split', () => {
+    // Weights are clamped at 0: a job already over its cap must not pull a
+    // negative share and hand another job more than the payment.
+    const over = [{ id: 'a', remaining: -5000 }, { id: 'b', remaining: 10000 }];
+    const legs = mkPM(over)(['a', 'b'], 1000);
+    eq(sum(legs), 1000, 'total');
+    eq(legs[0].amount, 0, 'the over-drawn job takes nothing');
+    eq(legs[1].amount, 1000, 'the open job takes it all');
+  });
+
+  test('a single tick is ONE leg for the whole amount', () => {
+    const legs = mkPM(rows)(['b'], 4200);
+    eq(legs.length, 1, 'legs');
+    eq(legs[0].amount, 4200, 'amount');
+    eq(legs[0].contractId, 'b', 'contract');
+  });
+
+  test('nothing ticked, or a zero amount, allocates nothing at all', () => {
+    eq(mkPM(rows)([], 5000).length, 0, 'no ticks');
+    eq(mkPM(rows)(ids, 0).length, 0, 'zero amount');
+  });
+
+  test('PM and PC split the same payment identically', () => {
+    const a = mkPM(rows)(ids, 13000).map((l) => l.contractId + ':' + l.amount).join('|');
+    const b = mkPC(rows)(ids, 13000).map((l) => l.contractId + ':' + l.amount).join('|');
+    eq(a, b, 'the two modules disagree about how one payment splits');
+  });
+
+  test('a split leg is saved with its own contractId, never a shared row', () =>
+    // The whole point of splitting into legs: _pmContractPaid sums entries by
+    // contractId, so a single entry carrying several ids would credit nobody.
+    ok(pmSrc.indexOf('contractId: leg.contractId') !== -1,
+       'the split stopped stamping each leg with its own contract'));
+
+  test('days are not repeated across split legs', () =>
+    ok(pmSrc.indexOf('days: split ? 0 : days') !== -1,
+       'a 3-way split is reporting 3x the days worked'));
+}
+
 
 // ════════════════════════════════════════════════════════════════════
 console.log('\n──────────────────────────────────────');

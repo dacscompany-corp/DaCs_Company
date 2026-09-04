@@ -545,7 +545,7 @@ Despite the name, this table records a project ending **either way**:
 
 ---
 
-## 11. Attendance (`0050`, `0059`) — worker Time In / Time Out
+## 11. Attendance (`0050`, `0059`, `0061`) — worker Time In / Time Out
 
 > **Deliberately isolated**, like `reimbursements` (0041), the warranty fund (0043) and
 > `quotations` (0045). No money math reads these tables; attendance hours are **not** the basis of
@@ -553,7 +553,7 @@ Despite the name, this table records a project ending **either way**:
 > so the staff amount-hiding rule does not apply. Written only by the native Android worker app
 > (via RPC) and read by `js/attendance-admin.js` (phase C).
 
-**All writes go through `attendance_time_in()` / `attendance_time_out()`.** Workers hold `select`
+**All worker writes go through `attendance_time_in()` / `attendance_time_out()`.** Workers hold `select`
 on their own rows and have **no** `insert`/`update` policy at all — that is what forces the RPC path.
 Both functions are **idempotent on a client-generated `event_id`**, so the Android offline queue can
 replay a submission without duplicating it.
@@ -607,10 +607,38 @@ no owner filter, and `owner_id` is nullable — many live rows carry NULL).
 | `timeinReceivedAt` | ts | server clock. Skew vs `timeinAt` is only meaningful when `wasOffline` is false |
 | `timeout*` | — | same shape, all nullable (including the three project columns). **Stored independently** — the worker may change site mid-day |
 | `totalMinutes` | number | computed **server-side** on Time Out, so worker and admin cannot disagree |
+| `abandonedBy` | uuid | **(0061)** the admin who closed a forgotten Time Out. `on delete set null` — removing an admin account must not erase the record they closed. A **lookup**, not a snapshot like `workerName`: the closer's *current* name is the useful one, and A2 resolves it against `profiles` at render time |
+| `abandonedAt` | ts | **(0061)** server `now()`, never a browser clock |
+| `abandonedNote` | string | **(0061)** optional reason, trimmed; empty becomes null |
 
 `unique (worker_id, work_date, session_seq)` is the one-record-per-day guarantee. A Time Out more
 than **18 hours** after its Time In raises `SHIFT_TOO_LONG` rather than silently recording a
 forgotten-clock-out as a 33-hour day.
+
+`attendance_abandon_trail_ck` allows the three `abandoned*` columns only on a row whose status is
+`abandoned`. Deliberately **not** the converse — a row may be `abandoned` with an empty trail. None
+exists (nothing could set the status before `0061`), but `0059`'s header records what assuming an
+attendance table was empty cost last time.
+
+### `attendance_abandon(recordId, note)` — closing a forgotten Time Out (`0061`)
+A worker who times in and never times out leaves a record on `working` **forever**: every report
+shows `—` for that day and A1 counts them as still on site months later. This is the only thing that
+writes `abandoned`.
+
+**It invents no hours.** `timeoutAt` and `totalMinutes` stay null, so the day still reports `—`. The
+record stops claiming the worker is on site; it never starts claiming when they left. There is
+deliberately no way to type in a departure time — it would be indistinguishable from a captured one
+in every report and export.
+
+Guards, in order: `AUTH_REQUIRED` → `NOT_ADMIN` (owner/staff only — a worker cannot close their own
+day) → `RECORD_NOT_FOUND` (also the answer for another tenant's record) → `NOT_OPEN` (status is not
+`working`) → `STILL_TODAY` (`work_date >= ` the **Manila** date; that worker is probably on site, and
+closing it would break their Time Out, which only closes rows on `working`).
+
+> **Why an RPC when owner/staff already hold `attendance_records_admin_update`?** `abandoned_at`
+> must be the server's `now()` and `abandoned_by` must be `auth.uid()`. A browser-supplied trail is
+> a trail the caller *chose* — worthless exactly when it matters. The admin update policy is left
+> as it is; `0061` adds the good route without breaking the old one.
 
 ### `attendance_terms_acceptances/{id}` — versioned T&C acceptance
 | Field | Type | Notes |

@@ -3127,6 +3127,13 @@
 .dacs-portal-scope .lc2-pay { display: inline-flex; align-items: center; gap: 5px; background: var(--brand-green); color: #fff; font-weight: 700; font-size: 12.5px; padding: 8px 15px 8px 13px; border-radius: 999px; flex-shrink: 0; border: 0; cursor: pointer; transition: background .15s, box-shadow .15s; }
 .lc2-pay:hover { background: var(--brand-green-dark); box-shadow: 0 2px 10px rgba(26, 92, 58, 0.15); }
 .lc2-pay svg { width: 13px; height: 13px; }
+/* One work agreement per worker — the sheet covers every job in the card, so
+   the button sits on the worker header and not on the job rows. Outlined, to
+   keep "Pay" the only filled action in the row. */
+.lc2-agr,
+.dacs-portal-scope .lc2-agr { display: inline-flex; align-items: center; gap: 5px; background: #fff; color: var(--brand-green); font-weight: 700; font-size: 12.5px; padding: 8px 15px 8px 13px; border-radius: 999px; flex-shrink: 0; border: 1.5px solid rgba(26, 92, 58, 0.30); cursor: pointer; transition: background .15s, border-color .15s; }
+.lc2-agr:hover { background: rgba(26, 92, 58, 0.08); border-color: rgba(26, 92, 58, 0.45); }
+.lc2-agr svg { width: 13px; height: 13px; }
 .lc2-chev { flex-shrink: 0; transition: transform 0.2s; }
 .lc2-acc.open .lc2-chev { transform: rotate(180deg); }
 

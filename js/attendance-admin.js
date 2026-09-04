@@ -36,6 +36,12 @@
      * computed. An open day (no Time Out yet) is a day worked with zero
      * hours -- inventing a figure from the clock would put a number in a
      * report that the database never agreed to.
+     *
+     * openDays and abandonedDays are counted SEPARATELY though both have
+     * null hours (0061). They are different facts: an open day is
+     * waiting to be resolved, an abandoned one has been. Reporting them
+     * under one heading would mean closing a record changed nothing on
+     * screen, and the admin would have no way to see their own work.
      */
     function attRollUpByWorker(records) {
         const by = new Map();
@@ -48,13 +54,15 @@
                     position: r.worker_position || '',
                     daysWorked: 0,
                     totalMinutes: 0,
-                    openDays: 0
+                    openDays: 0,
+                    abandonedDays: 0
                 });
             }
             const row = by.get(key);
             row.daysWorked += 1;
             row.totalMinutes += Number(r.total_minutes || 0);
-            if (r.total_minutes === null || r.total_minutes === undefined) row.openDays += 1;
+            if (r.status === 'abandoned') row.abandonedDays += 1;
+            else if (r.total_minutes === null || r.total_minutes === undefined) row.openDays += 1;
         });
         return Array.from(by.values()).sort((a, b) => a.name.localeCompare(b.name));
     }
@@ -283,6 +291,71 @@
         if (!parts.length) return { firstName: '', lastName: '' };
         if (parts.length === 1) return { firstName: parts[0], lastName: '' };
         return { firstName: parts.slice(0, -1).join(' '), lastName: parts[parts.length - 1] };
+    }
+
+    // ── A7 · Closing a forgotten Time Out (0061) ────────────────────
+    //
+    // These two mirror the guards inside attendance_abandon. The RPC is
+    // the authority -- it re-checks every one of these server-side, and
+    // it also checks the two things a browser cannot be trusted with
+    // (that the caller is owner/staff, and that the record belongs to a
+    // tenant they can access). What these do is stop the screen from
+    // OFFERING a button the database would refuse, because a button
+    // that always errors is worse than no button.
+
+    /**
+     * May this record be closed as abandoned, and if not, why not?
+     *
+     * The reason is user-facing copy, not a code: it is rendered next to
+     * the row that has no button, so the admin is never left guessing
+     * what is different about it.
+     */
+    function attCanAbandon(record, todayKey) {
+        if (!record) return { can: false, reason: 'There is no record to close.' };
+        if (record.status === 'complete') {
+            return { can: false, reason: 'This day is already complete — it has a real Time Out.' };
+        }
+        if (record.status === 'abandoned') {
+            return { can: false, reason: 'This record has already been closed.' };
+        }
+        if (record.status !== 'working') {
+            return { can: false, reason: 'Only an open record can be closed.' };
+        }
+        // `>=`, not `>`. A future-dated row should not exist at all
+        // (attendance_time_in rejects CAPTURED_IN_FUTURE), but if clock
+        // skew ever produced one, being AHEAD of today must not be what
+        // makes it closable.
+        if (String(record.work_date) >= String(todayKey)) {
+            return { can: false, reason: 'Still today — this worker may be on site right now.' };
+        }
+        return { can: true, reason: '' };
+    }
+
+    /**
+     * The records the A6 panel lists: every one still on 'working'.
+     *
+     * Filtered on STATUS, never on a null timeout_at. Abandoning leaves
+     * timeout_at null forever, so a timeout_at test would keep every
+     * record the admin had already resolved on the list and the panel
+     * would never empty -- the screen would report the work as undone.
+     *
+     * Today's open records ARE included, flagged `_closable: false`.
+     * Dropping them would make the panel disagree with the "Missing
+     * time out" stat directly above it; listing them with the reason
+     * showing explains the missing button instead.
+     *
+     * Oldest first: a record stuck since August is more stale than one
+     * from yesterday, and staleness is the thing this screen is for.
+     */
+    function attOpenRecords(records, todayKey) {
+        return (records || [])
+            .filter(r => r.status === 'working')
+            .map(r => {
+                const v = attCanAbandon(r, todayKey);
+                return Object.assign({}, r, { _closable: v.can, _reason: v.reason });
+            })
+            .sort((a, b) => String(a.work_date).localeCompare(String(b.work_date))
+                          || String(a.worker_name || '').localeCompare(String(b.worker_name || '')));
     }
 
     // ==== ATT REPORT ENGINE END ====
@@ -756,9 +829,37 @@
         // The span is stated from the two stamps, but the FIGURE is
         // total_minutes as the database computed it -- never recomputed
         // here, so the screen can never disagree with the report.
+        //
+        // An abandoned day says so instead of "not recorded yet": the
+        // Time Out is not late, it is never coming, and "yet" would
+        // suggest someone is still waiting for it.
         const span = (r.timein_at && r.timeout_at)
             ? `${attTime(r.timein_at)} → ${attTime(r.timeout_at)} · computed by the system`
-            : 'Time Out not recorded yet';
+            : r.status === 'abandoned'
+                ? 'Closed with no Time Out — hours were never recorded'
+                : 'Time Out not recorded yet';
+
+        const resolve = attCanAbandon(r, attTodayKey());
+        const closer = r.status === 'abandoned' ? await attCloserName(r.abandoned_by) : null;
+
+        // The trail only renders on a record that HAS one. A record
+        // closed before 0061 shipped could carry the status without the
+        // columns (nothing could set it then, so none exist -- but the
+        // constraint permits it, so the render must too).
+        const trail = r.status === 'abandoned' && r.abandoned_at ? `
+                  <div class="att-fact">
+                    <span class="att-fact-key">Closed by</span>
+                    <span class="att-fact-val">${attEsc(closer || 'account since removed')}</span>
+                  </div>
+                  <div class="att-fact">
+                    <span class="att-fact-key">Closed on</span>
+                    <span class="att-fact-val">${attEsc(attStamp(r.abandoned_at))}</span>
+                  </div>
+                  ${r.abandoned_note ? `
+                  <div class="att-fact">
+                    <span class="att-fact-key">Reason</span>
+                    <span class="att-fact-val">${attEsc(r.abandoned_note)}</span>
+                  </div>` : ''}` : '';
 
         body.innerHTML = `
             <div class="att-head">
@@ -771,6 +872,8 @@
                 </div>
               </div>
               <div class="att-head-actions">
+                ${resolve.can ? `<button class="att-btn att-btn--warn" type="button" id="attResolve">
+                  <i data-lucide="clock"></i>Close as abandoned</button>` : ''}
                 <button class="att-btn" type="button" id="attPrint">
                   <i data-lucide="printer"></i>Print</button>
               </div>
@@ -805,13 +908,27 @@
                     <span class="att-fact-key">Recorded by</span>
                     <span class="att-fact-val">Worker device</span>
                   </div>
+                  ${trail}
                   <div class="att-fact-foot">Time In and Time Out projects are stored
                     separately. If they differ, both are shown as selected.</div>
                 </div>
               </div>
-            </div>`;
+            </div>
+            <div id="attDetailModalHost"></div>`;
 
         container.querySelector('#attPrint').addEventListener('click', () => window.print());
+
+        const resolveBtn = container.querySelector('#attResolve');
+        if (resolveBtn) {
+            resolveBtn.addEventListener('click', () => {
+                attOpenResolve(container.querySelector('#attDetailModalHost'), r,
+                    // A full re-render, not a patch: the trail, the pill,
+                    // the span note and the button's own absence all have
+                    // to move together, and re-reading is the only way the
+                    // screen shows what was actually stored.
+                    () => attRenderWorker(container, workerId, workDate));
+            });
+        }
         attIcons();
     }
 
@@ -842,6 +959,179 @@
                 </div>
               </div>
             </div>`;
+    }
+
+    // ── A7 · Resolve a forgotten Time Out ───────────────────────────
+    //
+    // Shared by A2 (one record, from its detail screen) and A6 (the
+    // open-records panel). One modal and one call site, for the same
+    // reason A4 is shared between A1 and A3: two copies of a write drift,
+    // and only one of them stays in step with the RPC's guards.
+
+    /**
+     * Names the admin who closed a record.
+     *
+     * A LOOKUP, not a snapshot -- the opposite of worker_name, and the
+     * difference is deliberate (see 0061 §1). The worker's name is
+     * snapshotted because the record is evidence of what was shown at
+     * the time; the closer is an internal admin whose CURRENT name is
+     * the useful one.
+     *
+     * A null result is rendered as the plain fact that it is: the row
+     * says a record was closed, and by whom is no longer resolvable
+     * (the account was deleted -- abandoned_by is `on delete set null`).
+     */
+    async function attCloserName(uid) {
+        if (!uid) return null;
+        const { data, error } = await window.sbClient
+            .from('profiles').select('display_name,email').eq('id', uid).limit(1);
+        if (error) { console.warn('attendance: closer lookup failed:', error.message); return null; }
+        const p = (data || [])[0];
+        if (!p) return null;
+        return (p.display_name || '').trim() || (p.email || '').split('@')[0] || null;
+    }
+
+    /** "5 September 2026, 1:02 PM" — local, like every other stamp here. */
+    function attStamp(ts) {
+        if (!ts) return '—';
+        return new Date(ts).toLocaleString('en-PH', {
+            day: 'numeric', month: 'long', year: 'numeric',
+            hour: 'numeric', minute: '2-digit', hour12: true
+        });
+    }
+
+    /**
+     * The confirm dialog.
+     *
+     * States the consequence in the sentence the admin reads, not in a
+     * tooltip: the day will report NO hours. An admin who expected this
+     * to let them enter 5pm needs to find that out before they click,
+     * not when the report still shows a dash.
+     *
+     * `onDone` is called only after the RPC returns, and is handed the
+     * updated row so the caller repaints from the database's own copy
+     * rather than patching its local one.
+     */
+    function attOpenResolve(host, record, onDone) {
+        const dayLabel = (() => {
+            const [y, m, d] = String(record.work_date).split('-').map(Number);
+            return new Date(y, m - 1, d).toLocaleDateString('en-PH',
+                { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+        })();
+
+        host.innerHTML = `
+            <div class="att-modal" id="attResolveModal">
+              <div class="att-modal-box att-modal-box--narrow" role="dialog" aria-modal="true"
+                   aria-labelledby="attResolveTitle">
+                <div class="att-modal-head">
+                  <div>
+                    <h3 class="att-modal-title" id="attResolveTitle">Close this record</h3>
+                    <p class="att-modal-sub">${attEsc(record.worker_name || '—')} ·
+                      ${attEsc(dayLabel)}</p>
+                  </div>
+                  <button class="att-modal-x" type="button" id="attRvX" aria-label="Close">&times;</button>
+                </div>
+                <form class="att-modal-form" id="attResolveForm" autocomplete="off">
+                  <div class="att-modal-body att-modal-body--single">
+                    <div class="att-info">
+                      <i data-lucide="clock"></i>
+                      <div>Timed in at <strong>${attTime(record.timein_at)}</strong> on
+                        ${attEsc(record.timein_project_name || '—')}, and never timed out.
+                        Closing marks the day <strong>Abandoned</strong> so it stops counting
+                        as still on site.</div>
+                    </div>
+                    <div class="att-info att-info--warn">
+                      <i data-lucide="minus-circle"></i>
+                      <div><strong>The day will still report no hours.</strong> Nobody knows
+                        when this worker left, so the record never says — closing it does not
+                        add a Time Out, and there is no way to type one in.</div>
+                    </div>
+                    <div class="att-field att-span">
+                      <label for="attRvNote">Reason <span class="att-hint-inline">(optional)</span></label>
+                      <input class="att-input" id="attRvNote" type="text" maxlength="200"
+                             placeholder="e.g. Forgot to time out; crew left around 5pm">
+                      <div class="att-hint">Saved on the record with your name and the time,
+                        so this edit can be explained later.</div>
+                    </div>
+                    <div class="att-err att-err--general att-span" id="attRvGeneral"></div>
+                  </div>
+                  <div class="att-modal-foot">
+                    <button class="att-btn" type="button" id="attRvCancel">Cancel</button>
+                    <button class="att-btn att-btn--primary" type="submit" id="attRvSubmit">
+                      Close as abandoned
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>`;
+
+        attIcons();
+
+        const general = host.querySelector('#attRvGeneral');
+        const submitBtn = host.querySelector('#attRvSubmit');
+
+        function close() {
+            if (host._attEsc) { document.removeEventListener('keydown', host._attEsc); host._attEsc = null; }
+            host.innerHTML = '';
+        }
+        host._attEsc = (e) => { if (e.key === 'Escape') close(); };
+        document.addEventListener('keydown', host._attEsc);
+
+        host.querySelector('#attRvX').addEventListener('click', close);
+        host.querySelector('#attRvCancel').addEventListener('click', close);
+        host.querySelector('#attResolveModal').addEventListener('click', e => {
+            if (e.target.id === 'attResolveModal') close();
+        });
+        host.querySelector('#attRvNote').focus();
+
+        host.querySelector('#attResolveForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            general.textContent = '';
+            general.style.display = 'none';
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Closing…';
+            try {
+                // The RPC, never an update on attendance_records -- even
+                // though owner/staff hold a policy that would allow one.
+                // abandoned_at must be the SERVER's now() and abandoned_by
+                // must be auth.uid(); a browser-supplied trail is a trail
+                // the caller chose. See 0061 §2.
+                const { data, error } = await window.sbClient.rpc('attendance_abandon', {
+                    p_record_id: record.id,
+                    p_note: host.querySelector('#attRvNote').value
+                });
+                if (error) throw error;
+                close();
+                if (onDone) onDone(Array.isArray(data) ? data[0] : data);
+            } catch (err) {
+                console.error('att A7: abandon', err);
+                general.textContent = attAbandonMessage(err);
+                general.style.display = 'block';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Close as abandoned';
+            }
+        });
+    }
+
+    /**
+     * The RPC's error codes, in the words an admin can act on.
+     *
+     * Each of these means the screen offered something the database
+     * refused, so the copy says what to do next rather than restating
+     * the code. NOT_OPEN and STILL_TODAY are both reachable from a stale
+     * page -- someone else resolved the record, or midnight passed.
+     */
+    function attAbandonMessage(err) {
+        const m = String((err && (err.message || err.code)) || '');
+        if (/NOT_ADMIN/.test(m))        return 'Only an owner or staff account can close a record.';
+        if (/RECORD_NOT_FOUND/.test(m)) return 'That record no longer exists. Refresh and try again.';
+        if (/NOT_OPEN/.test(m))         return 'This record is no longer open — someone may have ' +
+                                               'closed it already. Refresh to see its current state.';
+        if (/STILL_TODAY/.test(m))      return 'This record is on today\'s date and cannot be closed ' +
+                                               'yet — the worker may still be on site.';
+        if (/AUTH_REQUIRED/.test(m))    return 'Your session has expired. Sign in again.';
+        return m || 'Could not close the record. Please try again.';
     }
 
     // ── A3 · Worker management ──────────────────────────────────────
@@ -1507,11 +1797,15 @@
     }
 
     async function attLoadRange(from, to) {
+        // `id` is selected because the open-records panel resolves rows
+        // through attendance_abandon(p_record_id), and the abandoned_*
+        // columns because the panel and the CSV both report the trail.
         const { data, error } = await window.sbClient
             .from('attendance_records')
-            .select('worker_id,worker_name,worker_position,work_date,status,' +
+            .select('id,worker_id,worker_name,worker_position,work_date,status,' +
                     'timein_at,timeout_at,timein_project_name,total_minutes,' +
-                    'timein_was_offline,timeout_was_offline')
+                    'timein_was_offline,timeout_was_offline,' +
+                    'abandoned_by,abandoned_at,abandoned_note')
             .gte('work_date', from)
             .lte('work_date', to)
             .order('work_date', { ascending: false });
@@ -1567,6 +1861,56 @@
                fmt(to, { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
+    /**
+     * The open-records panel — the only place stale records surface.
+     *
+     * A1 shows ONE day at a time, so a record stuck since August is
+     * invisible unless somebody happens to navigate to that date. That
+     * is the whole reason a forgotten Time Out could sit open for
+     * months: nothing was ever wrong on screen, because the screen was
+     * never looking.
+     *
+     * Renders nothing at all when there is nothing open. An empty panel
+     * headed "Open records" reads as a problem the admin has to check;
+     * absence reads as the truth, which is that there is none.
+     */
+    function attOpenPanel(openRows) {
+        if (!openRows.length) return '';
+        return '<div class="att-card att-card--flag">' +
+                 '<div class="att-card-head">' +
+                   '<div>' +
+                     '<h3 class="att-subhead">Open records — no Time Out</h3>' +
+                     '<p class="att-card-sub">Timed in and never timed out. Until one is ' +
+                       'closed it counts as still on site and reports no hours.</p>' +
+                   '</div>' +
+                 '</div>' +
+                 '<table class="att-table"><thead><tr>' +
+                   '<th>Worker</th><th>Date</th><th>Project</th><th>Time in</th><th></th>' +
+                 '</tr></thead><tbody>' +
+                 openRows.map(function (r) {
+                     const [y, m, d] = String(r.work_date).split('-').map(Number);
+                     const day = new Date(y, m - 1, d).toLocaleDateString('en-PH',
+                         { day: 'numeric', month: 'short', year: 'numeric' });
+                     return '<tr>' +
+                        '<td><div class="att-worker">' + attEsc(r.worker_name || '—') + '</div>' +
+                            '<div class="att-meta">' + attEsc(r.worker_position || '—') + '</div></td>' +
+                        '<td class="att-mono">' + attEsc(day) + '</td>' +
+                        '<td>' + attEsc(r.timein_project_name || '—') + '</td>' +
+                        '<td class="att-mono">' + attTime(r.timein_at) + '</td>' +
+                        '<td class="att-right">' + (r._closable
+                            ? '<button class="att-link att-link--danger" type="button" ' +
+                              'data-resolve="' + attEsc(r.id) + '">Close</button>'
+                            // No button, and the reason in its place: a
+                            // row that simply lacked one would read as a
+                            // bug rather than a rule.
+                            : '<span class="att-meta">' + attEsc(r._reason) + '</span>') +
+                        '</td>' +
+                     '</tr>';
+                 }).join('') +
+                 '</tbody></table>' +
+               '</div>';
+    }
+
     async function attRenderReports(container) {
         const range = attDefaultRange();
         container.innerHTML =
@@ -1601,7 +1945,8 @@
               '<button class="att-btn" type="button" id="attCsvDay">' +
                 '<i data-lucide="download"></i>CSV by day</button>' +
             '</form>' +
-            '<div id="attReportBody">Loading…</div>';
+            '<div id="attReportBody">Loading…</div>' +
+            '<div id="attReportModalHost"></div>';
 
         const body = container.querySelector('#attReportBody');
         let rows = [];
@@ -1644,7 +1989,13 @@
             const totalMinutes = rows.reduce((s, r) => s + (Number(r.total_minutes) || 0), 0);
             const activeDays = new Set(rows.map(r => r.work_date)).size;
             const complete = rows.filter(r => r.status === 'complete').length;
-            const openRecords = rows.filter(r => !r.timeout_at).length;
+            // Counted on STATUS, not on a null timeout_at. An abandoned
+            // record keeps timeout_at null forever, so the old test kept
+            // counting records the admin had already resolved -- the
+            // figure would never fall and the work would look undone.
+            const openRows = attOpenRecords(rows, attTodayKey());
+            const openRecords = openRows.length;
+            const abandoned = rows.filter(r => r.status === 'abandoned').length;
 
             body.innerHTML =
                 '<div class="att-stats">' +
@@ -1653,7 +2004,13 @@
                       activeDays ? Math.round(totalMinutes / activeDays) : null)) +
                   attStat('Complete records', complete) +
                   attStat('Missing time out', openRecords, openRecords > 0) +
+                  // Shown even at zero, so resolving a record moves a
+                  // figure the admin can see rather than making one
+                  // quietly disappear from the screen.
+                  attStat('Closed by admin', abandoned) +
                 '</div>' +
+
+                attOpenPanel(openRows) +
 
                 '<div class="att-card">' +
                   '<div class="att-card-head"><h3 class="att-subhead">Summary by worker</h3></div>' +
@@ -1661,15 +2018,26 @@
                     '<th>Worker</th><th>Days present</th><th>Total hours</th><th>Incomplete</th>' +
                   '</tr></thead><tbody>' +
                   byWorker.map(function (w) {
+                      // Two badges, never one total. An open day still
+                      // needs the admin's attention; a closed one is a
+                      // decision already taken, and merging them would
+                      // mean resolving a record changed nothing here.
+                      const flags = [];
+                      if (w.openDays) {
+                          flags.push('<span class="att-badge att-badge--skew" ' +
+                              'title="Timed in but never timed out">' + w.openDays + ' not closed</span>');
+                      }
+                      if (w.abandonedDays) {
+                          flags.push('<span class="att-badge att-badge--abandoned" ' +
+                              'title="Closed by an admin; no Time Out was ever recorded">' +
+                              w.abandonedDays + ' abandoned</span>');
+                      }
                       return '<tr>' +
                           '<td><div class="att-worker">' + attEsc(w.name) + '</div>' +
                               '<div class="att-meta">' + attEsc(w.position || '—') + '</div></td>' +
                           '<td class="att-mono">' + w.daysWorked + '</td>' +
                           '<td class="att-mono">' + attFormatHours(w.totalMinutes) + '</td>' +
-                          '<td>' + (w.openDays
-                              ? '<span class="att-badge att-badge--skew" ' +
-                                'title="Timed in but never timed out">' + w.openDays + ' not closed</span>'
-                              : '<span class="att-mono">0</span>') + '</td>' +
+                          '<td>' + (flags.length ? flags.join(' ') : '<span class="att-mono">0</span>') + '</td>' +
                       '</tr>';
                   }).join('') +
                   '</tbody></table>' +
@@ -1689,6 +2057,18 @@
                   }).join('') +
                   '</tbody></table>' +
                 '</div>';
+
+            // Re-runs the whole query after a close rather than patching
+            // the row: every stat, both roll-ups and the panel's own
+            // membership all shift together, and re-reading is the only
+            // way the screen shows what was actually stored.
+            body.querySelectorAll('button[data-resolve]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    const rec = rows.find(x => x.id === btn.getAttribute('data-resolve'));
+                    if (!rec) return;
+                    attOpenResolve(container.querySelector('#attReportModalHost'), rec, run);
+                });
+            });
         }
 
         const period = container.querySelector('#attPeriod');
@@ -1711,9 +2091,13 @@
             const from = container.querySelector('#attFrom').value;
             const to = container.querySelector('#attTo').value;
             const csv = attToCsv(
-                ['Worker', 'Position', 'Days worked', 'Hours', 'Days not closed'],
+                // "Days abandoned" is its own column, not folded into
+                // "Days not closed" -- the two mean different things on
+                // screen and must not merge on the way out.
+                ['Worker', 'Position', 'Days worked', 'Hours', 'Days not closed', 'Days abandoned'],
                 attRollUpByWorker(rows).map(function (w) {
-                    return [w.name, w.position, w.daysWorked, attFormatHours(w.totalMinutes), w.openDays];
+                    return [w.name, w.position, w.daysWorked, attFormatHours(w.totalMinutes),
+                            w.openDays, w.abandonedDays];
                 })
             );
             attDownloadCsv('attendance-by-worker-' + from + '-to-' + to + '.csv', csv);
@@ -1724,7 +2108,7 @@
             const to = container.querySelector('#attTo').value;
             const csv = attToCsv(
                 ['Work date', 'Worker', 'Position', 'Project', 'Time in', 'Time out',
-                 'Hours', 'Status', 'Captured offline'],
+                 'Hours', 'Status', 'Captured offline', 'Closed by admin', 'Reason'],
                 rows.map(function (r) {
                     return [
                         r.work_date, r.worker_name, r.worker_position, r.timein_project_name,
@@ -1732,7 +2116,13 @@
                         attFormatHours(r.total_minutes), r.status,
                         // was_offline is ADMIN-facing only; the worker is
                         // never shown it (design §6.3).
-                        (r.timein_was_offline || r.timeout_was_offline) ? 'yes' : 'no'
+                        (r.timein_was_offline || r.timeout_was_offline) ? 'yes' : 'no',
+                        // The trail travels with the export. A row whose
+                        // hours read '—' because an admin closed it must
+                        // say so in the file too, or the spreadsheet
+                        // becomes the one place that cannot explain it.
+                        r.abandoned_at ? attStamp(r.abandoned_at) : '',
+                        r.abandoned_note || ''
                     ];
                 })
             );

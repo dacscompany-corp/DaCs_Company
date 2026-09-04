@@ -7835,6 +7835,62 @@ function lcViewAgreementCurrent() {
     if (c) lcViewAgreement(c);
 }
 
+// ── ONE agreement per WORKER, not per job ─────────────────────
+// A worker hired for five capped jobs signs ONE pakyaw contract, not five
+// sheets: the form's "SAKLAW NG TRABAHO / SCOPE OF WORK" lists every job under
+// that name and "NAPAGKASUNDUANG HALAGA / AGREED CONTRACT AMOUNT" is the SUM of
+// their caps. Nothing about the money model changes — each job still draws down
+// its own cap (lcPaid / lcStats); only the printed sheet is combined.
+//
+// Two filters, and BOTH are load-bearing:
+//   · `expLaborContracts` is already scoped to the open folder, so a worker's
+//     jobs on another project can never be swept in.
+//   · The array is MIXED across categories (see lcIsOutsource) — without the
+//     category filter a vendor's subcontract would land on a worker's sheet.
+// The name is matched on the TRIMMED name exactly, the same key the portal
+// groups its worker cards by (_lcByWorker in portal-app.compiled.js).
+// Deliberately case-SENSITIVE: a job typed "francis febra" renders as its own
+// second worker card, and a sheet that silently swept it in would contradict
+// the screen it was printed from. A blank name groups with nothing — nameless
+// contracts are not all the same person.
+function lcWorkerContracts(c) {
+    const key = String((c && c.workerName) || '').trim();
+    if (!key) return c ? [c] : [];
+    const os = lcIsOutsource(c);
+    const cs = (expLaborContracts || [])
+        .filter(x => String(x.workerName || '').trim() === key && lcIsOutsource(x) === os)
+        .sort((a, b) => String(a.scope || '').localeCompare(String(b.scope || '')));
+    return cs.length ? cs : [c];
+}
+
+// Everything the combined sheet states. `cs` is one worker's whole job list.
+function lcWorkerAgreementDetails(cs) {
+    const first = cs[0] || {};
+    const total = cs.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
+    // Numbered when there is more than one job, so the scope line reads as the
+    // list of works it is rather than one run-on job title.
+    const scope = cs.map((c, i) => (cs.length > 1 ? (i + 1) + ') ' : '')
+        + (c.scope || 'Untitled job')).join('  ');
+    // Pay type only belongs on the sheet when every job agrees; otherwise it
+    // would state one job's terms as if they covered all of them.
+    const types = [...new Set(cs.map(c => c.payType === 'inhouse' ? 'In-house' : 'Pakyaw'))];
+    const folder = (typeof expFolders !== 'undefined' ? expFolders : []).find(f => f.id === first.folderId);
+    return {
+        // The ref is the FIRST job's id, so the same worker always prints the
+        // same reference no matter which of their jobs it was opened from.
+        ref     : 'LC-' + String(first.id || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase(),
+        project : folder ? (folder.name || '') + (folder.code ? ' · ' + folder.code : '') : '',
+        worker  : first.workerName || '',
+        scope   : scope,
+        trade   : (cs.find(c => c.trade) || {}).trade || '',
+        orientationDate: lcOrientationDateLabel(),
+        payType : types.length === 1 ? types[0] : 'Mixed',
+        amount  : total.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        printedName: first.workerName || '',
+        total   : total,
+    };
+}
+
 // Orientation date as it prints on the manual: always TODAY, read fresh on every
 // print — the manual is handed over on the day it is printed, so the owner's
 // call was to drop the date picker rather than keep a field to maintain.
@@ -7847,45 +7903,48 @@ function lcOrientationDateLabel() {
 // Build + auto-print the Worker Agreement PDF (contract + company policy).
 async function lcViewAgreement(c) {
     const esc = _mvpEsc;
-    const signed = !!c.agreementSigned;
+    // ONE sheet for the WORKER, covering every capped job they hold on this
+    // folder (see lcWorkerContracts). `d` carries the combined scope list and
+    // the summed agreed amount; `cs` is kept for the per-job breakdown the
+    // generated sheet prints below.
+    const cs = lcWorkerContracts(c);
+    const d  = lcWorkerAgreementDetails(cs);
+    // "Signed" is a property of the AGREEMENT, not of one job: the worker signs
+    // the sheet once, so whichever job row captured that signature stands for
+    // all of them. Falls back to the job this was opened from.
+    const sigSrc = cs.find(x => x.agreementSigned) || c;
+    const signed = !!sigSrc.agreementSigned;
 
     // Uploaded policy-manual PDF (settings/workerAgreement): fill its "Detalye
-    // ng Pakyaw Labor Contract" page with THIS contract's details — and, when
-    // signed, stamp the worker's signature + date on every signature line.
+    // ng Pakyaw Labor Contract" page with the worker's COMBINED details.
     let _tpl = null;
     try { _tpl = await lcLoadAgrTemplate(); } catch (_) { _tpl = null; }
-    // Base document: the contract's own attached PDF (if any) wins over the
-    // global template — both get the details stamped onto the form page.
-    const _basePdf = c.agreementPdfUrl || (_tpl && _tpl.pdfUrl) || '';
+    // Base document: an attached PDF wins over the global template — the one on
+    // the job this was opened from first, else any other job of theirs, since
+    // they all stamp from the same blank manual. Both get the details stamped
+    // onto the form page.
+    const _basePdf = c.agreementPdfUrl
+        || (cs.find(x => x.agreementPdfUrl) || {}).agreementPdfUrl
+        || (_tpl && _tpl.pdfUrl) || '';
     if (_basePdf && typeof window.dacsWorkerAgreementView === 'function') {
-        const folder = (typeof expFolders !== 'undefined' ? expFolders : []).find(f => f.id === c.folderId);
-        const projName = folder ? (folder.name || '') + (folder.code ? ' · ' + folder.code : '') : '';
         // Details ONLY — signature lines stay BLANK on every page. The worker
         // signs the printed manual by hand (owner's call: the on-screen signature
         // captured at contract creation must NOT be replicated onto the pages).
-        await window.dacsWorkerAgreementView(_basePdf, {
-            ref      : 'LC-' + String(c.id || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase(),
-            project  : projName,
-            worker   : c.workerName || '',
-            scope    : c.scope || '',
-            trade    : c.trade || '',
-            orientationDate: lcOrientationDateLabel(),
-            payType  : c.payType === 'inhouse' ? 'In-house' : 'Pakyaw',
-            amount   : (Number(c.agreedAmount) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            printedName: c.workerName || ''
-        });
+        await window.dacsWorkerAgreementView(_basePdf, d);
         return;
     }
 
     // Policy text: the snapshot the worker signed, or the current template if unsigned.
-    let policy = c.agreementTermsSnapshot || '';
+    let policy = sigSrc.agreementTermsSnapshot || c.agreementTermsSnapshot || '';
     if (!policy) { try { policy = (await lcLoadAgrTemplate()).text || ''; } catch (_) {} }
 
     let when = '';
     try {
-        const at = c.agreementSignedAt;
-        const d = at && at.toDate ? at.toDate() : (at ? new Date(at) : null);
-        if (d && !isNaN(d)) when = d.toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' });
+        const at = sigSrc.agreementSignedAt;
+        // `dt`, not `d` — `d` is the combined agreement details above, and
+        // shadowing it here is a trap waiting for the next edit.
+        const dt = at && at.toDate ? at.toDate() : (at ? new Date(at) : null);
+        if (dt && !isNaN(dt)) when = dt.toLocaleString('en-PH', { dateStyle: 'long', timeStyle: 'short' });
     } catch (_) {}
     const today = new Date().toLocaleDateString('en-PH', { dateStyle: 'long' });
 
@@ -7893,17 +7952,35 @@ async function lcViewAgreement(c) {
     if (!w) { alert('Please allow pop-ups to print the agreement.'); return; }
 
     const signatureBlock = signed
-        ? (c.agreementSignatureImage
-            ? '<img class="sig-img" src="' + esc(c.agreementSignatureImage) + '" alt="signature">'
+        ? (sigSrc.agreementSignatureImage
+            ? '<img class="sig-img" src="' + esc(sigSrc.agreementSignatureImage) + '" alt="signature">'
             : '<div class="sig-line"></div>')
-          + '<div class="sig-name">' + esc(c.agreementSignature || c.workerName || '') + '</div>'
+          + '<div class="sig-name">' + esc(sigSrc.agreementSignature || d.worker || '') + '</div>'
           + '<div class="sig-cap">Worker’s signature · Signed' + (when ? ' on ' + esc(when) : '') + '</div>'
         : '<div class="sig-line"></div>'
-          + '<div class="sig-name">' + esc(c.workerName || '') + '</div>'
+          + '<div class="sig-name">' + esc(d.worker || '') + '</div>'
           + '<div class="sig-cap">Worker’s signature over printed name · Date: _______________</div>';
 
+    // The fuller wording the generated sheet has always used. "Mixed" only ever
+    // appears when the worker's jobs genuinely disagree, and then the breakdown
+    // table below is what states each job's own terms.
+    const payTypeLbl = d.payType === 'Mixed' ? 'Mixed — see the jobs below'
+        : d.payType === 'In-house' ? 'In-house (capped)' : 'Pakyaw (piecework)';
+    // Notes are per job, so they are numbered the same way the scope list is.
+    const notesLbl = cs.map((j, i) => j.notes ? ((cs.length > 1 ? (i + 1) + ') ' : '') + j.notes) : '')
+        .filter(Boolean).join('  ');
+    // What each job contributes to the agreed total. Printed only when there is
+    // more than one — a single job is already fully stated by the row above.
+    const jobsTable = cs.length > 1
+        ? '<h2>Jobs Covered by This Agreement</h2><table>'
+          + cs.map((j, i) => '<tr><td class="k">' + (i + 1) + '. ' + esc(j.scope || 'Untitled job') + '</td>'
+              + '<td>₱ ' + (parseFloat(j.agreedAmount) || 0).toLocaleString('en-PH') + '</td></tr>').join('')
+          + '<tr><td class="k">Total agreed</td><td><b>₱ ' + d.total.toLocaleString('en-PH') + '</b></td></tr>'
+          + '</table>'
+        : '';
+
     const html =
-      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Worker Agreement — ' + esc(c.workerName || '') + '</title>'
+      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Worker Agreement — ' + esc(d.worker || '') + '</title>'
       + '<style>'
       + '*{box-sizing:border-box;}'
       + 'body{font-family:Georgia,\'Times New Roman\',serif;max-width:760px;margin:0 auto;padding:44px 40px;color:#1a1a1a;line-height:1.65;}'
@@ -7936,18 +8013,20 @@ async function lcViewAgreement(c) {
       + '<div class="status-wrap"><span class="status ' + (signed ? 'signed' : 'draft') + '">' + (signed ? '✓ SIGNED' : 'FOR SIGNATURE') + '</span></div>'
 
       + '<h2>Contract Details</h2><table>'
-      + '<tr><td class="k">Worker</td><td>' + esc(c.workerName || '—') + '</td></tr>'
-      + '<tr><td class="k">Scope of work</td><td>' + esc(c.scope || '—') + '</td></tr>'
-      + (c.trade ? '<tr><td class="k">Position / Trade</td><td>' + esc(c.trade) + '</td></tr>' : '')
-      + '<tr><td class="k">Orientation date</td><td>' + esc(lcOrientationDateLabel()) + '</td></tr>'
-      + '<tr><td class="k">Agreed amount (cap)</td><td>₱ ' + (Number(c.agreedAmount) || 0).toLocaleString('en-PH') + '</td></tr>'
-      + '<tr><td class="k">Pay type</td><td>' + (c.payType === 'inhouse' ? 'In-house (capped)' : 'Pakyaw (piecework)') + '</td></tr>'
-      + (c.notes ? '<tr><td class="k">Notes</td><td>' + esc(c.notes) + '</td></tr>' : '')
+      + '<tr><td class="k">Worker</td><td>' + esc(d.worker || '—') + '</td></tr>'
+      + '<tr><td class="k">Scope of work</td><td>' + esc(d.scope || '—') + '</td></tr>'
+      + (d.trade ? '<tr><td class="k">Position / Trade</td><td>' + esc(d.trade) + '</td></tr>' : '')
+      + '<tr><td class="k">Orientation date</td><td>' + esc(d.orientationDate) + '</td></tr>'
+      + '<tr><td class="k">Agreed amount (cap)</td><td>₱ ' + d.total.toLocaleString('en-PH')
+          + (cs.length > 1 ? ' <span style="color:#666;font-size:12px;">(' + cs.length + ' jobs)</span>' : '') + '</td></tr>'
+      + '<tr><td class="k">Pay type</td><td>' + esc(payTypeLbl) + '</td></tr>'
+      + (notesLbl ? '<tr><td class="k">Notes</td><td>' + esc(notesLbl) + '</td></tr>' : '')
       + '</table>'
+      + jobsTable
 
       + '<h2>Worker Policy — Piecework Rates &amp; Company Rules</h2>'
       + '<div class="policy">' + esc(policy) + '</div>'
-      + (c.agreementPdfUrl ? '<p style="font-size:12px;color:#555;margin-top:10px;">Full policy document on file: ' + esc(c.agreementPdfUrl) + '</p>' : '')
+      + (_basePdf ? '<p style="font-size:12px;color:#555;margin-top:10px;">Full policy document on file: ' + esc(_basePdf) + '</p>' : '')
 
       + '<h2>Acknowledgement &amp; Signature</h2>'
       + '<p style="font-size:13px;">The worker confirms they have read (or been read) this agreement — including the piecework rates and company rules &amp; regulations above — understood it, and agree to be bound by it.</p>'
@@ -8661,6 +8740,10 @@ window.lcOpenRaiseCap       = lcOpenRaiseCap;
 window.lcOpenAgrTemplate    = lcOpenAgrTemplate;
 window.lcSaveAgrTemplate    = lcSaveAgrTemplate;
 window.lcOpenAgreement      = lcOpenAgreement;
+// The React portal asks which jobs one agreement will cover, so its header
+// button can state an honest count and total instead of guessing from the
+// card (the two differ for nameless contracts, which never group together).
+window.lcWorkerContracts    = lcWorkerContracts;
 window.lcViewAgreementCurrent = lcViewAgreementCurrent;
 window.lcDelete            = lcDelete;
 window.handleSaveLaborContract = handleSaveLaborContract;

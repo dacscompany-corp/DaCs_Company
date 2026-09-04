@@ -652,9 +652,136 @@ begin;
 rollback;  -- the owner_id change is rolled back with everything else
 
 
+-- ╔══════════════════════════════════════════════════════════════════╗
+-- ║ 15. attendance_abandon (0061) — closing a forgotten Time Out.     ║
+-- ║     The happy path, the trail, and every guard.                   ║
+-- ╚══════════════════════════════════════════════════════════════════╝
+begin;
+  insert into construction_projects (owner_id, project_name, status)
+  values ('<OWNER_UUID>'::uuid, 'ZZ Owner Project', 'active');
+
+  do $$
+  declare
+    d0     date := current_date - 30;
+    v_proj uuid;
+    v_open uuid;   -- timed in on d0, never timed out
+    v_done uuid;   -- a complete day
+    v_today uuid;  -- open, but dated TODAY
+    v_msg  text := '';
+    v_row  attendance_records;
+  begin
+    select id into v_proj from construction_projects where project_name = 'ZZ Owner Project';
+
+    -- Three records, written directly: this block is testing the ADMIN
+    -- action, and going through the worker RPCs would need three
+    -- separate jwt switches and a worker who can only have one row a day.
+    insert into attendance_records (owner_id, worker_id, worker_name, work_date, status,
+        timein_project_system, timein_pm_project_id, timein_project_name,
+        timein_at, timein_photo_path, timein_event_id)
+    values ('<OWNER_UUID>'::uuid, '<WORKER_UUID>'::uuid, 'ZZ Worker', d0, 'working',
+        'pm', v_proj, 'ZZ Owner Project',
+        (d0 + time '07:45') at time zone 'Asia/Manila', 'zz/in.jpg', gen_random_uuid())
+    returning id into v_open;
+
+    insert into attendance_records (owner_id, worker_id, worker_name, work_date, status,
+        timein_project_system, timein_pm_project_id, timein_project_name,
+        timein_at, timein_photo_path, timein_event_id,
+        timeout_at, timeout_event_id, total_minutes)
+    values ('<OWNER_UUID>'::uuid, '<WORKER_UUID>'::uuid, 'ZZ Worker', d0 - 1, 'complete',
+        'pm', v_proj, 'ZZ Owner Project',
+        (d0 - 1 + time '07:45') at time zone 'Asia/Manila', 'zz/in2.jpg', gen_random_uuid(),
+        (d0 - 1 + time '17:30') at time zone 'Asia/Manila', gen_random_uuid(), 585)
+    returning id into v_done;
+
+    insert into attendance_records (owner_id, worker_id, worker_name, work_date, status,
+        timein_project_system, timein_pm_project_id, timein_project_name,
+        timein_at, timein_photo_path, timein_event_id)
+    values ('<OWNER_UUID>'::uuid, '<WORKER_UUID>'::uuid, 'ZZ Worker',
+        (now() at time zone 'Asia/Manila')::date, 'working',
+        'pm', v_proj, 'ZZ Owner Project',
+        now() - interval '2 hours', 'zz/in3.jpg', gen_random_uuid())
+    returning id into v_today;
+
+    -- ── A WORKER may not close their own open day.
+    set local role authenticated;
+    set local request.jwt.claims =
+      '{"sub":"<WORKER_UUID>","email":"worker@example.com","role":"authenticated"}';
+    begin
+      perform attendance_abandon(v_open, 'trying it on');
+    exception when others then v_msg := sqlerrm;
+    end;
+    assert v_msg = 'NOT_ADMIN',
+      format('a worker closing their own record should get NOT_ADMIN, got "%s"', v_msg);
+
+    -- ── THE OWNER can, and the trail is written.
+    set local request.jwt.claims =
+      '{"sub":"<OWNER_UUID>","email":"owner@example.com","role":"authenticated"}';
+    select * into v_row from attendance_abandon(v_open, '  Forgot to time out  ');
+
+    assert v_row.status = 'abandoned', format('status is %s', v_row.status);
+    assert v_row.abandoned_by = '<OWNER_UUID>'::uuid, 'abandoned_by must be the caller';
+    assert v_row.abandoned_at is not null, 'abandoned_at must be stamped server-side';
+    assert v_row.abandoned_note = 'Forgot to time out',
+      format('the note must be trimmed, got "%s"', v_row.abandoned_note);
+
+    -- ── AND NO HOURS WERE INVENTED. This is the whole premise.
+    assert v_row.timeout_at is null,   'closing must not write a Time Out';
+    assert v_row.total_minutes is null, 'closing must not compute hours';
+
+    -- ── Not twice: a second close would overwrite the first trail.
+    v_msg := '';
+    begin
+      perform attendance_abandon(v_open, 'again');
+    exception when others then v_msg := sqlerrm;
+    end;
+    assert v_msg = 'NOT_OPEN', format('a second close should be NOT_OPEN, got "%s"', v_msg);
+
+    -- ── Never a COMPLETE record: it has a real, captured Time Out.
+    v_msg := '';
+    begin
+      perform attendance_abandon(v_done, null);
+    exception when others then v_msg := sqlerrm;
+    end;
+    assert v_msg = 'NOT_OPEN', format('a complete record should be NOT_OPEN, got "%s"', v_msg);
+
+    -- ── Never TODAY's: that worker is probably still on site, and
+    --    closing it would break their Time Out (attendance_time_out
+    --    only closes rows on status 'working').
+    v_msg := '';
+    begin
+      perform attendance_abandon(v_today, null);
+    exception when others then v_msg := sqlerrm;
+    end;
+    assert v_msg = 'STILL_TODAY', format('today''s record should be STILL_TODAY, got "%s"', v_msg);
+
+    -- ── A record that does not exist is refused, not silently ignored.
+    v_msg := '';
+    begin
+      perform attendance_abandon(gen_random_uuid(), null);
+    exception when others then v_msg := sqlerrm;
+    end;
+    assert v_msg = 'RECORD_NOT_FOUND', format('expected RECORD_NOT_FOUND, got "%s"', v_msg);
+
+    -- ── CROSS-TENANT: another owner's admin cannot reach it, and gets
+    --    the same answer as if it were not there.
+    set local request.jwt.claims =
+      '{"sub":"<OTHER_UUID>","email":"other@example.com","role":"authenticated"}';
+    v_msg := '';
+    begin
+      perform attendance_abandon(v_today, null);
+    exception when others then v_msg := sqlerrm;
+    end;
+    assert v_msg in ('NOT_ADMIN', 'RECORD_NOT_FOUND'),
+      format('a foreign account must not reach the record, got "%s"', v_msg);
+
+    raise notice 'BLOCK 15 OK — abandon writes the trail, invents no hours, and guards every edge';
+  end $$;
+rollback;
+
+
 -- ════════════════════════════════════════════════════════════════════
--- Expected output: fifteen notices —
---   BLOCK 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10b, 11, 12, 13, 14 ... OK
+-- Expected output: sixteen notices —
+--   BLOCK 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10b, 11, 12, 13, 14, 15 ... OK
 --
 -- Then confirm nothing was left behind (every block rolls back):
 --   select count(*) from construction_projects where project_name like 'ZZ %';

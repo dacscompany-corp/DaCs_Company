@@ -2481,9 +2481,13 @@ window.pmWeekAddEntry = function() {
     const receipts = _receiptsFromStaged(_pmWeekStagedReceipts);
     // Labor lines draw down a labor contract; Out Source ('both') lines draw down an
     // outsource contract. Materials have no contract.
-    const contractId = (type === 'labor') ? ((document.getElementById('pm-week-contract') || {}).value || '')
-        : (type === 'both') ? ((document.getElementById('pm-week-outsource') || {}).value || '')
-        : '';
+    // Labor can be ticked against SEVERAL jobs at once (same as Project
+    // Control's payroll picker): one amount, split pro-rata by what each job
+    // still owes, and each leg saved as its OWN entry — the drawdown
+    // (_pmContractPaid) sums entries by contractId, so a single entry could
+    // only ever credit one job. Out Source stays a single pick.
+    const contractIds = (type === 'labor') ? _pmCheckedContractIds() : [];
+    const contractId = (type === 'both') ? ((document.getElementById('pm-week-outsource') || {}).value || '') : '';
     // Materials only -- read even when the field is hidden would pick up a
     // value left over from a previous Materials line and stamp it on a Labor
     // one, so the type check is what keeps the two apart.
@@ -2493,25 +2497,47 @@ window.pmWeekAddEntry = function() {
     // Belt and braces: the "+ Add new category…" row reverts itself, but if
     // it ever survived to here it would be stored as a literal category name.
     if (category === _PM_MATCAT_NEW) category = '';
+    // One line per job charged. A single pick (or none) is one entry exactly as
+    // before; two or more ticks become one entry each, carrying their share.
+    const legs = (contractIds.length > 1)
+        ? _pmAllocateAcrossContracts(contractIds, amount)
+        : [{ contractId: (type === 'labor' ? (contractIds[0] || '') : contractId), amount }];
+    const split = legs.length > 1;
+    const group = split ? _pmUid('sp_') : '';
+    const mkEntry = (leg, i) => ({
+        id: _pmUid('we_'), type,
+        details: details || fallbackDetails,
+        amount: leg.amount,
+        // Days describe the WHOLE payment, so repeating them on every leg would
+        // read as N times the work done. Project Control zeroes them on a split
+        // for the same reason; the un-split case is untouched.
+        days: split ? 0 : days,
+        qty, unit,
+        // One photo of one payment: it rides on the first leg only, rather than
+        // being duplicated into every job's record.
+        receipts: i === 0 ? receipts : [],
+        contractId: leg.contractId, category,
+        ...(split ? { splitGroup: group, splitIndex: i + 1, splitTotal: legs.length } : {})
+    });
     if (_pmWeekEditEntryId) {
-        // Update the line in place.
-        const en = _pmWeekEntries.find(e => e.id === _pmWeekEditEntryId);
-        if (en) {
-            en.type = type; en.details = details || fallbackDetails; en.amount = amount;
-            en.days = days; en.qty = qty; en.unit = unit;
-            en.receipts = receipts; en.contractId = contractId; en.category = category;
+        // Replace the edited line in place. A line edited onto several jobs
+        // becomes several lines, which is why this splices rather than mutates.
+        const idx = _pmWeekEntries.findIndex(e => e.id === _pmWeekEditEntryId);
+        if (idx >= 0) {
+            const rebuilt = legs.map(mkEntry);
+            rebuilt[0].id = _pmWeekEditEntryId;   // keep its identity so the list doesn't jump
+            _pmWeekEntries.splice(idx, 1, ...rebuilt);
         }
         _pmWeekEditEntryId = null;
     } else {
-        _pmWeekEntries.push({ id:_pmUid('we_'), type, details: details || fallbackDetails, amount, days, qty, unit, receipts, contractId, category });
+        legs.map(mkEntry).forEach(e => _pmWeekEntries.push(e));
     }
     if (detEl)  detEl.value = '';
     if (amtEl)  amtEl.value = '';
     if (daysEl) daysEl.value = '';
     if (qtyEl)  qtyEl.value = '';
     const mcSel = document.getElementById('pm-week-matcat'); if (mcSel) mcSel.value = '';
-    const cSel = document.getElementById('pm-week-contract'); if (cSel) cSel.value = '';
-    if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
+    _pmResetContractPicks();
     const oSel = document.getElementById('pm-week-outsource'); if (oSel) oSel.value = '';
     if (typeof pmWeekOutsourceHint === 'function') pmWeekOutsourceHint();
     pmWeekClearReceipt();
@@ -2532,7 +2558,13 @@ window.pmWeekRemoveEntry = function(id) {
 // Both the live entries list (_pmWeekEntryRow) and the saved read-only day
 // view (_pmWeekRoRow) render from here, so the category shows on both.
 function _pmWeekMeta(e) {
-    if (e.type === 'labor') return e.days ? (e.days + (e.days === 1 ? ' day' : ' days')) : '';
+    if (e.type === 'labor') {
+        const dayLbl = e.days ? (e.days + (e.days === 1 ? ' day' : ' days')) : '';
+        // A split leg says so, or three lines from one payment read as three
+        // separate payments.
+        const splitLbl = e.splitTotal > 1 ? ('split ' + e.splitIndex + '/' + e.splitTotal) : '';
+        return dayLbl && splitLbl ? dayLbl + ' \u00b7 ' + splitLbl : (dayLbl || splitLbl);
+    }
     const q = e.qty ? String(e.qty) : '';
     const qty = q + (e.qty && e.unit ? ' ' + e.unit : (e.unit || ''));
     // Category leads: it is what the line is FOR, where the quantity is only
@@ -2584,6 +2616,7 @@ function _pmWeekApplyCat() {
     // "Pay against contract" picker is Labor-only; the Out Source one is 'both'-only.
     const contractWrap = document.getElementById('pm-week-contract-wrap');
     if (contractWrap) contractWrap.style.display = cat === 'labor' ? '' : 'none';
+    if (cat === 'labor') _pmPopulateContractPicker();
     if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
     const outsourceWrap = document.getElementById('pm-week-outsource-wrap');
     if (outsourceWrap) outsourceWrap.style.display = cat === 'both' ? '' : 'none';
@@ -2719,8 +2752,7 @@ window.pmWeekEditEntry = function(id) {
     // before its contract was renamed is re-rendered as an option instead of
     // falling back to blank and being saved away on the next Add.
     if (en.type === 'materials') _pmPopulateMatCatPicker(en.category || '');
-    const cSel = document.getElementById('pm-week-contract'); if (cSel) cSel.value = (en.type === 'labor' ? (en.contractId || '') : '');
-    if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
+    _pmSetContractPicks(en.type === 'labor' && en.contractId ? [en.contractId] : []);
     const oSel = document.getElementById('pm-week-outsource'); if (oSel) oSel.value = (en.type === 'both' ? (en.contractId || '') : '');
     if (typeof pmWeekOutsourceHint === 'function') pmWeekOutsourceHint();
     _pmWeekSyncAddBtn();
@@ -2732,6 +2764,7 @@ window.pmWeekCancelEdit = function() {
     ['pm-week-details','pm-week-amount','pm-week-days','pm-week-qty'].forEach(id => {
         const el = document.getElementById(id); if (el) el.value = '';
     });
+    _pmResetContractPicks();
     pmWeekClearReceipt();   // clears staged + re-renders the attach control
     _pmWeekSyncAddBtn();
 };
@@ -3595,6 +3628,11 @@ window.pmWeekSave = async function() {
                     ...(e.qty  ? { qty:e.qty, unit:e.unit || 'pcs' } : {}),
                     ...(e.category ? { category: e.category } : {}),         // materials only; what it was bought for
                     ...(e.contractId ? { contractId: e.contractId } : {}),   // pakyaw/contract drawdown link
+                    // Which legs came from ONE payment. Kept so a split still
+                    // reads as a split after a reload; entries is free-form
+                    // jsonb (0020), so this needs no migration — but a key that
+                    // is not listed here is silently dropped on save.
+                    ...(e.splitTotal > 1 ? { splitGroup: e.splitGroup, splitIndex: e.splitIndex, splitTotal: e.splitTotal } : {}),
                     ...(urls.length ? { receipts: urls, receiptUrl: urls[0] } : {}) };  // receiptUrl kept for legacy readers
             }),
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -5310,22 +5348,130 @@ function _pmContractStats(c) {
 }
 
 // ── Labor add-row picker ───────────────────────────────────
+// ── Labor contract picker: TICK BOXES, not one dropdown ───────────────
+// One day's labor payment often covers several of a worker's capped jobs at
+// once, so this is a multi-select exactly like Project Control's payroll picker
+// (lcPopulatePayrollPicker in expenses-module.js). Nothing is ticked = regular
+// labor, drawing down no contract at all.
+//
+// `keep` re-ticks what the user had chosen: the picker is rebuilt whenever the
+// contract list refreshes, which can happen mid-entry, and a silent un-tick
+// would send the payment to the wrong place.
 function _pmPopulateContractPicker() {
-    const sel = document.getElementById('pm-week-contract');
-    if (sel) {
-        const cur = sel.value;
-        sel.innerHTML = '<option value="">— None (regular labor) —</option>'
-            + _pmLaborContracts.map(c => {
+    const list = document.getElementById('pm-week-contract-list');
+    if (list) {
+        const keep = new Set(_pmCheckedContractIds());
+        list.innerHTML = _pmLaborContracts.length
+            ? _pmLaborContracts.map(c => {
                 const st = _pmContractStats(c);
-                return '<option value="' + c.id + '">' + _esc(c.workerName || 'Worker') + ' · ' + _esc(c.scope || 'job')
-                    + ' (' + _fmt(st.remaining) + ' left)</option>';
-            }).join('');
-        if (cur && _pmLaborContracts.some(c => c.id === cur)) sel.value = cur;
+                const on = keep.has(c.id);
+                return '<label class="pmw-cpick-item' + (on ? ' is-checked' : '') + '">'
+                    + '<input type="checkbox" name="pmWeekContractPick" value="' + _esc(c.id) + '"'
+                    + (on ? ' checked' : '') + ' onchange="pmWeekContractCheckChanged(this)">'
+                    + '<span class="pmw-cpick-lbl">' + _esc(c.workerName || 'Worker')
+                    + ' · ' + _esc(c.scope || 'job') + '</span>'
+                    + '<span class="pmw-cpick-rem' + (st.remaining <= 0 ? ' is-settled' : '') + '">'
+                    + _fmt(st.remaining) + ' left</span>'
+                    + '</label>';
+            }).join('')
+            : '<div class="pmw-cpick-empty">No capped jobs yet — add one under Contracts to tag labor to it.</div>';
     }
     const dl = document.getElementById('pmLcWorkerNames');
     if (dl) dl.innerHTML = [...new Set(_pmLaborContracts.map(c => (c.workerName || '').trim()).filter(Boolean))]
         .map(n => '<option value="' + _esc(n) + '">').join('');
 }
+
+function _pmCheckedContractIds() {
+    return Array.from(document.querySelectorAll('input[name="pmWeekContractPick"]:checked')).map(cb => cb.value);
+}
+
+function _pmResetContractPicks() {
+    document.querySelectorAll('input[name="pmWeekContractPick"]').forEach(cb => {
+        cb.checked = false;
+        const item = cb.closest('.pmw-cpick-item'); if (item) item.classList.remove('is-checked');
+    });
+    if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
+}
+
+function _pmSetContractPicks(ids) {
+    const want = new Set((ids || []).filter(Boolean));
+    document.querySelectorAll('input[name="pmWeekContractPick"]').forEach(cb => {
+        cb.checked = want.has(cb.value);
+        const item = cb.closest('.pmw-cpick-item'); if (item) item.classList.toggle('is-checked', cb.checked);
+    });
+    if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
+}
+
+window.pmWeekAmountChanged = function() { _pmUpdateContractSplitPreview(); };
+
+window.pmWeekContractCheckChanged = function(cb) {
+    const item = cb.closest('.pmw-cpick-item');
+    if (item) item.classList.toggle('is-checked', cb.checked);
+    pmWeekContractHint();
+};
+
+// Split ONE payment across the ticked jobs, pro-rata by what is still owed on
+// each: ₱13,000 against ₱130,000 of remaining work gives every job its 10%.
+// Jobs already settled carry no weight, so an all-settled pick falls back to an
+// even split rather than silently dropping the payment. The last leg absorbs
+// the rounding, so the legs always re-add to the exact amount entered.
+// Ported from lcAllocateAcrossContracts (expenses-module.js) — the two must
+// agree, or the same payment would land differently in the two modules.
+function _pmAllocateAcrossContracts(ids, total) {
+    const picked = (ids || []).map(id => _pmLaborContracts.find(c => c.id === id)).filter(Boolean);
+    if (!picked.length || !(total > 0)) return [];
+    const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+    const weights = picked.map(c => Math.max(0, _pmContractStats(c).remaining));
+    const sum = weights.reduce((s, w) => s + w, 0);
+    let assigned = 0;
+    return picked.map((c, i) => {
+        const amount = (i === picked.length - 1)
+            ? r2(total - assigned)
+            : r2(sum > 0 ? total * weights[i] / sum : total / picked.length);
+        if (i < picked.length - 1) assigned += amount;
+        return { contract: c, contractId: c.id, amount };
+    });
+}
+
+// What each ticked job will be charged, shown BEFORE the line is added — a
+// wrong tick is caught here rather than after it has become entries.
+function _pmUpdateContractSplitPreview() {
+    const box = document.getElementById('pm-week-contract-split');
+    if (!box) return;
+    const ids = _pmCheckedContractIds();
+    const amtEl = document.getElementById('pm-week-amount');
+    const total = amtEl ? (parseInt(String(amtEl.value).replace(/[^0-9]/g, ''), 10) || 0) : 0;
+    const alloc = ids.length > 1 ? _pmAllocateAcrossContracts(ids, total) : [];
+    if (!alloc.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.style.display = '';
+    box.innerHTML = '<div class="pmw-split-head">Split across ' + alloc.length + ' jobs</div>'
+        + alloc.map(a => '<div class="pmw-split-row"><span>' + _esc(a.contract.scope || a.contract.workerName || 'Job')
+            + '</span><span class="pmw-split-amt num">' + _fmt(a.amount) + '</span></div>').join('')
+        + '<div class="pmw-split-tot"><span>Total</span><span class="num">' + _fmt(total) + '</span></div>';
+}
+
+window.pmWeekContractHint = function() {
+    const hint = document.getElementById('pm-week-contract-remaining');
+    if (!hint) return;
+    const picked = _pmCheckedContractIds().map(id => _pmLaborContracts.find(x => x.id === id)).filter(Boolean);
+    if (!picked.length) {
+        hint.style.display = 'none'; hint.innerHTML = '';
+        _pmUpdateContractSplitPreview();
+        return;
+    }
+    hint.style.display = '';
+    if (picked.length === 1) {
+        const st = _pmContractStats(picked[0]);
+        hint.innerHTML = st.remaining < 0
+            ? '<strong class="pm-lc-neg">' + _fmt(Math.abs(st.remaining)) + ' over</strong> the ' + _fmt(st.agreed) + ' agreed'
+            : '<strong>' + _fmt(st.remaining) + ' left</strong> of ' + _fmt(st.agreed) + ' agreed';
+    } else {
+        const rem = picked.reduce((s, c) => s + _pmContractStats(c).remaining, 0);
+        hint.innerHTML = 'Splitting across <strong>' + picked.length + ' jobs</strong> · <strong'
+            + (rem < 0 ? ' class="pm-lc-neg"' : '') + '>' + _fmt(rem) + '</strong> left in total';
+    }
+    _pmUpdateContractSplitPreview();
+};
 
 // ── Materials category picker ──────────────────────────────
 //
@@ -5514,19 +5660,6 @@ function _pmPopulateMatCatPicker(keep) {
     sel.value = cur;
     _pmMatCatLastValue = cur;   // what the sentinel reverts to
 }
-
-window.pmWeekContractHint = function() {
-    const sel = document.getElementById('pm-week-contract');
-    const hint = document.getElementById('pm-week-contract-remaining');
-    if (!sel || !hint) return;
-    const c = _pmLaborContracts.find(x => x.id === sel.value);
-    if (!c) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
-    const st = _pmContractStats(c);
-    hint.style.display = '';
-    hint.innerHTML = st.remaining < 0
-        ? '<strong class="pm-lc-neg">' + _fmt(Math.abs(st.remaining)) + ' over</strong> the ' + _fmt(st.agreed) + ' agreed'
-        : '<strong>' + _fmt(st.remaining) + ' left</strong> of ' + _fmt(st.agreed) + ' agreed';
-};
 
 // ── Worker Tracker panel (collapsible, in Daily Expenses) ──
 window.pmContractsToggle = function() {
@@ -5843,9 +5976,12 @@ window.pmLcOpenLedger = function(id) {
         + '<div class="pm-lc-led-pbar"><div class="' + v.barCls + '" style="width:' + v.barPct.toFixed(0) + '%"></div></div>'
         + '<div class="pm-lc-led-sub num">' + subLine + '</div></div>'
         + '<div class="pm-lc-led-list">' + listHtml + '</div>';
-    // Show "View agreement" only when this contract has a signed PDF attached.
+    // The agreement is per WORKER, not per job (see _pmOpenWorkerAgreement), so
+    // the button shows when ANY of this worker’s jobs carries the PDF — opening
+    // job 3 of 5 must still reach the one sheet that covers all five.
     const agrBtn = document.getElementById('pmLcLedgerAgrBtn');
-    if (agrBtn) agrBtn.style.display = (c.agreementPdfUrl && String(c.agreementPdfUrl).trim()) ? '' : 'none';
+    if (agrBtn) agrBtn.style.display = _pmWorkerContracts(c)
+        .some(x => x.agreementPdfUrl && String(x.agreementPdfUrl).trim()) ? '' : 'none';
     document.getElementById('pmLaborLedgerModal').style.display = 'flex';
     if (window.lucide) lucide.createIcons();
 };
@@ -5860,7 +5996,58 @@ window.pmLcLedgerViewFiles = function() {
     if (!c) return;
     _pmContractFilesViewer(c, 'labor', _pmLcLedgerId);
 };
-// Open the Worker Agreement PDF with THIS contract's details stamped onto its
+// ── ONE agreement per WORKER, not per job ─────────────────────────────
+// A worker hired for five capped jobs signs ONE pakyaw contract, not five
+// sheets: the form's "SAKLAW NG TRABAHO / SCOPE OF WORK" lists every job under
+// that name and "NAPAGKASUNDUANG HALAGA / AGREED CONTRACT AMOUNT" is the SUM of
+// their caps. Nothing about the money model changes — the per-job caps still
+// draw down separately in the ledger; only the printed agreement is combined.
+// The name is matched on the TRIMMED name exactly — the same key the Contracts
+// tab groups its worker cards by — so the sheet and the card can never disagree
+// about which jobs belong to whom. Deliberately case-SENSITIVE: a job typed
+// "francis febra" renders as its own second worker card, and a sheet that
+// silently swept it in would contradict the screen it was printed from. A blank
+// name groups with nothing — nameless contracts are not all the same person.
+function _pmWorkerContracts(c) {
+    const key = String((c && c.workerName) || '').trim();
+    if (!key) return c ? [c] : [];
+    const cs = (_pmLaborContracts || [])
+        .filter(x => String(x.workerName || '').trim() === key)
+        .sort((a, b) => String(a.scope || '').localeCompare(String(b.scope || '')));
+    return cs.length ? cs : [c];
+}
+
+// Details for the combined sheet. `cs` is one worker's whole job list.
+function _pmWorkerAgreementDetails(cs) {
+    const first = cs[0] || {};
+    const total = cs.reduce((s, c) => s + (Number(c.agreedAmount) || 0), 0);
+    // Numbered when there is more than one job, so the scope line reads as the
+    // list of works it is rather than one run-on job title.
+    const scope = cs.map((c, i) => (cs.length > 1 ? (i + 1) + ') ' : '')
+        + (c.scope || 'Untitled job')).join('  ');
+    // Pay type only belongs on the sheet when every job agrees — same rule the
+    // worker card header follows; otherwise it would state one job's terms as
+    // if they covered all of them.
+    const types = [...new Set(cs.map(c => c.payType === 'inhouse' ? 'In-house' : 'Pakyaw'))];
+    return {
+        // PM ids live in their own space (see CLAUDE.md), so the ref carries a
+        // PM- prefix rather than Project Control's LC-. It is the FIRST job's
+        // id, so the same worker always prints the same reference.
+        ref     : 'PM-' + String(first.id || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase(),
+        project : (_pmActiveProject && (_pmActiveProject.projectName || _pmActiveProject.clientName)) || '',
+        worker  : first.workerName || '',
+        scope   : scope,
+        trade   : first.trade || '',
+        // The manual is handed over on the day it is printed. LOCAL date parts,
+        // never toISOString() — PH is UTC+8 and a morning print would roll back.
+        orientationDate: new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }),
+        payType : types.length === 1 ? types[0] : 'Mixed',
+        amount  : total.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        printedName: first.workerName || ''
+    };
+}
+
+// Open the worker's ONE agreement with their combined details stamped onto its
 // "Detalye ng Pakyaw Labor Contract" page — the same route Project Control uses
 // (lcViewAgreement in expenses-module.js). Opening the stored URL raw is what
 // made the form print blank: the uploaded file is the empty manual, and nothing
@@ -5868,26 +6055,30 @@ window.pmLcLedgerViewFiles = function() {
 // in admin.html) resolves the private URL, stamps the fields and opens one PDF
 // tab; it falls back to the raw template on its own if the stamping fails.
 // Signature lines stay blank by design — the worker signs the printed copy.
+// The base PDF is whichever of the worker's jobs carries an uploaded manual —
+// they all stamp from the same blank template, so any one of them serves the
+// combined sheet.
+async function _pmOpenWorkerAgreement(c) {
+    if (!c) return;
+    const cs  = _pmWorkerContracts(c);
+    const src = (c.agreementPdfUrl && String(c.agreementPdfUrl).trim())
+        ? c
+        : cs.find(x => x.agreementPdfUrl && String(x.agreementPdfUrl).trim());
+    const url = src && String(src.agreementPdfUrl).trim();
+    if (!url) { _pmToast('No agreement PDF attached to any of this worker’s jobs.', true); return; }
+    if (typeof window.dacsWorkerAgreementView !== 'function') { window.open(url, '_blank'); return; }
+    await window.dacsWorkerAgreementView(url, _pmWorkerAgreementDetails(cs));
+}
+
 window.pmLcLedgerViewAgreement = async function() {
     if (!_pmLcLedgerId) return;
-    const c = _pmLaborContracts.find(x => x.id === _pmLcLedgerId);
-    const url = c && c.agreementPdfUrl && String(c.agreementPdfUrl).trim();
-    if (!url) { _pmToast('No signed agreement attached to this contract.', true); return; }
-    if (typeof window.dacsWorkerAgreementView !== 'function') { window.open(url, '_blank'); return; }
-    // PM ids live in their own space (see CLAUDE.md), so the ref carries a PM-
-    // prefix rather than Project Control's LC-.
-    await window.dacsWorkerAgreementView(url, {
-        ref     : 'PM-' + String(c.id || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 6).toUpperCase(),
-        project : (_pmActiveProject && (_pmActiveProject.projectName || _pmActiveProject.clientName)) || '',
-        worker  : c.workerName || '',
-        scope   : c.scope || '',
-        // The manual is handed over on the day it is printed. LOCAL date parts,
-        // never toISOString() — PH is UTC+8 and a morning print would roll back.
-        orientationDate: new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }),
-        payType : c.payType === 'inhouse' ? 'In-house' : 'Pakyaw',
-        amount  : (Number(c.agreedAmount) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        printedName: c.workerName || ''
-    });
+    await _pmOpenWorkerAgreement(_pmLaborContracts.find(x => x.id === _pmLcLedgerId));
+};
+
+// Worker-card header button. Takes any one of that worker's contract ids and
+// prints the combined sheet for all of them.
+window.pmLcxWorkerAgreement = async function(id) {
+    await _pmOpenWorkerAgreement((_pmLaborContracts || []).find(x => x.id === id));
 };
 
 // Per-worker/vendor Statement of Account — same document design as the
@@ -6656,6 +6847,11 @@ function _pmRenderContractsTab() {
         const typeLbl = types.length === 1 ? types[0] : 'Mixed';
         // First name only, matching Project Control's "Jobs agreed with Francis".
         const first   = String(name).trim().split(/\s+/)[0] || name;
+        // ONE work agreement per worker, covering every job in this card: the
+        // scope lists them all and the agreed amount is this header’s total.
+        // Any job of theirs carrying the uploaded manual serves as the base PDF
+        // (see _pmOpenWorkerAgreement); Out Source has no agreement flow.
+        const agrJob  = isLabor ? cs.find(c => c.agreementPdfUrl && String(c.agreementPdfUrl).trim()) : null;
         return '<div class="pm-lcx-acc open">'
             + '<div class="pm-lcx-head" onclick="pmLcxToggle(this)">'
             + '<span class="pm-lcx-av">' + _esc(initial) + '</span>'
@@ -6674,6 +6870,7 @@ function _pmRenderContractsTab() {
             + '<span class="pm-lcx-badge ' + bdg.cls + '">' + bdg.lbl + '</span>'
             // PM is paid through the daily entries, so "Pay" hands the user to
             // the Daily Expenses tab rather than opening a modal of its own.
+            + (agrJob ? '<button type="button" class="pm-lcx-agr" onclick="event.stopPropagation();pmLcxWorkerAgreement(' + "'" + agrJob.id + "'" + ');" title="Open ' + _esc(name) + '’s work agreement — all ' + cs.length + ' job' + (cs.length === 1 ? '' : 's') + ', ' + _fmt(wAgreed) + ' total">Agreement</button>' : '')
             + '<button type="button" class="pm-lcx-pay" onclick="event.stopPropagation();pmWsTab(\'week\');" title="Record a payment as a daily entry">＋ Pay</button>'
             + chev('pm-lcx-chev')
             + '</div>'

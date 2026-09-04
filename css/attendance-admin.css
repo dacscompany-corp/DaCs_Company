@@ -741,6 +741,53 @@ select.att-input { cursor: pointer; }
     background: var(--att-field);
 }
 
+/* ── A7 · Closing a forgotten Time Out (0061) ──────────────────── */
+
+/* The action is destructive-ish but not dangerous: it changes a status
+   and never deletes anything. Gold, the same "leaving" colour the
+   Working pill and the worker app use — red is reserved here for things
+   that are actually wrong (an error, a clock-skew warning). */
+.att-btn--warn {
+    border-color: #E0D2B4;
+    background: var(--att-gold-tint);
+    color: var(--att-gold);
+}
+.att-btn--warn:hover { background: #EFE6D2; }
+
+/* Abandoned sits next to "n not closed" in the same cell, so it needs
+   to read as a DIFFERENT state at a glance rather than a second red
+   alarm — the record has been dealt with. */
+.att-badge--abandoned { background: var(--att-red-tint); color: var(--att-red); }
+
+/* The open-records panel. A left rule rather than a full red card: it
+   is a to-do list, not an error. */
+.att-card--flag {
+    border-left: 3px solid var(--att-gold);
+}
+
+/* The consequence block inside the resolve modal. Gold on gold, so the
+   sentence the admin must not skim ("the day will still report no
+   hours") does not look like the neutral grey note above it. */
+.att-info--warn {
+    background: var(--att-gold-tint);
+}
+.att-info--warn i, .att-info--warn svg { color: var(--att-gold); }
+
+/* The resolve modal is one column of prose and a single field, so it
+   wants neither the 640px width nor the two-column body the create and
+   edit forms use. */
+.att-modal-box--narrow { max-width: 460px; }
+.att-modal-body--single {
+    grid-template-columns: 1fr;
+    gap: 16px;
+}
+
+/* "(optional)" beside a label, in the label's own line. */
+.att-hint-inline {
+    font-weight: 400;
+    color: var(--att-faint);
+}
+
 /* ── Responsive ────────────────────────────────────────────────── */
 
 /* The four content grids -- .att-kpis, .att-stats, .att-detail-grid and

@@ -2269,6 +2269,23 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
 }
 .pm-lcx-pay:hover { filter: brightness(1.08); }
 
+/* One work agreement per worker — the sheet covers every job in the card, so
+   the button sits on the worker header and not on the job rows. Outlined, to
+   keep "Pay" the only filled action in the row. */
+.pm-lcx-agr {
+  flex: none;
+  display: inline-flex; align-items: center; gap: 5px;
+  background: #fff;
+  color: var(--lcx-accent-dark, #0f6342);
+  border: 1.5px solid var(--lcx-track, #d8ebe1);
+  border-radius: 9px;
+  padding: 7px 13px;
+  font-family: inherit; font-size: 12.5px; font-weight: 700;
+  cursor: pointer; white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+.pm-lcx-agr:hover { background: var(--lcx-soft, #eaf4ef); border-color: var(--lcx-accent, #157a52); }
+
 .pm-lcx-chev { flex: none; color: #a1a1a6; transition: transform .2s; }
 .pm-lcx-acc.open .pm-lcx-chev { transform: rotate(180deg); }
 
@@ -2321,7 +2338,8 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
   .pm-lcx-head { flex-wrap: wrap; gap: 10px 12px; }
   .pm-lcx-id { min-width: 0; flex: 1; }
   .pm-lcx-mid { flex: 1 0 100%; order: 9; }
-  .pm-lcx-pay { order: 10; }
+  .pm-lcx-agr { order: 10; }
+  .pm-lcx-pay { order: 11; }
   .pm-lcx-job { flex-wrap: wrap; }
   .pm-lcx-job-id { flex: 1 0 60%; }
 }
@@ -2330,4 +2348,64 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
   .pm-lcx-body { padding: 4px 14px 14px; }
   .pm-lcx-rem-val { font-size: 17px; }
   .pm-lcx-jobs-hint { display: none; }
+}
+
+/* ── Labor contract picker (Daily Expenses) ──
+   Tick boxes, not a dropdown: one day's pay often covers several of a worker's
+   capped jobs, and the amount is split across whatever is ticked. Structurally
+   the same control as Project Control's payroll picker (.exp-funding-check-*
+   in expenses-mvp.css), in PM's own green rather than that screen's blue. */
+.pmw-cpick {
+  display: flex; flex-direction: column; gap: 3px;
+  max-height: 178px; overflow-y: auto;
+  border: 1.5px solid #e2e0d9; border-radius: 9px;
+  padding: 5px 6px;
+  background: #faf9f7;
+}
+.pmw-cpick-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 8px;
+  border-radius: 7px; cursor: pointer;
+  transition: background .12s;
+}
+.pmw-cpick-item:hover      { background: #f1f7f4; }
+.pmw-cpick-item.is-checked { background: #eaf4ef; }
+.pmw-cpick-item input[type="checkbox"] {
+  width: 16px; height: 16px; flex: none; cursor: pointer; accent-color: #157a52;
+}
+.pmw-cpick-lbl {
+  flex: 1; min-width: 0;
+  font-size: 12.5px; font-weight: 600; color: #3a3a36;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pmw-cpick-rem {
+  flex: none; font-size: 11.5px; font-weight: 700; color: #157a52;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+/* A settled job can still be ticked — it just carries no weight in the split,
+   so it reads as struck through rather than being hidden or disabled. */
+.pmw-cpick-rem.is-settled { color: #a8a7a1; text-decoration: line-through; }
+.pmw-cpick-empty { padding: 12px 8px; font-size: 12.5px; color: #9b9a94; text-align: center; }
+
+/* What each ticked job will be charged, shown before the line is added. */
+.pmw-split {
+  margin-top: 8px;
+  border: 1.5px solid #c6e6d5; border-radius: 9px;
+  background: #f4f9f6; overflow: hidden;
+}
+.pmw-split-head {
+  padding: 6px 11px; background: #eaf4ef;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: #0f6342;
+}
+.pmw-split-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 6px 11px; border-top: 1px solid #dbeee5; font-size: 12.5px; color: #3a3a36;
+}
+.pmw-split-amt { font-weight: 700; color: #0f6342; }
+.pmw-split-tot {
+  display: flex; justify-content: space-between;
+  padding: 7px 11px; border-top: 2px solid #c6e6d5;
+  background: #eaf4ef;
+  font-size: 12.5px; font-weight: 700; color: #0f6342;
 }

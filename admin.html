@@ -2262,7 +2262,7 @@
                         <label>Amount paid</label>
                         <div class="pmw-inline">
                           <span class="pmw-peso">₱</span>
-                          <input class="pmw-amount num" id="pm-week-amount" inputmode="numeric" placeholder="Amount" onkeydown="if(event.key==='Enter')pmWeekAddEntry()">
+                          <input class="pmw-amount num" id="pm-week-amount" inputmode="numeric" placeholder="Amount" oninput="pmWeekAmountChanged()" onkeydown="if(event.key==='Enter')pmWeekAddEntry()">
                         </div>
                       </div>
                     </div>
@@ -2284,11 +2284,10 @@
                       </div>
                     </div>
                     <div class="pmw-addcard-field pmw-contract-field" id="pm-week-contract-wrap" style="display:none;">
-                      <label>Is this part of a job? <span style="font-weight:400;color:#9b9a94;">— pakyaw / capped contract (optional)</span></label>
-                      <select class="pmw-input" id="pm-week-contract" onchange="pmWeekContractHint()">
-                        <option value="">— No, regular labor —</option>
-                      </select>
+                      <label>Is this part of a job? <span style="font-weight:400;color:#9b9a94;">— pakyaw / capped contract (optional, tick more than one to split)</span></label>
+                      <div class="pmw-cpick" id="pm-week-contract-list"></div>
                       <div id="pm-week-contract-remaining" class="pm-lc-remaining" style="display:none;"></div>
+                      <div id="pm-week-contract-split" class="pmw-split" style="display:none;"></div>
                     </div>
                     <div class="pmw-addcard-field pmw-contract-field" id="pm-week-outsource-wrap" style="display:none;">
                       <label>Is this part of a job? <span style="font-weight:400;color:#9b9a94;">— out source / capped contract (optional)</span></label>
@@ -5403,7 +5402,7 @@
       <button type="button" class="pm-btn pm-lc-btn-danger" onclick="pmLcLedgerDelete()">Delete</button>
       <button type="button" class="pm-btn pm-btn-secondary" onclick="_pmAddFileMenu(this,'lc')" title="Add a file or photo"><i data-lucide="paperclip" style="width:13px;height:13px;vertical-align:-2px;"></i> Add file</button>
       <button type="button" class="pm-btn pm-btn-secondary" onclick="pmLcLedgerViewFiles()" title="View uploaded photos/files"><i data-lucide="eye" style="width:13px;height:13px;vertical-align:-2px;"></i> View</button>
-      <button type="button" id="pmLcLedgerAgrBtn" class="pm-btn pm-btn-secondary" style="display:none;" onclick="pmLcLedgerViewAgreement()" title="Open the signed worker agreement PDF"><i data-lucide="file-text" style="width:13px;height:13px;vertical-align:-2px;"></i> View agreement</button>
+      <button type="button" id="pmLcLedgerAgrBtn" class="pm-btn pm-btn-secondary" style="display:none;" onclick="pmLcLedgerViewAgreement()" title="Open this worker’s one work agreement — every job they hold, at their combined agreed amount"><i data-lucide="file-text" style="width:13px;height:13px;vertical-align:-2px;"></i> Work agreement</button>
       <button type="button" class="pm-btn pm-btn-secondary" onclick="pmLcPrintSOA()" title="Print this worker's Statement of Account"><i data-lucide="printer" style="width:13px;height:13px;vertical-align:-2px;"></i> Print SOA</button>
       <span style="flex:1"></span>
       <button type="button" class="pm-btn pm-btn-primary" onclick="pmCloseModal('pmLaborLedgerModal')">Close</button>

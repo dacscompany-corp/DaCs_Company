@@ -59,7 +59,7 @@ const M = evalWith(
   { window: {} },
   ['attFormatHours', 'attRollUpByWorker', 'attRollUpByProject', 'attCsvCell', 'attToCsv',
    'attWorkerNameKey', 'attWorkerRoster', 'attValidateNewWorker',
-   'attValidateEditWorker', 'attSplitName']
+   'attValidateEditWorker', 'attSplitName', 'attCanAbandon', 'attOpenRecords']
 );
 
 const rec = (o) => Object.assign({
@@ -372,6 +372,126 @@ test('A3b survives a row with no name at all -- the W-000n case', () => {
   eq(n.firstName, '');
   eq(n.lastName, '');
   ok(!M.attValidateEditWorker(ew({ firstName: '', lastName: '' })).valid);
+});
+
+console.log('\nVII. Closing a forgotten Time Out (0061)');
+
+// A worker who times in and never times out leaves a record on
+// 'working' forever. attendance_abandon closes it WITHOUT inventing
+// hours; the two functions below decide what the screen offers, and
+// they must agree with the RPC's guards or the button lies.
+
+const open = (o) => Object.assign({
+  id: 'r1', worker_id: 'w1', worker_name: 'Juan dela Cruz',
+  work_date: '2026-09-01', status: 'working', total_minutes: null,
+  timein_project_name: 'ABC Building Project'
+}, o);
+
+const TODAY = '2026-09-04';
+
+test('an open record from a past day can be closed', () => {
+  const v = M.attCanAbandon(open(), TODAY);
+  ok(v.can, v.reason);
+});
+
+test('a COMPLETE record is never closable -- it has a real Time Out', () => {
+  // Overwriting one would destroy a captured event.
+  const v = M.attCanAbandon(open({ status: 'complete', total_minutes: 585 }), TODAY);
+  ok(!v.can);
+  ok(/already|complete/i.test(v.reason), 'the reason names the real state: ' + v.reason);
+});
+
+test('an ALREADY abandoned record is not closable twice', () => {
+  // A second close would overwrite the first one's trail.
+  const v = M.attCanAbandon(open({ status: 'abandoned' }), TODAY);
+  ok(!v.can);
+});
+
+test("TODAY's open record is refused -- that worker is probably on site", () => {
+  // Closing it would delete a live day's Time Out before it happens:
+  // attendance_time_out only closes rows on status 'working', so the
+  // worker's app would then get NOT_TIMED_IN.
+  const v = M.attCanAbandon(open({ work_date: TODAY }), TODAY);
+  ok(!v.can);
+  ok(/today/i.test(v.reason), 'the reason says why: ' + v.reason);
+});
+
+test('a FUTURE-dated record is refused too, not just today', () => {
+  // Should not exist (CAPTURED_IN_FUTURE), but the guard is >=, and a
+  // clock-skewed row must not become closable by being ahead.
+  ok(!M.attCanAbandon(open({ work_date: '2026-09-05' }), TODAY).can);
+});
+
+test('a missing record is refused rather than throwing', () => {
+  ok(!M.attCanAbandon(null, TODAY).can);
+  ok(!M.attCanAbandon(undefined, TODAY).can);
+});
+
+console.log('\nVIII. The A6 open-records panel');
+
+test('only WORKING records are listed -- abandoned ones are done', () => {
+  // The filter is on status, NOT on a null timeout_at: abandoning
+  // leaves timeout_at null forever, so a timeout_at test would keep
+  // every resolved record on the list and the panel would never empty.
+  const list = M.attOpenRecords([
+    open({ id: 'a', status: 'working' }),
+    open({ id: 'b', status: 'complete', total_minutes: 480 }),
+    open({ id: 'c', status: 'abandoned' })
+  ], TODAY);
+  eq(list.map(r => r.id).join(','), 'a');
+});
+
+test('the oldest stuck record sorts first -- it is the most stale', () => {
+  const list = M.attOpenRecords([
+    open({ id: 'new', work_date: '2026-09-02' }),
+    open({ id: 'old', work_date: '2026-08-11' }),
+    open({ id: 'mid', work_date: '2026-09-01' })
+  ], TODAY);
+  eq(list.map(r => r.id).join(','), 'old,mid,new');
+});
+
+test("today's open records are listed but flagged not closable", () => {
+  // Listed so the panel's count agrees with the "Missing time out"
+  // stat; flagged so the screen explains the missing button instead of
+  // silently dropping the row.
+  const list = M.attOpenRecords([
+    open({ id: 'past',  work_date: '2026-09-01' }),
+    open({ id: 'today', work_date: TODAY })
+  ], TODAY);
+  eq(list.length, 2);
+  eq(list.find(r => r.id === 'past')._closable, true);
+  eq(list.find(r => r.id === 'today')._closable, false);
+});
+
+test('an empty or missing set is an empty list, never a crash', () => {
+  eq(M.attOpenRecords([], TODAY).length, 0);
+  eq(M.attOpenRecords(null, TODAY).length, 0);
+});
+
+console.log('\nIX. Abandoned days in the report roll-up');
+
+test('an abandoned day is counted apart from a still-open one', () => {
+  // Both have null hours, but they are different facts: one is waiting
+  // to be resolved, the other has been. Reporting them under one
+  // "not closed" heading would mean resolving a record changed nothing
+  // on screen.
+  const rows = M.attRollUpByWorker([
+    rec({ total_minutes: 585, status: 'complete' }),
+    rec({ total_minutes: null, status: 'working' }),
+    rec({ total_minutes: null, status: 'abandoned' })
+  ]);
+  eq(rows[0].daysWorked, 3, 'all three are days the worker was present');
+  eq(rows[0].totalMinutes, 585, 'neither null day invents hours');
+  eq(rows[0].openDays, 1, 'only the working one is still open');
+  eq(rows[0].abandonedDays, 1);
+});
+
+test('an abandoned day still adds NO hours', () => {
+  // The whole premise: nobody knows when they left, so the report
+  // never says. Closing the record must not conjure a figure.
+  const rows = M.attRollUpByWorker([rec({ total_minutes: null, status: 'abandoned' })]);
+  eq(rows[0].totalMinutes, 0);
+  eq(M.attFormatHours(rows[0].totalMinutes), '0h 0m');
 });
 
 console.log(passed + ' passed, ' + failed + ' failed');
