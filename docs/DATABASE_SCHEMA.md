@@ -128,7 +128,7 @@ Hierarchy: **`folders` → `projects` (a month) → `expenses` / `payroll`**. Mo
 | `coverExpense?` / `splitGroup?` / `splitIndex?` / `splitTotal?` | — | as expenses |
 | `createdAt` | ts | |
 
-### `laborContracts/{id}` → `labor_contracts` — pakyaw / in-house capped pay (migration 0014; `category` 0057)
+### `laborContracts/{id}` → `labor_contracts` — pakyaw / in-house capped pay (migration 0014; `category` 0057; `works` 0062)
 | Field | Type | Notes |
 |---|---|---|
 | `userId`, `folderId` | string | folder-scoped (spans every billing period inside it) |
@@ -140,6 +140,7 @@ Hierarchy: **`folders` → `projects` (a month) → `expenses` / `payroll`**. Mo
 | `category` | string | migration 0057 — `labor` (in-house worker, the default) \| `outsource` (outside vendor, supply & install). **Same table, two kinds**, exactly as `pm_labor_contracts.category` (0016) splits the PM twin. Outsource rows are drawn down by the same `payroll.contractId` path and land in the **Labor** bucket — Out Source is *not* a fourth bucket, and the money invariants are unchanged. The in-house vs outsourced split in the Worker Tracker is derived at read time from this column, never stamped on the payroll row. Every list-render site must filter on it or vendor contracts leak into the labor screens |
 | `status` | string | `ongoing` \| `completed` |
 | `capHistory` | json | `[{amount, at, note}]` when the cap is raised |
+| `works` | json | migration 0062 — **lumpsum contracts**. An array of work NAMES (`["Plumbing Works", "Civil Works"]`), never amounts. A **non-empty** array is the whole discriminator: the contract is ONE capped agreement covering several works, paid by a SINGLE payment stream instead of one tagged payment per job. Deliberately **not** a third `category` — a lumpsum is a *shape* either category can take, so every list filter, segment tab and `.find(x => x.id === id)` lookup keeps working untouched. **Money model unchanged**: the drawdown still runs through `payroll.contractId`, and a names-only list can never add or move a peso. §M of `tests/money-math.test.js` fences that five jobs totalling 200,000 and one lumpsum of 200,000 give the identical agreed / paid / remaining. Registered in the shim's `json:` list — without that it does not round-trip. Must be in the `json:` registry, the modal, **both** save paths, the card, the ledger and the printed agreement (which lists the works in place of the container title) |
 | `agreementSigned`, `agreementSignedAt`, `agreementSignature`, `agreementPdfUrl`, `agreementPdfName` | — | signed Worker Agreement (migration 0023) |
 | `createdAt`, `updatedAt` | ts | |
 
@@ -463,6 +464,7 @@ Same shape as `invoices`; `items` are labor lines auto-built from `weeklyBills` 
 |---|---|
 | `weeklyBills/{id}` | `weekEndingDate`, `labor`, `materials`, `managementFee` (=15% of L+M), `grandTotal`, `notes`, `status` (`Submitted`/`Partial`/`Paid`), `createdAt`,`updatedAt` |
 | `procurementList/{id}` | `item`, `qty`, `estPrice`, `notes`, `status` (`Pending`/`Assigned…`/`Bought…`), `boughtBy` (`client`/`company`/null), `actualAmount`, `receiptUrl`, timestamps |
+| `laborContracts/{id}` → `pm_labor_contracts` | the PM twin of `labor_contracts` (migrations 0015; `category` 0016; `works` 0062): `workerName`, `scope`, `agreedAmount` (the cap), `payType`, `category` (`labor`\|`outsource`), `status`, `capHistory`, `notes`, `agreement*`, `works`. Drawn down by `weeklyBills.entries[]` labor lines carrying `contractId` — **not** by `payroll`, which is Project Control's path. `works` is the **lumpsum** list: work NAMES only, and a non-empty array means ONE cap covering several works paid by a single entry stream. Same rules as the PC column, and the two must stay in step — §M of `money-math.test.js` asserts both modules print the identical works line |
 | `revolvingFund/summary` | `initialFund`, `totalReplenished`, `notes`, `updatedAt` (single doc id `summary`) |
 | `revolvingFundExpenses/{id}` | `date`, `amount`, `description`, `notes`, `createdAt` |
 | `revolvingFundReplenishments/{id}` | `date`, `amount`, `notes`, `createdAt` |

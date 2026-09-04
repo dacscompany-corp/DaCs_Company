@@ -190,8 +190,26 @@ function _expContractLabels() {
     (typeof lcLaborOnly === 'function' ? lcLaborOnly() : (expLaborContracts || [])).forEach(c => {
         const name  = (c && c.workerName != null ? String(c.workerName) : '').trim();
         const scope = (c && c.scope      != null ? String(c.scope)      : '').trim();
-        const label = scope && name ? scope + ' (' + name + ')' : (scope || name);
-        if (label) set.add(label);
+        // A LUMPSUM contract (migration 0062) is ONE row covering several works,
+        // so offering only its container title would collapse the choices a
+        // worker's separate jobs used to give: five options like "Plumbing Works
+        // (Francis)" became the single "General Works Package (Francis)", and a
+        // materials cost could no longer say which work it was for. Each work is
+        // therefore its own category, and the container is kept alongside them
+        // for a cost that belongs to the package as a whole.
+        //
+        // This is LABELLING only. Categories are free text stamped on the expense
+        // row — they never tag a contract or draw anything down, so nothing here
+        // can touch the one cap the lumpsum is paid from.
+        const parts = (typeof lcWorksList === 'function' ? lcWorksList(c) : []).slice();
+        if (scope) parts.push(scope);
+        parts.forEach(p => {
+            // "Francis Febra (Francis Febra)" reads as a mistake — when the two
+            // halves say the same thing, say it once.
+            const label = (p && name && p !== name) ? p + ' (' + name + ')' : (p || name);
+            if (label) set.add(label);
+        });
+        if (!parts.length && name) set.add(name);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
 }
@@ -7613,6 +7631,37 @@ function lcOutsourceOnly() { return lcListByCategory('outsource'); }
 // there is no `window`.
 if (typeof window !== 'undefined') window.lcIsOutsource = lcIsOutsource;
 
+// ── Lumpsum contracts (migration 0062) ────────────────────────
+// A LUMPSUM contract is ONE capped agreement covering SEVERAL works. Instead of
+// five contract rows for a worker's five jobs — which forces every payment to be
+// split five ways — it is one row at the full amount that LISTS its works, paid
+// by a single payment stream.
+//
+// It is NOT a third `category`. A lumpsum is a SHAPE either category can take,
+// and a NON-EMPTY `works` array is the whole discriminator — no second flag to
+// drift out of sync with it. That is what lets lcListByCategory, the portal's
+// segment tabs and every `.find(x => x.id === id)` above keep working untouched.
+//
+// MONEY: nothing moves. `works` holds NAMES, never pesos, so lcStats below never
+// reads it — a lumpsum draws down its one cap through the same payroll rows as
+// any other contract. §M of money-math.test.js fences that a worker's five jobs
+// and one lumpsum of the same total give the identical agreed/paid/remaining.
+//
+// A missing column (migration 0062 not applied) reads as undefined → an empty
+// list → the old single-job behaviour, so nothing breaks before it is applied.
+function lcWorksList(c) {
+    const raw = c && c.works;
+    if (!Array.isArray(raw)) return [];
+    return raw.map(w => String(typeof w === 'string' ? w : ((w && w.name) || '')).trim()).filter(Boolean);
+}
+function lcIsLumpsum(c) { return lcWorksList(c).length > 0; }
+// Guarded like lcIsOutsource above: money-math.test.js evals this slice headless,
+// where there is no `window`.
+if (typeof window !== 'undefined') {
+    window.lcWorksList = lcWorksList;
+    window.lcIsLumpsum = lcIsLumpsum;
+}
+
 // Worker names seen on this folder (payroll + contracts) — for autocomplete.
 function lcWorkerNames() {
     const set = new Set();
@@ -7867,10 +7916,17 @@ function lcWorkerContracts(c) {
 function lcWorkerAgreementDetails(cs) {
     const first = cs[0] || {};
     const total = cs.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
-    // Numbered when there is more than one job, so the scope line reads as the
+    // What the sheet's SAKLAW NG TRABAHO / SCOPE OF WORK actually lists. A
+    // LUMPSUM contract (migration 0062) expands to its own works: "General Works
+    // Package" is a container the worker never agreed to — the five works inside
+    // it are. A plain job contributes its scope, exactly as before.
+    const parts = cs.reduce((a, c) => {
+        const works = lcWorksList(c);
+        return a.concat(works.length ? works : [c.scope || 'Untitled job']);
+    }, []);
+    // Numbered when there is more than one work, so the scope line reads as the
     // list of works it is rather than one run-on job title.
-    const scope = cs.map((c, i) => (cs.length > 1 ? (i + 1) + ') ' : '')
-        + (c.scope || 'Untitled job')).join('  ');
+    const scope = parts.map((s, i) => (parts.length > 1 ? (i + 1) + ') ' : '') + s).join('  ');
     // Pay type only belongs on the sheet when every job agrees; otherwise it
     // would state one job's terms as if they covered all of them.
     const types = [...new Set(cs.map(c => c.payType === 'inhouse' ? 'In-house' : 'Pakyaw'))];
@@ -8071,6 +8127,91 @@ function lcApplyCategoryMode(cat) {
     if (box) box.classList.toggle('lc-modal-outsource', os);
 }
 
+// ── Lumpsum works editor (migration 0062) ─────────────────────────────
+// The rows the user builds in the modal. Kept as plain DOM rather than a state
+// array: the list is short, reordering is not a feature, and the input values
+// ARE the truth — lcWorksCollect() reads them straight back at save time, so
+// there is no second copy to drift.
+function lcWorksRow(value) {
+    const list = document.getElementById('lcWorksList');
+    if (!list) return;
+    const row = document.createElement('div');
+    row.className = 'lc-work-row';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'lc-work-input';
+    input.placeholder = 'e.g. Plumbing Works';
+    input.value = value || '';
+    // Enter adds the next work instead of submitting the form half-filled.
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); lcWorksRow(''); lcWorksFocusLast(); }
+    });
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'lc-work-del';
+    del.title = 'Remove this work';
+    del.textContent = '×';
+    del.onclick = () => { row.remove(); lcWorksRenumber(); };
+    row.appendChild(input); row.appendChild(del);
+    list.appendChild(row);
+    lcWorksRenumber();
+}
+function lcWorksFocusLast() {
+    const rows = document.querySelectorAll('#lcWorksList .lc-work-input');
+    if (rows.length) rows[rows.length - 1].focus();
+}
+// Numbers are decoration, drawn from position — never stored, so removing the
+// second of five works can't leave a gap.
+function lcWorksRenumber() {
+    const rows = [...document.querySelectorAll('#lcWorksList .lc-work-row')];
+    rows.forEach((r, i) => r.style.setProperty('--n', JSON.stringify(String(i + 1))));
+    const hint = document.getElementById('lcWorksCount');
+    if (hint) hint.textContent = rows.length ? rows.length + (rows.length === 1 ? ' work' : ' works') : 'No works added yet.';
+}
+function lcWorksCollect() {
+    // Single-job mode collects nothing: an empty array is what makes a contract
+    // NOT a lumpsum (see lcIsLumpsum), so this is the whole switch at save time.
+    if (!lcIsLumpsumMode()) return [];
+    return [...document.querySelectorAll('#lcWorksList .lc-work-input')]
+        .map(i => i.value.trim()).filter(Boolean);
+}
+function lcIsLumpsumMode() {
+    const r = document.querySelector('input[name="lcShape"]:checked');
+    return !!r && r.value === 'lumpsum';
+}
+// Flip the form between the two shapes. Single job keeps today's form exactly;
+// Lumpsum swaps the one Scope field's meaning for a container TITLE and reveals
+// the works list. The agreed amount is untouched either way — a lumpsum has ONE
+// cap, which is the entire point.
+function lcApplyShapeMode() {
+    const lump = lcIsLumpsumMode();
+    const box = document.getElementById('lcWorksBox');
+    if (box) box.style.display = lump ? '' : 'none';
+    const lbl = document.getElementById('lcScopeLabel');
+    if (lbl) lbl.textContent = lump ? 'Contract Title' : 'Scope / Job';
+    const sIn = document.getElementById('lcScope');
+    if (sIn && lump) sIn.placeholder = 'e.g. General Works Package';
+    else if (sIn) sIn.placeholder = (document.getElementById('lcCategory') || {}).value === 'outsource'
+        ? 'e.g. Windows supply & install' : 'e.g. Tiling & masonry';
+    const amtHint = document.getElementById('lcAmountHint');
+    if (amtHint) amtHint.textContent = lump
+        ? 'ONE cap for every work listed above — payments draw down this single total.'
+        : '';
+    if (lump && !document.querySelectorAll('#lcWorksList .lc-work-row').length) lcWorksRow('');
+}
+// Load a contract's works into the editor (or reset it for a new one).
+function lcWorksPopulate(c) {
+    const list = document.getElementById('lcWorksList');
+    if (list) list.innerHTML = '';
+    const works = lcWorksList(c);
+    const shape = works.length ? 'lumpsum' : 'single';
+    const r = document.querySelector('input[name="lcShape"][value="' + shape + '"]');
+    if (r) r.checked = true;
+    works.forEach(w => lcWorksRow(w));
+    lcApplyShapeMode();
+    lcWorksRenumber();
+}
+
 function lcOpenNew(category) {
     if (!lcActiveFolderId()) { showExpNotif('Open a project folder first.', 'error'); return; }
     const os = category === 'outsource';
@@ -8083,6 +8224,7 @@ function lcOpenNew(category) {
     const pk = document.querySelector('input[name="lcPayType"][value="pakyaw"]'); if (pk) pk.checked = true;
     const t = document.getElementById('lcModalTitle'); if (t) t.textContent = os ? 'New Out Source Contract' : 'New Labor Contract';
     lcApplyCategoryMode(os ? 'outsource' : 'labor');
+    lcWorksPopulate(null);                 // resets to Single job, empty works
     lcFillWorkerDatalist();
     openExpModal('laborContractModal');
     lcAgrPopulate(null);
@@ -8097,8 +8239,11 @@ function lcOpenEdit(id) {
     document.getElementById('lcNotes').value = c.notes || '';
     const r = document.querySelector('input[name="lcPayType"][value="' + (c.payType === 'inhouse' ? 'inhouse' : 'pakyaw') + '"]'); if (r) r.checked = true;
     const os = lcIsOutsource(c);
-    const t = document.getElementById('lcModalTitle'); if (t) t.textContent = os ? 'Edit Out Source Contract' : 'Edit Labor Contract';
+    const t = document.getElementById('lcModalTitle');
+    if (t) t.textContent = os ? 'Edit Out Source Contract'
+        : (lcIsLumpsum(c) ? 'Edit Lumpsum Contract' : 'Edit Labor Contract');
     lcApplyCategoryMode(os ? 'outsource' : 'labor');
+    lcWorksPopulate(c);                    // opens in whichever shape it was saved as
     lcFillWorkerDatalist();
     openExpModal('laborContractModal');
     lcAgrPopulate(c);
@@ -8118,6 +8263,10 @@ async function handleSaveLaborContract(e) {
     const isOutsource = category === 'outsource';
     const workerName = document.getElementById('lcWorker').value.trim();
     const scope = document.getElementById('lcScope').value.trim();
+    // Lumpsum works (migration 0062) — names only, never amounts. Read from the
+    // rows the user built in the modal; a Single-job contract collects none, so
+    // it saves an empty array and stays exactly what it was.
+    const works = lcWorksCollect();
     const trade = isOutsource ? '' : ((document.getElementById('lcTrade') || {}).value || '').trim();
     const agreedAmount = parseFloat((document.getElementById('lcAmount').value || '').replace(/,/g, '')) || 0;
     const notes = document.getElementById('lcNotes').value.trim();
@@ -8154,7 +8303,7 @@ async function handleSaveLaborContract(e) {
 
         if (id) {
             const existing = expLaborContracts.find(x => x.id === id);
-            const update = { workerName, scope, trade, agreedAmount, payType, notes, category,
+            const update = { workerName, scope, trade, agreedAmount, payType, notes, category, works,
                              updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
             if (existing && (parseFloat(existing.agreedAmount) || 0) !== agreedAmount) {
                 const hist = Array.isArray(existing.capHistory) ? existing.capHistory.slice() : [];
@@ -8167,19 +8316,23 @@ async function handleSaveLaborContract(e) {
             } catch (colErr) {
                 // Fallback if the DB doesn't have the newer agreement_pdf_name column
                 // yet: retry without it so remove/edit still persists.
-                if (/agreement_pdf_name|trade|category|column/i.test(colErr.message || '')) {
+                if (/agreement_pdf_name|trade|category|works|column/i.test(colErr.message || '')) {
                     const u2 = { ...update }; delete u2.agreementPdfName;
                     if (/trade/i.test(colErr.message || '')) delete u2.trade;   // migration 0039 not applied yet
                     if (/category/i.test(colErr.message || '')) {               // migration 0057 not applied yet
                         delete u2.category;
                         if (isOutsource) { showExpNotif('Out Source needs migration 0057 — saved as a labor contract.', 'error'); }
                     }
+                    if (/works/i.test(colErr.message || '')) {                  // migration 0062 not applied yet
+                        delete u2.works;
+                        if (works.length) { showExpNotif('Lumpsum needs migration 0062 — the works list was not saved.', 'error'); }
+                    }
                     await db.collection('laborContracts').doc(id).update(u2);
                 } else { throw colErr; }
             }
         } else {
             const addDoc = {
-                userId: _uid(), folderId, workerName, scope, trade, agreedAmount, payType, notes, category,
+                userId: _uid(), folderId, workerName, scope, trade, agreedAmount, payType, notes, category, works,
                 status: 'ongoing',
                 capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
                 ...(agrFields || { agreementSigned: false }),
@@ -8188,12 +8341,16 @@ async function handleSaveLaborContract(e) {
             try {
                 await db.collection('laborContracts').add(addDoc);
             } catch (colErr) {
-                if (/agreement_pdf_name|trade|category|column/i.test(colErr.message || '')) {
+                if (/agreement_pdf_name|trade|category|works|column/i.test(colErr.message || '')) {
                     delete addDoc.agreementPdfName;
                     if (/trade/i.test(colErr.message || '')) delete addDoc.trade;   // migration 0039 not applied yet
                     if (/category/i.test(colErr.message || '')) {                   // migration 0057 not applied yet
                         delete addDoc.category;
                         if (isOutsource) { showExpNotif('Out Source needs migration 0057 — saved as a labor contract.', 'error'); }
+                    }
+                    if (/works/i.test(colErr.message || '')) {                      // migration 0062 not applied yet
+                        delete addDoc.works;
+                        if (works.length) { showExpNotif('Lumpsum needs migration 0062 — the works list was not saved.', 'error'); }
                     }
                     await db.collection('laborContracts').add(addDoc);
                 } else { throw colErr; }
@@ -8332,6 +8489,166 @@ async function lcDelete(id) {
     } catch (err) { showExpNotif('Error: ' + err.message, 'error'); }
 }
 
+// ── Merge a worker's jobs into ONE lumpsum contract ────────────────────
+// Turns the five rows a worker holds ("Plumbing Works", "Civil Works", …) into
+// ONE capped contract that LISTS those five as its `works` (migration 0062), so
+// the next payment is tagged once instead of split five ways.
+//
+// ORDER IS LOAD-BEARING, and this is the whole reason it is not a bare SQL
+// script. `payroll.contract_id` is `on delete set null` (migration 0014), so
+// deleting a contract UNLINKS its payments. Delete first and the worker's paid-
+// to-date silently becomes 0 while the pesos drift into "Other (uncapped)
+// payments". The three steps therefore run in this order, and only this order:
+//
+//   1. UPDATE THE KEEPER first — title, summed cap, works list. If the `works`
+//      column is missing (migration 0062 unapplied) this is where it fails, and
+//      it fails BEFORE anything has been repointed or deleted. Nothing is lost.
+//   2. REPOINT the other contracts' payroll rows onto the keeper.
+//   3. DELETE the now-empty contracts.
+//
+// A failure part-way leaves a state the merge can simply be re-run on: the
+// keeper is already a lumpsum, some rows already point at it, and the leftovers
+// still exist to be swept up. It never strands money.
+//
+// The money does not move. The new cap is the SUM of the old caps and every
+// payroll row is preserved (only its contract_id changes), so agreed / paid /
+// remaining read exactly as they did before — which is what §M of
+// money-math.test.js asserts about the two shapes in the first place.
+// `preconfirmed` is set by lcOpenMerge, whose own dialog already spells out the
+// works, the cap and the deletions. Without it the user is asked twice, the
+// second time through showDeleteConfirm — which is branded "Confirm Delete" with
+// a red Delete button, and so misnames a merge as a deletion. The fallback
+// confirm stays for any other caller reaching this directly.
+async function lcMergeToLumpsum(workerName, title, preconfirmed) {
+    if (_staff()) return;                       // a money action, like the amounts themselves
+    const key = String(workerName || '').trim();
+    const seed = (expLaborContracts || []).find(c => String(c.workerName || '').trim() === key);
+    if (!seed) { showExpNotif('No contracts found for ' + (key || 'this worker') + '.', 'error'); return; }
+
+    // Exactly the jobs the WORKER CARD shows — same trimmed, case-sensitive name
+    // and same category filter (lcWorkerContracts), so the merge can never sweep
+    // in a vendor subcontract or a differently-cased second card.
+    const cs = lcWorkerContracts(seed);
+    if (cs.length < 2) { showExpNotif('Nothing to merge — ' + key + ' has only one contract.', 'error'); return; }
+
+    // A contract already carrying works contributes THOSE works, not its
+    // container title, so merging a lumpsum with more jobs stays flat.
+    const works = cs.reduce((a, c) => {
+        const w = lcWorksList(c);
+        return a.concat(w.length ? w : [c.scope || 'Untitled job']);
+    }, []);
+    const total = cs.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
+
+    // The keeper carries the signed agreement if one of them does — the sheet is
+    // per worker, so losing the PDF to a delete would lose the whole agreement.
+    const keeper = cs.find(c => c.agreementPdfUrl && String(c.agreementPdfUrl).trim()) || cs[0];
+    const losers = cs.filter(c => c.id !== keeper.id);
+    const paidBefore = cs.reduce((s, c) => s + lcPaid(c.id), 0);
+    const moving = (expPayroll || []).filter(p => losers.some(l => l.id === p.contractId));
+
+    const msg = 'Merge ' + cs.length + ' jobs into ONE lumpsum contract for ' + key + '?\n\n'
+        + '₱' + formatNum(total) + ' agreed · ₱' + formatNum(paidBefore) + ' paid · '
+        + moving.length + ' payment' + (moving.length === 1 ? '' : 's') + ' will be re-tagged.\n\n'
+        + 'The ' + losers.length + ' extra contracts are then deleted. This cannot be undone.';
+    if (!preconfirmed && !await showDeleteConfirm(msg)) return;
+
+    const hist = Array.isArray(keeper.capHistory) ? keeper.capHistory.slice() : [];
+    if ((parseFloat(keeper.agreedAmount) || 0) !== total) {
+        hist.push({ amount: total, at: new Date().toISOString(),
+                    note: 'Merged ' + cs.length + ' jobs into one lumpsum' });
+    }
+
+    try {
+        // 1. Keeper first — the migration-0062 guard. If `works` does not exist
+        //    this throws here, with every contract and payment still untouched.
+        await db.collection('laborContracts').doc(keeper.id).update({
+            scope: String(title || '').trim() || 'General Works Package',
+            agreedAmount: total,
+            works: works,
+            capHistory: hist,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        // 2. Repoint the payments BEFORE the deletes below unlink them.
+        for (const p of moving) {
+            await db.collection('payroll').doc(p.id).update({ contractId: keeper.id });
+        }
+
+        // 3. Only now are the leftovers empty and safe to remove.
+        for (const l of losers) {
+            await db.collection('laborContracts').doc(l.id).delete();
+        }
+
+        showExpNotif('Merged ' + cs.length + ' jobs into one lumpsum ✓', 'success');
+    } catch (err) {
+        showExpNotif(/works|column/i.test(err.message || '')
+            ? 'Merge stopped: migration 0062 is not applied, so the works list cannot be saved. Nothing was changed.'
+            : 'Merge failed: ' + err.message + ' — re-run it to finish.', 'error');
+    }
+}
+// Confirm-and-name dialog. The title becomes the contract's visible name for
+// good, so it is asked for once here rather than defaulted silently.
+function lcOpenMerge(workerName) {
+    const key = String(workerName || '').trim();
+    const seed = (expLaborContracts || []).find(c => String(c.workerName || '').trim() === key);
+    if (!seed) return;
+    const cs = lcWorkerContracts(seed);
+    const total = cs.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
+    const jobs = cs.map(c => {
+        const w = lcWorksList(c);
+        return w.length ? w : [c.scope || 'Untitled job'];
+    }).reduce((a, b) => a.concat(b), []);
+
+    const existing = document.getElementById('lcMergeOverlay');
+    if (existing) existing.remove();
+    const ov = document.createElement('div');
+    ov.id = 'lcMergeOverlay';
+    ov.className = 'lcm-ov';
+    ov.onclick = e => { if (e.target === ov) ov.remove(); };
+    ov.innerHTML = `
+        <div class="lcm-card" style="max-width:460px;">
+          <div class="lcm-head">
+            <div>
+              <h3 class="lcm-title">Merge into one lumpsum</h3>
+              <div class="lcm-sub">${_mvpEsc(key)} · ${cs.length} jobs</div>
+            </div>
+            <button type="button" class="lcm-x" data-merge-close aria-label="Close">&times;</button>
+          </div>
+          <div class="lcm-body">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#A1A1A6;margin:0 0 8px;">Contract title</div>
+            <input id="lcMergeTitle" type="text" value="General Works Package"
+              style="width:100%;border:1.5px solid #1A5C3A;border-radius:10px;padding:11px 14px;font-size:15px;font-family:inherit;color:#1C1C1E;outline:none;box-shadow:0 0 0 3px rgba(26,90,58,.12);">
+            <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#A1A1A6;margin:20px 0 8px;">Works it will cover — ${jobs.length}</div>
+            <div style="max-height:190px;overflow:auto;">
+              ${jobs.map((j, i) => `<div style="display:flex;align-items:center;gap:9px;padding:6px 0;border-top:1px solid #F0F0F0;font-size:13px;color:#3A3A3C;">
+                   <span style="flex:none;width:19px;height:19px;border-radius:5px;background:#ECEFF1;color:#6C6C70;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;">${i + 1}</span>
+                   ${_mvpEsc(j)}</div>`).join('')}
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px;padding:12px 14px;background:#FAFBFA;border:1px solid #EEEEEE;border-radius:10px;">
+              <span style="font-size:12.5px;font-weight:600;color:#6C6C70;">One agreed cap</span>
+              <span class="num" style="font-size:18px;color:#1C1C1E;font-variant-numeric:tabular-nums;">₱ ${formatNum(total)}</span>
+            </div>
+            <div style="margin-top:12px;font-size:12px;color:#8A8A8E;line-height:1.55;">
+              Every payment stays exactly where it is — it is only re-tagged onto the one
+              contract, so paid and remaining do not change. The ${cs.length - 1} extra
+              contracts are then deleted. <b>This cannot be undone.</b>
+            </div>
+          </div>
+          <div class="lcm-foot">
+            <button type="button" class="lcm-btn" data-merge-close>Cancel</button>
+            <button type="button" class="lcm-btn primary" id="lcMergeGo">Merge into lumpsum</button>
+          </div>
+        </div>`;
+    document.body.appendChild(ov);
+    ov.querySelectorAll('[data-merge-close]').forEach(b => b.onclick = () => ov.remove());
+    const go = ov.querySelector('#lcMergeGo');
+    if (go) go.onclick = async () => {
+        const title = (ov.querySelector('#lcMergeTitle') || {}).value || '';
+        ov.remove();
+        await lcMergeToLumpsum(key, title, true);   // this dialog IS the confirmation
+    };
+}
+
 // ── Payroll-form contract picker ───────────────────────────
 // ADD form: a checkbox list, because one payment often covers SEVERAL contracts
 // (a "10% DP" across a worker's ceiling + demolition + drywall + pullout jobs).
@@ -8375,7 +8692,12 @@ function lcPopulatePayrollPicker() {
     }
 }
 function lcPickerLabel(c) {
-    return (c.workerName || 'Worker') + ' · ' + (c.scope || 'job');
+    // A lumpsum offers ONE tick covering several works — saying how many is what
+    // tells the user this single line is the whole package, so they don't go
+    // hunting for the four jobs that used to be listed beside it.
+    const n = lcWorksList(c).length;
+    return (c.workerName || 'Worker') + ' · ' + (c.scope || 'job')
+        + (n ? ' (' + n + ' works)' : '');
 }
 function lcCheckedContractIds() {
     return Array.from(document.querySelectorAll('input[name="payContractPick"]:checked')).map(cb => cb.value);
@@ -8735,6 +9057,11 @@ window.lcViewFiles = function(contractId) {
 };
 
 window.lcOpenNew            = lcOpenNew;
+// Lumpsum works editor (migration 0062) — the modal's inline handlers call these.
+window.lcWorksRow           = lcWorksRow;
+window.lcApplyShapeMode     = lcApplyShapeMode;
+window.lcOpenMerge          = lcOpenMerge;
+window.lcMergeToLumpsum     = lcMergeToLumpsum;
 window.lcOpenEdit           = lcOpenEdit;
 window.lcOpenRaiseCap       = lcOpenRaiseCap;
 window.lcOpenAgrTemplate    = lcOpenAgrTemplate;

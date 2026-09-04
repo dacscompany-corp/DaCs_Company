@@ -5618,8 +5618,22 @@ function _pmMatCatContractLabels() {
     (_pmLaborContracts || []).forEach(c => {
         const name  = (c && c.workerName != null ? String(c.workerName) : '').trim();
         const scope = (c && c.scope      != null ? String(c.scope)      : '').trim();
-        const label = scope && name ? scope + ' (' + name + ')' : (scope || name);
-        if (label) set.add(label);
+        // A LUMPSUM contract (migration 0062) covers several works under one cap,
+        // so each work is its own category and the container is kept alongside
+        // them — otherwise merging a worker's jobs would silently collapse the
+        // material categories those jobs used to offer. Same rule as Project
+        // Control's _expContractLabels; the two must not drift.
+        //
+        // LABELLING only: categories are free text on the entry, never a contract
+        // tag, so nothing here draws down the lumpsum's single cap.
+        const parts = _pmWorksList(c).slice();
+        if (scope) parts.push(scope);
+        parts.forEach(p => {
+            // Say it once when both halves say the same thing.
+            const label = (p && name && p !== name) ? p + ' (' + name + ')' : (p || name);
+            if (label) set.add(label);
+        });
+        if (!parts.length && name) set.add(name);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
 }
@@ -5808,6 +5822,233 @@ function _pmLcAgrPopulate(contract) {
     _pmLcAgrRenderState();
 }
 
+// ── Merge a worker's jobs into ONE lumpsum contract ────────────────────
+// The PM twin of lcMergeToLumpsum (expenses-module.js). Same three steps and the
+// SAME order, but the repoint is a different, heavier job: Project Control tags
+// a payment with a `payroll.contract_id` COLUMN, whereas PM tags it inside the
+// `weeklyBills.entries[]` JSON blob. So repointing here means rewriting whole
+// entry arrays across every weekly bill that mentions a merged contract.
+//
+//   1. UPDATE THE KEEPER first — title, summed cap, works. The migration-0062
+//      guard: if `works` is missing this throws before any bill is rewritten.
+//   2. REWRITE the bills, swapping the losers' contractId for the keeper's.
+//      Every other field of every entry is copied through untouched — the blob
+//      holds amounts, receipts and days, and this must only re-tag.
+//   3. DELETE the emptied contracts.
+//
+// PM has no foreign key, so a delete leaves orphaned tags rather than nulling
+// them (harmless, and re-running the merge sweeps them up). The order still
+// matters: deleting first would leave the entries pointing at a contract that no
+// longer exists, and the keeper reading 0 paid until the repoint caught up.
+//
+// The money does not move. The new cap is the SUM of the old caps and not one
+// entry amount is touched, so agreed / paid / remaining read exactly as before.
+async function _pmMergeToLumpsum(workerName, title, seg) {
+    if (!_pmActiveProject) { _pmToast('Open a project first.', true); return; }
+    const isLabor = seg !== 'outsource';
+    const pool    = isLabor ? (_pmLaborContracts || []) : (_pmOutsourceContracts || []);
+    const key     = String(workerName || '').trim();
+    const cs      = pool.filter(c => String(c.workerName || '').trim() === key)
+                        .sort((a, b) => String(a.scope || '').localeCompare(String(b.scope || '')));
+    if (cs.length < 2) { _pmToast('Nothing to merge — only one contract.', true); return; }
+
+    // A contract already carrying works contributes THOSE works, not its
+    // container title, so merging a lumpsum with more jobs stays flat.
+    const works = cs.reduce((a, c) => {
+        const w = _pmWorksList(c);
+        return a.concat(w.length ? w : [c.scope || 'Untitled job']);
+    }, []);
+    const total  = cs.reduce((s, c) => s + (Number(c.agreedAmount) || 0), 0);
+    // The keeper carries the signed agreement if one of them does — the sheet is
+    // per worker, so losing the PDF to a delete would lose the whole agreement.
+    const keeper = cs.find(c => c.agreementPdfUrl && String(c.agreementPdfUrl).trim()) || cs[0];
+    const lose   = new Set(cs.filter(c => c.id !== keeper.id).map(c => c.id));
+
+    const hist = Array.isArray(keeper.capHistory) ? keeper.capHistory.slice() : [];
+    if ((Number(keeper.agreedAmount) || 0) !== total) {
+        hist.push({ amount: total, at: new Date().toISOString(),
+                    note: 'Merged ' + cs.length + ' jobs into one lumpsum' });
+    }
+
+    const col = isLabor ? _pmLcCol() : _pmOcCol();
+    try {
+        // 1. Keeper first — nothing else has been touched if this throws.
+        await col.doc(keeper.id).update({
+            scope: String(title || '').trim() || 'General Works Package',
+            agreedAmount: total,
+            works: works,
+            capHistory: hist,
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+
+        // 2. Re-tag the daily entries, bill by bill. Only bills that actually
+        //    mention a merged contract are written, and only the contractId
+        //    changes — every other field is spread through as it was.
+        const bills = db.collection('constructionProjects').doc(_pmActiveProject.id).collection('weeklyBills');
+        for (const b of (_pmWeekBills || [])) {
+            const entries = Array.isArray(b.entries) ? b.entries : [];
+            if (!entries.some(e => e && lose.has(e.contractId))) continue;
+            await bills.doc(b.id).update({
+                entries: entries.map(e => (e && lose.has(e.contractId))
+                    ? { ...e, contractId: keeper.id } : e),
+                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+        }
+
+        // 3. Only now are the leftovers empty.
+        for (const id of lose) await col.doc(id).delete();
+
+        _pmToast('Merged ' + cs.length + ' jobs into one lumpsum');
+        await (isLabor ? _pmLoadLaborTab() : _pmLoadOutsourceTab());
+        if (typeof _pmRenderContractsTab === 'function') _pmRenderContractsTab();
+    } catch (err) {
+        _pmToast(/works|column/i.test(err.message || '')
+            ? 'Merge stopped: migration 0062 is not applied. Nothing was changed.'
+            : 'Merge failed: ' + err.message + ' — re-run it to finish.', true);
+    }
+}
+// Confirm-and-name dialog. The title becomes the contract's visible name for
+// good, so it is asked for once here rather than defaulted silently. This dialog
+// IS the confirmation — _pmMergeToLumpsum deliberately has no second prompt.
+window.pmOpenMerge = function(workerName, seg) {
+    const isLabor = seg !== 'outsource';
+    const pool = isLabor ? (_pmLaborContracts || []) : (_pmOutsourceContracts || []);
+    const key  = String(workerName || '').trim();
+    const cs   = pool.filter(c => String(c.workerName || '').trim() === key)
+                     .sort((a, b) => String(a.scope || '').localeCompare(String(b.scope || '')));
+    if (cs.length < 2) return;
+    const total = cs.reduce((s, c) => s + (Number(c.agreedAmount) || 0), 0);
+    const jobs  = cs.reduce((a, c) => {
+        const w = _pmWorksList(c);
+        return a.concat(w.length ? w : [c.scope || 'Untitled job']);
+    }, []);
+
+    const old = document.getElementById('pmMergeOverlay');
+    if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 'pmMergeOverlay';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(20,20,18,.45);display:flex;align-items:center;'
+        + 'justify-content:center;z-index:12000;padding:20px;';
+    ov.onclick = e => { if (e.target === ov) ov.remove(); };
+    ov.innerHTML = `
+      <div style="background:#fff;border-radius:16px;max-width:470px;width:100%;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.22);font-family:'IBM Plex Sans',sans-serif;">
+        <div style="padding:20px 24px 14px;border-bottom:1px solid #f0efec;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+          <div>
+            <div style="font-size:17px;font-weight:700;color:#1c1c1a;">Merge into one lumpsum</div>
+            <div style="font-size:12.5px;color:#8a8983;margin-top:3px;">${_esc(key)} · ${cs.length} jobs</div>
+          </div>
+          <button type="button" data-merge-close style="background:none;border:none;font-size:22px;line-height:1;color:#b0afa9;cursor:pointer;font-family:inherit;">&times;</button>
+        </div>
+        <div style="padding:20px 24px;overflow:auto;">
+          <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#9b9a94;margin-bottom:8px;">Contract title</div>
+          <input id="pmMergeTitle" type="text" value="General Works Package"
+            style="width:100%;border:1.5px solid #157a52;border-radius:10px;padding:11px 14px;font-size:15px;font-family:inherit;color:#1c1c1a;outline:none;box-shadow:0 0 0 3px rgba(21,122,82,.12);">
+          <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#9b9a94;margin:20px 0 6px;">Works it will cover — ${jobs.length}</div>
+          <div style="max-height:200px;overflow:auto;">
+            ${jobs.map((j, i) => `<div style="display:flex;align-items:center;gap:9px;padding:6px 0;border-top:1px solid #f2f1ee;font-size:13px;color:#3a3a36;">
+                 <span style="flex:none;width:19px;height:19px;border-radius:5px;background:#ecebe6;color:#8a8983;font-size:10.5px;font-weight:700;display:flex;align-items:center;justify-content:center;">${i + 1}</span>
+                 ${_esc(j)}</div>`).join('')}
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:18px;padding:12px 14px;background:#faf9f6;border:1px solid #ecebe6;border-radius:10px;">
+            <span style="font-size:12.5px;font-weight:600;color:#6c6c70;">One agreed cap</span>
+            <span style="font-size:18px;font-weight:700;color:#1c1c1a;font-variant-numeric:tabular-nums;">${_fmt(total)}</span>
+          </div>
+          <div style="margin-top:12px;font-size:12px;color:#8a8983;line-height:1.55;">
+            Every daily entry stays exactly where it is — it is only re-tagged onto the one
+            contract, so paid and remaining do not change. The ${cs.length - 1} extra contracts
+            are then deleted. <b>This cannot be undone.</b>
+          </div>
+        </div>
+        <div style="padding:14px 24px 20px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid #f0efec;">
+          <button type="button" data-merge-close style="background:#fff;color:#3a3a36;border:1.5px solid #d8d7d0;border-radius:9px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">Cancel</button>
+          <button type="button" id="pmMergeGo" style="background:#157a52;color:#fff;border:none;border-radius:9px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">Merge into lumpsum</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    ov.querySelectorAll('[data-merge-close]').forEach(b => b.onclick = () => ov.remove());
+    const go = ov.querySelector('#pmMergeGo');
+    if (go) go.onclick = async () => {
+        const t = (ov.querySelector('#pmMergeTitle') || {}).value || '';
+        ov.remove();
+        await _pmMergeToLumpsum(key, t, seg);
+    };
+};
+
+// ── Lumpsum works editor (migration 0062) ─────────────────────────────
+// The PM twin of lcWorksRow / lcWorksCollect in expenses-module.js. Same plain
+// DOM approach: the inputs ARE the truth, read back at save time, so there is no
+// second copy to drift out of sync with what is on screen.
+function _pmWorksRow(value) {
+    const list = document.getElementById('pmLcWorksList');
+    if (!list) return;
+    const row = document.createElement('div');
+    row.className = 'lc-work-row';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'lc-work-input';
+    input.placeholder = 'e.g. Plumbing Works';
+    input.value = value || '';
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); _pmWorksRow(''); _pmWorksFocusLast(); }
+    });
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'lc-work-del';
+    del.title = 'Remove this work';
+    del.textContent = '×';
+    del.onclick = () => { row.remove(); _pmWorksRenumber(); };
+    row.appendChild(input); row.appendChild(del);
+    list.appendChild(row);
+    _pmWorksRenumber();
+}
+function _pmWorksFocusLast() {
+    const rows = document.querySelectorAll('#pmLcWorksList .lc-work-input');
+    if (rows.length) rows[rows.length - 1].focus();
+}
+function _pmWorksRenumber() {
+    const rows = [...document.querySelectorAll('#pmLcWorksList .lc-work-row')];
+    rows.forEach((r, i) => r.style.setProperty('--n', JSON.stringify(String(i + 1))));
+    const hint = document.getElementById('pmLcWorksCount');
+    if (hint) hint.textContent = rows.length ? rows.length + (rows.length === 1 ? ' work' : ' works') : 'No works added yet.';
+}
+function _pmIsLumpsumMode() {
+    const r = document.querySelector('input[name="pmLcShape"]:checked');
+    return !!r && r.value === 'lumpsum';
+}
+function _pmWorksCollect() {
+    // An empty array is what makes a contract NOT a lumpsum (see _pmIsLumpsum),
+    // so Single-job mode collecting nothing IS the whole switch at save time.
+    if (!_pmIsLumpsumMode()) return [];
+    return [...document.querySelectorAll('#pmLcWorksList .lc-work-input')]
+        .map(i => i.value.trim()).filter(Boolean);
+}
+window.pmLcApplyShape = function() {
+    const lump = _pmIsLumpsumMode();
+    const box = document.getElementById('pmLcWorksBox');
+    if (box) box.style.display = lump ? '' : 'none';
+    const lbl = document.getElementById('pmLcScopeLabel');
+    if (lbl) lbl.textContent = lump ? 'Contract Title' : 'Scope / Job';
+    const sIn = document.getElementById('pmLcScope');
+    if (sIn) sIn.placeholder = lump ? 'e.g. General Works Package' : 'e.g. Tiling & masonry';
+    const hint = document.getElementById('pmLcAmountHint');
+    if (hint) hint.textContent = lump
+        ? 'ONE cap for every work listed above — entries draw down this single total.'
+        : '';
+    if (lump && !document.querySelectorAll('#pmLcWorksList .lc-work-row').length) _pmWorksRow('');
+};
+window.pmLcWorksAdd = function() { _pmWorksRow(''); _pmWorksFocusLast(); };
+// Load a contract's works into the editor (or reset it for a new one).
+function _pmWorksPopulate(c) {
+    const list = document.getElementById('pmLcWorksList');
+    if (list) list.innerHTML = '';
+    const works = _pmWorksList(c);
+    const r = document.querySelector('input[name="pmLcShape"][value="' + (works.length ? 'lumpsum' : 'single') + '"]');
+    if (r) r.checked = true;
+    works.forEach(w => _pmWorksRow(w));
+    window.pmLcApplyShape();
+    _pmWorksRenumber();
+}
+
 window.pmLcOpenNew = function() {
     if (!_pmActiveProject) { _pmToast('Open a project first.', true); return; }
     document.getElementById('pmLcId').value = '';
@@ -5817,6 +6058,7 @@ window.pmLcOpenNew = function() {
     document.getElementById('pmLcNotes').value = '';
     const pk = document.querySelector('input[name="pmLcPayType"][value="pakyaw"]'); if (pk) pk.checked = true;
     const t = document.getElementById('pmLcModalTitle'); if (t) t.textContent = 'New Labor Contract';
+    _pmWorksPopulate(null);                // resets to Single job, empty works
     _pmLcAgrPopulate(null);
     _pmPopulateContractPicker();
     document.getElementById('pmLaborContractModal').style.display = 'flex';
@@ -5829,7 +6071,9 @@ window.pmLcOpenEdit = function(id) {
     document.getElementById('pmLcAmount').value = c.agreedAmount ? Number(c.agreedAmount).toLocaleString('en-PH') : '';
     document.getElementById('pmLcNotes').value = c.notes || '';
     const r = document.querySelector('input[name="pmLcPayType"][value="' + (c.payType === 'inhouse' ? 'inhouse' : 'pakyaw') + '"]'); if (r) r.checked = true;
-    const t = document.getElementById('pmLcModalTitle'); if (t) t.textContent = 'Edit Labor Contract';
+    const t = document.getElementById('pmLcModalTitle');
+    if (t) t.textContent = _pmIsLumpsum(c) ? 'Edit Lumpsum Contract' : 'Edit Labor Contract';
+    _pmWorksPopulate(c);                   // opens in whichever shape it was saved as
     _pmLcAgrPopulate(c);
     _pmPopulateContractPicker();
     document.getElementById('pmLaborContractModal').style.display = 'flex';
@@ -5840,6 +6084,9 @@ window.pmLcSave = async function(e) {
     const id = document.getElementById('pmLcId').value;
     const workerName = document.getElementById('pmLcWorker').value.trim();
     const scope = document.getElementById('pmLcScope').value.trim();
+    // Lumpsum works (migration 0062) — names only, never amounts. Single-job mode
+    // collects none, so an ordinary contract saves an empty array and is unchanged.
+    const works = _pmWorksCollect();
     const agreedAmount = parseFloat((document.getElementById('pmLcAmount').value || '').replace(/,/g, '')) || 0;
     const notes = document.getElementById('pmLcNotes').value.trim();
     const payType = (document.querySelector('input[name="pmLcPayType"]:checked') || {}).value || 'pakyaw';
@@ -5874,7 +6121,7 @@ window.pmLcSave = async function(e) {
         }
         if (id) {
             const ex = _pmLaborContracts.find(x => x.id === id);
-            const upd = { workerName, scope, agreedAmount, payType, notes, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+            const upd = { workerName, scope, agreedAmount, payType, notes, works, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
             if (ex && (Number(ex.agreedAmount) || 0) !== agreedAmount) {
                 const h = Array.isArray(ex.capHistory) ? ex.capHistory.slice() : [];
                 h.push({ amount: agreedAmount, at: new Date().toISOString(), note: 'Edited cap' });
@@ -5883,7 +6130,7 @@ window.pmLcSave = async function(e) {
             if (agrFields) Object.assign(upd, agrFields);
             await _pmLcCol().doc(id).update(upd);
         } else {
-            await _pmLcCol().add({ workerName, scope, agreedAmount, payType, notes, status: 'ongoing', category: 'labor',
+            await _pmLcCol().add({ workerName, scope, agreedAmount, payType, notes, works, status: 'ongoing', category: 'labor',
                 capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
                 ...(agrFields || {}),
                 createdAt: firebase.firestore.FieldValue.serverTimestamp() });
@@ -5946,7 +6193,9 @@ window.pmLcOpenLedger = function(id) {
     const fmtD = d => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return d || '—'; } };
 
     // green banner — amount left is the focus
-    let bigLbl = 'Still to pay on this job', bigVal = v.rAmt, subLine;
+    // A lumpsum covers several works, so "this job" would misname it.
+    let bigLbl = _pmIsLumpsum(c) ? 'Still to pay on this contract' : 'Still to pay on this job',
+        bigVal = v.rAmt, subLine;
     if (st.status === 'Over')      { bigLbl = 'Over the agreed amount'; subLine = '' + _fmt(st.paid) + ' paid · ' + _fmt(st.paid - st.agreed) + ' more than ' + _fmt(st.agreed) + ' agreed'; }
     else if (st.status === 'Completed') { bigLbl = 'Fully paid — nothing left'; subLine = '' + _fmt(st.paid) + ' paid of ' + _fmt(st.agreed) + ' agreed · 100%'; }
     else { subLine = '' + _fmt(st.paid) + ' paid of ' + _fmt(st.agreed) + ' agreed · ' + st.pct.toFixed(0) + '%'; }
@@ -5968,6 +6217,18 @@ window.pmLcOpenLedger = function(id) {
         ? '<div class="pm-lc-led-cnt">' + rows.length + ' payment' + (rows.length === 1 ? '' : 's') + '</div><div class="pm-lc-timeline">' + items + '</div>'
         : '<div class="pm-lc-empty">No payments yet. Tag a daily Labor entry to this job to start counting it down.</div>';
 
+    // A LUMPSUM contract's works, listed above the payment timeline. NO amount per
+    // line, deliberately: the contract has ONE agreed total and one payment
+    // stream, so a peso figure per work would invent a balance nobody agreed to.
+    const ledWorks = _pmWorksList(c);
+    const worksHtml = ledWorks.length
+        ? '<div class="pm-lc-works"><div class="pm-lc-works-lbl">Works covered by this one contract — '
+            + ledWorks.length + '</div><div class="pm-lc-works-list">'
+            + ledWorks.map((wk, wi) => '<div class="pm-lc-work"><span class="pm-lc-work-n">' + (wi + 1)
+                + '</span>' + _esc(wk) + '</div>').join('')
+            + '</div></div>'
+        : '';
+
     const body = document.getElementById('pmLcLedgerBody');
     if (body) body.innerHTML =
         '<div class="pm-lc-led-banner' + overCls + '">'
@@ -5975,6 +6236,7 @@ window.pmLcOpenLedger = function(id) {
         + '<div class="pm-lc-led-big num">' + bigVal + '</div>'
         + '<div class="pm-lc-led-pbar"><div class="' + v.barCls + '" style="width:' + v.barPct.toFixed(0) + '%"></div></div>'
         + '<div class="pm-lc-led-sub num">' + subLine + '</div></div>'
+        + worksHtml
         + '<div class="pm-lc-led-list">' + listHtml + '</div>';
     // The agreement is per WORKER, not per job (see _pmOpenWorkerAgreement), so
     // the button shows when ANY of this worker’s jobs carries the PDF — opening
@@ -6017,14 +6279,40 @@ function _pmWorkerContracts(c) {
     return cs.length ? cs : [c];
 }
 
+// ── Lumpsum contracts (migration 0062) ────────────────────────────────
+// The PM twin of lcWorksList / lcIsLumpsum in expenses-module.js — same rules,
+// same column, so the two modules can never disagree about what a lumpsum is.
+// A LUMPSUM contract is ONE capped agreement covering SEVERAL works: one row at
+// the full amount that LISTS its works, paid by a single entry stream instead of
+// one tagged entry per job.
+//
+// It is NOT a third `category` (that stays 'labor' | 'outsource', migration
+// 0016) — a NON-EMPTY `works` array is the whole discriminator, so every list
+// filter and id lookup in this file keeps working untouched. `works` holds
+// NAMES, never pesos: the drawdown still runs through _pmContractPaid over the
+// daily entries, so no money figure can move. An unapplied migration reads as
+// undefined → an empty list → the old single-job behaviour.
+function _pmWorksList(c) {
+    const raw = c && c.works;
+    if (!Array.isArray(raw)) return [];
+    return raw.map(w => String(typeof w === 'string' ? w : ((w && w.name) || '')).trim()).filter(Boolean);
+}
+function _pmIsLumpsum(c) { return _pmWorksList(c).length > 0; }
+
 // Details for the combined sheet. `cs` is one worker's whole job list.
 function _pmWorkerAgreementDetails(cs) {
     const first = cs[0] || {};
     const total = cs.reduce((s, c) => s + (Number(c.agreedAmount) || 0), 0);
-    // Numbered when there is more than one job, so the scope line reads as the
+    // What the sheet's SCOPE OF WORK lists. A LUMPSUM contract expands to its own
+    // works — the container title is not what the worker agreed to, the works
+    // inside it are. A plain job contributes its scope, exactly as before.
+    const parts = cs.reduce((a, c) => {
+        const works = _pmWorksList(c);
+        return a.concat(works.length ? works : [c.scope || 'Untitled job']);
+    }, []);
+    // Numbered when there is more than one work, so the scope line reads as the
     // list of works it is rather than one run-on job title.
-    const scope = cs.map((c, i) => (cs.length > 1 ? (i + 1) + ') ' : '')
-        + (c.scope || 'Untitled job')).join('  ');
+    const scope = parts.map((s, i) => (parts.length > 1 ? (i + 1) + ') ' : '') + s).join('  ');
     // Pay type only belongs on the sheet when every job agrees — same rule the
     // worker card header follows; otherwise it would state one job's terms as
     // if they covered all of them.
@@ -6810,13 +7098,22 @@ function _pmRenderContractsTab() {
         const bdg = badgeOf(st, 'In progress');
         const nPay = _pmContractPayCount(c.id, entryType);
         const over = st.remaining < 0;
+        // A LUMPSUM contract (migration 0062) is ONE row standing for several
+        // works. The count leads the caption because that is what makes this card
+        // different from the ones beside it; the works themselves are listed in
+        // the Contract Ledger this row opens.
+        const works = _pmWorksList(c);
+        const wLead = works.length ? works.length + ' work' + (works.length === 1 ? '' : 's') + ' · ' : '';
         // Closed, this line IS the balance — same caption Project Control uses.
-        const sub = nPay + ' payment' + (nPay === 1 ? '' : 's')
+        const sub = wLead + nPay + ' payment' + (nPay === 1 ? '' : 's')
             + ' · ' + _fmt(st.paid) + ' paid of ' + _fmt(st.agreed);
         return '<div class="pm-lcx-job" onclick="' + ledgerFn + '(\'' + c.id + '\')">'
             + '<span class="pm-lcx-num">' + (i + 1) + '</span>'
             + '<div class="pm-lcx-job-id">'
-            + '<div class="pm-lcx-job-name">' + _esc(c.scope || 'Untitled job') + '</div>'
+            + '<div class="pm-lcx-job-name"><span class="pm-lcx-job-t">' + _esc(c.scope || 'Untitled job') + '</span>'
+            + (works.length ? '<span class="pm-lcx-lump" title="One capped agreement covering '
+                + works.length + ' works — paid as a single stream">Lumpsum</span>' : '')
+            + '</div>'
             + '<div class="pm-lcx-job-sub num">' + sub + '</div>'
             + '</div>'
             + '<div class="pm-lcx-job-rem">'
@@ -6871,6 +7168,21 @@ function _pmRenderContractsTab() {
             // PM is paid through the daily entries, so "Pay" hands the user to
             // the Daily Expenses tab rather than opening a modal of its own.
             + (agrJob ? '<button type="button" class="pm-lcx-agr" onclick="event.stopPropagation();pmLcxWorkerAgreement(' + "'" + agrJob.id + "'" + ');" title="Open ' + _esc(name) + '’s work agreement — all ' + cs.length + ' job' + (cs.length === 1 ? '' : 's') + ', ' + _fmt(wAgreed) + ' total">Agreement</button>' : '')
+            // Collapse this worker's separate jobs into ONE lumpsum contract
+            // (migration 0062). Only where it means something — two or more jobs.
+            // The worker name rides in a DATA ATTRIBUTE, never interpolated into
+            // the onclick as a JS string literal. _esc turns an apostrophe into
+            // &#39;, and the browser decodes entities BEFORE the JS engine parses
+            // the handler — so "O'Brien" spliced into a quoted argument becomes
+            // pmOpenMerge('O'Brien', …), a syntax error that silently kills the
+            // button, and a crafted name would run as code. Reading it back with
+            // this.dataset keeps the value data the whole way. Every other inline
+            // handler here passes a contract UUID, which has no such hazard.
+            + (cs.length > 1 ? '<button type="button" class="pm-lcx-merge"'
+                + ' data-worker="' + _esc(name) + '" data-seg="' + (isLabor ? 'labor' : 'outsource') + '"'
+                + ' onclick="event.stopPropagation();pmOpenMerge(this.dataset.worker,this.dataset.seg);"'
+                + ' title="Combine ' + _esc(name) + '’s ' + cs.length + ' jobs into one lumpsum contract — '
+                + _fmt(wAgreed) + ' under a single cap, paid once instead of split ' + cs.length + ' ways">Merge</button>' : '')
             + '<button type="button" class="pm-lcx-pay" onclick="event.stopPropagation();pmWsTab(\'week\');" title="Record a payment as a daily entry">＋ Pay</button>'
             + chev('pm-lcx-chev')
             + '</div>'
@@ -6950,10 +7262,18 @@ window.pmPrintAllContracts = function() {
             const st = statOf(c);
             const typeLbl = c.payType === 'inhouse' ? 'In-house' : 'Pakyaw';
             const statusLbl = st.status === 'Over' ? 'Over cap' : st.status === 'Completed' ? 'Completed' : st.pct.toFixed(0) + '% paid';
+            // A lumpsum row stands for several works, so the Job cell names them
+            // underneath the title. One row, one agreed amount — the works get NO
+            // figures of their own, because the contract has only the one cap.
+            const works = _pmWorksList(c);
+            const jobCell = esc(c.scope || 'Untitled job') + (works.length
+                ? '<div style="font-size:9.5px;color:#6b7280;margin-top:3px;line-height:1.55;">'
+                    + works.map((wk, wi) => (wi + 1) + ') ' + esc(wk)).join('<br>') + '</div>'
+                : '');
             return `<tr>
                 <td style="text-align:center;">${n}</td>
                 <td>${esc(name)}</td>
-                <td>${esc(c.scope || 'Untitled job')}</td>
+                <td>${jobCell}</td>
                 <td>${esc(typeLbl)}</td>
                 <td style="text-align:right;">${fmt(st.agreed)}</td>
                 <td style="text-align:right;">${fmt(st.paid)}</td>

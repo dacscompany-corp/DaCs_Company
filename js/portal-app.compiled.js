@@ -1860,6 +1860,15 @@ function _lcFirstName(n) {
   // below is DERIVED from each payment's contract, never stamped on the payroll row.
   const [lcSeg, setLcSeg] = React.useState("labor");
   const _isOutsourceC = (c) => (typeof window.lcIsOutsource === "function" ? window.lcIsOutsource(c) : !!c && c.category === "outsource");
+  // Lumpsum works (migration 0062): ONE capped contract listing several works,
+  // paid by a single payment stream. Deliberately NOT a third segment — a
+  // lumpsum is still a labor (or Out Source) contract, so the filters above are
+  // untouched and it simply renders as one job card carrying its works.
+  // Falls back to the same rule expenses-module.js uses, so a missing helper (or
+  // an unapplied migration) reads as an empty list and the old card comes back.
+  const _lcWorks = (c) => (typeof window.lcWorksList === "function"
+    ? window.lcWorksList(c)
+    : (Array.isArray(c && c.works) ? c.works.map((w) => String(w || "").trim()).filter(Boolean) : []));
   const _osIds = React.useMemo(() => {
     const set = /* @__PURE__ */ new Set();
     (contracts || []).forEach((c) => { if (_isOutsourceC(c)) set.add(c.id); });
@@ -2093,9 +2102,14 @@ function _lcFirstName(n) {
       }, "");
       // Open, the money is spelled out in the table below, so the caption
       // carries recency instead. Closed, this line IS the balance.
+      // Lumpsum contracts (migration 0062) carry a list of works inside ONE cap.
+      // The count leads the caption because it is what makes this card different
+      // from the four beside it — one row standing for five works, not one job.
+      const works = _lcWorks(r.c);
+      const wLead = works.length ? works.length + " work" + (works.length === 1 ? "" : "s") + " · " : "";
       const sub = isOpen
-        ? nPay + (latest ? " · latest " + _lcDayLabel(latest) : "")
-        : nPay + " · " + (_staff()
+        ? wLead + nPay + (latest ? " · latest " + _lcDayLabel(latest) : "")
+        : wLead + nPay + " · " + (_staff()
             ? _pctTxt(r.paid, r.agreed) + " paid"
             : "₱ " + peso(r.paid) + " paid of ₱ " + peso(r.agreed));
       blocks.push(rc("div", { key: r.c.id, className: "lc2-job" + (isOpen ? " open" : "") },
@@ -2109,7 +2123,9 @@ function _lcFirstName(n) {
         },
           rc("span", { className: "lc2-num" }, String(i + 1)),
           rc("div", { className: "lc2-job-id" },
-            rc("div", { className: "lc2-job-name" }, r.c.scope || "Untitled job"),
+            rc("div", { className: "lc2-job-name" }, r.c.scope || "Untitled job",
+              works.length ? rc("span", { className: "lc2-lump", title: "One capped agreement covering " + works.length + " works — paid as a single stream" }, "Lumpsum") : null
+            ),
             rc("div", { className: "lc2-job-sub" }, sub)
           ),
           // Peso balance — dropped outright for staff, the same way the worker
@@ -2122,6 +2138,14 @@ function _lcFirstName(n) {
           rc("svg", { className: "lc2-job-chev", width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }))
         ),
         isOpen ? rc("div", { className: "lc2-job-body" },
+          // The works this ONE cap covers. No amount per line, deliberately:
+          // a lumpsum has a single agreed total and a single payment stream, so
+          // a per-work peso figure would invent a balance nobody agreed to.
+          works.length ? rc("div", { className: "lc2-works" },
+            rc("div", { className: "lc2-works-lbl" }, "Works covered by this one contract — " + works.length),
+            rc("div", { className: "lc2-works-list" }, works.map((wk, wi) => rc("div", { key: wi, className: "lc2-work" },
+              rc("span", { className: "lc2-work-n" }, String(wi + 1)), wk)))
+          ) : null,
           cpays.length ? payRows(cpays, r.agreed, r.paid) : rc("div", { className: "lc2-none" }, "No payments recorded against this contract yet."),
           _lcJobActions(w, r)
         ) : null
@@ -2218,6 +2242,19 @@ function _lcFirstName(n) {
                 + ", ₱ " + peso(agrJobs.reduce((s, j) => s + (Number(j.agreedAmount) || 0), 0)) + " total",
               onClick: (e) => { e.stopPropagation(); window.lcOpenAgreement && window.lcOpenAgreement(agrJobs[0].id); }
             }, _lcIcon("print"), " Agreement")
+          : null,
+        // Collapse a worker's separate jobs into ONE lumpsum contract (migration
+        // 0062). Only offered where it means something: two or more jobs to
+        // merge, and never to staff — it rewrites caps and payment tags, which
+        // is a money action like the peso figures hidden from them elsewhere.
+        (crows.length > 1 && !_staff())
+          ? rc("button", {
+              className: "lc2-merge",
+              title: "Combine " + w + "’s " + crows.length + " jobs into one lumpsum contract — "
+                + "₱ " + peso(agreed) + " under a single cap, paid once instead of split "
+                + crows.length + " ways",
+              onClick: (e) => { e.stopPropagation(); window.lcOpenMerge && window.lcOpenMerge(w); }
+            }, "Merge")
           : null,
         rc("button", { className: "lc2-pay", onClick: (e) => { e.stopPropagation(); openAddEntry("labor", childMonths, activeFolder); } }, Ico.plus, " Pay"),
         rc("svg", { className: "lc2-chev", width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "#A1A1A6", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }))

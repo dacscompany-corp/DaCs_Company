@@ -3134,6 +3134,13 @@
 .dacs-portal-scope .lc2-agr { display: inline-flex; align-items: center; gap: 5px; background: #fff; color: var(--brand-green); font-weight: 700; font-size: 12.5px; padding: 8px 15px 8px 13px; border-radius: 999px; flex-shrink: 0; border: 1.5px solid rgba(26, 92, 58, 0.30); cursor: pointer; transition: background .15s, border-color .15s; }
 .lc2-agr:hover { background: rgba(26, 92, 58, 0.08); border-color: rgba(26, 92, 58, 0.45); }
 .lc2-agr svg { width: 13px; height: 13px; }
+/* Merge into one lumpsum (migration 0062). Quieter than Agreement — it is a
+   one-time, irreversible reshape, not a thing you reach for every visit — and
+   it turns the same blue the Lumpsum pill uses, so the button and the result
+   it produces are visibly the same idea. */
+.lc2-merge,
+.dacs-portal-scope .lc2-merge { display: inline-flex; align-items: center; background: #fff; color: var(--ink-3); font-weight: 700; font-size: 12.5px; padding: 8px 15px; border-radius: 999px; flex-shrink: 0; border: 1.5px solid #E3E3E0; cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
+.lc2-merge:hover { background: #EEF2FB; border-color: #3A5FA8; color: #3A5FA8; }
 .lc2-chev { flex-shrink: 0; transition: transform 0.2s; }
 .lc2-acc.open .lc2-chev { transform: rotate(180deg); }
 
@@ -3176,6 +3183,24 @@
 .lc2-job-chev { flex: none; transition: transform .2s; }
 .lc2-job.open .lc2-job-chev { transform: rotate(180deg); }
 .lc2-job-body { padding: 14px 18px 0; }
+
+/* Lumpsum contracts (migration 0062): ONE capped agreement covering several
+   works. The pill marks the card as standing for a list rather than one job;
+   the list itself sits above the payments table, deliberately WITHOUT per-work
+   amounts — a lumpsum has one agreed total and one payment stream, so a peso
+   figure per line would invent a balance nobody agreed to. */
+.lc2-lump { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 20px;
+  background: #EEF2FB; color: #3A5FA8; font-size: 9.5px; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase; vertical-align: 2px; }
+.lc2-works { margin-bottom: 14px; padding: 12px 14px; background: #FAFAF8;
+  border: 1px solid #EFEFEC; border-radius: 10px; }
+.lc2-works-lbl { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-4); font-weight: 700; margin-bottom: 9px; }
+.lc2-works-list { display: flex; flex-direction: column; gap: 6px; }
+.lc2-work { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--ink-2); }
+.lc2-work-n { flex: none; width: 19px; height: 19px; border-radius: 5px; background: #ECEFF1;
+  color: var(--ink-4); font-size: 10.5px; font-weight: 700; display: grid; place-items: center;
+  font-variant-numeric: tabular-nums; }
 
 /* The uncapped-payments block is the only .lc2-cblock left; .lc2-acc-body's
    flex gap spaces it, so it carries no margin of its own. */

@@ -76,7 +76,7 @@ const REG = {
   projectBudgets: { table: 'project_budgets',rename: OWNER, idField: 'project_id' },
   expenses:       { table: 'expenses',       rename: OWNER, ts: ['createdAt', 'updatedAt'] },
   payroll:        { table: 'payroll',        rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['receiptImages'] },
-  laborContracts: { table: 'labor_contracts', rename: OWNER, ts: ['createdAt', 'updatedAt', 'agreementSignedAt'], json: ['capHistory'] },
+  laborContracts: { table: 'labor_contracts', rename: OWNER, ts: ['createdAt', 'updatedAt', 'agreementSignedAt'], json: ['capHistory', 'works'] },
   pushSubscriptions:{ table: 'push_subscriptions', rename: OWNER, ts: ['createdAt'] },
   categories:     { table: 'categories',     rename: OWNER, ts: ['createdAt'] },
   // Project MANAGEMENT's own material categories (0060). Deliberately a
@@ -149,7 +149,7 @@ const SUBREG = {
   'constructionProjects/revolvingFundExpenses':      { table: 'revolving_fund_expenses',       parentField: 'project_id', ts: ['createdAt'] },
   'constructionProjects/revolvingFundReplenishments':{ table: 'revolving_fund_replenishments', parentField: 'project_id', ts: ['createdAt'] },
   'constructionProjects/revolvingFundRequests':      { table: 'revolving_fund_requests',        parentField: 'project_id', ts: ['receivedAt', 'createdAt', 'updatedAt'] },
-  'constructionProjects/laborContracts':             { table: 'pm_labor_contracts',             parentField: 'project_id', ts: ['createdAt', 'updatedAt', 'agreementSignedAt'], json: ['capHistory'] },
+  'constructionProjects/laborContracts':             { table: 'pm_labor_contracts',             parentField: 'project_id', ts: ['createdAt', 'updatedAt', 'agreementSignedAt'], json: ['capHistory', 'works'] },
   'constructionProjects/dailyLogs':            { table: 'daily_logs',            parentField: 'project_id', ts: ['createdAt', 'updatedAt'], jsonbData: true },
   'constructionProjects/milestones':           { table: 'milestones',            parentField: 'project_id', ts: ['createdAt', 'updatedAt'], jsonbData: true },
   'constructionProjects/accomplishmentReports':{ table: 'accomplishment_reports',parentField: 'project_id', ts: ['createdAt', 'updatedAt'], jsonbData: true },

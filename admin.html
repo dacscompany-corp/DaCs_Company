@@ -4574,6 +4574,36 @@
   text-transform:uppercase;padding:2px 7px;border-radius:20px;background:#efeaf8;color:#5b3f96;
   vertical-align:1px;margin-right:2px;}
 #laborContractModal.lc-modal-outsource .exp-modal-header h2{color:#5b3f96;}
+/* Lumpsum works editor (migration 0062). Shared by BOTH contract modals —
+   Project Control's #laborContractModal and Project Management's
+   #pmLaborContractModal — so the same idea looks the same in both systems.
+   The row number is decoration drawn from position (--n, set by the renumber
+   helpers), never stored: removing the 2nd of 5 works can't leave a gap. */
+.lc-shape-group{display:flex;gap:10px;flex-wrap:wrap;}
+.lc-shape{flex:1;min-width:210px;display:flex;align-items:flex-start;gap:9px;
+  border:1.5px solid #e5e7eb;border-radius:10px;padding:11px 13px;cursor:pointer;
+  background:#fff;transition:border-color .15s,background .15s;}
+.lc-shape:hover{border-color:#c7cbd1;}
+.lc-shape input{margin:2px 0 0;flex:none;accent-color:#1a5c3a;}
+.lc-shape:has(input:checked){border-color:#1a5c3a;background:#f3f9f5;}
+.lc-shape-t{font-size:13px;font-weight:700;color:#111827;display:block;}
+.lc-shape-h{font-size:11.5px;color:#6b7280;display:block;margin-top:2px;line-height:1.45;}
+.lc-works-box{border:1.5px solid #e5e7eb;border-radius:10px;padding:14px 16px;background:#fafafa;}
+.lc-work-row{display:flex;align-items:center;gap:9px;margin-bottom:8px;}
+.lc-work-row::before{content:var(--n,"1");flex:none;width:22px;height:22px;border-radius:6px;
+  background:#eceff1;color:#6b7280;font-size:11px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;}
+.lc-work-input{flex:1;min-width:0;padding:8px 11px;border:1.5px solid #e5e7eb;border-radius:8px;
+  font-size:13px;font-family:inherit;background:#fff;color:#111827;}
+.lc-work-input:focus{outline:none;border-color:#1a5c3a;box-shadow:0 0 0 3px rgba(26,92,58,.12);}
+.lc-work-del{flex:none;width:26px;height:26px;border:none;border-radius:7px;background:#fff;
+  color:#9ca3af;font-size:17px;line-height:1;cursor:pointer;font-family:inherit;}
+.lc-work-del:hover{background:#fef2f2;color:#dc2626;}
+.lc-work-add{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1.5px dashed #cbd5e1;
+  border-radius:8px;background:#fff;color:#374151;font-size:12.5px;font-weight:700;
+  cursor:pointer;font-family:inherit;}
+.lc-work-add:hover{border-color:#1a5c3a;color:#1a5c3a;}
+.lc-works-count{font-size:11.5px;color:#9ca3af;margin-left:10px;}
 </style>
 <div id="laborContractModal" class="exp-modal">
     <div class="exp-modal-box">
@@ -4582,9 +4612,27 @@
             <input type="hidden" id="lcId">
             <!-- 'labor' | 'outsource' (migration 0057) — set by lcApplyCategoryMode() -->
             <input type="hidden" id="lcCategory" value="labor">
+            <!-- Contract shape (migration 0062). A LUMPSUM is one capped agreement
+                 covering several works, paid by a single payment stream — not a
+                 third category, just a different shape of the same contract. -->
+            <div class="exp-form-group">
+                <label>Contract Type</label>
+                <div class="lc-shape-group">
+                    <label class="lc-shape"><input type="radio" name="lcShape" value="single" checked onchange="lcApplyShapeMode()"><span><span class="lc-shape-t">Single job</span><span class="lc-shape-h">One work, one cap — payments tag this job.</span></span></label>
+                    <label class="lc-shape"><input type="radio" name="lcShape" value="lumpsum" onchange="lcApplyShapeMode()"><span><span class="lc-shape-t">Lumpsum</span><span class="lc-shape-h">Many works, ONE cap — pay it once, no splitting.</span></span></label>
+                </div>
+            </div>
             <div class="exp-form-row">
                 <div class="exp-form-group"><label id="lcWorkerLabel">Worker Name</label><input type="text" id="lcWorker" list="lcWorkerNames" required placeholder="Full name" autocomplete="off" oninput="if(window.lcAgrSyncWorkerName)lcAgrSyncWorkerName()"><datalist id="lcWorkerNames"></datalist><datalist id="lcVendorNames"></datalist></div>
-                <div class="exp-form-group"><label>Scope / Job</label><input type="text" id="lcScope" placeholder="e.g. Tiling &amp; masonry"></div>
+                <div class="exp-form-group"><label id="lcScopeLabel">Scope / Job</label><input type="text" id="lcScope" placeholder="e.g. Tiling &amp; masonry"></div>
+            </div>
+            <!-- Works covered — shown in Lumpsum mode only (lcApplyShapeMode).
+                 NAMES ONLY, never amounts: the contract has ONE cap below. -->
+            <div class="exp-form-group lc-works-box" id="lcWorksBox" style="display:none;">
+                <label style="margin:0 0 4px;display:block;">Works Covered <span style="color:#9ca3af;font-weight:400;">(one line per work — these print on the agreement)</span></label>
+                <div id="lcWorksList"></div>
+                <button type="button" class="lc-work-add" onclick="lcWorksRow('')">＋ Add work</button>
+                <span class="lc-works-count" id="lcWorksCount">No works added yet.</span>
             </div>
             <div class="exp-form-group" id="lcTradeRow"><label>Position / Trade <span style="color:#9ca3af;font-weight:400;">(prints on the policy manual)</span></label><input type="text" id="lcTrade" list="lcTradeNames" placeholder="e.g. Mason, Carpenter, Foreman" autocomplete="off"><datalist id="lcTradeNames"></datalist></div>
             <div class="exp-form-group">
@@ -4594,7 +4642,7 @@
                     <label class="lt-radio lt-radio-card"><input type="radio" name="lcPayType" value="inhouse"><span class="lt-tag lt-tag-indirect">In-house</span><span class="lt-radio-hint">Regular worker with a capped agreed amount</span></label>
                 </div>
             </div>
-            <div class="exp-form-group"><label>Agreed Amount / Cap (₱)</label><input type="text" inputmode="decimal" id="lcAmount" required placeholder="0.00" oninput="fmtBudgetInput(this)"></div>
+            <div class="exp-form-group"><label>Agreed Amount / Cap (₱)</label><input type="text" inputmode="decimal" id="lcAmount" required placeholder="0.00" oninput="fmtBudgetInput(this)"><div id="lcAmountHint" style="font-size:11.5px;color:#6b7280;margin-top:5px;"></div></div>
             <div class="exp-form-group"><label>Notes (optional)</label><textarea id="lcNotes" rows="2" placeholder="Additional details…"></textarea></div>
 
             <!-- ── Worker Agreement — upload the signed PDF ── -->
@@ -5309,6 +5357,14 @@
           <div class="pm-lc-stepnum">1</div>
           <div class="pm-lc-stepbody">
             <div class="pm-lc-stepq">Who’s doing the work?</div>
+            <!-- Contract shape (migration 0062). A LUMPSUM is one capped
+                 agreement covering several works, paid by a single entry stream —
+                 not a third category, just a different shape of the same
+                 contract. Mirrors #laborContractModal in Project Control. -->
+            <div class="lc-shape-group" style="margin-bottom:14px;">
+              <label class="lc-shape"><input type="radio" name="pmLcShape" value="single" checked onchange="pmLcApplyShape()"><span><span class="lc-shape-t">Single job</span><span class="lc-shape-h">One work, one cap — entries tag this job.</span></span></label>
+              <label class="lc-shape"><input type="radio" name="pmLcShape" value="lumpsum" onchange="pmLcApplyShape()"><span><span class="lc-shape-t">Lumpsum</span><span class="lc-shape-h">Many works, ONE cap — pay it once, no splitting.</span></span></label>
+            </div>
             <div class="pm-lc-step2col">
               <div class="pm-form-group">
                 <label class="pm-field-label">Worker name <span class="pm-req">*</span></label>
@@ -5316,9 +5372,17 @@
                 <datalist id="pmLcWorkerNames"></datalist>
               </div>
               <div class="pm-form-group">
-                <label class="pm-field-label">The job</label>
+                <label class="pm-field-label" id="pmLcScopeLabel">The job</label>
                 <input type="text" id="pmLcScope" class="pm-input" placeholder="e.g. Tiling">
               </div>
+            </div>
+            <!-- Works covered — Lumpsum mode only (pmLcApplyShape).
+                 NAMES ONLY, never amounts: the contract has ONE cap in step 3. -->
+            <div class="lc-works-box" id="pmLcWorksBox" style="display:none;margin-top:14px;">
+              <label class="pm-field-label" style="margin:0 0 6px;display:block;">Works covered <span style="color:#9ca3af;font-weight:400;">(one line per work — these print on the agreement)</span></label>
+              <div id="pmLcWorksList"></div>
+              <button type="button" class="lc-work-add" onclick="pmLcWorksAdd()">＋ Add work</button>
+              <span class="lc-works-count" id="pmLcWorksCount">No works added yet.</span>
             </div>
           </div>
         </div>
@@ -5344,6 +5408,7 @@
             <div class="pm-lc-stepq">What’s the agreed total?</div>
             <div class="pm-lc-amtbox"><span class="pm-lc-peso">₱</span>
               <input type="text" inputmode="decimal" id="pmLcAmount" class="pm-lc-amtinput num" placeholder="0"></div>
+            <div id="pmLcAmountHint" style="font-size:11.5px;color:#6b7280;margin-top:6px;"></div>
             <div class="pm-lc-reassure">
               <span class="pm-lc-reassure-i">✓</span>
               <span>As you log labor for this worker, the panel counts down from the agreed total and warns you if you go over.</span>

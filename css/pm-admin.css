@@ -2109,6 +2109,21 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
 .pm-lc-led-pbar > div { height: 100%; border-radius: 5px; }
 .pm-lc-led-sub { font: 500 12px 'IBM Plex Sans'; color: #0f6342; margin-top: 7px; }
 .pm-lc-led-banner-over .pm-lc-led-sub { color: #b4453a; }
+/* Lumpsum contracts (migration 0062): ONE capped agreement covering several
+   works, listed above the payment timeline. NO amount per line, deliberately —
+   a lumpsum has one agreed total and one payment stream, so a peso figure per
+   work would invent a balance nobody agreed to. Mirrors .lc2-works in
+   expenses-mvp.css so both modules read the same. */
+.pm-lc-works { margin: 18px 24px 0; padding: 12px 14px; background: #faf9f6;
+  border: 1px solid #ecebe6; border-radius: 10px; }
+.pm-lc-works-lbl { font: 700 10.5px 'IBM Plex Sans'; letter-spacing: .05em;
+  text-transform: uppercase; color: #9b9a94; margin-bottom: 9px; }
+.pm-lc-works-list { display: flex; flex-direction: column; gap: 6px; }
+.pm-lc-work { display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: #3a3a36; }
+.pm-lc-work-n { flex: none; width: 19px; height: 19px; border-radius: 5px; background: #ecebe6;
+  color: #8a8983; font-size: 10.5px; font-weight: 700; display: flex; align-items: center;
+  justify-content: center; font-variant-numeric: tabular-nums; }
+
 .pm-lc-led-list { padding: 18px 24px 6px; }
 .pm-lc-led-cnt { font: 700 10.5px 'IBM Plex Sans'; letter-spacing: .05em; text-transform: uppercase; color: #9b9a94; margin-bottom: 14px; }
 .pm-lc-timeline { position: relative; padding-left: 26px; }
@@ -2285,6 +2300,22 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
   transition: background .15s, border-color .15s;
 }
 .pm-lcx-agr:hover { background: var(--lcx-soft, #eaf4ef); border-color: var(--lcx-accent, #157a52); }
+/* Merge into one lumpsum (migration 0062). Quieter than Agreement — a one-time,
+   irreversible reshape, not something you reach for every visit — and it turns
+   the same blue as the Lumpsum pill it produces. Matches .lc2-merge in
+   expenses-mvp.css so both modules read the same. */
+.pm-lcx-merge {
+  flex: none;
+  display: inline-flex; align-items: center;
+  background: #fff; color: #8a8983;
+  border: 1.5px solid #e3e2dd;
+  border-radius: 9px;
+  padding: 7px 13px;
+  font-family: inherit; font-size: 12.5px; font-weight: 700;
+  cursor: pointer; white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.pm-lcx-merge:hover { background: #eef2fb; border-color: #3a5fa8; color: #3a5fa8; }
 
 .pm-lcx-chev { flex: none; color: #a1a1a6; transition: transform .2s; }
 .pm-lcx-acc.open .pm-lcx-chev { transform: rotate(180deg); }
@@ -2323,10 +2354,18 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
   display: flex; align-items: center; justify-content: center;
 }
 .pm-lcx-job-id { flex: 1; min-width: 0; }
+/* A row, so the Lumpsum pill sits beside the title instead of being eaten by
+   the title's own ellipsis — the long scope truncates, the pill never does. */
 .pm-lcx-job-name {
   font-size: 13.5px; font-weight: 700; color: #1c1c1a;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center; min-width: 0;
 }
+.pm-lcx-job-t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Marks a job card as standing for a LIST of works rather than one job
+   (migration 0062). Same pill as .lc2-lump in Project Control. */
+.pm-lcx-lump { flex: none; margin-left: 8px; padding: 2px 8px; border-radius: 20px;
+  background: #eef2fb; color: #3a5fa8; font-size: 9.5px; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase; vertical-align: 1px; }
 .pm-lcx-job-sub { font-size: 11.5px; color: #8a8983; margin-top: 3px; }
 .pm-lcx-job-rem-val { font-size: 15px; font-weight: 700; color: #1c1c1a; margin-top: 1px; }
 .pm-lcx-job-chev { flex: none; color: #c4c9d4; transform: rotate(-90deg); }
