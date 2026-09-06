@@ -566,7 +566,8 @@ function _dacsEnsurePdfJs() {
 // EVERY signature line of the manual.
 // Fill the pakyaw contract page when the template is a real fillable PDF —
 // named AcroForm fields (contract_ref_no, project, worker, pay_type,
-// scope_of_work_1..3, contract_amount, worker_name, date). Returns false when
+// scope_of_work_1..3, contract_amount, downpayment_amount/date/mode,
+// worker_name, date). Returns false when
 // the template has no such form, so the caller can fall back to text stamping.
 // The values are FLATTENED into the page: a printed contract must not stay
 // editable, and flattened text renders in every viewer and on paper.
@@ -589,6 +590,27 @@ function _dacsFillWorkerForm(pdf, d, font) {
     set('worker',          d.worker);
     set('pay_type',        d.payType);
     set('contract_amount', d.amount);
+    // Page 4 — "10% DOWNPAYMENT / UNANG BAYAD": halaga, petsa, paraan of the
+    // worker's FIRST recorded payment (lcFirstPayment / _pmFirstPayment). The
+    // heading's "10%" is fixed text in the uploaded PDF and the first payment
+    // is whatever was actually paid, so the two can disagree — the owner's
+    // call. Blank values are skipped by `set`, leaving the line to be filled in
+    // by hand, which is what happens when nothing has been paid yet.
+    //
+    // The exact field names differ between template revisions, so each value is
+    // tried under its canonical name AND by suffix — the same trick
+    // orientation_date uses below, so a template that calls the box
+    // `dp_amount` or `unang_bayad_halaga` still fills.
+    const setBySuffix = (re, value) => {
+        if (!value) return;
+        names.forEach(n => { if (re.test(n)) set(n, value); });
+    };
+    set('downpayment_amount', d.dpAmount);
+    set('downpayment_date',   d.dpDate);
+    set('downpayment_mode',   d.dpMode);
+    setBySuffix(/(?:down_?payment|unang_?bayad|dp)_?(?:amount|halaga)$/i, d.dpAmount);
+    setBySuffix(/(?:down_?payment|unang_?bayad|dp)_?(?:date|petsa)$/i,    d.dpDate);
+    setBySuffix(/(?:down_?payment|unang_?bayad|dp)_?(?:mode|paraan)$/i,   d.dpMode);
     // Page 13 acknowledgement block.
     set('ack_employee_name',   d.worker);
     set('ack_project_branch',  d.project);
@@ -607,15 +629,34 @@ function _dacsFillWorkerForm(pdf, d, font) {
     names.forEach(n => { if (/_printed_name$/.test(n)) set(n, d.printedName); });
     set('worker_name', d.printedName);
 
+    // ── The cover page (page 1) ──
+    // cover_project / cover_effective_date sat blank because nothing ever wrote
+    // them. The project is the same one the details page states; the effective
+    // date is the day the manual is handed over, i.e. the day it is printed.
+    set('cover_project',        d.project);
+    set('cover_effective_date', d.printDate);
+
+    // ── Every "PETSA" over a signature line ──
+    // Owner's call (2026-09-05): these print with TODAY's date rather than being
+    // dated by hand. That REVERSES the earlier rule — the manual has 12 of these
+    // (p03_date…p12_date, ack_date), all reading "PETSA" under a signature, and
+    // hand-dating twelve lines per worker was the thing being fixed.
+    //
+    // Know what this asserts: a printed date next to an unsigned line states
+    // when the document was signed. Print today, sign Thursday, and the paper
+    // says today. To go back to hand-dating any subset, narrow this one regex —
+    // every date field is matched here and nowhere else.
+    if (d.printDate) {
+        names.forEach(n => { if (/^(?:p\d{2}|ack)_date$/i.test(n)) set(n, d.printDate); });
+    }
+
     // Left blank ON PURPOSE:
-    //   the per-signature *_date fields (p03_date, ack_date…) — dated by hand at
-    //     signing, same rule as the signature itself (never pre-stamped).
-    //     ack_orientation_date is NOT one of these: orientation happens before
-    //     signing, so it is contract data and prints (see above).
     //   grace_period_minutes, official_tools — company policy blanks, not
     //     contract data; nothing in a labor contract supplies them.
     // ack_position_trade comes from labor_contracts.trade (migration 0039) —
     // it stays blank only when the contract itself has no trade recorded.
+    // ack_orientation_date is filled above from the contract's own orientation
+    // date, which is a different thing from the signature dates handled here.
 
     // Scope of work flows across the three lines the form provides.
     const scopeNames = ['scope_of_work_1', 'scope_of_work_2', 'scope_of_work_3'].filter(n => names.has(n));
@@ -1622,6 +1663,81 @@ window.dacsStatusPillClass = function (label) {
     if (s.indexOf('over') >= 0)      return 'ws-pill ws-pill-alert';
     if (s.indexOf('completed') >= 0) return 'ws-pill ws-pill-ok';
     return 'ws-pill';
+};
+
+// ── Contract position, shared by BOTH Statements of Account ────────────
+// Project Control's SOA (printWorkerLaborSOA, invoice-module.js) and Project
+// Management's (_pmContractSOA, pm-admin.js) are the same document for two
+// different ledgers. The contract band and its status pill live here so the two
+// can never drift into stating a worker's position differently.
+//
+// `daily` is a DAILY BASIS contract (migration 0063): UNCAPPED. There is no
+// ceiling to be remaining of and none to be a percentage of, so the band states
+// paid-to-date alone. It must never print an "Over cap" — the bug this replaced
+// showed "Lampas / Over cap ₱2,000.00" under "Napagkasunduan ₱0.00", which is a
+// contract document claiming a worker was overpaid against nothing.
+//
+//   st = { jobs, agreed, paid, daily }
+window.dacsContractStat = function (st) {
+    const jobs   = Number((st && st.jobs) || 0);
+    const daily  = !!(st && st.daily);
+    const agreed = daily ? 0 : Number((st && st.agreed) || 0);
+    const paid   = Number((st && st.paid) || 0);
+    const remaining = daily ? 0 : agreed - paid;
+    const pct = (!daily && agreed > 0) ? Math.min(100, Math.max(0, paid / agreed * 100)) : 0;
+    let label = '';
+    if (daily && jobs)              label = 'Daily basis';
+    else if (agreed > 0 && paid >= agreed) label = paid > agreed ? 'Over cap' : 'Completed';
+    else if (agreed > 0)            label = 'Ongoing · ' + Math.round(pct) + '%';
+    return { jobs, agreed, paid, remaining, pct, daily, label,
+             over: !daily && remaining < 0,
+             done: !daily && agreed > 0 && paid >= agreed && remaining >= 0 };
+};
+
+/** The Kontrata / Contract band. '' when there is nothing honest to state. */
+window.dacsContractBand = function (st) {
+    const s = window.dacsContractStat(st);
+    // A plain payroll worker has no contract at all: no agreed total, no balance,
+    // so the band is omitted rather than printed with zeros.
+    if (!s.jobs || (!s.daily && !(s.agreed > 0))) return '';
+    const fmt = n => '&#8369;&nbsp;' + Number(n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const jobsLbl = s.jobs + ' ' + (s.jobs === 1 ? 'trabaho / job' : 'trabaho / jobs');
+    if (s.daily) {
+        // No bar: a bar implies a target. Uncapped work has none, so the band
+        // reports the running total and says plainly that no total was agreed.
+        return `
+  <div class="ws-contract">
+    <div class="ws-contract-top">
+      <div class="ws-lbl">Kontrata / Contract</div>
+      <div class="ws-contract-jobs">${jobsLbl} · arawan / daily basis</div>
+    </div>
+    <div class="ws-contract-grid">
+      <div class="ws-contract-cell"><span class="k">Kabuuang kontrata / Contract</span><span class="v">Walang takda / No agreed total</span></div>
+      <div class="ws-contract-cell"><span class="k">Nabayaran na / Paid to date</span><span class="v">${fmt(s.paid)}</span></div>
+      <div class="ws-contract-cell due"><span class="k">Batayan / Basis</span><span class="v">Arawan / Daily</span></div>
+    </div>
+  </div>`;
+    }
+    // Colour state is keyed off the SAME numbers the pill uses, so the band and
+    // the pill above it can never show two colours for one status.
+    const bandState = s.over ? ' st-over' : (s.done ? ' st-done' : '');
+    const dueLabel  = s.over ? 'Lumampas / Over cap'
+                    : s.done ? 'Wala nang bayarin / Nothing left'
+                    : 'Natitira / Still to pay';
+    const bandNote  = s.over ? 'lumampas / over cap' : 'nabayaran / paid';
+    return `
+  <div class="ws-contract${bandState}">
+    <div class="ws-contract-top">
+      <div class="ws-lbl">Kontrata / Contract</div>
+      <div class="ws-contract-jobs">${jobsLbl} · ${Math.round(s.pct)}% ${bandNote}</div>
+    </div>
+    <div class="ws-contract-bar"><div class="ws-contract-fill" style="width:${s.pct.toFixed(1)}%;"></div></div>
+    <div class="ws-contract-grid">
+      <div class="ws-contract-cell"><span class="k">Kabuuang kontrata / Contract</span><span class="v">${fmt(s.agreed)}</span></div>
+      <div class="ws-contract-cell"><span class="k">Nabayaran na / Paid to date</span><span class="v">${fmt(s.paid)}</span></div>
+      <div class="ws-contract-cell due"><span class="k">${dueLabel}</span><span class="v">${fmt(Math.abs(s.remaining))}</span></div>
+    </div>
+  </div>`;
 };
 
 /** Three ruled signature blocks. items = [{label, name}] */

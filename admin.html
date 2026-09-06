@@ -4620,6 +4620,7 @@
                 <div class="lc-shape-group">
                     <label class="lc-shape"><input type="radio" name="lcShape" value="single" checked onchange="lcApplyShapeMode()"><span><span class="lc-shape-t">Single job</span><span class="lc-shape-h">One work, one cap — payments tag this job.</span></span></label>
                     <label class="lc-shape"><input type="radio" name="lcShape" value="lumpsum" onchange="lcApplyShapeMode()"><span><span class="lc-shape-t">Lumpsum</span><span class="lc-shape-h">Many works, ONE cap — pay it once, no splitting.</span></span></label>
+                    <label class="lc-shape"><input type="radio" name="lcShape" value="daily" onchange="lcApplyShapeMode()"><span><span class="lc-shape-t">Daily basis</span><span class="lc-shape-h">No agreed total — paid per day, tagged on its own.</span></span></label>
                 </div>
             </div>
             <div class="exp-form-row">
@@ -4642,13 +4643,25 @@
                     <label class="lt-radio lt-radio-card"><input type="radio" name="lcPayType" value="inhouse"><span class="lt-tag lt-tag-indirect">In-house</span><span class="lt-radio-hint">Regular worker with a capped agreed amount</span></label>
                 </div>
             </div>
-            <div class="exp-form-group"><label>Agreed Amount / Cap (₱)</label><input type="text" inputmode="decimal" id="lcAmount" required placeholder="0.00" oninput="fmtBudgetInput(this)"><div id="lcAmountHint" style="font-size:11.5px;color:#6b7280;margin-top:5px;"></div></div>
+            <!-- Hidden whole in Daily basis mode (migration 0063): an uncapped hire
+                 has no total. lcApplyShapeMode() also drops `required` — a hidden
+                 required input makes the browser refuse to submit the form and it
+                 cannot focus the field to say why. -->
+            <div class="exp-form-group" id="lcAmountRow"><label>Agreed Amount / Cap (₱)</label><input type="text" inputmode="decimal" id="lcAmount" required placeholder="0.00" oninput="fmtBudgetInput(this)"><div id="lcAmountHint" style="font-size:11.5px;color:#6b7280;margin-top:5px;"></div></div>
+            <div class="exp-form-group" id="lcDailyNote" style="display:none;">
+                <div style="border:1.5px solid #d8ebe1;background:#f4f9f6;border-radius:10px;padding:12px 14px;font-size:12.5px;line-height:1.6;color:#374151;">
+                    <b>No agreed total.</b> The worker card shows what this worker has been
+                    <b>paid so far</b> instead of counting down, and there is no over-cap warning.
+                    A daily job is tagged on its own — it cannot share a payment with capped jobs.
+                </div>
+            </div>
             <div class="exp-form-group"><label>Notes (optional)</label><textarea id="lcNotes" rows="2" placeholder="Additional details…"></textarea></div>
 
             <!-- ── Worker Agreement — upload the signed PDF ── -->
             <!-- Hidden in Out Source mode: a vendor subcontract is not an employment record. -->
             <div class="exp-form-group" id="lcAgreementRow" style="border:1.5px solid #e5e7eb;border-radius:10px;padding:14px 16px;background:#fafafa;">
-                <label style="margin:0 0 8px;display:block;">Worker Agreement <span style="color:#9ca3af;font-weight:400;">(upload the signed agreement PDF)</span></label>
+                <!-- Label is rewritten per category by lcApplyCategoryMode() -->
+                <label style="margin:0 0 8px;display:block;"><span id="lcAgreementLabel">Signed Worker Agreement (PDF)</span> <span style="color:#9ca3af;font-weight:400;">(upload the signed agreement PDF)</span></label>
                 <input type="file" id="lcAgrPdfInput" accept="application/pdf,.pdf" onchange="lcAgrPdfPick(this)" style="display:none;">
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                     <button type="button" onclick="document.getElementById('lcAgrPdfInput').click()"
@@ -5364,6 +5377,7 @@
             <div class="lc-shape-group" style="margin-bottom:14px;">
               <label class="lc-shape"><input type="radio" name="pmLcShape" value="single" checked onchange="pmLcApplyShape()"><span><span class="lc-shape-t">Single job</span><span class="lc-shape-h">One work, one cap — entries tag this job.</span></span></label>
               <label class="lc-shape"><input type="radio" name="pmLcShape" value="lumpsum" onchange="pmLcApplyShape()"><span><span class="lc-shape-t">Lumpsum</span><span class="lc-shape-h">Many works, ONE cap — pay it once, no splitting.</span></span></label>
+              <label class="lc-shape"><input type="radio" name="pmLcShape" value="daily" onchange="pmLcApplyShape()"><span><span class="lc-shape-t">Daily basis</span><span class="lc-shape-h">No agreed total — paid per day, tagged on its own.</span></span></label>
             </div>
             <div class="pm-lc-step2col">
               <div class="pm-form-group">
@@ -5401,17 +5415,25 @@
           </div>
         </div>
 
-        <!-- Step 3 — agreed total -->
+        <!-- Step 3 — agreed total. HIDDEN whole in Daily basis mode
+             (migration 0063): an uncapped hire has no total, and a greyed-out
+             box still reads as a number somebody forgot to fill in. -->
         <div class="pm-lc-step">
           <div class="pm-lc-stepnum">3</div>
           <div class="pm-lc-stepbody">
-            <div class="pm-lc-stepq">What’s the agreed total?</div>
-            <div class="pm-lc-amtbox"><span class="pm-lc-peso">₱</span>
-              <input type="text" inputmode="decimal" id="pmLcAmount" class="pm-lc-amtinput num" placeholder="0"></div>
-            <div id="pmLcAmountHint" style="font-size:11.5px;color:#6b7280;margin-top:6px;"></div>
-            <div class="pm-lc-reassure">
+            <div id="pmLcAmountStep">
+              <div class="pm-lc-stepq">What’s the agreed total?</div>
+              <div class="pm-lc-amtbox"><span class="pm-lc-peso">₱</span>
+                <input type="text" inputmode="decimal" id="pmLcAmount" class="pm-lc-amtinput num" placeholder="0"></div>
+              <div id="pmLcAmountHint" style="font-size:11.5px;color:#6b7280;margin-top:6px;"></div>
+              <div class="pm-lc-reassure">
+                <span class="pm-lc-reassure-i">✓</span>
+                <span>As you log labor for this worker, the panel counts down from the agreed total and warns you if you go over.</span>
+              </div>
+            </div>
+            <div id="pmLcDailyNote" class="pm-lc-reassure" style="display:none;">
               <span class="pm-lc-reassure-i">✓</span>
-              <span>As you log labor for this worker, the panel counts down from the agreed total and warns you if you go over.</span>
+              <span>No agreed total. The card shows what this worker has been <b>paid so far</b> instead of counting down, and there is no over-cap warning. A daily job is tagged on its own — it cannot share a payment with capped jobs.</span>
             </div>
             <div class="pm-form-group" style="margin-top:14px;">
               <label class="pm-field-label">Notes (optional)</label>
@@ -5494,7 +5516,7 @@
             <div class="pm-lc-step2col">
               <div class="pm-form-group">
                 <label class="pm-field-label">Vendor / crew <span class="pm-req">*</span></label>
-                <input type="text" id="pmOcWorker" class="pm-input" list="pmOcWorkerNames" placeholder="e.g. Aluminum Supplier Co." autocomplete="off">
+                <input type="text" id="pmOcWorker" class="pm-input" list="pmOcWorkerNames" placeholder="e.g. Aluminum Supplier Co." autocomplete="off" oninput="pmOcAgrSyncVendorName()">
                 <datalist id="pmOcWorkerNames"></datalist>
               </div>
               <div class="pm-form-group">
@@ -5533,6 +5555,36 @@
             <div class="pm-form-group" style="margin-top:14px;">
               <label class="pm-field-label">Notes (optional)</label>
               <textarea id="pmOcNotes" class="pm-input" rows="2" placeholder="Additional details…"></textarea>
+            </div>
+
+            <!-- ── Out Source Agreement — upload the signed PDF ──
+                 The vendor twin of the labor modal's block above. A vendor signs
+                 the Out Source agreement, NOT the employee manual, and the signed
+                 copy is stored under outsourceAgreements/ rather than
+                 workerAgreements/ so a subcontract is never filed as an employee
+                 record. Same DB columns (labor_contracts.agreement_*). -->
+            <div class="pm-form-group" style="margin-top:14px;border:1.5px solid #e5e7eb;border-radius:10px;padding:14px 16px;background:#fafafa;">
+              <label class="pm-field-label" style="margin:0 0 8px;display:block;">Out Source Agreement <span style="color:#9ca3af;font-weight:400;">(upload the signed agreement PDF)</span></label>
+              <input type="file" id="pmOcAgrPdfInput" accept="application/pdf,.pdf" onchange="pmOcAgrPdfPick(this)" style="display:none;">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <button type="button" onclick="document.getElementById('pmOcAgrPdfInput').click()"
+                  style="display:inline-flex;align-items:center;gap:7px;padding:9px 16px;border:1.5px solid #d1d5db;border-radius:8px;background:#fff;color:#374151;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">
+                  <i data-lucide="upload" style="width:15px;height:15px;"></i> Upload PDF
+                </button>
+                <a id="pmOcAgrPdfLink" href="#" target="_blank" rel="noopener" style="display:none;font-size:12.5px;font-weight:700;color:#7c3aed;text-decoration:none;">View current PDF</a>
+                <span id="pmOcAgrPdfName" style="font-size:12.5px;color:#6b7280;">No PDF attached.</span>
+                <button type="button" id="pmOcAgrPdfRemoveBtn" onclick="pmOcAgrPdfRemove()" style="display:none;font-size:12px;font-weight:600;color:#dc2626;background:none;border:none;cursor:pointer;font-family:inherit;">Remove</button>
+              </div>
+              <div style="display:flex;gap:32px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px dashed #e5e7eb;">
+                <div style="min-width:150px;">
+                  <div id="pmOcAgrWorkerName" style="font-size:13px;font-weight:700;color:#111827;">—</div>
+                  <div style="font-size:10.5px;color:#9ca3af;letter-spacing:.04em;text-transform:uppercase;margin-top:2px;">Vendor (printed name)</div>
+                </div>
+                <div style="min-width:150px;">
+                  <div style="font-size:13px;font-weight:700;color:#111827;">DAC's Building &amp; Design Services</div>
+                  <div style="font-size:10.5px;color:#9ca3af;letter-spacing:.04em;text-transform:uppercase;margin-top:2px;">Company</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>

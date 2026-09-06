@@ -1961,14 +1961,20 @@ function _lcFirstName(n) {
   // against the same contract id through a linked Project Management project's
   // Daily Expenses (weeklyBills) — otherwise a contract paid off in PM still
   // reads as unpaid here, since the two systems keep separate payment ledgers.
+  const _isDailyC = (c) => (typeof window.lcIsDaily === "function" ? window.lcIsDaily(c) : !!c && c.payBasis === "daily");
   const _lcRows = (_segContracts || []).map((c) => {
-    const agreed = Number(c.agreedAmount) || 0;
+    // DAILY (migration 0063) is UNCAPPED: there is no ceiling to be remaining of
+    // and none to be a percentage of. Both stay 0 as inert placeholders and
+    // `daily` tells every reader below to ignore them — reporting 0 remaining
+    // would be a claim ("nothing left to pay"), not an absence.
+    const daily = _isDailyC(c);
+    const agreed = daily ? 0 : (Number(c.agreedAmount) || 0);
     const folderPaid = (folderPayroll || []).filter((p) => p.contractId === c.id).reduce((s, p) => s + (Number(p.amount) || 0), 0);
     const pmPaid = (pmPaidByContractId && pmPaidByContractId[c.id]) || 0;
     const paid = folderPaid + pmPaid;
-    const remaining = agreed - paid;
-    const pct = agreed > 0 ? Math.min(100, Math.max(0, paid / agreed * 100)) : 0;
-    return { c, agreed, paid, remaining, pct };
+    const remaining = daily ? 0 : agreed - paid;
+    const pct = (!daily && agreed > 0) ? Math.min(100, Math.max(0, paid / agreed * 100)) : 0;
+    return { c, agreed, paid, remaining, pct, daily };
   });
   const _lcByWorker = {};
   _lcRows.forEach((r) => {
@@ -1976,9 +1982,15 @@ function _lcFirstName(n) {
     (_lcByWorker[w] = _lcByWorker[w] || []).push(r);
   });
   const _lcWorkers = Object.keys(_lcByWorker);
-  const _lcTotAgreed = _lcRows.reduce((s, r) => s + r.agreed, 0);
-  const _lcTotPaid = _lcRows.reduce((s, r) => s + r.paid, 0);
-  const _lcTotRem = _lcTotAgreed - _lcTotPaid;
+  // Daily rows contribute a real `paid` but no cap, so folding them into one
+  // total would subtract their payments from a ceiling they were never drawn
+  // against — the header would read "Over by" against an untouched cap. The
+  // balance is the CAPPED balance; daily spend is reported beside it.
+  const _lcTotAgreed = _lcRows.reduce((s, r) => s + (r.daily ? 0 : r.agreed), 0);
+  const _lcTotPaidCap = _lcRows.reduce((s, r) => s + (r.daily ? 0 : r.paid), 0);
+  const _lcTotPaidDay = _lcRows.reduce((s, r) => s + (r.daily ? r.paid : 0), 0);
+  const _lcTotPaid = _lcTotPaidCap + _lcTotPaidDay;
+  const _lcTotRem = _lcTotAgreed - _lcTotPaidCap;
 
   // ---- payments grouped by worker (respects category tab + search) ----
   // A payment LINKED to a contract groups under that CONTRACT's worker name, so a
@@ -2043,7 +2055,7 @@ function _lcFirstName(n) {
   // column falls back to "\u2014". `paidTotal` is the job's true paid figure
   // (folder + linked PM payments), which is why it is passed in rather than
   // summed off the visible \u2014 tab- and search-filtered \u2014 rows.
-  const payRows = (list, agreed, paidTotal) => {
+  const payRows = (list, agreed, paidTotal, daily) => {
     const sorted = [...list].sort((a, b) => new Date(b.dateTime || b.date || 0) - new Date(a.dateTime || a.date || 0));
     return rc("table", { className: "lc2-tx" },
       rc("thead", null, rc("tr", null,
@@ -2062,8 +2074,14 @@ function _lcFirstName(n) {
           rc("button", { className: "lc2-rowbtn", title: "Delete", onClick: () => window.deletePayroll && window.deletePayroll(p.id) }, Ico.trash || "\u{1F5D1}")
         )
       ))),
-      agreed > 0 ? rc("tfoot", null, rc("tr", null,
-        rc("td", null, _staff() ? "Paid so far \u00B7 of the agreed job" : "Paid so far \u00B7 of \u20B1 " + peso(agreed) + " agreed"),
+      // DAILY (migration 0063) has no cap, so the footer states the running
+      // total on its own \u2014 omitting it (the old `agreed > 0` gate) would drop
+      // the ONE figure that matters on an uncapped hire. Staff still see no
+      // peso: without a cap there is no percentage either, so they get "\u2014".
+      (daily || agreed > 0) ? rc("tfoot", null, rc("tr", null,
+        rc("td", null, daily
+          ? "Paid so far \u00B7 no agreed total"
+          : (_staff() ? "Paid so far \u00B7 of the agreed job" : "Paid so far \u00B7 of \u20B1 " + peso(agreed) + " agreed")),
         rc("td", null, ""),
         rc("td", { className: "r amt" }, _staff() ? _pctTxt(paidTotal, agreed) : "\u20B1 " + peso(paidTotal)),
         rc("td", null, "")
@@ -2110,8 +2128,10 @@ function _lcFirstName(n) {
       const sub = isOpen
         ? wLead + nPay + (latest ? " · latest " + _lcDayLabel(latest) : "")
         : wLead + nPay + " · " + (_staff()
-            ? _pctTxt(r.paid, r.agreed) + " paid"
-            : "₱ " + peso(r.paid) + " paid of ₱ " + peso(r.agreed));
+            ? (r.daily ? "daily basis" : _pctTxt(r.paid, r.agreed) + " paid")
+            : (r.daily
+                ? "₱ " + peso(r.paid) + " paid · no agreed total"
+                : "₱ " + peso(r.paid) + " paid of ₱ " + peso(r.agreed)));
       blocks.push(rc("div", { key: r.c.id, className: "lc2-job" + (isOpen ? " open" : "") },
         rc("div", {
           className: "lc2-job-head",
@@ -2124,15 +2144,16 @@ function _lcFirstName(n) {
           rc("span", { className: "lc2-num" }, String(i + 1)),
           rc("div", { className: "lc2-job-id" },
             rc("div", { className: "lc2-job-name" }, r.c.scope || "Untitled job",
-              works.length ? rc("span", { className: "lc2-lump", title: "One capped agreement covering " + works.length + " works — paid as a single stream" }, "Lumpsum") : null
+              works.length ? rc("span", { className: "lc2-lump", title: "One capped agreement covering " + works.length + " works — paid as a single stream" }, "Lumpsum") : null,
+              r.daily ? rc("span", { className: "lc2-lump lc2-daily", title: "No agreed total — paid per day, tagged on its own" }, "Daily") : null
             ),
             rc("div", { className: "lc2-job-sub" }, sub)
           ),
           // Peso balance — dropped outright for staff, the same way the worker
           // header's Remaining column is. The badge still carries the percent.
           _staff() ? null : rc("div", { className: "lc2-job-rem" },
-            rc("div", { className: "lc2-job-rem-lbl" }, r.remaining < 0 ? "Over by" : "Still to pay"),
-            rc("div", { className: "lc2-job-rem-val" + (r.remaining < 0 ? " neg" : "") }, "₱ " + peso(Math.abs(r.remaining)))
+            rc("div", { className: "lc2-job-rem-lbl" }, r.daily ? "Paid so far" : (r.remaining < 0 ? "Over by" : "Still to pay")),
+            rc("div", { className: "lc2-job-rem-val" + (!r.daily && r.remaining < 0 ? " neg" : "") }, "₱ " + peso(r.daily ? r.paid : Math.abs(r.remaining)))
           ),
           rc("span", { className: "lc2-badge " + st.cls }, st.label),
           rc("svg", { className: "lc2-job-chev", width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }))
@@ -2146,7 +2167,7 @@ function _lcFirstName(n) {
             rc("div", { className: "lc2-works-list" }, works.map((wk, wi) => rc("div", { key: wi, className: "lc2-work" },
               rc("span", { className: "lc2-work-n" }, String(wi + 1)), wk)))
           ) : null,
-          cpays.length ? payRows(cpays, r.agreed, r.paid) : rc("div", { className: "lc2-none" }, "No payments recorded against this contract yet."),
+          cpays.length ? payRows(cpays, r.agreed, r.paid, r.daily) : rc("div", { className: "lc2-none" }, "No payments recorded against this contract yet."),
           _lcJobActions(w, r)
         ) : null
       ));
@@ -2174,29 +2195,44 @@ function _lcFirstName(n) {
     const crows = _lcByWorker[w] || [];
     const pays = _payByWorker[w] || [];
     const hasContract = crows.length > 0;
-    const agreed = crows.reduce((s, r) => s + r.agreed, 0);
-    const paid = crows.reduce((s, r) => s + r.paid, 0);
-    const remaining = agreed - paid;
-    const pct = agreed > 0 ? Math.min(100, Math.max(0, paid / agreed * 100)) : 0;
+    // CAPPED and DAILY jobs are summed APART (migration 0063). A daily job
+    // contributes a real `paid` but no cap, so one combined total would
+    // subtract its payments from a ceiling they were never drawn against — a
+    // worker on one 50,000 pakyaw job plus a daily hire paid 20,000 would read
+    // "Over cap by 20,000" against a cap they had not touched. The balance is
+    // the CAPPED jobs' balance; daily spend is stated beside it, never inside it.
+    const cappedRows = crows.filter((r) => !r.daily);
+    const dailyRows = crows.filter((r) => r.daily);
+    const allDaily = hasContract && cappedRows.length === 0;
+    const agreed = cappedRows.reduce((s, r) => s + r.agreed, 0);
+    const paidCap = cappedRows.reduce((s, r) => s + r.paid, 0);
+    const paidDay = dailyRows.reduce((s, r) => s + r.paid, 0);
+    const paid = paidCap + paidDay;                 // what the worker got, all in
+    const remaining = agreed - paidCap;
+    const pct = agreed > 0 ? Math.min(100, Math.max(0, paidCap / agreed * 100)) : 0;
     const totalPaidAll = pays.reduce((s, p) => s + (Number(p.amount) || 0), 0);
     let status = "Ongoing", scls = "lc2-badge-ongoing", barcls = "lc2-bar-ok";
     if (!hasContract) { status = "No contract"; scls = "lc2-badge-none"; }
-    else if (paid >= agreed) {
-      if (paid > agreed) { status = "Over cap"; scls = "lc2-badge-over"; barcls = "lc2-bar-over"; }
+    else if (allDaily) { status = "Daily basis"; scls = "lc2-badge-ongoing"; }
+    else if (paidCap >= agreed) {
+      if (paidCap > agreed) { status = "Over cap"; scls = "lc2-badge-over"; barcls = "lc2-bar-over"; }
       else { status = "Completed"; scls = "lc2-badge-done"; barcls = "lc2-bar-done"; }
     }
     const open = !!openW[w];
     const role = (crows[0] && crows[0].c.role) || (pays[0] && pays[0].role) || "";
     const payType = crows[0] && crows[0].c.payType;
     const initial = (w || "?").trim().charAt(0).toUpperCase() || "?";
-    const isDone = hasContract && paid >= agreed && paid <= agreed;
+    // A daily hire is never "Completed" by arithmetic — only by the owner
+    // closing it — so an all-daily card never collapses to the done state.
+    const isDone = hasContract && !allDaily && paidCap >= agreed && paidCap <= agreed;
     // Which jobs ONE agreement covers, asked of the module that builds the sheet
     // (lcWorkerContracts) rather than guessed from this card — nameless
-    // contracts share a "—" card but never share an agreement. Out Source is a
-    // vendor subcontract and has no worker agreement at all. Staff never see it:
-    // the sheet states the agreed amount in pesos, and staff see no peso figure
-    // anywhere on this screen.
-    const agrJobs = (hasContract && !_staff() && lcSeg !== "outsource" && window.lcWorkerContracts)
+    // contracts share a "—" card but never share an agreement. BOTH kinds get a
+    // sheet (owner's call, 2026-09-05): a vendor's is the Out Source agreement,
+    // a worker's is the employee manual, and lcWorkerContracts already keeps the
+    // two on separate sheets. Staff never see it: the sheet states the agreed
+    // amount in pesos, and staff see no peso figure anywhere on this screen.
+    const agrJobs = (hasContract && !_staff() && window.lcWorkerContracts)
       ? window.lcWorkerContracts(crows[0].c) : [];
     // Match Project Management's Contracts card: once a contract is fully paid,
     // show just the word "Completed" \u2014 no bar, no "paid of agreed" caption, no
@@ -2216,8 +2252,14 @@ function _lcFirstName(n) {
             : isDone
             ? null
             : rc(React.Fragment, null,
-                rc("div", { className: "lc2-bar" }, rc("div", { className: "lc2-bar-fill " + barcls, style: { width: pct.toFixed(1) + "%" } })),
-                rc("div", { className: "lc2-mid-cap" }, (_staff() ? pct.toFixed(0) + "% paid" : "\u20B1 " + peso(paid) + " paid of \u20B1 " + peso(agreed)) + (crows.length === 1 && crows[0].c.scope ? " \u00B7 " + crows[0].c.scope : " \u00B7 " + crows.length + (crows.length === 1 ? " job" : " jobs")))
+                rc("div", { className: "lc2-bar" }, rc("div", { className: "lc2-bar-fill " + barcls, style: { width: (allDaily ? 0 : pct).toFixed(1) + "%" } })),
+                rc("div", { className: "lc2-mid-cap" },
+                  (allDaily
+                    ? (_staff() ? "daily basis" : "\u20B1 " + peso(paid) + " paid \u00B7 no agreed total")
+                    : (_staff() ? pct.toFixed(0) + "% paid"
+                        : "\u20B1 " + peso(paidCap) + " paid of \u20B1 " + peso(agreed)
+                          + (paidDay > 0 ? " \u00B7 +\u20B1 " + peso(paidDay) + " daily" : "")))
+                  + (crows.length === 1 && crows[0].c.scope ? " \u00B7 " + crows[0].c.scope : " \u00B7 " + crows.length + (crows.length === 1 ? " job" : " jobs")))
               )
         ),
         // The Remaining column is a peso figure with no useful percentage form
@@ -2226,19 +2268,22 @@ function _lcFirstName(n) {
         (isDone || _staff())
           ? null
           : rc("div", { className: "lc2-rem" },
-              rc("div", { className: "lc2-rem-lbl" }, hasContract ? (remaining < 0 ? "Over by" : "Still to pay") : "Total paid"),
-              rc("div", { className: "lc2-rem-val" + (remaining < 0 ? " neg" : (hasContract ? "" : " muted")) }, remaining < 0 ? "\u2212 \u20B1 " + peso(Math.abs(remaining)) : "\u20B1 " + peso(hasContract ? remaining : totalPaidAll))
+              rc("div", { className: "lc2-rem-lbl" }, allDaily ? "Paid so far" : (hasContract ? (remaining < 0 ? "Over by" : "Still to pay") : "Total paid")),
+              rc("div", { className: "lc2-rem-val" + (!allDaily && remaining < 0 ? " neg" : ((hasContract && !allDaily) ? "" : " muted")) },
+                allDaily ? "\u20B1 " + peso(paid)
+                  : (remaining < 0 ? "\u2212 \u20B1 " + peso(Math.abs(remaining)) : "\u20B1 " + peso(hasContract ? remaining : totalPaidAll)))
             ),
-        rc("span", { className: "lc2-badge " + scls }, (status === "Ongoing" ? pct.toFixed(0) + "% \u00B7 " : "") + status),
+        rc("span", { className: "lc2-badge " + scls }, (status === "Ongoing" && !allDaily ? pct.toFixed(0) + "% \u00B7 " : "") + status),
         // ONE work agreement per worker (lcViewAgreement in expenses-module.js):
         // the sheet lists every job in this card and its agreed amount is their
         // total, so the button belongs on the worker header rather than on each
-        // job. Out Source is a VENDOR subcontract — it has no worker agreement,
-        // which is why the contract modal hides that row for it too.
+        // job. A vendor's sheet is the Out Source agreement, not the employee
+        // manual — lcViewAgreement picks the template off the contract.
         agrJobs.length
           ? rc("button", {
               className: "lc2-agr",
-              title: "Open " + w + "’s work agreement — all " + agrJobs.length + " job" + (agrJobs.length === 1 ? "" : "s")
+              title: "Open " + w + "’s " + (lcSeg === "outsource" ? "Out Source agreement" : "work agreement")
+                + " — all " + agrJobs.length + " job" + (agrJobs.length === 1 ? "" : "s")
                 + ", ₱ " + peso(agrJobs.reduce((s, j) => s + (Number(j.agreedAmount) || 0), 0)) + " total",
               onClick: (e) => { e.stopPropagation(); window.lcOpenAgreement && window.lcOpenAgreement(agrJobs[0].id); }
             }, _lcIcon("print"), " Agreement")
@@ -2294,6 +2339,18 @@ function _lcFirstName(n) {
               rc("span", { className: "pcf-soa-amt" }, "\u20B1 ", peso(wk.total)))))
           )
         ),
+        // The blank agreement each printed sheet is stamped onto. There are TWO
+        // (settings/workerAgreement and settings/outsourceAgreement) and this
+        // edits whichever the open tab is about — the editor had no button at
+        // all before, so the vendor template would have been unreachable.
+        // Owner-only: it rewrites a document every printed contract inherits.
+        !_staff()
+          ? rc("button", { className: "lc2-ghost", onClick: () => window.lcOpenAgrTemplate && window.lcOpenAgrTemplate(lcSeg),
+              title: lcSeg === "outsource"
+                ? "Upload or edit the blank Out Source agreement every vendor sheet is stamped onto"
+                : "Upload or edit the blank Worker Agreement every worker sheet is stamped onto" },
+              _lcIcon("print"), lcSeg === "outsource" ? " Out Source template" : " Worker template")
+          : null,
         rc("button", { className: "lc2-ghost", onClick: () => window.lcOpenNew && window.lcOpenNew(lcSeg) }, Ico.plus, lcSeg === "outsource" ? " New Out Source contract" : " New Contract"),
         rc("button", { className: "btn-primary", onClick: () => openAddEntry("labor", childMonths, activeFolder) }, Ico.plus, " Add Payment")
       )

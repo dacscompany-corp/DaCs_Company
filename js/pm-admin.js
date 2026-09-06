@@ -5338,13 +5338,20 @@ function _pmContractPayCount(contractId, entryType) {
     return n;
 }
 function _pmContractStats(c) {
-    const agreed = Number(c.agreedAmount) || 0;
     const paid = _pmContractPaid(c.id);
+    // DAILY (migration 0063): no ceiling exists, so there is nothing to be
+    // remaining OF and nothing to be a percentage OF. Reporting 0 here would be
+    // a claim ("nothing left to pay"), not an absence — so `remaining` and
+    // `pct` are 0 only as inert placeholders and `daily` tells every reader to
+    // ignore them. Status stays Ongoing: a daily hire is never "Completed" by
+    // arithmetic, only by the owner closing it.
+    if (_pmIsDaily(c)) return { agreed: 0, paid, remaining: 0, pct: 0, status: 'Ongoing', daily: true };
+    const agreed = Number(c.agreedAmount) || 0;
     const remaining = agreed - paid;
     const pct = agreed > 0 ? (paid / agreed) * 100 : 0;
     let status = 'Ongoing';
     if (agreed > 0 && paid >= agreed) status = paid > agreed ? 'Over' : 'Completed';
-    return { agreed, paid, remaining, pct, status };
+    return { agreed, paid, remaining, pct, status, daily: false };
 }
 
 // ── Labor add-row picker ───────────────────────────────────
@@ -5365,16 +5372,24 @@ function _pmPopulateContractPicker() {
             ? _pmLaborContracts.map(c => {
                 const st = _pmContractStats(c);
                 const on = keep.has(c.id);
-                return '<label class="pmw-cpick-item' + (on ? ' is-checked' : '') + '">'
+                // A DAILY job has no cap, so it can state what it has been paid
+                // but never what is "left". `data-daily` is what the tick
+                // handler reads to enforce the tags-alone rule below.
+                return '<label class="pmw-cpick-item' + (on ? ' is-checked' : '') + (st.daily ? ' is-daily' : '') + '">'
                     + '<input type="checkbox" name="pmWeekContractPick" value="' + _esc(c.id) + '"'
+                    + ' data-daily="' + (st.daily ? '1' : '0') + '"'
                     + (on ? ' checked' : '') + ' onchange="pmWeekContractCheckChanged(this)">'
                     + '<span class="pmw-cpick-lbl">' + _esc(c.workerName || 'Worker')
                     + ' · ' + _esc(c.scope || 'job') + '</span>'
-                    + '<span class="pmw-cpick-rem' + (st.remaining <= 0 ? ' is-settled' : '') + '">'
-                    + _fmt(st.remaining) + ' left</span>'
+                    + (st.daily
+                        ? '<span class="pmw-cpick-rem is-daily">' + _fmt(st.paid) + ' paid · daily</span>'
+                        : '<span class="pmw-cpick-rem' + (st.remaining <= 0 ? ' is-settled' : '') + '">'
+                          + _fmt(st.remaining) + ' left</span>')
                     + '</label>';
             }).join('')
             : '<div class="pmw-cpick-empty">No capped jobs yet — add one under Contracts to tag labor to it.</div>';
+        // The list was just rebuilt, so every disabled state went with it.
+        _pmApplyDailyPickLock();
     }
     const dl = document.getElementById('pmLcWorkerNames');
     if (dl) dl.innerHTML = [...new Set(_pmLaborContracts.map(c => (c.workerName || '').trim()).filter(Boolean))]
@@ -5390,6 +5405,7 @@ function _pmResetContractPicks() {
         cb.checked = false;
         const item = cb.closest('.pmw-cpick-item'); if (item) item.classList.remove('is-checked');
     });
+    _pmApplyDailyPickLock();
     if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
 }
 
@@ -5399,14 +5415,44 @@ function _pmSetContractPicks(ids) {
         cb.checked = want.has(cb.value);
         const item = cb.closest('.pmw-cpick-item'); if (item) item.classList.toggle('is-checked', cb.checked);
     });
+    _pmApplyDailyPickLock();
     if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
 }
 
 window.pmWeekAmountChanged = function() { _pmUpdateContractSplitPreview(); };
 
+// A DAILY job is TAGGED ALONE (owner's call, 2026-09-05). The pro-rata splitter
+// weights each job by what it still owes, and an uncapped job owes an undefined
+// amount — mixing the two would hand it either nothing or the whole remainder
+// depending on tick order. Rather than invent a weight, the pairing is blocked:
+// ticking a daily job unticks and disables every other, and ticking any capped
+// job disables the daily ones. Untick to get the rest back.
+function _pmApplyDailyPickLock() {
+    const boxes = Array.from(document.querySelectorAll('input[name="pmWeekContractPick"]'));
+    const isDaily = cb => cb.dataset.daily === '1';
+    const dailyOn  = boxes.some(cb => cb.checked && isDaily(cb));
+    const cappedOn = boxes.some(cb => cb.checked && !isDaily(cb));
+    boxes.forEach(cb => {
+        const block = cb.checked ? false : (dailyOn || (cappedOn && isDaily(cb)));
+        cb.disabled = block;
+        const item = cb.closest('.pmw-cpick-item');
+        if (item) item.classList.toggle('is-locked', block);
+    });
+}
+
 window.pmWeekContractCheckChanged = function(cb) {
     const item = cb.closest('.pmw-cpick-item');
     if (item) item.classList.toggle('is-checked', cb.checked);
+    // Ticking a daily job clears every other pick outright — disabling alone
+    // would leave already-ticked capped jobs silently in the split.
+    if (cb.checked && cb.dataset.daily === '1') {
+        document.querySelectorAll('input[name="pmWeekContractPick"]').forEach(o => {
+            if (o === cb || !o.checked) return;
+            o.checked = false;
+            const oi = o.closest('.pmw-cpick-item'); if (oi) oi.classList.remove('is-checked');
+        });
+    }
+    _pmApplyDailyPickLock();
     pmWeekContractHint();
 };
 
@@ -5421,6 +5467,13 @@ function _pmAllocateAcrossContracts(ids, total) {
     const picked = (ids || []).map(id => _pmLaborContracts.find(c => c.id === id)).filter(Boolean);
     if (!picked.length || !(total > 0)) return [];
     const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+    // A DAILY job is tagged alone (see _pmApplyDailyPickLock). The picker
+    // enforces that, but a programmatic pick could still slip one in — and
+    // weighting an uncapped job by "what it still owes" is meaningless, so it
+    // would silently take 0 or the whole remainder by tick order. Belt and
+    // braces: the daily job takes the payment whole, and nothing is split.
+    const dailyPick = picked.find(c => _pmIsDaily(c));
+    if (dailyPick) return [{ contract: dailyPick, contractId: dailyPick.id, amount: r2(total) }];
     const weights = picked.map(c => Math.max(0, _pmContractStats(c).remaining));
     const sum = weights.reduce((s, w) => s + w, 0);
     let assigned = 0;
@@ -5695,6 +5748,15 @@ function _pmLcView(st) {
     const peso = n => '' + _fmt(Math.abs(Math.round(n)));
     let sentence, sentOver = false, rAmt, rLbl, rCls, amtCls, barCls,
         barPct = Math.min(100, Math.max(0, st.pct));
+    // DAILY (migration 0063): uncapped. The bar is emptied rather than filled to
+    // some fraction of a cap that does not exist, and the figure on the right is
+    // what has been PAID, not what is left — there is no "left".
+    if (st.daily) {
+        sentence = 'Paid ' + peso(st.paid) + ' so far — <b>no agreed total</b>, billed per day';
+        rAmt = peso(st.paid); rLbl = 'Daily basis';
+        rCls = 'pm-lc-stat-on'; amtCls = ''; barCls = 'pm-lc-bar-ok'; barPct = 0;
+        return { sentence, sentOver, rAmt, rLbl, rCls, amtCls, barCls, barPct, done: false, daily: true };
+    }
     if (st.status === 'Over') {
         const over = st.paid - st.agreed;
         sentence = 'Paid ' + peso(st.paid) + ' — <b>' + peso(over) + ' more</b> than the ' + peso(st.agreed) + ' agreed';
@@ -5711,7 +5773,7 @@ function _pmLcView(st) {
         rAmt = peso(st.remaining); rLbl = 'In progress · ' + st.pct.toFixed(0) + '%';
         rCls = 'pm-lc-stat-on'; amtCls = ''; barCls = 'pm-lc-bar-ok';
     }
-    return { sentence, sentOver, rAmt, rLbl, rCls, amtCls, barCls, barPct, done: st.status === 'Completed' };
+    return { sentence, sentOver, rAmt, rLbl, rCls, amtCls, barCls, barPct, done: st.status === 'Completed', daily: false };
 }
 
 function _pmRenderContracts() {
@@ -5719,9 +5781,17 @@ function _pmRenderContracts() {
     const body  = document.getElementById('pm-contracts-body');
     if (!body) return;
     const n = _pmLaborContracts.length;
-    let totAgreed = 0, totPaid = 0;
-    _pmLaborContracts.forEach(c => { const s = _pmContractStats(c); totAgreed += s.agreed; totPaid += s.paid; });
-    const totRem = totAgreed - totPaid;
+    // DAILY jobs (migration 0063) are uncapped: their payments must not be
+    // subtracted from a cap they were never drawn against, or "still to pay"
+    // reads as a debt the owner does not have. Same split the Contracts tab uses.
+    let totAgreed = 0, totPaidCap = 0, totPaidDay = 0;
+    _pmLaborContracts.forEach(c => {
+        const s = _pmContractStats(c);
+        if (s.daily) { totPaidDay += s.paid; return; }
+        totAgreed += s.agreed; totPaidCap += s.paid;
+    });
+    const totPaid = totPaidCap + totPaidDay;
+    const totRem = totAgreed - totPaidCap;
     if (sumEl) sumEl.textContent = n
         ? (n + ' job' + (n === 1 ? '' : 's') + ' · ' + _fmt(totRem) + ' still to pay')
         : 'No contracts yet';
@@ -5731,7 +5801,7 @@ function _pmRenderContracts() {
     const byW = {};
     _pmLaborContracts.forEach(c => { const w = (c.workerName || '—').trim() || '—'; (byW[w] = byW[w] || []).push(c); });
     const workerNames = Object.keys(byW).sort((a, b) => a.localeCompare(b));
-    const totPct = totAgreed > 0 ? Math.min(100, (totPaid / totAgreed) * 100) : 0;
+    const totPct = totAgreed > 0 ? Math.min(100, (totPaidCap / totAgreed) * 100) : 0;
 
     // ① summary banner — "Across N workers and M jobs, you still owe …"
     const banner = '<div class="pm-lc-summary">'
@@ -5820,6 +5890,50 @@ function _pmLcAgrPopulate(contract) {
     const wn = document.getElementById('pmLcAgrWorkerName');
     if (wn) wn.textContent = (contract && contract.workerName) || '—';
     _pmLcAgrRenderState();
+}
+
+// ── Out Source signed-agreement upload ─────────────────────────────────
+// The vendor twin of the labor block above. Kept as its own set of state and
+// element ids rather than shared with it: both modals can be built in the same
+// session, and one shared `_pmLcAgrFile` would let a vendor's picked PDF ride
+// into the next worker save. Same DB columns, DIFFERENT storage folder.
+let _pmOcAgrFile = null, _pmOcAgrUrl = '', _pmOcAgrName = '';
+function _pmOcAgrRenderState() {
+    const nameEl = document.getElementById('pmOcAgrPdfName');
+    const rmEl   = document.getElementById('pmOcAgrPdfRemoveBtn');
+    const link   = document.getElementById('pmOcAgrPdfLink');
+    if (link) { if (_pmOcAgrUrl && !_pmOcAgrFile) { link.href = _pmOcAgrUrl; link.style.display = ''; } else link.style.display = 'none'; }
+    if (!nameEl) return;
+    if (_pmOcAgrFile)     { nameEl.textContent = _pmOcAgrFile.name + ' (new — will upload on save)'; nameEl.style.color = '#111827'; if (rmEl) rmEl.style.display = ''; }
+    else if (_pmOcAgrUrl) { nameEl.textContent = _pmOcAgrName || 'Signed agreement attached.'; nameEl.style.color = '#111827'; if (rmEl) rmEl.style.display = ''; }
+    else                  { nameEl.textContent = 'No PDF attached.'; nameEl.style.color = '#6b7280'; if (rmEl) rmEl.style.display = 'none'; }
+}
+window.pmOcAgrPdfPick = function(input) {
+    const f = input && input.files && input.files[0];
+    if (!f) return;
+    if (f.type && f.type.indexOf('pdf') === -1 && !/\.pdf$/i.test(f.name)) { _pmToast('Please choose a PDF file.', true); input.value = ''; return; }
+    _pmOcAgrFile = f; _pmOcAgrRenderState();
+};
+window.pmOcAgrPdfRemove = function() {
+    _pmOcAgrFile = null; _pmOcAgrUrl = ''; _pmOcAgrName = '';
+    const input = document.getElementById('pmOcAgrPdfInput'); if (input) input.value = '';
+    _pmOcAgrRenderState();
+};
+// The printed-name preview follows the Vendor / crew field as it is typed, so
+// the signature block below the upload always shows who is about to sign.
+window.pmOcAgrSyncVendorName = function() {
+    const wn = document.getElementById('pmOcAgrWorkerName'), src = document.getElementById('pmOcWorker');
+    if (wn && src) wn.textContent = src.value.trim() || '—';
+};
+// Fill the agreement section for a new (contract = null) or existing contract.
+function _pmOcAgrPopulate(contract) {
+    _pmOcAgrFile = null;
+    _pmOcAgrUrl  = (contract && (contract.agreementPdfUrl || '')) || '';
+    _pmOcAgrName = (contract && (contract.agreementPdfName || '')) || '';
+    const input = document.getElementById('pmOcAgrPdfInput'); if (input) input.value = '';
+    const wn = document.getElementById('pmOcAgrWorkerName');
+    if (wn) wn.textContent = (contract && contract.workerName) || '—';
+    _pmOcAgrRenderState();
 }
 
 // ── Merge a worker's jobs into ONE lumpsum contract ────────────────────
@@ -6015,6 +6129,10 @@ function _pmIsLumpsumMode() {
     const r = document.querySelector('input[name="pmLcShape"]:checked');
     return !!r && r.value === 'lumpsum';
 }
+function _pmIsDailyMode() {
+    const r = document.querySelector('input[name="pmLcShape"]:checked');
+    return !!r && r.value === 'daily';
+}
 function _pmWorksCollect() {
     // An empty array is what makes a contract NOT a lumpsum (see _pmIsLumpsum),
     // so Single-job mode collecting nothing IS the whole switch at save time.
@@ -6023,13 +6141,22 @@ function _pmWorksCollect() {
         .map(i => i.value.trim()).filter(Boolean);
 }
 window.pmLcApplyShape = function() {
-    const lump = _pmIsLumpsumMode();
+    const lump  = _pmIsLumpsumMode();
+    const daily = _pmIsDailyMode();
     const box = document.getElementById('pmLcWorksBox');
     if (box) box.style.display = lump ? '' : 'none';
     const lbl = document.getElementById('pmLcScopeLabel');
     if (lbl) lbl.textContent = lump ? 'Contract Title' : 'Scope / Job';
     const sIn = document.getElementById('pmLcScope');
     if (sIn) sIn.placeholder = lump ? 'e.g. General Works Package' : 'e.g. Tiling & masonry';
+    // DAILY (migration 0063) has no cap, so the whole "What's the agreed total?"
+    // step is hidden rather than left showing a box that means nothing. Hiding
+    // it — instead of disabling it — is deliberate: a greyed field still reads
+    // as a number someone forgot to fill in.
+    const amtStep = document.getElementById('pmLcAmountStep');
+    if (amtStep) amtStep.style.display = daily ? 'none' : '';
+    const dailyNote = document.getElementById('pmLcDailyNote');
+    if (dailyNote) dailyNote.style.display = daily ? '' : 'none';
     const hint = document.getElementById('pmLcAmountHint');
     if (hint) hint.textContent = lump
         ? 'ONE cap for every work listed above — entries draw down this single total.'
@@ -6042,7 +6169,11 @@ function _pmWorksPopulate(c) {
     const list = document.getElementById('pmLcWorksList');
     if (list) list.innerHTML = '';
     const works = _pmWorksList(c);
-    const r = document.querySelector('input[name="pmLcShape"][value="' + (works.length ? 'lumpsum' : 'single') + '"]');
+    // The three shapes are mutually exclusive. Lumpsum is checked first because
+    // `works` is the older, stronger discriminator — a row that somehow carries
+    // both must not read as uncapped when it has a cap and a works list.
+    const shape = works.length ? 'lumpsum' : (_pmIsDaily(c) ? 'daily' : 'single');
+    const r = document.querySelector('input[name="pmLcShape"][value="' + shape + '"]');
     if (r) r.checked = true;
     works.forEach(w => _pmWorksRow(w));
     window.pmLcApplyShape();
@@ -6087,11 +6218,20 @@ window.pmLcSave = async function(e) {
     // Lumpsum works (migration 0062) — names only, never amounts. Single-job mode
     // collects none, so an ordinary contract saves an empty array and is unchanged.
     const works = _pmWorksCollect();
-    const agreedAmount = parseFloat((document.getElementById('pmLcAmount').value || '').replace(/,/g, '')) || 0;
+    // DAILY BASIS (migration 0063): uncapped. The amount box is hidden in this
+    // mode, so whatever it still holds is stale — the cap is forced to 0 rather
+    // than read, or reopening a daily contract that used to be capped would
+    // quietly restore its old ceiling.
+    const daily = _pmIsDailyMode();
+    const payBasis = daily ? 'daily' : 'fixed';
+    const agreedAmount = daily ? 0
+        : (parseFloat((document.getElementById('pmLcAmount').value || '').replace(/,/g, '')) || 0);
     const notes = document.getElementById('pmLcNotes').value.trim();
     const payType = (document.querySelector('input[name="pmLcPayType"]:checked') || {}).value || 'pakyaw';
     if (!workerName) { _pmToast('Enter the worker name.', true); return; }
-    if (agreedAmount <= 0) { _pmToast('Enter the agreed amount (cap).', true); return; }
+    // The cap is required for every shape EXCEPT daily, which has none by
+    // definition — the old unconditional guard is what made this impossible.
+    if (!daily && agreedAmount <= 0) { _pmToast('Enter the agreed amount (cap).', true); return; }
     try {
         // Worker Agreement: upload a newly-picked PDF; keep an existing one; clear
         // when removed. IMPORTANT: only write the agreement columns when there is an
@@ -6121,7 +6261,7 @@ window.pmLcSave = async function(e) {
         }
         if (id) {
             const ex = _pmLaborContracts.find(x => x.id === id);
-            const upd = { workerName, scope, agreedAmount, payType, notes, works, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+            const upd = { workerName, scope, agreedAmount, payType, notes, works, payBasis, updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
             if (ex && (Number(ex.agreedAmount) || 0) !== agreedAmount) {
                 const h = Array.isArray(ex.capHistory) ? ex.capHistory.slice() : [];
                 h.push({ amount: agreedAmount, at: new Date().toISOString(), note: 'Edited cap' });
@@ -6130,7 +6270,7 @@ window.pmLcSave = async function(e) {
             if (agrFields) Object.assign(upd, agrFields);
             await _pmLcCol().doc(id).update(upd);
         } else {
-            await _pmLcCol().add({ workerName, scope, agreedAmount, payType, notes, works, status: 'ongoing', category: 'labor',
+            await _pmLcCol().add({ workerName, scope, agreedAmount, payType, notes, works, payBasis, status: 'ongoing', category: 'labor',
                 capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
                 ...(agrFields || {}),
                 createdAt: firebase.firestore.FieldValue.serverTimestamp() });
@@ -6270,11 +6410,21 @@ window.pmLcLedgerViewFiles = function() {
 // "francis febra" renders as its own second worker card, and a sheet that
 // silently swept it in would contradict the screen it was printed from. A blank
 // name groups with nothing — nameless contracts are not all the same person.
+// Is this contract a VENDOR subcontract? The PM twin of lcIsOutsource: one
+// table, split by `category` (migration 0016), loaded into two pools.
+function _pmIsOutsource(c) { return !!c && c.category === 'outsource'; }
+
 function _pmWorkerContracts(c) {
     const key = String((c && c.workerName) || '').trim();
     if (!key) return c ? [c] : [];
-    const cs = (_pmLaborContracts || [])
-        .filter(x => String(x.workerName || '').trim() === key)
+    // A vendor's jobs come from the OUT SOURCE pool, a worker's from the labor
+    // pool. Matching Project Control's rule (lcWorkerContracts): the two kinds
+    // never share a sheet, so a supplier that happens to carry a worker's name
+    // cannot pull an employee's jobs onto a vendor subcontract, or the reverse.
+    const os   = _pmIsOutsource(c);
+    const pool = os ? (_pmOutsourceContracts || []) : (_pmLaborContracts || []);
+    const cs = pool
+        .filter(x => String(x.workerName || '').trim() === key && _pmIsOutsource(x) === os)
         .sort((a, b) => String(a.scope || '').localeCompare(String(b.scope || '')));
     return cs.length ? cs : [c];
 }
@@ -6298,6 +6448,66 @@ function _pmWorksList(c) {
     return raw.map(w => String(typeof w === 'string' ? w : ((w && w.name) || '')).trim()).filter(Boolean);
 }
 function _pmIsLumpsum(c) { return _pmWorksList(c).length > 0; }
+// DAILY BASIS (migration 0063) — an UNCAPPED contract. `agreedAmount` is
+// meaningless on one of these, so nothing may report a remaining, a percentage
+// or an "over agreed": paid-to-date is the only honest figure. A missing column
+// (migration not applied) reads as 'fixed', i.e. the old capped behaviour.
+function _pmIsDaily(c) { return !!c && c.payBasis === 'daily'; }
+
+// The manual's page 4 — "10% DOWNPAYMENT / UNANG BAYAD" — states the worker's
+// FIRST payment. The PM twin of lcFirstPayment (expenses-module.js): same rule,
+// different drawdown path. PC reads `payroll` rows; PM reads the labor lines
+// inside `weeklyBills.entries[]`, which is what draws a PM contract down.
+//
+// Two things the PM sheet CANNOT state, because the data does not exist here:
+//   PARAAN — a weekly-bill entry has no payment method (PC's payroll rows do),
+//     so the mode line always prints blank and is filled by hand.
+//   the exact day — an entry carries no date of its own; the bill's
+//     weekEndingDate is the closest truth, so the sheet states the week ending.
+//
+// Outside the money model for the same reason as the PC twin: it restates ONE
+// recorded payment as a fact and totals nothing (that is _pmContractPaid's job).
+function _pmFirstPayment(cs) {
+    const ids = new Set((cs || []).map(c => c && c.id).filter(Boolean));
+    if (!ids.size) return null;
+    // Which daily-entry type draws this kind of contract down: labor jobs are
+    // paid by 'labor' lines, vendor subcontracts by 'both' (supply & install)
+    // lines. Same discriminator _pmContractPaid / _pmOcPaid use — read it wrong
+    // and a vendor's block prints blank while their payments sit in the ledger.
+    const want = _pmIsOutsource((cs || [])[0]) ? 'both' : 'labor';
+    const rows = [];
+    (_pmWeekBills || []).forEach(b => {
+        (Array.isArray(b.entries) ? b.entries : []).forEach(e => {
+            if (e && e.type === want && ids.has(e.contractId)) {
+                rows.push({ date: b.weekEndingDate || '', amount: Number(e.amount) || 0, splitGroup: e.splitGroup || '' });
+            }
+        });
+    });
+    if (!rows.length) return null;
+    const first = rows.slice().sort((a, b) => {
+        if (!a.date !== !b.date) return a.date ? -1 : 1;   // undated goes last, never first
+        return a.date.localeCompare(b.date);
+    })[0];
+    // One payment split across several of the worker's jobs is saved as one
+    // entry per job sharing a splitGroup. The manual states the PAYMENT, so the
+    // legs are re-added — it recovers one payment, it never adds separate ones.
+    const legs = first.splitGroup ? rows.filter(r => r.splitGroup === first.splitGroup) : [first];
+    const amount = legs.reduce((s, r) => s + r.amount, 0);
+    return {
+        amount: amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        date  : _pmPayDateLabel(first.date),
+        mode  : ''
+    };
+}
+
+// A weekEndingDate ('YYYY-MM-DD') as it prints on the manual. Parsed from LOCAL
+// parts via the T00:00:00 suffix, never bare — PH is UTC+8, and a bare
+// 'YYYY-MM-DD' parses as UTC midnight, which can render as the day before.
+function _pmPayDateLabel(s) {
+    if (!s) return '';
+    const t = new Date(/^\d{4}-\d{2}-\d{2}$/.test(s) ? s + 'T00:00:00' : s);
+    return isNaN(t) ? String(s) : t.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+}
 
 // Details for the combined sheet. `cs` is one worker's whole job list.
 function _pmWorkerAgreementDetails(cs) {
@@ -6317,6 +6527,7 @@ function _pmWorkerAgreementDetails(cs) {
     // worker card header follows; otherwise it would state one job's terms as
     // if they covered all of them.
     const types = [...new Set(cs.map(c => c.payType === 'inhouse' ? 'In-house' : 'Pakyaw'))];
+    const dp = _pmFirstPayment(cs) || {};
     return {
         // PM ids live in their own space (see CLAUDE.md), so the ref carries a
         // PM- prefix rather than Project Control's LC-. It is the FIRST job's
@@ -6329,9 +6540,22 @@ function _pmWorkerAgreementDetails(cs) {
         // The manual is handed over on the day it is printed. LOCAL date parts,
         // never toISOString() — PH is UTC+8 and a morning print would roll back.
         orientationDate: new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }),
+        // Today, for the cover's PETSA NG BISA and every PETSA over a signature
+        // line. Its own field rather than a reuse of orientationDate — see the
+        // PC twin (lcWorkerAgreementDetails) for why the two must not be welded.
+        printDate: new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }),
         payType : types.length === 1 ? types[0] : 'Mixed',
         amount  : total.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-        printedName: first.workerName || ''
+        printedName: first.workerName || '',
+        // Which kind of agreement this is — read from the CONTRACT, never from
+        // whichever tab is on screen. Matches Project Control's field name.
+        isOutsource: _pmIsOutsource(first),
+        // Page 4's UNANG BAYAD block. Blank when the worker has not been paid
+        // yet — the lines then print empty, to be filled by hand. `dpMode` is
+        // always blank here; see _pmFirstPayment for why.
+        dpAmount: dp.amount || '',
+        dpDate  : dp.date   || '',
+        dpMode  : dp.mode   || ''
     };
 }
 
@@ -6349,11 +6573,27 @@ function _pmWorkerAgreementDetails(cs) {
 async function _pmOpenWorkerAgreement(c) {
     if (!c) return;
     const cs  = _pmWorkerContracts(c);
+    const os  = _pmIsOutsource(c);
     const src = (c.agreementPdfUrl && String(c.agreementPdfUrl).trim())
         ? c
         : cs.find(x => x.agreementPdfUrl && String(x.agreementPdfUrl).trim());
-    const url = src && String(src.agreementPdfUrl).trim();
-    if (!url) { _pmToast('No agreement PDF attached to any of this worker’s jobs.', true); return; }
+    // An attached signed PDF wins; otherwise fall back to the GLOBAL blank
+    // template — the same two documents Project Control stamps
+    // (settings/workerAgreement | settings/outsourceAgreement), read through
+    // the loader expenses-module.js exports so the two modules can never drift
+    // onto different templates. Without this fallback PM refused to print at
+    // all unless somebody had already attached a per-contract PDF.
+    let url = src && String(src.agreementPdfUrl).trim();
+    if (!url && typeof window.lcLoadAgrTemplate === 'function') {
+        try { url = ((await window.lcLoadAgrTemplate(os ? 'outsource' : 'labor')) || {}).pdfUrl || ''; }
+        catch (_) { url = ''; }
+    }
+    if (!url) {
+        _pmToast(os
+            ? 'No Out Source agreement PDF — attach one to the contract, or upload the blank template in Project Control.'
+            : 'No agreement PDF — attach one to a job, or upload the blank template in Project Control.', true);
+        return;
+    }
     if (typeof window.dacsWorkerAgreementView !== 'function') { window.open(url, '_blank'); return; }
     await window.dacsWorkerAgreementView(url, _pmWorkerAgreementDetails(cs));
 }
@@ -6363,10 +6603,15 @@ window.pmLcLedgerViewAgreement = async function() {
     await _pmOpenWorkerAgreement(_pmLaborContracts.find(x => x.id === _pmLcLedgerId));
 };
 
-// Worker-card header button. Takes any one of that worker's contract ids and
-// prints the combined sheet for all of them.
+// Worker/vendor-card header button. Takes any one of that party's contract ids
+// and prints the combined sheet for all of them. BOTH pools are searched: the
+// Contracts tab renders labor and Out Source through the same card template, so
+// one handler serves both and _pmOpenWorkerAgreement picks the right template
+// off the contract it finds.
 window.pmLcxWorkerAgreement = async function(id) {
-    await _pmOpenWorkerAgreement((_pmLaborContracts || []).find(x => x.id === id));
+    const c = (_pmLaborContracts || []).find(x => x.id === id)
+           || (_pmOutsourceContracts || []).find(x => x.id === id);
+    await _pmOpenWorkerAgreement(c);
 };
 
 // Per-worker/vendor Statement of Account — same document design as the
@@ -6398,13 +6643,20 @@ function _pmPrintContractSOA(c, entryType) {
         </tr>`;
     });
 
-    // Contract cap → status. A capped (pakyaw) job is the whole point of this
-    // document, so the drawdown against the cap leads the totals stack.
-    const agreed    = Number(c.agreedAmount) || 0;
-    const remaining = agreed - grandTotal;
-    let stLabel = '';
-    if (agreed > 0 && grandTotal >= agreed)      stLabel = grandTotal > agreed ? 'Over cap' : 'Completed';
-    else if (agreed > 0)                         stLabel = 'Ongoing · ' + Math.round(grandTotal / agreed * 100) + '%';
+    // Contract position → the band + the status pill, both built by the SHARED
+    // helper in print-utils.js so this statement and Project Control's state a
+    // worker's position identically (they are one document over two ledgers).
+    //
+    // DAILY (migration 0063) is uncapped: `dacsContractStat` returns no
+    // remaining and no percentage, and the band drops the bar. Before this, a
+    // daily contract printed "Napagkasunduan ₱0.00" with "Lampas / Over cap
+    // ₱2,000.00" beneath it — an over-cap claim against no cap at all.
+    const isDaily   = _pmIsDaily(c);
+    const cStat     = window.dacsContractStat({ jobs: 1, agreed: Number(c.agreedAmount) || 0, paid: grandTotal, daily: isDaily });
+    const agreed    = cStat.agreed;
+    const remaining = cStat.remaining;
+    const stLabel   = cStat.label;
+    const contractBand = window.dacsContractBand({ jobs: 1, agreed: Number(c.agreedAmount) || 0, paid: grandTotal, daily: isDaily });
     const stPill = stLabel
         ? `<div class="${window.dacsStatusPillClass(stLabel)}">${esc(stLabel)}</div>`
         : '<div class="ws-band-v sm">—</div>';
@@ -6451,6 +6703,7 @@ ${window.dacsStatementHead({
       ${stPill}
     </div>
   </div>
+${contractBand}
   <div class="ws-body">
     <div class="ws-lbl ws-sec">Mga Naibayad / Payments made</div>
     <table class="ws-tbl">
@@ -6466,9 +6719,13 @@ ${window.dacsStatementHead({
     </table>
     <div class="ws-tot-wrap">
       <div class="ws-tot">
-        <div class="ws-tot-row"><span>Napagkasunduan / Agreed amount</span><b>${fmt(agreed)}</b></div>
+        <!-- DAILY (0063) has no cap: printing "Napagkasunduan ₱0.00" states a
+             ceiling of zero, and the Remaining row below it would then read
+             "Lampas / Over cap" for every peso paid. Both are replaced by a
+             plain statement that no total was agreed. -->
+        <div class="ws-tot-row"><span>Napagkasunduan / Agreed amount</span><b>${isDaily ? 'Walang takda / None' : fmt(agreed)}</b></div>
         <div class="ws-tot-row"><span>Bilang ng entry / Entries</span><b>${rows.length}</b></div>
-        <div class="ws-tot-row rule"><span>${remaining < 0 ? 'Lampas / Over cap' : 'Natitira / Remaining'}</span><b>${fmt(Math.abs(remaining))}</b></div>
+        <div class="ws-tot-row rule"><span>${isDaily ? 'Batayan / Basis' : (remaining < 0 ? 'Lampas / Over cap' : 'Natitira / Remaining')}</span><b>${isDaily ? 'Arawan / Daily' : fmt(Math.abs(remaining))}</b></div>
         <div class="ws-grand"><span class="l">Kabuuang Bayad / Total paid</span><span class="v">${fmt(grandTotal)}</span></div>
       </div>
     </div>
@@ -6570,7 +6827,10 @@ function _pmOcStats(c) {
     const pct = agreed > 0 ? (paid / agreed) * 100 : 0;
     let status = 'Ongoing';
     if (agreed > 0 && paid >= agreed) status = paid > agreed ? 'Over' : 'Completed';
-    return { agreed, paid, remaining, pct, status };
+    // Out Source has no Daily shape — a vendor subcontract is a priced supply &
+    // install, never a per-day hire — so this is always false. Stated rather
+    // than left undefined so every reader can branch on `daily` uniformly.
+    return { agreed, paid, remaining, pct, status, daily: false };
 }
 
 // ── Out Source add-row picker (shown for the 'both' category) ──
@@ -6676,6 +6936,7 @@ window.pmOcOpenNew = function() {
     document.getElementById('pmOcNotes').value = '';
     const pk = document.querySelector('input[name="pmOcPayType"][value="pakyaw"]'); if (pk) pk.checked = true;
     const t = document.getElementById('pmOcModalTitle'); if (t) t.textContent = 'New Out Source Contract';
+    _pmOcAgrPopulate(null);            // clear any PDF left picked by the last open
     _pmPopulateOutsourcePicker();
     document.getElementById('pmOutsourceContractModal').style.display = 'flex';
 };
@@ -6688,6 +6949,7 @@ window.pmOcOpenEdit = function(id) {
     document.getElementById('pmOcNotes').value = c.notes || '';
     const r = document.querySelector('input[name="pmOcPayType"][value="' + (c.payType === 'inhouse' ? 'inhouse' : 'pakyaw') + '"]'); if (r) r.checked = true;
     const t = document.getElementById('pmOcModalTitle'); if (t) t.textContent = 'Edit Out Source Contract';
+    _pmOcAgrPopulate(c);               // show the signed PDF this vendor already has
     _pmPopulateOutsourcePicker();
     document.getElementById('pmOutsourceContractModal').style.display = 'flex';
 };
@@ -6703,6 +6965,36 @@ window.pmOcSave = async function(e) {
     if (!workerName) { _pmToast('Enter the vendor / crew name.', true); return; }
     if (agreedAmount <= 0) { _pmToast('Enter the agreed amount (cap).', true); return; }
     try {
+        // Out Source Agreement: upload a newly-picked PDF; keep an existing one;
+        // clear when removed. Written ONLY when there is an actual agreement
+        // action, exactly as the labor twin does — a plain contract save must not
+        // touch the agreement columns, so saving still works on a database where
+        // migration 0036 has not been applied.
+        //
+        // outsourceAgreements/ — NOT workerAgreements/. Same folder split
+        // Project Control uses (LC_AGR_TPL in expenses-module.js): a vendor
+        // subcontract must never be filed among the employee records.
+        let agrFields = null;
+        if (_pmOcAgrFile) {
+            const safe = String(_pmOcAgrFile.name || 'agreement.pdf').replace(/[^\w.\-]+/g, '_');
+            const ref  = storage.ref('outsourceAgreements/pm_' + _pmActiveProject.id + '_' + Date.now() + '_' + safe);
+            await ref.put(_pmOcAgrFile);
+            const url = await ref.getDownloadURL();
+            agrFields = {
+                agreementSigned    : true,
+                agreementSignedAt  : new Date(),
+                agreementSignature : workerName,
+                agreementPdfUrl    : url,
+                agreementPdfName   : _pmOcAgrFile.name || 'Vendor Subcontract.pdf'
+            };
+        } else if (id) {
+            // Editing: only clear if this contract actually HAD an agreement and
+            // the user removed it. A no-op edit never touches those columns.
+            const exAgr = _pmOutsourceContracts.find(x => x.id === id);
+            if (exAgr && (exAgr.agreementPdfUrl || exAgr.agreementSigned) && !_pmOcAgrUrl) {
+                agrFields = { agreementSigned: false, agreementPdfUrl: '', agreementPdfName: '', agreementSignedAt: null };
+            }
+        }
         if (id) {
             const ex = _pmOutsourceContracts.find(x => x.id === id);
             const upd = { workerName, scope, agreedAmount, payType, notes, category: 'outsource', updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
@@ -6711,10 +7003,12 @@ window.pmOcSave = async function(e) {
                 h.push({ amount: agreedAmount, at: new Date().toISOString(), note: 'Edited cap' });
                 upd.capHistory = h;
             }
+            if (agrFields) Object.assign(upd, agrFields);
             await _pmOcCol().doc(id).update(upd);
         } else {
             await _pmOcCol().add({ workerName, scope, agreedAmount, payType, notes, status: 'ongoing', category: 'outsource',
                 capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
+                ...(agrFields || {}),
                 createdAt: firebase.firestore.FieldValue.serverTimestamp() });
         }
         pmCloseModal('pmOutsourceContractModal');
@@ -7056,10 +7350,19 @@ function _pmRenderContractsTab() {
     list.forEach(c => { const w = (c.workerName || '—').trim() || '—'; (byW[w] = byW[w] || []).push(c); });
     const names = Object.keys(byW).sort((a, b) => a.localeCompare(b));
 
-    let totAgreed = 0, totPaid = 0;
-    list.forEach(c => { const s = statOf(c); totAgreed += s.agreed; totPaid += s.paid; });
-    const totRem = totAgreed - totPaid;
-    const totPct = totAgreed > 0 ? Math.round((totPaid / totAgreed) * 100) : 0;
+    // Same rule as the worker cards below: DAILY jobs (migration 0063) are
+    // uncapped, so their payments must not be subtracted from a cap they were
+    // never drawn against. "You still owe" is the CAPPED balance; daily spend is
+    // reported beside it, never inside it.
+    let totAgreed = 0, totPaidCap = 0, totPaidDay = 0;
+    list.forEach(c => {
+        const s = statOf(c);
+        if (s.daily) { totPaidDay += s.paid; return; }
+        totAgreed += s.agreed; totPaidCap += s.paid;
+    });
+    const totPaid = totPaidCap + totPaidDay;
+    const totRem = totAgreed - totPaidCap;
+    const totPct = totAgreed > 0 ? Math.round((totPaidCap / totAgreed) * 100) : 0;
 
     const newFn      = isLabor ? 'pmLcOpenNew()' : 'pmOcOpenNew()';
     const ledgerFn   = isLabor ? 'pmLcOpenLedger' : 'pmOcOpenLedger';
@@ -7105,20 +7408,26 @@ function _pmRenderContractsTab() {
         const works = _pmWorksList(c);
         const wLead = works.length ? works.length + ' work' + (works.length === 1 ? '' : 's') + ' · ' : '';
         // Closed, this line IS the balance — same caption Project Control uses.
+        // DAILY (0063) is uncapped: "paid of <cap>" would state a ceiling that
+        // does not exist, and "Still to pay" would claim a balance nobody agreed.
         const sub = wLead + nPay + ' payment' + (nPay === 1 ? '' : 's')
-            + ' · ' + _fmt(st.paid) + ' paid of ' + _fmt(st.agreed);
+            + ' · ' + (st.daily ? _fmt(st.paid) + ' paid · no agreed total'
+                                 : _fmt(st.paid) + ' paid of ' + _fmt(st.agreed));
         return '<div class="pm-lcx-job" onclick="' + ledgerFn + '(\'' + c.id + '\')">'
             + '<span class="pm-lcx-num">' + (i + 1) + '</span>'
             + '<div class="pm-lcx-job-id">'
             + '<div class="pm-lcx-job-name"><span class="pm-lcx-job-t">' + _esc(c.scope || 'Untitled job') + '</span>'
             + (works.length ? '<span class="pm-lcx-lump" title="One capped agreement covering '
                 + works.length + ' works — paid as a single stream">Lumpsum</span>' : '')
+            + (st.daily ? '<span class="pm-lcx-lump pm-lcx-daily" title="No agreed total — paid per day, '
+                + 'tagged on its own">Daily</span>' : '')
             + '</div>'
             + '<div class="pm-lcx-job-sub num">' + sub + '</div>'
             + '</div>'
             + '<div class="pm-lcx-job-rem">'
-            + '<div class="pm-lcx-rem-lbl">' + (over ? 'Over by' : 'Still to pay') + '</div>'
-            + '<div class="pm-lcx-job-rem-val num' + (over ? ' neg' : '') + '">' + _fmt(Math.abs(st.remaining)) + '</div>'
+            + '<div class="pm-lcx-rem-lbl">' + (st.daily ? 'Paid so far' : (over ? 'Over by' : 'Still to pay')) + '</div>'
+            + '<div class="pm-lcx-job-rem-val num' + (over && !st.daily ? ' neg' : '') + '">'
+            + _fmt(st.daily ? st.paid : Math.abs(st.remaining)) + '</div>'
             + '</div>'
             + '<span class="pm-lcx-badge ' + bdg.cls + '">' + bdg.lbl + '</span>'
             + chev('pm-lcx-job-chev')
@@ -7130,13 +7439,26 @@ function _pmRenderContractsTab() {
         const initial = (name.replace(/[^A-Za-z0-9]/g, '')[0] || '—').toUpperCase();
         // The worker's own roll-up is the SUM of their jobs — never re-derived
         // from the entries, so a card and its rows always agree.
-        const wAgreed = cs.reduce((s, c) => s + statOf(c).agreed, 0);
-        const wPaid   = cs.reduce((s, c) => s + statOf(c).paid, 0);
-        const wRem    = wAgreed - wPaid;
-        const wPct    = wAgreed > 0 ? (wPaid / wAgreed) * 100 : 0;
-        const wSt     = { pct: wPct, status: wAgreed > 0 && wPaid >= wAgreed ? (wPaid > wAgreed ? 'Over' : 'Completed') : 'Ongoing' };
-        const bdg     = badgeOf(wSt, 'Ongoing');
-        const over    = wRem < 0;
+        //
+        // CAPPED and DAILY jobs are summed APART (migration 0063). A daily job
+        // contributes an agreed of 0 but a real paid, so folding it into one
+        // total would subtract its payments from a cap they were never drawn
+        // against — a worker on one 50,000 pakyaw job plus a daily hire paid
+        // 20,000 would read as "Over by 20,000" against a cap they had not
+        // touched. The balance is therefore the CAPPED jobs' balance, and the
+        // daily spend is stated beside it rather than inside it.
+        const capped   = cs.filter(c => !statOf(c).daily);
+        const dailies  = cs.filter(c =>  statOf(c).daily);
+        const wAgreed  = capped.reduce((s, c) => s + statOf(c).agreed, 0);
+        const wPaidCap = capped.reduce((s, c) => s + statOf(c).paid, 0);
+        const wPaidDay = dailies.reduce((s, c) => s + statOf(c).paid, 0);
+        const wPaid    = wPaidCap + wPaidDay;          // what the worker got, all in
+        const allDaily = capped.length === 0 && dailies.length > 0;
+        const wRem     = wAgreed - wPaidCap;
+        const wPct     = wAgreed > 0 ? (wPaidCap / wAgreed) * 100 : 0;
+        const wSt      = { pct: wPct, status: wAgreed > 0 && wPaidCap >= wAgreed ? (wPaidCap > wAgreed ? 'Over' : 'Completed') : 'Ongoing' };
+        const bdg      = badgeOf(wSt, 'Ongoing');
+        const over     = !allDaily && wRem < 0;
         // Pay type is a per-job field; it only belongs on the header when every
         // job under this worker agrees, otherwise the header would state one
         // job's terms as if they covered all of them.
@@ -7144,11 +7466,16 @@ function _pmRenderContractsTab() {
         const typeLbl = types.length === 1 ? types[0] : 'Mixed';
         // First name only, matching Project Control's "Jobs agreed with Francis".
         const first   = String(name).trim().split(/\s+/)[0] || name;
-        // ONE work agreement per worker, covering every job in this card: the
+        // ONE agreement per worker/vendor, covering every job in this card: the
         // scope lists them all and the agreed amount is this header’s total.
-        // Any job of theirs carrying the uploaded manual serves as the base PDF
-        // (see _pmOpenWorkerAgreement); Out Source has no agreement flow.
-        const agrJob  = isLabor ? cs.find(c => c.agreementPdfUrl && String(c.agreementPdfUrl).trim()) : null;
+        // BOTH kinds get one (owner's call, 2026-09-05) — a vendor's is the Out
+        // Source agreement, a worker's the employee manual.
+        //
+        // The button no longer waits for an ATTACHED PDF: _pmOpenWorkerAgreement
+        // falls back to the global blank template, so a card with no signed copy
+        // yet still prints a sheet to sign. A job carrying an attached PDF is
+        // still preferred as the base, which is why it is looked up first.
+        const agrJob  = cs.find(c => c.agreementPdfUrl && String(c.agreementPdfUrl).trim()) || cs[0] || null;
         return '<div class="pm-lcx-acc open">'
             + '<div class="pm-lcx-head" onclick="pmLcxToggle(this)">'
             + '<span class="pm-lcx-av">' + _esc(initial) + '</span>'
@@ -7157,17 +7484,25 @@ function _pmRenderContractsTab() {
             + '<div class="pm-lcx-role">— <span class="pm-lcx-type">' + _esc(typeLbl) + '</span></div>'
             + '</div>'
             + '<div class="pm-lcx-mid">'
-            + '<div class="pm-lcx-bar"><div class="pm-lcx-bar-fill" style="width:' + Math.min(100, Math.max(0, wPct)).toFixed(1) + '%"></div></div>'
-            + '<div class="pm-lcx-cap num">' + _fmt(wPaid) + ' paid of ' + _fmt(wAgreed) + ' · ' + cs.length + ' job' + (cs.length === 1 ? '' : 's') + '</div>'
+            + '<div class="pm-lcx-bar"><div class="pm-lcx-bar-fill" style="width:'
+            + (allDaily ? '0.0' : Math.min(100, Math.max(0, wPct)).toFixed(1)) + '%"></div></div>'
+            + '<div class="pm-lcx-cap num">'
+            + (allDaily
+                ? _fmt(wPaid) + ' paid · no agreed total'
+                : _fmt(wPaidCap) + ' paid of ' + _fmt(wAgreed)
+                  // Mixed card: the daily spend is named, never folded into the cap.
+                  + (wPaidDay > 0 ? ' · +' + _fmt(wPaidDay) + ' daily' : ''))
+            + ' · ' + cs.length + ' job' + (cs.length === 1 ? '' : 's') + '</div>'
             + '</div>'
             + '<div class="pm-lcx-rem">'
-            + '<div class="pm-lcx-rem-lbl">' + (over ? 'Over by' : 'Still to pay') + '</div>'
-            + '<div class="pm-lcx-rem-val num' + (over ? ' neg' : '') + '">' + _fmt(Math.abs(wRem)) + '</div>'
+            + '<div class="pm-lcx-rem-lbl">' + (allDaily ? 'Paid so far' : (over ? 'Over by' : 'Still to pay')) + '</div>'
+            + '<div class="pm-lcx-rem-val num' + (over ? ' neg' : '') + '">'
+            + _fmt(allDaily ? wPaid : Math.abs(wRem)) + '</div>'
             + '</div>'
             + '<span class="pm-lcx-badge ' + bdg.cls + '">' + bdg.lbl + '</span>'
             // PM is paid through the daily entries, so "Pay" hands the user to
             // the Daily Expenses tab rather than opening a modal of its own.
-            + (agrJob ? '<button type="button" class="pm-lcx-agr" onclick="event.stopPropagation();pmLcxWorkerAgreement(' + "'" + agrJob.id + "'" + ');" title="Open ' + _esc(name) + '’s work agreement — all ' + cs.length + ' job' + (cs.length === 1 ? '' : 's') + ', ' + _fmt(wAgreed) + ' total">Agreement</button>' : '')
+            + (agrJob ? '<button type="button" class="pm-lcx-agr" onclick="event.stopPropagation();pmLcxWorkerAgreement(' + "'" + agrJob.id + "'" + ');" title="Open ' + _esc(name) + '’s ' + (isLabor ? 'work agreement' : 'Out Source agreement') + ' — all ' + cs.length + ' job' + (cs.length === 1 ? '' : 's') + ', ' + _fmt(wAgreed) + ' total">Agreement</button>' : '')
             // Collapse this worker's separate jobs into ONE lumpsum contract
             // (migration 0062). Only where it means something — two or more jobs.
             // The worker name rides in a DATA ATTRIBUTE, never interpolated into

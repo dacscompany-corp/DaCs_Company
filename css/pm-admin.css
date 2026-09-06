@@ -2366,6 +2366,16 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
 .pm-lcx-lump { flex: none; margin-left: 8px; padding: 2px 8px; border-radius: 20px;
   background: #eef2fb; color: #3a5fa8; font-size: 9.5px; font-weight: 700;
   letter-spacing: .04em; text-transform: uppercase; vertical-align: 1px; }
+/* DAILY BASIS (migration 0063) - an UNCAPPED contract. Amber, not the lumpsum
+   blue: a lumpsum still has a ceiling, this one has none. Matches .lc2-daily. */
+.pm-lcx-lump.pm-lcx-daily { background: #fdf3e3; color: #9a6413; }
+
+/* A daily job is TAGGED ALONE, so ticking one locks every other row of the
+   daily-entry picker (_pmApplyDailyPickLock). */
+.pmw-cpick-item.is-locked { opacity: .42; cursor: not-allowed; }
+.pmw-cpick-item.is-locked input { cursor: not-allowed; }
+.pmw-cpick-rem.is-daily { color: #9a6413; }
+
 .pm-lcx-job-sub { font-size: 11.5px; color: #8a8983; margin-top: 3px; }
 .pm-lcx-job-rem-val { font-size: 15px; font-weight: 700; color: #1c1c1a; margin-top: 1px; }
 .pm-lcx-job-chev { flex: none; color: #c4c9d4; transform: rotate(-90deg); }

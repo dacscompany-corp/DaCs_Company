@@ -2363,47 +2363,31 @@ ${window.dacsStatementPrintScript()}
         // the Contract band also needs it. Same arithmetic the Worker Tracker row
         // uses in portal-app.compiled.js (agreed = Σ agreedAmount, paid = Σ of the
         // entries drawn against those contracts) so the two never disagree.
-        let _stLabel = '', _agreed = 0, _paid = 0, _remaining = 0, _pct = 0;
+        let _stLabel = '', _agreed = 0, _paid = 0, _remaining = 0, _pct = 0, _isDaily = false;
         const _jobs = _wContracts.length;
         if (_jobs) {
-            _agreed = _wContracts.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
+            // DAILY BASIS contracts (migration 0063) are UNCAPPED, so they
+            // contribute a real `paid` but no cap. Folding them into the agreed
+            // total would state a ceiling nobody set; on an all-daily worker the
+            // band is dropped for a daily one instead. Mirrors the Worker
+            // Tracker card in portal-app.compiled.js.
+            const _isD = (c) => (typeof window.lcIsDaily === 'function' ? window.lcIsDaily(c) : !!c && c.payBasis === 'daily');
+            _isDaily = _wContracts.every(_isD);
+            _agreed = _wContracts.reduce((s, c) => s + (_isD(c) ? 0 : (parseFloat(c.agreedAmount) || 0)), 0);
             const _wcSet = new Set(_wContracts.map(c => c.id));
             _paid = entries.filter(p => p.contractId && _wcSet.has(p.contractId)).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
-            _remaining = _agreed - _paid;
-            _pct = _agreed > 0 ? Math.min(100, Math.max(0, _paid / _agreed * 100)) : 0;
-            if (_agreed > 0 && _paid >= _agreed) {
-                _stLabel = _paid > _agreed ? 'Over cap' : 'Completed';
-            } else {
-                _stLabel = 'Ongoing · ' + Math.round(_pct) + '%';
-            }
+            // The shared helper (print-utils.js) owns the arithmetic and the
+            // labels, so this statement and Project Management's can never state
+            // a worker's position differently.
+            const _cs = window.dacsContractStat({ jobs: _jobs, agreed: _agreed, paid: _paid, daily: _isDaily });
+            _remaining = _cs.remaining; _pct = _cs.pct; _stLabel = _cs.label;
         }
 
-        // The Contract band. Only meaningful with a capped contract — a plain
-        // payroll worker has no agreed total, so there is no balance to state and
-        // the band is omitted rather than printed with zeros.
-        const _over = _remaining < 0;
-        const _done = !_over && _agreed > 0 && _paid >= _agreed;
-        // Colour state, keyed off the SAME label the status pill uses, so the
-        // band and the pill above it can never show two colours for one status.
-        //   (default) blue = running · st-done green = finished · st-over red
-        const _bandState = _over ? ' st-over' : (_done ? ' st-done' : '');
-        const _dueLabel  = _over ? 'Lumampas / Over cap'
-                         : _done ? 'Wala nang bayarin / Nothing left'
-                         : 'Natitira / Still to pay';
-        const _bandNote  = _over ? 'lumampas / over cap' : 'nabayaran / paid';
-        const _contractBand = (_jobs && _agreed > 0) ? `
-  <div class="ws-contract${_bandState}">
-    <div class="ws-contract-top">
-      <div class="ws-lbl">Kontrata / Contract</div>
-      <div class="ws-contract-jobs">${_jobs} ${_jobs === 1 ? 'trabaho / job' : 'trabaho / jobs'} · ${Math.round(_pct)}% ${_bandNote}</div>
-    </div>
-    <div class="ws-contract-bar"><div class="ws-contract-fill" style="width:${_pct.toFixed(1)}%;"></div></div>
-    <div class="ws-contract-grid">
-      <div class="ws-contract-cell"><span class="k">Kabuuang kontrata / Contract</span><span class="v">${fmt(_agreed)}</span></div>
-      <div class="ws-contract-cell"><span class="k">Nabayaran na / Paid to date</span><span class="v">${fmt(_paid)}</span></div>
-      <div class="ws-contract-cell due"><span class="k">${_dueLabel}</span><span class="v">${fmt(Math.abs(_remaining))}</span></div>
-    </div>
-  </div>` : '';
+        // The Contract band, built by the SHARED helper (print-utils.js) — the
+        // same one Project Management's SOA uses. It returns '' for a plain
+        // payroll worker (no contract, so no balance to state) and drops the
+        // progress bar for a daily hire, whose work has no target to fill.
+        const _contractBand = window.dacsContractBand({ jobs: _jobs, agreed: _agreed, paid: _paid, daily: _isDaily });
         const _stPill = _stLabel
             ? `<div class="${window.dacsStatusPillClass(_stLabel)}">${esc(_stLabel)}</div>`
             : '<div class="ws-band-v sm">—</div>';

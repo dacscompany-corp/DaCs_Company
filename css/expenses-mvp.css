@@ -3192,6 +3192,18 @@
 .lc2-lump { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 20px;
   background: #EEF2FB; color: #3A5FA8; font-size: 9.5px; font-weight: 700;
   letter-spacing: 0.04em; text-transform: uppercase; vertical-align: 2px; }
+/* DAILY BASIS (migration 0063) - an UNCAPPED contract. Amber rather than the
+   lumpsum blue: a lumpsum still has a ceiling, this one has none, and the two
+   must not read as the same kind of thing at a glance. */
+.lc2-lump.lc2-daily { background: #FDF3E3; color: #9A6413; }
+
+/* A daily job is TAGGED ALONE, so ticking one locks every other row of the
+   payment picker (lcApplyDailyPickLock). Locked rows stay readable - greying
+   them out entirely would hide which jobs exist. */
+.aer-scope .exp-funding-check-item.is-locked { opacity: .42; cursor: not-allowed; }
+.aer-scope .exp-funding-check-item.is-locked input { cursor: not-allowed; }
+.aer-scope .exp-funding-check-item.is-daily .exp-funding-check-item__remain.is-daily { color: #9A6413; }
+
 .lc2-works { margin-bottom: 14px; padding: 12px 14px; background: #FAFAF8;
   border: 1px solid #EFEFEC; border-radius: 10px; }
 .lc2-works-lbl { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;

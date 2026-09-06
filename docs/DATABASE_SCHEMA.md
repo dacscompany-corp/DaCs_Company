@@ -141,6 +141,7 @@ Hierarchy: **`folders` → `projects` (a month) → `expenses` / `payroll`**. Mo
 | `status` | string | `ongoing` \| `completed` |
 | `capHistory` | json | `[{amount, at, note}]` when the cap is raised |
 | `works` | json | migration 0062 — **lumpsum contracts**. An array of work NAMES (`["Plumbing Works", "Civil Works"]`), never amounts. A **non-empty** array is the whole discriminator: the contract is ONE capped agreement covering several works, paid by a SINGLE payment stream instead of one tagged payment per job. Deliberately **not** a third `category` — a lumpsum is a *shape* either category can take, so every list filter, segment tab and `.find(x => x.id === id)` lookup keeps working untouched. **Money model unchanged**: the drawdown still runs through `payroll.contractId`, and a names-only list can never add or move a peso. §M of `tests/money-math.test.js` fences that five jobs totalling 200,000 and one lumpsum of 200,000 give the identical agreed / paid / remaining. Registered in the shim's `json:` list — without that it does not round-trip. Must be in the `json:` registry, the modal, **both** save paths, the card, the ledger and the printed agreement (which lists the works in place of the container title) |
+| `payBasis` | string | migration 0063 — **`fixed` (default) \| `daily`**. `daily` is an **UNCAPPED** contract: a worker hired by the day has no agreed total, so `agreedAmount` is forced to **0** and is meaningless. Nothing may report a **remaining**, a **percentage** or an **"over cap"** on one — paid-to-date is the only honest figure; `lcStats` / `_pmContractStats` return `daily: true` with `remaining` and `pct` as inert 0s, and every reader must branch on the flag, never on the numbers. **Not a category and not a pay type** — `category` stays `labor`\|`outsource` and `payType` stays `pakyaw`\|`inhouse`. Daily is a **shape**, like `works`: `works` non-empty → Lumpsum; `payBasis='daily'` → Daily; otherwise Single job. The three are mutually exclusive in the modal (a daily contract saves an empty `works`). **Money model unchanged**: drawdown still runs through `payroll.contractId` (PC) / `weeklyBills.entries[].contractId` (PM), and `pay_basis` carries no pesos. **A daily job is TAGGED ALONE** — the pro-rata splitter weights by what a job still owes, which is undefined without a cap, so ticking one clears and disables every other pick (`lcApplyDailyPickLock` / `_pmApplyDailyPickLock`) and both allocators hand it the payment whole. **Capped and daily jobs are summed APART** on every worker card and tab total, or a daily payment gets subtracted from a cap it never drew on and the card reads a false "Over by". Out Source has **no** daily shape — a vendor subcontract is a priced supply & install, so `pmOcSave` keeps its unconditional cap guard. Unapplied migration reads as `fixed` = the old capped behaviour. §Q of `money-math.test.js` fences all of it |
 | `agreementSigned`, `agreementSignedAt`, `agreementSignature`, `agreementPdfUrl`, `agreementPdfName` | — | signed Worker Agreement (migration 0023) |
 | `createdAt`, `updatedAt` | ts | |
 
@@ -464,7 +465,7 @@ Same shape as `invoices`; `items` are labor lines auto-built from `weeklyBills` 
 |---|---|
 | `weeklyBills/{id}` | `weekEndingDate`, `labor`, `materials`, `managementFee` (=15% of L+M), `grandTotal`, `notes`, `status` (`Submitted`/`Partial`/`Paid`), `createdAt`,`updatedAt` |
 | `procurementList/{id}` | `item`, `qty`, `estPrice`, `notes`, `status` (`Pending`/`Assigned…`/`Bought…`), `boughtBy` (`client`/`company`/null), `actualAmount`, `receiptUrl`, timestamps |
-| `laborContracts/{id}` → `pm_labor_contracts` | the PM twin of `labor_contracts` (migrations 0015; `category` 0016; `works` 0062): `workerName`, `scope`, `agreedAmount` (the cap), `payType`, `category` (`labor`\|`outsource`), `status`, `capHistory`, `notes`, `agreement*`, `works`. Drawn down by `weeklyBills.entries[]` labor lines carrying `contractId` — **not** by `payroll`, which is Project Control's path. `works` is the **lumpsum** list: work NAMES only, and a non-empty array means ONE cap covering several works paid by a single entry stream. Same rules as the PC column, and the two must stay in step — §M of `money-math.test.js` asserts both modules print the identical works line |
+| `laborContracts/{id}` → `pm_labor_contracts` | the PM twin of `labor_contracts` (migrations 0015; `category` 0016; `works` 0062): `workerName`, `scope`, `agreedAmount` (the cap), `payType`, `category` (`labor`\|`outsource`), `status`, `capHistory`, `notes`, `agreement*`, `works`. Drawn down by `weeklyBills.entries[]` labor lines carrying `contractId` — **not** by `payroll`, which is Project Control's path. `works` is the **lumpsum** list: work NAMES only, and a non-empty array means ONE cap covering several works paid by a single entry stream. Same rules as the PC column, and the two must stay in step. `pay_basis` (0063) is the PM twin of the PC column: `daily` = **uncapped**, drawn down by the same `weeklyBills.entries[]` labor lines, reporting no remaining / percentage / over-cap, and **tagged alone** so the pro-rata splitter never has to weight a job with no cap. Out Source (`category='outsource'`) has no daily shape — §M of `money-math.test.js` asserts both modules print the identical works line |
 | `revolvingFund/summary` | `initialFund`, `totalReplenished`, `notes`, `updatedAt` (single doc id `summary`) |
 | `revolvingFundExpenses/{id}` | `date`, `amount`, `description`, `notes`, `createdAt` |
 | `revolvingFundReplenishments/{id}` | `date`, `amount`, `notes`, `createdAt` |
@@ -541,6 +542,59 @@ Despite the name, this table records a project ending **either way**:
 - `settings/constructionClientTerms` — one global Client Management agreement: `text`, `pdfUrl`/`pdfName` (`constructionClientTermsGlobal/…`); if a PDF is set, every construction client opens + e-signs on next login
 - `settings/clientPortalTerms` — one global Client Portal agreement: `text`, `pdfUrl`/`pdfName` (`clientPortalTermsGlobal/…`); if a PDF is set, every customer-portal client opens + e-signs on next login
 - `settings/workerAgreement` — worker agreement template for labor contracts (Worker Tracker): `text` (piecework terms + company rules), `pdfUrl`/`pdfName` (optional comprehensive PDF form, `workerAgreementGlobal/…`). Signed per contract onto `labor_contracts.agreement_*` columns (migration 0023).
+- `settings/outsourceAgreement` — **the Out Source twin** (2026-09-05), same shape:
+  `text`, `pdfUrl`/`pdfName` (uploaded to `outsourceAgreementGlobal/…`). **No migration** —
+  `settings` is a key/value collection in the shim (`REG.settings`, `kv: true`), so a new doc id
+  is just another key. An Out Source contract is a **vendor subcontract**, not employment: the
+  employee manual's pages (grace periods, official tools, orientation, per-page employee
+  sign-offs) are meaningless to a supplier, which is why the two are separate documents rather
+  than one shared template. **Keep them apart.** The pair is declared once in `LC_AGR_TPL`
+  (`expenses-module.js`) — settings doc id, global-template folder, signed-copy folder, default
+  text — and everything else reads through `lcAgrTplCfg(category)`.
+  - Signed copies land on the **same** `labor_contracts.agreement_*` columns for both kinds, but
+    in **different storage folders**: `workerAgreements/…` vs `outsourceAgreements/…`, so a
+    supplier's subcontract is never filed as an employee record.
+  - `js/pm-admin.js` has **no loader of its own** — it calls `window.lcLoadAgrTemplate(category)`,
+    exported by `expenses-module.js` (loaded first in `admin.html`). One source of truth: the same
+    agreement must print from Project Management and Project Control. PM falls back to the global
+    blank template when no signed PDF is attached, so a brand-new contract can still print a sheet
+    to sign.
+  - The template editor is reachable from the **Labor → Worker template / Out Source template**
+    button in the Project Control toolbar (`portal-app.compiled.js`). Owner-only — it rewrites a
+    document every printed contract inherits. Before this it had **no UI entry point at all**.
+  - **The uploaded PDFs carry 41 AcroForm fields, identical in both templates**
+    (read from `assets/Worker-Agreement.pdf` and `assets/Outsource-Agreement.pdf`,
+    2026-09-05; the PDFs are gitignored, so the names are pinned as `PDF_FIELDS` in
+    `tests/money-math.test.js`). `js/print-utils.js` `_dacsFillWorkerForm()` fills them:
+    `contract_ref_no`, `project`, `worker`, `pay_type`, `contract_amount`,
+    `scope_of_work_1..3`, `cover_project`, `cover_effective_date`,
+    `downpayment_amount`/`_date`/`_mode`, `ack_employee_name`, `ack_project_branch`,
+    `ack_position_trade`, `ack_orientation_date`, every `*_printed_name`, and every
+    signature date. **Still blank by design:** `grace_period_minutes` and
+    `official_tools` — company policy blanks no contract supplies.
+  - **Every "PETSA" over a signature line prints TODAY's date** (`p03_date`…`p12_date`,
+    `ack_date`), from `d.printDate`. This **reversed** the earlier hand-dating rule on
+    2026-09-05 — twelve hand-dated lines per worker was the thing being fixed. Be aware
+    it asserts a signing date: print today, sign Thursday, the paper says today. One
+    regex in `_dacsFillWorkerForm()` matches all twelve, so narrowing it is how you
+    hand-date any subset again. It deliberately does **not** match `ack_orientation_date`
+    (contract data) or `downpayment_date` (a recorded payment).
+  - **Page 4, "10% DOWNPAYMENT — UNANG BAYAD", has NO columns of its own.** It is
+    derived at print time from the worker's **first recorded payment**:
+    `lcFirstPayment()` (`expenses-module.js`) reads the earliest `payroll` row
+    whose `contract_id` is one of the worker's jobs; `_pmFirstPayment()`
+    (`pm-admin.js`) reads the earliest `weeklyBills.entries[]` labor line. Owner's
+    call (2026-09-05): **the first payment IS the downpayment, whatever it is** —
+    the "10%" in the heading is fixed text in the uploaded PDF, so the printed
+    figure can disagree with it. Don't "fix" that into a computed `cap × 10%`.
+    Amount ← `total_salary` / entry `amount` (legs of one `splitGroup` re-added),
+    date ← `payment_date` / the bill's `week_ending_date`, mode ←
+    `payroll.payment_method` — **PM prints no mode**, its entries have no such
+    field. Indirect (overhead) rows and non-labor lines are excluded, and an
+    unpaid worker prints a **blank** block, never `0.00`. This is the one place
+    the agreement reads payments: it states a single payment as fact and totals
+    nothing, so it stays outside the money model. §M of `money-math.test.js`
+    fences all of it.
 - other config: owner/staff only.
 
 ### `stats/{…}` — read-only aggregates (no client writes).

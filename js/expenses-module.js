@@ -7605,13 +7605,19 @@ function lcPaid(contractId, excludeRowId) {
         .reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
 }
 function lcStats(c) {
-    const agreed = parseFloat(c.agreedAmount) || 0;
     const paid = lcPaid(c.id);
+    // DAILY (migration 0063): no ceiling exists, so there is nothing to be
+    // remaining OF and nothing to be a percentage OF. Reporting 0 here would be
+    // a claim ("nothing left to pay"), not an absence — `remaining` and `pct`
+    // are inert placeholders and `daily` tells every reader to ignore them.
+    // Status stays Ongoing: a daily hire is never "Completed" by arithmetic.
+    if (lcIsDaily(c)) return { agreed: 0, paid, remaining: 0, pct: 0, status: 'Ongoing', daily: true };
+    const agreed = parseFloat(c.agreedAmount) || 0;
     const remaining = agreed - paid;
     const pct = agreed > 0 ? (paid / agreed) * 100 : 0;
     let status = 'Ongoing';
     if (agreed > 0 && paid >= agreed) status = paid > agreed ? 'Over' : 'Completed';
-    return { agreed, paid, remaining, pct, status };
+    return { agreed, paid, remaining, pct, status, daily: false };
 }
 // ── Out Source vs in-house labor (migration 0057) ─────────────
 // `labor_contracts` holds BOTH kinds, split only by `category`. The array stays
@@ -7621,6 +7627,12 @@ function lcStats(c) {
 // A missing column (migration 0057 not applied) reads as undefined, which falls
 // to the 'labor' side, so the old behaviour survives an unapplied migration.
 function lcIsOutsource(c) { return !!c && c.category === 'outsource'; }
+// DAILY BASIS (migration 0063) — an UNCAPPED contract. `agreedAmount` is
+// meaningless on one of these, so nothing may report a remaining, a percentage
+// or an "over agreed": paid-to-date is the only honest figure. A missing column
+// (migration not applied) reads as 'fixed', i.e. the old capped behaviour.
+// The PC twin of _pmIsDaily (pm-admin.js) — the two must stay in step.
+function lcIsDaily(c) { return !!c && c.payBasis === 'daily'; }
 function lcListByCategory(cat) {
     return (expLaborContracts || []).filter(c => cat === 'outsource' ? lcIsOutsource(c) : !lcIsOutsource(c));
 }
@@ -7630,6 +7642,10 @@ function lcOutsourceOnly() { return lcListByCategory('outsource'); }
 // Guarded: money-math.test.js extracts this slice and evals it headless, where
 // there is no `window`.
 if (typeof window !== 'undefined') window.lcIsOutsource = lcIsOutsource;
+// portal-app.compiled.js reads this to render uncapped worker cards. Exported
+// rather than duplicated so the two files can never disagree about what "daily"
+// means (it falls back to the same field check if the export is missing).
+if (typeof window !== 'undefined') window.lcIsDaily = lcIsDaily;
 
 // ── Lumpsum contracts (migration 0062) ────────────────────────
 // A LUMPSUM contract is ONE capped agreement covering SEVERAL works. Instead of
@@ -7717,20 +7733,63 @@ const LC_AGR_DEFAULT =
 
 By signing, the worker confirms they understood and accept these terms.`;
 
-let _lcAgrTemplate = null;                 // cached { text, pdfUrl, pdfName }
+// ── Out Source: a VENDOR subcontract, not an employment policy ──────
+// An Out Source contract is a company supplying and installing, so it gets its
+// own template (settings/outsourceAgreement) rather than the worker manual.
+// The employee manual's pages — grace periods, official tools, orientation,
+// per-page employee sign-offs — are meaningless to a supplier and were the
+// reason the two were kept apart (owner's call, 2026-09-05).
+const LC_OS_AGR_DEFAULT =
+`VENDOR SUBCONTRACT AGREEMENT — SUPPLY & INSTALL TERMS
 
-async function lcLoadAgrTemplate(force) {
-    if (_lcAgrTemplate && !force) return _lcAgrTemplate;
+1. Scope & Contract Price. The vendor agrees to supply and install the scope of work stated in this contract for the agreed contract amount. No additional charges beyond the agreed cap unless approved in writing.
+
+2. Materials & Workmanship. Materials supplied by the vendor must be new, of the specification agreed, and installed to the company's quality standards. Defective materials or workmanship are replaced or reworked at the vendor's expense.
+
+3. Own Personnel. The vendor's crew are the vendor's own personnel. The vendor is responsible for their wages, statutory contributions, tools and conduct on site; they are not employees of the company.
+
+4. Site Rules & Safety. The vendor and its crew follow all site safety rules and company regulations, keep the work area safe and orderly, and use protective equipment where required.
+
+5. Schedule. The vendor completes delivery and installation within the agreed timeframe and coordinates access and sequencing with the site supervisor.
+
+6. Payment. Payments are released against delivered and accepted work and draw down from the agreed contract amount.
+
+7. Warranty. The vendor warrants its supply and installation against defects for the period agreed in writing, and attends to warranty calls at its own cost.
+
+8. Termination. The company may end this contract for violation of these terms; delivered and accepted work will be assessed and paid accordingly.
+
+By signing, the vendor's authorised signatory confirms they understood and accept these terms.`;
+
+// Which settings doc + storage folder each kind of contract reads. The doc id
+// for labor is unchanged, so every worker agreement already saved keeps working.
+const LC_AGR_TPL = {
+    labor:     { doc: 'workerAgreement',    store: 'workerAgreementGlobal',    contracts: 'workerAgreements',    fallback: LC_AGR_DEFAULT,
+                 title: 'Worker Agreement Template',    saved: 'Worker agreement template saved ✓',    file: 'Worker Agreement.pdf' },
+    outsource: { doc: 'outsourceAgreement', store: 'outsourceAgreementGlobal', contracts: 'outsourceAgreements', fallback: LC_OS_AGR_DEFAULT,
+                 title: 'Out Source Agreement Template', saved: 'Out Source agreement template saved ✓', file: 'Vendor Subcontract.pdf' }
+};
+// `settings` is a key/value collection in the shim (REG.settings, kv: true), so
+// the new `outsourceAgreement` doc is just another key — no migration needed.
+function lcAgrTplCfg(cat) { return LC_AGR_TPL[cat === 'outsource' ? 'outsource' : 'labor']; }
+
+// Cached per kind — the two templates are different documents and must never
+// share a slot, or opening one editor would show the other's text.
+const _lcAgrTemplates = { labor: null, outsource: null };
+
+async function lcLoadAgrTemplate(cat, force) {
+    const kind = cat === 'outsource' ? 'outsource' : 'labor';
+    const cfg  = lcAgrTplCfg(kind);
+    if (_lcAgrTemplates[kind] && !force) return _lcAgrTemplates[kind];
     try {
-        const doc = await db.collection('settings').doc('workerAgreement').get();
+        const doc = await db.collection('settings').doc(cfg.doc).get();
         const d = doc && doc.exists ? doc.data() : null;
-        _lcAgrTemplate = {
-            text  : (d && typeof d.text === 'string' && d.text.trim()) ? d.text : LC_AGR_DEFAULT,
+        _lcAgrTemplates[kind] = {
+            text  : (d && typeof d.text === 'string' && d.text.trim()) ? d.text : cfg.fallback,
             pdfUrl : (d && d.pdfUrl)  || '',
             pdfName: (d && d.pdfName) || ''
         };
-    } catch (_) { _lcAgrTemplate = { text: LC_AGR_DEFAULT, pdfUrl: '', pdfName: '' }; }
-    return _lcAgrTemplate;
+    } catch (_) { _lcAgrTemplates[kind] = { text: cfg.fallback, pdfUrl: '', pdfName: '' }; }
+    return _lcAgrTemplates[kind];
 }
 
 // ── Per-contract signed-agreement PDF upload (no on-screen e-signature) ──
@@ -7803,8 +7862,16 @@ window.lcTplRemovePdf = function () {
     _lcTplRender();
 };
 
-async function lcOpenAgrTemplate() {
+// Which kind the open editor is editing. Held here rather than passed to the
+// save handler through the DOM: the Save button is markup built as a string, and
+// threading a category through an onclick attribute is how the wrong document
+// gets overwritten.
+let _lcTplCat = 'labor';
+
+async function lcOpenAgrTemplate(cat) {
     _lcTplFile = null;
+    _lcTplCat = cat === 'outsource' ? 'outsource' : 'labor';
+    const cfg = lcAgrTplCfg(_lcTplCat);
     let modal = document.getElementById('lcAgrTemplateModal');
     if (!modal) {
         modal = document.createElement('div');
@@ -7814,7 +7881,7 @@ async function lcOpenAgrTemplate() {
     }
     modal.innerHTML =
       '<div class="exp-modal-box">'
-      + '<div class="exp-modal-header"><h2>Worker Agreement Template</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal(\'lcAgrTemplateModal\')">&times;</button></div>'
+      + '<div class="exp-modal-header"><h2>' + _mvpEsc(cfg.title) + '</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal(\'lcAgrTemplateModal\')">&times;</button></div>'
       + '<div style="padding:0 4px;">'
       +   '<div class="exp-form-group"><label>Agreement PDF <span style="color:#9ca3af;font-weight:400;">(optional — the comprehensive agreement form)</span></label>'
       +     '<input type="file" id="lc-tpl-pdf-input" accept="application/pdf,.pdf" onchange="lcTplPickPdf(this)" style="display:none;">'
@@ -7831,7 +7898,7 @@ async function lcOpenAgrTemplate() {
       +   '</div>'
       + '</div></div>';
     openExpModal('lcAgrTemplateModal');
-    const tpl = await lcLoadAgrTemplate(true);
+    const tpl = await lcLoadAgrTemplate(_lcTplCat, true);
     const ta = document.getElementById('lc-tpl-text'); if (ta) ta.value = tpl.text;
     _lcTplUrl = tpl.pdfUrl; _lcTplName = tpl.pdfName;
     _lcTplRender();
@@ -7843,22 +7910,27 @@ async function lcSaveAgrTemplate() {
     if (!text) { showExpNotif('The agreement text cannot be empty.', 'error'); return; }
     const btn = document.getElementById('lc-tpl-save');
     if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    // The kind being edited was captured when the modal opened. Reading it back
+    // here (rather than defaulting) is what stops a vendor template save from
+    // landing on settings/workerAgreement and wiping the worker manual.
+    const kind = _lcTplCat === 'outsource' ? 'outsource' : 'labor';
+    const cfg  = lcAgrTplCfg(kind);
     try {
         let pdfUrl = _lcTplUrl, pdfName = _lcTplName;
         if (_lcTplFile) {
             if (btn) btn.textContent = 'Uploading…';
             const safe = String(_lcTplFile.name || 'agreement.pdf').replace(/[^\w.\-]+/g, '_');
-            const ref  = storage.ref('workerAgreementGlobal/' + Date.now() + '_' + safe);
+            const ref  = storage.ref(cfg.store + '/' + Date.now() + '_' + safe);
             await ref.put(_lcTplFile);
             pdfUrl  = await ref.getDownloadURL();
-            pdfName = _lcTplFile.name || 'Worker Agreement.pdf';
+            pdfName = _lcTplFile.name || cfg.file;
         }
-        await db.collection('settings').doc('workerAgreement').set({
+        await db.collection('settings').doc(cfg.doc).set({
             text, pdfUrl: pdfUrl || '', pdfName: pdfName || '', updatedAt: new Date().toISOString()
         });
-        _lcAgrTemplate = { text, pdfUrl: pdfUrl || '', pdfName: pdfName || '' };
+        _lcAgrTemplates[kind] = { text, pdfUrl: pdfUrl || '', pdfName: pdfName || '' };
         closeExpModal('lcAgrTemplateModal');
-        showExpNotif('Worker agreement template saved ✓', 'success');
+        showExpNotif(cfg.saved, 'success');
     } catch (err) {
         showExpNotif('Error: ' + err.message, 'error');
     } finally {
@@ -7912,6 +7984,55 @@ function lcWorkerContracts(c) {
     return cs.length ? cs : [c];
 }
 
+// The manual's page 4 — "10% DOWNPAYMENT / UNANG BAYAD" — states the worker's
+// FIRST payment: halaga, petsa, paraan. Owner's call (2026-09-05): the earliest
+// recorded drawdown IS that payment, whatever it is, so the block can print a
+// figure that is not 10% of the cap (a 50,000 first payment on a 55,000 job
+// prints 50,000). The heading is fixed text in the uploaded PDF, so the sheet
+// can state a first payment the heading calls 10% — accepted deliberately.
+//
+// This is the ONE place the sheet reads payments, and it stays outside the money
+// model: it restates a single recorded payment as a fact, it never totals what
+// was paid (that is lcPaid's job) and it feeds nothing into Spent / Earned /
+// Profit. §M of tests/money-math.test.js fences that distinction.
+function lcFirstPayment(cs) {
+    const ids = new Set((cs || []).map(c => c && c.id).filter(Boolean));
+    if (!ids.size) return null;
+    const rows = (typeof expPayroll !== 'undefined' ? expPayroll : [])
+        .filter(p => p && ids.has(p.contractId) && lcDrawsDown(p));
+    if (!rows.length) return null;
+    // Earliest by payment date. The date is optional, and an undated row must
+    // NOT win the slot just because '' sorts before every date — undated rows
+    // fall to the back and are used only when nothing is dated at all.
+    const first = rows.slice().sort((a, b) => {
+        const da = a.paymentDate || '', db = b.paymentDate || '';
+        if (!da !== !db) return da ? -1 : 1;      // undated goes last, never first
+        return da.localeCompare(db);
+    })[0];
+    // One payment split across several of the worker's jobs is saved as one row
+    // per job sharing a splitGroup. The manual states the PAYMENT, not one leg
+    // of it, so the legs are re-added — this recovers a single payment's amount,
+    // it never adds separate payments together.
+    const legs = first.splitGroup ? rows.filter(p => p.splitGroup === first.splitGroup) : [first];
+    const amount = legs.reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
+    return {
+        amount: amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        date  : lcPayDateLabel(first.paymentDate),
+        // Blank, never the '—' the on-screen tables show: a dash printed onto a
+        // contract's blank line reads as an answer, an empty line reads as unfilled.
+        mode  : ({ cash: 'Cash', gcash: 'GCash', bank_transfer: 'Bank Transfer', cheque: 'Cheque' })[first.paymentMethod] || ''
+    };
+}
+
+// A payroll paymentDate ('YYYY-MM-DD') as it prints on the manual. Parsed from
+// LOCAL parts via the T00:00:00 suffix, never bare — PH is UTC+8, and a bare
+// 'YYYY-MM-DD' parses as UTC midnight, which can render as the day before.
+function lcPayDateLabel(s) {
+    if (!s) return '';
+    const t = new Date(/^\d{4}-\d{2}-\d{2}$/.test(s) ? s + 'T00:00:00' : s);
+    return isNaN(t) ? String(s) : t.toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
 // Everything the combined sheet states. `cs` is one worker's whole job list.
 function lcWorkerAgreementDetails(cs) {
     const first = cs[0] || {};
@@ -7931,6 +8052,7 @@ function lcWorkerAgreementDetails(cs) {
     // would state one job's terms as if they covered all of them.
     const types = [...new Set(cs.map(c => c.payType === 'inhouse' ? 'In-house' : 'Pakyaw'))];
     const folder = (typeof expFolders !== 'undefined' ? expFolders : []).find(f => f.id === first.folderId);
+    const dp = lcFirstPayment(cs) || {};
     return {
         // The ref is the FIRST job's id, so the same worker always prints the
         // same reference no matter which of their jobs it was opened from.
@@ -7940,10 +8062,23 @@ function lcWorkerAgreementDetails(cs) {
         scope   : scope,
         trade   : (cs.find(c => c.trade) || {}).trade || '',
         orientationDate: lcOrientationDateLabel(),
+        // Today, for the cover's PETSA NG BISA and every PETSA over a signature
+        // line. Same value as orientationDate today, but kept as its own field:
+        // if orientation ever gets a real date picker, the signature dates must
+        // NOT follow it — they are the day the paper was printed.
+        printDate: lcOrientationDateLabel(),
         payType : types.length === 1 ? types[0] : 'Mixed',
         amount  : total.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         printedName: first.workerName || '',
         total   : total,
+        // Which kind of agreement this is. Read from the CONTRACT, never from
+        // the tab on screen, so a sheet opened from anywhere states the truth.
+        isOutsource: lcIsOutsource(first),
+        // Page 4's UNANG BAYAD block. Blank when the worker has not been paid
+        // yet — the lines then print empty, to be filled by hand.
+        dpAmount: dp.amount || '',
+        dpDate  : dp.date   || '',
+        dpMode  : dp.mode   || '',
     };
 }
 
@@ -7956,25 +8091,30 @@ function lcOrientationDateLabel() {
     return new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
-// Build + auto-print the Worker Agreement PDF (contract + company policy).
+// Build + auto-print the agreement PDF (contract + company policy). Serves BOTH
+// kinds: a worker gets the employee manual, a vendor gets the Out Source
+// template — lcWorkerContracts already keeps the two kinds on separate sheets.
 async function lcViewAgreement(c) {
     const esc = _mvpEsc;
-    // ONE sheet for the WORKER, covering every capped job they hold on this
-    // folder (see lcWorkerContracts). `d` carries the combined scope list and
-    // the summed agreed amount; `cs` is kept for the per-job breakdown the
-    // generated sheet prints below.
+    // ONE sheet for the WORKER (or vendor), covering every capped job they hold
+    // on this folder (see lcWorkerContracts). `d` carries the combined scope
+    // list and the summed agreed amount; `cs` is kept for the per-job breakdown
+    // the generated sheet prints below.
     const cs = lcWorkerContracts(c);
     const d  = lcWorkerAgreementDetails(cs);
+    // Vendor or worker decides which template, which wording, and which storage
+    // folder. Taken from the CONTRACT, never from whichever tab is on screen.
+    const isOS = lcIsOutsource(c);
     // "Signed" is a property of the AGREEMENT, not of one job: the worker signs
     // the sheet once, so whichever job row captured that signature stands for
     // all of them. Falls back to the job this was opened from.
     const sigSrc = cs.find(x => x.agreementSigned) || c;
     const signed = !!sigSrc.agreementSigned;
 
-    // Uploaded policy-manual PDF (settings/workerAgreement): fill its "Detalye
-    // ng Pakyaw Labor Contract" page with the worker's COMBINED details.
+    // Uploaded template (settings/workerAgreement or settings/outsourceAgreement):
+    // fill its details page with the worker's / vendor's COMBINED details.
     let _tpl = null;
-    try { _tpl = await lcLoadAgrTemplate(); } catch (_) { _tpl = null; }
+    try { _tpl = await lcLoadAgrTemplate(isOS ? 'outsource' : 'labor'); } catch (_) { _tpl = null; }
     // Base document: an attached PDF wins over the global template — the one on
     // the job this was opened from first, else any other job of theirs, since
     // they all stamp from the same blank manual. Both get the details stamped
@@ -7992,7 +8132,7 @@ async function lcViewAgreement(c) {
 
     // Policy text: the snapshot the worker signed, or the current template if unsigned.
     let policy = sigSrc.agreementTermsSnapshot || c.agreementTermsSnapshot || '';
-    if (!policy) { try { policy = (await lcLoadAgrTemplate()).text || ''; } catch (_) {} }
+    if (!policy) { try { policy = (await lcLoadAgrTemplate(isOS ? 'outsource' : 'labor')).text || ''; } catch (_) {} }
 
     let when = '';
     try {
@@ -8007,15 +8147,17 @@ async function lcViewAgreement(c) {
     const w = window.open('', '_blank');
     if (!w) { alert('Please allow pop-ups to print the agreement.'); return; }
 
+    // A vendor signs through an authorised signatory, not "the worker".
+    const sigWho = isOS ? 'Authorised signatory' : 'Worker’s signature';
     const signatureBlock = signed
         ? (sigSrc.agreementSignatureImage
             ? '<img class="sig-img" src="' + esc(sigSrc.agreementSignatureImage) + '" alt="signature">'
             : '<div class="sig-line"></div>')
           + '<div class="sig-name">' + esc(sigSrc.agreementSignature || d.worker || '') + '</div>'
-          + '<div class="sig-cap">Worker’s signature · Signed' + (when ? ' on ' + esc(when) : '') + '</div>'
+          + '<div class="sig-cap">' + sigWho + ' · Signed' + (when ? ' on ' + esc(when) : '') + '</div>'
         : '<div class="sig-line"></div>'
           + '<div class="sig-name">' + esc(d.worker || '') + '</div>'
-          + '<div class="sig-cap">Worker’s signature over printed name · Date: _______________</div>';
+          + '<div class="sig-cap">' + sigWho + ' over printed name · Date: _______________</div>';
 
     // The fuller wording the generated sheet has always used. "Mixed" only ever
     // appears when the worker's jobs genuinely disagree, and then the breakdown
@@ -8036,7 +8178,8 @@ async function lcViewAgreement(c) {
         : '';
 
     const html =
-      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Worker Agreement — ' + esc(d.worker || '') + '</title>'
+      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'
+      + (isOS ? 'Vendor Subcontract Agreement' : 'Worker Agreement') + ' — ' + esc(d.worker || '') + '</title>'
       + '<style>'
       + '*{box-sizing:border-box;}'
       + 'body{font-family:Georgia,\'Times New Roman\',serif;max-width:760px;margin:0 auto;padding:44px 40px;color:#1a1a1a;line-height:1.65;}'
@@ -8063,24 +8206,33 @@ async function lcViewAgreement(c) {
       + '.foot{margin-top:40px;font-size:10.5px;color:#999;text-align:center;border-top:1px solid #eee;padding-top:10px;}'
       + '@media print{.noprint{display:none;}body{padding:0;}}'
       + '</style></head><body>'
-      + '<div class="doc-head"><div class="co">DAC’s Building Design Services</div><div class="co-sub">Construction · Labor Agreement</div></div>'
-      + '<div class="doc-title">Worker Agreement</div>'
+      + '<div class="doc-head"><div class="co">DAC’s Building Design Services</div><div class="co-sub">Construction · '
+          + (isOS ? 'Vendor Subcontract' : 'Labor Agreement') + '</div></div>'
+      + '<div class="doc-title">' + (isOS ? 'Vendor Subcontract Agreement' : 'Worker Agreement') + '</div>'
       + '<div class="doc-date">' + esc(today) + '</div>'
       + '<div class="status-wrap"><span class="status ' + (signed ? 'signed' : 'draft') + '">' + (signed ? '✓ SIGNED' : 'FOR SIGNATURE') + '</span></div>'
 
       + '<h2>Contract Details</h2><table>'
-      + '<tr><td class="k">Worker</td><td>' + esc(d.worker || '—') + '</td></tr>'
+      + '<tr><td class="k">' + (isOS ? 'Vendor / Crew' : 'Worker') + '</td><td>' + esc(d.worker || '—') + '</td></tr>'
       + '<tr><td class="k">Scope of work</td><td>' + esc(d.scope || '—') + '</td></tr>'
       + (d.trade ? '<tr><td class="k">Position / Trade</td><td>' + esc(d.trade) + '</td></tr>' : '')
-      + '<tr><td class="k">Orientation date</td><td>' + esc(d.orientationDate) + '</td></tr>'
+      // Orientation is an EMPLOYEE step. A vendor is a company that was hired,
+      // not a worker who was inducted, so the row is dropped rather than filled
+      // with today's date and left to read as something that happened.
+      + (isOS ? '' : '<tr><td class="k">Orientation date</td><td>' + esc(d.orientationDate) + '</td></tr>')
       + '<tr><td class="k">Agreed amount (cap)</td><td>₱ ' + d.total.toLocaleString('en-PH')
           + (cs.length > 1 ? ' <span style="color:#666;font-size:12px;">(' + cs.length + ' jobs)</span>' : '') + '</td></tr>'
       + '<tr><td class="k">Pay type</td><td>' + esc(payTypeLbl) + '</td></tr>'
+      // The generated sheet is the no-PDF fallback, so it states the same first
+      // payment the uploaded manual's page 4 does — otherwise the two versions
+      // of one agreement would disagree. Omitted entirely when nothing is paid.
+      + (d.dpAmount ? '<tr><td class="k">Downpayment (first payment)</td><td>₱ ' + esc(d.dpAmount)
+          + (d.dpDate ? ' · ' + esc(d.dpDate) : '') + (d.dpMode ? ' · ' + esc(d.dpMode) : '') + '</td></tr>' : '')
       + (notesLbl ? '<tr><td class="k">Notes</td><td>' + esc(notesLbl) + '</td></tr>' : '')
       + '</table>'
       + jobsTable
 
-      + '<h2>Worker Policy — Piecework Rates &amp; Company Rules</h2>'
+      + '<h2>' + (isOS ? 'Vendor Terms — Supply &amp; Install' : 'Worker Policy — Piecework Rates &amp; Company Rules') + '</h2>'
       + '<div class="policy">' + esc(policy) + '</div>'
       + (_basePdf ? '<p style="font-size:12px;color:#555;margin-top:10px;">Full policy document on file: ' + esc(_basePdf) + '</p>' : '')
 
@@ -8100,9 +8252,11 @@ async function lcViewAgreement(c) {
     w.document.close();
 }
 
-// One modal serves both kinds. This flips its chrome: an OUT SOURCE contract is a
-// VENDOR subcontract, so the worker-specific legs — Position / Trade and the signed
-// Worker Agreement — are hidden rather than filled with something meaningless.
+// One modal serves both kinds. This flips its chrome: an OUT SOURCE contract is
+// a VENDOR subcontract, so Position / Trade — an employee field — stays hidden.
+// The signed-agreement row is NOT hidden any more (owner's call, 2026-09-05):
+// vendors sign their own Out Source agreement, so the signed copy is attached
+// to the contract exactly as a worker's is, and lands in its own storage folder.
 function lcApplyCategoryMode(cat) {
     const os = cat === 'outsource';
     const hidden = document.getElementById('lcCategory');
@@ -8111,7 +8265,9 @@ function lcApplyCategoryMode(cat) {
     const tradeRow = document.getElementById('lcTradeRow');
     if (tradeRow) tradeRow.style.display = os ? 'none' : '';
     const agrRow = document.getElementById('lcAgreementRow');
-    if (agrRow) agrRow.style.display = os ? 'none' : '';
+    if (agrRow) agrRow.style.display = '';
+    const agrLbl = document.getElementById('lcAgreementLabel');
+    if (agrLbl) agrLbl.textContent = os ? 'Signed Out Source agreement (PDF)' : 'Signed Worker Agreement (PDF)';
 
     // Field labels + placeholders follow the vocabulary of the kind being edited.
     const wLbl = document.getElementById('lcWorkerLabel');
@@ -8179,12 +8335,29 @@ function lcIsLumpsumMode() {
     const r = document.querySelector('input[name="lcShape"]:checked');
     return !!r && r.value === 'lumpsum';
 }
+function lcIsDailyMode() {
+    const r = document.querySelector('input[name="lcShape"]:checked');
+    return !!r && r.value === 'daily';
+}
 // Flip the form between the two shapes. Single job keeps today's form exactly;
 // Lumpsum swaps the one Scope field's meaning for a container TITLE and reveals
 // the works list. The agreed amount is untouched either way — a lumpsum has ONE
 // cap, which is the entire point.
 function lcApplyShapeMode() {
-    const lump = lcIsLumpsumMode();
+    const lump  = lcIsLumpsumMode();
+    const daily = lcIsDailyMode();
+    // DAILY has no cap, so the amount field is hidden rather than left showing a
+    // box that means nothing — a greyed field still reads as one somebody
+    // forgot to fill in. Mirrors pmLcApplyShape().
+    const amtRow = document.getElementById('lcAmountRow');
+    if (amtRow) amtRow.style.display = daily ? 'none' : '';
+    const dailyNote = document.getElementById('lcDailyNote');
+    if (dailyNote) dailyNote.style.display = daily ? '' : 'none';
+    // A hidden `required` input makes the browser refuse to submit the form and
+    // then fail to focus the field to explain why ("not focusable"), so the Save
+    // button would just do nothing. The flag has to come off with the field.
+    const amtIn = document.getElementById('lcAmount');
+    if (amtIn) { if (daily) amtIn.removeAttribute('required'); else amtIn.setAttribute('required', ''); }
     const box = document.getElementById('lcWorksBox');
     if (box) box.style.display = lump ? '' : 'none';
     const lbl = document.getElementById('lcScopeLabel');
@@ -8204,7 +8377,10 @@ function lcWorksPopulate(c) {
     const list = document.getElementById('lcWorksList');
     if (list) list.innerHTML = '';
     const works = lcWorksList(c);
-    const shape = works.length ? 'lumpsum' : 'single';
+    // The three shapes are mutually exclusive. Lumpsum is checked first because
+    // `works` is the older, stronger discriminator — a row that somehow carries
+    // both must not read as uncapped when it has a cap and a works list.
+    const shape = works.length ? 'lumpsum' : (lcIsDaily(c) ? 'daily' : 'single');
     const r = document.querySelector('input[name="lcShape"][value="' + shape + '"]');
     if (r) r.checked = true;
     works.forEach(w => lcWorksRow(w));
@@ -8268,25 +8444,37 @@ async function handleSaveLaborContract(e) {
     // it saves an empty array and stays exactly what it was.
     const works = lcWorksCollect();
     const trade = isOutsource ? '' : ((document.getElementById('lcTrade') || {}).value || '').trim();
-    const agreedAmount = parseFloat((document.getElementById('lcAmount').value || '').replace(/,/g, '')) || 0;
+    // DAILY BASIS (migration 0063): uncapped. The amount box is hidden in this
+    // mode, so whatever it still holds is stale — the cap is forced to 0 rather
+    // than read, or reopening a daily contract that used to be capped would
+    // quietly restore its old ceiling. Mirrors pmLcSave.
+    const daily = lcIsDailyMode();
+    const payBasis = daily ? 'daily' : 'fixed';
+    const agreedAmount = daily ? 0
+        : (parseFloat((document.getElementById('lcAmount').value || '').replace(/,/g, '')) || 0);
     const notes = document.getElementById('lcNotes').value.trim();
     const payType = (document.querySelector('input[name="lcPayType"]:checked') || {}).value || 'pakyaw';
     if (!workerName) { showExpNotif(isOutsource ? 'Enter the vendor / crew name.' : 'Enter the worker name.', 'error'); return; }
-    if (agreedAmount <= 0) { showExpNotif('Enter the agreed amount (the cap).', 'error'); return; }
+    // The cap is required for every shape EXCEPT daily, which has none by
+    // definition — the old unconditional guard is what made this impossible.
+    if (!daily && agreedAmount <= 0) { showExpNotif('Enter the agreed amount (the cap).', 'error'); return; }
 
     try {
         showExpLoading('lcSaveBtn', true);
 
-        // ── Worker agreement PDF ──
+        // ── Signed agreement PDF ──
         // Upload a newly-picked signed PDF; keep an existing one; or clear if removed.
         // A contract with an attached PDF counts as "signed".
+        // BOTH kinds store one (owner's call, 2026-09-05): a vendor signs the Out
+        // Source agreement the same way a worker signs the manual. The two land
+        // in DIFFERENT storage folders so a vendor subcontract is never mistaken
+        // for an employee record — the DB columns are shared and unchanged.
+        const agrCfg = lcAgrTplCfg(category);
         let agrFields = null;
-        if (isOutsource) {
-            agrFields = null;                      // vendors sign no Worker Agreement
-        } else if (_lcAgrFile) {
+        if (_lcAgrFile) {
             showExpLoading('lcSaveBtn', true);
             const safe = String(_lcAgrFile.name || 'agreement.pdf').replace(/[^\w.\-]+/g, '_');
-            const ref  = storage.ref('workerAgreements/' + folderId + '_' + Date.now() + '_' + safe);
+            const ref  = storage.ref(agrCfg.contracts + '/' + folderId + '_' + Date.now() + '_' + safe);
             await ref.put(_lcAgrFile);
             const url = await ref.getDownloadURL();
             agrFields = {
@@ -8294,7 +8482,7 @@ async function handleSaveLaborContract(e) {
                 agreementSignedAt  : new Date(),
                 agreementSignature : workerName,
                 agreementPdfUrl    : url,
-                agreementPdfName   : _lcAgrFile.name || 'Worker Agreement.pdf'
+                agreementPdfName   : _lcAgrFile.name || agrCfg.file
             };
         } else if (!_lcAgrUrl) {
             // No file picked and none kept → clear any previous agreement.
@@ -8303,7 +8491,7 @@ async function handleSaveLaborContract(e) {
 
         if (id) {
             const existing = expLaborContracts.find(x => x.id === id);
-            const update = { workerName, scope, trade, agreedAmount, payType, notes, category, works,
+            const update = { workerName, scope, trade, agreedAmount, payType, notes, category, works, payBasis,
                              updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
             if (existing && (parseFloat(existing.agreedAmount) || 0) !== agreedAmount) {
                 const hist = Array.isArray(existing.capHistory) ? existing.capHistory.slice() : [];
@@ -8316,7 +8504,7 @@ async function handleSaveLaborContract(e) {
             } catch (colErr) {
                 // Fallback if the DB doesn't have the newer agreement_pdf_name column
                 // yet: retry without it so remove/edit still persists.
-                if (/agreement_pdf_name|trade|category|works|column/i.test(colErr.message || '')) {
+                if (/agreement_pdf_name|trade|category|works|pay_basis|column/i.test(colErr.message || '')) {
                     const u2 = { ...update }; delete u2.agreementPdfName;
                     if (/trade/i.test(colErr.message || '')) delete u2.trade;   // migration 0039 not applied yet
                     if (/category/i.test(colErr.message || '')) {               // migration 0057 not applied yet
@@ -8327,12 +8515,16 @@ async function handleSaveLaborContract(e) {
                         delete u2.works;
                         if (works.length) { showExpNotif('Lumpsum needs migration 0062 — the works list was not saved.', 'error'); }
                     }
+                    if (/pay_basis|payBasis/i.test(colErr.message || '')) {     // migration 0063 not applied yet
+                        delete u2.payBasis;
+                        if (daily) { showExpNotif('Daily basis needs migration 0063 — saved as a capped contract.', 'error'); }
+                    }
                     await db.collection('laborContracts').doc(id).update(u2);
                 } else { throw colErr; }
             }
         } else {
             const addDoc = {
-                userId: _uid(), folderId, workerName, scope, trade, agreedAmount, payType, notes, category, works,
+                userId: _uid(), folderId, workerName, scope, trade, agreedAmount, payType, notes, category, works, payBasis,
                 status: 'ongoing',
                 capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
                 ...(agrFields || { agreementSigned: false }),
@@ -8341,7 +8533,7 @@ async function handleSaveLaborContract(e) {
             try {
                 await db.collection('laborContracts').add(addDoc);
             } catch (colErr) {
-                if (/agreement_pdf_name|trade|category|works|column/i.test(colErr.message || '')) {
+                if (/agreement_pdf_name|trade|category|works|pay_basis|column/i.test(colErr.message || '')) {
                     delete addDoc.agreementPdfName;
                     if (/trade/i.test(colErr.message || '')) delete addDoc.trade;   // migration 0039 not applied yet
                     if (/category/i.test(colErr.message || '')) {                   // migration 0057 not applied yet
@@ -8351,6 +8543,10 @@ async function handleSaveLaborContract(e) {
                     if (/works/i.test(colErr.message || '')) {                      // migration 0062 not applied yet
                         delete addDoc.works;
                         if (works.length) { showExpNotif('Lumpsum needs migration 0062 — the works list was not saved.', 'error'); }
+                    }
+                    if (/pay_basis|payBasis/i.test(colErr.message || '')) {         // migration 0063 not applied yet
+                        delete addDoc.payBasis;
+                        if (daily) { showExpNotif('Daily basis needs migration 0063 — saved as a capped contract.', 'error'); }
                     }
                     await db.collection('laborContracts').add(addDoc);
                 } else { throw colErr; }
@@ -8679,16 +8875,24 @@ function lcPopulatePayrollPicker() {
             const st = lcStats(c);
             const on = keep.has(c.id);
             const os = lcIsOutsource(c);
-            return '<label class="exp-funding-check-item' + (on ? ' is-checked' : '') + '">'
+            // A DAILY job has no cap, so it can state what it has been paid but
+            // never what is "left". `data-daily` is what the tick handler reads
+            // to enforce the tags-alone rule (see payContractCheckChanged).
+            return '<label class="exp-funding-check-item' + (on ? ' is-checked' : '') + (st.daily ? ' is-daily' : '') + '">'
                 + '<input type="checkbox" name="payContractPick" value="' + c.id + '"' + (on ? ' checked' : '')
+                + ' data-daily="' + (st.daily ? '1' : '0') + '"'
                 + ' onchange="payContractCheckChanged(this)">'
                 + '<span class="exp-funding-check-item__label">'
                 + (os ? '<span class="lc-oc-badge">OUT SOURCE</span> ' : '')
                 + _mvpEsc(lcPickerLabel(c)) + '</span>'
-                + '<span class="exp-funding-check-item__remain' + (st.remaining <= 0 ? ' is-settled' : '')
-                + '">₱' + formatNum(st.remaining) + ' left</span>'
+                + (st.daily
+                    ? '<span class="exp-funding-check-item__remain is-daily">₱' + formatNum(st.paid) + ' paid · daily</span>'
+                    : '<span class="exp-funding-check-item__remain' + (st.remaining <= 0 ? ' is-settled' : '')
+                      + '">₱' + formatNum(st.remaining) + ' left</span>')
                 + '</label>';
         }).join('');
+        // The list was just rebuilt, so every disabled state went with it.
+        lcApplyDailyPickLock();
     }
 }
 function lcPickerLabel(c) {
@@ -8697,7 +8901,8 @@ function lcPickerLabel(c) {
     // hunting for the four jobs that used to be listed beside it.
     const n = lcWorksList(c).length;
     return (c.workerName || 'Worker') + ' · ' + (c.scope || 'job')
-        + (n ? ' (' + n + ' works)' : '');
+        + (n ? ' (' + n + ' works)' : '')
+        + (lcIsDaily(c) ? ' — daily' : '');
 }
 function lcCheckedContractIds() {
     return Array.from(document.querySelectorAll('input[name="payContractPick"]:checked')).map(cb => cb.value);
@@ -8707,11 +8912,42 @@ function lcResetContractPicks() {
         cb.checked = false;
         const item = cb.closest('.exp-funding-check-item'); if (item) item.classList.remove('is-checked');
     });
+    lcApplyDailyPickLock();
     lcUpdateRemainingHint('payContract', 'payContractRemaining');
 }
+// A DAILY job is TAGGED ALONE (owner's call, 2026-09-05). The pro-rata splitter
+// weights each job by what it still owes, and an uncapped job owes an undefined
+// amount — mixing the two would hand it either nothing or the whole remainder
+// depending on tick order. Rather than invent a weight, the pairing is blocked:
+// ticking a daily job unticks and disables every other, and ticking any capped
+// job disables the daily ones. Untick to get the rest back.
+// The PC twin of _pmApplyDailyPickLock (pm-admin.js).
+function lcApplyDailyPickLock() {
+    const boxes = Array.from(document.querySelectorAll('input[name="payContractPick"]'));
+    const isDaily = cb => cb.dataset.daily === '1';
+    const dailyOn  = boxes.some(cb => cb.checked && isDaily(cb));
+    const cappedOn = boxes.some(cb => cb.checked && !isDaily(cb));
+    boxes.forEach(cb => {
+        const block = cb.checked ? false : (dailyOn || (cappedOn && isDaily(cb)));
+        cb.disabled = block;
+        const item = cb.closest('.exp-funding-check-item');
+        if (item) item.classList.toggle('is-locked', block);
+    });
+}
+
 window.payContractCheckChanged = function(cb) {
     const item = cb.closest('.exp-funding-check-item');
     if (item) item.classList.toggle('is-checked', cb.checked);
+    // Ticking a daily job clears every other pick outright — disabling alone
+    // would leave already-ticked capped jobs silently in the split.
+    if (cb.checked && cb.dataset.daily === '1') {
+        document.querySelectorAll('input[name="payContractPick"]').forEach(o => {
+            if (o === cb || !o.checked) return;
+            o.checked = false;
+            const oi = o.closest('.exp-funding-check-item'); if (oi) oi.classList.remove('is-checked');
+        });
+    }
+    lcApplyDailyPickLock();
     lcUpdateRemainingHint('payContract', 'payContractRemaining');
 };
 
@@ -8724,6 +8960,12 @@ function lcAllocateAcrossContracts(ids, total) {
     const picked = (ids || []).map(id => expLaborContracts.find(c => c.id === id)).filter(Boolean);
     if (!picked.length || !(total > 0)) return [];
     const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+    // A DAILY job is tagged alone (owner's call, 2026-09-05). Weighting an
+    // uncapped job by "what it still owes" is meaningless — it would silently
+    // take 0 or the whole remainder by tick order — so it takes the payment
+    // whole and nothing is split. Mirrors _pmAllocateAcrossContracts.
+    const dailyPick = picked.find(c => lcIsDaily(c));
+    if (dailyPick) return [{ contract: dailyPick, contractId: dailyPick.id, amount: r2(total) }];
     const weights = picked.map(c => Math.max(0, lcStats(c).remaining));
     const sum = weights.reduce((s, w) => s + w, 0);
     let assigned = 0;
@@ -9065,6 +9307,11 @@ window.lcMergeToLumpsum     = lcMergeToLumpsum;
 window.lcOpenEdit           = lcOpenEdit;
 window.lcOpenRaiseCap       = lcOpenRaiseCap;
 window.lcOpenAgrTemplate    = lcOpenAgrTemplate;
+// pm-admin.js reads the SAME two templates (admin.html loads expenses-module.js
+// first, so this is defined by the time PM runs). One source of truth: an
+// Out Source agreement printed from Project Management and from Project Control
+// must be the same document.
+window.lcLoadAgrTemplate    = lcLoadAgrTemplate;
 window.lcSaveAgrTemplate    = lcSaveAgrTemplate;
 window.lcOpenAgreement      = lcOpenAgreement;
 // The React portal asks which jobs one agreement will cover, so its header
