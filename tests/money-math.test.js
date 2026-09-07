@@ -1999,6 +1999,176 @@ console.log('\nR. The SOA contract band');
   });
 }
 
+// == S. THE DAILY-EXPENSES AMOUNT FIELD =============================
+// Cosmetic on the face of it — thousand separators while typing — but this box
+// is where a PM labor/materials peso ENTERS the system, so the only thing that
+// really matters is that what it displays still parses back to the same number.
+// A separator the reader does not strip would turn 22,222 into 22.
+console.log('\nS. The daily-expenses amount field');
+{
+  const fmt = evalWith(
+    slice(pmSrc, 'function _pmFmtAmountInput(', 'window.pmWeekAmountChanged', 'js/pm-admin.js'),
+    {}, ['_pmFmtAmountInput'])._pmFmtAmountInput;
+  // A minimal stand-in for the input element: the formatter reads .value and
+  // .selectionStart and writes both back.
+  const el = (v) => ({ value: v, selectionStart: String(v).length, setSelectionRange(a) { this.caret = a; } });
+  const show = (v) => { const e = el(v); fmt(e); return e.value; };
+  // The EXACT expression pmWeekAddEntry and _pmUpdateContractSplitPreview use.
+  const parse = (v) => parseInt(String(v).replace(/[^0-9]/g, ''), 10) || 0;
+
+  test('the field shows separators', () => {
+    eq(show('22222'), '22,222', 'the reported case');
+    eq(show('1234567'), '1,234,567', 'millions');
+    eq(show('999'), '999', 'under a thousand is untouched');
+  });
+
+  test('ROUND TRIP: what is displayed parses back to what was typed', () =>
+    // The one that protects the money: format then parse must be identity.
+    ['1', '999', '1000', '22222', '1234567', '100000000'].forEach((n) =>
+      eq(parse(show(n)), Number(n), 'formatting changed the value of ' + n)));
+
+  test('the amount readers strip separators — both of them', () =>
+    // pmWeekAddEntry writes the entry; _pmUpdateContractSplitPreview drives the
+    // split preview. If either stopped stripping, a comma would truncate the
+    // amount and Labor would silently drop pesos.
+    eq((pmSrc.match(/parseInt\(String\(amtEl\.value\)\.replace\(\/\[\^0-9\]\/g, ?''\), 10\)/g) || []).length, 2,
+       'an amount reader stopped stripping separators'));
+
+  test('empty and zero stay exactly as they are', () => {
+    eq(show(''), '', 'empty must not become 0');
+    eq(show('0'), '0', 'zero is left alone');
+  });
+
+  test('the field is INTEGER-only, matching what actually gets saved', () => {
+    // The readers parseInt after stripping every non-digit, so "1234.50" was
+    // already being stored as 123450 — the field just used to hide it. Dropping
+    // the point makes the display agree with the saved value.
+    eq(show('1234.50'), '123,450', 'the decimal point is no longer dropped in the field');
+    eq(parse(show('1234.50')), parse('1234.50'), 'the field and the saver disagree about a typed decimal');
+  });
+
+  test('junk keystrokes cannot inject characters', () =>
+    eq(show('abc12x3'), '123', 'a non-digit survived into the amount field'));
+
+  test('editing an entry re-formats the saved amount', () => {
+    // Loading 22222 back into the box must show 22,222, not a bare number —
+    // otherwise the field looks different depending on how you got there.
+    const load = slice(pmSrc, "const amtEl  = document.getElementById('pm-week-amount');\n    if (amtEl)", 'daysEl', 'js/pm-admin.js');
+    ok(load.indexOf('_pmFmtAmountInput(amtEl)') !== -1,
+       'the edit path loads the amount unformatted');
+  });
+
+  // ── The two CAP fields use the DECIMAL formatter ──
+  // pmLcAmount (labor cap) and pmOcAmount (Out Source cap) are read with
+  // parseFloat after stripping commas, so centavos are real on them — unlike the
+  // daily-expenses box above. They take fmtBudgetInput, not _pmFmtAmountInput;
+  // pairing either field with the wrong formatter silently changes the amount.
+  const budgetFmt = evalWith(
+    slice(expensesSrc, 'function fmtBudgetInput(', '// ── Overview: global all-expenses', 'js/expenses-module.js'),
+    {}, ['fmtBudgetInput']).fmtBudgetInput;
+  const showB = (v) => { const e = { value: v, selectionStart: String(v).length, setSelectionRange() {} }; budgetFmt(e); return e.value; };
+  const parseCap = (v) => parseFloat(String(v || '').replace(/,/g, '')) || 0;
+
+  test('both PM cap fields format while typing', () => {
+    const html = read('admin.html');
+    ['pmLcAmount', 'pmOcAmount'].forEach((id) => {
+      const tag = html.slice(html.indexOf('id="' + id + '"') - 200, html.indexOf('id="' + id + '"') + 200);
+      ok(/oninput="fmtBudgetInput\(this\)"/.test(tag), id + ' does not format while typing');
+    });
+  });
+
+  test('CAP ROUND TRIP: centavos survive the separators', () =>
+    // The reason these two do NOT use the integer formatter: 1,234.50 must stay
+    // 1234.5, not become 123450.
+    [['55000', 55000], ['1234567', 1234567], ['1234.50', 1234.5], ['0.75', 0.75]].forEach(([typed, want]) =>
+      eq(parseCap(showB(typed)), want, 'formatting changed the cap typed as ' + typed)));
+
+  test('the cap savers still strip separators — both of them', () =>
+    eq((pmSrc.match(/parseFloat\(\(document\.getElementById\('pm(?:Lc|Oc)Amount'\)\.value \|\| ''\)\.replace\(\/,\/g, ''\)\)/g) || []).length, 2,
+       'a cap saver stopped stripping separators — a comma would truncate the cap'));
+
+  test('the edit-populate path agrees with the typed format', () =>
+    // pmLcOpenEdit / pmOcOpenEdit fill the box with toLocaleString. That must
+    // parse back to the stored cap, or opening and saving a contract unchanged
+    // would move its number.
+    [55000, 1234.5].forEach((n) =>
+      eq(parseCap(Number(n).toLocaleString('en-PH')), n, 'the edit path mangles a cap of ' + n)));
+}
+
+// == T. DIRECT-COST BREAKDOWN → DATA VIEW ===========================
+// Each row of the Overview's Direct-cost breakdown opens the Data View filtered
+// to its OWN category. No new filtering is introduced — the rows set the same
+// `_pmDvFilter` the chips already set — so what has to hold is that each row is
+// wired to the category it is labelled with. A row labelled Materials that
+// opened the Labor entries would be worse than no link at all.
+console.log('\nT. Direct-cost breakdown → Data View');
+{
+  // The category keys the Data View actually understands, read from its own
+  // declaration rather than restated here.
+  const KEYS = ['all', 'labor', 'materials', 'both', 'overhead'];
+
+  test('the Data View still filters by these exact keys', () =>
+    ok(pmSrc.indexOf("let _pmDvFilter = 'all';      // all | labor | materials | both") !== -1,
+       'the Data View filter keys changed — the breakdown rows may now point at nothing'));
+
+  test('every breakdown row opens its OWN category', () => {
+    // Pairs the row's visible LABEL with the key it passes, so a copy-paste that
+    // sends Materials to 'labor' fails here.
+    const want = { 'Labor': 'labor', 'Materials': 'materials', 'Out Source': 'both' };
+    const found = {};
+    [...pmSrc.matchAll(/bdRow\('([^']+)'[\s\S]{0,320}?'(labor|materials|both|overhead|all)'\)\}/g)]
+      .forEach((m) => { found[m[1]] = m[2]; });
+    Object.keys(want).forEach((label) => {
+      ok(found[label], 'the "' + label + '" breakdown row passes no category at all');
+      eq(found[label], want[label], 'the "' + label + '" row opens the wrong category');
+    });
+    eq(Object.keys(found).length, 3, 'a breakdown row was added or lost without wiring');
+  });
+
+  test('the Direct cost total opens every category', () =>
+    ok(/pmOvViewData\('all'\)/.test(pmSrc),
+       'the total row does not open the unfiltered Data View'));
+
+  test('an unknown category falls back to "all", never to a blank view', () => {
+    // pmOvViewData is called from inline onclick attributes; a typo there would
+    // otherwise set a filter that matches no entry and show an empty page.
+    const fn = evalWith(
+      'let _pmDvFilter, _pmDvQuery, _pmDvResizeBound = true;\n'
+      + 'const window = { addEventListener() {}, scrollTo() {} };\n'
+      + 'const document = { querySelectorAll: () => [], getElementById: () => null };\n'
+      + 'function _pmDvRender() {}\n'
+      + slice(pmSrc, 'window.pmOvViewData = function(filter) {', '\n};\n', 'js/pm-admin.js').replace('window.pmOvViewData =', 'const _open =')
+      + '\n};\nfunction _read(){ return _pmDvFilter; }',
+      {}, ['_open', '_read']);
+    KEYS.forEach((k) => { fn._open(k); eq(fn._read(), k, 'a valid key was rejected: ' + k); });
+    [undefined, '', 'LABOR', 'materails', null].forEach((bad) => {
+      fn._open(bad);
+      eq(fn._read(), 'all', 'an unknown key (' + JSON.stringify(bad) + ') was accepted as a filter');
+    });
+  });
+
+  test('the rows are reachable by KEYBOARD, not just the mouse', () =>
+    // A div with an onclick is mouse-only. These are real navigation, so they
+    // carry role=button, tabindex and an Enter/Space handler.
+    ['role="button"', 'tabindex="0"', "event.key==='Enter'"].forEach((bit) =>
+      ok(pmSrc.indexOf(bit) !== -1, 'the breakdown rows lost ' + bit)));
+
+  test('the rows LOOK clickable', () => {
+    const css = read('css/pm-admin.css');
+    ok(/\.pm-ov-bdrow[^}]*cursor: pointer/.test(css), 'no pointer cursor — the rows do not read as clickable');
+    ok(/\.pm-ov-bdrow:hover/.test(css), 'no hover state');
+    ok(/\.pm-ov-bdrow:focus-visible/.test(css), 'no focus ring — keyboard users cannot see where they are');
+  });
+
+  test('the live-updated element ids are untouched', () =>
+    // The amounts, bars and counts are refreshed in place by id after the card
+    // is built. Wrapping the row must not have renamed any of them.
+    ['pm-ov-labor', 'pm-ov-materials', 'pm-ov-combined', 'pm-ov-direct',
+     'pm-ov-seg-labor', 'pm-ov-seg-materials', 'pm-ov-seg-combined',
+     'pm-ov-labor-cnt', 'pm-ov-materials-cnt', 'pm-ov-combined-cnt'].forEach((id) =>
+      ok(pmSrc.indexOf("'" + id + "'") !== -1, 'the breakdown lost the id ' + id)));
+}
+
 // ════════════════════════════════════════════════════════════════════
 // §N above is ASYNC — it drives the merge through a recording fake db — so the
 // tally is a function §N calls once its assertions have run. Every other section

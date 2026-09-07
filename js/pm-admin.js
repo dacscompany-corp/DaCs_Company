@@ -603,8 +603,15 @@ function _pmOvHtml(p, ms, bills, reqs) {
     // Direct-cost breakdown — one bar per category (keeps the #pm-ov-* IDs).
     // `pct` still drives the BAR width (relative to the largest category); the
     // budget % (categoryAmount / project budget) is shown next to the amount.
-    const bdRow = (label, color, amtId, pctId, segId, val, pct, count, countId, pillColor, pillBg, pillBd) => `
-      <div style="margin-bottom:13px;">
+    // Each row is a BUTTON into the Data View, filtered to its own category
+    // (`filterKey`): clicking Labor lands on the Labor entries. Keyboard-operable
+    // and announced as a button, since it is a real navigation and a div with an
+    // onclick is reachable by mouse only.
+    const bdRow = (label, color, amtId, pctId, segId, val, pct, count, countId, pillColor, pillBg, pillBd, filterKey) => `
+      <div class="pm-ov-bdrow" role="button" tabindex="0"
+           title="View the ${label} entries"
+           onclick="pmOvViewData('${filterKey}')"
+           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pmOvViewData('${filterKey}');}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
           <span style="font:600 12.5px 'IBM Plex Sans';color:#3a3a36;">${label}<span id="${countId}" style="font:500 11px 'IBM Plex Sans';color:#9b9a94;margin-left:7px;">${count} ${count === 1 ? 'entry' : 'entries'}</span></span>
           <span style="display:inline-flex;align-items:center;">
@@ -626,10 +633,14 @@ function _pmOvHtml(p, ms, bills, reqs) {
           <button onclick="pmOvViewData()" style="display:inline-flex;align-items:center;gap:5px;font:600 11.5px 'IBM Plex Sans';color:#0f6342;background:#eaf4ef;border:1px solid #c6e6d5;border-radius:8px;padding:5px 11px;cursor:pointer;">View</button>
         </div>
       </div>
-      ${bdRow('Labor', '#157a52', 'pm-ov-labor', 'pm-ov-labor-pct', 'pm-ov-seg-labor', bd.labor, bd.laborPct, bd.laborCount, 'pm-ov-labor-cnt', '#0f6342', '#eaf4ef', '#c6e6d5')}
-      ${bdRow('Materials', '#c79024', 'pm-ov-materials', 'pm-ov-materials-pct', 'pm-ov-seg-materials', bd.materials, bd.matPct, bd.matCount, 'pm-ov-materials-cnt', '#9a6c12', '#fbf2dc', '#ecd8a6')}
-      ${bdRow('Out Source', '#8b6fc4', 'pm-ov-combined', 'pm-ov-combined-pct', 'pm-ov-seg-combined', bd.combined, bd.combinedPct, bd.combinedCount, 'pm-ov-combined-cnt', '#6b4fa8', '#f1ecfa', '#ddd0f0')}
-      <div style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #f0efec;margin-top:4px;padding-top:13px;">
+      ${bdRow('Labor', '#157a52', 'pm-ov-labor', 'pm-ov-labor-pct', 'pm-ov-seg-labor', bd.labor, bd.laborPct, bd.laborCount, 'pm-ov-labor-cnt', '#0f6342', '#eaf4ef', '#c6e6d5', 'labor')}
+      ${bdRow('Materials', '#c79024', 'pm-ov-materials', 'pm-ov-materials-pct', 'pm-ov-seg-materials', bd.materials, bd.matPct, bd.matCount, 'pm-ov-materials-cnt', '#9a6c12', '#fbf2dc', '#ecd8a6', 'materials')}
+      ${bdRow('Out Source', '#8b6fc4', 'pm-ov-combined', 'pm-ov-combined-pct', 'pm-ov-seg-combined', bd.combined, bd.combinedPct, bd.combinedCount, 'pm-ov-combined-cnt', '#6b4fa8', '#f1ecfa', '#ddd0f0', 'both')}
+      <div class="pm-ov-bdrow pm-ov-bdtotal" role="button" tabindex="0"
+           title="View every entry"
+           onclick="pmOvViewData('all')"
+           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();pmOvViewData('all');}"
+           style="display:flex;justify-content:space-between;align-items:center;border-top:1px solid #f0efec;">
         <span style="font:600 12.5px 'IBM Plex Sans';color:#3a3a36;">Direct cost total</span>
         <span style="display:inline-flex;align-items:baseline;">
           <span class="num" id="pm-ov-direct" style="font:800 16px 'IBM Plex Sans';color:#1c1c1a;">${_fmt(bd.direct)}</span>
@@ -1247,8 +1258,14 @@ window.pmOvPrintReport = function() {
 };
 
 // "View" — open the redesigned data-input sub-page (fresh: filters reset).
-window.pmOvViewData = function() {
-    _pmDvFilter = 'all';
+// Opens the Data View. `filter` is one of the categories the view already
+// filters by (all | labor | materials | both | overhead) — the Direct-cost
+// breakdown rows pass their own category so clicking "Labor" lands on the Labor
+// entries rather than on everything. No new filtering logic: this is the same
+// state the filter chips set, so the chip row opens already highlighted.
+window.pmOvViewData = function(filter) {
+    const KNOWN = ['all', 'labor', 'materials', 'both', 'overhead'];
+    _pmDvFilter = KNOWN.indexOf(filter) >= 0 ? filter : 'all';
     _pmDvQuery  = '';
     // Re-render across the mobile/desktop breakpoint when the window resizes.
     if (!_pmDvResizeBound) {
@@ -2744,7 +2761,10 @@ window.pmWeekEditEntry = function(id) {
     _pmWeekStagedReceipts = _pmEntryReceiptList(en).map(r => ({ file: r.file || null, dataUrl: r.dataUrl || '', url: r.url || '' }));
     _pmWeekApplyCat();   // tab highlight, field visibility, list, attach thumb
     const detEl  = document.getElementById('pm-week-details'); if (detEl)  detEl.value  = en.details || '';
-    const amtEl  = document.getElementById('pm-week-amount');  if (amtEl)  amtEl.value  = en.amount || '';
+    // Formatted on the way in too — editing an entry must show the same
+    // separated number typing it does, not a bare 22222.
+    const amtEl  = document.getElementById('pm-week-amount');
+    if (amtEl) { amtEl.value = en.amount || ''; _pmFmtAmountInput(amtEl); }
     const daysEl = document.getElementById('pm-week-days');    if (daysEl) daysEl.value = en.days || '';
     const qtyEl  = document.getElementById('pm-week-qty');     if (qtyEl)  qtyEl.value  = en.qty || '';
     const unitEl = document.getElementById('pm-week-unit');    if (unitEl && en.unit) unitEl.value = en.unit;
@@ -5419,7 +5439,29 @@ function _pmSetContractPicks(ids) {
     if (typeof pmWeekContractHint === 'function') pmWeekContractHint();
 }
 
-window.pmWeekAmountChanged = function() { _pmUpdateContractSplitPreview(); };
+// Thousand separators as the user types, so ₱22222 reads as ₱22,222 in the
+// field rather than only in the saved list. The PM twin of fmtBudgetInput
+// (expenses-module.js), but INTEGER-ONLY on purpose: every reader of this field
+// parses it with parseInt(...replace(/[^0-9]/g,'')), so a typed "1234.50" would
+// have silently saved as 123450. Dropping the decimal point here makes the
+// field show exactly what will be stored instead of hiding the mismatch.
+// `inputmode="numeric"` on the input already advertises whole pesos.
+function _pmFmtAmountInput(el) {
+    if (!el) return;
+    const pos = el.selectionStart;
+    const raw = String(el.value).replace(/[^0-9]/g, '');
+    const fmt = raw.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    if (fmt === el.value) return;                  // nothing moved — leave the caret alone
+    const diff = fmt.length - el.value.length;
+    el.value = fmt;
+    // Keep the caret where the user was typing; without this it jumps to the end
+    // every time a comma is inserted, which makes mid-number edits unusable.
+    try { el.setSelectionRange(pos + diff, pos + diff); } catch (_) {}
+}
+window.pmWeekAmountChanged = function() {
+    _pmFmtAmountInput(document.getElementById('pm-week-amount'));
+    _pmUpdateContractSplitPreview();
+};
 
 // A DAILY job is TAGGED ALONE (owner's call, 2026-09-05). The pro-rata splitter
 // weights each job by what it still owes, and an uncapped job owes an undefined

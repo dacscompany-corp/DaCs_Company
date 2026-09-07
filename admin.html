@@ -5424,7 +5424,11 @@
             <div id="pmLcAmountStep">
               <div class="pm-lc-stepq">What’s the agreed total?</div>
               <div class="pm-lc-amtbox"><span class="pm-lc-peso">₱</span>
-                <input type="text" inputmode="decimal" id="pmLcAmount" class="pm-lc-amtinput num" placeholder="0"></div>
+                <!-- Separators while typing, like every other cap field. Uses the
+                     DECIMAL formatter (expenses-module.js) rather than the daily
+                     expenses one: pmLcSave reads this with parseFloat after
+                     stripping commas, so centavos are real here. -->
+                <input type="text" inputmode="decimal" id="pmLcAmount" class="pm-lc-amtinput num" placeholder="0" oninput="fmtBudgetInput(this)"></div>
               <div id="pmLcAmountHint" style="font-size:11.5px;color:#6b7280;margin-top:6px;"></div>
               <div class="pm-lc-reassure">
                 <span class="pm-lc-reassure-i">✓</span>
@@ -5547,7 +5551,9 @@
           <div class="pm-lc-stepbody">
             <div class="pm-lc-stepq">What’s the agreed total?</div>
             <div class="pm-lc-amtbox"><span class="pm-lc-peso">₱</span>
-              <input type="text" inputmode="decimal" id="pmOcAmount" class="pm-lc-amtinput num" placeholder="0"></div>
+              <!-- Same decimal formatter as pmLcAmount; pmOcSave parses this
+                   with parseFloat after stripping commas. -->
+              <input type="text" inputmode="decimal" id="pmOcAmount" class="pm-lc-amtinput num" placeholder="0" oninput="fmtBudgetInput(this)"></div>
             <div class="pm-lc-reassure">
               <span class="pm-lc-reassure-i">✓</span>
               <span>As you log Out Source for this vendor, the panel counts down from the agreed total and warns you if you go over.</span>

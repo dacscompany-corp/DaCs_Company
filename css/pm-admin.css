@@ -2458,3 +2458,16 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
   background: #eaf4ef;
   font-size: 12.5px; font-weight: 700; color: #0f6342;
 }
+
+/* ── Direct-cost breakdown rows are navigation ─────────────────────────
+   Each row opens the Data View filtered to its own category (pmOvViewData).
+   They are role="button" + tabindex in the markup, so this only has to make
+   them LOOK reachable: a hover surface that bleeds slightly past the text, and
+   a visible focus ring for keyboard users. The negative margin keeps the bars
+   aligned exactly where they were before the padding was added. */
+.pm-ov-bdrow { margin: 0 -10px 7px; padding: 6px 10px; border-radius: 10px;
+  cursor: pointer; transition: background .14s ease; }
+.pm-ov-bdrow:hover { background: #f6f5f2; }
+.pm-ov-bdrow:focus-visible { outline: 2px solid #157a52; outline-offset: 1px; background: #f6f5f2; }
+/* The total row carries its own top border, so it keeps its own spacing. */
+.pm-ov-bdtotal { margin: 4px -10px 0; padding: 13px 10px 6px; }
