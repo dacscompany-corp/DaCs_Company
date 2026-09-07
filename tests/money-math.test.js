@@ -2169,6 +2169,73 @@ console.log('\nT. Direct-cost breakdown → Data View');
       ok(pmSrc.indexOf("'" + id + "'") !== -1, 'the breakdown lost the id ' + id)));
 }
 
+// == U. EVERY WRITTEN FIELD HAS A REAL COLUMN =======================
+// CLAUDE.md's hard rule: the shim maps camelCase straight to snake_case, so
+// writing a field whose column does not exist fails the WHOLE statement — not
+// just that field. Editing a billing period wrote `isPresident`, `projects` has
+// no is_president column, and every edit died with "Failed to update project."
+// while silently discarding the month/year/funding change the user made.
+//
+// `projects` is the billing period (CLAUDE.md), so this is money plumbing: a
+// funding type that will not save is a period charged to the wrong pool.
+console.log('\nU. Every written field has a real column');
+{
+  // The columns `projects` actually has, read from the migration that creates
+  // it. No later migration alters the table.
+  const sql = read('supabase/migrations/0001_init.sql');
+  const body = slice(sql, 'create table projects (', ');', 'supabase/migrations/0001_init.sql');
+  const columns = body.split('\n').slice(1)
+    .map((l) => (l.trim().match(/^([a-z_]+)\s/) || [])[1])
+    .filter(Boolean);
+  const snake = (f) => f.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
+  // The shim renames the owner field; everything else is a plain camel→snake.
+  const ALIAS = { userId: 'owner_id' };
+  const col = (f) => ALIAS[f] || snake(f);
+
+  test('the projects table has the columns we think it has', () =>
+    ['month', 'year', 'funding_type', 'billing_number', 'folder_id', 'owner_id']
+      .forEach((c) => ok(columns.indexOf(c) >= 0, 'projects lost the column ' + c)));
+
+  test('there is still NO is_president column', () =>
+    // If someone adds one, this test should be deleted along with the derived
+    // reads — not left passing while two sources of truth drift apart.
+    ok(columns.indexOf('is_president') === -1,
+       'an is_president column appeared — president-funded is DERIVED from funding_type, not stored'));
+
+  test('editing a billing period writes only real columns', () => {
+    const upd = slice(expensesSrc, "await db.collection('projects').doc(id).update({", '});', 'js/expenses-module.js');
+    // KEYS only. Splitting on commas and taking the left of each ":" avoids
+    // matching the VALUE in `fundingType: funding`, which would otherwise be
+    // reported as a phantom "funding" column and hide the real offender.
+    const fields = upd.split('{')[1].split(',')
+      .map((part) => (part.split(':')[0] || '').trim())
+      .filter((f) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(f));
+    ok(fields.length > 0, 'could not read the update payload — the marker moved');
+    ok(fields.indexOf('month') >= 0 && fields.indexOf('fundingType') >= 0,
+       'the payload parser is not seeing the real keys: ' + JSON.stringify(fields));
+    fields.forEach((f) =>
+      ok(columns.indexOf(col(f)) >= 0,
+         'the period edit writes "' + f + '" → column ' + col(f) + ', which does not exist — the whole update will fail'));
+  });
+
+  test('creating a billing period writes only real columns', () => {
+    // The create path was always correct; fencing it so the two stay in step.
+    const add = slice(expensesSrc, 'userId: _uid(), month, year,', 'createdAt', 'js/expenses-module.js');
+    ['userId', 'month', 'year', 'fundingType', 'billingNumber', 'folderId'].forEach((f) =>
+      ok(columns.indexOf(col(f)) >= 0, 'the period create writes "' + f + '" with no column'));
+    ok(add.indexOf('isPresident') === -1, 'the create path picked up the isPresident field too');
+  });
+
+  test('"president-funded" is derived from fundingType everywhere', () => {
+    // Six readers already decide it this way. The fix relies on that: dropping
+    // the stored copy is only safe while nothing reads one back.
+    ok((expensesSrc.match(/fundingType === 'president'/g) || []).length >= 5,
+       'the derived president check is disappearing — something may be reading a stored flag instead');
+    const reads = expensesSrc.match(/[a-zA-Z_$][\w$]*\.isPresident\b/g) || [];
+    eq(reads.length, 0, 'something now reads a STORED isPresident: ' + reads.join(', '));
+  });
+}
+
 // ════════════════════════════════════════════════════════════════════
 // §N above is ASYNC — it drives the merge through a recording fake db — so the
 // tally is a function §N calls once its assertions have run. Every other section

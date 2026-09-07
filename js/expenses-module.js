@@ -778,9 +778,17 @@ async function handleEditProject(e) {
 
     try {
         showExpLoading('editProjectBtn', true);
+        // `isPresident` used to be written here and there is NO is_president
+        // column on `projects` (see 0001: month, year, funding_type,
+        // billing_number…), so every edit failed the whole update — including
+        // the month, year and funding type the user actually changed.
+        //
+        // It is not re-added as a column on purpose: it is derived, not stored.
+        // "President-funded" means exactly `fundingType === 'president'`, which
+        // is how all six readers already decide it. A second copy could drift
+        // out of step with the funding type it duplicates.
         await db.collection('projects').doc(id).update({
-            month, year, fundingType: funding,
-            isPresident: isPresident
+            month, year, fundingType: funding
         });
         // Update confidential fund allocated in the owner-only collection.
         if (window.currentUserRole !== 'staff') {

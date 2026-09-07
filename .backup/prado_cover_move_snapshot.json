@@ -1,0 +1,272 @@
+[
+  {
+    "amt": 8035,
+    "dated": "2026-03-04",
+    "id": "bcb8b086-f330-4ecc-b39a-511d6d04263a",
+    "label": "Electrical Materials",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 1368,
+    "dated": "2026-03-09",
+    "id": "29139ef8-2eb6-4d84-a4e4-70ee32a19bb4",
+    "label": "Mica Tube",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 790,
+    "dated": "2026-03-09",
+    "id": "4639e68d-5af4-4636-8657-1ee5938cf0fc",
+    "label": "Lighting Delivery",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 63,
+    "dated": "2026-03-09",
+    "id": "bfa29526-c6f3-40fa-948a-7cc7cf5e6ecf",
+    "label": "Mica Tube Delivery",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 10950,
+    "dated": "2026-03-09",
+    "id": "d791594d-8d9b-49c3-9067-4aa7ca3a5f16",
+    "label": "Ceiling Profile Lighting",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 180,
+    "dated": "2026-03-11",
+    "id": "29a82e72-8024-467a-a5d9-00734a6584f6",
+    "label": "Indrive",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 150,
+    "dated": "2026-03-11",
+    "id": "c1856e59-d07b-462d-a468-9c2310a200ae",
+    "label": "Transport",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 13000,
+    "dated": "2026-03-14",
+    "id": "cdefda61-7663-4b00-b464-e72d755c3172",
+    "label": "Team MARC",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "payroll"
+  },
+  {
+    "amt": 2214,
+    "dated": "2026-03-16",
+    "id": "e7d32727-6bae-40c1-911e-b0777184f419",
+    "label": "Grounding Wire",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 142000,
+    "dated": "2026-03-17",
+    "id": "e37c861a-f562-449c-8b41-0b9098c981cb",
+    "label": "Boards",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 2600,
+    "dated": "2026-03-21",
+    "id": "27bca455-b03d-486e-ac34-22a86f04a5e8",
+    "label": "Edgeband",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 2700,
+    "dated": "2026-03-21",
+    "id": "6c5d88dc-d343-4320-98d5-318dfc3b7b9f",
+    "label": "Edgeband and Rugby",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 1000,
+    "dated": "2026-03-21",
+    "id": "c6487890-491f-4d44-b7d6-0d5e6af34d1f",
+    "label": "Edgeband",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 5000,
+    "dated": "2026-03-21",
+    "id": "d74b9c71-43b1-4850-af67-f31d4f769233",
+    "label": "Edgeband",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 1782,
+    "dated": "2026-03-28",
+    "id": "a0c5fb95-e879-4f53-8c4d-8141519df75b",
+    "label": "TShirt",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 24440,
+    "dated": "2026-03-29",
+    "id": "bf95762d-f74d-4a8d-878c-ac402532e3bb",
+    "label": "Flooring Tiles",
+    "old_cover": false,
+    "old_project_id": "fd343ca6-3b04-4306-9f1d-38ca1d9e9f8a",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 5960,
+    "dated": "2026-04-01",
+    "id": "934a3eb6-39c9-4c04-8d31-2f4c987f1046",
+    "label": "Tiles",
+    "old_cover": false,
+    "old_project_id": "04da46d1-3257-439e-84bf-2b61e54da307",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 611,
+    "dated": "2026-04-10",
+    "id": "758d3561-c65c-46e8-9593-1adc58fc1bf0",
+    "label": "Tiles Delivery",
+    "old_cover": false,
+    "old_project_id": "04da46d1-3257-439e-84bf-2b61e54da307",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 588,
+    "dated": "2026-04-16",
+    "id": "ee492f4c-b68b-45da-b784-e75ec5ab9d2e",
+    "label": "Pull Out",
+    "old_cover": false,
+    "old_project_id": "04da46d1-3257-439e-84bf-2b61e54da307",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 300,
+    "dated": "2026-04-17",
+    "id": "a0a9dd77-a7a9-4f6b-995e-fa7ccb46ef89",
+    "label": "Sako",
+    "old_cover": false,
+    "old_project_id": "04da46d1-3257-439e-84bf-2b61e54da307",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 790,
+    "dated": "2026-04-22",
+    "id": "83bf9c57-185c-4b1f-8c37-b842b5ca849f",
+    "label": "Blind Rivet",
+    "old_cover": false,
+    "old_project_id": "04da46d1-3257-439e-84bf-2b61e54da307",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 396,
+    "dated": "2026-04-23",
+    "id": "191c93ea-adff-4195-9b90-25fbf8d63cd7",
+    "label": "Tile Adhesive Delivery",
+    "old_cover": false,
+    "old_project_id": "04da46d1-3257-439e-84bf-2b61e54da307",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 1546,
+    "dated": "2026-04-23",
+    "id": "826b167a-717c-4562-abd6-342bdecbc6fc",
+    "label": "Redifix",
+    "old_cover": false,
+    "old_project_id": "04da46d1-3257-439e-84bf-2b61e54da307",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 60,
+    "dated": "2026-04-23",
+    "id": "b22b3b28-1837-4aeb-bb09-9b12a552b5f3",
+    "label": "Blind Rivet Delivery",
+    "old_cover": false,
+    "old_project_id": "04da46d1-3257-439e-84bf-2b61e54da307",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 2800,
+    "dated": "2026-04-26",
+    "id": "88b1525d-c0c9-4abb-8717-46d3d1b1f15d",
+    "label": "Hauling",
+    "old_cover": false,
+    "old_project_id": "04da46d1-3257-439e-84bf-2b61e54da307",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 5780,
+    "dated": "2026-05-04",
+    "id": "8c3bb5c9-1435-45e5-9790-520c0ffb98be",
+    "label": "Tile Adhesive",
+    "old_cover": false,
+    "old_project_id": "1d4aa702-b822-4525-8fe6-ae762ed3d859",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 385,
+    "dated": "2026-05-06",
+    "id": "8d2527d5-9103-48c7-b5c5-f54e8544963d",
+    "label": "Tile Adhesive Delivery",
+    "old_cover": false,
+    "old_project_id": "1d4aa702-b822-4525-8fe6-ae762ed3d859",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 2890,
+    "dated": "2026-05-07",
+    "id": "046440cd-a623-4379-9916-045362fea93f",
+    "label": "Tile Adhesive",
+    "old_cover": false,
+    "old_project_id": "1d4aa702-b822-4525-8fe6-ae762ed3d859",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 320,
+    "dated": "2026-05-07",
+    "id": "8335c1c6-a41b-4e22-b576-c1e87537ba8d",
+    "label": "Tile Adhesive Delivery",
+    "old_cover": false,
+    "old_project_id": "1d4aa702-b822-4525-8fe6-ae762ed3d859",
+    "tbl": "expenses"
+  },
+  {
+    "amt": 92,
+    "dated": "2026-05-22",
+    "id": "13362815-75ca-4ca4-9a92-79929811615d",
+    "label": "Redifix",
+    "old_cover": false,
+    "old_project_id": "1d4aa702-b822-4525-8fe6-ae762ed3d859",
+    "tbl": "expenses"
+  }
+]

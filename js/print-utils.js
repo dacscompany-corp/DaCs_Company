@@ -154,7 +154,7 @@ window.dacsPrintProjectCostSummary = function (d) {
 
     // No accomplishment data => the figure assumes the job runs to completion and
     // must never be presented as earned. Same rule as the overview banner.
-    const profitLbl = isLoss ? 'Gross loss' : 'Gross profit';
+    const profitLbl = isLoss ? 'Net loss' : 'Net profit';
     const profitSub = d.isForecast ? 'Forecast — not yet earned' : 'Earned against accomplishment';
     const revLbl    = d.isForecast ? 'Contract revenue' : 'Earned revenue';
     const revSub    = d.isForecast ? 'Full contract · not yet earned' : num(d.completePct).toFixed(1) + '% accomplished';
