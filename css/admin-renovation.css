@@ -3853,6 +3853,30 @@ body .doc-upload.attached .doc-upload-state {
 .dacs-portal-scope .pcf-open-btn:hover { background:#0F3A28; gap:13px; }
 .dacs-portal-scope .pcf-open-btn svg { width:16px; height:16px; }
 
+/* ── Completed projects (migration 0064) ─────────────────────────────
+   Finished work leaves the picker and the arrows entirely; this collapsed
+   strip is the only route back to it. Deliberately quiet — it sits below
+   the live project panel and should never compete with it.
+   The badge is SLATE, not green: green already means "On track" in the
+   status chip a few pixels above, and two greens meaning different things
+   is how a dashboard gets misread. Completed is archived, not healthy. */
+.dacs-portal-scope .pcf-done { margin-top:18px; border:1px solid #EAE7E1; border-radius:12px; background:#FCFBF9; overflow:hidden; }
+.dacs-portal-scope .pcf-done-head { width:100%; display:flex; align-items:center; gap:10px; padding:13px 18px; background:none; border:none; cursor:pointer; text-align:left; color:#57534E; font-size:13px; font-weight:600; transition:background .15s; }
+.dacs-portal-scope .pcf-done-head:hover { background:#F6F4F0; }
+.dacs-portal-scope .pcf-done-icon { display:inline-flex; color:#64748B; }
+.dacs-portal-scope .pcf-done-icon svg { width:15px; height:15px; }
+.dacs-portal-scope .pcf-done-title { color:#57534E; }
+.dacs-portal-scope .pcf-done-count { display:inline-grid; place-items:center; min-width:20px; height:20px; padding:0 6px; border-radius:10px; background:#E7E5E4; color:#57534E; font-size:11.5px; font-weight:700; }
+.dacs-portal-scope .pcf-done-chev { margin-left:auto; display:inline-flex; color:#A8A29E; transition:transform .15s ease; }
+.dacs-portal-scope .pcf-done-head.open .pcf-done-chev { transform:rotate(180deg); }
+.dacs-portal-scope .pcf-done-list { border-top:1px solid #EAE7E1; }
+.dacs-portal-scope .pcf-done-row { display:flex; align-items:center; gap:10px; padding:4px 12px 4px 18px; border-bottom:1px solid #F2F0EC; }
+.dacs-portal-scope .pcf-done-row:last-child { border-bottom:none; }
+.dacs-portal-scope .pcf-done-open { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; padding:10px 0; background:none; border:none; cursor:pointer; text-align:left; }
+.dacs-portal-scope .pcf-done-name { font-size:13.5px; font-weight:600; color:#1B1A18; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dacs-portal-scope .pcf-done-open:hover .pcf-done-name { color:#1A5C3F; }
+.dacs-portal-scope .pcf-done-meta { font-size:11.5px; color:#908A81; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
 .dacs-portal-scope .pcf-empty { text-align:center; padding:60px 20px; color:#908A81; }
 .dacs-portal-scope .pcf-empty-icon { font-size:40px; }
 .dacs-portal-scope .pcf-empty h3 { font-family:var(--serif); color:#1B1A18; margin:12px 0 6px; }

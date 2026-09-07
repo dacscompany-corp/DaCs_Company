@@ -10,7 +10,31 @@ function _uid() {
 // ── Custom delete confirmation modal (replaces browser confirm()) ──
 window._deleteConfirmResolve = null;
 window._deleteConfirmReject  = null;
-function showDeleteConfirm(message) {
+function showConfirm(message, opts) {
+    const o = opts || {};
+    // Destructive by default — every caller that predates `opts` is a delete.
+    const danger  = o.tone !== 'ok';
+    const title   = document.getElementById('deleteConfirmTitle');
+    const icon    = document.getElementById('deleteConfirmIcon');
+    const okBtn   = document.getElementById('deleteConfirmOk');
+    if (title) title.textContent = o.title || 'Confirm Delete';
+    if (okBtn) {
+        okBtn.textContent = o.confirm || 'Delete';
+        okBtn.className   = 'exp-btn ' + (danger ? 'exp-btn-danger' : 'exp-btn-primary');
+    }
+    // A reversible action in a red trash-can dialog reads as destructive, so the
+    // GLYPH moves with the tone, not just its colour: a green trash can is
+    // still a trash can.
+    if (icon) {
+        icon.style.background = danger ? '#fee2e2' : '#dcfce7';
+        const svg = icon.querySelector('svg');
+        if (svg) {
+            svg.setAttribute('stroke', danger ? '#dc2626' : '#15803d');
+            svg.innerHTML = danger
+                ? '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'
+                : '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>';
+        }
+    }
     return new Promise((resolve) => {
         document.getElementById('deleteConfirmMsg').textContent = message;
         openExpModal('deleteConfirmModal');
@@ -18,6 +42,8 @@ function showDeleteConfirm(message) {
         window._deleteConfirmReject  = () => { closeExpModal('deleteConfirmModal'); resolve(false); };
     });
 }
+function showDeleteConfirm(message) { return showConfirm(message); }
+window.showConfirm       = showConfirm;
 window.showDeleteConfirm = showDeleteConfirm;
 
 
@@ -7504,6 +7530,54 @@ function _fmtD(n) {
 // ── Missing alias functions ───────────────────────────────────
 
 function confirmDeleteFolder(id) { deleteFolder(id); }
+
+// ── Project completion (migration 0064) ───────────────────────────────
+// Marking a folder finished writes ONE timestamp. It is a view state: the
+// project leaves Project Control's picker and carousel and moves into the
+// collapsed "Completed" strip. Nothing is deleted, no money moves, and
+// re-opening writes null back.
+//
+// Deliberately NOT the warranty reserve. Migration 0043 triggers off
+// `construction_projects.status = 'completed'` — a different project system
+// with a different id space (folders.id != construction_projects.id). Closing
+// a folder here creates no warranty_retentions row.
+//
+// Owner-only. The UI hides the button from staff; this is the second lock, so
+// a stale console call cannot change a project's lifecycle.
+function _folderName(id) {
+    const f = expFolders.find(x => x.id === id);
+    return (f && f.name) || 'this project';
+}
+async function markFolderComplete(id) {
+    if (window.currentUserRole === 'staff') return;
+    const ok = await showConfirm(
+        'Mark "' + _folderName(id) + '" as complete? It leaves the project selector and moves into the '
+        + 'Completed section. Nothing is deleted, its costs still count, and you can re-open it any time.',
+        { title: 'Mark as Complete', confirm: 'Mark Complete', tone: 'ok' });
+    if (!ok) return;
+    try {
+        await db.collection('folders').doc(id).update({ completedAt: new Date() });
+        showExpNotif('Project marked complete.', 'success');
+    } catch (err) {
+        showExpNotif('Error: ' + err.message, 'error');
+    }
+}
+async function reopenFolder(id) {
+    if (window.currentUserRole === 'staff') return;
+    const ok = await showConfirm(
+        'Re-open "' + _folderName(id) + '"? It goes back into the project selector as active work.',
+        { title: 'Re-open Project', confirm: 'Re-open', tone: 'ok' });
+    if (!ok) return;
+    try {
+        // NULL is the active state — this is an undo, not a second flag.
+        await db.collection('folders').doc(id).update({ completedAt: null });
+        showExpNotif('Project re-opened.', 'success');
+    } catch (err) {
+        showExpNotif('Error: ' + err.message, 'error');
+    }
+}
+function confirmCompleteFolder(id) { markFolderComplete(id); }
+function confirmReopenFolder(id)   { reopenFolder(id); }
 function confirmDeleteProject(id) { deleteProject(id); }
 
 // Opens the "Move to Folder" modal for a given project
@@ -7542,6 +7616,8 @@ async function handleMoveToFolder(e) {
 }
 
 window.confirmDeleteFolder    = confirmDeleteFolder;
+window.confirmCompleteFolder  = confirmCompleteFolder;
+window.confirmReopenFolder    = confirmReopenFolder;
 window.confirmDeleteProject   = confirmDeleteProject;
 window.openMoveToFolderModal  = openMoveToFolderModal;
 window.handleMoveToFolder     = handleMoveToFolder;

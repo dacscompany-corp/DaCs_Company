@@ -184,6 +184,8 @@ const Ico = {
   briefcase: /* @__PURE__ */ React.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "2", y: "7", width: "20", height: "14", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("path", { d: "M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" })),
   pencil: /* @__PURE__ */ React.createElement("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" }), /* @__PURE__ */ React.createElement("path", { d: "M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" })),
   trash: /* @__PURE__ */ React.createElement("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("polyline", { points: "3 6 5 6 21 6" }), /* @__PURE__ */ React.createElement("path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" }), /* @__PURE__ */ React.createElement("path", { d: "M10 11v6" }), /* @__PURE__ */ React.createElement("path", { d: "M14 11v6" }), /* @__PURE__ */ React.createElement("path", { d: "M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" })),
+  checkCircle: /* @__PURE__ */ React.createElement("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M22 11.08V12a10 10 0 1 1-5.93-9.14" }), /* @__PURE__ */ React.createElement("polyline", { points: "22 4 12 14.01 9 11.01" })),
+  undo: /* @__PURE__ */ React.createElement("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M3 7v6h6" }), /* @__PURE__ */ React.createElement("path", { d: "M3 13a9 9 0 1 0 3-7.7L3 8" })),
   sparkles: /* @__PURE__ */ React.createElement("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" }), /* @__PURE__ */ React.createElement("path", { d: "M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" })),
   folder: /* @__PURE__ */ React.createElement("svg", { width: "15", height: "15", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("path", { d: "M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" }))
 };
@@ -519,6 +521,35 @@ function foldersHealth(folder) {
   if (rem < 20) return { label: "WARNING", cls: "pc-fld-health-warning", barClr: "#A86B00" };
   return { label: "HEALTHY", cls: "pc-fld-health-healthy", barClr: "#1A5C3A" };
 }
+// ── Project completion (migration 0064) ──────────────────────────────
+// A folder is FINISHED when it carries a `completedAt` stamp. Presence is the
+// whole state — there is deliberately no status enum, because the card already
+// has a `status` field ('track' | 'attn' | 'new') derived from spend-vs-budget
+// that means something else entirely.
+//
+// This is a VIEW state and nothing more. It hides a project from the picker and
+// the carousel; it moves no money, deletes nothing, and is undone by writing
+// null back. Nothing in the money math may ever read it — a completed folder
+// still books its Labor / Material / Overhead and still counts in the company
+// P&L. tests/folder-completion.test.js fences all of that.
+function _fldDone(c) { return !!(c && c.completedAt); }
+// What the project picker and the one-at-a-time carousel walk. Finished folders
+// leave this list entirely, so "Showing 2 of 22" counts live work only; the
+// collapsed "Completed (N)" strip below the card is the way back in.
+function _fldActive(cards) { return (cards || []).filter((c) => !_fldDone(c)); }
+function _fldFinished(cards) { return (cards || []).filter((c) => _fldDone(c)); }
+// "12 Aug 2026", built from LOCAL parts. PH is UTC+8, so toISOString() would
+// report a job finished the evening of the 12th as the 11th.
+const _FLD_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function _fldDoneOn(c) {
+  const v = c && c.completedAt;
+  if (!v) return "";
+  const d = v.toDate ? v.toDate() : (v instanceof Date ? v : new Date(v));
+  if (!d || isNaN(d.getTime())) return "";
+  return d.getDate() + " " + _FLD_MON[d.getMonth()] + " " + d.getFullYear();
+}
+// ── END completion helpers ───────────────────────────────────────────
+
 function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, overheadRaw, boqRaw, onPickFolder, inboxByFolder }) {
   const _ibx = inboxByFolder || {};
   const [openCards, setOpenCards] = React.useState({});
@@ -527,6 +558,9 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
   const [comboOpen, setComboOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [panelOpen, setPanelOpen] = React.useState(false);
+  // The "Completed (N)" strip is collapsed by default — finished work is out
+  // of the way until asked for.
+  const [doneOpen, setDoneOpen] = React.useState(false);
   const comboRef = React.useRef(null);
   React.useEffect(() => {
     if (!comboOpen) return;
@@ -542,6 +576,16 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
   const openDelete = (id, ev) => {
     if (ev) ev.stopPropagation();
     window.confirmDeleteFolder && window.confirmDeleteFolder(id);
+  };
+  // Mark finished / re-open (migration 0064). Reversible and non-destructive:
+  // the write is a timestamp, and undoing it writes null back.
+  const openComplete = (id, ev) => {
+    if (ev) ev.stopPropagation();
+    window.confirmCompleteFolder && window.confirmCompleteFolder(id);
+  };
+  const openReopen = (id, ev) => {
+    if (ev) ev.stopPropagation();
+    window.confirmReopenFolder && window.confirmReopenFolder(id);
   };
   const cards = folders.map((f) => {
     const childMonths = monthsRaw.filter((m) => m.folderId === f.id).map(mapMonthlyProject);
@@ -566,29 +610,38 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
         ? "This project is over budget by ₱" + peso(Math.abs(remaining)) + ". Review the latest cost summary before approving payouts."
         : "Cover expenses exceed ₱" + peso(COVER_LIMIT) + " this billing period. Review the latest cost summary before approving payouts.";
     }
-    return { ...built, h, spent, spentPct, remaining, periodCount, status, note, createdAt: _raw.createdAt };
+    return { ...built, h, spent, spentPct, remaining, periodCount, status, note, createdAt: _raw.createdAt, completedAt: _raw.completedAt };
   });
   const _fldMs = (t) => t && t.toMillis ? t.toMillis() : (t && t.seconds ? t.seconds * 1000 : 0);
   cards.sort((a, b) => _fldMs(b.createdAt) - _fldMs(a.createdAt));
+  // Finished projects (migration 0064) leave the picker, the arrows and the
+  // count — `liveCards` is what all three walk, so "Showing 2 of 22" is a count
+  // of LIVE work. They are reached again through the "Completed" strip below the
+  // panel. `cards` stays the full set: completion is a view state and must never
+  // narrow anything that adds up money.
+  const liveCards = _fldActive(cards);
+  const doneCards = _fldFinished(cards);
   // Remember the last-selected project across reloads. The very first load (no
   // saved choice yet) still shows "Select a project"; after that it restores.
+  // Indexes are into `liveCards`, the same list the arrows step through — a
+  // saved id that has since been completed simply no longer matches.
   const _restoredRef = React.useRef(false);
   React.useEffect(() => {
-    if (_restoredRef.current || !cards.length) return;
+    if (_restoredRef.current || !liveCards.length) return;
     _restoredRef.current = true;
     try {
       const saved = localStorage.getItem("pcfSelectedFolder");
-      if (saved) { const i = cards.findIndex((c) => c.id === saved); if (i >= 0) setCurrent(i); }
+      if (saved) { const i = liveCards.findIndex((c) => c.id === saved); if (i >= 0) setCurrent(i); }
     } catch (e) {}
   });
   React.useEffect(() => {
     try {
-      if (current !== null && cards[current]) localStorage.setItem("pcfSelectedFolder", cards[current].id);
+      if (current !== null && liveCards[current]) localStorage.setItem("pcfSelectedFolder", liveCards[current].id);
     } catch (e) {}
   }, [current]);
   const runHealthCheck = () => {
     if (typeof window.aiHealthCheck !== "function") return;
-    window.aiHealthCheck(cards.map((c) => ({
+    window.aiHealthCheck(liveCards.map((c) => ({
       id: c.id,
       name: c.name,
       location: c.location,
@@ -656,14 +709,14 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
     return /* @__PURE__ */ React.createElement(React.Fragment, null, header, /* @__PURE__ */ React.createElement("section", { className: "pc-folders-empty" }, /* @__PURE__ */ React.createElement("div", { className: "pc-folders-empty-icon" }, "\u{1F4C1}"), /* @__PURE__ */ React.createElement("h3", { className: "pc-folders-empty-title" }, "No project folders yet"), /* @__PURE__ */ React.createElement("p", { className: "pc-folders-empty-sub" }, "Create your first project folder to start tracking budgets, billing periods, and expenses."), /* @__PURE__ */ React.createElement("button", { className: "pc-btn-primary", onClick: openCreate, style: { marginTop: 12 } }, "+ New Project Folder")));
   }
   return (() => {
-    const hasSel = current !== null && current >= 0 && current < cards.length;
+    const hasSel = current !== null && current >= 0 && current < liveCards.length;
     const idx = hasSel ? current : -1;
-    const c = hasSel ? cards[idx] : null;
+    const c = hasSel ? liveCards[idx] : null;
     const STATUS = { track: { cls: "st-track", label: "On track" }, attn: { cls: "st-attn", label: "Needs attention" }, "new": { cls: "st-new", label: "Not started" } };
     const st = c ? (STATUS[c.status] || STATUS.track) : STATUS.track;
     const DOT = { track: "#3D8A63", attn: "#C9871A", "new": "#B8B2A8" };
     const q = query.trim().toLowerCase();
-    const filtered = cards.map((cc, i) => ({ cc, i })).filter((o) => !q || o.cc.name.toLowerCase().includes(q) || (o.cc.location && o.cc.location.toLowerCase().includes(q)));
+    const filtered = liveCards.map((cc, i) => ({ cc, i })).filter((o) => !q || o.cc.name.toLowerCase().includes(q) || (o.cc.location && o.cc.location.toLowerCase().includes(q)));
     const SEGN = 6;
     const segs = c ? Array.from({ length: SEGN }, (_, i) => rc("span", { key: i, className: "pcf-seg" + (i < c.periodCount ? " on" : "") })) : [];
     const cur = (v) => v > 0 ? rc(React.Fragment, null, rc("span", { className: "pcf-cur" }, "₱"), peso(v)) : rc("span", { style: { color: "#908A81" } }, "—");
@@ -717,11 +770,11 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
           )
         ),
         rc("div", { className: "pcf-stepper" },
-          rc("button", { className: "pcf-step-btn", title: "Previous", onClick: () => setCurrent(hasSel ? (idx - 1 + cards.length) % cards.length : cards.length - 1) }, rc("svg", { viewBox: "0 0 24 24", width: 18, height: 18, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "15 18 9 12 15 6" }))),
-          rc("button", { className: "pcf-step-btn", title: "Next", onClick: () => setCurrent(hasSel ? (idx + 1) % cards.length : 0) }, rc("svg", { viewBox: "0 0 24 24", width: 18, height: 18, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "9 18 15 12 9 6" })))
+          rc("button", { className: "pcf-step-btn", title: "Previous", onClick: () => setCurrent(hasSel ? (idx - 1 + liveCards.length) % liveCards.length : liveCards.length - 1) }, rc("svg", { viewBox: "0 0 24 24", width: 18, height: 18, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "15 18 9 12 15 6" }))),
+          rc("button", { className: "pcf-step-btn", title: "Next", onClick: () => setCurrent(hasSel ? (idx + 1) % liveCards.length : 0) }, rc("svg", { viewBox: "0 0 24 24", width: 18, height: 18, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "9 18 15 12 9 6" })))
         )
       ),
-      rc("p", { className: "pcf-count" }, hasSel ? rc(React.Fragment, null, "Showing ", rc("b", null, idx + 1), " of ", rc("b", null, cards.length), " projects · use the selector or arrows to switch") : rc(React.Fragment, null, rc("b", null, cards.length), " projects · choose one from the selector or arrows above")),
+      rc("p", { className: "pcf-count" }, hasSel ? rc(React.Fragment, null, "Showing ", rc("b", null, idx + 1), " of ", rc("b", null, liveCards.length), " projects · use the selector or arrows to switch") : rc(React.Fragment, null, rc("b", null, liveCards.length), " projects · choose one from the selector or arrows above")),
       !c && rc("section", { className: "pcf-panel pcf-empty" }, rc("h3", null, "No project selected"), rc("p", null, "Choose a project from the selector or arrows above to view its budget, billing periods, labor and materials.")),
       c && rc("section", { className: "pcf-panel" },
         rc("div", { className: "pcf-panel-head" },
@@ -734,6 +787,7 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
             rc("button", { className: "pcf-act-btn", title: panelOpen ? "Collapse details" : "Expand details", onClick: () => setPanelOpen((o) => !o), style: { transition: "transform .15s ease", transform: panelOpen ? "rotate(180deg)" : "rotate(0deg)" } }, rc("svg", { viewBox: "0 0 24 24", width: 16, height: 16, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }))),
             rc("button", { className: "pcf-act-btn", title: "AI budget summary", onClick: () => window.aiSummarizeFolder && window.aiSummarizeFolder({ name: c.name, location: c.location, revenue: c.revenue, allocated: c.allocated, labor: c.labor, material: c.material, overhead: c.overhead || 0, coverCost: c.coverCost, remaining: c.remaining, spentPct: c.spentPct, periodCount: c.periodCount, statusLabel: st.label }) }, Ico.sparkles),
             rc("button", { className: "pcf-act-btn", title: "Edit folder", onClick: () => openEdit(c.id) }, Ico.pencil),
+            !_staff() && rc("button", { className: "pcf-act-btn", title: "Mark project complete", onClick: () => openComplete(c.id) }, Ico.checkCircle),
             rc("button", { className: "pcf-act-btn danger", title: "Delete folder", onClick: () => openDelete(c.id) }, Ico.trash)
           )
         ),
@@ -749,8 +803,39 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
         ),
         panelOpen && !_staff() && c.status === "attn" && c.note ? rc("div", { className: "pcf-attn" }, warnSvg, rc("div", null, rc("b", null, "Needs attention. "), c.note)) : null,
         rc("div", { className: "pcf-panel-foot" },
-          rc("span", { className: "pcf-foot-meta" }, "Folder " + String(idx + 1).padStart(2, "0") + " of " + cards.length),
+          rc("span", { className: "pcf-foot-meta" }, "Folder " + String(idx + 1).padStart(2, "0") + " of " + liveCards.length),
           rc("button", { className: "pcf-open-btn", onClick: () => onPickFolder(c.id) }, "Open Project ", rc("svg", { viewBox: "0 0 24 24", width: 16, height: 16, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("line", { x1: 5, y1: 12, x2: 19, y2: 12 }), rc("polyline", { points: "12 5 19 12 12 19" })))
+        )
+      ),
+      // ── Completed projects (migration 0064) ──────────────────────
+      // Finished work is out of the picker and the arrows; this collapsed
+      // strip is the only way back to it, so it renders whenever any exist —
+      // hiding a project must never mean losing it.
+      doneCards.length > 0 && rc("section", { className: "pcf-done" },
+        rc("button", {
+          className: "pcf-done-head" + (doneOpen ? " open" : ""),
+          "aria-expanded": doneOpen,
+          onClick: () => setDoneOpen((o) => !o)
+        },
+          rc("span", { className: "pcf-done-icon" }, Ico.checkCircle),
+          rc("span", { className: "pcf-done-title" }, "Completed"),
+          rc("span", { className: "pcf-done-count" }, doneCards.length),
+          rc("span", { className: "pcf-done-chev" }, chevSvg)
+        ),
+        doneOpen && rc("div", { className: "pcf-done-list" },
+          doneCards.map((d) => rc("div", { key: d.id, className: "pcf-done-row" },
+            rc("button", { className: "pcf-done-open", onClick: () => onPickFolder(d.id) },
+              rc("span", { className: "pcf-done-name" }, d.name),
+              rc("span", { className: "pcf-done-meta" },
+                (d.location ? d.location + " · " : "") +
+                (_fldDoneOn(d) ? "Completed " + _fldDoneOn(d) : "Completed"))
+            ),
+            !_staff() && rc("button", {
+              className: "pcf-act-btn",
+              title: "Re-open project",
+              onClick: (ev) => openReopen(d.id, ev)
+            }, Ico.undo)
+          ))
         )
       )
     );

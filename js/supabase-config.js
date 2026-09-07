@@ -70,7 +70,11 @@ const REG = {
   clientUsers:              { table: 'profiles', kind: 'client',              rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt', 'agreementAcceptedAt'] },
   constructionClientUsers:  { table: 'profiles', kind: 'construction_client', rename: { ownerUid: 'owner_id' }, ts: ['createdAt', 'updatedAt', 'agreementAcceptedAt', 'partnerAgreementAcceptedAt'] },
 
-  folders:        { table: 'folders',        rename: OWNER, ts: ['createdAt', 'updatedAt'] },
+  // `completedAt` (migration 0064) must be listed here or it writes as a raw
+  // string and reads back unwrapped — the "Completed · <date>" badge would then
+  // have no .toDate() to call. NULL is the active state, and both wrapTs and
+  // tsToISO pass null straight through, so re-opening just writes null.
+  folders:        { table: 'folders',        rename: OWNER, ts: ['createdAt', 'updatedAt', 'completedAt'] },
   folderBudgets:  { table: 'folder_budgets', rename: OWNER, idField: 'folder_id' },
   projects:       { table: 'projects',       rename: OWNER, ts: ['createdAt', 'updatedAt'] },
   projectBudgets: { table: 'project_budgets',rename: OWNER, idField: 'project_id' },
@@ -250,11 +254,18 @@ function fromRow(cfg, row) {
 }
 
 // ── 6. Snapshot wrappers ─────────────────────────────────────────────
-function docSnap(cfg, id, row) {
-  return { id, exists: !!row, data: () => (row ? fromRow(cfg, row) : undefined), ref: null };
+// Every snapshot doc carries a LIVE ref. The app calls d.ref.delete() /
+// batch.update(d.ref, ...) in a dozen places (deleteFolder, pm-admin
+// teardown, the isRead backfill); a null here throws inside batch.commit()
+// with a stack that points at the shim instead of the caller.
+function docSnap(cfg, id, row, ctx) {
+  return { id, exists: !!row, data: () => (row ? fromRow(cfg, row) : undefined), ref: new DocRef(cfg, id, ctx) };
 }
-function querySnap(cfg, rows) {
-  const docs = rows.map((r) => ({ id: r.id ?? r[cfg.idField], data: () => fromRow(cfg, r), exists: true, ref: null }));
+function querySnap(cfg, rows, ctx) {
+  const docs = rows.map((r) => {
+    const id = r.id ?? r[cfg.idField];
+    return { id, data: () => fromRow(cfg, r), exists: true, ref: new DocRef(cfg, id, ctx) };
+  });
   return { docs, empty: docs.length === 0, size: docs.length, forEach: (fn) => docs.forEach(fn) };
 }
 
@@ -325,12 +336,12 @@ class Query {
         items.sort((a, b) => _jbOrd(a._d[f], b._d[f]) * mul);
       }
       if (this._lim != null) items = items.slice(0, this._lim);
-      const docs = items.map((it) => ({ id: it.id, data: () => it._d, exists: true, ref: null }));
+      const docs = items.map((it) => ({ id: it.id, data: () => it._d, exists: true, ref: new DocRef(c, it.id, this.ctx) }));
       return { docs, empty: docs.length === 0, size: docs.length, forEach: (fn) => docs.forEach(fn) };
     }
     const { data, error } = await this._select();
     if (error) throw error;
-    return querySnap(this.cfg, data || []);
+    return querySnap(this.cfg, data || [], this.ctx);
   }
   onSnapshot(onNext, onErr) {
     let cancelled = false;
@@ -384,7 +395,7 @@ class DocRef {
     qb = this._applyCtx(qb);
     const { data, error } = await qb.maybeSingle();
     if (error) throw error;
-    return docSnap(c, this.id, data || null);
+    return docSnap(c, this.id, data || null, this.ctx);
   }
 
   async set(data, opts) {

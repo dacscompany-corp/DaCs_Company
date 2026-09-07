@@ -79,6 +79,7 @@ Hierarchy: **`folders` → `projects` (a month) → `expenses` / `payroll`**. Mo
 | `name`, `description` | string | |
 | `clientEmail` | string | synced **from the BOQ** on save — unlocks client read access |
 | `createdAt` | ts | |
+| `completedAt` | ts \| null | **NULL = active.** Set = the owner marked the project finished (migration 0064): it leaves Project Control's picker and carousel and moves into the collapsed "Completed" strip. A **view state only** — carries no pesos, gates no arithmetic, and is *not* the warranty reserve (that keys off `construction_projects.status`). Re-opening writes NULL back. |
 
 ### `projects/{id}` — a billing **month/period** inside a folder
 | Field | Type | Notes |

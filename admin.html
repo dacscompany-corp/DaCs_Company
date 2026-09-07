@@ -3856,16 +3856,16 @@
 <div id="deleteConfirmModal" class="exp-modal">
     <div class="exp-modal-box" style="max-width:380px">
         <div class="exp-modal-header" style="border-bottom:none;padding-bottom:0;">
-            <div style="width:44px;height:44px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;margin-bottom:4px;">
+            <div id="deleteConfirmIcon" style="width:44px;height:44px;border-radius:50%;background:#fee2e2;display:flex;align-items:center;justify-content:center;margin-bottom:4px;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
             </div>
-            <h2 style="font-size:1rem;font-weight:700;color:#111827;margin:0;">Confirm Delete</h2>
+            <h2 id="deleteConfirmTitle" style="font-size:1rem;font-weight:700;color:#111827;margin:0;">Confirm Delete</h2>
             <button class="exp-modal-close" aria-label="Close" onclick="_deleteConfirmReject()">&times;</button>
         </div>
         <div style="padding:12px 24px 0;color:#6b7280;font-size:0.875rem;line-height:1.5;" id="deleteConfirmMsg"></div>
         <div class="exp-modal-footer" style="padding-top:16px;">
             <button type="button" class="exp-btn exp-btn-secondary" onclick="_deleteConfirmReject()">Cancel</button>
-            <button type="button" class="exp-btn exp-btn-danger" onclick="_deleteConfirmResolve()">Delete</button>
+            <button type="button" id="deleteConfirmOk" class="exp-btn exp-btn-danger" onclick="_deleteConfirmResolve()">Delete</button>
         </div>
     </div>
 </div>
