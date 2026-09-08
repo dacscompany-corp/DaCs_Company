@@ -59,7 +59,10 @@ const M = evalWith(
   { window: {} },
   ['attFormatHours', 'attRollUpByWorker', 'attRollUpByProject', 'attCsvCell', 'attToCsv',
    'attWorkerNameKey', 'attWorkerRoster', 'attValidateNewWorker',
-   'attValidateEditWorker', 'attSplitName', 'attCanAbandon', 'attOpenRecords']
+   'attValidateEditWorker', 'attSplitName', 'attCanAbandon', 'attOpenRecords',
+   'attDayNum', 'attKeyFromDayNum', 'attIsoDow', 'attWeekStartOf', 'attWeekEndOf',
+   'attRewardSummary', 'attRewardTotals', 'attRewardStatusLabel', 'attRewardCsv',
+   'attWeeksNeedingEvaluation']
 );
 
 const rec = (o) => Object.assign({
@@ -492,6 +495,152 @@ test('an abandoned day still adds NO hours', () => {
   const rows = M.attRollUpByWorker([rec({ total_minutes: null, status: 'abandoned' })]);
   eq(rows[0].totalMinutes, 0);
   eq(M.attFormatHours(rows[0].totalMinutes), '0h 0m');
+});
+
+console.log('\nX. The weekly reward (0065 / 0066)');
+
+// 2026-09-07 is a Monday; the reward week runs to Friday 2026-09-11.
+const MON = '2026-09-07', FRI = '2026-09-11';
+const day = (d, status, required) => ({
+  work_date: d, day_status: status,
+  required: required === undefined ? true : required
+});
+
+test('the week starts on Monday, from any day in it', () => {
+  eq(M.attWeekStartOf('2026-09-09'), MON, 'a Wednesday');
+  eq(M.attWeekStartOf(MON), MON, 'the Monday itself');
+  eq(M.attWeekStartOf('2026-09-13'), MON, 'the Sunday at the end of it');
+  eq(M.attWeekEndOf(MON), FRI, 'and ends on the Friday');
+});
+
+test('week arithmetic ignores the browser timezone', () => {
+  // The reason this works in UTC: local getters on a machine set behind
+  // UTC push a Monday back onto the previous Sunday, and the whole
+  // reward week shifts under the admin's feet.
+  eq(M.attIsoDow(MON), 1, 'Monday is ISO 1');
+  eq(M.attIsoDow('2026-09-13'), 7, 'Sunday is ISO 7');
+  eq(M.attKeyFromDayNum(M.attDayNum(MON)), MON, 'round-trips exactly');
+});
+
+test('a day later than today is PENDING, never missing', () => {
+  // Without this, Wednesday's screen reports Thursday and Friday as
+  // missed and tells every worker they are already disqualified.
+  const s = M.attRewardSummary([
+    day(MON, 'on_time'), day('2026-09-08', 'on_time'), day('2026-09-09', 'on_time'),
+    day('2026-09-10', 'missing'), day(FRI, 'missing')
+  ], '2026-09-09');
+  eq(s.pendingDays, 2, 'Thursday and Friday have not happened yet');
+  eq(s.missingDays, 0, 'and so nothing is missing');
+  eq(s.status, 'in_progress');
+});
+
+test('one late day disqualifies the week the moment it happens', () => {
+  const s = M.attRewardSummary([
+    day(MON, 'on_time'), day('2026-09-08', 'late'), day('2026-09-09', 'on_time'),
+    day('2026-09-10', 'missing'), day(FRI, 'missing')
+  ], '2026-09-09');
+  eq(s.lateDays, 1);
+  eq(s.status, 'disqualified', 'certain already — the rest of the week cannot save it');
+});
+
+test('five on-time days qualify', () => {
+  const s = M.attRewardSummary([
+    day(MON, 'on_time'), day('2026-09-08', 'on_time'), day('2026-09-09', 'on_time'),
+    day('2026-09-10', 'on_time'), day(FRI, 'on_time')
+  ], FRI);
+  eq(s.requiredDays, 5);
+  eq(s.onTimeDays, 5);
+  eq(s.status, 'qualified');
+});
+
+test('a closed day SHRINKS the week — 4/4 still qualifies', () => {
+  // The decision that stops a weekday holiday zeroing the reward for
+  // every worker, eight to ten times a year, through no fault of theirs.
+  const s = M.attRewardSummary([
+    day(MON, 'on_time'), day('2026-09-08', 'on_time'),
+    day('2026-09-09', 'not_required', false),
+    day('2026-09-10', 'on_time'), day(FRI, 'on_time')
+  ], FRI);
+  eq(s.requiredDays, 4, 'the closed day is not required of anyone');
+  eq(s.onTimeDays, 4);
+  eq(s.missingDays, 0);
+  eq(s.status, 'qualified', 'four out of four earns the full amount');
+});
+
+test('a past day with no Time In disqualifies', () => {
+  const s = M.attRewardSummary([
+    day(MON, 'on_time'), day('2026-09-08', 'missing'), day('2026-09-09', 'on_time'),
+    day('2026-09-10', 'on_time'), day(FRI, 'on_time')
+  ], FRI);
+  eq(s.missingDays, 1);
+  eq(s.status, 'disqualified');
+});
+
+test('a Time Out has no bearing on any of it', () => {
+  // The whole point of the rule: qualification reads timein_at and
+  // nothing else, so no admin action can move anyone's money. These
+  // rows carry no time-out information at all and still resolve.
+  const s = M.attRewardSummary([
+    day(MON, 'on_time'), day('2026-09-08', 'on_time'), day('2026-09-09', 'on_time'),
+    day('2026-09-10', 'on_time'), day(FRI, 'on_time')
+  ], FRI);
+  eq(s.status, 'qualified');
+});
+
+test('totals separate what is owed from what is paid', () => {
+  const t = M.attRewardTotals([
+    { status: 'qualified',    amount: 500, paid: true  },
+    { status: 'qualified',    amount: 500, paid: false },
+    { status: 'disqualified', amount: 0,   paid: false }
+  ]);
+  eq(t.workers, 3);
+  eq(t.qualified, 2);
+  eq(t.disqualified, 1);
+  eq(t.totalAmount, 1000);
+  eq(t.unpaidAmount, 500, 'the figure payroll still owes');
+});
+
+test('reward statuses read as §43 words them', () => {
+  eq(M.attRewardStatusLabel('qualified'), 'Qualified');
+  eq(M.attRewardStatusLabel('disqualified'), 'Disqualified');
+  eq(M.attRewardStatusLabel(null), 'In Progress');
+});
+
+test('the reward export neutralises formula injection too', () => {
+  // Rule 3 of this file applies no less to a sheet payroll opens.
+  const csv = M.attRewardCsv([{
+    worker_name: '=cmd|/c calc', worker_position: 'Mason',
+    week_start: MON, week_end: FRI,
+    required_days: 5, on_time_days: 5, late_days: 0, missing_days: 0,
+    status: 'qualified', amount: 500, paid: false
+  }]);
+  const row = csv.split('\r\n')[1];
+  ok(!row.startsWith('='), 'the cell must not open with =');
+  ok(csv.indexOf("'=cmd|/c calc") !== -1, 'it is quoted out, not stripped');
+});
+
+test('the current week is never evaluated', () => {
+  // It has not finished. Monday 2026-09-07, 12:00 Manila.
+  const now = Date.UTC(2026, 8, 7, 4);
+  const weeks = M.attWeeksNeedingEvaluation(now, [], 60, 8);
+  ok(weeks.indexOf(MON) === -1, 'this week is still running');
+});
+
+test('a week becomes due only after its grace period', () => {
+  // Week of 2026-08-31 ends Saturday 2026-09-05 00:00 Manila.
+  // +60h lands on Monday 2026-09-07 12:00 Manila.
+  const due    = Date.UTC(2026, 8, 7, 4);       // Monday 12:00 Manila
+  const before = Date.UTC(2026, 8, 7, 2);       // Monday 10:00 Manila
+  ok(M.attWeeksNeedingEvaluation(due, [], 60, 8).indexOf('2026-08-31') !== -1,
+     'due at the grace boundary');
+  ok(M.attWeeksNeedingEvaluation(before, [], 60, 8).indexOf('2026-08-31') === -1,
+     'not one hour before it — a Friday record synced Monday morning must still land');
+});
+
+test('a week already evaluated is not offered again', () => {
+  const now = Date.UTC(2026, 8, 7, 4);
+  const weeks = M.attWeeksNeedingEvaluation(now, ['2026-08-31'], 60, 8);
+  ok(weeks.indexOf('2026-08-31') === -1, 'frozen means frozen');
 });
 
 console.log(passed + ' passed, ' + failed + ' failed');

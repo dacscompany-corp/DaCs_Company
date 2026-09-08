@@ -358,6 +358,173 @@
                           || String(a.worker_name || '').localeCompare(String(b.worker_name || '')));
     }
 
+    // ── Weekly reward ───────────────────────────────────────────────
+    //
+    // The ₱ figure that appears below is a REPORTED amount and nothing
+    // else. It creates no accounting entry, and no function here may
+    // ever make one: payment happens outside the system entirely (see
+    // 0066's header). There is still no rate anywhere in this file, and
+    // attendance hours are still not the basis of pay.
+
+    /**
+     * Days since the epoch from a YYYY-MM-DD key, and back again.
+     *
+     * All week arithmetic goes through these two, in UTC, so it never
+     * touches the browser's local zone. That is not fussiness: a
+     * Monday computed with local getters on a machine set to UTC-5
+     * lands on the previous Sunday, and the whole reward week shifts.
+     * Working in UTC on a date-only key has no such failure mode.
+     */
+    function attDayNum(key) {
+        const p = String(key).split('-');
+        return Math.round(Date.UTC(+p[0], +p[1] - 1, +p[2]) / 86400000);
+    }
+
+    function attKeyFromDayNum(n) {
+        const d = new Date(n * 86400000);
+        const p = x => String(x).padStart(2, '0');
+        return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate());
+    }
+
+    /** ISO weekday, 1 = Monday … 7 = Sunday. Epoch day 0 was a Thursday. */
+    function attIsoDow(key) {
+        return ((attDayNum(key) + 3) % 7) + 1;
+    }
+
+    /** The Monday of the week [key] falls in. */
+    function attWeekStartOf(key) {
+        const n = attDayNum(key);
+        return attKeyFromDayNum(n - (attIsoDow(key) - 1));
+    }
+
+    /** The Friday of that week. The reward week is Mon–Fri. */
+    function attWeekEndOf(weekStart) {
+        return attKeyFromDayNum(attDayNum(weekStart) + 4);
+    }
+
+    /**
+     * Rolls the per-day rows from attendance_reward_progress() into the
+     * week's standing.
+     *
+     * A day LATER THAN TODAY is pending, never missing. The server
+     * returns all five days of the week whether or not they have
+     * happened, so without this Wednesday's screen would report Thursday
+     * and Friday as missed and tell every worker they were already
+     * disqualified.
+     *
+     * Disqualification is reported as soon as it is certain — one late
+     * day settles the week — which is what §37's mid-week example shows.
+     */
+    function attRewardSummary(days, todayKey) {
+        const out = {
+            requiredDays: 0, onTimeDays: 0, lateDays: 0,
+            missingDays: 0, pendingDays: 0, completedDays: 0,
+            status: 'in_progress'
+        };
+        (days || []).forEach(d => {
+            const future = String(d.work_date) > String(todayKey);
+            if (d.day_status === 'on_time' || d.day_status === 'late') out.completedDays++;
+            if (!d.required) return;
+            out.requiredDays++;
+            if (d.day_status === 'on_time') out.onTimeDays++;
+            else if (d.day_status === 'late') out.lateDays++;
+            else if (future) out.pendingDays++;
+            else out.missingDays++;
+        });
+        out.status = (out.lateDays > 0 || out.missingDays > 0) ? 'disqualified'
+                   : out.pendingDays > 0 ? 'in_progress'
+                   : out.requiredDays > 0 ? 'qualified'
+                   : 'disqualified';
+        return out;
+    }
+
+    /**
+     * Totals across one week's reward rows, for the admin header.
+     *
+     * unpaidAmount is what payroll still owes — the number the export
+     * exists to produce, since nothing in this system pays anybody.
+     */
+    function attRewardTotals(rows) {
+        const t = { workers: 0, qualified: 0, disqualified: 0,
+                    paid: 0, unpaid: 0, totalAmount: 0, unpaidAmount: 0 };
+        (rows || []).forEach(r => {
+            t.workers++;
+            const amount = Number(r.amount) || 0;
+            if (r.status === 'qualified') {
+                t.qualified++;
+                t.totalAmount += amount;
+                if (r.paid) { t.paid++; } else { t.unpaid++; t.unpaidAmount += amount; }
+            } else {
+                t.disqualified++;
+            }
+        });
+        return t;
+    }
+
+    /** §43's statuses, as the screen words them. */
+    function attRewardStatusLabel(status) {
+        return status === 'qualified'   ? 'Qualified'
+             : status === 'disqualified' ? 'Disqualified'
+             : 'In Progress';
+    }
+
+    /**
+     * §40's export. Goes through attToCsv, so worker names and any other
+     * attacker-adjacent text are still neutralised against Excel formula
+     * injection — this file's rule 3, which applies no less to a sheet
+     * that payroll opens.
+     */
+    function attRewardCsv(rows) {
+        const headers = ['Worker', 'Position', 'Week Start', 'Week End', 'Required',
+                         'On Time', 'Late', 'Missing', 'Status', 'Reward', 'Paid'];
+        const body = (rows || []).map(r => [
+            r.worker_name || '—',
+            r.worker_position || '',
+            r.week_start, r.week_end,
+            r.required_days, r.on_time_days, r.late_days, r.missing_days,
+            attRewardStatusLabel(r.status),
+            Number(r.amount) || 0,
+            r.paid ? 'Yes' : 'No'
+        ]);
+        return attToCsv(headers, body);
+    }
+
+    /**
+     * Which past weeks still need evaluating.
+     *
+     * Evaluation happens when an admin opens the Rewards view: the RPC
+     * is idempotent and refuses anything inside its grace period, so
+     * calling it on page load is safe and needs no pg_cron.
+     *
+     * A week becomes due `graceHours` after it ENDS — Saturday 00:00
+     * Manila, which is UTC+8 with no daylight saving, so the instant is
+     * exact arithmetic rather than a guess. The grace is why a Friday
+     * Time In captured with no signal and synced on Monday still counts.
+     *
+     * The current week is never returned: it has not finished.
+     */
+    function attWeeksNeedingEvaluation(nowMs, evaluatedStarts, graceHours, weeksBack) {
+        const done = new Set(evaluatedStarts || []);
+        const grace = Number(graceHours);
+        const hours = isFinite(grace) && grace >= 0 ? grace : 60;
+        const back = Number(weeksBack) > 0 ? Number(weeksBack) : 8;
+
+        // Today in Manila, derived from the instant rather than the
+        // browser's zone — an admin abroad must still see PH weeks.
+        const todayKey = attKeyFromDayNum(Math.floor((nowMs + 8 * 3600000) / 86400000));
+        const thisMonday = attDayNum(attWeekStartOf(todayKey));
+
+        const out = [];
+        for (let i = 1; i <= back; i++) {
+            const startNum = thisMonday - i * 7;
+            const start = attKeyFromDayNum(startNum);
+            if (done.has(start)) continue;
+            const dueMs = (startNum + 5) * 86400000 - 8 * 3600000 + hours * 3600000;
+            if (nowMs >= dueMs) out.push(start);
+        }
+        return out.sort();
+    }
+
     // ==== ATT REPORT ENGINE END ====
 
     const PHOTO_BUCKET = 'attendance';
@@ -1708,10 +1875,17 @@
                 <div class="att-card-body" style="display:flex;flex-direction:column;gap:16px;">
                   <div class="att-info">
                     <i data-lucide="info"></i>
-                    <div>This is a read-only view. A project appears here as soon as it
-                      exists in <strong>Project Control</strong> or
+                    <div>The project LIST is read-only. A project appears here as soon as
+                      it exists in <strong>Project Control</strong> or
                       <strong>Project Management</strong> — create, rename or close it
                       there and the worker's picker follows.</div>
+                  </div>
+                  <div class="att-info">
+                    <i data-lucide="calendar-check"></i>
+                    <div>Its attendance <strong>schedule</strong> is set here, and only
+                      here: which days the site works, what time workers are due, and the
+                      dates it was closed. A closed day is not required of anyone posted
+                      there, so it shrinks the reward week instead of failing it.</div>
                   </div>
                   <div class="att-info">
                     <i data-lucide="eye-off"></i>
@@ -1731,9 +1905,11 @@
             .addEventListener('click', () => attRenderProjects(container));
 
         const body = container.querySelector('#attProjectsBody');
-        let rows, todayCounts;
+        let rows, todayCounts, configs;
         try {
-            [rows, todayCounts] = await Promise.all([attLoadProjects(), attWorkersTodayByProject()]);
+            [rows, todayCounts, configs] = await Promise.all([
+                attLoadProjects(), attWorkersTodayByProject(), attLoadProjectConfigs()
+            ]);
         } catch (e) {
             body.innerHTML = `<div class="att-error">Could not load projects: ${attEsc(e.message || e)}</div>`;
             attIcons();
@@ -1759,7 +1935,7 @@
             <div class="att-card">
               <table class="att-table">
                 <thead>
-                  <tr><th>Project</th><th>From</th><th>Workers today</th></tr>
+                  <tr><th>Project</th><th>From</th><th>Workers today</th><th>Schedule</th></tr>
                 </thead>
                 <tbody>
                   ${rows.map(p => `
@@ -1769,14 +1945,36 @@
                           attEsc(attSystemLabel(p.project_system))}</span></td>
                       <td class="att-mono">${
                           todayCounts.get(attProjectKey(p.project_system, p.project_id)) || 0}</td>
+                      <td>
+                        <button class="att-btn" type="button"
+                                data-sched="${attEsc(attProjectKey(p.project_system, p.project_id))}">
+                          ${attEsc(attWorkingDaysLabel(
+                              (configs.get(attProjectKey(p.project_system, p.project_id)) || {}).working_days))}
+                        </button>
+                      </td>
                     </tr>`).join('')}
                 </tbody>
               </table>
             </div>
-            <div class="att-note">Read-only on purpose. A project is created, renamed and
-              closed in the module that owns it — attendance follows. Closing a Project
-              Management job (status other than <em>active</em>) removes it from the
-              worker&rsquo;s picker; records already saved against it are untouched.</div>`;
+            <div class="att-note">The list is read-only on purpose. A project is created,
+              renamed and closed in the module that owns it — attendance follows. Closing a
+              Project Management job (status other than <em>active</em>) removes it from the
+              worker&rsquo;s picker; records already saved against it are untouched.
+              <strong>Schedule</strong> is the exception: those settings belong to attendance
+              and are edited here.</div>
+            <div id="attSchedHost"></div>`;
+
+        const schedHost = body.querySelector('#attSchedHost');
+        body.querySelectorAll('[data-sched]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const key = btn.getAttribute('data-sched');
+                const project = rows.find(
+                    p => attProjectKey(p.project_system, p.project_id) === key);
+                if (!project) return;
+                attOpenSchedule(schedHost, project, configs.get(key) || null,
+                                () => attRenderProjects(container));
+            });
+        });
 
         attIcons();
     }
@@ -2145,6 +2343,544 @@
         switchView('attWorker');
     };
 
+    // ── A7b · Per-project schedule (0065) ───────────────────────────
+    //
+    // WHY THIS SCREEN EXISTS. The reward asks whether every REQUIRED day
+    // carried an on-time Time In, and a day the site was closed is not
+    // required -- it drops out, so four on-time days in a four-day week
+    // still earn the full amount.
+    //
+    // Without somewhere to record that a site was closed, a weekday
+    // holiday disqualifies every worker in the company, eight to ten
+    // times a year, through no fault of their own. This is that
+    // somewhere.
+    //
+    // Per PROJECT, not company-wide, because that is how the business
+    // runs: one site works a regular holiday on premium pay while
+    // another shuts, and a local charter day closes one city only.
+
+    const ATT_DOW = [
+        { n: 1, label: 'Mon' }, { n: 2, label: 'Tue' }, { n: 3, label: 'Wed' },
+        { n: 4, label: 'Thu' }, { n: 5, label: 'Fri' }, { n: 6, label: 'Sat' },
+        { n: 7, label: 'Sun' }
+    ];
+
+    /** The column that holds a project id, which differs per system. */
+    function attProjCol(system) {
+        return system === 'pc' ? 'folder_id' : 'pm_project_id';
+    }
+
+    async function attLoadProjectConfigs() {
+        const { data, error } = await window.sbClient
+            .from('attendance_project_config')
+            .select('id,project_system,folder_id,pm_project_id,working_days,' +
+                    'start_time_override,attendance_enabled');
+        if (error) throw error;
+        const by = new Map();
+        (data || []).forEach(function (c) {
+            by.set(attProjectKey(c.project_system, c.folder_id || c.pm_project_id), c);
+        });
+        return by;
+    }
+
+    async function attLoadClosures(system, id) {
+        const { data, error } = await window.sbClient
+            .from('attendance_project_closure')
+            .select('id,closed_on,reason')
+            .eq('project_system', system)
+            .eq(attProjCol(system), id)
+            .order('closed_on', { ascending: false })
+            .limit(100);
+        if (error) throw error;
+        return data || [];
+    }
+
+    /** "Mon-Fri", or the days themselves when it is not the usual week. */
+    function attWorkingDaysLabel(days) {
+        const set = Array.isArray(days) && days.length ? days.slice().sort() : [1, 2, 3, 4, 5];
+        if (String(set) === String([1, 2, 3, 4, 5])) return 'Mon–Fri';
+        if (String(set) === String([1, 2, 3, 4, 5, 6])) return 'Mon–Sat';
+        return set.map(function (n) {
+            const d = ATT_DOW.find(function (x) { return x.n === n; });
+            return d ? d.label : n;
+        }).join(' ');
+    }
+
+    function attOpenSchedule(host, project, config, onSaved) {
+        const system = project.project_system;
+        const id = project.project_id;
+        const days = (config && config.working_days) || [1, 2, 3, 4, 5];
+
+        host.innerHTML =
+            '<div class="att-modal" id="attSchedModal">' +
+              '<div class="att-modal-box" role="dialog" aria-modal="true" ' +
+                   'aria-labelledby="attSchedTitle">' +
+                '<div class="att-modal-head">' +
+                  '<div>' +
+                    '<h3 class="att-modal-title" id="attSchedTitle">Schedule</h3>' +
+                    '<p class="att-modal-sub">' + attEsc(project.project_name) + '</p>' +
+                  '</div>' +
+                  '<button class="att-modal-x" type="button" id="attScX" ' +
+                          'aria-label="Close">&times;</button>' +
+                '</div>' +
+                '<form class="att-modal-form" id="attSchedForm" autocomplete="off">' +
+                  '<div class="att-modal-body att-modal-body--single">' +
+                    '<div class="att-info">' +
+                      '<i data-lucide="calendar-check"></i>' +
+                      '<div>The reward only ever counts <strong>Monday to Friday</strong>. ' +
+                        'Marking Saturday here records that the site works it — it does ' +
+                        'not add a sixth day to the reward.</div>' +
+                    '</div>' +
+                    '<div class="att-field att-span">' +
+                      '<label>Working days</label>' +
+                      '<div class="att-seg" id="attScDays">' +
+                        ATT_DOW.map(function (d) {
+                          return '<button class="att-seg-btn' +
+                                 (days.indexOf(d.n) !== -1 ? ' is-on' : '') +
+                                 '" type="button" data-dow="' + d.n + '">' + d.label + '</button>';
+                        }).join('') +
+                      '</div>' +
+                      '<div class="att-hint">A day outside this pattern is never required, ' +
+                        'so it shrinks the reward week instead of failing it.</div>' +
+                    '</div>' +
+                    '<div class="att-field att-span">' +
+                      '<label for="attScStart">Start time</label>' +
+                      '<input class="att-input" type="time" id="attScStart" value="' +
+                        attEsc((config && config.start_time_override) || '') + '">' +
+                      '<div class="att-hint">Leave empty to use the company default. ' +
+                        'A Time In after this is late, and one late day forfeits the ' +
+                        'whole week.</div>' +
+                    '</div>' +
+                    '<div class="att-field att-span">' +
+                      '<label for="attScClosed">Closed dates</label>' +
+                      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+                        '<input class="att-input" type="date" id="attScClosed">' +
+                        '<input class="att-input" type="text" id="attScReason" ' +
+                               'maxlength="120" placeholder="Reason, e.g. Independence Day">' +
+                        '<button class="att-btn" type="button" id="attScAdd">Add</button>' +
+                      '</div>' +
+                      '<div class="att-hint">A closed day is not required of anyone posted ' +
+                        'here, so the week shrinks and four on-time days out of four still ' +
+                        'earn the full reward.<br><strong>Closed dates save as soon as you add ' +
+                        'them</strong> — Close does not undo them.</div>' +
+                    '</div>' +
+                    '<div id="attScList"></div>' +
+                    '<div class="att-err att-err--general att-span" id="attScGeneral"></div>' +
+                  '</div>' +
+                  '<div class="att-modal-foot">' +
+                    '<button class="att-btn" type="button" id="attScCancel">Close</button>' +
+                    '<button class="att-btn att-btn--primary" type="submit" id="attScSave">' +
+                      'Save working days &amp; time</button>' +
+                  '</div>' +
+                '</form>' +
+              '</div>' +
+            '</div>';
+
+        attIcons();
+
+        const general = host.querySelector('#attScGeneral');
+        const listEl = host.querySelector('#attScList');
+        let closures = [];
+
+        function close() { host.innerHTML = ''; }
+        function fail(msg) {
+            general.textContent = msg;
+            general.style.display = 'block';
+        }
+
+        function paintClosures() {
+            if (!closures.length) {
+                listEl.innerHTML = '<div class="att-empty">No closed dates recorded.</div>';
+                return;
+            }
+            listEl.innerHTML =
+                '<table class="att-table"><tbody>' +
+                closures.map(function (c) {
+                    return '<tr>' +
+                      '<td class="att-mono">' + attEsc(c.closed_on) + '</td>' +
+                      '<td>' + attEsc(c.reason || '—') + '</td>' +
+                      '<td><button class="att-btn" type="button" data-drop="' +
+                        attEsc(c.id) + '">Remove</button></td>' +
+                    '</tr>';
+                }).join('') +
+                '</tbody></table>';
+
+            listEl.querySelectorAll('[data-drop]').forEach(function (b) {
+                b.addEventListener('click', async function () {
+                    b.disabled = true;
+                    try {
+                        const res = await window.sbClient
+                            .rpc('attendance_project_closure_remove', {
+                                p_closure_id: b.getAttribute('data-drop')
+                            });
+                        if (res.error) throw res.error;
+                        // Re-read, for the same reason as Add: a delete
+                        // that RLS silently dropped would otherwise
+                        // disappear from this list and come back on the
+                        // next open.
+                        closures = await attLoadClosures(system, id);
+                        paintClosures();
+                    } catch (e) {
+                        console.error('att A7b: remove closure', e);
+                        b.disabled = false;
+                        fail('Could not remove: ' + (e.message || e.hint || e.details || e));
+                    }
+                });
+            });
+        }
+
+        host.querySelector('#attScDays').addEventListener('click', function (ev) {
+            const btn = ev.target.closest('[data-dow]');
+            if (btn) btn.classList.toggle('is-on');
+        });
+
+        host.querySelector('#attScAdd').addEventListener('click', async function () {
+            const date = host.querySelector('#attScClosed').value;
+            if (!date) {
+                fail('Pick a date first.');
+                return;
+            }
+            general.style.display = 'none';
+
+            try {
+                // Through the RPC, like every other write in this module.
+                // The browser does NOT say whose row this is -- it names
+                // the project and the server derives the tenant. That is
+                // 0050's rule, and skipping it is what made this button
+                // fail silently: a client-supplied owner_id that missed
+                // WITH CHECK looked identical to a button doing nothing.
+                const res = await window.sbClient.rpc('attendance_project_closure_add', {
+                    p_system: system,
+                    p_project_id: id,
+                    p_closed_on: date,
+                    p_reason: host.querySelector('#attScReason').value || null
+                });
+                if (res.error) throw res.error;
+
+                const saved = Array.isArray(res.data) ? res.data[0] : res.data;
+                if (!saved) {
+                    throw new Error('the database returned no row');
+                }
+
+                host.querySelector('#attScClosed').value = '';
+                host.querySelector('#attScReason').value = '';
+
+                // Re-read rather than splicing the returned row into a
+                // local array. The server is the only thing that knows
+                // what is actually stored, and if it disagrees with this
+                // screen the screen should lose.
+                closures = await attLoadClosures(system, id);
+                paintClosures();
+            } catch (e) {
+                console.error('att A7b: add closure', e);
+                const detail = [e.message, e.hint, e.details, e.code]
+                    .filter(Boolean).join(' | ') || String(e);
+                fail('Could not add: ' + detail);
+                // Deliberately loud. The in-dialog message sits at the
+                // bottom of a scrolling body and this failure has already
+                // been missed several times; a refusal that nobody sees
+                // is indistinguishable from a button that does nothing.
+                alert('Could not add the closed date.\n\n' + detail);
+            }
+        });
+
+        host.querySelector('#attScX').addEventListener('click', close);
+        host.querySelector('#attScCancel').addEventListener('click', close);
+
+        host.querySelector('#attSchedForm').addEventListener('submit', async function (ev) {
+            ev.preventDefault();
+            general.style.display = 'none';
+            const btn = host.querySelector('#attScSave');
+            btn.disabled = true;
+
+            const chosen = Array.prototype.slice
+                .call(host.querySelectorAll('#attScDays .is-on'))
+                .map(function (b) { return Number(b.getAttribute('data-dow')); })
+                .sort();
+
+            if (!chosen.length) {
+                btn.disabled = false;
+                fail('A project has to work at least one day.');
+                return;
+            }
+
+            const start = host.querySelector('#attScStart').value;
+
+            try {
+                // Same RPC treatment as the closures above. This path
+                // happens to work with a client-supplied owner_id today,
+                // but only because the value the browser guesses is
+                // currently the right one -- which is not a guarantee, it
+                // is a coincidence waiting to break for a staff account.
+                const res = await window.sbClient.rpc('attendance_project_config_save', {
+                    p_system: system,
+                    p_project_id: id,
+                    p_working_days: chosen,
+                    p_start_time: start || null
+                });
+                if (res.error) throw res.error;
+                close();
+                if (onSaved) onSaved(Array.isArray(res.data) ? res.data[0] : res.data);
+            } catch (e) {
+                console.error('att A7b: save config', e);
+                btn.disabled = false;
+                fail('Could not save: ' +
+                     [e.message, e.hint, e.details, e.code].filter(Boolean).join(' | '));
+            }
+        });
+
+        attLoadClosures(system, id)
+            .then(function (rows) { closures = rows; paintClosures(); })
+            .catch(function (e) { fail('Could not load closed dates: ' + (e.message || e)); });
+    }
+
+    // ── A8 · Weekly reward (0065 / 0066) ────────────────────────────
+    //
+    // REPORTING ONLY. Nothing in this section writes to payroll,
+    // expenses or any money table, and the peso figure it shows creates
+    // no accounting entry. Payment happens outside this system; the
+    // export below is what payroll actually works from, and `paid` only
+    // records that somebody says it happened.
+
+    /** The tenant whose data we are looking at. Staff act as their owner. */
+    function attOwnerUid() {
+        return window.currentDataUserId ||
+               (window.auth && auth.currentUser && auth.currentUser.uid) || '';
+    }
+
+    async function attLoadRewardConfig() {
+        const { data, error } = await window.sbClient
+            .from('attendance_config')
+            .select('reward_amount,evaluation_grace_hours,default_start_time')
+            .limit(1);
+        if (error) throw error;
+        return (data || [])[0] || null;
+    }
+
+    /** The week_starts already frozen, so evaluation is never re-run. */
+    async function attEvaluatedWeekStarts() {
+        const { data, error } = await window.sbClient
+            .from('attendance_weekly_rewards')
+            .select('week_start')
+            .order('week_start', { ascending: false })
+            .limit(500);
+        if (error) throw error;
+        return Array.from(new Set((data || []).map(r => r.week_start)));
+    }
+
+    /**
+     * Evaluate every past week that is due and not yet frozen.
+     *
+     * This is how evaluation actually happens -- there is no pg_cron
+     * dependency. The RPC is idempotent and REFUSES anything still
+     * inside its grace period, so calling it on page load is safe: a
+     * week that is not ready raises WEEK_NOT_READY and is skipped.
+     *
+     * That grace is why a Friday Time In captured on a site with no
+     * signal, and synced on Monday, still counts.
+     */
+    async function attRunDueEvaluations(graceHours) {
+        const owner = attOwnerUid();
+        if (!owner) return [];
+
+        const done = await attEvaluatedWeekStarts();
+        const due = attWeeksNeedingEvaluation(Date.now(), done, graceHours, 8);
+
+        const frozen = [];
+        for (let i = 0; i < due.length; i++) {
+            try {
+                await window.sbClient.rpc('attendance_evaluate_week', {
+                    p_owner: owner,
+                    p_week_start: due[i]
+                });
+                frozen.push(due[i]);
+            } catch (e) {
+                // WEEK_NOT_READY is the expected, healthy answer for a
+                // week still inside its grace. Anything else is worth
+                // seeing, and neither is worth blocking the screen for.
+                if (!/WEEK_NOT_READY/.test((e && e.message) || '')) {
+                    console.error('att A8: evaluate ' + due[i], e);
+                }
+            }
+        }
+        return frozen;
+    }
+
+    async function attLoadRewards(weekStart) {
+        const { data, error } = await window.sbClient
+            .from('attendance_weekly_rewards')
+            .select('id,worker_id,worker_name,worker_position,week_start,week_end,' +
+                    'required_days,completed_days,on_time_days,late_days,missing_days,' +
+                    'status,amount,paid,paid_at')
+            .eq('week_start', weekStart)
+            .order('worker_name');
+        if (error) throw error;
+        return data || [];
+    }
+
+    function attPeso(n) {
+        const v = Number(n) || 0;
+        return '\u20b1' + v.toLocaleString('en-PH', {
+            minimumFractionDigits: v % 1 === 0 ? 0 : 2,
+            maximumFractionDigits: 2
+        });
+    }
+
+    function attRewardPill(status) {
+        const cls = status === 'qualified' ? 'att-pill--done'
+                  : status === 'disqualified' ? 'att-pill--abandoned'
+                  : 'att-pill--none';
+        return '<span class="att-pill ' + cls + '">' +
+               attEsc(attRewardStatusLabel(status)) + '</span>';
+    }
+
+    async function attRenderRewards(container) {
+        const thisMonday = attWeekStartOf(attTodayKey());
+        // Default to the week just gone: the current one cannot be frozen
+        // yet, so landing on it would always show an empty table.
+        let week = attKeyFromDayNum(attDayNum(thisMonday) - 7);
+
+        container.innerHTML =
+            '<div class="att-head">' +
+              '<div>' +
+                '<h2 class="att-title">Weekly Reward</h2>' +
+                '<div class="att-sub" id="attRwSub"></div>' +
+              '</div>' +
+            '</div>' +
+            '<form class="att-toolbar" id="attRwForm">' +
+              '<button class="att-btn" type="button" id="attRwPrev">' +
+                '<i data-lucide="chevron-left"></i>Previous</button>' +
+              '<label for="attRwWeek">Week of</label>' +
+              '<input class="att-input" type="date" id="attRwWeek" value="' + attEsc(week) + '">' +
+              '<button class="att-btn" type="button" id="attRwNext">' +
+                'Next<i data-lucide="chevron-right"></i></button>' +
+              '<button class="att-btn att-btn--primary" type="submit">Apply</button>' +
+              '<button class="att-btn" type="button" id="attRwCsv">' +
+                '<i data-lucide="download"></i>CSV for payroll</button>' +
+            '</form>' +
+            '<div id="attRwBody">Loading…</div>';
+
+        const body = container.querySelector('#attRwBody');
+        const input = container.querySelector('#attRwWeek');
+        let rows = [];
+        let config = null;
+
+        function stamp() {
+            container.querySelector('#attRwSub').textContent =
+                'Monday ' + week + ' to Friday ' + attWeekEndOf(week) +
+                ' · a reported figure, NOT an accounting entry — payment happens outside this system.';
+        }
+
+        function paint() {
+            if (!rows.length) {
+                body.innerHTML =
+                    '<div class="att-empty">Nothing evaluated for this week yet. ' +
+                    'A week is frozen once it has ended and its grace period has passed, ' +
+                    'so attendance captured offline has time to arrive first.</div>';
+                return;
+            }
+
+            const t = attRewardTotals(rows);
+            body.innerHTML =
+                '<div class="att-kpis">' +
+                  attKpi('award', 'total', String(t.qualified), 'Qualified') +
+                  attKpi('user-x', 'none', String(t.disqualified), 'Disqualified') +
+                  attKpi('wallet', 'in', attPeso(t.totalAmount), 'Total earned') +
+                  attKpi('clock', 'working', attPeso(t.unpaidAmount), 'Still unpaid',
+                         t.unpaidAmount > 0) +
+                '</div>' +
+                '<table class="att-table"><thead><tr>' +
+                  '<th>Worker</th><th>Required</th><th>On time</th><th>Late</th>' +
+                  '<th>Missing</th><th>Status</th><th>Reward</th><th>Paid</th>' +
+                '</tr></thead><tbody>' +
+                rows.map(function (r) {
+                    return '<tr>' +
+                        '<td><div class="att-ident">' +
+                          '<strong>' + attEsc(r.worker_name || '—') + '</strong>' +
+                          (r.worker_position
+                            ? '<div class="att-card-sub">' + attEsc(r.worker_position) + '</div>'
+                            : '') +
+                        '</div></td>' +
+                        '<td>' + r.required_days + '</td>' +
+                        '<td>' + r.on_time_days + '</td>' +
+                        '<td>' + r.late_days + '</td>' +
+                        '<td>' + r.missing_days + '</td>' +
+                        '<td>' + attRewardPill(r.status) + '</td>' +
+                        '<td>' + attPeso(r.amount) + '</td>' +
+                        '<td>' + (r.status === 'qualified'
+                          ? '<button class="att-btn' + (r.paid ? '' : ' att-btn--primary') +
+                            '" type="button" data-paid="' + attEsc(r.id) + '">' +
+                            (r.paid ? 'Paid' : 'Mark paid') + '</button>'
+                          : '<span class="att-hint-inline">—</span>') + '</td>' +
+                      '</tr>';
+                }).join('') +
+                '</tbody></table>';
+
+            body.querySelectorAll('[data-paid]').forEach(function (btn) {
+                btn.addEventListener('click', async function () {
+                    const id = btn.getAttribute('data-paid');
+                    const row = rows.find(function (r) { return r.id === id; });
+                    if (!row) return;
+                    btn.disabled = true;
+                    try {
+                        const res = await window.sbClient.rpc('attendance_reward_mark_paid', {
+                            p_reward_id: id,
+                            p_paid: !row.paid
+                        });
+                        if (res.error) throw res.error;
+                        const updated = Array.isArray(res.data) ? res.data[0] : res.data;
+                        row.paid = updated ? updated.paid : !row.paid;
+                        paint();
+                    } catch (e) {
+                        console.error('att A8: mark paid', e);
+                        btn.disabled = false;
+                        alert('Could not update: ' + (e.message || e));
+                    }
+                });
+            });
+
+            if (window.lucide) lucide.createIcons();
+        }
+
+        async function run() {
+            week = attWeekStartOf(input.value || attTodayKey());
+            input.value = week;
+            stamp();
+            body.innerHTML = 'Loading…';
+            try {
+                if (!config) config = await attLoadRewardConfig();
+                await attRunDueEvaluations(config && config.evaluation_grace_hours);
+                rows = await attLoadRewards(week);
+            } catch (e) {
+                console.error('att A8: load', e);
+                body.innerHTML = '<div class="att-error">Could not load: ' +
+                                 attEsc(e.message || e) + '</div>';
+                return;
+            }
+            paint();
+        }
+
+        container.querySelector('#attRwForm').addEventListener('submit', function (ev) {
+            ev.preventDefault();
+            run();
+        });
+        container.querySelector('#attRwPrev').addEventListener('click', function () {
+            input.value = attKeyFromDayNum(attDayNum(week) - 7);
+            run();
+        });
+        container.querySelector('#attRwNext').addEventListener('click', function () {
+            input.value = attKeyFromDayNum(attDayNum(week) + 7);
+            run();
+        });
+        container.querySelector('#attRwCsv').addEventListener('click', function () {
+            if (!rows.length) return;
+            attDownloadCsv('weekly-reward-' + week + '.csv', attRewardCsv(rows));
+        });
+
+        if (window.lucide) lucide.createIcons();
+        await run();
+    }
+
     /**
      * Called by switchView for every ATT_VIEWS view, matching the house
      * pattern (initPMModule, initQuotationModule, …).
@@ -2173,6 +2909,11 @@
         if (view === 'attReports') {
             const el = document.getElementById('attReportsView');
             if (el) attRenderReports(el);
+            return;
+        }
+        if (view === 'attRewards') {
+            const el = document.getElementById('attRewardsView');
+            if (el) attRenderRewards(el);
         }
     };
 })();
