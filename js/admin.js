@@ -2253,6 +2253,7 @@ const PRIMARY_NAV = [
         { view: 'attWorkers',  label: 'Workers',  icon: 'user-round' },
         { view: 'attProjects', label: 'Projects', icon: 'hard-hat' },
         { view: 'attReports',  label: 'Reports',  icon: 'file-bar-chart' },
+        { view: 'attRewards',  label: 'Rewards',  icon: 'award' },
       ]
     },
     { id: 'users', label: 'Users', sub: 'People', defaultView: 'userNavigator',
