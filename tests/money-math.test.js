@@ -1771,15 +1771,35 @@ console.log('\nQ. Daily basis — uncapped contracts');
     ok(pmD.daily === true && pcD.daily === true, 'one module lost the daily flag');
   });
 
-  test('PM: Out Source has no daily shape, and says so', () => {
-    // A vendor subcontract is a priced supply & install, never a per-day hire.
-    // `daily` is stated false rather than left undefined so the render code can
-    // branch on it uniformly.
+  // PM Out Source gained the Daily shape on 2026-09-08 (owner's call). It was
+  // fenced OUT here until then, on the reading that a vendor subcontract is
+  // always a priced supply & install — but Project Control's shared modal has
+  // offered Daily on outsource contracts since 0063, so PM was the odd one out
+  // and a vendor hired by the day had to be given an invented cap.
+  test('PM: a daily VENDOR reports exactly like the labor twin', () => {
     const ocStats = evalWith(
       slice(pmSrc, 'function _pmOcStats(', '// ── Out Source add-row picker', 'js/pm-admin.js'),
-      { _pmOcPaid: () => 25000 }, ['_pmOcStats'])._pmOcStats;
-    ok(ocStats({ id: 'v1', agreedAmount: 120000 }).daily === false,
-       'the Out Source stats dropped the daily flag — the card would branch on undefined');
+      { _pmOcPaid: () => 25000, _pmIsDaily: (c) => !!c && c.payBasis === 'daily' },
+      ['_pmOcStats'])._pmOcStats;
+    const d = ocStats({ id: 'v2', payBasis: 'daily' });
+    ok(d.daily === true, 'the Out Source stats lost the daily flag');
+    eq(d.paid, 25000, 'daily vendor paid');
+    // The three figures that would be a lie against a cap that does not exist.
+    eq(d.agreed, 0, 'a daily vendor must not report an agreed total');
+    eq(d.remaining, 0, 'remaining must be an inert 0, never a computed balance');
+    eq(d.pct, 0, 'pct must be an inert 0');
+    ok(d.status === 'Ongoing', 'a daily vendor went Over/Completed on a cap it does not have');
+  });
+
+  test('PM: a CAPPED vendor is completely unaffected', () => {
+    const ocStats = evalWith(
+      slice(pmSrc, 'function _pmOcStats(', '// ── Out Source add-row picker', 'js/pm-admin.js'),
+      { _pmOcPaid: () => 25000, _pmIsDaily: (c) => !!c && c.payBasis === 'daily' },
+      ['_pmOcStats'])._pmOcStats;
+    const st = ocStats({ id: 'v1', agreedAmount: 120000 });
+    ok(st.daily === false, 'a capped vendor is claiming to be daily');
+    eq(st.agreed, 120000, 'capped vendor agreed');
+    eq(st.remaining, 95000, 'capped vendor remaining');
   });
 
   // ── Tagged alone (owner's call, 2026-09-05) ──
@@ -1834,12 +1854,28 @@ console.log('\nQ. Daily basis — uncapped contracts');
   });
 
   // ── The wiring that makes it reachable ──
-  test('both modals offer the Daily basis shape', () => {
+  test('all three contract modals offer the Daily basis shape', () => {
     const html = read('admin.html');
-    ['lcShape', 'pmLcShape'].forEach((n) =>
+    // pmOcShape is Project Management's Out Source modal — the one that had no
+    // shape group at all until 2026-09-08.
+    ['lcShape', 'pmLcShape', 'pmOcShape'].forEach((n) =>
       ok(new RegExp('name="' + n + '"[^>]*value="daily"').test(html)
          || new RegExp('value="daily"[^>]*name="' + n + '"').test(html),
          n + ' has no Daily basis option — the shape is unreachable'));
+  });
+
+  test('a card badge states the BASIS on a daily job, never a percentage of nothing', () => {
+    // The badge was the last figure on the Contracts-tab cards still doing
+    // arithmetic on a cap that does not exist ("0% · In progress", which reads
+    // as no progress rather than no ceiling). It serves BOTH the job rows and
+    // the worker/vendor header, so the daily branch has to come first.
+    const badge = slice(pmSrc, 'const badgeOf = (st, ongoingLbl) => {', 'const jobHtml =', 'js/pm-admin.js');
+    ok(badge.indexOf('st.daily') !== -1 && badge.indexOf('st.daily') < badge.indexOf("st.status === 'Over'"),
+       'the contract-card badge reports a percentage on an uncapped job');
+    // The header rolls several jobs up, so it may only claim daily when EVERY
+    // job under it is uncapped — a mixed card still has a real cap.
+    ok(/daily: allDaily/.test(pmSrc),
+       'the worker/vendor header badge lost its all-daily test — a mixed card would claim no cap');
   });
 
   test('the cap guard is lifted for daily in BOTH LABOR save paths', () => {
@@ -1851,13 +1887,16 @@ console.log('\nQ. Daily basis — uncapped contracts');
     });
   });
 
-  test('OUT SOURCE still REQUIRES a cap — a vendor has no daily shape', () => {
-    // A vendor subcontract is a priced supply & install, never a per-day hire,
-    // so pmOcSave must keep its unconditional guard. Lifting it there would let
-    // a vendor be saved with no agreed price at all.
+  test('OUT SOURCE lifts the cap guard for DAILY ONLY — a priced job still needs a price', () => {
+    // The guard is conditional, never gone: a fixed-price vendor saved with no
+    // agreed amount is still the bug this fences.
     const oc = slice(pmSrc, 'window.pmOcSave = async function(e) {', '\n};\n', 'js/pm-admin.js');
-    ok(/if \(agreedAmount <= 0\)/.test(oc) && !/!daily/.test(oc),
-       'the Out Source save lost its cap requirement — a vendor could be saved with no price');
+    ok(/if \(!daily && agreedAmount <= 0\)/.test(oc),
+       'the Out Source cap guard is unconditional again (or gone) — daily is unsaveable, or a priced job needs no price');
+    ok(/const agreedAmount = daily \? 0/.test(oc),
+       'the hidden amount box is still read on a daily Out Source save — an old ceiling would come back');
+    ok(/payBasis/.test(oc),
+       'the Out Source save never writes payBasis — the shape would not survive a reload');
   });
 
   test('a daily save forces the cap to 0 — a stale box never restores an old ceiling', () =>
