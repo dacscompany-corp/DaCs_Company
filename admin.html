@@ -5546,18 +5546,44 @@
           </div>
         </div>
 
-        <!-- Step 3 — agreed total -->
+        <!-- Step 3 — how the price is set -->
         <div class="pm-lc-step">
           <div class="pm-lc-stepnum">3</div>
           <div class="pm-lc-stepbody">
-            <div class="pm-lc-stepq">What’s the agreed total?</div>
-            <div class="pm-lc-amtbox"><span class="pm-lc-peso">₱</span>
-              <!-- Same decimal formatter as pmLcAmount; pmOcSave parses this
-                   with parseFloat after stripping commas. -->
-              <input type="text" inputmode="decimal" id="pmOcAmount" class="pm-lc-amtinput num" placeholder="0" oninput="fmtBudgetInput(this)"></div>
-            <div class="pm-lc-reassure">
-              <span class="pm-lc-reassure-i">✓</span>
-              <span>As you log Out Source for this vendor, the panel counts down from the agreed total and warns you if you go over.</span>
+            <div class="pm-lc-stepq">How is the price set?</div>
+            <!-- Contract shape (migration 0063). The same Daily basis the two
+                 labor modals offer — a vendor hired by the DAY (own crew, own
+                 pace) has no total agreed up front, and forcing one meant
+                 inventing a cap then raising it every time it was hit.
+                 LUMPSUM is deliberately absent here: an Out Source lumpsum is
+                 only ever created by merging existing jobs (pmOpenMerge), never
+                 typed from scratch, so this modal offers the two shapes it can
+                 actually create. Editing a merged lumpsum shows "Agreed total"
+                 and leaves its `works` untouched. -->
+            <div class="lc-shape-group" style="margin-bottom:15px;">
+              <label class="lc-shape"><input type="radio" name="pmOcShape" value="fixed" checked onchange="pmOcApplyShape()"><span><span class="lc-shape-t">Agreed total</span><span class="lc-shape-h">One fixed price — entries count down from it.</span></span></label>
+              <label class="lc-shape"><input type="radio" name="pmOcShape" value="daily" onchange="pmOcApplyShape()"><span><span class="lc-shape-t">Daily basis</span><span class="lc-shape-h">No agreed total — billed per day, tagged on its own.</span></span></label>
+            </div>
+            <!-- Hidden whole in Daily basis mode: an uncapped vendor has no
+                 total, and a greyed box still reads as a number someone forgot
+                 to fill in. pmOcSave forces the cap to 0 rather than reading
+                 whatever this still holds. -->
+            <div id="pmOcAmountStep">
+              <div class="pm-lc-amtbox"><span class="pm-lc-peso">₱</span>
+                <!-- Same decimal formatter as pmLcAmount; pmOcSave parses this
+                     with parseFloat after stripping commas. -->
+                <input type="text" inputmode="decimal" id="pmOcAmount" class="pm-lc-amtinput num" placeholder="0" oninput="fmtBudgetInput(this)"></div>
+              <div class="pm-lc-reassure">
+                <span class="pm-lc-reassure-i">✓</span>
+                <span>As you log Out Source for this vendor, the panel counts down from the agreed total and warns you if you go over.</span>
+              </div>
+            </div>
+            <div id="pmOcDailyNote" style="display:none;">
+              <div style="border:1.5px solid #d8ebe1;background:#f4f9f6;border-radius:10px;padding:12px 14px;font-size:12.5px;line-height:1.6;color:#374151;">
+                <b>No agreed total.</b> The vendor card shows what this vendor has been
+                <b>paid so far</b> instead of counting down, and there is no over-cap warning.
+                Log the Out Source entries per day as usual and tag them to this job.
+              </div>
             </div>
             <div class="pm-form-group" style="margin-top:14px;">
               <label class="pm-field-label">Notes (optional)</label>

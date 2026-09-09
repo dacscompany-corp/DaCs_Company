@@ -2452,6 +2452,51 @@
                         'whole week.</div>' +
                     '</div>' +
                     '<div class="att-field att-span">' +
+                      '<label>Site location</label>' +
+                      '<div class="att-info">' +
+                        '<i data-lucide="map-pin"></i>' +
+                        '<div>Attendance is checked against this point. A worker ' +
+                          'standing outside the radius is refused; one whose phone ' +
+                          'cannot get a clear fix is <strong>recorded and flagged</strong>, ' +
+                          'never refused.</div>' +
+                      '</div>' +
+                      '<div class="att-fence-grid" style="display:flex;gap:10px;' +
+                                  'flex-wrap:wrap;align-items:flex-end;">' +
+                        '<div style="display:flex;flex-direction:column;gap:4px;">' +
+                          '<label for="attScLat" style="font-size:12px;color:#6b7280;">' +
+                            'Latitude</label>' +
+                          '<input class="att-input" type="number" step="any" id="attScLat" ' +
+                                 'placeholder="14.6788638">' +
+                        '</div>' +
+                        '<div style="display:flex;flex-direction:column;gap:4px;">' +
+                          '<label for="attScLng" style="font-size:12px;color:#6b7280;">' +
+                            'Longitude</label>' +
+                          '<input class="att-input" type="number" step="any" id="attScLng" ' +
+                                 'placeholder="121.018953">' +
+                        '</div>' +
+                        '<div style="display:flex;flex-direction:column;gap:4px;">' +
+                          '<label for="attScRadius" style="font-size:12px;color:#6b7280;">' +
+                            'Radius in metres (10 to 5000)</label>' +
+                          '<input class="att-input" type="number" id="attScRadius" ' +
+                                 'min="10" max="5000" placeholder="150" value="150">' +
+                        '</div>' +
+                      '</div>' +
+                      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;' +
+                                  'margin-top:8px;">' +
+                        '<button class="att-btn" type="button" id="attScHere">' +
+                          '<i data-lucide="crosshair"></i>Use my location</button>' +
+                        '<button class="att-btn att-btn--primary" type="button" ' +
+                                'id="attScSaveFence">Save location</button>' +
+                        '<label style="display:flex;gap:6px;align-items:center;font-size:13px;">' +
+                          '<input type="checkbox" id="attScFenceOn" checked> Enabled</label>' +
+                      '</div>' +
+                      '<div class="att-hint" id="attScFenceNow"></div>' +
+                      '<div class="att-hint">Editing appends a new location rather than ' +
+                        'replacing the old one, so attendance already recorded keeps ' +
+                        'being judged against the location that was in force when it ' +
+                        'was captured.</div>' +
+                    '</div>' +
+                    '<div class="att-field att-span">' +
                       '<label for="attScClosed">Closed dates</label>' +
                       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
                         '<input class="att-input" type="date" id="attScClosed">' +
@@ -2528,6 +2573,102 @@
                 });
             });
         }
+
+        // ── Geofence ──────────────────────────────────────────────
+        const fenceNow = host.querySelector('#attScFenceNow');
+
+        function paintFence(g) {
+            if (!g) {
+                fenceNow.textContent = 'No location set. Attendance here is recorded ' +
+                                       'unverified until one is.';
+                return;
+            }
+            fenceNow.textContent = 'Current: ' + Number(g.latitude).toFixed(6) + ', ' +
+                Number(g.longitude).toFixed(6) + ' · ' + Number(g.radius_m) + ' m · ' +
+                (g.enabled ? 'enabled' : 'disabled') +
+                (g.effective_from ? ' · set ' + String(g.effective_from).slice(0, 10) : '');
+            host.querySelector('#attScLat').value = g.latitude;
+            host.querySelector('#attScLng').value = g.longitude;
+            host.querySelector('#attScRadius').value = Number(g.radius_m);
+            host.querySelector('#attScFenceOn').checked = !!g.enabled;
+        }
+
+        window.sbClient.rpc('attendance_project_geofence_current', {
+            p_system: system, p_project_id: id
+        }).then(function (res) {
+            if (res.error) throw res.error;
+            paintFence(Array.isArray(res.data) ? res.data[0] : res.data);
+        }).catch(function (e) {
+            console.error('att A7c: read fence', e);
+            fenceNow.textContent = 'Could not read the current location.';
+        });
+
+        host.querySelector('#attScHere').addEventListener('click', function () {
+            if (!navigator.geolocation) {
+                fail('This browser cannot report a location.');
+                return;
+            }
+            fenceNow.textContent = 'Reading this device location…';
+            navigator.geolocation.getCurrentPosition(
+                function (pos) {
+                    host.querySelector('#attScLat').value = pos.coords.latitude;
+                    host.querySelector('#attScLng').value = pos.coords.longitude;
+                    fenceNow.textContent = 'Filled from this device. Press Save location ' +
+                                           'to store it.';
+                },
+                function (err) {
+                    // Only useful standing ON the site, and an admin at a
+                    // desk should be told that rather than left guessing
+                    // why the numbers did not change.
+                    fail('Could not read this device location: ' + (err.message || err));
+                },
+                { enableHighAccuracy: true, timeout: 15000 }
+            );
+        });
+
+        host.querySelector('#attScSaveFence').addEventListener('click', async function () {
+            general.style.display = 'none';
+            const lat = parseFloat(host.querySelector('#attScLat').value);
+            const lng = parseFloat(host.querySelector('#attScLng').value);
+            const rad = parseInt(host.querySelector('#attScRadius').value, 10);
+
+            if (!isFinite(lat) || !isFinite(lng)) {
+                fail('Enter both a latitude and a longitude.');
+                return;
+            }
+            if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+                fail('That is not a point on earth. Latitude runs -90 to 90, ' +
+                     'longitude -180 to 180.');
+                return;
+            }
+            // An empty box means "use the default"; a number outside the
+            // range is a mistake worth naming. Passing either straight to
+            // the server returned a bare error code that said neither.
+            const radius = isFinite(rad) ? rad : 150;
+            if (radius < 10 || radius > 5000) {
+                fail('The radius must be between 10 and 5000 metres. ' +
+                     '150 m suits most sites; anything larger starts accepting ' +
+                     'workers who are nowhere near it.');
+                return;
+            }
+            try {
+                const res = await window.sbClient.rpc('attendance_project_geofence_set', {
+                    p_system: system,
+                    p_project_id: id,
+                    p_latitude: lat,
+                    p_longitude: lng,
+                    p_radius_m: radius,
+                    p_enabled: host.querySelector('#attScFenceOn').checked
+                });
+                if (res.error) throw res.error;
+                const saved = Array.isArray(res.data) ? res.data[0] : res.data;
+                if (!saved) throw new Error('the database returned no row');
+                paintFence(saved);
+            } catch (e) {
+                console.error('att A7c: save fence', e);
+                fail('Could not save the location: ' + attFenceMessage(e));
+            }
+        });
 
         host.querySelector('#attScDays').addEventListener('click', function (ev) {
             const btn = ev.target.closest('[data-dow]');
@@ -2643,6 +2784,27 @@
     // records that somebody says it happened.
 
     /** The tenant whose data we are looking at. Staff act as their owner. */
+    /** The geofence RPC's refusals, as sentences rather than codes. */
+    function attFenceMessage(err) {
+        const raw = (err && (err.message || err.details || '')) + '';
+        if (/RADIUS_OUT_OF_RANGE/.test(raw)) {
+            return 'the radius must be between 10 and 5000 metres.';
+        }
+        if (/COORDINATES_INVALID/.test(raw)) {
+            return 'those coordinates are not a point on earth.';
+        }
+        if (/COORDINATES_REQUIRED/.test(raw)) {
+            return 'a latitude and a longitude are both needed.';
+        }
+        if (/PROJECT_UNAVAILABLE/.test(raw)) {
+            return 'this project is not one you can set a location for.';
+        }
+        if (/NOT_ADMIN/.test(raw)) {
+            return 'your account is not allowed to change site locations.';
+        }
+        return raw || 'unknown error';
+    }
+
     function attOwnerUid() {
         return window.currentDataUserId ||
                (window.auth && auth.currentUser && auth.currentUser.uid) || '';

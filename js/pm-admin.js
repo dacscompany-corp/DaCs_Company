@@ -6863,15 +6863,19 @@ function _pmOcPaid(contractId) {
     return sum;
 }
 function _pmOcStats(c) {
-    const agreed = Number(c.agreedAmount) || 0;
     const paid = _pmOcPaid(c.id);
+    // DAILY (migration 0063): a vendor CAN be hired by the day — own crew, own
+    // pace, no total agreed up front. Identical rule to _pmContractStats: with
+    // no ceiling there is nothing to be remaining OF and nothing to be a
+    // percentage OF, so those are inert zeros and `daily` tells every reader to
+    // ignore them. Status stays Ongoing — an uncapped job is never "Completed"
+    // by arithmetic, only by the owner closing it.
+    if (_pmIsDaily(c)) return { agreed: 0, paid, remaining: 0, pct: 0, status: 'Ongoing', daily: true };
+    const agreed = Number(c.agreedAmount) || 0;
     const remaining = agreed - paid;
     const pct = agreed > 0 ? (paid / agreed) * 100 : 0;
     let status = 'Ongoing';
     if (agreed > 0 && paid >= agreed) status = paid > agreed ? 'Over' : 'Completed';
-    // Out Source has no Daily shape — a vendor subcontract is a priced supply &
-    // install, never a per-day hire — so this is always false. Stated rather
-    // than left undefined so every reader can branch on `daily` uniformly.
     return { agreed, paid, remaining, pct, status, daily: false };
 }
 
@@ -6883,8 +6887,11 @@ function _pmPopulateOutsourcePicker() {
         sel.innerHTML = '<option value="">— None (regular out source) —</option>'
             + _pmOutsourceContracts.map(c => {
                 const st = _pmOcStats(c);
+                // A daily job has no cap to be "left" of, so it states what it
+                // has been paid instead — never a remainder against nothing.
+                const tail = st.daily ? _fmt(st.paid) + ' paid · daily' : _fmt(st.remaining) + ' left';
                 return '<option value="' + c.id + '">' + _esc(c.workerName || 'Vendor') + ' · ' + _esc(c.scope || 'job')
-                    + ' (' + _fmt(st.remaining) + ' left)</option>';
+                    + ' (' + tail + ')</option>';
             }).join('');
         if (cur && _pmOutsourceContracts.some(c => c.id === cur)) sel.value = cur;
     }
@@ -6900,6 +6907,12 @@ window.pmWeekOutsourceHint = function() {
     if (!c) { hint.style.display = 'none'; hint.innerHTML = ''; return; }
     const st = _pmOcStats(c);
     hint.style.display = '';
+    // DAILY (0063): no cap, so no "left" and no over-cap warning — the honest
+    // figure is what this vendor has been paid so far.
+    if (st.daily) {
+        hint.innerHTML = '<strong>' + _fmt(st.paid) + ' paid so far</strong> · daily basis, no agreed total';
+        return;
+    }
     hint.innerHTML = st.remaining < 0
         ? '<strong class="pm-lc-neg">' + _fmt(Math.abs(st.remaining)) + ' over</strong> the ' + _fmt(st.agreed) + ' agreed'
         : '<strong>' + _fmt(st.remaining) + ' left</strong> of ' + _fmt(st.agreed) + ' agreed';
@@ -6910,9 +6923,18 @@ function _pmRenderOutsource() {
     const body  = document.getElementById('pm-outsource-body');
     if (!body) return;
     const n = _pmOutsourceContracts.length;
-    let totAgreed = 0, totPaid = 0;
-    _pmOutsourceContracts.forEach(c => { const s = _pmOcStats(c); totAgreed += s.agreed; totPaid += s.paid; });
-    const totRem = totAgreed - totPaid;
+    // DAILY jobs (migration 0063) are uncapped: their payments must not be
+    // subtracted from a cap they were never drawn against, or "still to pay"
+    // reads as a debt the owner does not have. Same split _pmRenderContracts
+    // and the Contracts tab use.
+    let totAgreed = 0, totPaidCap = 0, totPaidDay = 0;
+    _pmOutsourceContracts.forEach(c => {
+        const s = _pmOcStats(c);
+        if (s.daily) { totPaidDay += s.paid; return; }
+        totAgreed += s.agreed; totPaidCap += s.paid;
+    });
+    const totPaid = totPaidCap + totPaidDay;
+    const totRem = totAgreed - totPaidCap;
     if (sumEl) sumEl.textContent = n
         ? (n + ' job' + (n === 1 ? '' : 's') + ' · ' + _fmt(totRem) + ' still to pay')
         : 'No contracts yet';
@@ -6921,7 +6943,7 @@ function _pmRenderOutsource() {
     const byW = {};
     _pmOutsourceContracts.forEach(c => { const w = (c.workerName || '—').trim() || '—'; (byW[w] = byW[w] || []).push(c); });
     const workerNames = Object.keys(byW).sort((a, b) => a.localeCompare(b));
-    const totPct = totAgreed > 0 ? Math.min(100, (totPaid / totAgreed) * 100) : 0;
+    const totPct = totAgreed > 0 ? Math.min(100, (totPaidCap / totAgreed) * 100) : 0;
 
     const banner = '<div class="pm-lc-summary">'
         + '<div class="pm-lc-sum-left">'
@@ -6968,6 +6990,32 @@ function _pmRenderOutsource() {
     body.innerHTML = banner + sections;
 }
 
+// ── Contract shape (migration 0063) ────────────────────────
+// The Out Source twin of _pmIsDailyMode / pmLcApplyShape. Two shapes only —
+// Agreed total and Daily basis: an Out Source LUMPSUM exists (pmOpenMerge
+// builds one), but it is never typed from scratch, so the modal offers what it
+// can actually create and leaves a merged contract's `works` untouched.
+function _pmOcIsDailyMode() {
+    const r = document.querySelector('input[name="pmOcShape"]:checked');
+    return !!r && r.value === 'daily';
+}
+window.pmOcApplyShape = function() {
+    const daily = _pmOcIsDailyMode();
+    // Hidden rather than disabled: a greyed cap field still reads as a number
+    // somebody forgot to fill in. pmOcSave forces 0 rather than reading it.
+    const amtStep = document.getElementById('pmOcAmountStep');
+    if (amtStep) amtStep.style.display = daily ? 'none' : '';
+    const note = document.getElementById('pmOcDailyNote');
+    if (note) note.style.display = daily ? '' : 'none';
+};
+// Open the modal in whichever shape the contract was saved as (new = capped).
+function _pmOcShapePopulate(c) {
+    const shape = _pmIsDaily(c) ? 'daily' : 'fixed';
+    const r = document.querySelector('input[name="pmOcShape"][value="' + shape + '"]');
+    if (r) r.checked = true;
+    window.pmOcApplyShape();
+}
+
 // ── Create / edit / raise cap / delete ─────────────────────
 window.pmOcOpenNew = function() {
     if (!_pmActiveProject) { _pmToast('Open a project first.', true); return; }
@@ -6978,6 +7026,7 @@ window.pmOcOpenNew = function() {
     document.getElementById('pmOcNotes').value = '';
     const pk = document.querySelector('input[name="pmOcPayType"][value="pakyaw"]'); if (pk) pk.checked = true;
     const t = document.getElementById('pmOcModalTitle'); if (t) t.textContent = 'New Out Source Contract';
+    _pmOcShapePopulate(null);          // resets to Agreed total, cap box shown
     _pmOcAgrPopulate(null);            // clear any PDF left picked by the last open
     _pmPopulateOutsourcePicker();
     document.getElementById('pmOutsourceContractModal').style.display = 'flex';
@@ -6991,6 +7040,7 @@ window.pmOcOpenEdit = function(id) {
     document.getElementById('pmOcNotes').value = c.notes || '';
     const r = document.querySelector('input[name="pmOcPayType"][value="' + (c.payType === 'inhouse' ? 'inhouse' : 'pakyaw') + '"]'); if (r) r.checked = true;
     const t = document.getElementById('pmOcModalTitle'); if (t) t.textContent = 'Edit Out Source Contract';
+    _pmOcShapePopulate(c);             // opens in whichever shape it was saved as
     _pmOcAgrPopulate(c);               // show the signed PDF this vendor already has
     _pmPopulateOutsourcePicker();
     document.getElementById('pmOutsourceContractModal').style.display = 'flex';
@@ -7001,11 +7051,20 @@ window.pmOcSave = async function(e) {
     const id = document.getElementById('pmOcId').value;
     const workerName = document.getElementById('pmOcWorker').value.trim();
     const scope = document.getElementById('pmOcScope').value.trim();
-    const agreedAmount = parseFloat((document.getElementById('pmOcAmount').value || '').replace(/,/g, '')) || 0;
+    // DAILY BASIS (migration 0063): uncapped. The amount box is hidden in this
+    // mode, so whatever it still holds is stale — the cap is forced to 0 rather
+    // than read, or switching a capped vendor to daily would quietly keep its
+    // old ceiling.
+    const daily = _pmOcIsDailyMode();
+    const payBasis = daily ? 'daily' : 'fixed';
+    const agreedAmount = daily ? 0
+        : (parseFloat((document.getElementById('pmOcAmount').value || '').replace(/,/g, '')) || 0);
     const notes = document.getElementById('pmOcNotes').value.trim();
     const payType = (document.querySelector('input[name="pmOcPayType"]:checked') || {}).value || 'pakyaw';
     if (!workerName) { _pmToast('Enter the vendor / crew name.', true); return; }
-    if (agreedAmount <= 0) { _pmToast('Enter the agreed amount (cap).', true); return; }
+    // The cap is required for every shape EXCEPT daily, which has none by
+    // definition — the old unconditional guard is what made this impossible.
+    if (!daily && agreedAmount <= 0) { _pmToast('Enter the agreed amount (cap).', true); return; }
     try {
         // Out Source Agreement: upload a newly-picked PDF; keep an existing one;
         // clear when removed. Written ONLY when there is an actual agreement
@@ -7039,17 +7098,21 @@ window.pmOcSave = async function(e) {
         }
         if (id) {
             const ex = _pmOutsourceContracts.find(x => x.id === id);
-            const upd = { workerName, scope, agreedAmount, payType, notes, category: 'outsource', updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
+            const upd = { workerName, scope, agreedAmount, payType, notes, payBasis, category: 'outsource', updatedAt: firebase.firestore.FieldValue.serverTimestamp() };
             if (ex && (Number(ex.agreedAmount) || 0) !== agreedAmount) {
                 const h = Array.isArray(ex.capHistory) ? ex.capHistory.slice() : [];
-                h.push({ amount: agreedAmount, at: new Date().toISOString(), note: 'Edited cap' });
+                // Switching a capped job to daily drops the cap to 0 — recorded
+                // as what it is, not as an "edited cap" of zero pesos.
+                h.push({ amount: agreedAmount, at: new Date().toISOString(),
+                         note: daily ? 'Switched to daily basis — no cap' : 'Edited cap' });
                 upd.capHistory = h;
             }
             if (agrFields) Object.assign(upd, agrFields);
             await _pmOcCol().doc(id).update(upd);
         } else {
-            await _pmOcCol().add({ workerName, scope, agreedAmount, payType, notes, status: 'ongoing', category: 'outsource',
-                capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
+            await _pmOcCol().add({ workerName, scope, agreedAmount, payType, notes, payBasis, status: 'ongoing', category: 'outsource',
+                capHistory: [{ amount: agreedAmount, at: new Date().toISOString(),
+                               note: daily ? 'Daily basis — no cap' : 'Initial cap' }],
                 ...(agrFields || {}),
                 createdAt: firebase.firestore.FieldValue.serverTimestamp() });
         }
@@ -7060,6 +7123,9 @@ window.pmOcSave = async function(e) {
 };
 window.pmOcRaiseCap = async function(id) {
     const c = _pmOutsourceContracts.find(x => x.id === id); if (!c) return;
+    // A daily job has no ceiling to raise. Writing one here would silently turn
+    // it back into a capped contract while `payBasis` still said 'daily'.
+    if (_pmIsDaily(c)) { _pmToast('This is a daily-basis job — there is no cap to raise. Edit it to set an agreed total.', true); return; }
     const cur = Number(c.agreedAmount) || 0;
     const input = prompt('Raise cap for ' + (c.workerName || 'vendor') + ' — ' + (c.scope || 'job')
         + '\nCurrent agreed: ' + _fmt(cur) + '\n\nEnter the NEW agreed amount:', cur);
@@ -7110,22 +7176,27 @@ window.pmOcOpenLedger = function(id) {
 
     const fmtD = d => { try { return new Date(d + 'T00:00:00').toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' }); } catch (e) { return d || '—'; } };
 
+    // DAILY (migration 0063): there is no cap, so the banner states paid-to-date
+    // instead of a balance, and no "over agreed" can be claimed against nothing.
     let bigLbl = 'Still to pay on this job', bigVal = v.rAmt, subLine;
-    if (st.status === 'Over')      { bigLbl = 'Over the agreed amount'; subLine = '' + _fmt(st.paid) + ' paid · ' + _fmt(st.paid - st.agreed) + ' more than ' + _fmt(st.agreed) + ' agreed'; }
+    if (st.daily)                  { bigLbl = 'Paid so far on this job'; subLine = 'Daily basis · no agreed total'; }
+    else if (st.status === 'Over') { bigLbl = 'Over the agreed amount'; subLine = '' + _fmt(st.paid) + ' paid · ' + _fmt(st.paid - st.agreed) + ' more than ' + _fmt(st.agreed) + ' agreed'; }
     else if (st.status === 'Completed') { bigLbl = 'Fully paid — nothing left'; subLine = '' + _fmt(st.paid) + ' paid of ' + _fmt(st.agreed) + ' agreed · 100%'; }
     else { subLine = '' + _fmt(st.paid) + ' paid of ' + _fmt(st.agreed) + ' agreed · ' + st.pct.toFixed(0) + '%'; }
     const overCls = st.status === 'Over' ? ' pm-lc-led-banner-over' : '';
 
-    let running = st.agreed;
+    // A capped job counts DOWN from its cap; a daily one counts UP, because
+    // "left after" against a cap of zero would read as a growing debt.
+    let running = st.daily ? 0 : st.agreed;
     const items = rows.map((r, i) => {
-        running -= r.amount;
+        running += st.daily ? r.amount : -r.amount;
         const last = i === rows.length - 1;
         return '<div class="pm-lc-tl-item">'
             + '<span class="pm-lc-tl-dot' + (last ? ' pm-lc-tl-dot-on' : '') + '"></span>'
             + '<div class="pm-lc-tl-row"><span class="pm-lc-tl-name">' + _esc(r.details) + '</span>'
             + '<span class="pm-lc-tl-amt num">' + _fmt(r.amount) + '</span></div>'
-            + '<div class="pm-lc-tl-meta num' + (running < 0 ? ' pm-lc-neg' : (last ? ' pm-lc-tl-meta-on' : '')) + '">'
-            + fmtD(r.date) + ' · ' + _fmt(running) + ' left after</div></div>';
+            + '<div class="pm-lc-tl-meta num' + (!st.daily && running < 0 ? ' pm-lc-neg' : (last ? ' pm-lc-tl-meta-on' : '')) + '">'
+            + fmtD(r.date) + ' · ' + _fmt(running) + (st.daily ? ' paid to date' : ' left after') + '</div></div>';
     }).join('');
     const listHtml = rows.length
         ? '<div class="pm-lc-led-cnt">' + rows.length + ' payment' + (rows.length === 1 ? '' : 's') + '</div><div class="pm-lc-timeline">' + items + '</div>'
@@ -7433,6 +7504,11 @@ function _pmRenderContractsTab() {
     // One badge convention for both the worker header and the job cards, so a
     // card and the rows inside it can never disagree about what "done" means.
     const badgeOf = (st, ongoingLbl) => {
+        // DAILY (0063) has no cap, so it has no percentage OF anything — the
+        // badge said "0% · In progress", which reads as no progress rather than
+        // no ceiling. Every other figure on these cards already branches on the
+        // flag; this was the one left stating arithmetic on nothing.
+        if (st.daily)                  return { cls: 'pm-lcx-badge-on', lbl: 'Daily basis' };
         if (st.status === 'Over')      return { cls: 'pm-lcx-badge-over', lbl: 'Over cap' };
         if (st.status === 'Completed') return { cls: 'pm-lcx-badge-done', lbl: 'Completed' };
         return { cls: 'pm-lcx-badge-on', lbl: st.pct.toFixed(0) + '% · ' + ongoingLbl };
@@ -7498,7 +7574,10 @@ function _pmRenderContractsTab() {
         const allDaily = capped.length === 0 && dailies.length > 0;
         const wRem     = wAgreed - wPaidCap;
         const wPct     = wAgreed > 0 ? (wPaidCap / wAgreed) * 100 : 0;
-        const wSt      = { pct: wPct, status: wAgreed > 0 && wPaidCap >= wAgreed ? (wPaidCap > wAgreed ? 'Over' : 'Completed') : 'Ongoing' };
+        // `daily` only when EVERY job under this worker is uncapped — a mixed
+        // card still has a real cap to report a percentage of.
+        const wSt      = { pct: wPct, daily: allDaily,
+                           status: wAgreed > 0 && wPaidCap >= wAgreed ? (wPaidCap > wAgreed ? 'Over' : 'Completed') : 'Ongoing' };
         const bdg      = badgeOf(wSt, 'Ongoing');
         const over     = !allDaily && wRem < 0;
         // Pay type is a per-job field; it only belongs on the header when every
@@ -7638,7 +7717,11 @@ window.pmPrintAllContracts = function() {
             n++;
             const st = statOf(c);
             const typeLbl = c.payType === 'inhouse' ? 'In-house' : 'Pakyaw';
-            const statusLbl = st.status === 'Over' ? 'Over cap' : st.status === 'Completed' ? 'Completed' : st.pct.toFixed(0) + '% paid';
+            // DAILY (migration 0063) has no cap: printing ₱0.00 agreed with
+            // ₱0.00 remaining beside it states a ceiling nobody agreed to, and
+            // "0% paid" against it is arithmetic on nothing.
+            const statusLbl = st.daily ? 'Daily basis'
+                : st.status === 'Over' ? 'Over cap' : st.status === 'Completed' ? 'Completed' : st.pct.toFixed(0) + '% paid';
             // A lumpsum row stands for several works, so the Job cell names them
             // underneath the title. One row, one agreed amount — the works get NO
             // figures of their own, because the contract has only the one cap.
@@ -7652,9 +7735,9 @@ window.pmPrintAllContracts = function() {
                 <td>${esc(name)}</td>
                 <td>${jobCell}</td>
                 <td>${esc(typeLbl)}</td>
-                <td style="text-align:right;">${fmt(st.agreed)}</td>
+                <td style="text-align:right;">${st.daily ? '—' : fmt(st.agreed)}</td>
                 <td style="text-align:right;">${fmt(st.paid)}</td>
-                <td style="text-align:right;font-weight:600;">${st.remaining < 0 ? '−' : ''}${fmt(Math.abs(st.remaining))}</td>
+                <td style="text-align:right;font-weight:600;">${st.daily ? '—' : (st.remaining < 0 ? '−' : '') + fmt(Math.abs(st.remaining))}</td>
                 <td>${esc(statusLbl)}</td>
             </tr>`;
         }).join('')).join('');
