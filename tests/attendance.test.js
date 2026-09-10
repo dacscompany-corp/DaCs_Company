@@ -17,6 +17,9 @@
 //      as formulas, and a project name is attacker-adjacent text.
 //   4. Quotes and newlines inside a cell are escaped, not stripped —
 //      a worker's description can contain both.
+//   5. The screen's words are the OWNER's, not the database's: a row is
+//      "Finished the day", never "Complete". And an offline capture is
+//      never reworded into an accusation about a worker's clock.
 //
 // If a test fails with "SLICE NOT FOUND", the source was restructured —
 // update the extraction markers below, don't delete the test.
@@ -63,6 +66,16 @@ const M = evalWith(
    'attDayNum', 'attKeyFromDayNum', 'attIsoDow', 'attWeekStartOf', 'attWeekEndOf',
    'attRewardSummary', 'attRewardTotals', 'attRewardStatusLabel', 'attRewardCsv',
    'attWeeksNeedingEvaluation']
+);
+
+// The plain-language layer, extracted the same way. A separate region
+// because it sits below the engine in the file and pulls in attEsc and
+// attSkewMinutes, which the engine region does not carry.
+const V = evalWith(
+  slice(src, '// ==== ATT VOCABULARY START ====', '// ==== ATT VOCABULARY END ====', 'attendance-admin.js'),
+  { window: {} },
+  ['attTone', 'attStatusWord', 'attStatusNote', 'attBonusReason', 'attClock', 'attAnd',
+   'attDayHasStarted', 'attStatusShort']
 );
 
 const rec = (o) => Object.assign({
@@ -641,6 +654,152 @@ test('a week already evaluated is not offered again', () => {
   const now = Date.UTC(2026, 8, 7, 4);
   const weeks = M.attWeeksNeedingEvaluation(now, ['2026-08-31'], 60, 8);
   ok(weeks.indexOf('2026-08-31') === -1, 'frozen means frozen');
+});
+
+console.log('\nXI. The words the owner reads (the redesign)');
+
+test('a record is named by what happened, not by its column value', () => {
+  // The whole point of the redesign. If these ever drift back to
+  // "Complete" / "Abandoned", the screens have been re-edited by
+  // somebody reading the schema instead of the design.
+  eq(V.attStatusWord({ status: 'complete' }), 'Finished the day');
+  eq(V.attStatusWord({ status: 'working' }), 'Still on site');
+  eq(V.attStatusWord({ status: 'abandoned' }), 'Closed by the office');
+  eq(V.attStatusWord(null), 'Not on site');
+});
+
+test('the tone is one word every screen agrees on', () => {
+  // The pill, the row's left rule and the legend all colour from this.
+  // They used to decide separately, and disagreed.
+  eq(V.attTone(null), 'none');
+  eq(V.attTone({ status: 'complete' }), 'done');
+  eq(V.attTone({ status: 'working' }), 'working');
+  eq(V.attTone({ status: 'abandoned' }), 'abandoned');
+});
+
+test('the crew cards abbreviate, and mean the same four things', () => {
+  // The cards give a pill ~90px beside a name and two stamps. The long
+  // form wraps to three lines there and shunts the hours out of line.
+  eq(V.attStatusShort({ status: 'complete' }), 'Finished');
+  eq(V.attStatusShort({ status: 'working' }), 'On site');
+  eq(V.attStatusShort({ status: 'abandoned' }), 'Closed');
+  eq(V.attStatusShort(null), 'Absent?');
+
+  // Short and long must never disagree about the STATE, only the words.
+  [null, { status: 'complete' }, { status: 'working' }, { status: 'abandoned' }]
+    .forEach((r) => {
+      ok(!!V.attStatusShort(r) && !!V.attStatusWord(r),
+         'both forms exist for every tone');
+    });
+});
+
+test('an unchecked absence is asked, not asserted', () => {
+  // "Absent?" keeps its question mark: before anyone has checked, the
+  // phone may simply have had no signal.
+  ok(/\?$/.test(V.attStatusShort(null)), 'it is a question: ' + V.attStatusShort(null));
+});
+
+test('a closed day says why it has no hours', () => {
+  eq(V.attStatusNote({ status: 'abandoned' }),
+     'No time out, so the day records no hours');
+});
+
+test('an offline capture is explained, never accused', () => {
+  // Rule 5. The gap between capture and receipt IS the offline period.
+  // Reporting it as a clock discrepancy would manufacture suspicion of
+  // an honest worker out of the one fact that exonerates them.
+  const offline = {
+    status: 'complete', timein_was_offline: true,
+    timein_photo_path: 'a', timeout_photo_path: 'b',
+    timein_at: '2026-09-09T07:00:00Z',
+    timein_received_at: '2026-09-09T07:40:00Z',
+    timeout_at: '2026-09-09T17:00:00Z',
+    timeout_received_at: '2026-09-09T17:00:00Z'
+  };
+  eq(V.attStatusNote(offline), 'Saved without signal, arrived later');
+
+  // The SAME 40-minute gap online is worth reporting.
+  const online = Object.assign({}, offline, { timein_was_offline: false });
+  ok(/clock was 40 min behind/.test(V.attStatusNote(online)),
+     'an online gap is still surfaced: ' + V.attStatusNote(online));
+});
+
+test('a complete day reports whether both photos arrived', () => {
+  const base = {
+    status: 'complete',
+    timein_at: '2026-09-09T07:00:00Z', timein_received_at: '2026-09-09T07:00:00Z',
+    timeout_at: '2026-09-09T17:00:00Z', timeout_received_at: '2026-09-09T17:00:00Z'
+  };
+  eq(V.attStatusNote(Object.assign({}, base,
+      { timein_photo_path: 'a', timeout_photo_path: 'b' })), 'Both photos received');
+  eq(V.attStatusNote(Object.assign({}, base,
+      { timein_photo_path: 'a' })), 'Recorded without both photos');
+});
+
+test('ONE late day forfeits the week, and the sentence says so', () => {
+  // attRewardSummary disqualifies on lateDays > 0. A reader who assumes
+  // one late day is forgiven reads every disqualification as a bug, so
+  // the reason has to state the rule rather than just the count.
+  const r = V.attBonusReason({ status: 'disqualified', late_days: 1, missing_days: 0 });
+  ok(/one late day forfeits the week/i.test(r), 'the rule is stated: ' + r);
+  eq(V.attBonusReason({ status: 'qualified', late_days: 0, missing_days: 0 }),
+     'On time every expected day');
+  eq(V.attBonusReason({ status: 'disqualified', late_days: 0, missing_days: 3 }),
+     'Missed 3 expected days');
+});
+
+test('an unfinished week is not reported as a failure', () => {
+  eq(V.attBonusReason({ status: 'in_progress', late_days: 0, missing_days: 0 }),
+     'The week is not finished yet');
+});
+
+test('a due time reads as a clock, and midnight is 12', () => {
+  eq(V.attClock('07:00:00'), '7:00 AM');
+  eq(V.attClock('13:30'), '1:30 PM');
+  eq(V.attClock('00:15'), '12:15 AM');
+  eq(V.attClock('12:05'), '12:05 PM');
+  eq(V.attClock(null), null, 'no override set is not "0:00 AM"');
+});
+
+test('nobody is absent before they are due', () => {
+  // The 12:18 AM bug. Opening Today before dawn announced "7 things need
+  // you" about a day in which nothing had yet had the chance to happen.
+  const TODAY = '2026-09-10';
+  const at = (h, m) => h * 60 + (m || 0);
+
+  ok(!V.attDayHasStarted(TODAY, TODAY, '07:00', at(0, 18)),
+     'at 12:18 AM the day has not started');
+  ok(!V.attDayHasStarted(TODAY, TODAY, '07:00', at(6, 59)),
+     'one minute before the hour is still not started');
+  ok(V.attDayHasStarted(TODAY, TODAY, '07:00', at(7, 0)),
+     'on the hour, workers are due');
+  ok(V.attDayHasStarted(TODAY, TODAY, '07:00', at(16, 0)),
+     'by the afternoon an absence is real');
+});
+
+test('a past day is over, and a future day has not happened', () => {
+  ok(V.attDayHasStarted('2026-09-09', '2026-09-10', '07:00', 0),
+     'yesterday is over at any hour — its absences are real');
+  ok(!V.attDayHasStarted('2026-09-11', '2026-09-10', '07:00', 23 * 60),
+     'tomorrow can have no absences yet');
+});
+
+test('an unset start time falls back to the SAME hour the database does', () => {
+  // attendance_start_time() (0065) and the reward evaluator (0066) both
+  // coalesce to '09:00'. If this screen fell back to a different hour it
+  // would call a worker absent an hour before the bonus calls them late.
+  const TODAY = '2026-09-10';
+  ok(!V.attDayHasStarted(TODAY, TODAY, null, 8 * 60), 'unset does not mean 8am');
+  ok(!V.attDayHasStarted(TODAY, TODAY, null, 8 * 60 + 59), 'still not, at 8:59');
+  ok(V.attDayHasStarted(TODAY, TODAY, null, 9 * 60), '9am is the documented default');
+  ok(!V.attDayHasStarted(TODAY, TODAY, 'nonsense', 8 * 60), 'garbage falls back too');
+});
+
+test('a list of findings reads as a sentence', () => {
+  eq(V.attAnd(['a']), 'a');
+  eq(V.attAnd(['a', 'b']), 'a and b');
+  eq(V.attAnd(['a', 'b', 'c']), 'a, b and c');
+  eq(V.attAnd(['a', '', 'c']), 'a and c', 'an absent finding leaves no gap');
 });
 
 console.log(passed + ' passed, ' + failed + ' failed');

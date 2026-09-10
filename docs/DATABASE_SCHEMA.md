@@ -606,9 +606,20 @@ Despite the name, this table records a project ending **either way**:
 
 > **Deliberately isolated**, like `reimbursements` (0041), the warranty fund (0043) and
 > `quotations` (0045). No money math reads these tables; attendance hours are **not** the basis of
-> pay (labour is pakyaw, capped by `labor_contracts.agreed_amount`). There is no peso column here,
-> so the staff amount-hiding rule does not apply. Written only by the native Android worker app
-> (via RPC) and read by `js/attendance-admin.js` (phase C).
+> pay (labour is pakyaw, capped by `labor_contracts.agreed_amount`). Written only by the native
+> Android worker app (via RPC) and read by `js/attendance-admin.js` (phase C).
+>
+> **One peso column exists**, added by 0066: `attendance_weekly_rewards.amount`, the value of a
+> qualifying week. It is a **reported figure only** — nothing writes it to payroll, expenses or a
+> journal, and nothing may make it do so. Payment happens outside this system; `paid` records that
+> somebody says it happened and moves no money. This section previously said "there is no peso
+> column here, so the staff amount-hiding rule does not apply", which stopped being true at 0066.
+>
+> **Whether staff should see that amount is an open question, not a settled one.** The hiding rule
+> exists for owner-confidential money — contract values, budgets, client allocations. A worker's own
+> attendance bonus is a different kind of figure, and hiding it would make the payroll CSV useless
+> to the staff who work from it. It is currently **visible to staff**. Decide deliberately rather
+> than by default.
 
 **All worker writes go through `attendance_time_in()` / `attendance_time_out()`.** Workers hold `select`
 on their own rows and have **no** `insert`/`update` policy at all — that is what forces the RPC path.

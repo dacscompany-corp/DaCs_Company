@@ -5,12 +5,25 @@
    migrations 0050/0051. DELIBERATELY ISOLATED, same rule as 0041 /
    0043 / 0045: nothing here writes to folders, construction_projects,
    invoices, payment_requests, expenses or payroll, and no money math
-   reads attendance. There is no peso column in these tables.
+   reads attendance.
 
    ATTENDANCE HOURS ARE NOT THE BASIS OF PAY. DAC's labour is pakyaw /
    capped contract pay (labor_contracts.agreed_amount drawn down by
    payroll.contract_id). Hours here are a record of attendance and
    nothing more — do NOT add a rate field "to make reports useful".
+
+   ONE PESO COLUMN EXISTS, and it is not an exception to the isolation
+   above. attendance_weekly_rewards.amount (0066) records what a
+   qualifying week was worth. It is a REPORTED FIGURE ONLY: nothing
+   writes it to payroll, expenses or any journal, nothing may make it
+   do so, and payment happens outside this system entirely. The `paid`
+   flag records that somebody says it happened; it moves no money.
+
+   The rule this replaces said flatly "there is no peso column in these
+   tables". That was true until 0066 and is not any more, and a rule the
+   code visibly breaks is worse than no rule -- the next person has to
+   guess which half is wrong. The PURPOSE is unchanged: nothing here
+   feeds Spent / Earned / Profit, and no bonus draws down a contract.
 
    Owner + staff. Workers never see this section (see _visibleNav).
    ════════════════════════════════════════════════════════════════════ */
@@ -533,6 +546,14 @@
     // was NOT captured offline, means the device clock disagrees with the
     // server's. When was_offline is true the gap is legitimately hours
     // and proves nothing — see the clock-skew note in 0050.
+    // ==== ATT VOCABULARY START ====
+    //
+    // Everything the redesign says OUT LOUD, in one block the tests can
+    // extract. These functions carry no data access and no DOM: they
+    // turn a record into the words an owner reads, and the words are the
+    // thing most likely to drift back towards the database's own
+    // ("Complete", "Abandoned") the next time someone edits a screen in
+    // a hurry. tests/attendance.test.js section XI pins them.
     const SKEW_WARN_MINUTES = 10;
 
     function attEsc(s) {
@@ -645,6 +666,7 @@
             sb.from('attendance_records')
               .select('id,worker_id,worker_name,worker_position,status,' +
                       'timein_at,timeout_at,timein_project_name,timeout_project_name,total_minutes,' +
+                      'timein_project_system,' +
                       'timein_photo_path,timeout_photo_path,' +
                       'timein_was_offline,timeout_was_offline,timein_received_at,timeout_received_at')
               .eq('work_date', workDate)
@@ -659,20 +681,170 @@
             .map(w => ({ worker: w, record: byWorker.get(w.id) || null }));
     }
 
+    /**
+     * The four states a day can be in, as one word the code switches on.
+     *
+     * Everything downstream -- the pill, the row's left rule, the legend,
+     * the crew card -- reads its colour and its label from HERE, so a
+     * state cannot be green in one place and gold in another. That did
+     * happen: the table said "Working" while the KPI counted the same
+     * record under "No Attendance".
+     */
+    function attTone(record) {
+        if (!record) return 'none';
+        if (record.status === 'complete') return 'done';
+        // Set by an admin sweep, never by the app: a Time In with no Time
+        // Out, closed after the fact.
+        if (record.status === 'abandoned') return 'abandoned';
+        return 'working';
+    }
+
+    /**
+     * What that state is CALLED on screen.
+     *
+     * The redesign's central move. "Complete" and "Abandoned" are the
+     * database's words for a row; an owner opening this screen at seven
+     * in the morning is asking a different question, and these are the
+     * answers to it. The database values are untouched -- only the
+     * reading of them changed, and the CSV export still ships the raw
+     * status so a spreadsheet built on the old words keeps working.
+     */
+    const ATT_WORD = {
+        done:      'Finished the day',
+        working:   'Still on site',
+        abandoned: 'Closed by the office',
+        none:      'Not on site'
+    };
+
+    function attStatusWord(record) { return ATT_WORD[attTone(record)]; }
+
+    /**
+     * The same four states, abbreviated.
+     *
+     * A crew card gives a pill about 90px of room beside a name and a
+     * pair of stamps; "Closed by the office" wraps to three lines in it
+     * and pushes the hours out of alignment. The table has the width for
+     * the full sentence and uses ATT_WORD; the cards use these.
+     *
+     * "Absent?" keeps its question mark on purpose. Before anyone has
+     * checked, an absence is a question about a worker, not a finding
+     * against him -- and the phone may simply have had no signal.
+     */
+    const ATT_WORD_SHORT = {
+        done:      'Finished',
+        working:   'On site',
+        abandoned: 'Closed',
+        none:      'Absent?'
+    };
+
+    function attStatusShort(record) { return ATT_WORD_SHORT[attTone(record)]; }
+
     function attStatusPill(record) {
-        if (!record) {
-            return '<span class="att-pill att-pill--none">No record</span>';
-        }
-        if (record.status === 'complete') {
-            return '<span class="att-pill att-pill--done">Complete</span>';
-        }
+        const tone = attTone(record);
+        const cls = tone === 'done' ? 'done' : tone === 'working' ? 'working'
+                  : tone === 'abandoned' ? 'abandoned' : 'none';
+        return '<span class="att-pill att-pill--' + cls + '">' +
+               attEsc(ATT_WORD[tone]) + '</span>';
+    }
+
+    /**
+     * The crew-card pill. `noneLabel` overrides the "Absent?" wording for
+     * a day that has not started, where nobody is absent yet.
+     */
+    function attStatusPillShort(record, noneLabel) {
+        const tone = attTone(record);
+        const cls = tone === 'done' ? 'done' : tone === 'working' ? 'working'
+                  : tone === 'abandoned' ? 'abandoned' : 'none';
+        const word = (tone === 'none' && noneLabel) ? noneLabel : ATT_WORD_SHORT[tone];
+        return '<span class="att-pill att-pill--' + cls + '">' + attEsc(word) + '</span>';
+    }
+
+    /**
+     * The one line under the status that says what actually happened.
+     *
+     * Every branch is a FACT the record carries, never an inference about
+     * the worker. "Saved without signal" is why a stamp arrived late; it
+     * is not an accusation, and the copy is written so it cannot be read
+     * as one (design section 6.3, and the same reasoning as attBadges).
+     */
+    function attStatusNote(record) {
+        if (!record) return 'Nothing came from the phone today';
         if (record.status === 'abandoned') {
-            // Set by an admin sweep, never by the app: a Time In with no
-            // Time Out, closed after the fact. Named so it is obvious the
-            // hours are not a measurement.
-            return '<span class="att-pill att-pill--abandoned">Abandoned</span>';
+            return 'No time out, so the day records no hours';
         }
-        return '<span class="att-pill att-pill--working">Working</span>';
+
+        const offline = record.timein_was_offline || record.timeout_was_offline;
+        if (record.status !== 'complete') {
+            return offline ? 'Saved without signal, arrived later'
+                           : 'Timed in, no time out yet';
+        }
+
+        // A clock gap is only worth mentioning on an ONLINE capture --
+        // for an offline one the gap IS the offline period, and saying
+        // so twice would manufacture a second problem out of one fact.
+        if (offline) return 'Saved without signal, arrived later';
+        const worst = Math.max(
+            attSkewMinutes(record.timein_at, record.timein_received_at) || 0,
+            attSkewMinutes(record.timeout_at, record.timeout_received_at) || 0);
+        if (worst >= SKEW_WARN_MINUTES) {
+            return 'Phone clock was ' + worst + ' min behind';
+        }
+        return (record.timein_photo_path && record.timeout_photo_path)
+            ? 'Both photos received'
+            : 'Recorded without both photos';
+    }
+
+    /** The green sentence that opens a screen. */
+    function attBanner(lead, body) {
+        return '<div class="att-banner">' +
+                 '<div class="att-banner-lead">' + attEsc(lead) + '</div>' +
+                 (body ? '<div class="att-banner-body">' + body + '</div>' : '') +
+               '</div>';
+    }
+
+    /**
+     * "N things need you" -- or, when there are none, the all-clear.
+     *
+     * Both are drawn, and drawn the same size. A card that vanishes when
+     * the work is done leaves the owner unsure whether he cleared it or
+     * the screen simply failed to load it.
+     */
+    function attFlag(count, body, actionId, actionLabel) {
+        if (!count) {
+            return '<div class="att-flag att-flag--clear">' +
+                     '<div class="att-flag-icon"><i data-lucide="check"></i></div>' +
+                     '<div class="att-flag-text">' +
+                       '<div class="att-flag-title">Nothing needs you</div>' +
+                       '<div class="att-flag-body">' + body + '</div>' +
+                     '</div>' +
+                   '</div>';
+        }
+        return '<div class="att-flag">' +
+                 '<div class="att-flag-icon"><i data-lucide="clock"></i></div>' +
+                 '<div class="att-flag-text">' +
+                   '<div class="att-flag-title">' + count +
+                     (count === 1 ? ' thing needs you' : ' things need you') + '</div>' +
+                   '<div class="att-flag-body">' + body + '</div>' +
+                 '</div>' +
+                 (actionId
+                   ? '<button class="att-btn" type="button" id="' + actionId + '">' +
+                     attEsc(actionLabel) + '</button>'
+                   : '') +
+               '</div>';
+    }
+
+    /** The grey one-liner that closes a screen. */
+    function attStrip(icon, html) {
+        return '<div class="att-strip"><i data-lucide="' + icon + '"></i><div>' +
+               html + '</div></div>';
+    }
+
+    /** A list read as a sentence: "a, b and c". */
+    function attAnd(parts) {
+        const p = parts.filter(Boolean);
+        if (!p.length) return '';
+        if (p.length === 1) return p[0];
+        return p.slice(0, -1).join(', ') + ' and ' + p[p.length - 1];
     }
 
     /** Minutes between capture and the server receiving it. */
@@ -711,17 +883,72 @@
         return out.join(' ');
     }
 
-    /** One KPI card. `tone` picks the icon tile's gradient. */
-    function attKpi(icon, tone, value, label, alert) {
-        return `
-            <div class="att-kpi${alert ? ' att-kpi--alert' : ''}">
-              <div class="att-kpi-icon att-kpi-icon--${tone}"><i data-lucide="${icon}"></i></div>
-              <div>
-                <div class="att-kpi-num">${value}</div>
-                <p class="att-kpi-label">${attEsc(label)}</p>
-              </div>
-            </div>`;
+    /** "07:00" / "07:00:00" → "7:00 AM". */
+    function attClock(hhmm) {
+        const m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm || ''));
+        if (!m) return null;
+        const h = Number(m[1]);
+        const suffix = h < 12 ? 'AM' : 'PM';
+        const h12 = h % 12 === 0 ? 12 : h % 12;
+        return h12 + ':' + m[2] + ' ' + suffix;
     }
+
+    /**
+     * Why a week did or did not earn the bonus, in one line.
+     *
+     * Built from THIS system's rule, which is stricter than most people
+     * assume: attRewardSummary disqualifies on `lateDays > 0 ||
+     * missingDays > 0`, so a single late day forfeits the whole week.
+     * The sentence has to say that, because a reader who assumes one
+     * late day is forgiven will read every disqualification as a bug.
+     */
+    function attBonusReason(r) {
+        const late = Number(r.late_days) || 0;
+        const missing = Number(r.missing_days) || 0;
+        if (r.status === 'qualified') return 'On time every expected day';
+        if (r.status !== 'disqualified') return 'The week is not finished yet';
+        const parts = [];
+        if (missing) parts.push('missed ' + missing + (missing === 1 ? ' expected day' : ' expected days'));
+        if (late) parts.push('was late on ' + late + (late === 1 ? ' day' : ' days'));
+        if (!parts.length) return 'No day was ever required this week';
+        const sentence = attAnd(parts);
+        return sentence.charAt(0).toUpperCase() + sentence.slice(1) +
+               (late ? ' — one late day forfeits the week' : '');
+    }
+
+    /**
+     * Has the working day actually begun?
+     *
+     * Nobody has timed in at half past midnight, and that is not a
+     * problem -- it is the day not having started. The first cut of the
+     * redesign treated every worker without a record as something
+     * needing the owner, so opening the screen before dawn announced
+     * "7 things need you" about a day in which nothing had yet had the
+     * chance to go wrong.
+     *
+     * A day in the past is over, so an absence in it is real. A day in
+     * the future cannot have absences at all. Today's absences only
+     * become real once the hour workers are due has passed.
+     *
+     * `nowMinutes` is passed in rather than read here so the rule can be
+     * tested at any hour without touching the clock.
+     */
+    function attDayHasStarted(workDate, todayKey, startTime, nowMinutes) {
+        const day = String(workDate), today = String(todayKey);
+        if (day > today) return false;
+        if (day < today) return true;
+        const m = /^(\d{1,2}):(\d{2})/.exec(String(startTime || ''));
+        // 09:00 when the company has set no default -- the SAME fallback
+        // the database uses. attendance_start_time() (0065) and the reward
+        // evaluator (0066) both coalesce to '09:00'::time, and §36 of the
+        // MVP terms is where that hour comes from. A different number here
+        // would have the screen say "due at 8:00" about a worker the
+        // bonus does not count as late until 9:00.
+        const due = m ? Number(m[1]) * 60 + Number(m[2]) : 9 * 60;
+        return nowMinutes >= due;
+    }
+
+    // ==== ATT VOCABULARY END ====
 
     /** One A6 stat card. `alert` reddens the figure — used for open records. */
     function attStat(label, value, alert) {
@@ -749,32 +976,68 @@
             </div>`;
     }
 
+    /**
+     * A1 -- Today on site.
+     *
+     * The redesign replaced a five-tile KPI strip with a sentence. The
+     * strip reported "Total 6 / In 5 / Out 3 / Working 1 / No Attendance
+     * 1" and left the owner to work out that one man never showed up;
+     * the sentence says so. The numbers are all still on the screen, in
+     * the rows underneath, where they can be acted on.
+     *
+     * Two ways to read the same day:
+     *   By site   -- one card per site. The morning question is "who is
+     *                at Villa Ysabel", and a site COLUMN is a worse
+     *                answer than a site HEADING.
+     *   Full list -- the whole table, with the search, the site filter
+     *                and the things that need doing at the top of it.
+     */
     async function attRenderToday(container) {
         let workDate = attTodayKey();
+        let mode = 'sites';
         let rows = [];
+        // The hour workers are due, so the screen can tell "nobody has
+        // arrived yet" apart from "nobody turned up". Fetched once and
+        // reused across date changes; a failure falls back to 09:00, the
+        // same hour the database uses.
+        let dayStart = null;
+        // Every site a worker could pick, whether or not anyone did. The
+        // by-site board is a board of SITES: seeding it only from records
+        // meant that before the first Time In of the day it had nothing
+        // to draw and quietly turned into a list of workers.
+        let allSites = [];
 
         container.innerHTML = `
-            <div class="att-head">
-              <div>
-                <h2 class="att-title">Today's Attendance</h2>
-                <div class="att-sub" id="attTodayDate"></div>
+            <div class="att-stack">
+              <div class="att-head">
+                <div>
+                  <h2 class="att-title">Today on site</h2>
+                  <div class="att-sub" id="attTodayDate"></div>
+                </div>
+                <div class="att-head-actions">
+                  <div class="att-seg" id="attTodayMode">
+                    <button class="att-seg-btn is-on" type="button" data-mode="sites">By site</button>
+                    <button class="att-seg-btn" type="button" data-mode="list">Full list</button>
+                  </div>
+                  <input class="att-input" type="date" id="attWorkDate"
+                         value="${attEsc(workDate)}" aria-label="Pick a day">
+                  <button class="att-btn" type="button" id="attRefresh">
+                    <i data-lucide="refresh-cw"></i>Refresh</button>
+                  <button class="att-btn" type="button" id="attTodayAddWorker">
+                    <i data-lucide="user-plus"></i>Add a worker</button>
+                  <button class="att-btn att-btn--primary" type="button" id="attExport">
+                    <i data-lucide="download"></i>Download for Excel</button>
+                </div>
               </div>
-              <div class="att-head-actions">
-                <input class="att-input" type="date" id="attWorkDate"
-                       value="${attEsc(workDate)}" aria-label="Attendance date">
-                <button class="att-btn" type="button" id="attRefresh">
-                  <i data-lucide="refresh-cw"></i>Refresh</button>
-                <button class="att-btn" type="button" id="attTodayAddWorker">
-                  <i data-lucide="user-plus"></i>Add worker</button>
-                <button class="att-btn att-btn--primary" type="button" id="attExport">
-                  <i data-lucide="download"></i>Export</button>
-              </div>
+              <div id="attTodayBody">Loading…</div>
             </div>
-            <div id="attTodayBody">Loading…</div>
             <div id="attTodayModalHost"></div>`;
 
         const body = container.querySelector('#attTodayBody');
         const dateInput = container.querySelector('#attWorkDate');
+
+        /** Today reads "today"; any other day is named. */
+        function isToday() { return workDate === attTodayKey(); }
 
         function stampDate() {
             const [y, m, d] = workDate.split('-').map(Number);
@@ -782,9 +1045,10 @@
                 { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
             const at = new Date().toLocaleTimeString('en-PH',
                 { hour: 'numeric', minute: '2-digit', hour12: true });
-            // "loaded", never "live": this screen does not poll, and on a
-            // past date there is nothing live about it.
-            container.querySelector('#attTodayDate').textContent = `${label} · loaded ${at}`;
+            // "last loaded", never "live": this screen does not poll, and
+            // on a past date there is nothing live about it.
+            container.querySelector('#attTodayDate').textContent =
+                `${label} · last loaded ${at}`;
         }
 
         /** The rows the filters leave standing — what is drawn AND exported. */
@@ -801,16 +1065,349 @@
             });
         }
 
+        /**
+         * The things that need the owner, as sentences.
+         *
+         * Only two kinds exist, and both are states the SYSTEM cannot
+         * resolve on its own: a day with no Time Out (someone has to say
+         * whether he went home) and a worker who recorded nothing (only
+         * the office knows whether that is leave, absence or no signal).
+         * Nothing else is ever promoted to this list -- an owner who is
+         * shown five items every morning stops reading any of them.
+         */
+        function attention() {
+            const out = [];
+            const started = dayHasStarted();
+            const todayKey = attTodayKey();
+
+            rows.forEach(({ worker, record }) => {
+                const name = attWorkerName(worker);
+
+                if (record && attTone(record) === 'working') {
+                    // A worker on site in the middle of his shift is the
+                    // ordinary case, not an exception -- flagging it put
+                    // every present worker on the list by mid-morning.
+                    // attCanAbandon already draws the only line that
+                    // matters: a missing Time Out is the owner's problem
+                    // once the day is OVER, and not before.
+                    if (!attCanAbandon(record, todayKey).can) return;
+                    out.push({
+                        kind: 'open', tone: 'work', icon: 'clock', id: worker.id,
+                        title: `${name} never timed out`,
+                        body: `Timed in at ${attTime(record.timein_at)}` +
+                              (record.timein_project_name
+                                ? ` at ${record.timein_project_name}` : '') +
+                              ', and the day ended with no time out. Close it so the ' +
+                              'hours report stops waiting. Closing a day records no ' +
+                              'hours and changes no pay.',
+                        action: 'Open the record'
+                    });
+                } else if (!record) {
+                    // Nobody is absent before they are due.
+                    if (!started) return;
+                    out.push({
+                        kind: 'none', tone: 'none', icon: 'user-x', id: worker.id,
+                        title: `${name} recorded nothing` + (isToday() ? ' today' : ' that day'),
+                        body: 'No time in came from the phone. Check whether this is ' +
+                              'leave, an absence, or simply no signal — a record saved ' +
+                              'offline can arrive later in the day.',
+                        action: 'Open the record'
+                    });
+                }
+            });
+            return out;
+        }
+
+        /** Today's absences are only real once workers are actually due. */
+        function dayHasStarted() {
+            const now = new Date();
+            return attDayHasStarted(workDate, attTodayKey(), dayStart,
+                                    now.getHours() * 60 + now.getMinutes());
+        }
+
+        /** The green sentence at the top, built from what actually loaded. */
+        function lede(attn) {
+            const total = rows.length;
+            const present = rows.filter(r => r.record).length;
+            const sites = new Set(rows
+                .map(r => r.record && r.record.timein_project_name)
+                .filter(Boolean)).size;
+            const absent = total - present;
+            const open = rows.filter(r => r.record && attTone(r.record) === 'working').length;
+            const closed = rows.filter(r => r.record && attTone(r.record) === 'abandoned').length;
+
+            const when = isToday() ? 'today' : 'that day';
+            const started = dayHasStarted();
+            const dueAt = attClock(dayStart) || '9:00 AM';
+
+            // Before anyone is due, "Nobody timed in today" reads as an
+            // alarm about a day that has not happened yet.
+            const lead = (present === 0 && !started)
+                ? (isToday() ? 'The day has not started yet.' : 'That day has not started yet.')
+                : present === 0
+                    ? `Nobody timed in ${when}.`
+                    : present === total
+                        ? `All ${total} of your workers ${isToday() ? 'are' : 'were'} on site ${when}.`
+                        : `${present} of your ${total} workers ${isToday() ? 'are' : 'were'} ` +
+                          `on site ${when}.`;
+
+            const bits = [];
+            if (present === 0 && !started) {
+                bits.push(`Workers are due at ${dueAt}` +
+                          (total ? `, and ${total} can time in from the app` : ''));
+            }
+            if (sites === 1) bits.push('All at one site');
+            else if (sites > 1) bits.push(`Spread across ${sites} sites`);
+            // An absence is only worth stating once it IS one.
+            if (absent && started) {
+                bits.push(absent === 1
+                    ? 'one worker did not time in at all'
+                    : `${absent} workers did not time in at all`);
+            }
+            if (closed) {
+                bits.push(closed === 1
+                    ? 'one day was closed by the office'
+                    : `${closed} days were closed by the office`);
+            }
+            const sentence = bits.length ? attEsc(attAnd(bits)) + '.' : '';
+
+            const flagBody = attn.length
+                ? attEsc(attAnd([
+                    open ? (open === 1 ? 'a missing time out'
+                                      : `${open} missing time outs`) : '',
+                    (attn.length - open) ? ((attn.length - open) === 1
+                        ? 'a worker with nothing recorded'
+                        : `${attn.length - open} workers with nothing recorded`) : ''
+                  ])) + '.'
+                : !started
+                    // attFlag's own title already says "Nothing needs you";
+                    // the body's job is to say why, not to repeat it.
+                    ? `The first workers are due at ${attEsc(dueAt)}.`
+                    : 'Every worker is accounted for, and no day is waiting on a time out.';
+
+            return '<div class="att-lede">' +
+                     attBanner(lead, sentence) +
+                     attFlag(attn.length, flagBody, 'attReviewAll', 'Review them') +
+                   '</div>';
+        }
+
+        /** 'pc' / 'pm' → the pill the owner reads it by. */
+        function sourcePill(system) {
+            if (system === 'pc') return '<span class="att-pill att-pill--pc">Costing job</span>';
+            if (system === 'pm') return '<span class="att-pill att-pill--pm">Site works</span>';
+            return '';
+        }
+
+        /**
+         * One card per site, plus a final card for everyone who is not on
+         * one. The absent card is dashed, because it describes a gap
+         * rather than a place.
+         */
+        function bySite() {
+            const groups = new Map();
+            const absent = [];
+
+            // Every site first, empty. A site with nobody on it today is
+            // a fact the owner wants to see -- it is the difference
+            // between "Tanauan is quiet" and "Tanauan is not on my screen".
+            allSites.forEach(p => {
+                groups.set(p.project_name, {
+                    name: p.project_name,
+                    system: p.project_system,
+                    crew: []
+                });
+            });
+
+            rows.forEach(entry => {
+                const site = entry.record && entry.record.timein_project_name;
+                if (!site) { absent.push(entry); return; }
+                // Keyed on the SNAPSHOT name the record carries. A site
+                // renamed after the fact therefore keeps its own card
+                // under the old name, which is the name on the record.
+                if (!groups.has(site)) {
+                    groups.set(site, {
+                        name: site,
+                        system: entry.record.timein_project_system,
+                        crew: []
+                    });
+                }
+                groups.get(site).crew.push(entry);
+            });
+
+            // `quiet` = a site nobody is on. It renders as a header and
+            // stops there: a sub-line AND a footer both saying "nobody,
+            // due at nine" is the same sentence twice, and across ten
+            // empty sites it drowns the two cards that have people on them.
+            const card = (title, sub, pill, crew, foot, none, noneLabel, quiet, wide) => `
+                <div class="att-crew-card${none ? ' att-crew-card--none' : ''}${
+                    quiet ? ' att-crew-card--quiet' : ''}${
+                    wide ? ' att-crew-card--wide' : ''}">
+                  <div class="att-crew-head">
+                    <div style="min-width:0">
+                      <h3 class="att-crew-title">${attEsc(title)}</h3>
+                      <p class="att-crew-sub">${attEsc(sub)}</p>
+                    </div>
+                    ${pill}
+                  </div>
+                  ${quiet ? '' : `<div class="att-crew-list">
+                    ${crew.map(({ worker, record }) => {
+                        const tone = attTone(record);
+                        // The hatch is a placeholder, never a signed URL.
+                        // Signing every thumbnail would fire two round
+                        // trips per worker to draw a 56px square; the
+                        // photo itself is one click away on the detail.
+                        const shot = p => `<span class="att-crew-photo${
+                            (record && p) ? '' : ' att-crew-photo--empty'}"></span>`;
+                        const times = !record
+                            ? 'Nothing recorded on the phone'
+                            : record.timeout_at
+                                ? `In ${attTime(record.timein_at)} · Out ${attTime(record.timeout_at)}`
+                                : tone === 'abandoned'
+                                    ? `In ${attTime(record.timein_at)} · no time out`
+                                    : `In ${attTime(record.timein_at)} · still working`;
+                        return `
+                        <div class="att-crew-row" data-worker="${attEsc(worker.id)}">
+                          ${shot(record && record.timein_photo_path)}
+                          <div class="att-crew-body">
+                            <div class="att-crew-name">${attEsc(attWorkerName(worker))}</div>
+                            <div class="att-crew-position">${attEsc(worker.position || '—')}</div>
+                            <div class="att-crew-times">${attEsc(times)}</div>
+                          </div>
+                          <div class="att-crew-right">
+                            ${attStatusPillShort(record, noneLabel)}
+                            <div class="att-crew-hours">${
+                                record && record.total_minutes !== null
+                                    ? attEsc(attHours(record.total_minutes)) : '—'}</div>
+                          </div>
+                        </div>`;
+                    }).join('')}
+                  </div>`}
+                  ${foot ? `<div class="att-crew-foot">${attEsc(foot)}</div>` : ''}
+                </div>`;
+
+            const started = dayHasStarted();
+            const dueAt = attClock(dayStart) || '9:00 AM';
+
+            // Sites with crew lead; the quiet ones follow in name order,
+            // so the board reads top-left to bottom-right as "here is
+            // where the work is happening, and here is where it is not".
+            const ordered = [...groups.values()].sort((a, b) => {
+                if (!!a.crew.length !== !!b.crew.length) return a.crew.length ? -1 : 1;
+                return String(a.name).localeCompare(String(b.name));
+            });
+
+            const cards = ordered.map(g => {
+                const inCount = g.crew.length;
+                const open = g.crew.filter(c => attTone(c.record) === 'working').length;
+                const closed = g.crew.filter(c => attTone(c.record) === 'abandoned').length;
+                // The board's wording, verbatim. Both halves are the crew
+                // ON the card: this screen groups BY the site a worker
+                // timed in at, so a site cannot carry anyone who did not.
+                // It therefore always reads "N of N" -- which is the
+                // design's intent (the card confirms the crew is complete)
+                // and not a figure to go looking for a denominator for.
+                // Anyone posted here who never timed in is on the
+                // "Not on site" card instead, where the owner can act.
+                const sub = `${inCount} of ${inCount} crew timed in`;
+
+                // Named, as the board names Jayson. "One worker" makes the
+                // owner re-scan the card for which one.
+                const openCrew = g.crew.filter(c => attTone(c.record) === 'working');
+                const openNames = attAnd(openCrew.map(c => attWorkerName(c.worker)));
+                // A day still running cannot be closed at all (attCanAbandon
+                // refuses today), so the footer must not send the owner to a
+                // panel that is not listing them.
+                const closable = openCrew.some(
+                    c => attCanAbandon(c.record, attTodayKey()).can);
+
+                const foot = openCrew.length
+                    ? (closable
+                        ? `${openNames} never timed out. Close the day from the panel ` +
+                          'above — it records no hours and changes no pay.'
+                        : `${openNames} ${openCrew.length === 1 ? 'has' : 'have'} not ` +
+                          'timed out yet. Nothing to do until the day is over.')
+                    : closed
+                        ? 'The office closed a day here because no time out was ever recorded. No hours were counted for it.'
+                        : '';
+
+                if (!g.crew.length) {
+                    // Said once, in the sub-line, and phrased about the
+                    // SITE. The workers card below is about people and
+                    // must not read as one more empty site.
+                    return card(g.name,
+                                started ? 'No crew timed in here today'
+                                        : `No crew yet · due at ${dueAt}`,
+                                sourcePill(g.system), [], '', false, null, true);
+                }
+                return card(g.name, sub, sourcePill(g.system), g.crew, foot, false);
+            });
+
+            // NOT a card in the site grid. It is a list of people, it can
+            // hold every worker on the books, and in a 320px site-sized
+            // cell it became one tall column with three-line wraps beside
+            // an empty half-screen. Full width, below the sites, with the
+            // names flowing into as many columns as fit.
+            const absentCard = absent.length ? card(
+                !started ? 'Workers not timed in yet'
+                         : isToday() ? 'Workers not on site today'
+                                     : 'Workers not on site that day',
+                `${absent.length} ${absent.length === 1 ? 'worker' : 'workers'}`,
+                started
+                  ? '<span class="att-pill att-pill--none">No record</span>'
+                  : '<span class="att-pill att-pill--none">Not due yet</span>',
+                absent,
+                started
+                  ? 'Check whether this is leave or an absence. A record saved ' +
+                    'without signal can still arrive later.'
+                  : `Workers are due at ${dueAt}. Nothing is late and nothing is ` +
+                    'missing — the day has not started.',
+                true,
+                started ? 'Absent?' : 'Not in yet',
+                false, true) : '';
+
+            return '<div class="att-crew-grid">' + cards.join('') + '</div>' + absentCard;
+        }
+
+        /** The attention panel above the full list. */
+        function attnPanel(attn) {
+            if (!attn.length) return '';
+            return '<div class="att-card att-card--flag">' +
+                     '<div class="att-card-head"><div>' +
+                       '<h3 class="att-card-title">' + attn.length +
+                         (attn.length === 1 ? ' thing needs you' : ' things need you') + '</h3>' +
+                       '<p class="att-card-sub">Clear these and the day is finished. ' +
+                         'Nothing here changes anyone&rsquo;s pay.</p>' +
+                     '</div></div>' +
+                     attn.map(a =>
+                       '<div class="att-attn-row">' +
+                         '<div class="att-attn-icon' +
+                           (a.tone === 'work' ? ' att-attn-icon--work' : '') + '">' +
+                           '<i data-lucide="' + a.icon + '"></i></div>' +
+                         '<div class="att-attn-text">' +
+                           '<div class="att-attn-title">' + attEsc(a.title) + '</div>' +
+                           '<div class="att-attn-body">' + attEsc(a.body) + '</div>' +
+                         '</div>' +
+                         '<button class="att-btn' +
+                           (a.tone === 'work' ? ' att-btn--warn' : '') +
+                           '" type="button" data-attn="' + attEsc(a.id) + '">' +
+                           attEsc(a.action) + '</button>' +
+                       '</div>').join('') +
+                   '</div>';
+        }
+
         function paintRows() {
             const shown = visible();
             const tbody = container.querySelector('#attTodayRows');
+            if (!tbody) return;
             if (!shown.length) {
-                tbody.innerHTML = '<tr><td colspan="8" class="att-empty">' +
+                tbody.innerHTML = '<tr><td colspan="7" class="att-empty">' +
                                   'No worker matches this search.</td></tr>';
                 return;
             }
-            tbody.innerHTML = shown.map(({ worker, record }) => `
-                <tr class="att-row${record ? '' : ' att-row--none'}" data-worker="${attEsc(worker.id)}">
+            tbody.innerHTML = shown.map(({ worker, record }) => {
+                const tone = attTone(record);
+                return `
+                <tr class="att-row att-row--${tone}" data-worker="${attEsc(worker.id)}">
                   <td>
                     <div class="att-worker">${attEsc(attWorkerName(worker))}</div>
                     <div class="att-meta">${attEsc(worker.position || '—')} · ${attWorkerNo(worker.worker_no)}</div>
@@ -818,17 +1415,72 @@
                   <td>${attEsc(record ? (record.timein_project_name || '—') : '—')}</td>
                   <td class="att-mono">${attTime(record && record.timein_at)}</td>
                   <td class="att-mono">${attTime(record && record.timeout_at)}</td>
+                  <td class="att-mono">${record && record.total_minutes !== null
+                      ? attHours(record.total_minutes) : '—'}</td>
                   <td>${attPhotoCell(record)}</td>
-                  <td class="att-mono">${attHours(record ? record.total_minutes : null)}</td>
-                  <td>${attStatusPill(record)} ${attBadges(record)}</td>
-                  <td class="att-right"><span class="att-link">View</span></td>
-                </tr>`).join('');
+                  <td>
+                    <div class="att-status-word${
+                        tone === 'abandoned' ? ' att-status-word--abandoned'
+                      : tone === 'none' ? ' att-status-word--none' : ''}">${
+                        attEsc(attStatusWord(record))}</div>
+                    <div class="att-meta">${attEsc(attStatusNote(record))} ${attBadges(record)}</div>
+                  </td>
+                </tr>`;
+            }).join('');
 
             tbody.querySelectorAll('.att-row').forEach(tr => {
                 tr.addEventListener('click', () => {
                     window.attendanceOpenWorker(tr.getAttribute('data-worker'), workDate);
                 });
             });
+        }
+
+        function fullList(attn) {
+            const projects = [...new Set(rows
+                .map(r => r.record && r.record.timein_project_name)
+                .filter(Boolean))].sort();
+
+            return attnPanel(attn) + `
+                <div class="att-card">
+                  <div class="att-card-head">
+                    <div>
+                      <h3 class="att-card-title">Everyone&rsquo;s day</h3>
+                      <p class="att-card-sub">Click any row to see the two photos the
+                        worker took.</p>
+                    </div>
+                    <div class="att-card-tools">
+                      <div class="att-search-wrap">
+                        <i data-lucide="search"></i>
+                        <input class="att-search" type="search" id="attSearch"
+                               placeholder="Search a name or a site…" aria-label="Search">
+                      </div>
+                      <select class="att-filter" id="attProjFilter" aria-label="Filter by site">
+                        <option value="">All sites</option>
+                        ${projects.map(p => `<option value="${attEsc(p)}">${attEsc(p)}</option>`).join('')}
+                      </select>
+                    </div>
+                  </div>
+                  <div class="att-legend">
+                    <span class="att-legend-title">The colour on the left means</span>
+                    <span class="att-legend-item">
+                      <span class="att-legend-dot att-legend-dot--done"></span>Finished the day</span>
+                    <span class="att-legend-item">
+                      <span class="att-legend-dot att-legend-dot--working"></span>Still on site</span>
+                    <span class="att-legend-item">
+                      <span class="att-legend-dot att-legend-dot--abandoned"></span>Closed by the office</span>
+                    <span class="att-legend-item">
+                      <span class="att-legend-dot att-legend-dot--none"></span>Not on site</span>
+                  </div>
+                  <table class="att-table">
+                    <thead>
+                      <tr>
+                        <th>Worker</th><th>Which site</th><th>Arrived</th><th>Left</th>
+                        <th>Hours</th><th>Photos</th><th>What happened</th>
+                      </tr>
+                    </thead>
+                    <tbody id="attTodayRows"></tbody>
+                  </table>
+                </div>`;
         }
 
         function exportCsv() {
@@ -842,16 +1494,76 @@
                     record ? record.timein_project_name : '',
                     attTime(record && record.timein_at), attTime(record && record.timeout_at),
                     attHours(record ? record.total_minutes : null),
+                    // The RAW status, not the redesign's wording. A
+                    // spreadsheet built on "complete" keeps working, and
+                    // the file stays comparable with every export before
+                    // this one.
                     record ? record.status : 'no record'
                 ])
             );
             attDownloadCsv('attendance-' + workDate + '.csv', csv);
         }
 
+        function paint() {
+            const attn = attention();
+
+            body.innerHTML =
+                lede(attn) +
+                (mode === 'sites' ? bySite() : fullList(attn)) +
+                attStrip('info', '<strong>Hours here are attendance only.</strong> ' +
+                    'Nobody is paid by the hour — labour is contract-based (pakyaw), ' +
+                    'so these figures never move money. They are a record of who was ' +
+                    'on site.');
+
+            // The all-clear card has no button, so this is absent as often
+            // as it is present.
+            const review = container.querySelector('#attReviewAll');
+            if (review) {
+                review.addEventListener('click', () => {
+                    mode = 'list';
+                    container.querySelectorAll('#attTodayMode .att-seg-btn')
+                        .forEach(b => b.classList.toggle('is-on',
+                                                         b.getAttribute('data-mode') === 'list'));
+                    paint();
+                });
+            }
+
+            if (mode === 'sites') {
+                body.querySelectorAll('.att-crew-row').forEach(row => {
+                    row.addEventListener('click', () => {
+                        window.attendanceOpenWorker(row.getAttribute('data-worker'), workDate);
+                    });
+                });
+            } else {
+                const search = container.querySelector('#attSearch');
+                const filter = container.querySelector('#attProjFilter');
+                if (search) search.addEventListener('input', paintRows);
+                if (filter) filter.addEventListener('change', paintRows);
+                body.querySelectorAll('button[data-attn]').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        window.attendanceOpenWorker(btn.getAttribute('data-attn'), workDate);
+                    });
+                });
+                paintRows();
+            }
+            attIcons();
+        }
+
         async function load() {
             stampDate();
             body.innerHTML = 'Loading…';
             try {
+                // Once per screen. A missing config is not fatal -- the
+                // rule falls back to 8am rather than taking the day down.
+                if (dayStart === null) {
+                    const cfg = await attLoadRewardConfig().catch(() => null);
+                    dayStart = (cfg && cfg.default_start_time) || '';
+                }
+                // Not fatal: without it the board still draws every site
+                // that has crew, which is what it did before.
+                if (!allSites.length) {
+                    allSites = await attLoadProjects().catch(() => []);
+                }
                 rows = await attLoadToday(workDate);
             } catch (e) {
                 body.innerHTML = `<div class="att-error">Could not load attendance: ${attEsc(e.message || e)}</div>`;
@@ -863,57 +1575,21 @@
                                  'Add them in <strong>Workers</strong>, or in Users → Navigator.</div>';
                 return;
             }
-
-            const timedIn  = rows.filter(r => r.record).length;
-            const timedOut = rows.filter(r => r.record && r.record.timeout_at).length;
-            const working  = rows.filter(r => r.record && !r.record.timeout_at
-                                              && r.record.status !== 'abandoned').length;
-
-            const projects = [...new Set(rows
-                .map(r => r.record && r.record.timein_project_name)
-                .filter(Boolean))].sort();
-
-            body.innerHTML = `
-                <div class="att-kpis">
-                  ${attKpi('users',    'total',   rows.length,           'Total Workers')}
-                  ${attKpi('log-in',   'in',      timedIn,               'Timed In')}
-                  ${attKpi('log-out',  'out',     timedOut,              'Timed Out')}
-                  ${attKpi('hard-hat', 'working', working,               'Currently Working')}
-                  ${attKpi('user-x',   'none',    rows.length - timedIn, 'No Attendance',
-                           rows.length > timedIn)}
-                </div>
-
-                <div class="att-card">
-                  <div class="att-card-head">
-                    <h3 class="att-card-title">Worker records</h3>
-                    <div class="att-card-tools">
-                      <div class="att-search-wrap">
-                        <i data-lucide="search"></i>
-                        <input class="att-search" type="search" id="attSearch"
-                               placeholder="Search worker or project…" aria-label="Search">
-                      </div>
-                      <select class="att-filter" id="attProjFilter" aria-label="Filter by project">
-                        <option value="">All projects</option>
-                        ${projects.map(p => `<option value="${attEsc(p)}">${attEsc(p)}</option>`).join('')}
-                      </select>
-                    </div>
-                  </div>
-                  <table class="att-table">
-                    <thead>
-                      <tr>
-                        <th>Worker</th><th>Project</th><th>Time In</th><th>Time Out</th>
-                        <th>Photos</th><th>Total</th><th>Status</th><th></th>
-                      </tr>
-                    </thead>
-                    <tbody id="attTodayRows"></tbody>
-                  </table>
-                </div>`;
-
-            container.querySelector('#attSearch').addEventListener('input', paintRows);
-            container.querySelector('#attProjFilter').addEventListener('change', paintRows);
-            paintRows();
-            attIcons();
+            paint();
         }
+
+        const modeSeg = container.querySelector('#attTodayMode');
+        modeSeg.addEventListener('click', e => {
+            const btn = e.target.closest('.att-seg-btn');
+            if (!btn) return;
+            mode = btn.getAttribute('data-mode');
+            modeSeg.querySelectorAll('.att-seg-btn')
+                   .forEach(b => b.classList.toggle('is-on', b === btn));
+            // Repaint only. Re-fetching to switch how the SAME rows are
+            // grouped would put a spinner over a decision the owner has
+            // already made.
+            if (rows.length) paint();
+        });
 
         container.querySelector('#attRefresh').addEventListener('click', load);
         container.querySelector('#attExport').addEventListener('click', exportCsv);
@@ -925,8 +1601,8 @@
         //
         // `load` rather than a full re-render: it refetches the list while
         // leaving the chosen date and the header alone. The new worker
-        // appears immediately as "No record", which is the honest state --
-        // they exist, and they have not timed in.
+        // appears immediately as "Not on site", which is the honest state
+        // -- they exist, and they have not timed in.
         container.querySelector('#attTodayAddWorker').addEventListener('click', () => {
             attOpenNewWorker(container.querySelector('#attTodayModalHost'), load);
         });
@@ -941,10 +1617,23 @@
 
     // ── A2 · Worker detail ──────────────────────────────────────────
 
+    /**
+     * A2 -- one worker's day.
+     *
+     * The redesign leads with the sentence the owner came for ("On site
+     * from 7:02 AM to 5:11 PM") and puts the figure beside it, instead
+     * of a "Total hours" tile the reader had to assemble a story around.
+     * The two photos, the facts and the trail are unchanged -- they are
+     * evidence, and evidence does not get reworded.
+     *
+     * The copy avoids "he". Roughly a third of these accounts are not
+     * men, the profile carries no pronoun, and guessing one on a record
+     * that goes in front of the worker is worse than writing around it.
+     */
     async function attRenderWorker(container, workerId, workDate) {
         container.innerHTML = `
             <div class="att-crumbs">
-              <button class="att-link" type="button" id="attBack">Today's Attendance</button>
+              <button class="att-link" type="button" id="attBack">Today on site</button>
               <i data-lucide="chevron-right"></i>
               <span id="attCrumbName">Attendance detail</span>
             </div>
@@ -974,7 +1663,16 @@
 
         const r = (rows || [])[0];
         if (!r) {
-            body.innerHTML = '<div class="att-empty">This worker has no record for this day.</div>';
+            // The honest empty state, and the reason it is not an error:
+            // A1 links here for a worker with NO record precisely so the
+            // owner can confirm there is nothing to see.
+            body.innerHTML = '<div class="att-stack">' +
+                attBanner('Nothing was recorded for this day.',
+                    'No time in came from the phone, so there is no record to open. ' +
+                    'Check whether this is leave, an absence, or simply no signal — ' +
+                    'a record saved offline can still arrive later.') +
+                '</div>';
+            attIcons();
             return;
         }
         const workerNo = attWorkerNo(((profiles || [])[0] || {}).worker_no);
@@ -993,18 +1691,28 @@
                 { day: 'numeric', month: 'long', year: 'numeric' });
         })();
 
-        // The span is stated from the two stamps, but the FIGURE is
+        const tone = attTone(r);
+        const offline = r.timein_was_offline || r.timeout_was_offline;
+        const bothPhotos = !!(r.timein_photo_path && r.timeout_photo_path);
+
+        // The sentence states the two stamps, but the FIGURE beside it is
         // total_minutes as the database computed it -- never recomputed
-        // here, so the screen can never disagree with the report.
-        //
-        // An abandoned day says so instead of "not recorded yet": the
-        // Time Out is not late, it is never coming, and "yet" would
-        // suggest someone is still waiting for it.
-        const span = (r.timein_at && r.timeout_at)
-            ? `${attTime(r.timein_at)} → ${attTime(r.timeout_at)} · computed by the system`
-            : r.status === 'abandoned'
-                ? 'Closed with no Time Out — hours were never recorded'
-                : 'Time Out not recorded yet';
+        // here, so this screen can never disagree with the report.
+        const lead = tone === 'done'
+            ? `On site from ${attTime(r.timein_at)} to ${attTime(r.timeout_at)}.`
+            : tone === 'working'
+                ? `Timed in at ${attTime(r.timein_at)}, and still on site.`
+                : `Timed in at ${attTime(r.timein_at)}. The office closed the day.`;
+
+        const leadBody = tone === 'done'
+            ? (bothPhotos
+                ? 'Both photos came through and the day is finished. Nothing needs your attention.'
+                : 'The day is finished, but one of the two photos never arrived.')
+            : tone === 'working'
+                ? 'No time out yet, so no hours are recorded for this day. If the day ' +
+                  'is over, close it below — closing records no hours and changes no pay.'
+                : 'No time out was ever recorded, so the day counts no hours. This has ' +
+                  'already been dealt with; nothing further is needed.';
 
         const resolve = attCanAbandon(r, attTodayKey());
         const closer = r.status === 'abandoned' ? await attCloserName(r.abandoned_by) : null;
@@ -1015,69 +1723,104 @@
         // constraint permits it, so the render must too).
         const trail = r.status === 'abandoned' && r.abandoned_at ? `
                   <div class="att-fact">
-                    <span class="att-fact-key">Closed by</span>
+                    <span class="att-fact-key">Who closed it</span>
                     <span class="att-fact-val">${attEsc(closer || 'account since removed')}</span>
                   </div>
                   <div class="att-fact">
-                    <span class="att-fact-key">Closed on</span>
+                    <span class="att-fact-key">When it was closed</span>
                     <span class="att-fact-val">${attEsc(attStamp(r.abandoned_at))}</span>
                   </div>
                   ${r.abandoned_note ? `
                   <div class="att-fact">
-                    <span class="att-fact-key">Reason</span>
+                    <span class="att-fact-key">Reason given</span>
                     <span class="att-fact-val">${attEsc(r.abandoned_note)}</span>
                   </div>` : ''}` : '';
 
         body.innerHTML = `
-            <div class="att-head">
-              <div class="att-ident">
-                <div class="att-avatar">${attEsc(attInitials(name))}</div>
+            <div class="att-stack">
+              <div class="att-head">
+                <div class="att-ident">
+                  <div class="att-avatar">${attEsc(attInitials(name))}</div>
+                  <div>
+                    <h2 class="att-title">${attEsc(name)}</h2>
+                    <div class="att-sub">${attEsc(r.worker_position || '—')} ·
+                      ${attEsc(workerNo)} ·
+                      ${attEsc(r.timein_project_name || '—')} · ${attEsc(dayLabel)}</div>
+                  </div>
+                </div>
+                <div class="att-head-actions">
+                  ${resolve.can ? `<button class="att-btn att-btn--warn" type="button" id="attResolve">
+                    <i data-lucide="clock"></i>Close this day</button>` : ''}
+                  <button class="att-btn" type="button" id="attPrint">
+                    <i data-lucide="printer"></i>Print this day</button>
+                </div>
+              </div>
+
+              <div class="att-banner att-banner--split">
                 <div>
-                  <h2 class="att-title">${attEsc(name)}</h2>
-                  <div class="att-sub">${attEsc(r.worker_position || '—')} ·
-                    ${attEsc(r.timein_project_name || '—')} · ${attEsc(dayLabel)}</div>
+                  <div class="att-banner-lead">${attEsc(lead)}</div>
+                  <div class="att-banner-body">${attEsc(leadBody)}</div>
+                </div>
+                <div class="att-banner-figure">
+                  <div class="att-banner-figure-label">Hours recorded</div>
+                  <div class="att-banner-figure-value">${
+                      r.total_minutes !== null && r.total_minutes !== undefined
+                        ? attEsc(attHours(r.total_minutes)) : 'none'}</div>
                 </div>
               </div>
-              <div class="att-head-actions">
-                ${resolve.can ? `<button class="att-btn att-btn--warn" type="button" id="attResolve">
-                  <i data-lucide="clock"></i>Close as abandoned</button>` : ''}
-                <button class="att-btn" type="button" id="attPrint">
-                  <i data-lucide="printer"></i>Print</button>
+
+              <div class="att-detail-grid">
+                ${attHalf('When they arrived', 'time in', 'in', 'log-in',
+                          r.timein_at, r.timein_project_name,
+                          r.timein_description, inUrl, r.timein_photo_path)}
+                ${attHalf('When they left', 'time out', 'out', 'log-out',
+                          r.timeout_at, r.timeout_project_name,
+                          r.timeout_description, outUrl, r.timeout_photo_path)}
               </div>
-            </div>
 
-            <div class="att-detail-grid">
-              ${attHalf('Time In', 'in', 'log-in', r.timein_at, r.timein_project_name,
-                        r.timein_description, inUrl, r.timein_photo_path)}
-              ${attHalf('Time Out', 'out', 'log-out', r.timeout_at, r.timeout_project_name,
-                        r.timeout_description, outUrl, r.timeout_photo_path)}
-
-              <div class="att-side">
-                <div class="att-total">
-                  <div class="att-total-label">Total hours</div>
-                  <div class="att-total-value">${attHours(r.total_minutes)}</div>
-                  <div class="att-total-note">${attEsc(span)}</div>
-                </div>
+              <div class="att-detail-foot">
                 <div class="att-facts">
                   <div class="att-fact">
-                    <span class="att-fact-key">Status</span>
+                    <span class="att-fact-key">How the day ended</span>
                     <span class="att-fact-val">${attStatusPill(r)} ${attBadges(r)}</span>
                   </div>
                   <div class="att-fact">
-                    <span class="att-fact-key">Worker ID</span>
+                    <span class="att-fact-key">Worker number</span>
                     <span class="att-fact-val att-mono">${attEsc(workerNo)}</span>
                   </div>
                   <div class="att-fact">
-                    <span class="att-fact-key">Position</span>
+                    <span class="att-fact-key">Job on site</span>
                     <span class="att-fact-val">${attEsc(r.worker_position || '—')}</span>
                   </div>
                   <div class="att-fact">
-                    <span class="att-fact-key">Recorded by</span>
-                    <span class="att-fact-val">Worker device</span>
+                    <span class="att-fact-key">Who recorded it</span>
+                    <span class="att-fact-val">The worker, on their own phone</span>
+                  </div>
+                  <div class="att-fact">
+                    <span class="att-fact-key">Reached the office</span>
+                    <span class="att-fact-val">${offline
+                        ? 'Saved without signal, sent later' : 'Straight away'}</span>
                   </div>
                   ${trail}
-                  <div class="att-fact-foot">Time In and Time Out projects are stored
-                    separately. If they differ, both are shown as selected.</div>
+                </div>
+
+                <div class="att-explain">
+                  <div class="att-info">
+                    <i data-lucide="camera"></i>
+                    <div>The worker takes both photos personally, in the app. They cannot
+                      be added or replaced from this screen.</div>
+                  </div>
+                  <div class="att-info">
+                    <i data-lucide="map-pin"></i>
+                    <div>A site is picked twice — once arriving, once leaving. If the two
+                      differ, both are shown, so a move between sites is visible rather
+                      than averaged away.</div>
+                  </div>
+                  <div class="att-info">
+                    <i data-lucide="wifi-off"></i>
+                    <div>&ldquo;Saved without signal&rdquo; means the phone had no data and
+                      sent the record later. It is normal on remote sites, not a warning.</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1090,16 +1833,24 @@
             resolveBtn.addEventListener('click', () => {
                 attOpenResolve(container.querySelector('#attDetailModalHost'), r,
                     // A full re-render, not a patch: the trail, the pill,
-                    // the span note and the button's own absence all have
-                    // to move together, and re-reading is the only way the
-                    // screen shows what was actually stored.
+                    // the banner sentence and the button's own absence all
+                    // have to move together, and re-reading is the only way
+                    // the screen shows what was actually stored.
                     () => attRenderWorker(container, workerId, workDate));
             });
         }
         attIcons();
     }
 
-    function attHalf(label, tone, icon, at, project, description, photoUrl, photoPath) {
+    /**
+     * One half of the detail: a stamp, the photo behind it, and the two
+     * things the worker typed.
+     *
+     * `label` heads the card; `short` is the same moment named inside the
+     * card's own body ("Site picked at time in"), where the heading's
+     * phrasing would not fit the sentence.
+     */
+    function attHalf(label, short, tone, icon, at, project, description, photoUrl, photoPath) {
         return `
             <div class="att-half">
               <div class="att-half-head">
@@ -1111,17 +1862,20 @@
                 ${photoUrl
                   ? `<a href="${attEsc(photoUrl)}" target="_blank" rel="noopener"
                         style="display:block;width:100%;height:100%;">
-                       <img class="att-photo" src="${attEsc(photoUrl)}" alt="${attEsc(label)} photo">
+                       <img class="att-photo" src="${attEsc(photoUrl)}"
+                            alt="Photo taken at ${attEsc(short)}">
                      </a>`
-                  : `<div class="att-photo--missing">${photoPath ? 'Photo unavailable' : 'No ' + attEsc(label) + ' photo'}</div>`}
+                  : `<div class="att-photo--missing">${photoPath
+                       ? 'Photo unavailable'
+                       : 'No photo taken at ' + attEsc(short)}</div>`}
               </div>
               <div class="att-half-body">
                 <div>
-                  <div class="att-fact-label">Project selected at ${attEsc(label)}</div>
+                  <div class="att-fact-label">Site picked at ${attEsc(short)}</div>
                   <div class="att-fact-strong">${attEsc(project || '—')}</div>
                 </div>
                 <div>
-                  <div class="att-fact-label">Description</div>
+                  <div class="att-fact-label">What they wrote</div>
                   <div class="att-fact-text">${attEsc(description || '—')}</div>
                 </div>
               </div>
@@ -1204,8 +1958,8 @@
                       <i data-lucide="clock"></i>
                       <div>Timed in at <strong>${attTime(record.timein_at)}</strong> on
                         ${attEsc(record.timein_project_name || '—')}, and never timed out.
-                        Closing marks the day <strong>Abandoned</strong> so it stops counting
-                        as still on site.</div>
+                        Closing marks the day <strong>Closed by the office</strong>
+                        so it stops counting as still on site.</div>
                     </div>
                     <div class="att-info att-info--warn">
                       <i data-lucide="minus-circle"></i>
@@ -1225,7 +1979,7 @@
                   <div class="att-modal-foot">
                     <button class="att-btn" type="button" id="attRvCancel">Cancel</button>
                     <button class="att-btn att-btn--primary" type="submit" id="attRvSubmit">
-                      Close as abandoned
+                      Close this day
                     </button>
                   </div>
                 </form>
@@ -1324,21 +2078,31 @@
         return attWorkerRoster(data || []);
     }
 
+    /**
+     * A3 -- Workers.
+     *
+     * The redesign renames every column to the question it answers.
+     * "Email" became "Signs in with", because that is the only thing the
+     * address is FOR here; "Account / Active" became "Can use the app",
+     * because deactivating is not an accounting state, it is a door.
+     */
     async function attRenderWorkers(container) {
         container.innerHTML = `
-            <div class="att-head">
-              <div>
-                <h2 class="att-title">Workers</h2>
-                <div class="att-sub" id="attWorkersCount">Everyone who can time in from the app</div>
+            <div class="att-stack">
+              <div class="att-head">
+                <div>
+                  <h2 class="att-title">Workers</h2>
+                  <div class="att-sub" id="attWorkersCount">Everyone who can time in from the app</div>
+                </div>
+                <div class="att-head-actions">
+                  <button class="att-btn" type="button" id="attWorkersRefresh">
+                    <i data-lucide="refresh-cw"></i>Refresh</button>
+                  <button class="att-btn att-btn--primary" type="button" id="attAddWorker">
+                    <i data-lucide="user-plus"></i>Add a worker</button>
+                </div>
               </div>
-              <div class="att-head-actions">
-                <button class="att-btn" type="button" id="attWorkersRefresh">
-                  <i data-lucide="refresh-cw"></i>Refresh</button>
-                <button class="att-btn att-btn--primary" type="button" id="attAddWorker">
-                  <i data-lucide="user-plus"></i>Add worker</button>
-              </div>
+              <div id="attWorkersBody">Loading…</div>
             </div>
-            <div id="attWorkersBody">Loading…</div>
             <div id="attWorkerModalHost"></div>`;
 
         container.querySelector('#attWorkersRefresh')
@@ -1361,22 +2125,23 @@
 
         if (!rows.length) {
             body.innerHTML = '<div class="att-empty">No workers yet. Use ' +
-                             '<strong>Add worker</strong> above — staff and engineer ' +
+                             '<strong>Add a worker</strong> above — staff and engineer ' +
                              'accounts are created in Users → Navigator.</div>';
             return;
         }
 
         const active = rows.filter(w => w._active).length;
+        const off = rows.length - active;
         container.querySelector('#attWorkersCount').textContent =
-            `${rows.length} account${rows.length === 1 ? '' : 's'} · ` +
-            `${active} active · ${rows.length - active} deactivated`;
+            `${active} ${active === 1 ? 'worker' : 'workers'} can time in from the phone app.` +
+            (off ? ` ${off} ${off === 1 ? 'has' : 'have'} been switched off.` : '');
 
         body.innerHTML = `
             <div class="att-card">
               <table class="att-table">
                 <thead>
-                  <tr><th>Name</th><th>Email</th><th>Position</th><th>Role</th>
-                      <th>Account</th><th></th></tr>
+                  <tr><th>Worker</th><th>Signs in with</th><th>Job on site</th>
+                      <th>Can use the app</th><th></th></tr>
                 </thead>
                 <tbody>
                   ${rows.map(w => `
@@ -1386,19 +2151,27 @@
                         <div class="att-meta att-mono">${attWorkerNo(w.worker_no)}</div>
                       </td>
                       <td>${attEsc(w.email || '—')}</td>
-                      <td>${attEsc(w.position || '—')}</td>
-                      <td>${w.role === 'teamLeader' ? 'Team Leader' : 'Worker'}</td>
-                      <td>${w._active
-                          ? '<span class="att-pill att-pill--done">Active</span>'
-                          : '<span class="att-pill att-pill--none">Deactivated</span>'}</td>
+                      <td>
+                        <div>${attEsc(w.position || '—')}</div>
+                        ${w.role === 'teamLeader'
+                          ? '<div class="att-meta">Leads a team on site</div>' : ''}
+                      </td>
+                      <td>
+                        ${w._active
+                          ? '<span class="att-pill att-pill--done">Yes</span>'
+                          : '<span class="att-pill att-pill--none">Switched off</span>'}
+                        <div class="att-meta">${w._active
+                          ? 'Appears in today&rsquo;s list'
+                          : 'Cannot time in; old records kept'}</div>
+                      </td>
                       <td class="att-right">
                         <div class="att-actions">
                           <button class="att-link" type="button"
-                                  data-edit="${attEsc(w.id)}">Edit</button>
+                                  data-edit="${attEsc(w.id)}">Edit details</button>
                           <button class="att-link ${w._active ? 'att-link--danger' : ''}"
                                   type="button" data-toggle="${attEsc(w.id)}"
                                   data-active="${w._active ? '1' : '0'}">
-                            ${w._active ? 'Deactivate' : 'Reactivate'}
+                            ${w._active ? 'Switch off app access' : 'Switch back on'}
                           </button>
                         </div>
                       </td>
@@ -1406,10 +2179,12 @@
                 </tbody>
               </table>
             </div>
-            <div class="att-note">Deactivating removes a worker from Today&rsquo;s
-              list and stops them signing in to the app — attendance-signin
-              refuses an inactive account before it issues any tokens.
-              Records already recorded against them are untouched.</div>`;
+            ${attStrip('info', '<strong>Switching a worker off is safe.</strong> They ' +
+                'disappear from today&rsquo;s list and can no longer time in — ' +
+                'attendance-signin refuses an inactive account before it issues any ' +
+                'tokens — but every day already recorded stays exactly as it is. Switch ' +
+                'them back on any time. Office, engineer and staff accounts are made in ' +
+                '<strong>Users</strong>, not here.')}`;
 
         body.querySelectorAll('button[data-edit]').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -1438,6 +2213,7 @@
                 attRenderWorkers(container);
             });
         });
+        attIcons();
     }
 
     // ── A4 · Create worker account ──────────────────────────────────
@@ -1848,123 +2624,175 @@
         }
     }
 
+    /**
+     * How many closed days each site has set.
+     *
+     * ONE query for every project rather than attLoadClosures per card:
+     * the card only needs the count, and a portfolio of thirty sites
+     * would otherwise open thirty round trips to draw thirty numbers.
+     * Failure is not fatal -- the card falls back to "none" rather than
+     * taking the screen down with it.
+     */
+    async function attClosureCounts() {
+        try {
+            const { data, error } = await window.sbClient
+                .from('attendance_project_closure')
+                .select('project_system,folder_id,pm_project_id');
+            if (error) throw error;
+            const counts = new Map();
+            (data || []).forEach(function (c) {
+                // Two id spaces, so the key carries the system with it.
+                const id = c.project_system === 'pc' ? c.folder_id : c.pm_project_id;
+                if (!id) return;
+                const k = attProjectKey(c.project_system, id);
+                counts.set(k, (counts.get(k) || 0) + 1);
+            });
+            return counts;
+        } catch (e) {
+            console.warn('attendance: closure counts failed:', e.message || e);
+            return new Map();
+        }
+    }
+
+    /**
+     * A5 -- Sites & schedule.
+     *
+     * Was a table whose last column was a button reading "Mon–Fri", with
+     * the start time and the closed days hidden behind it. An owner
+     * could not tell which sites still had no schedule at all without
+     * opening every one -- and a site with no working days silently
+     * qualifies nobody for the weekly bonus.
+     *
+     * The card states all three settings up front and says so in words
+     * when one is missing. The LIST is still read-only: sites arrive
+     * from the module that owns them, and only the schedule is editable
+     * here.
+     */
     async function attRenderProjects(container) {
         container.innerHTML = `
-            <div class="att-head">
-              <div>
-                <h2 class="att-title">Projects</h2>
-                <div class="att-sub" id="attProjectsCount">The projects a worker picks
-                  from at Time In and Time Out.</div>
+            <div class="att-stack">
+              <div class="att-head">
+                <div>
+                  <h2 class="att-title">Sites &amp; schedule</h2>
+                  <div class="att-sub" id="attProjectsCount">The sites a worker can choose
+                    from on the phone, and the days each one expects them.</div>
+                </div>
+                <div class="att-head-actions">
+                  <button class="att-btn" type="button" id="attProjectsRefresh">
+                    <i data-lucide="refresh-cw"></i>Refresh</button>
+                </div>
               </div>
-              <div class="att-head-actions">
-                <button class="att-btn" type="button" id="attProjectsRefresh">
-                  <i data-lucide="refresh-cw"></i>Refresh</button>
-              </div>
-            </div>
 
-            <div class="att-proj-grid">
+              ${attStrip('info', 'You cannot add or rename a site here — sites arrive on ' +
+                  'their own from the module that owns them. <strong>Project Control</strong> ' +
+                  'owns the ones you cost and bill; <strong>Project Management</strong> owns ' +
+                  'the ones you run day to day. What you <em>do</em> set here is the ' +
+                  'schedule: the working days, the time workers are due, and any day the ' +
+                  'site was closed. Workers only ever see a site&rsquo;s name — contract ' +
+                  'values and budgets are never sent to the app.')}
+
               <div id="attProjectsBody">Loading…</div>
-
-              <div class="att-card">
-                <div class="att-card-head">
-                  <div>
-                    <h3 class="att-card-title">Where these come from</h3>
-                    <p class="att-card-sub">Attendance keeps no project list of its own.</p>
-                  </div>
-                </div>
-                <div class="att-card-body" style="display:flex;flex-direction:column;gap:16px;">
-                  <div class="att-info">
-                    <i data-lucide="info"></i>
-                    <div>The project LIST is read-only. A project appears here as soon as
-                      it exists in <strong>Project Control</strong> or
-                      <strong>Project Management</strong> — create, rename or close it
-                      there and the worker's picker follows.</div>
-                  </div>
-                  <div class="att-info">
-                    <i data-lucide="calendar-check"></i>
-                    <div>Its attendance <strong>schedule</strong> is set here, and only
-                      here: which days the site works, what time workers are due, and the
-                      dates it was closed. A closed day is not required of anyone posted
-                      there, so it shrinks the reward week instead of failing it.</div>
-                  </div>
-                  <div class="att-info">
-                    <i data-lucide="eye-off"></i>
-                    <div>Workers see only the project's <strong>name</strong>. Contract
-                      values and budgets are never sent to the app.</div>
-                  </div>
-                  <div class="att-info">
-                    <i data-lucide="history"></i>
-                    <div>Each record snapshots the project name at Time In, so past
-                      attendance keeps the name it was saved with even after a rename.</div>
-                  </div>
-                </div>
-              </div>
-            </div>`;
+            </div>
+            <div id="attSchedHost"></div>`;
 
         container.querySelector('#attProjectsRefresh')
             .addEventListener('click', () => attRenderProjects(container));
+        attIcons();
 
         const body = container.querySelector('#attProjectsBody');
-        let rows, todayCounts, configs;
+        let rows, todayCounts, configs, closures, cfg;
         try {
-            [rows, todayCounts, configs] = await Promise.all([
-                attLoadProjects(), attWorkersTodayByProject(), attLoadProjectConfigs()
+            [rows, todayCounts, configs, closures, cfg] = await Promise.all([
+                attLoadProjects(), attWorkersTodayByProject(), attLoadProjectConfigs(),
+                attClosureCounts(),
+                // The company default, so a site with no override can name
+                // the time it actually uses instead of saying "default".
+                attLoadRewardConfig().catch(() => null)
             ]);
         } catch (e) {
-            body.innerHTML = `<div class="att-error">Could not load projects: ${attEsc(e.message || e)}</div>`;
+            body.innerHTML = `<div class="att-error">Could not load sites: ${attEsc(e.message || e)}</div>`;
             attIcons();
             return;
         }
 
         if (!rows.length) {
-            body.innerHTML = '<div class="att-card"><div class="att-empty">No projects yet. ' +
+            body.innerHTML = '<div class="att-card"><div class="att-empty">No sites yet. ' +
                              'Create one in <strong>Project Control</strong> or ' +
-                             '<strong>Project Management</strong> — until a project exists ' +
+                             '<strong>Project Management</strong> — until a site exists ' +
                              'the workers&rsquo; app has nothing to pick, and a worker ' +
                              'cannot time in at all.</div></div>';
             attIcons();
             return;
         }
 
+        const defaultStart = attClock(cfg && cfg.default_start_time);
         const pc = rows.filter(p => p.project_system === 'pc').length;
         container.querySelector('#attProjectsCount').textContent =
-            `${rows.length} project${rows.length === 1 ? '' : 's'} · ` +
+            `${rows.length} site${rows.length === 1 ? '' : 's'} · ` +
             `${pc} from Project Control · ${rows.length - pc} from Project Management`;
 
-        body.innerHTML = `
-            <div class="att-card">
-              <table class="att-table">
-                <thead>
-                  <tr><th>Project</th><th>From</th><th>Workers today</th><th>Schedule</th></tr>
-                </thead>
-                <tbody>
-                  ${rows.map(p => `
-                    <tr>
-                      <td><div class="att-worker">${attEsc(p.project_name)}</div></td>
-                      <td><span class="att-pill att-pill--${attEsc(p.project_system)}">${
-                          attEsc(attSystemLabel(p.project_system))}</span></td>
-                      <td class="att-mono">${
-                          todayCounts.get(attProjectKey(p.project_system, p.project_id)) || 0}</td>
-                      <td>
-                        <button class="att-btn" type="button"
-                                data-sched="${attEsc(attProjectKey(p.project_system, p.project_id))}">
-                          ${attEsc(attWorkingDaysLabel(
-                              (configs.get(attProjectKey(p.project_system, p.project_id)) || {}).working_days))}
-                        </button>
-                      </td>
-                    </tr>`).join('')}
-                </tbody>
-              </table>
-            </div>
-            <div class="att-note">The list is read-only on purpose. A project is created,
-              renamed and closed in the module that owns it — attendance follows. Closing a
-              Project Management job (status other than <em>active</em>) removes it from the
-              worker&rsquo;s picker; records already saved against it are untouched.
-              <strong>Schedule</strong> is the exception: those settings belong to attendance
-              and are edited here.</div>
-            <div id="attSchedHost"></div>`;
+        body.innerHTML = '<div class="att-site-grid">' + rows.map(function (p) {
+            const key = attProjectKey(p.project_system, p.project_id);
+            const conf = configs.get(key) || null;
+            const here = todayCounts.get(key) || 0;
+            const closed = closures.get(key) || 0;
 
-        const schedHost = body.querySelector('#attSchedHost');
+            // An EMPTY working_days is not the same as an unset one: the
+            // config row may not exist at all. Both mean "nobody here is
+            // ever required", which is the sentence the card has to say.
+            const daysSet = !!(conf && Array.isArray(conf.working_days) && conf.working_days.length);
+            const days = daysSet ? attWorkingDaysLabel(conf.working_days) : 'Not set yet';
+            const due = attClock(conf && conf.start_time_override) || defaultStart || 'Not set yet';
+            const dueIsDefault = !(conf && conf.start_time_override) && !!defaultStart;
+
+            const note = !daysSet
+                ? 'Until you set the working days, nobody posted here can qualify for ' +
+                  'the weekly bonus — no day is ever required of them.'
+                : closed
+                    ? `${closed} closed ${closed === 1 ? 'day is' : 'days are'} set. ` +
+                      'A closed day is required of nobody, so it shrinks the bonus week ' +
+                      'instead of failing it.'
+                    : 'Every working day counts towards the weekly bonus.';
+
+            return `
+                <div class="att-site-card">
+                  <div class="att-crew-head">
+                    <div style="min-width:0">
+                      <h3 class="att-crew-title">${attEsc(p.project_name)}</h3>
+                      <p class="att-crew-sub">${here
+                          ? `${here} ${here === 1 ? 'worker' : 'workers'} here today`
+                          : 'No workers here today'}</p>
+                    </div>
+                    <span class="att-pill att-pill--${attEsc(p.project_system)}">${
+                        p.project_system === 'pc' ? 'Costing job' : 'Site works'}</span>
+                  </div>
+                  <div class="att-site-body">
+                    <div class="att-site-facts">
+                      <div>
+                        <div class="att-site-key">Working days</div>
+                        <div class="att-site-val">${attEsc(days)}</div>
+                      </div>
+                      <div>
+                        <div class="att-site-key">Workers due at</div>
+                        <div class="att-site-val att-site-val--mono">${attEsc(due)}</div>
+                        ${dueIsDefault
+                          ? '<div class="att-meta">The company default</div>' : ''}
+                      </div>
+                      <div>
+                        <div class="att-site-key">Closed days set</div>
+                        <div class="att-site-val">${closed || 'none'}</div>
+                      </div>
+                    </div>
+                    <div class="att-site-note${daysSet ? '' : ' att-site-note--warn'}">${
+                        attEsc(note)}</div>
+                    <button class="att-btn" type="button" data-sched="${attEsc(key)}">
+                      <i data-lucide="calendar-check"></i>${
+                        daysSet ? 'Change the schedule' : 'Set the schedule'}</button>
+                  </div>
+                </div>`;
+        }).join('') + '</div>';
+
+        const schedHost = container.querySelector('#attSchedHost');
         body.querySelectorAll('[data-sched]').forEach(btn => {
             btn.addEventListener('click', () => {
                 const key = btn.getAttribute('data-sched');
@@ -2074,30 +2902,35 @@
      */
     function attOpenPanel(openRows) {
         if (!openRows.length) return '';
+        const n = openRows.length;
         return '<div class="att-card att-card--flag">' +
                  '<div class="att-card-head">' +
                    '<div>' +
-                     '<h3 class="att-subhead">Open records — no Time Out</h3>' +
-                     '<p class="att-card-sub">Timed in and never timed out. Until one is ' +
-                       'closed it counts as still on site and reports no hours.</p>' +
+                     '<h3 class="att-card-title">' + n +
+                       (n === 1 ? ' day is waiting for a time out'
+                                : ' days are waiting for a time out') + '</h3>' +
+                     '<p class="att-card-sub">These workers timed in but never timed out, ' +
+                       'so the day records no hours. Closing a day tells the report to stop ' +
+                       'waiting — it does not invent hours, and it changes no pay.</p>' +
                    '</div>' +
                  '</div>' +
                  '<table class="att-table"><thead><tr>' +
-                   '<th>Worker</th><th>Date</th><th>Project</th><th>Time in</th><th></th>' +
+                   '<th>Day</th><th>Worker</th><th>Site</th><th>Arrived</th><th></th>' +
                  '</tr></thead><tbody>' +
                  openRows.map(function (r) {
                      const [y, m, d] = String(r.work_date).split('-').map(Number);
                      const day = new Date(y, m - 1, d).toLocaleDateString('en-PH',
-                         { day: 'numeric', month: 'short', year: 'numeric' });
+                         { weekday: 'short', day: 'numeric', month: 'short' });
                      return '<tr>' +
+                        '<td class="att-mono">' + attEsc(day) + '</td>' +
                         '<td><div class="att-worker">' + attEsc(r.worker_name || '—') + '</div>' +
                             '<div class="att-meta">' + attEsc(r.worker_position || '—') + '</div></td>' +
-                        '<td class="att-mono">' + attEsc(day) + '</td>' +
                         '<td>' + attEsc(r.timein_project_name || '—') + '</td>' +
                         '<td class="att-mono">' + attTime(r.timein_at) + '</td>' +
                         '<td class="att-right">' + (r._closable
-                            ? '<button class="att-link att-link--danger" type="button" ' +
-                              'data-resolve="' + attEsc(r.id) + '">Close</button>'
+                            ? '<button class="att-btn att-btn--warn" type="button" ' +
+                              'data-resolve="' + attEsc(r.id) + '">' +
+                              '<i data-lucide="clock"></i>Close this day</button>'
                             // No button, and the reason in its place: a
                             // row that simply lacked one would read as a
                             // bug rather than a rule.
@@ -2109,41 +2942,57 @@
                '</div>';
     }
 
+    /**
+     * A6 -- Hours report.
+     *
+     * Same query, same roll-ups, same exports. What changed is the
+     * opening: five stat tiles used to be the first thing on the screen,
+     * and "Missing time out: 3" is a number, not an instruction. The
+     * sentence above them now says what the range contains, and the
+     * things that need doing are a panel with a button on every row.
+     *
+     * The header still carries the pakyaw disclaimer. It is the single
+     * most important sentence on the screen -- an hours total that looks
+     * like a payroll basis is exactly the misreading this module exists
+     * to prevent.
+     */
     async function attRenderReports(container) {
         const range = attDefaultRange();
         container.innerHTML =
+            '<div class="att-stack">' +
             '<div class="att-head">' +
               '<div>' +
-                '<h2 class="att-title">Attendance Reports</h2>' +
+                '<h2 class="att-title">Hours report</h2>' +
                 '<div class="att-sub" id="attRangeLabel"></div>' +
               '</div>' +
             '</div>' +
             // Every control that shapes the report sits in ONE row: the
             // presets, the two dates those presets rewrite, and the
             // exports that carry the same range out. Splitting them
-            // between the header and a second bar put "Weekly" and the
-            // dates it fills in two different places on the screen.
+            // between the header and a second bar put "Last 7 days" and
+            // the dates it fills in two different places on the screen.
             //
             // The seg and CSV buttons are type="button" on purpose --
-            // inside a form, a bare <button> submits, and "CSV by day"
+            // inside a form, a bare <button> submits, and the exports
             // would re-run the query before writing the file.
             '<form class="att-toolbar" id="attRangeForm">' +
               '<div class="att-seg" id="attPeriod">' +
-                '<button class="att-seg-btn" type="button" data-period="daily">Daily</button>' +
-                '<button class="att-seg-btn is-on" type="button" data-period="weekly">Weekly</button>' +
-                '<button class="att-seg-btn" type="button" data-period="monthly">Monthly</button>' +
+                '<button class="att-seg-btn" type="button" data-period="daily">Just today</button>' +
+                '<button class="att-seg-btn is-on" type="button" data-period="weekly">Last 7 days</button>' +
+                '<button class="att-seg-btn" type="button" data-period="monthly">Last 30 days</button>' +
               '</div>' +
               '<label for="attFrom">From</label>' +
               '<input class="att-input" type="date" id="attFrom" value="' + attEsc(range.from) + '">' +
               '<label for="attTo">To</label>' +
               '<input class="att-input" type="date" id="attTo" value="' + attEsc(range.to) + '">' +
-              '<button class="att-btn att-btn--primary" type="submit">Apply</button>' +
+              '<button class="att-btn att-btn--primary" type="submit">Show</button>' +
               '<button class="att-btn" type="button" id="attCsvWorker">' +
-                '<i data-lucide="download"></i>CSV by worker</button>' +
+                '<i data-lucide="download"></i>Excel: one row per worker</button>' +
               '<button class="att-btn" type="button" id="attCsvDay">' +
-                '<i data-lucide="download"></i>CSV by day</button>' +
+                '<i data-lucide="download"></i>Excel: one row per day</button>' +
             '</form>' +
             '<div id="attReportBody">Loading…</div>' +
+            '</div>' +
             '<div id="attReportModalHost"></div>';
 
         const body = container.querySelector('#attReportBody');
@@ -2151,8 +3000,10 @@
 
         function stampRange(from, to) {
             container.querySelector('#attRangeLabel').textContent =
+                'Pick any stretch of days and see who was on site. ' +
                 attRangeLabel(from, to) +
-                ' · hours recorded, NOT a payroll figure — labour is pakyaw, capped by contract.';
+                ' · hours are a record of attendance, NOT a basis for pay — labour is ' +
+                'pakyaw, capped by contract.';
         }
 
         async function run() {
@@ -2173,7 +3024,8 @@
             }
 
             if (!rows.length) {
-                body.innerHTML = '<div class="att-empty">No attendance recorded in this range.</div>';
+                body.innerHTML = '<div class="att-empty">Nobody was recorded on site ' +
+                                 'in these days.</div>';
                 return;
             }
 
@@ -2194,26 +3046,41 @@
             const openRows = attOpenRecords(rows, attTodayKey());
             const openRecords = openRows.length;
             const abandoned = rows.filter(r => r.status === 'abandoned').length;
+            const workers = new Set(rows.map(r => r.worker_id)).size;
+
+            const tail = attAnd([
+                complete ? `${complete} ${complete === 1 ? 'day was' : 'days were'} finished properly` : '',
+                openRecords ? `${openRecords} ${openRecords === 1 ? 'is' : 'are'} still waiting for a time out` : '',
+                abandoned ? `${abandoned} ${abandoned === 1 ? 'was' : 'were'} closed by the office` : ''
+            ]);
 
             body.innerHTML =
+                '<div class="att-stack">' +
+
+                attBanner(
+                    `${workers} ${workers === 1 ? 'worker' : 'workers'} recorded ` +
+                    `${attFormatHours(totalMinutes)} across ${attRangeLabel(from, to)}.`,
+                    tail ? attEsc(tail.charAt(0).toUpperCase() + tail.slice(1)) + '.' : '') +
+
                 '<div class="att-stats">' +
-                  attStat('Total man-hours', attFormatHours(totalMinutes)) +
-                  attStat('Average per day', attFormatHours(
+                  attStat('Total hours on site', attFormatHours(totalMinutes)) +
+                  attStat('Average each day', attFormatHours(
                       activeDays ? Math.round(totalMinutes / activeDays) : null)) +
-                  attStat('Complete records', complete) +
-                  attStat('Missing time out', openRecords, openRecords > 0) +
+                  attStat('Days finished properly', complete) +
+                  attStat('Days waiting for a time out', openRecords, openRecords > 0) +
                   // Shown even at zero, so resolving a record moves a
                   // figure the admin can see rather than making one
                   // quietly disappear from the screen.
-                  attStat('Closed by admin', abandoned) +
+                  attStat('Days closed by the office', abandoned) +
                 '</div>' +
 
                 attOpenPanel(openRows) +
 
                 '<div class="att-card">' +
-                  '<div class="att-card-head"><h3 class="att-subhead">Summary by worker</h3></div>' +
+                  '<div class="att-card-head"><h3 class="att-subhead">Each worker over these days</h3></div>' +
                   '<table class="att-table"><thead><tr>' +
-                    '<th>Worker</th><th>Days present</th><th>Total hours</th><th>Incomplete</th>' +
+                    '<th>Worker</th><th>Days on site</th><th>Hours recorded</th>' +
+                    '<th>Anything to fix</th>' +
                   '</tr></thead><tbody>' +
                   byWorker.map(function (w) {
                       // Two badges, never one total. An open day still
@@ -2222,29 +3089,32 @@
                       // mean resolving a record changed nothing here.
                       const flags = [];
                       if (w.openDays) {
-                          flags.push('<span class="att-badge att-badge--skew" ' +
-                              'title="Timed in but never timed out">' + w.openDays + ' not closed</span>');
+                          flags.push('<span class="att-pill att-pill--working">' +
+                              w.openDays + (w.openDays === 1 ? ' day needs' : ' days need') +
+                              ' a time out</span>');
                       }
                       if (w.abandonedDays) {
-                          flags.push('<span class="att-badge att-badge--abandoned" ' +
-                              'title="Closed by an admin; no Time Out was ever recorded">' +
-                              w.abandonedDays + ' abandoned</span>');
+                          flags.push('<span class="att-pill att-pill--abandoned">' +
+                              w.abandonedDays +
+                              (w.abandonedDays === 1 ? ' day closed' : ' days closed') +
+                              ' by the office</span>');
                       }
                       return '<tr>' +
                           '<td><div class="att-worker">' + attEsc(w.name) + '</div>' +
                               '<div class="att-meta">' + attEsc(w.position || '—') + '</div></td>' +
                           '<td class="att-mono">' + w.daysWorked + '</td>' +
                           '<td class="att-mono">' + attFormatHours(w.totalMinutes) + '</td>' +
-                          '<td>' + (flags.length ? flags.join(' ') : '<span class="att-mono">0</span>') + '</td>' +
+                          '<td>' + (flags.length ? flags.join(' ')
+                              : '<span class="att-meta">Nothing</span>') + '</td>' +
                       '</tr>';
                   }).join('') +
                   '</tbody></table>' +
                 '</div>' +
 
                 '<div class="att-card">' +
-                  '<div class="att-card-head"><h3 class="att-subhead">Summary by project</h3></div>' +
+                  '<div class="att-card-head"><h3 class="att-subhead">Each site over these days</h3></div>' +
                   '<table class="att-table"><thead><tr>' +
-                    '<th>Project</th><th>Days present</th><th>Total hours</th>' +
+                    '<th>Site</th><th>Days worked</th><th>Hours recorded</th>' +
                   '</tr></thead><tbody>' +
                   byProject.map(function (p) {
                       return '<tr>' +
@@ -2254,12 +3124,13 @@
                       '</tr>';
                   }).join('') +
                   '</tbody></table>' +
+                '</div>' +
                 '</div>';
 
             // Re-runs the whole query after a close rather than patching
-            // the row: every stat, both roll-ups and the panel's own
-            // membership all shift together, and re-reading is the only
-            // way the screen shows what was actually stored.
+            // the row: every stat, both roll-ups, the banner sentence and
+            // the panel's own membership all shift together, and
+            // re-reading is the only way the screen shows what was stored.
             body.querySelectorAll('button[data-resolve]').forEach(function (btn) {
                 btn.addEventListener('click', function () {
                     const rec = rows.find(x => x.id === btn.getAttribute('data-resolve'));
@@ -2267,6 +3138,7 @@
                     attOpenResolve(container.querySelector('#attReportModalHost'), rec, run);
                 });
             });
+            attIcons();
         }
 
         const period = container.querySelector('#attPeriod');
@@ -2880,6 +3752,18 @@
         return data || [];
     }
 
+    /**
+     * Is the signed-in account staff?
+     *
+     * Staff never see a peso amount anywhere in this portal, and this
+     * screen is the one place in attendance that carries any. Same test
+     * warranty-fund.js uses -- currentUserRole is declared in admin.js
+     * and may not exist if a screen is opened in isolation.
+     */
+    function attIsStaff() {
+        return typeof currentUserRole !== 'undefined' && currentUserRole === 'staff';
+    }
+
     function attPeso(n) {
         const v = Number(n) || 0;
         return '\u20b1' + v.toLocaleString('en-PH', {
@@ -2890,37 +3774,57 @@
 
     function attRewardPill(status) {
         const cls = status === 'qualified' ? 'att-pill--done'
-                  : status === 'disqualified' ? 'att-pill--abandoned'
-                  : 'att-pill--none';
-        return '<span class="att-pill ' + cls + '">' +
-               attEsc(attRewardStatusLabel(status)) + '</span>';
+                  : status === 'disqualified' ? 'att-pill--none'
+                  : 'att-pill--working';
+        const word = status === 'qualified' ? 'Gets the bonus'
+                   : status === 'disqualified' ? 'No bonus'
+                   : 'Week still running';
+        return '<span class="att-pill ' + cls + '">' + attEsc(word) + '</span>';
     }
 
+    /**
+     * A8 -- Weekly bonus.
+     *
+     * "Reward" became "bonus" because that is what everyone on site calls
+     * it, and the four KPI tiles became one sentence for the same reason
+     * as A1: "Unpaid ₱1,000" is a figure, and "₱1,000 of it has not been
+     * handed out yet" is the thing the owner has to act on.
+     *
+     * The page still keeps a record and pays nobody. Marking a bonus as
+     * handed over writes one boolean; no money moves, and nothing here
+     * touches payroll, a contract or the money model.
+     */
     async function attRenderRewards(container) {
         const thisMonday = attWeekStartOf(attTodayKey());
         // Default to the week just gone: the current one cannot be frozen
         // yet, so landing on it would always show an empty table.
         let week = attKeyFromDayNum(attDayNum(thisMonday) - 7);
+        const hideMoney = attIsStaff();
 
         container.innerHTML =
+            '<div class="att-stack">' +
             '<div class="att-head">' +
               '<div>' +
-                '<h2 class="att-title">Weekly Reward</h2>' +
+                '<h2 class="att-title">Weekly bonus</h2>' +
                 '<div class="att-sub" id="attRwSub"></div>' +
               '</div>' +
             '</div>' +
             '<form class="att-toolbar" id="attRwForm">' +
               '<button class="att-btn" type="button" id="attRwPrev">' +
-                '<i data-lucide="chevron-left"></i>Previous</button>' +
+                '<i data-lucide="chevron-left"></i>Week before</button>' +
               '<label for="attRwWeek">Week of</label>' +
               '<input class="att-input" type="date" id="attRwWeek" value="' + attEsc(week) + '">' +
               '<button class="att-btn" type="button" id="attRwNext">' +
-                'Next<i data-lucide="chevron-right"></i></button>' +
-              '<button class="att-btn att-btn--primary" type="submit">Apply</button>' +
+                'Week after<i data-lucide="chevron-right"></i></button>' +
+              '<button class="att-btn att-btn--primary" type="submit">Show</button>' +
+              // Staff never see the amounts on screen, so they must not be
+              // able to fetch them in a file either.
+              (hideMoney ? '' :
               '<button class="att-btn" type="button" id="attRwCsv">' +
-                '<i data-lucide="download"></i>CSV for payroll</button>' +
+                '<i data-lucide="download"></i>Download the list</button>') +
             '</form>' +
-            '<div id="attRwBody">Loading…</div>';
+            '<div id="attRwBody">Loading…</div>' +
+            '</div>';
 
         const body = container.querySelector('#attRwBody');
         const input = container.querySelector('#attRwWeek');
@@ -2928,55 +3832,84 @@
         let config = null;
 
         function stamp() {
+            const end = attWeekEndOf(week);
+            const pretty = key => {
+                const [y, m, d] = String(key).split('-').map(Number);
+                return new Date(y, m - 1, d).toLocaleDateString('en-PH',
+                    { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+            };
             container.querySelector('#attRwSub').textContent =
-                'Monday ' + week + ' to Friday ' + attWeekEndOf(week) +
-                ' · a reported figure, NOT an accounting entry — payment happens outside this system.';
+                pretty(week) + ' to ' + pretty(end);
         }
 
         function paint() {
             if (!rows.length) {
                 body.innerHTML =
-                    '<div class="att-empty">Nothing evaluated for this week yet. ' +
+                    '<div class="att-empty">Nothing has been worked out for this week yet. ' +
                     'A week is frozen once it has ended and its grace period has passed, ' +
                     'so attendance captured offline has time to arrive first.</div>';
                 return;
             }
 
             const t = attRewardTotals(rows);
+            const lead = `${t.qualified} of ${t.workers} ` +
+                `${t.workers === 1 ? 'worker' : 'workers'} earned the bonus this week.`;
+            const money = hideMoney ? ''
+                : `${attPeso(t.totalAmount)} in total.` +
+                  (t.unpaidAmount > 0
+                    ? ` ${attPeso(t.unpaidAmount)} of it has not been handed out yet.`
+                    : ' All of it has been handed over.');
+            const bodyText = hideMoney
+                ? (t.unpaid
+                    ? `${t.unpaid} of them ${t.unpaid === 1 ? 'has' : 'have'} not been handed the bonus yet.`
+                    : 'Every bonus earned has been handed over.')
+                : attEsc(money);
+
             body.innerHTML =
-                '<div class="att-kpis">' +
-                  attKpi('award', 'total', String(t.qualified), 'Qualified') +
-                  attKpi('user-x', 'none', String(t.disqualified), 'Disqualified') +
-                  attKpi('wallet', 'in', attPeso(t.totalAmount), 'Total earned') +
-                  attKpi('clock', 'working', attPeso(t.unpaidAmount), 'Still unpaid',
-                         t.unpaidAmount > 0) +
+                '<div class="att-stack">' +
+
+                '<div class="att-lede">' +
+                  attBanner(lead, bodyText) +
+                  '<div class="att-explain"><div class="att-info">' +
+                    '<i data-lucide="info"></i>' +
+                    '<div><strong>This page keeps a record, it does not pay anyone.</strong> ' +
+                      'Marking a bonus as handed over only notes that you gave it. No money ' +
+                      'moves, and nothing here touches payroll or a contract.</div>' +
+                  '</div></div>' +
                 '</div>' +
+
+                '<div class="att-card">' +
                 '<table class="att-table"><thead><tr>' +
-                  '<th>Worker</th><th>Required</th><th>On time</th><th>Late</th>' +
-                  '<th>Missing</th><th>Status</th><th>Reward</th><th>Paid</th>' +
+                  '<th>Worker</th><th>Days expected</th><th>On time</th><th>Late</th>' +
+                  '<th>Missed</th><th>Result</th>' +
+                  (hideMoney ? '' : '<th>Amount</th>') +
+                  '<th>Handed over</th>' +
                 '</tr></thead><tbody>' +
                 rows.map(function (r) {
-                    return '<tr>' +
-                        '<td><div class="att-ident">' +
-                          '<strong>' + attEsc(r.worker_name || '—') + '</strong>' +
-                          (r.worker_position
-                            ? '<div class="att-card-sub">' + attEsc(r.worker_position) + '</div>'
-                            : '') +
-                        '</div></td>' +
-                        '<td>' + r.required_days + '</td>' +
-                        '<td>' + r.on_time_days + '</td>' +
-                        '<td>' + r.late_days + '</td>' +
-                        '<td>' + r.missing_days + '</td>' +
-                        '<td>' + attRewardPill(r.status) + '</td>' +
-                        '<td>' + attPeso(r.amount) + '</td>' +
+                    const tone = r.status === 'qualified' ? 'done'
+                               : r.status === 'disqualified' ? 'none' : 'working';
+                    return '<tr class="att-row--' + tone + '">' +
+                        '<td>' +
+                          '<div class="att-worker">' + attEsc(r.worker_name || '—') + '</div>' +
+                          '<div class="att-meta">' + attEsc(r.worker_position || '—') + '</div>' +
+                        '</td>' +
+                        '<td class="att-mono">' + r.required_days + '</td>' +
+                        '<td class="att-mono">' + r.on_time_days + '</td>' +
+                        '<td class="att-mono">' + r.late_days + '</td>' +
+                        '<td class="att-mono">' + r.missing_days + '</td>' +
+                        '<td>' + attRewardPill(r.status) +
+                          '<div class="att-meta">' + attEsc(attBonusReason(r)) + '</div></td>' +
+                        (hideMoney ? '' : '<td class="att-mono">' + attPeso(r.amount) + '</td>') +
                         '<td>' + (r.status === 'qualified'
                           ? '<button class="att-btn' + (r.paid ? '' : ' att-btn--primary') +
                             '" type="button" data-paid="' + attEsc(r.id) + '">' +
-                            (r.paid ? 'Paid' : 'Mark paid') + '</button>'
-                          : '<span class="att-hint-inline">—</span>') + '</td>' +
+                            (r.paid ? 'Handed over' : 'Mark as handed over') + '</button>'
+                          : '<span class="att-meta">—</span>') + '</td>' +
                       '</tr>';
                 }).join('') +
-                '</tbody></table>';
+                '</tbody></table>' +
+                '</div>' +
+                '</div>';
 
             body.querySelectorAll('[data-paid]').forEach(function (btn) {
                 btn.addEventListener('click', async function () {
@@ -3001,7 +3934,7 @@
                 });
             });
 
-            if (window.lucide) lucide.createIcons();
+            attIcons();
         }
 
         async function run() {
@@ -3034,12 +3967,15 @@
             input.value = attKeyFromDayNum(attDayNum(week) + 7);
             run();
         });
-        container.querySelector('#attRwCsv').addEventListener('click', function () {
-            if (!rows.length) return;
-            attDownloadCsv('weekly-reward-' + week + '.csv', attRewardCsv(rows));
-        });
+        const csvBtn = container.querySelector('#attRwCsv');
+        if (csvBtn) {
+            csvBtn.addEventListener('click', function () {
+                if (!rows.length) return;
+                attDownloadCsv('weekly-reward-' + week + '.csv', attRewardCsv(rows));
+            });
+        }
 
-        if (window.lucide) lucide.createIcons();
+        attIcons();
         await run();
     }
 

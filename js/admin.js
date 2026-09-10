@@ -2249,11 +2249,14 @@ const PRIMARY_NAV = [
     // this portal, and must never see other workers' records.
     { id: 'attendance', label: 'Attendance', sub: 'Workers · Time In / Out', defaultView: 'attToday',
       modules: [
-        { view: 'attToday',    label: 'Today',    icon: 'calendar-check' },
-        { view: 'attWorkers',  label: 'Workers',  icon: 'user-round' },
-        { view: 'attProjects', label: 'Projects', icon: 'hard-hat' },
-        { view: 'attReports',  label: 'Reports',  icon: 'file-bar-chart' },
-        { view: 'attRewards',  label: 'Rewards',  icon: 'award' },
+        // Plain-language labels, matching the redesign: an owner reads
+        // "Sites & schedule", not "Projects". The VIEW ids are unchanged —
+        // ATT_VIEWS, _FOCUS_SUBVIEWS and switchView all key off those.
+        { view: 'attToday',    label: 'Today on site',    icon: 'calendar-check' },
+        { view: 'attWorkers',  label: 'Workers',          icon: 'user-round' },
+        { view: 'attProjects', label: 'Sites & schedule', icon: 'hard-hat' },
+        { view: 'attReports',  label: 'Hours report',     icon: 'file-bar-chart' },
+        { view: 'attRewards',  label: 'Weekly bonus',     icon: 'award' },
       ]
     },
     { id: 'users', label: 'Users', sub: 'People', defaultView: 'userNavigator',

@@ -1,7 +1,12 @@
 /* ════════════════════════════════════════════════════════════════════
    ATTENDANCE ADMIN — styles for js/attendance-admin.js
 
-   Layout follows the "Attendance App" design canvas, artboards A1–A6:
+   Layout follows the "Attendance Redesigned" design canvas. The A1–A8
+   artboard names survive in the section comments below because the JS
+   still uses them; the screens they name were reworked in the redesign
+   (see THE REDESIGN, further down).
+
+   Original artboards A1–A6:
    A1 Today · A2 Detail · A3 Workers · A4 Create account · A5 Projects ·
    A6 Reports. The portal chrome (top nav, module bar) is the existing
    admin.html chrome — the design only replaces what lives inside a view.
@@ -144,58 +149,14 @@
     box-shadow: var(--att-shadow);
 }
 
-/* ── KPI cards (A1) ────────────────────────────────────────────── */
+/* ── KPI cards — RETIRED ────────────────────────────── */
 
-/* auto-fit rather than repeat(5, 1fr): the tile decides when to wrap,
-   at the width it stops being readable, instead of at a breakpoint
-   somebody guessed. Five tiles still sit on one row on a laptop. */
-.att-kpis {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
-}
-
-.att-kpi {
-    background: var(--att-card);
-    border: 1px solid var(--att-line);
-    border-radius: 14px;
-    padding: 20px;
-    box-shadow: var(--att-shadow);
-    display: flex;
-    align-items: center;
-    gap: 14px;
-}
-/* The absences are the reason the owner opened this screen — the one
-   card allowed to break the neutral border. */
-.att-kpi--alert { border-color: var(--att-red-line); }
-
-.att-kpi-icon {
-    width: 52px;
-    height: 52px;
-    border-radius: 12px;
-    display: grid;
-    place-items: center;
-    flex-shrink: 0;
-    color: #FFFFFF;
-}
-.att-kpi-icon i, .att-kpi-icon svg { width: 24px; height: 24px; }
-.att-kpi-icon--total   { background: linear-gradient(135deg, #7C5E2A, #A88B47); }
-.att-kpi-icon--in      { background: linear-gradient(135deg, #2A4D7A, #3F6EA8); }
-.att-kpi-icon--out     { background: linear-gradient(135deg, #1A5C3A, #267A4E); }
-.att-kpi-icon--working { background: linear-gradient(135deg, #267A4E, #3FA070); }
-.att-kpi-icon--none    { background: var(--att-red-tint); color: var(--att-red); }
-
-.att-kpi-num {
-    font-family: var(--att-serif);
-    font-size: 30px;
-    font-weight: 600;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-    color: var(--att-ink);
-}
-.att-kpi--alert .att-kpi-num { color: var(--att-red); }
-.att-kpi-label { font-size: 13px; color: var(--att-ink-2); margin: 5px 0 0; }
+/* A1 and A8 both used to open with a strip of these. The redesign
+   replaced them with .att-banner: a five-tile row reporting "Total 6 /
+   In 5 / Out 3 / Working 1 / No Attendance 1" is a puzzle whose answer
+   is "one worker never showed up", and the banner simply says that.
+   The rules are deleted rather than left unused, so the tile is not the
+   obvious thing to reach for the next time a screen needs a number. */
 
 /* ── Stat cards (A6) ───────────────────────────────────────────── */
 
@@ -454,12 +415,12 @@
     flex-shrink: 0;
 }
 
-/* Three equal tracks, not two halves and a fixed 320px rail. The
-   Time In and Time Out cards each hold a photo, and the side column
-   holds the total plus four facts -- at 320px the facts wrapped onto
-   two lines while the photos had room to spare. 310px is the floor at
-   which a photo is still worth looking at; below it the side column
-   drops under the two halves on its own. */
+/* The two photo halves, and nothing else. The total and the facts used
+   to ride in a third track here; the redesign moved the total into the
+   banner above and the facts into .att-detail-foot below, which leaves
+   this grid free to give both photos the full width of the screen.
+   310px is the floor at which a photo is still worth looking at; below
+   it the halves stack on their own. */
 .att-detail-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
@@ -585,18 +546,11 @@
     color: var(--att-muted);
 }
 
-/* ── A5 · Projects ─────────────────────────────────────────────── */
+/* ── A5 · Projects — see .att-site-grid ───────────────── */
 
-/* Equal tracks rather than a table and a fixed 400px rail. The table
-   is three narrow columns and never needed the extra width, while the
-   "Where these come from" card is three paragraphs of prose that read
-   badly in a 400px gutter -- this screen is mostly explanation. */
-.att-proj-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-    gap: 20px;
-    align-items: start;
-}
+/* The table-plus-explainer-rail layout that lived here is gone. The
+   screen is a grid of site cards now, and the explainer it used to sit
+   beside runs full width above them. */
 
 /* ── A6 · Report range toolbar ─────────────────────────────────── */
 
@@ -788,14 +742,414 @@ select.att-input { cursor: pointer; }
     color: var(--att-faint);
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   THE REDESIGN — "Attendance Redesigned" canvas
+   ════════════════════════════════════════════════════════════════════
+
+   The tokens above did not change; the way a screen OPENS did. Every
+   view used to lead with a strip of numbers and leave the owner to work
+   out what they meant. Now each one leads with a sentence that already
+   says it, and the numbers sit underneath as the evidence.
+
+   Two rules the components below encode:
+
+   1. A figure never appears without the plain-language sentence that
+      reads it. "5 of your 6 workers are on site today" is the headline;
+      the 5 is the detail.
+   2. Anything that needs the owner is gold and separated out, never a
+      red number buried in a row. Red stays for a state the office has
+      already closed — a decision taken, not a task waiting.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── Summary banner ────────────────────────────────────────────── */
+
+/* The sentence that opens a screen. Green because the ordinary case is
+   "this is fine" — the exceptions get their own gold card beside it. */
+.att-banner {
+    background: var(--att-green-tint);
+    border: 1px solid #D3E2D8;
+    border-radius: 14px;
+    padding: 24px 26px;
+}
+.att-banner-lead {
+    font-family: var(--att-serif);
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--att-green);
+    letter-spacing: -0.01em;
+    text-wrap: pretty;
+}
+.att-banner-body {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--att-ink-2);
+    margin-top: 8px;
+    max-width: 900px;
+    text-wrap: pretty;
+}
+
+/* A2 puts the day's total on the right of the same banner. */
+.att-banner--split {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+    padding: 22px 26px;
+}
+.att-banner-figure { text-align: right; }
+.att-banner-figure-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--att-green);
+    opacity: .8;
+}
+.att-banner-figure-value {
+    font-family: var(--att-mono);
+    font-size: 44px;
+    font-weight: 500;
+    line-height: 1.1;
+    color: var(--att-green);
+    margin-top: 4px;
+}
+
+/* The pair that opens A1 and A8: the sentence, and whatever needs doing. */
+.att-lede {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    align-items: stretch;
+}
+
+/* ── "N things need you" ───────────────────────────────────────── */
+
+/* Gold, and beside the green sentence rather than inside it. The owner
+   should be able to see there is something to do without reading a
+   single row — and see that there is NOT, just as quickly. */
+.att-flag {
+    background: var(--att-gold-tint);
+    border: 1px solid #E0D2B4;
+    border-radius: 14px;
+    padding: 20px 22px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.att-flag-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--att-card);
+    color: var(--att-gold);
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+}
+.att-flag-icon i, .att-flag-icon svg { width: 22px; height: 22px; }
+.att-flag-text { flex: 1; min-width: 180px; }
+.att-flag-title { font-size: 15.5px; font-weight: 700; color: #5E4720; }
+.att-flag-body {
+    font-size: 13.5px;
+    color: var(--att-gold);
+    margin-top: 2px;
+    text-wrap: pretty;
+}
+.att-flag .att-btn { border-color: #E0D2B4; color: var(--att-gold); }
+.att-flag .att-btn:hover { background: #FBF6EC; }
+
+/* The all-clear. Same shape, so the screen does not jump when the last
+   thing is cleared — only the colour and the words change. */
+.att-flag--clear { background: var(--att-green-tint); border-color: #D3E2D8; }
+.att-flag--clear .att-flag-icon { color: var(--att-green); }
+.att-flag--clear .att-flag-title { color: var(--att-green); }
+.att-flag--clear .att-flag-body { color: var(--att-ink-2); }
+
+/* ── The attention panel (A1 full list, A6) ────────────────────── */
+
+.att-attn-row {
+    padding: 18px 22px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.att-attn-row + .att-attn-row { border-top: 1px solid var(--att-line-soft); }
+.att-attn-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    background: var(--att-line-soft);
+    color: var(--att-muted);
+}
+.att-attn-icon i, .att-attn-icon svg { width: 20px; height: 20px; }
+.att-attn-icon--work { background: var(--att-gold-tint); color: var(--att-gold); }
+.att-attn-text { flex: 1; min-width: 0; }
+.att-attn-title { font-size: 15.5px; font-weight: 700; color: var(--att-ink); }
+.att-attn-body {
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--att-muted);
+    margin-top: 3px;
+    max-width: 700px;
+    text-wrap: pretty;
+}
+
+/* ── Legend ────────────────────────────────────────────────────── */
+
+/* The table's left-edge colours mean nothing until they are named, and
+   naming them in a tooltip means nobody reads it. */
+.att-legend {
+    padding: 12px 22px;
+    background: #FAFAF8;
+    border-bottom: 1px solid var(--att-line);
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    flex-wrap: wrap;
+}
+.att-legend-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--att-muted);
+}
+.att-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--att-ink-2);
+}
+.att-legend-dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; }
+.att-legend-dot--done      { background: var(--att-green); }
+.att-legend-dot--working   { background: var(--att-gold); }
+.att-legend-dot--abandoned { background: var(--att-red); }
+.att-legend-dot--none      { background: #C9C8C3; }
+
+/* The same four states as a rule down the first cell of a row. */
+.att-row--done td:first-child      { border-left: 3px solid var(--att-green); }
+.att-row--working td:first-child   { border-left: 3px solid var(--att-gold); }
+.att-row--abandoned td:first-child { border-left: 3px solid var(--att-red); }
+.att-row--none td:first-child      { border-left: 3px solid #C9C8C3; }
+
+/* What happened, said in words rather than left to the pill alone. */
+.att-status-word { font-size: 14.5px; font-weight: 700; color: var(--att-ink); }
+.att-status-word--abandoned { color: var(--att-red); }
+.att-status-word--none      { color: var(--att-muted); }
+
+/* ── A1 · By site ──────────────────────────────────────────────── */
+
+/* One card per site rather than one long table. The owner's question in
+   the morning is "who is at Villa Ysabel", and a site column he has to
+   scan for is a worse answer than a heading he can jump to. */
+.att-crew-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+    align-items: start;
+}
+.att-crew-card {
+    background: var(--att-card);
+    border: 1px solid var(--att-line);
+    border-radius: 14px;
+    box-shadow: var(--att-shadow);
+    overflow: hidden;
+}
+/* Nobody is here. Dashed, because the card describes an absence. */
+.att-crew-card--none { border-style: dashed; }
+
+.att-crew-head {
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--att-line);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+}
+.att-crew-title {
+    font-family: var(--att-serif);
+    font-size: 19px;
+    font-weight: 600;
+    color: var(--att-ink);
+    margin: 0;
+}
+.att-crew-sub { font-size: 13px; color: var(--att-muted); margin: 4px 0 0; }
+
+.att-crew-list { padding: 8px 0; }
+.att-crew-row {
+    padding: 12px 22px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    cursor: pointer;
+}
+.att-crew-row:hover { background: #FAFBFA; }
+.att-crew-photo {
+    width: 56px;
+    height: 56px;
+    border-radius: 10px;
+    border: 1px solid var(--att-line);
+    flex-shrink: 0;
+    background: var(--att-hatch);
+}
+.att-crew-photo--empty { opacity: 0.35; }
+.att-crew-body { flex: 1; min-width: 0; }
+.att-crew-name { font-size: 15px; font-weight: 700; color: var(--att-ink); }
+.att-crew-position { font-size: 13px; color: var(--att-muted); margin-top: 2px; }
+.att-crew-times {
+    font-family: var(--att-mono);
+    font-size: 13px;
+    color: var(--att-ink-2);
+    margin-top: 6px;
+}
+.att-crew-right { text-align: right; flex-shrink: 0; }
+.att-crew-hours {
+    font-family: var(--att-mono);
+    font-size: 15px;
+    color: var(--att-ink);
+    margin-top: 7px;
+}
+/* A site nobody is on yet: header only, so a row of them stays compact
+   and the sites that DO have crew keep the eye. The head's rule would
+   otherwise underline nothing. */
+.att-crew-card--quiet .att-crew-head { border-bottom: 0; }
+
+/* The "not on site" card. It is a list of PEOPLE, not a site, so it sits
+   below the site grid at full width and flows its names into as many
+   columns as fit. In a site-sized cell it was a single tall column with
+   every line wrapping three deep. */
+.att-crew-card--wide { margin-top: 20px; }
+.att-crew-card--wide .att-crew-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 0 8px;
+}
+
+.att-crew-foot {
+    padding: 14px 22px;
+    background: #FAFAF8;
+    border-top: 1px solid var(--att-line-soft);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--att-muted);
+}
+
+/* ── A5 · Site cards ───────────────────────────────────────────── */
+
+/* The schedule was a button in a table cell that showed "Mon–Fri" and
+   hid everything else behind a click. The card states the three
+   settings that actually matter before anyone opens the editor. */
+.att-site-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+    align-items: start;
+}
+.att-site-card {
+    background: var(--att-card);
+    border: 1px solid var(--att-line);
+    border-radius: 14px;
+    box-shadow: var(--att-shadow);
+    overflow: hidden;
+}
+.att-site-body {
+    padding: 18px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.att-site-facts { display: flex; gap: 28px; flex-wrap: wrap; }
+.att-site-key {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--att-muted);
+}
+.att-site-val { font-size: 15px; font-weight: 700; color: var(--att-ink); margin-top: 4px; }
+.att-site-val--mono { font-family: var(--att-mono); font-weight: 400; }
+.att-site-note {
+    font-size: 13.5px;
+    line-height: 1.55;
+    border-radius: 10px;
+    padding: 12px 14px;
+    background: #F7F7F5;
+    color: var(--att-ink-2);
+}
+/* A site with no working days set cannot qualify anyone for the bonus.
+   Gold, because it is a setting the owner has not made yet. */
+.att-site-note--warn { background: var(--att-gold-tint); color: #5E4720; }
+.att-site-card .att-btn { align-self: flex-start; }
+
+/* ── Explainer stack ───────────────────────────────────────────── */
+
+/* The grey panel of "here is how this works" rows. It sits BESIDE the
+   facts on A2 and above the grid on A5 — in both places it answers a
+   question the screen would otherwise leave hanging. */
+.att-explain {
+    background: #F5F5F5;
+    border-radius: 14px;
+    padding: 20px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.att-explain .att-info { padding: 0; background: none; border: 0; }
+
+/* A one-line version, for the footer of a screen. */
+.att-strip {
+    background: #F5F5F5;
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    gap: 11px;
+    align-items: flex-start;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--att-ink-2);
+    max-width: 900px;
+}
+.att-strip i, .att-strip svg {
+    width: 18px;
+    height: 18px;
+    color: var(--att-green);
+    flex-shrink: 0;
+    margin-top: 1px;
+}
+
+/* ── Stacks ────────────────────────────────────────────────────── */
+
+/* Every redesigned screen is one vertical rhythm of 22px, so the pieces
+   no longer carry their own margins. */
+.att-stack { display: flex; flex-direction: column; gap: 22px; }
+.att-stack > .att-card + .att-card { margin-top: 0; }
+.att-stack > .att-head { margin-bottom: 0; }
+.att-stack > .att-note { margin-top: 0; }
+
+/* A2's closing pair: the facts list and the explainer, side by side. */
+.att-detail-foot {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    align-items: start;
+}
+
 /* ── Responsive ────────────────────────────────────────────────── */
 
-/* The four content grids -- .att-kpis, .att-stats, .att-detail-grid and
-   .att-proj-grid -- are NOT reflowed here. They use auto-fit with a
-   minmax floor, so they rewrap at the width their own content stops
-   fitting rather than at a breakpoint chosen in advance. A rule here
-   would override that floor and put the tiles back on a fixed count.
-   What is left are the things a track count cannot express. */
+/* The content grids -- .att-stats, .att-lede, .att-detail-grid,
+   .att-detail-foot, .att-crew-grid and .att-site-grid -- are NOT
+   reflowed here. They use auto-fit with a minmax floor, so they rewrap
+   at the width their own content stops fitting rather than at a
+   breakpoint chosen in advance. A rule here would override that floor
+   and put the cards back on a fixed count. What is left are the things
+   a track count cannot express. */
 
 @media (max-width: 720px) {
     .att-title { font-size: 24px; }
@@ -803,4 +1157,17 @@ select.att-input { cursor: pointer; }
     .att-modal-body { grid-template-columns: 1fr; }
     .att-table th, .att-table td { padding: 11px 14px; }
     .att-search-wrap { min-width: 0; flex: 1; }
+
+    /* The banner sentence is the one piece of type that has to shrink:
+       26px of Playfair over a 320px phone is four words to a line. */
+    .att-banner-lead { font-size: 21px; }
+    .att-banner-figure-value { font-size: 34px; }
+    /* The split banner's figure goes under the sentence and left-aligns
+       with it, rather than hanging off a right edge that is no longer
+       far from the text. */
+    .att-banner--split { flex-direction: column; align-items: flex-start; }
+    .att-banner-figure { text-align: left; }
+    /* Four legend items across a phone put one word on each line and
+       stop reading as a key at all. */
+    .att-legend { gap: 10px 18px; }
 }
