@@ -186,19 +186,6 @@ window.addEventListener('scroll', () => {
 });
 
 // ===========================
-// Image loading animation
-// ===========================
-document.querySelectorAll('.card-image-wrap img').forEach(img => {
-    img.style.opacity = '1';
-    img.style.transition = 'opacity 0.5s ease';
-    img.style.display = 'block';
-    img.addEventListener('load', () => { 
-        img.style.opacity = '1';
-        img.style.display = 'block';
-    });
-});
-
-// ===========================
 // Hero animations on page load
 // ===========================
 window.addEventListener('load', () => {
@@ -231,60 +218,129 @@ document.querySelectorAll('.value-card').forEach(card => {
 });
 
 // ===========================
-// Card Slider – Clean & Reliable
+// Featured Projects – Infinite Marquee Carousel
 // ===========================
+const featuredProjects = [
+    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (1).png',  status: 'proposal', statusLabel: 'Proposal', category: 'Residential · Interior · Proposal', title: 'Avida Towers Vita', desc: 'Proposed studio unit interior design at Vertis North, Bagong Pag-asa, Quezon City, Metro Manila.', authorName: "DAC's Team", authorRole: 'Interior Architect & Constructor' },
+    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (2).png',  status: 'turnover', statusLabel: 'Turnover', category: 'Residential · Interior · Turnover', title: 'Avida Towers Vita', desc: 'Completed studio unit interior design & construction at Vertis North, Bagong Pag-asa, Quezon City, Metro Manila.', authorName: "DAC's Team", authorRole: 'Interior Architect & Constructor' },
+    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (3).png',  status: 'before', statusLabel: 'Before', category: 'Residential · Interior · Before', title: 'Park Triangle Residences', desc: 'Existing unit condition at 32nd St. corner 11th Ave., Fort Bonifacio, Taguig — before full interior renovation.', authorName: "DAC's Team", authorRole: 'Interior Architect & Constructor' },
+    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (4).png',  status: 'turnover', statusLabel: 'Turnover', category: 'Residential · Interior · Turnover', title: 'Park Triangle Residences', desc: 'Full luxury interior fit-out completed at 32nd St. corner 11th Ave., Fort Bonifacio, Taguig, Metro Manila.', authorName: "DAC's Team", authorRole: 'Interior Architect & Constructor' },
+    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (5).png',  status: 'proposal', statusLabel: 'Proposal', category: 'Residential · Interior · Proposal', title: 'San Lorenzo Place', desc: 'Proposed dark-luxury interior design at Chino Roces Ave., corner Epifanio delos Santos Ave., Makati, 1223 Metro Manila.', authorName: "DAC's Team", authorRole: 'Interior Architect & Constructor' },
+    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (6).png',  status: 'turnover', statusLabel: 'Turnover', category: 'Residential · Interior · Turnover', title: 'San Lorenzo Place', desc: 'Contemporary dark-luxury interior renovation completed at Chino Roces Ave. corner EDSA, Makati, Metro Manila.', authorName: "DAC's Team", authorRole: 'Interior Architect & Constructor' },
+    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (7).png',  status: 'turnover', statusLabel: 'Turnover', category: 'Residential · Interior · Turnover', title: 'SMDC Grass Residence', desc: 'Cozy modern interior design and furnishing at Grass Residences, Nueva Viscaya, Bago Bantay, Quezon City.', authorName: "DAC's Team", authorRole: 'Interior Design & Furnishing' },
+    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (8).png',  status: 'turnover', statusLabel: 'Turnover', category: 'Residential · Interior · Detail', title: 'SMDC Grass Residence', desc: 'Interior detail views — bedroom, living area, and entertainment setup at Grass Residences, Quezon City.', authorName: "DAC's Team", authorRole: 'Interior Design & Furnishing' },
+    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (9).png',  status: 'proposal', statusLabel: 'Proposal', category: 'Commercial · Clinic · Proposal', title: 'Health Works', desc: 'Proposed clinic interior design at 2F Waltermart The Junction Place, Quezon City — featuring pink fluted walls and marble reception.', authorName: "DAC's Team", authorRole: 'Commercial Interior Constructor' },
+    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (10).png', status: 'turnover', statusLabel: 'Turnover', category: 'Commercial · Clinic · Turnover', title: 'Health Works', desc: 'Completed dental clinic interior construction at 2F Waltermart The Junction Place, Quezon City — pink fluted walls and marble accents.', authorName: "DAC's Team", authorRole: 'Commercial Interior Constructor' },
+    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (11).png', status: 'proposal', statusLabel: 'Proposal', category: 'Residential · Building · Proposal', title: 'Mallari Bldg.', desc: 'Proposed multi-storey residential apartment building at Maya St., Brgy. Ugong, Valenzuela City.', authorName: "DAC's Team", authorRole: 'Architect & Civil Engineer' },
+    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (12).png', status: 'turnover', statusLabel: 'Turnover', category: 'Residential · Building · Turnover', title: 'Mallari Bldg.', desc: 'Completed multi-storey residential apartment building at Maya St., Brgy. Ugong, Valenzuela City.', authorName: "DAC's Team", authorRole: 'Architect & Civil Engineer' },
+    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (13).png', status: 'proposal', statusLabel: 'Proposal', category: 'Commercial · Mixed-Use · Proposal', title: 'AUM Bldg.', desc: 'Proposed mixed-use commercial building for Tom N Toms Coffee & Mayo Diagnostics at Corner Araneta St., Roxas Ave., Iligan City.', authorName: "DAC's Team", authorRole: 'Architect & Engineers' },
+    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (14).png', status: 'turnover', statusLabel: 'Turnover', category: 'Commercial · Mixed-Use · Turnover', title: 'AUM Bldg.', desc: 'Completed mixed-use commercial building housing Tom N Toms Coffee & Mayo Diagnostics at Corner Araneta St., Roxas Ave., Iligan City.', authorName: "DAC's Team", authorRole: 'Architect & Engineers' }
+];
+
 (function () {
-    const track   = document.querySelector('.carousel-track');
-    const cards   = document.querySelectorAll('.carousel-card');
-    const dots    = document.querySelectorAll('.carousel-dot');
-    const prevBtn = document.getElementById('carouselPrev');
-    const nextBtn = document.getElementById('carouselNext');
-    const counter = document.querySelector('.carousel-counter');
+    const viewport = document.getElementById('projectsMarquee');
+    const track    = document.getElementById('projectsMarqueeTrack');
+    if (!viewport || !track) return;
 
-    if (!track || cards.length === 0) return;
-
-    let idx = 0;
-    const total = cards.length;
-
-    function goTo(i) {
-        idx = ((i % total) + total) % total;
-        track.style.transform = `translateX(-${idx * 100}%)`;
-        dots.forEach((d, j) => d.classList.toggle('active', j === idx));
-        if (counter) counter.textContent = `${idx + 1} / ${total}`;
+    function escHtml(s) {
+        return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
-    function next() { goTo(idx + 1); }
-    function prev() { goTo(idx - 1); }
+    function renderItem(p, i) {
+        return `
+            <button class="marquee-item" type="button" data-index="${i}" aria-label="View ${escHtml(p.title)} project">
+                <img src="${p.image}" alt="${escHtml(p.title)} – ${escHtml(p.statusLabel)}" loading="lazy">
+                <span class="marquee-item-badge status-${p.status}">${escHtml(p.statusLabel)}</span>
+                <span class="marquee-item-caption">${escHtml(p.title)}</span>
+            </button>`;
+    }
 
-    // Arrows
-    if (prevBtn) prevBtn.addEventListener('click', () => { prev(); });
-    if (nextBtn) nextBtn.addEventListener('click', () => { next(); });
+    // Render the set twice back-to-back so the -50% translateX loop is seamless
+    track.innerHTML = featuredProjects.map(renderItem).join('') + featuredProjects.map(renderItem).join('');
 
-    // Dots
-    dots.forEach((d, i) => d.addEventListener('click', () => { goTo(i); }));
-
-    // Keyboard
-    document.addEventListener('keydown', e => {
-        if (e.key === 'ArrowLeft')  { prev(); }
-        if (e.key === 'ArrowRight') { next(); }
+    track.querySelectorAll('.marquee-item').forEach(item => {
+        item.addEventListener('click', () => openProjectModal(Number(item.dataset.index)));
     });
 
-    // Touch swipe
-    let touchStartX = 0;
-    track.addEventListener('touchstart', e => { touchStartX = e.touches[0].clientX; }, { passive: true });
-    track.addEventListener('touchend',   e => {
-        const diff = touchStartX - e.changedTouches[0].clientX;
-        if (Math.abs(diff) > 40) { diff > 0 ? next() : prev(); }
+    // Highlight whichever thumbnail is nearest the viewport's horizontal center
+    let ticking = false;
+    function updateCentered() {
+        ticking = false;
+        const viewportCenter = viewport.getBoundingClientRect().left + viewport.getBoundingClientRect().width / 2;
+        let closest = null;
+        let closestDist = Infinity;
+        track.querySelectorAll('.marquee-item').forEach(item => {
+            const rect = item.getBoundingClientRect();
+            const itemCenter = rect.left + rect.width / 2;
+            const dist = Math.abs(itemCenter - viewportCenter);
+            item.classList.remove('is-centered');
+            if (dist < closestDist) { closestDist = dist; closest = item; }
+        });
+        if (closest) closest.classList.add('is-centered');
+    }
+
+    function requestUpdate() {
+        if (!ticking) {
+            ticking = true;
+            requestAnimationFrame(updateCentered);
+        }
+    }
+
+    requestAnimationFrame(function loop() {
+        requestUpdate();
+        requestAnimationFrame(loop);
     });
 
-    goTo(0);
-    
-    // Attach lightbox handlers after carousel init
-    setTimeout(attachImageClickHandlers, 500);
+    // Pause the marquee (and via CSS, its animation) on hover/focus so visitors can click precisely
+    viewport.addEventListener('mouseenter', () => viewport.classList.add('paused'));
+    viewport.addEventListener('mouseleave', () => viewport.classList.remove('paused'));
+    viewport.addEventListener('focusin', () => viewport.classList.add('paused'));
+    viewport.addEventListener('focusout', () => viewport.classList.remove('paused'));
 
     console.log("DAC's Building Design Services – Website Loaded Successfully");
-    console.log('Card Slider initialized with', total, 'cards');
+    console.log('Marquee carousel initialized with', featuredProjects.length, 'projects');
 })();
+
+// ===========================
+// Project Detail Modal
+// ===========================
+const projectModalOverlay = document.getElementById('projectModalOverlay');
+const projectModalClose   = document.getElementById('projectModalClose');
+
+function openProjectModal(index) {
+    const p = featuredProjects[index];
+    if (!p || !projectModalOverlay) return;
+
+    const statusEl = document.getElementById('projectModalStatus');
+    statusEl.textContent = p.statusLabel;
+    statusEl.className = `card-status-badge status-${p.status}`;
+
+    document.getElementById('projectModalCategory').textContent   = p.category;
+    document.getElementById('projectModalTitle').textContent      = p.title;
+    document.getElementById('projectModalDesc').textContent       = p.desc;
+    document.getElementById('projectModalAuthorName').textContent = p.authorName;
+    document.getElementById('projectModalAuthorRole').textContent = p.authorRole;
+    document.getElementById('projectModalImage').src = p.image;
+    document.getElementById('projectModalImage').alt = `${p.title} – ${p.statusLabel}`;
+
+    projectModalOverlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeProjectModal() {
+    projectModalOverlay.classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+if (projectModalClose) projectModalClose.addEventListener('click', closeProjectModal);
+if (projectModalOverlay) {
+    projectModalOverlay.addEventListener('click', e => {
+        if (e.target === projectModalOverlay) closeProjectModal();
+    });
+}
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && projectModalOverlay && projectModalOverlay.classList.contains('open')) closeProjectModal();
+});
 
 // ===========================
 // Testimonials / Feedback
@@ -514,70 +570,6 @@ scrollToTopBtn.addEventListener('click', () => {
 });
 
 // ===========================
-// Image Lightbox for Project Images
-// ===========================
-const lightbox = document.getElementById('lightbox');
-const lightboxImage = document.getElementById('lightboxImage');
-const lightboxClose = document.getElementById('lightboxClose');
-
-// Add click event to all project images (works for both desktop and mobile)
-function attachImageClickHandlers() {
-    // Only attach on desktop
-    if (window.innerWidth > 1024) {
-        document.querySelectorAll('.card-image-wrap').forEach(wrap => {
-            wrap.style.cursor = 'pointer';
-            wrap.addEventListener('click', () => {
-                const img = wrap.querySelector('img');
-                if (img) {
-                    lightboxImage.src = img.src;
-                    lightboxImage.alt = img.alt;
-                    lightbox.classList.add('active');
-                    document.body.style.overflow = 'hidden';
-                }
-            });
-        });
-    }
-}
-
-// Zoom functionality on lightbox image
-lightboxImage.addEventListener('click', (e) => {
-    e.stopPropagation();
-    lightboxImage.classList.toggle('zoomed');
-});
-
-// Touch support for mobile zoom
-lightboxImage.addEventListener('touchend', (e) => {
-    e.stopPropagation();
-    lightboxImage.classList.toggle('zoomed');
-});
-
-// Initial attachment
-attachImageClickHandlers();
-
-// Close lightbox
-function closeLightbox() {
-    lightbox.classList.remove('active');
-    lightboxImage.classList.remove('zoomed');
-    document.body.style.overflow = 'auto';
-}
-
-lightboxClose.addEventListener('click', closeLightbox);
-
-// Close on background click
-lightbox.addEventListener('click', (e) => {
-    if (e.target === lightbox) {
-        closeLightbox();
-    }
-});
-
-// Close on Escape key
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && lightbox.classList.contains('active')) {
-        closeLightbox();
-    }
-});
-
-// ===========================
 // Service Detail Modal
 // ===========================
 const svcIconMap = {
@@ -602,11 +594,11 @@ const serviceData = {
             'Concept to turnover coordination'
         ],
         images: [
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (1).png', label: 'Avida Towers Vita — Proposal' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (2).png', label: 'Avida Towers Vita — Turnover' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (4).png', label: 'Park Triangle Residences — Turnover' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (5).png', label: 'San Lorenzo Place — Proposal' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (6).png', label: 'San Lorenzo Place — Turnover' }
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (1).png', label: 'Bedroom Area' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (2).png', label: 'Kitchen' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (4).png', label: 'Living & Dining Area' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (5).png', label: 'Living Area' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (6).png', label: 'Lounge Area' }
         ]
     },
     'architectural-design': {
@@ -620,8 +612,8 @@ const serviceData = {
             '3D architectural visualization'
         ],
         images: [
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (11).png', label: 'Mallari Bldg — Proposal' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (13).png', label: 'AUM Bldg — Proposal' }
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (11).png', label: 'Building Exterior — Mallari Bldg.' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (13).png', label: 'Building Exterior — AUM Bldg.' }
         ]
     },
     'engineering-design': {
@@ -635,9 +627,9 @@ const serviceData = {
             'Code compliance & safety checks'
         ],
         images: [
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (12).png', label: 'Mallari Bldg — Construction Phase' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (13).png', label: 'AUM Bldg — Engineering Proposal' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (14).png', label: 'AUM Bldg (Tom N Toms) — Turnover' }
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (12).png', label: 'Structural Facade Detail' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (13).png', label: 'Building Structural Massing' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (14).png', label: 'Completed Structure — AUM Bldg.' }
         ]
     },
     'interior-renovation': {
@@ -651,10 +643,10 @@ const serviceData = {
             'Clean, on-schedule delivery'
         ],
         images: [
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (7).png', label: 'SMDC Grass Residence — Turnover' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (8).png', label: 'Renovation Turnover' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (9).png', label: 'Health Works — Proposal' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (10).png', label: 'Health Works — Turnover' }
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (7).png', label: 'Living Area — After' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (8).png', label: 'Bathroom — After' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (9).png', label: 'Reception Area' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (10).png', label: 'Storefront — After' }
         ]
     },
     'residential-construction': {
@@ -668,8 +660,8 @@ const serviceData = {
             'On-time project delivery'
         ],
         images: [
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (11).png', label: 'Mallari Bldg — Proposal' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (12).png', label: 'Mallari Bldg — Turnover' }
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (11).png', label: 'Living Room & Kitchen' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (12).png', label: 'Completed Building Exterior' }
         ]
     },
     'ground-up-construction': {
@@ -683,8 +675,8 @@ const serviceData = {
             'Complete interior & exterior finish'
         ],
         images: [
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (12).png', label: 'Mallari Bldg — Construction Phase' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (14).png', label: 'Tom N Toms Coffee — Turnover' }
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (12).png', label: 'Site Structure — In Progress' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (14).png', label: 'Completed Building Exterior' }
         ]
     },
     'commercial-renovation': {
@@ -698,10 +690,10 @@ const serviceData = {
             'Brand-aligned design execution'
         ],
         images: [
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (9).png', label: 'Health Works — Proposal' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (10).png', label: 'Health Works — Turnover' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (13).png', label: 'AUM Bldg — Proposal' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (14).png', label: 'Tom N Toms Coffee — Turnover' }
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (9).png', label: 'Clinic Reception Area' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (10).png', label: 'Storefront Entrance' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (13).png', label: 'Commercial Building — Proposal' },
+            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (14).png', label: 'Rooftop Lounge — After' }
         ]
     }
 };
@@ -772,3 +764,102 @@ svcModalOverlay.addEventListener('click', e => {
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && svcModalOverlay.classList.contains('open')) closeSvcModal();
 });
+
+// ===========================
+// Draggable floating buttons (Messenger + Feedback)
+// ===========================
+function makeDraggable(el, storageKey) {
+    if (!el) return;
+
+    const DRAG_THRESHOLD = 6; // px of movement before it counts as a drag, not a click
+    let startY = 0;
+    let originTop = 0;
+    let dragging = false;
+    let moved = false;
+
+    function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+    }
+
+    // Vertical-only: slides up/down the right edge, like a bookmark tab. Horizontal (right: 0) never changes.
+    function applyTop(top) {
+        const rect = el.getBoundingClientRect();
+        const maxTop = window.innerHeight - rect.height;
+        top = clamp(top, 0, Math.max(0, maxTop));
+        el.style.top = `${top}px`;
+        el.style.bottom = 'auto';
+        return top;
+    }
+
+    function restorePosition() {
+        try {
+            const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+            if (saved && typeof saved.top === 'number') {
+                applyTop(saved.top);
+            }
+        } catch (e) { /* ignore malformed storage */ }
+    }
+
+    function savePosition(top) {
+        try {
+            localStorage.setItem(storageKey, JSON.stringify({ top }));
+        } catch (e) { /* storage unavailable, skip persistence */ }
+    }
+
+    function onPointerDown(e) {
+        if (e.button !== undefined && e.button !== 0) return; // left click / primary touch only
+        const rect = el.getBoundingClientRect();
+        startY = e.clientY;
+        originTop = rect.top;
+        dragging = true;
+        moved = false;
+        try { el.setPointerCapture(e.pointerId); } catch (err) { /* capture not available, drag still works via document listeners */ }
+        el.classList.add('is-dragging');
+    }
+
+    function onPointerMove(e) {
+        if (!dragging) return;
+        const dy = e.clientY - startY;
+        if (!moved && Math.abs(dy) > DRAG_THRESHOLD) moved = true;
+        if (moved) {
+            applyTop(originTop + dy);
+        }
+    }
+
+    function onPointerUp(e) {
+        if (!dragging) return;
+        dragging = false;
+        el.classList.remove('is-dragging');
+        try { el.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
+        if (moved) {
+            const rect = el.getBoundingClientRect();
+            const finalTop = applyTop(rect.top);
+            savePosition(finalTop);
+            // Swallow the click that follows a real drag so it doesn't also open the link/modal
+            const suppressClick = ev => { ev.preventDefault(); ev.stopPropagation(); el.removeEventListener('click', suppressClick, true); };
+            el.addEventListener('click', suppressClick, true);
+        }
+        moved = false;
+    }
+
+    el.addEventListener('pointerdown', onPointerDown);
+    // Listen on document too (not just el) so a drag keeps tracking even if pointer
+    // capture doesn't stick between successive drags — this is what let the first
+    // drag work but later ones silently fail and fall through to a click.
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerup', onPointerUp);
+    document.addEventListener('pointercancel', onPointerUp);
+    // The Messenger button is an <a>, and browsers natively let you drag links
+    // (e.g. to a new tab) — that native drag competes with ours, so block it.
+    el.addEventListener('dragstart', e => e.preventDefault());
+
+    window.addEventListener('resize', () => {
+        if (el.style.top === '') return; // still at default fixed position
+        applyTop(el.getBoundingClientRect().top);
+    });
+
+    restorePosition();
+}
+
+makeDraggable(document.querySelector('.messenger-float-btn'), 'dacs_messengerBtnPos');
+makeDraggable(document.getElementById('feedbackBtn'), 'dacs_feedbackBtnPos');

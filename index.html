@@ -16,19 +16,18 @@
     ===================== -->
     <nav class="navbar" id="navbar">
         <div class="container nav-container">
-            <div class="logo">
+            <a href="#home" class="logo" aria-label="Back to top">
                 <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC's Building Design Services Logo" class="logo-image">
                 <div class="logo-text">
                     <span class="logo-main">DAC'S</span>
                     <span class="logo-sub">BUILDING DESIGN SERVICES</span>
                 </div>
-            </div>
+            </a>
             <div class="nav-links">
                 <a href="#home"        class="nav-link active">Home</a>
                 <a href="#about"       class="nav-link">About</a>
                 <a href="#services"    class="nav-link">Services</a>
                 <a href="#how-it-works" class="nav-link">Process</a>
-                <a href="#projects"    class="nav-link">Projects</a>
                 <a href="#appointment" class="nav-link nav-link-cta">Appointment</a>
             </div>
             <div class="mobile-menu-toggle" id="mobileMenuToggle">
@@ -140,8 +139,8 @@
 
                 <div class="company-background">
                     <div class="background-video">
-                        <video controls poster="">
-                            <source src="assets/video/Outview of Deluxe Junction.mp4" type="video/mp4">
+                        <video autoplay muted loop playsinline preload="metadata" controls>
+                            <source src="assets/video/company-overview.mp4" type="video/mp4">
                             Your browser does not support the video tag.
                         </video>
                     </div>
@@ -175,9 +174,9 @@
         <section class="services" id="services">
             <div class="container">
                 <div class="section-header">
-                    <span class="section-tag">Our Services</span>
+                    <span class="section-tag">Our Services &amp; Work</span>
                     <h2 class="section-title">Professional Design & Build <span style="color: var(--primary-color);">Services</span></h2>
-                    <p class="section-description">Delivering comprehensive design and construction services tailored to your vision and requirements.</p>
+                    <p class="section-description">Delivering comprehensive design and construction services tailored to your vision — see it all below, from what we offer to the projects we've delivered.</p>
                 </div>
 
                 <!-- Design Services Group -->
@@ -289,6 +288,24 @@
                         </a>
                     </div>
                 </div>
+                <!-- Featured Projects (merged into Services section) -->
+                <div class="projects-carousel-inline" id="projects">
+                    <div class="carousel-section-header">
+                        <h3 class="carousel-subtitle">Featured Projects</h3>
+                        <p class="section-description">From initial proposal to final turnover — real projects, real results.</p>
+                    </div>
+
+                <div class="marquee-viewport" id="projectsMarquee">
+                    <div class="marquee-track" id="projectsMarqueeTrack">
+                        <!-- JS renders two copies of the thumbnail set here for a seamless loop -->
+                    </div>
+                </div>
+
+                <div class="projects-cta">
+                    <a href="#appointment" class="btn btn-primary">Start Your Project</a>
+                </div>
+
+                </div><!-- /.projects-carousel-inline -->
 
             </div>
         </section>
@@ -364,12 +381,12 @@
             </div>
         </section>
 
-        <!-- Values Section -->
+        <!-- Values + Mission & Vision Section (merged) -->
         <section class="values" id="values">
             <div class="container">
                 <div class="section-header">
                     <span class="section-tag">Our Foundation</span>
-                    <h2 class="section-title">Our Values</h2>
+                    <h2 class="section-title">Our Values, Mission &amp; Vision</h2>
                 </div>
                 <div class="values-grid">
                     <div class="value-card">
@@ -388,16 +405,7 @@
                         <p>Rendering service with a good will as to the Lord and not to man, knowing that whatever good anyone does, this he will receive back from the Lord.</p>
                     </div>
                 </div>
-            </div>
-        </section>
 
-        <!-- Mission and Vision Section -->
-        <section class="philosophy" id="philosophy">
-            <div class="container">
-                <div class="section-header">
-                    <span class="section-tag">Our Purpose</span>
-                    <h2 class="section-title">Mission and Vision</h2>
-                </div>
                 <div class="mission-vision-grid">
                     <div class="mission-box">
                         <h3>Mission</h3>
@@ -409,342 +417,6 @@
                     </div>
                 </div>
             </div>
-        </section>
-
-        <!-- Featured Projects Section -->
-        <section class="projects-carousel" id="projects">
-            <div class="container">
-
-                <div class="carousel-section-header">
-                    <span class="section-tag">Our Work</span>
-                    <h2 class="section-title">Featured Projects</h2>
-                    <p class="section-description">From initial proposal to final turnover — real projects, real results.</p>
-                </div>
-
-                <div class="carousel-wrapper">
-                    <div class="card-carousel">
-                        <span class="carousel-counter">1 / 7</span>
-                        <div class="carousel-track">
-
-                            <!-- CARD 1 – Avida Towers Vita · Proposal -->
-                            <div class="carousel-card">
-                                <div class="card-image-wrap">
-                                    <img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (1).png" alt="Avida Towers Vita – Proposal">
-                                    <span class="card-status-badge card-status-proposal">Proposal</span>
-                                    <div class="card-view-hint">Click to View</div>
-                                </div>
-                                <div class="card-body">
-                                    <span class="card-category">Residential · Interior · Proposal</span>
-                                    <h3 class="card-title">Avida Towers Vita</h3>
-                                    <p class="card-desc">Proposed studio unit interior design at Vertis North, Bagong Pag-asa, Quezon City, Metro Manila.</p>
-                                    <div class="card-author">
-                                        <div class="author-avatar-fallback">DC</div>
-                                        <div class="author-info">
-                                            <span class="author-name">DAC's Team</span>
-                                            <span class="author-role">Interior Architect &amp; Constructor</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- CARD 2 – Avida Towers Vita · Turnover -->
-                            <div class="carousel-card">
-                                <div class="card-image-wrap">
-                                    <img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (2).png" alt="Avida Towers Vita – Turnover">
-                                    <span class="card-status-badge card-status-turnover">Turnover</span>
-                                    <div class="card-view-hint">Click to View</div>
-                                </div>
-                                <div class="card-body">
-                                    <span class="card-category">Residential · Interior · Turnover</span>
-                                    <h3 class="card-title">Avida Towers Vita</h3>
-                                    <p class="card-desc">Completed studio unit interior design &amp; construction at Vertis North, Bagong Pag-asa, Quezon City, Metro Manila.</p>
-                                    <div class="card-author">
-                                        <div class="author-avatar-fallback">DC</div>
-                                        <div class="author-info">
-                                            <span class="author-name">DAC's Team</span>
-                                            <span class="author-role">Interior Architect &amp; Constructor</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- CARD 3 – Park Triangle Residences · Existing -->
-                            <div class="carousel-card">
-                                <div class="card-image-wrap">
-                                    <img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (3).png" alt="Park Triangle Residences – Existing">
-                                    <span class="card-status-badge card-status-before">Before</span>
-                                    <div class="card-view-hint">Click to View</div>
-                                </div>
-                                <div class="card-body">
-                                    <span class="card-category">Residential · Interior · Before</span>
-                                    <h3 class="card-title">Park Triangle Residences</h3>
-                                    <p class="card-desc">Existing unit condition at 32nd St. corner 11th Ave., Fort Bonifacio, Taguig — before full interior renovation.</p>
-                                    <div class="card-author">
-                                        <div class="author-avatar-fallback">DC</div>
-                                        <div class="author-info">
-                                            <span class="author-name">DAC's Team</span>
-                                            <span class="author-role">Interior Architect &amp; Constructor</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- CARD 4 – Park Triangle Residences · Turnover -->
-                            <div class="carousel-card">
-                                <div class="card-image-wrap">
-                                    <img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (4).png" alt="Park Triangle Residences – Turnover">
-                                    <span class="card-status-badge card-status-turnover">Turnover</span>
-                                    <div class="card-view-hint">Click to View</div>
-                                </div>
-                                <div class="card-body">
-                                    <span class="card-category">Residential · Interior · Turnover</span>
-                                    <h3 class="card-title">Park Triangle Residences</h3>
-                                    <p class="card-desc">Full luxury interior fit-out completed at 32nd St. corner 11th Ave., Fort Bonifacio, Taguig, Metro Manila.</p>
-                                    <div class="card-author">
-                                        <div class="author-avatar-fallback">DC</div>
-                                        <div class="author-info">
-                                            <span class="author-name">DAC's Team</span>
-                                            <span class="author-role">Interior Architect &amp; Constructor</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- CARD 5 – San Lorenzo Place · Proposal -->
-                            <div class="carousel-card">
-                                <div class="card-image-wrap">
-                                    <img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (5).png" alt="San Lorenzo Place – Proposal">
-                                    <span class="card-status-badge card-status-proposal">Proposal</span>
-                                    <div class="card-view-hint">Click to View</div>
-                                </div>
-                                <div class="card-body">
-                                    <span class="card-category">Residential · Interior · Proposal</span>
-                                    <h3 class="card-title">San Lorenzo Place</h3>
-                                    <p class="card-desc">Proposed dark-luxury interior design at Chino Roces Ave., corner Epifanio delos Santos Ave., Makati, 1223 Metro Manila.</p>
-                                    <div class="card-author">
-                                        <div class="author-avatar-fallback">DC</div>
-                                        <div class="author-info">
-                                            <span class="author-name">DAC's Team</span>
-                                            <span class="author-role">Interior Architect &amp; Constructor</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- CARD 6 – San Lorenzo Place · Turnover -->
-                            <div class="carousel-card">
-                                <div class="card-image-wrap">
-                                    <img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (6).png" alt="San Lorenzo Place – Turnover">
-                                    <span class="card-status-badge card-status-turnover">Turnover</span>
-                                    <div class="card-view-hint">Click to View</div>
-                                </div>
-                                <div class="card-body">
-                                    <span class="card-category">Residential · Interior · Turnover</span>
-                                    <h3 class="card-title">San Lorenzo Place</h3>
-                                    <p class="card-desc">Contemporary dark-luxury interior renovation completed at Chino Roces Ave. corner EDSA, Makati, Metro Manila.</p>
-                                    <div class="card-author">
-                                        <div class="author-avatar-fallback">DC</div>
-                                        <div class="author-info">
-                                            <span class="author-name">DAC's Team</span>
-                                            <span class="author-role">Interior Architect &amp; Constructor</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- CARD 7 – SMDC Grass Residence · Turnover A -->
-                            <div class="carousel-card">
-                                <div class="card-image-wrap">
-                                    <img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (7).png" alt="SMDC Grass Residence – Turnover">
-                                    <span class="card-status-badge card-status-turnover">Turnover</span>
-                                    <div class="card-view-hint">Click to View</div>
-                                </div>
-                                <div class="card-body">
-                                    <span class="card-category">Residential · Interior · Turnover</span>
-                                    <h3 class="card-title">SMDC Grass Residence</h3>
-                                    <p class="card-desc">Cozy modern interior design and furnishing at Grass Residences, Nueva Viscaya, Bago Bantay, Quezon City.</p>
-                                    <div class="card-author">
-                                        <div class="author-avatar-fallback">DC</div>
-                                        <div class="author-info">
-                                            <span class="author-name">DAC's Team</span>
-                                            <span class="author-role">Interior Design &amp; Furnishing</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- CARD 8 – SMDC Grass Residence · Turnover B -->
-                            <div class="carousel-card">
-                                <div class="card-image-wrap">
-                                    <img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (8).png" alt="SMDC Grass Residence – Interior Detail">
-                                    <span class="card-status-badge card-status-turnover">Turnover</span>
-                                    <div class="card-view-hint">Click to View</div>
-                                </div>
-                                <div class="card-body">
-                                    <span class="card-category">Residential · Interior · Detail</span>
-                                    <h3 class="card-title">SMDC Grass Residence</h3>
-                                    <p class="card-desc">Interior detail views — bedroom, living area, and entertainment setup at Grass Residences, Quezon City.</p>
-                                    <div class="card-author">
-                                        <div class="author-avatar-fallback">DC</div>
-                                        <div class="author-info">
-                                            <span class="author-name">DAC's Team</span>
-                                            <span class="author-role">Interior Design &amp; Furnishing</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- CARD 9 – Health Works · Proposal -->
-                            <div class="carousel-card">
-                                <div class="card-image-wrap">
-                                    <img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (9).png" alt="Health Works – Proposal">
-                                    <span class="card-status-badge card-status-proposal">Proposal</span>
-                                    <div class="card-view-hint">Click to View</div>
-                                </div>
-                                <div class="card-body">
-                                    <span class="card-category">Commercial · Clinic · Proposal</span>
-                                    <h3 class="card-title">Health Works</h3>
-                                    <p class="card-desc">Proposed clinic interior design at 2F Waltermart The Junction Place, Quezon City — featuring pink fluted walls and marble reception.</p>
-                                    <div class="card-author">
-                                        <div class="author-avatar-fallback">DC</div>
-                                        <div class="author-info">
-                                            <span class="author-name">DAC's Team</span>
-                                            <span class="author-role">Commercial Interior Constructor</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- CARD 10 – Health Works · Turnover -->
-                            <div class="carousel-card">
-                                <div class="card-image-wrap">
-                                    <img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (10).png" alt="Health Works – Turnover">
-                                    <span class="card-status-badge card-status-turnover">Turnover</span>
-                                    <div class="card-view-hint">Click to View</div>
-                                </div>
-                                <div class="card-body">
-                                    <span class="card-category">Commercial · Clinic · Turnover</span>
-                                    <h3 class="card-title">Health Works</h3>
-                                    <p class="card-desc">Completed dental clinic interior construction at 2F Waltermart The Junction Place, Quezon City — pink fluted walls and marble accents.</p>
-                                    <div class="card-author">
-                                        <div class="author-avatar-fallback">DC</div>
-                                        <div class="author-info">
-                                            <span class="author-name">DAC's Team</span>
-                                            <span class="author-role">Commercial Interior Constructor</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- CARD 11 – Mallari Bldg. · Proposal -->
-                            <div class="carousel-card">
-                                <div class="card-image-wrap">
-                                    <img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (11).png" alt="Mallari Building – Proposal">
-                                    <span class="card-status-badge card-status-proposal">Proposal</span>
-                                    <div class="card-view-hint">Click to View</div>
-                                </div>
-                                <div class="card-body">
-                                    <span class="card-category">Residential · Building · Proposal</span>
-                                    <h3 class="card-title">Mallari Bldg.</h3>
-                                    <p class="card-desc">Proposed multi-storey residential apartment building at Maya St., Brgy. Ugong, Valenzuela City.</p>
-                                    <div class="card-author">
-                                        <div class="author-avatar-fallback">DC</div>
-                                        <div class="author-info">
-                                            <span class="author-name">DAC's Team</span>
-                                            <span class="author-role">Architect &amp; Civil Engineer</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- CARD 12 – Mallari Bldg. · Turnover -->
-                            <div class="carousel-card">
-                                <div class="card-image-wrap">
-                                    <img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (12).png" alt="Mallari Building – Turnover">
-                                    <span class="card-status-badge card-status-turnover">Turnover</span>
-                                    <div class="card-view-hint">Click to View</div>
-                                </div>
-                                <div class="card-body">
-                                    <span class="card-category">Residential · Building · Turnover</span>
-                                    <h3 class="card-title">Mallari Bldg.</h3>
-                                    <p class="card-desc">Completed multi-storey residential apartment building at Maya St., Brgy. Ugong, Valenzuela City.</p>
-                                    <div class="card-author">
-                                        <div class="author-avatar-fallback">DC</div>
-                                        <div class="author-info">
-                                            <span class="author-name">DAC's Team</span>
-                                            <span class="author-role">Architect &amp; Civil Engineer</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- CARD 13 – AUM Bldg. · Proposal -->
-                            <div class="carousel-card">
-                                <div class="card-image-wrap">
-                                    <img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (13).png" alt="AUM Building – Proposal">
-                                    <span class="card-status-badge card-status-proposal">Proposal</span>
-                                    <div class="card-view-hint">Click to View</div>
-                                </div>
-                                <div class="card-body">
-                                    <span class="card-category">Commercial · Mixed-Use · Proposal</span>
-                                    <h3 class="card-title">AUM Bldg.</h3>
-                                    <p class="card-desc">Proposed mixed-use commercial building for Tom N Toms Coffee &amp; Mayo Diagnostics at Corner Araneta St., Roxas Ave., Iligan City.</p>
-                                    <div class="card-author">
-                                        <div class="author-avatar-fallback">DC</div>
-                                        <div class="author-info">
-                                            <span class="author-name">DAC's Team</span>
-                                            <span class="author-role">Architect &amp; Engineers</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- CARD 14 – AUM Bldg. · Turnover -->
-                            <div class="carousel-card">
-                                <div class="card-image-wrap">
-                                    <img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (14).png" alt="AUM Building – Turnover">
-                                    <span class="card-status-badge card-status-turnover">Turnover</span>
-                                    <div class="card-view-hint">Click to View</div>
-                                </div>
-                                <div class="card-body">
-                                    <span class="card-category">Commercial · Mixed-Use · Turnover</span>
-                                    <h3 class="card-title">AUM Bldg.</h3>
-                                    <p class="card-desc">Completed mixed-use commercial building housing Tom N Toms Coffee &amp; Mayo Diagnostics at Corner Araneta St., Roxas Ave., Iligan City.</p>
-                                    <div class="card-author">
-                                        <div class="author-avatar-fallback">DC</div>
-                                        <div class="author-info">
-                                            <span class="author-name">DAC's Team</span>
-                                            <span class="author-role">Architect &amp; Engineers</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                        </div><!-- /.carousel-track -->
-                    </div><!-- /.card-carousel -->
-
-                    <div class="carousel-nav">
-                        <button class="carousel-nav-btn" id="carouselPrev" aria-label="Previous slide">&#8592;</button>
-                        <button class="carousel-nav-btn" id="carouselNext" aria-label="Next slide">&#8594;</button>
-                    </div>
-
-                </div><!-- /.carousel-wrapper -->
-
-                <div class="carousel-dots">
-                    <button class="carousel-dot active" data-index="0" aria-label="Go to slide 1"></button>
-                    <button class="carousel-dot" data-index="1" aria-label="Go to slide 2"></button>
-                    <button class="carousel-dot" data-index="2" aria-label="Go to slide 3"></button>
-                    <button class="carousel-dot" data-index="3" aria-label="Go to slide 4"></button>
-                    <button class="carousel-dot" data-index="4" aria-label="Go to slide 5"></button>
-                    <button class="carousel-dot" data-index="5" aria-label="Go to slide 6"></button>
-                    <button class="carousel-dot" data-index="6" aria-label="Go to slide 7"></button>
-                </div>
-
-                <div class="projects-cta">
-                    <a href="#appointment" class="btn btn-primary">Start Your Project</a>
-                </div>
-
-            </div><!-- /.container -->
         </section>
 
         <!-- Testimonials Section -->
@@ -946,7 +618,6 @@
                         <a href="#home">Home</a>
                         <a href="#about">About</a>
                         <a href="#services">Services</a>
-                        <a href="#projects">Projects</a>
                         <a href="#how-it-works">Process</a>
                         <a href="#testimonials">Testimonials</a>
                         <a href="#faq">FAQ</a>
@@ -981,8 +652,8 @@
 
     <!-- Feedback Button -->
     <button class="feedback-btn" id="feedbackBtn" title="Share Your Feedback">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
         </svg>
     </button>
 
@@ -1035,12 +706,6 @@
         </div>
     </div>
 
-    <!-- Image Lightbox -->
-    <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Project image viewer">
-        <span class="lightbox-close" id="lightboxClose" aria-label="Close image viewer">&times;</span>
-        <img class="lightbox-content" id="lightboxImage" src="" alt="">
-    </div>
-
     <!-- =====================
          Service Detail Modal
     ===================== -->
@@ -1071,6 +736,45 @@
                         <div class="svc-gallery-project-label" id="svcGalleryLabel"></div>
                     </div>
                     <div class="svc-gallery-thumbs" id="svcGalleryThumbs"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =====================
+         Project Detail Modal
+    ===================== -->
+    <div class="svc-modal-overlay" id="projectModalOverlay" role="dialog" aria-modal="true" aria-labelledby="projectModalTitle">
+        <div class="svc-modal" id="projectModal">
+            <button class="svc-modal-close" id="projectModalClose" aria-label="Close modal">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            <div class="svc-modal-body">
+                <!-- Left: Info -->
+                <div class="svc-modal-info">
+                    <div class="svc-modal-meta">
+                        <span class="card-status-badge" id="projectModalStatus"></span>
+                        <span class="svc-modal-cat-badge" id="projectModalCategory"></span>
+                    </div>
+                    <h2 class="svc-modal-title" id="projectModalTitle"></h2>
+                    <p class="svc-modal-desc" id="projectModalDesc"></p>
+                    <div class="card-author" id="projectModalAuthor" style="margin-top: auto; padding-top: 16px;">
+                        <div class="author-avatar-fallback">DC</div>
+                        <div class="author-info">
+                            <span class="author-name" id="projectModalAuthorName"></span>
+                            <span class="author-role" id="projectModalAuthorRole"></span>
+                        </div>
+                    </div>
+                    <a href="#appointment" class="btn btn-primary svc-modal-cta" id="projectModalCta" style="margin-top: 24px;">
+                        Start a Project Like This
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                    </a>
+                </div>
+                <!-- Right: Image -->
+                <div class="svc-modal-gallery">
+                    <div class="svc-gallery-main-wrap">
+                        <img class="svc-gallery-main-img" id="projectModalImage" src="" alt="">
+                    </div>
                 </div>
             </div>
         </div>
