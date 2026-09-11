@@ -1436,9 +1436,15 @@
                     </div>
                     <button type="button" class="rb-clear-btn" onclick="rbClearFilters()">Clear</button>
                 </div>
-                <button type="button" class="rb-btn rb-btn-primary" onclick="rbOpenForm()">
-                    <i data-lucide="plus" style="width:15px;height:15px;"></i> New Reimbursement
-                </button>
+                <div class="rb-top-actions">
+                    <!-- Prints whatever the filters show: pick a project above to print just that project -->
+                    <button type="button" class="rb-btn" onclick="rbPrintAll()" title="Print every record the filters show — choose a project above to print just that project">
+                        <i data-lucide="printer" style="width:15px;height:15px;"></i> Print All
+                    </button>
+                    <button type="button" class="rb-btn rb-btn-primary" onclick="rbOpenForm()">
+                        <i data-lucide="plus" style="width:15px;height:15px;"></i> New Reimbursement
+                    </button>
+                </div>
             </div>
 
             <!-- Tracking totals for the filtered set (not a finance report) -->

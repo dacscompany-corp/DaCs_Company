@@ -113,7 +113,7 @@ eval(fs.readFileSync(SRC, 'utf8'));
 
 ['initReimbursementModule', 'rbOpenForm', 'rbSaveForm', 'rbOpenStatus', 'rbConfirmStatus',
  'rbOpenDetail', 'rbOnStatusFilter', 'rbOnSearch', 'rbOnFromFilter', 'rbOnToFilter',
- 'rbClearFilters', 'rbOnFolderChange'].forEach((f) => {
+ 'rbClearFilters', 'rbOnFolderChange', 'rbPrintAll'].forEach((f) => {
     if (typeof global[f] !== 'function') {
         console.error('MODULE SHAPE CHANGED: js/reimbursement-module.js no longer exports window.' + f
             + ' — update tests/reimbursement.test.js, do not delete the test.');
@@ -330,6 +330,80 @@ const onlyReimbursements = () => writes.every((w) => w.name === 'reimbursements'
         ok(d.includes('RB-2026-0099'), 'drawer did not open');
         ok(!d.includes('javascript:'), 'javascript: URL rendered');
         ok(d.includes('No receipt attached'), 'unsafe URL should fall back to "none"');
+    });
+
+    console.log('\nH. Print All (the filtered list)');
+    // print-utils.js isn't loaded here — minimal stand-ins for its statement
+    // helpers, and a popup that just records what was written into it.
+    global.dacsStatementCSS = () => '';
+    global.dacsStatementHead = (o) => '<header>' + o.title + '</header>';
+    global.dacsStatementSigns = () => '';
+    global.dacsStatementFoot = (l, r) => '<footer>' + r + '</footer>';
+    global.dacsStatementPrintScript = () => '';
+    global.dacsStatementRef = (p) => p + '-2026-0001';
+    const popups = [];
+    global.open = () => {
+        const doc = { html: '', write(s) { this.html += s; }, close() {} };
+        popups.push(doc);
+        return { document: doc };
+    };
+    const printed = () => popups[popups.length - 1].html;
+
+    await test('prints only what the filters show', () => {
+        rbClearFilters();
+        rbOnStatusFilter('reimbursed');
+        rbPrintAll();
+        const h = printed();
+        ok(h.includes('RB-2026-0003'), 'filtered record missing from the printout');
+        ok(!h.includes('RB-2026-0001'), 'a record hidden by the filter was printed');
+        ok(h.includes('Status: Reimbursed'), 'applied filter not stated on the document');
+        rbOnStatusFilter('');
+    });
+    await test('printed totals match the KPI cards', () => {
+        rbPrintAll();
+        const h = printed();
+        ok(h.includes('Total advanced</span><b>' + els.rbKpiAdvanced.innerHTML), 'Total advanced disagrees with the card');
+        ok(h.includes('Reimbursed to date</span><b>' + els.rbKpiBack.innerHTML), 'Reimbursed disagrees with the card');
+        ok(h.includes('<span class="v">' + els.rbKpiOutstanding.innerHTML + '</span>'), 'Balance due disagrees with the card');
+    });
+    await test('cancelled records are listed but kept out of the total', () => {
+        const h = printed();
+        ok(h.includes('RB-2026-0004') && h.includes('class="rb-x"'), 'cancelled record not marked');
+        ok(h.includes('1 cancelled record') && h.includes('₱999.00'), 'excluded cancelled amount not stated');
+    });
+    await test('record text is escaped on the printout', () => {
+        const h = printed();
+        ok(!h.includes('<img src=x') && h.includes('&lt;img'), 'description not escaped');
+        ok(!h.includes('<script>bad') && h.includes('&lt;script&gt;'), 'client name not escaped');
+    });
+    await test('one project: no grouping; several: grouped with a subtotal each', () => {
+        ok(!printed().includes('class="rb-grp"'), 'a single-project printout should not be grouped');
+        store.push({ id: 'p2', refNo: 'RB-2026-0100', folderId: 'f2', projectName: 'Casa Lim',
+            clientName: 'Ms. Lim', description: 'Survey fee', amount: 2000, amountReimbursed: 0,
+            expenseDate: '2026-07-05', status: 'pending', history: [], createdAt: ts(9500) });
+        emit();
+        rbPrintAll();
+        const h = printed();
+        ok(h.includes('All projects') && h.includes('2 projects'), 'band does not say it covers all projects');
+        ok(h.includes('Subtotal · Casa Lim') && h.includes('Subtotal · Villa Ramos'), 'per-project subtotals missing');
+        ok(h.indexOf('Casa Lim') < h.indexOf('Villa Ramos'), 'projects not in name order');
+        rbOnProjectFilter('f2');
+        rbPrintAll();
+        const one = printed();
+        ok(one.includes('RB-2026-0100') && !one.includes('RB-2026-0001'), 'project filter ignored by Print All');
+        rbOnProjectFilter('');
+    });
+    await test('nothing to print opens no window', () => {
+        const before = popups.length;
+        rbOnSearch('no-record-matches-this');
+        rbPrintAll();
+        eq(popups.length, before, 'an empty printout was opened');
+        rbOnSearch('');
+    });
+    await test('printing writes nothing to the database', () => {
+        writes.length = 0;
+        rbPrintAll();
+        eq(writes.length, 0, 'Print All wrote to the database');
     });
 
     // ════════════════════════════════════════════════════════════════

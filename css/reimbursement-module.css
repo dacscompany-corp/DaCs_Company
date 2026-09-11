@@ -81,6 +81,7 @@
     cursor: pointer;
 }
 .rb-clear-btn:hover { border-color: #157a52; color: #157a52; }
+.rb-top-actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
 
 /* ── KPI row ────────────────────────────────────────────────── */
 .rb-kpi-row {

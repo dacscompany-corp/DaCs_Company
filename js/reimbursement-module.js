@@ -330,19 +330,27 @@
             '<tr><td colspan="12" class="rb-empty">Could not load reimbursements: ' + _rbEsc(msg) + '</td></tr>');
     }
 
+    // Tracking totals for a set of records. The KPI cards and the Print All
+    // document both read this, so a printout can never disagree with the screen.
+    // Cancelled records are not being claimed: they stay out of Total Advanced.
+    function _rbTotals(rows) {
+        const t = { advanced: 0, outstanding: 0, back: 0, cancelled: 0, cancelledAmt: 0 };
+        rows.forEach(r => {
+            if (r.status === 'cancelled') { t.cancelled++; t.cancelledAmt += _rbNum(r.amount); }
+            else t.advanced += _rbNum(r.amount);
+            t.outstanding += _rbOutstanding(r);
+            t.back        += _rbPaidBack(r);
+        });
+        return t;
+    }
+
     function _rbRender() {
         const rows = _rbFiltered();
+        const t = _rbTotals(rows);
 
-        let advanced = 0, outstanding = 0, back = 0;
-        rows.forEach(r => {
-            if (r.status !== 'cancelled') advanced += _rbNum(r.amount);
-            outstanding += _rbOutstanding(r);
-            back        += _rbPaidBack(r);
-        });
-
-        _rbSet('rbKpiAdvanced',    _rbAmt(advanced));
-        _rbSet('rbKpiOutstanding', _rbAmt(outstanding));
-        _rbSet('rbKpiBack',        _rbAmt(back));
+        _rbSet('rbKpiAdvanced',    _rbAmt(t.advanced));
+        _rbSet('rbKpiOutstanding', _rbAmt(t.outstanding));
+        _rbSet('rbKpiBack',        _rbAmt(t.back));
         _rbSet('rbKpiCount',       String(rows.length));
         _rbSet('rbKpiCountSub',    rows.length === _rbRows.length
             ? 'all records'
@@ -853,6 +861,216 @@ ${window.dacsStatementSigns([
 ${window.dacsStatementFoot([bizName, bizAddr].filter(Boolean).join(' · '), refNo + ' · Pahina 1 / 1')}
 </div>
 ${window.dacsStatementPrintScript()}
+</body>
+</html>`);
+        w.document.close();
+    };
+
+    // ── Print All — one document for the filtered list ─────────────
+    // Prints every record the current filters show: the same set the KPI cards
+    // and the table read (_rbFiltered), with the same totals (_rbTotals). Pick a
+    // project in the dropdown to print that project alone; on All Projects the
+    // records are grouped by project, each with a subtotal.
+    //
+    // PRINT-ONLY, like rbPrintInvoice above: it writes nothing and is built
+    // entirely from the records already loaded. Receipt images are left off on
+    // purpose — a list of every record would run to pages of photos; each
+    // record's own Print still carries its receipt.
+    window.rbPrintAll = function () {
+        const rows = _rbFiltered();
+        if (!rows.length) { _rbToast('No records to print — change or clear the filters.', 'error'); return; }
+
+        const esc = _rbEsc;
+        const projectOf = r => r.projectName || (_rbFolder(r.folderId) || {}).name || 'No project';
+        const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+
+        // Group by project. The screen lists newest first; a statement reads
+        // oldest first, so each group runs by expense date.
+        const groups = [];
+        const byKey = {};
+        rows.forEach(r => {
+            const k = r.folderId || ('~' + projectOf(r));
+            if (!byKey[k]) { byKey[k] = { name: projectOf(r), rows: [] }; groups.push(byKey[k]); }
+            byKey[k].rows.push(r);
+        });
+        groups.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        groups.forEach(g => g.rows.sort((a, b) =>
+            String(a.expenseDate || '').localeCompare(String(b.expenseDate || ''))
+            || String(a.refNo || '').localeCompare(String(b.refNo || ''))));
+        const multi = groups.length > 1;
+
+        const clients   = Array.from(new Set(rows.map(_rbClientLabel)));
+        const oneClient = clients.length === 1 ? rows[0] : null;
+        const tot       = _rbTotals(rows);
+
+        const bizName = (typeof _defaults !== 'undefined' && _defaults && _defaults.businessName)    || "DAC's Building Design Services";
+        const bizAddr = (typeof _defaults !== 'undefined' && _defaults && _defaults.businessAddress) || '';
+        const bizTin  = (typeof _defaults !== 'undefined' && _defaults && _defaults.businessTin)     || '';
+
+        // Same filters, same year → same reference on every reprint.
+        const seed  = [_rbFolderId, _rbClient, _rbCategory, _rbStatus, _rbFrom, _rbTo, _rbSearch].join('|');
+        const refNo = window.dacsStatementRef('RBS', seed === '||||||' ? 'ALL' : seed);
+        const today = new Date().toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+
+        // Period: the date filter when one is set, otherwise the span of the records.
+        let period;
+        if (_rbFrom || _rbTo) {
+            period = (_rbFrom ? _rbDay(_rbFrom) : 'Earliest') + ' – ' + (_rbTo ? _rbDay(_rbTo) : 'Latest');
+        } else {
+            const days = rows.map(r => String(r.expenseDate || '')).filter(Boolean).sort();
+            period = !days.length ? '—'
+                   : days[0] === days[days.length - 1] ? _rbDay(days[0])
+                   : _rbDay(days[0]) + ' – ' + _rbDay(days[days.length - 1]);
+        }
+
+        // Filters the band above doesn't already state.
+        const applied = [];
+        if (_rbStatus)   applied.push('Status: ' + _rbStatusMeta(_rbStatus).label);
+        if (_rbCategory) applied.push('Category: ' + _rbCategory);
+        if (_rbSearch)   applied.push('Search: “' + _rbSearch + '”');
+
+        const payers   = Array.from(new Set(rows.map(r => r.paidByName || r.paidBy).filter(Boolean)));
+        const preparer = payers.length === 1 ? payers[0]
+                       : ((typeof currentUser !== 'undefined' && currentUser && currentUser.displayName) || '');
+
+        const rowHtml = r => {
+            const cancelled = r.status === 'cancelled';
+            const paid = _rbPaidBack(r);
+            const sub  = [r.expenseCategory, oneClient ? '' : _rbClientLabel(r)].filter(Boolean).map(esc).join(' · ');
+            return '<tr' + (cancelled ? ' class="rb-x"' : '') + '>'
+                + '<td class="rb-ref">' + esc(r.refNo || '—') + '</td>'
+                + '<td>' + esc(_rbDay(r.expenseDate)) + '</td>'
+                + '<td>' + esc(r.description || '—') + (sub ? '<div class="rb-s">' + sub + '</div>' : '') + '</td>'
+                + '<td>' + esc(_rbStatusMeta(r.status).label) + '</td>'
+                + '<td class="ws-r ws-amt">' + _rbAmt(r.amount) + '</td>'
+                + '<td class="ws-r">' + (cancelled ? '<span class="ws-muted">not claimed</span>' : _rbAmt(_rbOutstanding(r)))
+                +   (!cancelled && r.status === 'partially_reimbursed' && paid > 0 ? '<div class="rb-s">' + _rbAmt(paid) + ' back</div>' : '')
+                + '</td>'
+                + '</tr>';
+        };
+
+        const body = groups.map(g => {
+            const gt = _rbTotals(g.rows);
+            return (multi
+                    ? '<tr class="rb-grp"><td colspan="6">' + esc(g.name)
+                      + '<span>' + plural(g.rows.length, 'record') + '</span></td></tr>'
+                    : '')
+                + g.rows.map(rowHtml).join('')
+                + (multi
+                    ? '<tr class="rb-gtot"><td colspan="4">Subtotal · ' + esc(g.name) + '</td>'
+                      + '<td class="ws-r">' + _rbAmt(gt.advanced) + '</td>'
+                      + '<td class="ws-r">' + _rbAmt(gt.outstanding) + '</td></tr>'
+                    : '');
+        }).join('');
+
+        const w = window.open('', '_blank', 'width=920,height=1180');
+        if (!w) { _rbToast('Please allow pop-ups to print the document.', 'error'); return; }
+
+        w.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Reimbursement Summary — ${esc(refNo)}</title>
+<style>${window.dacsStatementCSS()}
+table.ws-tbl td.rb-ref{font-weight:700;white-space:nowrap;}
+.rb-s{font-size:10px;color:#7d7979;margin-top:2px;font-weight:400;}
+table.ws-tbl tr.rb-grp td{padding:16px 0 6px;font-size:10px;font-weight:700;letter-spacing:.16em;
+                          text-transform:uppercase;border-bottom:1px solid #201e1d;}
+table.ws-tbl tr.rb-grp td span{float:right;color:#7d7979;letter-spacing:.1em;}
+table.ws-tbl tbody tr.rb-gtot{border-top:1px solid #d7d3d3;border-bottom:none;}
+table.ws-tbl tr.rb-gtot td{padding-top:8px;padding-bottom:12px;font-weight:700;}
+table.ws-tbl tr.rb-gtot td:first-child{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:#605d5d;}
+table.ws-tbl tr.rb-x td{color:#9b9797;}
+table.ws-tbl tr.rb-x td.ws-amt{text-decoration:line-through;}
+.rb-filt{font-size:10.5px;color:#605d5d;margin-top:10px;}
+.rb-filt .ws-lbl{display:inline;margin-right:8px;}
+@media print{tr.rb-grp{break-after:avoid;page-break-after:avoid;}}
+</style>
+</head>
+<body>
+<div class="page">
+${window.dacsStatementHead({
+    title: 'Reimbursement<br>Summary',
+    kicker: 'Buod ng mga Bayad-Balik',
+    bizName, bizAddr, bizTin,
+    meta: [
+        { k: 'Reference No.', v: refNo },
+        { k: 'Petsa / Date',  v: today }
+    ]
+})}
+  <div class="ws-band" style="grid-template-columns:1.4fr 1.4fr 1.3fr .8fr;">
+    <div>
+      <div class="ws-lbl">Proyekto / Project</div>
+      <div class="ws-band-v sm">${multi ? 'All projects' : esc(groups[0].name)}</div>
+      ${multi ? `<div class="ws-band-s">${plural(groups.length, 'project')}</div>` : ''}
+    </div>
+    <div>
+      <div class="ws-lbl">Kliyente / Client</div>
+      <div class="ws-band-v sm">${oneClient ? esc(_rbClientLabel(oneClient)) : 'Multiple clients'}</div>
+      ${oneClient && oneClient.clientEmail && oneClient.clientName
+          ? `<div class="ws-band-s">${esc(oneClient.clientEmail)}</div>`
+          : (!oneClient ? `<div class="ws-band-s">${plural(clients.length, 'client')}</div>` : '')}
+    </div>
+    <div>
+      <div class="ws-lbl">Saklaw / Period</div>
+      <div class="ws-band-v sm">${esc(period)}</div>
+    </div>
+    <div>
+      <div class="ws-lbl">Records</div>
+      <div class="ws-band-v">${rows.length}</div>
+      ${tot.cancelled ? `<div class="ws-band-s">${tot.cancelled} cancelled</div>` : ''}
+    </div>
+  </div>
+${applied.length ? `  <div class="rb-filt"><span class="ws-lbl">Filtered by</span>${applied.map(esc).join(' · ')}</div>` : ''}
+
+  <div class="ws-body">
+    <div class="ws-lbl ws-sec">Mga ginastos / Expenses advanced for the client</div>
+    <table class="ws-tbl">
+      <thead>
+        <tr>
+          <th style="width:96px;">Ref. No.</th>
+          <th style="width:86px;">Petsa</th>
+          <th>Deskripsyon / Description</th>
+          <th style="width:92px;">Status</th>
+          <th style="width:100px;" class="ws-r">Halaga</th>
+          <th style="width:100px;" class="ws-r">Balanse</th>
+        </tr>
+      </thead>
+      <tbody>
+${body}
+      </tbody>
+    </table>
+
+    <div class="ws-tot-wrap">
+      <div class="ws-tot">
+        <div class="ws-tot-row"><span>Inunang bayad / Total advanced</span><b>${_rbAmt(tot.advanced)}</b></div>
+        <div class="ws-tot-row rule"><span>Naibalik na / Reimbursed to date</span><b>${_rbAmt(tot.back)}</b></div>
+        <div class="ws-grand">
+          <span class="l">Babayaran / Balance due</span>
+          <span class="v">${_rbAmt(tot.outstanding)}</span>
+        </div>
+        ${tot.cancelled ? `<div class="ws-tot-row"><span>Not included: ${plural(tot.cancelled, 'cancelled record')}</span><b class="ws-muted">${_rbAmt(tot.cancelledAmt)}</b></div>` : ''}
+      </div>
+    </div>
+  </div>
+
+  <div class="ws-note">
+    <div class="ws-note-t">
+      <strong>Tracking document only.</strong> This lists money the owner/admin advanced on the
+      client&rsquo;s behalf and whether it has been paid back. It is not a project billing document:
+      it does not form part of the project cost, budget, accomplishment or any accounting entry,
+      and issuing it changes nothing in the records.
+    </div>
+  </div>
+
+  <div style="flex:1;min-height:12px;"></div>
+${window.dacsStatementSigns([
+    { label: 'Inihanda ni / Prepared by', name: preparer },
+    { label: 'Tinanggap ni / Received by', name: oneClient ? (oneClient.clientName || '') : '' }
+])}
+${window.dacsStatementFoot([bizName, bizAddr].filter(Boolean).join(' · '), refNo + ' · ' + plural(rows.length, 'record'))}
+</div>
+${window.dacsStatementPrintScript(0.85)}
 </body>
 </html>`);
         w.document.close();
