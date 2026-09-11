@@ -654,6 +654,21 @@ than inventing a stricter one: `folders` is owner-scoped (`folders_rw` uses `can
 while `construction_projects` is **role**-scoped (`cproj_admin` is `is_owner() or is_staff()` with
 no owner filter, and `owner_id` is nullable — many live rows carry NULL).
 
+**Hiding a site from workers (`0072`).** `attendance_project_config.attendanceEnabled` (added in
+0065, default `true`, unread until 0072) switched off removes that site from
+`attendance_projects_for_worker()`. No config row means **shown**. It is a **picker rule, not a
+refusal**: `attendance_time_in` / `attendance_time_out` and `attendance_project_name` are untouched,
+so an offline Time In captured before the site was hidden still lands, and a worker on site can
+always time out. Set via `attendance_project_set_hidden(system, projectId, hidden)` (owner/staff,
+through the 0070 `attendance_schedule_owner` guard). Hiding a site with no config row creates one
+with the default Mon–Fri `workingDays` — the same week an unconfigured site already had.
+
+**`attendance_projects_for_admin()`** — owner/staff only (`NOT_ADMIN` otherwise). The same list plus
+a `hidden` boolean, and it **ignores `require_geofence`**. The admin Sites screen reads this, never
+the worker picker: reading the picker made a hidden site — or one still waiting for its geofence —
+vanish from the one screen that can fix it. The Today by-site board still reads the worker picker
+on purpose: a hidden site with nobody on it is not drawn, one with crew still is (from the records).
+
 ### `attendance_records/{id}` — one row per worker per work date
 | Field | Type | Notes |
 |---|---|---|

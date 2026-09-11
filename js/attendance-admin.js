@@ -2581,6 +2581,18 @@
         return data || [];
     }
 
+    /**
+     * Every site, INCLUDING the ones hidden from workers, each with a
+     * `hidden` flag (0072). The Sites screen must not read the worker
+     * picker: a hidden site would vanish from the only screen that can
+     * un-hide it. Same narrow shape as the picker plus that one boolean.
+     */
+    async function attLoadAdminProjects() {
+        const { data, error } = await window.sbClient.rpc('attendance_projects_for_admin');
+        if (error) throw error;
+        return data || [];
+    }
+
     /** 'pc' / 'pm' → the label the rest of the portal uses. */
     function attSystemLabel(system) {
         return system === 'pc' ? 'Project Control'
@@ -2688,8 +2700,9 @@
                   'owns the ones you cost and bill; <strong>Project Management</strong> owns ' +
                   'the ones you run day to day. What you <em>do</em> set here is the ' +
                   'schedule: the working days, the time workers are due, and any day the ' +
-                  'site was closed. Workers only ever see a site&rsquo;s name — contract ' +
-                  'values and budgets are never sent to the app.')}
+                  'site was closed. You can also <strong>hide a site from workers</strong> ' +
+                  'so it stops appearing on their phone. Workers only ever see a site&rsquo;s ' +
+                  'name — contract values and budgets are never sent to the app.')}
 
               <div id="attProjectsBody">Loading…</div>
             </div>
@@ -2703,7 +2716,7 @@
         let rows, todayCounts, configs, closures, cfg;
         try {
             [rows, todayCounts, configs, closures, cfg] = await Promise.all([
-                attLoadProjects(), attWorkersTodayByProject(), attLoadProjectConfigs(),
+                attLoadAdminProjects(), attWorkersTodayByProject(), attLoadProjectConfigs(),
                 attClosureCounts(),
                 // The company default, so a site with no override can name
                 // the time it actually uses instead of saying "default".
@@ -2727,15 +2740,22 @@
 
         const defaultStart = attClock(cfg && cfg.default_start_time);
         const pc = rows.filter(p => p.project_system === 'pc').length;
+        const hiddenCount = rows.filter(p => p.hidden).length;
         container.querySelector('#attProjectsCount').textContent =
             `${rows.length} site${rows.length === 1 ? '' : 's'} · ` +
-            `${pc} from Project Control · ${rows.length - pc} from Project Management`;
+            `${pc} from Project Control · ${rows.length - pc} from Project Management` +
+            (hiddenCount ? ` · ${hiddenCount} hidden from workers` : '');
+
+        // Hidden sites sink to the bottom; the RPC's name order holds
+        // within each half (Array sort is stable).
+        rows = rows.slice().sort((a, b) => (a.hidden ? 1 : 0) - (b.hidden ? 1 : 0));
 
         body.innerHTML = '<div class="att-site-grid">' + rows.map(function (p) {
             const key = attProjectKey(p.project_system, p.project_id);
             const conf = configs.get(key) || null;
             const here = todayCounts.get(key) || 0;
             const closed = closures.get(key) || 0;
+            const hidden = !!p.hidden;
 
             // An EMPTY working_days is not the same as an unset one: the
             // config row may not exist at all. Both mean "nobody here is
@@ -2745,7 +2765,13 @@
             const due = attClock(conf && conf.start_time_override) || defaultStart || 'Not set yet';
             const dueIsDefault = !(conf && conf.start_time_override) && !!defaultStart;
 
-            const note = !daysSet
+            // Hidden outranks the schedule notes: nobody can pick this
+            // site, so what its bonus week looks like is not the point.
+            const note = hidden
+                ? 'Workers cannot pick this site on their phone. Anyone already timed ' +
+                  'in here can still time out, and a Time In saved offline before you ' +
+                  'hid it still counts.'
+                : !daysSet
                 ? 'Until you set the working days, nobody posted here can qualify for ' +
                   'the weekly bonus — no day is ever required of them.'
                 : closed
@@ -2755,7 +2781,7 @@
                     : 'Every working day counts towards the weekly bonus.';
 
             return `
-                <div class="att-site-card">
+                <div class="att-site-card${hidden ? ' is-hidden' : ''}">
                   <div class="att-crew-head">
                     <div style="min-width:0">
                       <h3 class="att-crew-title">${attEsc(p.project_name)}</h3>
@@ -2763,8 +2789,11 @@
                           ? `${here} ${here === 1 ? 'worker' : 'workers'} here today`
                           : 'No workers here today'}</p>
                     </div>
-                    <span class="att-pill att-pill--${attEsc(p.project_system)}">${
-                        p.project_system === 'pc' ? 'Costing job' : 'Site works'}</span>
+                    <div class="att-site-pills">
+                      <span class="att-pill att-pill--${attEsc(p.project_system)}">${
+                          p.project_system === 'pc' ? 'Costing job' : 'Site works'}</span>
+                      ${hidden ? '<span class="att-pill att-pill--hidden">Hidden from workers</span>' : ''}
+                    </div>
                   </div>
                   <div class="att-site-body">
                     <div class="att-site-facts">
@@ -2783,11 +2812,16 @@
                         <div class="att-site-val">${closed || 'none'}</div>
                       </div>
                     </div>
-                    <div class="att-site-note${daysSet ? '' : ' att-site-note--warn'}">${
+                    <div class="att-site-note${daysSet || hidden ? '' : ' att-site-note--warn'}">${
                         attEsc(note)}</div>
-                    <button class="att-btn" type="button" data-sched="${attEsc(key)}">
-                      <i data-lucide="calendar-check"></i>${
-                        daysSet ? 'Change the schedule' : 'Set the schedule'}</button>
+                    <div class="att-site-actions">
+                      <button class="att-btn" type="button" data-sched="${attEsc(key)}">
+                        <i data-lucide="calendar-check"></i>${
+                          daysSet ? 'Change the schedule' : 'Set the schedule'}</button>
+                      <button class="att-btn" type="button" data-hide="${attEsc(key)}">
+                        <i data-lucide="${hidden ? 'eye' : 'eye-off'}"></i>${
+                          hidden ? 'Show to workers' : 'Hide from workers'}</button>
+                    </div>
                   </div>
                 </div>`;
         }).join('') + '</div>';
@@ -2801,6 +2835,42 @@
                 if (!project) return;
                 attOpenSchedule(schedHost, project, configs.get(key) || null,
                                 () => attRenderProjects(container));
+            });
+        });
+
+        body.querySelectorAll('[data-hide]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const key = btn.getAttribute('data-hide');
+                const project = rows.find(
+                    p => attProjectKey(p.project_system, p.project_id) === key);
+                if (!project) return;
+                const hide = !project.hidden;
+                if (hide && !confirm('Hide "' + project.project_name + '" from workers?\n\n' +
+                        'It stops appearing on their phone. Anyone already timed in ' +
+                        'there can still time out. You can show it again any time.')) {
+                    return;
+                }
+                btn.disabled = true;
+                try {
+                    // Through the RPC: the browser names the project and the
+                    // server derives the tenant (0070's rule, reused by 0072).
+                    const res = await window.sbClient.rpc('attendance_project_set_hidden', {
+                        p_system: project.project_system,
+                        p_project_id: project.project_id,
+                        p_hidden: hide
+                    });
+                    if (res.error) throw res.error;
+                    const saved = Array.isArray(res.data) ? res.data[0] : res.data;
+                    // No row back means nothing was written. Say so, rather
+                    // than repaint a card that the next refresh contradicts.
+                    if (!saved) throw new Error('the database returned no row');
+                    attRenderProjects(container);
+                } catch (e) {
+                    console.error('att A5: set hidden', e);
+                    btn.disabled = false;
+                    alert('Could not ' + (hide ? 'hide' : 'show') + ' this site.\n\n' +
+                          [e.message, e.hint, e.details, e.code].filter(Boolean).join(' | '));
+                }
             });
         });
 

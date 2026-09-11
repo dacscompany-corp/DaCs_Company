@@ -802,6 +802,46 @@ test('a list of findings reads as a sentence', () => {
   eq(V.attAnd(['a', '', 'c']), 'a and c', 'an absent finding leaves no gap');
 });
 
+console.log('\nXII. Hiding a site from workers (0072)');
+
+const hideSql = read('supabase/migrations/0072_attendance_project_hide.sql');
+
+test('the Sites screen reads the ADMIN list, never the worker picker', () => {
+  // Reading the picker made a hidden site vanish from the only screen
+  // that can un-hide it.
+  const body = slice(src, 'async function attRenderProjects(', '// ── A6 · Attendance reports',
+                     'attendance-admin.js');
+  ok(body.includes('attLoadAdminProjects()'), 'A5 loads attendance_projects_for_admin');
+  ok(!body.includes('attLoadProjects()'), 'A5 must not load the worker picker');
+});
+
+test('the worker picker skips a site switched off', () => {
+  const fn = slice(hideSql, 'create or replace function attendance_projects_for_worker()',
+                   'create or replace function attendance_projects_for_admin()', '0072');
+  // Once per project system -- a pc-only filter would leave every PM
+  // site still showing.
+  eq((fn.match(/not h\.attendance_enabled/g) || []).length, 2, 'hidden filter on pc AND pm');
+  ok(/not exists/.test(fn), 'no config row must mean shown, so the filter is not-exists');
+});
+
+test('hiding never refuses a Time In or Time Out', () => {
+  // An offline Time In captured before the site was hidden must still
+  // land. Hiding is a picker rule only.
+  ok(!/function attendance_time_in\b/.test(hideSql), '0072 must not redefine attendance_time_in');
+  ok(!/function attendance_time_out\b/.test(hideSql), '0072 must not redefine attendance_time_out');
+  ok(!/function attendance_project_name\b/.test(hideSql),
+     '0072 must not gate attendance_project_name -- the schedule guard uses it to un-hide');
+});
+
+test('the admin list and the toggle are admin-only', () => {
+  const admin = slice(hideSql, 'create or replace function attendance_projects_for_admin()',
+                      'create or replace function attendance_project_set_hidden(', '0072');
+  ok(/NOT_ADMIN/.test(admin), 'a worker would learn the names of sites hidden from them');
+  const setter = slice(hideSql, 'create or replace function attendance_project_set_hidden(',
+                       'revoke all on function attendance_project_set_hidden', '0072');
+  ok(setter.includes('attendance_schedule_owner('), 'the toggle uses the 0070 guard');
+});
+
 console.log(passed + ' passed, ' + failed + ' failed');
 if (failed) { failures.forEach(f => console.log('  · ' + f)); process.exit(1); }
 console.log('Attendance reports state only what the database computed.');

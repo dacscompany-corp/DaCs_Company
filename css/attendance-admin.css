@@ -1087,6 +1087,23 @@ select.att-input { cursor: pointer; }
    Gold, because it is a setting the owner has not made yet. */
 .att-site-note--warn { background: var(--att-gold-tint); color: #5E4720; }
 .att-site-card .att-btn { align-self: flex-start; }
+.att-site-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.att-site-pills {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+/* Hidden from the workers' picker (0072). Faded, not removed: the owner
+   still has to find it here to un-hide it. The actions stay at full
+   strength because "Show to workers" is the one thing to do with it. */
+.att-site-card.is-hidden { background: #FAFAF8; box-shadow: none; }
+.att-site-card.is-hidden .att-crew-title,
+.att-site-card.is-hidden .att-crew-sub,
+.att-site-card.is-hidden .att-site-facts { opacity: 0.55; }
+.att-pill--hidden { background: var(--att-line-soft); color: var(--att-muted); }
 
 /* ── Explainer stack ───────────────────────────────────────────── */
 
