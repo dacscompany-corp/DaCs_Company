@@ -669,6 +669,21 @@ the worker picker: reading the picker made a hidden site — or one still waitin
 vanish from the one screen that can fix it. The Today by-site board still reads the worker picker
 on purpose: a hidden site with nobody on it is not drawn, one with crew still is (from the records).
 
+### The location verdict, on screen (`0068` / `0069`)
+
+`timeinLocationStatus` / `timeoutLocationStatus` are **shown in the admin screens**, not just
+stored: a badge on the Today row and the report table, a sentence on the worker drill-down, and two
+raw columns (`Location check`, `Metres from site`) in both CSV exports. Until 2026-09-15 nothing
+read them, so a Time In that was never location-checked looked exactly like a verified one.
+
+**Two colours, and the split is the server's own rule.** Red only where the phone could *prove* the
+worker was elsewhere or the reading was refused outright (`outside_radius`, `mock_location`,
+`permission_denied`, `location_disabled`); gold where it simply could not tell (`low_accuracy`,
+`location_unavailable`, `project_geofence_unavailable`). Only the red half reaches the Today
+screen's "needs you" list — a weak fix happens daily on cheap handsets, and a list full of it is a
+list nobody reads. An **unrecognised** code is displayed, never swallowed: 0068 deliberately put no
+check constraint on the column so later codes can arrive.
+
 ### `attendance_records/{id}` — one row per worker per work date
 | Field | Type | Notes |
 |---|---|---|

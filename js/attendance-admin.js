@@ -668,7 +668,12 @@
                       'timein_at,timeout_at,timein_project_name,timeout_project_name,total_minutes,' +
                       'timein_project_system,' +
                       'timein_photo_path,timeout_photo_path,' +
-                      'timein_was_offline,timeout_was_offline,timein_received_at,timeout_received_at')
+                      'timein_was_offline,timeout_was_offline,timein_received_at,timeout_received_at,' +
+                      // The location verdict (0068/0069). Without these the
+                      // row cannot say a Time In was never checked, and an
+                      // unchecked stamp looks exactly like a verified one.
+                      'timein_location_status,timein_distance_m,timein_geofence_radius_m,' +
+                      'timeout_location_status,timeout_distance_m,timeout_geofence_radius_m')
               .eq('work_date', workDate)
         ]);
         if (wErr) throw wErr;
@@ -880,7 +885,101 @@
             out.push('<span class="att-badge att-badge--skew" title="Device clock is ' + worst +
                      ' min behind the server on an online capture">clock ' + worst + 'm</span>');
         }
+
+        // The location check, per stamp. Time In and Time Out are judged
+        // separately (the worker may change site mid-day), so a badge
+        // that merged them would hide which half was flagged.
+        [['in', record.timein_location_status, record.timein_distance_m,
+                record.timein_geofence_radius_m],
+         ['out', record.timeout_location_status, record.timeout_distance_m,
+                 record.timeout_geofence_radius_m]
+        ].forEach(function (pair) {
+            const flag = attLocationFlag(pair[1], pair[2], pair[3]);
+            if (!flag) return;
+            out.push('<span class="att-badge att-badge--loc-' + flag.tone + '" title="' +
+                     attEsc(pair[0] === 'in' ? 'Time in: ' : 'Time out: ') + attEsc(flag.say) +
+                     '">' + attEsc(pair[0] + ': ' + flag.badge) + '</span>');
+        });
         return out.join(' ');
+    }
+
+    /**
+     * What the location check said, in the owner's words (0068 / 0069).
+     *
+     * THE SPLIT THAT MATTERS, and it is the server's rule, not a new one
+     * invented here: a `bad` status means the phone could PROVE the
+     * worker was not where they claimed. A `warn` means it could not
+     * tell. Colouring "the GPS was weak" the same red as "they were
+     * somewhere else" would turn a cheap handset into an accusation --
+     * which is exactly the outcome migration 0069 is arranged to avoid.
+     *
+     * Returns null for `verified` and for a record with no status at all
+     * (everything written before 0069). Nothing to say is said with
+     * nothing: a badge reading "ok" on every row trains an owner to stop
+     * reading badges.
+     */
+    const ATT_LOC = {
+        outside_radius: { badge: 'off site', tone: 'bad',
+            say: 'Recorded away from the site' },
+        mock_location: { badge: 'fake GPS', tone: 'bad',
+            say: 'The phone reported a made-up location' },
+        permission_denied: { badge: 'location blocked', tone: 'bad',
+            say: 'The app was not allowed to read the location' },
+        // 0073. A choice, like blocking the permission -- the phone knows
+        // the difference between "switched off" and "no signal".
+        location_disabled: { badge: 'location off', tone: 'bad',
+            say: 'Location was switched off on the phone' },
+        low_accuracy: { badge: 'weak GPS', tone: 'warn',
+            say: 'The phone could not get a clear fix, so this was not checked' },
+        location_unavailable: { badge: 'no location', tone: 'warn',
+            say: 'The phone sent no location, so this was not checked' },
+        project_geofence_unavailable: { badge: 'no site pin', tone: 'warn',
+            say: 'This site had no saved location to check against' }
+    };
+
+    function attLocationFlag(status, distanceM, radiusM) {
+        const key = String(status || '');
+        if (!key || key === 'verified') return null;
+        // An unrecognised code is shown, never swallowed. A future status
+        // this build has not heard of is still something the owner has to
+        // know happened -- and 0068 deliberately put no check constraint
+        // on the column so that new codes can arrive.
+        const found = ATT_LOC[key] ||
+            { badge: key.replace(/_/g, ' '), tone: 'warn',
+              say: 'The phone reported "' + key.replace(/_/g, ' ') + '"' };
+        const d = Number(distanceM), r = Number(radiusM);
+        // The distance is the whole argument on an off-site record, so it
+        // is stated rather than left for someone to ask about.
+        const detail = isFinite(d)
+            ? found.say + ' — ' + Math.round(d) + ' m away' +
+              (isFinite(r) ? ', and this site allows ' + Math.round(r) + ' m' : '')
+            : found.say;
+        return { badge: found.badge, tone: found.tone, say: detail };
+    }
+
+    /**
+     * The whole day's location story in one sentence, for the drill-down.
+     *
+     * A record from before 0069 carries no status at all, and says so
+     * plainly rather than implying it passed a check that did not exist
+     * when it was written.
+     */
+    function attLocationSentence(record) {
+        if (!record) return '—';
+        const inFlag = attLocationFlag(record.timein_location_status,
+            record.timein_distance_m, record.timein_geofence_radius_m);
+        const outFlag = record.timeout_at
+            ? attLocationFlag(record.timeout_location_status,
+                record.timeout_distance_m, record.timeout_geofence_radius_m)
+            : null;
+        if (!record.timein_location_status && !record.timeout_location_status) {
+            return 'Not checked — recorded before location checking';
+        }
+        const parts = [];
+        if (inFlag) parts.push('Time in: ' + inFlag.say);
+        if (outFlag) parts.push('Time out: ' + outFlag.say);
+        if (!parts.length) return 'On site, both stamps verified';
+        return parts.join(' · ');
     }
 
     /** "07:00" / "07:00:00" → "7:00 AM". */
@@ -1113,6 +1212,28 @@
                               'offline can arrive later in the day.',
                         action: 'Open the record'
                     });
+                }
+
+                // The location verdict, separately -- a worker can both
+                // be missing a Time Out AND have timed in from somewhere
+                // else, and those are two different things to do.
+                //
+                // ONLY the `bad` half reaches this list. A weak fix is on
+                // the row as a badge but not here: it happens on cheap
+                // phones every day, it is nobody's fault, and a list that
+                // fills with it is a list an owner stops reading.
+                if (record) {
+                    const loc = attLocationFlag(record.timein_location_status,
+                        record.timein_distance_m, record.timein_geofence_radius_m);
+                    if (loc && loc.tone === 'bad') {
+                        out.push({
+                            kind: 'location', tone: 'none', icon: 'map-pin', id: worker.id,
+                            title: `${name} timed in with a location problem`,
+                            body: loc.say + '. The record was kept, not thrown away — ' +
+                                  'check it with them before the week is paid.',
+                            action: 'Open the record'
+                        });
+                    }
                 }
             });
             return out;
@@ -1488,7 +1609,7 @@
             if (!shown.length) { alert('Nothing to export for this day.'); return; }
             const csv = attToCsv(
                 ['Worker', 'Position', 'Worker no', 'Project', 'Time in', 'Time out',
-                 'Hours', 'Status'],
+                 'Hours', 'Status', 'Location check', 'Metres from site'],
                 shown.map(({ worker, record }) => [
                     attWorkerName(worker), worker.position, attWorkerNo(worker.worker_no),
                     record ? record.timein_project_name : '',
@@ -1498,7 +1619,14 @@
                     // spreadsheet built on "complete" keeps working, and
                     // the file stays comparable with every export before
                     // this one.
-                    record ? record.status : 'no record'
+                    record ? record.status : 'no record',
+                    // The RAW status here too, for the same reason: the
+                    // file is filtered and pivoted, and a sentence cannot
+                    // be. The screen is where the words belong.
+                    record ? (record.timein_location_status || '') : '',
+                    record && record.timein_distance_m !== null &&
+                        record.timein_distance_m !== undefined
+                        ? Math.round(record.timein_distance_m) : ''
                 ])
             );
             attDownloadCsv('attendance-' + workDate + '.csv', csv);
@@ -1783,6 +1911,10 @@
                   <div class="att-fact">
                     <span class="att-fact-key">How the day ended</span>
                     <span class="att-fact-val">${attStatusPill(r)} ${attBadges(r)}</span>
+                  </div>
+                  <div class="att-fact">
+                    <span class="att-fact-key">Where they were</span>
+                    <span class="att-fact-val">${attEsc(attLocationSentence(r))}</span>
                   </div>
                   <div class="att-fact">
                     <span class="att-fact-key">Worker number</span>
@@ -2901,6 +3033,8 @@
             .select('id,worker_id,worker_name,worker_position,work_date,status,' +
                     'timein_at,timeout_at,timein_project_name,total_minutes,' +
                     'timein_was_offline,timeout_was_offline,' +
+                    'timein_location_status,timein_distance_m,timein_geofence_radius_m,' +
+                    'timeout_location_status,timeout_distance_m,timeout_geofence_radius_m,' +
                     'abandoned_by,abandoned_at,abandoned_note')
             .gte('work_date', from)
             .lte('work_date', to)
@@ -3118,6 +3252,16 @@
             const abandoned = rows.filter(r => r.status === 'abandoned').length;
             const workers = new Set(rows.map(r => r.worker_id)).size;
 
+            // Days whose Time In was never confirmed on site. Counted over
+            // the RANGE rather than shown per row, because one unchecked
+            // day is weather and fifteen in a month is a pattern -- and a
+            // per-record badge, which is what the Today screen has, cannot
+            // show a pattern.
+            const unchecked = rows.filter(function (r) {
+                return !!attLocationFlag(r.timein_location_status,
+                    r.timein_distance_m, r.timein_geofence_radius_m);
+            }).length;
+
             const tail = attAnd([
                 complete ? `${complete} ${complete === 1 ? 'day was' : 'days were'} finished properly` : '',
                 openRecords ? `${openRecords} ${openRecords === 1 ? 'is' : 'are'} still waiting for a time out` : '',
@@ -3138,6 +3282,10 @@
                       activeDays ? Math.round(totalMinutes / activeDays) : null)) +
                   attStat('Days finished properly', complete) +
                   attStat('Days waiting for a time out', openRecords, openRecords > 0) +
+                  // Never reddened: most of these are a weak fix on a
+                  // cheap phone, which is nobody's fault. It is a number
+                  // to look into, not an alarm.
+                  attStat('Time ins not confirmed on site', unchecked) +
                   // Shown even at zero, so resolving a record moves a
                   // figure the admin can see rather than making one
                   // quietly disappear from the screen.
@@ -3248,7 +3396,8 @@
             const to = container.querySelector('#attTo').value;
             const csv = attToCsv(
                 ['Work date', 'Worker', 'Position', 'Project', 'Time in', 'Time out',
-                 'Hours', 'Status', 'Captured offline', 'Closed by admin', 'Reason'],
+                 'Hours', 'Status', 'Captured offline', 'Location check',
+                 'Metres from site', 'Closed by admin', 'Reason'],
                 rows.map(function (r) {
                     return [
                         r.work_date, r.worker_name, r.worker_position, r.timein_project_name,
@@ -3257,6 +3406,12 @@
                         // was_offline is ADMIN-facing only; the worker is
                         // never shown it (design §6.3).
                         (r.timein_was_offline || r.timeout_was_offline) ? 'yes' : 'no',
+                        // The location verdict travels with the export
+                        // too: the CSV is where an owner counts how often
+                        // one worker's phone "had no location".
+                        r.timein_location_status || '',
+                        r.timein_distance_m !== null && r.timein_distance_m !== undefined
+                            ? Math.round(r.timein_distance_m) : '',
                         // The trail travels with the export. A row whose
                         // hours read '—' because an admin closed it must
                         // say so in the file too, or the spreadsheet

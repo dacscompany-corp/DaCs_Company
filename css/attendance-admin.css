@@ -343,6 +343,13 @@
 /* A clock gap on an ONLINE capture is worth a look, so this one is red. */
 .att-badge--skew    { background: var(--att-red-tint);   color: var(--att-red); }
 
+/* The location check (0069). TWO colours, and the split is the server's
+   rule: red only when the phone could PROVE the worker was elsewhere or
+   the reading was refused outright. Gold when it simply could not tell —
+   a weak fix on a cheap handset must not read like an accusation. */
+.att-badge--loc-bad  { background: var(--att-red-tint);  color: var(--att-red); }
+.att-badge--loc-warn { background: var(--att-gold-tint); color: var(--att-gold); }
+
 /* ── Messages ──────────────────────────────────────────────────── */
 
 .att-error {

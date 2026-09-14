@@ -75,7 +75,7 @@ const V = evalWith(
   slice(src, '// ==== ATT VOCABULARY START ====', '// ==== ATT VOCABULARY END ====', 'attendance-admin.js'),
   { window: {} },
   ['attTone', 'attStatusWord', 'attStatusNote', 'attBonusReason', 'attClock', 'attAnd',
-   'attDayHasStarted', 'attStatusShort']
+   'attDayHasStarted', 'attStatusShort', 'attLocationFlag', 'attLocationSentence']
 );
 
 const rec = (o) => Object.assign({
@@ -800,6 +800,58 @@ test('a list of findings reads as a sentence', () => {
   eq(V.attAnd(['a', 'b']), 'a and b');
   eq(V.attAnd(['a', 'b', 'c']), 'a, b and c');
   eq(V.attAnd(['a', '', 'c']), 'a and c', 'an absent finding leaves no gap');
+});
+
+console.log('\nXIII. The location check, as the owner reads it (0068 / 0069)');
+
+test('a verified stamp says nothing at all', () => {
+  // A badge on every row is a badge nobody reads.
+  eq(V.attLocationFlag('verified', 12, 150), null);
+  eq(V.attLocationFlag(null, null, null), null, 'a pre-0069 record has no verdict to show');
+  eq(V.attLocationFlag('', null, null), null);
+});
+
+test('being elsewhere is red; not being able to tell is not', () => {
+  // The server's own split (0069): refuse only what is KNOWN BAD. A weak
+  // fix on a cheap handset must never render like an accusation.
+  eq(V.attLocationFlag('outside_radius', 800, 500).tone, 'bad');
+  eq(V.attLocationFlag('mock_location').tone, 'bad');
+  eq(V.attLocationFlag('permission_denied').tone, 'bad');
+  eq(V.attLocationFlag('location_disabled').tone, 'bad', 'switching it off is a choice');
+  eq(V.attLocationFlag('low_accuracy').tone, 'warn');
+  eq(V.attLocationFlag('location_unavailable').tone, 'warn');
+  eq(V.attLocationFlag('project_geofence_unavailable').tone, 'warn');
+});
+
+test('the distance is stated, because it is the whole argument', () => {
+  const f = V.attLocationFlag('outside_radius', 812.4, 500);
+  ok(/812 m away/.test(f.say), 'the distance is rounded and named: ' + f.say);
+  ok(/allows 500 m/.test(f.say), 'and so is what the site allows: ' + f.say);
+  ok(!/NaN|undefined/.test(V.attLocationFlag('low_accuracy', null, 500).say),
+     'no distance means no distance clause, not "NaN m away"');
+});
+
+test('a status this build has never heard of is shown, not swallowed', () => {
+  // 0068 deliberately put no check constraint on the column so new codes
+  // can arrive. Dropping one would hide the very thing it reports.
+  const f = V.attLocationFlag('jammed_signal', null, null);
+  ok(f, 'an unknown code still produces a flag');
+  eq(f.tone, 'warn', 'unknown is uncertainty, never an accusation');
+  ok(/jammed signal/.test(f.badge + f.say), 'and it says the code: ' + f.badge);
+});
+
+test('the day’s sentence names which stamp was flagged', () => {
+  const s = V.attLocationSentence({
+    timein_location_status: 'location_unavailable',
+    timeout_at: '2026-09-15T09:00:00Z', timeout_location_status: 'verified'
+  });
+  ok(/^Time in:/.test(s), 'it leads with the stamp: ' + s);
+  ok(!/Time out/.test(s), 'a verified stamp adds nothing');
+
+  eq(V.attLocationSentence({ timein_location_status: 'verified' }),
+     'On site, both stamps verified');
+  eq(V.attLocationSentence({}), 'Not checked — recorded before location checking',
+     'a pre-0069 record must not imply it passed a check that did not exist');
 });
 
 console.log('\nXII. Hiding a site from workers (0072)');
