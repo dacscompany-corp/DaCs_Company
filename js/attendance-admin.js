@@ -4093,9 +4093,10 @@
      */
     async function attRenderRewards(container) {
         const thisMonday = attWeekStartOf(attTodayKey());
-        // Default to the week just gone: the current one cannot be frozen
-        // yet, so landing on it would always show an empty table.
-        let week = attKeyFromDayNum(attDayNum(thisMonday) - 7);
+        // Open on the CURRENT week. It used to land on the week just gone
+        // because an unfrozen week drew an empty table; attLoadLiveWeek
+        // now shows it as it stands, so today's week is the useful one.
+        let week = thisMonday;
         const hideMoney = attIsStaff();
 
         container.innerHTML =
@@ -4167,12 +4168,16 @@
             } else {
                 lead = `${t.qualified} of ${t.workers} ` +
                     `${t.workers === 1 ? 'worker' : 'workers'} earned the bonus this week.`;
+                // Nobody qualified: "₱0 in total. All of it has been handed
+                // over." read as if something had been paid.
                 const money = hideMoney ? ''
                     : `${attPeso(t.totalAmount)} in total.` +
                       (t.unpaidAmount > 0
                         ? ` ${attPeso(t.unpaidAmount)} of it has not been handed out yet.`
                         : ' All of it has been handed over.');
-                bodyText = hideMoney
+                bodyText = !t.qualified
+                    ? 'Nobody earned it this week, so nothing is owed.'
+                    : hideMoney
                     ? (t.unpaid
                         ? `${t.unpaid} of them ${t.unpaid === 1 ? 'has' : 'have'} not been handed the bonus yet.`
                         : 'Every bonus earned has been handed over.')
