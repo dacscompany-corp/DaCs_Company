@@ -43,7 +43,11 @@
       "Bash(node -e ' *)",
       "PowerShell($p = \"C:\\\\Users\\\\John Aerol Tapales\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-John-Aerol-Tapales-Documents-Dacs-Web\\\\7c7b23e5-fb59-4509-bbae-02b1e3d7055e\\\\scratchpad\\\\import-los-churreros-quote.js\"; if \\(Test-Path $p\\) { $c = Get-Content -Raw $p; $c | Set-Clipboard; \"Copied to clipboard: $\\($c.Length\\) chars\"; \"First line: \" + \\($c -split \"`n\"\\)[0] } else { \"NOT FOUND: $p\" })",
       "PowerShell($p = \"C:\\\\Users\\\\John Aerol Tapales\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-John-Aerol-Tapales-Documents-Dacs-Web\\\\7c7b23e5-fb59-4509-bbae-02b1e3d7055e\\\\scratchpad\\\\import-los-churreros-quote.js\"; $c = [System.IO.File]::ReadAllText\\($p, [System.Text.Encoding]::UTF8\\); $c | Set-Clipboard; \"Copied: $\\($c.Length\\) chars\"; \"Peso sign present: \" + $c.Contains\\([char]0x20B1\\); \"Em dash present: \" + $c.Contains\\([char]0x2014\\); \"Sample: \" + $c.Substring\\($c.IndexOf\\('SM03'\\), 60\\))",
-      "PowerShell($d = \"c:\\\\Users\\\\John Aerol Tapales\\\\Documents\\\\Dacs Web\\\\assets\\\\images\"; Get-ChildItem $d -File | Select-Object Name, Length | Format-Table -AutoSize; \"---\"; if \\(Test-Path \"$d\\\\bdo-instapay-qr.png\"\\) { \"QR FILE EXISTS\" } else { \"QR FILE MISSING - this is why nothing renders\" })"
+      "PowerShell($d = \"c:\\\\Users\\\\John Aerol Tapales\\\\Documents\\\\Dacs Web\\\\assets\\\\images\"; Get-ChildItem $d -File | Select-Object Name, Length | Format-Table -AutoSize; \"---\"; if \\(Test-Path \"$d\\\\bdo-instapay-qr.png\"\\) { \"QR FILE EXISTS\" } else { \"QR FILE MISSING - this is why nothing renders\" })",
+      "Bash(node tests/quotation-pdf-import.test.js)",
+      "Bash(node e2e.js)",
+      "Bash(grep -v \"^Warning\\\\|Cannot polyfill\\\\|Require stack\\\\|^- C:\\\\\\\\\\\\\\\\\\\\|could not fit\")",
+      "Bash(node diag.js \"C:/Users/John Aerol Tapales/Downloads/Q-2026-0003.pdf\")"
     ]
   }
 }

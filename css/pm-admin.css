@@ -2471,3 +2471,36 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
 .pm-ov-bdrow:focus-visible { outline: 2px solid #157a52; outline-offset: 1px; background: #f6f5f2; }
 /* The total row carries its own top border, so it keeps its own spacing. */
 .pm-ov-bdtotal { margin: 4px -10px 0; padding: 13px 10px 6px; }
+
+/* ══════════════════════════════════════════════════════════
+   ACCOMPLISHMENT REPORT BUILDER
+   The work-item tree reuses the BOQ's classes wholesale (.boq-table,
+   .boq-row-l1 / -l2 / -l3, .boq-row-subtotal), so the builder, the BOQ
+   and the printed sheet share one palette and nothing here restates
+   it. Only what the BOQ has no equivalent for lives below.
+   ══════════════════════════════════════════════════════════ */
+
+/* The report's ninth column: a quotation's line State. */
+.boq-col-state { width: 96px; min-width: 96px; text-align: center; }
+.rp-table .boq-col-state select { width: 100%; text-transform: capitalize; }
+
+/* The LOT explainer, directly under a lump-priced cost item. It has to be
+   loud: the group amounts below it look like money that adds up, and they
+   deliberately do not. */
+.rp-lot-note td {
+  background: #fffbeb !important;
+  border-color: #fde68a !important;
+  color: #92400e;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  padding: 0.6rem 0.8rem !important;
+}
+.rp-lot-note td strong { color: #78350f; }
+
+/* A LOT line has no rate of its own — "scope only" rather than a blank cell,
+   so it reads as deliberate. */
+.rp-table .boq-cell-muted { color: #9ca3af; font-style: italic; text-align: center; }
+
+@media (max-width: 700px) {
+  .rp-lot-note td { font-size: 0.72rem; }
+}

@@ -130,10 +130,121 @@ separate tab):
 ### 4. Progress
 - **Milestones** — phases with a weight and status (`pending` | `in_progress` |
   `completed`); drives the project Completion KPI.
-- **Accomplishment Reports** — a hierarchical **report builder**: **Cost Items → Sub-items →
-  Line items** (description · unit · qty · material rate · labor rate · **% completion**) with
-  auto-rolled totals. Saved per project and **Print / Export-to-PDF** to share with the client.
+- **Accomplishment Reports** — a hierarchical **report builder** on the **quotation's line
+  model**: **Cost Items → Sub-items → Line items**, columns
+  `Item No. · Descriptions · QTY · Unit · Unit Price · Amount · % Complete · State · Actions`. Saved per project and **Print / Export-to-PDF** to share with the client.
   (Project folders must exist in the Expenses module first.)
+  - **House BOQ styling.** The tree is one table using the **shared `boq-*` classes**
+    (`css/boq-module.css`) — yellow head, red cost-item band, grey sub-item band, striped line
+    rows, pale-yellow subtotal — the same palette `quotation-print.js` prints (head `#fbbf24`,
+    section `#c81e1e`, group `#e5e7eb`). The BOQ, the Quotation editor and this builder therefore
+    read as one system, and the screen matches the paper. **Do not fork these styles**; restyle
+    `boq-module.css` if the house look changes.
+  - Columns match the BOQ exactly: Item No. · Descriptions · QTY · Unit · Material &
+    Consumables · Labor & Equipment · Total Amount · % Complete · Accomplishment · Actions.
+    Cost items number **I, II, III…**, sub-items **A, B, C…**, lines **1, 2, 3…**
+  - **Reorder** up/down at all three levels (`pmRpMoveCost` / `pmRpMoveSub` / `pmRpMoveLine`).
+    Swaps happen in place so every id stays stable and the live total cells never go stale.
+  - Rows stay **always editable** — deliberately *not* the BOQ's double-click-to-edit. After a
+    PDF import there can be sixty rates to key in, and opening each row first would undo the
+    point of importing.
+  - **Staff see no peso amounts here.** Project Management is staff-visible (`js/admin.js` hides
+    only Warranty Fund from them), so the builder blanks the rate inputs, Total, Accomplishment,
+    the quoted box and the Summary card for `currentUserRole === 'staff'`; **% Complete stays
+    editable** because progress is not money. The printed sheet enforces the same rule and the
+    role **overrides** the document's own “Rates & line amounts” switch. Fenced by §H / §I of
+    `tests/quotation-pdf-import.test.js`.
+
+#### The line model and the money engine
+One client-facing **Unit Price** per line plus a **State**, exactly as a quotation carries them —
+**not** the BOQ's material/labor split. A cost item is priced one of two ways:
+
+| Pricing | Total | Lines | Progress |
+|---|---|---|---|
+| **Rated** | sums from its lines | each carries a Unit Price | weighted by line amounts |
+| **Lump sum (LOT)** | **is** the LOT amount | print as *scope only* | weighted by the **group amounts** |
+
+- `optional` / `waived` / `removed` lines count **₱0**, the same way `qtLineAmount` totals them.
+  A **removed** line is not scope and **never prints**; optional and waived print, labelled, at nothing.
+- A LOT cost item's own amount **wins**; its group amounts are working figures that do **not** add
+  to the total and are **not printed** for the client. They exist to weight progress — with none
+  entered the groups weigh equally. The builder says this in an amber note under every LOT row,
+  because group figures that look like money but don't add up are exactly the thing someone
+  will misread.
+- **Backward compatible.** `unitPrice` falls back to `materialRate + laborRate` (honouring the
+  BOQ's `materialOverride` / `laborOverride`), so every report saved before this computes exactly
+  what it always did. §J of `tests/quotation-pdf-import.test.js` pins that.
+
+**The engine is duplicated, verbatim, in two files** — `js/pm-admin.js` (the admin editor) and
+`js/client-management-app.js` (the client/partner portal). They are the only two that read
+`accomplishment_reports`, and there is no module system to share code. Both copies sit between
+`// ==== RP MATH ENGINE START/END ====` markers, and §J runs **both** over the same fixtures and
+fails if one drifts. **Edit them together.**
+
+> Do **not** copy this into `js/client-app.js` or `js/portal-app.compiled.js`. Those render
+> `boqDocuments` — a different feature that keeps the material/labor split.
+
+#### Document info (the Quotation editor's header, ported)
+The report header is the same band + split + sticky-rail layout as the Quotation editor, reusing
+its classes from `css/quotation-module.css` (already loaded by `admin.html`) rather than restating
+them — the same call as the work-item tree reusing the BOQ's.
+
+| Panel | Fields |
+|---|---|
+| **Client** | Client name · Address · Email, plus **Fill from project** |
+| **Project** | Project name · Location · Area · Subject · Scope note |
+| **Document & signatories** | Report no. · Report date · Period covered · Prepared by · Submitted by |
+| **Rail — Printed sheet options** | Company logo · “Submitted by” column · “Prepared by” column · Rates & line amounts |
+| **Rail — Reference images** | Up to 4, captioned and reorderable, uploaded to the `uploads` bucket |
+
+- **Fill from project**, not saved presets. `quotation_presets` is owned by the quotation module
+  alone (migration 0045), and a report already lives inside a construction project that knows its
+  client — so the button copies `clientName` / `clientEmail` / `address` / `projectName` /
+  `location` straight off `_pmActiveProject`. **Do not add a preset table for this.**
+- Every switch card states what it is doing *right now* rather than what it would do if flipped,
+  and warns when both signature columns are on with **Submitted by** blank (the same name would
+  print twice).
+- **No migration.** `accomplishment_reports` is a `jsonbData` collection, so all of these live in
+  the one `data` jsonb column. `_RP_TEXT_FIELDS` / `_RP_SWITCHES` in `js/pm-admin.js` drive the
+  form, the read-back and the save together — add a field there and all three follow.
+
+#### Printed sheet & PDF — `js/pm-report-print.js`
+The report had **no printed output at all** before this, so the switches above had nothing to act
+on. `pmRpPrintSheet()` opens the A4 sheet and `pmRpExportPDF()` saves a PDF (jsPDF + autotable,
+lazy-loaded, pinned versions), both from the toolbar.
+
+- Shaped like `quotation-print.js` and the BOQ report on purpose: same letterhead, same black meta
+  box, same yellow head / red section / grey sub-item table, same signature columns.
+- **The money math is not re-implemented.** It reads `window.pmRpMath`, which `pm-admin.js`
+  publishes from the single copy the builder uses, so the sheet can never disagree with the
+  screen. There are already three copies of that BOQ math in the codebase — do not add a fourth.
+- **Submitted by** falls back to **Prepared by**, then to the company name. **Conforme — Client**
+  is always printed and is not switchable.
+- Dates print from **local parts** (`prettyDate`), never `new Date('YYYY-MM-DD')` — PH is UTC+8
+  and that parses as UTC, rendering the day before.
+- Gotcha worth knowing: an autotable block given only `margin.left` falls back to autotable's
+  *default* right margin and silently squeezes a column ("2 units width could not fit page").
+  The totals block sets `right` explicitly. `js/quotation-print.js:893` still has that omission.
+- **Import PDF** (builder toolbar) — reads a **quotation PDF exported by this app** back into the
+  builder instead of retyping the scope. A quotation and a report have the same three levels, so
+  section → cost item, group → sub-item, line → line item.
+  - Parser: `window.dacsParseQuotationPdf` in `js/print-utils.js` (pdf.js 3.11.174, already
+    loaded). Report-side mapping + preview: `pmRpImportPdf` / `_pmRpImportMap` in `js/pm-admin.js`.
+  - **Unit price → Material Rate, Labor Rate blank, % Done 0.** A quotation carries one
+    client-facing rate and no material/labor split (0045), and it states scope, not progress.
+  - `[REMOVED]` lines are dropped; `(optional)` and `WAIVED` lines import at **zero**, matching how
+    the quotation itself totals them, so the checksum against the PDF's printed
+    `TOTAL PROJECT COST` lands exactly.
+  - **LOT-priced (lump-sum) sections import AS lump sums.** When a quotation prices a section as
+    a LOT, the PDF prints **no** unit price and **no** amount on any line (`quotation-print.js:825`)
+    — the only money on the page is the section total. That total becomes the cost item's
+    `lumpAmount` with `pricing: 'lump'`, so **the money survives the import** instead of the
+    section arriving as ₱0. Its lines come in as scope.
+  - A preview shows the tree, the counts, that checksum and any warnings before anything is
+    inserted. **Nothing is written to the DB until Save Report.** The checksum counts line totals
+    **plus** quoted amounts, so a lump-sum quotation does not read as a total mismatch.
+  - It reads a **file the admin picks**, never the `quotations` tables — see the isolation note in
+    [ARCHITECTURE.md](ARCHITECTURE.md) §4. Do not turn it into a quotation picker.
 
 ---
 

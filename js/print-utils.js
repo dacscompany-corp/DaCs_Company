@@ -1069,6 +1069,362 @@ async function _dacsScanPdfGeom(bytes) {
 }
 async function _dacsScanPdfLines(bytes) { return (await _dacsScanPdfGeom(bytes)).lines; }
 
+// ══════════════════════════════════════════════════════════════════════════
+// QUOTATION-PDF IMPORT — read a quotation PDF this app exported back into a
+// plain tree, so a PM Accomplishment Report can be built from it instead of
+// retyping fifty rows by hand.
+//
+// WHY A FILE AND NOT A DATABASE READ: migration 0045's isolation contract
+// says only quotation-module.js / quotation-print.js may read the `quotations`
+// tables, and that turning a quote into project work is a MANUAL admin action.
+// An admin picking a PDF off disk IS that manual action — the FILE crosses the
+// boundary, not the code. Never "improve" this into a quotation picker that
+// queries the table; that would break the contract in CLAUDE.md.
+//
+// Nothing here knows what an accomplishment report is. It returns neutral
+// sections → groups → lines; js/pm-admin.js maps that onto cost items.
+// ══════════════════════════════════════════════════════════════════════════
+
+// Cell-level twin of _dacsScanPdfGeom. That one joins a row's text items into
+// one `raw` string, which throws away the per-item x — and here the COLUMN a
+// value sits in is the whole identification. So keep every item separate.
+async function _dacsScanPdfCells(bytes) {
+    const pdfjs = await _dacsEnsurePdfJs();
+    const doc = await pdfjs.getDocument({ data: bytes.slice(0) }).promise;   // slice: pdf.js consumes the buffer
+    const rows = [];
+    for (let p = 1; p <= doc.numPages; p++) {
+        const page = await doc.getPage(p);
+        const tc = await page.getTextContent();
+        const byY = new Map();                       // rounded y → cells on that row
+        tc.items.forEach(it => {
+            if (!it.str || !it.str.trim()) return;
+            const y = Math.round(it.transform[5]);
+            let e = byY.get(y); if (!e) { e = []; byY.set(y, e); }
+            e.push({ x: it.transform[4], w: it.width || 0, s: it.str });
+        });
+        // PDF y grows UPWARD, so descending y is top-to-bottom reading order.
+        Array.from(byY.keys()).sort((m, n) => n - m).forEach(y => {
+            rows.push({ page: p - 1, y, cells: byY.get(y).sort((c, d) => c.x - d.x) });
+        });
+        try { page.cleanup(); } catch (_) {}
+    }
+    try { doc.destroy(); } catch (_) {}
+    return rows;
+}
+
+// ==== QT PDF IMPORT ENGINE START ====
+// Pure — no DOM, no pdf.js, no network. The input is already plain data
+// ([{ page, y, cells:[{x,w,s}] }]), which is what lets
+// tests/quotation-pdf-import.test.js drive the whole classifier without a
+// browser or a fixture PDF. Keep it that way.
+
+// '1,250.00' → 1250 · '' / 'WAIVED' / 'cu.m' → null
+function qtpNum(s) {
+    const t = String(s == null ? '' : s).replace(/,/g, '').trim();
+    if (!t || !/^-?\d*\.?\d+$/.test(t)) return null;
+    const n = Number(t);
+    return isNaN(n) ? null : n;
+}
+
+function qtpRowText(row) {
+    return ((row && row.cells) || []).map(c => c.s).join(' ').replace(/\s+/g, ' ').trim();
+}
+
+// The itemized table's head row (js/quotation-print.js:845). Autotable repeats
+// it on every page, and its cell x's are what anchor the columns — so this is
+// both the "we found the table" signal and the geometry source.
+// `price` is null for a quotation exported with line pricing hidden (0047).
+function qtpAnchors(row) {
+    const at = {};
+    ((row && row.cells) || []).forEach(c => {
+        const k = String(c.s || '').replace(/\s+/g, ' ').trim().toUpperCase();
+        if      (k === '#')           at.num    = c.x;
+        else if (k === 'DESCRIPTION') at.desc   = c.x;
+        else if (k === 'QTY')         at.qty    = c.x;
+        else if (k === 'UNIT')        at.unit   = c.x;
+        else if (k === 'UNIT PRICE')  at.price  = c.x;
+        else if (k === 'AMOUNT')      at.amount = c.x;
+    });
+    if (at.num == null || at.desc == null || at.qty == null ||
+        at.unit == null || at.amount == null) return null;
+    return { num: at.num, desc: at.desc, qty: at.qty, unit: at.unit,
+             price: at.price == null ? null : at.price, amount: at.amount };
+}
+
+// Which VALUE column a cell belongs to — qty / unit / price / amount — by
+// nearest head anchor.
+//
+// Only the four right-hand columns, deliberately. They are narrow (12-26mm),
+// so a value never drifts near its neighbour's anchor even though the head is
+// centred and the values under UNIT PRICE / AMOUNT are right-aligned. The '#'
+// and DESCRIPTION anchors are useless for this: DESCRIPTION's column is the
+// wide auto-width one and its centred head text sits ~50mm right of the column
+// edge, so any boundary drawn from it lands in the middle of the descriptions.
+// The description column's real left edge comes from the body — see qtpTree.
+function qtpColOf(x, a) {
+    const cols = [['qty', a.qty], ['unit', a.unit]];
+    if (a.price != null) cols.push(['price', a.price]);
+    cols.push(['amount', a.amount]);
+    let best = cols[0][0], bestD = Infinity;
+    cols.forEach(([name, ax]) => {
+        const d = Math.abs(x - ax);
+        if (d < bestD) { bestD = d; best = name; }
+    });
+    return best;
+}
+
+// A row's first cell is always its label; the rest are the value columns.
+function qtpSplitRow(row, a) {
+    const cells = row.cells;
+    const rest = {};
+    for (let i = 1; i < cells.length; i++) {
+        const k = qtpColOf(cells[i].x, a);
+        if (!rest[k] || cells[i].x < rest[k].x) rest[k] = cells[i];
+    }
+    return { label: cells[0], rest };
+}
+
+// A numbered section header: "1. CIVIL WORKS" plus, at most, its amount.
+// Sections are one merged cell, so they never carry qty / unit / unit price.
+function qtpIsSectionHead(label, rest) {
+    return /^\d+\.\s/.test(String(label.s).trim()) && !rest.qty && !rest.unit && !rest.price;
+}
+
+// A wrapped cell's extra visual lines sit ~fontSize×1.15 apart; two separate
+// table rows are that PLUS twice the cell padding — about 8pt versus 15pt in a
+// real quotation. Anything tighter than this fraction of the measured row pitch
+// is a wrap, not a new row.
+var QTP_WRAP_RATIO = 0.8;
+
+// The totals block that follows the table (js/quotation-print.js:881-886).
+// ALL of its labels end the table, not just the last one: "Project Cost:",
+// "Sub-total:" and "Plus: VAT:" come BEFORE "TOTAL PROJECT COST:", so
+// stopping only at the total would import the first three as line items.
+// They price at zero, so the checksum would still have matched — the junk
+// rows would only have shown up in the admin's face.
+var QTP_TOTALS_RE = /^\s*(project cost|less\s*:\s*discount|sub-?total|plus\s*:\s*vat|total project cost)\s*:/i;
+
+// Rows → { sections:[{ label, amount, groups:[{ label, qty, unit, lines:[…] }] }] }.
+//
+// INDENT IS THE LEVEL, and the indents come from the BODY, not the head row:
+// js/quotation-print.js left-aligns a group label at the DESCRIPTION column's
+// edge and a line label three spaces further right (':830'), but the head text
+// above them is CENTRED in a wide auto-width column and so marks nothing. So
+// pass 1 finds the real column edge — the leftmost label in the table — and
+// pass 2 measures every row against it:
+//   label at the column edge         → GROUP
+//   label right of it, or priced     → LINE
+//   numbered, with only an amount    → SECTION
+// The price check is the belt to that braces: a row carrying a UNIT PRICE is a
+// line whatever its indent says.
+//
+// A WRAPPED label is a row with a label and nothing else, and it continues the
+// thing above it. Indent CANNOT identify one: jsPDF puts the three leading
+// spaces on a line's first visual line only, so the second visual line of a
+// wrapped description starts at exactly the group indent and is otherwise
+// indistinguishable from a new sub-item. What separates them is the VERTICAL
+// GAP — a wrap is a line-height, a new row is a line-height plus two cell
+// paddings — so the parser measures the table's row pitch and compares.
+function qtpTree(rows) {
+    const sections = [], warnings = [];
+    const stats = { sections: 0, groups: 0, lines: 0, skippedRemoved: 0, optional: 0 };
+    let printedTotal = null;
+
+    // ── Pass 1: isolate the itemized table and find the description edge ──
+    const band = [];
+    let a = null, collecting = false, sawHead = false;
+    for (const row of (rows || [])) {
+        const text = qtpRowText(row);
+        if (!text) continue;
+
+        // The head row starts the table and re-anchors it on page 2+
+        // (autotable repeats it); it is never data.
+        const head = qtpAnchors(row);
+        if (head) { a = head; collecting = true; sawHead = true; band.push({ head: true }); continue; }
+
+        // The totals block ends the table; its last row is the checksum.
+        if (QTP_TOTALS_RE.test(text)) {
+            collecting = false;
+            if (/^\s*total project cost\s*:/i.test(text)) {
+                printedTotal = qtpNum(row.cells[row.cells.length - 1].s);
+            }
+            continue;
+        }
+        if (/^GENERAL\s+TERMS/i.test(text)) { collecting = false; continue; }
+        if (!collecting || !a) continue;
+        band.push({ row, a });
+    }
+
+    if (!sawHead) {
+        throw new Error('This doesn’t look like a DAC’s quotation PDF — the itemized estimate ' +
+                        'table wasn’t found. Export the quotation from the Quotations module and try again.');
+    }
+    if (a && a.price == null) {
+        throw new Error('This quotation was exported with line pricing hidden, so it carries no unit ' +
+                        'prices to import. Re-export it with pricing shown, then import again.');
+    }
+
+    let descLeft = Infinity;
+    band.forEach(b => {
+        if (!b.row) return;
+        const { label, rest } = qtpSplitRow(b.row, b.a);
+        if (qtpIsSectionHead(label, rest)) return;      // centred — would skew the edge
+        if (label.x < descLeft) descLeft = label.x;
+    });
+    if (!isFinite(descLeft)) descLeft = 0;
+
+    // The row pitch, measured rather than guessed: the median gap between
+    // consecutive rows. Most rows in a quotation are ordinary single-line rows,
+    // so the median IS the pitch, and a wrap comes in well under it.
+    const gaps = [];
+    for (let i = 1; i < band.length; i++) {
+        const p = band[i - 1].row, c = band[i].row;
+        if (!p || !c || p.page !== c.page) continue;
+        const g = p.y - c.y;
+        if (g > 0) gaps.push(g);
+    }
+    gaps.sort((m, n) => m - n);
+    const wrapMax = (gaps.length ? gaps[Math.floor(gaps.length / 2)] : 0) * QTP_WRAP_RATIO;
+
+    // ── Pass 2: classify ──
+    let sec = null, grp = null, prevKind = null, prevLine = null, prevRow = null;
+    const curSec = () => {
+        if (!sec) { sec = { label: '', amount: null, groups: [] }; sections.push(sec); stats.sections++; }
+        return sec;
+    };
+    const curGrp = () => {
+        if (!grp) { grp = { label: '', qty: '', unit: '', lines: [] }; curSec().groups.push(grp); stats.groups++; }
+        return grp;
+    };
+
+    for (const b of band) {
+        if (b.head) { prevKind = null; prevLine = null; prevRow = null; continue; }
+        const { label, rest } = qtpSplitRow(b.row, b.a);
+        const text    = String(label.s).trim();
+        const amtCell = rest.amount;
+        const amtN    = amtCell ? qtpNum(amtCell.s) : null;
+        const waived  = !!(amtCell && /WAIVED/i.test(amtCell.s));
+        const priceN  = rest.price ? qtpNum(rest.price.s) : null;
+        const bare    = !rest.qty && !rest.unit && !rest.price && !rest.amount;
+        const tight   = !!(prevRow && prevRow.page === b.row.page &&
+                           (prevRow.y - b.row.y) > 0 && (prevRow.y - b.row.y) < wrapMax);
+        prevRow = b.row;
+
+        // ── Section ──
+        if (qtpIsSectionHead(label, rest)) {
+            sec = { label: text.replace(/^\d+\.\s*/, ''), amount: amtN, groups: [] };
+            sections.push(sec); stats.sections++;
+            grp = null; prevKind = 'section'; prevLine = null;
+            continue;
+        }
+
+        // ── A wrapped label — continue whatever is above, keep prevKind ──
+        if (bare && tight) {
+            if (prevKind === 'line' && prevLine) {
+                prevLine.description = (prevLine.description + ' ' + text).trim();
+                continue;
+            }
+            if (prevKind === 'group' && grp) { grp.label = (grp.label + ' ' + text).trim(); continue; }
+            if (prevKind === 'section' && sec) { sec.label = (sec.label + ' ' + text).trim(); continue; }
+        }
+
+        // ── Line ──
+        if (label.x > descLeft + 2 || priceN != null || amtN != null || waived) {
+            // A removed line keeps its price in the PDF only so the revision
+            // diff can value the deletion — it is not scope. Drop it.
+            if (/\[REMOVED\]/i.test(text)) {
+                stats.skippedRemoved++; prevKind = 'line'; prevLine = null;
+                continue;
+            }
+            // An optional line is quoted but NOT bought: the PDF shows its unit
+            // price and an amount of 0.00, and qtLineAmount excludes it from
+            // every total. Import the scope, not the money — otherwise the
+            // report's contract value would exceed the quotation the client
+            // signed. The admin types a rate in if the option is taken.
+            const optional = /\(optional\)/i.test(text);
+            if (optional) stats.optional++;
+            const qtyN = rest.qty ? qtpNum(rest.qty.s) : null;
+            const li = {
+                description: text,
+                qty:  qtyN == null ? 0 : qtyN,
+                unit: rest.unit ? String(rest.unit.s).trim() : '',
+                // WAIVED, optional and lump-sum lines carry no rate — zero, never NaN.
+                unitPrice: (waived || optional || priceN == null) ? 0 : priceN
+            };
+            curGrp().lines.push(li); stats.lines++;
+            prevLine = li; prevKind = 'line';
+            continue;
+        }
+
+        // ── Group ── (a wrapped group label was already absorbed above)
+        grp = { label: text, qty: rest.qty ? String(rest.qty.s).trim() : '',
+                unit: rest.unit ? String(rest.unit.s).trim() : '', lines: [] };
+        curSec().groups.push(grp); stats.groups++;
+        prevKind = 'group'; prevLine = null;
+    }
+
+    if (!stats.lines) throw new Error('No line items were found in this quotation PDF.');
+
+    // A lump-sum section prices the whole section, not its lines, so every line
+    // under it imports at zero and the report's total would silently under-read.
+    // Say so rather than let the admin discover it in the totals.
+    sections.forEach(s => {
+        const lines = s.groups.reduce((acc, g) => acc.concat(g.lines), []);
+        if (!lines.length || lines.some(l => l.unitPrice > 0)) return;
+        if (!(s.amount > 0)) return;
+        // Flag it so the importer can carry the section total across as an
+        // allocation target. It is the ONLY money a lump section puts on the
+        // page, and without it the whole section would import as zero.
+        s.lump = true;
+        warnings.push('Section “' + (s.label || 'Untitled') + '” is priced as a lump sum (₱' +
+            s.amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
+            ') — the quotation prices it by LOT, so its lines carry no rates. The section total ' +
+            'comes in as an allocation target; spread it across the lines as you go.');
+    });
+    if (stats.optional) {
+        warnings.push(stats.optional + ' optional line' + (stats.optional === 1 ? '' : 's') +
+            ' imported at zero, the way the quotation itself totals them. Enter a rate only if the ' +
+            'client took the option.');
+    }
+
+    return { sections, printedTotal, stats, warnings };
+}
+
+// The document info box above the table (js/quotation-print.js:721-734) — two
+// columns of label/value. Scanning STOPS at the head row, so the totals block's
+// "Project Cost:" can never be mistaken for the PROJECT label.
+function qtpHeaderBox(rows) {
+    const out = { quoteNo: '', clientName: '', projectName: '', location: '', area: '' };
+    const LBL = { 'CLIENT': 'clientName', 'PROJECT': 'projectName', 'LOCATION': 'location',
+                  'AREA': 'area', 'QUOTE NO.': 'quoteNo' };
+    for (const row of (rows || [])) {
+        if (qtpAnchors(row)) break;
+        const cells = ((row && row.cells) || []).slice().sort((p, q) => p.x - q.x);
+        cells.forEach((c, i) => {
+            const field = LBL[String(c.s || '').replace(/\s+/g, ' ').trim().toUpperCase()];
+            const next = cells[i + 1];
+            if (field && next && !out[field]) out[field] = String(next.s).trim();
+        });
+    }
+    return out;
+}
+// ==== QT PDF IMPORT ENGINE END ====
+
+window.dacsScanPdfCells = _dacsScanPdfCells;
+
+// Read a quotation PDF into { header, sections, printedTotal, stats, warnings }.
+// Throws a plain-language Error the caller can alert() verbatim.
+window.dacsParseQuotationPdf = async function (bytes) {
+    const rows = await _dacsScanPdfCells(bytes);
+    if (!rows.length) {
+        throw new Error('This PDF has no text layer — it looks scanned, photographed, or printed to ' +
+                        'an image. Export the quotation from the Quotations module instead.');
+    }
+    const t = qtpTree(rows);
+    t.header = qtpHeaderBox(rows);
+    return t;
+};
+
 // STAMP the e-signature onto the uploaded agreement PDF itself — ON the
 // template's own signature lines (found by anchor text). The name and drawn
 // signature land above "PARTNER — SIGNATURE OVER PRINTED NAME", the date

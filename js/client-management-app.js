@@ -1576,12 +1576,16 @@ window.cmViewAccomplishmentReport = function(idx) {
         : items.map((ci, ci2) => `
             <div style="border:1px solid #e5e7eb;border-radius:10px;padding:12px;margin-bottom:12px;">
                 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;">
-                    <div style="font-weight:700;color:#1f2937;font-size:13.5px;">${ci2 + 1}. ${cmEsc(ci.name || 'Cost Item')}</div>
+                    <div style="font-weight:700;color:#1f2937;font-size:13.5px;">${ci2 + 1}. ${cmEsc(ci.name || 'Cost Item')}${
+                        cmBoqIsLump(ci) ? ' <span style="font-size:10.5px;font-weight:600;color:#a16207;background:#fffbeb;border:1px solid #fde68a;border-radius:5px;padding:1px 5px;">LOT</span>' : ''}</div>
                     <div style="font-size:12px;color:#374151;white-space:nowrap;">${cmFmt(cmBoqCiSub(ci))} · <span style="color:#059669;">${cmFmt(cmBoqCiAcc(ci))}</span></div>
                 </div>
                 ${(ci.subItems || []).map(si => `
                     <div style="margin:6px 0 6px 10px;">
-                        ${si.name ? `<div style="font-size:12.5px;font-weight:600;color:#475569;margin-bottom:4px;">${cmEsc(si.name)}</div>` : ''}
+                        ${si.name ? `<div style="font-size:12.5px;font-weight:600;color:#475569;margin-bottom:4px;display:flex;justify-content:space-between;gap:10px;">
+                            <span>${cmEsc(si.name)}</span>${cmBoqIsLump(ci)
+                                ? `<span style="font-weight:600;color:#6b7280;white-space:nowrap;">${cmFmt(cmBoqGroupAmount(ci, si))} · ${Math.round(cmBoqGroupPct(ci, si) * 100)}%</span>` : ''}
+                        </div>` : ''}
                         <div style="overflow-x:auto;">
                         <table style="width:100%;border-collapse:collapse;font-size:12px;">
                             <thead><tr style="color:#9ca3af;text-align:left;">
@@ -1596,9 +1600,11 @@ window.cmViewAccomplishmentReport = function(idx) {
                                 <tr style="border-top:1px solid #f1f5f9;">
                                     <td style="padding:4px 6px;color:#374151;">${cmEsc(li.description || '—')}${li.unit ? ` <span style="color:#9ca3af;">(${cmEsc(li.unit)})</span>` : ''}</td>
                                     <td style="padding:4px 6px;text-align:right;color:#6b7280;">${cmEsc(li.qty != null ? String(li.qty) : '—')}</td>
-                                    <td style="padding:4px 6px;text-align:right;color:#374151;">${cmFmt(cmBoqLiTotal(li))}</td>
+                                    <td style="padding:4px 6px;text-align:right;color:#374151;">${
+                                        cmBoqIsLump(ci) ? '<span style="color:#9ca3af;font-style:italic;">scope</span>' : cmFmt(cmBoqLiTotal(li))}</td>
                                     <td style="padding:4px 6px;text-align:center;font-weight:600;color:#374151;">${cmBoqNum(li.percentCompletion)}%</td>
-                                    <td style="padding:4px 6px;text-align:right;font-weight:600;color:#059669;">${cmFmt(cmBoqLiTotal(li) * (cmBoqNum(li.percentCompletion)/100))}</td>
+                                    <td style="padding:4px 6px;text-align:right;font-weight:600;color:#059669;">${
+                                        cmBoqIsLump(ci) ? '' : cmFmt(cmBoqLiAcc(li))}</td>
                                 </tr>`).join('')}
                             </tbody>
                         </table>
@@ -2679,23 +2685,131 @@ function cmTsMillis(ts) {
     const t = new Date(ts).getTime();
     return isNaN(t) ? 0 : t;
 }
+// ==== RP MATH ENGINE START ====
+// Accomplishment-report money + progress.
+//
+// A line carries ONE client-facing rate (unitPrice), like a quotation line,
+// plus a state. Reports written before that used the BOQ's material/labor
+// split, so unitPrice falls back to materialRate + laborRate and every saved
+// report keeps computing exactly what it always did.
+//
+// A section is priced one of two ways:
+//   rated  — its groups add up from their lines (the ordinary case)
+//   lump   — it IS one LOT amount; the group amounts are working figures that
+//            do NOT add to the total, they only say how the LOT is split
+//
+// Progress in a lump section is therefore weighted by those group figures:
+// there are no line amounts to weight by. With no figures entered the groups
+// weigh equally, so a half-filled section still reports something sane.
+//
+// THIS BLOCK IS DUPLICATED, VERBATIM, in js/pm-admin.js (the admin editor)
+// and js/client-management-app.js (the client/partner portal) — the only
+// two files that read accomplishment_reports, and there is no module system
+// to share it. §J of tests/quotation-pdf-import.test.js runs both copies
+// over the same fixtures and fails if one drifts. Edit them together.
+//
+// NOT to be copied into js/client-app.js or js/portal-app.compiled.js: those
+// render boqDocuments, a different feature that keeps the material/labor split.
 function cmBoqNum(v) { return Number(String(v == null ? '' : v).replace(/,/g, '')) || 0; }
-function cmBoqLiTotal(li) {
-    const qty = cmBoqNum(li.qty);
-    const mat = li.materialOverride ? 0 : cmBoqNum(li.materialRate);
-    const lab = li.laborOverride    ? 0 : cmBoqNum(li.laborRate);
-    return qty * (mat + lab);
+
+// The rate a line charges. unitPrice wins; legacy rows fall back to the old
+// split, honouring the BOQ's "by owner"/"N/A" overrides that zero a rate.
+function cmBoqLiRate(li) {
+    if (li.unitPrice !== undefined && li.unitPrice !== null && li.unitPrice !== '') return cmBoqNum(li.unitPrice);
+    var mat = li.materialOverride ? 0 : cmBoqNum(li.materialRate);
+    var lab = li.laborOverride    ? 0 : cmBoqNum(li.laborRate);
+    return mat + lab;
 }
+// optional / waived / removed contribute nothing, exactly as a quotation totals them.
+function cmBoqLiTotal(li) {
+    if (li.state && li.state !== 'normal') return 0;
+    return cmBoqNum(li.qty) * cmBoqLiRate(li);
+}
+function cmBoqLiAcc(li) { return cmBoqLiTotal(li) * (cmBoqNum(li.percentCompletion) / 100); }
+
+function cmBoqIsLump(ci) { return ci && ci.pricing === 'lump'; }
+
+// What a group contributes to its section's total.
+function cmBoqGroupTotal(si) {
+    return (si.lineItems || []).reduce(function (s, li) { return s + cmBoqLiTotal(li); }, 0);
+}
+function cmBoqGroupAmount(ci, si) {
+    return cmBoqIsLump(ci) ? cmBoqNum(si.lumpAmount) : cmBoqGroupTotal(si);
+}
+// How far along a group is, 0..1.
+function cmBoqGroupPct(ci, si) {
+    var lines = (si.lineItems || []).filter(function (li) { return !li.state || li.state === 'normal'; });
+    if (!lines.length) return 0;
+    if (cmBoqIsLump(ci)) {
+        // Scope-only lines: no amounts to weight by, so they weigh equally.
+        var sum = lines.reduce(function (s, li) { return s + cmBoqNum(li.percentCompletion); }, 0);
+        return sum / lines.length / 100;
+    }
+    var total = cmBoqGroupTotal(si);
+    if (total <= 0) {
+        var s2 = lines.reduce(function (s, li) { return s + cmBoqNum(li.percentCompletion); }, 0);
+        return s2 / lines.length / 100;
+    }
+    return lines.reduce(function (s, li) { return s + cmBoqLiAcc(li); }, 0) / total;
+}
+
+// A section's own money. A lump section's own LOT amount WINS; its groups are a
+// display breakdown and must not re-add.
+function cmBoqCiSub(ci) {
+    var groups = ci.subItems || [];
+    if (cmBoqIsLump(ci)) {
+        if (ci.lumpAmount !== undefined && ci.lumpAmount !== null && ci.lumpAmount !== '') return cmBoqNum(ci.lumpAmount);
+        return groups.reduce(function (s, si) { return s + cmBoqNum(si.lumpAmount); }, 0);
+    }
+    return groups.reduce(function (s, si) { return s + cmBoqGroupTotal(si); }, 0);
+}
+// A group with no lines yet has nothing to report on. It must be left OUT of
+// the weighting entirely rather than scored 0% — counting it as "not started"
+// drags a section down for the crime of having an empty placeholder in it.
+function cmBoqGroupHasScope(si) {
+    return (si.lineItems || []).some(function (li) { return !li.state || li.state === 'normal'; });
+}
+
+function cmBoqCiAcc(ci) {
+    var groups = ci.subItems || [];
+    if (!cmBoqIsLump(ci)) {
+        return groups.reduce(function (s, si) {
+            return s + (si.lineItems || []).reduce(function (s2, li) { return s2 + cmBoqLiAcc(li); }, 0);
+        }, 0);
+    }
+    var total = cmBoqCiSub(ci);
+    if (total <= 0) return 0;
+
+    var scoped = groups.filter(cmBoqGroupHasScope);
+    if (!scoped.length) return 0;
+
+    // Weight by the group amounts ONLY when every scoped group has one. A blank
+    // box means "not weighted yet", not "worth nothing": weighting by the ones
+    // that happen to be filled silently drops the rest, and then a half-finished
+    // section reports the progress of its priced groups across the WHOLE LOT.
+    // One rule, no edge cases — all filled: use them; any blank: weigh equally.
+    var allPriced = scoped.every(function (si) { return cmBoqNum(si.lumpAmount) > 0; });
+    if (allPriced) {
+        var weight = scoped.reduce(function (s, si) { return s + cmBoqNum(si.lumpAmount); }, 0);
+        var done = scoped.reduce(function (s, si) { return s + cmBoqNum(si.lumpAmount) * cmBoqGroupPct(ci, si); }, 0);
+        return total * (done / weight);
+    }
+    var avg = scoped.reduce(function (s, si) { return s + cmBoqGroupPct(ci, si); }, 0) / scoped.length;
+    return total * avg;
+}
+
 function cmBoqGrand(costItems) {
-    return (costItems || []).reduce((s, ci) =>
-        s + (ci.subItems || []).reduce((s2, si) =>
-            s2 + (si.lineItems || []).reduce((s3, li) => s3 + cmBoqLiTotal(li), 0), 0), 0);
+    return (costItems || []).reduce(function (s, ci) { return s + cmBoqCiSub(ci); }, 0);
 }
 function cmBoqAcc(costItems) {
-    return (costItems || []).reduce((s, ci) =>
-        s + (ci.subItems || []).reduce((s2, si) =>
-            s2 + (si.lineItems || []).reduce((s3, li) => s3 + cmBoqLiTotal(li) * (cmBoqNum(li.percentCompletion) / 100), 0), 0), 0);
+    return (costItems || []).reduce(function (s, ci) { return s + cmBoqCiAcc(ci); }, 0);
 }
+function cmBoqPct(doc) {
+    var grand = cmBoqGrand(doc.costItems);
+    if (grand <= 0) return 0;
+    return Math.round((cmBoqAcc(doc.costItems) / grand) * 100);
+}
+// ==== RP MATH ENGINE END ====
 // Accomplishment is claimed against the discounted contract, so the discount is
 // spread across it in proportion to work done. cmBoqAcc stays gross because
 // cmBoqPct divides it by the gross total to get % complete.
@@ -2704,13 +2818,6 @@ function cmBoqAccNet(costItems, discount) {
     if (!grand) return 0;
     return cmBoqAcc(costItems) * (Math.max(0, grand - cmBoqNum(discount)) / grand);
 }
-function cmBoqPct(doc) {
-    const grand = cmBoqGrand(doc.costItems);
-    if (grand <= 0) return 0;
-    return Math.round((cmBoqAcc(doc.costItems) / grand) * 100);
-}
-function cmBoqCiSub(ci) { return (ci.subItems || []).reduce((s, si) => s + (si.lineItems || []).reduce((s2, li) => s2 + cmBoqLiTotal(li), 0), 0); }
-function cmBoqCiAcc(ci) { return (ci.subItems || []).reduce((s, si) => s + (si.lineItems || []).reduce((s2, li) => s2 + cmBoqLiTotal(li) * (cmBoqNum(li.percentCompletion) / 100), 0), 0); }
 
 function cmComputeKPIs() {
     const budget       = Number(cmProjectData?.budget) || 0;

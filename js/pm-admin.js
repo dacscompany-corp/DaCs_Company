@@ -4211,27 +4211,160 @@ window.pmDeleteMilestone = async function(id) {
 
 let _pmRpDoc = null;   // the report currently open in the builder
 
-// ── BOQ progress math (mirrors boq-module's stateless helpers) ──
-function _pmNum(v) { return Number(String(v == null ? '' : v).replace(/,/g,'')) || 0; }
-function _pmLiTotal(li) { return _pmNum(li.qty) * (_pmNum(li.materialRate) + _pmNum(li.laborRate)); }
-function _pmLiAcc(li)   { return _pmLiTotal(li) * (_pmNum(li.percentCompletion) / 100); }
-function _pmBoqGrand(costItems) {
-    return (costItems || []).reduce((s, ci) =>
-        s + (ci.subItems || []).reduce((s2, si) =>
-            s2 + (si.lineItems || []).reduce((s3, li) => s3 + _pmLiTotal(li), 0), 0), 0);
+// ==== RP MATH ENGINE START ====
+// Accomplishment-report money + progress.
+//
+// A line carries ONE client-facing rate (unitPrice), like a quotation line,
+// plus a state. Reports written before that used the BOQ's material/labor
+// split, so unitPrice falls back to materialRate + laborRate and every saved
+// report keeps computing exactly what it always did.
+//
+// A section is priced one of two ways:
+//   rated  — its groups add up from their lines (the ordinary case)
+//   lump   — it IS one LOT amount; the group amounts are working figures that
+//            do NOT add to the total, they only say how the LOT is split
+//
+// Progress in a lump section is therefore weighted by those group figures:
+// there are no line amounts to weight by. With no figures entered the groups
+// weigh equally, so a half-filled section still reports something sane.
+//
+// THIS BLOCK IS DUPLICATED, VERBATIM, in js/pm-admin.js (the admin editor)
+// and js/client-management-app.js (the client/partner portal) — the only
+// two files that read accomplishment_reports, and there is no module system
+// to share it. §J of tests/quotation-pdf-import.test.js runs both copies
+// over the same fixtures and fails if one drifts. Edit them together.
+//
+// NOT to be copied into js/client-app.js or js/portal-app.compiled.js: those
+// render boqDocuments, a different feature that keeps the material/labor split.
+function _pmRpNum(v) { return Number(String(v == null ? '' : v).replace(/,/g, '')) || 0; }
+
+// The rate a line charges. unitPrice wins; legacy rows fall back to the old
+// split, honouring the BOQ's "by owner"/"N/A" overrides that zero a rate.
+function _pmRpLiRate(li) {
+    if (li.unitPrice !== undefined && li.unitPrice !== null && li.unitPrice !== '') return _pmRpNum(li.unitPrice);
+    var mat = li.materialOverride ? 0 : _pmRpNum(li.materialRate);
+    var lab = li.laborOverride    ? 0 : _pmRpNum(li.laborRate);
+    return mat + lab;
 }
-function _pmBoqAcc(costItems) {
-    return (costItems || []).reduce((s, ci) =>
-        s + (ci.subItems || []).reduce((s2, si) =>
-            s2 + (si.lineItems || []).reduce((s3, li) => s3 + _pmLiAcc(li), 0), 0), 0);
+// optional / waived / removed contribute nothing, exactly as a quotation totals them.
+function _pmRpLiTotal(li) {
+    if (li.state && li.state !== 'normal') return 0;
+    return _pmRpNum(li.qty) * _pmRpLiRate(li);
 }
-function _pmBoqPct(doc) {
-    const grand = _pmBoqGrand(doc.costItems);
+function _pmRpLiAcc(li) { return _pmRpLiTotal(li) * (_pmRpNum(li.percentCompletion) / 100); }
+
+function _pmRpIsLump(ci) { return ci && ci.pricing === 'lump'; }
+
+// What a group contributes to its section's total.
+function _pmRpGroupTotal(si) {
+    return (si.lineItems || []).reduce(function (s, li) { return s + _pmRpLiTotal(li); }, 0);
+}
+function _pmRpGroupAmount(ci, si) {
+    return _pmRpIsLump(ci) ? _pmRpNum(si.lumpAmount) : _pmRpGroupTotal(si);
+}
+// How far along a group is, 0..1.
+function _pmRpGroupPct(ci, si) {
+    var lines = (si.lineItems || []).filter(function (li) { return !li.state || li.state === 'normal'; });
+    if (!lines.length) return 0;
+    if (_pmRpIsLump(ci)) {
+        // Scope-only lines: no amounts to weight by, so they weigh equally.
+        var sum = lines.reduce(function (s, li) { return s + _pmRpNum(li.percentCompletion); }, 0);
+        return sum / lines.length / 100;
+    }
+    var total = _pmRpGroupTotal(si);
+    if (total <= 0) {
+        var s2 = lines.reduce(function (s, li) { return s + _pmRpNum(li.percentCompletion); }, 0);
+        return s2 / lines.length / 100;
+    }
+    return lines.reduce(function (s, li) { return s + _pmRpLiAcc(li); }, 0) / total;
+}
+
+// A section's own money. A lump section's own LOT amount WINS; its groups are a
+// display breakdown and must not re-add.
+function _pmRpCiSub(ci) {
+    var groups = ci.subItems || [];
+    if (_pmRpIsLump(ci)) {
+        if (ci.lumpAmount !== undefined && ci.lumpAmount !== null && ci.lumpAmount !== '') return _pmRpNum(ci.lumpAmount);
+        return groups.reduce(function (s, si) { return s + _pmRpNum(si.lumpAmount); }, 0);
+    }
+    return groups.reduce(function (s, si) { return s + _pmRpGroupTotal(si); }, 0);
+}
+// A group with no lines yet has nothing to report on. It must be left OUT of
+// the weighting entirely rather than scored 0% — counting it as "not started"
+// drags a section down for the crime of having an empty placeholder in it.
+function _pmRpGroupHasScope(si) {
+    return (si.lineItems || []).some(function (li) { return !li.state || li.state === 'normal'; });
+}
+
+function _pmRpCiAcc(ci) {
+    var groups = ci.subItems || [];
+    if (!_pmRpIsLump(ci)) {
+        return groups.reduce(function (s, si) {
+            return s + (si.lineItems || []).reduce(function (s2, li) { return s2 + _pmRpLiAcc(li); }, 0);
+        }, 0);
+    }
+    var total = _pmRpCiSub(ci);
+    if (total <= 0) return 0;
+
+    var scoped = groups.filter(_pmRpGroupHasScope);
+    if (!scoped.length) return 0;
+
+    // Weight by the group amounts ONLY when every scoped group has one. A blank
+    // box means "not weighted yet", not "worth nothing": weighting by the ones
+    // that happen to be filled silently drops the rest, and then a half-finished
+    // section reports the progress of its priced groups across the WHOLE LOT.
+    // One rule, no edge cases — all filled: use them; any blank: weigh equally.
+    var allPriced = scoped.every(function (si) { return _pmRpNum(si.lumpAmount) > 0; });
+    if (allPriced) {
+        var weight = scoped.reduce(function (s, si) { return s + _pmRpNum(si.lumpAmount); }, 0);
+        var done = scoped.reduce(function (s, si) { return s + _pmRpNum(si.lumpAmount) * _pmRpGroupPct(ci, si); }, 0);
+        return total * (done / weight);
+    }
+    var avg = scoped.reduce(function (s, si) { return s + _pmRpGroupPct(ci, si); }, 0) / scoped.length;
+    return total * avg;
+}
+
+function _pmRpGrand(costItems) {
+    return (costItems || []).reduce(function (s, ci) { return s + _pmRpCiSub(ci); }, 0);
+}
+function _pmRpAcc(costItems) {
+    return (costItems || []).reduce(function (s, ci) { return s + _pmRpCiAcc(ci); }, 0);
+}
+function _pmRpPct(doc) {
+    var grand = _pmRpGrand(doc.costItems);
     if (grand <= 0) return 0;
-    return Math.round((_pmBoqAcc(doc.costItems) / grand) * 100);
+    return Math.round((_pmRpAcc(doc.costItems) / grand) * 100);
 }
-function _pmCiSub(ci) { return (ci.subItems || []).reduce((s, si) => s + (si.lineItems || []).reduce((s2, li) => s2 + _pmLiTotal(li), 0), 0); }
-function _pmCiAcc(ci) { return (ci.subItems || []).reduce((s, si) => s + (si.lineItems || []).reduce((s2, li) => s2 + _pmLiAcc(li), 0), 0); }
+// ==== RP MATH ENGINE END ====
+
+// The names the rest of js/pm-admin.js already calls.
+const _pmNum = _pmRpNum;
+const _pmLiTotal = _pmRpLiTotal;
+const _pmLiAcc = _pmRpLiAcc;
+const _pmBoqGrand = _pmRpGrand;
+const _pmBoqAcc = _pmRpAcc;
+const _pmBoqPct = _pmRpPct;
+const _pmCiSub = _pmRpCiSub;
+const _pmCiAcc = _pmRpCiAcc;
+
+// The printed sheet (js/pm-report-print.js) reads its numbers from here rather
+// than re-implementing them. There are already three copies of this BOQ math in
+// the codebase (boq-module, client-management-app, and the block above); a
+// fourth living in the print file could silently disagree with the screen it is
+// supposed to be printing.
+window.pmRpMath = {
+    num: _pmRpNum, liRate: _pmRpLiRate, liTotal: _pmRpLiTotal, liAcc: _pmRpLiAcc,
+    isLump: _pmRpIsLump, groupTotal: _pmRpGroupTotal, groupAmount: _pmRpGroupAmount,
+    groupPct: _pmRpGroupPct, grand: _pmRpGrand, acc: _pmRpAcc, pct: _pmRpPct,
+    ciSub: _pmRpCiSub, ciAcc: _pmRpCiAcc
+};
+// The report currently open in the builder, with the form's latest keystrokes
+// folded in — so Print reflects what is on screen, not the last save.
+window.pmRpCurrentDoc = function() {
+    if (!_pmRpDoc) return null;
+    _pmRpSyncHeaderFromDom();
+    return _pmRpDoc;
+};
 
 function _pmTsMs(ts) {
     const ms = ts && ts.toMillis ? ts.toMillis() : (ts ? new Date(ts).getTime() : 0);
@@ -4450,18 +4583,42 @@ window.pmRpDelete = async function(id) {
     } catch(e) { alert('Delete failed: ' + e.message); }
 };
 
+// Every free-text header field, in one place: the edit form renders from it,
+// _pmRpSyncHeaderFromDom reads it back, and pmRpSave persists it. Add a field
+// here and all three follow.
+//
+// accomplishment_reports is a jsonbData collection (supabase-config.js REG) —
+// everything but id / project_id / timestamps lives in one `data` jsonb column,
+// so a new field here needs NO migration. That is the exception to CLAUDE.md's
+// "a new data field needs a real DB column", not a licence to skip it elsewhere.
+const _RP_TEXT_FIELDS = ['date', 'projectName', 'area', 'ownerName', 'location', 'subject',
+                         'status', 'clientAddress', 'clientEmail', 'scopeNote',
+                         'reportNo', 'asOfDate', 'preparedBy', 'submittedBy'];
+// Printed-sheet switches. All default ON, so `!== false` is the test everywhere.
+const _RP_SWITCHES = ['showLogo', 'showSignPrepared', 'showSignSubmitted', 'showAmounts'];
+
+function _pmRpBlank() {
+    return {
+        id: null, date: '', projectName: '', area: '', ownerName: '', location: '',
+        subject: 'Accomplishment Report', status: 'draft',
+        clientAddress: '', clientEmail: '', scopeNote: '',
+        reportNo: '', asOfDate: '', preparedBy: '', submittedBy: '',
+        showLogo: true, showSignPrepared: true, showSignSubmitted: true, showAmounts: true,
+        images: [], costItems: []
+    };
+}
+
 // ── Builder ────────────────────────────────────────────────
 window.pmRpNew = function() {
     if (!_pmActiveProject) { alert('Please select a client project first.'); return; }
-    _pmRpDoc = {
-        id: null,
+    _pmRpDoc = Object.assign(_pmRpBlank(), {
         date: _pmToday(),
         projectName: _pmActiveProject.projectName || '',
-        area: '', ownerName: _pmActiveProject.clientName || '', location: _pmActiveProject.address || '',
-        subject: 'Accomplishment Report',
-        status: 'draft',
-        costItems: []
-    };
+        ownerName: _pmActiveProject.clientName || '',
+        clientEmail: _pmActiveProject.clientEmail || '',
+        clientAddress: _pmActiveProject.address || '',
+        location: _pmActiveProject.location || _pmActiveProject.address || ''
+    });
     _pmRpRenderBuilder();
 };
 
@@ -4469,14 +4626,223 @@ window.pmRpOpen = function(id) {
     const d = _pmReports.find(r => r.id === id);
     if (!d) return;
     // Deep clone so edits aren't applied to the list copy until saved.
-    _pmRpDoc = JSON.parse(JSON.stringify({
+    // Merge over a blank so a report saved before a field existed still opens
+    // with every control present rather than a scatter of undefineds.
+    // An import from the previous build stored the LOT figure as `quotedAmount`
+    // on the cost item. It is a lump-sum price; say so properly.
+    (d.costItems || []).forEach(ci => {
+        if (ci.quotedAmount && !ci.lumpAmount) {
+            ci.pricing = 'lump';
+            ci.lumpAmount = ci.quotedAmount;
+        }
+        delete ci.quotedAmount;
+    });
+    const blank = _pmRpBlank();
+    _pmRpDoc = JSON.parse(JSON.stringify(Object.assign(blank, {
         id: d.id,
-        date: d.date || '', projectName: d.projectName || '', area: d.area || '',
-        ownerName: d.ownerName || '', location: d.location || '', subject: d.subject || 'Accomplishment Report',
-        status: d.status || 'draft',
-        costItems: d.costItems || []
-    }));
+        costItems: d.costItems || [],
+        images: d.images || []
+    }, _RP_TEXT_FIELDS.reduce((o, k) => {
+        if (d[k] !== undefined && d[k] !== null) o[k] = d[k];
+        return o;
+    }, {}), _RP_SWITCHES.reduce((o, k) => {
+        if (d[k] !== undefined && d[k] !== null) o[k] = d[k];
+        return o;
+    }, {}))));
     _pmRpRenderBuilder();
+};
+
+// ── Document-info chrome ───────────────────────────────
+// Reuses the Quotation editor's own classes (css/quotation-module.css, already
+// loaded by admin.html) rather than restating them, exactly as the work-item
+// tree reuses the BOQ's. One house style, one place to change it.
+function _pmRpBand(title, note) {
+    return `<div class="qt-band"><h2>${title}</h2>` +
+           `<span class="qt-band-note">${note}</span><span class="qt-band-rule"></span></div>`;
+}
+
+// One labelled input, wired to `rp-<key>` so _pmRpSyncHeaderFromDom finds it.
+function _pmRpField(d, label, key, type, extra, opts) {
+    const o = opts || {};
+    const v = d[key];
+    return `<div class="qt-form-group${o.span ? ' qt-span-2' : ''}">
+                <label>${label}${o.hint ? ` <span class="qt-field-hint">${o.hint}</span>` : ''}</label>
+                <input class="qt-input" type="${type || 'text'}" id="rp-${key}"
+                       value="${_esc(v === null || v === undefined ? '' : v)}" ${extra || ''}>
+            </div>`;
+}
+
+// ── Printed-sheet switches ─────────────────────────────
+// Each card says what the switch is doing RIGHT NOW, not what it would do if
+// you flipped it — the same choice the quotation editor made.
+function _pmRpOptOn(key) {
+    const d = _pmRpDoc || {};
+    return d[{ logo: 'showLogo', amounts: 'showAmounts',
+               prepared: 'showSignPrepared', submitted: 'showSignSubmitted' }[key]] !== false;
+}
+function _pmRpOptSub(key) {
+    const on = _pmRpOptOn(key), d = _pmRpDoc || {};
+    const live = id => { const el = document.getElementById(id); return (el ? el.value : (d[id.slice(3)] || '')).trim(); };
+    if (key === 'logo')    return on ? 'On — the printed sheet and PDF carry the mark.'
+                                     : 'Off — for pre-printed letterhead that already shows it.';
+    if (key === 'amounts') return on ? 'On — the client sees every rate and amount.'
+                                     : 'Off — progress only, no money columns.';
+    if (key === 'submitted') {
+        if (!on) return 'Off — no name, no signature line.';
+        const who = live('rp-submittedBy') || live('rp-preparedBy');
+        return who ? `On — prints ${who}.` : 'On — falls back to the company name.';
+    }
+    if (key === 'prepared') {
+        if (!on) return 'Off — the name stays an internal record.';
+        const who = live('rp-preparedBy');
+        return who ? `On — prints ${who}.` : 'On — no name filled in yet.';
+    }
+    return '';
+}
+function _pmRpOptCard(key, label) {
+    return `<label class="qt-opt${_pmRpOptOn(key) ? ' qt-opt-on' : ''}" data-opt-card="${key}">
+        <input type="checkbox" ${_pmRpOptOn(key) ? 'checked' : ''} onchange="pmRpSetOpt('${key}', this.checked)">
+        <span class="qt-opt-body">
+            <span class="qt-opt-title">${label}</span>
+            <span class="qt-opt-sub" data-opt-sub="${key}">${_esc(_pmRpOptSub(key))}</span>
+        </span>
+    </label>`;
+}
+function _pmRpRenderPrintOptions() {
+    const host = document.getElementById('rp-printopts');
+    if (!host || !_pmRpDoc) return;
+    if (window.currentUserRole === 'staff') { host.innerHTML = ''; return; }
+    host.innerHTML = `
+    <div class="qt-panel qt-panel-sm">
+        <div class="qt-section-title">Printed sheet options</div>
+        <div class="qt-opt-list">
+            ${_pmRpOptCard('logo', 'Company logo')}
+            ${_pmRpOptCard('submitted', '&ldquo;Submitted by&rdquo; signature column')}
+            ${_pmRpOptCard('prepared', '&ldquo;Prepared by&rdquo; signature column')}
+            ${_pmRpOptCard('amounts', 'Rates &amp; line amounts')}
+        </div>
+        <p class="qt-print-hint qt-warn-hint" id="rp-sign-dup" style="margin:0.75rem 0 0;display:none;">
+            <strong>The same name will print twice.</strong> Both columns are on but
+            <em>Submitted by</em> is empty, so it falls back to <em>Prepared by</em>.
+        </p>
+    </div>`;
+    _pmRpSyncSignHints();
+    if (window.lucide) lucide.createIcons();
+}
+// Repaint every switch's live sub-line, plus the one warning worth being loud.
+function _pmRpSyncSignHints() {
+    const root = document.getElementById('pm-rp-builder');
+    if (!root) return;
+    root.querySelectorAll('[data-opt-card]').forEach(el =>
+        el.classList.toggle('qt-opt-on', _pmRpOptOn(el.dataset.optCard)));
+    root.querySelectorAll('[data-opt-sub]').forEach(el => { el.textContent = _pmRpOptSub(el.dataset.optSub); });
+    const warn = document.getElementById('rp-sign-dup');
+    const sub  = document.getElementById('rp-submittedBy');
+    if (warn) warn.style.display = (_pmRpOptOn('submitted') && _pmRpOptOn('prepared')
+                                    && !(sub && sub.value.trim())) ? '' : 'none';
+}
+window.pmRpSetOpt = function(key, on) {
+    if (!_pmRpDoc) return;
+    _pmRpDoc[{ logo: 'showLogo', amounts: 'showAmounts',
+               prepared: 'showSignPrepared', submitted: 'showSignSubmitted' }[key]] = !!on;
+    _pmRpSyncSignHints();
+};
+
+// ── Reference images ──────────────────────────────────
+const RP_MAX_IMAGES = 4, RP_MAX_IMG_MB = 8;
+function _pmRpImages() { if (!_pmRpDoc.images) _pmRpDoc.images = []; return _pmRpDoc.images; }
+function _pmRpRenderImages() {
+    const host = document.getElementById('rp-images');
+    if (!host || !_pmRpDoc) return;
+    const imgs = _pmRpImages(), full = imgs.length >= RP_MAX_IMAGES;
+    host.innerHTML = `
+    <div class="qt-panel qt-panel-sm">
+        <div class="qt-section-title">Reference images
+            <span class="qt-section-note">${imgs.length} / ${RP_MAX_IMAGES}</span>
+        </div>
+        ${imgs.length ? `<div class="qt-imgs-mini">
+            ${imgs.map((im, i) => `
+            <div class="qt-image-card">
+                <img src="${_esc(im.url)}" alt="${_esc(im.name || '')}">
+                <input class="qt-image-caption" placeholder="Caption" value="${_esc(im.caption || '')}"
+                       oninput="pmRpSetImageCaption(${i}, this.value)">
+                <div class="qt-image-actions">
+                    <button class="qt-icon-btn" title="Move left"  onclick="pmRpMoveImage(${i},-1)"><i data-lucide="chevron-left"></i></button>
+                    <button class="qt-icon-btn" title="Move right" onclick="pmRpMoveImage(${i},1)"><i data-lucide="chevron-right"></i></button>
+                    <button class="qt-icon-btn qt-icon-btn-del" title="Remove" onclick="pmRpRemoveImage(${i})"><i data-lucide="trash-2"></i></button>
+                </div>
+            </div>`).join('')}
+        </div>` : '<span class="qt-images-hint">No images yet. Site photos of the work done go here.</span>'}
+        <div style="margin-top:0.75rem;">
+            ${full ? `<span class="qt-images-hint">Maximum of ${RP_MAX_IMAGES} reached — remove one to add another.</span>`
+                   : `<label class="qt-upload-label">
+                        <i data-lucide="image-plus"></i> Upload image
+                        <input type="file" accept="image/*" multiple hidden
+                               onchange="pmRpUploadImages(this.files); this.value='';">
+                      </label>`}
+        </div>
+        <p class="qt-total-note">Printed once, above the work items. Max ${RP_MAX_IMG_MB}MB each.</p>
+    </div>`;
+    if (window.lucide) lucide.createIcons();
+}
+window.pmRpUploadImages = async function(fileList) {
+    if (!_pmRpDoc) return;
+    const imgs = _pmRpImages();
+    for (const f of Array.from(fileList || [])) {
+        if (imgs.length >= RP_MAX_IMAGES) { alert(`Maximum ${RP_MAX_IMAGES} images — remove one first.`); break; }
+        if (!/^image\//.test(f.type)) { alert(`${f.name} is not an image.`); continue; }
+        if (f.size > RP_MAX_IMG_MB * 1024 * 1024) { alert(`${f.name} is over ${RP_MAX_IMG_MB}MB.`); continue; }
+        try {
+            const path = `accomplishmentReports/${_pmActiveProject.id}/${Date.now()}-${f.name.replace(/[^\w.\-]/g, '_')}`;
+            const ref = storage.ref(path);
+            await ref.put(f);
+            imgs.push({ url: await ref.getDownloadURL(), name: f.name, caption: '' });
+        } catch (e) {
+            // One bad file must never cost the admin the rest of the report.
+            console.error('[RP] image upload failed:', e);
+            alert(`Upload failed for ${f.name}: ${e.message || e}`);
+        }
+    }
+    _pmRpRenderImages();
+};
+window.pmRpSetImageCaption = function(i, v) { const im = _pmRpImages()[i]; if (im) im.caption = v; };
+window.pmRpMoveImage = function(i, dir) {
+    if (_pmRpSwap(_pmRpImages(), i, dir)) _pmRpRenderImages();
+};
+window.pmRpRemoveImage = function(i) {
+    if (!confirm('Remove this image from the report?')) return;
+    // Drops the reference only — the stored file stays in the bucket so a
+    // saved report still pointing at it keeps rendering.
+    _pmRpImages().splice(i, 1);
+    _pmRpRenderImages();
+};
+
+// ── Fill from project ─────────────────────────────────
+// The quotation has saved client presets; a report does not need them, because
+// it already lives inside a construction project that knows its client. (It
+// could not reuse them anyway — quotation_presets is owned by the quotation
+// module alone, migration 0045.)
+window.pmRpFillFromProject = function() {
+    const p = _pmActiveProject;
+    if (!p || !_pmRpDoc) return;
+    _pmRpSyncHeaderFromDom();
+    const from = {
+        ownerName: p.clientName || '',
+        clientEmail: p.clientEmail || '',
+        clientAddress: p.address || '',
+        projectName: p.projectName || '',
+        location: p.location || p.address || ''
+    };
+    const filled = [];
+    Object.keys(from).forEach(k => {
+        if (!from[k]) return;
+        _pmRpDoc[k] = from[k];
+        const el = document.getElementById('rp-' + k);
+        if (el) el.value = from[k];
+        filled.push(k);
+    });
+    _pmRpSyncSignHints();
+    if (!filled.length) alert('This project has no client details saved yet.');
 };
 
 function _pmRpRenderBuilder() {
@@ -4502,82 +4868,275 @@ function _pmRpRenderBuilder() {
               <option value="approved" ${d.status==='approved'?'selected':''}>Approved (visible to partner)</option>
             </select>
           </label>
+          <button class="pm-btn pm-btn-secondary" onclick="pmRpImportPdf()"><i data-lucide="file-up" style="width:14px;height:14px;"></i> Import PDF</button>
+          <button class="pm-btn pm-btn-secondary" onclick="pmRpPrintSheet()"><i data-lucide="printer" style="width:14px;height:14px;"></i> Print</button>
+          <button class="pm-btn pm-btn-secondary" onclick="pmRpExportPDF()"><i data-lucide="file-down" style="width:14px;height:14px;"></i> Export PDF</button>
           <button class="pm-btn pm-btn-primary" onclick="pmRpSave()"><i data-lucide="save" style="width:14px;height:14px;"></i> Save Report</button>
         </div>
       </div>
 
-      <div class="boq-header-form">
-        <div class="boq-section-title">Document Info</div>
-        <div class="boq-form-grid">
-          <div class="boq-form-group"><label>Date</label><input type="date" id="rp-date" value="${_esc(d.date)}"></div>
-          <div class="boq-form-group"><label>Project Name</label><input type="text" id="rp-projectName" value="${_esc(d.projectName)}" placeholder="Project name"></div>
-          <div class="boq-form-group"><label>Area (sqm)</label><input type="text" id="rp-area" value="${_esc(d.area)}" placeholder="e.g. 120"></div>
-          <div class="boq-form-group"><label>Owner Name</label><input type="text" id="rp-ownerName" value="${_esc(d.ownerName)}" placeholder="Owner / client"></div>
-          <div class="boq-form-group"><label>Location</label><input type="text" id="rp-location" value="${_esc(d.location)}" placeholder="Project location"></div>
-          <div class="boq-form-group"><label>Subject</label><input type="text" id="rp-subject" value="${_esc(d.subject)}" placeholder="Subject"></div>
+      ${_pmRpBand('Document info', 'Client, project, and everything that prints in the sheet header')}
+      <div class="qt-split">
+        <div class="qt-stack">
+          <div class="qt-panel">
+            <div class="qt-section-title">Client
+              <span class="qt-title-checks">
+                <button class="qt-btn qt-btn-outline qt-btn-sm" onclick="pmRpFillFromProject()"
+                        title="Copy the client and project details off this construction project">
+                  <i data-lucide="download"></i> Fill from project
+                </button>
+              </span>
+            </div>
+            <div class="qt-form-grid-wide">
+              ${_pmRpField(d, 'Client name', 'ownerName')}
+              ${_pmRpField(d, 'Address', 'clientAddress', 'text', 'placeholder="Street, barangay, city"')}
+              ${_pmRpField(d, 'Email', 'clientEmail', 'email', 'placeholder="name@email.com"')}
+            </div>
+          </div>
+
+          <div class="qt-panel">
+            <div class="qt-section-title">Project</div>
+            <div class="qt-form-grid-wide">
+              ${_pmRpField(d, 'Project name', 'projectName')}
+              ${_pmRpField(d, 'Location', 'location')}
+              ${_pmRpField(d, 'Area', 'area', 'text', 'placeholder="e.g. 120 SQM"', { hint: 'prints in the sheet header' })}
+              ${_pmRpField(d, 'Subject', 'subject', 'text', '', { span: true, hint: "prints as the sheet's subject line" })}
+              <div class="qt-form-group qt-span-2">
+                <label>Scope note</label>
+                <textarea class="qt-textarea" rows="3" id="rp-scopeNote"
+                          placeholder="One short paragraph describing what this report covers.">${_esc(d.scopeNote || '')}</textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="qt-panel">
+            <div class="qt-section-title">Document &amp; signatories</div>
+            <div class="qt-form-grid-3">
+              ${_pmRpField(d, 'Report no.', 'reportNo', 'text', 'placeholder="e.g. AR-2026-001"')}
+              ${_pmRpField(d, 'Report date', 'date', 'date')}
+              ${_pmRpField(d, 'Period covered', 'asOfDate', 'date', '', { hint: 'work as of' })}
+              ${_pmRpField(d, 'Prepared by', 'preparedBy', 'text', '', { hint: 'who built it' })}
+              ${_pmRpField(d, 'Submitted by', 'submittedBy', 'text',
+                           'placeholder="' + _esc(d.preparedBy || "DAC'S CONSTRUCTION") + '"', { hint: 'who signs it out' })}
+              <p class="qt-field-foot">Leave <strong>Submitted by</strong> blank and that column
+                 falls back to Prepared by, then to the company name.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="qt-rail">
+          <div id="rp-printopts"></div>
+          <div id="rp-images"></div>
         </div>
       </div>
 
+      ${_pmRpBand('Work items', 'Cost items, sub-items and lines \u2014 with the running summary below')}
       <div id="rp-costitems">${_pmRpCostItemsHtml(d)}</div>
 
-      <div style="margin-top:14px;">
-        <button class="pm-btn pm-btn-secondary" onclick="pmRpAddCost()"><i data-lucide="plus" style="width:14px;height:14px;"></i> Add Cost Item</button>
-      </div>
-
-      <div class="pm-kpi-row" style="margin-top:18px;">
-        <div class="pm-kpi-card"><div class="pm-kpi-body"><div class="pm-kpi-label">Total Project Cost</div><div class="pm-kpi-value" id="rp-grand">₱0.00</div></div></div>
-        <div class="pm-kpi-card"><div class="pm-kpi-body"><div class="pm-kpi-label">Total Accomplishment</div><div class="pm-kpi-value" id="rp-acc">₱0.00</div></div></div>
-        <div class="pm-kpi-card pm-kpi-total"><div class="pm-kpi-body"><div class="pm-kpi-label">Overall Progress</div><div class="pm-kpi-value" id="rp-pct">0%</div></div></div>
+      <div class="boq-totals-card"${window.currentUserRole === 'staff' ? ' style="display:none"' : ''}>
+        <div class="boq-section-title">Summary</div>
+        <div class="boq-totals-grid">
+          <div class="boq-total-row">
+            <span class="boq-total-label">Total Project Cost:</span>
+            <span class="boq-total-value" id="rp-grand">₱0.00</span>
+          </div>
+          <div class="boq-total-row">
+            <span class="boq-total-label">Total Accomplishment:</span>
+            <span class="boq-total-value" id="rp-acc">₱0.00</span>
+          </div>
+          <div class="boq-total-row boq-total-row-final">
+            <span class="boq-total-label">Overall Progress:</span>
+            <span class="boq-total-value" id="rp-pct">0%</span>
+          </div>
+        </div>
       </div>
     </div>`;
+    _pmRpRenderPrintOptions();
+    _pmRpRenderImages();
+    ['preparedBy', 'submittedBy'].forEach(k => {
+        const el = document.getElementById('rp-' + k);
+        if (el) el.addEventListener('input', () => { _pmRpDoc[k] = el.value; _pmRpSyncSignHints(); });
+    });
     _pmRpRefreshTotals();
     if (window.lucide) lucide.createIcons();
 }
 
+// Roman for cost items, letters for sub-items — the same numbering the BOQ,
+// the quotation and the printed report use, so "III. A. 4" means the same thing
+// on screen, on paper and in conversation.
+const _RP_ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X',
+                   'XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'];
+function _pmRpRoman(n) { return _RP_ROMAN[n] || String(n + 1); }
+function _pmRpAlpha(n) { return n < 26 ? String.fromCharCode(65 + n) : String(n + 1); }
+
+const RP_STATES = ['normal', 'optional', 'waived', 'removed'];
+
+// The work-item tree: ONE table, the quotation's line model plus the column a
+// quotation has no use for.
+//
+//   Item No. | Descriptions | QTY | Unit | Unit Price | Amount | % Complete | State | Actions
+//
+// Colours and classes are the shared BOQ ones (css/boq-module.css) — yellow
+// head, red cost-item band, grey sub-item band, striped lines, pale-yellow
+// subtotal — the same palette the printed sheet and the quotation use.
+//
+// Always editable, deliberately, rather than the BOQ's double-click-to-edit:
+// after a PDF import there can be sixty rates to key in.
 function _pmRpCostItemsHtml(d) {
-    if (!d.costItems.length) {
-        return '<div class="pm-empty-row" style="color:#9ca3af;border:1px dashed #e5e7eb;border-radius:10px;margin-top:14px;">No cost items yet. Click "Add Cost Item" to start building the report.</div>';
-    }
-    return d.costItems.map((ci, ciIdx) => `
-      <div class="boq-cost-item" style="border:1px solid #e5e7eb;border-radius:12px;padding:14px;margin-top:14px;">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
-          <strong style="color:#6b7280;white-space:nowrap;">${ciIdx + 1}.</strong>
-          <input type="text" class="pm-input" style="font-weight:600;" placeholder="Cost item name (e.g. Civil Works)" value="${_esc(ci.name || '')}" oninput="pmRpSet('ci','${ci.id}','name',this.value)">
-          <button class="pm-tbl-btn pm-tbl-btn-delete" onclick="pmRpDelCost('${ci.id}')" title="Remove cost item"><i data-lucide="trash-2" style="width:13px;height:13px;"></i></button>
+    const staff = window.currentUserRole === 'staff';   // never show peso amounts
+    const M = window.pmRpMath;
+    const money = (v) => staff ? '—' : _fmt(v);
+
+    const body = !d.costItems.length
+        ? `<tr class="boq-empty-row"><td colspan="9">No items yet. Click “Add Cost Item” to start building the report, or “Import PDF” to pull the scope in from a quotation.</td></tr>`
+        : d.costItems.map((ci, ciIdx) => {
+        const ciNo = _pmRpRoman(ciIdx);
+        const lump = M.isLump(ci);
+        let html = `
+            <tr class="boq-row-l1">
+                <td class="boq-col-no boq-l1-no">${ciNo}.</td>
+                <td class="boq-col-desc boq-l1-label">
+                    <input type="text" class="boq-label-input" placeholder="Cost item name (e.g. GENERAL REQUIREMENTS)"
+                           value="${_esc(ci.name || '')}" oninput="pmRpSet('ci','${ci.id}','name',this.value)">
+                </td>
+                <td colspan="2" class="boq-col-unit">
+                    <select class="boq-cell-select" onchange="pmRpSetPricing('${ci.id}', this.value)"
+                            title="How this cost item is priced">
+                        <option value="rated" ${lump ? '' : 'selected'}>Rated (per line)</option>
+                        <option value="lump"  ${lump ? 'selected' : ''}>Lump sum (LOT)</option>
+                    </select>
+                </td>
+                <td class="boq-col-rate">${lump && !staff
+                    ? `<input type="number" class="boq-cell-input" min="0" step="any" placeholder="LOT amount"
+                              value="${_esc(ci.lumpAmount != null ? ci.lumpAmount : '')}"
+                              oninput="pmRpSet('ci','${ci.id}','lumpAmount',this.value)">`
+                    : ''}</td>
+                <td class="boq-col-amount boq-cell-calc" id="rp-ci-sub-${ci.id}">${money(0)}</td>
+                <td class="boq-col-pct" id="rp-ci-pct-${ci.id}">0%</td>
+                <td class="boq-col-state"></td>
+                <td class="boq-col-actions boq-l1-actions">
+                    <button class="boq-icon-btn boq-icon-btn-add" title="Add sub-item" onclick="pmRpAddSub('${ci.id}')"><i data-lucide="plus"></i></button>
+                    <button class="boq-icon-btn" title="Move up"   onclick="pmRpMoveCost('${ci.id}',-1)"><i data-lucide="chevron-up"></i></button>
+                    <button class="boq-icon-btn" title="Move down" onclick="pmRpMoveCost('${ci.id}',1)"><i data-lucide="chevron-down"></i></button>
+                    <button class="boq-icon-btn boq-icon-btn-del" title="Delete cost item" onclick="pmRpDelCost('${ci.id}')"><i data-lucide="trash-2"></i></button>
+                </td>
+            </tr>`;
+
+        // The LOT explainer. Worth saying in full: the group amounts below look
+        // like money that adds up, and they deliberately do not.
+        if (lump) {
+            html += `
+            <tr class="rp-lot-note"><td colspan="9">
+                This cost item is priced as <strong>one LOT</strong>. The group amounts below are
+                working figures only — they do <strong>not</strong> add to the total, and they are
+                <strong>not printed</strong> on the client’s sheet. They decide how the LOT’s
+                <em>progress</em> is weighted: fill in <strong>every</strong> group to weight by
+                them, or leave any blank and the groups weigh <strong>equally</strong>.
+                <strong>Clear the LOT amount above</strong> to make the groups the breakdown
+                instead: the cost item then adds up from them.
+            </td></tr>`;
+        }
+
+        (ci.subItems || []).forEach((si, siIdx) => {
+            html += `
+            <tr class="boq-row-l2">
+                <td class="boq-col-no boq-l2-no">${_pmRpAlpha(siIdx)}.</td>
+                <td class="boq-col-desc boq-l2-label">
+                    <input type="text" class="boq-label-input" placeholder="Sub-item name (e.g. Earthworks)"
+                           value="${_esc(si.name || '')}" oninput="pmRpSet('si','${si.id}','name',this.value)">
+                </td>
+                <td class="boq-col-qty boq-cell-muted">—</td>
+                <td class="boq-col-unit boq-cell-muted">—</td>
+                <td class="boq-col-rate">${lump && !staff
+                    ? `<input type="number" class="boq-cell-input" min="0" step="any" placeholder="Amount"
+                              value="${_esc(si.lumpAmount != null ? si.lumpAmount : '')}"
+                              oninput="pmRpSet('si','${si.id}','lumpAmount',this.value)">`
+                    : ''}</td>
+                <td class="boq-col-amount boq-cell-calc" id="rp-si-amt-${si.id}">${money(0)}</td>
+                <td class="boq-col-pct" id="rp-si-pct-${si.id}">0%</td>
+                <td class="boq-col-state"></td>
+                <td class="boq-col-actions">
+                    <button class="boq-icon-btn boq-icon-btn-add" title="Add line" onclick="pmRpAddLine('${ci.id}','${si.id}')"><i data-lucide="plus"></i></button>
+                    <button class="boq-icon-btn" title="Move up"   onclick="pmRpMoveSub('${ci.id}','${si.id}',-1)"><i data-lucide="chevron-up"></i></button>
+                    <button class="boq-icon-btn" title="Move down" onclick="pmRpMoveSub('${ci.id}','${si.id}',1)"><i data-lucide="chevron-down"></i></button>
+                    <button class="boq-icon-btn boq-icon-btn-del" title="Delete sub-item" onclick="pmRpDelSub('${ci.id}','${si.id}')"><i data-lucide="trash-2"></i></button>
+                </td>
+            </tr>`;
+
+            (si.lineItems || []).forEach((li, liIdx) => {
+                const st = li.state || 'normal';
+                html += `
+            <tr class="boq-row-l3${st !== 'normal' ? ' boq-row-optional' : ''}">
+                <td class="boq-col-no boq-l3-no">${liIdx + 1}</td>
+                <td class="boq-col-desc"><input type="text" class="boq-cell-input" value="${_esc(li.description || '')}" placeholder="Description" title="${_esc(li.description || '')}" oninput="pmRpSet('li','${li.id}','description',this.value)"></td>
+                <td class="boq-col-qty"><input type="number" class="boq-cell-input" value="${_esc(li.qty != null ? li.qty : '')}" min="0" step="any" oninput="pmRpSet('li','${li.id}','qty',this.value)"></td>
+                <td class="boq-col-unit"><input type="text" class="boq-cell-input" value="${_esc(li.unit || '')}" placeholder="unit" oninput="pmRpSet('li','${li.id}','unit',this.value)"></td>
+                <td class="boq-col-rate">${
+                    lump ? '<span class="boq-cell-muted">scope only</span>'
+                    : staff ? '<span class="boq-cell-muted">—</span>'
+                    : `<input type="number" class="boq-cell-input" value="${_esc(_pmRpUnitPrice(li))}" min="0" step="any" placeholder="Unit price" oninput="pmRpSet('li','${li.id}','unitPrice',this.value)">`}</td>
+                <td class="boq-col-amount boq-cell-calc" id="rp-li-total-${li.id}">${lump ? '' : money(0)}</td>
+                <td class="boq-col-pct"><input type="number" class="boq-cell-input" value="${_esc(li.percentCompletion != null ? li.percentCompletion : '')}" min="0" max="100" step="any" oninput="pmRpSet('li','${li.id}','percentCompletion',this.value)"></td>
+                <td class="boq-col-state">
+                    <select class="boq-cell-select" onchange="pmRpSet('li','${li.id}','state',this.value)"
+                            title="A line that is not normal counts as zero, exactly as a quotation totals it">
+                        ${RP_STATES.map(s => `<option value="${s}" ${st === s ? 'selected' : ''}>${s}</option>`).join('')}
+                    </select>
+                </td>
+                <td class="boq-col-actions">
+                    <button class="boq-icon-btn" title="Move up"   onclick="pmRpMoveLine('${ci.id}','${si.id}','${li.id}',-1)"><i data-lucide="chevron-up"></i></button>
+                    <button class="boq-icon-btn" title="Move down" onclick="pmRpMoveLine('${ci.id}','${si.id}','${li.id}',1)"><i data-lucide="chevron-down"></i></button>
+                    <button class="boq-icon-btn boq-icon-btn-del" title="Delete line" onclick="pmRpDelLine('${ci.id}','${si.id}','${li.id}')"><i data-lucide="trash-2"></i></button>
+                </td>
+            </tr>`;
+            });
+        });
+
+        html += `
+            <tr class="boq-row-subtotal">
+                <td colspan="5" class="boq-subtotal-label">Subtotal — ${ciNo}. ${_esc(ci.name || '')}</td>
+                <td class="boq-col-amount boq-subtotal-val" id="rp-ci-sub2-${ci.id}">${money(0)}</td>
+                <td class="boq-col-pct" id="rp-ci-pct2-${ci.id}">0%</td>
+                <td class="boq-col-state boq-cell-muted" style="text-align:right;">accomplished</td>
+                <td class="boq-col-amount boq-subtotal-val" id="rp-ci-acc-${ci.id}">${money(0)}</td>
+            </tr>`;
+        return html;
+    }).join('');
+
+    return `
+      <div class="boq-table-wrapper">
+        <div class="boq-section-title">Work Items</div>
+        <div class="boq-table-scroll">
+          <table class="boq-table rp-table">
+            <thead>
+              <tr class="boq-thead-row">
+                <th class="boq-col-no">Item No.</th>
+                <th class="boq-col-desc">Descriptions</th>
+                <th class="boq-col-qty">QTY</th>
+                <th class="boq-col-unit">Unit</th>
+                <th class="boq-col-rate">Unit Price</th>
+                <th class="boq-col-amount">Amount</th>
+                <th class="boq-col-pct">% Complete</th>
+                <th class="boq-col-state">State</th>
+                <th class="boq-col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>${body}</tbody>
+          </table>
         </div>
-        ${(ci.subItems || []).map(si => `
-          <div style="margin:8px 0 8px 18px;">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-              <input type="text" class="pm-input" style="font-size:13px;" placeholder="Sub-item name (e.g. Earthworks)" value="${_esc(si.name || '')}" oninput="pmRpSet('si','${si.id}','name',this.value)">
-              <button class="pm-tbl-btn pm-tbl-btn-delete" onclick="pmRpDelSub('${ci.id}','${si.id}')" title="Remove sub-item"><i data-lucide="trash-2" style="width:12px;height:12px;"></i></button>
-            </div>
-            <div class="pm-table-wrap">
-              <table class="pm-table">
-                <thead><tr><th>Description</th><th>Unit</th><th>Qty</th><th>Material Rate</th><th>Labor Rate</th><th>Total</th><th>% Done</th><th>Accomplishment</th><th></th></tr></thead>
-                <tbody>
-                  ${(si.lineItems || []).map(li => `
-                    <tr>
-                      <td><input type="text" class="pm-input" value="${_esc(li.description || '')}" placeholder="Description" oninput="pmRpSet('li','${li.id}','description',this.value)"></td>
-                      <td><input type="text" class="pm-input" style="width:64px;" value="${_esc(li.unit || '')}" placeholder="unit" oninput="pmRpSet('li','${li.id}','unit',this.value)"></td>
-                      <td><input type="number" class="pm-input" style="width:72px;" value="${_esc(li.qty != null ? li.qty : '')}" min="0" step="any" oninput="pmRpSet('li','${li.id}','qty',this.value)"></td>
-                      <td><input type="number" class="pm-input" style="width:96px;" value="${_esc(li.materialRate != null ? li.materialRate : '')}" min="0" step="any" oninput="pmRpSet('li','${li.id}','materialRate',this.value)"></td>
-                      <td><input type="number" class="pm-input" style="width:96px;" value="${_esc(li.laborRate != null ? li.laborRate : '')}" min="0" step="any" oninput="pmRpSet('li','${li.id}','laborRate',this.value)"></td>
-                      <td style="white-space:nowrap;font-weight:600;" id="rp-li-total-${li.id}">₱0.00</td>
-                      <td><input type="number" class="pm-input" style="width:64px;" value="${_esc(li.percentCompletion != null ? li.percentCompletion : '')}" min="0" max="100" step="any" oninput="pmRpSet('li','${li.id}','percentCompletion',this.value)"></td>
-                      <td style="white-space:nowrap;font-weight:600;color:#059669;" id="rp-li-acc-${li.id}">₱0.00</td>
-                      <td><button class="pm-tbl-btn pm-tbl-btn-delete" onclick="pmRpDelLine('${ci.id}','${si.id}','${li.id}')"><i data-lucide="x" style="width:12px;height:12px;"></i></button></td>
-                    </tr>`).join('')}
-                </tbody>
-              </table>
-            </div>
-            <button class="pm-btn pm-btn-secondary" style="margin-top:6px;" onclick="pmRpAddLine('${ci.id}','${si.id}')"><i data-lucide="plus" style="width:13px;height:13px;"></i> Add Line</button>
-          </div>
-        `).join('')}
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;margin-left:18px;">
-          <button class="pm-btn pm-btn-secondary" onclick="pmRpAddSub('${ci.id}')"><i data-lucide="plus" style="width:13px;height:13px;"></i> Add Sub-item</button>
-          <div style="font-size:13px;color:#374151;">Subtotal: <strong id="rp-ci-sub-${ci.id}">₱0.00</strong> · Accomplished: <strong id="rp-ci-acc-${ci.id}" style="color:#059669;">₱0.00</strong></div>
+        <div class="boq-add-item-row">
+          <button class="boq-btn-add-cost" onclick="pmRpAddCost()"><i data-lucide="plus-circle"></i> Add Cost Item</button>
         </div>
-      </div>`).join('');
+      </div>`;
+}
+
+// What to show in the Unit Price box. A report written before unitPrice existed
+// carries the BOQ's material + labor split; show their sum so the figure the
+// admin sees is the one the maths actually uses.
+function _pmRpUnitPrice(li) {
+    if (li.unitPrice !== undefined && li.unitPrice !== null && li.unitPrice !== '') return li.unitPrice;
+    const legacy = window.pmRpMath.liRate(li);
+    return legacy ? String(legacy) : '';
 }
 
 // ── Model lookups + mutations ──────────────────────────────
@@ -4590,15 +5149,47 @@ window.pmRpSet = function(kind, id, field, value) {
     if (!obj) return;
     obj[field] = value;
     // Numeric fields affect totals — refresh without re-rendering (keeps focus).
-    if (kind === 'li' && ['qty','materialRate','laborRate','percentCompletion'].includes(field)) _pmRpRefreshTotals();
+    // Numeric and state fields move the totals; repaint without re-rendering
+    // so the cell being typed into keeps focus.
+    if (kind === 'li' && ['qty','unitPrice','materialRate','laborRate','percentCompletion','state'].includes(field)) _pmRpRefreshTotals();
+    if (field === 'lumpAmount') _pmRpRefreshTotals();
+};
+
+// Rated <-> LOT changes which cells the row even has, so this re-renders
+// rather than just refreshing the numbers.
+window.pmRpSetPricing = function(ciId, mode) {
+    const ci = _pmRpFindCost(ciId);
+    if (!ci) return;
+    ci.pricing = (mode === 'lump') ? 'lump' : 'rated';
+    _pmRpRerenderItems();
 };
 
 window.pmRpAddCost = function() { _pmRpDoc.costItems.push({ id: _pmUid('ci_'), name: '', subItems: [] }); _pmRpRerenderItems(); };
 window.pmRpDelCost = function(id) { _pmRpDoc.costItems = _pmRpDoc.costItems.filter(ci => ci.id !== id); _pmRpRerenderItems(); };
 window.pmRpAddSub = function(ciId) { const ci = _pmRpFindCost(ciId); if (!ci) return; (ci.subItems = ci.subItems || []).push({ id: _pmUid('si_'), name: '', lineItems: [] }); _pmRpRerenderItems(); };
 window.pmRpDelSub = function(ciId, siId) { const ci = _pmRpFindCost(ciId); if (!ci) return; ci.subItems = (ci.subItems||[]).filter(si => si.id !== siId); _pmRpRerenderItems(); };
-window.pmRpAddLine = function(ciId, siId) { const si = _pmRpFindSub(siId); if (!si) return; (si.lineItems = si.lineItems || []).push({ id: _pmUid('li_'), description: '', unit: '', qty: '', materialRate: '', laborRate: '', percentCompletion: '' }); _pmRpRerenderItems(); };
+window.pmRpAddLine = function(ciId, siId) { const si = _pmRpFindSub(siId); if (!si) return; (si.lineItems = si.lineItems || []).push({ id: _pmUid('li_'), description: '', unit: '', qty: '', unitPrice: '', state: 'normal', percentCompletion: '' }); _pmRpRerenderItems(); };
 window.pmRpDelLine = function(ciId, siId, liId) { const si = _pmRpFindSub(siId); if (!si) return; si.lineItems = (si.lineItems||[]).filter(li => li.id !== liId); _pmRpRerenderItems(); };
+
+// Reorder. Swapping in place keeps every id stable, so nothing that refers to a
+// row by id (the live total cells) goes stale — only the numbering shifts.
+function _pmRpSwap(arr, idx, dir) {
+    const to = idx + dir;
+    if (idx < 0 || to < 0 || to >= arr.length) return false;
+    const t = arr[idx]; arr[idx] = arr[to]; arr[to] = t;
+    return true;
+}
+window.pmRpMoveCost = function(id, dir) {
+    if (_pmRpSwap(_pmRpDoc.costItems, _pmRpDoc.costItems.findIndex(ci => ci.id === id), dir)) _pmRpRerenderItems();
+};
+window.pmRpMoveSub = function(ciId, siId, dir) {
+    const ci = _pmRpFindCost(ciId); if (!ci) return;
+    if (_pmRpSwap(ci.subItems || [], (ci.subItems || []).findIndex(si => si.id === siId), dir)) _pmRpRerenderItems();
+};
+window.pmRpMoveLine = function(ciId, siId, liId, dir) {
+    const si = _pmRpFindSub(siId); if (!si) return;
+    if (_pmRpSwap(si.lineItems || [], (si.lineItems || []).findIndex(li => li.id === liId), dir)) _pmRpRerenderItems();
+};
 
 // Re-render just the cost-items area (preserves header input values in the DOM).
 function _pmRpRerenderItems() {
@@ -4611,29 +5202,42 @@ function _pmRpRerenderItems() {
 
 function _pmRpRefreshTotals() {
     const d = _pmRpDoc;
+    if (!d) return;
+    const M = window.pmRpMath;
+    const staff = window.currentUserRole === 'staff';
+    const money = (v) => staff ? '\u2014' : _fmt(v);
+    const pct = (frac) => Math.round((frac || 0) * 100) + '%';
+
     d.costItems.forEach(ci => {
-        (ci.subItems||[]).forEach(si => (si.lineItems||[]).forEach(li => {
-            _pmSet('rp-li-total-' + li.id, _fmt(_pmLiTotal(li)));
-            _pmSet('rp-li-acc-' + li.id,   _fmt(_pmLiAcc(li)));
-        }));
-        _pmSet('rp-ci-sub-' + ci.id, _fmt(_pmCiSub(ci)));
-        _pmSet('rp-ci-acc-' + ci.id, _fmt(_pmCiAcc(ci)));
+        const lump = M.isLump(ci);
+        (ci.subItems || []).forEach(si => {
+            (si.lineItems || []).forEach(li => {
+                // A LOT line is scope only \u2014 it has no amount of its own.
+                _pmSet('rp-li-total-' + li.id, lump ? '' : money(M.liTotal(li)));
+            });
+            _pmSet('rp-si-amt-' + si.id, money(M.groupAmount(ci, si)));
+            _pmSet('rp-si-pct-' + si.id, pct(M.groupPct(ci, si)));
+        });
+        const sub = money(M.ciSub(ci));
+        const cp  = M.ciSub(ci) > 0 ? pct(M.ciAcc(ci) / M.ciSub(ci)) : '0%';
+        _pmSet('rp-ci-sub-'  + ci.id, sub);
+        _pmSet('rp-ci-sub2-' + ci.id, sub);
+        _pmSet('rp-ci-pct-'  + ci.id, cp);
+        _pmSet('rp-ci-pct2-' + ci.id, cp);
+        _pmSet('rp-ci-acc-'  + ci.id, money(M.ciAcc(ci)));
     });
-    _pmSet('rp-grand', _fmt(_pmBoqGrand(d.costItems)));
-    _pmSet('rp-acc',   _fmt(_pmBoqAcc(d.costItems)));
-    _pmSet('rp-pct',   _pmBoqPct(d) + '%');
+
+    _pmSet('rp-grand', money(M.grand(d.costItems)));
+    _pmSet('rp-acc',   money(M.acc(d.costItems)));
+    _pmSet('rp-pct',   M.pct(d) + '%');
 }
 
 function _pmRpSyncHeaderFromDom() {
-    const g = id => { const el = document.getElementById(id); return el ? el.value : undefined; };
-    const d = _pmRpDoc;
-    if (g('rp-date')        !== undefined) d.date        = g('rp-date');
-    if (g('rp-projectName') !== undefined) d.projectName = g('rp-projectName');
-    if (g('rp-area')        !== undefined) d.area        = g('rp-area');
-    if (g('rp-ownerName')   !== undefined) d.ownerName   = g('rp-ownerName');
-    if (g('rp-location')    !== undefined) d.location    = g('rp-location');
-    if (g('rp-subject')     !== undefined) d.subject     = g('rp-subject');
-    if (g('rp-status')      !== undefined) d.status      = g('rp-status');
+    if (!_pmRpDoc) return;
+    _RP_TEXT_FIELDS.forEach(k => {
+        const el = document.getElementById('rp-' + k);
+        if (el) _pmRpDoc[k] = el.value;
+    });
 }
 
 window.pmRpBack = function() {
@@ -4648,14 +5252,16 @@ window.pmRpSave = async function() {
     const d = _pmRpDoc;
     const adminEmail = (firebase.auth().currentUser && firebase.auth().currentUser.email) || 'DACS Admin';
     const payload = {
-        date: d.date || '', projectName: d.projectName || '', area: d.area || '',
-        ownerName: d.ownerName || '', location: d.location || '', subject: d.subject || 'Accomplishment Report',
-        status: d.status || 'draft',
         costItems: d.costItems || [],
+        images: d.images || [],
         // Cached overall progress so the partner KPI / list don't have to recompute.
         progressPercentage: _pmBoqPct(d),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
+    _RP_TEXT_FIELDS.forEach(k => { payload[k] = d[k] || ''; });
+    _RP_SWITCHES.forEach(k => { payload[k] = d[k] !== false; });
+    if (!payload.subject) payload.subject = 'Accomplishment Report';
+    if (!payload.status)  payload.status  = 'draft';
     if (d.status === 'approved') { payload.approvedBy = adminEmail; payload.approvedAt = firebase.firestore.FieldValue.serverTimestamp(); }
 
     const btn = document.querySelector('#pm-rp-builder .pm-btn-primary');
@@ -4675,6 +5281,239 @@ window.pmRpSave = async function() {
         alert('Save failed: ' + e.message);
         if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="save" style="width:14px;height:14px;"></i> Save Report'; if (window.lucide) lucide.createIcons(); }
     }
+};
+
+// ── Import from a quotation PDF ────────────────────────────
+// Building a report meant retyping the whole scope: once into the quotation,
+// again here. The two have the SAME three-level shape (section → group → line
+// vs cost item → sub-item → line item), so a quotation PDF this app exported
+// can be read straight back in.
+//
+// It reads a FILE the admin picks, never the `quotations` tables. Migration
+// 0045's isolation contract (and CLAUDE.md) reserve those for
+// quotation-module.js / quotation-print.js and require that turning a quote
+// into project work be a manual admin action — picking the file IS that act.
+// Do not replace this with a quotation picker that queries the table.
+//
+// The parser lives in js/print-utils.js (window.dacsParseQuotationPdf); this
+// half only maps its neutral tree onto report rows and drives the preview.
+// NOTHING here writes to the database — the admin still presses Save Report.
+
+let _pmRpImport = null;   // the parsed + mapped import awaiting confirmation
+
+// ==== RP IMPORT MAP START ====
+// Quotation tree -> report costItems. The two carry the same three levels and,
+// since the report moved to the quotation's line model, the same line shape —
+// so this is now close to a straight copy.
+//
+//   percentCompletion 0 on every line. A quotation is the SCOPE, not the
+//   progress; the admin reports what is actually done. That is what keeps the
+//   saved progressPercentage (and the partner's Schedule Performance KPI)
+//   honest on a freshly imported report.
+//
+//   A LOT-priced section comes across AS a LOT: pricing 'lump' plus the section
+//   total the PDF printed. Its lines carry no rates because the quotation never
+//   printed any (quotation-print.js:825) — they are scope, and the LOT amount
+//   is the money.
+//
+// Values stay STRINGS, matching what pmRpAddLine creates and what the inputs
+// write back, so an imported row and a typed row are indistinguishable.
+function _pmRpImportMap(parsed) {
+    return ((parsed && parsed.sections) || []).map(sec => ({
+        id: _pmUid('ci_'),
+        name: sec.label || '',
+        pricing: sec.lump ? 'lump' : 'rated',
+        lumpAmount: (sec.lump && sec.amount > 0) ? String(sec.amount) : '',
+        subItems: (sec.groups || []).map(g => ({
+            id: _pmUid('si_'),
+            name: g.label || '',
+            lumpAmount: '',
+            lineItems: (g.lines || []).map(l => ({
+                id: _pmUid('li_'),
+                description: l.description || '',
+                unit: String(l.unit == null ? '' : l.unit),
+                qty: (l.qty == null || l.qty === '') ? '' : String(l.qty),
+                unitPrice: (l.unitPrice == null || l.unitPrice === '' || !l.unitPrice) ? '' : String(l.unitPrice),
+                state: 'normal',
+                percentCompletion: 0
+            }))
+        }))
+    }));
+}
+// ==== RP IMPORT MAP END ====
+
+window.pmRpImportPdf = function() {
+    if (!_pmRpDoc) return;
+    if (typeof window.dacsParseQuotationPdf !== 'function') { alert('PDF reader not loaded.'); return; }
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/pdf,.pdf';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+    input.addEventListener('change', async () => {
+        const file = input.files && input.files[0];
+        input.remove();
+        if (!file) return;
+        const btn = document.querySelector('#pm-rp-builder .boq-toolbar-right .pm-btn-secondary');
+        const restore = btn ? btn.innerHTML : '';
+        // pdf.js is fetched from the CDN on first use — say so rather than freeze.
+        if (btn) { btn.disabled = true; btn.textContent = 'Reading…'; }
+        try {
+            const parsed = await window.dacsParseQuotationPdf(await file.arrayBuffer());
+            _pmRpImportPreview(parsed, file.name);
+        } catch (e) {
+            alert(e && e.message ? e.message : 'Could not read that PDF.');
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = restore; if (window.lucide) lucide.createIcons(); }
+        }
+    });
+    input.click();
+};
+
+// Which header fields the quotation can fill — only ones left BLANK, so an
+// import never overwrites something the admin already typed.
+function _pmRpImportHeaderFills(h) {
+    const d = _pmRpDoc || {};
+    const map = [
+        ['projectName', 'Project Name', h.projectName],
+        ['ownerName',   'Owner Name',   h.clientName],
+        ['location',    'Location',     h.location],
+        ['area',        'Area (sqm)',   h.area]
+    ];
+    return map.filter(([field, , value]) => value && !String(d[field] || '').trim())
+              .map(([field, label, value]) => ({ field, label, value }));
+}
+
+function _pmRpImportPreview(parsed, fileName) {
+    // Pull the form into the model FIRST: "is this field blank?" has to be
+    // asked of what the admin can see, not of a stale model.
+    _pmRpSyncHeaderFromDom();
+    const items = _pmRpImportMap(parsed);
+    const fills = _pmRpImportHeaderFills(parsed.header || {});
+    _pmRpImport = { items, header: parsed.header || {} };
+
+    const st = parsed.stats || {};
+    // _pmBoqGrand already totals a LOT-priced cost item from its own amount, so
+    // a lump-sum quotation checks out against the printed total with no special
+    // case here.
+    const computed = _pmBoqGrand(items);
+    const effective = computed;
+    const lotTotal = items.reduce((sum, ci) =>
+        sum + (ci.pricing === 'lump' ? _pmNum(ci.lumpAmount) : 0), 0);
+    const printed  = parsed.printedTotal;
+    // Checksum against the figure the PDF itself prints — the same guard the
+    // one-off tools/boq-import scripts use. A gap is legitimate when the quote
+    // carried a discount or VAT, so warn, never block.
+    const diff = (printed == null) ? null : Math.abs(printed - effective);
+    const matches = diff != null && diff < 0.5;
+
+    const tree = items.map(ci => {
+        const subs = (ci.subItems || []).map(si => {
+            const lines = (si.lineItems || []);
+            const shown = lines.slice(0, 3).map(li =>
+                `<div style="margin-left:26px;color:#6b7280;">${_esc(li.description || '(no description)')}`
+                + `<span style="color:#9ca3af;"> · ${_esc(li.qty || '0')} ${_esc(li.unit || '')} × ${_fmt(_pmNum(li.materialRate))}</span></div>`).join('');
+            const more = lines.length > 3
+                ? `<div style="margin-left:26px;color:#9ca3af;font-style:italic;">+ ${lines.length - 3} more…</div>` : '';
+            return `<div style="margin-left:13px;font-weight:600;color:#374151;">${_esc(si.name || '(unnamed sub-item)')}</div>${shown}${more}`;
+        }).join('');
+        const q = ci.pricing === 'lump' ? _pmNum(ci.lumpAmount) : 0;
+        const qTag = q > 0
+            ? `<span style="font-weight:600;color:#a16207;"> — LOT ${_fmt(q)}</span>` : '';
+        return `<div style="margin-top:8px;font-weight:700;color:#111827;">${_esc(ci.name || '(unnamed cost item)')}${qTag}</div>${subs}`;
+    }).join('');
+
+    const warnHtml = (parsed.warnings || []).map(w =>
+        `<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:#fffbeb;border:1px solid #fde68a;color:#92400e;font-size:12px;">${_esc(w)}</div>`).join('');
+
+    const fillHtml = fills.length
+        ? `<div style="margin-top:10px;font-size:12px;color:#374151;">Will also fill these blank header fields: `
+          + fills.map(f => `<strong>${_esc(f.label)}</strong> = ${_esc(f.value)}`).join(' · ') + `</div>`
+        : '';
+
+    const hasItems = !!(_pmRpDoc && _pmRpDoc.costItems && _pmRpDoc.costItems.length);
+
+    const ov = document.createElement('div');
+    ov.id = 'pmRpImportModal';
+    ov.className = 'pm-modal-overlay';
+    ov.style.display = 'flex';
+    ov.innerHTML = `
+      <div class="pm-modal-box" role="dialog" aria-modal="true" aria-label="Import quotation PDF" style="max-width:640px;">
+        <div class="pm-modal-header">
+          <h3>Import from quotation PDF</h3>
+          <button class="pm-modal-close" aria-label="Close" data-rp-import="cancel">&times;</button>
+        </div>
+        <div class="pm-modal-body">
+          <div style="font-size:12px;color:#6b7280;">${_esc(fileName || 'Quotation.pdf')}</div>
+          <div style="margin-top:8px;font-size:13px;color:#374151;">
+            Found <strong>${st.sections || 0}</strong> cost item${st.sections === 1 ? '' : 's'} ·
+            <strong>${st.groups || 0}</strong> sub-item${st.groups === 1 ? '' : 's'} ·
+            <strong>${st.lines || 0}</strong> line item${st.lines === 1 ? '' : 's'}${
+              st.skippedRemoved ? ` · <span style="color:#9ca3af;">${st.skippedRemoved} removed line${st.skippedRemoved === 1 ? '' : 's'} skipped</span>` : ''}
+          </div>
+          <div style="margin-top:10px;padding:10px;border-radius:8px;font-size:12.5px;${
+            matches ? 'background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;'
+                    : 'background:#fffbeb;border:1px solid #fde68a;color:#92400e;'}">
+            ${lotTotal > 0
+              ? `<div style="margin-bottom:6px;">This quotation prices <strong>${_fmt(lotTotal)}</strong> by LOT.
+                 Those cost items come in as <strong>lump sum (LOT)</strong>, exactly as the quotation
+                 prices them — their lines are scope, and progress is weighted by the group
+                 amounts you enter.</div>` : ''}
+            Total from the imported rows: <strong>${_fmt(effective)}</strong>${
+              printed == null ? ' <em>(the PDF printed no total to check against)</em>'
+              : matches ? ' — matches the PDF’s printed total.'
+              : ` — the PDF prints <strong>${_fmt(printed)}</strong>, a difference of <strong>${_fmt(diff)}</strong>. That is normal if the quotation had a discount or VAT; check the rows before inserting.`}
+          </div>
+          ${warnHtml}
+          ${fillHtml}
+          <div style="margin-top:12px;max-height:240px;overflow:auto;border:1px solid #e5e7eb;border-radius:8px;padding:10px;font-size:12px;">${tree || '<em style="color:#9ca3af;">Nothing to show.</em>'}</div>
+          <div style="margin-top:10px;font-size:12px;color:#6b7280;">
+            Every line comes in at <strong>0% done</strong>, with the quotation’s rate as the
+            <strong>Material Rate</strong> and Labor Rate blank. Nothing is saved until you press
+            <strong>Save Report</strong>.
+          </div>
+        </div>
+        <div class="pm-modal-footer">
+          <button class="pm-btn pm-btn-secondary" data-rp-import="cancel">Cancel</button>
+          ${hasItems ? '<button class="pm-btn pm-btn-secondary" data-rp-import="append">Append</button>' : ''}
+          <button class="pm-btn pm-btn-primary" data-rp-import="replace">${hasItems ? 'Replace all items' : 'Insert ' + (st.lines || 0) + ' rows'}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+
+    ov.addEventListener('click', e => {
+        if (e.target === ov) { _pmRpImportClose(); return; }
+        const btn = e.target.closest('[data-rp-import]');
+        if (!btn) return;
+        const act = btn.getAttribute('data-rp-import');
+        if (act === 'cancel') _pmRpImportClose();
+        else window.pmRpImportApply(act);
+    });
+}
+
+function _pmRpImportClose() {
+    const ov = document.getElementById('pmRpImportModal');
+    if (ov) ov.remove();
+    _pmRpImport = null;
+}
+
+window.pmRpImportApply = function(mode) {
+    if (!_pmRpDoc || !_pmRpImport) { _pmRpImportClose(); return; }
+    // Keep anything typed into the header before the import ran, then decide
+    // what is still blank against THAT — never against the preview's snapshot.
+    _pmRpSyncHeaderFromDom();
+    const items = _pmRpImport.items;
+    const fills = _pmRpImportHeaderFills(_pmRpImport.header);
+    _pmRpDoc.costItems = (mode === 'append')
+        ? (_pmRpDoc.costItems || []).concat(items)
+        : items;
+    fills.forEach(f => {
+        _pmRpDoc[f.field] = f.value;
+        const el = document.getElementById('rp-' + f.field);
+        if (el) el.value = f.value;
+    });
+    _pmRpImportClose();
+    _pmRpRerenderItems();
 };
 
 // ══════════════════════════════════════════════════════════
