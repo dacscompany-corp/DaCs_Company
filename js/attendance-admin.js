@@ -1004,8 +1004,13 @@
     function attBonusReason(r) {
         const late = Number(r.late_days) || 0;
         const missing = Number(r.missing_days) || 0;
+        const pending = Number(r.pending_days) || 0;
         if (r.status === 'qualified') return 'On time every expected day';
-        if (r.status !== 'disqualified') return 'The week is not finished yet';
+        if (r.status !== 'disqualified') {
+            return pending
+                ? 'On time so far · ' + pending + (pending === 1 ? ' day to go' : ' days to go')
+                : 'The week is not finished yet';
+        }
         const parts = [];
         if (missing) parts.push('missed ' + missing + (missing === 1 ? ' expected day' : ' expected days'));
         if (late) parts.push('was late on ' + late + (late === 1 ? ' day' : ' days'));
@@ -1292,13 +1297,22 @@
             }
             const sentence = bits.length ? attEsc(attAnd(bits)) + '.' : '';
 
+            // Counted from the list itself, by kind. `open` above counts
+            // every worker still on shift, but attention() only lists a
+            // missing Time Out once the day is over -- subtracting one
+            // from the other printed "-2 workers with nothing recorded".
+            const kindCount = k => attn.filter(a => a.kind === k).length;
+            const openN = kindCount('open');
+            const noneN = kindCount('none');
+            const locN = kindCount('location');
             const flagBody = attn.length
                 ? attEsc(attAnd([
-                    open ? (open === 1 ? 'a missing time out'
-                                      : `${open} missing time outs`) : '',
-                    (attn.length - open) ? ((attn.length - open) === 1
-                        ? 'a worker with nothing recorded'
-                        : `${attn.length - open} workers with nothing recorded`) : ''
+                    openN ? (openN === 1 ? 'a missing time out'
+                                         : `${openN} missing time outs`) : '',
+                    noneN ? (noneN === 1 ? 'a worker with nothing recorded'
+                                         : `${noneN} workers with nothing recorded`) : '',
+                    locN ? (locN === 1 ? 'a time in with a location problem'
+                                       : `${locN} time ins with a location problem`) : ''
                   ])) + '.'
                 : !started
                     // attFlag's own title already says "Nothing needs you";
@@ -1682,7 +1696,7 @@
             body.innerHTML = 'Loading…';
             try {
                 // Once per screen. A missing config is not fatal -- the
-                // rule falls back to 8am rather than taking the day down.
+                // rule falls back to 9:00 rather than taking the day down.
                 if (dayStart === null) {
                     const cfg = await attLoadRewardConfig().catch(() => null);
                     dayStart = (cfg && cfg.default_start_time) || '';
@@ -2162,7 +2176,7 @@
                 general.style.display = 'block';
             } finally {
                 submitBtn.disabled = false;
-                submitBtn.textContent = 'Close as abandoned';
+                submitBtn.textContent = 'Close this day';
             }
         });
     }
@@ -2804,8 +2818,8 @@
      * Was a table whose last column was a button reading "Mon–Fri", with
      * the start time and the closed days hidden behind it. An owner
      * could not tell which sites still had no schedule at all without
-     * opening every one -- and a site with no working days silently
-     * qualifies nobody for the weekly bonus.
+     * opening every one. A site never configured runs the default
+     * Mon–Fri, and the card says so rather than "not set".
      *
      * The card states all three settings up front and says so in words
      * when one is missing. The LIST is still read-only: sites arrive
@@ -2889,11 +2903,15 @@
             const closed = closures.get(key) || 0;
             const hidden = !!p.hidden;
 
-            // An EMPTY working_days is not the same as an unset one: the
-            // config row may not exist at all. Both mean "nobody here is
-            // ever required", which is the sentence the card has to say.
+            // No config row is NOT "nobody is required". The database reads
+            // a missing row as the default Mon–Fri (attendance_is_required_day,
+            // 0065: `coalesce(..., true)`), and working_days can never be
+            // empty (its check constraint). The card used to say "Not set
+            // yet" and warn that nobody here could earn the bonus -- the
+            // opposite of what the evaluator actually does.
             const daysSet = !!(conf && Array.isArray(conf.working_days) && conf.working_days.length);
-            const days = daysSet ? attWorkingDaysLabel(conf.working_days) : 'Not set yet';
+            const days = daysSet ? attWorkingDaysLabel(conf.working_days) : 'Mon–Fri';
+            const daysIsDefault = !daysSet;
             const due = attClock(conf && conf.start_time_override) || defaultStart || 'Not set yet';
             const dueIsDefault = !(conf && conf.start_time_override) && !!defaultStart;
 
@@ -2903,9 +2921,6 @@
                 ? 'Workers cannot pick this site on their phone. Anyone already timed ' +
                   'in here can still time out, and a Time In saved offline before you ' +
                   'hid it still counts.'
-                : !daysSet
-                ? 'Until you set the working days, nobody posted here can qualify for ' +
-                  'the weekly bonus — no day is ever required of them.'
                 : closed
                     ? `${closed} closed ${closed === 1 ? 'day is' : 'days are'} set. ` +
                       'A closed day is required of nobody, so it shrinks the bonus week ' +
@@ -2932,6 +2947,8 @@
                       <div>
                         <div class="att-site-key">Working days</div>
                         <div class="att-site-val">${attEsc(days)}</div>
+                        ${daysIsDefault
+                          ? '<div class="att-meta">The default — not changed yet</div>' : ''}
                       </div>
                       <div>
                         <div class="att-site-key">Workers due at</div>
@@ -2944,7 +2961,7 @@
                         <div class="att-site-val">${closed || 'none'}</div>
                       </div>
                     </div>
-                    <div class="att-site-note${daysSet || hidden ? '' : ' att-site-note--warn'}">${
+                    <div class="att-site-note">${
                         attEsc(note)}</div>
                     <div class="att-site-actions">
                       <button class="att-btn" type="button" data-sched="${attEsc(key)}">
@@ -3237,11 +3254,14 @@
             const byProject = attRollUpByProject(rows);
 
             // Totals restate what the database already computed. The
-            // average divides by DAYS THAT HAVE RECORDS, not by the
-            // length of the range: a range covering two rest days would
-            // otherwise report an average nobody worked.
+            // average is ONE WORKER'S finished day: total hours over the
+            // records that actually carry hours. Dividing by calendar days
+            // instead summed the whole crew into one "day" -- six workers
+            // on 8h each read as "48h average each day". Open and closed-
+            // by-office days have no hours, so they stay out of both sides.
             const totalMinutes = rows.reduce((s, r) => s + (Number(r.total_minutes) || 0), 0);
-            const activeDays = new Set(rows.map(r => r.work_date)).size;
+            const daysWithHours = rows.filter(r =>
+                r.total_minutes !== null && r.total_minutes !== undefined).length;
             const complete = rows.filter(r => r.status === 'complete').length;
             // Counted on STATUS, not on a null timeout_at. An abandoned
             // record keeps timeout_at null forever, so the old test kept
@@ -3278,8 +3298,8 @@
 
                 '<div class="att-stats">' +
                   attStat('Total hours on site', attFormatHours(totalMinutes)) +
-                  attStat('Average each day', attFormatHours(
-                      activeDays ? Math.round(totalMinutes / activeDays) : null)) +
+                  attStat('Average day per worker', attFormatHours(
+                      daysWithHours ? Math.round(totalMinutes / daysWithHours) : null)) +
                   attStat('Days finished properly', complete) +
                   attStat('Days waiting for a time out', openRecords, openRecords > 0) +
                   // Never reddened: most of these are a weak fix on a
@@ -3965,6 +3985,58 @@
         return frozen;
     }
 
+    /**
+     * A week that has not been frozen yet, worked out live.
+     *
+     * Before this, the page showed ONLY frozen rows, so the week in
+     * progress -- the one with real Time Ins in it -- read "Nothing has
+     * been worked out" until Monday noon after it ended.
+     *
+     * Reads through attendance_reward_progress (0066), the SAME day
+     * breakdown the freeze uses, so what shows here mid-week is what the
+     * frozen row will say. Writes nothing. The roster matches the
+     * evaluator's: active worker / teamLeader profiles (RLS scopes the
+     * tenant). Rows carry `_live: true` and no `id`, so nothing can be
+     * marked as handed over before the week is final.
+     */
+    async function attLoadLiveWeek(weekStart) {
+        const sb = window.sbClient;
+        const { data: workers, error } = await sb.from('profiles')
+            .select('id,display_name,email,position,status,role')
+            .in('role', ATT_WORKER_ROLES);
+        if (error) throw error;
+
+        const roster = (workers || []).filter(w => (w.status || 'active') === 'active');
+        const todayKey = attTodayKey();
+
+        const rows = await Promise.all(roster.map(async w => {
+            const res = await sb.rpc('attendance_reward_progress', {
+                p_worker: w.id,
+                p_week_start: weekStart
+            });
+            if (res.error) throw res.error;
+            const s = attRewardSummary(res.data || [], todayKey);
+            return {
+                _live: true,
+                worker_id: w.id,
+                worker_name: attWorkerName(w),
+                worker_position: w.position || '',
+                week_start: weekStart,
+                week_end: attWeekEndOf(weekStart),
+                required_days: s.requiredDays,
+                completed_days: s.completedDays,
+                on_time_days: s.onTimeDays,
+                late_days: s.lateDays,
+                missing_days: s.missingDays,
+                pending_days: s.pendingDays,
+                status: s.status,
+                amount: 0,
+                paid: false
+            };
+        }));
+        return rows.sort((a, b) => String(a.worker_name).localeCompare(String(b.worker_name)));
+    }
+
     async function attLoadRewards(weekStart) {
         const { data, error } = await window.sbClient
             .from('attendance_weekly_rewards')
@@ -4076,19 +4148,36 @@
                 return;
             }
 
+            // A live week is a forecast of the frozen one, never a result:
+            // nobody has "earned" anything and nothing can be handed over.
+            const live = rows.some(r => r._live);
             const t = attRewardTotals(rows);
-            const lead = `${t.qualified} of ${t.workers} ` +
-                `${t.workers === 1 ? 'worker' : 'workers'} earned the bonus this week.`;
-            const money = hideMoney ? ''
-                : `${attPeso(t.totalAmount)} in total.` +
-                  (t.unpaidAmount > 0
-                    ? ` ${attPeso(t.unpaidAmount)} of it has not been handed out yet.`
-                    : ' All of it has been handed over.');
-            const bodyText = hideMoney
-                ? (t.unpaid
-                    ? `${t.unpaid} of them ${t.unpaid === 1 ? 'has' : 'have'} not been handed the bonus yet.`
-                    : 'Every bonus earned has been handed over.')
-                : attEsc(money);
+            let lead, bodyText;
+            if (live) {
+                const onTrack = rows.filter(r => r.status !== 'disqualified').length;
+                const finalAt = attKeyFromDayNum(attDayNum(week) + 7);
+                const [fy, fm, fd] = finalAt.split('-').map(Number);
+                const finalLabel = new Date(fy, fm - 1, fd).toLocaleDateString('en-PH',
+                    { weekday: 'long', month: 'long', day: 'numeric' });
+                lead = `${onTrack} of ${t.workers} ` +
+                    `${t.workers === 1 ? 'worker is' : 'workers are'} still on track for the bonus.`;
+                bodyText = attEsc('This week is not final yet — these are the numbers so far. ' +
+                    'It becomes final around noon on ' + finalLabel +
+                    ', once late offline records have had time to arrive.');
+            } else {
+                lead = `${t.qualified} of ${t.workers} ` +
+                    `${t.workers === 1 ? 'worker' : 'workers'} earned the bonus this week.`;
+                const money = hideMoney ? ''
+                    : `${attPeso(t.totalAmount)} in total.` +
+                      (t.unpaidAmount > 0
+                        ? ` ${attPeso(t.unpaidAmount)} of it has not been handed out yet.`
+                        : ' All of it has been handed over.');
+                bodyText = hideMoney
+                    ? (t.unpaid
+                        ? `${t.unpaid} of them ${t.unpaid === 1 ? 'has' : 'have'} not been handed the bonus yet.`
+                        : 'Every bonus earned has been handed over.')
+                    : attEsc(money);
+            }
 
             body.innerHTML =
                 '<div class="att-stack">' +
@@ -4111,8 +4200,13 @@
                   '<th>Handed over</th>' +
                 '</tr></thead><tbody>' +
                 rows.map(function (r) {
-                    const tone = r.status === 'qualified' ? 'done'
+                    const tone = r._live ? (r.status === 'disqualified' ? 'none' : 'working')
+                               : r.status === 'qualified' ? 'done'
                                : r.status === 'disqualified' ? 'none' : 'working';
+                    // Live: "On track" / "No bonus", never "Gets the bonus"
+                    // -- a Friday-evening qualified week is still not final.
+                    const pill = r._live && r.status !== 'disqualified'
+                        ? attRewardPill('in_progress') : attRewardPill(r.status);
                     return '<tr class="att-row--' + tone + '">' +
                         '<td>' +
                           '<div class="att-worker">' + attEsc(r.worker_name || '—') + '</div>' +
@@ -4122,10 +4216,13 @@
                         '<td class="att-mono">' + r.on_time_days + '</td>' +
                         '<td class="att-mono">' + r.late_days + '</td>' +
                         '<td class="att-mono">' + r.missing_days + '</td>' +
-                        '<td>' + attRewardPill(r.status) +
-                          '<div class="att-meta">' + attEsc(attBonusReason(r)) + '</div></td>' +
-                        (hideMoney ? '' : '<td class="att-mono">' + attPeso(r.amount) + '</td>') +
-                        '<td>' + (r.status === 'qualified'
+                        '<td>' + pill +
+                          '<div class="att-meta">' + attEsc(
+                            (r._live && r.status === 'disqualified' ? 'So far: ' : '') +
+                            attBonusReason(r)) + '</div></td>' +
+                        (hideMoney ? '' : '<td class="att-mono">' +
+                          (r._live ? '—' : attPeso(r.amount)) + '</td>') +
+                        '<td>' + (!r._live && r.id && r.status === 'qualified'
                           ? '<button class="att-btn' + (r.paid ? '' : ' att-btn--primary') +
                             '" type="button" data-paid="' + attEsc(r.id) + '">' +
                             (r.paid ? 'Handed over' : 'Mark as handed over') + '</button>'
@@ -4171,6 +4268,11 @@
                 if (!config) config = await attLoadRewardConfig();
                 await attRunDueEvaluations(config && config.evaluation_grace_hours);
                 rows = await attLoadRewards(week);
+                // Not frozen yet, and not in the future: show it live
+                // rather than an empty page over a week with real Time Ins.
+                if (!rows.length && week <= thisMonday) {
+                    rows = await attLoadLiveWeek(week);
+                }
             } catch (e) {
                 console.error('att A8: load', e);
                 body.innerHTML = '<div class="att-error">Could not load: ' +
@@ -4196,6 +4298,13 @@
         if (csvBtn) {
             csvBtn.addEventListener('click', function () {
                 if (!rows.length) return;
+                // The list is what payroll works from. A week still
+                // running would hand it numbers that can still change.
+                if (rows.some(r => r._live)) {
+                    alert('This week is not final yet, so there is no list to download. ' +
+                          'It can be downloaded once the week has been worked out.');
+                    return;
+                }
                 attDownloadCsv('weekly-reward-' + week + '.csv', attRewardCsv(rows));
             });
         }
