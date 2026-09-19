@@ -191,7 +191,8 @@ function requireOwnerOnlySubscriptions(source, label) {
   }
 }
 const createFolder = sourceSlice(expensesSource, 'async function handleCreateFolder', 'let _editingFolderId', 'normal folder creation');
-assert.match(createFolder, /_pcSaveFolderPolicy\(ref\.id, _pcDefaultPolicy\(\)\)/, 'normal folder creation must persist the default allocation policy');
+assert.match(createFolder, /pcReadPolicyInputs\('createFolder'\)/, 'normal folder creation must read the owner-selected default allocation policy');
+assert.match(createFolder, /_pcSaveFolderPolicy\(ref\.id, policy\)/, 'normal folder creation must persist the selected allocation policy');
 assert.match(expensesSource, /PC_ALLOCATION_DEFAULTS/, 'normal folder creation must use the shared default policy');
 
 const createPeriod = sourceSlice(expensesSource, 'async function handleCreateProject', '// ════════════════════════════════════════════════════════════\n// FOLDER CRUD', 'normal billing-period creation');
@@ -202,8 +203,9 @@ assert.match(expensesSource, /sbClient\.from\('project_control_billing_allocatio
 const editPeriod = sourceSlice(expensesSource, 'async function handleEditProject', '// ════════════════════════════════════════════════════════════\n// SELECT PROJECT', 'billing-period edit');
 assert.match(editPeriod, /pcSaveAllocationAdjustment\(id, requestedPolicy, reason\)/, 'billing-period allocation changes must use the audited adjustment path');
 assert.match(expensesSource, /sbClient\.rpc\('update_project_control_billing_allocation'/, 'billing-period allocation changes must use the audited RPC');
-assert.match(editPeriod, /const requestedPolicy = typeof window\.pcReadPolicyInputs === 'function'/, 'legacy edits must distinguish an explicit allocation request from the folder default');
-assert.match(editPeriod, /if \(requestedPolicy && reason\)/, 'existing or legacy allocation changes require an explicit policy and reason');
+assert.match(editPeriod, /requestedPolicy = typeof window\.pcReadPolicyInputs === 'function'/, 'legacy edits must distinguish an explicit allocation request from the folder default');
+assert.match(editPeriod, /!existingPolicy && previous\?\.fundingType !== 'president' && !reason/, 'legacy allocation application requires an explicit reason');
+assert.match(editPeriod, /existingPolicy && _pcAllocationChanged\(existingPolicy, requestedPolicy\) && !reason/, 'existing allocation changes require a reason only when percentages change');
 assert.doesNotMatch(editPeriod, /_pcRequestedPolicy\('editProject'/, 'ordinary legacy period edits must not fall back to the folder policy');
 
 const autoPeriod = sourceSlice(portalSource, 'async function ensureAdditionalWorksPeriod', 'async function openAddEntry', 'Additional Works auto period');
@@ -232,5 +234,54 @@ for (const collection of ['folderBudgets', 'projectBudgets', 'projects']) {
     writes.forEach(write => assert.doesNotMatch(write, /targetMarginPct|target_margin_pct/, `${collection} must not store target-margin data`));
   }
 }
+
+// Task 4 allocation controls are intentionally source-tested: this runner has
+// no browser or authenticated Supabase session, but these contracts protect the
+// owner-only DOM and the shared validation/RPC paths it must invoke.
+const adminSource = read('admin.html');
+const expensesCss = read('css/expenses-module.css');
+const expensesMvpCss = read('css/expenses-mvp.css');
+for (const prefix of ['createFolder', 'editFolder', 'editProject']) {
+  const totalId = prefix + 'AllocationTotal';
+  assert.match(adminSource, new RegExp('id="' + totalId + '"[^>]*role="status"[^>]*aria-live="polite"'), `${prefix}: allocation total must be announced politely`);
+  for (const field of ['DirectPct', 'IndirectPct', 'TargetMarginPct']) {
+    const id = prefix + field;
+    assert.match(adminSource, new RegExp('<label[^>]*for="' + id + '"[^>]*>'), `${prefix}: ${field} needs a visible label`);
+    const input = adminSource.match(new RegExp('<input(?=[^>]*id="' + id + '")[^>]*>'));
+    assert.ok(input, `${prefix}: ${field} input is missing`);
+    for (const attribute of ['type="number"', 'min="0"', 'max="100"', 'step="0.01"', 'aria-describedby="' + totalId + '"']) {
+      assert.ok(input[0].includes(attribute), `${prefix}: ${field} needs ${attribute}`);
+    }
+  }
+}
+assert.match(adminSource, /id="createFolderDirectPct" value="70"/, 'new folder allocation starts at 70% direct cost');
+assert.match(adminSource, /id="createFolderIndirectPct" value="20"/, 'new folder allocation starts at 20% indirect cost');
+assert.match(adminSource, /id="createFolderTargetMarginPct" value="10"/, 'new folder allocation starts at 10% target margin');
+for (const id of ['createProjectAllocationPreview', 'editProjectAllocationPreview']) {
+  assert.match(adminSource, new RegExp('id="' + id + '"[^>]*data-pc-owner-only'), `${id}: preview must be owner-only`);
+}
+for (const id of ['createFolderAllocationControls', 'editFolderAllocationControls', 'editProjectAllocationControls']) {
+  assert.match(adminSource, new RegExp('id="' + id + '"[^>]*data-pc-owner-only'), `${id}: controls must be owner-only`);
+}
+assert.match(adminSource, /Target Margin Reserve/, 'allocation UI must call the reserve by its correct name');
+assert.doesNotMatch(sourceSlice(adminSource, 'id="createFolderAllocationControls"', '</form>', 'folder allocation form'), />\s*Profit\s*</, 'allocation UI must not call target margin Profit');
+assert.match(adminSource, /id="editProjAllocationReason"/, 'billing-period edit needs an adjustment reason field');
+
+for (const fn of ['pcReadPolicyInputs', 'pcRenderPolicyTotal', 'pcRenderBillingPreview']) {
+  assert.match(expensesSource, new RegExp('function ' + fn + '\\('), `${fn} must be available to allocation forms`);
+}
+assert.match(expensesSource, /pcReadPolicyInputs\(prefix\)[\s\S]*pcValidateAllocationPolicy/, 'policy input reader must use the shared validation engine');
+assert.match(expensesSource, /pcRenderBillingPreview\(mode\)[\s\S]*pcAllocationAmounts/, 'billing preview must use the shared allocation engine');
+assert.match(expensesSource, /isPresident[\s\S]*pcRenderBillingPreview/, 'cover funding must suppress billing allocation preview');
+assert.match(expensesSource, /field\.disabled = !isVisible/, 'cover funding must disable hidden snapshot inputs so stale validity cannot block the period form');
+assert.match(expensesSource, /pcRenderPolicyTotal\(prefix\)[\s\S]*aria-invalid/, 'invalid allocation totals must set accessible invalid state');
+assert.match(expensesSource, /pcSaveAllocationAdjustment\(id, requestedPolicy, reason\)/, 'legacy allocation application must use the audited RPC');
+assert.match(expensesSource, /!existingPolicy[\s\S]*pcSaveAllocationAdjustment\(id, requestedPolicy, reason\)/, 'legacy allocation application must audit null prior values through the RPC');
+assert.match(expensesSource, /Apply Allocation Policy/, 'legacy billing periods need an explicit apply action');
+assert.match(expensesCss, /\.pc-allocation-fields[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(/, 'allocation inputs need stable three-column desktop tracks');
+assert.match(expensesCss, /@media \(max-width:\s*560px\)[\s\S]*\.pc-allocation-fields[\s\S]*grid-template-columns:\s*1fr/, 'allocation inputs need a narrow-screen single-column layout');
+assert.match(expensesMvpCss, /\.pc-allocation-swatch--direct/, 'preview must have a direct-cost swatch');
+assert.match(expensesMvpCss, /\.pc-allocation-swatch--indirect/, 'preview must have an indirect-cost swatch');
+assert.match(expensesMvpCss, /\.pc-allocation-swatch--reserve/, 'preview must have a reserve swatch');
 
 console.log('billing allocation tests passed');

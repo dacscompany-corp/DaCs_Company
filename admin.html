@@ -3849,8 +3849,14 @@
             </div>
             <div class="exp-form-group" id="projBudgetGroup">
                 <label id="projBudgetLabel">Downpayment Amount (₱)</label>
-                <input type="text" inputmode="decimal" id="projBudget" placeholder="e.g. 200000" oninput="fmtBudgetInput(this)">
+                <input type="text" inputmode="decimal" id="projBudget" placeholder="e.g. 200000" oninput="fmtBudgetInput(this);pcRenderBillingPreview('createProject')">
             </div>
+            <section id="createProjectAllocationPreview" class="pc-allocation-preview" data-pc-owner-only hidden aria-labelledby="createProjectAllocationPreviewTitle">
+                <div class="pc-allocation-preview__title" id="createProjectAllocationPreviewTitle">Billing Allocation Preview</div>
+                <div class="pc-allocation-preview__row"><span><i class="pc-allocation-swatch pc-allocation-swatch--direct"></i>Direct Cost</span><strong id="createProjectAllocationDirectAmount">₱0.00</strong></div>
+                <div class="pc-allocation-preview__row"><span><i class="pc-allocation-swatch pc-allocation-swatch--indirect"></i>Indirect Cost</span><strong id="createProjectAllocationIndirectAmount">₱0.00</strong></div>
+                <div class="pc-allocation-preview__row"><span><i class="pc-allocation-swatch pc-allocation-swatch--reserve"></i>Target Margin Reserve</span><strong id="createProjectAllocationReserveAmount">₱0.00</strong></div>
+            </section>
             <div class="exp-modal-footer">
                 <button type="button" class="exp-btn exp-btn-secondary" onclick="closeExpModal('createProjectModal')">Cancel</button>
                 <button type="submit" id="createProjectBtn" class="exp-btn exp-btn-primary" data-label="Add Month">Add Month</button>
@@ -3923,7 +3929,26 @@
             </div>
             <div class="exp-form-group" id="editProjBudgetGroup">
                 <label id="editProjBudgetLabel">Total Monthly Budget (₱)</label>
-                <input type="text" inputmode="decimal" id="editProjBudget" placeholder="e.g. 500000" oninput="fmtBudgetInput(this)">
+                <input type="text" inputmode="decimal" id="editProjBudget" placeholder="e.g. 500000" oninput="fmtBudgetInput(this);pcRenderBillingPreview('editProject')">
+            </div>
+            <fieldset id="editProjectAllocationControls" class="pc-allocation-controls" data-pc-owner-only hidden>
+                <legend>Billing Allocation</legend>
+                <div class="pc-allocation-fields">
+                    <div class="exp-form-group"><label for="editProjectDirectPct">Direct Cost %</label><input type="number" id="editProjectDirectPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editProjectAllocationTotal" oninput="pcRenderPolicyTotal('editProject')"></div>
+                    <div class="exp-form-group"><label for="editProjectIndirectPct">Indirect Cost %</label><input type="number" id="editProjectIndirectPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editProjectAllocationTotal" oninput="pcRenderPolicyTotal('editProject')"></div>
+                    <div class="exp-form-group"><label for="editProjectTargetMarginPct">Target Margin %</label><input type="number" id="editProjectTargetMarginPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editProjectAllocationTotal" oninput="pcRenderPolicyTotal('editProject')"></div>
+                </div>
+                <div class="pc-allocation-total" id="editProjectAllocationTotal" role="status" aria-live="polite">Total: 100.00%</div>
+            </fieldset>
+            <section id="editProjectAllocationPreview" class="pc-allocation-preview" data-pc-owner-only hidden aria-labelledby="editProjectAllocationPreviewTitle">
+                <div class="pc-allocation-preview__title" id="editProjectAllocationPreviewTitle">Billing Allocation Preview</div>
+                <div class="pc-allocation-preview__row"><span><i class="pc-allocation-swatch pc-allocation-swatch--direct"></i>Direct Cost</span><strong id="editProjectAllocationDirectAmount">₱0.00</strong></div>
+                <div class="pc-allocation-preview__row"><span><i class="pc-allocation-swatch pc-allocation-swatch--indirect"></i>Indirect Cost</span><strong id="editProjectAllocationIndirectAmount">₱0.00</strong></div>
+                <div class="pc-allocation-preview__row"><span><i class="pc-allocation-swatch pc-allocation-swatch--reserve"></i>Target Margin Reserve</span><strong id="editProjectAllocationReserveAmount">₱0.00</strong></div>
+            </section>
+            <div class="exp-form-group" id="editProjAllocationReasonGroup" data-pc-owner-only hidden>
+                <label for="editProjAllocationReason">Reason for adjustment</label>
+                <textarea id="editProjAllocationReason" maxlength="500" aria-describedby="editProjectAllocationTotal"></textarea>
             </div>
             <div class="exp-modal-footer">
                 <button type="button" class="exp-btn exp-btn-secondary" onclick="closeExpModal('editProjectModal')">Cancel</button>
@@ -3989,6 +4014,15 @@
             <div class="exp-form-group"><label>Project Name</label><input type="text" id="folderName" required placeholder="e.g. Santos Residence, Office Renovation"></div>
             <div class="exp-form-group"><label>Description / Address <small style="font-weight:400;color:#888">(optional)</small></label><input type="text" id="folderDesc" placeholder="e.g. 123 Rizal St., Quezon City"></div>
             <div class="exp-form-group"><label>Total Project Budget (₱)</label><input type="text" id="folderBudget" required inputmode="numeric" placeholder="e.g. 5,000,000" oninput="fmtBudgetInput(this)"></div>
+            <fieldset id="createFolderAllocationControls" class="pc-allocation-controls" data-pc-owner-only hidden>
+                <legend>Allocation Policy</legend>
+                <div class="pc-allocation-fields">
+                    <div class="exp-form-group"><label for="createFolderDirectPct">Direct Cost %</label><input type="number" id="createFolderDirectPct" value="70" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="createFolderAllocationTotal" oninput="pcRenderPolicyTotal('createFolder')"></div>
+                    <div class="exp-form-group"><label for="createFolderIndirectPct">Indirect Cost %</label><input type="number" id="createFolderIndirectPct" value="20" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="createFolderAllocationTotal" oninput="pcRenderPolicyTotal('createFolder')"></div>
+                    <div class="exp-form-group"><label for="createFolderTargetMarginPct">Target Margin %</label><input type="number" id="createFolderTargetMarginPct" value="10" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="createFolderAllocationTotal" oninput="pcRenderPolicyTotal('createFolder')"></div>
+                </div>
+                <div class="pc-allocation-total" id="createFolderAllocationTotal" role="status" aria-live="polite">Total: 100.00%</div>
+            </fieldset>
             <div class="exp-modal-footer">
                 <button type="button" class="exp-btn exp-btn-secondary" onclick="closeExpModal('createFolderModal')">Cancel</button>
                 <button type="submit" id="createFolderBtn" class="exp-btn exp-btn-primary" data-label="Create Folder">Create Folder</button>
@@ -4005,6 +4039,15 @@
             <div class="exp-form-group"><label>Project Name</label><input type="text" id="editFolderName" required placeholder="Project name"></div>
             <div class="exp-form-group"><label>Description / Address <small style="font-weight:400;color:#888">(optional)</small></label><input type="text" id="editFolderDesc" placeholder="e.g. 123 Rizal St."></div>
             <div class="exp-form-group"><label>Total Project Budget (₱)</label><input type="text" id="editFolderBudget" required inputmode="numeric" placeholder="e.g. 5,000,000" oninput="fmtBudgetInput(this)"></div>
+            <fieldset id="editFolderAllocationControls" class="pc-allocation-controls" data-pc-owner-only hidden>
+                <legend>Allocation Policy</legend>
+                <div class="pc-allocation-fields">
+                    <div class="exp-form-group"><label for="editFolderDirectPct">Direct Cost %</label><input type="number" id="editFolderDirectPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editFolderAllocationTotal" oninput="pcRenderPolicyTotal('editFolder')"></div>
+                    <div class="exp-form-group"><label for="editFolderIndirectPct">Indirect Cost %</label><input type="number" id="editFolderIndirectPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editFolderAllocationTotal" oninput="pcRenderPolicyTotal('editFolder')"></div>
+                    <div class="exp-form-group"><label for="editFolderTargetMarginPct">Target Margin %</label><input type="number" id="editFolderTargetMarginPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editFolderAllocationTotal" oninput="pcRenderPolicyTotal('editFolder')"></div>
+                </div>
+                <div class="pc-allocation-total" id="editFolderAllocationTotal" role="status" aria-live="polite">Total: 100.00%</div>
+            </fieldset>
             <div class="exp-modal-footer">
                 <button type="button" class="exp-btn exp-btn-secondary" onclick="closeExpModal('editFolderModal')">Cancel</button>
                 <button type="submit" id="editFolderBtn" class="exp-btn exp-btn-primary" data-label="Save Changes">Save Changes</button>

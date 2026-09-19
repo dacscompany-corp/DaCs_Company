@@ -173,6 +173,153 @@ function _pcRequestedPolicy(prefix, fallback) {
     return window.pcReadPolicyInputs(prefix) || fallback;
 }
 
+const _pcAllocationFields = ['DirectPct', 'IndirectPct', 'TargetMarginPct'];
+let _pcEditAllocationState = { projectId: null, existingPolicy: null, legacy: false };
+
+function _pcPolicyInputs(prefix) {
+    const fields = _pcAllocationFields.map(field => document.getElementById(prefix + field));
+    return fields.every(Boolean) ? fields : null;
+}
+
+function _pcPolicyFromInputs(prefix) {
+    const fields = _pcPolicyInputs(prefix);
+    if (!fields || fields.some(field => field.value.trim() === '')) return null;
+    return {
+        directPct: Number(fields[0].value),
+        indirectPct: Number(fields[1].value),
+        targetMarginPct: Number(fields[2].value)
+    };
+}
+
+function pcReadPolicyInputs(prefix) {
+    if (!_pcIsOwner()) return null;
+    const policy = _pcPolicyFromInputs(prefix);
+    return policy && pcValidateAllocationPolicy(policy).valid ? policy : null;
+}
+
+function _pcSetPolicyInputs(prefix, policy) {
+    const fields = _pcPolicyInputs(prefix);
+    if (!fields) return;
+    const value = policy || _pcDefaultPolicy();
+    fields[0].value = Number(value.directPct);
+    fields[1].value = Number(value.indirectPct);
+    fields[2].value = Number(value.targetMarginPct);
+}
+
+function _pcSetOwnerOnlyVisible(id, visible) {
+    const element = document.getElementById(id);
+    if (element) element.hidden = !visible;
+}
+
+function _pcFormatAllocationAmount(value) {
+    return '₱' + Number(value || 0).toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+function _pcAllocationChanged(existingPolicy, policy) {
+    return !existingPolicy || _pcAllocationFields.some(field => {
+        const key = field.charAt(0).toLowerCase() + field.slice(1);
+        return Number(existingPolicy[key]) !== Number(policy[key]);
+    });
+}
+
+function _pcUpdateEditAllocationReason(policy) {
+    const state = _pcEditAllocationState;
+    const needsReason = state.legacy || (!!state.existingPolicy && policy && _pcAllocationChanged(state.existingPolicy, policy));
+    const group = document.getElementById('editProjAllocationReasonGroup');
+    const input = document.getElementById('editProjAllocationReason');
+    if (group) group.hidden = !_pcIsOwner() || !needsReason;
+    if (input) input.required = !!needsReason;
+}
+
+function pcRenderPolicyTotal(prefix) {
+    const fields = _pcPolicyInputs(prefix);
+    const total = document.getElementById(prefix + 'AllocationTotal');
+    if (!fields || !total) return null;
+    const policy = _pcPolicyFromInputs(prefix);
+    const validation = pcValidateAllocationPolicy(policy);
+    const valid = _pcIsOwner() && validation.valid;
+    const rawTotal = fields.reduce((sum, field) => sum + (Number(field.value) || 0), 0);
+    total.textContent = 'Total: ' + rawTotal.toFixed(2) + '%' + (valid ? '' : ' — must equal 100.00%');
+    fields.forEach(field => {
+        field.setCustomValidity(valid ? '' : 'Allocation percentages must total 100.00%.');
+        field.setAttribute('aria-invalid', valid ? 'false' : 'true');
+    });
+    const saveButton = document.getElementById(prefix + 'Btn');
+    if (saveButton) saveButton.disabled = _pcIsOwner() && !valid;
+    if (prefix === 'editProject') _pcUpdateEditAllocationReason(policy);
+    pcRenderBillingPreview(prefix === 'editProject' ? 'editProject' : null);
+    return valid ? policy : null;
+}
+
+function pcRenderBillingPreview(mode) {
+    if (!mode) return;
+    const preview = document.getElementById(mode + 'AllocationPreview');
+    if (!preview) return;
+    const fundingName = mode === 'editProject' ? 'editFundingType' : 'fundingType';
+    const isPresident = document.querySelector('input[name="' + fundingName + '"]:checked')?.value === 'president';
+    const controls = mode === 'editProject' ? document.getElementById('editProjectAllocationControls') : null;
+    const isVisible = _pcIsOwner() && !isPresident;
+    preview.hidden = !isVisible;
+    if (controls) {
+        controls.hidden = !isVisible;
+        (_pcPolicyInputs('editProject') || []).forEach(field => { field.disabled = !isVisible; });
+    }
+    if (!isVisible) {
+        const saveButton = document.getElementById(mode + 'Btn');
+        if (saveButton) saveButton.disabled = false;
+        if (mode === 'editProject') _pcUpdateEditAllocationReason(null);
+        return;
+    }
+    const budgetInput = document.getElementById(mode === 'editProject' ? 'editProjBudget' : 'projBudget');
+    const base = Number((budgetInput?.value || '').replace(/,/g, '')) || 0;
+    const policy = mode === 'editProject'
+        ? pcReadPolicyInputs('editProject')
+        : pcFolderPolicy(_pendingFolderId);
+    const amounts = pcAllocationAmounts(base, policy);
+    if (!amounts) return;
+    const ids = ['DirectAmount', 'IndirectAmount', 'ReserveAmount'];
+    const values = [amounts.directBudget, amounts.indirectBudget, amounts.targetMarginReserve];
+    ids.forEach((id, index) => {
+        const value = document.getElementById(mode + 'Allocation' + id);
+        if (value) value.textContent = _pcFormatAllocationAmount(values[index]);
+    });
+}
+
+function _pcPrepareCreateFolderAllocation() {
+    _pcSetOwnerOnlyVisible('createFolderAllocationControls', _pcIsOwner());
+    if (_pcIsOwner()) {
+        _pcSetPolicyInputs('createFolder', _pcDefaultPolicy());
+        pcRenderPolicyTotal('createFolder');
+    }
+}
+
+function _pcPrepareEditProjectAllocation(project) {
+    if (!_pcIsOwner()) return;
+    const existingPolicy = pcPeriodPolicy(project.id);
+    _pcEditAllocationState = {
+        projectId: project.id,
+        existingPolicy,
+        legacy: !existingPolicy && project.fundingType !== 'president'
+    };
+    _pcSetPolicyInputs('editProject', existingPolicy || pcFolderPolicy(project.folderId));
+    const reason = document.getElementById('editProjAllocationReason');
+    if (reason) reason.value = '';
+    const saveButton = document.getElementById('editProjectBtn');
+    if (saveButton) {
+        const label = _pcEditAllocationState.legacy ? 'Apply Allocation Policy' : 'Save Changes';
+        saveButton.textContent = label;
+        saveButton.dataset.label = label;
+    }
+    pcRenderPolicyTotal('editProject');
+}
+
+window.pcReadPolicyInputs = pcReadPolicyInputs;
+window.pcRenderPolicyTotal = pcRenderPolicyTotal;
+window.pcRenderBillingPreview = pcRenderBillingPreview;
+
 // ── Payroll payment method ───────────────────────────────────
 // Stored lowercase (payroll.payment_method, migrations 0037 + 0038); '' / null
 // only on rows saved before the field existed — the form now requires one.
@@ -221,6 +368,7 @@ let _ovPayUnsub     = null;
 
 // ── Bootstrap ────────────────────────────────────────────────
 function initExpensesModule() {
+    _pcPrepareCreateFolderAllocation();
     setupExpenseFormListeners();
     setupPayrollFormListeners();
     setupEditExpenseFormListeners();
@@ -896,11 +1044,12 @@ function openEditProjectModal(projectId) {
     const funding = p.fundingType || 'mobilization';
     const radio = document.querySelector(`input[name="editFundingType"][value="${funding}"]`);
     if (radio) radio.checked = true;
-    onEditFundingTypeChange();
     // Budget — formatted with commas
     const isPresident = funding === 'president';
     const budgetEl = document.getElementById('editProjBudget');
     if (budgetEl) budgetEl.value = isPresident ? '' : (p.monthlyBudget ? Number(p.monthlyBudget).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2}) : '');
+    _pcPrepareEditProjectAllocation(p);
+    onEditFundingTypeChange();
     openExpModal('editProjectModal');
 }
 
@@ -916,6 +1065,7 @@ function onEditFundingTypeChange() {
     const labels = { mobilization:'Mobilization Amount (₱)', downpayment:'Downpayment Amount (₱)',
                      progress:'Progress Billing Amount (₱)', final:'Final Payment Amount (₱)' };
     if (label) label.textContent = labels[type] || 'Total Monthly Budget (₱)';
+    pcRenderBillingPreview('editProject');
 }
 
 async function handleEditProject(e) {
@@ -928,10 +1078,34 @@ async function handleEditProject(e) {
     const isPresident = funding === 'president';
     const budget  = isPresident ? 0 : parseFloat((document.getElementById('editProjBudget').value||'').replace(/,/g,'')) || 0;
     const previous = expProjects.find(project => project.id === id);
+    let existingPolicy = null;
+    let requestedPolicy = null;
+    let reason = '';
     if (!id || !month || !year) return;
     if (_pcIsOwner() && previous?.fundingType === 'president' && !isPresident && budget <= 0) {
         showExpNotif('A billing amount is required when switching from Cover Expenses.', 'error');
         return;
+    }
+    if (_pcIsOwner() && !isPresident) {
+        // Validate the allocation gate before changing the period itself so a
+        // missing reason cannot leave a partly-applied edit behind.
+        existingPolicy = _pcAllocationMap[id] ? { ..._pcAllocationMap[id] } : null;
+        requestedPolicy = typeof window.pcReadPolicyInputs === 'function'
+            ? window.pcReadPolicyInputs('editProject')
+            : null;
+        reason = document.getElementById('editProjAllocationReason')?.value?.trim() || '';
+        if (!requestedPolicy) {
+            showExpNotif('Allocation percentages must total 100.00%.', 'error');
+            return;
+        }
+        if (!existingPolicy && previous?.fundingType !== 'president' && !reason) {
+            showExpNotif('A reason is required to apply the allocation policy.', 'error');
+            return;
+        }
+        if (existingPolicy && _pcAllocationChanged(existingPolicy, requestedPolicy) && !reason) {
+            showExpNotif('A reason is required when allocation percentages change.', 'error');
+            return;
+        }
     }
 
     try {
@@ -956,19 +1130,12 @@ async function handleEditProject(e) {
         if (_pcIsOwner() && !isPresident) {
             // A cover period keeps its snapshot dormant. Read the raw map here
             // so switching it back can reuse that historical snapshot.
-            const existingPolicy = _pcAllocationMap[id] ? { ..._pcAllocationMap[id] } : null;
-            const requestedPolicy = typeof window.pcReadPolicyInputs === 'function'
-                ? window.pcReadPolicyInputs('editProject')
-                : null;
-            const reason = document.getElementById('editProjAllocationReason')?.value?.trim();
             if (!existingPolicy && previous?.fundingType === 'president') {
-                await _pcInsertInitialAllocation(id, requestedPolicy || pcFolderPolicy(previous.folderId));
-            } else if (requestedPolicy && reason) {
-                const changed = !existingPolicy
-                    || ['directPct', 'indirectPct', 'targetMarginPct'].some(key => Number(existingPolicy[key]) !== Number(requestedPolicy[key]));
-                if (changed) {
-                    await pcSaveAllocationAdjustment(id, requestedPolicy, reason);
-                }
+                await _pcInsertInitialAllocation(id, requestedPolicy);
+            } else if (!existingPolicy) {
+                await pcSaveAllocationAdjustment(id, requestedPolicy, reason);
+            } else if (_pcAllocationChanged(existingPolicy, requestedPolicy)) {
+                await pcSaveAllocationAdjustment(id, requestedPolicy, reason);
             }
         }
         showExpNotif('Project updated! ✓', 'success');
@@ -2171,6 +2338,7 @@ function openCreateMonthModal(folderId, defaultFundingType) {
         wrap.style.display = 'none';
     }
 
+    pcRenderBillingPreview('createProject');
     openExpModal('createProjectModal');
 }
 
@@ -2229,6 +2397,7 @@ function onFundingTypeChange() {
             hint.style.display = 'none';
         }
     }
+    pcRenderBillingPreview('createProject');
 }
 
 async function handleCreateProject(e) {
@@ -2301,7 +2470,12 @@ async function handleCreateFolder(e) {
     const name   = document.getElementById('folderName').value.trim();
     const desc   = document.getElementById('folderDesc').value.trim();
     const budget = parseFloat((document.getElementById('folderBudget').value || '').replace(/,/g, '')) || 0;
+    const policy = _pcIsOwner() ? pcReadPolicyInputs('createFolder') : null;
     if (!name) return;
+    if (_pcIsOwner() && !policy) {
+        showExpNotif('Allocation percentages must total 100.00%.', 'error');
+        return;
+    }
     let createdFolderId = null;
     let createdBudget = false;
     let createdPolicy = false;
@@ -2317,7 +2491,7 @@ async function handleCreateFolder(e) {
         if (_pcIsOwner()) {
             await db.collection('folderBudgets').doc(ref.id).set({ userId: _uid(), totalBudget: budget });
             createdBudget = true;
-            await _pcSaveFolderPolicy(ref.id, _pcDefaultPolicy());
+            await _pcSaveFolderPolicy(ref.id, policy);
             createdPolicy = true;
         }
         _expandedFolders.add(ref.id);
@@ -2344,6 +2518,11 @@ function openEditFolderModal(id) {
     document.getElementById('editFolderName').value   = f.name        || '';
     document.getElementById('editFolderDesc').value   = f.description || '';
     document.getElementById('editFolderBudget').value = f.totalBudget ? Number(f.totalBudget).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2}) : '';
+    _pcSetOwnerOnlyVisible('editFolderAllocationControls', _pcIsOwner());
+    if (_pcIsOwner()) {
+        _pcSetPolicyInputs('editFolder', pcFolderPolicy(id));
+        pcRenderPolicyTotal('editFolder');
+    }
     openExpModal('editFolderModal');
 }
 
@@ -2353,6 +2532,11 @@ async function handleEditFolder(e) {
     const name   = document.getElementById('editFolderName').value.trim();
     const desc   = document.getElementById('editFolderDesc').value.trim();
     const budget = parseFloat((document.getElementById('editFolderBudget').value || '').replace(/,/g, '')) || 0;
+    const policy = _pcIsOwner() ? pcReadPolicyInputs('editFolder') : null;
+    if (_pcIsOwner() && !policy) {
+        showExpNotif('Allocation percentages must total 100.00%.', 'error');
+        return;
+    }
     try {
         showExpLoading('editFolderBtn', true);
         await db.collection('folders').doc(_editingFolderId).update({
@@ -2364,8 +2548,7 @@ async function handleEditFolder(e) {
                 .set({ userId: _uid(), totalBudget: budget }, { merge: true });
         }
         if (_pcIsOwner()) {
-            await _pcSaveFolderPolicy(_editingFolderId,
-                _pcRequestedPolicy('editFolder', pcFolderPolicy(_editingFolderId)));
+            await _pcSaveFolderPolicy(_editingFolderId, policy);
         }
         showExpNotif('Folder updated!', 'success');
         closeExpModal('editFolderModal');

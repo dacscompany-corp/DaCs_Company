@@ -2199,6 +2199,47 @@
     border-top: 1px solid #B3F5B3;
 }
 
+/* Billing allocation preview: text identifies each amount; swatches are a scan aid. */
+.pc-allocation-preview {
+    margin: 0 0 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fff;
+}
+.pc-allocation-preview__title {
+    padding: 0.55rem 0.75rem;
+    border-bottom: 1px solid #e5e7eb;
+    color: #374151;
+    font-size: 0.8125rem;
+    font-weight: 700;
+}
+.pc-allocation-preview__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 2.5rem;
+    padding: 0.4rem 0.75rem;
+    border-top: 1px solid #f3f4f6;
+    color: #374151;
+    font-size: 0.875rem;
+}
+.pc-allocation-preview__row:first-of-type { border-top: 0; }
+.pc-allocation-preview__row > span { min-width: 0; }
+.pc-allocation-preview__row strong { color: #111827; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pc-allocation-swatch {
+    display: inline-block;
+    width: 0.75rem;
+    height: 0.75rem;
+    margin-right: 0.4rem;
+    border-radius: 2px;
+    vertical-align: -0.05rem;
+}
+.pc-allocation-swatch--direct { background: #2563eb; }
+.pc-allocation-swatch--indirect { background: #d97706; }
+.pc-allocation-swatch--reserve { background: #059669; }
+
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    PERIOD DETAIL MODAL
 â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
