@@ -167,9 +167,11 @@ the audit trail. The Supabase shim registers owner-only `projectControlAllocatio
 ### Transactional adjustment function
 
 `update_project_control_billing_allocation(project_id, direct_pct, indirect_pct,
-target_margin_pct, reason)` validates ownership and the 100% total, locks the allocation row,
-inserts the immutable before/after audit record and updates the snapshot in one database
-transaction. The browser never performs a separate update followed by a best-effort audit write.
+target_margin_pct, reason)` validates ownership and the 100% total, locks the billing-period row,
+reads the current allocation when one exists, inserts the immutable before/after audit record and
+upserts the snapshot in one database transaction. For a legacy period, the before percentages are
+null and the same function creates its first snapshot. The browser never performs a separate
+update followed by a best-effort audit write.
 
 ## User Flows
 
@@ -192,9 +194,10 @@ costs continue to count in the correct Direct or Indirect category and in Spent.
 ### Edit billing period
 
 Changing only the billing amount recalculates the derived peso envelopes using the existing
-snapshot. Changing percentages requires an owner, a non-empty reason and confirmation. The
-transactional database function updates the snapshot and inserts its audit row together; either
-both changes commit or neither does.
+snapshot. Changing percentages requires an owner, a non-empty reason and confirmation. Applying
+a policy to a legacy period uses the same owner-only flow and records null before percentages.
+The transactional database function upserts the snapshot and inserts its audit row together;
+either both changes commit or neither does.
 
 ### Record costs
 
