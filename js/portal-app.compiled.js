@@ -1353,11 +1353,35 @@ async function ensureAdditionalWorksPeriod(folderId) {
   const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const month = months[now.getMonth()];
   const year = now.getFullYear();
-  const ref = await db.collection("projects").add({
-    userId: uid, month, year, fundingType: "downpayment", folderId,
-    createdAt: firebase.firestore.FieldValue.serverTimestamp()
-  });
-  return { id: ref.id, folderId, month, year, monthlyBudget: 0 };
+  let ref = null;
+  let createdBudget = false;
+  try {
+    ref = await db.collection("projects").add({
+      userId: uid, month, year, fundingType: "downpayment", folderId,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    if (window.currentUserRole === "owner") {
+      await db.collection("projectBudgets").doc(ref.id).set({ userId: uid, monthlyBudget: 0 });
+      createdBudget = true;
+      const policy = typeof window.pcFolderPolicy === "function"
+        ? window.pcFolderPolicy(folderId)
+        : window.PC_ALLOCATION_DEFAULTS;
+      const result = await window.sbClient.from("project_control_billing_allocations").insert({
+        project_id: ref.id, owner_id: uid,
+        direct_pct: Number(policy.directPct),
+        indirect_pct: Number(policy.indirectPct),
+        target_margin_pct: Number(policy.targetMarginPct)
+      });
+      if (result.error) throw result.error;
+    }
+    return { id: ref.id, folderId, month, year, monthlyBudget: 0 };
+  } catch (err) {
+    if (ref) {
+      if (createdBudget) await db.collection("projectBudgets").doc(ref.id).delete().catch(() => {});
+      await db.collection("projects").doc(ref.id).delete().catch(() => {});
+    }
+    throw err;
+  }
 }
 async function openAddEntry(kind, childMonths, folder) {
   let latest = pickLatestMonth(childMonths);
@@ -1702,21 +1726,41 @@ function AdditionalWorksDrill({ project, onBack, childFolders, additionalWorksRa
     if (!folderId) { alert("Open a project first."); return; }
     if (!creating.title || !creating.title.trim()) { alert("Please enter a name for this project."); return; }
     setSavingNew(true);
+    let childId = null;
+    let createdBudget = false;
+    let createdAdditionalWorksId = null;
     try {
       const uid = window.currentDataUserId || (firebase.auth().currentUser && firebase.auth().currentUser.uid) || null;
       const ref = await db.collection("folders").add({
         userId: uid, name: creating.title, description: "", parentFolderId: folderId,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
-      await db.collection("folderBudgets").doc(ref.id).set({ userId: uid, totalBudget: 0 });
-      await db.collection("additionalWorks").add({
+      childId = ref.id;
+      if (window.currentUserRole === "owner") {
+        await db.collection("folderBudgets").doc(childId).set({ userId: uid, totalBudget: 0 });
+        createdBudget = true;
+        const policy = window.PC_ALLOCATION_DEFAULTS;
+        await db.collection("projectControlAllocationPolicies").doc(childId).set({
+          userId: uid, directPct: Number(policy.directPct), indirectPct: Number(policy.indirectPct),
+          targetMarginPct: Number(policy.targetMarginPct), updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+      }
+      const additionalWorksRef = await db.collection("additionalWorks").add({
         userId: uid, folderId: ref.id, title: creating.title, workDate: creating.workDate || "",
         categories: [], discount: 0,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       });
+      createdAdditionalWorksId = additionalWorksRef.id;
       setCreating(null);
-    } catch (err) { alert("Save failed: " + (err.message || err)); }
+    } catch (err) {
+      if (createdAdditionalWorksId) await db.collection("additionalWorks").doc(createdAdditionalWorksId).delete().catch(() => {});
+      if (childId) {
+        if (createdBudget) await db.collection("folderBudgets").doc(childId).delete().catch(() => {});
+        await db.collection("folders").doc(childId).delete().catch(() => {});
+      }
+      alert("Save failed: " + (err.message || err));
+    }
     setSavingNew(false);
   };
   const openEditChild = (child) => {
@@ -1755,6 +1799,8 @@ function AdditionalWorksDrill({ project, onBack, childFolders, additionalWorksRa
       }))
     })).filter((c) => c.items.length);
     setSaving(true);
+    let createdChildId = null;
+    let createdBudget = false;
     try {
       const uid = window.currentDataUserId || (firebase.auth().currentUser && firebase.auth().currentUser.uid) || null;
       let childId = editing.childFolderId;
@@ -1767,7 +1813,16 @@ function AdditionalWorksDrill({ project, onBack, childFolders, additionalWorksRa
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
         childId = ref.id;
-        await db.collection("folderBudgets").doc(childId).set({ userId: uid, totalBudget: draftTotal });
+        createdChildId = childId;
+        if (window.currentUserRole === "owner") {
+          await db.collection("folderBudgets").doc(childId).set({ userId: uid, totalBudget: draftTotal });
+          createdBudget = true;
+          const policy = window.PC_ALLOCATION_DEFAULTS;
+          await db.collection("projectControlAllocationPolicies").doc(childId).set({
+            userId: uid, directPct: Number(policy.directPct), indirectPct: Number(policy.indirectPct),
+            targetMarginPct: Number(policy.targetMarginPct), updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        }
       }
       const awPayload = {
         userId: uid, folderId: childId, title: editing.title, workDate: editing.workDate || "",
@@ -1781,7 +1836,13 @@ function AdditionalWorksDrill({ project, onBack, childFolders, additionalWorksRa
         await db.collection("additionalWorks").add(awPayload);
       }
       setEditing(null);
-    } catch (err) { alert("Save failed: " + (err.message || err)); }
+    } catch (err) {
+      if (createdChildId) {
+        if (createdBudget) await db.collection("folderBudgets").doc(createdChildId).delete().catch(() => {});
+        await db.collection("folders").doc(createdChildId).delete().catch(() => {});
+      }
+      alert("Save failed: " + (err.message || err));
+    }
     setSaving(false);
   };
   const deleteChild = async (child) => {
@@ -2918,7 +2979,12 @@ function PortalApp() {
   const [additionalWorksRaw, setAdditionalWorksRaw] = React.useState([]);
   const folderBudgetRef = React.useRef({});
   const projectBudgetRef = React.useRef({});
+  const allocationPolicyRef = React.useRef({});
+  const allocationRef = React.useRef({});
+  const [allocationMap, setAllocationMap] = React.useState({});
+  const [allocationAdjustments, setAllocationAdjustments] = React.useState([]);
   const [isStaff, setIsStaff] = React.useState(false);
+  const [isOwner, setIsOwner] = React.useState(false);
   const [boqRaw, setBoqRaw] = React.useState([]);
   const [payReqRaw, setPayReqRaw] = React.useState([]);
   const [invoicesRaw, setInvoicesRaw] = React.useState([]);
@@ -2951,6 +3017,7 @@ function PortalApp() {
       setAuthUid(u ? u.uid : null);
       if (!u) {
         setOwnerId(null);
+        setIsOwner(false);
         setLoading(false);
       }
     });
@@ -2965,12 +3032,18 @@ function PortalApp() {
     db.collection("users").doc(authUid).get().then((doc) => {
       if (cancelled) return;
       const data = doc.exists ? doc.data() : null;
-      const eff = data && data.role === "staff" && data.ownerUid ? data.ownerUid : authUid;
+      const role = data && data.role || "owner";
+      const eff = role === "staff" && data.ownerUid ? data.ownerUid : authUid;
       window.currentDataUserId = eff;
-      setIsStaff(!!(data && data.role === "staff"));
+      setIsStaff(role === "staff");
+      setIsOwner(role === "owner");
       setOwnerId(eff);
     }).catch(() => {
-      if (!cancelled) setOwnerId(authUid);
+      if (!cancelled) {
+        setIsStaff(false);
+        setIsOwner(true);
+        setOwnerId(authUid);
+      }
     });
     return () => {
       cancelled = true;
@@ -2990,14 +3063,14 @@ function PortalApp() {
     const unsubs = [
       db.collection("folders").where("userId", "==", dataUid).onSnapshot(
         (s) => {
-          setFoldersRaw(s.docs.map((d) => ({ id: d.id, ...d.data(), totalBudget: folderBudgetRef.current[d.id] || 0 })));
+          setFoldersRaw(s.docs.map((d) => ({ id: d.id, ...d.data(), totalBudget: folderBudgetRef.current[d.id] || 0, ...(isOwner ? { allocationPolicy: allocationPolicyRef.current[d.id] || null } : {}) })));
           onAny();
         },
         onErr
       ),
       db.collection("projects").where("userId", "==", dataUid).onSnapshot(
         (s) => {
-          setMonthsRaw(s.docs.map((d) => ({ id: d.id, ...d.data(), monthlyBudget: projectBudgetRef.current[d.id] || 0 })));
+          setMonthsRaw(s.docs.map((d) => ({ id: d.id, ...d.data(), monthlyBudget: projectBudgetRef.current[d.id] || 0, ...(isOwner ? { allocationPolicy: d.data().fundingType === "president" ? null : allocationRef.current[d.id] || null } : {}) })));
           onAny();
         },
         onErr
@@ -3018,7 +3091,48 @@ function PortalApp() {
       )
     ];
     return () => unsubs.forEach((u) => u && u());
-  }, [ownerId]);
+  }, [ownerId, isOwner]);
+  React.useEffect(() => {
+    if (!ownerId || typeof db === "undefined" || !isOwner) {
+      allocationPolicyRef.current = {};
+      allocationRef.current = {};
+      setAllocationMap({});
+      setAllocationAdjustments([]);
+      setFoldersRaw((prev) => prev.map(({ allocationPolicy, ...folder }) => folder));
+      setMonthsRaw((prev) => prev.map(({ allocationPolicy, ...month }) => month));
+      return;
+    }
+    const dataUid = ownerId;
+    const unsubs = [
+      db.collection("projectControlAllocationPolicies").where("userId", "==", dataUid).onSnapshot((s) => {
+        const m = {};
+        s.docs.forEach((d) => { m[d.id] = d.data(); });
+        allocationPolicyRef.current = m;
+        setFoldersRaw((prev) => prev.map((f) => ({ ...f, allocationPolicy: m[f.id] || null })));
+      }, () => {
+      }),
+      db.collection("projectControlBillingAllocations").where("userId", "==", dataUid).onSnapshot((s) => {
+        const m = {};
+        s.docs.forEach((d) => { m[d.id] = d.data(); });
+        allocationRef.current = m;
+        setAllocationMap(m);
+        setMonthsRaw((prev) => prev.map((p) => ({ ...p, allocationPolicy: p.fundingType === "president" ? null : m[p.id] || null })));
+      }, () => {
+      }),
+      db.collection("billingAllocationAdjustments").where("userId", "==", dataUid).onSnapshot((s) => {
+        setAllocationAdjustments(s.docs.map((d) => ({ id: d.id, ...d.data() })));
+      }, () => {
+      })
+    ];
+    return () => unsubs.forEach((u) => u && u());
+  }, [ownerId, isOwner]);
+  const visibleAllocationMap = React.useMemo(() => {
+    const active = {};
+    monthsRaw.forEach((period) => {
+      if (period.fundingType !== "president" && allocationMap[period.id]) active[period.id] = allocationMap[period.id];
+    });
+    return active;
+  }, [monthsRaw, allocationMap]);
   React.useEffect(() => {
     if (!ownerId || typeof db === "undefined") return;
     const dataUid = ownerId;
@@ -3345,7 +3459,7 @@ function PortalApp() {
       additionalWorksTotal,
       periodCount: childMonths.length
     }
-  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project }), /* @__PURE__ */ React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId), inboxPending }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId, pmPaidByContractId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { project, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, onBack: () => setView("dashboard") })));
+  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project, allocationMap: visibleAllocationMap, allocationAdjustments }), /* @__PURE__ */ React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId), inboxPending }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId, pmPaidByContractId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { project, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, allocationMap: visibleAllocationMap, allocationAdjustments, onBack: () => setView("dashboard") })));
 }
 (function() {
   const mount = document.getElementById("dacsPortalRoot");

@@ -65,8 +65,16 @@ let expFolders        = [];   // { id, name, description, totalBudget }
 // so totalBudget / monthlyBudget resolve to 0 everywhere.
 let _folderBudgetMap  = {};   // folderId  -> totalBudget
 let _projectBudgetMap = {};   // projectId -> monthlyBudget
+// Allocation percentages include the confidential target margin reserve, so
+// they must never be loaded into staff-visible folder or period objects.
+let _pcPolicyMap      = {};   // folderId  -> allocation policy
+let _pcAllocationMap  = {};   // projectId -> immutable billing snapshot
+let _pcAdjustmentRows = [];   // owner-only adjustment history
 let _folderBudgetsUnsub  = null;
 let _projectBudgetsUnsub = null;
+let _pcPoliciesUnsub     = null;
+let _pcAllocationsUnsub  = null;
+let _pcAdjustmentsUnsub  = null;
 let _foldersUnsub     = null;
 let _expandedFolders  = new Set(); // folder ids currently expanded
 let expCurrentProject = null;
@@ -82,6 +90,88 @@ let _expCoverExpensesMode = false; // true when no remaining budget — next exp
 let _expSearch = { name: '', category: '', amtMin: '', amtMax: '', month: '' };
 let _paySearch = { name: '' };
 let _projectsUnsub = null;
+
+function _pcIsOwner() {
+    return window.currentUserRole === 'owner';
+}
+
+function _pcDefaultPolicy() {
+    const defaults = typeof PC_ALLOCATION_DEFAULTS !== 'undefined'
+        ? PC_ALLOCATION_DEFAULTS
+        : { directPct: 70, indirectPct: 20, targetMarginPct: 10 };
+    return {
+        directPct: Number(defaults.directPct),
+        indirectPct: Number(defaults.indirectPct),
+        targetMarginPct: Number(defaults.targetMarginPct)
+    };
+}
+
+function _pcPolicyData(policy) {
+    const value = {
+        directPct: Number(policy?.directPct),
+        indirectPct: Number(policy?.indirectPct),
+        targetMarginPct: Number(policy?.targetMarginPct)
+    };
+    const validation = pcValidateAllocationPolicy(value);
+    if (!validation.valid) throw new Error(validation.message);
+    return value;
+}
+
+function _pcMergeAllocationPolicies() {
+    if (!_pcIsOwner()) return;
+    expFolders.forEach(folder => { folder.allocationPolicy = _pcPolicyMap[folder.id] || null; });
+    expProjects.forEach(period => {
+        period.allocationPolicy = period.fundingType === 'president' ? null : (_pcAllocationMap[period.id] || null);
+    });
+}
+
+function pcFolderPolicy(folderId) {
+    return _pcPolicyMap[folderId] ? { ..._pcPolicyMap[folderId] } : _pcDefaultPolicy();
+}
+
+function pcPeriodPolicy(projectId) {
+    const period = expProjects.find(item => item.id === projectId);
+    if (period?.fundingType === 'president' || !_pcAllocationMap[projectId]) return null;
+    return { ..._pcAllocationMap[projectId] };
+}
+
+async function pcSaveAllocationAdjustment(projectId, policy, reason) {
+    const value = _pcPolicyData(policy);
+    const result = await window.sbClient.rpc('update_project_control_billing_allocation', {
+        p_project_id: projectId,
+        p_direct_pct: value.directPct,
+        p_indirect_pct: value.indirectPct,
+        p_target_margin_pct: value.targetMarginPct,
+        p_reason: reason
+    });
+    if (result.error) throw result.error;
+    return result.data;
+}
+
+async function _pcInsertInitialAllocation(projectId, policy) {
+    const value = _pcPolicyData(policy);
+    const result = await window.sbClient.from('project_control_billing_allocations').insert({
+        project_id: projectId,
+        owner_id: _uid(),
+        direct_pct: value.directPct,
+        indirect_pct: value.indirectPct,
+        target_margin_pct: value.targetMarginPct
+    });
+    if (result.error) throw result.error;
+}
+
+async function _pcSaveFolderPolicy(folderId, policy) {
+    const value = _pcPolicyData(policy);
+    await db.collection('projectControlAllocationPolicies').doc(folderId).set({
+        userId: _uid(), ...value,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+}
+
+function _pcRequestedPolicy(prefix, fallback) {
+    if (typeof window.pcReadPolicyInputs !== 'function') return fallback;
+    return window.pcReadPolicyInputs(prefix) || fallback;
+}
 
 // ── Payroll payment method ───────────────────────────────────
 // Stored lowercase (payroll.payment_method, migrations 0037 + 0038); '' / null
@@ -355,6 +445,12 @@ function loadProjects() {
     if (_foldersUnsub)  { _foldersUnsub();  _foldersUnsub  = null; }
     if (_folderBudgetsUnsub)  { _folderBudgetsUnsub();  _folderBudgetsUnsub  = null; }
     if (_projectBudgetsUnsub) { _projectBudgetsUnsub(); _projectBudgetsUnsub = null; }
+    if (_pcPoliciesUnsub) { _pcPoliciesUnsub(); _pcPoliciesUnsub = null; }
+    if (_pcAllocationsUnsub) { _pcAllocationsUnsub(); _pcAllocationsUnsub = null; }
+    if (_pcAdjustmentsUnsub) { _pcAdjustmentsUnsub(); _pcAdjustmentsUnsub = null; }
+    _pcPolicyMap = {};
+    _pcAllocationMap = {};
+    _pcAdjustmentRows = [];
     // Start global overview subscription
     subscribeOvAllData();
 
@@ -381,12 +477,42 @@ function loadProjects() {
             }, err => console.error('projectBudgets listener:', err));
     }
 
+    // Target-margin policies, snapshots and their audit trail are stricter
+    // than ordinary budgets: only the owner may ever request them.
+    if (window.currentUserRole === 'owner') {
+        _pcPoliciesUnsub = db.collection('projectControlAllocationPolicies')
+            .where('userId', '==', _uid())
+            .onSnapshot(snap => {
+                _pcPolicyMap = {};
+                snap.docs.forEach(d => { _pcPolicyMap[d.id] = d.data(); });
+                _pcMergeAllocationPolicies();
+                _renderAllPanels();
+            }, err => console.error('projectControlAllocationPolicies listener:', err));
+
+        _pcAllocationsUnsub = db.collection('projectControlBillingAllocations')
+            .where('userId', '==', _uid())
+            .onSnapshot(snap => {
+                _pcAllocationMap = {};
+                snap.docs.forEach(d => { _pcAllocationMap[d.id] = d.data(); });
+                _pcMergeAllocationPolicies();
+                _renderAllPanels();
+            }, err => console.error('projectControlBillingAllocations listener:', err));
+
+        _pcAdjustmentsUnsub = db.collection('billingAllocationAdjustments')
+            .where('userId', '==', _uid())
+            .onSnapshot(snap => {
+                _pcAdjustmentRows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                _renderAllPanels();
+            }, err => console.error('billingAllocationAdjustments listener:', err));
+    }
+
     // Listen to folders
     _foldersUnsub = db.collection('folders')
         .where('userId', '==', _uid())
         .onSnapshot(snap => {
             expFolders = snap.docs
-                .map(d => ({ id: d.id, ...d.data(), totalBudget: _folderBudgetMap[d.id] || 0 }))
+                .map(d => ({ id: d.id, ...d.data(), totalBudget: _folderBudgetMap[d.id] || 0,
+                    ...(_pcIsOwner() ? { allocationPolicy: _pcPolicyMap[d.id] || null } : {}) }))
                 .sort((a, b) => (a.createdAt?.toMillis?.() || 0) - (b.createdAt?.toMillis?.() || 0));
             _renderAllPanels();
         }, err => console.error('folders listener:', err));
@@ -396,7 +522,8 @@ function loadProjects() {
         .where('userId', '==', _uid())
         .onSnapshot(snap => {
             expProjects = snap.docs
-                .map(d => ({ id: d.id, ...d.data(), monthlyBudget: _projectBudgetMap[d.id] || 0 }))
+                .map(d => ({ id: d.id, ...d.data(), monthlyBudget: _projectBudgetMap[d.id] || 0,
+                    ...(_pcIsOwner() ? { allocationPolicy: d.data().fundingType === 'president' ? null : (_pcAllocationMap[d.id] || null) } : {}) }))
                 .sort((a, b) => {
                     const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
                     if (b.year !== a.year) return (b.year||0) - (a.year||0);
@@ -800,7 +927,12 @@ async function handleEditProject(e) {
     const funding = sel ? sel.value : 'mobilization';
     const isPresident = funding === 'president';
     const budget  = isPresident ? 0 : parseFloat((document.getElementById('editProjBudget').value||'').replace(/,/g,'')) || 0;
+    const previous = expProjects.find(project => project.id === id);
     if (!id || !month || !year) return;
+    if (_pcIsOwner() && previous?.fundingType === 'president' && !isPresident && budget <= 0) {
+        showExpNotif('A billing amount is required when switching from Cover Expenses.', 'error');
+        return;
+    }
 
     try {
         showExpLoading('editProjectBtn', true);
@@ -820,6 +952,22 @@ async function handleEditProject(e) {
         if (window.currentUserRole !== 'staff') {
             await db.collection('projectBudgets').doc(id)
                 .set({ userId: _uid(), monthlyBudget: budget }, { merge: true });
+        }
+        if (_pcIsOwner() && !isPresident) {
+            // A cover period keeps its snapshot dormant. Read the raw map here
+            // so switching it back can reuse that historical snapshot.
+            const existingPolicy = _pcAllocationMap[id] ? { ..._pcAllocationMap[id] } : null;
+            const policy = _pcRequestedPolicy('editProject', existingPolicy || pcFolderPolicy(previous?.folderId));
+            const changed = !existingPolicy
+                || ['directPct', 'indirectPct', 'targetMarginPct'].some(key => Number(existingPolicy[key]) !== Number(policy[key]));
+            if (changed) {
+                const reason = document.getElementById('editProjAllocationReason')?.value?.trim();
+                if (!existingPolicy && previous?.fundingType === 'president') {
+                    await _pcInsertInitialAllocation(id, policy);
+                } else {
+                    await pcSaveAllocationAdjustment(id, policy, reason);
+                }
+            }
         }
         showExpNotif('Project updated! ✓', 'success');
         closeExpModal('editProjectModal');
@@ -2105,6 +2253,8 @@ async function handleCreateProject(e) {
     if (dupe) {
         showExpNotif(`${month} ${year} already has a ${fundingType} period in this folder.`, 'error'); return;
     }
+    let createdProjectId = null;
+    let createdBudget = false;
     try {
         showExpLoading('createProjectBtn', true);
         const data = {
@@ -2115,10 +2265,13 @@ async function handleCreateProject(e) {
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         };
         const ref = await db.collection('projects').add(data);
+        createdProjectId = ref.id;
         // Fund allocated is confidential — stored in the owner-only
         // projectBudgets collection, never on the staff-readable project doc.
-        if (window.currentUserRole !== 'staff' && budget > 0) {
+        if (_pcIsOwner()) {
             await db.collection('projectBudgets').doc(ref.id).set({ userId: _uid(), monthlyBudget: budget });
+            createdBudget = true;
+            if (!isPresident) await _pcInsertInitialAllocation(ref.id, pcFolderPolicy(folderId));
         }
         if (folderId) _expandedFolders.add(folderId);
         showExpNotif('Month added!', 'success');
@@ -2127,6 +2280,11 @@ async function handleCreateProject(e) {
         closeExpModal('createProjectModal');
         selectProject(ref.id);
     } catch (err) {
+        if (createdProjectId) {
+            if (createdBudget) await db.collection('projectBudgets').doc(createdProjectId).delete().catch(() => {});
+            // Snapshot rows cascade when their newly-created parent period is deleted.
+            await db.collection('projects').doc(createdProjectId).delete().catch(() => {});
+        }
         showExpNotif('Error: ' + err.message, 'error');
     } finally {
         showExpLoading('createProjectBtn', false);
@@ -2142,22 +2300,34 @@ async function handleCreateFolder(e) {
     const desc   = document.getElementById('folderDesc').value.trim();
     const budget = parseFloat((document.getElementById('folderBudget').value || '').replace(/,/g, '')) || 0;
     if (!name) return;
+    let createdFolderId = null;
+    let createdBudget = false;
+    let createdPolicy = false;
     try {
         showExpLoading('createFolderBtn', true);
         const ref = await db.collection('folders').add({
             userId: _uid(), name, description: desc,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
+        createdFolderId = ref.id;
         // Contract value is confidential — stored in the owner-only folderBudgets
         // collection, never on the staff-readable folder doc.
-        if (window.currentUserRole !== 'staff' && budget > 0) {
+        if (_pcIsOwner()) {
             await db.collection('folderBudgets').doc(ref.id).set({ userId: _uid(), totalBudget: budget });
+            createdBudget = true;
+            await _pcSaveFolderPolicy(ref.id, _pcDefaultPolicy());
+            createdPolicy = true;
         }
         _expandedFolders.add(ref.id);
         showExpNotif('Project folder created!', 'success');
         document.getElementById('createFolderForm').reset();
         closeExpModal('createFolderModal');
     } catch (err) {
+        if (createdFolderId) {
+            if (createdBudget) await db.collection('folderBudgets').doc(createdFolderId).delete().catch(() => {});
+            if (createdPolicy) await db.collection('projectControlAllocationPolicies').doc(createdFolderId).delete().catch(() => {});
+            await db.collection('folders').doc(createdFolderId).delete().catch(() => {});
+        }
         showExpNotif('Error: ' + err.message, 'error');
     } finally {
         showExpLoading('createFolderBtn', false);
@@ -2190,6 +2360,10 @@ async function handleEditFolder(e) {
         if (window.currentUserRole !== 'staff') {
             await db.collection('folderBudgets').doc(_editingFolderId)
                 .set({ userId: _uid(), totalBudget: budget }, { merge: true });
+        }
+        if (_pcIsOwner()) {
+            await _pcSaveFolderPolicy(_editingFolderId,
+                _pcRequestedPolicy('editFolder', pcFolderPolicy(_editingFolderId)));
         }
         showExpNotif('Folder updated!', 'success');
         closeExpModal('editFolderModal');

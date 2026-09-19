@@ -173,4 +173,57 @@ eq(adjustment.createdBy, 'owner-1');
 eq(adjustment.userId, 'owner-1');
 eq(adjustment.createdAt.toDate().toISOString(), '2026-09-19T00:00:00.000Z');
 
+// Task 3 persistence fences. These source contracts protect browser-only write
+// paths that cannot be exercised without Firebase/Supabase credentials.
+const expensesSource = read('js/expenses-module.js');
+const portalSource = read('js/portal-app.compiled.js');
+function sourceSlice(source, start, end, label) {
+  const from = source.indexOf(start);
+  assert.ok(from !== -1, `${label}: start marker missing`);
+  const to = end ? source.indexOf(end, from) : source.length;
+  assert.ok(to !== -1, `${label}: end marker missing`);
+  return source.slice(from, to);
+}
+function requireOwnerOnlySubscriptions(source, label) {
+  const ownerBlock = sourceSlice(source, 'if (window.currentUserRole === \'owner\')', null, label);
+  for (const collection of ['projectControlAllocationPolicies', 'projectControlBillingAllocations', 'billingAllocationAdjustments']) {
+    assert.match(ownerBlock, new RegExp("db\\.collection\\(['\\\"]" + collection + "['\\\"]\\)"), `${label}: ${collection} must only be queried as owner`);
+  }
+}
+const createFolder = sourceSlice(expensesSource, 'async function handleCreateFolder', 'let _editingFolderId', 'normal folder creation');
+assert.match(createFolder, /_pcSaveFolderPolicy\(ref\.id, _pcDefaultPolicy\(\)\)/, 'normal folder creation must persist the default allocation policy');
+assert.match(expensesSource, /PC_ALLOCATION_DEFAULTS/, 'normal folder creation must use the shared default policy');
+
+const createPeriod = sourceSlice(expensesSource, 'async function handleCreateProject', '// ════════════════════════════════════════════════════════════\n// FOLDER CRUD', 'normal billing-period creation');
+assert.match(createPeriod, /_pcInsertInitialAllocation\(ref\.id, pcFolderPolicy\(folderId\)\)/, 'normal non-cover period creation must use a true snapshot insert');
+assert.match(createPeriod, /!isPresident/, 'normal cover period creation must not create a snapshot');
+assert.match(expensesSource, /sbClient\.from\('project_control_billing_allocations'\)\.insert\(/, 'initial snapshots must use a direct Supabase insert');
+
+const editPeriod = sourceSlice(expensesSource, 'async function handleEditProject', '// ════════════════════════════════════════════════════════════\n// SELECT PROJECT', 'billing-period edit');
+assert.match(editPeriod, /pcSaveAllocationAdjustment\(id, policy, reason\)/, 'billing-period allocation changes must use the audited adjustment path');
+assert.match(expensesSource, /sbClient\.rpc\('update_project_control_billing_allocation'/, 'billing-period allocation changes must use the audited RPC');
+
+const autoPeriod = sourceSlice(portalSource, 'async function ensureAdditionalWorksPeriod', 'async function openAddEntry', 'Additional Works auto period');
+assert.match(autoPeriod, /db\.collection\("projectBudgets"\)\.doc\(ref\.id\)\.set\(\{ userId: uid, monthlyBudget: 0 \}\)/, 'Additional Works auto period must create its zero budget row');
+assert.match(autoPeriod, /sbClient\.from\("project_control_billing_allocations"\)\.insert\(/, 'Additional Works auto period must insert a snapshot');
+
+const additionalWorks = sourceSlice(portalSource, 'function AdditionalWorksDrill', 'function _esc2', 'Additional Works folders');
+const policyWrites = additionalWorks.match(/db\.collection\("projectControlAllocationPolicies"\)\.doc\([^)]*\)\.set\(/g) || [];
+assert.ok(policyWrites.length >= 2, 'both Additional Works child-folder creation paths must persist default policies');
+const additionalWorksSave = sourceSlice(additionalWorks, 'const save = async', 'const deleteChild', 'Additional Works estimate save');
+assert.doesNotMatch(sourceSlice(additionalWorksSave, 'if (childId) {', '} else {', 'Additional Works estimate edit'), /projectControlAllocationPolicies/, 'editing an Additional Works estimate must not rewrite its allocation policy');
+
+requireOwnerOnlySubscriptions(expensesSource, 'Expenses allocation subscriptions');
+assert.match(portalSource, /typeof db === "undefined" \|\| !isOwner/, 'Project Control must skip owner-only allocation subscriptions for staff and non-owners');
+for (const collection of ['projectControlAllocationPolicies', 'projectControlBillingAllocations', 'billingAllocationAdjustments']) {
+  assert.match(portalSource, new RegExp("db\\.collection\\(\\\"" + collection + "\\\"\\)"), `Project Control must subscribe to ${collection} for owners`);
+}
+
+for (const collection of ['folderBudgets', 'projectBudgets', 'projects']) {
+  for (const source of [expensesSource, portalSource]) {
+    const writes = source.match(new RegExp("db\\.collection\\(['\\\"]" + collection + "['\\\"]\\)\\.doc\\([^)]*\\)\\.(?:set|update)\\(\\{[^}]*\\}", 'g')) || [];
+    writes.forEach(write => assert.doesNotMatch(write, /targetMarginPct|target_margin_pct/, `${collection} must not store target-margin data`));
+  }
+}
+
 console.log('billing allocation tests passed');
