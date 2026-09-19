@@ -131,8 +131,12 @@ function pcFolderPolicy(folderId) {
 
 function pcPeriodPolicy(projectId) {
     const period = expProjects.find(item => item.id === projectId);
-    if (period?.fundingType === 'president' || !_pcAllocationMap[projectId]) return null;
-    return { ..._pcAllocationMap[projectId] };
+    if (period?.fundingType === 'president') return null;
+    return _pcRawPeriodPolicy(projectId);
+}
+
+function _pcRawPeriodPolicy(projectId) {
+    return _pcAllocationMap[projectId] ? { ..._pcAllocationMap[projectId] } : null;
 }
 
 async function pcSaveAllocationAdjustment(projectId, policy, reason) {
@@ -225,13 +229,14 @@ function _pcAllocationChanged(existingPolicy, policy) {
     });
 }
 
-function _pcUpdateEditAllocationReason(policy) {
+function _pcUpdateEditAllocationReason(policy, suppressReason) {
     const state = _pcEditAllocationState;
-    const needsReason = state.legacy || (!!state.existingPolicy && policy && _pcAllocationChanged(state.existingPolicy, policy));
+    const needsReason = !suppressReason && (state.legacy || (!!state.existingPolicy && policy && _pcAllocationChanged(state.existingPolicy, policy)));
     const group = document.getElementById('editProjAllocationReasonGroup');
     const input = document.getElementById('editProjAllocationReason');
     if (group) group.hidden = !_pcIsOwner() || !needsReason;
     if (input) input.required = !!needsReason;
+    if (!needsReason && input) input.value = '';
 }
 
 function pcRenderPolicyTotal(prefix) {
@@ -270,7 +275,7 @@ function pcRenderBillingPreview(mode) {
     if (!isVisible) {
         const saveButton = document.getElementById(mode + 'Btn');
         if (saveButton) saveButton.disabled = false;
-        if (mode === 'editProject') _pcUpdateEditAllocationReason(null);
+        if (mode === 'editProject') _pcUpdateEditAllocationReason(null, true);
         return;
     }
     const budgetInput = document.getElementById(mode === 'editProject' ? 'editProjBudget' : 'projBudget');
@@ -298,7 +303,7 @@ function _pcPrepareCreateFolderAllocation() {
 
 function _pcPrepareEditProjectAllocation(project) {
     if (!_pcIsOwner()) return;
-    const existingPolicy = pcPeriodPolicy(project.id);
+    const existingPolicy = _pcRawPeriodPolicy(project.id);
     _pcEditAllocationState = {
         projectId: project.id,
         existingPolicy,
@@ -2287,6 +2292,12 @@ function _updatePaySearchCount(shown, total) {
 // ════════════════════════════════════════════════════════════
 let _pendingFolderId = null;
 
+function openCreateFolderModal() {
+    document.getElementById('createFolderForm')?.reset();
+    _pcPrepareCreateFolderAllocation();
+    openExpModal('createFolderModal');
+}
+
 // Called from the "New Billing Period" button in the folder detail header.
 // Reads the active folder from state so folderId is always correct.
 function openNewBillingPeriodModal() {
@@ -2370,6 +2381,7 @@ window.onFillFromPaymentRequest = function () {
     const budgetInput = document.getElementById('projBudget');
     if (budgetInput && amount) {
         budgetInput.value = Number(amount).toLocaleString('en-PH');
+        pcRenderBillingPreview('createProject');
     }
 };
 
@@ -6716,7 +6728,7 @@ function mvpRenderFolderGrid() {
             + '<svg viewBox="0 0 24 24" fill="none" stroke="#d1d5db" stroke-width="1.5" width="56" height="56"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
             + '<h3 style="margin:0.75rem 0 0.25rem;font-size:1rem;color:#374151;">No Project Folders</h3>'
             + '<p style="color:#9ca3af;font-size:0.875rem;margin:0 0 1rem;">Create your first project folder to start tracking expenses.</p>'
-            + '<button class="ov-btn-new ov-btn-new--center" onclick="openExpModal(\'createFolderModal\')">+ New Project Folder</button>'
+            + '<button class="ov-btn-new ov-btn-new--center" onclick="openCreateFolderModal()">+ New Project Folder</button>'
             + '</div>';
         return;
     }
@@ -7044,7 +7056,7 @@ function mvpRenderOverviewFolderGrid() {
             + '<div class="bo-empty-icon">📁</div>'
             + '<h3 class="bo-empty-title">No project folders yet</h3>'
             + '<p class="bo-empty-sub">Create your first project folder to start tracking budgets, billing periods, and receivables.</p>'
-            + '<button class="bo-btn-primary" onclick="openExpModal(\'createFolderModal\')">+ New Project Folder</button>'
+            + '<button class="bo-btn-primary" onclick="openCreateFolderModal()">+ New Project Folder</button>'
             + '</div>';
         return;
     }

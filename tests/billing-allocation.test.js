@@ -284,4 +284,25 @@ assert.match(expensesMvpCss, /\.pc-allocation-swatch--direct/, 'preview must hav
 assert.match(expensesMvpCss, /\.pc-allocation-swatch--indirect/, 'preview must have an indirect-cost swatch');
 assert.match(expensesMvpCss, /\.pc-allocation-swatch--reserve/, 'preview must have a reserve swatch');
 
+// Task 4 fix round 1: modal state must reset on every entry path and cover
+// transitions must retain dormant snapshots without retaining stale authority.
+const createFolderOpener = sourceSlice(expensesSource, 'function openCreateFolderModal', 'window.onFillFromPaymentRequest', 'create-folder opener');
+assert.match(createFolderOpener, /createFolderForm'\)\?\.reset\(\)/, 'opening a new folder must reset stale form state');
+assert.match(createFolderOpener, /_pcPrepareCreateFolderAllocation\(\)/, 'opening a new folder must reapply 70\/20\/10 and total validity');
+assert.match(createFolderOpener, /openExpModal\('createFolderModal'\)/, 'the create-folder wrapper must retain the existing modal infrastructure');
+assert.match(adminSource, /onclick="openCreateFolderModal\(\)"/, 'static create-folder entry points must use the reset wrapper');
+assert.match(expensesSource, /onclick="openCreateFolderModal\(\)"/, 'rendered create-folder entry points must use the reset wrapper');
+
+const paymentRequestFill = sourceSlice(expensesSource, 'window.onFillFromPaymentRequest = function', 'function onFundingTypeChange', 'payment-request fill');
+assert.match(paymentRequestFill, /budgetInput\.value = Number\(amount\)\.toLocaleString\('en-PH'\);[\s\S]*pcRenderBillingPreview\('createProject'\)/, 'payment-request amounts must refresh the allocation preview immediately');
+
+assert.match(expensesSource, /function _pcRawPeriodPolicy\(projectId\)/, 'edit preparation needs access to a dormant retained snapshot');
+assert.match(expensesSource, /const existingPolicy = _pcRawPeriodPolicy\(project\.id\)/, 'cover-funded edits must populate from a retained snapshot when one exists');
+assert.match(expensesSource, /_pcUpdateEditAllocationReason\(null, true\)/, 'Cover selection must force reason controls inactive');
+const reasonState = sourceSlice(expensesSource, 'function _pcUpdateEditAllocationReason', 'function pcRenderPolicyTotal', 'adjustment reason state');
+assert.match(reasonState, /const needsReason = !suppressReason/, 'Cover state must override legacy reason state');
+assert.match(reasonState, /if \(!needsReason && input\) input\.value = '';/, 'unchanged policy state must clear stale adjustment reasons');
+assert.doesNotMatch(adminSource, /Target Margin %/, 'percentage labels must name the reserve explicitly');
+eq((adminSource.match(/Target Margin Reserve %/g) || []).length, 3, 'all percentage labels must say Target Margin Reserve %');
+
 console.log('billing allocation tests passed');

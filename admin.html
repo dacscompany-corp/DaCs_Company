@@ -492,7 +492,7 @@
                         <h1 class="bo-head-title">Project Folders</h1>
                         <p class="bo-head-sub">Manage budgets, billing periods, and receivables per project</p>
                     </div>
-                    <button class="bo-btn-primary" onclick="openExpModal('createFolderModal')">
+                    <button class="bo-btn-primary" onclick="openCreateFolderModal()">
                         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                         New Project Folder
                     </button>
@@ -741,7 +741,7 @@
                         <h2 class="ov-page-title">Project Folders</h2>
                         <p class="ov-page-subtitle">Select a folder to view projects and expenses</p>
                     </div>
-                    <button class="ov-btn-new" onclick="openExpModal('createFolderModal')">+ New Project Folder</button>
+                    <button class="ov-btn-new" onclick="openCreateFolderModal()">+ New Project Folder</button>
                 </div>
                 <div id="mvpFolderGrid" class="ov-folder-grid">
                     <div class="mvp-empty-state">
@@ -3936,7 +3936,7 @@
                 <div class="pc-allocation-fields">
                     <div class="exp-form-group"><label for="editProjectDirectPct">Direct Cost %</label><input type="number" id="editProjectDirectPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editProjectAllocationTotal" oninput="pcRenderPolicyTotal('editProject')"></div>
                     <div class="exp-form-group"><label for="editProjectIndirectPct">Indirect Cost %</label><input type="number" id="editProjectIndirectPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editProjectAllocationTotal" oninput="pcRenderPolicyTotal('editProject')"></div>
-                    <div class="exp-form-group"><label for="editProjectTargetMarginPct">Target Margin %</label><input type="number" id="editProjectTargetMarginPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editProjectAllocationTotal" oninput="pcRenderPolicyTotal('editProject')"></div>
+                    <div class="exp-form-group"><label for="editProjectTargetMarginPct">Target Margin Reserve %</label><input type="number" id="editProjectTargetMarginPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editProjectAllocationTotal" oninput="pcRenderPolicyTotal('editProject')"></div>
                 </div>
                 <div class="pc-allocation-total" id="editProjectAllocationTotal" role="status" aria-live="polite">Total: 100.00%</div>
             </fieldset>
@@ -4019,7 +4019,7 @@
                 <div class="pc-allocation-fields">
                     <div class="exp-form-group"><label for="createFolderDirectPct">Direct Cost %</label><input type="number" id="createFolderDirectPct" value="70" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="createFolderAllocationTotal" oninput="pcRenderPolicyTotal('createFolder')"></div>
                     <div class="exp-form-group"><label for="createFolderIndirectPct">Indirect Cost %</label><input type="number" id="createFolderIndirectPct" value="20" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="createFolderAllocationTotal" oninput="pcRenderPolicyTotal('createFolder')"></div>
-                    <div class="exp-form-group"><label for="createFolderTargetMarginPct">Target Margin %</label><input type="number" id="createFolderTargetMarginPct" value="10" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="createFolderAllocationTotal" oninput="pcRenderPolicyTotal('createFolder')"></div>
+                    <div class="exp-form-group"><label for="createFolderTargetMarginPct">Target Margin Reserve %</label><input type="number" id="createFolderTargetMarginPct" value="10" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="createFolderAllocationTotal" oninput="pcRenderPolicyTotal('createFolder')"></div>
                 </div>
                 <div class="pc-allocation-total" id="createFolderAllocationTotal" role="status" aria-live="polite">Total: 100.00%</div>
             </fieldset>
@@ -4044,7 +4044,7 @@
                 <div class="pc-allocation-fields">
                     <div class="exp-form-group"><label for="editFolderDirectPct">Direct Cost %</label><input type="number" id="editFolderDirectPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editFolderAllocationTotal" oninput="pcRenderPolicyTotal('editFolder')"></div>
                     <div class="exp-form-group"><label for="editFolderIndirectPct">Indirect Cost %</label><input type="number" id="editFolderIndirectPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editFolderAllocationTotal" oninput="pcRenderPolicyTotal('editFolder')"></div>
-                    <div class="exp-form-group"><label for="editFolderTargetMarginPct">Target Margin %</label><input type="number" id="editFolderTargetMarginPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editFolderAllocationTotal" oninput="pcRenderPolicyTotal('editFolder')"></div>
+                    <div class="exp-form-group"><label for="editFolderTargetMarginPct">Target Margin Reserve %</label><input type="number" id="editFolderTargetMarginPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editFolderAllocationTotal" oninput="pcRenderPolicyTotal('editFolder')"></div>
                 </div>
                 <div class="pc-allocation-total" id="editFolderAllocationTotal" role="status" aria-live="polite">Total: 100.00%</div>
             </fieldset>
