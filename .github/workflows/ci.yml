@@ -48,3 +48,6 @@ jobs:
 
       - name: Reimbursement tracker isolation
         run: node tests/reimbursement.test.js
+
+      - name: Project Control billing allocations
+        run: node tests/billing-allocation.test.js
