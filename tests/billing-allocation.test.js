@@ -200,8 +200,11 @@ assert.match(createPeriod, /!isPresident/, 'normal cover period creation must no
 assert.match(expensesSource, /sbClient\.from\('project_control_billing_allocations'\)\.insert\(/, 'initial snapshots must use a direct Supabase insert');
 
 const editPeriod = sourceSlice(expensesSource, 'async function handleEditProject', '// ════════════════════════════════════════════════════════════\n// SELECT PROJECT', 'billing-period edit');
-assert.match(editPeriod, /pcSaveAllocationAdjustment\(id, policy, reason\)/, 'billing-period allocation changes must use the audited adjustment path');
+assert.match(editPeriod, /pcSaveAllocationAdjustment\(id, requestedPolicy, reason\)/, 'billing-period allocation changes must use the audited adjustment path');
 assert.match(expensesSource, /sbClient\.rpc\('update_project_control_billing_allocation'/, 'billing-period allocation changes must use the audited RPC');
+assert.match(editPeriod, /const requestedPolicy = typeof window\.pcReadPolicyInputs === 'function'/, 'legacy edits must distinguish an explicit allocation request from the folder default');
+assert.match(editPeriod, /if \(requestedPolicy && reason\)/, 'existing or legacy allocation changes require an explicit policy and reason');
+assert.doesNotMatch(editPeriod, /_pcRequestedPolicy\('editProject'/, 'ordinary legacy period edits must not fall back to the folder policy');
 
 const autoPeriod = sourceSlice(portalSource, 'async function ensureAdditionalWorksPeriod', 'async function openAddEntry', 'Additional Works auto period');
 assert.match(autoPeriod, /db\.collection\("projectBudgets"\)\.doc\(ref\.id\)\.set\(\{ userId: uid, monthlyBudget: 0 \}\)/, 'Additional Works auto period must create its zero budget row');
@@ -215,6 +218,10 @@ assert.doesNotMatch(sourceSlice(additionalWorksSave, 'if (childId) {', '} else {
 
 requireOwnerOnlySubscriptions(expensesSource, 'Expenses allocation subscriptions');
 assert.match(portalSource, /typeof db === "undefined" \|\| !isOwner/, 'Project Control must skip owner-only allocation subscriptions for staff and non-owners');
+const visibleAllocationMap = sourceSlice(portalSource, 'const visibleAllocationMap = React.useMemo', 'React.useEffect(() => {\n    if (!ownerId', 'visible allocation map');
+assert.match(visibleAllocationMap, /if \(!isOwner\) return \{\};/, 'visible allocation maps must be empty synchronously for non-owners');
+assert.match(portalSource, /Summarize, \{ project, allocationMap: isOwner \? visibleAllocationMap : \{\}, allocationAdjustments: isOwner \? allocationAdjustments : \[\] \}/, 'project summary must synchronously gate confidential allocation props');
+assert.match(portalSource, /BillingPeriodsDrill, \{ project, childMonths, payrollRaw, expensesRaw, allocationMap: isOwner \? visibleAllocationMap : \{\}, allocationAdjustments: isOwner \? allocationAdjustments : \[\]/, 'billing periods must synchronously gate confidential allocation props');
 for (const collection of ['projectControlAllocationPolicies', 'projectControlBillingAllocations', 'billingAllocationAdjustments']) {
   assert.match(portalSource, new RegExp("db\\.collection\\(\\\"" + collection + "\\\"\\)"), `Project Control must subscribe to ${collection} for owners`);
 }

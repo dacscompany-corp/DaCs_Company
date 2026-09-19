@@ -957,15 +957,17 @@ async function handleEditProject(e) {
             // A cover period keeps its snapshot dormant. Read the raw map here
             // so switching it back can reuse that historical snapshot.
             const existingPolicy = _pcAllocationMap[id] ? { ..._pcAllocationMap[id] } : null;
-            const policy = _pcRequestedPolicy('editProject', existingPolicy || pcFolderPolicy(previous?.folderId));
-            const changed = !existingPolicy
-                || ['directPct', 'indirectPct', 'targetMarginPct'].some(key => Number(existingPolicy[key]) !== Number(policy[key]));
-            if (changed) {
-                const reason = document.getElementById('editProjAllocationReason')?.value?.trim();
-                if (!existingPolicy && previous?.fundingType === 'president') {
-                    await _pcInsertInitialAllocation(id, policy);
-                } else {
-                    await pcSaveAllocationAdjustment(id, policy, reason);
+            const requestedPolicy = typeof window.pcReadPolicyInputs === 'function'
+                ? window.pcReadPolicyInputs('editProject')
+                : null;
+            const reason = document.getElementById('editProjAllocationReason')?.value?.trim();
+            if (!existingPolicy && previous?.fundingType === 'president') {
+                await _pcInsertInitialAllocation(id, requestedPolicy || pcFolderPolicy(previous.folderId));
+            } else if (requestedPolicy && reason) {
+                const changed = !existingPolicy
+                    || ['directPct', 'indirectPct', 'targetMarginPct'].some(key => Number(existingPolicy[key]) !== Number(requestedPolicy[key]));
+                if (changed) {
+                    await pcSaveAllocationAdjustment(id, requestedPolicy, reason);
                 }
             }
         }
