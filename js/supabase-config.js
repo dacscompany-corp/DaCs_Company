@@ -78,6 +78,17 @@ const REG = {
   folderBudgets:  { table: 'folder_budgets', rename: OWNER, idField: 'folder_id' },
   projects:       { table: 'projects',       rename: OWNER, ts: ['createdAt', 'updatedAt'] },
   projectBudgets: { table: 'project_budgets',rename: OWNER, idField: 'project_id' },
+  projectControlAllocationPolicies: {
+    table: 'project_control_allocation_policies', rename: OWNER,
+    idField: 'folder_id', ts: ['updatedAt']
+  },
+  projectControlBillingAllocations: {
+    table: 'project_control_billing_allocations', rename: OWNER,
+    idField: 'project_id', ts: ['updatedAt']
+  },
+  billingAllocationAdjustments: {
+    table: 'billing_allocation_adjustments', rename: OWNER, ts: ['createdAt']
+  },
   expenses:       { table: 'expenses',       rename: OWNER, ts: ['createdAt', 'updatedAt'] },
   payroll:        { table: 'payroll',        rename: OWNER, ts: ['createdAt', 'updatedAt'], json: ['receiptImages'] },
   laborContracts: { table: 'labor_contracts', rename: OWNER, ts: ['createdAt', 'updatedAt', 'agreementSignedAt'], json: ['capHistory', 'works'] },
