@@ -223,7 +223,7 @@ assert.match(portalSource, /typeof db === "undefined" \|\| !isOwner/, 'Project C
 const visibleAllocationMap = sourceSlice(portalSource, 'const visibleAllocationMap = React.useMemo', 'React.useEffect(() => {\n    if (!ownerId', 'visible allocation map');
 assert.match(visibleAllocationMap, /if \(!isOwner\) return \{\};/, 'visible allocation maps must be empty synchronously for non-owners');
 assert.match(portalSource, /Summarize, \{ project, allocationMap: isOwner \? visibleAllocationMap : \{\}, allocationAdjustments: isOwner \? allocationAdjustments : \[\] \}/, 'project summary must synchronously gate confidential allocation props');
-assert.match(portalSource, /BillingPeriodsDrill, \{ project, childMonths, payrollRaw, expensesRaw, allocationMap: isOwner \? visibleAllocationMap : \{\}, allocationAdjustments: isOwner \? allocationAdjustments : \[\]/, 'billing periods must synchronously gate confidential allocation props');
+assert.match(portalSource, /BillingPeriodsDrill, \{ project, childMonths, \.\.\.allocationCosts, allocationMap: isOwner \? visibleAllocationMap : \{\}, allocationAdjustments: isOwner \? allocationAdjustments : \[\]/, 'billing periods must synchronously gate confidential allocation props');
 for (const collection of ['projectControlAllocationPolicies', 'projectControlBillingAllocations', 'billingAllocationAdjustments']) {
   assert.match(portalSource, new RegExp("db\\.collection\\(\\\"" + collection + "\\\"\\)"), `Project Control must subscribe to ${collection} for owners`);
 }
@@ -658,7 +658,70 @@ function testAllocationPrint() {
   eq(printed, '', 'staff must never receive a monetary print document');
 }
 
-Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas), Promise.resolve().then(testAllocationDashboard), Promise.resolve().then(testAllocationPrint)])
+function testAllocationRootDateScope() {
+  const h = dashboardHarness();
+  const ctx = h.context;
+  const rootSource = sourceSlice(portalSource, 'function PortalApp()', '(function() {\n  const mount', 'portal root');
+  const stateNames = [...rootSource.matchAll(/const \[(\w+),\s*\w+\] = React\.useState\(/g)].map(match => match[1]);
+  ctx.React.useMemo = fn => fn();
+  ctx.window.useTweaks = () => [{}, () => {}];
+  // Freeze the clock, not the production filter, so month-boundary behavior is exercised.
+  ctx.Date = class extends Date { constructor(...args) { super(...(args.length ? args : ['2026-09-20T12:00:00'])); } };
+  vm.runInContext(sourceSlice(portalSource, 'function mapExpenseDoc(', 'function _isOverheadPay', 'expense and period mappers')
+    + sourceSlice(portalSource, 'function periodCutoff(', 'function BillingSummary(', 'date filter') + rootSource, ctx);
+  const fixture = {
+    period:'This Month', view:'periods', isOwner:true, authUid:'owner', ownerId:'owner', loading:false, projectId:'parent',
+    foldersRaw:[{ id:'parent', name:'Main job', totalBudget:100000 }, { id:'child', parentFolderId:'parent', name:'Additional works', totalBudget:50000 }],
+    monthsRaw:[{ id:'p', folderId:'parent', month:'September', year:2026, monthlyBudget:1000 },
+      { id:'c', folderId:'child', month:'September', year:2026, monthlyBudget:1000 }],
+    allocationMap:{ p:policy, c:policy }, payrollRaw:[], expensesRaw:[], overheadRaw:[]
+  };
+  for (const [projectId, folderId, scale] of [['p', 'parent', 1], ['c', 'child', 2]]) {
+    for (const [date, multiplier] of [['2026-09-01', 1], ['2026-08-31', 10]]) {
+      fixture.payrollRaw.push({ projectId, paymentDate:date, laborType:'direct', totalSalary:100 * scale * multiplier },
+        { projectId, paymentDate:date, laborType:'liability', liabilityFor:'indirect', totalSalary:20 * scale * multiplier });
+      fixture.expensesRaw.push({ projectId, dateTime:date + 'T08:00:00', amount:50 * scale * multiplier });
+      fixture.overheadRaw.push({ folderId, billingPeriodId:projectId, date, amount:30 * scale * multiplier },
+        { folderId, billingPeriodId:null, date, amount:5 * scale * multiplier });
+    }
+  }
+  const useState = ctx.React.useState;
+  function root(projectId, period) {
+    let index = 0;
+    const state = { ...fixture, projectId, period };
+    ctx.React.useState = initial => {
+      const key = stateNames[index++];
+      return [Object.prototype.hasOwnProperty.call(state, key) ? state[key] : typeof initial === 'function' ? initial() : initial, () => {}];
+    };
+    try { return ctx.PortalApp(); } finally { ctx.React.useState = useState; }
+  }
+  for (const [period, multiplier] of [['This Month', 1], ['All Time', 11]]) {
+    for (const [folderId, ownScale, rollupScale] of [['parent', 1, 3], ['child', 2, 2]]) {
+      const tree = root(folderId, period);
+      const head = h.nodes(tree).find(n => n.type === ctx.PageHead).props;
+      const drill = h.nodes(tree).find(n => n.type === ctx.BillingPeriodsDrill).props;
+      eq(head.allocationSummary.directActual, 150 * rollupScale * multiplier, 'rollup retains child periods and date scope');
+      eq(head.allocationSummary.indirectActual, 50 * rollupScale * multiplier);
+      eq(head.allocationSummary.unallocatedIndirect, 5 * rollupScale * multiplier);
+      eq(head.project.spent, 205 * rollupScale * multiplier, 'allocation scope agrees with project costs');
+      const cardTree = h.render('BillingPeriodsDrill', drill);
+      const cards = h.nodes(cardTree).filter(n => n.props.className === 'pc-period-card');
+      eq(cards.length, 1, 'parent drill must not acquire child period cards');
+      const actual = ctx._pcActualsForPeriod(drill.childMonths[0], drill.payrollRaw, drill.expensesRaw, drill.overheadRaw);
+      eq(actual.directActual, 150 * ownScale * multiplier, `${folderId} card direct actual must use ${period}`);
+      eq(actual.indirectActual, 50 * ownScale * multiplier, `${folderId} card indirect actual must use ${period}`);
+      const cardText = h.text(cards[0]);
+      for (const value of [150 * ownScale * multiplier, 50 * ownScale * multiplier,
+        700 - 150 * ownScale * multiplier, 200 - 50 * ownScale * multiplier]) {
+        assert.ok(cardText.includes(value.toFixed(2)), `${folderId} ${period} card missing actual/remaining ${value}`);
+      }
+      if (period === 'This Month') assert.doesNotMatch(cardText, /Over budget|Reserve at Risk/);
+      else assert.match(cardText, /Over budget/);
+    }
+  }
+}
+
+Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas), Promise.resolve().then(testAllocationDashboard), Promise.resolve().then(testAllocationPrint), Promise.resolve().then(testAllocationRootDateScope)])
   .then(results => {
     const failures = results.filter(result => result.status === 'rejected');
     if (failures.length) { failures.forEach(result => console.error(result.reason)); process.exitCode = 1; }
