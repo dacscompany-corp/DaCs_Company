@@ -721,7 +721,182 @@ function testAllocationRootDateScope() {
   }
 }
 
-Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas), Promise.resolve().then(testAllocationDashboard), Promise.resolve().then(testAllocationPrint), Promise.resolve().then(testAllocationRootDateScope)])
+// Removing an output's shared model, role gate, attribution check or escaping must
+// fail here. The DOM/download/window doubles only capture real renderer output.
+function expenseReportHarness() {
+  const elements = {};
+  const charts = {};
+  const el = id => elements[id] || (elements[id] = { innerHTML:'', textContent:'', value:'', style:{},
+    classList:{ add(){}, remove(){}, toggle(){} }, setAttribute(){}, getContext(){ return {}; },
+    querySelector(){ return null; }, querySelectorAll(){ return []; }, closest(){ return null; }, dataset:{} });
+  let printed = '', csv = '';
+  const context = vm.createContext({ console:{ log(){}, error:console.error }, ...A,
+    window:{ currentUserRole:'owner', location:{ href:'https://example.test/admin.html' },
+      open:() => ({ document:{ write:html => { printed = html; }, close(){} }, focus(){}, print(){}, addEventListener(){} }) },
+    document:{ getElementById:el, querySelector:() => null, querySelectorAll:() => [], addEventListener(){},
+      createElement:() => ({ click(){}, style:{} }), body:{ style:{}, appendChild(){}, removeChild(){} } },
+    Chart:class { constructor(canvas, config) { charts[Object.keys(elements).find(id => elements[id] === canvas)] = config; } destroy(){} }, setTimeout(){}, clearTimeout(){},
+    Blob:class { constructor(parts){ csv = parts.join(''); } }, URL:{ createObjectURL:() => 'blob:test', revokeObjectURL(){} } });
+  vm.runInContext(expensesSource, context);
+  vm.runInContext(`
+    expFolders = [{id:'f',name:'=Job <script>alert(1)</script>',totalBudget:5000},
+      {id:'child',parentFolderId:'f',name:'Extra',totalBudget:1000}, {id:'other',name:'Other'}];
+    expProjects = [
+      {id:'p',folderId:'f',month:'September',year:2026,monthlyBudget:1000},
+      {id:'legacy',folderId:'f',month:'September',year:2026,monthlyBudget:200},
+      {id:'cover',folderId:'f',month:'September',year:2026,monthlyBudget:999,fundingType:'president'},
+      {id:'child-p',folderId:'child',month:'September',year:2026,monthlyBudget:500},
+      {id:'old',folderId:'f',month:'September',year:2025,monthlyBudget:100},
+      {id:'foreign',folderId:'other',month:'September',year:2026,monthlyBudget:9000}];
+    _pcAllocationMap = {p:{directPct:70,indirectPct:20,targetMarginPct:10},
+      cover:{directPct:70,indirectPct:20,targetMarginPct:10},
+      'child-p':{directPct:70,indirectPct:20,targetMarginPct:10}};
+    expExpenses = _ovAllExpenses = [
+      {id:'e1',projectId:'p',amount:100,expenseName:'=1+1',dateTime:'2026-09-01T12:00:00',coverExpense:true},
+      {id:'e2',projectId:'legacy',amount:20,dateTime:'2026-09-01T12:00:00'},
+      {id:'e3',projectId:'cover',amount:30,dateTime:'2026-09-01T12:00:00'},
+      {id:'e4',projectId:'child-p',amount:40,dateTime:'2026-09-01T12:00:00'},
+      {id:'e5',projectId:'old',amount:10,dateTime:'2025-09-01T12:00:00'}];
+    expPayroll = _ovAllPayroll = [
+      {id:'d',projectId:'p',totalSalary:50,laborType:'direct',paymentDate:'2026-09-02'},
+      {id:'ds',projectId:'p',totalSalary:5,laborType:'liability',liabilityFor:'direct',paymentDate:'2026-09-02'},
+      {id:'i',projectId:'p',totalSalary:20,laborType:'indirect',paymentDate:'2026-09-02'},
+      {id:'is',projectId:'p',totalSalary:2,laborType:'liability',liabilityFor:'indirect',paymentDate:'2026-09-02'}];
+    _rptOvhdRows = [
+      {id:'h1',folderId:'f',billingPeriodId:'p',amount:8,date:'2026-09-03'},
+      {id:'h2',folderId:'f',billingPeriodId:null,amount:9,date:'2026-09-03'},
+      {id:'h3',folderId:'f',billingPeriodId:'foreign',amount:3,date:'2026-09-03'},
+      {id:'h4',folderId:'f',billingPeriodId:'p',scope:'company',amount:777,date:'2026-09-03'},
+      {id:'h5',folderId:'f',billingPeriodId:'p',amount:888,deletedAt:'deleted',date:'2026-09-03'},
+      {id:'h6',folderId:'child',billingPeriodId:'child-p',amount:4,date:'2026-09-03'},
+      {id:'h7',folderId:'f',billingPeriodId:null,amount:6,date:'2025-09-03'}];
+    _rptState = {folderId:'f',period:'monthly',year:2026,projects:expProjects,
+      allExpenses:expExpenses,allPayroll:expPayroll};
+    showExpNotif = () => {};
+  `, context);
+  return { context, el, output:() => ({ printed,csv }), elements, charts };
+}
+
+function testExpenseReportModel() {
+  const h = expenseReportHarness(), c = h.context;
+  assert.equal(typeof c._pcReportModel, 'function', 'missing shared report integration');
+  const model = c._pcReportModel('f');
+  eq(model.rows.length, 5, 'parent includes child periods, excludes foreign folder');
+  const p = model.rows.find(r => r.id === 'p');
+  eq(p.mats, 100); eq(p.labor, 55); eq(p.overhead, 30); eq(p.totalSpent, 185);
+  eq(p.allocation.directActual, 155); eq(p.allocation.indirectActual, 30);
+  eq(p.allocation.directBudget, 700); eq(p.allocation.targetMarginReserve, 100);
+  eq(model.rows.find(r => r.id === 'cover').allocation, null);
+  eq(model.rows.find(r => r.id === 'legacy').allocation, null);
+  eq(model.totals.budget, 1800); eq(model.totals.totalSpent, 307);
+  eq(model.totals.remaining, 1493); eq(model.totals.unallocatedIndirect, 18);
+  eq(model.allocation.targetMarginReserve, 150);
+  const report = c._pcDashboardReport();
+  eq(report.model.totals.totalSpent, 291, 'selected year excludes 2025 expense and overhead');
+  eq(report.model.totals.budget, 1700);
+  eq(report.model.totals.unallocatedIndirect, 12);
+  eq(report.groups.reduce((s,g) => s + g.totalSpent, 0), 291);
+  eq(report.groups.find(g => g.months.includes('September')).totalSpent, 291);
+  eq(model.totals.cover, 130, 'cover costs remain a subset of Spent');
+  eq(c._pcReportModel('child').totals.totalSpent, 44, 'child drill excludes parent overhead');
+  for (const mode of ['weekly','quarterly','semi','annual']) {
+    vm.runInContext('_rptState.period = ' + JSON.stringify(mode), c);
+    const scoped = c._pcDashboardReport();
+    close(scoped.groups.reduce((s,g) => s + g.totalSpent, 0), mode === 'annual' ? 307 : 291);
+    close(scoped.groups.reduce((s,g) => s + g.budget, 0), mode === 'annual' ? 1800 : 1700);
+  }
+  vm.runInContext('_pcAllocationMap.p = {directPct:50,indirectPct:30,targetMarginPct:20};', c);
+  eq(c._pcReportModel('f').totals.totalSpent, 307, 'planning changes cannot change Spent');
+  eq(c._pcReportModel('f').totals.remaining, 1493, 'reserve cannot be subtracted from Remaining');
+}
+
+function testExpenseReportOutputs() {
+  const h = expenseReportHarness(), c = h.context;
+  c.printFullBillingSummary();
+  eq(h.output().printed, '', 'no selected folder must not print company-wide data');
+  c.mvpRenderOvBillingPeriods('f');
+  assert.match(h.el('mvpOvPeriodGrid').innerHTML, /Target Margin Reserve/);
+  assert.match(h.el('mvpOvPeriodGrid').innerHTML, /Allocation not configured/);
+  c.mvpOvOpenPeriodDetail('f', 'p');
+  assert.match(h.el('pdAllocation').innerHTML, /155\.00/);
+  assert.match(h.el('pdAllocation').innerHTML, /Target Margin Reserve/);
+  c.renderReportsDashboard();
+  assert.match(h.el('rptAllocationReport').innerHTML, /Target Margin Reserve/);
+  assert.match(h.el('rptAllocationReport').innerHTML, /Unallocated Indirect/);
+  assert.match(h.el('rptSummaryTbody').innerHTML, /291\.00/);
+  eq(h.charts.rptTrendChart.data.datasets.filter(d => d.stack === 'spend')
+    .reduce((sum, d) => sum + d.data.reduce((s, n) => s + n, 0), 0), 291,
+    'spending chart must include overhead, matching the report table');
+  c.mvpRenderOverviewFolderGrid();
+  assert.match(h.el('mvpOverviewFolderGrid').innerHTML, /307\.00/, 'overview folder cost must include unallocated overhead');
+  c.exportRptTable();
+  assert.match(h.output().csv, /"Target Margin Reserve"/);
+  assert.match(h.output().csv, /"'\=1\+1"/, 'expense names must be formula safe');
+  assert.match(h.output().csv, /"291\.00"/);
+  assert.match(h.output().csv, /"Allocation not configured"/);
+  for (const [fn, id, spent] of [['printFullBillingSummary','f','307.00'],
+    ['printBillingSummaryReceipt','p','185.00'], ['printReportsDashboard',null,'291.00']]) {
+    c[fn](id);
+    const out = h.output().printed;
+    assert.match(out, /Target Margin Reserve/, fn);
+    assert.ok(out.includes(spent), fn + ' must print the same actual costs');
+    assert.doesNotMatch(out, /<script>alert\(1\)<\/script>/, fn + ' must escape text');
+  }
+  c.window.currentUserRole = 'staff';
+  c.mvpRenderOvBillingPeriods('f'); c.mvpOvOpenPeriodDetail('f','p'); c.renderReportsDashboard(); c.exportRptTable(); c.mvpRenderOverviewFolderGrid();
+  for (const id of ['mvpOverviewFolderGrid','mvpOvPeriodGrid','pdAllocation','pdKpiRow','rptAllocationReport','rptSummaryTbody']) {
+    assert.doesNotMatch(h.el(id).innerHTML, /Target Margin Reserve|700\.00|155\.00|291\.00|₱|&#8369;/, id + ' leaks staff money');
+  }
+  assert.doesNotMatch(h.output().csv, /Target Margin Reserve|700\.00|155\.00|291\.00|100\.00|%/);
+  for (const [fn,id] of [['printFullBillingSummary','f'],['printBillingSummaryReceipt','p'],['printReportsDashboard',null]]) {
+    c[fn](id);
+    assert.doesNotMatch(h.output().printed, /Target Margin Reserve|700\.00|155\.00|291\.00|₱|&#8369;/, fn + ' leaks staff money');
+  }
+  c.mvpRenderOvFolderDetail('f');
+  assert.doesNotMatch(h.el('mvpOvKpiContractDelta1').textContent, /₱|[0-9]/, 'staff folder delta leaks money');
+}
+
+async function testExpenseReportLoading() {
+  const h = expenseReportHarness(), c = h.context;
+  c.currentUser = { uid:'owner' };
+  c.loadRptData();
+  eq(c._pcDashboardReport().model.totals.totalSpent, 291, 'loaded parent report must include child expenses');
+  c.mvpOvOpenPeriodDetail('f', 'p');
+  h.el('expReportsView').style.display = '';
+  h.el('mvpOvDetailState').style.display = '';
+  vm.runInContext(`
+    _mvpOvCurrentFolderId = 'f';
+    _pcAllocationMap.p = {directPct:50,indirectPct:30,targetMarginPct:20};
+    renderProjectPanel = updateDashboardBudget = mvpRenderFolderGrid = mvpRenderAllProjectsTable = mvpPayRenderFolderGrid = () => {};
+  `, c);
+  c._renderAllPanels();
+  assert.match(h.el('pdAllocation').innerHTML, /500\.00/, 'open period must refresh after allocation snapshot');
+  assert.match(h.el('rptAllocationReport').innerHTML, /500\.00/, 'open report must refresh after allocation snapshot');
+
+  let deliver;
+  c.db = { collection(name) {
+    eq(name, 'overheadExpenses');
+    return { where(field, op, uid) {
+      eq([field,op,uid], ['userId','==','owner']);
+      return { get:async () => ({docs:[]}), onSnapshot(next) { deliver = next; return () => {}; } };
+    } };
+  } };
+  vm.runInContext('_rptOvhdRows = null;', c);
+  c.renderReportsDashboard();
+  assert.equal(typeof deliver, 'function', 'report overhead must subscribe for subsequent changes');
+  deliver({docs:[{id:'new',data:() => ({folderId:'f',amount:100,date:'2026-09-01'})}]});
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(h.el('rptSummaryTbody').innerHTML, /367\.00/, 'first overhead snapshot must render');
+  deliver({docs:[{id:'new',data:() => ({folderId:'f',amount:200,date:'2026-09-01'})}]});
+  assert.match(h.el('rptSummaryTbody').innerHTML, /467\.00/, 'overhead changes must refresh active report');
+  vm.runInContext('expProjects = [];', c);
+  c.loadRptData();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(h.el('rptSummaryTbody').innerHTML, /200\.00/, 'job overhead still counts without any billing periods');
+  assert.doesNotMatch(h.el('rptAllocationReport').innerHTML, /500\.00/, 'empty period scope must clear previous allocation rows');
+}
+
+Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas), Promise.resolve().then(testAllocationDashboard), Promise.resolve().then(testAllocationPrint), Promise.resolve().then(testAllocationRootDateScope), Promise.resolve().then(testExpenseReportModel), Promise.resolve().then(testExpenseReportOutputs), testExpenseReportLoading()])
   .then(results => {
     const failures = results.filter(result => result.status === 'rejected');
     if (failures.length) { failures.forEach(result => console.error(result.reason)); process.exitCode = 1; }

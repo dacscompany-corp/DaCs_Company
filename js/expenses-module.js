@@ -601,6 +601,10 @@ function loadProjects() {
     if (_pcPoliciesUnsub) { _pcPoliciesUnsub(); _pcPoliciesUnsub = null; }
     if (_pcAllocationsUnsub) { _pcAllocationsUnsub(); _pcAllocationsUnsub = null; }
     if (_pcAdjustmentsUnsub) { _pcAdjustmentsUnsub(); _pcAdjustmentsUnsub = null; }
+    if (_pcReportOverheadUnsub) { _pcReportOverheadUnsub(); _pcReportOverheadUnsub = null; }
+    _pcReportOverheadGeneration++;
+    _pcReportOverheadPromise = null;
+    _rptOvhdRows = null;
     _pcPolicyMap = {};
     _pcAllocationMap = {};
     _pcAdjustmentRows = [];
@@ -725,6 +729,7 @@ function subscribeOvAllData() {
         var payDetail = document.getElementById('mvpPayDetailState');
         if (payDetail && payDetail.style.display !== 'none' && typeof mvpPayRenderTable === 'function') mvpPayRenderTable();
         updateDashboardBudget();
+        _pcRefreshReportViews();
     }
 
     // Single fetch — no live listener
@@ -762,6 +767,17 @@ function _renderAllPanels() {
     if (typeof mvpRenderOverviewFolderGrid === 'function') mvpRenderOverviewFolderGrid();
     if (typeof mvpRenderAllProjectsTable === 'function') mvpRenderAllProjectsTable();
     if (typeof mvpPayRenderFolderGrid === 'function') mvpPayRenderFolderGrid();
+    _pcRefreshReportViews();
+}
+
+function _pcRefreshReportViews() {
+    const visible = id => { const el = document.getElementById(id); return el && el.style.display !== 'none'; };
+    if (visible('expReportsView')) loadRptData();
+    if (_mvpOvCurrentFolderId && visible('mvpOvDetailState')) mvpRenderOvFolderDetail(_mvpOvCurrentFolderId);
+    const modal = document.getElementById('mvpPeriodDetailModal');
+    if (modal && modal.style.display === 'flex' && modal.dataset.projectId) {
+        mvpOvOpenPeriodDetail(null, modal.dataset.projectId);
+    }
 }
 
 function updateDashboardBudget() {
@@ -4694,18 +4710,10 @@ function loadRptData() {
     // All Folders → ALL billing periods across all years; year dropdown only affects chart labels.
     let folderProjects;
     if (_rptState.folderId) {
-        folderProjects = expProjects.filter(p => p.folderId === _rptState.folderId);
+        const folderIds = _pcReportFolderIds(_rptState.folderId);
+        folderProjects = expProjects.filter(p => folderIds.has(p.folderId));
     } else {
         folderProjects = expProjects; // all billing periods, all years
-    }
-
-    if (!folderProjects.length) {
-        const label = _rptState.folderId
-            ? (expFolders.find(f => f.id === _rptState.folderId)?.name || 'selected folder')
-            : 'any folder';
-        _rptShowEmpty(`No projects found for ${label}. Try a different selection.`);
-        _rptState.loading = false;
-        return;
     }
 
     const idSet = new Set(folderProjects.map(p => p.id));
@@ -4843,23 +4851,207 @@ function _rptAllTimeGroups() {
         txCount: allExps.length, workerCount: workers.size, status: _st(usedPct) }];
 }
 
-function renderReportsDashboard() {
-    if (!_rptState.projects?.length) return;
-    let groups = _computePeriodGroups(_rptState.period, _rptState.year,
-        _rptState.projects, _rptState.allExpenses, _rptState.allPayroll);
-
-    // Annual: replace with all-time data to match Budget Overview
-    if (_rptState.period === 'annual' && groups.length === 1) {
-        groups = _rptAllTimeGroups(groups);
+// Every report surface consumes these actuals and the shared allocation engine.
+let _pcReportOverheadPromise = null;
+let _pcReportOverheadUnsub = null;
+let _pcReportOverheadGeneration = 0;
+function _pcEnsureReportOverhead(onReady) {
+    if (!_pcIsOwner() || _rptOvhdRows !== null) return false;
+    const generation = _pcReportOverheadGeneration;
+    if (!_pcReportOverheadPromise) {
+        _pcReportOverheadPromise = new Promise((resolve, reject) => {
+            _pcReportOverheadUnsub = db.collection('overheadExpenses').where('userId', '==', _uid()).onSnapshot(snap => {
+                if (generation !== _pcReportOverheadGeneration) return;
+                const loaded = _rptOvhdRows !== null;
+                _rptOvhdRows = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+                resolve();
+                if (loaded) {
+                    mvpRenderOverviewFolderGrid();
+                    _pcRefreshReportViews();
+                }
+            }, err => {
+                if (generation !== _pcReportOverheadGeneration) return;
+                if (_pcReportOverheadUnsub) _pcReportOverheadUnsub();
+                _pcReportOverheadUnsub = null;
+                _pcReportOverheadPromise = null;
+                reject(err);
+            });
+        });
     }
+    _pcReportOverheadPromise.then(() => { if (generation === _pcReportOverheadGeneration) onReady(); }).catch(err => {
+        console.error('Report overhead fetch:', err);
+        showExpNotif('Could not load project overhead. Try again before exporting.', 'error');
+    });
+    return true;
+}
 
-    _rptRenderKPIs(groups);
-    _rptRenderTrendChart(groups);
-    _rptRenderCompositionChart();
-    _rptRenderBvaChart(groups);
-    _rptRenderCategoryChart();
-    _rptRenderTable(groups);
-    _rptRenderDetailTables();
+function _pcReportFolderIds(folderId) {
+    const ids = new Set(folderId ? [folderId] : expFolders.map(f => f.id));
+    let added = true;
+    while (added) {
+        added = false;
+        expFolders.forEach(f => {
+            if (ids.has(f.parentFolderId) && !ids.has(f.id)) { ids.add(f.id); added = true; }
+        });
+    }
+    return ids;
+}
+
+function _pcReportModel(folderId, options = {}) {
+    const folders = _pcReportFolderIds(folderId);
+    const periods = expProjects.filter(p => folders.has(p.folderId) && (!options.projectId || p.id === options.projectId));
+    const owner = _pcIsOwner();
+    const label = p => p.name || [p.month, p.year].filter(Boolean).join(' ');
+    if (!owner) return { rows: periods.map(p => ({ id:p.id, label:label(p), folderId:p.folderId,
+        status:p.fundingType === 'president' ? 'Cover Expenses' : 'Billing Period' })), totals:null, allocation:null,
+        expenses:[], payroll:[], overheadRows:[] };
+    const sum = (rows, key) => rows.reduce((s, r) => s + (Number(r[key]) || 0), 0);
+    const periodDate = p => new Date(Number(p.year), _MONTHS.indexOf(p.month), 1);
+    const inWindow = date => !options.start || (date >= options.start && date < options.end);
+    const belongs = (row, key) => {
+        const p = periods.find(p => p.id === row.projectId);
+        return p && inWindow(row[key] ? new Date(row[key]) : periodDate(p));
+    };
+    const expenses = (options.expenses || (_ovAllExpenses.length ? _ovAllExpenses : expExpenses)).filter(e => belongs(e, 'dateTime'));
+    const payroll = (options.payroll || (_ovAllPayroll.length ? _ovAllPayroll : expPayroll)).filter(p => belongs(p, 'paymentDate'));
+    const overheadSource = _rptOvhdRows || [];
+    const overheadRows = overheadSource.filter(e => !e.deletedAt && e.scope !== 'company' && folders.has(e.folderId)
+        && inWindow(new Date(e.date || e.dateTime || '')));
+    const assignedTo = (e, p) => e.billingPeriodId === p.id && e.folderId === p.folderId;
+    const rows = periods.map(p => {
+        const assigned = overheadRows.filter(e => assignedTo(e, p));
+        const exps = expenses.filter(e => e.projectId === p.id);
+        const pay = payroll.filter(r => r.projectId === p.id);
+        const actual = pcActualsForPeriod(p.id, pay, exps, assigned, _rptIsOverheadPay);
+        const mats = sum(exps, 'amount');
+        const labor = sum(pay.filter(r => !_rptIsOverheadPay(r)), 'totalSalary');
+        const overhead = actual.indirectActual;
+        const cover = p.fundingType === 'president';
+        let base = inWindow(periodDate(p)) ? (Number(p.monthlyBudget) || 0) : 0;
+        if (options.prorate && options.start) {
+            const start = periodDate(p), end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
+            const days = Math.max(0, (Math.min(end, options.end) - Math.max(start, options.start)) / 86400000);
+            base = (Number(p.monthlyBudget) || 0) * days / new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+        }
+        const budget = cover ? 0 : base;
+        const allocation = cover ? null : pcPeriodAllocationView(budget, _pcAllocationMap[p.id], actual.directActual, actual.indirectActual);
+        const totalSpent = mats + labor + overhead;
+        return { id:p.id, folderId:p.folderId, label:label(p), budget, mats, labor, overhead, totalSpent,
+            remaining:budget - totalSpent, usedPct:budget > 0 ? totalSpent / budget * 100 : 0,
+            cover:cover ? totalSpent : sum(exps.filter(e => e.coverExpense), 'amount'), allocation,
+            status:cover ? 'Cover Expenses' : allocation ? 'Configured' : 'Allocation not configured',
+            txCount:exps.length, workerCount:new Set(pay.map(r => r.workerName || r.id)).size,
+            included:!options.start || inWindow(periodDate(p)) || budget > 0 || totalSpent !== 0 };
+    }).filter(r => r.included);
+    // A stale or cross-folder link remains on its job, but consumes no period envelope.
+    const unallocatedRows = options.projectId ? [] : overheadRows.filter(e =>
+        !expProjects.some(p => assignedTo(e, p)));
+    const unallocatedIndirect = sum(unallocatedRows, 'amount');
+    const totals = { label:'TOTAL', budget:sum(rows, 'budget'), mats:sum(rows, 'mats'), labor:sum(rows, 'labor'),
+        overhead:sum(rows, 'overhead') + unallocatedIndirect, totalSpent:sum(rows, 'totalSpent') + unallocatedIndirect,
+        unallocatedIndirect, cover:sum(rows, 'cover'), txCount:expenses.length,
+        workerCount:new Set(payroll.map(p => p.workerName || p.id)).size };
+    totals.remaining = totals.budget - totals.totalSpent;
+    totals.usedPct = totals.budget > 0 ? totals.totalSpent / totals.budget * 100 : 0;
+    const allocation = pcProjectAllocationRollup(rows.map(r => r.allocation), unallocatedIndirect, 0, true);
+    allocation.configuredCount = rows.filter(r => r.allocation).length;
+    allocation.legacyCount = rows.filter(r => r.status === 'Allocation not configured').length;
+    return { rows, totals, allocation, expenses, payroll, overheadRows: options.projectId
+        ? overheadRows.filter(e => periods.some(p => assignedTo(e, p))) : overheadRows };
+}
+
+function _pcDashboardReport() {
+    const year = Number(_rptState.year);
+    const allTime = _rptState.period === 'annual';
+    const scope = { start:allTime ? null : new Date(year, 0, 1), end:new Date(year + 1, 0, 1),
+        expenses:_rptState.allExpenses, payroll:_rptState.allPayroll };
+    const model = _pcReportModel(_rptState.folderId, scope);
+    let windows;
+    if (allTime) windows = [{ label:'All Time', shortLabel:'All', months:_MONTHS, start:null, end:null }];
+    else if (_rptState.period === 'weekly') windows = _getWeeksInYear(year).map(w => ({
+        label:'Wk ' + w.num + ' · ' + _fmtDateShort(w.start), shortLabel:'W' + w.num, months:[], start:w.start,
+        end:new Date(w.end.getFullYear(), w.end.getMonth(), w.end.getDate() + 1), prorate:true }));
+    else {
+        const size = _rptState.period === 'semi' ? 6 : _rptState.period === 'quarterly' ? 3 : 1;
+        windows = Array.from({ length:12 / size }, (_, i) => ({
+            label:(size === 1 ? _MONTHS[i] : (size === 3 ? 'Q' : 'H') + (i + 1)) + ' ' + year,
+            shortLabel:size === 1 ? _MON3[i] : (size === 3 ? 'Q' : 'H') + (i + 1),
+            months:_MONTHS.slice(i * size, (i + 1) * size), start:new Date(year, i * size, 1), end:new Date(year, (i + 1) * size, 1) }));
+    }
+    const groups = windows.map(w => {
+        const groupModel = allTime ? model : _pcReportModel(_rptState.folderId, { ...scope, ...w });
+        const t = groupModel.totals || {};
+        return { ...w, ...t, label:w.label, model:groupModel,
+            status:t.usedPct > 100 ? 'danger' : t.usedPct > 85 ? 'warning' : t.usedPct > 60 ? 'ontrack' : 'healthy' };
+    });
+    return { model, groups, label:allTime ? 'All Time' : String(year) };
+}
+
+function _pcReportMoney(value) { return value == null ? '' : '₱' + formatNum(value); }
+function _pcReportCells(row) {
+    const a = row.allocation;
+    return [row.label, row.budget, row.mats, row.labor, row.overhead, row.totalSpent, row.remaining,
+        a ? a.directBudget : null, a ? a.directActual : null, a ? a.directRemaining : null,
+        a ? a.indirectBudget : null, a ? a.indirectActual : null, a ? a.indirectRemaining : null,
+        a ? a.targetMarginReserve : null, row.status || ''];
+}
+const _PC_REPORT_HEADERS = ['Billing Period','Fund Allocated','Materials','Labor','Overhead','Spent','Remaining',
+    'Planned Direct','Actual Direct','Direct Variance','Planned Indirect','Actual Indirect','Indirect Variance','Target Margin Reserve','Allocation Status'];
+
+function _pcReportTable(headers, rows, caption) {
+    return '<div class="pc-report-scroll" role="region" aria-label="' + _mvpEsc(caption) + '" tabindex="0"><table class="pc-report-table">'
+        + '<caption>' + _mvpEsc(caption) + '</caption><thead><tr>' + headers.map(h => '<th scope="col">' + _mvpEsc(h) + '</th>').join('')
+        + '</tr></thead><tbody>' + rows.map(cells => '<tr>' + cells.map((v, i) => (i ? '<td>' : '<th scope="row">')
+            + _mvpEsc(typeof v === 'number' ? _pcReportMoney(v) : v == null ? '' : v) + (i ? '</td>' : '</th>')).join('') + '</tr>').join('')
+        + '</tbody></table></div>';
+}
+
+function _pcAllocationReportHtml(model) {
+    if (!_pcIsOwner() || !model.totals) return '';
+    const totalAllocation = model.allocation.configuredCount ? { ...model.allocation,
+        directRemaining:model.allocation.directBudget - model.allocation.directActual,
+        indirectRemaining:model.allocation.indirectBudget - model.allocation.indirectActual } : null;
+    const rows = model.rows.map(_pcReportCells);
+    if (model.totals.unallocatedIndirect) rows.push(_pcReportCells({ label:'Unallocated Indirect',
+        overhead:model.totals.unallocatedIndirect, totalSpent:model.totals.unallocatedIndirect,
+        remaining:-model.totals.unallocatedIndirect, allocation:null, status:'Unallocated Indirect' }));
+    rows.push(_pcReportCells({ ...model.totals, allocation:totalAllocation, status:model.allocation.legacyCount ? 'Allocation not configured: ' + model.allocation.legacyCount : '' }));
+    return _pcReportTable(_PC_REPORT_HEADERS, rows, 'Billing Allocation Performance')
+        + '<p class="pc-report-note">Target Margin Reserve: planning only. Variance = planned minus actual. Cover Expenses are included above.</p>';
+}
+
+function _pcPeriodAllocationHtml(row) {
+    if (!_pcIsOwner()) return '';
+    const a = row.allocation;
+    if (!a) return '<p class="pc-report-note">' + _mvpEsc(row.status) + '</p>';
+    return _pcReportTable(['Allocation','Planned','Actual','Variance'], [
+        ['Direct',a.directBudget,a.directActual,a.directRemaining], ['Indirect',a.indirectBudget,a.indirectActual,a.indirectRemaining],
+        ['Target Margin Reserve',a.targetMarginReserve,null,null]], 'Billing Allocation');
+}
+
+function renderReportsDashboard() {
+    if (_pcEnsureReportOverhead(renderReportsDashboard)) return;
+    const report = _pcDashboardReport();
+    _rptRenderKPIs(report.model);
+    _rptRenderTable(report.groups, report.model);
+    const allocation = document.getElementById('rptAllocationReport');
+    if (allocation) allocation.innerHTML = _pcAllocationReportHtml(report.model);
+    const owner = _pcIsOwner();
+    ['rptTrendChart', 'rptBudgetVsActualChart', 'expCategoryChart'].forEach(id => {
+        const canvas = document.getElementById(id);
+        if (canvas) canvas.style.display = owner ? '' : 'none';
+    });
+    if (owner) {
+        _rptRenderTrendChart(report.groups);
+        _rptRenderBvaChart(report.groups);
+        _rptRenderCompositionChart(report.model);
+        _rptRenderCategoryChart(report.model);
+    } else {
+        Object.values(_rptCharts).forEach(c => { try { c.destroy(); } catch (e) {} });
+        _rptCharts = {};
+        if (expCharts.pie) { expCharts.pie.destroy(); delete expCharts.pie; }
+    }
+    _rptRenderDetailTables(report.model);
     if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
@@ -5027,180 +5219,21 @@ function _rptIsOverheadPay(p) {
     return false;
 }
 
-function _rptRenderKPIs(_groups) {
+function _rptRenderKPIs(model) {
     const row = document.getElementById('rptKpiRow');
     if (!row) return;
-    if (window.currentUserRole === 'staff') { row.style.display = 'none'; return; }
-
-    if (_rptOvhdRows === null && !_rptOvhdFetching) {
-        _rptOvhdFetching = true;
-        db.collection('overheadExpenses').where('userId', '==', _uid()).get()
-            .then(snap => {
-                _rptOvhdRows = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => !e.deletedAt);
-                _rptRenderKPIs(_groups);
-            })
-            .catch(err => { console.error('rpt overhead fetch:', err); _rptOvhdRows = []; });
-    }
-
-    const contract = _rptState.folderId
-        ? (expFolders.find(f => f.id === _rptState.folderId)?.totalBudget || 0)
-        : expFolders.reduce((s, f) => s + (f.totalBudget || 0), 0);
-    const contractLabel = _rptState.folderId
-        ? (expFolders.find(f => f.id === _rptState.folderId)?.name || 'Folder')
-        : 'Company-Wide';
-
-    const _kpiFolderProjs = _rptState.folderId
-        ? expProjects.filter(p => p.folderId === _rptState.folderId)
-        : expProjects;
-    const _kpiClientProjs = _kpiFolderProjs.filter(p => p.fundingType !== 'president');
-    const _kpiPresProjIds = new Set(_kpiFolderProjs.filter(p => p.fundingType === 'president').map(p => p.id));
-    const _kpiProjIdSet   = new Set(_kpiFolderProjs.map(p => p.id));
-
-    const totReceived     = _kpiClientProjs.reduce((s, p) => s + (parseFloat(p.monthlyBudget) || 0), 0);
-    const activePeriodsCount = _kpiClientProjs.filter(p => (p.monthlyBudget || 0) > 0).length;
-
-    const _srcExp = _ovAllExpenses.length ? _ovAllExpenses : expExpenses;
-    const _srcPay = _ovAllPayroll.length  ? _ovAllPayroll  : expPayroll;
-
-    // Cover money is SPENDING, on both sides. These two filters used to disagree —
-    // materials dropped only the coverExpense FLAG while labor dropped the whole
-    // president PERIOD — so cover material landed in Materials *and* in the Cover
-    // card (the same pesos twice on one row) while cover payroll landed in neither
-    // Labor nor Total Spent. Both now take everything in scope; `totCover` below is
-    // a subset of these totals, reported separately, never added to them.
-    const totMats  = _srcExp.filter(e => _kpiProjIdSet.has(e.projectId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-    // Same money model as Project Control: Labor = direct + direct burden;
-    // Overhead = indirect pay + indirect burden + operating costs. Every peso once.
-    const _scopePay   = _srcPay.filter(p => _kpiProjIdSet.has(p.projectId));
-    const totIndirect = _scopePay.filter(_rptIsOverheadPay).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
-    const totLabor    = _scopePay.filter(p => !_rptIsOverheadPay(p)).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
-    // Operating costs recorded against the folders in scope. Company-scope (G&A)
-    // rows are deliberately EXCLUDED — company overhead is never charged to jobs.
-    const _scopeFolderIds = _rptState.folderId ? new Set([_rptState.folderId]) : new Set(expFolders.map(f => f.id));
-    const totOvhdExp  = (_rptOvhdRows || []).filter(e => !e.deletedAt && e.folderId && _scopeFolderIds.has(e.folderId)).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-    const totOverhead = totIndirect + totOvhdExp;
-    const totSpent = totMats + totLabor + totOverhead;
-    const totCover = _srcExp.filter(e => _kpiProjIdSet.has(e.projectId) && (e.coverExpense || _kpiPresProjIds.has(e.projectId))).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0)
-                   + _srcPay.filter(p => _kpiPresProjIds.has(p.projectId)).reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
-
-    const coverPctOfBudget = totReceived > 0 ? (totCover / totReceived) * 100 : 0;
-    // Funds Available = Allocated − Spent. (The old "Budget Remaining" was
-    // contract − spent, which treats the whole contract as spendable — i.e. a
-    // planned margin of zero. The old "Receivable Balance" was just the
-    // complement of the Fund Allocated card's %, so it's gone.)
-    const fundsAvail       = totReceived - totSpent;
-    const fundsAvailPct    = totReceived > 0 ? (fundsAvail / totReceived) * 100 : 0;
-    const utilizedPct      = totReceived > 0 ? (totSpent / totReceived) * 100 : 0;
-    const contractUsedPct  = contract > 0 ? (totSpent / contract) * 100 : 0;
-    const rcvOfContract    = contract > 0 ? (totReceived / contract) * 100 : 0;
-    const txCount          = _srcExp.filter(e => _kpiProjIdSet.has(e.projectId)).length;
-    const workerCount      = new Set(_srcPay.filter(p => _kpiProjIdSet.has(p.projectId)).map(p => p.workerName || p.id)).size;
-
-    // Build a standard KPI card: label / big value / sub / optional extra class.
-    // White card design — BAD/WARNING are conveyed by the value color (CSS) +
-    // the status word in the sub, not by flooding the whole card.
-    function _card(label, val, sub, cls) {
-        return '<div class="rpt-kpi-card' + (cls ? ' ' + cls : '') + '">'
-            + '<div class="rpt-kpi-label">' + label + '</div>'
-            + '<div class="rpt-kpi-val">'   + val   + '</div>'
-            + '<div class="rpt-kpi-sub">'   + sub   + '</div>'
-            + '</div>';
-    }
-
-    const staffOnly = window.currentUserRole === 'staff';
-    let html = '';
-
-    // Section heading: a small caption + hairline, so the strip reads as three
-    // stories (what came in / where it went / what's left) instead of 8 tiles.
-    const _group = (title) =>
-        '<div class="rpt-group"><span class="rpt-group-title">' + title + '</span><span class="rpt-group-rule"></span></div>';
-    // Big card with an icon chip (Contract & Funding).
-    const _cardIco = (label, val, sub, icon) =>
-        '<div class="rpt-kpi-card rpt-kpi-card--lg">'
-        + '<div class="rpt-kpi-ico"><i data-lucide="' + icon + '"></i></div>'
-        + '<div class="rpt-kpi-label">' + label + '</div>'
-        + '<div class="rpt-kpi-val">' + val + '</div>'
-        + '<div class="rpt-kpi-sub">' + sub + '</div>'
-        + '</div>';
-    // Compact card with a colour dot that matches its series in the charts.
-    const _cardDot = (label, val, sub, dot, cls, badge) =>
-        '<div class="rpt-kpi-card rpt-kpi-card--sm' + (cls ? ' ' + cls : '') + '">'
-        + '<div class="rpt-kpi-dotrow">'
-        +   '<span class="rpt-kpi-dot" style="background:' + dot + '"></span>'
-        +   '<span class="rpt-kpi-label">' + label + '</span>'
-        +   (badge ? '<span class="rpt-kpi-flag">' + badge + '</span>' : '')
-        + '</div>'
-        + '<div class="rpt-kpi-val">' + val + '</div>'
-        + '<div class="rpt-kpi-sub">' + sub + '</div>'
-        + '</div>';
-    const _bar = (pct, color, track) =>
-        '<div class="rpt-kpi-bar" style="background:' + track + '"><div class="rpt-kpi-bar-fill" style="width:'
-        + Math.max(Math.min(Math.abs(pct), 100), 2).toFixed(1) + '%;background:' + color + '"></div></div>';
-
-    if (!staffOnly) {
-        // ── Contract & Funding: what the job is worth, what's been funded ──
-        html += _group('Contract &amp; Funding');
-        html += '<div class="rpt-grid rpt-grid-2">'
-            + _cardIco('Project Budget', '&#8369;' + formatNum(contract),
-                contractLabel + ' &middot; ' + _rptState.year, 'wallet')
-            + _cardIco('Fund Allocated', '&#8369;' + formatNum(totReceived),
-                activePeriodsCount + ' billing period' + (activePeriodsCount !== 1 ? 's' : '')
-                + ' &middot; ' + rcvOfContract.toFixed(1) + '% of contract', 'banknote')
-            + '</div>';
-
-        // ── Spending Breakdown: the three cost buckets + the exception ──
-        const coverState = coverPctOfBudget >= 5 ? 'BAD' : coverPctOfBudget >= 2 ? 'WARNING' : 'HEALTHY';
-        const coverCls   = coverPctOfBudget >= 5 ? 'rpt-kpi-card--bad' : coverPctOfBudget >= 2 ? 'rpt-kpi-card--warn' : '';
-        html += _group('Spending Breakdown');
-        html += '<div class="rpt-grid rpt-grid-4">'
-            + _cardDot('Materials &amp; Costs', '&#8369;' + formatNum(totMats),
-                (totReceived > 0 ? ((totMats / totReceived) * 100).toFixed(1) : '0.0') + '% of allocated budget', '#157a52')
-            + _cardDot('Labor &amp; Payroll', '&#8369;' + formatNum(totLabor),
-                (totReceived > 0 ? ((totLabor / totReceived) * 100).toFixed(1) : '0.0') + '% of allocated budget', '#7f9cb0')
-            + _cardDot('Overhead', '&#8369;' + formatNum(totOverhead),
-                '&#8369;' + formatNum(totIndirect) + ' indirect labor &middot; &#8369;' + formatNum(totOvhdExp) + ' operating', '#c8a45a')
-            // Cover is a slice of the three cards to its left, not a fourth bucket —
-            // the sub-line says so, so nobody adds it to Total Fund Spent again.
-            + _cardDot('Cover Expenses', '&#8369;' + formatNum(totCover),
-                coverPctOfBudget.toFixed(1) + '% of allocated budget &middot; included above', '#b4453a', coverCls, coverState)
-            + '</div>';
-
-        // ── Totals & Balance: the two numbers the owner actually acts on ──
-        html += _group('Totals &amp; Balance');
-        html += '<div class="rpt-grid rpt-grid-2">'
-            // Total spent — dark card, utilisation bar
-            + '<div class="rpt-kpi-card rpt-kpi-card--dark">'
-            +   '<div class="rpt-kpi-dotrow">'
-            +     '<span class="rpt-kpi-ico rpt-kpi-ico--dark"><i data-lucide="trending-down"></i></span>'
-            +     '<span class="rpt-kpi-label">Total Fund Spent</span>'
-            +   '</div>'
-            +   '<div class="rpt-kpi-val">&#8369;' + formatNum(totSpent) + '</div>'
-            +   _bar(utilizedPct, '#157a52', '#dcebe3')
-            +   '<div class="rpt-kpi-sub">Labor + Materials + Overhead &middot; <strong>' + utilizedPct.toFixed(1)
-            +     '%</strong> utilized &middot; ' + contractUsedPct.toFixed(1) + '% of contract</div>'
-            + '</div>'
-            // Funds available — green card, remaining bar
-            + '<div class="rpt-kpi-card rpt-kpi-card--avail' + (fundsAvail < 0 ? ' rpt-kpi-card--over' : '') + '">'
-            +   '<div class="rpt-kpi-dotrow">'
-            +     '<span class="rpt-kpi-label">Funds Available</span>'
-            +     '<span class="rpt-kpi-pill">' + (totReceived > 0 ? fundsAvailPct.toFixed(1) + '% of allocated' : 'Nothing allocated yet') + '</span>'
-            +   '</div>'
-            +   '<div class="rpt-kpi-cap">Allocated &minus; Spent</div>'
-            +   '<div class="rpt-kpi-val">' + (fundsAvail < 0 ? '-' : '') + '&#8369;' + formatNum(Math.abs(fundsAvail)) + '</div>'
-            +   _bar(fundsAvailPct, fundsAvail < 0 ? '#b4453a' : '#157a52', fundsAvail < 0 ? '#f0d3cf' : '#dcebe3')
-            +   '<div class="rpt-kpi-sub">' + (fundsAvail < 0 ? 'overspent beyond allocated funds' : 'available to spend') + '</div>'
-            + '</div>'
-            + '</div>';
-    } else {
-        html += '<div class="rpt-grid rpt-grid-4">'
-            + _cardDot('Materials &amp; Costs', '&#8369;' + formatNum(totMats), txCount + ' transaction' + (txCount !== 1 ? 's' : ''), '#157a52')
-            + _cardDot('Labor &amp; Payroll', '&#8369;' + formatNum(totLabor), workerCount + ' worker' + (workerCount !== 1 ? 's' : ''), '#7f9cb0')
-            + _cardDot('Total Fund Spent', '&#8369;' + formatNum(totSpent), contractUsedPct.toFixed(1) + '% of contract value', '#1c2b23')
-            + '</div>';
-    }
-
-    row.innerHTML = html;
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    if (!_pcIsOwner() || !model.totals) { row.innerHTML = ''; row.style.display = 'none'; return; }
+    row.style.display = '';
+    const t = model.totals;
+    const contract = expFolders.filter(f => _pcReportFolderIds(_rptState.folderId).has(f.id))
+        .reduce((s, f) => s + (Number(f.totalBudget) || 0), 0);
+    const cards = [['Project Budget',contract], ['Fund Allocated',t.budget], ['Materials',t.mats],
+        ['Labor',t.labor], ['Overhead',t.overhead], ['Total Fund Spent',t.totalSpent],
+        ['Funds Available',t.remaining], ['Cover Expenses',t.cover]];
+    row.innerHTML = '<div class="rpt-grid rpt-grid-4">' + cards.map(([label, value]) =>
+        '<div class="rpt-kpi-card"><div class="rpt-kpi-label">' + label + '</div><div class="rpt-kpi-val">'
+        + _pcReportMoney(value) + '</div>' + (label === 'Cover Expenses'
+            ? '<div class="rpt-kpi-sub">included above</div>' : '') + '</div>').join('') + '</div>';
 }
 
 // ════════════════════════════════════════════════════════════
@@ -5217,7 +5250,7 @@ function _rptRenderTrendChart(groups) {
     const titleMap = { weekly:'Weekly Spending Trend', monthly:'Monthly Spending Trend',
         quarterly:'Quarterly Spending Trend', semi:'Semi-Annual Spending Trend', annual:'Annual Overview' };
     setText('rptTrendTitle',    titleMap[_rptState.period] || 'Spending Trend');
-    setText('rptTrendSubtitle', 'Materials vs Labor · dashed line = allocated budget');
+    setText('rptTrendSubtitle', 'Materials, Labor and Overhead · dashed line = allocated budget');
 
     if (_rptCharts.trend) _rptCharts.trend.destroy();
     _rptCharts.trend = new Chart(ctx, {
@@ -5230,6 +5263,9 @@ function _rptRenderTrendChart(groups) {
                   borderRadius:5, stack:'spend' },
                 { label:'Labor & Payroll',   data:laborData,
                   backgroundColor:'#7f9cb0', borderWidth:0,
+                  borderRadius:5, stack:'spend' },
+                { label:'Overhead', data:groups.map(g => g.overhead),
+                  backgroundColor:'#c8a45a', borderWidth:0,
                   borderRadius:5, stack:'spend' },
                 { label:'Budget Allocated',  data:budgetData, type:'line',
                   borderColor:'#c39e8b', backgroundColor:'transparent',
@@ -5254,16 +5290,17 @@ function _rptRenderTrendChart(groups) {
     });
 }
 
-function _rptRenderCompositionChart() {
+function _rptRenderCompositionChart(model) {
     const ctx = document.getElementById('rptCompositionChart');
     if (!ctx) return;
     const cats = {};
     expCategories.forEach(c => { cats[c.name] = 0; });
-    _rptState.allExpenses.forEach(e => {
+    model.expenses.forEach(e => {
         const k = e.category || 'Others';
         cats[k] = (cats[k] || 0) + (e.amount || 0);
     });
-    cats['Payroll'] = _rptState.allPayroll.reduce((s,p) => s+(p.totalSalary||0), 0);
+    cats['Labor'] = model.totals.labor;
+    cats['Overhead'] = model.totals.overhead;
     const labels = Object.keys(cats).filter(k => cats[k] > 0);
     const data   = labels.map(k => cats[k]);
     const RPT_DONUT = ['#157a52','#7f9cb0','#c8a45a','#9fb98a','#d3cdc2','#b0907f','#a8a79f'];
@@ -5315,18 +5352,19 @@ function _rptRenderBvaChart(groups) {
     });
 }
 
-function _rptRenderCategoryChart() {
+function _rptRenderCategoryChart(model) {
     const ctx = document.getElementById('expCategoryChart');
     if (!ctx) return;
     const cats = {};
     expCategories.forEach(c => { cats[c.name] = 0; });
     cats['Payroll'] = 0;
-    _rptState.allExpenses.forEach(e => {
+    model.expenses.forEach(e => {
         const k = e.category || 'Others';
         if (!(k in cats)) cats[k] = 0;
         cats[k] += (e.amount || 0);
     });
-    cats['Payroll'] = _rptState.allPayroll.reduce((s,p) => s+(p.totalSalary||0), 0);
+    cats['Labor'] = model.totals.labor;
+    cats['Overhead'] = model.totals.overhead;
     const labels = Object.keys(cats).filter(k => cats[k] > 0);
     const data   = labels.map(k => cats[k]);
     const RPT_DONUT = ['#157a52','#7f9cb0','#c8a45a','#9fb98a','#d3cdc2','#b0907f','#a8a79f'];
@@ -5349,192 +5387,62 @@ function _rptRenderCategoryChart() {
 // ════════════════════════════════════════════════════════════
 // REPORT TABLE
 // ════════════════════════════════════════════════════════════
-function _rptRenderTable(groups) {
+function _rptRenderTable(groups, model) {
     const tbody = document.getElementById('rptSummaryTbody');
     if (!tbody) return;
-
-    const titleMap = { weekly:'Weekly Breakdown', monthly:'Monthly Breakdown',
-        quarterly:'Quarterly Breakdown', semi:'Semi-Annual Breakdown', annual:'Annual Summary' };
-    const subMap = { weekly:`ISO weeks · ${_rptState.year}`, monthly:`All months · ${_rptState.year}`,
-        quarterly:`Q1–Q4 · ${_rptState.year}`, semi:`H1 & H2 · ${_rptState.year}`,
-        annual:`Full year summary · ${_rptState.year}` };
-    setText('rptTableTitle',    titleMap[_rptState.period] || 'Period Breakdown');
-    setText('rptTableSubtitle', subMap[_rptState.period]   || '');
-
-    if (!groups.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="exp-empty-row">No data for this period.</td></tr>';
-        return;
-    }
-
-    const _badge = s => {
-        const map = {
-            healthy: ['Healthy',     'rpt-badge-healthy'],
-            ontrack: ['On Track',    'rpt-badge-ontrack'],
-            warning: ['Near Limit',  'rpt-badge-warning'],
-            danger:  ['Over Budget', 'rpt-badge-danger']
-        };
-        const [label, cls] = map[s] || map.healthy;
-        return `<span class="rpt-status-badge ${cls}">${label}</span>`;
-    };
-
-    const _bar = pct => {
-        const c = Math.min(pct, 100);
-        const col = pct > 100 ? '#ef4444' : pct > 85 ? '#f59e0b' : '#059669';
-        return `<div class="rpt-inline-bar"><div class="rpt-inline-fill" style="width:${c.toFixed(1)}%;background:${col}"></div></div>`;
-    };
-
-    const active = groups.filter(g => g.budget > 0 || g.totalSpent > 0);
-    const empty  = groups.filter(g => g.budget === 0 && g.totalSpent === 0);
-
-    let html = active.map(g => `
-        <tr>
-            <td data-label="Period"><strong>${g.label}</strong>${g.txCount ? `<span class="rpt-row-meta">${g.txCount} tx · ${g.workerCount} worker${g.workerCount!==1?'s':''}</span>` : ''}</td>
-            <td data-label="Budget Allocated">₱${formatNum(g.budget)}</td>
-            <td data-label="Materials & Costs">₱${formatNum(g.mats)}</td>
-            <td data-label="Labor & Payroll">₱${formatNum(g.labor)}</td>
-            <td data-label="Current Fund Spent"><strong>₱${formatNum(g.totalSpent)}</strong></td>
-            <td data-label="Remaining" class="${g.remaining < 0 ? 'rpt-cell-over' : 'rpt-cell-ok'}">
-                ${g.remaining < 0 ? '▲ ' : ''}₱${formatNum(Math.abs(g.remaining))}
-            </td>
-            <td data-label="% Utilized">
-                <div class="rpt-pct-cell">
-                    <span class="rpt-pct-num">${g.usedPct.toFixed(1)}%</span>
-                    ${_bar(g.usedPct)}
-                </div>
-            </td>
-            <td data-label="Status">${_badge(g.status)}</td>
-        </tr>`).join('');
-
-    // Collapsed empty periods row
-    if (empty.length) {
-        html += `<tr class="rpt-row-empty-periods">
-            <td colspan="8" class="rpt-empty-periods-cell">
-                <span class="rpt-empty-periods-label">⬜ ${empty.length} period${empty.length>1?'s':''} with no budget or activity: ${empty.map(g=>g.shortLabel).join(', ')}</span>
-            </td>
-        </tr>`;
-    }
-
-    // Totals row
-    const tB = active.reduce((s,g) => s+g.budget, 0);
-    const tM = active.reduce((s,g) => s+g.mats, 0);
-    const tL = active.reduce((s,g) => s+g.labor, 0);
-    const tS = active.reduce((s,g) => s+g.totalSpent, 0);
-    const tR = tB - tS;
-    const tP = tB > 0 ? (tS/tB)*100 : 0;
-    const tStatus = tP > 100 ? 'danger' : tP > 85 ? 'warning' : tP > 60 ? 'ontrack' : 'healthy';
-    html += `
-        <tr class="rpt-totals-row">
-            <td data-label="Period"><strong>TOTAL</strong></td>
-            <td data-label="Budget Allocated"><strong>₱${formatNum(tB)}</strong></td>
-            <td data-label="Materials & Costs"><strong>₱${formatNum(tM)}</strong></td>
-            <td data-label="Labor & Payroll"><strong>₱${formatNum(tL)}</strong></td>
-            <td data-label="Current Fund Spent"><strong>₱${formatNum(tS)}</strong></td>
-            <td data-label="Remaining" class="${tR < 0 ? 'rpt-cell-over' : 'rpt-cell-ok'}"><strong>${tR < 0 ? '▲ ' : ''}₱${formatNum(Math.abs(tR))}</strong></td>
-            <td data-label="% Utilized">
-                <div class="rpt-pct-cell">
-                    <span class="rpt-pct-num"><strong>${tP.toFixed(1)}%</strong></span>
-                    <div class="rpt-inline-bar"><div class="rpt-inline-fill" style="width:${Math.min(tP,100).toFixed(1)}%;background:${tP>100?'#ef4444':tP>85?'#f59e0b':'#059669'}"></div></div>
-                </div>
-            </td>
-            <td data-label="Status">${_badge(tStatus)}</td>
-        </tr>`;
-
-    tbody.innerHTML = html;
+    const owner = _pcIsOwner();
+    const rows = owner ? groups.filter(g => g.budget || g.totalSpent).concat([model.totals]) : groups;
+    const headers = ['Period','Fund Allocated','Materials','Labor','Overhead','Spent','Remaining','Utilized'];
+    const head = document.getElementById('rptSummaryHead');
+    if (head) head.innerHTML = '<tr>' + (owner ? headers : ['Period']).map(h => '<th scope="col">' + h + '</th>').join('') + '</tr>';
+    tbody.innerHTML = rows.map(g => '<tr><th scope="row">' + _mvpEsc(g.label) + '</th>'
+        + (owner ? [g.budget,g.mats,g.labor,g.overhead,g.totalSpent,g.remaining].map(n => '<td>' + _pcReportMoney(n) + '</td>').join('')
+            + '<td>' + g.usedPct.toFixed(1) + '%</td>' : '') + '</tr>').join('');
 }
 
 // ════════════════════════════════════════════════════════════
 // CSV EXPORT
 // ════════════════════════════════════════════════════════════
 function exportRptTable() {
-    if (!_rptState.projects?.length) { showExpNotif('No report data to export.', 'error'); return; }
-
-    let groups = _computePeriodGroups(_rptState.period, _rptState.year,
-        _rptState.projects, _rptState.allExpenses, _rptState.allPayroll);
-    if (_rptState.period === 'annual' && groups.length === 1) {
-        groups = _rptAllTimeGroups(groups);
+    if (_pcEnsureReportOverhead(exportRptTable)) return;
+    const report = _pcDashboardReport();
+    const model = report.model;
+    const csvRow = values => values.map(v => {
+        let text = v == null ? '' : typeof v === 'number' ? v.toFixed(2) : String(v);
+        if (typeof v !== 'number' && /^[\s\u0000-\u001f]*[=+@-]/.test(text)) text = "'" + text;
+        return '"' + text.replace(/"/g, '""') + '"';
+    }).join(',');
+    const rows = [['PERIOD SUMMARY']];
+    if (_pcIsOwner()) {
+        rows.push(['Period','Fund Allocated','Materials','Labor','Overhead','Spent','Remaining','Utilized']);
+        report.groups.filter(g => g.budget || g.totalSpent).concat([model.totals]).forEach(g => rows.push([
+            g.label,g.budget,g.mats,g.labor,g.overhead,g.totalSpent,g.remaining,g.usedPct.toFixed(1) + '%']));
+        rows.push([], ['BILLING ALLOCATION PERFORMANCE'], _PC_REPORT_HEADERS);
+        model.rows.forEach(r => rows.push(_pcReportCells(r)));
+        if (model.totals.unallocatedIndirect) rows.push(_pcReportCells({ label:'Unallocated Indirect',
+            overhead:model.totals.unallocatedIndirect,totalSpent:model.totals.unallocatedIndirect,
+            remaining:-model.totals.unallocatedIndirect,status:'Unallocated Indirect' }));
+        const a = model.allocation;
+        rows.push(_pcReportCells({ ...model.totals, allocation:a.configuredCount ? { ...a,
+            directRemaining:a.directBudget-a.directActual, indirectRemaining:a.indirectBudget-a.indirectActual } : null }));
+        rows.push([], ['EXPENSE DETAIL'], ['Date','Period','Expense Name','Category','Notes','Qty','Amount']);
+        model.expenses.forEach(e => rows.push([e.dateTime || '',model.rows.find(p => p.id === e.projectId)?.label || '',
+            e.expenseName || '',e.category || '',e.notes || '',String(e.quantity || 1),Number(e.amount) || 0]));
+        rows.push([], ['PAYROLL DETAIL'], ['Date','Period','Worker Name','Role','Notes','Days','Daily Rate','Total Salary']);
+        model.payroll.forEach(p => rows.push([p.paymentDate || '',model.rows.find(r => r.id === p.projectId)?.label || '',
+            p.workerName || '',p.role || '',p.notes || '',String(p.daysWorked || 0),Number(p.dailyRate) || 0,Number(p.totalSalary) || 0]));
+        rows.push([], ['PROJECT OVERHEAD'], ['Date','Billing Period','Category','Description','Amount']);
+        model.overheadRows.forEach(e => rows.push([e.date || '',model.rows.find(p => p.id === e.billingPeriodId && p.folderId === e.folderId)?.label || 'Unallocated Indirect',
+            e.category || '',e.description || '',Number(e.amount) || 0]));
+    } else {
+        rows.push(['Billing Period','Status']);
+        model.rows.forEach(r => rows.push([r.label,r.status]));
     }
-
-    // Derive a sensible file name
-    const folderIds = [...new Set(_rptState.projects.map(p => p.folderId).filter(Boolean))];
-    const firstFolder = folderIds.length === 1 ? expFolders.find(f => f.id === folderIds[0]) : null;
-    const reportName = (firstFolder?.name || 'DACs-Report').replace(/\s+/g, '-');
-
-    const esc = v => String(v == null ? '' : v).replace(/"/g, '""');
-    const row = arr => arr.map(c => '"' + esc(c) + '"').join(',');
-
-    let csv = '\uFEFF'; // BOM for Excel
-
-    // Section 1: Period Summary
-    csv += 'PERIOD SUMMARY\n';
-    csv += row(['Period','Total Fund Allocated','Materials & Costs','Labor & Payroll',
-                'Current Fund Spent','Remaining','% Utilized','Status','Transactions','Workers']) + '\n';
-    groups.forEach(g => {
-        csv += row([
-            g.label,
-            g.budget.toFixed(2), g.mats.toFixed(2), g.labor.toFixed(2),
-            g.totalSpent.toFixed(2), g.remaining.toFixed(2),
-            g.usedPct.toFixed(1) + '%', g.status, g.txCount, g.workerCount
-        ]) + '\n';
-    });
-    const tB = groups.reduce((s,g) => s + g.budget, 0);
-    const tM = groups.reduce((s,g) => s + g.mats, 0);
-    const tL = groups.reduce((s,g) => s + g.labor, 0);
-    const tS = groups.reduce((s,g) => s + g.totalSpent, 0);
-    csv += row(['TOTAL', tB.toFixed(2), tM.toFixed(2), tL.toFixed(2),
-                tS.toFixed(2), (tB - tS).toFixed(2),
-                (tB > 0 ? (tS / tB) * 100 : 0).toFixed(1) + '%', '', '', '']) + '\n';
-
-    // Section 2: Expense Detail
-    csv += '\nEXPENSE DETAIL\n';
-    csv += row(['Date','Project','Category','Expense Name','Notes / Detail','Qty','Amount']) + '\n';
-    const sortedExp = [..._rptState.allExpenses]
-        .sort((a, b) => new Date(b.dateTime || 0) - new Date(a.dateTime || 0));
-    sortedExp.forEach(e => {
-        const proj = _rptState.projects.find(p => p.id === e.projectId);
-        csv += row([
-            e.dateTime ? new Date(e.dateTime).toLocaleString() : '',
-            proj ? proj.month + ' ' + proj.year : '',
-            e.category || '',
-            e.expenseName || '',
-            e.notes || '',
-            e.quantity || 1,
-            (e.amount || 0).toFixed(2)
-        ]) + '\n';
-    });
-    const expTotal = _rptState.allExpenses.reduce((s, e) => s + (e.amount || 0), 0);
-    csv += row(['', '', '', '', '', 'TOTAL', expTotal.toFixed(2)]) + '\n';
-
-    // Section 3: Payroll Detail
-    csv += '\nPAYROLL DETAIL\n';
-    csv += row(['Date','Project','Worker Name','Role','Notes / Detail','Days','Daily Rate','Total Salary']) + '\n';
-    const sortedPay = [..._rptState.allPayroll]
-        .sort((a, b) => new Date(b.paymentDate || 0) - new Date(a.paymentDate || 0));
-    sortedPay.forEach(p => {
-        const proj = _rptState.projects.find(pr => pr.id === p.projectId);
-        csv += row([
-            p.paymentDate ? new Date(p.paymentDate).toLocaleString() : '',
-            proj ? proj.month + ' ' + proj.year : '',
-            p.workerName || '',
-            p.role || '',
-            p.notes || '',
-            p.daysWorked || 0,
-            (p.dailyRate || 0).toFixed(2),
-            (p.totalSalary || 0).toFixed(2)
-        ]) + '\n';
-    });
-    const payTotal = _rptState.allPayroll.reduce((s, p) => s + (p.totalSalary || 0), 0);
-    csv += row(['', '', '', '', '', '', 'TOTAL', payTotal.toFixed(2)]) + '\n';
-
-    // Trigger download
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = reportName + '_' + _rptState.period + '_' + _rptState.year + '.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const csv = '\uFEFF' + rows.map(csvRow).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type:'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'DACs-Report_' + _rptState.period + '_' + report.label + '.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
     showExpNotif('CSV exported successfully!', 'success');
 }
 
@@ -5695,561 +5603,80 @@ function printTransactionReceipt(type, id) {
 // the Expenses module's own print buttons pass nothing and fall back to whatever
 // that module has selected. Without the argument a print launched from Project
 // Control used the Expenses selection instead, so it reported a different job.
+function _pcReportDetails(model) {
+    if (!_pcIsOwner()) return '';
+    const period = id => model.rows.find(p => p.id === id)?.label || '';
+    return _pcReportTable(['Date','Billing Period','Expense','Category','Notes','Qty','Amount'], model.expenses.map(e => [
+        e.dateTime || '',period(e.projectId),e.expenseName || '',e.category || '',e.notes || '',String(e.quantity || 1),Number(e.amount) || 0]), 'Expense Detail')
+        + _pcReportTable(['Date','Billing Period','Worker','Role','Notes','Days','Daily Rate','Salary'], model.payroll.map(p => [
+            p.paymentDate || '',period(p.projectId),p.workerName || '',p.role || '',p.notes || '',String(p.daysWorked || 0),Number(p.dailyRate) || 0,Number(p.totalSalary) || 0]), 'Payroll Detail')
+        + _pcReportTable(['Date','Billing Period','Category','Description','Amount'], model.overheadRows.map(e => [
+            e.date || '',model.rows.find(p => p.id === e.billingPeriodId && p.folderId === e.folderId)?.label || 'Unallocated Indirect',
+            e.category || '',e.description || '',Number(e.amount) || 0]), 'Project Overhead');
+}
+
+function _pcPrintReport(title, model, groups) {
+    const owner = _pcIsOwner();
+    let body = '';
+    if (owner && model.totals) {
+        const t = model.totals;
+        body += _pcReportTable(['Fund Allocated','Materials','Labor','Overhead','Spent','Funds Available'],
+            [[t.budget,t.mats,t.labor,t.overhead,t.totalSpent,t.remaining]], 'Actual Costs');
+        if (groups) body += _pcReportTable(['Period','Fund Allocated','Materials','Labor','Overhead','Spent','Remaining'],
+            groups.filter(g => g.budget || g.totalSpent).concat([t]).map(g => [g.label,g.budget,g.mats,g.labor,g.overhead,g.totalSpent,g.remaining]), 'Period Summary');
+        body += _pcAllocationReportHtml(model) + _pcReportDetails(model);
+    } else body = _pcReportTable(['Billing Period','Status'], model.rows.map(r => [r.label,r.status]), 'Billing Summary');
+    const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>' + _mvpEsc(title)
+        + '</title><style>body{font:12px Arial,sans-serif;color:#17251e;margin:24px}header{border-bottom:2px solid #157a52;margin-bottom:20px}'
+        + 'h1{font-size:20px;overflow-wrap:anywhere}h2{font-size:15px}.pc-report-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:18px 0}'
+        + 'caption{text-align:left;font-size:15px;font-weight:700;margin-bottom:8px}th,td{padding:6px 4px;border-bottom:1px solid #cbd5d1;text-align:right;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}'
+        + 'th:first-child,td:first-child{text-align:left}thead{display:table-header-group}thead th{background:#edf4ef;font-size:10px}tr{break-inside:avoid}'
+        + '.pc-report-note{font-size:11px}button{margin:12px 0;padding:8px 14px}@page{size:A4 landscape;margin:12mm}'
+        + '@media print{body{margin:0;font-size:9px}button{display:none}.pc-report-scroll{overflow:visible}thead th{font-size:8px}caption{break-after:avoid}}</style></head><body>'
+        + '<header><h2>DAC\'s Building Design Services</h2><h1>' + _mvpEsc(title) + '</h1><p>Billing Summary · '
+        + _mvpEsc(new Date().toLocaleDateString('en-PH')) + '</p></header>' + body
+        + '<button onclick="window.print()">Print</button></body></html>';
+    const win = window.open('', '_blank');
+    if (!win) { showExpNotif('Allow pop-ups to print this report.', 'error'); return; }
+    win.document.write(html); win.document.close();
+    win.onload = () => { win.focus(); win.print(); };
+}
+
 function printFullBillingSummary(folderId) {
-    const _prtBaseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
-    const fid    = folderId || expCurrentFolder?.id || expCurrentProject?.folderId;
-    const projects = fid
-        ? expProjects.filter(p => p.folderId === fid)
-        : (expCurrentProject ? [expCurrentProject] : []);
-
-    if (!projects.length) {
-        showExpNotif(fid
-            ? 'This project has no billing periods yet — nothing to summarise.'
-            : 'No billing data to print.', 'error');
-        return;
-    }
-
-    const folderObj = fid ? expFolders.find(f => f.id === fid) : null;
-    const title     = folderObj ? folderObj.name : (expCurrentProject ? expCurrentProject.month + ' ' + expCurrentProject.year : 'Billing Summary');
-    const contractVal = folderObj?.totalBudget || 0;
-
-    const typeOrder = ['mobilization','downpayment','progress','final','president'];
-    const typeInfo  = {
-        mobilization: { label: 'Mobilization',       letter: 'A' },
-        downpayment:  { label: 'Downpayment',         letter: 'B' },
-        progress:     { label: 'Progress Billing',    letter: 'C' },
-        final:        { label: 'Final Payment',       letter: 'D' },
-        president:    { label: 'Cover Expenses',      letter: 'E' },
-    };
-
-    const sorted = [...projects].sort((a, b) => {
-        const ai = typeOrder.indexOf(a.fundingType || 'downpayment');
-        const bi = typeOrder.indexOf(b.fundingType || 'downpayment');
-        if (ai !== bi) return ai - bi;
-        return (a.billingNumber || 0) - (b.billingNumber || 0);
-    });
-
-    const totalReceived = sorted.filter(p => p.fundingType !== 'president').reduce((s, p) => s + (p.monthlyBudget || 0), 0);
-    const totalSpent    = sorted.reduce((s, p) => s + (p._spent || 0), 0);
-    let   grandBalance  = 0;
-
-    // Group by funding type for BOQ-style sections
-    const sections = {};
-    sorted.forEach(p => {
-        const ft = p.fundingType || 'downpayment';
-        if (!sections[ft]) sections[ft] = [];
-        sections[ft].push(p);
-    });
-
-    let itemNo = 1;
-    let bodyRows = '';
-    // Column totals for the footer. The grand-total row sits under MATERIAL &
-    // CONSUMABLES and LABOR & EQUIPMENT, so it has to total those columns —
-    // it used to repeat Received/Spent there, which no column added up to.
-    let matGrand = 0;
-    let labGrand = 0;
-
-    typeOrder.forEach(ft => {
-        if (!sections[ft]) return;
-        const info    = typeInfo[ft];
-        const isCover = ft === 'president';
-        const sectionItems = sections[ft];
-        const sectionTotal = sectionItems.reduce((s, p) => {
-            const recv  = isCover ? 0 : (p.monthlyBudget || 0);
-            const spent = p._spent || 0;
-            return s + (isCover ? spent : recv);
-        }, 0);
-
-        // Section header row (red background like BOQ)
-        const sectionLabel = ft === 'president' ? 'COVER EXPENSES' : info.label.toUpperCase() + (ft === 'progress' ? 'S' : '');
-        bodyRows += `<tr class="sec-hdr">
-            <td colspan="2" style="font-weight:800;font-size:0.82rem;letter-spacing:0.04em">${sectionLabel}</td>
-            <td></td><td></td><td></td><td></td>
-            <td style="text-align:right;font-weight:800">₱${formatNum(sectionTotal)}</td>
-        </tr>`;
-
-        sectionItems.forEach((p, idx) => {
-            const recv  = isCover ? 0 : (p.monthlyBudget || 0);
-            const spent = p._spent || 0;
-            const bal   = isCover ? -spent : recv - spent;
-            grandBalance += bal;
-
-            // Read the ALL-projects fetch, not expExpenses/expPayroll — those are
-            // listeners scoped to the one billing period open in the Expenses
-            // module (see subscribeExpenses), so every other row printed "—" and
-            // the columns came up short against Current Fund Spent. These are the
-            // same arrays _spent is derived from, so mat + lab now reconciles
-            // with the balance column exactly.
-            const _srcExp = _ovAllExpenses.length ? _ovAllExpenses : expExpenses;
-            const _srcPay = _ovAllPayroll.length  ? _ovAllPayroll  : expPayroll;
-            const projExp = _srcExp.filter(e => e.projectId === p.id);
-            const projPay = _srcPay.filter(r => r.projectId === p.id);
-            const matCost = projExp.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-            const labCost = projPay.reduce((s, r) => s + (parseFloat(r.totalSalary) || 0), 0);
-            matGrand += matCost;
-            labGrand += labCost;
-
-            const subLabel = ft === 'progress'
-                ? `Progress Billing #${p.billingNumber || (idx + 1)}`
-                : info.label;
-            const balColor = bal > 0 ? '#166534' : bal < 0 ? '#991b1b' : '#6b7280';
-            const balBg    = bal > 0 ? '#dcfce7'  : bal < 0 ? '#fee2e2'  : '#f3f4f6';
-
-            bodyRows += `<tr class="data-row">
-                <td style="text-align:center;color:#6b7280">${itemNo++}</td>
-                <td>
-                    <div style="font-weight:700;font-size:0.85rem">${subLabel}</div>
-                    <div style="font-size:0.72rem;color:#9ca3af;margin-top:1px">${p.month} ${p.year}</div>
-                </td>
-                <td style="text-align:center">1</td>
-                <td style="text-align:center">lot</td>
-                <td style="text-align:right">${matCost > 0 ? '₱' + formatNum(matCost) : '—'}</td>
-                <td style="text-align:right">${labCost > 0 ? '₱' + formatNum(labCost) : '—'}</td>
-                <td style="text-align:right;font-weight:700">
-                    <span style="background:${balBg};color:${balColor};padding:2px 8px;border-radius:4px;font-size:0.82rem">
-                        ${bal < 0 ? '-' : bal > 0 ? '+' : ''}₱${formatNum(Math.abs(bal))}
-                    </span>
-                </td>
-            </tr>`;
-        });
-
-        // Subtotal row per section
-
-        bodyRows += `<tr class="subtotal-row">
-            <td colspan="4" style="text-align:right;font-size:0.75rem;font-weight:700;color:#6b7280;letter-spacing:0.04em">SUBTOTAL — ${sectionLabel}:</td>
-            <td></td><td></td>
-            <td style="text-align:right;font-weight:800">₱${formatNum(sectionTotal)}</td>
-        </tr>`;
-    });
-
-    const gColor  = grandBalance > 0 ? '#166534' : grandBalance < 0 ? '#991b1b' : '#374151';
-    const gBg     = grandBalance > 0 ? '#dcfce7'  : grandBalance < 0 ? '#fee2e2'  : '#f3f4f6';
-    const printDate = new Date().toLocaleString('en-PH', { year:'numeric', month:'long', day:'numeric', hour:'numeric', minute:'2-digit', hour12:true });
-
-    const html = `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8">
-<title>Billing Summary — ${title}</title>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:'Segoe UI',Arial,sans-serif; background:#f0f0f0; color:#1a1a1a; font-size:13px; }
-  .page { max-width:820px; margin:20px auto; background:#fff; box-shadow:0 2px 16px rgba(0,0,0,0.15); }
-  /* -- Company Header -- */
-  .co-header { padding:20px 28px 0; }
-  /* -- Project Info Bar -- */
-  .proj-bar { background:#f8f9fa; border-bottom:3px solid #e5c100; padding:10px 24px; display:flex; justify-content:space-between; align-items:center; }
-  .proj-name { font-size:1rem; font-weight:800; color:#1a1a1a; }
-  .proj-meta { font-size:0.72rem; color:#6b7280; margin-top:2px; }
-  .print-info { text-align:right; font-size:0.7rem; color:#9ca3af; }
-  /* -- Summary Pills -- */
-  .summary-bar { display:flex; gap:0; border-bottom:2px solid #e5e7eb; }
-  .sum-pill { flex:1; padding:10px 16px; text-align:center; border-right:1px solid #e5e7eb; }
-  .sum-pill:last-child { border-right:none; }
-  .sum-pill-label { font-size:0.6rem; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; color:#9ca3af; margin-bottom:3px; }
-  .sum-pill-val { font-size:1rem; font-weight:800; }
-  /* -- BOQ Table -- */
-  .boq-wrap { padding:0; }
-  table { width:100%; border-collapse:collapse; }
-  /* Column header — yellow like reference */
-  .col-hdr th { background:#e5c100; color:#1a1a1a; font-size:0.72rem; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; padding:8px 10px; border:1px solid #c9a800; text-align:center; }
-  .col-hdr th.desc { text-align:left; }
-  /* Unit rates sub-header */
-  .unit-hdr th { background:#f5d800; color:#1a1a1a; font-size:0.68rem; font-weight:700; padding:5px 10px; border:1px solid #c9a800; text-align:center; }
-  /* Section header — red like reference */
-  .sec-hdr td { background:#c0392b; color:#fff; font-size:0.78rem; padding:7px 10px; border:1px solid #a93226; }
-  /* Data rows */
-  .data-row td { padding:7px 10px; border:1px solid #e5e7eb; vertical-align:middle; }
-  .data-row:nth-child(even) td { background:#fafafa; }
-  /* Subtotal row */
-  .subtotal-row td { background:#fff8e1; border:1px solid #e5e7eb; padding:6px 10px; font-size:0.78rem; }
-  /* Grand total */
-  .grand-total td { background:#1a1a2e; color:#fff; font-size:0.9rem; font-weight:800; padding:10px 12px; border:1px solid #111; }
-  /* Footer */
-  .footer { padding:14px 24px; background:#f8f9fa; border-top:3px solid #e5c100; display:flex; justify-content:space-between; align-items:center; }
-  .footer-left { font-size:0.7rem; color:#9ca3af; line-height:1.6; }
-  .footer-brand { font-size:0.8rem; font-weight:800; color:#059669; }
-  @media print {
-    body { background:#fff; }
-    .page { box-shadow:none; margin:0; max-width:100%; }
-    .data-row:nth-child(even) td { background:#fafafa !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    .sec-hdr td { background:#c0392b !important; color:#fff !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    .col-hdr th { background:#e5c100 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    .grand-total td { background:#1a1a2e !important; color:#fff !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  }
-</style></head><body>
-<div class="page">
-  <!-- Company Header -->
-  <div class="co-header">
-    ${window.dacsPrintHeader('Billing Summary', `Printed: ${printDate}`)}
-  </div>
-
-  <!-- Project Info Bar -->
-  <div class="proj-bar">
-    <div>
-      <div class="proj-name">${title}</div>
-      <div class="proj-meta">${folderObj?.description || 'Project Billing Summary'} &nbsp;·&nbsp; ${sorted.length} billing period${sorted.length !== 1 ? 's' : ''}${contractVal > 0 ? ' &nbsp;·&nbsp; Total Contract: ₱' + formatNum(contractVal) : ''}</div>
-    </div>
-    <div class="print-info">Printed on<br><strong>${printDate}</strong></div>
-  </div>
-
-  <!-- Summary Pills -->
-  <div class="summary-bar">
-    <div class="sum-pill">
-      <div class="sum-pill-label">Total Billed (Received)</div>
-      <div class="sum-pill-val" style="color:#1d4ed8">₱${formatNum(totalReceived)}</div>
-    </div>
-    <div class="sum-pill">
-      <div class="sum-pill-label">Current Fund Spent</div>
-      <div class="sum-pill-val" style="color:#d97706">₱${formatNum(totalSpent)}</div>
-    </div>
-    <div class="sum-pill">
-      <div class="sum-pill-label">Net Balance</div>
-      <div class="sum-pill-val" style="color:${grandBalance >= 0 ? '#166534' : '#991b1b'}">${grandBalance < 0 ? '-' : grandBalance > 0 ? '+' : ''}₱${formatNum(Math.abs(grandBalance))}</div>
-    </div>
-    ${contractVal > 0 ? `<div class="sum-pill">
-      <div class="sum-pill-label">Total Contract</div>
-      <div class="sum-pill-val" style="color:#374151">₱${formatNum(contractVal)}</div>
-    </div>` : ''}
-  </div>
-
-  <!-- BOQ Table -->
-  <div class="boq-wrap">
-    <table>
-      <!-- Column headers -->
-      <thead>
-        <tr class="col-hdr">
-          <th style="width:5%">ITEM NO.</th>
-          <th class="desc" style="width:28%">DESCRIPTIONS</th>
-          <th style="width:5%">QTY</th>
-          <th style="width:5%">UNIT</th>
-          <th colspan="2" style="width:24%">UNIT RATES</th>
-          <th style="width:14%">TOTAL AMOUNT</th>
-        </tr>
-        <tr class="unit-hdr">
-          <th></th><th></th><th></th><th></th>
-          <th style="width:12%">MATERIAL &amp; CONSUMABLES</th>
-          <th style="width:12%">LABOR &amp; EQUIPMENT</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        ${bodyRows}
-      </tbody>
-      <tfoot>
-        <tr class="grand-total">
-          <td colspan="4" style="text-align:right;letter-spacing:0.06em">GRAND TOTAL BALANCE:</td>
-          <td style="text-align:right">${matGrand > 0 ? '₱' + formatNum(matGrand) : '—'}</td>
-          <td style="text-align:right">${labGrand > 0 ? '₱' + formatNum(labGrand) : '—'}</td>
-          <td style="text-align:right">
-            <span style="background:${gBg};color:${gColor};padding:3px 10px;border-radius:4px;font-size:0.88rem">
-              ${grandBalance < 0 ? '-' : grandBalance > 0 ? '+' : ''}₱${formatNum(Math.abs(grandBalance))}
-            </span>
-          </td>
-        </tr>
-      </tfoot>
-    </table>
-  </div>
-
-  <!-- Footer -->
-  <div class="footer">
-    <div class="footer-left">Official billing summary generated by the DAC's Admin System.<br>This document is for internal use only.</div>
-    <div class="footer-brand">DAC's Building Design Services</div>
-  </div>
-</div>
-<script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };<\/script>
-</body></html>`;
-
-    const win = window.open('', '_blank', 'width=900,height=1000');
-    if (!win) { showExpNotif('Pop-up blocked. Please allow pop-ups for this site.', 'error'); return; }
-    win.document.write(html);
-    win.document.close();
+    const fid = folderId || expCurrentFolder?.id || expCurrentProject?.folderId;
+    if (!fid && !expCurrentProject) { showExpNotif('No billing data to print.', 'error'); return; }
+    if (_pcEnsureReportOverhead(() => printFullBillingSummary(folderId))) return;
+    const model = _pcReportModel(fid, !fid && expCurrentProject ? { projectId:expCurrentProject.id } : {});
+    _pcPrintReport(expFolders.find(f => f.id === fid)?.name || 'Billing Summary', model);
 }
 
 // ─────────────────────────────────────────────────────────-----------------------------------------------------------
 // BILLING SUMMARY RECEIPT PRINTER (Budget Overview)
 // ─────────────────────────────────────────────────────────-----------------------------------------------------------
 function printBillingSummaryReceipt(projectId) {
+    if (_pcEnsureReportOverhead(() => printBillingSummaryReceipt(projectId))) return;
     const project = expProjects.find(p => p.id === projectId);
     if (!project) { showExpNotif('Project not found.', 'error'); return; }
-
-    const folder   = project.folderId ? expFolders.find(f => f.id === project.folderId) : null;
-    const isCover  = project.fundingType === 'president';
-
-    // Gather expenses & payroll for this project
-    const projExp  = expExpenses.filter(e => e.projectId === projectId);
-    const projPay  = expPayroll.filter(p => p.projectId === projectId);
-    const totalExp = projExp.reduce((s, e) => s + (e.amount || 0), 0);
-    const totalPay = projPay.reduce((s, p) => s + (p.totalSalary || 0), 0);
-    const totalSpent = totalExp + totalPay;
-    const received   = isCover ? 0 : (project.monthlyBudget || 0);
-    const balance    = isCover ? -totalSpent : received - totalSpent;
-
-    const typeLabels = {
-        mobilization: '🚧 Mobilization',
-        downpayment:  '💰 Downpayment',
-        progress:     '📋 Progress Billing #' + (project.billingNumber || '?'),
-        final:        '🏁 Final Payment',
-        president:    '🏦 Cover Expenses'
-    };
-    const typeLabel = typeLabels[project.fundingType] || project.fundingType;
-
-    const receiptNo = 'SUM-' + Date.now().toString(36).toUpperCase();
-    const printDate = new Date().toLocaleString('en-PH', {
-        year: 'numeric', month: 'long', day: 'numeric',
-        hour: 'numeric', minute: '2-digit', hour12: true
-    });
-
-    // Expense rows
-    const expRows = projExp.length
-        ? projExp.map(e => `
-            <tr>
-                <td style="padding:7px 10px;font-size:0.82rem;color:#374151;border-bottom:1px solid #f3f4f6">${e.dateTime ? new Date(e.dateTime).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '—'}</td>
-                <td style="padding:7px 10px;font-size:0.82rem;color:#1a1a1a;border-bottom:1px solid #f3f4f6"><strong>${e.expenseName || '—'}</strong></td>
-                <td style="padding:7px 10px;font-size:0.82rem;color:#6b7280;border-bottom:1px solid #f3f4f6">${e.category || '—'}</td>
-                <td style="padding:7px 10px;font-size:0.82rem;color:#1a1a1a;text-align:right;border-bottom:1px solid #f3f4f6">₱${formatNum(e.amount)}</td>
-            </tr>`).join('')
-        : '<tr><td colspan="4" style="padding:10px;text-align:center;color:#9ca3af;font-size:0.82rem">No expenses</td></tr>';
-
-    // Payroll rows
-    const payRows = projPay.length
-        ? projPay.map(p => `
-            <tr>
-                <td style="padding:7px 10px;font-size:0.82rem;color:#374151;border-bottom:1px solid #f3f4f6">${p.paymentDate ? new Date(p.paymentDate).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '—'}</td>
-                <td style="padding:7px 10px;font-size:0.82rem;color:#1a1a1a;border-bottom:1px solid #f3f4f6"><strong>${p.workerName || '—'}</strong></td>
-                <td style="padding:7px 10px;font-size:0.82rem;color:#6b7280;border-bottom:1px solid #f3f4f6">${_payRecIsLamsam(p) ? ('Lump Sum' + ((p.daysWorked||0) ? ' · '+(p.daysWorked||0)+'d' : '')) : (p.daysWorked || 0)+'d × ₱'+formatNum(p.dailyRate)}</td>
-                <td style="padding:7px 10px;font-size:0.82rem;color:#1a1a1a;text-align:right;border-bottom:1px solid #f3f4f6">₱${formatNum(p.totalSalary)}</td>
-            </tr>`).join('')
-        : '<tr><td colspan="4" style="padding:10px;text-align:center;color:#9ca3af;font-size:0.82rem">No payroll entries</td></tr>';
-
-    const balColor = balance > 0 ? '#047857' : balance < 0 ? '#ef4444' : '#6b7280';
-    const balSign  = balance < 0 ? '-' : '';
-
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Billing Summary — ${receiptNo}</title>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:'Segoe UI',Arial,sans-serif; background:#f5f5f5; color:#1a1a1a; }
-  .rc-page { max-width:600px; margin:24px auto; background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 4px 24px rgba(0,0,0,0.12); }
-  .rc-header { background:linear-gradient(135deg,#059669,#047857); padding:24px 28px 18px; color:#fff; }
-  .rc-header-top { display:flex; align-items:center; gap:14px; margin-bottom:14px; }
-  .rc-logo { width:56px; height:56px; background:#fff; border-radius:8px; display:flex; align-items:center; justify-content:center; padding:4px; flex-shrink:0; overflow:hidden; }
-  .rc-company-name { font-size:1.05rem; font-weight:800; letter-spacing:0.04em; }
-  .rc-company-sub  { font-size:0.72rem; opacity:0.85; margin-top:2px; }
-  .rc-type-badge { background:rgba(255,255,255,0.25); border:1px solid rgba(255,255,255,0.4); border-radius:20px; padding:4px 14px; font-size:0.75rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; white-space:nowrap; }
-  .rc-meta { display:flex; justify-content:space-between; align-items:flex-end; }
-  .rc-receipt-no { font-size:1.25rem; font-weight:900; }
-  .rc-print-date { font-size:0.7rem; opacity:0.8; text-align:right; }
-  .rc-body { padding:22px 28px; }
-  .rc-section-title { font-size:0.65rem; font-weight:800; letter-spacing:0.1em; text-transform:uppercase; color:#9ca3af; margin-bottom:8px; margin-top:18px; }
-  .rc-project-box { background:#f8fffe; border:1px solid #a7f3d0; border-radius:10px; padding:12px 16px; margin-bottom:4px; }
-  .rc-project-name { font-size:1rem; font-weight:700; }
-  .rc-project-sub  { font-size:0.75rem; color:#6b7280; margin-top:3px; }
-  .rc-summary-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:4px; }
-  .rc-sum-box { background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px; padding:10px 14px; text-align:center; }
-  .rc-sum-label { font-size:0.62rem; font-weight:700; color:#9ca3af; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:4px; }
-  .rc-sum-val { font-size:1rem; font-weight:800; color:#1a1a1a; }
-  .rc-sum-val.green { color:#047857; }
-  .rc-sum-val.orange { color:#f59e0b; }
-  .rc-balance-box { background:linear-gradient(135deg,#f0fdf8,#ecfdf5); border:2px solid #a7f3d0; border-radius:12px; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; margin-top:16px; margin-bottom:4px; }
-  .rc-balance-label { font-size:0.75rem; font-weight:700; color:#059669; text-transform:uppercase; letter-spacing:0.06em; }
-  .rc-balance-val { font-size:1.6rem; font-weight:900; letter-spacing:-0.02em; }
-  table { width:100%; border-collapse:collapse; }
-  thead th { background:#f8fafc; font-size:0.7rem; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:#6b7280; padding:8px 10px; text-align:left; border-bottom:2px solid #e5e7eb; }
-  thead th:last-child { text-align:right; }
-  .rc-footer { background:#f8fafc; border-top:1px dashed #e5e7eb; padding:14px 28px; text-align:center; }
-  .rc-footer-text { font-size:0.72rem; color:#9ca3af; line-height:1.6; }
-  .rc-footer-brand { font-size:0.78rem; font-weight:700; color:#047857; margin-top:3px; }
-  @media print {
-    body { background:#fff; }
-    .rc-page { box-shadow:none; margin:0; border-radius:0; max-width:100%; }
-  }
-</style>
-</head>
-<body>
-<div class="rc-page">
-  <div class="rc-header">
-    <div class="rc-header-top">
-      <div class="rc-logo"><img src="${window.location.origin}/assets/images/DACS-TRANSPARENT.png" alt="DAC's Logo" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'"></div>
-      <div style="flex:1">
-        <div class="rc-company-name">DAC'S BUILDING DESIGN SERVICES</div>
-        <div class="rc-company-sub">Billing Period Summary</div>
-      </div>
-      <div class="rc-type-badge">${typeLabel}</div>
-    </div>
-    <div class="rc-meta">
-      <div>
-        <div style="font-size:0.68rem;opacity:0.8;margin-bottom:2px">SUMMARY NO.</div>
-        <div class="rc-receipt-no">${receiptNo}</div>
-      </div>
-      <div class="rc-print-date">Printed on<br>${printDate}</div>
-    </div>
-  </div>
-  <div class="rc-body">
-    <div class="rc-section-title">Project</div>
-    <div class="rc-project-box">
-      <div class="rc-project-name">${folder ? folder.name : project.month + ' ' + project.year}</div>
-      <div class="rc-project-sub">${project.month} ${project.year}${folder && folder.description ? ' · ' + folder.description : ''}</div>
-    </div>
-
-    <div class="rc-section-title" style="margin-top:16px">Financial Summary</div>
-    <div class="rc-summary-grid">
-      <div class="rc-sum-box">
-        <div class="rc-sum-label">${isCover ? 'Covered' : 'Received'}</div>
-        <div class="rc-sum-val green">₱${formatNum(isCover ? totalSpent : received)}</div>
-      </div>
-      <div class="rc-sum-box">
-        <div class="rc-sum-label">Current Fund Spent</div>
-        <div class="rc-sum-val orange">₱${formatNum(totalSpent)}</div>
-      </div>
-      <div class="rc-sum-box">
-        <div class="rc-sum-label">Materials</div>
-        <div class="rc-sum-val">₱${formatNum(totalExp)}</div>
-      </div>
-    </div>
-    <div class="rc-balance-box">
-      <div class="rc-balance-label">${isCover ? 'Total Covered' : 'Net Balance'}</div>
-      <div class="rc-balance-val" style="color:${balColor}">${balSign}₱${formatNum(Math.abs(balance))}</div>
-    </div>
-
-    <div class="rc-section-title">Expenses (${projExp.length})</div>
-    <table>
-      <thead><tr><th>Date</th><th>Item</th><th>Category</th><th>Amount</th></tr></thead>
-      <tbody>${expRows}</tbody>
-      <tfoot><tr>
-        <td colspan="3" style="padding:8px 10px;font-size:0.78rem;font-weight:700;color:#6b7280;text-align:right;border-top:2px solid #e5e7eb">SUBTOTAL</td>
-        <td style="padding:8px 10px;font-size:0.9rem;font-weight:800;text-align:right;border-top:2px solid #e5e7eb">₱${formatNum(totalExp)}</td>
-      </tr></tfoot>
-    </table>
-
-    <div class="rc-section-title">Payroll (${projPay.length})</div>
-    <table>
-      <thead><tr><th>Date</th><th>Worker</th><th>Days × Rate</th><th>Salary</th></tr></thead>
-      <tbody>${payRows}</tbody>
-      <tfoot><tr>
-        <td colspan="3" style="padding:8px 10px;font-size:0.78rem;font-weight:700;color:#6b7280;text-align:right;border-top:2px solid #e5e7eb">SUBTOTAL</td>
-        <td style="padding:8px 10px;font-size:0.9rem;font-weight:800;text-align:right;border-top:2px solid #e5e7eb">₱${formatNum(totalPay)}</td>
-      </tr></tfoot>
-    </table>
-  </div>
-  <div class="rc-footer">
-    <div class="rc-footer-text">Official billing period summary generated by the DAC's Admin System.</div>
-    <div class="rc-footer-brand">DAC's Building Design Services</div>
-  </div>
-</div>
-<script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };<\/script>
-</body>
-</html>`;
-
-    const win = window.open('', '_blank', 'width=680,height=900');
-    if (!win) { showExpNotif('Pop-up blocked. Please allow pop-ups for this site.', 'error'); return; }
-    win.document.write(html);
-    win.document.close();
+    const model = _pcReportModel(project.folderId, { projectId });
+    _pcPrintReport(expFolders.find(f => f.id === project.folderId)?.name || 'Billing Summary', model);
 }
 
 // ════════════════════════════════════════════════════════════
 // REPORT DETAIL TABLES (Expense & Payroll)
 // ════════════════════════════════════════════════════════════
-function _rptRenderDetailTables() {
-    const expCard  = document.getElementById('rptExpDetailCard');
-    const payCard  = document.getElementById('rptPayDetailCard');
-    const expTbody = document.getElementById('rptExpDetailTbody');
-    const payTbody = document.getElementById('rptPayDetailTbody');
-    const expSub   = document.getElementById('rptExpDetailSub');
-    const paySub   = document.getElementById('rptPayDetailSub');
-
-    // Only show detail tables when a specific folder is selected
-    const show = !!_rptState.folderId;
-    if (expCard) expCard.style.display = show ? '' : 'none';
-    if (payCard) payCard.style.display = show ? '' : 'none';
-    if (!show) return;
-
-    const folder = expFolders.find(f => f.id === _rptState.folderId);
-    const folderName = folder?.name || 'Selected Folder';
-
-    // ── Expenses ────────────────────────────────────────────
-    const sortedExp = [..._rptState.allExpenses]
-        .sort((a, b) => new Date(b.dateTime || 0) - new Date(a.dateTime || 0));
-
-    if (expSub) expSub.textContent = `${sortedExp.length} transaction${sortedExp.length !== 1 ? 's' : ''} · ${folderName}`;
-
-    if (!sortedExp.length) {
-        if (expTbody) expTbody.innerHTML = '<tr><td colspan="7" class="exp-empty-row">No expenses found.</td></tr>';
-    } else {
-        // Group by category
-        const groups = {};
-        sortedExp.forEach(e => {
-            const k = e.category || 'Uncategorized';
-            if (!groups[k]) groups[k] = [];
-            groups[k].push(e);
-        });
-
-        let html = '';
-        Object.entries(groups).forEach(([cat, items]) => {
-            const catObj  = expCategories.find(c => c.name === cat);
-            const color   = catObj?.color || '#9ca3af';
-            const subtotal = items.reduce((s, e) => s + (e.amount || 0), 0);
-            const r = parseInt(color.replace('#','').substring(0,2),16);
-            const g = parseInt(color.replace('#','').substring(2,4),16);
-            const b = parseInt(color.replace('#','').substring(4,6),16);
-            html += `<tr class="exp-group-header"><td colspan="7">
-                <div class="exp-group-header-inner" style="--cat-color:${color};--cat-bg:rgba(${r},${g},${b},0.08);border-left-color:${color}">
-                    <span class="exp-group-dot" style="background:${color}"></span>
-                    <span class="exp-group-name" style="color:${color}">${cat}</span>
-                    <span class="exp-group-count">${items.length} item${items.length>1?'s':''}</span>
-                    <span class="exp-group-subtotal">₱${formatNum(subtotal)}</span>
-                </div></td></tr>`;
-            items.forEach(e => {
-                const proj = _rptState.projects.find(p => p.id === e.projectId);
-                html += `<tr class="exp-group-row">
-                    <td>${formatDate(e.dateTime)}</td>
-                    <td><span style="font-size:0.78rem;color:#6b7280">${proj ? proj.month+' '+proj.year : '—'}</span></td>
-                    <td><strong>${e.expenseName || '—'}</strong></td>
-                    <td>${e.category || '—'}</td>
-                    <td class="exp-notes-cell">${e.notes ? '<span class="exp-notes-text">'+e.notes+'</span>' : '<span class="exp-notes-empty">—</span>'}</td>
-                    <td>${e.quantity || 1}</td>
-                    <td>₱${formatNum(e.amount)}</td>
-                </tr>`;
-            });
-        });
-        const grandTotal = sortedExp.reduce((s, e) => s + (e.amount || 0), 0);
-        html += `<tr class="exp-total-row">
-            <td colspan="5"></td>
-            <td class="exp-total-label">TOTAL</td>
-            <td class="exp-total-value">₱${formatNum(grandTotal)}</td>
-        </tr>`;
-        if (expTbody) expTbody.innerHTML = html;
-    }
-
-    // ── Payroll ─────────────────────────────────────────────
-    const sortedPay = [..._rptState.allPayroll]
-        .sort((a, b) => new Date(b.paymentDate || 0) - new Date(a.paymentDate || 0));
-
-    if (paySub) paySub.textContent = `${sortedPay.length} entr${sortedPay.length !== 1 ? 'ies' : 'y'} · ${folderName}`;
-
-    if (!sortedPay.length) {
-        if (payTbody) payTbody.innerHTML = '<tr><td colspan="7" class="exp-empty-row">No payroll entries found.</td></tr>';
-    } else {
-        const grandPay = sortedPay.reduce((s, p) => s + (p.totalSalary || 0), 0);
-        let html = sortedPay.map(p => {
-            const proj = _rptState.projects.find(pr => pr.id === p.projectId);
-            return `<tr>
-                <td>${formatDate(p.paymentDate)}</td>
-                <td><span style="font-size:0.78rem;color:#6b7280">${proj ? proj.month+' '+proj.year : '—'}</span></td>
-                <td><strong>${p.workerName || '—'}</strong></td>
-                <td>${p.role || '—'}</td>
-                <td>${p.daysWorked || 0}</td>
-                <td>${_payRecIsLamsam(p) ? 'Lump Sum' : '₱'+formatNum(p.dailyRate)}</td>
-                <td>₱${formatNum(p.totalSalary)}</td>
-            </tr>`;
-        }).join('');
-        html += `<tr class="exp-total-row">
-            <td colspan="5"></td>
-            <td class="exp-total-label">TOTAL</td>
-            <td class="exp-total-value">₱${formatNum(grandPay)}</td>
-        </tr>`;
-        if (payTbody) payTbody.innerHTML = html;
+function _rptRenderDetailTables(model) {
+    const owner = _pcIsOwner();
+    for (const [id, rows, kind] of [['rptExpDetail', model.expenses, 'expense'], ['rptPayDetail', model.payroll, 'payroll']]) {
+        const card = document.getElementById(id + 'Card');
+        if (card) card.style.display = owner && _rptState.folderId ? '' : 'none';
+        const tbody = document.getElementById(id + 'Tbody');
+        if (tbody) tbody.innerHTML = owner ? rows.map(r => {
+            const period = model.rows.find(p => p.id === r.projectId);
+            const cells = kind === 'expense'
+                ? [r.dateTime || '', period?.label || '', r.expenseName || '', r.category || '', r.notes || '', String(r.quantity || 1), Number(r.amount) || 0]
+                : [r.paymentDate || '', period?.label || '', r.workerName || '', r.role || '', String(r.daysWorked || 0), Number(r.dailyRate) || 0, Number(r.totalSalary) || 0];
+            return '<tr>' + cells.map(v => '<td>' + _mvpEsc(typeof v === 'number' ? _pcReportMoney(v) : v) + '</td>').join('') + '</tr>';
+        }).join('') : '';
     }
 }
 
@@ -6257,404 +5684,10 @@ function _rptRenderDetailTables() {
 // PRINT REPORTS DASHBOARD
 // ════════════════════════════════════════════════════════════
 function printReportsDashboard() {
-    if (!_rptState.projects?.length) { showExpNotif('No report data to print.', 'error'); return; }
-    const _prtBaseUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/') + 1);
-
-    let groups = _computePeriodGroups(_rptState.period, _rptState.year,
-        _rptState.projects, _rptState.allExpenses, _rptState.allPayroll);
-    if (_rptState.period === 'annual' && groups.length === 1) {
-        groups = _rptAllTimeGroups(groups);
-    }
-
-    const selectedFolder = _rptState.folderId ? expFolders.find(f => f.id === _rptState.folderId) : null;
-    const reportTitle    = selectedFolder ? selectedFolder.name : 'Company-Wide Report';
-    const periodLabels   = { weekly:'Weekly', monthly:'Monthly', quarterly:'Quarterly', semi:'Semi-Annual', annual:'Annual' };
-    const periodLabel    = periodLabels[_rptState.period] || _rptState.period;
-
-    const contract    = _rptState.folderId
-        ? (expFolders.find(f => f.id === _rptState.folderId)?.totalBudget || 0)
-        : expFolders.reduce((s, f) => s + (f.totalBudget || 0), 0);
-    // KPI totals mirror Budget Overview (all-time, no year filter)
-    const _prtFolderProjs  = _rptState.folderId
-        ? expProjects.filter(p => p.folderId === _rptState.folderId)
-        : expProjects;
-    const _prtClientProjs  = _prtFolderProjs.filter(p => p.fundingType !== 'president');
-    const _prtPresProjIds  = new Set(_prtFolderProjs.filter(p => p.fundingType === 'president').map(p => p.id));
-    const _prtProjIdSet    = new Set(_prtFolderProjs.map(p => p.id));
-    const totReceived      = _prtClientProjs.reduce((s, p) => s + (parseFloat(p.monthlyBudget) || 0), 0);
-    const prtActivePeriods = _prtClientProjs.filter(p => (p.monthlyBudget || 0) > 0).length;
-    const _prtSrcExp = _ovAllExpenses.length ? _ovAllExpenses : expExpenses;
-    const _prtSrcPay = _ovAllPayroll.length  ? _ovAllPayroll  : expPayroll;
-    // Cover money is SPENDING on the printed sheet too — same rule as the on-screen
-    // KPI row, so a printed report and the screen it was printed from can never
-    // disagree. `totCoverPrt` below is a subset of these two, never added to them.
-    const totMats          = _prtSrcExp
-        .filter(e => _prtProjIdSet.has(e.projectId))
-        .reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
-    const totLabor         = _prtSrcPay
-        .filter(p => _prtProjIdSet.has(p.projectId))
-        .reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
-    const totSpent         = totMats + totLabor;
-    const totCoverPrt      = _prtSrcExp
-        .filter(e => _prtProjIdSet.has(e.projectId) && (e.coverExpense || _prtPresProjIds.has(e.projectId)))
-        .reduce((s, e) => s + (parseFloat(e.amount) || 0), 0)
-      + _prtSrcPay
-        .filter(p => _prtPresProjIds.has(p.projectId))
-        .reduce((s, p) => s + (parseFloat(p.totalSalary) || 0), 0);
-    const matPctOfRcv     = totReceived > 0 ? (totMats     / totReceived) * 100 : 0;
-    const labPctOfRcv     = totReceived > 0 ? (totLabor    / totReceived) * 100 : 0;
-    // Match Budget Overview: percentage of allocated budget
-    const coverPctOfBudget = totReceived > 0 ? (totCoverPrt / totReceived) * 100 : 0;
-    const utilizedPct     = totReceived > 0 ? (totSpent / totReceived) * 100 : 0;
-    const contractPct     = contract   > 0  ? (totSpent / contract)    * 100 : 0;
-    const rcvOfContract   = contract   > 0  ? (totReceived / contract) * 100 : 0;
-    // Receivable Balance = Contract − Allocated: contract value not yet billed.
-    const periodVariance  = contract - totReceived;
-    const periodRemPct    = contract > 0 ? (periodVariance / contract) * 100 : 0;
-    // Funds Available = Allocated − Spent, the SAME figure the on-screen card
-    // shows and the same one the TOTAL row of the table below prints.
-    //
-    // This used to be "Budget Remaining" = contract − spent, a card that no
-    // longer exists anywhere on the site: it treats the whole contract as
-    // spendable (a planned margin of zero) and it silently CONTAINED the
-    // Receivable Balance printed beside it, so the unbilled amount appeared
-    // twice in one band. The screen was corrected; the printed sheet was not,
-    // and went on printing the deleted card until 2026-08-20.
-    const contractVariance= totReceived - totSpent;
-    const contractRemPct  = totReceived > 0 ? (contractVariance / totReceived) * 100 : 0;
-
-    const printDate = new Date().toLocaleString('en-PH', {
-        year: 'numeric', month: 'long', day: 'numeric',
-        hour: 'numeric', minute: '2-digit', hour12: true
-    });
-
-    // ── Period breakdown table rows ─────────────────────────
-    const _badge = s => {
-        const map = { healthy:'Healthy', ontrack:'On Track', warning:'Near Limit', danger:'Over Budget' };
-        const colors = { healthy:'#166534:#dcfce7', ontrack:'#1d4ed8:#dbeafe', warning:'#92400e:#fef3c7', danger:'#991b1b:#fee2e2' };
-        const [fg, bg] = (colors[s] || colors.healthy).split(':');
-        return `<span style="background:${bg};color:${fg};padding:2px 8px;border-radius:4px;font-size:0.72rem;font-weight:700">${map[s] || 'Healthy'}</span>`;
-    };
-
-    const active = groups.filter(g => g.budget > 0 || g.totalSpent > 0);
-    const empty  = groups.filter(g => g.budget === 0 && g.totalSpent === 0);
-    const _prtIsStaff = window.currentUserRole === 'staff';
-    const _prtColspan = _prtIsStaff ? 6 : 8;
-
-    let tableRows = active.map(g => {
-        const remColor = g.remaining < 0 ? '#991b1b' : '#166534';
-        const barW     = Math.min(g.usedPct, 100).toFixed(1);
-        const barColor = g.usedPct > 100 ? '#ef4444' : g.usedPct > 85 ? '#f59e0b' : '#059669';
-        return `<tr>
-            <td><strong>${g.label}</strong>${g.txCount ? `<br><span style="font-size:0.7rem;color:#9ca3af">${g.txCount} tx · ${g.workerCount} worker${g.workerCount!==1?'s':''}</span>` : ''}</td>
-            ${_prtIsStaff ? '' : `<td style="text-align:right">₱${formatNum(g.budget)}</td>`}
-            <td style="text-align:right">₱${formatNum(g.mats)}</td>
-            <td style="text-align:right">₱${formatNum(g.labor)}</td>
-            <td style="text-align:right"><strong>₱${formatNum(g.totalSpent)}</strong></td>
-            ${_prtIsStaff ? '' : `<td style="text-align:right;color:${remColor}">${g.remaining < 0 ? '▲ -' : ''}₱${formatNum(Math.abs(g.remaining))}</td>`}
-            <td style="text-align:center">
-                <div style="font-size:0.8rem;font-weight:700;margin-bottom:3px">${g.usedPct.toFixed(1)}%</div>
-                <div style="background:#e5e7eb;border-radius:4px;height:6px;width:80px;margin:0 auto">
-                    <div style="background:${barColor};height:6px;border-radius:4px;width:${barW}%"></div>
-                </div>
-            </td>
-            <td style="text-align:center">${_badge(g.status)}</td>
-        </tr>`;
-    }).join('');
-
-    if (empty.length) {
-        tableRows += `<tr><td colspan="${_prtColspan}" style="text-align:center;color:#9ca3af;font-size:0.78rem;padding:8px">
-            ⬡ ${empty.length} period${empty.length>1?'s':''} with no activity: ${empty.map(g=>g.shortLabel).join(', ')}
-        </td></tr>`;
-    }
-
-    const totRemaining = totReceived - totSpent;
-    const tPrint = utilizedPct;
-    const tStatusPrint = tPrint > 100 ? 'danger' : tPrint > 85 ? 'warning' : tPrint > 60 ? 'ontrack' : 'healthy';
-    const _tdTotal = 'background:#fff;color:#111827;font-weight:800;border-top:2px solid #1a1a2e;';
-    const remColorPrint = totRemaining < 0 ? '#991b1b' : '#166534';
-    tableRows += `<tr>
-        <td style="${_tdTotal}">TOTAL</td>
-        ${_prtIsStaff ? '' : `<td style="${_tdTotal}text-align:right">₱${formatNum(totReceived)}</td>`}
-        <td style="${_tdTotal}text-align:right">₱${formatNum(totMats)}</td>
-        <td style="${_tdTotal}text-align:right">₱${formatNum(totLabor)}</td>
-        <td style="${_tdTotal}text-align:right">₱${formatNum(totSpent)}</td>
-        ${_prtIsStaff ? '' : `<td style="${_tdTotal}text-align:right;color:${remColorPrint}">${totRemaining<0?'▲ -':''}₱${formatNum(Math.abs(totRemaining))}</td>`}
-        <td style="${_tdTotal}text-align:center">${tPrint.toFixed(1)}%</td>
-        <td style="${_tdTotal}text-align:center">${_badge(tStatusPrint)}</td>
-    </tr>`;
-
-    // ── Category breakdown rows ─────────────────────────────
-    const cats = {};
-    expCategories.forEach(c => { cats[c.name] = 0; });
-    _rptState.allExpenses.forEach(e => { const k = e.category || 'Others'; cats[k] = (cats[k] || 0) + (e.amount || 0); });
-    cats['Payroll'] = _rptState.allPayroll.reduce((s, p) => s + (p.totalSalary || 0), 0);
-    const catTotal = Object.values(cats).reduce((a, b) => a + b, 0);
-    const catRows = Object.entries(cats)
-        .filter(([, v]) => v > 0)
-        .sort((a, b) => b[1] - a[1])
-        .map(([name, amt]) => {
-            const cat   = expCategories.find(c => c.name === name);
-            const color = name === 'Payroll' ? '#f97316' : (cat?.color || '#a78bfa');
-            const pct   = catTotal > 0 ? ((amt / catTotal) * 100).toFixed(1) : '0.0';
-            return `<tr>
-                <td><span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:2px;margin-right:6px;vertical-align:middle"></span>${name}</td>
-                <td style="text-align:right">₱${formatNum(amt)}</td>
-                <td style="text-align:right">${pct}%</td>
-                <td style="padding:6px 10px">
-                    <div style="background:#e5e7eb;border-radius:4px;height:8px">
-                        <div style="background:${color};height:8px;border-radius:4px;width:${pct}%"></div>
-                    </div>
-                </td>
-            </tr>`;
-        }).join('');
-
-    // ── Expense detail rows (only when folder selected) ─────
-    let expDetailSection = '';
-    let payDetailSection = '';
-    if (_rptState.folderId) {
-        const sortedExp = [..._rptState.allExpenses].sort((a, b) => new Date(b.dateTime||0) - new Date(a.dateTime||0));
-        const sortedPay = [..._rptState.allPayroll].sort((a, b) => new Date(b.paymentDate||0) - new Date(a.paymentDate||0));
-        const expGrand  = sortedExp.reduce((s, e) => s + (e.amount || 0), 0);
-        const payGrand  = sortedPay.reduce((s, p) => s + (p.totalSalary || 0), 0);
-
-        const expDetailRows = sortedExp.map(e => {
-            const proj = _rptState.projects.find(p => p.id === e.projectId);
-            return `<tr>
-                <td>${e.dateTime ? new Date(e.dateTime).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '—'}</td>
-                <td style="font-size:0.75rem;color:#6b7280">${proj ? proj.month+' '+proj.year : '—'}</td>
-                <td><strong>${e.expenseName || '—'}</strong></td>
-                <td>${e.category || '—'}</td>
-                <td style="color:#6b7280">${e.notes || '—'}</td>
-                <td style="text-align:center">${e.quantity || 1}</td>
-                <td style="text-align:right">₱${formatNum(e.amount)}</td>
-            </tr>`;
-        }).join('') + `<tr style="background:#f8fafc;font-weight:800">
-            <td colspan="5" style="text-align:right">TOTAL</td><td></td>
-            <td style="text-align:right">₱${formatNum(expGrand)}</td>
-        </tr>`;
-
-        const payDetailRows = sortedPay.map(p => {
-            const proj = _rptState.projects.find(pr => pr.id === p.projectId);
-            return `<tr>
-                <td>${p.paymentDate ? new Date(p.paymentDate).toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}) : '—'}</td>
-                <td style="font-size:0.75rem;color:#6b7280">${proj ? proj.month+' '+proj.year : '—'}</td>
-                <td><strong>${p.workerName || '—'}</strong></td>
-                <td>${p.role || '—'}</td>
-                <td style="text-align:center">${p.daysWorked || 0}</td>
-                <td style="text-align:right">${_payRecIsLamsam(p) ? 'Lump Sum' : '₱'+formatNum(p.dailyRate)}</td>
-                <td style="text-align:right">₱${formatNum(p.totalSalary)}</td>
-            </tr>`;
-        }).join('') + `<tr style="background:#f8fafc;font-weight:800">
-            <td colspan="5" style="text-align:right">TOTAL</td><td></td>
-            <td style="text-align:right">₱${formatNum(payGrand)}</td>
-        </tr>`;
-
-        expDetailSection = `
-        <div class="section-title" style="margin-top:28px">Expense Detail — ${sortedExp.length} transaction${sortedExp.length!==1?'s':''}</div>
-        <table>
-            <thead><tr><th>Date</th><th>Period</th><th>Expense Name</th><th>Category</th><th>Notes</th><th style="text-align:center">Qty</th><th style="text-align:right">Amount</th></tr></thead>
-            <tbody>${expDetailRows}</tbody>
-        </table>`;
-
-        payDetailSection = `
-        <div class="section-title" style="margin-top:28px">Payroll Detail — ${sortedPay.length} entr${sortedPay.length!==1?'ies':'y'}</div>
-        <table>
-            <thead><tr><th>Date</th><th>Period</th><th>Worker Name</th><th>Role</th><th style="text-align:center">Days</th><th style="text-align:right">Daily Rate</th><th style="text-align:right">Total Salary</th></tr></thead>
-            <tbody>${payDetailRows}</tbody>
-        </table>`;
-    }
-
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Reports — ${reportTitle} · ${periodLabel} ${_rptState.year}</title>
-<style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family:'Segoe UI',Arial,sans-serif; background:#f0f0f0; color:#1a1a1a; font-size:13px; }
-  .page { max-width:960px; margin:20px auto; background:#fff; box-shadow:0 2px 16px rgba(0,0,0,0.15); }
-  .co-header { background:linear-gradient(135deg,#1a1a2e 70%,#0f2744 100%); color:#fff; padding:20px 28px 16px; display:flex; align-items:center; gap:20px; border-bottom:3px solid #059669; position:relative; overflow:hidden; }
-  .co-header::after { content:''; position:absolute; top:0; right:0; width:200px; height:100%; background:linear-gradient(to left,rgba(5,150,105,0.1),transparent); pointer-events:none; }
-  .co-logo { width:68px; height:68px; border-radius:10px; overflow:hidden; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:#ffffff; padding:6px; border:1px solid rgba(255,255,255,0.3); }
-  .co-logo img { width:100%; height:100%; object-fit:contain; }
-  .co-divider { width:1px; height:48px; background:rgba(255,255,255,0.2); flex-shrink:0; }
-  .co-name { font-size:1.15rem; font-weight:900; letter-spacing:0.07em; text-transform:uppercase; }
-  .co-tagline { font-size:0.72rem; opacity:0.6; margin-top:4px; letter-spacing:0.02em; }
-  .co-right { margin-left:auto; text-align:right; }
-  .doc-type { font-size:0.6rem; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; opacity:0.55; margin-bottom:4px; }
-  .doc-title { font-size:1rem; font-weight:800; color:#059669; letter-spacing:0.04em; }
-  .proj-bar { background:#f8f9fa; border-bottom:3px solid #059669; padding:10px 28px; display:flex; justify-content:space-between; align-items:center; }
-  .proj-name { font-size:1rem; font-weight:800; }
-  .proj-meta { font-size:0.72rem; color:#6b7280; margin-top:2px; }
-  .print-info { text-align:right; font-size:0.7rem; color:#9ca3af; }
-  .kpi-row { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; padding:14px 28px 0; }
-  .kpi-card { background:#4AC84A; border:1.5px solid rgba(255,255,255,0.55); border-radius:10px; padding:10px 12px; box-shadow:0 1px 4px rgba(0,0,0,0.06); -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact; }
-  .kpi-card--bad { background:#dc2626 !important; border-color:rgba(255,255,255,0.55) !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  .kpi-card-head { margin-bottom:4px; }
-  .kpi-card-label { font-size:0.58rem; font-weight:800; letter-spacing:0.07em; text-transform:uppercase; color:#ffffff; }
-  .kpi-card-val { font-size:1rem; font-weight:800; margin-bottom:2px; color:#ffffff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:flex; align-items:baseline; gap:3px; }
-  .kpi-peso { font-family:sans-serif; font-size:0.7em; font-weight:700; opacity:0.9; line-height:1; }
-  .kpi-num { font-size:1.15em; font-weight:800; letter-spacing:-0.01em; line-height:1; }
-  .kpi-card-sub { font-size:0.63rem; color:rgba(255,255,255,0.80); }
-  .variance-card { grid-column:1/-1; margin:8px 28px 0; background:#4AC84A; border:1px solid transparent; border-radius:10px; padding:12px 18px; box-shadow:0 1px 4px rgba(0,0,0,0.06); -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact; }
-  .variance-card--danger { border-left:4px solid rgba(239,68,68,0.7); }
-  .variance-card-title { font-size:0.6rem; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; color:#ffffff; margin-bottom:10px; }
-  .variance-cols { display:flex; gap:20px; align-items:flex-start; }
-  .variance-col { flex:1; min-width:0; }
-  .variance-col-label { font-size:0.58rem; font-weight:700; letter-spacing:0.07em; text-transform:uppercase; color:rgba(255,255,255,0.75); margin-bottom:3px; }
-  .variance-col-val { font-size:1rem; font-weight:800; margin-bottom:4px; color:#ffffff; display:flex; align-items:baseline; gap:3px; }
-  .variance-bar-wrap { background:rgba(255,255,255,0.25); border-radius:4px; height:4px; width:100%; margin-bottom:3px; }
-  .variance-bar-fill { height:4px; border-radius:4px; }
-  .variance-col-sub { font-size:0.63rem; color:rgba(255,255,255,0.80); }
-  .variance-divider { width:1px; background:rgba(255,255,255,0.35); align-self:stretch; margin:0 4px; }
-  .body { padding:24px 28px; }
-  .section-title { font-size:0.65rem; font-weight:800; letter-spacing:0.1em; text-transform:uppercase; color:#9ca3af; margin-bottom:10px; margin-top:24px; }
-  table { width:100%; border-collapse:collapse; margin-bottom:4px; }
-  thead th { background:#4AC84A; color:#ffffff; font-size:0.7rem; font-weight:800; letter-spacing:0.04em; text-transform:uppercase; padding:8px 10px; border:1px solid #3db53d; -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact; }
-  tbody tr { border-bottom:1px solid #f3f4f6; }
-  tbody tr:nth-child(even) td { background:#fafafa; }
-  tbody td { padding:7px 10px; font-size:0.82rem; vertical-align:middle; border:1px solid #e5e7eb; }
-  .footer { padding:14px 28px; background:#f8f9fa; border-top:3px solid #059669; display:flex; justify-content:space-between; align-items:center; }
-  .footer-left { font-size:0.7rem; color:#9ca3af; line-height:1.6; }
-  .footer-brand { font-size:0.8rem; font-weight:800; color:#059669; }
-  @media print {
-    body { background:#fff; }
-    .page { box-shadow:none; margin:0; max-width:100%; }
-    .kpi-card { background:#4AC84A !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    .kpi-card--bad { background:#dc2626 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    .variance-card { background:#4AC84A !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    .kpi-card-label, .kpi-card-val, .kpi-card-sub { color:#ffffff !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    .variance-label, .variance-val, .variance-sub, .variance-col-label, .variance-col-val { color:#ffffff !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    thead th { background:#4AC84A !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    tbody tr:nth-child(even) td { background:#fafafa !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  }
-</style>
-</head>
-<body>
-<div class="page">
-  <div class="co-header">
-    <div class="co-logo"><img src="${_prtBaseUrl}assets/images/DACS-TRANSPARENT.png" alt="DAC\'S Logo"></div>
-    <div class="co-divider"></div>
-    <div>
-      <div class="co-name">DAC'S BUILDING DESIGN SERVICES</div>
-      <div class="co-tagline">Professional Building Design &amp; Construction Management</div>
-    </div>
-    <div class="co-right">
-      <div class="doc-type">Report Type</div>
-      <div class="doc-title">${periodLabel.toUpperCase()} REPORT · ${_rptState.year}</div>
-    </div>
-  </div>
-
-  <div class="proj-bar">
-    <div>
-      <div class="proj-name">${reportTitle}</div>
-      <div class="proj-meta">${periodLabel} breakdown · ${_rptState.year} · ${active.length} active period${active.length!==1?'s':''}</div>
-    </div>
-    <div class="print-info">Printed on<br><strong>${printDate}</strong></div>
-  </div>
-
-  <div class="kpi-row">
-    ${window.currentUserRole !== 'staff' ? `
-    <div class="kpi-card">
-      <div class="kpi-card-head"><span class="kpi-card-label">CONTRACT VALUE</span></div>
-      <div class="kpi-card-val"><span class="kpi-peso">₱</span><span class="kpi-num">${formatNum(contract)}</span></div>
-      <div class="kpi-card-sub">${reportTitle} · ${_rptState.year}</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-card-head"><span class="kpi-card-label">FUND ALLOCATED</span></div>
-      <div class="kpi-card-val"><span class="kpi-peso">₱</span><span class="kpi-num">${formatNum(totReceived)}</span></div>
-      <div class="kpi-card-sub">${prtActivePeriods} billing period${prtActivePeriods!==1?'s':''} · ${rcvOfContract.toFixed(1)}% of contract</div>
-    </div>` : ''}
-    <div class="kpi-card">
-      <div class="kpi-card-head"><span class="kpi-card-label">MATERIALS &amp; COSTS</span></div>
-      <div class="kpi-card-val"><span class="kpi-peso">₱</span><span class="kpi-num">${formatNum(totMats)}</span></div>
-      <div class="kpi-card-sub">${matPctOfRcv.toFixed(1)}% of allocated budget</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-card-head"><span class="kpi-card-label">LABOR &amp; PAYROLL</span></div>
-      <div class="kpi-card-val"><span class="kpi-peso">₱</span><span class="kpi-num">${formatNum(totLabor)}</span></div>
-      <div class="kpi-card-sub">${labPctOfRcv.toFixed(1)}% of allocated budget</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-card-head"><span class="kpi-card-label">TOTAL FUND SPENT</span></div>
-      <div class="kpi-card-val"><span class="kpi-peso">₱</span><span class="kpi-num">${formatNum(totSpent)}</span></div>
-      <div class="kpi-card-sub">${utilizedPct.toFixed(1)}% utilized · ${contractPct.toFixed(1)}% of contract</div>
-    </div>
-    <div class="kpi-card${coverPctOfBudget >= 5 && totCoverPrt > 0 ? ' kpi-card--bad' : ''}">
-      <div class="kpi-card-head"><span class="kpi-card-label">COVER EXPENSES</span></div>
-      <div class="kpi-card-val"><span class="kpi-peso">₱</span><span class="kpi-num">${formatNum(totCoverPrt)}</span></div>
-      <div class="kpi-card-sub">${totCoverPrt <= 0 ? 'No cover expenses' : coverPctOfBudget.toFixed(1) + '% of allocated budget · included above · ' + (coverPctOfBudget >= 5 ? 'BAD' : coverPctOfBudget >= 2 ? 'WARNING' : 'HEALTHY')}</div>
-    </div>
-  </div>
-
-  ${window.currentUserRole !== 'staff' ? `
-  <!-- Overspending the allocation is the condition worth flagging in red, so the
-       band turns danger for that too — not only for an over-billed contract. -->
-  <div class="variance-card ${periodVariance < 0 || contractVariance < 0 ? 'variance-card--danger' : ''}">
-    <div class="variance-card-title">REMAINING ALLOCATION</div>
-    <div class="variance-cols">
-      <div class="variance-col">
-        <div class="variance-col-label">RECEIVABLE BALANCE</div>
-        <div class="variance-col-val"><span class="kpi-peso">${periodVariance<0?'-':''}₱</span><span class="kpi-num">${formatNum(Math.abs(periodVariance))}</span></div>
-        <div class="variance-bar-wrap"><div class="variance-bar-fill" style="width:${Math.max(Math.min(Math.abs(periodRemPct),100),2).toFixed(1)}%;background:${periodVariance<0?'rgba(239,68,68,0.8)':'rgba(255,255,255,0.6)'}"></div></div>
-        <div class="variance-col-sub">${periodRemPct.toFixed(1)}% of contract · ${periodVariance<0?'over-billed':'pending billing'}</div>
-      </div>
-      <div class="variance-divider"></div>
-      <div class="variance-col">
-        <div class="variance-col-label">FUNDS AVAILABLE</div>
-        <div class="variance-col-val"><span class="kpi-peso">${contractVariance<0?'-':''}₱</span><span class="kpi-num">${formatNum(Math.abs(contractVariance))}</span></div>
-        <div class="variance-bar-wrap"><div class="variance-bar-fill" style="width:${Math.max(Math.min(Math.abs(contractRemPct),100),2).toFixed(1)}%;background:${contractVariance<0?'rgba(239,68,68,0.8)':'rgba(255,255,255,0.6)'}"></div></div>
-        <div class="variance-col-sub">${totReceived > 0 ? 'Allocated &minus; Spent · ' + contractRemPct.toFixed(1) + '% of allocated · ' + (contractVariance<0?'overspent beyond allocated funds':'available to spend') : 'Nothing allocated yet'}</div>
-      </div>
-    </div>
-  </div>` : ''}
-
-  <div class="body">
-    <div class="section-title">${periodLabel} Period Breakdown</div>
-    <table>
-      <thead><tr>
-        <th>Period</th>
-        ${window.currentUserRole !== 'staff' ? '<th style="text-align:right">Received</th>' : ''}
-        <th style="text-align:right">Materials</th>
-        <th style="text-align:right">Labor</th>
-        <th style="text-align:right">Current Fund Spent</th>
-        ${window.currentUserRole !== 'staff' ? '<th style="text-align:right">Remaining</th>' : ''}
-        <th style="text-align:center">% Used</th>
-        <th style="text-align:center">Status</th>
-      </tr></thead>
-      <tbody>${tableRows}</tbody>
-    </table>
-
-    <div class="section-title" style="margin-top:28px">Category Breakdown</div>
-    <table>
-      <thead><tr>
-        <th>Category</th>
-        <th style="text-align:right">Amount</th>
-        <th style="text-align:right">% of Total</th>
-        <th>Distribution</th>
-      </tr></thead>
-      <tbody>${catRows || '<tr><td colspan="4" style="text-align:center;color:#9ca3af">No category data.</td></tr>'}</tbody>
-    </table>
-
-    ${expDetailSection}
-    ${payDetailSection}
-  </div>
-
-  <div class="footer">
-    <div class="footer-left">Official report generated by the DAC's Admin System. For internal use only.</div>
-    <div class="footer-brand">DAC's Building Design Services</div>
-  </div>
-</div>
-</body>
-</html>`;
-
-    const win = window.open('', '_blank', 'width=1000,height=900');
-    if (!win) { showExpNotif('Pop-up blocked. Please allow pop-ups for this site.', 'error'); return; }
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    win.onload = function() { win.print(); win.onafterprint = function() { win.close(); }; };
+    if (_pcEnsureReportOverhead(printReportsDashboard)) return;
+    const report = _pcDashboardReport();
+    _pcPrintReport((expFolders.find(f => f.id === _rptState.folderId)?.name || 'Company-Wide Report')
+        + ' · ' + report.label, report.model, report.groups);
 }
 
 console.log('✅ Reports Dashboard Module Loaded');
@@ -7047,6 +6080,7 @@ function _mvpEsc(str) {
 // MVP OVERVIEW — Project Folders Grid (Budget Overview tab)
 // ════════════════════════════════════════════════════════════
 function mvpRenderOverviewFolderGrid() {
+    if (_pcEnsureReportOverhead(mvpRenderOverviewFolderGrid)) return;
     const grid = document.getElementById('mvpOverviewFolderGrid');
     if (!grid) return;
 
@@ -7062,6 +6096,7 @@ function mvpRenderOverviewFolderGrid() {
     }
 
     const fmtD = function(n) {
+        if (!_pcIsOwner()) return '';
         return '₱ ' + (n || 0).toLocaleString('en-PH', {minimumFractionDigits:2, maximumFractionDigits:2});
     };
     const fmtDate = function(ts) {
@@ -7074,19 +6109,14 @@ function mvpRenderOverviewFolderGrid() {
         return d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
     };
 
-    var _useOvCache = _ovAllExpenses.length > 0 || _ovAllPayroll.length > 0;
-
     grid.innerHTML = expFolders.map(function(folder) {
-        const fProjs        = expProjects.filter(function(p){ return p.folderId === folder.id; });
-        const contract      = folder.totalBudget || 0;
-        const budgetReceived= fProjs.reduce(function(s,p){ return s + (p.monthlyBudget||0); }, 0);
-        const totalCost     = _useOvCache
-            ? fProjs.reduce(function(s, p) {
-                var e = _ovAllExpenses.filter(function(x){ return x.projectId === p.id; }).reduce(function(s2,x){ return s2 + (parseFloat(x.amount)||0); }, 0);
-                var l = _ovAllPayroll.filter(function(x){ return x.projectId === p.id; }).reduce(function(s2,x){ return s2 + (parseFloat(x.totalSalary)||0); }, 0);
-                return s + e + l;
-              }, 0)
-            : fProjs.reduce(function(s,p){ return s + (p._spent||0); }, 0);
+        const scopeIds = _pcReportFolderIds(folder.id);
+        const fProjs = expProjects.filter(p => scopeIds.has(p.folderId));
+        const model = _pcReportModel(folder.id);
+        const totals = model.totals || { budget:0, totalSpent:0, cover:0 };
+        const contract = _pcIsOwner() ? expFolders.filter(f => scopeIds.has(f.id)).reduce((s,f) => s + (Number(f.totalBudget) || 0), 0) : 0;
+        const budgetReceived = totals.budget;
+        const totalCost = totals.totalSpent;
         const variance      = budgetReceived - totalCost;
         const remPct        = budgetReceived > 0 ? ((budgetReceived - totalCost) / budgetReceived) * 100 : 100;
         const spentPct      = budgetReceived > 0 ? Math.min((totalCost / budgetReceived) * 100, 100) : 0;
@@ -7098,11 +6128,7 @@ function mvpRenderOverviewFolderGrid() {
         const footerMeta    = fProjs.length + ' billing period' + (fProjs.length !== 1 ? 's' : '')
                             + (createdStr ? ' · Created ' + createdStr : '');
         const varClass      = variance >= 0 ? 'bo-fld-stat-accent' : 'bo-fld-stat-warn';
-        const _cPresPIds    = fProjs.filter(function(p) { return p.fundingType === 'president'; }).map(function(p) { return p.id; });
-        const coverCost     = _useOvCache
-            ? _ovAllExpenses.filter(function(x) { return fProjs.some(function(p){ return p.id === x.projectId; }) && (x.coverExpense || _cPresPIds.indexOf(x.projectId) !== -1); }).reduce(function(s,x){ return s+(parseFloat(x.amount)||0); }, 0)
-              + _ovAllPayroll.filter(function(x) { return _cPresPIds.indexOf(x.projectId) !== -1; }).reduce(function(s,x){ return s+(parseFloat(x.totalSalary)||0); }, 0)
-            : 0;
+        const coverCost = totals.cover;
         var barClr = remPct <= 0 ? '#c0392b' : (remPct < 10 ? '#c0392b' : (remPct < 20 ? '#A86B00' : '#1A5C3A'));
         var isStaff = window.currentUserRole === 'staff';
 
@@ -7173,7 +6199,7 @@ function _ovSetDelta(amtId, badgeId, delta, label) {
     var amtEl   = document.getElementById(amtId);
     var badgeEl = document.getElementById(badgeId);
     if (amtEl) {
-        amtEl.textContent = (delta >= 0 ? '+' : '-') + _mvpFmt(Math.abs(delta));
+        amtEl.textContent = _pcIsOwner() ? (delta >= 0 ? '+' : '-') + _mvpFmt(Math.abs(delta)) : '';
         amtEl.className = 'ov-kpi-lg__delta-amt ' + (delta >= 0 ? 'is-positive' : 'is-negative');
     }
     if (badgeEl) {
@@ -7198,9 +6224,12 @@ function _ovSetStatusBadge(id, usedPct) {
 }
 
 function mvpRenderOvFolderDetail(folderId) {
+    if (_pcEnsureReportOverhead(() => mvpRenderOvFolderDetail(folderId))) return;
     var fid    = folderId || _mvpOvCurrentFolderId;
     var folder = expFolders.find(function(f) { return f.id === fid; });
     if (!folder) return;
+
+    var fmt = n => _pcIsOwner() ? _mvpFmt(n) : '';
 
     // Folder header
     setText('mvpOvDetailName',    folder.name    || 'Unnamed Folder');
@@ -7213,24 +6242,20 @@ function mvpRenderOvFolderDetail(folderId) {
     setText('mvpOvDetailCreated', createdStr);
 
     // Aggregate data
-    var fProjs     = expProjects.filter(function(p) { return p.folderId === fid; });
+    var scopeIds = _pcReportFolderIds(fid);
+    var fProjs     = expProjects.filter(function(p) { return scopeIds.has(p.folderId); });
     var clientProjs = fProjs.filter(function(p) { return p.fundingType !== 'president'; });
     var presProjs   = fProjs.filter(function(p) { return p.fundingType === 'president'; });
     var presProjIds = presProjs.map(function(p) { return p.id; });
 
-    var contract   = parseFloat(folder.totalBudget) || 0;
-    var budgetRcv  = clientProjs.reduce(function(s, p) { return s + (parseFloat(p.monthlyBudget) || 0); }, 0);
-
-    var matCost    = expExpenses.filter(function(e) { return fProjs.some(function(p) { return p.id === e.projectId; }) && !e.coverExpense; })
-                        .reduce(function(s, e) { return s + (parseFloat(e.amount) || 0); }, 0);
-    var labCost    = expPayroll.filter(function(p) { return fProjs.some(function(pr) { return pr.id === p.projectId; }) && presProjIds.indexOf(p.projectId) === -1; })
-                        .reduce(function(s, p) { return s + (parseFloat(p.totalSalary) || 0); }, 0);
-    var coverCost  = expExpenses.filter(function(e) { return e.coverExpense || presProjIds.indexOf(e.projectId) !== -1; })
-                        .reduce(function(s, e) { return s + (parseFloat(e.amount) || 0); }, 0)
-                   + expPayroll.filter(function(p) { return presProjIds.indexOf(p.projectId) !== -1; })
-                        .reduce(function(s, p) { return s + (parseFloat(p.totalSalary) || 0); }, 0);
-
-    var totalSpent = matCost + labCost;
+    var model = _pcReportModel(fid);
+    var totals = model.totals || { budget:0, mats:0, labor:0, cover:0, totalSpent:0 };
+    var contract = _pcIsOwner() ? expFolders.filter(f => scopeIds.has(f.id)).reduce((s, f) => s + (Number(f.totalBudget) || 0), 0) : 0;
+    var budgetRcv = totals.budget;
+    var matCost = totals.mats;
+    var labCost = totals.labor;
+    var coverCost = totals.cover;
+    var totalSpent = totals.totalSpent;
     var remaining  = budgetRcv - totalSpent;
     var spentPct   = budgetRcv > 0 ? Math.min((totalSpent / budgetRcv) * 100, 100) : 0;
     var remPct     = 100 - spentPct;
@@ -7246,7 +6271,7 @@ function mvpRenderOvFolderDetail(folderId) {
     if (badge) { badge.className = 'mvp-health-badge ' + hClass; badge.textContent = hLabel; }
 
     // ── Row 1: TOTAL CONTRACT card
-    setText('mvpOvKpiContractVal', _mvpFmt(contract));
+    setText('mvpOvKpiContractVal', fmt(contract));
     var cDelta1 = contract - budgetRcv;
     var cDelta2 = contract - totalSpent;
     _ovSetDelta('mvpOvKpiContractDelta1', 'mvpOvKpiContractDelta1Badge', cDelta1,
@@ -7257,7 +6282,7 @@ function mvpRenderOvFolderDetail(folderId) {
     setText('mvpOvKpiContractPct', totalOfContract.toFixed(1) + '%');
 
     // ── Row 1: TOTAL FUND ALLOCATED card
-    setText('mvpOvKpiReceivedVal', _mvpFmt(budgetRcv));
+    setText('mvpOvKpiReceivedVal', fmt(budgetRcv));
     setText('mvpOvKpiReceivedSub', clientProjs.length + ' billing month' + (clientProjs.length !== 1 ? 's' : ''));
     var rDelta = budgetRcv - totalSpent;
     _ovSetDelta('mvpOvKpiReceivedDelta', 'mvpOvKpiReceivedDeltaBadge', rDelta,
@@ -7266,7 +6291,7 @@ function mvpRenderOvFolderDetail(folderId) {
     setText('mvpOvKpiReceivedPct', spentPct.toFixed(1) + '%');
 
     // ── Row 1: COVER EXPENSES card
-    setText('mvpOvKpiCoverVal', coverCost > 0 ? _mvpFmt(coverCost) : '—');
+    setText('mvpOvKpiCoverVal', coverCost > 0 ? fmt(coverCost) : '—');
     setText('mvpOvKpiCoverSub', presProjs.length + ' month' + (presProjs.length !== 1 ? 's' : '') + ' covered');
     // Budget Status = cover expenses as % of 10% allowance (10% of budget received = 100%)
     // Budget Status = cover expenses as % of contract value (original)
@@ -7285,7 +6310,7 @@ function mvpRenderOvFolderDetail(folderId) {
 
     // ── Row 2: MATERIALS card
     var expCount = expExpenses.filter(function(e) { return fProjs.some(function(p) { return p.id === e.projectId; }); }).length;
-    setText('mvpOvKpiMatVal', _mvpFmt(matCost));
+    setText('mvpOvKpiMatVal', fmt(matCost));
     setText('mvpOvKpiMatSub', expCount + ' transaction' + (expCount !== 1 ? 's' : '') + ' · ' + matPct.toFixed(1) + '% of budget');
     setText('mvpOvKpiMatSub2', expCount + ' transaction' + (expCount !== 1 ? 's' : ''));
     setText('mvpOvKpiMatPct', matPct.toFixed(1) + '%');
@@ -7293,28 +6318,28 @@ function mvpRenderOvFolderDetail(folderId) {
 
     // ── Row 2: LABOR card
     var workerSet = new Set(expPayroll.map(function(p) { return p.workerName || p.id; }));
-    setText('mvpOvKpiLabVal', _mvpFmt(labCost));
+    setText('mvpOvKpiLabVal', fmt(labCost));
     setText('mvpOvKpiLabSub', workerSet.size + ' worker' + (workerSet.size !== 1 ? 's' : '') + ' · ' + labPct.toFixed(1) + '% of budget');
     setText('mvpOvKpiLabSub2', workerSet.size + ' worker' + (workerSet.size !== 1 ? 's' : ''));
     setText('mvpOvKpiLabPct', labPct.toFixed(1) + '%');
     setStyle('mvpOvKpiLabBar', 'width', Math.min(labPct, 100).toFixed(1) + '%');
 
     // ── Row 2: TOTAL COST card
-    setText('mvpOvKpiTotalVal', _mvpFmt(totalSpent));
+    setText('mvpOvKpiTotalVal', fmt(totalSpent));
     setText('mvpOvKpiTotalSub', totalOfContract.toFixed(1) + '% of contract value');
     setText('mvpOvKpiTotalPct', totalOfContract.toFixed(1) + '%');
     setStyle('mvpOvKpiTotalBar', 'width', Math.min(totalOfContract, 100).toFixed(1) + '%');
 
     // ── Staff card mirrors (same data, card style matching Expenses module) ──
-    setText('staffOvTotalVal',   _mvpFmt(totalSpent));
-    setText('staffOvMatVal',     _mvpFmt(matCost));
-    setText('staffOvLabVal',     _mvpFmt(labCost));
-    setText('staffOvCoverVal',   coverCost > 0 ? _mvpFmt(coverCost) : '—');
+    setText('staffOvTotalVal',   fmt(totalSpent));
+    setText('staffOvMatVal',     fmt(matCost));
+    setText('staffOvLabVal',     fmt(labCost));
+    setText('staffOvCoverVal',   coverCost > 0 ? fmt(coverCost) : '—');
     setText('staffOvCoverSub',   presProjs.length + ' month' + (presProjs.length !== 1 ? 's' : '') + ' covered');
     setText('staffOvCoverPct',   coverOfContract.toFixed(1) + '%');
-    setText('staffOvMatCardVal', _mvpFmt(matCost));
+    setText('staffOvMatCardVal', fmt(matCost));
     setText('staffOvMatPct',     matPct.toFixed(1) + '%');
-    setText('staffOvLabCardVal', _mvpFmt(labCost));
+    setText('staffOvLabCardVal', fmt(labCost));
     setText('staffOvLabPct',     labPct.toFixed(1) + '%');
     var staffCoverBadge = document.getElementById('staffOvCoverBadge');
     if (staffCoverBadge) {
@@ -7333,12 +6358,12 @@ function mvpRenderOvFolderDetail(folderId) {
     var rcvColor  = rcvPct  < 0 ? '#dc2626' : '#0891b2';
     var remBColor = remBPct < 0 ? '#dc2626' : '#059669';
     setText('mvpOvKpiRcvPctVal',  rcvPct.toFixed(1)  + '%');
-    setText('mvpOvKpiRcvPctAmt',  _mvpFmt(Math.abs(contract - budgetRcv)));
+    setText('mvpOvKpiRcvPctAmt',  fmt(Math.abs(contract - budgetRcv)));
     setText('mvpOvKpiRcvPctSub',  'of contract remaining to bill');
     setStyle('mvpOvKpiRcvPctBar',  'width',      Math.min(Math.abs(rcvPct), 100).toFixed(1) + '%');
     setStyle('mvpOvKpiRcvPctBar',  'background', rcvColor);
     setText('mvpOvKpiRemPctVal',  remBPct.toFixed(1) + '%');
-    setText('mvpOvKpiRemPctAmt',  _mvpFmt(Math.abs(contract - totalSpent)));
+    setText('mvpOvKpiRemPctAmt',  fmt(Math.abs(contract - totalSpent)));
     setText('mvpOvKpiRemPctSub',  'of contract remaining');
     setStyle('mvpOvKpiRemPctBar',  'width',      Math.min(Math.abs(remBPct), 100).toFixed(1) + '%');
     setStyle('mvpOvKpiRemPctBar',  'background', remBColor);
@@ -7346,7 +6371,7 @@ function mvpRenderOvFolderDetail(folderId) {
     // ── Variance card
     var varEl = document.getElementById('mvpOvVarianceAmt');
     if (varEl) {
-        varEl.textContent = _mvpFmt(Math.abs(remaining));
+        varEl.textContent = fmt(Math.abs(remaining));
         var amtEl = varEl.closest('.ov-variance-amount');
         if (amtEl) amtEl.classList.toggle('is-negative', remaining < 0);
     }
@@ -7367,87 +6392,31 @@ function mvpRenderOvFolderDetail(folderId) {
 }
 
 function mvpRenderOvBillingPeriods(folderId) {
+    if (_pcEnsureReportOverhead(() => mvpRenderOvBillingPeriods(folderId))) return;
     var grid = document.getElementById('mvpOvPeriodGrid');
     if (!grid) return;
-    var fid    = folderId || _mvpOvCurrentFolderId;
-    var fProjs = expProjects.filter(function(p) { return p.folderId === fid; });
-
-    setText('mvpOvPeriodCount', fProjs.length + ' period' + (fProjs.length !== 1 ? 's' : ''));
-
-    if (!fProjs.length) {
-        grid.innerHTML = '<div class="bo-empty bo-empty-compact">'
-            + '<h3 class="bo-empty-title">No billing periods yet</h3>'
-            + '<p class="bo-empty-sub">Add a billing period to start tracking expenses.</p>'
-            + '</div>';
-        return;
-    }
-
-    function fmtD(n) {
-        return '₱ ' + (n || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
-    grid.innerHTML = fProjs.map(function(proj) {
-        var pid      = proj.id;
-        var pName    = (proj.month || '') + ' ' + (proj.year || '');
-        var budget   = parseFloat(proj.monthlyBudget) || 0;
-        var matCost  = expExpenses.filter(function(e) { return e.projectId === pid; })
-                           .reduce(function(s, e) { return s + (parseFloat(e.amount) || 0); }, 0);
-        var labCost  = expPayroll.filter(function(p) { return p.projectId === pid; })
-                           .reduce(function(s, p) { return s + (parseFloat(p.totalSalary) || 0); }, 0);
-        var totalCost  = matCost + labCost;
-        var noBudget   = budget <= 0;
-        var remain     = budget - totalCost;
-        var spentPct   = budget > 0 ? Math.min((totalCost / budget) * 100, 100) : (totalCost > 0 ? 100 : 0);
-        var remPct     = 100 - spentPct;
-        var hClass, hLabel;
-        if (noBudget) {
-            if (totalCost > 0) { hClass = 'mvp-health-warning'; hLabel = 'NO BUDGET'; }
-            else               { hClass = 'mvp-health-healthy';  hLabel = 'EMPTY'; }
-        } else {
-            hClass = _mvpHealthClass(remPct);
-            hLabel = _mvpHealthLabel(remPct);
-        }
-        var barClr = noBudget ? (totalCost > 0 ? '#A86B00' : '#E8E2D9')
-                              : (remPct < 0 ? '#c0392b' : remPct < 20 ? '#A86B00' : '#1A5C3A');
-        var remClass = remain >= 0 ? 'bo-fld-stat-accent' : 'bo-fld-stat-warn';
-        var expCount   = expExpenses.filter(function(e) { return e.projectId === pid; }).length;
-        var payCount   = expPayroll.filter(function(p)  { return p.projectId === pid; }).length;
-        var entriesTxt = expCount + ' expense' + (expCount !== 1 ? 's' : '') + ' · ' + payCount + ' payroll entr' + (payCount !== 1 ? 'ies' : 'y');
-        var fundingLabels = { mobilization:'Mobilization', downpayment:'Downpayment',
-            progress:'Progress Billing', final:'Final Payment', president:'Cover Expenses' };
-        var fundingLabel = fundingLabels[proj.fundingType] || 'Billing Period';
-        var pctTxt = noBudget ? (totalCost > 0 ? fmtD(totalCost) + ' spent' : 'No entries') : spentPct.toFixed(1) + '% used';
-
-        return '<div class="bo-period-card">'
-            + '<div class="bo-period-card-head">'
-            +   '<div class="bo-period-card-title">'
-            +     '<div class="bo-period-card-name">' + _mvpEsc(pName.trim()) + '</div>'
-            +     '<div class="bo-period-card-funding">' + fundingLabel + '</div>'
-            +   '</div>'
-            +   '<div class="bo-fld-card-actions">'
-            +     '<button class="bo-icon-btn" onclick="openEditProjectModal(\'' + pid + '\')" title="Edit period">'
-            +       '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
-            +     '</button>'
-            +     '<button class="bo-icon-btn bo-icon-btn-danger" onclick="confirmDeleteProject(\'' + pid + '\')" title="Delete period">'
-            +       '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>'
-            +     '</button>'
-            +   '</div>'
-            + '</div>'
-            + '<div class="bo-fld-card-stats">'
-            +   '<div class="bo-fld-stat"><span class="lbl">Period Budget</span><span class="val">' + (noBudget ? '<em style="color:#A1A1A6;font-style:normal;font-size:12px">Not set</em>' : fmtD(budget)) + '</span></div>'
-            +   '<div class="bo-fld-stat"><span class="lbl">Materials</span><span class="val">' + fmtD(matCost) + '</span></div>'
-            +   '<div class="bo-fld-stat"><span class="lbl">Labor</span><span class="val">' + fmtD(labCost) + '</span></div>'
-            +   '<div class="bo-fld-stat"><span class="lbl">Current Fund Spent</span><span class="val bo-fld-stat-accent">' + fmtD(totalCost) + '</span></div>'
-            +   (!noBudget ? '<div class="bo-fld-stat"><span class="lbl">Remaining</span><span class="val ' + remClass + '">' + fmtD(remain) + '</span></div>' : '')
-            + '</div>'
-            + '<div class="bo-fld-card-health">'
-            +   '<span class="mvp-health-badge ' + hClass + '">' + hLabel + '</span>'
-            +   '<span class="bo-fld-card-pct">' + pctTxt + '</span>'
-            + '</div>'
-            + '<div class="bo-fld-card-progress"><div class="bo-fld-card-progress-fill" style="width:' + spentPct.toFixed(1) + '%;background:' + barClr + '"></div></div>'
-            + '<div class="bo-fld-card-meta">' + entriesTxt + '</div>'
-            + '</div>';
-    }).join('');
+    var fid = folderId || _mvpOvCurrentFolderId;
+    var model = _pcReportModel(fid);
+    var owner = _pcIsOwner();
+    setText('mvpOvPeriodCount', model.rows.length + ' periods');
+    var summary = document.getElementById('mvpOvAllocationReport');
+    if (summary) summary.innerHTML = _pcAllocationReportHtml(model);
+    grid.innerHTML = model.rows.map(function(row) {
+        var pid = _mvpEsc(row.id);
+        var stats = owner ? [['Materials',row.mats],['Labor',row.labor],['Overhead',row.overhead],
+            ['Current Fund Spent',row.totalSpent],['Remaining',row.remaining]] : [];
+        return '<div class="bo-period-card"><div class="bo-period-card-head"><div class="bo-period-card-title">'
+            + '<div class="bo-period-card-name">' + _mvpEsc(row.label) + '</div>'
+            + '<div class="bo-period-card-funding">' + _mvpEsc(row.status) + '</div></div>'
+            + '<div class="bo-fld-card-actions">'
+            + '<button class="bo-icon-btn" onclick="mvpOvOpenPeriodDetail(\'' + _mvpEsc(fid) + '\',\'' + pid + '\')" aria-label="View period details" title="View period details"><i data-lucide="eye"></i></button>'
+            + '<button class="bo-icon-btn" onclick="openEditProjectModal(\'' + pid + '\')" aria-label="Edit period" title="Edit period"><i data-lucide="pencil"></i></button>'
+            + '<button class="bo-icon-btn bo-icon-btn-danger" onclick="confirmDeleteProject(\'' + pid + '\')" aria-label="Delete period" title="Delete period"><i data-lucide="trash-2"></i></button>'
+            + '</div></div><dl class="pc-period-actuals">' + stats.map(function(pair) {
+                return '<div><dt>' + pair[0] + '</dt><dd>' + _pcReportMoney(pair[1]) + '</dd></div>';
+            }).join('') + '</dl>' + _pcPeriodAllocationHtml(row) + '</div>';
+    }).join('') || '<p class="pc-report-note">No billing periods yet.</p>';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 // ─── (Client Payments Panel removed) ──────────────────────────────────────────
@@ -7527,19 +6496,39 @@ var _pdDonutChart = null;
 var _pdBarChart   = null;
 
 function mvpOvOpenPeriodDetail(_folderId, projectId) {
+    if (_pcEnsureReportOverhead(() => mvpOvOpenPeriodDetail(_folderId, projectId))) return;
     var modal = document.getElementById('mvpPeriodDetailModal');
     if (!modal) return;
 
     var proj = expProjects.find(function(p) { return p.id === projectId; });
     if (!proj) return;
+    modal.dataset.projectId = projectId;
 
-    var budget   = parseFloat(proj.monthlyBudget) || 0;
+    var model = _pcReportModel(proj.folderId, { projectId });
+    var row = model.rows[0];
+    if (!row) return;
+    var allocationEl = document.getElementById('pdAllocation');
+    if (allocationEl) allocationEl.innerHTML = _pcPeriodAllocationHtml(row);
+    var owner = _pcIsOwner();
+    modal.querySelectorAll('.pd-charts-row, .pd-util-section').forEach(el => { el.style.display = owner ? '' : 'none'; });
+    if (!owner) {
+        ['pdKpiRow','pdExpensesSection','pdPayrollSection','pdDonutLegend'].forEach(id => { document.getElementById(id).innerHTML = ''; });
+        document.getElementById('pdBudgetAmt').textContent = '';
+        document.getElementById('pdTitle').textContent = row.label;
+        document.getElementById('pdUtilPct').textContent = '';
+        document.getElementById('pdUtilFill').style.width = '0';
+        if (_pdDonutChart) { _pdDonutChart.destroy(); _pdDonutChart = null; }
+        if (_pdBarChart) { _pdBarChart.destroy(); _pdBarChart = null; }
+        modal.style.display = 'flex'; document.body.style.overflow = 'hidden';
+        return;
+    }
+    var budget   = row.budget;
     var pName    = ((proj.month || '') + ' ' + (proj.year || '')).trim();
-    var projExps = expExpenses.filter(function(e) { return e.projectId === projectId; });
-    var projPay  = expPayroll.filter(function(p)  { return p.projectId === projectId; });
-    var matTotal = projExps.reduce(function(s,e) { return s + (parseFloat(e.amount)||0); }, 0);
-    var labTotal = projPay.reduce(function(s,p)  { return s + (parseFloat(p.totalSalary)||0); }, 0);
-    var total    = matTotal + labTotal;
+    var projExps = model.expenses;
+    var projPay  = model.payroll;
+    var matTotal = row.mats;
+    var labTotal = row.labor;
+    var total    = row.totalSpent;
     var remain   = budget - total;
     var usedPct  = budget > 0 ? (total / budget) * 100 : 0;
 
@@ -7560,7 +6549,8 @@ function mvpOvOpenPeriodDetail(_folderId, projectId) {
     var usedCls = usedPct > 100 ? 'pd-kpi--used' : 'pd-kpi--used good';
     document.getElementById('pdKpiRow').innerHTML =
         '<div class="pd-kpi-badge pd-kpi--expenses"><div class="pd-kpi-badge__label">Expenses</div><div class="pd-kpi-badge__value">' + fmtM(matTotal) + '</div></div>'
-      + '<div class="pd-kpi-badge pd-kpi--payroll"><div class="pd-kpi-badge__label">Payroll</div><div class="pd-kpi-badge__value">' + fmtM(labTotal) + '</div></div>'
+      + '<div class="pd-kpi-badge pd-kpi--payroll"><div class="pd-kpi-badge__label">Labor</div><div class="pd-kpi-badge__value">' + fmtM(labTotal) + '</div></div>'
+      + '<div class="pd-kpi-badge"><div class="pd-kpi-badge__label">Overhead</div><div class="pd-kpi-badge__value">' + fmtM(row.overhead) + '</div></div>'
       + '<div class="pd-kpi-badge pd-kpi--total"><div class="pd-kpi-badge__label">Current Fund Spent</div><div class="pd-kpi-badge__value">' + fmtM(total) + '</div></div>'
       + '<div class="pd-kpi-badge ' + remCls + '"><div class="pd-kpi-badge__label">Remaining</div><div class="pd-kpi-badge__value">' + fmtM(remain) + '</div></div>'
       + '<div class="pd-kpi-badge ' + usedCls + '"><div class="pd-kpi-badge__label">Used %</div><div class="pd-kpi-badge__value">' + usedPct.toFixed(1) + '%</div></div>';
@@ -7585,7 +6575,8 @@ function mvpOvOpenPeriodDetail(_folderId, projectId) {
         var cat = e.category || 'Uncategorized';
         catMap[cat] = (catMap[cat] || 0) + (parseFloat(e.amount) || 0);
     });
-    if (labTotal > 0) catMap['Payroll'] = labTotal;
+    if (labTotal > 0) catMap['Labor'] = labTotal;
+    if (row.overhead > 0) catMap['Overhead'] = row.overhead;
 
     var catLabels = Object.keys(catMap);
     var catVals   = catLabels.map(function(k) { return catMap[k]; });
@@ -7615,11 +6606,11 @@ function mvpOvOpenPeriodDetail(_folderId, projectId) {
     _pdBarChart = new Chart(barCtx, {
         type: 'bar',
         data: {
-            labels: ['Budget', 'Expenses', 'Payroll', 'Total'],
+            labels: ['Budget', 'Materials', 'Labor', 'Overhead', 'Total'],
             datasets: [{
                 label: '₱',
-                data: [budget, matTotal, labTotal, total],
-                backgroundColor: ['#3b82f6','#f97316','#ef4444', total > budget ? '#ef4444' : '#10b981'],
+                data: [budget, matTotal, labTotal, row.overhead, total],
+                backgroundColor: ['#3b82f6','#f97316','#ef4444','#c8a45a', total > budget ? '#ef4444' : '#10b981'],
                 borderRadius: 6, borderSkipped: false
             }]
         },
@@ -7695,7 +6686,7 @@ function mvpOvOpenPeriodDetail(_folderId, projectId) {
                    + '<td style="text-align:right;font-weight:600">' + fmtM(parseFloat(p.totalSalary)||0) + '</td>'
                    + '</tr>';
         });
-        pHtml += '<tr class="pd-group-subtotal"><td colspan="5">Total Payroll</td><td style="text-align:right">' + fmtM(labTotal) + '</td></tr>';
+        pHtml += '<tr class="pd-group-subtotal"><td colspan="5">Total Payroll</td><td style="text-align:right">' + fmtM(projPay.reduce((sum, p) => sum + (Number(p.totalSalary) || 0), 0)) + '</td></tr>';
         pHtml += '</tbody></table>';
         paySection.innerHTML = pHtml;
     }

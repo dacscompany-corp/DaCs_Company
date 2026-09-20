@@ -3347,3 +3347,27 @@
   .lc2-job-head .lc2-badge { order: 6; }
   .lc2-job-chev { margin-left: auto; }
 }
+/* Shared allocation reports retain table semantics at narrow widths. */
+.pc-report-section { margin-block: 1.5rem; min-inline-size: 0; }
+.pc-report-section h2 { font-size: 1rem; }
+.pc-report-scroll { max-inline-size: 100%; min-inline-size: 0; overflow-x: auto; overscroll-behavior-inline: contain; margin-block: 1rem; }
+.pc-report-scroll:focus-visible { outline: 2px solid #157a52; outline-offset: 2px; }
+.pc-report-table { inline-size: 100%; border-collapse: collapse; font-size: .75rem; font-variant-numeric: tabular-nums; }
+.pc-report-table caption { text-align: start; font-weight: 700; padding-block: .5rem; color: #263a30; }
+.pc-report-table th, .pc-report-table td { padding: .6rem .7rem; border-block-end: 1px solid #dce3df; text-align: end; min-inline-size: 6rem; }
+.pc-report-table thead th { background: #edf4ef; color: #294335; white-space: normal; }
+.pc-report-table th:first-child { text-align: start; }
+.pc-report-table tbody td { white-space: nowrap; }
+.pc-report-table tbody th { overflow-wrap: anywhere; min-inline-size: 8rem; }
+.pc-report-note { font-size: .75rem; color: #4c5b52; line-height: 1.5; }
+.pc-period-actuals { margin: 0; display: grid; gap: .5rem; }
+.pc-period-actuals > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .25rem .75rem; }
+.pc-period-actuals dt { color: #4c5b52; font-size: .8rem; }
+.pc-period-actuals dd { margin: 0; font-size: .8rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bo-period-card { min-inline-size: 0; }
+.bo-period-card .pc-report-table th, .bo-period-card .pc-report-table td { min-inline-size: 0; padding: .5rem .25rem; }
+.bo-period-card .pc-report-table tbody th { min-inline-size: 6rem; }
+@media (max-width: 560px) {
+    .bo-period-grid { grid-template-columns: minmax(0, 1fr); }
+    .pc-report-table { font-size: .7rem; }
+}

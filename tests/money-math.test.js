@@ -395,44 +395,64 @@ console.log('\nI. Cover / president money');
   });
 }
 
-// The Reports module computes the same buckets INLINE, inside render functions
-// that cannot be extracted and called. These guards fail if either carve-out is
-// reintroduced there — the exact edit that caused the 2026-08-20 mismatch, and
-// the kind a merge silently reverts.
+// Execute the shared report and the actual outputs. Removing cover costs,
+// charging G&A, double-counting overhead, or spending the planning reserve
+// must change these hand-derived amounts and fail the tests.
 {
-  const carveOuts = [
-    ['Reports KPI · materials',      "_srcExp.filter(e => _kpiProjIdSet.has(e.projectId) && !e.coverExpense)"],
-    ['Reports KPI · labor',          "_srcPay.filter(p => _kpiProjIdSet.has(p.projectId) && !_kpiPresProjIds.has(p.projectId))"],
-    ['All-time summary · materials', "allExps.filter(e => !e.coverExpense)"],
-    ['All-time summary · labor',     "allPay.filter(p => !presProjIds.has(p.projectId))"],
-    ['Printed report · materials',   "_prtProjIdSet.has(e.projectId) && !e.coverExpense"],
-    ['Printed report · labor',       "_prtProjIdSet.has(p.projectId) && !_prtPresProjIds.has(p.projectId)"]
-  ];
-  carveOuts.forEach(function (c) {
-    test(c[0] + ' does not carve cover out of the total', () =>
-      ok(expensesSrc.indexOf(c[1]) === -1,
-         'expenses-module.js re-excludes cover money here — Reports will disagree with Project Control again'));
+  const vm = require('vm');
+  const elements = {};
+  let printed = '';
+  const report = vm.createContext({ ...require('../js/billing-allocation.js'),
+    console: { log() {}, error: console.error },
+    window: { currentUserRole:'owner', open:() => ({ document:{ write(html) { printed = html; }, close() {} } }) },
+    document: { addEventListener() {}, getElementById(id) {
+      return elements[id] || (elements[id] = { innerHTML:'', style:{} });
+    } } });
+  vm.runInContext(expensesSrc, report);
+  vm.runInContext(`
+    expFolders = [{id:'f',name:'Job',totalBudget:5000}];
+    expProjects = [{id:'p',folderId:'f',month:'September',year:2026,monthlyBudget:1000},
+      {id:'cover',folderId:'f',month:'September',year:2026,monthlyBudget:999,fundingType:'president'}];
+    _pcAllocationMap = {p:{directPct:70,indirectPct:20,targetMarginPct:10}};
+    _ovAllExpenses = [
+      {projectId:'p',amount:100}, {projectId:'p',amount:20,coverExpense:true}, {projectId:'cover',amount:30}];
+    _ovAllPayroll = [
+      {projectId:'p',totalSalary:50,laborType:'direct'},
+      {projectId:'p',totalSalary:5,laborType:'liability',liabilityFor:'direct'},
+      {projectId:'p',totalSalary:20,laborType:'indirect'},
+      {projectId:'p',totalSalary:2,laborType:'liability',liabilityFor:'indirect'},
+      {projectId:'cover',totalSalary:25,laborType:'direct'}];
+    _rptOvhdRows = [{folderId:'f',billingPeriodId:'p',amount:8}, {folderId:'f',amount:9},
+      {folderId:'f',amount:777,scope:'company'}, {folderId:'f',amount:888,deletedAt:'deleted'}];
+    _rptState = {folderId:'f',period:'annual',year:2026,allExpenses:_ovAllExpenses,allPayroll:_ovAllPayroll};
+  `, report);
+  const model = report._pcDashboardReport().model;
+  test('report materials retain period and flagged cover costs', () => eq(model.totals.mats, 150));
+  test('report labor retains cover pay and direct statutory burden', () => eq(model.totals.labor, 80));
+  test('report overhead includes indirect burden and unallocated job costs once', () => eq(model.totals.overhead, 39));
+  test('report Spent excludes company G&A, deleted rows and reserve', () => eq(model.totals.totalSpent, 269));
+  test('report Allocated excludes cover budget and Remaining uses allocated funds', () => {
+    eq(model.totals.budget, 1000); eq(model.totals.remaining, 731);
   });
-  test('Cover card still says it is included in the totals above', () =>
-    ok(expensesSrc.indexOf('included above') !== -1,
-       'the Cover sub-label must keep saying "included above", or it reads as a fourth bucket'));
-}
-
-// The printed report must show the SAME balance figure as the screen and as the
-// TOTAL row of its own table: Funds Available = Allocated - Spent. It used to
-// print "Budget Remaining" = contract - spent, a card deleted from the site,
-// which treated the whole contract as spendable AND already contained the
-// Receivable Balance printed next to it (the unbilled amount, twice in one band).
-{
-  test('printed report computes Funds Available as Allocated - Spent', () =>
-    ok(expensesSrc.indexOf('const contractVariance= totReceived - totSpent;') !== -1,
-       'the print sheet is back on contract - spent: it will disagree with the screen and with its own TOTAL row'));
-  test('printed report no longer prints the deleted "Budget Remaining" card', () =>
-    ok(expensesSrc.indexOf('BUDGET REMAINING') === -1,
-       'that card does not exist on the site; the print must not resurrect it'));
-  test('printed balance is a percentage of ALLOCATED, not of contract', () =>
-    ok(expensesSrc.indexOf('const contractRemPct  = totReceived > 0 ? (contractVariance / totReceived) * 100 : 0;') !== -1,
-       'percentage base drifted back to the contract'));
+  test('report Cover stays a subset of normal cost buckets', () => eq(model.totals.cover, 75));
+  test('report KPI renders cover disclosure with the actual remaining funds', () => {
+    report._rptRenderKPIs(model);
+    ok(elements.rptKpiRow.innerHTML.includes('₱731.00'), 'Funds Available must be allocated minus spent');
+    ok(elements.rptKpiRow.innerHTML.includes('included above'), 'Cover must be identified as included');
+  });
+  for (const [name, arg, spent, remaining] of [
+    ['printFullBillingSummary','f','269.00','731.00'],
+    ['printBillingSummaryReceipt','p','205.00','795.00'],
+    ['printReportsDashboard',null,'269.00','731.00']
+  ]) {
+    test(name + ' prints actual Spent and allocated-minus-Spent balance', () => {
+      report[name](arg);
+      const actual = printed.match(/<caption>Actual Costs<\/caption>[\s\S]*?<tbody>([\s\S]*?)<\/tbody>/)[1];
+      ok(actual.includes('₱' + spent), 'incorrect Spent');
+      ok(actual.includes('₱' + remaining), 'incorrect Funds Available');
+      ok(!actual.includes('4,731'), 'contract-minus-spent is not available cash');
+    });
+  }
 }
 
 // == J. OUT SOURCE IS NOT A FOURTH BUCKET (migration 0057) ==========

@@ -674,6 +674,7 @@
                     <span class="bo-section-count" id="mvpOvPeriodCount">0 periods</span>
                 </div>
                 <div id="mvpOvPeriodGrid" class="bo-period-grid"></div>
+                <div id="mvpOvAllocationReport" data-pc-owner-only></div>
             </div>
 
             <!-- Hidden legacy DOM IDs for JS compatibility (dashboard stats hidden for now) -->
@@ -1039,6 +1040,14 @@
             <div class="rpt-kpi-row" id="rptKpiRow">
                 <div class="rpt-empty-state"><i data-lucide="bar-chart-2" class="rpt-empty-ico"></i><p>Loading company-wide data…</p></div>
             </div>
+            <section class="pc-report-section">
+                <h2>Period Summary</h2>
+                <button class="rpt-export-btn" onclick="exportRptTable()"><i data-lucide="download"></i>CSV</button>
+                <div class="pc-report-scroll" role="region" aria-label="Period Summary" tabindex="0">
+                    <table class="pc-report-table"><caption>Actual Costs by Period</caption><thead id="rptSummaryHead"></thead><tbody id="rptSummaryTbody"></tbody></table>
+                </div>
+                <div id="rptAllocationReport" data-pc-owner-only></div>
+            </section>
             <!-- MONTH SPENDING TREND -->
             <div class="section-card" style="margin-top:1rem;">
                 <div class="card-header">
@@ -3976,6 +3985,7 @@
         <div class="pd-body">
             <!-- KPI Badges -->
             <div class="pd-kpi-row" id="pdKpiRow"></div>
+            <div id="pdAllocation" data-pc-owner-only></div>
             <!-- Utilization Bar -->
             <div class="pd-util-section">
                 <div class="pd-util-label">Budget Utilization <span id="pdUtilPct" class="pd-util-pct"></span></div>
