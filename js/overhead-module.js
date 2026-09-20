@@ -58,6 +58,26 @@ function _ovhdFolderName(folderId) {
     const f = (typeof expFolders !== 'undefined' ? expFolders : []).find(x => x.id === folderId);
     return f ? f.name : (folderId ? 'Unknown Project' : '—');
 }
+function _ovhdBillingPeriodId(folderId, selectedId) {
+    return folderId && (typeof expProjects !== 'undefined' ? expProjects : [])
+        .some(p => p.id === selectedId && p.folderId === folderId) ? selectedId : null;
+}
+function _ovhdBillingPeriodName(ex) {
+    const id = _ovhdEffectiveScope(ex) === 'project'
+        ? _ovhdBillingPeriodId(ex.folderId, ex.fromPayroll ? ex.projectId : ex.billingPeriodId) : null;
+    const period = id && expProjects.find(p => p.id === id);
+    return period ? (period.name || [period.month, period.year].filter(Boolean).join(' ') || period.id) : 'Unallocated';
+}
+function _ovhdPopulateBillingPeriodSelect(folderId, selectedId) {
+    const sel = document.getElementById('ovhdExpBillingPeriod');
+    const grp = document.getElementById('ovhdExpBillingPeriodGroup');
+    if (!sel) return;
+    const periods = (typeof expProjects !== 'undefined' ? expProjects : []).filter(p => folderId && p.folderId === folderId);
+    sel.innerHTML = '<option value="">Unallocated</option>' + periods.map(p => `<option value="${_esc(p.id)}">${_esc(p.name || [p.month, p.year].filter(Boolean).join(' ') || p.id)}</option>`).join('');
+    sel.value = _ovhdBillingPeriodId(folderId, selectedId) || '';
+    sel.disabled = !folderId;
+    if (grp) grp.style.display = folderId ? '' : 'none';
+}
 
 // ── Overhead / Indirect Labor from payroll ───────────────────
 // Project Overhead is ONE bucket: the support people (coordinator, site
@@ -88,6 +108,7 @@ function _ovhdIndirectRows() {
         fromPayroll: true,
         scope: 'project',
         folderId: folderOf[p.projectId] || '',
+        projectId: p.projectId,
         expenseName: p.workerName || 'Indirect Labor',
         category: p.role || 'Indirect Labor',
         amount: parseFloat(p.totalSalary) || 0,
@@ -354,7 +375,7 @@ function _ovhdRenderTable(filtered) {
     const tbody = document.getElementById('ovhdTableBody');
     if (!tbody) return;
     if (!filtered.length) {
-        tbody.innerHTML = '<tr><td colspan="8" class="ovhd-table-empty">No overhead expenses match the current filters.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" class="ovhd-table-empty">No overhead expenses match the current filters.</td></tr>';
         return;
     }
     const sorted = [...filtered].sort((a, b) => {
@@ -370,6 +391,7 @@ function _ovhdRenderTable(filtered) {
             <td>${_esc(dateStr)}</td>
             <td><span class="ovhd-cat-badge" style="--ovhd-dot:${scope === 'company' ? '#157a52' : '#7f9cb0'}">${scope === 'company' ? 'Company' : 'Project'}</span></td>
             <td>${_esc(_ovhdFolderName(ex.folderId))}</td>
+            <td>${_esc(_ovhdBillingPeriodName(ex))}</td>
             <td><span class="ovhd-cat-badge" style="--ovhd-dot:${_ovhdCatColor(ex.category || 'Uncategorized')}">${_esc(ex.category || 'Uncategorized')}</span></td>
             <td>${_esc(ex.expenseName || ex.description || '—')}${ex.fromPayroll ? ' <span class="ovhd-src-badge" title="Recorded in Expenses → Payroll as Overhead / Indirect Labor">Payroll</span>' : ''}</td>
             <td class="ovhd-amt-cell">${_fmtAmt(parseFloat(ex.amount || 0))}</td>
@@ -496,6 +518,7 @@ function onOverheadScopeFieldChange() {
     const sel = document.getElementById('ovhdExpProject');
     if (grp) grp.style.display = scope === 'project' ? '' : 'none';
     if (sel) sel.required = scope === 'project';
+    _ovhdPopulateBillingPeriodSelect(scope === 'project' && sel ? sel.value : '', document.getElementById('ovhdExpBillingPeriod')?.value);
 }
 
 function openOverheadModal() {
@@ -537,6 +560,7 @@ function openOverheadEditModal(id) {
     if (radio) radio.checked = true;
     onOverheadScopeFieldChange();
     if (document.getElementById('ovhdExpProject')) document.getElementById('ovhdExpProject').value = ex.folderId || '';
+    _ovhdPopulateBillingPeriodSelect(scope === 'project' ? ex.folderId : '', ex.billingPeriodId);
     document.getElementById('ovhdExpName').value = ex.expenseName || '';
     document.getElementById('ovhdExpCategory').value = ex.category || '';
     document.getElementById('ovhdExpAmount').value = ex.amount != null ? Number(ex.amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
@@ -648,6 +672,7 @@ async function handleSaveOverheadExpense(e) {
         const amount = parseFloat(amountRaw);
         const payload = {
             userId: _ovhdUid(), scope, folderId: folderId || null,
+            billingPeriodId: _ovhdBillingPeriodId(folderId, document.getElementById('ovhdExpBillingPeriod')?.value),
             expenseName, category, amount, date, description,
             supplier, invoiceNumber, receiptUrl, status, notes,
             updatedAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -658,9 +683,9 @@ async function handleSaveOverheadExpense(e) {
             const history = Array.isArray(existing?.history) ? existing.history.slice() : [];
             const changed = [];
             if (existing) {
-                ['scope','folderId','expenseName','category','amount','date','description','status'].forEach(f => {
-                    const oldV = existing[f] != null ? existing[f] : (f === 'folderId' ? null : '');
-                    const newV = payload[f] != null ? payload[f] : (f === 'folderId' ? null : '');
+                ['scope','folderId','billingPeriodId','expenseName','category','amount','date','description','status'].forEach(f => {
+                    const oldV = existing[f] != null ? existing[f] : (f === 'folderId' || f === 'billingPeriodId' ? null : '');
+                    const newV = payload[f] != null ? payload[f] : (f === 'folderId' || f === 'billingPeriodId' ? null : '');
                     if (String(oldV) !== String(newV)) changed.push(f);
                 });
             }
@@ -815,12 +840,13 @@ async function deleteOverheadExpense(id) {
 // ── CSV export (Excel-compatible) ────────────────────────────────
 function exportOverheadCsv() {
     const filtered = _ovhdFilteredForMonth();
-    const headers = ['Date', 'Scope', 'Project', 'Category', 'Description', 'Amount', 'Status', 'Source'];
+    const headers = ['Date', 'Scope', 'Project', 'Billing Period', 'Category', 'Description', 'Amount', 'Status', 'Source'];
     const csvEsc = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
     const rows = filtered.map(ex => [
         ex.date || '',
         _ovhdEffectiveScope(ex) === 'company' ? 'Company' : 'Project',
         _ovhdFolderName(ex.folderId),
+        _ovhdBillingPeriodName(ex),
         ex.category || '',
         ex.expenseName || ex.description || '',
         Number(ex.amount) || 0,
@@ -879,11 +905,12 @@ function printOverheadReport(kind) {
         <td>${_esc(ex.date ? ex.date.substring(0,10) : '—')}</td>
         <td>${_ovhdEffectiveScope(ex) === 'company' ? 'Company' : 'Project'}</td>
         <td>${_esc(_ovhdFolderName(ex.folderId))}</td>
+        <td>${_esc(_ovhdBillingPeriodName(ex))}</td>
         <td>${_esc(ex.category || '—')}</td>
         <td>${_esc(ex.expenseName || ex.description || '—')}</td>
         <td style="text-align:right;">₱${(Number(ex.amount)||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
         <td>${ex.status === 'paid' ? 'Paid' : 'Pending'}</td>
-    </tr>`).join('') || '<tr><td colspan="7" style="text-align:center;color:#9ca3af;padding:20px;">No expenses in this range.</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:20px;">No expenses in this range.</td></tr>';
 
     const printedOn = new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
     const html = `<!DOCTYPE html><html><head><title>${_esc(titleMap[kind] || 'Overhead Report')}</title>
@@ -898,9 +925,9 @@ function printOverheadReport(kind) {
     @media print{body{padding:14px;}}</style></head>
     <body>
     <div class="header"><h1 class="doc-title">${_esc(titleMap[kind] || 'Overhead Report')}</h1><div class="doc-sub">${_esc(rangeLabel)} · Generated ${printedOn}</div></div>
-    <table><thead><tr><th>Date</th><th>Scope</th><th>Project</th><th>Category</th><th>Description</th><th style="text-align:right;">Amount</th><th>Status</th></tr></thead>
+    <table><thead><tr><th>Date</th><th>Scope</th><th>Project</th><th>Billing Period</th><th>Category</th><th>Description</th><th style="text-align:right;">Amount</th><th>Status</th></tr></thead>
     <tbody>${bodyRows}</tbody>
-    <tfoot><tr class="total-row"><td colspan="5">TOTAL</td><td style="text-align:right;">₱${total.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td></td></tr></tfoot>
+    <tfoot><tr class="total-row"><td colspan="6">TOTAL</td><td style="text-align:right;">₱${total.toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td></td></tr></tfoot>
     </table>
     </body></html>`;
 

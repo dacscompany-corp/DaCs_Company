@@ -421,7 +421,7 @@ function buildProject(folder, childMonths, labor, material, overheadRows) {
   const allocated = childMonths.reduce((s, m) => s + m.monthlyBudget, 0);
   // Site operating costs recorded against this folder (soft-deleted rows excluded).
   const overheadExpenses = (overheadRows || [])
-    .filter((e) => !e.deletedAt)
+    .filter((e) => !e.deletedAt && e.scope !== "company")
     .reduce((s, e) => s + (Number(e.amount) || 0), 0);
   // Labor keeps only the burden of DIRECT workers; an indirect worker's burden moves
   // to Overhead with them. Every peso still lands in exactly one bucket.
@@ -1438,10 +1438,25 @@ function _ovhdLocalToday() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, ocmPct, contractAmount, allTimeOverhead }) {
+function _pcActualsForPeriod(period, payroll, expenses, overhead) {
+  // A period FK alone does not prove that the expense belongs to the same job.
+  const assigned = (overhead || []).filter(e => period.folderId && e.folderId === period.folderId && e.scope !== "company" && e.billingPeriodId === period.id);
+  return pcActualsForPeriod(period.id, payroll, expenses, assigned, p => _isOverheadPay(p.type ? p : mapPayrollDoc(p)));
+}
+function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, childMonths, ocmPct, contractAmount, allTimeOverhead }) {
   const h = React.createElement;
   const [adding, setAdding] = React.useState(false);
-  const [form, setForm] = React.useState({ category: "", amount: "", date: _ovhdLocalToday(), description: "" });
+  const [form, setForm] = React.useState({ category: "", amount: "", date: _ovhdLocalToday(), description: "", billingPeriodId: "" });
+  const periods = (childMonths || []).filter(p => folderId && p.folderId === folderId);
+  const billingPeriodId = periods.some(p => p.id === form.billingPeriodId) ? form.billingPeriodId : null;
+  React.useEffect(() => {
+    if (form.billingPeriodId && !billingPeriodId) setForm(current => ({ ...current, billingPeriodId: "" }));
+  }, [folderId, childMonths, form.billingPeriodId, billingPeriodId]);
+  const periodName = row => {
+    const id = row.fromPayroll ? row.projectId : row.billingPeriodId;
+    const period = periods.find(p => p.id === id);
+    return period ? (period.name || [period.month, period.year].filter(Boolean).join(" ") || period.id) : "Unallocated";
+  };
   const [saving, setSaving] = React.useState(false);
   const [receiptFile, setReceiptFile] = React.useState(null);   // staged until save
   // Set while editing an existing row — the same modal serves add and edit.
@@ -1454,6 +1469,7 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, ocmP
   // Expenses → Payroll, so they carry no delete button.
   const indirectRows = (indirectTx || []).map((p) => ({
     id: p.id,
+    projectId: p.projectId,
     category: p.role ? p.role : "Indirect Labor",
     amount: Number(p.amount) || 0,
     date: p.date || "",
@@ -1494,7 +1510,13 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, ocmP
       if (editingId) {
         // Edit: never blank an existing receipt just because no new file was
         // staged, and leave userId / scope / createdAt as they were.
-        const patch = { category, amount: amt, date: form.date, description: form.description || "" };
+        const patch = { category, amount: amt, date: form.date, description: form.description || "", billingPeriodId };
+        const existing = overheadTx.find(x => x.id === editingId);
+        const history = Array.isArray(existing?.history) ? existing.history.slice() : [];
+        if ((existing?.billingPeriodId || null) !== billingPeriodId) {
+          history.push({ fields: ["billingPeriodId"], at: new Date().toISOString(), note: "Edited: billingPeriodId" });
+          patch.history = history;
+        }
         if (receiptUrl) patch.receiptUrl = receiptUrl;
         await db.collection("overheadExpenses").doc(editingId).update(patch);
       } else {
@@ -1503,7 +1525,7 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, ocmP
           // scope is explicit so the admin Overhead page doesn't have to infer it.
           // status is deliberately NOT set: the drill never asks whether the bill was
           // paid, so it defaults to 'pending' and is settled on the Overhead page.
-          folderId, scope: "project",
+          folderId, scope: "project", billingPeriodId,
           category, amount: amt, date: form.date, description: form.description || "",
           receiptUrl,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -1511,7 +1533,7 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, ocmP
       }
       setAdding(false);
       setEditingId(null);
-      setForm({ category: "", amount: "", date: _ovhdLocalToday(), description: "" });
+      setForm({ category: "", amount: "", date: _ovhdLocalToday(), description: "", billingPeriodId: "" });
       setReceiptFile(null);
     } catch (err) { alert("Save failed: " + (err.message || err)); }
     setSaving(false);
@@ -1533,7 +1555,8 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, ocmP
       category: x.category || "",
       amount: String(x.amount == null ? "" : x.amount),
       date: x.date || _ovhdLocalToday(),
-      description: x.description || ""
+      description: x.description || "",
+      billingPeriodId: periods.some(p => p.id === x.billingPeriodId) ? x.billingPeriodId : ""
     });
     setReceiptFile(null);
     setEditingId(x.id);
@@ -1619,11 +1642,12 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, ocmP
     h("div", { style: { font: "600 14px 'IBM Plex Sans'", marginBottom: 14 } }, "By Category"), byCatRows);
 
   const headerRow = h("tr", { style: { background: "#faf9f7", color: "var(--text-light)", textAlign: "left" } },
-    ["Date", "Category", "Description", "Amount", ""].map((t, i) => h("th", { key: i, style: { padding: "10px 16px", font: "600 10.5px 'IBM Plex Sans'", letterSpacing: ".06em", textTransform: "uppercase" } }, t)));
+    ["Date", "Billing Period", "Category", "Description", "Amount", ""].map((t, i) => h("th", { key: i, style: { padding: "10px 16px", font: "600 10.5px 'IBM Plex Sans'", letterSpacing: ".06em", textTransform: "uppercase" } }, t)));
 
   const bodyRows = allTx.length
     ? allTx.map((x) => h("tr", { key: x.id, style: { borderTop: "1px solid #f0efec" } },
         h("td", { style: { padding: "12px 16px", color: "#6b7280" } }, x.date || "\u2014"),
+        h("td", { style: { padding: "12px 16px", color: "#6b7280" } }, periodName(x)),
         h("td", { style: { padding: "12px 16px" } }, h("span", { style: { display: "inline-flex", alignItems: "center", gap: 7 } },
           h("span", { style: { width: 9, height: 9, borderRadius: 3, background: catColor(x.category) } }), esc(x.category),
           x.fromPayroll ? h("span", { title: "Recorded in Payroll as Overhead / Indirect Labor", style: { font: "600 9.5px 'IBM Plex Sans'", letterSpacing: ".05em", textTransform: "uppercase", color: "#7f9cb0", border: "1px solid #dbe3e9", borderRadius: 5, padding: "1px 5px" } }, "Payroll") : null)),
@@ -1641,7 +1665,7 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, ocmP
             ? h("button", { onClick: () => editPayrollRow(x.id), title: "Edit in Payroll", style: _rowBtn }, Ico.pencil)
             : h("button", { onClick: () => openEdit(x), title: "Edit", style: _rowBtn }, Ico.pencil)),
           (_staff() || x.fromPayroll) ? null : h("button", { onClick: () => delEntry(x.id), title: "Delete", style: { border: 0, background: "#fdecea", color: "#c0564a", borderRadius: 8, padding: "6px 9px", cursor: "pointer" } }, Ico.trash))))
-    : [h("tr", { key: "empty" }, h("td", { colSpan: 5, style: { padding: "28px 16px", textAlign: "center", color: "var(--text-light)" } }, "No overhead recorded for this project yet."))];
+    : [h("tr", { key: "empty" }, h("td", { colSpan: 6, style: { padding: "28px 16px", textAlign: "center", color: "var(--text-light)" } }, "No overhead recorded for this project yet."))];
 
   const recordsPanel = h("div", { style: { flex: 1, minWidth: 340, border: "1px solid #e7e6e2", borderRadius: 14, background: "#fff", overflow: "hidden" } },
     h("div", { style: { font: "600 14px 'IBM Plex Sans'", padding: "16px 20px" } }, "Expense Records"),
@@ -1651,12 +1675,14 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, ocmP
   const body = h("div", { style: { display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap", marginTop: 8 } }, byCatPanel, recordsPanel);
 
   const field = (label, input) => h("div", { style: { marginBottom: 12 } },
-    h("label", { style: { font: "600 12px 'IBM Plex Sans'", display: "block", marginBottom: 4 } }, label), input);
+    h("label", { htmlFor: input.props && input.props.id, style: { font: "600 12px 'IBM Plex Sans'", display: "block", marginBottom: 4 } }, label), input);
   const inStyle = { width: "100%", padding: "9px 11px", border: "1.5px solid #e5e7eb", borderRadius: 9, font: "400 14px 'IBM Plex Sans'", boxSizing: "border-box" };
 
   const modal = adding ? h("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16 }, onClick: (ev) => { if (ev.target === ev.currentTarget) closeModal(); } },
     h("div", { style: { background: "#fff", borderRadius: 16, width: "100%", maxWidth: 460, padding: 24 } },
       h("h3", { style: { font: "700 16px 'IBM Plex Sans'", margin: "0 0 16px" } }, editingId ? "Edit Overhead Expense" : "Add Overhead Expense"),
+      field("Billing Period", h("select", { id: "ovhdDrillBillingPeriod", name: "billingPeriodId", value: billingPeriodId || "", onChange: ev => setForm({ ...form, billingPeriodId: ev.target.value }), style: inStyle },
+        h("option", { value: "" }, "Unallocated"), periods.map(p => h("option", { key: p.id, value: p.id }, p.name || [p.month, p.year].filter(Boolean).join(" ") || p.id)))),
       // Free text + suggestions: type any category, or pick one you've used before.
       // The old "Indirect Support (Supervisor/Foreman/Admin/Engineer)" shortcut is gone
       // on purpose \u2014 those people are paid through Expenses -> Payroll as Overhead /
@@ -1697,7 +1723,7 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, ocmP
       h("div", { className: "eyebrow", style: { marginBottom: 10 } }, "Overhead Cost \xB7 Project Operating Costs"),
       h("h2", null, "Overhead Expenses"),
       h("div", { className: "sub" }, esc(project && project.name), project && project.code ? " \xB7 " + project.code : "")),
-    h("button", { onClick: () => { setEditingId(null); setReceiptFile(null); setForm({ category: "", amount: "", date: _ovhdLocalToday(), description: "" }); setAdding(true); }, style: { display: "inline-flex", alignItems: "center", gap: 8, background: "var(--brand-green)", color: "#fff", border: 0, borderRadius: 10, padding: "11px 20px", font: "700 13px 'IBM Plex Sans'", cursor:"pointer", whiteSpace: "nowrap", flex: "none" } }, "+ Add Expense"));
+    h("button", { onClick: () => { setEditingId(null); setReceiptFile(null); setForm({ category: "", amount: "", date: _ovhdLocalToday(), description: "", billingPeriodId: "" }); setAdding(true); }, style: { display: "inline-flex", alignItems: "center", gap: 8, background: "var(--brand-green)", color: "#fff", border: 0, borderRadius: 10, padding: "11px 20px", font: "700 13px 'IBM Plex Sans'", cursor:"pointer", whiteSpace: "nowrap", flex: "none" } }, "+ Add Expense"));
 
   return h("section", { className: "drill" },
     h("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"),
@@ -3218,7 +3244,7 @@ function PortalApp() {
   );
   // Soft-deleted rows (deleted from the admin Overhead page) must not resurface here.
   const overheadRows = React.useMemo(
-    () => (overheadRaw || []).filter((e) => e.folderId === projectId && !e.deletedAt),
+    () => (overheadRaw || []).filter((e) => e.folderId === projectId && !e.deletedAt && e.scope !== "company"),
     [overheadRaw, projectId]
   );
   // Operating costs honour the SAME period filter as labor and materials. Without
@@ -3226,7 +3252,7 @@ function PortalApp() {
   // ALL-TIME overhead and report a nonsense margin.
   const overheadRowsTx = React.useMemo(() => filterByPeriod(overheadRows, period), [overheadRows, period]);
   const overheadTx = React.useMemo(
-    () => overheadRowsTx.map((e) => ({ id: e.id, category: e.category || "Uncategorized", amount: Number(e.amount) || 0, date: (e.date || "").toString().slice(0, 10), description: e.description || "", receiptUrl: e.receiptUrl || "" })).sort((a, b) => (b.date || "").localeCompare(a.date || "")),
+    () => overheadRowsTx.map((e) => ({ id: e.id, folderId: e.folderId, billingPeriodId: e.billingPeriodId || null, history: e.history, category: e.category || "Uncategorized", amount: Number(e.amount) || 0, date: (e.date || "").toString().slice(0, 10), description: e.description || "", receiptUrl: e.receiptUrl || "" })).sort((a, b) => (b.date || "").localeCompare(a.date || "")),
     [overheadRowsTx]
   );
   const childFolders = React.useMemo(
@@ -3460,7 +3486,7 @@ function PortalApp() {
       additionalWorksTotal,
       periodCount: childMonths.length
     }
-  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [] }), /* @__PURE__ */ React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId), inboxPending }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId, pmPaidByContractId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { project, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [], onBack: () => setView("dashboard") })));
+  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [] }), /* @__PURE__ */ React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId), inboxPending }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId, pmPaidByContractId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { key: projectId, project, childMonths, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [], onBack: () => setView("dashboard") })));
 }
 (function() {
   const mount = document.getElementById("dacsPortalRoot");

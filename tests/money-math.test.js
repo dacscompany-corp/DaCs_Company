@@ -124,6 +124,24 @@ console.log('\nA. Cost buckets (buildProject)');
   test('liability total stays the TRUE total (both burdens)', () => eq(p.laborBreakdown.liability, 24000));
   test('EVERY PESO ONCE: spent = all live money exactly', () => eq(p.spent, 300000 + 50000 + 20000 + 4000 + 400000 + 30000));
   test('_projSpent agrees with buildProject.spent', () => eq(portal._projSpent(p), p.spent));
+  test('period attribution keeps assigned and unallocated project overhead in Spent once', () => {
+    const rows = [
+      { folderId: 'f1', billingPeriodId: 'm1', amount: 3000 },
+      { folderId: 'f1', billingPeriodId: null, amount: 2000 },
+      { folderId: 'f1', billingPeriodId: 'other-folder-period', amount: 1000 },
+      { folderId: 'f1', scope: 'company', billingPeriodId: 'm1', amount: 9000 },
+      { folderId: 'f1', billingPeriodId: 'm1', amount: 8000, deletedAt: 'x' }
+    ];
+    const built = portal.buildProject(folder, months, [], [], rows);
+    eq(built.overhead, 6000);
+    eq(built.spent, 6000);
+  });
+  test('admin indirect payroll retains its billing-period projectId', () => {
+    const rows = adminOverhead({ expProjects: [{ id: 'm1', folderId: 'f1' }],
+      expPayroll: [{ id: 'pay1', projectId: 'm1', laborType: 'indirect', totalSalary: 500 }] })._ovhdRows();
+    eq(rows[0].projectId, 'm1');
+    eq(rows[0].amount, 500);
+  });
 }
 
 // ════════════════════════════════════════════════════════════════════

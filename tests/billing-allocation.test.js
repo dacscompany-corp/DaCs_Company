@@ -305,4 +305,161 @@ assert.match(reasonState, /if \(!needsReason && input\) input\.value = '';/, 'un
 assert.doesNotMatch(adminSource, /Target Margin %/, 'percentage labels must name the reserve explicitly');
 eq((adminSource.match(/Target Margin Reserve %/g) || []).length, 3, 'all percentage labels must say Target Margin Reserve %');
 
-console.log('billing allocation tests passed');
+// Task 5: exercise the actual form callbacks, payloads and report output.
+// These catch stale cross-folder selections and lost attribution on edit/export.
+const vm = require('vm');
+const overheadSource = read('js/overhead-module.js');
+assert.match(adminSource, /for="ovhdExpBillingPeriod"/, 'admin selector needs an associated label');
+assert.match(adminSource, /id="ovhdExpProject" onchange="_ovhdPopulateBillingPeriodSelect/, 'folder changes must refresh period choices');
+assert.match(portalSource, /OverheadDrill, \{ key: projectId, project, childMonths,/, 'changing jobs must remount the drill and pass its periods');
+assert.match(portalSource, /overheadRowsTx\.map\(\(e\) => \(\{[^\n]*billingPeriodId: e\.billingPeriodId[^\n]*history: e\.history/, 'drill mapping must preserve attribution and audit history');
+const periods = [{ id: 'p1', folderId: 'f1', name: 'September' },
+  { id: 'p2', folderId: 'f1', month: 'October', year: '2026' },
+  { id: 'p3', folderId: 'f2', name: 'Other job' }];
+function overheadHarness() {
+  const elements = {};
+  const el = id => elements[id] || (elements[id] = { value: '', style: {}, innerHTML: '', classList: { add() {}, remove() {} } });
+  const writes = [];
+  const scope = { value: 'project' };
+  let printed = '', csv = '';
+  const context = vm.createContext({ console, expProjects: periods.map(p => ({ ...p })), expFolders: [{ id: 'f1', name: 'Job One' }],
+    currentUser: { uid: 'owner' }, window: { currentDataUserId: 'owner', open: () => ({ document: { write: h => { printed = h; }, close() {} }, print() {} }) },
+    document: { getElementById: el, querySelector: () => scope, createElement: () => ({ click() {} }), body: { appendChild() {}, removeChild() {} } },
+    firebase: { firestore: { FieldValue: { serverTimestamp: () => 'now' } } },
+    db: { collection: name => { eq(name, 'overheadExpenses'); return { add: async data => { writes.push(data); return { id: 'new' }; }, doc: id => ({ update: async data => writes.push({ id, ...data }) }) }; } },
+    Blob: class { constructor(parts) { csv = parts.join(''); } }, URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} }, setTimeout() {} });
+  vm.runInContext(overheadSource, context);
+  vm.runInContext('_ovhdRender = () => {}; _ovhdPopulateCategorySelect = () => {}; _ovhdMonth = "2026-09";', context);
+  Object.entries({ ovhdExpProject: 'f1', ovhdExpBillingPeriod: 'p1', ovhdExpName: 'Fuel', ovhdExpCategory: 'Fuel', ovhdExpAmount: '100', ovhdExpDate: '2026-09-01', ovhdExpDescription: 'Site fuel' }).forEach(([id, value]) => { el(id).value = value; });
+  return { context, el, scope, writes, reports: () => ({ printed, csv }) };
+}
+
+async function testOverheadAttribution() {
+  const a = overheadHarness();
+  await a.context.handleSaveOverheadExpense();
+  eq(a.writes[0].billingPeriodId, 'p1', 'admin create must save the chosen period');
+  a.el('ovhdEditingId').value = 'new';
+  a.el('ovhdExpBillingPeriod').value = 'p2';
+  await a.context.handleSaveOverheadExpense();
+  eq(a.writes[1].billingPeriodId, 'p2', 'admin edit must save reassignment');
+  assert.ok(a.writes[1].history.at(-1).fields.includes('billingPeriodId'), 'reassignment must be audited');
+  a.context._ovhdPopulateBillingPeriodSelect('f1', 'p1');
+  assert.match(a.el('ovhdExpBillingPeriod').innerHTML, /September/);
+  assert.doesNotMatch(a.el('ovhdExpBillingPeriod').innerHTML, /Other job/);
+  a.context._ovhdPopulateBillingPeriodSelect('f2', 'p1');
+  eq(a.el('ovhdExpBillingPeriod').value, '', 'changing folder clears an incompatible period');
+  a.scope.value = 'company';
+  a.el('ovhdExpBillingPeriod').value = 'p1';
+  a.context.onOverheadScopeFieldChange();
+  eq(a.el('ovhdExpBillingPeriod').value, '', 'company scope clears period');
+  eq(a.el('ovhdExpBillingPeriodGroup').style.display, 'none');
+  a.el('ovhdExpBillingPeriod').value = 'p1';
+  await a.context.handleSaveOverheadExpense();
+  eq(a.writes.at(-1).billingPeriodId, null, 'company save cannot retain period');
+  a.scope.value = 'project';
+  a.el('ovhdExpProject').value = 'f1';
+  for (const editingId of ['', 'new']) {
+    a.el('ovhdEditingId').value = editingId;
+    a.el('ovhdExpBillingPeriod').value = 'p3';
+    await a.context.handleSaveOverheadExpense();
+    eq(a.writes.at(-1).billingPeriodId, null, 'cross-folder create/edit must save Unallocated');
+  }
+  a.el('ovhdExpBillingPeriod').value = 'p1';
+  a.context.expProjects[0].folderId = 'f2';
+  await a.context.handleSaveOverheadExpense();
+  eq(a.writes.at(-1).billingPeriodId, null, 'save must revalidate a period moved after the form opened');
+
+  const b = overheadHarness();
+  vm.runInContext(`_ovhdExpenses = [
+    { folderId:'f1', billingPeriodId:'p1', amount:100, date:'2026-09-01' },
+    { folderId:'f1', billingPeriodId:null, amount:200, date:'2026-09-01' },
+    { folderId:'f1', billingPeriodId:'p3', amount:300, date:'2026-09-01' }];
+    var expPayroll = [{ id:'pay', projectId:'p2', laborType:'indirect', totalSalary:400, paymentDate:'2026-09-01' }];`, b.context);
+  b.context.exportOverheadCsv();
+  b.context.printOverheadReport('monthly');
+  b.context._ovhdRenderTable(b.context._ovhdRows());
+  assert.match(b.reports().csv, /"Project","Billing Period"/);
+  assert.match(b.reports().csv, /"Job One","September"/);
+  assert.match(b.reports().csv, /"Job One","October 2026"/);
+  eq((b.reports().csv.match(/"Unallocated"/g) || []).length, 2);
+  assert.match(b.reports().printed, /<th>Project<\/th><th>Billing Period<\/th>/);
+  assert.match(b.reports().printed, /<td>September<\/td>/);
+  assert.match(b.reports().printed, /<td>October 2026<\/td>/);
+  assert.doesNotMatch(b.reports().printed, /Other job/);
+  assert.match(b.el('ovhdTableBody').innerHTML, /<td>September<\/td>/);
+  assert.match(b.el('ovhdTableBody').innerHTML, /<td>October 2026<\/td>/);
+  eq((b.el('ovhdTableBody').innerHTML.match(/<td>Unallocated<\/td>/g) || []).length, 2);
+
+  const helper = sourceSlice(portalSource, 'function _pcActualsForPeriod(', 'function OverheadDrill(', 'folder-safe actuals');
+  const ctx = vm.createContext({ ...A, _isOverheadPay: row => row.type === 'indirect' || row.type === 'liability' && row.liabilityFor === 'indirect', mapPayrollDoc: row => ({ ...row, type: row.laborType }) });
+  vm.runInContext(helper, ctx);
+  const overhead = [
+    { folderId:'f1', billingPeriodId:'p1', amount:100 },
+    { folderId:'f1', billingPeriodId:null, amount:200 },
+    { folderId:'f2', billingPeriodId:'p1', amount:300 },
+    { folderId:'f1', billingPeriodId:'p1', scope:'company', amount:400 },
+    { folderId:'f1', billingPeriodId:'p2', amount:500 },
+    { folderId:'f1', billingPeriodId:'p3', amount:700 },
+    { folderId:'f1', billingPeriodId:'p1', amount:600, deletedAt:'x' }
+  ];
+  const actual = ctx._pcActualsForPeriod(periods[0], [
+    { projectId:'p1', laborType:'indirect', totalSalary:50 },
+    { projectId:'p1', laborType:'liability', liabilityFor:'indirect', totalSalary:10 }
+  ], [{ projectId:'p1', amount:25, coverExpense:true }], overhead);
+  eq(actual.indirectActual, 160, 'only same-folder matching overhead and indirect payroll consume envelope');
+  eq(actual.directActual, 25, 'Cover remains in its original cost bucket');
+  eq(ctx._pcActualsForPeriod(periods[2], [], [], overhead).indirectActual, 0, 'invalid relation cannot consume another folder envelope');
+  await testOverheadDrill();
+}
+
+function drillHarness() {
+  const state = [], writes = [];
+  let cursor = 0;
+  const context = vm.createContext({ console, React: { Fragment: 'fragment', createElement: (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity) }),
+    useState: initial => { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], next => { state[i] = typeof next === 'function' ? next(state[i]) : next; }]; }, useEffect() {} },
+    _staff: () => false, _ocmStatus: () => null, peso: String, Ico: {}, ExpenseInboxMount() {}, _ovhdLocalToday: () => '2026-09-01',
+    window: { currentDataUserId: 'owner' }, firebase: { firestore: { FieldValue: { serverTimestamp: () => 'now' } } }, alert: message => { throw new Error(message); },
+    db: { collection: name => { eq(name, 'overheadExpenses'); return { add: async data => writes.push(data), doc: id => ({ update: async data => writes.push({ id, ...data }) }) }; } } });
+  vm.runInContext(sourceSlice(portalSource, 'function OverheadDrill(', 'function _awId()', 'overhead drill'), context);
+  const props = { folderId:'f1', childMonths:periods.map(p => ({ ...p })), overheadTx:[], indirectTx:[] };
+  const render = () => { cursor = 0; return context.OverheadDrill(props); };
+  const nodes = tree => [tree, ...(tree && tree.children || []).flatMap(child => typeof child === 'object' && child ? nodes(child) : [])];
+  const find = predicate => nodes(render()).find(predicate);
+  return { props, writes, render, find };
+}
+async function testOverheadDrill() {
+  const d = drillHarness();
+  d.find(n => n.type === 'button' && n.children.includes('+ Add Expense')).props.onClick();
+  let select = d.find(n => n.type === 'select' && n.props.id === 'ovhdDrillBillingPeriod');
+  assert.ok(select, 'drill needs billing-period select');
+  eq(select.children.filter(n => n.type === 'option').map(n => n.props.value), ['', 'p1', 'p2']);
+  assert.ok(d.find(n => n.type === 'label' && n.props.htmlFor === select.props.id), 'select needs associated label');
+  select.props.onChange({ target:{ value:'p1' } });
+  d.find(n => n.type === 'input' && n.props.list === 'ovhdDrillCatList').props.onChange({ target:{ value:'Fuel' } });
+  d.find(n => n.type === 'input' && n.props.type === 'number').props.onChange({ target:{ value:'100' } });
+  await d.find(n => n.type === 'button' && n.children.includes('Save Expense')).props.onClick();
+  eq(d.writes[0].billingPeriodId, 'p1', 'drill create saves selected period');
+  d.props.overheadTx = [{ id:'e1', folderId:'f1', billingPeriodId:'p1', category:'Fuel', amount:100, date:'2026-09-01', history:[] }];
+  d.props.indirectTx = [{ id:'pay', projectId:'p2', amount:50, date:'2026-09-01' }];
+  assert.ok(d.find(n => n.type === 'td' && n.children.includes('September')), 'drill table labels attributed operating costs');
+  assert.ok(d.find(n => n.type === 'td' && n.children.includes('October 2026')), 'drill table labels payroll using projectId');
+  d.find(n => n.type === 'button' && n.props.title === 'Edit').props.onClick();
+  eq(d.find(n => n.props.id === 'ovhdDrillBillingPeriod').props.value, 'p1');
+  d.find(n => n.props.id === 'ovhdDrillBillingPeriod').props.onChange({ target:{ value:'p2' } });
+  await d.find(n => n.type === 'button' && n.children.includes('Save Changes')).props.onClick();
+  eq(d.writes[1].billingPeriodId, 'p2', 'drill edit saves reassignment');
+  assert.ok(d.writes[1].history.at(-1).fields.includes('billingPeriodId'));
+  d.find(n => n.type === 'button' && n.props.title === 'Edit').props.onClick();
+  d.props.childMonths[0].folderId = 'f2';
+  eq(d.find(n => n.props.id === 'ovhdDrillBillingPeriod').props.value, '', 'moved period disappears from drill selection');
+  await d.find(n => n.type === 'button' && n.children.includes('Save Changes')).props.onClick();
+  eq(d.writes.at(-1).billingPeriodId, null, 'drill edit revalidates moved period');
+  d.find(n => n.type === 'button' && n.children.includes('+ Add Expense')).props.onClick();
+  d.find(n => n.props.id === 'ovhdDrillBillingPeriod').props.onChange({ target:{ value:'p3' } });
+  d.find(n => n.type === 'input' && n.props.list === 'ovhdDrillCatList').props.onChange({ target:{ value:'Fuel' } });
+  d.find(n => n.type === 'input' && n.props.type === 'number').props.onChange({ target:{ value:'100' } });
+  await d.find(n => n.type === 'button' && n.children.includes('Save Expense')).props.onClick();
+  eq(d.writes.at(-1).billingPeriodId, null, 'drill create rejects cross-folder period');
+}
+
+testOverheadAttribution().then(() => console.log('billing allocation tests passed')).catch(error => { console.error(error); process.exitCode = 1; });

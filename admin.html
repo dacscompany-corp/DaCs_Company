@@ -1300,6 +1300,7 @@
                                 <th>Date</th>
                                 <th>Scope</th>
                                 <th>Project</th>
+                                <th>Billing Period</th>
                                 <th>Category</th>
                                 <th>Description</th>
                                 <th>Amount</th>
@@ -1308,7 +1309,7 @@
                             </tr>
                         </thead>
                         <tbody id="ovhdTableBody">
-                            <tr><td colspan="8" class="ovhd-table-empty">No overhead expenses found for this month.</td></tr>
+                            <tr><td colspan="9" class="ovhd-table-empty">No overhead expenses found for this month.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -5078,8 +5079,14 @@
                 </div>
                 <div class="exp-form-group" id="ovhdExpProjectGroup" style="display:none;">
                     <label for="ovhdExpProject">Select Project</label>
-                    <select id="ovhdExpProject">
+                    <select id="ovhdExpProject" onchange="_ovhdPopulateBillingPeriodSelect(this.value, document.getElementById('ovhdExpBillingPeriod').value)">
                         <option value="">Select project…</option>
+                    </select>
+                </div>
+                <div class="exp-form-group" id="ovhdExpBillingPeriodGroup" style="display:none;">
+                    <label for="ovhdExpBillingPeriod">Billing Period</label>
+                    <select id="ovhdExpBillingPeriod" name="billingPeriodId" disabled>
+                        <option value="">Unallocated</option>
                     </select>
                 </div>
                 <div class="exp-form-group">
