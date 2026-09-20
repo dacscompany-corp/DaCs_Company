@@ -509,7 +509,156 @@ function testOverheadCsvFormulas() {
     'CSV textual cells must neutralize formulas before quoting, while numeric amounts remain numeric');
 }
 
-Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas)])
+function dashboardHarness() {
+  const state = [], edits = [];
+  let cursor = 0;
+  const context = vm.createContext({ ...A, console, Date, Set,
+    React: { Fragment: 'fragment', createElement: (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity) }),
+      useState: initial => { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], next => { state[i] = next; }]; },
+      useRef: () => ({ current: null }), useEffect() {} },
+    window: { currentUserRole: 'owner', openEditProjectModal: id => edits.push(id) },
+    peso: n => Number(n).toFixed(2), Ico: {}, COVER_LIMIT: 50000,
+    _staff: () => context.window.currentUserRole === 'staff'
+  });
+  vm.runInContext(sourceSlice(portalSource, 'function shortRef(', 'function mapExpenseDoc', 'payroll mapper')
+    + sourceSlice(portalSource, 'function _isOverheadPay', 'function FoldersGrid', 'money helpers')
+    + sourceSlice(portalSource, 'function PageHead(', 'function KPIStrip(', 'print consumer')
+    + sourceSlice(portalSource, 'function Summarize(', 'function RecentEntries(', 'dashboard')
+    + sourceSlice(portalSource, 'function _pcActualsForPeriod(', 'function OverheadDrill(', 'actuals'), context);
+  function expand(tree) {
+    if (!tree || typeof tree !== 'object') return tree;
+    if (typeof tree.type === 'function') return expand(tree.type(tree.props));
+    return { ...tree, children: tree.children.map(expand) };
+  }
+  const render = (name, props) => { cursor = 0; return expand(context[name](props)); };
+  const nodes = tree => !tree || typeof tree !== 'object' ? [] : [tree, ...tree.children.flatMap(nodes)];
+  const text = tree => !tree || typeof tree === 'boolean' ? '' : typeof tree !== 'object' ? String(tree) : tree.children.map(text).join(' ');
+  return { context, render, nodes, text, edits };
+}
+
+function testAllocationDashboard() {
+  const h = dashboardHarness();
+  const project = { id:'f1', name:'Job One', revenue:200000, labor:72000, material:0, overhead:24000, completion:{ hasData:true, pct:0.6 } };
+  const childMonths = [
+    { id:'a', folderId:'f1', month:'September', year:2026, monthlyBudget:100000 },
+    { id:'legacy', folderId:'f1', month:'August', year:2026, monthlyBudget:50000 },
+    { id:'cover', folderId:'f1', month:'July', year:2026, monthlyBudget:900000, fundingType:'president' }
+  ];
+  const props = { project, childMonths, payrollRaw:[
+    { projectId:'a', laborType:'direct', totalSalary:72000 },
+    { projectId:'a', laborType:'indirect', totalSalary:15000 },
+    { projectId:'a', laborType:'liability', liabilityFor:'indirect', totalSalary:1000 }
+  ], expensesRaw:[], overheadRaw:[
+    { folderId:'f1', billingPeriodId:'a', amount:3000 },
+    { folderId:'f1', billingPeriodId:null, amount:5000 },
+    { folderId:'f1', billingPeriodId:null, amount:6000, deletedAt:'x' },
+    { folderId:'f1', scope:'company', amount:7000 },
+    { folderId:'f2', amount:8000 }
+  ], allocationMap:{ a:policy, cover:policy }, allocationAdjustments:[
+    { id:'change', projectId:'a', oldDirectPct:70, oldIndirectPct:20, oldTargetMarginPct:10, newDirectPct:65, newIndirectPct:25, newTargetMarginPct:10, reason:'Site supervision', createdBy:'owner-123', createdAt:'2026-09-19T08:00:00Z' },
+    { id:'other', projectId:'legacy', reason:'Wrong period' }
+  ] };
+  let tree = h.render('BillingPeriodsDrill', props);
+  assert.match(h.text(tree), /Target Margin Reserve/, 'configured periods must render planning reserve');
+  const cards = h.nodes(tree).filter(n => n.props.className === 'pc-period-card');
+  const configured = cards.find(n => h.text(n).includes('September'));
+  for (const amount of ['70000.00', '72000.00', '-2000.00', '20000.00', '19000.00', '1000.00', '10000.00']) assert.ok(h.text(configured).includes(amount), 'missing budget/actual/remaining ' + amount);
+  assert.match(h.text(configured), /Over budget/);
+  assert.match(h.text(configured), /High usage/);
+  assert.match(h.text(configured), /Reserve at Risk/);
+  const legacy = cards.find(n => h.text(n).includes('August'));
+  assert.match(h.text(legacy), /Allocation not configured/);
+  h.nodes(legacy).find(n => n.type === 'button' && h.text(n).includes('Apply Policy')).props.onClick();
+  eq(h.edits, ['legacy'], 'Apply Policy must open the existing audited period editor');
+  const cover = cards.find(n => h.text(n).includes('July'));
+  assert.match(h.text(cover), /Cover Expenses/);
+  assert.doesNotMatch(h.text(cover), /Target Margin Reserve|Apply Policy|900000|Allocation History/);
+  const bars = h.nodes(configured).filter(n => n.type === 'progress');
+  eq(bars.length, 2);
+  assert.ok(bars.every(n => n.props['aria-label'] && n.props.max === 100 && n.props.value <= 100));
+  h.nodes(configured).find(n => n.type === 'button' && h.text(n).includes('History')).props.onClick();
+  tree = h.render('BillingPeriodsDrill', props);
+  const dialog = h.nodes(tree).find(n => n.type === 'dialog');
+  assert.ok(dialog, 'history must use a modal dialog');
+  for (const value of ['Before', 'After', '70%', '65%', 'Site supervision', 'owner-123', '2026']) assert.ok(h.text(dialog).includes(value), 'history missing ' + value);
+  assert.doesNotMatch(h.text(dialog), /Wrong period/);
+  const summary = h.context._pcAllocationSummary(project, childMonths, props.payrollRaw, [], props.overheadRaw, props.allocationMap);
+  eq(summary.directBudget, 70000);
+  eq(summary.indirectBudget, 20000);
+  eq(summary.targetMarginReserve, 10000);
+  eq(summary.unallocatedIndirect, 5000);
+  eq(summary.legacyCount, 1);
+  eq(summary.configuredCount, 1);
+  eq(summary.actualProfit, 24000);
+  eq(summary.targetMarginVariance, 14000);
+  eq(summary.directActual, 72000);
+  eq(summary.indirectActual, 19000, 'unallocated operating costs must not consume the period envelope');
+  const childRollup = h.context._pcAllocationSummary(project,
+    [...childMonths, { id:'child-period', folderId:'child', monthlyBudget:50000 }, { id:'foreign', folderId:'f2', monthlyBudget:999999 }],
+    [...props.payrollRaw, { projectId:'child-period', laborType:'direct', totalSalary:10000 }], [],
+    [...props.overheadRaw, { folderId:'child', amount:600 }, { folderId:'child', billingPeriodId:'child-period', amount:700 }],
+    { ...props.allocationMap, 'child-period':policy, foreign:policy }, ['f1', 'child']);
+  eq(childRollup.directBudget, 105000, 'merged project includes child envelopes but excludes unrelated folders');
+  eq(childRollup.indirectBudget, 30000);
+  eq(childRollup.targetMarginReserve, 15000);
+  eq(childRollup.directActual, 82000);
+  eq(childRollup.indirectActual, 19700);
+  eq(childRollup.unallocatedIndirect, 5600);
+  let rollupTree = h.render('AllocationRollup', { summary });
+  assert.match(h.text(rollupTree), /Actual Earned Profit/);
+  assert.match(h.text(rollupTree), /Unallocated Indirect Cost/);
+  assert.match(h.text(rollupTree), /14000.00/);
+  project.completion = null;
+  const forecast = h.context._pcAllocationSummary(project, childMonths, props.payrollRaw, [], props.overheadRaw, props.allocationMap);
+  eq(forecast.targetMarginVariance, null);
+  rollupTree = h.render('AllocationRollup', { summary:forecast });
+  assert.match(h.text(rollupTree), /Forecast/);
+  assert.doesNotMatch(h.text(rollupTree), /Actual Earned Profit|Target Variance/);
+  props.payrollRaw[0].totalSalary = 56000;
+  assert.match(h.text(h.render('BillingPeriodsDrill', props)), /Advisory/);
+  for (const role of ['staff', 'client', undefined]) {
+    h.context.window.currentUserRole = role;
+    tree = h.render('BillingPeriodsDrill', props);
+    assert.doesNotMatch(h.text(tree), /Target Margin Reserve|Allocation not configured|Apply Policy|History|Site supervision|70000|%/);
+    eq(h.render('AllocationRollup', { summary }), null);
+    eq(h.context._pcAllocationSummary(project, childMonths, props.payrollRaw, [], props.overheadRaw, props.allocationMap), null);
+  }
+}
+
+function testAllocationPrint() {
+  const h = dashboardHarness();
+  let payload, printed = '';
+  const summary = { directBudget:123, indirectBudget:456, targetMarginReserve:789, unallocatedIndirect:12, actualProfit:321, targetMarginVariance:-468, legacyCount:2, configuredCount:1, isForecast:false };
+  h.context.window.dacsPrintProjectCostSummary = d => { payload = d; };
+  const props = { project:{ name:'Job', revenue:1000, labor:100, material:200, overhead:300 }, projects:[], period:'All Time', allocationSummary:summary };
+  const tree = h.render('PageHead', props);
+  h.nodes(tree).find(n => n.type === 'button' && h.text(n).includes('Print Summary')).props.onClick();
+  eq(payload.allocationSummary, summary, 'print must receive the same precomputed rollup');
+  const ctx = vm.createContext({ window:{ currentUserRole:'owner', location:{ origin:'https://example.test' }, open:() => ({ document:{ write: html => { printed = html; }, close() {} } }) } });
+  vm.runInContext(sourceSlice(read('js/print-utils.js'), 'window.dacsPrintProjectCostSummary =', '/**\n * ONE shared', 'cost print'), ctx);
+  ctx.window.dacsPrintProjectCostSummary(payload);
+  for (const value of ['Target Margin Reserve', '123.00', '456.00', '789.00', 'Unallocated Indirect Cost', '12.00', 'Actual Earned Profit', '321.00', '-468.00', 'Allocation not configured']) assert.ok(printed.includes(value), 'print missing ' + value);
+  payload.allocationSummary = { ...summary, isForecast:true, targetMarginVariance:null };
+  ctx.window.dacsPrintProjectCostSummary(payload);
+  assert.match(printed, /Forecast Profit/);
+  assert.doesNotMatch(printed, /Actual Earned Profit|Target Variance/);
+  h.context.window.currentUserRole = 'client';
+  h.nodes(h.render('PageHead', props)).find(n => n.type === 'button' && h.text(n).includes('Print Summary')).props.onClick();
+  assert.ok(!payload.allocationSummary, 'non-owner print must omit stale allocation data');
+  ctx.window.currentUserRole = 'client';
+  ctx.window.dacsPrintProjectCostSummary({ ...payload, allocationSummary:summary });
+  assert.doesNotMatch(printed, /Target Margin Reserve|Unallocated Indirect Cost/);
+  h.context.window.currentUserRole = 'staff';
+  payload = null;
+  h.nodes(tree).find(n => n.type === 'button' && h.text(n).includes('Print Summary')).props.onClick();
+  eq(payload, null, 'stale owner print handler must refuse a later staff session');
+  ctx.window.currentUserRole = 'staff';
+  printed = '';
+  ctx.window.dacsPrintProjectCostSummary({ allocationSummary:summary });
+  eq(printed, '', 'staff must never receive a monetary print document');
+}
+
+Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas), Promise.resolve().then(testAllocationDashboard), Promise.resolve().then(testAllocationPrint)])
   .then(results => {
     const failures = results.filter(result => result.status === 'rejected');
     if (failures.length) { failures.forEach(result => console.error(result.reason)); process.exitCode = 1; }

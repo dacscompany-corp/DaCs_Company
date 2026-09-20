@@ -1011,3 +1011,42 @@
   .tx-table th, .tx-table td { padding: 10px 6px; font-size: 12px; }
   .tx-table .amt { font-size: 14px; }
 }
+/* Billing allocation planning uses the same project/period cost scope as the summary. */
+.dacs-portal-scope .drill .pc-period-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+.dacs-portal-scope .drill .pc-period-card { min-width: 0; border-radius: 8px; }
+.dacs-portal-scope .drill .pc-period-name { margin: 0; overflow-wrap: anywhere; letter-spacing: 0; }
+.dacs-portal-scope .drill .pc-period-stat { flex-wrap: wrap; gap: 4px 10px; }
+.dacs-portal-scope .drill .pc-period-stat .val { overflow-wrap: anywhere; min-width: 0; }
+.pc-allocation-rollup { padding: 18px 0; border-block: 1px solid var(--border-light, #dde3df); }
+.pc-allocation-rollup h3, .pc-allocation-history h3 { margin: 0; font-size: 15px; line-height: 1.4; letter-spacing: 0; }
+.pc-allocation-totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 24px; margin: 14px 0; }
+.pc-allocation-totals > div, .pc-allocation-figures > div { min-width: 0; }
+.pc-allocation-totals dt, .pc-allocation-figures dt { font-size: 11px; color: var(--text-light, #626b66); }
+.pc-allocation-totals dd, .pc-allocation-figures dd { margin: 4px 0 0; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pc-allocation-bands { margin-top: 12px; }
+.pc-allocation-band { --allocation-color: #236341; padding: 12px 0; border-top: 1px solid #dde3df; }
+.pc-allocation-band-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px 12px; font-size: 12px; }
+.pc-allocation-status { color: var(--allocation-color); font-size: 11px; font-weight: 600; }
+.pc-allocation-advisory { --allocation-color: #825900; }
+.pc-allocation-high, .pc-allocation-over, .pc-allocation-unbudgeted { --allocation-color: #a02d2d; }
+.pc-allocation-figures { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 10px 0; }
+.pc-allocation-band progress { display: block; width: 100%; height: 8px; accent-color: var(--allocation-color); }
+.pc-allocation-reserve { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 12px 0; border-block: 1px solid #dde3df; font-size: 12px; overflow-wrap: anywhere; }
+.pc-allocation-reserve > * { min-width: 0; max-width: 100%; }
+.pc-allocation-reserve .pc-allocation-note { display: block; margin-top: 3px; }
+.pc-allocation-note { margin: 8px 0 0; color: var(--text-light, #626b66); font-size: 11px; line-height: 1.5; }
+.pc-allocation-risk { flex-basis: 100%; color: #a02d2d; font-weight: 600; }
+.pc-allocation-legacy { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 0; border-top: 1px solid #dde3df; font-size: 12px; }
+.pc-allocation-history-button { margin-top: 10px; }
+.pc-allocation-history { width: min(620px, calc(100% - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 20px; border: 1px solid #cbd4ce; border-radius: 8px; color: var(--text-primary, #24352a); background: #fff; overflow: auto; }
+.pc-allocation-history::backdrop { background: rgb(0 0 0 / 35%); }
+.pc-allocation-history-list { margin: 14px 0 0; padding-left: 20px; }
+.pc-allocation-history-list li { padding: 12px 0; border-top: 1px solid #dde3df; }
+.pc-allocation-history-list dl { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px 12px; margin: 0; font-size: 12px; line-height: 1.5; }
+.pc-allocation-history-list dt { font-weight: 600; }
+.pc-allocation-history-list dd { margin: 0; overflow-wrap: anywhere; }
+.pc-allocation-legacy button:focus-visible, .pc-allocation-history-button:focus-visible, .pc-allocation-history button:focus-visible { outline: 2px solid #236341; outline-offset: 3px; }
+@media (max-width: 600px) {
+  .pc-allocation-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .pc-allocation-history { padding: 16px; }
+}

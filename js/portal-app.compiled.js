@@ -865,7 +865,7 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
     window.aiSummarizeFolder && window.aiSummarizeFolder({ name: c.name, location: c.location, revenue: c.revenue, allocated: c.allocated, labor: c.labor, material: c.material, overhead: c.overhead || 0, coverCost: c.coverCost, remaining: c.remaining, spentPct: c.spentPct, periodCount: c.periodCount, statusLabel: c.h.label });
   } }, Ico.sparkles), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Edit folder", onClick: (e) => openEdit(c.id, e) }, Ico.pencil), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon pc-row-icon-danger", title: "Delete folder", onClick: (e) => openDelete(c.id, e) }, Ico.trash))))));
 }
-function PageHead({ project, projects, onSelectProject, period, onPeriod, onBackToGrid, parentFolder, inboxByFolder, additionalWorksTotal, periodCount }) {
+function PageHead({ project, projects, onSelectProject, period, onPeriod, onBackToGrid, parentFolder, inboxByFolder, additionalWorksTotal, periodCount, allocationSummary }) {
   const _ibx = inboxByFolder || {};
   const [open, setOpen] = React.useState(false);
   const [pOpen, setPOpen] = React.useState(false);
@@ -874,7 +874,7 @@ function PageHead({ project, projects, onSelectProject, period, onPeriod, onBack
   // uses (_projSpent / _projMargin), so the printed page can't disagree with it.
   // print-utils.js only lays it out; it does no arithmetic of its own.
   const printSummary = () => {
-    if (typeof window.dacsPrintProjectCostSummary !== "function") return;
+    if (_staff() || typeof window.dacsPrintProjectCostSummary !== "function") return;
     const lb = project.laborBreakdown || {};
     const ob = project.overheadBreakdown || {};
     const dc = project.docCounts || {};
@@ -893,7 +893,8 @@ function PageHead({ project, projects, onSelectProject, period, onPeriod, onBack
       earned: m.earned, profit: m.profit, marginPct: m.pct,
       isForecast: m.isForecast, completePct: m.completePct,
       allocated: project.allocated || 0, coverCost: project.coverCost || 0,
-      periodCount: periodCount || 0, additionalWorks: additionalWorksTotal || 0
+      periodCount: periodCount || 0, additionalWorks: additionalWorksTotal || 0,
+      ...(window.currentUserRole === "owner" && allocationSummary ? { allocationSummary } : {})
     });
   };
   return /* @__PURE__ */ React.createElement("header", { className: "pc-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-head-eyebrow" }, (parentFolder ? /* @__PURE__ */ React.createElement("button", { className: "pc-head-back", onClick: () => onSelectProject(parentFolder.id), title: "Back to " + parentFolder.name }, "\u2190 Back to " + parentFolder.name) : (onBackToGrid && /* @__PURE__ */ React.createElement("button", { className: "pc-head-back", onClick: onBackToGrid, title: "Go back to All Folders" }, "\u2190 All Folders"))), /* @__PURE__ */ React.createElement("span", null, "Project Control")), /* @__PURE__ */ React.createElement("div", { className: "pc-head-main" }, /* @__PURE__ */ React.createElement("h1", { className: "pc-head-title" }, project.name), /* @__PURE__ */ React.createElement("div", { className: "pc-head-controls" }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement("button", { className: "pc-pill", onClick: () => setOpen((o) => !o) }, Ico.folder, /* @__PURE__ */ React.createElement("span", { className: "pc-pill-val" }, project.name), Ico.chevron), open && /* @__PURE__ */ React.createElement("div", { className: "dropdown", style: dropdownStyle }, projects.map((p) => /* @__PURE__ */ React.createElement(
@@ -1241,61 +1242,140 @@ function Summarize({ project }) {
     ))
   ), figsOpen && /* @__PURE__ */ React.createElement("div", { className: "pc-kpi-strip pc-kpi-attached" }, kpis.map((k, i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "pc-kpi" }, /* @__PURE__ */ React.createElement("span", { className: "pc-kpi-lbl" }, k.lbl), /* @__PURE__ */ React.createElement("span", { className: "pc-kpi-val" + (k.accent ? " pc-accent" : "") + (k.warn ? " pc-warn" : "") + (k.danger ? " pc-danger" : "") }, k.val), k.danger && /* @__PURE__ */ React.createElement("span", { className: "pc-over-badge" }, "Over \u20B1", COVER_LIMIT.toLocaleString("en-PH"))))), figsOpen && /* @__PURE__ */ React.createElement("div", { className: "pc-sm-mathbar" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "pc-sm-math-toggle", "aria-expanded": eqOpen, onClick: () => setEqOpen((o) => !o) }, "Profit math", _pcChev(eqOpen, 14)), eqOpen && /* @__PURE__ */ React.createElement("div", { className: "pc-sm-equation" }, /* @__PURE__ */ React.createElement("div", { className: "pc-sm-label" }, _revLbl, /* @__PURE__ */ React.createElement("div", { className: "sub" }, _revSub)), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-val" }, "\u20B1 ", peso(_m.earned)), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-op" }, "\u2212"), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-label" }, "Actual Cost", /* @__PURE__ */ React.createElement("div", { className: "sub" }, "Labor + Material + Overhead")), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-val" }, "\u20B1 ", peso(actualCost)), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-op" }, "="), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-label" }, "Net Profit", /* @__PURE__ */ React.createElement("div", { className: "sub" }, margin.toFixed(1), "% margin")), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-val " + (isLoss ? "warn" : "accent") }, "\u20B1 ", peso(grossProfit)))));
 }
-function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, onBack }) {
-  const openCreate = () => {
-    if (typeof window.openCreateMonthModal === "function") window.openCreateMonthModal(project.id);
-  };
-  const openEdit = (id) => window.openEditProjectModal && window.openEditProjectModal(id);
-  const openDelete = (id) => window.confirmDeleteProject && window.confirmDeleteProject(id);
-  const openDetail = (id) => window.mvpOvOpenPeriodDetail && window.mvpOvOpenPeriodDetail(project.id, id);
-  const FUNDING_LBLS = {
-    mobilization: "Mobilization",
-    downpayment: "Downpayment",
-    progress: "Progress Billing",
-    final: "Final Payment",
-    president: "Cover Expenses"
-  };
-  const cards = childMonths.map((m) => {
-    const mat = expensesRaw.filter((e) => e.projectId === m.id).reduce((s, e) => s + (Number(e.amount) || 0), 0);
-    const lab = payrollRaw.filter((p) => p.projectId === m.id).reduce((s, p) => s + (Number(p.totalSalary) || 0), 0);
-    const totalCost = mat + lab;
-    const budget = m.monthlyBudget;
-    const noBudget = budget <= 0;
-    const remain = budget - totalCost;
-    const spentPct = budget > 0 ? Math.min(totalCost / budget * 100, 100) : totalCost > 0 ? 100 : 0;
-    const remPct = 100 - spentPct;
-    const expCount = expensesRaw.filter((e) => e.projectId === m.id).length;
-    const payCount = payrollRaw.filter((p) => p.projectId === m.id).length;
-    const fundingLabel = FUNDING_LBLS[m.fundingType] || "Billing Period";
-    let healthCls, healthLabel, barClr;
-    if (noBudget) {
-      if (totalCost > 0) {
-        healthCls = "pc-fld-health-warning";
-        healthLabel = "NO BUDGET";
-        barClr = "#A86B00";
-      } else {
-        healthCls = "pc-fld-health-healthy";
-        healthLabel = "EMPTY";
-        barClr = "#E5E5E5";
-      }
-    } else if (remPct < 0) {
-      healthCls = "pc-fld-health-critical";
-      healthLabel = "OVER";
-      barClr = "#c0392b";
-    } else if (remPct < 20) {
-      healthCls = "pc-fld-health-warning";
-      healthLabel = "WARNING";
-      barClr = "#A86B00";
-    } else {
-      healthCls = "pc-fld-health-healthy";
-      healthLabel = "HEALTHY";
-      barClr = "#1A5C3A";
-    }
-    return { id: m.id, label: `${m.month || ""} ${m.year || ""}`.trim(), fundingLabel, budget, mat, lab, totalCost, remain, noBudget, spentPct, healthCls, healthLabel, barClr, expCount, payCount };
-  }).sort((a, b) => (b.label || "").localeCompare(a.label || ""));
-  const totalAllocated = cards.reduce((s, c) => s + c.budget, 0);
-  const totalSpent = cards.reduce((s, c) => s + c.totalCost, 0);
-  return /* @__PURE__ */ React.createElement("section", { className: "drill" }, /* @__PURE__ */ React.createElement("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"), /* @__PURE__ */ React.createElement("div", { className: "drill-head" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Billing Periods \xB7 Monthly Budgets"), /* @__PURE__ */ React.createElement("h2", null, "Billing Periods"), /* @__PURE__ */ React.createElement("div", { className: "sub" }, project.name, " \xB7 ", project.code)), /* @__PURE__ */ React.createElement("button", { className: "btn-primary", onClick: openCreate }, Ico.plus, " New Billing Period")), /* @__PURE__ */ _staff() ? null : React.createElement("div", { className: "drill-stats" }, /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Periods"), /* @__PURE__ */ React.createElement("div", { className: "val" }, cards.length)), !_staff() && /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Total Allocated"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(totalAllocated))), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Total Spent"), /* @__PURE__ */ React.createElement("div", { className: "val" }, "\u20B1 ", peso(totalSpent))), !_staff() && /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Remaining"), /* @__PURE__ */ React.createElement("div", { className: "val " + (totalAllocated - totalSpent >= 0 ? "total" : "") }, "\u20B1 ", peso(totalAllocated - totalSpent)))), cards.length === 0 ? /* @__PURE__ */ React.createElement("div", { className: "pc-feed-empty", style: { padding: "48px 0" } }, 'No billing periods yet. Click "New Billing Period" to create your first one.') : /* @__PURE__ */ React.createElement("div", { className: "pc-period-grid" }, cards.map((c) => /* @__PURE__ */ React.createElement("div", { key: c.id, className: "pc-period-card" }, /* @__PURE__ */ React.createElement("div", { className: "pc-period-head" }, /* @__PURE__ */ React.createElement("div", { className: "pc-period-title" }, /* @__PURE__ */ React.createElement("div", { className: "pc-period-name" }, c.label), /* @__PURE__ */ React.createElement("div", { className: "pc-period-funding" }, c.fundingLabel)), /* @__PURE__ */ React.createElement("div", { className: "pc-period-actions" }, /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Edit period", onClick: () => openEdit(c.id) }, Ico.pencil), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon pc-row-icon-danger", title: "Delete period", onClick: () => openDelete(c.id) }, Ico.trash))), /* @__PURE__ */ React.createElement("div", { className: "pc-period-stats" }, !_staff() && /* @__PURE__ */ React.createElement("div", { className: "pc-period-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Period Budget"), " ", /* @__PURE__ */ React.createElement("span", { className: "val" }, c.noBudget ? /* @__PURE__ */ React.createElement("em", { style: { color: "var(--text-light)", fontStyle: "normal", fontSize: 12 } }, "Not set") : "\u20B1 " + peso(c.budget))), /* @__PURE__ */ React.createElement("div", { className: "pc-period-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Materials"), "     ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(c.mat))), /* @__PURE__ */ React.createElement("div", { className: "pc-period-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Labor"), "         ", /* @__PURE__ */ React.createElement("span", { className: "val" }, "\u20B1 ", peso(c.lab))), /* @__PURE__ */ React.createElement("div", { className: "pc-period-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Spent"), "         ", /* @__PURE__ */ React.createElement("span", { className: "val pc-fld-stat-accent" }, "\u20B1 ", peso(c.totalCost))), !_staff() && !c.noBudget && /* @__PURE__ */ React.createElement("div", { className: "pc-period-stat" }, /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Remaining"), /* @__PURE__ */ React.createElement("span", { className: "val " + (c.remain >= 0 ? "pc-fld-stat-accent" : "pc-fld-stat-warn") }, "\u20B1 ", peso(c.remain)))), !_staff() && /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-health" }, /* @__PURE__ */ React.createElement("span", { className: "pc-fld-health-badge " + c.healthCls }, c.healthLabel), /* @__PURE__ */ React.createElement("span", { className: "pc-fld-card-pct" }, c.noBudget ? c.totalCost > 0 ? "No budget" : "Empty" : c.spentPct.toFixed(1) + "% used")), !_staff() && /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-progress" }, /* @__PURE__ */ React.createElement("div", { className: "pc-fld-card-progress-fill", style: { width: c.spentPct + "%", background: c.barClr } })), /* @__PURE__ */ React.createElement("div", { className: "pc-period-meta" }, c.expCount, " expense", c.expCount !== 1 ? "s" : "", " \xB7 ", c.payCount, " payroll entr", c.payCount !== 1 ? "ies" : "y")))));
+function _pcAllocationSummary(project, periods, payroll, expenses, overhead, allocationMap, folderIds) {
+  if (window.currentUserRole !== "owner" || !project) return null;
+  const folders = new Set(folderIds || [project.id]);
+  const scopedPeriods = (periods || []).filter(p => folders.has(p.folderId));
+  let legacyCount = 0;
+  const views = scopedPeriods.filter(p => p.fundingType !== "president").map(p => {
+    const actual = _pcActualsForPeriod(p, payroll, expenses, overhead);
+    const view = pcPeriodAllocationView(p.monthlyBudget, (allocationMap || {})[p.id], actual.directActual, actual.indirectActual);
+    if (!view) legacyCount++;
+    return view;
+  });
+  // Invalid or stale period links are unallocated too; never consume another job's envelope.
+  const unallocated = (overhead || []).filter(e => !e.deletedAt && e.scope !== "company" && folders.has(e.folderId)
+    && !scopedPeriods.some(p => p.id === e.billingPeriodId && p.folderId === e.folderId))
+    .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const margin = _projMargin(project);
+  return { ...pcProjectAllocationRollup(views, unallocated, margin.profit, margin.isForecast),
+    legacyCount, configuredCount: views.filter(Boolean).length };
+}
+function AllocationRollup({ summary }) {
+  if (window.currentUserRole !== "owner" || !summary) return null;
+  const h = React.createElement;
+  const rows = [
+    ["Direct Budget", summary.directBudget],
+    ["Indirect Budget", summary.indirectBudget],
+    ["Target Margin Reserve", summary.targetMarginReserve],
+    ["Unallocated Indirect Cost", summary.unallocatedIndirect],
+    [summary.isForecast ? "Forecast Profit" : "Actual Earned Profit", summary.actualProfit]
+  ];
+  if (!summary.isForecast && summary.configuredCount) rows.push(["Target Variance", summary.targetMarginVariance]);
+  return h("section", { className: "pc-allocation-rollup" },
+    h("h3", null, "Billing Allocations"),
+    h("dl", { className: "pc-allocation-totals" }, rows.map(([label, value]) =>
+      h("div", { key: label }, h("dt", null, label), h("dd", null, "\u20B1 ", peso(value))))),
+    summary.legacyCount > 0 && h("p", { className: "pc-allocation-note" }, "Allocation not configured: ", summary.legacyCount, " billing period", summary.legacyCount === 1 ? "" : "s"),
+    h("p", { className: "pc-allocation-note" }, "Target Margin Reserve: planning only"));
+}
+function AllocationBands({ view }) {
+  if (window.currentUserRole !== "owner" || !view) return null;
+  const h = React.createElement;
+  const labels = { healthy: "Within budget", advisory: "Advisory", high: "High usage", over: "Over budget", unbudgeted: "Unbudgeted", empty: "No spend" };
+  const band = (label, budget, actual, remaining, status) => h("div", { key: label, className: "pc-allocation-band pc-allocation-" + status.key },
+    h("div", { className: "pc-allocation-band-head" }, h("strong", null, label), h("span", { className: "pc-allocation-status" }, labels[status.key],
+      status.pct == null ? "" : " (" + status.pct.toFixed(1) + "%)")),
+    h("dl", { className: "pc-allocation-figures" }, [["Budget", budget], ["Actual", actual], ["Remaining", remaining]].map(([name, value]) =>
+      h("div", { key: name }, h("dt", null, name), h("dd", null, "\u20B1 ", peso(value))))),
+    status.pct != null && h("progress", { max: 100, value: Math.max(0, Math.min(100, status.pct)), "aria-label": label + " budget used", "aria-valuetext": status.pct.toFixed(1) + "% used, " + labels[status.key] }));
+  return h("div", { className: "pc-allocation-bands" },
+    band("Direct", view.directBudget, view.directActual, view.directRemaining, view.directStatus),
+    band("Indirect", view.indirectBudget, view.indirectActual, view.indirectRemaining, view.indirectStatus),
+    h("div", { className: "pc-allocation-reserve" },
+      h("div", null, h("strong", null, "Target Margin Reserve"), h("span", { className: "pc-allocation-note" }, "Planning only")),
+      h("strong", null, "\u20B1 ", peso(view.targetMarginReserve)),
+      view.reserveAtRisk > 0 && h("div", { className: "pc-allocation-risk" }, "Reserve at Risk: \u20B1 ", peso(view.reserveAtRisk))));
+}
+function AllocationHistory({ periodId, periodLabel, adjustments, onClose }) {
+  const h = React.createElement;
+  const dialog = React.useRef(null);
+  React.useEffect(() => {
+    const element = dialog.current;
+    if (!element || window.currentUserRole !== "owner") return;
+    const opener = document.activeElement;
+    if (!element.open) element.showModal();
+    return () => {
+      if (element.open) element.close();
+      if (opener && opener.isConnected) opener.focus();
+    };
+  }, []);
+  if (window.currentUserRole !== "owner") return null;
+  const asDate = value => value && typeof value.toDate === "function" ? value.toDate() : new Date(value || 0);
+  const rows = (adjustments || []).filter(a => a.projectId === periodId)
+    .slice().sort((a, b) => asDate(b.createdAt) - asDate(a.createdAt));
+  const percentages = (row, prefix) => row[prefix + "DirectPct"] == null ? "Allocation not configured"
+    : "Direct " + row[prefix + "DirectPct"] + "% / Indirect " + row[prefix + "IndirectPct"] + "% / Target Margin " + row[prefix + "TargetMarginPct"] + "%";
+  return h("dialog", { ref: dialog, className: "pc-allocation-history", "aria-labelledby": "pc-allocation-history-title",
+    onCancel: event => { event.preventDefault(); onClose(); }, onClose },
+    h("div", { className: "pc-allocation-band-head" }, h("h3", { id: "pc-allocation-history-title" }, "Allocation History"),
+      h("button", { type: "button", className: "pc-row-icon", "aria-label": "Close allocation history", title: "Close allocation history", autoFocus: true, onClick: onClose }, "\u00D7")),
+    h("p", { className: "pc-allocation-note" }, periodLabel),
+    rows.length ? h("ol", { className: "pc-allocation-history-list" }, rows.map(row =>
+      h("li", { key: row.id },
+        h("dl", null,
+          h("dt", null, "Before"), h("dd", null, percentages(row, "old")),
+          h("dt", null, "After"), h("dd", null, percentages(row, "new")),
+          h("dt", null, "Reason"), h("dd", null, row.reason),
+          h("dt", null, "Actor"), h("dd", null, row.createdBy || "Unknown"),
+          h("dt", null, "Timestamp"), h("dd", null, Number.isNaN(asDate(row.createdAt).getTime()) ? "Unavailable" : asDate(row.createdAt).toLocaleString("en-PH"))))))
+      : h("p", null, "No allocation adjustments recorded."));
+}
+function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, overheadRaw, allocationMap, allocationAdjustments, onBack }) {
+  const h = React.createElement;
+  const owner = window.currentUserRole === "owner";
+  const [historyId, setHistoryId] = React.useState(null);
+  const openCreate = () => window.openCreateMonthModal && window.openCreateMonthModal(project.id);
+  const openEdit = id => window.openEditProjectModal && window.openEditProjectModal(id);
+  const openDelete = id => window.confirmDeleteProject && window.confirmDeleteProject(id);
+  const FUNDING_LBLS = { mobilization: "Mobilization", downpayment: "Downpayment", progress: "Progress Billing", final: "Final Payment", president: "Cover Expenses" };
+  const cards = childMonths.map(m => {
+    const actual = _pcActualsForPeriod(m, payrollRaw, expensesRaw, overheadRaw);
+    const cover = m.fundingType === "president";
+    const budget = cover ? 0 : Number(m.monthlyBudget) || 0;
+    return { id: m.id, label: (m.month + " " + m.year).trim(), fundingLabel: FUNDING_LBLS[m.fundingType] || "Billing Period",
+      cover, budget, totalCost: actual.directActual + actual.indirectActual,
+      view: owner && !cover ? pcPeriodAllocationView(budget, (allocationMap || {})[m.id], actual.directActual, actual.indirectActual) : null,
+      expCount: expensesRaw.filter(e => e.projectId === m.id).length,
+      payCount: payrollRaw.filter(p => p.projectId === m.id).length };
+  }).sort((a, b) => b.label.localeCompare(a.label));
+  const totalAllocated = cards.reduce((sum, c) => sum + c.budget, 0);
+  const totalSpent = cards.reduce((sum, c) => sum + c.totalCost, 0);
+  const historyPeriod = owner && cards.find(c => c.id === historyId && !c.cover);
+  const stat = (label, value) => h("div", { className: "pc-period-stat", key: label },
+    h("span", { className: "lbl" }, label), h("span", { className: "val" }, "\u20B1 ", peso(value)));
+  return h("section", { className: "drill" },
+    h("button", { className: "back-btn", onClick: onBack }, Ico.arrowL, " Back to Project Control"),
+    h("div", { className: "drill-head" },
+      h("div", null, h("h2", null, "Billing Periods"), h("div", { className: "sub" }, project.name)),
+      h("button", { className: "btn-primary", onClick: openCreate }, Ico.plus, " New Billing Period")),
+    owner && h("div", { className: "drill-stats" },
+      stat("Total Allocated", totalAllocated), stat("Total Spent", totalSpent), stat("Remaining", totalAllocated - totalSpent)),
+    !cards.length ? h("div", { className: "pc-feed-empty" }, "No billing periods yet.")
+      : h("div", { className: "pc-period-grid" }, cards.map(c => h("div", { key: c.id, className: "pc-period-card" },
+        h("div", { className: "pc-period-head" },
+          h("div", { className: "pc-period-title" }, h("h3", { className: "pc-period-name" }, c.label), h("div", { className: "pc-period-funding" }, c.fundingLabel)),
+          h("div", { className: "pc-period-actions" },
+            h("button", { className: "pc-row-icon", title: "Edit period", "aria-label": "Edit " + c.label, onClick: () => openEdit(c.id) }, Ico.pencil),
+            h("button", { className: "pc-row-icon pc-row-icon-danger", title: "Delete period", "aria-label": "Delete " + c.label, onClick: () => openDelete(c.id) }, Ico.trash))),
+        owner && h("div", { className: "pc-period-stats" },
+          !c.cover && stat("Period Budget", c.budget), stat(c.cover ? "Cover Expenses" : "Spent", c.totalCost)),
+        owner && !c.cover && (c.view ? h(AllocationBands, { view: c.view })
+          : h("div", { className: "pc-allocation-legacy" }, h("span", null, "Allocation not configured"),
+            h("button", { type: "button", className: "pc-btn-ghost", onClick: () => { if (window.currentUserRole === "owner") openEdit(c.id); } }, Ico.plus, " Apply Policy"))),
+        owner && !c.cover && h("button", { type: "button", className: "pc-btn-ghost pc-allocation-history-button", onClick: () => { if (window.currentUserRole === "owner") setHistoryId(c.id); } }, Ico.calendar, " Allocation History"),
+        h("div", { className: "pc-period-meta" }, c.expCount, " expenses / ", c.payCount, " payroll entries")))),
+    historyPeriod && h(AllocationHistory, { key: historyPeriod.id, periodId: historyPeriod.id, periodLabel: historyPeriod.label, adjustments: allocationAdjustments, onClose: () => setHistoryId(null) }));
 }
 function RecentEntries({ onOpen, laborTx, materialTx }) {
   const [tab, setTab] = React.useState("all");
@@ -3343,6 +3423,13 @@ function PortalApp() {
   const parentFolder = activeFolder && activeFolder.parentFolderId
     ? foldersRaw.find((f) => f.id === activeFolder.parentFolderId) || null
     : null;
+  const allocationSummary = isOwner && project ? _pcAllocationSummary(
+    project, monthsRaw.map(mapMonthlyProject),
+    filterByPeriod(payrollRaw.map(mapPayrollDoc), period),
+    filterByPeriod(expensesRaw.map(mapExpenseDoc), period),
+    filterByPeriod(overheadRaw, period), visibleAllocationMap,
+    [project.id, ...childFolders.map(f => f.id)]
+  ) : null;
   const folderContracts = React.useMemo(
     () => laborContractsRaw.filter((c) => c.folderId === projectId),
     [laborContractsRaw, projectId]
@@ -3492,9 +3579,10 @@ function PortalApp() {
       parentFolder,
       inboxByFolder,
       additionalWorksTotal,
-      periodCount: childMonths.length
+      periodCount: childMonths.length,
+      ...(isOwner ? { allocationSummary } : {})
     }
-  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [] }), /* @__PURE__ */ React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId), inboxPending }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId, pmPaidByContractId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { key: projectId, project, childMonths, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [], onBack: () => setView("dashboard") })));
+  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [] }), /* @__PURE__ */ isOwner && React.createElement(AllocationRollup, { summary: allocationSummary }), React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId), inboxPending }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId, pmPaidByContractId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { key: projectId, project, childMonths, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, payrollRaw, expensesRaw, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [], overheadRaw, onBack: () => setView("dashboard") })));
 }
 (function() {
   const mount = document.getElementById("dacsPortalRoot");

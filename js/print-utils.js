@@ -133,10 +133,12 @@ window.dacsPrintHeader = function(docTitle, docSubtitle) {
  *   materialCount, docsAttached, docsExpected,
  *   overheadIndirect, overheadExpenses,     // Overhead breakdown
  *   earned, profit, marginPct, isForecast, completePct,
- *   allocated, coverCost, periodCount, additionalWorks
+ *   allocated, coverCost, periodCount, additionalWorks,
+ *   allocationSummary // owner-only, precomputed budgets, profit, variance and counts
  * }
  */
 window.dacsPrintProjectCostSummary = function (d) {
+    if (window.currentUserRole === 'staff') return;
     const peso = (n) => (Number(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const esc  = (v) => String(v == null ? '' : v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const num  = (v) => Number(v) || 0;
@@ -208,7 +210,7 @@ window.dacsPrintProjectCostSummary = function (d) {
         + '</div>'
         + '<div style="display:flex;flex-direction:column;gap:9px;align-items:flex-end;text-align:right;padding-top:2px">'
         +   (started ? metaField('Project started', esc(started)) : '')
-        +   metaField('Printed', esc(d.printedAt || '') + ' · Page 1 of 1')
+        +   metaField('Printed', esc(d.printedAt || ''))
         + '</div>'
         + '</div>'
         + '<div class="sw" style="height:3px;background:#14181f;margin-top:20px"></div>';
@@ -238,6 +240,23 @@ window.dacsPrintProjectCostSummary = function (d) {
         +     '<div style="text-align:right;font-size:19px;font-weight:700;font-variant-numeric:tabular-nums">₱' + peso(spent) + '</div>'
         +   '</div>'
         + '</div></div>';
+
+    const allocation = window.currentUserRole === 'owner' ? d.allocationSummary : null;
+    const allocationRows = allocation ? [
+        ['Direct Budget', allocation.directBudget],
+        ['Indirect Budget', allocation.indirectBudget],
+        ['Target Margin Reserve', allocation.targetMarginReserve],
+        ['Unallocated Indirect Cost', allocation.unallocatedIndirect],
+        [allocation.isForecast ? 'Forecast Profit' : 'Actual Earned Profit', allocation.actualProfit]
+    ] : [];
+    if (allocation && !allocation.isForecast && allocation.configuredCount) allocationRows.push(['Target Variance', allocation.targetMarginVariance]);
+    const allocationHtml = allocation ? '<section style="margin-top:20px;break-inside:avoid">'
+        + '<h2 class="q">Billing Allocations</h2>'
+        + '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:8px"><caption style="text-align:left;font-size:10px;margin-bottom:6px">Target Margin Reserve: planning only</caption><tbody>'
+        + allocationRows.map(([label, value]) => '<tr><th scope="row" style="text-align:left;padding:4px 0;font-weight:500">' + esc(label) + '</th><td style="text-align:right;font-variant-numeric:tabular-nums">&#8369; ' + peso(value) + '</td></tr>').join('')
+        + '</tbody></table>'
+        + (allocation.legacyCount ? '<p style="font-size:10px;margin-top:6px">Allocation not configured: ' + esc(allocation.legacyCount) + ' billing period(s)</p>' : '')
+        + '</section>' : '';
 
     const signHtml =
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:56px;margin-top:26px">'
@@ -271,7 +290,7 @@ window.dacsPrintProjectCostSummary = function (d) {
         + '<title>Project Cost Summary — ' + esc(d.name || '') + '</title>'
         + '<style>' + css + '</style></head><body>'
         + '<div class="sheet">'
-        +   headHtml + standHtml + spendHtml
+        +   headHtml + standHtml + spendHtml + allocationHtml
         +   '<div style="flex:1"></div>'
         +   signHtml + footHtml
         + '</div>'

@@ -79,6 +79,21 @@ const portal = evalWith(
 );
 
 // pakyaw drawdown: lcDrawsDown / lcPaid / lcStats read the expPayroll global
+test('allocation planning never enters Spent, Earned or recognised Profit', () => {
+  for (const name of ['_projSpent', '_projEarned', '_projMargin', '_recognisedProfit']) {
+    ok(!/pcAllocation|pcPeriodAllocation|pcProjectAllocation|pcActuals|allocationMap|targetMarginReserve/.test(portal[name].toString()), name + ' must stay independent of allocation planning');
+  }
+  const project = { revenue: 200000, labor: 72000, material: 0, overhead: 24000,
+    completion: { hasData: true, pct: 0.6 }, targetMarginReserve: 999999, allocationMap: { directPct: 1 } };
+  eq(portal._projSpent(project), 96000);
+  eq(portal._projEarned(project), 120000);
+  eq(portal._projMargin(project).profit, 24000);
+  eq(portal._recognisedProfit(project), 24000);
+  project.completion = null;
+  eq(portal._projMargin(project).isForecast, true);
+  eq(portal._recognisedProfit(project), 0);
+});
+
 function pakyaw(expPayroll) {
   return evalWith(
     slice(expensesSrc, 'function lcDrawsDown', '// Worker names seen on this folder', 'expenses-module.js'),
