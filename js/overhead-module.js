@@ -841,7 +841,11 @@ async function deleteOverheadExpense(id) {
 function exportOverheadCsv() {
     const filtered = _ovhdFilteredForMonth();
     const headers = ['Date', 'Scope', 'Project', 'Billing Period', 'Category', 'Description', 'Amount', 'Status', 'Source'];
-    const csvEsc = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+    const csvEsc = v => {
+        let text = String(v == null ? '' : v);
+        if (typeof v !== 'number' && /^[=+\-@\t\r]/.test(text)) text = "'" + text;
+        return '"' + text.replace(/"/g, '""') + '"';
+    };
     const rows = filtered.map(ex => [
         ex.date || '',
         _ovhdEffectiveScope(ex) === 'company' ? 'Company' : 'Project',

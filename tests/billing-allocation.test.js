@@ -412,20 +412,23 @@ async function testOverheadAttribution() {
   await testOverheadDrill();
 }
 
-function drillHarness() {
+function drillHarness(storage) {
   const state = [], writes = [];
   let cursor = 0;
+  let unmount = () => {};
   const context = vm.createContext({ console, React: { Fragment: 'fragment', createElement: (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity) }),
-    useState: initial => { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], next => { state[i] = typeof next === 'function' ? next(state[i]) : next; }]; }, useEffect() {} },
+    useState: initial => { const i = cursor++; if (!(i in state)) state[i] = initial; return [state[i], next => { state[i] = typeof next === 'function' ? next(state[i]) : next; }]; },
+    useRef: initial => { const i = cursor++; if (!(i in state)) state[i] = { current: initial }; return state[i]; },
+    useEffect: (effect, deps) => { if (deps && !deps.length) unmount = effect() || (() => {}); } },
     _staff: () => false, _ocmStatus: () => null, peso: String, Ico: {}, ExpenseInboxMount() {}, _ovhdLocalToday: () => '2026-09-01',
-    window: { currentDataUserId: 'owner' }, firebase: { firestore: { FieldValue: { serverTimestamp: () => 'now' } } }, alert: message => { throw new Error(message); },
+    window: { currentDataUserId: 'owner', storage }, firebase: { firestore: { FieldValue: { serverTimestamp: () => 'now' } } }, alert: message => { throw new Error(message); },
     db: { collection: name => { eq(name, 'overheadExpenses'); return { add: async data => writes.push(data), doc: id => ({ update: async data => writes.push({ id, ...data }) }) }; } } });
   vm.runInContext(sourceSlice(portalSource, 'function OverheadDrill(', 'function _awId()', 'overhead drill'), context);
   const props = { folderId:'f1', childMonths:periods.map(p => ({ ...p })), overheadTx:[], indirectTx:[] };
   const render = () => { cursor = 0; return context.OverheadDrill(props); };
   const nodes = tree => [tree, ...(tree && tree.children || []).flatMap(child => typeof child === 'object' && child ? nodes(child) : [])];
   const find = predicate => nodes(render()).find(predicate);
-  return { props, writes, render, find };
+  return { props, writes, render, find, unmount: () => unmount() };
 }
 async function testOverheadDrill() {
   const d = drillHarness();
@@ -462,4 +465,53 @@ async function testOverheadDrill() {
   eq(d.writes.at(-1).billingPeriodId, null, 'drill create rejects cross-folder period');
 }
 
-testOverheadAttribution().then(() => console.log('billing allocation tests passed')).catch(error => { console.error(error); process.exitCode = 1; });
+async function testOverheadUploadFreshness() {
+  for (const editing of [false, true]) {
+    for (const change of ['period moved', 'folder changed', 'unmounted', 'unchanged']) {
+      let finishUpload;
+      const upload = new Promise(resolve => { finishUpload = resolve; });
+      const d = drillHarness({ ref: () => ({ put: () => upload, getDownloadURL: async () => 'https://example.test/receipt.jpg' }) });
+      if (editing) {
+        d.props.overheadTx = [{ id:'e1', folderId:'f1', billingPeriodId:'p1', category:'Fuel', amount:100, date:'2026-09-01', history:[] }];
+        d.find(n => n.type === 'button' && n.props.title === 'Edit').props.onClick();
+      } else {
+        d.find(n => n.type === 'button' && n.children.includes('+ Add Expense')).props.onClick();
+        d.find(n => n.props.id === 'ovhdDrillBillingPeriod').props.onChange({ target:{ value:'p1' } });
+        d.find(n => n.type === 'input' && n.props.list === 'ovhdDrillCatList').props.onChange({ target:{ value:'Fuel' } });
+        d.find(n => n.type === 'input' && n.props.type === 'number').props.onChange({ target:{ value:'100' } });
+      }
+      d.find(n => n.type === 'input' && n.props.type === 'file').props.onChange({ target:{ files:[{ name:'receipt.jpg' }] } });
+      const saving = d.find(n => n.type === 'button' && n.children.includes(editing ? 'Save Changes' : 'Save Expense')).props.onClick();
+      eq(d.writes.length, 0, 'receipt upload must precede the expense write');
+      if (change === 'period moved') d.props.childMonths = d.props.childMonths.map(p => p.id === 'p1' ? { ...p, folderId:'f2' } : p);
+      if (change === 'folder changed') d.props.folderId = 'f2';
+      d.render();
+      if (change === 'unmounted') d.unmount();
+      finishUpload();
+      await saving;
+      eq(d.writes.length, 1);
+      eq(d.writes[0].billingPeriodId, change === 'unchanged' ? 'p1' : null,
+        `${editing ? 'edit' : 'create'} must validate latest membership after upload: ${change}`);
+      eq(d.writes[0].receiptUrl, 'https://example.test/receipt.jpg');
+      if (editing && change !== 'unchanged') assert.ok(d.writes[0].history.at(-1).fields.includes('billingPeriodId'), 'upload-time invalidation must be audited');
+    }
+  }
+}
+
+function testOverheadCsvFormulas() {
+  const h = overheadHarness();
+  h.context.expFolders[0].name = '@job';
+  h.context.expProjects[0].name = '=SUM("1","2")';
+  vm.runInContext(`_ovhdExpenses = [{ folderId:'f1', billingPeriodId:'p1', amount:-123.45,
+    date:'2026-09-01', category:'+category', expenseName:'-expense', status:'=status' }];`, h.context);
+  h.context.exportOverheadCsv();
+  eq(h.reports().csv.split('\n')[1], `"2026-09-01","Project","'@job","'=SUM(""1"",""2"")","'+category","'-expense","-123.45","'=status","Overhead Expense"`,
+    'CSV textual cells must neutralize formulas before quoting, while numeric amounts remain numeric');
+}
+
+Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas)])
+  .then(results => {
+    const failures = results.filter(result => result.status === 'rejected');
+    if (failures.length) { failures.forEach(result => console.error(result.reason)); process.exitCode = 1; }
+    else console.log('billing allocation tests passed');
+  });

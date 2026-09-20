@@ -1448,6 +1448,9 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
   const [adding, setAdding] = React.useState(false);
   const [form, setForm] = React.useState({ category: "", amount: "", date: _ovhdLocalToday(), description: "", billingPeriodId: "" });
   const periods = (childMonths || []).filter(p => folderId && p.folderId === folderId);
+  const periodContextRef = React.useRef(null);
+  periodContextRef.current = { folderId, periods };
+  React.useEffect(() => () => { periodContextRef.current = null; }, []);
   const billingPeriodId = periods.some(p => p.id === form.billingPeriodId) ? form.billingPeriodId : null;
   React.useEffect(() => {
     if (form.billingPeriodId && !billingPeriodId) setForm(current => ({ ...current, billingPeriodId: "" }));
@@ -1507,13 +1510,18 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
         await ref.put(receiptFile);
         receiptUrl = await ref.getDownloadURL();
       }
+      // Upload can outlive a render or the folder drill itself. Validate again
+      // against current membership before either write, with no await in between.
+      const latest = periodContextRef.current;
+      const savedBillingPeriodId = latest && latest.folderId === folderId && latest.periods.some(p => p.id === form.billingPeriodId)
+        ? form.billingPeriodId : null;
       if (editingId) {
         // Edit: never blank an existing receipt just because no new file was
         // staged, and leave userId / scope / createdAt as they were.
-        const patch = { category, amount: amt, date: form.date, description: form.description || "", billingPeriodId };
+        const patch = { category, amount: amt, date: form.date, description: form.description || "", billingPeriodId: savedBillingPeriodId };
         const existing = overheadTx.find(x => x.id === editingId);
         const history = Array.isArray(existing?.history) ? existing.history.slice() : [];
-        if ((existing?.billingPeriodId || null) !== billingPeriodId) {
+        if ((existing?.billingPeriodId || null) !== savedBillingPeriodId) {
           history.push({ fields: ["billingPeriodId"], at: new Date().toISOString(), note: "Edited: billingPeriodId" });
           patch.history = history;
         }
@@ -1525,7 +1533,7 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
           // scope is explicit so the admin Overhead page doesn't have to infer it.
           // status is deliberately NOT set: the drill never asks whether the bill was
           // paid, so it defaults to 'pending' and is settled on the Overhead page.
-          folderId, scope: "project", billingPeriodId,
+          folderId, scope: "project", billingPeriodId: savedBillingPeriodId,
           category, amount: amt, date: form.date, description: form.description || "",
           receiptUrl,
           createdAt: firebase.firestore.FieldValue.serverTimestamp()
