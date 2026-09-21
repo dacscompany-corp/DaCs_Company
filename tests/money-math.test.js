@@ -404,11 +404,15 @@ console.log('\nI. Cover / president money');
   let printed = '';
   const report = vm.createContext({ ...require('../js/billing-allocation.js'),
     console: { log() {}, error: console.error },
-    window: { currentUserRole:'owner', open:() => ({ document:{ write(html) { printed = html; }, close() {} } }) },
+    window: { currentUserRole:'owner', location:{origin:'https://example.test'},
+      open:() => ({ document:{ write(html) { printed = html; }, close() {} } }) },
     document: { addEventListener() {}, getElementById(id) {
       return elements[id] || (elements[id] = { innerHTML:'', style:{} });
     } } });
   vm.runInContext(expensesSrc, report);
+  const printSource = fs.readFileSync(path.join(__dirname, '../js/print-utils.js'), 'utf8');
+  vm.runInContext(printSource.slice(printSource.indexOf('window.dacsPrintHeader ='),
+    printSource.indexOf('\n/**', printSource.indexOf('window.dacsPrintHeader ='))), report);
   vm.runInContext(`
     expFolders = [{id:'f',name:'Job',totalBudget:5000}];
     expProjects = [{id:'p',folderId:'f',month:'September',year:2026,monthlyBudget:1000},

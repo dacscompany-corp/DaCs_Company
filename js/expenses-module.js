@@ -4899,12 +4899,9 @@ function _pcReportFolderIds(folderId) {
 
 function _pcReportModel(folderId, options = {}) {
     const folders = _pcReportFolderIds(folderId);
-    const periods = expProjects.filter(p => folders.has(p.folderId) && (!options.projectId || p.id === options.projectId));
+    const periods = expProjects.filter(p => options.projectId ? p.id === options.projectId : folders.has(p.folderId));
     const owner = _pcIsOwner();
     const label = p => p.name || [p.month, p.year].filter(Boolean).join(' ');
-    if (!owner) return { rows: periods.map(p => ({ id:p.id, label:label(p), folderId:p.folderId,
-        status:p.fundingType === 'president' ? 'Cover Expenses' : 'Billing Period' })), totals:null, allocation:null,
-        expenses:[], payroll:[], overheadRows:[] };
     const sum = (rows, key) => rows.reduce((s, r) => s + (Number(r[key]) || 0), 0);
     const periodDate = p => new Date(Number(p.year), _MONTHS.indexOf(p.month), 1);
     const inWindow = date => !options.start || (date >= options.start && date < options.end);
@@ -4934,7 +4931,7 @@ function _pcReportModel(folderId, options = {}) {
             base = (Number(p.monthlyBudget) || 0) * days / new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
         }
         const budget = cover ? 0 : base;
-        const allocation = cover ? null : pcPeriodAllocationView(budget, _pcAllocationMap[p.id], actual.directActual, actual.indirectActual);
+        const allocation = cover || !owner ? null : pcPeriodAllocationView(budget, _pcAllocationMap[p.id], actual.directActual, actual.indirectActual);
         const totalSpent = mats + labor + overhead;
         return { id:p.id, folderId:p.folderId, label:label(p), budget, mats, labor, overhead, totalSpent,
             remaining:budget - totalSpent, usedPct:budget > 0 ? totalSpent / budget * 100 : 0,
@@ -4943,6 +4940,9 @@ function _pcReportModel(folderId, options = {}) {
             txCount:exps.length, workerCount:new Set(pay.map(r => r.workerName || r.id)).size,
             included:!options.start || inWindow(periodDate(p)) || budget > 0 || totalSpent !== 0 };
     }).filter(r => r.included);
+    if (!owner) return { rows:rows.map(r => ({ id:r.id, label:r.label, folderId:r.folderId,
+        status:r.status === 'Cover Expenses' ? r.status : 'Billing Period' })), totals:null, allocation:null,
+        expenses:[], payroll:[], overheadRows:[] };
     // A stale or cross-folder link remains on its job, but consumes no period envelope.
     const unallocatedRows = options.projectId ? [] : overheadRows.filter(e =>
         !expProjects.some(p => assignedTo(e, p)));
@@ -5290,19 +5290,24 @@ function _rptRenderTrendChart(groups) {
     });
 }
 
+function _pcReportCategories(expenses, labor, overhead) {
+    const categories = new Map();
+    expenses.forEach(e => {
+        const label = e.category || 'Uncategorized';
+        categories.set(label, (categories.get(label) || 0) + (Number(e.amount) || 0));
+    });
+    // Synthetic cost buckets must never overwrite a user's expense category.
+    return Array.from(categories, ([label, amount]) => ({ label, amount }))
+        .concat([{ label:'Labor', amount:labor }, { label:'Overhead', amount:overhead }])
+        .filter(item => item.amount !== 0);
+}
+
 function _rptRenderCompositionChart(model) {
     const ctx = document.getElementById('rptCompositionChart');
     if (!ctx) return;
-    const cats = {};
-    expCategories.forEach(c => { cats[c.name] = 0; });
-    model.expenses.forEach(e => {
-        const k = e.category || 'Others';
-        cats[k] = (cats[k] || 0) + (e.amount || 0);
-    });
-    cats['Labor'] = model.totals.labor;
-    cats['Overhead'] = model.totals.overhead;
-    const labels = Object.keys(cats).filter(k => cats[k] > 0);
-    const data   = labels.map(k => cats[k]);
+    const categories = _pcReportCategories(model.expenses, model.totals.labor, model.totals.overhead);
+    const labels = categories.map(item => item.label);
+    const data = categories.map(item => item.amount);
     const RPT_DONUT = ['#157a52','#7f9cb0','#c8a45a','#9fb98a','#d3cdc2','#b0907f','#a8a79f'];
     const colors = labels.map((k,i) => k==='Payroll' ? '#7f9cb0' : RPT_DONUT[i % RPT_DONUT.length]);
     if (_rptCharts.comp) _rptCharts.comp.destroy();
@@ -5355,18 +5360,9 @@ function _rptRenderBvaChart(groups) {
 function _rptRenderCategoryChart(model) {
     const ctx = document.getElementById('expCategoryChart');
     if (!ctx) return;
-    const cats = {};
-    expCategories.forEach(c => { cats[c.name] = 0; });
-    cats['Payroll'] = 0;
-    model.expenses.forEach(e => {
-        const k = e.category || 'Others';
-        if (!(k in cats)) cats[k] = 0;
-        cats[k] += (e.amount || 0);
-    });
-    cats['Labor'] = model.totals.labor;
-    cats['Overhead'] = model.totals.overhead;
-    const labels = Object.keys(cats).filter(k => cats[k] > 0);
-    const data   = labels.map(k => cats[k]);
+    const categories = _pcReportCategories(model.expenses, model.totals.labor, model.totals.overhead);
+    const labels = categories.map(item => item.label);
+    const data = categories.map(item => item.amount);
     const RPT_DONUT = ['#157a52','#7f9cb0','#c8a45a','#9fb98a','#d3cdc2','#b0907f','#a8a79f'];
     const bgColors = labels.map((k,i) => k==='Payroll' ? '#7f9cb0' : RPT_DONUT[i % RPT_DONUT.length]);
     if (expCharts.pie) expCharts.pie.destroy();
@@ -5605,36 +5601,119 @@ function printTransactionReceipt(type, id) {
 // Control used the Expenses selection instead, so it reported a different job.
 function _pcReportDetails(model) {
     if (!_pcIsOwner()) return '';
-    const period = id => model.rows.find(p => p.id === id)?.label || '';
-    return _pcReportTable(['Date','Billing Period','Expense','Category','Notes','Qty','Amount'], model.expenses.map(e => [
-        e.dateTime || '',period(e.projectId),e.expenseName || '',e.category || '',e.notes || '',String(e.quantity || 1),Number(e.amount) || 0]), 'Expense Detail')
-        + _pcReportTable(['Date','Billing Period','Worker','Role','Notes','Days','Daily Rate','Salary'], model.payroll.map(p => [
-            p.paymentDate || '',period(p.projectId),p.workerName || '',p.role || '',p.notes || '',String(p.daysWorked || 0),Number(p.dailyRate) || 0,Number(p.totalSalary) || 0]), 'Payroll Detail')
+    const period = id => _pcPrintPeriodLabel(expProjects.find(p => p.id === id));
+    const date = value => value ? new Date(value).toLocaleDateString('en-PH', {month:'short',day:'numeric',year:'numeric'}) : '';
+    const total = (rows, key) => rows.reduce((sum, row) => sum + (Number(row[key]) || 0), 0);
+    const expenses = [...model.expenses].sort((a,b) => new Date(b.dateTime || 0) - new Date(a.dateTime || 0));
+    const payroll = [...model.payroll].sort((a,b) => new Date(b.paymentDate || 0) - new Date(a.paymentDate || 0));
+    return _pcReportTable(['Date','Billing Period','Expense','Category','Notes','Qty','Amount'], expenses.map(e => [
+        date(e.dateTime),period(e.projectId),e.expenseName || '',e.category || '',e.notes || '',String(e.quantity || 1),Number(e.amount) || 0])
+        .concat([['Expenses Subtotal','','','','','',model.totals.mats]]), 'Expense Detail - ' + expenses.length + (expenses.length === 1 ? ' transaction' : ' transactions'))
+        + _pcReportTable(['Date','Billing Period','Worker','Role','Notes','Days','Daily Rate','Salary'], payroll.map(p => [
+            date(p.paymentDate),period(p.projectId),p.workerName || '',p.role || '',p.notes || '',String(p.daysWorked || 0),
+            _payRecIsLamsam(p) ? 'Lump Sum' : Number(p.dailyRate) || 0,Number(p.totalSalary) || 0])
+            .concat([['Payroll Subtotal','','','','','','',total(payroll,'totalSalary')]]), 'Payroll Detail - ' + payroll.length + (payroll.length === 1 ? ' entry' : ' entries'))
         + _pcReportTable(['Date','Billing Period','Category','Description','Amount'], model.overheadRows.map(e => [
-            e.date || '',model.rows.find(p => p.id === e.billingPeriodId && p.folderId === e.folderId)?.label || 'Unallocated Indirect',
-            e.category || '',e.description || '',Number(e.amount) || 0]), 'Project Overhead');
+            date(e.date),model.rows.some(p => p.id === e.billingPeriodId && p.folderId === e.folderId) ? period(e.billingPeriodId) : 'Unallocated Indirect',
+            e.category || '',e.description || '',Number(e.amount) || 0])
+            .concat([['Project Overhead Subtotal','','','',total(model.overheadRows,'amount')]]), 'Project Overhead');
 }
 
-function _pcPrintReport(title, model, groups) {
+function _pcPrintPeriodLabel(project) {
+    if (!project) return '';
+    const month = [project.month,project.year].filter(Boolean).join(' ');
+    return [project.name,month].filter((value, i, values) => value && values.indexOf(value) === i).join(' · ');
+}
+
+function _pcFundingLabel(project, index) {
+    const labels = { mobilization:'Mobilization', downpayment:'Downpayment', progress:'Progress Billing',
+        final:'Final Payment', president:'Cover Expenses' };
+    const type = project.fundingType || 'downpayment';
+    return (labels[type] || type) + (type === 'progress' ? ' #' + (project.billingNumber || index || '?') : '');
+}
+
+function _pcPrintFundingSummary(model) {
+    const sections = new Map();
+    model.rows.forEach(row => {
+        const project = expProjects.find(p => p.id === row.id);
+        const type = project?.fundingType || 'downpayment';
+        if (!sections.has(type)) sections.set(type, []);
+        sections.get(type).push({ row, project });
+    });
+    const order = ['mobilization','downpayment','progress','final','president'];
+    let html = '';
+    let itemNumber = 1;
+    const headers = ['Item No.','Description','Billing Period','Qty','Unit','Received','Material & Consumables','Labor & Equipment','Overhead','Spent','Balance'];
+    [...sections].sort(([a],[b]) => order.indexOf(a) - order.indexOf(b)).forEach(([type, items]) => {
+        items.sort((a,b) => (a.project.billingNumber || 0) - (b.project.billingNumber || 0));
+        const label = _pcFundingLabel({fundingType:type}).replace(/ #\?$/, '');
+        const keys = ['budget','mats','labor','overhead','totalSpent','remaining'];
+        const rows = items.map(({row,project}, i) => [String(itemNumber++),_pcFundingLabel(project, i + 1),_pcPrintPeriodLabel(project),'1','lot',...keys.map(key => row[key])]);
+        rows.push(['Subtotal - ' + label,'','','','',...keys.map(key => items.reduce((sum,item) => sum + item.row[key], 0))]);
+        html += _pcReportTable(headers, rows, label);
+    });
+    if (model.totals.unallocatedIndirect) {
+        const amount = model.totals.unallocatedIndirect;
+        html += _pcReportTable(headers, [['','Unallocated Indirect','','','',0,0,0,amount,amount,-amount]], 'Unallocated Indirect');
+    }
+    return html + _pcReportTable(['Materials','Labor','Overhead','Grand Total Balance'],
+        [[model.totals.mats,model.totals.labor,model.totals.overhead,model.totals.remaining]], 'Grand Total Balance');
+}
+
+function _pcPrintReport(title, model, groups, options = {}) {
     const owner = _pcIsOwner();
+    const folder = expFolders.find(f => f.id === options.folderId);
+    const printedAt = new Date().toLocaleString('en-PH', { year:'numeric',month:'long',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true });
+    const docTitle = options.kind === 'receipt' ? 'Billing Period Summary' : options.kind === 'dashboard' ? options.periodLabel + ' Report' : 'Billing Summary';
+    const receiptNo = options.kind === 'receipt' ? 'SUM-' + Date.now().toString(36).toUpperCase() : '';
+    let metadata = '<p>' + _mvpEsc(folder?.description || '') + '</p>';
+    if (options.project) metadata += '<p>' + _mvpEsc(_pcFundingLabel(options.project)) + ' · '
+        + _mvpEsc(_pcPrintPeriodLabel(options.project)) + '</p>';
+    if (receiptNo) metadata += '<p>SUMMARY NO. <strong>' + receiptNo + '</strong></p>';
+    else metadata += '<p>' + model.rows.length + ' billing periods' + (groups ? ' · ' + _mvpEsc(options.periodLabel) + ' breakdown · ' + _mvpEsc(options.dateLabel) : '') + '</p>';
     let body = '';
     if (owner && model.totals) {
         const t = model.totals;
-        body += _pcReportTable(['Fund Allocated','Materials','Labor','Overhead','Spent','Funds Available'],
-            [[t.budget,t.mats,t.labor,t.overhead,t.totalSpent,t.remaining]], 'Actual Costs');
-        if (groups) body += _pcReportTable(['Period','Fund Allocated','Materials','Labor','Overhead','Spent','Remaining'],
-            groups.filter(g => g.budget || g.totalSpent).concat([t]).map(g => [g.label,g.budget,g.mats,g.labor,g.overhead,g.totalSpent,g.remaining]), 'Period Summary');
-        body += _pcAllocationReportHtml(model) + _pcReportDetails(model);
+        const folderIds = _pcReportFolderIds(options.folderId);
+        const contract = options.kind === 'full' && !options.folderId ? 0
+            : expFolders.filter(f => folderIds.has(f.id)).reduce((sum,f) => sum + (Number(f.totalBudget) || 0), 0);
+        if (options.kind !== 'receipt') body += _pcReportTable(['Total Contract','Receivable Balance','Cover Expenses (included above)'],
+            [[contract,contract - t.budget,t.cover]], 'Project Summary');
+        const isCover = options.project?.fundingType === 'president';
+        const firstLabel = options.kind === 'receipt' ? (isCover ? 'Covered' : 'Received')
+            : options.kind === 'full' ? 'Total Billed (Received)' : 'Fund Allocated';
+        const balanceLabel = options.kind === 'receipt' && isCover ? 'Total Covered'
+            : options.kind === 'dashboard' ? 'Funds Available' : 'Net Balance';
+        body += _pcReportTable([firstLabel,'Materials','Labor','Overhead','Current Fund Spent',balanceLabel],
+            [[options.kind === 'receipt' && isCover ? t.totalSpent : t.budget,t.mats,t.labor,t.overhead,t.totalSpent,t.remaining]], 'Actual Costs');
+        if (options.kind === 'full') body += _pcPrintFundingSummary(model);
+        if (groups) {
+            const status = pct => pct > 100 ? 'Over Budget' : pct > 85 ? 'Near Limit' : pct > 60 ? 'On Track' : 'Healthy';
+            body += _pcReportTable(['Period','Fund Allocated','Materials','Labor','Overhead','Spent','Remaining','Used','Status','Transactions','Workers'],
+                groups.filter(g => g.budget || g.totalSpent).concat([t]).map(g => [g.label,g.budget,g.mats,g.labor,g.overhead,g.totalSpent,g.remaining,
+                    g.usedPct.toFixed(1) + '%',status(g.usedPct),String(g.txCount),String(g.workerCount)]), options.periodLabel + ' Period Breakdown');
+            const empty = groups.filter(g => !g.budget && !g.totalSpent);
+            if (empty.length) body += '<p>' + empty.length + (empty.length === 1 ? ' period' : ' periods')
+                + ' with no activity: ' + _mvpEsc(empty.map(g => g.shortLabel).join(', ')) + '</p>';
+            const categories = _pcReportCategories(model.expenses,t.labor,t.overhead);
+            body += _pcReportTable(['Category','Amount','% of Total'], categories.map(item => [item.label,item.amount,
+                (t.totalSpent ? item.amount / t.totalSpent * 100 : 0).toFixed(1) + '%'])
+                .concat([['TOTAL',t.totalSpent,t.totalSpent ? '100.0%' : '0.0%']]), 'Category Breakdown');
+        }
+        body += _pcAllocationReportHtml(model);
+        if (options.kind !== 'dashboard' || options.folderId) body += _pcReportDetails(model);
     } else body = _pcReportTable(['Billing Period','Status'], model.rows.map(r => [r.label,r.status]), 'Billing Summary');
-    const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>' + _mvpEsc(title)
+    const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>' + _mvpEsc(title + (receiptNo ? ' - ' + receiptNo : ''))
         + '</title><style>body{font:12px Arial,sans-serif;color:#17251e;margin:24px}header{border-bottom:2px solid #157a52;margin-bottom:20px}'
         + 'h1{font-size:20px;overflow-wrap:anywhere}h2{font-size:15px}.pc-report-table{width:100%;border-collapse:collapse;table-layout:fixed;margin:18px 0}'
         + 'caption{text-align:left;font-size:15px;font-weight:700;margin-bottom:8px}th,td{padding:6px 4px;border-bottom:1px solid #cbd5d1;text-align:right;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}'
         + 'th:first-child,td:first-child{text-align:left}thead{display:table-header-group}thead th{background:#edf4ef;font-size:10px}tr{break-inside:avoid}'
         + '.pc-report-note{font-size:11px}button{margin:12px 0;padding:8px 14px}@page{size:A4 landscape;margin:12mm}'
         + '@media print{body{margin:0;font-size:9px}button{display:none}.pc-report-scroll{overflow:visible}thead th{font-size:8px}caption{break-after:avoid}}</style></head><body>'
-        + '<header><h2>DAC\'s Building Design Services</h2><h1>' + _mvpEsc(title) + '</h1><p>Billing Summary · '
-        + _mvpEsc(new Date().toLocaleDateString('en-PH')) + '</p></header>' + body
+        + '<header>' + window.dacsPrintHeader(_mvpEsc(docTitle), 'Printed: ' + _mvpEsc(printedAt))
+        + '<h1>' + _mvpEsc(title) + '</h1>' + metadata + '</header>' + body
+        + '<footer><p>Official ' + (options.kind === 'receipt' ? 'billing period summary' : options.kind === 'full' ? 'billing summary' : 'report')
+        + ' generated by the DAC\'s Admin System. For internal use only.</p><strong>DAC\'s Building Design Services</strong></footer>'
         + '<button onclick="window.print()">Print</button></body></html>';
     const win = window.open('', '_blank');
     if (!win) { showExpNotif('Allow pop-ups to print this report.', 'error'); return; }
@@ -5647,7 +5726,8 @@ function printFullBillingSummary(folderId) {
     if (!fid && !expCurrentProject) { showExpNotif('No billing data to print.', 'error'); return; }
     if (_pcEnsureReportOverhead(() => printFullBillingSummary(folderId))) return;
     const model = _pcReportModel(fid, !fid && expCurrentProject ? { projectId:expCurrentProject.id } : {});
-    _pcPrintReport(expFolders.find(f => f.id === fid)?.name || 'Billing Summary', model);
+    _pcPrintReport(expFolders.find(f => f.id === fid)?.name || model.rows[0]?.label || 'Billing Summary', model, null,
+        {kind:'full',folderId:fid});
 }
 
 // ─────────────────────────────────────────────────────────-----------------------------------------------------------
@@ -5658,7 +5738,8 @@ function printBillingSummaryReceipt(projectId) {
     const project = expProjects.find(p => p.id === projectId);
     if (!project) { showExpNotif('Project not found.', 'error'); return; }
     const model = _pcReportModel(project.folderId, { projectId });
-    _pcPrintReport(expFolders.find(f => f.id === project.folderId)?.name || 'Billing Summary', model);
+    _pcPrintReport(expFolders.find(f => f.id === project.folderId)?.name || model.rows[0]?.label || 'Billing Summary', model, null,
+        {kind:'receipt',folderId:project.folderId,project});
 }
 
 // ════════════════════════════════════════════════════════════
@@ -5687,7 +5768,8 @@ function printReportsDashboard() {
     if (_pcEnsureReportOverhead(printReportsDashboard)) return;
     const report = _pcDashboardReport();
     _pcPrintReport((expFolders.find(f => f.id === _rptState.folderId)?.name || 'Company-Wide Report')
-        + ' · ' + report.label, report.model, report.groups);
+        + ' · ' + report.label, report.model, report.groups, {kind:'dashboard',folderId:_rptState.folderId,dateLabel:report.label,
+            periodLabel:({weekly:'Weekly',monthly:'Monthly',quarterly:'Quarterly',semi:'Semi-Annual',annual:'Annual'})[_rptState.period] || _rptState.period});
 }
 
 console.log('✅ Reports Dashboard Module Loaded');
@@ -6496,12 +6578,12 @@ var _pdDonutChart = null;
 var _pdBarChart   = null;
 
 function mvpOvOpenPeriodDetail(_folderId, projectId) {
-    if (_pcEnsureReportOverhead(() => mvpOvOpenPeriodDetail(_folderId, projectId))) return;
     var modal = document.getElementById('mvpPeriodDetailModal');
     if (!modal) return;
 
     var proj = expProjects.find(function(p) { return p.id === projectId; });
-    if (!proj) return;
+    if (!proj) { mvpClosePeriodDetail(); return; }
+    if (_pcEnsureReportOverhead(() => mvpOvOpenPeriodDetail(_folderId, projectId))) return;
     modal.dataset.projectId = projectId;
 
     var model = _pcReportModel(proj.folderId, { projectId });
@@ -6570,21 +6652,14 @@ function mvpOvOpenPeriodDetail(_folderId, projectId) {
     if (_pdBarChart)   { _pdBarChart.destroy();   _pdBarChart   = null; }
 
     // Category Breakdown (donut)
-    var catMap = {};
-    projExps.forEach(function(e) {
-        var cat = e.category || 'Uncategorized';
-        catMap[cat] = (catMap[cat] || 0) + (parseFloat(e.amount) || 0);
-    });
-    if (labTotal > 0) catMap['Labor'] = labTotal;
-    if (row.overhead > 0) catMap['Overhead'] = row.overhead;
-
-    var catLabels = Object.keys(catMap);
-    var catVals   = catLabels.map(function(k) { return catMap[k]; });
+    var categories = _pcReportCategories(projExps, labTotal, row.overhead);
+    var catLabels = categories.map(item => item.label);
+    var catVals = categories.map(item => item.amount);
     var palette   = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#ec4899','#84cc16','#6366f1'];
     var catColors = catLabels.map(function(_, i) { return palette[i % palette.length]; });
 
     var donutCtx = document.getElementById('pdDonutChart').getContext('2d');
-    if (catVals.length === 0) catLabels = ['No data'], catVals = [1], catColors = ['#e5e7eb'];
+    if (catVals.length === 0) catLabels = ['No data'], catVals = [0], catColors = ['#e5e7eb'];
     _pdDonutChart = new Chart(donutCtx, {
         type: 'doughnut',
         data: { labels: catLabels, datasets: [{ data: catVals, backgroundColor: catColors, borderWidth: 2, borderColor: '#fff' }] },
@@ -6699,7 +6774,15 @@ function mvpOvOpenPeriodDetail(_folderId, projectId) {
 function mvpClosePeriodDetail(e) {
     if (e && e.target !== document.getElementById('mvpPeriodDetailModal')) return;
     var modal = document.getElementById('mvpPeriodDetailModal');
-    if (modal) modal.style.display = 'none';
+    if (modal) { modal.style.display = 'none'; delete modal.dataset.projectId; }
+    ['pdAllocation','pdKpiRow','pdExpensesSection','pdPayrollSection','pdDonutLegend'].forEach(id => {
+        var el = document.getElementById(id); if (el) el.innerHTML = '';
+    });
+    ['pdTitle','pdBudgetAmt','pdUtilPct'].forEach(id => {
+        var el = document.getElementById(id); if (el) el.textContent = '';
+    });
+    var fill = document.getElementById('pdUtilFill');
+    if (fill) fill.style.width = '0';
     document.body.style.overflow = '';
     if (_pdDonutChart) { _pdDonutChart.destroy(); _pdDonutChart = null; }
     if (_pdBarChart)   { _pdBarChart.destroy();   _pdBarChart   = null; }

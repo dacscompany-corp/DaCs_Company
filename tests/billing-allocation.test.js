@@ -727,17 +727,19 @@ function expenseReportHarness() {
   const elements = {};
   const charts = {};
   const el = id => elements[id] || (elements[id] = { innerHTML:'', textContent:'', value:'', style:{},
-    classList:{ add(){}, remove(){}, toggle(){} }, setAttribute(){}, getContext(){ return {}; },
+    classList:{ add(){}, remove(){}, toggle(){} }, setAttribute(){}, getContext(){ return this; },
     querySelector(){ return null; }, querySelectorAll(){ return []; }, closest(){ return null; }, dataset:{} });
   let printed = '', csv = '';
   const context = vm.createContext({ console:{ log(){}, error:console.error }, ...A,
-    window:{ currentUserRole:'owner', location:{ href:'https://example.test/admin.html' },
+    window:{ currentUserRole:'owner', location:{ href:'https://example.test/admin.html', origin:'https://example.test' },
       open:() => ({ document:{ write:html => { printed = html; }, close(){} }, focus(){}, print(){}, addEventListener(){} }) },
     document:{ getElementById:el, querySelector:() => null, querySelectorAll:() => [], addEventListener(){},
       createElement:() => ({ click(){}, style:{} }), body:{ style:{}, appendChild(){}, removeChild(){} } },
-    Chart:class { constructor(canvas, config) { charts[Object.keys(elements).find(id => elements[id] === canvas)] = config; } destroy(){} }, setTimeout(){}, clearTimeout(){},
+    Chart:class { constructor(canvas, config) { this.config = config; charts[Object.keys(elements).find(id => elements[id] === canvas)] = config; } destroy(){ this.config.destroyed = true; } }, setTimeout(){}, clearTimeout(){},
     Blob:class { constructor(parts){ csv = parts.join(''); } }, URL:{ createObjectURL:() => 'blob:test', revokeObjectURL(){} } });
   vm.runInContext(expensesSource, context);
+  const printSource = fs.readFileSync(path.join(__dirname, '../js/print-utils.js'), 'utf8');
+  vm.runInContext(printSource.slice(printSource.indexOf('window.dacsPrintHeader ='), printSource.indexOf('\n/**', printSource.indexOf('window.dacsPrintHeader ='))), context);
   vm.runInContext(`
     expFolders = [{id:'f',name:'=Job <script>alert(1)</script>',totalBudget:5000},
       {id:'child',parentFolderId:'f',name:'Extra',totalBudget:1000}, {id:'other',name:'Other'}];
@@ -896,7 +898,160 @@ async function testExpenseReportLoading() {
   assert.doesNotMatch(h.el('rptAllocationReport').innerHTML, /500\.00/, 'empty period scope must clear previous allocation rows');
 }
 
-Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas), Promise.resolve().then(testAllocationDashboard), Promise.resolve().then(testAllocationPrint), Promise.resolve().then(testAllocationRootDateScope), Promise.resolve().then(testExpenseReportModel), Promise.resolve().then(testExpenseReportOutputs), testExpenseReportLoading()])
+function testReportChartCategoryCollisions() {
+  const h = expenseReportHarness(), c = h.context;
+  vm.runInContext(`
+    _ovAllExpenses.push({projectId:'p',category:'Labor',amount:100},
+      {projectId:'p',category:'Overhead',amount:200}, {projectId:'p',category:'__proto__',amount:'10'});
+  `, c);
+  c.renderReportsDashboard();
+  c.mvpOvOpenPeriodDetail('f','p');
+  for (const [id, expected] of [['rptCompositionChart',601], ['expCategoryChart',601], ['pdDonutChart',495]]) {
+    eq(h.charts[id].data.datasets[0].data.reduce((sum, n) => sum + n, 0), expected,
+      id + ' must retain expense categories that collide with synthetic buckets');
+    const data = h.charts[id].data;
+    const amounts = label => Array.from(data.labels, (name,i) => name === label ? data.datasets[0].data[i] : null)
+      .filter(amount => amount !== null).sort((a,b) => a - b);
+    eq(amounts('Labor'), [55,100]);
+    eq(amounts('Overhead'), [id === 'pdDonutChart' ? 30 : 46,200]);
+    eq(amounts('__proto__'), [10]);
+  }
+  vm.runInContext('_ovAllExpenses.length = 0; _ovAllPayroll.length = 0; _rptOvhdRows = [];', c);
+  c.renderReportsDashboard(); c.mvpOvOpenPeriodDetail('f','p');
+  for (const id of ['rptCompositionChart','expCategoryChart','pdDonutChart']) {
+    eq(h.charts[id].data.datasets[0].data.reduce((sum,n) => sum + n, 0), 0,
+      id + ' must not invent spending in an empty period');
+  }
+}
+
+function testStaffReportDateScope() {
+  const h = expenseReportHarness(), c = h.context;
+  vm.runInContext(`expProjects.find(p => p.id === 'old').name = 'Prior Year Only';
+    expProjects.find(p => p.id === 'p').name = 'Current Year Only';`, c);
+  c.window.currentUserRole = 'staff';
+  for (const mode of ['weekly','monthly','quarterly','semi']) {
+    vm.runInContext('_rptState.period = ' + JSON.stringify(mode), c);
+    c.exportRptTable(); c.printReportsDashboard();
+    for (const output of [h.output().csv, h.output().printed.replace(/<style>[\s\S]*?<\/style>/g, '').replace(/<[^>]*>/g, '')]) {
+      assert.match(output, /Current Year Only/);
+      assert.doesNotMatch(output, /Prior Year Only|Target Margin Reserve|₱|\d+\.\d{2}|\d+(?:\.\d+)?%/);
+    }
+  }
+  const january = c._pcReportModel('f', {start:new Date(2026,0,1),end:new Date(2026,1,1)});
+  eq(january.rows.length, 0, 'staff applies a narrower date window before redaction');
+  vm.runInContext("_rptState.period = 'annual';", c);
+  c.exportRptTable(); c.printReportsDashboard();
+  for (const output of [h.output().csv,h.output().printed]) assert.match(output, /Prior Year Only/);
+}
+
+function testFolderlessPeriodPrintScope() {
+  const h = expenseReportHarness(), c = h.context;
+  vm.runInContext(`expProjects.push({id:'loose',name:'Legacy Folderless',month:'August',year:2026,monthlyBudget:100});
+    _ovAllExpenses.push({projectId:'loose',expenseName:'Folderless Cost',amount:12});
+    expCurrentProject = expProjects.find(p => p.id === 'loose');`, c);
+  for (const [fn,arg] of [['printFullBillingSummary',undefined],['printBillingSummaryReceipt','loose']]) {
+    c[fn](arg);
+    assert.match(h.output().printed, /Folderless Cost/, fn + ' must include explicitly selected folderless period');
+    assert.match(h.output().printed, /88\.00/);
+    assert.doesNotMatch(h.output().printed, /September 2026|=1\+1/);
+  }
+}
+
+function testDeletedPeriodDetailTeardown() {
+  for (const role of ['owner','staff']) {
+    const h = expenseReportHarness(), c = h.context;
+    c.mvpOvOpenPeriodDetail('f','p');
+    const donut = h.charts.pdDonutChart, bar = h.charts.pdBarChart;
+    vm.runInContext("expProjects = expProjects.filter(p => p.id !== 'p');", c);
+    c.window.currentUserRole = role;
+    c.currentUser = {uid:'owner'};
+    h.el('expReportsView').style.display = 'none';
+    h.el('mvpOvDetailState').style.display = 'none';
+    c._pcRefreshReportViews();
+    eq(h.el('mvpPeriodDetailModal').style.display, 'none', role + ' must close deleted period');
+    eq(h.el('mvpPeriodDetailModal').dataset.projectId, undefined);
+    eq(donut.destroyed, true); eq(bar.destroyed, true);
+    eq(c.document.body.style.overflow, '');
+    for (const id of ['pdAllocation','pdKpiRow','pdExpensesSection','pdPayrollSection','pdDonutLegend']) eq(h.el(id).innerHTML, '');
+    for (const id of ['pdTitle','pdBudgetAmt','pdUtilPct']) eq(h.el(id).textContent, '');
+  }
+}
+
+function testPublicPrintContracts() {
+  const h = expenseReportHarness(), c = h.context;
+  vm.runInContext(`expFolders[0].description = 'Renovation <unsafe>';
+    expProjects[0].fundingType = 'progress'; expProjects[0].billingNumber = 7;
+    _ovAllPayroll[0].workerName = 'Lump Worker'; _ovAllPayroll[0].dailyRate = 0;
+    _ovAllPayroll[0].daysWorked = 3;
+    _ovAllExpenses[0].category = 'Concrete';`, c);
+  const missing = [];
+  for (const [fn,arg,contracts] of [
+    ['printFullBillingSummary','f',[/DACS-TRANSPARENT\.png/,/Professional Building Design/,/Renovation &lt;unsafe&gt;/,/Progress Billing #7/,/Subtotal.*Progress Billing/i,/Grand Total Balance/,/Total Contract/]],
+    ['printBillingSummaryReceipt','p',[/DACS-TRANSPARENT\.png/,/Billing Period Summary/,/SUMMARY NO\./,/SUM-[A-Z0-9]+/,/Progress Billing #7/,/Renovation &lt;unsafe&gt;/,/Lump Sum/,/Expenses Subtotal/,/Payroll Subtotal/]],
+    ['printReportsDashboard',null, [/DACS-TRANSPARENT\.png/,/Monthly Report/,/Category Breakdown/,/Concrete/,/Lump Sum/,/Expenses Subtotal/,/Payroll Subtotal/,/Receivable Balance/,/Funds Available/]]
+  ]) {
+    c[fn](arg);
+    const out = h.output().printed;
+    contracts.forEach(pattern => { if (!pattern.test(out)) missing.push(fn + ': ' + pattern); });
+    assert.doesNotMatch(out, /Renovation <unsafe>/);
+  }
+  assert.deepStrictEqual(missing, [], 'public print contracts missing');
+}
+
+function reportTableRows(html, caption) {
+  const table = html.match(new RegExp('<caption>' + caption + '</caption>[\\s\\S]*?<tbody>([\\s\\S]*?)</tbody>'));
+  assert.ok(table, 'missing printed table: ' + caption);
+  return [...table[1].matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map(row =>
+    [...row[1].matchAll(/<(?:th|td)\b[^>]*>([\s\S]*?)<\/(?:th|td)>/g)].map(cell => cell[1].replace(/<[^>]*>/g, '')));
+}
+
+// These contracts catch missing dates, receipt semantics, misaligned subtotals
+// and operational counts after the three printers share their calculations.
+function testPrintMetadataAndTotals() {
+  const h = expenseReportHarness(), c = h.context;
+  vm.runInContext(`
+    expProjects[0].name = 'Foundation draw';
+    expProjects[0].fundingType = 'progress'; expProjects[0].billingNumber = 7;
+    _ovAllPayroll[0].workerName = 'Daily Worker';
+    _ovAllPayroll[0].dailyRate = 25; _ovAllPayroll[0].daysWorked = 2;
+  `, c);
+  c.printFullBillingSummary('f');
+  const full = h.output().printed;
+  const progress = reportTableRows(full, 'Progress Billing');
+  assert.ok(progress[0].some(cell => cell.includes('September 2026')), 'custom period name must retain its month/year');
+  assert.match(progress[0].join(' '), /Foundation draw/);
+  eq(progress.at(-1).slice(-6), ['₱1,000.00','₱100.00','₱55.00','₱30.00','₱185.00','₱815.00']);
+  eq(reportTableRows(full, 'Grand Total Balance')[0], ['₱200.00','₱55.00','₱52.00','₱1,493.00']);
+  assert.match(full, /Total Billed \(Received\)/); assert.match(full, /Net Balance/);
+
+  c.printBillingSummaryReceipt('p');
+  const receipt = h.output().printed;
+  assert.match(receipt, /Foundation draw/); assert.match(receipt, /September 2026/);
+  const receiptCosts = reportTableRows(receipt, 'Actual Costs')[0];
+  eq(receiptCosts, ['₱1,000.00','₱100.00','₱55.00','₱30.00','₱185.00','₱815.00']);
+  assert.match(receipt, /Received/); assert.match(receipt, /Net Balance/);
+  const payroll = reportTableRows(receipt, 'Payroll Detail[^<]*');
+  eq(payroll.find(row => row[2] === 'Daily Worker').slice(-3), ['2','₱25.00','₱50.00']);
+  eq(payroll.at(-1).at(-1), '₱77.00', 'payroll detail subtotal must include all pay, with indirect still only in Overhead');
+  c.printBillingSummaryReceipt('cover');
+  const cover = h.output().printed;
+  assert.match(cover, /Covered/); assert.match(cover, /Total Covered/);
+  eq(reportTableRows(cover, 'Actual Costs')[0], ['₱30.00','₱30.00','₱0.00','₱0.00','₱30.00','₱-30.00']);
+
+  c.printReportsDashboard();
+  const dashboard = h.output().printed;
+  const monthly = reportTableRows(dashboard, 'Monthly Period Breakdown');
+  assert.match(dashboard, /Transactions/); assert.match(dashboard, /Workers/);
+  eq(monthly[0].slice(-3), ['Healthy','4','4']);
+  eq(monthly.at(-1).slice(-3), ['Healthy','4','4']);
+  assert.match(dashboard, /11 periods with no activity/);
+  const category = reportTableRows(dashboard, 'Category Breakdown');
+  eq(category.at(-1).slice(0,3), ['TOTAL','₱291.00','100.0%']);
+  assert.match(dashboard, /Expense Detail - 4 transactions/);
+  assert.match(dashboard, /Payroll Detail - 4 entries/);
+}
+
+Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas), Promise.resolve().then(testAllocationDashboard), Promise.resolve().then(testAllocationPrint), Promise.resolve().then(testAllocationRootDateScope), Promise.resolve().then(testExpenseReportModel), Promise.resolve().then(testExpenseReportOutputs), testExpenseReportLoading(), ...[testReportChartCategoryCollisions, testStaffReportDateScope, testFolderlessPeriodPrintScope, testDeletedPeriodDetailTeardown, testPublicPrintContracts, testPrintMetadataAndTotals].map(test => Promise.resolve().then(test))])
   .then(results => {
     const failures = results.filter(result => result.status === 'rejected');
     if (failures.length) { failures.forEach(result => console.error(result.reason)); process.exitCode = 1; }
