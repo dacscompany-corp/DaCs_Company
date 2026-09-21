@@ -99,6 +99,32 @@ itself, not that table. Every statement is idempotent (`add column if not exists
 safe. **Confirm the live column matches the file** (name `category`, `text`, default `'labor'`)
 before trusting the Out Source screens.
 
+**`0073_project_control_billing_allocations.sql` IS applied** — confirmed 2026-09-21 against live
+(`hqbgduyonlbbsvjuapre`, branch `main`, PRODUCTION) with `supabase/tests/0073_verify.sql`, which is
+read-only and parse-safe in both states. Verified directly: all three tables present, RLS enabled on
+each, `update_project_control_billing_allocation()` present **and** `SECURITY DEFINER`,
+`overhead_expenses.billing_period_id` present and **nullable**, the audit table carrying **zero**
+write policies, and the snapshot table carrying no UPDATE/DELETE policy. The file is one
+transaction, so the grants and the publication membership committed with the rest.
+
+It is purely additive and every statement is idempotent, so re-running is safe:
+
+- three owner-only tables — `project_control_allocation_policies` (per folder),
+  `project_control_billing_allocations` (per billing period) and the append-only
+  `billing_allocation_adjustments`;
+- one nullable column, `overhead_expenses.billing_period_id`, plus its index. Existing rows keep
+  `null` and behave exactly as before;
+- `update_project_control_billing_allocation()`, a `security definer` RPC that is the **only**
+  writer of the audit table and the only way to change a snapshot after creation;
+- explicit `revoke` + `grant` on all three tables (SELECT+INSERT only on the snapshots, SELECT only
+  on the adjustments) so the grants hold with or without automatic Data API exposure;
+- publication membership, which the shim's `onSnapshot()` needs for live updates.
+
+Nothing is dropped or rewritten. **The JS was still unmerged when this landed** — the migration went
+first, which is the safe order: without the column, every overhead save fails (the shim maps
+camelCase straight to a real column), and creating a billing period fails at
+`_pcInsertInitialAllocation()` and rolls itself back.
+
 Get the truth before relying on this line:
 
 ```sql

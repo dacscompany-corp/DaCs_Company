@@ -101,6 +101,65 @@ Hierarchy: **`folders` → `projects` (a month) → `expenses` / `payroll`**. Mo
 | `monthlyBudget` | number |
 **Rules:** owner-only + assigned client.
 
+### Project Control billing allocations 🔒 — migration `0073`, **owner-only**
+
+Planning envelopes for a client-funded billing period: what share of the Fund Allocated was
+*meant* for direct cost, indirect cost and margin. **Outside the money model** — nothing here is
+revenue, expense, payment or profit, and `Spent` / `Earned` / `Profit` never read it. The reasoning
+is in [OVERHEAD_MODULE.md](OVERHEAD_MODULE.md) § *Billing allocations*. Engine:
+`js/billing-allocation.js`.
+
+#### `projectControlAllocationPolicies/{folderId}` → `project_control_allocation_policies`
+The folder's **default** for periods created from now on. Editing it never rewrites history.
+| Field | Type | Notes |
+|---|---|---|
+| `userId` | string | `owner_id` |
+| `directPct` | number | default `70` |
+| `indirectPct` | number | default `20` |
+| `targetMarginPct` | number | default `10` |
+| `updatedAt` | ts | |
+
+Check constraint: each ≥ 0 **and** the three total exactly 100 (±0.005). Same rule on every table
+below and in `pcValidateAllocationPolicy()`.
+
+#### `projectControlBillingAllocations/{projectId}` → `project_control_billing_allocations`
+The **snapshot** copied onto one billing period when it is created — same three percentage columns
+plus `userId` / `updatedAt`, keyed by `projects.id` (one row per billing period).
+- Created with a **true INSERT**, never the shim's `.set()` (which is an upsert) —
+  `_pcInsertInitialAllocation()`. RLS grants SELECT + INSERT and nothing else.
+- After creation it changes **only** through the RPC below. There is no UPDATE or DELETE policy.
+- A `president` (cover) period gets **no** snapshot. Converting a configured period to cover leaves
+  its row dormant rather than deleting it, so converting back restores the original history.
+
+#### `billingAllocationAdjustments/{id}` → `billing_allocation_adjustments`
+Append-only audit of every percentage change. **Written only by the RPC** — the table has no
+client INSERT, UPDATE or DELETE policy at all, so a row here cannot be edited or erased from the
+browser.
+| Field | Type | Notes |
+|---|---|---|
+| `userId` | string | `owner_id` |
+| `projectId` | string | the billing period |
+| `oldDirectPct`, `oldIndirectPct`, `oldTargetMarginPct` | number\|null | **all three null together** when the period had no snapshot — a legacy period being configured for the first time |
+| `newDirectPct`, `newIndirectPct`, `newTargetMarginPct` | number | must total 100 |
+| `reason` | string | `check (btrim(reason) <> '')` — a blank reason is refused by the **database**, not only the form |
+| `createdBy` | uuid | `auth.uid()`, server-side |
+| `createdAt` | ts | server `now()` |
+
+#### `update_project_control_billing_allocation(p_project_id, p_direct_pct, p_indirect_pct, p_target_margin_pct, p_reason)`
+`security definer`, `search_path = ''`. The **only** way to change a snapshot. In one transaction it
+locks the billing-period row (`select … for update`, so two owners cannot race), writes the
+adjustment, then upserts the snapshot. It raises on: no session, a caller who is not
+`kind='admin' and role='owner'` (staff included), a period the caller does not own, a blank reason,
+and percentages that are null, negative or do not total 100. Callable by `authenticated` only.
+
+#### `overheadExpenses.billingPeriodId` → `overhead_expenses.billing_period_id`
+Nullable FK to `projects(id)`, `on delete set null`. Attributes one **project**-scope overhead row
+to one billing period so it counts against that period's Indirect Budget. **Null is normal and
+correct** — an unattributed row stays in the project's Spent as *Unallocated Indirect Cost*. The
+migration adds the column only; existing rows keep `null` and behave exactly as before. A link that
+points at another folder's period is treated as unallocated: it stays on its own job but consumes
+no envelope.
+
 ### `expenses/{id}` — material / misc spend (written in batches, can **split** across funding sources)
 | Field | Type | Notes |
 |---|---|---|
@@ -173,8 +232,20 @@ PM admin and let one team's cleanup break the other team's dropdown.
   such an entry cannot silently blank it.
 - Outside the money model — a label on a line, never an amount.
 
-### `overheadExpenses/{id}` (`overhead-module.js`) — company overhead
-`userId`, `category`, `amount` (number), `date` (string), `description`, `createdAt`
+### `overheadExpenses/{id}` (`overhead-module.js`) — company **and** project overhead
+`0001_init` created only `userId`, `category`, `amount` (number), `date` (string), `description`,
+`createdAt`. Everything since was added by migration:
+
+| Added | Fields |
+|---|---|
+| `0006` | `folderId` — which job a project-scope cost belongs to |
+| `0025` | `scope` (`'company'` \| `'project'`), `expenseName`, `supplier`, `invoiceNumber`, `receiptUrl`, `status`, `notes`, `history` (jsonb, append-only), `deletedAt`, `updatedAt`, `createdBy` |
+| `0073` | `billingPeriodId` — optional attribution to one billing period (see above) |
+
+- **Every read filters `!deletedAt`.** Deletes are soft.
+- A NULL `scope` is **inferred** from `folderId` (set ⇒ project). Do not backfill it to
+  `'company'` — every legacy per-project cost would change scope.
+- No jsonb blob mode on this table: a new app field needs a real column or the save fails silently.
 
 ### `reimbursements/{id}` (`reimbursement-module.js`) — Client Reimbursement Tracker (migration 0041)
 Expenses the **owner/admin (architect) advanced** for a project, and whether the **client** has

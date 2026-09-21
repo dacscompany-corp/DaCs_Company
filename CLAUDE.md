@@ -76,6 +76,26 @@ Profit   = Earned − Spent
   project is a manual admin action. Only `js/quotation-module.js` and `js/quotation-print.js` may
   touch those tables. Owner-only; staff never see it.
 
+- **Billing allocations (0073) are planning, outside the money model.** Each client-funded
+  billing period snapshots three percentages totalling 100 — default **70 Direct / 20 Indirect /
+  10 Target Margin Reserve** — applied to that period's Fund Allocated. They are envelopes to
+  spend against, like OCM: never revenue, cost, payment or profit. `_projSpent` / `_projEarned` /
+  `_projMargin` / `_recognisedProfit` must stay free of every allocation symbol (§R of
+  `money-math.test.js` reads their source and fails otherwise). **Target Margin Reserve is never
+  labelled "Profit"**; the plan-vs-actual variance is shown only when profit is *earned*, never
+  against a Forecast. A snapshot is inserted with a **true INSERT** (`.set()` is an upsert and
+  would rewrite history) and afterwards changes only through
+  `update_project_control_billing_allocation()`, which demands a reason and writes an append-only
+  audit row — those rows have no UPDATE or DELETE policy. A **cover/president period has no
+  allocation**, and that carves nothing out of Spent. A period with no snapshot reads
+  **"Allocation not configured"** — do not back-fill it with the defaults. All of it is
+  **owner-only**; staff see no percentage and no envelope. Only `js/billing-allocation.js`
+  computes these, so the dashboard, forms, reports, print and CSV cannot drift.
+- **`overhead_expenses.billing_period_id` (0073) moves where a peso is shown, not whether it
+  counts.** Attributed or not, a project-overhead row is in that project's Spent exactly once;
+  unattributed rows (including a link to another folder's period) report as **Unallocated Indirect
+  Cost**. Null is the normal state — rent has no billing period.
+
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 
 ---
@@ -120,7 +140,8 @@ Tracer: `payroll.payment_method` (migrations 0037/0038) landed in seven files �
 ## Verifying
 
 **Run `npm test` after ANY change that touches money code** (`portal-app.compiled.js`,
-`expenses-module.js`, `overhead-module.js`). It's `tests/money-math.test.js` — 46 checks that
+`expenses-module.js`, `overhead-module.js`, `billing-allocation.js`). Nine suites; the money one
+is `tests/money-math.test.js` — 231 checks that
 extract the live functions and enforce every invariant above; exits 1 on breakage, runs in ~1s.
 If it fails with "SLICE NOT FOUND", the source was restructured — update the extraction markers
 in the test file, never delete the test.

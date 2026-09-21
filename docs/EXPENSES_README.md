@@ -97,9 +97,22 @@ Dacs Web/
   createdAt:     timestamp,
 
   // Computed locally (NOT stored in Firestore)
-  _spent:        number    // Total expenses + payroll for this month
+  _spent:        number,   // Total expenses + payroll for this month
+
+  // Merged in for OWNER sessions only (migration 0073) — never present for staff
+  allocationPolicy: {      // null for a legacy period AND for every `president` period
+    directPct:       number,   // default 70
+    indirectPct:     number,   // default 20
+    targetMarginPct: number    // default 10 — Target Margin Reserve, NOT profit
+  } | null
 }
 ```
+
+**`allocationPolicy` is a snapshot, not a live lookup.** It is copied from the parent folder's
+`allocationPolicy` when the period is created and then changes only through
+`update_project_control_billing_allocation()`, which requires a reason and writes an immutable
+audit row. Editing the folder default affects **future periods only**. See
+[OVERHEAD_MODULE.md](OVERHEAD_MODULE.md) § *Billing allocations*.
 
 ### `expenses` — Material / Direct Costs
 
@@ -420,6 +433,26 @@ let _paySearch = { name: '' };
 - President months: `_spent` (always 100%)
 - Folder view: `totalAlloc` (or `contractVal` if all months are president-covered)
 
+### Allocation Utilization Bands (owner-only, migration 0073)
+
+A **separate** scale from the one above, and deliberately tighter — it measures spend against one
+planned envelope (Direct or Indirect), not against the whole period fund. From
+`pcAllocationStatus()` in `js/billing-allocation.js`:
+
+| Utilization | Status key |
+|-------------|------------|
+| < 80% | `healthy` |
+| 80% – 90% | `advisory` |
+| 90% – 100% | `high` |
+| > 100% | `over` |
+
+Two states are not percentages and must not be rendered as one:
+- `empty` — no envelope and no spend.
+- `unbudgeted` — spend against a zero envelope. `pct` is `null`; nothing divides by zero.
+
+A period with no snapshot reads **"Allocation not configured"** on every surface and is counted,
+never defaulted to 70/20/10. A `president` (Cover Expenses) period has no allocation at all.
+
 ---
 
 ## Business Rules
@@ -448,6 +481,26 @@ let _paySearch = { name: '' };
 9. **Fallback budget reference:** In folder view, when `totalAlloc = 0` (all months are Cover Expenses), percentage calculations fall back to `contractVal` to avoid division by zero.
 
 10. **Listener cleanup:** All Firestore listeners are stored in `expUnsubscribers[]` and unsubscribed before switching views to prevent memory leaks and double-rendering.
+
+11. **Allocation snapshot on create (0073):** Creating a **non-president** billing period also
+    inserts its allocation snapshot from the folder policy (`_pcInsertInitialAllocation`). It is a
+    **true INSERT**, never the shim's `.set()` — `.set()` is an upsert and would overwrite an
+    existing snapshot. A `president` period gets no snapshot.
+
+12. **Allocation changes need a reason (0073):** The edit-period form gates on the percentages
+    totalling exactly 100.00%, and demands a reason whenever they change — or whenever a legacy
+    period is being configured for the first time. It saves through
+    `pcSaveAllocationAdjustment()` → `update_project_control_billing_allocation()`, so the audit
+    row and the snapshot land in one transaction. The gate runs **before** the period itself is
+    written, so a rejected allocation cannot leave a half-saved period behind.
+
+13. **Allocation data is owner-only (0073):** `_pcPolicyMap`, `_pcAllocationMap` and the
+    adjustment listeners are subscribed only for `_pcIsOwner()`, and `allocationPolicy` is merged
+    onto folders and periods only for owners. Staff sessions never load the rows, so no
+    percentage or envelope can reach a staff screen, print sheet or CSV.
+
+14. **Folder-create rollback (0073):** If creating a folder succeeds but its allocation policy
+    write fails, the policy doc is deleted again rather than left orphaned.
 
 ---
 

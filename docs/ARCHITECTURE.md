@@ -102,6 +102,7 @@ Also note: **`projects` means billing period**, not project. Read it that way ev
 | Project Control | `portal-app.compiled.js` | Folder grid, per-project cost/profit, drills (labor, material, overhead, periods, additional works) |
 | Budget Overview / Expenses | `expenses-module.js` (8.1k lines — the biggest) | Folders, billing periods, payroll, expenses, pakyaw labor contracts |
 | Overhead | `overhead-module.js` | Company + project overhead ([OVERHEAD_MODULE.md](OVERHEAD_MODULE.md)) |
+| Billing Allocations | `billing-allocation.js` | The **shared planning engine** for `0073`, not a nav section. Pure functions (`pcValidateAllocationPolicy`, `pcAllocationAmounts`, `pcAllocationStatus`, `pcPeriodAllocationView`, `pcActualsForPeriod`, `pcProjectAllocationRollup`) loaded by `admin.html` **before** `expenses-module.js` and `portal-app.compiled.js`, and `require()`d directly by the tests. It holds no state, touches no database and knows nothing about roles — every caller (Project Control dashboard, the owner forms, the reports, print, CSV) must get its numbers from here so they cannot drift apart. **Planning only:** see §6. Owner-only at every call site; staff see no percentage and no peso |
 | Reimbursement | `reimbursement-module.js` | Client Reimbursement Tracker (`0041`) — expenses the **owner/admin advanced** and whether the **client** paid them back. **Deliberately isolated:** no invoice, payment, expense, payroll or journal side effects, and no money math reads it. Prints are read-only: one record (invoice / receipt) or **Print All** — every record the filters show, grouped by project with subtotals, totals from the same `_rbTotals()` as the KPI cards. Owner-only (staff blocked in nav, switchView and RLS) |
 | Project Management | `pm-admin.js` | Construction projects, weekly bills, procurement, milestones, revolving fund |
 | Project Closeout | `termination-requests.js` | Ends a construction project — **`completed`** (work finished) or **`terminated`** (stopped early). Same final bill either way (cost-plus: actual costs + fee; `budget` is an estimate, not a price); only the status, badge and client wording differ. Writes `termination_requests`, sets the project status, auto-issues the final invoice via `invGenerateFromCloseout`, notifies the client. **Admin-initiated only** since `0042` — the client's Termination Zone and its RLS insert policy are gone. Owner-only (staff blocked in the UI) |
@@ -179,6 +180,30 @@ Overhead, Contingencies & Miscellaneous, typically 8–12% of the contract in a 
 **budget to compare against, not a cost**: the Overhead drill shows "priced ₱X · spent ₱Y (Z%
 used)" and flags overruns. It never enters Spent, Earned or Profit. Null/0 = not configured.
 
+**Billing allocations** (`0073`, `js/billing-allocation.js`, owner-only) are a fifth thing that
+looks like money and is not. Each client-funded billing period carries a snapshot of three
+percentages — default **70 Direct / 20 Indirect / 10 Target Margin Reserve** — applied to that
+period's Fund Allocated to produce planned envelopes. They are a *budget to spend against*, like
+OCM: never revenue, never a cost, never profit. `_projSpent`, `_projEarned`, `_projMargin` and
+`_recognisedProfit` must stay free of every allocation symbol, and §R of `money-math.test.js`
+asserts that by reading their source.
+
+Two words that are deliberately not interchangeable:
+
+- **Target Margin Reserve** — the 10% envelope. Planning only. Always labelled as such.
+- **Earned / Forecast Profit** — actual `Earned − Spent`, under the rules above. Unchanged.
+
+The dashboard shows the variance between them only when profit is *earned*; on a Forecast project
+`targetMarginVariance` is `null`, because comparing a plan against a placeholder is not a finding.
+A period with no snapshot (created before `0073`) reads **"Allocation not configured"** and is
+counted, never guessed at. A **cover** (`president`) period has no allocation at all — its costs
+still land in Labor / Material / Overhead exactly as before.
+
+`overhead_expenses.billing_period_id` (`0073`) lets one project-overhead row be charged to one
+period's Indirect envelope. Attribution changes **where a peso is shown, never whether it counts**:
+attributed or not, the row is in that project's Spent once. Unattributed rows — including a link
+pointing at another folder's period — roll up as **Unallocated Indirect Cost**.
+
 ---
 
 ## 7. Data model at a glance
@@ -188,7 +213,10 @@ used)" and flags overruns. It never enters Spent, Earned or Profit. Null/0 = not
 - **Identity** — `profiles` (3 logical collections), `agreement_events`, `push_subscriptions`
 - **Project Control** — `folders`, `folder_budgets`, `projects`, `project_budgets`, `expenses`,
   `payroll`, `labor_contracts`, `overhead_expenses`, `categories`, `additional_works`,
-  `reimbursements` (tracking only, `0041` — never read by the money model)
+  `reimbursements` (tracking only, `0041` — never read by the money model),
+  `project_control_allocation_policies` + `project_control_billing_allocations` +
+  `billing_allocation_adjustments` (planning only, `0073` — owner-only, never read by the money
+  model)
 - **Project Management** — `construction_projects`, `weekly_bills`, `procurement_items`,
   `pm_labor_contracts`, `milestones`, `accomplishment_reports`, `daily_logs`, `walkthroughs`,
   `revolving_fund*`, `partner_agreements`,
@@ -224,7 +252,7 @@ once. `0020_schema_drift_catchup.sql` captured one round; `0025` (overhead colum
 only in the live DB. **Before adding a field, check the table actually has the column** — the shim
 maps camelCase straight to snake_case and the save fails otherwise.
 
-**Migration numbering.** Highest on disk is `0040`; **next number = highest + 1**, never reuse,
+**Migration numbering.** Highest on disk is `0073`; **next number = highest + 1**, never reuse,
 never a Supabase SQL-editor one-off. Nine numbers are duplicated (two 0006s, 0016s, 0017s, 0018s,
 0019s, 0020s, 0021s, 0022s, 0023s) — each pair was audited and plain filename sort is safe.
 **`0034` is a deliberate gap** (written and withdrawn in the same session; see the header of
@@ -258,7 +286,7 @@ safety net is small and manual:
 
 | Tool | When | What it does |
 |---|---|---|
-| `npm test` | **After any change to money code** — `portal-app.compiled.js`, `expenses-module.js`, `overhead-module.js` | `tests/money-math.test.js` — 46 checks that extract the live functions and enforce every invariant in §6. Exits 1 on breakage, ~1s |
+| `npm test` | **After any change to money code** — `portal-app.compiled.js`, `expenses-module.js`, `overhead-module.js`, `billing-allocation.js` | Nine suites. `tests/money-math.test.js` (231 checks) extracts the live functions and enforces every invariant in §6 — including §R, which asserts the allocation engine never reaches `_projSpent` / `_projEarned` / `_projMargin` / `_recognisedProfit`. `tests/billing-allocation.test.js` (`0073`) covers the envelopes, overhead attribution and the report, print and CSV surfaces. Exits 1 on breakage, ~2s |
 | `node --check <file>` | Any JS edit | Syntax errors in files the test doesn't cover |
 | Browser | Always | `admin.html`, logged in as owner |
 | CI | Every push + PR | `.github/workflows/ci.yml` runs both of the above |
@@ -282,6 +310,7 @@ select at, page, kind, message, source, line from client_errors order by at desc
 | Topic | Doc |
 |---|---|
 | Overhead, the money rules, pakyaw interaction | [OVERHEAD_MODULE.md](OVERHEAD_MODULE.md) |
+| Billing allocations (`0073`) design + rejected alternatives | [superpowers/specs/2026-09-19-project-control-billing-allocation-design.md](superpowers/specs/2026-09-19-project-control-billing-allocation-design.md) |
 | Expenses / Budget Overview | [EXPENSES_README.md](EXPENSES_README.md) |
 | Project Management module | [PROJECT_MANAGEMENT_MVP.md](PROJECT_MANAGEMENT_MVP.md) |
 | Additional Works | [ADDITIONAL_WORKS_ARCHITECTURE.md](ADDITIONAL_WORKS_ARCHITECTURE.md) |
