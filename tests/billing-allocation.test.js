@@ -1036,7 +1036,13 @@ function testPrintMetadataAndTotals() {
   c.printBillingSummaryReceipt('cover');
   const cover = h.output().printed;
   assert.match(cover, /Covered/); assert.match(cover, /Total Covered/);
-  eq(reportTableRows(cover, 'Actual Costs')[0], ['₱30.00','₱30.00','₱0.00','₱0.00','₱30.00','₱-30.00']);
+  eq(reportTableRows(cover, 'Actual Costs')[0], ['₱30.00','₱30.00','₱0.00','₱0.00','₱30.00','₱30.00'],
+    'Total Covered states the positive cost covered, not the remaining zero-budget balance');
+  vm.runInContext('expProjects[0].monthlyBudget = 100;', c);
+  c.printBillingSummaryReceipt('p');
+  eq(reportTableRows(h.output().printed, 'Actual Costs')[0].at(-1), '₱-85.00',
+    'a non-cover receipt must retain its negative remaining balance');
+  vm.runInContext('expProjects[0].monthlyBudget = 1000;', c);
 
   c.printReportsDashboard();
   const dashboard = h.output().printed;

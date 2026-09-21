@@ -5685,7 +5685,8 @@ function _pcPrintReport(title, model, groups, options = {}) {
         const balanceLabel = options.kind === 'receipt' && isCover ? 'Total Covered'
             : options.kind === 'dashboard' ? 'Funds Available' : 'Net Balance';
         body += _pcReportTable([firstLabel,'Materials','Labor','Overhead','Current Fund Spent',balanceLabel],
-            [[options.kind === 'receipt' && isCover ? t.totalSpent : t.budget,t.mats,t.labor,t.overhead,t.totalSpent,t.remaining]], 'Actual Costs');
+            [[options.kind === 'receipt' && isCover ? t.totalSpent : t.budget,t.mats,t.labor,t.overhead,t.totalSpent,
+                options.kind === 'receipt' && isCover ? t.totalSpent : t.remaining]], 'Actual Costs');
         if (options.kind === 'full') body += _pcPrintFundingSummary(model);
         if (groups) {
             const status = pct => pct > 100 ? 'Over Budget' : pct > 85 ? 'Near Limit' : pct > 60 ? 'On Track' : 'Healthy';
