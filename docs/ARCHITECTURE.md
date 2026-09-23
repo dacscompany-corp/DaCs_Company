@@ -21,7 +21,7 @@ Six HTML pages. Each is a separate app; they share `js/supabase-config.js` and l
 | `client.html` | **Design client** | `client-app.js`, `client-payment.js` | BOQ / design-side client portal |
 | `Client Management.html` | **Construction client** | `client-management-app.js`, `client-payment.js` | |
 | `Dacs Partnership.html` | **Partner** | `client-management-app.js`, `client-payment.js` | Same JS as above, different HTML |
-| `share-capture.html` | **Owner + Staff (phone)** | self-contained | PWA **share target** (`manifest-admin.json`). Share a receipt photo from any app → tag it → `expense_inbox` |
+| `share-capture.html` | **Owner + Staff (phone)** | self-contained | PWA **share target** (`manifest-admin-v2.json`). Share a receipt photo from any app → tag it → `expense_inbox` |
 
 > **Client Management.html and Dacs Partnership.html are two live audiences sharing one JS
 > file.** An HTML edit made for one usually has to be mirrored into the other. Forgetting is a

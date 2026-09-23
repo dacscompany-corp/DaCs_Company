@@ -1,6 +1,6 @@
 /* DAC's Admin — service worker (Web Push + share-target intake; no offline caching).
    Receives the nightly Project Management summary push and shows it.
-   Also receives files shared from the Android share sheet (manifest-admin.json
+   Also receives files shared from the Android share sheet (manifest-admin-v2.json
    share_target) and hands them to /share-capture.html via the Cache API.
    SW_VERSION: 2026-09-23-share-diag2  (bump to force clients to pick up icon/badge changes) */
 

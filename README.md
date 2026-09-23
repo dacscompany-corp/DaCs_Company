@@ -309,7 +309,7 @@ select at, page, kind, message, source, line from client_errors order by at desc
 **Captcha** — Cloudflare Turnstile on the auth flows of `admin.html`, `client.html`,
 `Client Management.html` and `Dacs Partnership.html`.
 
-**PWA** — `manifest.json` (public) and `manifest-admin.json` (admin, with the `share_target`
+**PWA** — `manifest.json` (public) and `manifest-admin-v2.json` (admin, with the `share_target`
 declaration). The service worker handles the share POST, push, and notification clicks.
 
 ---
@@ -442,7 +442,7 @@ Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 │   ├── migrate/        one-off Firebase→Supabase import + security check
 │   └── boq-import/     BOQ seed scripts
 ├── android/            Android TWA — dormant, self-contained (see android/BUILD_APK.md)
-└── service-worker.js, manifest.json, manifest-admin.json, vercel.json
+└── service-worker.js, manifest.json, manifest-admin-v2.json, vercel.json
 ```
 
 There is **no `src/`**. The portal has no JSX source any more — see §13.
