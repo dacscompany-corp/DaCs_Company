@@ -79,6 +79,7 @@
   .sc-diag.bad { background: #fbeeec; border: 1px solid #f2d3cd; color: #a1443a; }
   .sc-diag.ok  { background: #eaf3ee; border: 1px solid #cfe5d8; color: #27614a; }
   .sc-diag-btn { margin-left: 4px; padding: 5px 12px; border: none; border-radius: 8px; background: #a1443a; color: #fff; font: 700 12px 'IBM Plex Sans'; cursor: pointer; }
+  .sc-diag-pick { display: block; width: 100%; margin-top: 12px; padding: 14px; border: none; border-radius: 12px; background: #157a52; color: #fff; font: 700 15px 'IBM Plex Sans'; cursor: pointer; }
   .sc-diag-more { margin-top: 8px; }
   .sc-diag-link { border: none; background: none; padding: 0; color: #8a938c; font: 600 12px 'IBM Plex Sans'; text-decoration: underline; cursor: pointer; }
   .sc-diag-raw { margin-top: 8px; padding: 10px; border-radius: 10px; background: #f3f2ef; color: #5d6b63; font: 400 11px/1.45 ui-monospace, monospace; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; }
@@ -462,10 +463,10 @@ function scDiagHtml() {
       bits.push({ tone: 'bad', msg: 'The share was received but could not be read (' + m.stage + '): ' + m.error });
     } else if (!scIntake.swRan) {
       bits.push({ tone: 'bad', msg: 'The share did not pass through the service worker, so no photo was handed over. Tap Fix, then share again.', fix: true });
-    } else if (m && m.bodyBytes === 0) {
-      bits.push({ tone: 'bad', msg: 'The share arrived completely empty — the app you shared from attached nothing at all. Open the photo in Gallery or Google Photos and share it from there.' });
     } else if (m && nEntries === 0) {
-      bits.push({ tone: 'bad', msg: 'The share carried ' + (m.bodyBytes > 0 ? m.bodyBytes + ' bytes' : 'data') + ' but not one readable field, so the photo could not be recovered. Add it below instead.' });
+      // Chrome opened the app but attached nothing: an empty body, or a body
+      // that is only the multipart closing boundary. Same cause, same remedy.
+      bits.push({ tone: 'bad', pick: true, msg: 'Android opened the app but did not hand over the photo — this happens on some phones and is outside the app. Tap below and pick the same photo; everything else works normally.' });
     } else if (m && m.kept === 0 && nEntries > 0) {
       const fileEntries = m.entries.filter((e) => e.kind === 'file');
       bits.push({ tone: 'bad', msg: fileEntries.length
@@ -491,6 +492,7 @@ function scDiagHtml() {
   return bits.map((b) =>
     '<div class="sc-diag ' + b.tone + '">' + scEsc(b.msg)
     + (b.fix ? ' <button type="button" class="sc-diag-btn" onclick="scFixServiceWorker()">Fix</button>' : '')
+    + (b.pick ? '<button type="button" class="sc-diag-pick" onclick="document.getElementById(\'scFile\').click()">Pick the photo</button>' : '')
     + '</div>').join('')
     + '<div class="sc-diag-more"><button type="button" class="sc-diag-link" onclick="scToggleDiag()">Show details</button>'
     + '<pre class="sc-diag-raw hidden" id="scDiagRaw">' + scEsc(JSON.stringify(raw, null, 1)) + '</pre></div>';
