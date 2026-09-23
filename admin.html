@@ -5095,9 +5095,17 @@
                 </div>
                 <div class="exp-form-group" id="ovhdExpBillingPeriodGroup" style="display:none;">
                     <label for="ovhdExpBillingPeriod">Billing Period</label>
-                    <select id="ovhdExpBillingPeriod" name="billingPeriodId" disabled>
+                    <!-- Already answered by _ovhdDefaultPeriodId and collapsed to a line of text,
+                         so the common entry asks nothing. "Change" opens the picker for the costs
+                         the default gets wrong — rent and anything spanning the whole job. -->
+                    <div id="ovhdExpBillingPeriodSummary" style="display:flex;align-items:center;gap:10px;padding:9px 11px;border:1.5px solid #e5e7eb;border-radius:9px;background:#faf9f7;">
+                        <span id="ovhdExpBillingPeriodLabel" style="font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Unallocated</span>
+                        <button type="button" onclick="ovhdRevealBillingPeriod()" style="border:0;background:none;color:#157a52;font-weight:600;font-size:12.5px;cursor:pointer;padding:0;flex:none;">Change</button>
+                    </div>
+                    <select id="ovhdExpBillingPeriod" name="billingPeriodId" disabled style="display:none;">
                         <option value="">Unallocated</option>
                     </select>
+                    <div style="font-size:11px;color:#6b7280;margin-top:5px;line-height:1.45;">Costs that span the whole job &mdash; rent, permits, security &mdash; belong in Unallocated.</div>
                 </div>
                 <div class="exp-form-group">
                     <label for="ovhdExpName">Expense Name</label>

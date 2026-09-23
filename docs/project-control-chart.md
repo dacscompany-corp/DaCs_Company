@@ -32,9 +32,14 @@ PortalApp  (root)
 └─ [folder selected]     ──►  PageHead                 (project switcher · period filter · back)
                               │
                               ├─ view = 'dashboard'  (default)
-                              │     ├─ KPIStrip
-                              │     ├─ FlowCards   ──► click opens a drill view
-                              │     ├─ Summarize
+                              │     ├─ ProjectLedger      contract · cost · profit · funding
+                              │     ├─ NeedsAction        every warning, in one block   (owner/admin)
+                              │     ├─ CostBudget    ──►  click a row opens a drill view
+                              │     │    └─ BillingBudgets  budget per billing table    (owner)
+                              │     ├─ ExpenseInboxMount
+                              │     ├─ KPIStrip           cover-expense banner          (staff only)
+                              │     ├─ FlowCards     ──►  Billing Periods · Additional Works
+                              │     ├─ BillingSummary
                               │     └─ RecentEntries
                               │
                               ├─ view = 'labor'     ──►  LaborDrill           (payroll table)
@@ -57,48 +62,111 @@ flowchart TD
     D -->|material| G[MaterialDrill<br/>expenses table]
     D -->|periods| H[BillingPeriodsDrill<br/>months table]
 
-    E --> E1[KPIStrip]
-    E --> E2[FlowCards]
-    E --> E3[Summarize]
-    E --> E4[RecentEntries]
+    E --> E1[ProjectLedger<br/>contract · cost · profit]
+    E --> E2[NeedsAction<br/>one warning block]
+    E --> E3[CostBudget<br/>cost rows + envelopes]
+    E3 --> E5[BillingBudgets<br/>per-billing table · owner]
+    E --> E4[FlowCards<br/>module rows]
+    E --> E6[RecentEntries]
 
-    E2 -->|Labor Cost card| F
-    E2 -->|Material Cost card| G
-    E2 -->|Billing Periods card| H
+    E3 -->|Labor Cost row| F
+    E3 -->|Material Cost row| G
+    E4 -->|Billing Periods| H
 ```
 
 ---
 
 ## 3. Dashboard contents
 
-### KPIStrip — [admin.html:3509](../admin.html#L3509)
-Five headline numbers:
+Redesigned 2026-09-22 (design 1A, "one story, top to bottom"). The Gross Profit
+banner, the four-card project snapshot, the three cost cards and the allocation
+rollup all stated the same pesos; they were merged so each figure is printed once.
+
+### ProjectLedger — `js/portal-app.compiled.js`
+Three numbers, then the line that qualifies them:
 
 ```
-Contract | Spent | Gross Profit | Margin % | Budget Used %
+┌ Total Contract ──────┬ Actual Cost ─────────┬ Net Profit · Forecast ┐
+│ ₱ contract           │ ₱ Labor+Mat+OH       │ ₱ earned − cost       │
+├──────────────────────┴──────────────────────┴───────────────────────┤
+│ Fund Allocated · Budget Remaining · Cover Expenses (subset of cost)  │
+│ footnote: why the profit is a Forecast, or how much is Earned        │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-### FlowCards — [admin.html:3539](../admin.html#L3539)
-Three clickable module cards:
+`Net Profit` reads **· Forecast** until the accomplishment report signs work off,
+and **· Earned** after. Staff get percentages only: no peso, no funding line.
+
+**The ledger reports no billing progress at all** (removed 2026-09-22): no
+"Billed to date" bar, no "Left to bill", no "Not linked" prompt, and the
+component takes no `billing` prop. The Accomplishment Report is a *report* the
+office raises — what has been billed against it is read in **Billing & Reports**,
+and an unlinked BOQ is never presented as something this project owes. Accomplishment
+data still drives the banner's **Earned vs Forecast** label; that is a money rule,
+not a billing progress bar.
+
+### NeedsAction — `js/portal-app.compiled.js`
+Every warning in one block, each row with the button that fixes it: receipts
+waiting in the Expense Inbox and overhead filed under no billing (→ Overhead).
+Owner/admin only; nothing pending reads "All caught up". An unfunded billing and
+an unlinked BOQ are both the **normal** state and are never listed here.
+
+### CostBudget — `js/portal-app.compiled.js`
+Four blocks with air between them, each opening its transaction history. The
+`16px` gap is load-bearing: it is what says Labor and Material answer to the
+envelope inside **their** block and not to the one below it.
 
 ```
-┌─ Labor Cost ─────────┐  ┌─ Material Cost ───────┐  ┌─ Billing Periods ─────┐
-│ ₱ total              │  │ ₱ total               │  │ N periods             │
-│ By Tag:              │  │ Per-Transaction Files:│  │ Allocation by Period: │
-│  • Direct            │  │  • Transactions       │  │  • Total Allocated    │
-│  • Indirect          │  │  • Files Attached x/y │  │  • Total Spent        │
-│  • Liability         │  │   (PO·DR·SI·PR)       │  │  • Remaining          │
-│ → Transaction Hist.  │  │ → Transaction Hist.   │  │ → Manage Periods      │
-└──────────────────────┘  └───────────────────────┘  └───────────────────────┘
+COST AND BUDGET  ·  What was spent, and whether it fits the budget    [chip]
+
+┌─ ● DIRECT COSTS · Labor and materials share one budget ──────────────┐
+│ Labor Cost      Spent ₱ …   Share of contract  8.0%  ▓░░░░░░░░░   →  │
+│ Material Cost   Spent ₱ …   Share of contract 23.7%  ▓▓▓░░░░░░░   →  │
+│ One budget covers Labor and Material   Budget ₱ …  Left ₱ …  (owner)  │
+└──────────────────────────────────────────────────────────────────────┘
+┌─ ● INDIRECT COSTS · Running the site — its own separate budget ──────┐
+│ Overhead Cost   Spent ₱ …   Share of contract  1.5%  ▓░░░░░░░░░   →  │
+│ Budget for Overhead Cost               Budget ₱ …  Left ₱ …  (owner)  │
+└──────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ Target Margin Reserve   Earned so far · reserve · variance   (owner)  │
+└──────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ Total spent  ₱ …   ▓▓▓▓░░░░░░   33.2% of ₱ … contract                │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-### Summarize — [admin.html:3621](../admin.html#L3621)
-The profit formula, rendered literally:
+The direct-cost envelope covers Labor **and** Material and is never split between
+them, so it is shown once on a shared strip at the foot of its own block rather
+than repeated per row.
 
-```
-   Contract Revenue   −   Summarize(Labor + Material)   =   Gross Profit
-   (totalBudget)          (actual cost)                     (revenue − cost)
-```
+The group **headers** are for everyone — direct vs indirect is an accounting
+fact, not a planning one — but their notes are not: an admin reads "Spent
+straight on the job" and "Running the site", never a word about an envelope.
+For a non-owner the two budget strips and the reserve block are absent entirely,
+so the card is three blocks, not four. `BillingBudgets` follows as its own card
+(owner only).
+
+### A billing period is not a month
+
+The client does **not** pay monthly. Money arrives when a billing is raised and
+collected, so every period is named by the billing it is — **Mobilization**,
+**Downpayment**, **Progress Billing #2**, **Final Payment** — with the month it
+was raised shown underneath as context only. `_pcBillingName()` and the single
+`FUNDING_LBLS` table are the one place that naming lives, so the overview and
+`BillingPeriodsDrill` cannot drift apart.
+
+`monthlyBudget` is that billing's **Fund Allocated: the money actually in hand.**
+When a client pays more than was requested, the owner raises it to what really
+arrived; the stored 70/20/10 percentages re-split the larger base on their own,
+so no envelope has to be re-entered.
+
+A billing with no Fund Allocated or no split yet is the **normal** state — work
+routinely runs ahead of collection — so it is never an item in `NeedsAction`.
+`BillingBudgets` hides itself entirely until at least one billing has a split:
+with none, every column but Spent reads "Not set up" / "—" / "No budget", which
+is a table of blanks that only nags. It returns on its own once a split is set,
+and the "Cost and budget" chip reports the state meanwhile.
 
 ### RecentEntries — [admin.html:3742](../admin.html#L3742)
 Combined latest labor + material transactions, tab-filtered (**All / Labor / Material**).
@@ -111,17 +179,23 @@ Computed in `buildProject` ([admin.html:3289](../admin.html#L3289)):
 
 ```
 revenue      = folder.totalBudget
-allocated    = Σ childMonths.monthlyBudget
-labor        = Σ payroll.amount          (split: direct / indirect / liability)
+allocated    = Σ childMonths.monthlyBudget       (client-funded periods only)
+labor        = direct + (liability − liabilityIndirect)
 material     = Σ expenses.amount
-spent        = labor + material
-Gross Profit = revenue − spent
+overhead     = indirect + liabilityIndirect + overhead_expenses
+spent        = labor + material + overhead       (_projSpent)
+earned       = % complete × contract             (from the BOQ accomplishment report)
+Net Profit   = earned − spent                    (_projMargin)
 ```
+
+With no accomplishment data `earned` falls back to the full contract, and the
+figure must be labelled **Forecast**, never Earned. Indirect labor is overhead,
+not labor — counted once, never both. See `CLAUDE.md` § Money invariants.
 
 ### Folder health badge — [admin.html:3348](../admin.html#L3348)
 
 ```
-remaining% = (allocated − (labor + material)) / allocated × 100
+remaining% = (allocated − spent) / allocated × 100
 
   ≤ 0   →  OVER       (red)
   < 10  →  CRITICAL   (red)
@@ -133,7 +207,7 @@ remaining% = (allocated − (labor + material)) / allocated × 100
 
 ## 5. Notes / design rules
 
-- **Contract Revenue** and **Gross Profit** are *numbers* (KPI / Summarize sections), **not** modules.
+- **Contract Revenue** and **Net Profit** are *numbers* (the ProjectLedger strip), **not** modules.
   Only **Labor**, **Material**, and **Billing Periods** are full modules (own table + list + add/edit/delete).
 - The Material card's **"Files Attached `x / y`"** counter counts only the 4 supporting-document
   fields (`poImageUrl`, `deliveryReceiptUrl`, `supplierInvoiceUrl`, `paymentReceiptUrl`);
@@ -152,9 +226,11 @@ remaining% = (allocated − (labor + material)) / allocated × 100
 | `buildProject` | [admin.html:3289](../admin.html#L3289) |
 | `FoldersGrid` | [admin.html:3356](../admin.html#L3356) |
 | `PageHead` | [admin.html:3440](../admin.html#L3440) |
-| `KPIStrip` | [admin.html:3509](../admin.html#L3509) |
-| `FlowCards` | [admin.html:3539](../admin.html#L3539) |
-| `Summarize` | [admin.html:3621](../admin.html#L3621) |
+| `ProjectLedger` | `js/portal-app.compiled.js` |
+| `NeedsAction` | `js/portal-app.compiled.js` |
+| `CostBudget` · `BillingBudgets` | `js/portal-app.compiled.js` |
+| `KPIStrip` (staff cover banner) | `js/portal-app.compiled.js` |
+| `FlowCards` (module rows) | `js/portal-app.compiled.js` |
 | `BillingPeriodsDrill` | [admin.html:3642](../admin.html#L3642) |
 | `RecentEntries` | [admin.html:3742](../admin.html#L3742) |
 | `LaborDrill` | [admin.html:3835](../admin.html#L3835) |

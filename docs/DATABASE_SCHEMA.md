@@ -101,7 +101,7 @@ Hierarchy: **`folders` → `projects` (a month) → `expenses` / `payroll`**. Mo
 | `monthlyBudget` | number |
 **Rules:** owner-only + assigned client.
 
-### Project Control billing allocations 🔒 — migration `0073`, **owner-only**
+### Project Control billing allocations 🔒 — migrations `0073` + `0074`, **owner-only**
 
 Planning envelopes for a client-funded billing period: what share of the Fund Allocated was
 *meant* for direct cost, indirect cost and margin. **Outside the money model** — nothing here is
@@ -121,6 +121,14 @@ The folder's **default** for periods created from now on. Editing it never rewri
 
 Check constraint: each ≥ 0 **and** the three total exactly 100 (±0.005). Same rule on every table
 below and in `pcValidateAllocationPolicy()`.
+
+**Owner test (`0074`).** Every policy and the RPC gate on `profiles.role = 'owner'` - the same
+thing `is_owner()` (`0002`) and `js/admin.js` use. `0073` shipped with an extra
+`profiles.kind = 'admin'` clause that exists nowhere else in the schema; a real owner whose `kind`
+was not `admin` passed every other gate and was refused here alone, with
+`P0001 'Owner access required'` reaching the UI as the generic *"Failed to update project."*
+`kind` says which **portal** a person belongs to (`admin` / `client` / `construction_client`);
+`role` says what they may **do**. Don't reintroduce the clause.
 
 #### `projectControlBillingAllocations/{projectId}` → `project_control_billing_allocations`
 The **snapshot** copied onto one billing period when it is created — same three percentage columns

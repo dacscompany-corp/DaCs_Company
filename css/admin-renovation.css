@@ -1993,7 +1993,11 @@ button.btn-primary:hover,
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   gap: 18px;
-  margin-bottom: 26px;
+  /* 18px, tighter than the 22px block rhythm: these two cards are a coda, the
+     modules you leave the page for. The margin-TOP is load-bearing — without
+     it the row sits flush against the Expense Inbox panel whenever that panel
+     has receipts in it, because the block above it has none to collapse with. */
+  margin: 18px 0 22px;
 }
 .dacs-portal-scope .pc-wide-card {
   display: flex;

@@ -75,6 +75,13 @@
   .sc-done-actions { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 260px; margin-top: 30px; }
   .sc-done-primary { padding: 16px; border: none; border-radius: 15px; background: #157a52; color: #fff; font: 700 15px 'IBM Plex Sans'; cursor: pointer; }
   .sc-done-secondary { padding: 16px; border: 2px solid #157a52; border-radius: 15px; background: #fff; color: #157a52; font: 700 15px 'IBM Plex Sans'; text-align: center; }
+  .sc-diag { margin-top: 12px; padding: 11px 14px; border-radius: 11px; font: 500 13px 'IBM Plex Sans'; line-height: 1.45; }
+  .sc-diag.bad { background: #fbeeec; border: 1px solid #f2d3cd; color: #a1443a; }
+  .sc-diag.ok  { background: #eaf3ee; border: 1px solid #cfe5d8; color: #27614a; }
+  .sc-diag-btn { margin-left: 4px; padding: 5px 12px; border: none; border-radius: 8px; background: #a1443a; color: #fff; font: 700 12px 'IBM Plex Sans'; cursor: pointer; }
+  .sc-diag-more { margin-top: 8px; }
+  .sc-diag-link { border: none; background: none; padding: 0; color: #8a938c; font: 600 12px 'IBM Plex Sans'; text-decoration: underline; cursor: pointer; }
+  .sc-diag-raw { margin-top: 8px; padding: 10px; border-radius: 10px; background: #f3f2ef; color: #5d6b63; font: 400 11px/1.45 ui-monospace, monospace; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -136,6 +143,19 @@ if ('serviceWorker' in navigator) {
 }
 
 const SHARE_CACHE = 'dacs-share-intake';
+const SHARE_META  = '/shared-meta';
+
+// What actually happened on the way in, so the photo step can say WHY it is
+// empty. Without this the three failure modes — the service worker never ran,
+// the share carried no file, the file was rejected here — all render as the
+// same blank picker, which is what made this impossible to diagnose on a phone.
+let scIntake = { fromShare: false, swRan: false, param: null, cached: 0, meta: null, rejected: [], swActive: null, error: '' };
+try {
+  const q = new URLSearchParams(location.search);
+  scIntake.fromShare = q.has('shared');
+  scIntake.swRan     = q.get('sw') === '1';
+  scIntake.param     = q.has('shared') ? Number(q.get('shared')) : null;
+} catch (_) {}
 
 // ── Wizard copy + choice data (from the approved design) ──
 const SYSTEMS = [
@@ -185,19 +205,51 @@ function scEsc(s) {
 
 // ── Shared-file intake (from the service worker's cache) ──
 async function scLoadSharedFiles() {
-  if (!('caches' in window)) return;
+  if (!('caches' in window)) { scIntake.error = 'This browser has no Cache storage, so shared files cannot be picked up.'; return; }
   try {
     const cache = await caches.open(SHARE_CACHE);
+
+    // The service worker's breadcrumb: how many files it saw, what it kept, and
+    // the error it hit (if any) on the way to the cache.
+    try {
+      const m = await cache.match(SHARE_META);
+      if (m) scIntake.meta = await m.json();
+    } catch (_) {}
+
     for (let i = 0; i < 20; i++) {
       const res = await cache.match('/shared-file-' + i);
       if (!res) break;
+      scIntake.cached++;
       const blob = await res.blob();
       let name = 'shared-' + i;
       try { name = decodeURIComponent(res.headers.get('X-File-Name') || name); } catch (_) {}
-      scPushFile(new File([blob], name, { type: blob.type }));
+      // Was: the reason a shared file got dropped was written to S.err and then
+      // overwritten by the next file. Keep one line per rejected file instead.
+      const bad = scPushFile(new File([blob], name, { type: blob.type }));
+      if (bad) scIntake.rejected.push(name + ' — ' + bad);
     }
-  } catch (_) {}
+  } catch (e) {
+    scIntake.error = 'Could not read the shared file: ' + ((e && (e.message || e.name)) || e);
+  }
 }
+
+// Is a service worker actually in charge of this origin? If not, the share-sheet
+// POST goes straight to Vercel, which answers 405 — the share can never work.
+async function scCheckServiceWorker() {
+  if (!('serviceWorker' in navigator)) { scIntake.swActive = false; return; }
+  try {
+    const reg = await navigator.serviceWorker.getRegistration('/');
+    scIntake.swActive = !!(reg && reg.active);
+  } catch (_) { scIntake.swActive = false; }
+}
+window.scFixServiceWorker = async function () {
+  try {
+    await navigator.serviceWorker.register('/service-worker.js', { scope: '/' });
+    await navigator.serviceWorker.ready;
+    await scCheckServiceWorker();
+  } catch (e) { scIntake.error = 'Service worker install failed: ' + ((e && (e.message || e.name)) || e); }
+  scRender();
+};
 async function scClearSharedCache() {
   try {
     const cache = await caches.open(SHARE_CACHE);
@@ -226,13 +278,14 @@ function scRejectReason(file) {
   return null;
 }
 
+// Returns the rejection reason, or null when the file was accepted.
 function scPushFile(file) {
   const bad = scRejectReason(file);
-  if (bad) { S.err = bad; return false; }
+  if (bad) { S.err = bad; return bad; }
   const isImg = (file.type || '').startsWith('image/');
   S.photos.push({ file, previewUrl: isImg ? URL.createObjectURL(file) : null });
   S.err = '';
-  return true;
+  return null;
 }
 window.scRemovePhoto = function (i) {
   const p = S.photos.splice(i, 1)[0];
@@ -386,6 +439,55 @@ window.scSend = async function () {
   }
 };
 
+// ── Intake diagnostics (photo step only) ──
+// Plain-language first line, raw breadcrumb behind a toggle so a screenshot is
+// enough to tell which boundary broke.
+window.scToggleDiag = function () {
+  const el = $('scDiagRaw');
+  if (el) el.classList.toggle('hidden');
+};
+function scDiagHtml() {
+  const m = scIntake.meta;
+  const bits = [];
+
+  if (scIntake.swActive === false) {
+    bits.push({ tone: 'bad', msg: 'This device has no active service worker, so sharing a photo into this app cannot work — the share is rejected before the page loads. Tap Fix, then share the receipt again.', fix: true });
+  }
+  if (scIntake.error) bits.push({ tone: 'bad', msg: scIntake.error });
+  scIntake.rejected.forEach((r) => bits.push({ tone: 'bad', msg: 'Shared file skipped: ' + r }));
+
+  if (scIntake.fromShare && S.photos.length === 0 && !scIntake.rejected.length) {
+    if (m && m.error) {
+      bits.push({ tone: 'bad', msg: 'The share was received but could not be read (' + m.stage + '): ' + m.error });
+    } else if (m && m.received === 0) {
+      bits.push({ tone: 'bad', msg: 'The app that shared this sent no file — only ' + (m.text || m.linkUrl ? 'text or a link' : 'an empty share') + '. Open the photo itself and share that, or add it below.' });
+    } else if (m && m.received > 0 && m.kept === 0) {
+      bits.push({ tone: 'bad', msg: 'The shared file arrived empty (0 bytes). Try sharing it from the Gallery/Photos app instead.' });
+    } else if (!scIntake.swRan) {
+      bits.push({ tone: 'bad', msg: 'The share did not pass through the service worker, so no photo was handed over. Tap Fix, then share again.', fix: true });
+    } else {
+      bits.push({ tone: 'bad', msg: 'The share arrived but no photo came with it. Add it below instead.' });
+    }
+  }
+
+  if (!bits.length && scIntake.fromShare && S.photos.length)
+    bits.push({ tone: 'ok', msg: 'Received ' + S.photos.length + ' file' + (S.photos.length === 1 ? '' : 's') + ' from the share sheet.' });
+
+  if (!bits.length) return '';
+
+  const raw = {
+    url: location.search, swActive: scIntake.swActive, swRan: scIntake.swRan,
+    sharedParam: scIntake.param, cacheEntries: scIntake.cached,
+    loaded: S.photos.length, rejected: scIntake.rejected, meta: m,
+  };
+  return bits.map((b) =>
+    '<div class="sc-diag ' + b.tone + '">' + scEsc(b.msg)
+    + (b.fix ? ' <button type="button" class="sc-diag-btn" onclick="scFixServiceWorker()">Fix</button>' : '')
+    + '</div>').join('')
+    + '<div class="sc-diag-more"><button type="button" class="sc-diag-link" onclick="scToggleDiag()">Show details</button>'
+    + '<pre class="sc-diag-raw hidden" id="scDiagRaw">' + scEsc(JSON.stringify(raw, null, 1)) + '</pre></div>';
+}
+
 // ── Render ──
 function scRender() {
   const steps = scSteps();
@@ -408,6 +510,7 @@ function scRender() {
         + '<button type="button" class="sc-thumb-rm" onclick="scRemovePhoto(' + i + ')">×</button></div>'
       ).join('') + '</div>';
     }
+    html += scDiagHtml();
   }
 
   else if (S.step === 'system' || S.step === 'project' || S.step === 'type') {
@@ -482,7 +585,7 @@ auth.onAuthStateChanged(async (user) => {
   $('scGate').classList.add('hidden');
   $('scWizard').classList.remove('hidden');
   scRender();
-  await Promise.all([scLoadPickers(), scLoadSharedFiles()]);
+  await Promise.all([scLoadPickers(), scLoadSharedFiles(), scCheckServiceWorker()]);
   scRender();
 });
 </script>

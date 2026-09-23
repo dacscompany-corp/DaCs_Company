@@ -68,16 +68,45 @@ function _ovhdBillingPeriodName(ex) {
     const period = id && expProjects.find(p => p.id === id);
     return period ? (period.name || [period.month, period.year].filter(Boolean).join(' ') || period.id) : 'Unallocated';
 }
+// Billing period a NEW project overhead expense defaults to — the same answer
+// the Project Control drill pre-fills (_ovhdDefaultPeriodId in
+// portal-app.compiled.js), which in turn mirrors the direct-cost auto-pick in
+// expenses-module.js: the current client-funded period. A cover/president period
+// holds no allocation and is never auto-picked. Display only — the peso is in
+// that project's Spent either way — and Unallocated stays one click away for
+// rent and anything else that belongs to no single period.
+function _ovhdDefaultPeriodId(periods) {
+    const funded = (periods || []).filter(p => p.fundingType !== 'president' && (p.monthlyBudget || 0) > 0);
+    if (!funded.length) return '';
+    return funded.reduce((best, p) => ((p.billingNumber || 0) >= (best.billingNumber || 0) ? p : best), funded[0]).id;
+}
 function _ovhdPopulateBillingPeriodSelect(folderId, selectedId) {
     const sel = document.getElementById('ovhdExpBillingPeriod');
     const grp = document.getElementById('ovhdExpBillingPeriodGroup');
     if (!sel) return;
     const periods = (typeof expProjects !== 'undefined' ? expProjects : []).filter(p => folderId && p.folderId === folderId);
     sel.innerHTML = '<option value="">Unallocated</option>' + periods.map(p => `<option value="${_esc(p.id)}">${_esc(p.name || [p.month, p.year].filter(Boolean).join(' ') || p.id)}</option>`).join('');
-    sel.value = _ovhdBillingPeriodId(folderId, selectedId) || '';
+    // Editing keeps what was saved — a deliberate Unallocated must survive a reopen.
+    const editing = !!(document.getElementById('ovhdEditingId') || {}).value;
+    sel.value = _ovhdBillingPeriodId(folderId, selectedId) || (editing ? '' : _ovhdDefaultPeriodId(periods));
     sel.disabled = !folderId;
     if (grp) grp.style.display = folderId ? '' : 'none';
+    const lbl = document.getElementById('ovhdExpBillingPeriodLabel');
+    if (lbl) {
+        const chosen = periods.find(p => p.id === sel.value);
+        lbl.textContent = chosen ? (chosen.name || [chosen.month, chosen.year].filter(Boolean).join(' ') || chosen.id) : 'Unallocated';
+    }
+    _ovhdCollapseBillingPeriod(true);
 }
+// The period reads as a line of text until someone asks to change it — the same
+// shape as the Project Control drill, so the two forms behave alike.
+function _ovhdCollapseBillingPeriod(collapsed) {
+    const sum = document.getElementById('ovhdExpBillingPeriodSummary');
+    const sel = document.getElementById('ovhdExpBillingPeriod');
+    if (sum) sum.style.display = collapsed ? 'flex' : 'none';
+    if (sel) sel.style.display = collapsed ? 'none' : '';
+}
+function ovhdRevealBillingPeriod() { _ovhdCollapseBillingPeriod(false); }
 
 // ── Overhead / Indirect Labor from payroll ───────────────────
 // Project Overhead is ONE bucket: the support people (coordinator, site

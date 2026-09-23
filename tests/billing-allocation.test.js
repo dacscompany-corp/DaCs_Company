@@ -222,7 +222,8 @@ requireOwnerOnlySubscriptions(expensesSource, 'Expenses allocation subscriptions
 assert.match(portalSource, /typeof db === "undefined" \|\| !isOwner/, 'Project Control must skip owner-only allocation subscriptions for staff and non-owners');
 const visibleAllocationMap = sourceSlice(portalSource, 'const visibleAllocationMap = React.useMemo', 'React.useEffect(() => {\n    if (!ownerId', 'visible allocation map');
 assert.match(visibleAllocationMap, /if \(!isOwner\) return \{\};/, 'visible allocation maps must be empty synchronously for non-owners');
-assert.match(portalSource, /Summarize, \{ project, allocationMap: isOwner \? visibleAllocationMap : \{\}, allocationAdjustments: isOwner \? allocationAdjustments : \[\] \}/, 'project summary must synchronously gate confidential allocation props');
+assert.match(portalSource, /CostBudget, \{ project, summary: isOwner \? allocationSummary : null, childMonths, \.\.\.allocationCosts, allocationMap: isOwner \? visibleAllocationMap : \{\}/, 'the cost card must synchronously gate confidential allocation props');
+assert.match(portalSource, /NeedsAction, \{ allocationSummary: isOwner \? allocationSummary : null/, 'the action block must synchronously gate confidential allocation props');
 assert.match(portalSource, /BillingPeriodsDrill, \{ project, childMonths, \.\.\.allocationCosts, allocationMap: isOwner \? visibleAllocationMap : \{\}, allocationAdjustments: isOwner \? allocationAdjustments : \[\]/, 'billing periods must synchronously gate confidential allocation props');
 for (const collection of ['projectControlAllocationPolicies', 'projectControlBillingAllocations', 'billingAllocationAdjustments']) {
   assert.match(portalSource, new RegExp("db\\.collection\\(\\\"" + collection + "\\\"\\)"), `Project Control must subscribe to ${collection} for owners`);
@@ -390,6 +391,19 @@ async function testOverheadAttribution() {
   assert.match(b.el('ovhdTableBody').innerHTML, /<td>October 2026<\/td>/);
   eq((b.el('ovhdTableBody').innerHTML.match(/<td>Unallocated<\/td>/g) || []).length, 2);
 
+  // The Overhead page pre-fills the same period the drill does, so the two forms
+  // cannot disagree about what a new project expense defaults to.
+  const c = overheadHarness();
+  vm.runInContext("expProjects = [{ id:'p1', folderId:'f1', name:'September', monthlyBudget:1000, billingNumber:1 },"
+    + "{ id:'p2', folderId:'f1', month:'October', year:'2026', monthlyBudget:1000, billingNumber:2 },"
+    + "{ id:'pc', folderId:'f1', name:'Cover', monthlyBudget:5000, billingNumber:9, fundingType:'president' }];", c.context);
+  c.el('ovhdEditingId').value = '';
+  c.context._ovhdPopulateBillingPeriodSelect('f1', '');
+  eq(c.el('ovhdExpBillingPeriod').value, 'p2', 'Overhead page defaults a new project expense to the current client-funded period');
+  c.el('ovhdEditingId').value = 'existing';
+  c.context._ovhdPopulateBillingPeriodSelect('f1', null);
+  eq(c.el('ovhdExpBillingPeriod').value, '', 'editing keeps a deliberate Unallocated on the Overhead page too');
+
   const helper = sourceSlice(portalSource, 'function _pcActualsForPeriod(', 'function OverheadDrill(', 'folder-safe actuals');
   const ctx = vm.createContext({ ...A, _isOverheadPay: row => row.type === 'indirect' || row.type === 'liability' && row.liabilityFor === 'indirect', mapPayrollDoc: row => ({ ...row, type: row.laborType }) });
   vm.runInContext(helper, ctx);
@@ -428,12 +442,24 @@ function drillHarness(storage) {
   const render = () => { cursor = 0; return context.OverheadDrill(props); };
   const nodes = tree => [tree, ...(tree && tree.children || []).flatMap(child => typeof child === 'object' && child ? nodes(child) : [])];
   const find = predicate => nodes(render()).find(predicate);
-  return { props, writes, render, find, unmount: () => unmount() };
+  // The billing period shows as a line of text with a Change link; opening the
+  // picker is what a person does before reassigning one.
+  const periodSelect = () => {
+    const change = find(n => n.type === 'button' && n.props.id === 'ovhdDrillBillingPeriodChange');
+    if (change) change.props.onClick();
+    return find(n => n.props.id === 'ovhdDrillBillingPeriod');
+  };
+  // What the collapsed field reads as, or null while the picker is open.
+  const periodSummary = () => {
+    const label = find(n => n.props.id === 'ovhdDrillBillingPeriodLabel');
+    return label ? label.children.join('') : null;
+  };
+  return { props, writes, render, find, periodSelect, periodSummary, unmount: () => unmount() };
 }
 async function testOverheadDrill() {
   const d = drillHarness();
   d.find(n => n.type === 'button' && n.children.includes('+ Add Expense')).props.onClick();
-  let select = d.find(n => n.type === 'select' && n.props.id === 'ovhdDrillBillingPeriod');
+  let select = d.periodSelect();
   assert.ok(select, 'drill needs billing-period select');
   eq(select.children.filter(n => n.type === 'option').map(n => n.props.value), ['', 'p1', 'p2']);
   assert.ok(d.find(n => n.type === 'label' && n.props.htmlFor === select.props.id), 'select needs associated label');
@@ -447,22 +473,57 @@ async function testOverheadDrill() {
   assert.ok(d.find(n => n.type === 'td' && n.children.includes('September')), 'drill table labels attributed operating costs');
   assert.ok(d.find(n => n.type === 'td' && n.children.includes('October 2026')), 'drill table labels payroll using projectId');
   d.find(n => n.type === 'button' && n.props.title === 'Edit').props.onClick();
-  eq(d.find(n => n.props.id === 'ovhdDrillBillingPeriod').props.value, 'p1');
-  d.find(n => n.props.id === 'ovhdDrillBillingPeriod').props.onChange({ target:{ value:'p2' } });
+  eq(d.periodSelect().props.value, 'p1');
+  d.periodSelect().props.onChange({ target:{ value:'p2' } });
   await d.find(n => n.type === 'button' && n.children.includes('Save Changes')).props.onClick();
   eq(d.writes[1].billingPeriodId, 'p2', 'drill edit saves reassignment');
   assert.ok(d.writes[1].history.at(-1).fields.includes('billingPeriodId'));
   d.find(n => n.type === 'button' && n.props.title === 'Edit').props.onClick();
   d.props.childMonths[0].folderId = 'f2';
-  eq(d.find(n => n.props.id === 'ovhdDrillBillingPeriod').props.value, '', 'moved period disappears from drill selection');
+  eq(d.periodSelect().props.value, '', 'moved period disappears from drill selection');
   await d.find(n => n.type === 'button' && n.children.includes('Save Changes')).props.onClick();
   eq(d.writes.at(-1).billingPeriodId, null, 'drill edit revalidates moved period');
   d.find(n => n.type === 'button' && n.children.includes('+ Add Expense')).props.onClick();
-  d.find(n => n.props.id === 'ovhdDrillBillingPeriod').props.onChange({ target:{ value:'p3' } });
+  d.periodSelect().props.onChange({ target:{ value:'p3' } });
   d.find(n => n.type === 'input' && n.props.list === 'ovhdDrillCatList').props.onChange({ target:{ value:'Fuel' } });
   d.find(n => n.type === 'input' && n.props.type === 'number').props.onChange({ target:{ value:'100' } });
   await d.find(n => n.type === 'button' && n.children.includes('Save Expense')).props.onClick();
   eq(d.writes.at(-1).billingPeriodId, null, 'drill create rejects cross-folder period');
+  await testOverheadDefaultPeriod();
+}
+
+// The form answers the billing-period question itself instead of asking it: a new
+// entry opens on the current client-funded period, the way direct cost auto-picks
+// one. It is a default, not a rule — Unallocated stays one click away, because
+// rent belongs to no single period.
+async function testOverheadDefaultPeriod() {
+  const funded = () => [{ id:'p1', folderId:'f1', name:'September', monthlyBudget:1000, billingNumber:1 },
+    { id:'p2', folderId:'f1', month:'October', year:'2026', monthlyBudget:1000, billingNumber:2 },
+    { id:'pc', folderId:'f1', name:'Cover', monthlyBudget:5000, billingNumber:9, fundingType:'president' }];
+
+  const d = drillHarness();
+  d.props.childMonths = funded();
+  d.find(n => n.type === 'button' && n.children.includes('+ Add Expense')).props.onClick();
+  eq(d.periodSummary(), 'October 2026', 'the field reads as one line of text, already answered');
+  assert.ok(!d.find(n => n.type === 'select' && n.props.id === 'ovhdDrillBillingPeriod'), 'no picker to answer in the common entry');
+  eq(d.periodSelect().props.value, 'p2', 'Change opens the picker on the current client-funded period');
+  eq(d.periodSummary(), null, 'the picker replaces the summary once opened');
+  d.periodSelect().props.onChange({ target:{ value:'' } });
+  d.find(n => n.type === 'input' && n.props.list === 'ovhdDrillCatList').props.onChange({ target:{ value:'Rent' } });
+  d.find(n => n.type === 'input' && n.props.type === 'number').props.onChange({ target:{ value:'100' } });
+  await d.find(n => n.type === 'button' && n.children.includes('Save Expense')).props.onClick();
+  eq(d.writes.at(-1).billingPeriodId, null, 'the default never forces a period — Unallocated still saves');
+
+  const e = drillHarness();
+  e.props.childMonths = funded().filter(p => p.fundingType === 'president');
+  e.find(n => n.type === 'button' && n.children.includes('+ Add Expense')).props.onClick();
+  eq(e.periodSelect().props.value, '', 'a cover period holds no allocation and is never the default');
+
+  const g = drillHarness();
+  g.props.overheadTx = [{ id:'e1', folderId:'f1', billingPeriodId:null, category:'Rent', amount:100, date:'2026-09-01', history:[] }];
+  g.props.childMonths = funded();
+  g.find(n => n.type === 'button' && n.props.title === 'Edit').props.onClick();
+  eq(g.periodSelect().props.value, '', 'editing keeps a deliberate Unallocated, defaults nothing');
 }
 
 async function testOverheadUploadFreshness() {
@@ -476,7 +537,7 @@ async function testOverheadUploadFreshness() {
         d.find(n => n.type === 'button' && n.props.title === 'Edit').props.onClick();
       } else {
         d.find(n => n.type === 'button' && n.children.includes('+ Add Expense')).props.onClick();
-        d.find(n => n.props.id === 'ovhdDrillBillingPeriod').props.onChange({ target:{ value:'p1' } });
+        d.periodSelect().props.onChange({ target:{ value:'p1' } });
         d.find(n => n.type === 'input' && n.props.list === 'ovhdDrillCatList').props.onChange({ target:{ value:'Fuel' } });
         d.find(n => n.type === 'input' && n.props.type === 'number').props.onChange({ target:{ value:'100' } });
       }
@@ -520,10 +581,12 @@ function dashboardHarness() {
     peso: n => Number(n).toFixed(2), Ico: {}, COVER_LIMIT: 50000,
     _staff: () => context.window.currentUserRole === 'staff'
   });
-  vm.runInContext(sourceSlice(portalSource, 'function shortRef(', 'function mapExpenseDoc', 'payroll mapper')
+  vm.runInContext(sourceSlice(portalSource, 'function _pcChev(', 'function shortRef(', 'dashboard icons')
+    + sourceSlice(portalSource, 'function _rmIcon(', 'function _pcInboxTotal(', 'receipt marks')
+    + sourceSlice(portalSource, 'function shortRef(', 'function mapExpenseDoc', 'payroll mapper')
     + sourceSlice(portalSource, 'function _isOverheadPay', 'function FoldersGrid', 'money helpers')
     + sourceSlice(portalSource, 'function PageHead(', 'function KPIStrip(', 'print consumer')
-    + sourceSlice(portalSource, 'function Summarize(', 'function RecentEntries(', 'dashboard')
+    + sourceSlice(portalSource, 'function _pcInboxTotal(', 'function RecentEntries(', 'dashboard')
     + sourceSlice(portalSource, 'function _pcActualsForPeriod(', 'function OverheadDrill(', 'actuals'), context);
   function expand(tree) {
     if (!tree || typeof tree !== 'object') return tree;
@@ -604,25 +667,179 @@ function testAllocationDashboard() {
   eq(childRollup.directActual, 82000);
   eq(childRollup.indirectActual, 19700);
   eq(childRollup.unallocatedIndirect, 5600);
-  let rollupTree = h.render('AllocationRollup', { summary });
-  assert.match(h.text(rollupTree), /Actual Earned Profit/);
-  assert.match(h.text(rollupTree), /Unallocated Indirect Cost/);
-  assert.match(h.text(rollupTree), /14000.00/);
+  // Cost-and-budget output contract. The 2026-09-22 redesign (design 1A) folds
+  // the Labor / Material / Overhead cost cards into these rows so no peso is
+  // printed twice. The NUMBERS and the owner-only rule are unchanged, and the
+  // reserve must still be named "Target margin reserve", never just "Profit".
+  const costProps = { summary, project, childMonths, payrollRaw:props.payrollRaw,
+    expensesRaw:[], overheadRaw:props.overheadRaw, allocationMap:props.allocationMap,
+    onOpen:() => {}, inboxPending:{ labor:1, material:0, overhead:0 } };
+  let costTree = h.render('CostBudget', costProps);
+  let costText = h.text(costTree);
+  for (const label of ['Labor Cost', 'Material Cost', 'Overhead Cost']) {
+    assert.match(costText, new RegExp(label), 'the merged card still carries ' + label);
+  }
+  assert.match(costText, /Budget/, 'allocation envelopes use the plain-language budget label');
+  assert.doesNotMatch(costText, /Set aside/i, 'allocation envelopes must not use set-aside jargon');
+  assert.match(costText, /One budget covers Labor and Material/, 'one direct envelope covers both rows and is never split between them');
+  assert.match(costText, /Earned so far/);
+  assert.match(costText, /Target margin reserve/i);
+  assert.doesNotMatch(costText, /Profit kept[\s\S]{0,120}?Planned/, 'the 10% reserve is never labelled merely "Planned" profit');
+  assert.match(costText, /Ahead of plan/);
+  assert.match(costText, /14000\.00/, 'target variance is still reported');
+  assert.match(costText, /Total spent/);
+  // Spent per row + the total are the project's own figures, so the card can
+  // never disagree with the ledger above it.
+  assert.match(costText, /96000\.00/, 'total spent = labor + material + overhead');
+  eq((costText.match(/72000\.00/g) || []).length, 1, 'labor spend is printed once, not on a row and a card');
+  eq((costText.match(/70000\.00/g) || []).length, 1, 'the shared direct budget is printed once, not repeated per row');
+  const periodTable = h.nodes(costTree).find(n => n.type === 'table');
+  assert.ok(periodTable, 'billing-by-billing budget data must use a semantic table');
+  assert.match(h.text(h.nodes(periodTable).find(n => n.type === 'caption')), /Budget and spending by billing/);
+  eq(h.nodes(periodTable).filter(n => n.type === 'th' && n.props.scope === 'col').length, 5, 'billing table needs five scoped column headers');
+  eq(h.nodes(periodTable).filter(n => n.type === 'th' && n.props.scope === 'row').length, 2, 'each billing needs a scoped row header');
+  // A billing period is NOT a calendar month: the client pays when a billing is
+  // raised and collected, so each row is named by the billing it is.
+  assert.match(costText, /Billing by billing/, 'the overview names these billings, never months');
+  assert.doesNotMatch(costText, /Monthly Budgets|Month by month/, 'the overview must not call a billing a month');
+  // Both warnings became one block you can act on — and live in ONE place.
+  const needsProps = { billing:{ linked:true }, allocationSummary:summary, inboxPending:{ labor:1 }, onOpen:() => {} };
+  const needsText = h.text(h.render('NeedsAction', needsProps));
+  assert.match(needsText, /isn’t attached to any billing/, 'unallocated overhead must still be called out');
+  assert.match(needsText, /5000\.00/, 'unallocated overhead amount is shown');
+  assert.doesNotMatch(costText, /isn’t attached to any billing/, 'the warning is not repeated inside the cost card');
   project.completion = null;
   const forecast = h.context._pcAllocationSummary(project, childMonths, props.payrollRaw, [], props.overheadRaw, props.allocationMap);
   eq(forecast.targetMarginVariance, null);
-  rollupTree = h.render('AllocationRollup', { summary:forecast });
-  assert.match(h.text(rollupTree), /Forecast/);
-  assert.doesNotMatch(h.text(rollupTree), /Actual Earned Profit|Target Variance/);
+  costText = h.text(h.render('CostBudget', { ...costProps, summary:forecast }));
+  assert.match(costText, /Forecast profit/);
+  assert.match(costText, /No comparison yet/, 'a forecast is never compared against the reserve');
+  assert.doesNotMatch(costText, /Earned so far|Ahead of plan|Short of plan/);
   props.payrollRaw[0].totalSalary = 56000;
   assert.match(h.text(h.render('BillingPeriodsDrill', props)), /Advisory/);
   for (const role of ['staff', 'client', undefined]) {
     h.context.window.currentUserRole = role;
     tree = h.render('BillingPeriodsDrill', props);
     assert.doesNotMatch(h.text(tree), /Target Margin Reserve|Allocation not configured|Apply Policy|History|Site supervision|70000|%/);
-    eq(h.render('AllocationRollup', { summary }), null);
+    // The cost rows are for everyone; the planning envelopes never are.
+    const roleText = h.text(h.render('CostBudget', costProps));
+    assert.match(roleText, /Labor Cost/, 'cost rows are not owner-only');
+    assert.doesNotMatch(roleText, /Target margin reserve|One budget covers|Budget and spending by billing/,
+      String(role) + ' must not see a planning envelope');
+    if (role === 'staff') {
+      assert.doesNotMatch(roleText, /72000|96000|₱/, 'staff must never see peso amounts');
+      eq(h.render('NeedsAction', needsProps), null, 'the owner warning block is never rendered for staff');
+    }
     eq(h.context._pcAllocationSummary(project, childMonths, props.payrollRaw, [], props.overheadRaw, props.allocationMap), null);
   }
+}
+
+function testProjectLedger() {
+  const h = dashboardHarness();
+  const props = {
+    project: { revenue:1000000, allocated:500000, labor:100000, material:50000, overhead:25000, coverCost:0 },
+    inboxPending: { labor:2, material:1, overhead:0 }
+  };
+  let tree = h.render('ProjectLedger', props);
+  let text = h.text(tree);
+  for (const label of ['Total Contract', 'Actual Cost']) {
+    assert.match(text, new RegExp(label), 'the ledger must surface ' + label);
+  }
+  // The Accomplishment Report is a REPORT. What has been billed against it is
+  // read in Billing & Reports, never on this ledger — the strip is contract,
+  // cost and profit, full stop.
+  assert.doesNotMatch(text, /Billed to date|Left to bill|Not linked|connect the Accomplishment/,
+    'the ledger never reports billing progress');
+  assert.match(text, /175000\.00/, 'actual cost = Labor + Material + Overhead');
+  // No accomplishment data => the profit assumes the job runs to completion and
+  // is never presented as earned.
+  assert.match(text, /Net Profit · Forecast/);
+  assert.match(text, /Forecast profit rate/, 'forecast percentage is named as profit, not margin jargon');
+  assert.doesNotMatch(text, /Forecast margin|Net Profit · Earned/);
+  assert.match(text, /above is a forecast/, 'the forecast is spelled out in words, not just labelled');
+  // The profit belongs to the hero banner alone — the strip below must not
+  // reprint it, which is the duplication the redesign removed.
+  eq((text.match(/825000\.00/g) || []).length, 1, 'the profit is printed once, in the banner');
+  // The funding figures live behind the banner's eye, as they did before.
+  assert.doesNotMatch(text, /Fund Allocated|Budget Remaining|325000\.00/, 'funding figures stay hidden until the eye is opened');
+  h.nodes(tree).find(n => n.type === 'button' && h.text(n).includes('Show figures')).props.onClick({ stopPropagation() {} });
+  text = h.text(h.render('ProjectLedger', props));
+  for (const label of ['Fund Allocated', 'Budget Remaining', 'Cover Expenses']) {
+    assert.match(text, new RegExp(label), 'opening the eye must reveal ' + label);
+  }
+  assert.match(text, /325000\.00/, 'budget remaining = allocated funds minus spent');
+  assert.match(text, /Hide figures/, 'the eye flips to hide once open');
+  const earned = h.text(h.render('ProjectLedger', { ...props, project:{ ...props.project, completion:{ hasData:true, pct:0.4 } } }));
+  assert.match(earned, /Net Profit · Earned/);
+  assert.match(earned, /Earned profit rate/);
+  assert.match(earned, /40\.0% complete/, 'the earned banner says how much is accomplished');
+  assert.doesNotMatch(earned, /Forecast/);
+  // Cover money is a SUBSET of Actual Cost — reported, never added on top.
+  const cover = h.text(h.render('ProjectLedger', { ...props, project:{ ...props.project, coverCost:60000 } }));
+  assert.match(cover, /already counted in Actual Cost/);
+  assert.match(cover, /Over ₱[\d,]+/, 'cover spend past the limit keeps its badge');
+  assert.match(cover, /175000\.00/, 'cover money must not inflate Actual Cost');
+  const needsProps = { billing:props.billing, inboxPending:props.inboxPending, onOpen:() => {},
+    allocationSummary:{ directBudget:200000, indirectBudget:50000, directActual:150000, indirectActual:25000,
+      legacyCount:1, configuredCount:1, unallocatedIndirect:5000 } };
+  const needs = h.text(h.render('NeedsAction', needsProps));
+  assert.match(needs, /4 items/, 'action count covers the receipt queue and unattached overhead');
+  assert.match(needs, /3 receipts waiting/);
+  assert.match(h.text(h.render('NeedsAction', { ...needsProps, allocationSummary:null, inboxPending:{} })), /All caught up/, 'nothing pending reads as caught up, not as an empty block');
+  // A billing with no Fund Allocated or no split yet is the NORMAL state. The
+  // client pays when a billing is raised and collected, so work routinely runs
+  // ahead of the money — that is not a lapse, and it is never nagged about.
+  const unfunded = h.text(h.render('NeedsAction', { inboxPending:{}, onOpen:() => {},
+    allocationSummary:{ configuredCount:0, legacyCount:3, unallocatedIndirect:0 } }));
+  assert.match(unfunded, /All caught up/, 'an unfunded billing is normal, never an action item');
+  assert.doesNotMatch(unfunded, /budget yet|Set budgets|not funded/, 'the owner is not chased for money the client has not sent');
+  // The headline count is the SUM of the rows' own weights. A parallel sum drifted
+  // once, listing a row under a "0 items" heading.
+  const twoThings = h.text(h.render('NeedsAction', { inboxPending:{ labor:1 }, onOpen:() => {},
+    allocationSummary:{ configuredCount:1, legacyCount:0, unallocatedIndirect:5000 } }));
+  assert.match(twoThings, /Needs action 2 items/, 'every row listed must be counted in the heading');
+  assert.match(twoThings, /1 receipt waiting/);
+  // The Accomplishment Report is a report, never a link this project owes — an
+  // unlinked BOQ is not an action item anywhere on this screen.
+  const noBoq = h.text(h.render('NeedsAction', { inboxPending:{}, onOpen:() => {},
+    allocationSummary:{ configuredCount:1, legacyCount:0, unallocatedIndirect:0 } }));
+  assert.match(noBoq, /All caught up/, 'a project with no BOQ is not "needing action"');
+  assert.doesNotMatch(noBoq + twoThings, /linked|Accomplishment Report/, 'the owner is never chased to connect a BOQ');
+  // The billing table's percentage is measured against the SPENDABLE budget — the
+  // Target Margin Reserve is never spent — so the column must print that same
+  // figure, or the row reads "100,000 budget, 90,000 spent, 100% used".
+  const billingRow = h.text(h.render('BillingBudgets', {
+    childMonths:[{ id:'mb1', month:'January', year:'2026', monthlyBudget:100000, folderId:'f1',
+      fundingType:'progress', billingNumber:2 }],
+    payrollRaw:[], overheadRaw:[], expensesRaw:[{ projectId:'mb1', amount:90000 }],
+    allocationMap:{ mb1:{ directPct:70, indirectPct:20, targetMarginPct:10 } }, onOpen:() => {} }));
+  assert.match(billingRow, /Budget to spend/, 'the column names which budget it prints');
+  assert.match(billingRow, /90000\.00[\s\S]*?90000\.00[\s\S]*?100%/, 'budget, spend and usage must agree on one basis');
+  assert.doesNotMatch(billingRow, /100000\.00/, 'the unspendable reserve is not printed as budget to spend');
+  // With NO split anywhere, every column but Spent is blank, so the whole card
+  // hides rather than showing a table of "Not set up" / "—" / "No budget".
+  const unsplit = { childMonths:[{ id:'mb1', month:'August', year:'2026', monthlyBudget:0, folderId:'f1', fundingType:'mobilization' },
+      { id:'mb2', month:'September', year:'2026', monthlyBudget:0, folderId:'f1', fundingType:'downpayment' }],
+    payrollRaw:[], overheadRaw:[], expensesRaw:[{ projectId:'mb1', amount:188530 }], allocationMap:{}, onOpen:() => {} };
+  eq(h.render('BillingBudgets', unsplit), null, 'a table of blanks is hidden, not shown');
+  // ...and it comes back on its own the moment ONE billing has a split.
+  const oneSplit = h.text(h.render('BillingBudgets', { ...unsplit,
+    childMonths:[{ ...unsplit.childMonths[0], monthlyBudget:200000 }, unsplit.childMonths[1]],
+    allocationMap:{ mb1:{ directPct:70, indirectPct:20, targetMarginPct:10 } } }));
+  assert.match(oneSplit, /Billing Budgets/, 'one configured split brings the card back');
+  assert.match(oneSplit, /Mobilization[\s\S]*?Downpayment/, 'the unsplit billing is still listed once the card is shown');
+  // Named by the billing it is, with the month it was raised as context only.
+  assert.match(billingRow, /Progress Billing #2/, 'a billing is named by its type and number, not by a month');
+  assert.match(billingRow, /January 2026/, 'the month it was raised stays as context');
+
+  h.context.window.currentUserRole = 'staff';
+  text = h.text(h.render('ProjectLedger', props));
+  assert.doesNotMatch(text, /175000|325000|600000|400000|₱/, 'staff ledger must not expose peso amounts');
+  assert.doesNotMatch(text, /Net Profit|Net Loss|profit rate|Show figures/, 'staff never see the profit banner or its eye');
+  assert.match(text, /17\.5% of contract spent/);
+  assert.doesNotMatch(text, /left to bill|Billed to date/, 'staff see no billing progress either');
+  assert.match(text, /3 receipts need encoding/, 'staff action count only uses the receipt queue available to staff');
+  eq(h.render('NeedsAction', needsProps), null, 'staff never see the owner warning block');
 }
 
 function testAllocationPrint() {
@@ -1057,7 +1274,7 @@ function testPrintMetadataAndTotals() {
   assert.match(dashboard, /Payroll Detail - 4 entries/);
 }
 
-Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas), Promise.resolve().then(testAllocationDashboard), Promise.resolve().then(testAllocationPrint), Promise.resolve().then(testAllocationRootDateScope), Promise.resolve().then(testExpenseReportModel), Promise.resolve().then(testExpenseReportOutputs), testExpenseReportLoading(), ...[testReportChartCategoryCollisions, testStaffReportDateScope, testFolderlessPeriodPrintScope, testDeletedPeriodDetailTeardown, testPublicPrintContracts, testPrintMetadataAndTotals].map(test => Promise.resolve().then(test))])
+Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas), Promise.resolve().then(testAllocationDashboard), Promise.resolve().then(testProjectLedger), Promise.resolve().then(testAllocationPrint), Promise.resolve().then(testAllocationRootDateScope), Promise.resolve().then(testExpenseReportModel), Promise.resolve().then(testExpenseReportOutputs), testExpenseReportLoading(), ...[testReportChartCategoryCollisions, testStaffReportDateScope, testFolderlessPeriodPrintScope, testDeletedPeriodDetailTeardown, testPublicPrintContracts, testPrintMetadataAndTotals].map(test => Promise.resolve().then(test))])
   .then(results => {
     const failures = results.filter(result => result.status === 'rejected');
     if (failures.length) { failures.forEach(result => console.error(result.reason)); process.exitCode = 1; }

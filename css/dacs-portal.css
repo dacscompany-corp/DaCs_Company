@@ -1018,7 +1018,8 @@
 .dacs-portal-scope .drill .pc-period-stat { flex-wrap: wrap; gap: 4px 10px; }
 .dacs-portal-scope .drill .pc-period-stat .val { overflow-wrap: anywhere; min-width: 0; }
 .pc-allocation-rollup { padding: 18px 0; border-block: 1px solid var(--border-light, #dde3df); }
-.pc-allocation-rollup h3, .pc-allocation-history h3 { margin: 0; font-size: 15px; line-height: 1.4; letter-spacing: 0; }
+.pc-allocation-history h3 { margin: 0; font-size: 15px; line-height: 1.4; letter-spacing: 0; }
+.pc-allocation-rollup > h3 { margin: 0 0 14px; line-height: 1.4; }
 .pc-allocation-totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 24px; margin: 14px 0; }
 .pc-allocation-totals > div, .pc-allocation-figures > div { min-width: 0; }
 .pc-allocation-totals dt, .pc-allocation-figures dt { font-size: 11px; color: var(--text-light, #626b66); }
@@ -1049,4 +1050,541 @@
 @media (max-width: 600px) {
   .pc-allocation-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
   .pc-allocation-history { padding: 16px; }
+}
+
+/* Allocation block inside a period card: separate it from the restored stats. */
+.dacs-portal-scope .pc-period-card .pc-allocation-bands { margin-top: 4px; }
+.dacs-portal-scope .pc-period-card .pc-allocation-legacy { margin-top: 2px; }
+
+/* ── Project ledger (redesign 2026-09-22, design 1A) ────────────────────────
+   One story, top to bottom. Three numbers answer "what is this job worth, what
+   did it cost, what is left", the billed line says how much of it has been
+   signed off, and the funding line carries the client's allocation and the
+   cover money that is already inside Actual Cost. Staff never reach the billed
+   or funding lines — every figure on them is a peso. */
+.pc-ledger {
+  margin: 14px 0 22px;
+  overflow: hidden;
+  border: 1px solid #e5e5e5;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 1px 1px rgb(0 0 0 / 3%);
+}
+/* The green hero sits flush at the top of the card — .pc-sm-contract carries
+   the gradient and the type, .pc-ledger has the overflow that rounds it. */
+.pc-ledger-hero { flex-wrap: wrap; }
+.pc-ledger-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  background: #fafaf9;
+}
+.pc-ledger-cell {
+  min-width: 0;
+  padding: 18px 22px 17px;
+  border-inline-start: 1px solid #e5e5e5;
+}
+.pc-ledger-cell:first-child { border-inline-start: 0; }
+.pc-ledger-cell .lbl {
+  display: block;
+  color: #6c6c70;
+  font-size: .78rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.pc-ledger-cell .val {
+  display: block;
+  margin: 6px 0 3px;
+  color: #202622;
+  font-size: 1.45rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.pc-ledger-cell .note {
+  display: block;
+  color: #6c6c70;
+  font-size: .72rem;
+  line-height: 1.45;
+}
+.pc-ledger-cell--accent .val { color: #1a5c3a; }
+.pc-ledger-cell--ok .val { color: #1a5c3a; }
+.pc-ledger-cell--warn .val { color: #825900; }
+.pc-ledger-cell--danger .val { color: #a02d2d; }
+
+.pc-ledger-funding {
+  display: flex;
+  gap: 14px;
+  padding: 13px 22px;
+  border-top: 1px solid #f1efea;
+  background: #fcfcfb;
+  flex-wrap: wrap;
+}
+.pc-ledger-fund { flex: 1 1 190px; min-width: 0; }
+.pc-ledger-fund .lbl {
+  display: block;
+  color: #6c6c70;
+  font-size: .72rem;
+  font-weight: 650;
+}
+.pc-ledger-fund .val {
+  font-size: 1rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pc-ledger-fund .note {
+  display: block;
+  margin-top: 2px;
+  color: #6c6c70;
+  font-size: .68rem;
+  line-height: 1.4;
+}
+.pc-ledger-fund--ok .val { color: #1a5c3a; }
+.pc-ledger-fund--danger .val { color: #a02d2d; }
+.dacs-portal-scope .pc-ledger-fund .pc-over-badge {
+  display: inline-block;
+  margin: 0 0 0 7px;
+  align-self: auto;
+}
+.pc-ledger-foot {
+  margin: 0;
+  padding: 12px 22px 14px;
+  border-top: 1px solid #f1efea;
+  color: #6c6c70;
+  font-size: .78rem;
+  line-height: 1.55;
+}
+
+/* ── Needs action ───────────────────────────────────────────────────────────
+   Every warning in one block you can act on: the receipt queue, months with no
+   budget, overhead filed under no month, and an unlinked BOQ. The count is the
+   same arithmetic the four-card snapshot used; the rows are what you can do. */
+.pc-needs {
+  margin: 0 0 22px;
+  overflow: hidden;
+  border: 1px solid #f0ddb6;
+  border-radius: 16px;
+  background: #fff8ec;
+}
+.pc-needs-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px 11px;
+}
+.pc-needs-head h3 {
+  margin: 0;
+  color: #6b5410;
+  font-family: var(--serif, 'Playfair Display', serif);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+.pc-needs-ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #8b6914;
+  color: #fff;
+  font-size: .72rem;
+  font-weight: 700;
+}
+.pc-needs-count {
+  margin-inline-start: auto;
+  color: #8b6914;
+  font-size: .72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pc-needs-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 22px;
+  border-top: 1px solid #f3e4c6;
+  flex-wrap: wrap;
+}
+.pc-needs-txt { flex: 1 1 260px; min-width: 0; }
+.pc-needs-txt .t {
+  color: #6b5410;
+  font-size: .84rem;
+  font-weight: 650;
+  line-height: 1.4;
+}
+.pc-needs-txt .n {
+  margin-top: 2px;
+  color: #8b7a4a;
+  font-size: .76rem;
+  line-height: 1.45;
+}
+.pc-needs-cta {
+  flex: none;
+  padding: 9px 15px;
+  border: 1.5px solid #e2cd9b;
+  border-radius: 9px;
+  background: #fff;
+  color: #6b5410;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.pc-needs-cta:hover { border-color: #d4bb80; background: #fffdf8; }
+.pc-needs-cta:focus-visible { outline: 3px solid #8b6914; outline-offset: 2px; }
+.pc-needs--ok {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  border-color: #cde7d8;
+  background: #f0faf4;
+}
+.pc-needs--ok .pc-needs-ico { background: #157a52; }
+.pc-needs--ok p { margin: 0; color: #157a52; font-size: .8rem; }
+
+.dacs-portal-scope .visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip-path: inset(50%) !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
+/* ── Billing allocations rollup (redesign 2026-09-21) ────────────────────────
+   Plain-language restatement of the same numbers. Tones map 1:1 to
+   pcAllocationStatus() keys — ok / warn / over / none — so the wording and the
+   colour can never disagree with the engine. Owner-only at the call site. */
+.pc-alloc-card {
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 1px 1px rgb(0 0 0 / 3%);
+  overflow: hidden;
+  /* One uniform 22px gap between every block of the overview. These are
+     block-flow siblings, so adjacent margins COLLAPSE to the max: a 24 here
+     and a 22 on .pc-needs read as 24, which is how the rhythm drifted. */
+  margin: 22px 0;
+}
+.pc-alloc-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 20px; padding: 18px 24px 15px; flex-wrap: wrap;
+}
+.pc-alloc-headings { min-width: 0; }
+.pc-alloc-eyebrow {
+  font-size: 11.5px; font-weight: 700; letter-spacing: .02em;
+  color: #6c6c70;
+}
+.pc-alloc-title {
+  font-family: var(--serif, 'Playfair Display', serif);
+  font-size: 17px; font-weight: 600; margin: 5px 0 0; line-height: 1.35; letter-spacing: 0;
+}
+.pc-alloc-chip {
+  flex: none; font-size: 11.5px; font-weight: 700;
+  padding: 6px 13px; border-radius: 999px; white-space: nowrap;
+}
+.pc-alloc-chip--ok   { background: #e3f3ee; color: #157a52; border: 1px solid #cde7d8; }
+.pc-alloc-chip--warn { background: #fff3de; color: #8b6914; border: 1px solid #f0ddb6; }
+.pc-alloc-chip--none { background: #f4f4f2; color: #6c6c70; border: 1px solid #e3e3e0; }
+
+/* Explanatory banners */
+.pc-alloc-note {
+  display: flex; gap: 11px; align-items: flex-start; padding: 14px 24px;
+  font-size: 12.5px; line-height: 1.5;
+}
+.pc-alloc-note p { margin: 0; }
+.pc-alloc-note-ico {
+  flex: none; width: 17px; height: 17px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px; font-weight: 700;
+  margin-top: 1px; color: #fff;
+}
+.pc-alloc-note--warn   { background: #fff8ec; border-block: 1px solid #f3e4c6; color: #6b5410; }
+.pc-alloc-note--warn   .pc-alloc-note-ico { background: #8b6914; }
+.pc-alloc-note--danger { background: #fbefec; border-top: 1px solid #f3d7d0; color: #8b2b2b; }
+.pc-alloc-note--danger .pc-alloc-note-ico { background: #a02d2d; }
+
+/* Group rows */
+.pc-alloc-group { border-top: 1px solid #e5e5e5; }
+.pc-alloc-group-head {
+  display: flex; align-items: center; gap: 14px;
+  padding: 15px 24px 12px; flex-wrap: wrap;
+}
+.pc-alloc-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.pc-alloc-dot--green  { background: #1a5c3a; }
+.pc-alloc-dot--violet { background: #6b3f8f; }
+.pc-alloc-group-id { min-width: 0; }
+.pc-alloc-group-name {
+  display: block; font-family: var(--serif, 'Playfair Display', serif);
+  font-size: 15.5px; font-weight: 600;
+}
+.pc-alloc-group-note { display: block; font-size: 11.5px; color: #6c6c70; }
+.pc-alloc-status {
+  font-size: 11px; font-weight: 700; padding: 3px 10px;
+  border-radius: 999px; white-space: nowrap;
+}
+.pc-alloc-status--ok   { background: #e3f3ee; color: #157a52; }
+.pc-alloc-status--warn { background: #f8efdb; color: #8b6914; }
+.pc-alloc-status--over { background: #fbefec; color: #a02d2d; }
+.pc-alloc-status--none { background: #f2f1ec; color: #6c6c70; }
+
+.pc-alloc-figs { margin-left: auto; display: flex; gap: 26px; flex-wrap: wrap; }
+.pc-alloc-figs .lbl { display: block; font-size: 10.5px; color: #6c6c70; }
+.pc-alloc-figs .val { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pc-alloc-fig-end { text-align: right; }
+.pc-alloc-val--ok   { color: #1a5c3a; }
+.pc-alloc-val--warn { color: #8b6914; }
+.pc-alloc-val--over { color: #a02d2d; }
+.pc-alloc-val--none { color: #6c6c70; }
+
+/* Bars */
+.pc-alloc-bar-row { display: flex; align-items: center; gap: 12px; padding: 0 24px 13px; }
+.pc-alloc-bar {
+  flex: 1 1 auto; height: 8px; background: #f1efea;
+  border-radius: 999px; overflow: hidden;
+}
+.pc-alloc-bar-fill { display: block; height: 100%; border-radius: 999px; }
+.pc-alloc-bar--ok   { background: #1a5c3a; }
+.pc-alloc-bar--warn { background: #8b6914; }
+.pc-alloc-bar--over { background: #a02d2d; }
+.pc-alloc-bar--none { background: #d8d5cd; }
+.pc-alloc-used { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+
+/* Cost chips inside a group */
+.pc-alloc-items { display: flex; gap: 10px; padding: 0 24px 16px; flex-wrap: wrap; }
+.pc-alloc-item {
+  flex: 1 1 200px; min-width: 0; display: flex; align-items: center; gap: 11px;
+  padding: 11px 14px; border: 1px solid #edebe6; border-radius: 12px; background: #fafaf9;
+}
+.pc-alloc-ico {
+  width: 26px; height: 26px; border-radius: 8px;
+  display: grid; place-items: center; flex: none;
+}
+.pc-alloc-ico--green  { background: #eaf2ec; color: #1a5c3a; }
+.pc-alloc-ico--amber  { background: #f4ebd9; color: #8b6914; }
+.pc-alloc-ico--violet { background: #efeaf7; color: #6b3f8f; }
+.pc-alloc-item-id { min-width: 0; }
+.pc-alloc-item-id .lbl { display: block; font-size: 12px; color: #6c6c70; }
+.pc-alloc-item-id .amt {
+  display: block; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.pc-alloc-item-pct { margin-left: auto; font-size: 11px; color: #6c6c70; white-space: nowrap; }
+
+.pc-alloc-reserve { background: #fafaf9; }
+.pc-alloc-reserve .pc-alloc-group-head { padding-bottom: 15px; }
+
+/* Total spent strip */
+.pc-alloc-total {
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px 24px; border-top: 1px solid #e5e5e5; flex-wrap: wrap;
+}
+.pc-alloc-total-lbl {
+  font-size: 11.5px; letter-spacing: .02em;
+  color: #6c6c70; font-weight: 600; white-space: nowrap;
+}
+.pc-alloc-total-amt {
+  font-size: 20px; font-weight: 700; color: #1a5c3a;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.pc-alloc-stack {
+  flex: 1 1 160px; min-width: 120px; height: 10px; background: #efede8;
+  border-radius: 999px; overflow: hidden; display: flex;
+}
+.pc-alloc-seg { height: 100%; }
+.pc-alloc-seg--green  { background: #1a5c3a; }
+.pc-alloc-seg--amber  { background: #8b6914; }
+.pc-alloc-seg--violet { background: #6b3f8f; }
+.pc-alloc-total-cap { font-size: 12.5px; color: #3a3a3c; white-space: nowrap; }
+
+/* Month-by-month */
+.pc-alloc-toggle {
+  display: flex; width: 100%; align-items: center; gap: 10px;
+  padding: 13px 24px; background: #fff; border: 0; border-top: 1px solid #e5e5e5;
+  font: inherit; font-size: 11.5px; font-weight: 700; letter-spacing: .02em;
+  color: #6c6c70; cursor: pointer; text-align: left;
+}
+.pc-alloc-toggle:hover { color: #1a5c3a; }
+.pc-alloc-toggle:focus-visible { outline: 3px solid #1a5c3a; outline-offset: -3px; }
+.pc-alloc-chev { margin-left: auto; transition: transform .15s; }
+.pc-alloc-chev.is-open { transform: rotate(180deg); }
+.pc-alloc-periods { padding: 4px 24px 20px; border-top: 1px solid #e5e5e5; overflow-x: auto; }
+.pc-alloc-table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 13px; }
+.pc-alloc-table th, .pc-alloc-table td { padding: 13px 8px; border-bottom: 1px solid #f1efea; text-align: left; vertical-align: middle; }
+.pc-alloc-table th:first-child, .pc-alloc-table td:first-child { padding-left: 0; }
+.pc-alloc-table th:last-child, .pc-alloc-table td:last-child { padding-right: 0; }
+.pc-alloc-table thead th {
+  padding-block: 10px 8px;
+  border-bottom-color: #dfe4e0;
+  color: #6c6c70;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+.pc-alloc-table .num { text-align: right; color: #3a3a3c; font-variant-numeric: tabular-nums; }
+.pc-alloc-table .num.strong { color: inherit; font-weight: 600; }
+.pc-alloc-pname { font-family: var(--serif, 'Playfair Display', serif); font-weight: 600; min-width: 0; }
+.pc-alloc-pwhen { display: block; font-family: inherit; font-weight: 400; font-size: .72rem; color: #6c6c70; margin-top: 2px; }
+.pc-alloc-policy {
+  font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 6px;
+  justify-self: start; white-space: nowrap; background: #eaf2ec; color: #1a5c3a;
+}
+.pc-alloc-policy.is-unset { background: #f4f4f2; color: #6c6c70; }
+.pc-alloc-pused { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 11.5px; font-weight: 600; }
+.pc-alloc-pused .pc-alloc-bar { flex: 1 1 60px; height: 6px; }
+
+/* ── Cost rows inside the cost-and-budget card ──────────────────────────────
+   The Labor / Material / Overhead cards folded into these rows. Each row's bar
+   is its share of the contract; the budget reading lives on a strip beneath,
+   shared by Labor and Material because one direct-cost envelope covers both. */
+.pc-money-row { border-top: 1px solid #e5e5e5; padding-bottom: 15px; }
+.pc-money-row-head {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 15px 24px 11px;
+  cursor: pointer;
+  flex-wrap: wrap;
+}
+.pc-money-row-head:hover { background: #fafaf9; }
+.pc-money-row-head:focus-visible { outline: 3px solid #1a5c3a; outline-offset: -3px; }
+.pc-money-row-id { min-width: 0; }
+.pc-money-row-id .t {
+  display: block;
+  font-family: var(--serif, 'Playfair Display', serif);
+  font-size: .97rem;
+  font-weight: 600;
+}
+.pc-money-row-id .s { display: block; color: #6c6c70; font-size: .72rem; }
+.pc-money-figs {
+  margin-inline-start: auto;
+  display: flex;
+  gap: 26px;
+  flex-wrap: wrap;
+}
+.pc-money-figs .lbl { display: block; color: #6c6c70; font-size: .66rem; }
+.pc-money-figs .val {
+  font-size: .95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pc-money-open { flex: none; display: inline-flex; color: #6c6c70; }
+.pc-money-bar {
+  height: 8px;
+  margin: 0 24px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #f1efea;
+}
+.pc-money-bar-fill { height: 100%; border-radius: 999px; }
+.pc-money-detail {
+  padding: 9px 24px 0;
+  color: #6c6c70;
+  font-size: .72rem;
+  line-height: 1.45;
+}
+
+.pc-money-budget {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  border-top: 1px dashed #e0ded8;
+  background: #fafaf9;
+  flex-wrap: wrap;
+}
+.pc-money-budget-id { flex: 1 1 230px; min-width: 0; }
+.pc-money-budget-id .lbl { display: block; font-size: .8rem; font-weight: 650; }
+.pc-money-budget-id .note { display: block; color: #6c6c70; font-size: .68rem; }
+.pc-money-budget-figs { display: flex; gap: 22px; }
+.pc-money-budget-figs .lbl { display: block; color: #6c6c70; font-size: .66rem; }
+.pc-money-budget-figs .val {
+  font-size: .9rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.pc-money-budget .pc-alloc-bar { flex: 1 1 120px; min-width: 90px; }
+
+/* ── Cost and budget: four blocks, not one card (design 1A) ───────────────
+   Direct costs, indirect costs, the reserve and Total spent each get their own
+   bordered block. The 16px gap is load-bearing: it is what says Labor and
+   Material answer to the envelope strip inside THEIR block and not to the one
+   below it. The stack itself has no border — it is only the rhythm. */
+.pc-money-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 22px 0;
+}
+.pc-money-stack-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.pc-money-group-card {
+  overflow: hidden;
+  border: 1px solid #e5e5e5;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 1px 1px rgb(0 0 0 / 3%);
+}
+.pc-money-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 24px;
+  border-bottom: 1px solid #e5e5e5;
+  background: #fafaf9;
+  flex-wrap: wrap;
+}
+.pc-money-group-name {
+  color: #3a3a3c;
+  font-size: .69rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+.pc-money-group-note { color: #6c6c70; font-size: .72rem; }
+/* The group header already draws the line, so the first row must not draw a
+   second one under it — and a block's last strip must not draw one either. */
+.pc-money-group-head + .pc-money-row { border-top: 0; }
+.pc-money-group-card > .pc-alloc-total { border-top: 0; }
+.pc-months-card .pc-alloc-head { align-items: center; }
+.pc-months-card .pc-alloc-periods { border-top: 1px solid #e5e5e5; }
+.pc-months-cta {
+  flex: none;
+  padding: 8px 14px;
+  border: 1.5px solid #cde7d8;
+  border-radius: 9px;
+  background: #f0faf4;
+  color: #1a5c3f;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+.pc-months-cta:hover { background: #e6f5ec; }
+.pc-months-cta:focus-visible { outline: 3px solid #1a5c3a; outline-offset: 2px; }
+
+@media (max-width: 820px) {
+  .pc-ledger-grid { grid-template-columns: 1fr; }
+  .pc-ledger-cell { border-inline-start: 0; border-top: 1px solid #e5e5e5; }
+  .pc-ledger-cell:first-child { border-top: 0; }
+  .pc-alloc-figs, .pc-money-figs, .pc-money-budget-figs {
+    width: 100%;
+    margin-inline-start: 0;
+    gap: 18px;
+  }
+}
+@media (max-width: 520px) {
+  .pc-ledger-funding { gap: 10px; }
+  .pc-needs-row, .pc-money-budget { align-items: flex-start; }
+  .pc-money-row-head { gap: 10px; }
 }

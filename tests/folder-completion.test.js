@@ -191,7 +191,9 @@ test('the active list is DERIVED from the full set, never the other way round', 
 });
 
 test('the profit banner is not gated on completion', () => {
-  const banner = slice(src, 'const _heroLbl', 'const _heroSub', F);
+  // Redesign 2026-09-22: the banner became the ledger's third cell; the label
+  // is still built from profit sign + forecast/earned, never completion state.
+  const banner = slice(src, 'const heroName', 'const cells', F);
   ok(!/completedAt|_fldDone/.test(banner), 'the hero profit label now depends on completion state: ' + banner.trim());
 });
 

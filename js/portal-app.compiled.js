@@ -297,6 +297,7 @@ function mapMonthlyProject(d) {
     month: d.month || "",
     year: d.year || "",
     monthlyBudget: Number(d.monthlyBudget) || 0,
+    billingNumber: Number(d.billingNumber) || 0,
     fundingType: d.fundingType || ""
     // 'president' = cover-expense period
   };
@@ -550,6 +551,25 @@ function _fldDoneOn(c) {
 }
 // ── END completion helpers ───────────────────────────────────────────
 
+// ── What a billing period is called ──────────────────────────────────
+// A billing period is NOT a calendar month. The client pays when a billing is
+// raised and collected — Mobilization, Downpayment, Progress Billing #2, Final
+// Payment — so the money arrives on the billing's schedule, not the calendar's.
+// Naming one "January 2026" hides which billing it actually is.
+//
+// `monthlyBudget` is that billing's Fund Allocated: the money actually in hand.
+// When a client pays MORE than was requested, the owner raises it to what really
+// arrived, and the stored percentages re-split the larger base on their own.
+//
+// ONE table, read by the overview and the drill alike, so they cannot drift.
+const FUNDING_LBLS = { mobilization: "Mobilization", downpayment: "Downpayment", progress: "Progress Billing", final: "Final Payment", president: "Cover Expenses" };
+function _pcBillingName(p) {
+  const base = FUNDING_LBLS[(p || {}).fundingType] || "Billing Period";
+  const n = Number((p || {}).billingNumber) || 0;
+  return p && p.fundingType === "progress" && n > 0 ? base + " #" + n : base;
+}
+// The month/year the billing was raised — context under the name, never the name.
+function _pcBillingWhen(p) { return (((p || {}).month || "") + " " + ((p || {}).year || "")).trim(); }
 function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, overheadRaw, boqRaw, onPickFolder, inboxByFolder }) {
   const _ibx = inboxByFolder || {};
   const [openCards, setOpenCards] = React.useState({});
@@ -949,8 +969,8 @@ function ExpenseInboxMount({ folderId, label, kind }) {
   const id = kind === "labor" ? "eiPanelPortalLabor" : kind === "material" ? "eiPanelPortalMaterial" : kind === "overhead" ? "eiPanelPortalOverhead" : "eiPanelPortal";
   return /* @__PURE__ */ React.createElement("div", { id });
 }
-// Staff-only now. The owner/admin KPI row moved inside Summarize, attached
-// under the Gross Profit banner and revealed by its eye toggle.
+// Staff-only now: the owner/admin figures live in ProjectLedger. This is the
+// staff Cover Expenses banner and its over-limit warning.
 function KPIStrip({ project }) {
   if (_staff()) {
     const _cv = project.coverCost || 0;
@@ -1015,232 +1035,160 @@ function _flowInboxBadge(n) {
 function _inboxCountBadge(n, extraStyle) {
   return /* @__PURE__ */ React.createElement(ReceiptMark, { n, kind: "count", style: extraStyle });
 }
-// ── Actual Cost ──────────────────────────────────────────────────────
-// One card, three columns (Labor / Material / Overhead) + a total footer,
-// then the two wide module rows (Billing Periods · Additional Works).
-// Design: "Project Control Overview.dc.html".
+// ── Project Control overview ─────────────────────────────────────────
+// Design: "Dashboard redesign for clarity" → 1A "One story, top to bottom".
+// The overview reads as one column, each block answering the next question:
 //
-// Staff (currentUserRole === 'staff') must not see peso amounts: every column
-// falls back to its percentage-of-contract, the breakdown rows are suppressed,
-// and the footer drops the total and the contract figure.
-function FlowCards({ project, onOpen, periodCount, additionalWorksTotal, additionalWorksCount, isAdditionalWorks, inboxPending }) {
-  const ib = inboxPending || { labor: 0, material: 0, overhead: 0 };
-  // Each column opens on its own — one id per module, never a shared flag.
-  const [open, setOpen] = React.useState({});
-  const staff = _staff();
-  const lb = project.laborBreakdown;
-  const ob = project.overheadBreakdown || {};
-  const dc = project.docCounts;
-  const matCount = project.materialCount || 0;
-  const docsAttached = dc.po + dc.dr + dc.si + dc.pay;
-  const docsExpected = matCount * 4;
-  const contract = project.revenue || 0;
-  const spent = _projSpent(project);
-  // Share of the contract — the same basis as the per-column formula chip. With
-  // no contract on the folder yet, fall back to share-of-spend so the bars still
-  // read as a mix instead of collapsing to zero.
-  const shareOf = (v) => {
-    const base = contract > 0 ? contract : spent;
-    return base > 0 ? (v / base) * 100 : 0;
-  };
-  const mods = [
-    {
-      id: "labor", title: "Labor Cost", icon: Ico.users, tone: "", bar: "#1A5C3A",
-      amount: project.labor || 0, inbox: ib.labor,
-      formula: "(Labor Total ÷ Contract Amount) × 100",
-      tip: "Total wages and payroll paid to all workers on site. Includes direct labor, indirect labor, and liability costs.",
-      sub: "By Tag",
-      rows: [
-        { lbl: "Direct", val: "₱ " + peso(lb.direct) },
-        { lbl: "Liability", val: "₱ " + peso(lb.liability), dim: "c" }
-      ]
-    },
-    {
-      id: "material", title: "Material Cost", icon: Ico.package, tone: " pc-icon-amber", bar: "#8B6914",
-      amount: project.material || 0, inbox: ib.material,
-      formula: "(Material Total ÷ Contract Amount) × 100",
-      tip: "Total cost of all materials purchased for the project. Each transaction has supporting documents like PO, delivery receipt, invoice, and payment slip.",
-      sub: "Per-Transaction Files",
-      note: "PO · Delivery · Invoice · Payment",
-      // Counts, not money — safe for staff to see.
-      rows: [
-        { lbl: "Transactions", val: String(matCount), safe: true },
-        { lbl: "Files attached", val: docsAttached + " / " + (docsExpected || 0), dim: "b", safe: true }
-      ]
-    },
-    {
-      id: "overhead", title: "Overhead Cost", icon: Ico.briefcase, tone: " pc-icon-purple", bar: "#6B3F8F",
-      amount: project.overhead || 0, inbox: ib.overhead,
-      formula: "(Overhead Total ÷ Contract Amount) × 100",
-      tip: "Project overhead — the support people (coordinator, site supervision, procurement) plus site operating costs (utilities, fuel, rent, permits). Counted against the project's profit.",
-      sub: "By Type",
-      note: "Coordinator · Supervision · Procurement · Utilities · Rent",
-      rows: [
-        { lbl: "Indirect labor", val: "₱ " + peso(ob.indirectLabor || 0) },
-        { lbl: "Operating costs", val: "₱ " + peso(ob.expenses || 0), dim: "b" }
-      ]
-    }
-  ];
-  const toggle = (id) => setOpen((o) => ({ ...o, [id]: !o[id] }));
-  const totalPct = shareOf(spent);
-  return /* @__PURE__ */ React.createElement(
-    React.Fragment,
-    null,
-    /* @__PURE__ */ React.createElement(
-      "section",
-      { className: "pc-cost" },
-      /* @__PURE__ */ React.createElement("div", { className: "pc-cost-grid" }, mods.map((m) => {
-        const isOpen = !!open[m.id];
-        const pct = shareOf(m.amount);
-        const rows = staff ? m.rows.filter((r) => r.safe) : m.rows;
-        // Staff lose the money rows, so a column can end up with nothing to
-        // reveal — hide its chevron rather than open an empty panel.
-        const hasBody = rows.length > 0 || !!m.note;
-        return /* @__PURE__ */ React.createElement(
-          "div",
-          {
-            key: m.id,
-            className: "pc-cost-col" + (isOpen ? " is-open" : ""),
-            role: "button",
-            tabIndex: 0,
-            title: "Open the " + m.title.toLowerCase() + " transaction history",
-            onClick: () => onOpen(m.id),
-            onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(m.id); } }
-          },
-          /* @__PURE__ */ React.createElement(
-            "div",
-            { className: "pc-cost-col-head" },
-            /* @__PURE__ */ React.createElement("div", { className: "pc-cost-icon" + m.tone }, m.icon),
-            /* @__PURE__ */ React.createElement("span", { className: "pc-cost-col-title" }, m.title),
-            /* @__PURE__ */ React.createElement("span", { className: "pc-help-tip", "data-tip": m.tip, onClick: (e) => e.stopPropagation() }, "?"),
-            _flowInboxBadge(m.inbox),
-            hasBody ? /* @__PURE__ */ React.createElement(
-              "button",
-              {
-                type: "button",
-                className: "pc-cost-chev",
-                "aria-expanded": isOpen,
-                "aria-label": (isOpen ? "Collapse " : "Expand ") + m.title.toLowerCase() + " breakdown",
-                title: isOpen ? "Hide the breakdown" : "Show the breakdown",
-                // The column navigates — stop the bubble or opening the
-                // breakdown would jump to the transaction history instead.
-                onClick: (e) => { e.stopPropagation(); toggle(m.id); }
-              },
-              _pcChev(isOpen, 16, "var(--brand-green)")
-            ) : null
-          ),
-          /* @__PURE__ */ React.createElement(
-            "div",
-            { className: "pc-cost-amount" },
-            staff ? null : /* @__PURE__ */ React.createElement("span", { className: "cur" }, "₱"),
-            staff ? null : /* @__PURE__ */ React.createElement("span", { className: "num" }, peso(m.amount)),
-            /* @__PURE__ */ React.createElement("span", { className: "pct" }, contract > 0 ? pct.toFixed(1) + "%" : "—")
-          ),
-          contract > 0 ? /* @__PURE__ */ React.createElement("span", { className: "pc-labor-formula" }, m.formula) : null,
-          /* @__PURE__ */ React.createElement("div", { className: "pc-cost-bar" }, /* @__PURE__ */ React.createElement("div", { className: "pc-cost-bar-fill", style: { width: Math.min(pct, 100) + "%", background: m.bar } })),
-          isOpen && hasBody && /* @__PURE__ */ React.createElement(
-            "div",
-            // Reading the breakdown must not navigate away — swallow the click
-            // so it never reaches the column.
-            { className: "pc-cost-body", onClick: (e) => e.stopPropagation() },
-            rows.length ? /* @__PURE__ */ React.createElement("div", { className: "pc-cost-sub" }, m.sub) : null,
-            rows.map((r, i) => /* @__PURE__ */ React.createElement(
-              "div",
-              { key: i, className: "pc-cost-row" },
-              /* @__PURE__ */ React.createElement("span", { className: "lbl" }, /* @__PURE__ */ React.createElement("span", { className: "dot" + (r.dim ? " " + r.dim : "") }), r.lbl),
-              /* @__PURE__ */ React.createElement("span", { className: "val" }, r.val)
-            )),
-            m.note ? /* @__PURE__ */ React.createElement("div", { className: "pc-cost-note" }, m.note) : null
-          )
-        );
-      })),
-      /* @__PURE__ */ React.createElement(
-        "div",
-        { className: "pc-cost-foot" },
-        /* @__PURE__ */ React.createElement("span", { className: "lbl" }, "Total actual cost"),
-        staff ? null : /* @__PURE__ */ React.createElement("span", { className: "val" }, "₱ ", peso(spent)),
-        /* @__PURE__ */ React.createElement("div", { className: "pc-cost-stack" }, mods.map((m) => /* @__PURE__ */ React.createElement("div", { key: m.id, style: { width: Math.min(shareOf(m.amount), 100) + "%", background: m.bar } }))),
-        contract > 0 ? /* @__PURE__ */ React.createElement("span", { className: "note" }, totalPct.toFixed(1) + "% of " + (staff ? "the contract" : "₱ " + peso(contract) + " contract")) : null
-      )
-    ),
-    /* @__PURE__ */ React.createElement(
-      "section",
-      { className: "pc-wide-row" },
-      isAdditionalWorks ? null : /* @__PURE__ */ React.createElement(
-        "div",
-        { className: "pc-wide-card" },
-        /* @__PURE__ */ React.createElement("div", { className: "pc-cost-icon pc-icon-blue" }, Ico.calendar),
-        /* @__PURE__ */ React.createElement("span", { className: "pc-wide-title" }, "Billing Periods"),
-        /* @__PURE__ */ React.createElement("span", { className: "pc-help-tip", "data-tip": "Billing periods are monthly cycles where project funds are allocated. Each period tracks how much was spent on labor and materials versus what was budgeted." }, "?"),
-        /* @__PURE__ */ React.createElement("span", { className: "pc-wide-val" }, periodCount, " period", periodCount === 1 ? "" : "s"),
-        /* @__PURE__ */ React.createElement("button", { type: "button", className: "pc-wide-cta pc-wide-cta--soft", onClick: () => onOpen("periods") }, "Manage Periods", Ico.arrowR)
-      ),
-      /* @__PURE__ */ React.createElement(
-        "div",
-        { className: "pc-wide-card" },
-        /* @__PURE__ */ React.createElement("div", { className: "pc-cost-icon pc-icon-teal" }, Ico.hard),
-        /* @__PURE__ */ React.createElement("span", { className: "pc-wide-title" }, "Additional Works"),
-        /* @__PURE__ */ React.createElement("span", { className: "pc-help-tip", "data-tip": "Extra scope added to this project after the original contract (contract extensions / change orders). Record each Additional Works BOQ here." }, "?"),
-        /* @__PURE__ */ React.createElement("span", { className: "pc-wide-val" }, staff ? (additionalWorksCount || 0) + " entr" + ((additionalWorksCount || 0) === 1 ? "y" : "ies") : "₱ " + peso(additionalWorksTotal || 0)),
-        /* @__PURE__ */ React.createElement("button", { type: "button", className: "pc-wide-cta", onClick: () => onOpen("additionalWorks") }, "Manage", Ico.arrowR)
-      )
-    )
-  );
+//   ProjectLedger  what the job is worth, what it cost, what is left
+//   NeedsAction    the decisions waiting on the owner, in one place
+//   CostBudget     where every peso went, and whether a budget was watching it
+//   BillingBudgets the same money, billing by billing
+//   FlowCards      the two modules you leave the page for
+//
+// No peso is printed twice. The Gross Profit banner, the four-card project
+// snapshot, the Labor/Material/Overhead cost cards and the allocation rollup
+// used to state the same figures in four places; they are one story now.
+//
+// Staff (currentUserRole === 'staff') must not see peso amounts: the ledger
+// falls back to percentages, the funding line is dropped entirely, and the cost
+// rows print share-of-contract only. Budgets and the Target Margin Reserve are
+// owner-only — _pcAllocationSummary() returns null for everyone else — so an
+// admin still sees the money without the planning envelopes.
+function _pcInboxTotal(inboxPending) {
+  return Object.values(inboxPending || {}).reduce((sum, v) => sum + (Number(v) || 0), 0);
 }
-function Summarize({ project }) {
-  // One eye now governs the whole financial block: the Gross Profit banner is
-  // always visible, the figure breakdown attached under it is what hides. The
-  // old standalone KPI strip folded in here (KPIStrip is staff-only now).
+function ProjectLedger({ project, inboxPending }) {
+  const h = React.createElement;
+  // The green hero banner carries the profit; the eye collapses the funding
+  // line under it, the way it used to collapse the KPI row.
   const [figsOpen, setFigsOpen] = React.useState(false);
-  const [eqOpen, setEqOpen] = React.useState(false);
-  const actualCost = _projSpent(project);
-  const _m = _projMargin(project);
-  const grossProfit = _m.profit;
-  if (_staff()) {
-    return null;
-  }
-  const margin = _m.pct == null ? 0 : _m.pct;
-  const isLoss = grossProfit < 0;
-  // No accomplishment data => the figure assumes the job runs to completion.
-  // It must never be presented as an earned margin.
-  const _cp = _m.isForecast ? null : _m.completePct.toFixed(1);
-  const _heroLbl = (isLoss ? "Net Loss" : "Net Profit") + (_m.isForecast ? " \xB7 Forecast" : " \xB7 Earned");
-  const _heroSub = _m.isForecast
-    ? "Contract \u2212 Actual cost \xB7 assumes the job is completed"
-    : "Earned revenue \u2212 Actual cost \xB7 " + _cp + "% complete";
-  const _marginLbl = _m.isForecast ? "Forecast margin" : "Earned margin";
-  const _revLbl = _m.isForecast ? "Contract Revenue" : "Earned Revenue";
-  const _revSub = _m.isForecast ? "Full contract \xB7 not yet earned" : _cp + "% of contract accomplished";
-  const allocated = project.allocated || 0;
-  const remaining = allocated - actualCost;
-  const cover = project.coverCost || 0;
-  const kpis = [
-    { lbl: "Total Contract", val: "\u20B1 " + peso(project.revenue) },
-    { lbl: "Fund Allocated", val: "\u20B1 " + peso(allocated) },
-    { lbl: "Fund Spent", val: "\u20B1 " + peso(actualCost), accent: true },
-    { lbl: "Remaining", val: "\u20B1 " + peso(remaining), accent: remaining >= 0, warn: remaining < 0 },
-    { lbl: "Cover Expenses", val: "\u20B1 " + peso(cover), danger: cover > COVER_LIMIT }
+  if (!project) return null;
+  const staff = _staff();
+  const money = (v) => "₱ " + peso(v);
+  const contract = Number(project.revenue) || 0;
+  const spent = _projSpent(project);
+  const m = _projMargin(project);
+  const spentPct = contract > 0 ? spent / contract * 100 : null;
+  const receipts = _pcInboxTotal(inboxPending);
+  const isLoss = m.profit < 0;
+  // Revenue is EARNED as the accomplishment report signs work off. With no BOQ
+  // data the figure assumes the job runs to completion — it is a forecast, and
+  // saying "Earned" here would flatter every young project.
+  const heroName = isLoss ? "Net Loss" : "Net Profit";
+  const heroLbl = heroName + (m.isForecast ? " · Forecast" : " · Earned");
+  const rateLbl = m.isForecast ? "Forecast profit rate" : "Earned profit rate";
+  const cells = staff ? [
+    { lbl: "Actual Cost", val: spentPct == null ? "—" : spentPct.toFixed(1) + "%", note: "of contract spent", tone: "accent" },
+    { lbl: "Needs action", val: receipts + " receipt" + (receipts === 1 ? "" : "s"), note: receipts ? "need encoding" : "No receipts waiting", tone: receipts ? "warn" : "ok" }
+  ] : [
+    // The profit lives in the banner above — printing it here too is the
+    // duplication the redesign removed.
+    { lbl: "Total Contract", val: money(contract), note: contract > 0 ? "What the client agreed to pay" : "No contract value set" },
+    { lbl: "Actual Cost", val: money(spent), note: spentPct == null ? "Labor + Material + Overhead" : spentPct.toFixed(1) + "% of contract", tone: "accent" }
   ];
-  return /* @__PURE__ */ React.createElement("section", { className: "pc-summarize pc-summarize-stacked" }, /* @__PURE__ */ React.createElement(
-    "div",
-    {
-      className: "pc-sm-contract",
+  const heroSub = m.isForecast
+    ? "Contract − Actual cost · assumes the job is completed"
+    : "Earned revenue − Actual cost · " + m.completePct.toFixed(1) + "% complete";
+  // Cover money is already inside Actual Cost — it is a subset, never a fourth
+  // bucket — so this line reports it, it never adds it on top.
+  const allocated = Number(project.allocated) || 0;
+  const remaining = allocated - spent;
+  const cover = Number(project.coverCost) || 0;
+  const coverOver = cover > COVER_LIMIT;
+  const funding = [
+    { lbl: "Fund Allocated", val: money(allocated), note: "Client-funded periods only" },
+    { lbl: "Budget Remaining", val: money(remaining), note: "Fund Allocated − Actual Cost", tone: remaining < 0 ? "danger" : "ok" },
+    { lbl: "Cover Expenses", val: money(cover), note: "Company-fronted · already counted in Actual Cost", tone: coverOver ? "danger" : "", badge: coverOver ? "Over ₱" + COVER_LIMIT.toLocaleString("en-PH") : null }
+  ];
+  const foot = staff
+    ? (m.isForecast ? "No accomplishment has been signed off yet, so nothing has been earned or billed on this project."
+      : m.completePct.toFixed(1) + "% of the contract has been accomplished and signed off.")
+    : (m.isForecast ? "No accomplishment has been signed off yet, so nothing has been earned. " + heroName + " above is a forecast — Total Contract − Actual Cost, assuming the job finishes exactly as priced."
+      : m.completePct.toFixed(1) + "% of the contract is accomplished, so " + money(m.earned) + " is earned. " + heroName + " = Earned Revenue − Actual Cost.");
+  return h("section", { className: "pc-ledger", "aria-labelledby": "pc-ledger-title" },
+    h("h2", { id: "pc-ledger-title", className: "visually-hidden" }, "Project ledger"),
+    // Staff never see a profit figure, so they never see the banner.
+    staff ? null : h("div", {
+      className: "pc-sm-contract pc-ledger-hero",
       style: isLoss ? { background: "linear-gradient(135deg, #b00020 0%, #d64545 100%)" } : void 0
     },
-    /* @__PURE__ */ React.createElement("div", { className: "pc-sm-contract-text" }, /* @__PURE__ */ React.createElement("div", { className: "pc-sm-contract-lbl" }, _heroLbl), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-contract-sub" }, _heroSub)),
-    /* @__PURE__ */ React.createElement("div", { className: "pc-sm-hero-figures" }, /* @__PURE__ */ React.createElement("div", { className: "pc-sm-contract-val" }, "\u20B1 ", peso(grossProfit)), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-hero-margin" }, /* @__PURE__ */ React.createElement("div", { className: "pc-sm-hero-margin-val" }, margin.toFixed(1), "%"), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-hero-margin-lbl" }, _marginLbl)), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        type: "button",
-        className: "pc-eye-toggle",
-        "aria-expanded": figsOpen,
-        title: figsOpen ? "Hide the figure breakdown" : "Show the figure breakdown",
-        onClick: (e) => { e.stopPropagation(); setFigsOpen((o) => !o); }
-      },
-      _pcEye(figsOpen, 15),
-      figsOpen ? "Hide figures" : "Show figures"
-    ))
-  ), figsOpen && /* @__PURE__ */ React.createElement("div", { className: "pc-kpi-strip pc-kpi-attached" }, kpis.map((k, i) => /* @__PURE__ */ React.createElement("div", { key: i, className: "pc-kpi" }, /* @__PURE__ */ React.createElement("span", { className: "pc-kpi-lbl" }, k.lbl), /* @__PURE__ */ React.createElement("span", { className: "pc-kpi-val" + (k.accent ? " pc-accent" : "") + (k.warn ? " pc-warn" : "") + (k.danger ? " pc-danger" : "") }, k.val), k.danger && /* @__PURE__ */ React.createElement("span", { className: "pc-over-badge" }, "Over \u20B1", COVER_LIMIT.toLocaleString("en-PH"))))), figsOpen && /* @__PURE__ */ React.createElement("div", { className: "pc-sm-mathbar" }, /* @__PURE__ */ React.createElement("button", { type: "button", className: "pc-sm-math-toggle", "aria-expanded": eqOpen, onClick: () => setEqOpen((o) => !o) }, "Profit math", _pcChev(eqOpen, 14)), eqOpen && /* @__PURE__ */ React.createElement("div", { className: "pc-sm-equation" }, /* @__PURE__ */ React.createElement("div", { className: "pc-sm-label" }, _revLbl, /* @__PURE__ */ React.createElement("div", { className: "sub" }, _revSub)), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-val" }, "\u20B1 ", peso(_m.earned)), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-op" }, "\u2212"), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-label" }, "Actual Cost", /* @__PURE__ */ React.createElement("div", { className: "sub" }, "Labor + Material + Overhead")), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-val" }, "\u20B1 ", peso(actualCost)), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-op" }, "="), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-label" }, "Net Profit", /* @__PURE__ */ React.createElement("div", { className: "sub" }, margin.toFixed(1), "% margin")), /* @__PURE__ */ React.createElement("div", { className: "pc-sm-val " + (isLoss ? "warn" : "accent") }, "\u20B1 ", peso(grossProfit)))));
+      h("div", { className: "pc-sm-contract-text" },
+        h("div", { className: "pc-sm-contract-lbl" }, heroLbl),
+        h("div", { className: "pc-sm-contract-sub" }, heroSub)),
+      h("div", { className: "pc-sm-hero-figures" },
+        h("div", { className: "pc-sm-contract-val" }, money(m.profit)),
+        h("div", { className: "pc-sm-hero-margin" },
+          h("div", { className: "pc-sm-hero-margin-val" }, (m.pct == null ? "0.0" : m.pct.toFixed(1)) + "%"),
+          h("div", { className: "pc-sm-hero-margin-lbl" }, rateLbl)),
+        h("button", {
+          type: "button",
+          className: "pc-eye-toggle",
+          "aria-expanded": figsOpen,
+          title: figsOpen ? "Hide the funding figures" : "Show the funding figures",
+          onClick: (e) => { e.stopPropagation(); setFigsOpen((o) => !o); }
+        }, _pcEye(figsOpen, 15), figsOpen ? "Hide figures" : "Show figures"))),
+    h("div", { className: "pc-ledger-grid" }, cells.map((c) =>
+      h("div", { key: c.lbl, className: "pc-ledger-cell pc-ledger-cell--" + (c.tone || "neutral") },
+        h("span", { className: "lbl" }, c.lbl),
+        h("span", { className: "val" }, c.val),
+        h("span", { className: "note" }, c.note)))),
+    !staff && figsOpen && h("div", { className: "pc-ledger-funding" }, funding.map((f) =>
+      h("span", { key: f.lbl, className: "pc-ledger-fund pc-ledger-fund--" + (f.tone || "neutral") },
+        h("span", { className: "lbl" }, f.lbl),
+        h("span", { className: "val" }, f.val),
+        f.badge ? h("span", { className: "pc-over-badge" }, f.badge) : null,
+        h("span", { className: "note" }, f.note)))),
+    h("p", { className: "pc-ledger-foot" }, foot));
+}
+// Both warnings, the receipt queue and the billing link in ONE block you can act
+// on. The count keeps the old "needs action" arithmetic — receipts + months
+// without a budget + unattached overhead + an unlinked BOQ — while the rows
+// group them into the things you can actually do something about.
+//
+// Every row carries its OWN weight (`n`, how many things it stands for) and the
+// headline count is the sum of them. A parallel sum drifted: a project with no
+// billing periods at all listed one row under a "0 items" heading, because the
+// row came from configuredCount while the count came from legacyCount.
+function NeedsAction({ allocationSummary, inboxPending, onOpen }) {
+  const h = React.createElement;
+  if (_staff()) return null;
+  const s = allocationSummary;
+  const receipts = _pcInboxTotal(inboxPending);
+  const unattached = s && s.unallocatedIndirect > 0 ? 1 : 0;
+  const items = [];
+  if (receipts) items.push({
+    n: receipts,
+    title: receipts + " receipt" + (receipts === 1 ? "" : "s") + " waiting in the Expense Inbox",
+    note: "Encode them below so the cost lands on this project."
+  });
+  // A billing with no Fund Allocated yet is NOT an action item. The client pays
+  // when a billing is raised and collected, so work routinely runs ahead of the
+  // money: an unfunded billing is the normal state, not a lapse. Billing Budgets
+  // below still reports which ones are unfunded — quietly.
+  if (unattached) items.push({
+    n: 1,
+    title: "₱ " + peso(s.unallocatedIndirect) + " of overhead isn’t attached to any billing",
+    note: "It still counts in Total spent below, but no billing’s budget covers it.",
+    cta: "File it", act: () => onOpen("overhead")
+  });
+  // An unlinked Accomplishment Report is NOT an action item: the BOQ is a
+  // report the office raises when it has one, not a connection this project
+  // owes. Profit simply stays a Forecast until one exists, which the ledger
+  // already says in words.
+  const count = items.reduce((sum, it) => sum + it.n, 0);
+  if (!items.length) return h("section", { className: "pc-needs pc-needs--ok" },
+    h("span", { className: "pc-needs-ico", "aria-hidden": "true" }, "✓"),
+    h("p", null, "All caught up — nothing needs you on this project right now."));
+  return h("section", { className: "pc-needs", "aria-labelledby": "pc-needs-title" },
+    h("div", { className: "pc-needs-head" },
+      h("span", { className: "pc-needs-ico", "aria-hidden": "true" }, "!"),
+      h("h3", { id: "pc-needs-title" }, "Needs action"),
+      h("span", { className: "pc-needs-count" }, count + " item" + (count === 1 ? "" : "s"))),
+    items.map((it, i) => h("div", { className: "pc-needs-row", key: i },
+      h("div", { className: "pc-needs-txt" },
+        h("div", { className: "t" }, it.title),
+        h("div", { className: "n" }, it.note)),
+      it.cta ? h("button", { type: "button", className: "pc-needs-cta", onClick: it.act }, it.cta) : null)));
 }
 function _pcAllocationSummary(project, periods, payroll, expenses, overhead, allocationMap, folderIds) {
   if (window.currentUserRole !== "owner" || !project) return null;
@@ -1261,23 +1209,286 @@ function _pcAllocationSummary(project, periods, payroll, expenses, overhead, all
   return { ...pcProjectAllocationRollup(views, unallocated, margin.profit, margin.isForecast),
     legacyCount, configuredCount: views.filter(Boolean).length };
 }
-function AllocationRollup({ summary }) {
-  if (window.currentUserRole !== "owner" || !summary) return null;
+// Plain-language rollup (redesign 2026-09-21). Bands and thresholds still come from
+// pcAllocationStatus() — this only renames them for the reader, it never recomputes.
+const PC_ALLOC_TONE = { healthy: "ok", advisory: "warn", high: "over", over: "over", unbudgeted: "none", empty: "none" };
+const PC_ALLOC_SAYS = { healthy: "On track", advisory: "Getting close", high: "Almost used up", over: "Over budget", unbudgeted: "No budget set yet", empty: "No budget set yet" };
+// The billing-period card keeps its own shouted vocabulary, but the BANDS behind
+// it come from pcAllocationStatus() like everywhere else — a second hardcoded
+// threshold table here is exactly how the dashboard drifts from the reports.
+const PC_PERIOD_BANDS = {
+  healthy:    { label: "HEALTHY",   cls: "pc-fld-health-healthy",  color: "#1A5C3A" },
+  advisory:   { label: "WARNING",   cls: "pc-fld-health-warning",  color: "#A86B00" },
+  high:       { label: "WARNING",   cls: "pc-fld-health-warning",  color: "#A86B00" },
+  over:       { label: "OVER",      cls: "pc-fld-health-critical", color: "#c0392b" },
+  unbudgeted: { label: "NO BUDGET", cls: "pc-fld-health-warning",  color: "#A86B00" },
+  empty:      { label: "EMPTY",     cls: "pc-fld-health-healthy",  color: "#E5E5E5" }
+};
+// ── Cost and budget ──────────────────────────────────────────────────
+// One card: the three cost rows and the envelopes that watch them. The cost
+// cards and the allocation rollup were merged here so a peso is printed once.
+//
+// Labor and Material share ONE envelope — the direct-cost budget is 70% of the
+// month's fund by default and is never split between the two — so the budget
+// reading for that pair sits on a shared strip beneath them, not repeated on
+// each row. Overhead has its own (indirect) envelope and its own strip.
+//
+// Bands, thresholds and wording still come from pcAllocationStatus() via
+// PC_ALLOC_TONE / PC_ALLOC_SAYS; this only lays them out.
+function CostBudget({ project, summary, childMonths, payrollRaw, expensesRaw, overheadRaw, allocationMap, onOpen, inboxPending }) {
   const h = React.createElement;
+  if (!project) return null;
+  const staff = _staff();
+  // Budgets are owner-only planning envelopes: an admin sees the money, no
+  // envelope; staff see neither the money nor the envelope.
+  const owner = window.currentUserRole === "owner" && !!summary;
+  const money = (v) => "₱ " + peso(v);
+  const ib = inboxPending || { labor: 0, material: 0, overhead: 0 };
+  const lb = project.laborBreakdown || {};
+  const ob = project.overheadBreakdown || {};
+  const dc = project.docCounts || { po: 0, dr: 0, si: 0, pay: 0 };
+  const matCount = project.materialCount || 0;
+  const docsAttached = dc.po + dc.dr + dc.si + dc.pay;
+  const contract = Number(project.revenue) || 0;
+  const spent = _projSpent(project);
+  // Share of the contract — the same basis the cost cards used. With no contract
+  // on the folder yet, fall back to share-of-spend so the bars still read as a
+  // mix instead of collapsing to zero.
+  const shareOf = (v) => {
+    const base = contract > 0 ? contract : spent;
+    return base > 0 ? v / base * 100 : 0;
+  };
   const rows = [
-    ["Direct Budget", summary.directBudget],
-    ["Indirect Budget", summary.indirectBudget],
-    ["Target Margin Reserve", summary.targetMarginReserve],
-    ["Unallocated Indirect Cost", summary.unallocatedIndirect],
-    [summary.isForecast ? "Forecast Profit" : "Actual Earned Profit", summary.actualProfit]
+    {
+      id: "labor", title: "Labor Cost", icon: Ico.users, tone: "", bar: "#1A5C3A",
+      amount: project.labor || 0, inbox: ib.labor,
+      sub: "Wages and payroll for everyone on this site",
+      tip: "Total wages and payroll paid to all workers on site. Includes direct labor, indirect labor, and liability costs.",
+      detail: staff ? null : "Direct " + money(lb.direct || 0) + " · Liability " + money(lb.liability || 0)
+    },
+    {
+      id: "material", title: "Material Cost", icon: Ico.package, tone: " pc-icon-amber", bar: "#8B6914",
+      amount: project.material || 0, inbox: ib.material,
+      sub: matCount + " purchase" + (matCount === 1 ? "" : "s") + " for this site",
+      tip: "Total cost of all materials purchased for the project. Each transaction has supporting documents like PO, delivery receipt, invoice, and payment slip.",
+      // Counts, not money — safe for staff to see.
+      detail: docsAttached + " of " + matCount * 4 + " files attached — PO · Delivery · Invoice · Payment"
+    },
+    {
+      id: "overhead", title: "Overhead Cost", icon: Ico.briefcase, tone: " pc-icon-purple", bar: "#6B3F8F",
+      amount: project.overhead || 0, inbox: ib.overhead,
+      sub: "Supervision, utilities, permits, fuel",
+      tip: "Project overhead — the support people (coordinator, site supervision, procurement) plus site operating costs (utilities, fuel, rent, permits). Counted against the project's profit.",
+      detail: staff ? null : "Indirect labor " + money(ob.indirectLabor || 0) + " · Operating costs " + money(ob.expenses || 0)
+    }
   ];
-  if (!summary.isForecast && summary.configuredCount) rows.push(["Target Variance", summary.targetMarginVariance]);
-  return h("section", { className: "pc-allocation-rollup" },
-    h("h3", null, "Billing Allocations"),
-    h("dl", { className: "pc-allocation-totals" }, rows.map(([label, value]) =>
-      h("div", { key: label }, h("dt", null, label), h("dd", null, "\u20B1 ", peso(value))))),
-    summary.legacyCount > 0 && h("p", { className: "pc-allocation-note" }, "Allocation not configured: ", summary.legacyCount, " billing period", summary.legacyCount === 1 ? "" : "s"),
-    h("p", { className: "pc-allocation-note" }, "Target Margin Reserve: planning only"));
+  const row = (r) => h("div", { className: "pc-money-row", key: r.id },
+    h("div", {
+      className: "pc-money-row-head",
+      role: "button",
+      tabIndex: 0,
+      title: "Open the " + r.title.toLowerCase() + " transaction history",
+      onClick: () => onOpen(r.id),
+      onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(r.id); } }
+    },
+      h("span", { className: "pc-cost-icon" + r.tone }, r.icon),
+      h("span", { className: "pc-money-row-id" },
+        h("span", { className: "t" }, r.title),
+        h("span", { className: "s" }, r.sub)),
+      h("span", { className: "pc-help-tip", "data-tip": r.tip, onClick: (e) => e.stopPropagation() }, "?"),
+      _flowInboxBadge(r.inbox),
+      h("span", { className: "pc-money-figs" },
+        staff ? null : h("span", null,
+          h("span", { className: "lbl" }, "Spent"),
+          h("span", { className: "val" }, money(r.amount))),
+        h("span", { className: "pc-alloc-fig-end" },
+          h("span", { className: "lbl" }, "Share of contract"),
+          h("span", { className: "val" }, contract > 0 ? shareOf(r.amount).toFixed(1) + "%" : "—"))),
+      h("span", { className: "pc-money-open", "aria-hidden": "true" }, Ico.arrowR)),
+    h("div", { className: "pc-money-bar" },
+      h("div", { className: "pc-money-bar-fill", style: { width: Math.min(shareOf(r.amount), 100) + "%", background: r.bar } })),
+    r.detail ? h("div", { className: "pc-money-detail" }, r.detail) : null);
+  // One envelope strip. `spentAmt` is the PROJECT total for the rows it covers,
+  // so the strip, the rows above it and Total spent can never disagree.
+  const envelope = (key, label, note, spentAmt, budget) => {
+    const st = pcAllocationStatus(spentAmt, budget);
+    const tone = PC_ALLOC_TONE[st.key] || "none";
+    const over = budget > 0 && spentAmt > budget;
+    return h("div", { className: "pc-money-budget", key },
+      h("span", { className: "pc-money-budget-id" },
+        h("span", { className: "lbl" }, label),
+        h("span", { className: "note" }, note)),
+      h("span", { className: "pc-alloc-status pc-alloc-status--" + tone }, PC_ALLOC_SAYS[st.key] || ""),
+      h("span", { className: "pc-money-budget-figs" },
+        h("span", null,
+          h("span", { className: "lbl" }, "Budget"),
+          h("span", { className: "val" }, budget > 0 ? money(budget) : "—")),
+        h("span", { className: "pc-alloc-fig-end" },
+          h("span", { className: "lbl" }, over ? "Over by" : "Left"),
+          h("span", { className: "val pc-alloc-val--" + tone }, budget > 0 ? money(Math.abs(budget - spentAmt)) : "—"))),
+      h("span", { className: "pc-alloc-bar" },
+        h("span", { className: "pc-alloc-bar-fill pc-alloc-bar--" + tone, style: { width: st.pct == null ? "0%" : Math.min(st.pct, 100).toFixed(1) + "%" } })),
+      h("span", { className: "pc-alloc-used pc-alloc-val--" + tone }, st.pct == null ? "" : Math.round(st.pct) + "% used"));
+  };
+  const configured = owner ? Number(summary.configuredCount) || 0 : 0;
+  const missing = owner ? Number(summary.legacyCount) || 0 : 0;
+  const chip = missing === 0 && configured > 0
+    ? "All " + configured + " billing" + (configured === 1 ? "" : "s") + " has a split"
+    : missing ? missing + " billing" + (missing === 1 ? "" : "s") + " with no split yet" : "No billing has a split yet";
+  const reserve = owner ? summary.targetMarginReserve : 0;
+  const variance = owner ? summary.targetMarginVariance : null;
+  const stack = [["pc-alloc-seg--green", project.labor || 0], ["pc-alloc-seg--amber", project.material || 0], ["pc-alloc-seg--violet", project.overhead || 0]];
+  // Each group is its OWN block with air around it (design 1A, 2026-09-22): the
+  // gap is what tells the reader that Labor and Material answer to one budget
+  // and Overhead answers to another. The header names the group, so the shared
+  // envelope strip underneath a pair of rows has something to belong to.
+  //
+  // The note is owner-only in substance: an admin sees the grouping (direct vs
+  // indirect is an accounting fact) but never a word about an envelope.
+  const groupHead = (tone, label, note) => h("div", { className: "pc-money-group-head" },
+    h("span", { className: "pc-alloc-dot pc-alloc-dot--" + tone }),
+    h("span", { className: "pc-money-group-name" }, label),
+    h("span", { className: "pc-money-group-note" }, note));
+  return h(React.Fragment, null,
+    h("section", { className: "pc-money-stack" },
+      h("div", { className: "pc-money-stack-head" },
+        h("div", { className: "pc-alloc-headings" },
+          h("div", { className: "pc-alloc-eyebrow" }, "Cost and budget"),
+          h("h3", { className: "pc-alloc-title" }, owner
+            ? "What was spent, and whether it fits the budget"
+            : "What was spent on this project")),
+        owner ? h("span", { className: "pc-alloc-chip " + (missing === 0 && configured > 0 ? "pc-alloc-chip--ok" : "pc-alloc-chip--none") }, chip) : null),
+      h("div", { className: "pc-money-group-card" },
+        groupHead("green", "Direct costs", owner
+          ? "Labor and materials share one budget"
+          : "Spent straight on the job"),
+        row(rows[0]),
+        row(rows[1]),
+        owner ? envelope("direct", "One budget covers Labor and Material",
+          "The direct-cost envelope is never split between the two",
+          (project.labor || 0) + (project.material || 0), summary.directBudget) : null),
+      h("div", { className: "pc-money-group-card" },
+        groupHead("violet", "Indirect costs", owner
+          ? "Running the site — its own separate budget"
+          : "Running the site"),
+        row(rows[2]),
+        owner ? envelope("indirect", "Budget for Overhead Cost",
+          "The indirect-cost envelope for site overhead",
+          project.overhead || 0, summary.indirectBudget) : null),
+      // Planning, never revenue: the reserve is what the job is MEANT to earn,
+      // and it is never labelled "Profit" on its own.
+      owner ? h("div", { className: "pc-money-group-card pc-alloc-reserve" },
+        h("div", { className: "pc-alloc-group-head" },
+          h("span", { className: "pc-alloc-dot pc-alloc-dot--violet" }),
+          h("span", { className: "pc-alloc-group-id" },
+            h("span", { className: "pc-alloc-group-name" }, "Target Margin Reserve"),
+            h("span", { className: "pc-alloc-group-note" }, "Never spent — this is what the job is planned to earn")),
+          h("span", { className: "pc-alloc-figs" },
+            h("span", null,
+              h("span", { className: "lbl" }, summary.isForecast ? "Forecast profit" : "Earned so far"),
+              h("span", { className: "val" }, money(summary.actualProfit))),
+            h("span", null,
+              h("span", { className: "lbl" }, "Target margin reserve"),
+              h("span", { className: "val" }, reserve > 0 ? money(reserve) : "—")),
+            h("span", { className: "pc-alloc-fig-end" },
+              h("span", { className: "lbl" }, variance == null ? "" : variance >= 0 ? "Ahead of plan" : "Short of plan"),
+              h("span", { className: "val pc-alloc-val--" + (variance == null ? "none" : variance >= 0 ? "ok" : "over") },
+                variance == null ? (summary.isForecast ? "No comparison yet" : "No target yet") : money(Math.abs(variance))))))) : null,
+      h("div", { className: "pc-money-group-card" },
+      h("div", { className: "pc-alloc-total" },
+        h("span", { className: "pc-alloc-total-lbl" }, "Total spent"),
+        staff ? null : h("span", { className: "pc-alloc-total-amt" }, money(spent)),
+        h("span", { className: "pc-alloc-stack" }, stack.map(([cls, v], i) =>
+          h("span", { key: i, className: "pc-alloc-seg " + cls, style: { width: Math.min(shareOf(v), 100) + "%" } }))),
+        h("span", { className: "pc-alloc-total-cap" }, contract > 0
+          ? shareOf(spent).toFixed(1) + "% of " + (staff ? "the contract" : money(contract) + " contract")
+          : "No contract value set")))),
+    owner ? h(BillingBudgets, { childMonths, payrollRaw, expensesRaw, overheadRaw, allocationMap, onOpen }) : null);
+}
+// The same money, billing by billing — NOT month by month: the client pays on the
+// billing's schedule, so each row is named by the billing it is (Downpayment,
+// Progress Billing #2, Final Payment) with the month it was raised underneath.
+// Owner-only: every column here is a planning envelope. A cover/president period
+// has no allocation and is left out.
+function BillingBudgets({ childMonths, payrollRaw, expensesRaw, overheadRaw, allocationMap, onOpen }) {
+  const h = React.createElement;
+  const money = (v) => "₱ " + peso(v);
+  const months = (childMonths || []).filter((m) => m.fundingType !== "president").map((m) => {
+    const actual = _pcActualsForPeriod(m, payrollRaw || [], expensesRaw || [], overheadRaw || []);
+    const snap = (allocationMap || {})[m.id];
+    const budget = Number(m.monthlyBudget) || 0;
+    const view = pcPeriodAllocationView(budget, snap, actual.directActual, actual.indirectActual);
+    const spent = actual.directActual + actual.indirectActual;
+    const st = pcAllocationStatus(spent, view ? view.spendableBudget : 0);
+    return {
+      id: m.id, name: _pcBillingName(m), when: _pcBillingWhen(m),
+      // A period with no snapshot reads "Not set up" — never back-filled with
+      // the defaults, because nobody chose them.
+      policy: snap ? [snap.directPct, snap.indirectPct, snap.targetMarginPct].map((n) => Number(n)).join(" / ") : "Not set up",
+      // The Target Margin Reserve is NOT spendable, so `st.pct` is measured
+      // against spendableBudget — print that same figure, or the row reads
+      // "₱100,000 budget, ₱90,000 spent, 100% used" and contradicts itself.
+      configured: !!snap, budget: view ? money(view.spendableBudget) : "—", spent: money(spent),
+      tone: PC_ALLOC_TONE[st.key] || "none",
+      barW: st.pct == null ? "100%" : Math.min(st.pct, 100).toFixed(1) + "%",
+      usage: st.pct == null ? "No budget" : Math.round(st.pct) + "%"
+    };
+  });
+  if (!months.length || !months.some((p) => p.configured)) return null;
+  return h("section", { className: "pc-alloc-card pc-months-card" },
+    h("div", { className: "pc-alloc-head" },
+      h("div", { className: "pc-alloc-headings" },
+        h("div", { className: "pc-alloc-eyebrow" }, "Billing by billing"),
+        h("h3", { className: "pc-alloc-title" }, "Billing Budgets")),
+      h("button", { type: "button", className: "pc-months-cta", onClick: () => onOpen("periods") }, "Manage Periods")),
+    h("div", { className: "pc-alloc-periods" },
+      h("table", { className: "pc-alloc-table" },
+        h("caption", { className: "visually-hidden" }, "Budget and spending by billing"),
+        h("thead", null, h("tr", null,
+          h("th", { scope: "col" }, "Billing"),
+          h("th", { scope: "col" }, "Split"),
+          h("th", { scope: "col", className: "num" }, "Budget to spend"),
+          h("th", { scope: "col", className: "num" }, "Spent"),
+          h("th", { scope: "col" }, "Used"))),
+        h("tbody", null, months.map((p) => h("tr", { key: p.id },
+          h("th", { scope: "row", className: "pc-alloc-pname" }, p.name,
+            p.when ? h("span", { className: "pc-alloc-pwhen" }, p.when) : null),
+          h("td", null, h("span", { className: "pc-alloc-policy" + (p.configured ? "" : " is-unset") }, p.policy)),
+          h("td", { className: "num" }, p.budget),
+          h("td", { className: "num strong" }, p.spent),
+          h("td", null, h("span", { className: "pc-alloc-pused" },
+            h("span", { className: "pc-alloc-bar" },
+              h("span", { className: "pc-alloc-bar-fill pc-alloc-bar--" + p.tone, style: { width: p.barW } })),
+            h("span", { className: "pc-alloc-val--" + p.tone }, p.usage)))))))));
+}
+// ── Module rows ──────────────────────────────────────────────────────
+// The two modules you leave the overview for. The Labor / Material / Overhead
+// cost cards that used to sit above these moved into CostBudget, so the same
+// pesos are no longer printed in two places.
+function FlowCards({ onOpen, periodCount, additionalWorksTotal, additionalWorksCount, isAdditionalWorks }) {
+  const staff = _staff();
+  return /* @__PURE__ */ React.createElement(
+    "section",
+    { className: "pc-wide-row" },
+    isAdditionalWorks ? null : /* @__PURE__ */ React.createElement(
+      "div",
+      { className: "pc-wide-card" },
+      /* @__PURE__ */ React.createElement("div", { className: "pc-cost-icon pc-icon-blue" }, Ico.calendar),
+      /* @__PURE__ */ React.createElement("span", { className: "pc-wide-title" }, "Billing Periods"),
+      /* @__PURE__ */ React.createElement("span", { className: "pc-help-tip", "data-tip": "A billing period is one billing to the client — Mobilization, Downpayment, a numbered Progress Billing, or the Final Payment. It is raised and collected on the billing’s own schedule, not monthly. Each one holds the fund actually received and tracks what was spent against it." }, "?"),
+      /* @__PURE__ */ React.createElement("span", { className: "pc-wide-val" }, periodCount, " period", periodCount === 1 ? "" : "s"),
+      /* @__PURE__ */ React.createElement("button", { type: "button", className: "pc-wide-cta pc-wide-cta--soft", onClick: () => onOpen("periods") }, "Manage Periods", Ico.arrowR)
+    ),
+    /* @__PURE__ */ React.createElement(
+      "div",
+      { className: "pc-wide-card" },
+      /* @__PURE__ */ React.createElement("div", { className: "pc-cost-icon pc-icon-teal" }, Ico.hard),
+      /* @__PURE__ */ React.createElement("span", { className: "pc-wide-title" }, "Additional Works"),
+      /* @__PURE__ */ React.createElement("span", { className: "pc-help-tip", "data-tip": "Extra scope added to this project after the original contract (contract extensions / change orders). Record each Additional Works BOQ here." }, "?"),
+      /* @__PURE__ */ React.createElement("span", { className: "pc-wide-val" }, staff ? (additionalWorksCount || 0) + " entr" + ((additionalWorksCount || 0) === 1 ? "y" : "ies") : "₱ " + peso(additionalWorksTotal || 0)),
+      /* @__PURE__ */ React.createElement("button", { type: "button", className: "pc-wide-cta", onClick: () => onOpen("additionalWorks") }, "Manage", Ico.arrowR)
+    )
+  );
 }
 function AllocationBands({ view }) {
   if (window.currentUserRole !== "owner" || !view) return null;
@@ -1338,13 +1549,27 @@ function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, ov
   const openCreate = () => window.openCreateMonthModal && window.openCreateMonthModal(project.id);
   const openEdit = id => window.openEditProjectModal && window.openEditProjectModal(id);
   const openDelete = id => window.confirmDeleteProject && window.confirmDeleteProject(id);
-  const FUNDING_LBLS = { mobilization: "Mobilization", downpayment: "Downpayment", progress: "Progress Billing", final: "Final Payment", president: "Cover Expenses" };
   const cards = childMonths.map(m => {
     const actual = _pcActualsForPeriod(m, payrollRaw, expensesRaw, overheadRaw);
     const cover = m.fundingType === "president";
     const budget = cover ? 0 : Number(m.monthlyBudget) || 0;
-    return { id: m.id, label: (m.month + " " + m.year).trim(), fundingLabel: FUNDING_LBLS[m.fundingType] || "Billing Period",
-      cover, budget, totalCost: actual.directActual + actual.indirectActual,
+    // Materials split out of directActual so Labor reads as DIRECT labor only;
+    // indirect payroll + period-attributed overhead stay in Overhead, per the money model.
+    const mat = expensesRaw.filter(e => e.projectId === m.id).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+    const lab = actual.directActual - mat;
+    const ovh = actual.indirectActual;
+    const totalCost = actual.directActual + actual.indirectActual;
+    const noBudget = budget <= 0;
+    const remain = budget - totalCost;
+    // The card's own stats read against the WHOLE period budget (Period Budget /
+    // Remaining right above), so the badge measures the same thing — but the
+    // bands and the percentage come from the shared engine, never from here.
+    const st = pcAllocationStatus(totalCost, budget);
+    const band = PC_PERIOD_BANDS[st.key] || PC_PERIOD_BANDS.empty;
+    const spentPct = st.pct == null ? 0 : st.pct;
+    return { id: m.id, label: _pcBillingWhen(m) || _pcBillingName(m), fundingLabel: _pcBillingName(m),
+      cover, budget, mat, lab, ovh, totalCost, remain, noBudget, spentPct,
+      healthCls: band.cls, healthLabel: band.label, barClr: band.color,
       view: owner && !cover ? pcPeriodAllocationView(budget, (allocationMap || {})[m.id], actual.directActual, actual.indirectActual) : null,
       expCount: expensesRaw.filter(e => e.projectId === m.id).length,
       payCount: payrollRaw.filter(p => p.projectId === m.id).length };
@@ -1352,15 +1577,29 @@ function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, ov
   const totalAllocated = cards.reduce((sum, c) => sum + c.budget, 0);
   const totalSpent = cards.reduce((sum, c) => sum + c.totalCost, 0);
   const historyPeriod = owner && cards.find(c => c.id === historyId && !c.cover);
-  const stat = (label, value) => h("div", { className: "pc-period-stat", key: label },
-    h("span", { className: "lbl" }, label), h("span", { className: "val" }, "\u20B1 ", peso(value)));
+  // Two DIFFERENT styles: .drill-stat is the big header block, .pc-period-stat the
+  // compact in-card row. Using the card class in the header kills .drill-stat's type scale.
+  const headStat = (label, value, raw) => h("div", { className: "drill-stat", key: label },
+    h("div", { className: "lbl" }, label),
+    h("div", { className: "val" + (raw === "accent" ? " total" : "") }, raw === true ? value : ["₱ ", peso(value)]));
+  const stat = (label, value, cls) => h("div", { className: "pc-period-stat", key: label },
+    h("span", { className: "lbl" }, label),
+    h("span", { className: "val" + (cls ? " " + cls : "") }, value === null
+      ? h("em", { style: { color: "var(--text-light)", fontStyle: "normal", fontSize: 12 } }, "Not set")
+      : ["₱ ", peso(value)]));
   return h("section", { className: "drill" },
     h("button", { className: "back-btn", onClick: onBack }, Ico.arrowL, " Back to Project Control"),
     h("div", { className: "drill-head" },
-      h("div", null, h("h2", null, "Billing Periods"), h("div", { className: "sub" }, project.name)),
+      h("div", null,
+        h("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Billing Periods · Fund Allocated per billing"),
+        h("h2", null, "Billing Periods"),
+        h("div", { className: "sub" }, project.name, project.code ? " · " + project.code : "")),
       h("button", { className: "btn-primary", onClick: openCreate }, Ico.plus, " New Billing Period")),
     owner && h("div", { className: "drill-stats" },
-      stat("Total Allocated", totalAllocated), stat("Total Spent", totalSpent), stat("Remaining", totalAllocated - totalSpent)),
+      headStat("Periods", cards.length, true),
+      headStat("Total Allocated", totalAllocated),
+      headStat("Total Spent", totalSpent),
+      headStat("Remaining", totalAllocated - totalSpent, totalAllocated - totalSpent >= 0 ? "accent" : "")),
     !cards.length ? h("div", { className: "pc-feed-empty" }, "No billing periods yet.")
       : h("div", { className: "pc-period-grid" }, cards.map(c => h("div", { key: c.id, className: "pc-period-card" },
         h("div", { className: "pc-period-head" },
@@ -1369,12 +1608,22 @@ function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, ov
             h("button", { className: "pc-row-icon", title: "Edit period", "aria-label": "Edit " + c.label, onClick: () => openEdit(c.id) }, Ico.pencil),
             h("button", { className: "pc-row-icon pc-row-icon-danger", title: "Delete period", "aria-label": "Delete " + c.label, onClick: () => openDelete(c.id) }, Ico.trash))),
         owner && h("div", { className: "pc-period-stats" },
-          !c.cover && stat("Period Budget", c.budget), stat(c.cover ? "Cover Expenses" : "Spent", c.totalCost)),
+          !c.cover && stat("Period Budget", c.noBudget ? null : c.budget),
+          stat("Materials", c.mat),
+          stat("Labor", c.lab),
+          c.ovh > 0 && stat("Overhead", c.ovh),
+          stat(c.cover ? "Cover Expenses" : "Spent", c.totalCost, "pc-fld-stat-accent"),
+          !c.cover && !c.noBudget && stat("Remaining", c.remain, c.remain >= 0 ? "pc-fld-stat-accent" : "pc-fld-stat-warn")),
+        owner && h("div", { className: "pc-fld-card-health" },
+          h("span", { className: "pc-fld-health-badge " + c.healthCls }, c.healthLabel),
+          h("span", { className: "pc-fld-card-pct" }, c.noBudget ? (c.totalCost > 0 ? "No budget" : "Empty") : c.spentPct.toFixed(1) + "% used")),
+        owner && h("div", { className: "pc-fld-card-progress" },
+          h("div", { className: "pc-fld-card-progress-fill", style: { width: Math.min(c.spentPct, 100) + "%", background: c.barClr } })),
         owner && !c.cover && (c.view ? h(AllocationBands, { view: c.view })
           : h("div", { className: "pc-allocation-legacy" }, h("span", null, "Allocation not configured"),
             h("button", { type: "button", className: "pc-btn-ghost", onClick: () => { if (window.currentUserRole === "owner") openEdit(c.id); } }, Ico.plus, " Apply Policy"))),
         owner && !c.cover && h("button", { type: "button", className: "pc-btn-ghost pc-allocation-history-button", onClick: () => { if (window.currentUserRole === "owner") setHistoryId(c.id); } }, Ico.calendar, " Allocation History"),
-        h("div", { className: "pc-period-meta" }, c.expCount, " expenses / ", c.payCount, " payroll entries")))),
+        h("div", { className: "pc-period-meta" }, c.expCount, " expense", c.expCount !== 1 ? "s" : "", " · ", c.payCount, " payroll entr", c.payCount !== 1 ? "ies" : "y")))),
     historyPeriod && h(AllocationHistory, { key: historyPeriod.id, periodId: historyPeriod.id, periodLabel: historyPeriod.label, adjustments: allocationAdjustments, onClose: () => setHistoryId(null) }));
 }
 function RecentEntries({ onOpen, laborTx, materialTx }) {
@@ -1528,6 +1777,7 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
   const [adding, setAdding] = React.useState(false);
   const [form, setForm] = React.useState({ category: "", amount: "", date: _ovhdLocalToday(), description: "", billingPeriodId: "" });
   const periods = (childMonths || []).filter(p => folderId && p.folderId === folderId);
+  const defaultPeriodId = _ovhdDefaultPeriodId(periods);
   const periodContextRef = React.useRef(null);
   periodContextRef.current = { folderId, periods };
   React.useEffect(() => () => { periodContextRef.current = null; }, []);
@@ -1535,11 +1785,16 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
   React.useEffect(() => {
     if (form.billingPeriodId && !billingPeriodId) setForm(current => ({ ...current, billingPeriodId: "" }));
   }, [folderId, childMonths, form.billingPeriodId, billingPeriodId]);
-  const periodName = row => {
-    const id = row.fromPayroll ? row.projectId : row.billingPeriodId;
+  const periodLabel = id => {
     const period = periods.find(p => p.id === id);
     return period ? (period.name || [period.month, period.year].filter(Boolean).join(" ") || period.id) : "Unallocated";
   };
+  const periodName = row => periodLabel(row.fromPayroll ? row.projectId : row.billingPeriodId);
+  // The billing period answers itself (see _ovhdDefaultPeriodId) and stays collapsed
+  // to a line of text, so the common entry asks for nothing. "Change" opens the
+  // picker for the costs the default gets wrong — rent and anything else spanning
+  // the whole job, which belongs in Unallocated.
+  const [periodOpen, setPeriodOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [receiptFile, setReceiptFile] = React.useState(null);   // staged until save
   // Set while editing an existing row — the same modal serves add and edit.
@@ -1621,7 +1876,7 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
       }
       setAdding(false);
       setEditingId(null);
-      setForm({ category: "", amount: "", date: _ovhdLocalToday(), description: "", billingPeriodId: "" });
+      setForm({ category: "", amount: "", date: _ovhdLocalToday(), description: "", billingPeriodId: defaultPeriodId });
       setReceiptFile(null);
     } catch (err) { alert("Save failed: " + (err.message || err)); }
     setSaving(false);
@@ -1647,6 +1902,7 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
       billingPeriodId: periods.some(p => p.id === x.billingPeriodId) ? x.billingPeriodId : ""
     });
     setReceiptFile(null);
+    setPeriodOpen(false);
     setEditingId(x.id);
     setAdding(true);
   };
@@ -1676,7 +1932,7 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
   const ocm = _ocmStatus(contractAmount, ocmPct, allTimeOverhead);
   const setOcmPct = async () => {
     const v = prompt(
-      "Overhead (OCM) allowance as a % of the contract \u2014 the overhead you priced into the BOQ (typically 8\u201312). Enter 0 to remove.",
+      "Site overhead allowance as a % of the contract \u2014 the overhead priced into the BOQ (often called OCM, typically 8\u201312%). Enter 0 to remove.",
       ocmPct || ""
     );
     if (v === null) return;
@@ -1693,12 +1949,12 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
     sub ? h("div", { style: { font: "400 11px 'IBM Plex Sans'", color: "var(--text-light)", marginTop: 2 } }, sub) : null);
   const ocmPanel = _staff() ? null : h("div", { style: { border: "1px solid " + (ocm && ocm.over ? "#f3c1bb" : "#e7e6e2"), borderRadius: 14, background: ocm && ocm.over ? "#fdf6f5" : "#fff", padding: "16px 20px", marginBottom: 14 } },
     h("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" } },
-      h("div", { style: { font: "600 13px 'IBM Plex Sans'" } }, "OCM Allowance ",
-        h("span", { className: "pc-help-tip", "data-tip": "The overhead you PRICED into this contract (OCM % of the contract amount) versus the overhead you have actually spent \u2014 all-time, unaffected by the period filter. If Spent passes the allowance, this project's overhead is eating margin you never priced.", onClick: (e2) => e2.stopPropagation() }, "?")),
-      _ocmBtn(ocm ? "Edit %" : "Set OCM %")),
+      h("div", { style: { font: "600 13px 'IBM Plex Sans'" } }, "Site overhead allowance ",
+        h("span", { className: "pc-help-tip", "data-tip": "The site overhead priced into this contract (often called OCM) versus what has actually been spent. This comparison is all-time and is not changed by the period filter.", onClick: (e2) => e2.stopPropagation() }, "?")),
+      _ocmBtn(ocm ? "Edit %" : "Set allowance %")),
     !ocm
       ? h("div", { style: { font: "400 12.5px 'IBM Plex Sans'", color: "var(--text-light)", marginTop: 8 } },
-          "No allowance set. Enter the OCM % you priced into this contract to see whether overhead is staying inside what the client is already paying for.")
+          "No allowance set. Enter the site overhead percentage priced into this contract to see whether spending stays inside what the client is already paying for.")
       : h(React.Fragment, null,
           h("div", { style: { display: "flex", gap: 26, flexWrap: "wrap", marginTop: 12 } },
             _ocmFig("Priced Allowance", "\u20B1 " + peso(ocm.allowance), ocm.pct + "% of \u20B1 " + peso(contractAmount) + " contract"),
@@ -1769,8 +2025,15 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
   const modal = adding ? h("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16 }, onClick: (ev) => { if (ev.target === ev.currentTarget) closeModal(); } },
     h("div", { style: { background: "#fff", borderRadius: 16, width: "100%", maxWidth: 460, padding: 24 } },
       h("h3", { style: { font: "700 16px 'IBM Plex Sans'", margin: "0 0 16px" } }, editingId ? "Edit Overhead Expense" : "Add Overhead Expense"),
-      field("Billing Period", h("select", { id: "ovhdDrillBillingPeriod", name: "billingPeriodId", value: billingPeriodId || "", onChange: ev => setForm({ ...form, billingPeriodId: ev.target.value }), style: inStyle },
-        h("option", { value: "" }, "Unallocated"), periods.map(p => h("option", { key: p.id, value: p.id }, p.name || [p.month, p.year].filter(Boolean).join(" ") || p.id)))),
+      field("Billing Period", periodOpen
+        ? h("select", { id: "ovhdDrillBillingPeriod", name: "billingPeriodId", value: billingPeriodId || "", onChange: ev => setForm({ ...form, billingPeriodId: ev.target.value }), style: inStyle },
+            h("option", { value: "" }, "Unallocated"), periods.map(p => h("option", { key: p.id, value: p.id }, p.name || [p.month, p.year].filter(Boolean).join(" ") || p.id)))
+        : h(React.Fragment, null,
+            h("div", { style: { display: "flex", alignItems: "center", gap: 10, padding: "9px 11px", border: "1.5px solid #e5e7eb", borderRadius: 9, background: "#faf9f7" } },
+              h("span", { id: "ovhdDrillBillingPeriodLabel", style: { font: "600 14px 'IBM Plex Sans'", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, periodLabel(billingPeriodId)),
+              h("button", { type: "button", id: "ovhdDrillBillingPeriodChange", onClick: () => setPeriodOpen(true), style: { border: 0, background: "none", color: "var(--brand-green)", font: "600 12.5px 'IBM Plex Sans'", cursor: "pointer", padding: 0, flex: "none" } }, "Change")),
+            h("div", { style: { font: "400 11px 'IBM Plex Sans'", color: "#6b7280", marginTop: 5, lineHeight: 1.45 } },
+              "Costs that span the whole job — rent, permits, security — belong in Unallocated."))),
       // Free text + suggestions: type any category, or pick one you've used before.
       // The old "Indirect Support (Supervisor/Foreman/Admin/Engineer)" shortcut is gone
       // on purpose \u2014 those people are paid through Expenses -> Payroll as Overhead /
@@ -1811,12 +2074,25 @@ function OverheadDrill({ project, onBack, overheadTx, indirectTx, folderId, chil
       h("div", { className: "eyebrow", style: { marginBottom: 10 } }, "Overhead Cost \xB7 Project Operating Costs"),
       h("h2", null, "Overhead Expenses"),
       h("div", { className: "sub" }, esc(project && project.name), project && project.code ? " \xB7 " + project.code : "")),
-    h("button", { onClick: () => { setEditingId(null); setReceiptFile(null); setForm({ category: "", amount: "", date: _ovhdLocalToday(), description: "", billingPeriodId: "" }); setAdding(true); }, style: { display: "inline-flex", alignItems: "center", gap: 8, background: "var(--brand-green)", color: "#fff", border: 0, borderRadius: 10, padding: "11px 20px", font: "700 13px 'IBM Plex Sans'", cursor:"pointer", whiteSpace: "nowrap", flex: "none" } }, "+ Add Expense"));
+    h("button", { onClick: () => { setEditingId(null); setReceiptFile(null); setForm({ category: "", amount: "", date: _ovhdLocalToday(), description: "", billingPeriodId: defaultPeriodId }); setPeriodOpen(false); setAdding(true); }, style: { display: "inline-flex", alignItems: "center", gap: 8, background: "var(--brand-green)", color: "#fff", border: 0, borderRadius: 10, padding: "11px 20px", font: "700 13px 'IBM Plex Sans'", cursor:"pointer", whiteSpace: "nowrap", flex: "none" } }, "+ Add Expense"));
 
   return h("section", { className: "drill" },
     h("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"),
     h(ExpenseInboxMount, { folderId, label: project && project.name || "", kind: "overhead" }),
     head, ocmPanel, kpis, body, modal);
+}
+// Billing period a NEW project-overhead expense arrives pre-filled with, so the
+// form does not ask a question it can answer itself. Mirrors the direct-cost
+// auto-pick in expenses-module.js (handleAddExpense): the current client-funded
+// billing period — highest billingNumber, falling back to the last one listed.
+// A cover/president period holds no allocation and is never auto-picked. This
+// only moves where the peso is SHOWN (it is in Spent either way), and the field
+// stays editable — Unallocated is still the right answer for rent and anything
+// else that belongs to no single period.
+function _ovhdDefaultPeriodId(periods) {
+  const funded = (periods || []).filter(p => p.fundingType !== "president" && (p.monthlyBudget || 0) > 0);
+  if (!funded.length) return "";
+  return funded.reduce((best, p) => ((p.billingNumber || 0) >= (best.billingNumber || 0) ? p : best), funded[0]).id;
 }
 function _awId() { return Math.random().toString(36).slice(2) + Date.now().toString(36); }
 function _awNewItem() { return { id: _awId(), description: "", qty: "", unit: "", materialCost: "", laborCost: "" }; }
@@ -3587,7 +3863,7 @@ function PortalApp() {
       periodCount: childMonths.length,
       ...(isOwner ? { allocationSummary } : {})
     }
-  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(Summarize, { project, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [] }), /* @__PURE__ */ isOwner && React.createElement(AllocationRollup, { summary: allocationSummary }), React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { project, onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId), inboxPending }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId, pmPaidByContractId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { key: projectId, project, childMonths, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, ...allocationCosts, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [], onBack: () => setView("dashboard") })));
+  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(ProjectLedger, { project, inboxPending }), /* @__PURE__ */ React.createElement(NeedsAction, { allocationSummary: isOwner ? allocationSummary : null, inboxPending, onOpen: setView }), /* @__PURE__ */ React.createElement(CostBudget, { project, summary: isOwner ? allocationSummary : null, childMonths, ...allocationCosts, allocationMap: isOwner ? visibleAllocationMap : {}, onOpen: setView, inboxPending }), React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId) }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId, pmPaidByContractId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { key: projectId, project, childMonths, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, ...allocationCosts, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [], onBack: () => setView("dashboard") })));
 }
 (function() {
   const mount = document.getElementById("dacsPortalRoot");

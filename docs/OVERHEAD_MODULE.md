@@ -232,6 +232,14 @@ Three rules make the arithmetic safe:
   project-overhead row is in that project's Spent exactly once. Attributing is a reporting
   decision, not an accounting entry.
 - **Null is the normal state.** Rent and electricity have no period and should not be given one.
+  The form nevertheless **opens on the current client-funded period** — the highest
+  `billingNumber` with a Fund Allocated, mirroring how direct cost auto-picks a period in
+  `expenses-module.js` (`handleAddExpense`) so nobody has to answer the question twice.
+  A cover/president period holds no allocation and is never the default, editing never
+  re-defaults a row (a deliberate Unallocated survives a reopen), and Unallocated stays one
+  click away. Both forms read the same rule — `_ovhdDefaultPeriodId()`, once in
+  `portal-app.compiled.js` and once in `overhead-module.js` — so the Overhead page and the
+  drill cannot drift apart.
 - **A stale or cross-folder link is treated as unallocated.** A `billingPeriodId` pointing at
   another folder's period stays on its own job and consumes **no** envelope — it must never eat
   into another project's Indirect budget.
