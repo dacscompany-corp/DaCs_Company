@@ -49,3 +49,26 @@ package-lock.json
 *.txt
 gradlew
 gradlew.bat
+
+# ── android-receipt-share/ is HAND-WRITTEN source, so it is tracked ─────────
+# The blanket app/, gradle/, gradlew rules above exist for the bubblewrap-
+# GENERATED project in android/. This one is ours: a small share-sheet receiver
+# that exists because Chrome on MIUI will not pass a shared file to a web share
+# target (see docs/RECEIPT_SHARE_APP.md). Re-include its sources, keep its
+# build output and machine-local paths out.
+!android-receipt-share/
+!android-receipt-share/*.gradle
+!android-receipt-share/gradle.properties
+!android-receipt-share/gradlew
+!android-receipt-share/gradlew.bat
+!android-receipt-share/gradle/
+!android-receipt-share/gradle/**
+!android-receipt-share/app/
+!android-receipt-share/app/*.gradle
+!android-receipt-share/app/src/
+!android-receipt-share/app/src/**
+
+android-receipt-share/build/
+android-receipt-share/app/build/
+android-receipt-share/.gradle/
+android-receipt-share/local.properties

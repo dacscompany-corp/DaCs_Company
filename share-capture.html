@@ -78,6 +78,7 @@
   .sc-diag { margin-top: 12px; padding: 11px 14px; border-radius: 11px; font: 500 13px 'IBM Plex Sans'; line-height: 1.45; }
   .sc-diag.bad { background: #fbeeec; border: 1px solid #f2d3cd; color: #a1443a; }
   .sc-diag.ok  { background: #eaf3ee; border: 1px solid #cfe5d8; color: #27614a; }
+  .sc-diag.note { background: #f6f5f1; border: 1px solid #e6e5e0; color: #5d6b63; }
   .sc-diag-btn { margin-left: 4px; padding: 5px 12px; border: none; border-radius: 8px; background: #a1443a; color: #fff; font: 700 12px 'IBM Plex Sans'; cursor: pointer; }
   .sc-diag-pick { display: block; width: 100%; margin-top: 12px; padding: 14px; border: none; border-radius: 12px; background: #157a52; color: #fff; font: 700 15px 'IBM Plex Sans'; cursor: pointer; }
   .sc-diag-more { margin-top: 8px; }
@@ -150,7 +151,7 @@ const SHARE_META  = '/shared-meta';
 // empty. Without this the three failure modes — the service worker never ran,
 // the share carried no file, the file was rejected here — all render as the
 // same blank picker, which is what made this impossible to diagnose on a phone.
-let scIntake = { fromShare: false, swRan: false, param: null, cached: 0, meta: null, rejected: [], swActive: null, error: '' };
+let scIntake = { fromShare: false, swRan: false, param: null, cached: 0, meta: null, rejected: [], swActive: null, error: '', native: false, nativeCount: 0 };
 try {
   const q = new URLSearchParams(location.search);
   scIntake.fromShare = q.has('shared');
@@ -232,6 +233,39 @@ async function scLoadSharedFiles() {
   } catch (e) {
     scIntake.error = 'Could not read the shared file: ' + ((e && (e.message || e.name)) || e);
   }
+}
+
+// The Android receiver app (android-receipt-share/) injects window.DacsNative and
+// hands the shared receipt across, because Chrome on these phones will not. When
+// that bridge is present it is the ONLY intake that matters — the service-worker
+// path is skipped, since there is no share-sheet POST in this flow at all.
+function scHasNativeBridge() {
+  return !!(window.DacsNative && typeof window.DacsNative.fileCount === 'function');
+}
+function scB64ToBlob(b64, type) {
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return new Blob([buf], { type: type || 'application/octet-stream' });
+}
+async function scLoadNativeFiles() {
+  if (!scHasNativeBridge()) return false;
+  scIntake.native = true;
+  try {
+    const n = Number(window.DacsNative.fileCount()) || 0;
+    scIntake.nativeCount = n;
+    for (let i = 0; i < n; i++) {
+      let rec;
+      try { rec = JSON.parse(window.DacsNative.fileAt(i) || 'null'); } catch (_) { rec = null; }
+      if (!rec || !rec.data) continue;
+      const blob = scB64ToBlob(rec.data, rec.type);
+      const bad = scPushFile(new File([blob], rec.name || ('receipt-' + i), { type: blob.type }));
+      if (bad) scIntake.rejected.push((rec.name || 'receipt') + ' ' + '—' + ' ' + bad);
+    }
+  } catch (e) {
+    scIntake.error = 'Could not read the shared receipt: ' + ((e && (e.message || e.name)) || e);
+  }
+  return true;
 }
 
 // Is a service worker actually in charge of this origin? If not, the share-sheet
@@ -451,6 +485,19 @@ function scDiagHtml() {
   const m = scIntake.meta;
   const bits = [];
 
+  // Running inside the Android receiver app: the only two outcomes that matter
+  // are "the receipt came through" and "it did not".
+  if (scIntake.native) {
+    if (scIntake.error) bits.push({ tone: 'bad', msg: scIntake.error });
+    scIntake.rejected.forEach((r) => bits.push({ tone: 'bad', msg: 'Receipt skipped: ' + r }));
+    if (!bits.length && S.photos.length) {
+      bits.push({ tone: 'ok', msg: 'Received ' + S.photos.length + ' receipt' + (S.photos.length === 1 ? '' : 's') + ' from the share sheet.' });
+    } else if (!bits.length && !S.photos.length) {
+      bits.push({ tone: 'note', pick: true, msg: 'No receipt came through with that share. Tap below to pick it.' });
+    }
+    return scDiagWrap(bits);
+  }
+
   if (scIntake.swActive === false) {
     bits.push({ tone: 'bad', msg: 'This device has no active service worker, so sharing a photo into this app cannot work — the share is rejected before the page loads. Tap Fix, then share the receipt again.', fix: true });
   }
@@ -466,7 +513,7 @@ function scDiagHtml() {
     } else if (m && nEntries === 0) {
       // Chrome opened the app but attached nothing: an empty body, or a body
       // that is only the multipart closing boundary. Same cause, same remedy.
-      bits.push({ tone: 'bad', pick: true, msg: 'Android opened the app but did not hand over the photo — this happens on some phones and is outside the app. Tap below and pick the same photo; everything else works normally.' });
+      bits.push({ tone: 'note', pick: true, msg: 'Tap below and pick the receipt you just shared. This phone does not pass photos into web apps, so the extra step is normal here — nothing is wrong.' });
     } else if (m && m.kept === 0 && nEntries > 0) {
       const fileEntries = m.entries.filter((e) => e.kind === 'file');
       bits.push({ tone: 'bad', msg: fileEntries.length
@@ -482,12 +529,16 @@ function scDiagHtml() {
       + (m && m.source === 'fallback' ? ' (The sharing app used a different field name than expected — picked it up anyway.)' : '') });
   }
 
+  return scDiagWrap(bits);
+}
+function scDiagWrap(bits) {
   if (!bits.length) return '';
 
   const raw = {
-    url: location.search, swActive: scIntake.swActive, swRan: scIntake.swRan,
+    url: location.search, native: scIntake.native, nativeCount: scIntake.nativeCount,
+    swActive: scIntake.swActive, swRan: scIntake.swRan,
     sharedParam: scIntake.param, cacheEntries: scIntake.cached,
-    loaded: S.photos.length, rejected: scIntake.rejected, meta: m,
+    loaded: S.photos.length, rejected: scIntake.rejected, meta: scIntake.meta,
   };
   return bits.map((b) =>
     '<div class="sc-diag ' + b.tone + '">' + scEsc(b.msg)
@@ -595,7 +646,14 @@ auth.onAuthStateChanged(async (user) => {
   $('scGate').classList.add('hidden');
   $('scWizard').classList.remove('hidden');
   scRender();
-  await Promise.all([scLoadPickers(), scLoadSharedFiles(), scCheckServiceWorker()]);
+  // Inside the Android app the receipt arrives over the bridge, so the
+  // service-worker cache is not consulted at all.
+  const viaNative = await scLoadNativeFiles();
+  await Promise.all([
+    scLoadPickers(),
+    viaNative ? Promise.resolve() : scLoadSharedFiles(),
+    viaNative ? Promise.resolve() : scCheckServiceWorker(),
+  ]);
   scRender();
 });
 </script>
