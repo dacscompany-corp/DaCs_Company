@@ -457,21 +457,29 @@ function scDiagHtml() {
   scIntake.rejected.forEach((r) => bits.push({ tone: 'bad', msg: 'Shared file skipped: ' + r }));
 
   if (scIntake.fromShare && S.photos.length === 0 && !scIntake.rejected.length) {
+    const nEntries = (m && Array.isArray(m.entries)) ? m.entries.length : -1;
     if (m && m.error) {
       bits.push({ tone: 'bad', msg: 'The share was received but could not be read (' + m.stage + '): ' + m.error });
-    } else if (m && m.received === 0) {
-      bits.push({ tone: 'bad', msg: 'The app that shared this sent no file — only ' + (m.text || m.linkUrl ? 'text or a link' : 'an empty share') + '. Open the photo itself and share that, or add it below.' });
-    } else if (m && m.received > 0 && m.kept === 0) {
-      bits.push({ tone: 'bad', msg: 'The shared file arrived empty (0 bytes). Try sharing it from the Gallery/Photos app instead.' });
     } else if (!scIntake.swRan) {
       bits.push({ tone: 'bad', msg: 'The share did not pass through the service worker, so no photo was handed over. Tap Fix, then share again.', fix: true });
+    } else if (m && m.bodyBytes === 0) {
+      bits.push({ tone: 'bad', msg: 'The share arrived completely empty — the app you shared from attached nothing at all. Open the photo in Gallery or Google Photos and share it from there.' });
+    } else if (m && nEntries === 0) {
+      bits.push({ tone: 'bad', msg: 'The share carried ' + (m.bodyBytes > 0 ? m.bodyBytes + ' bytes' : 'data') + ' but not one readable field, so the photo could not be recovered. Add it below instead.' });
+    } else if (m && m.kept === 0 && nEntries > 0) {
+      const fileEntries = m.entries.filter((e) => e.kind === 'file');
+      bits.push({ tone: 'bad', msg: fileEntries.length
+        ? 'The shared file arrived empty (0 bytes). Try sharing it from the Gallery or Photos app instead.'
+        : 'The app that shared this sent no picture — only ' + (m.text || m.linkUrl ? 'text or a link' : 'empty fields') + '. Open the photo itself and share that, or add it below.' });
     } else {
       bits.push({ tone: 'bad', msg: 'The share arrived but no photo came with it. Add it below instead.' });
     }
   }
 
-  if (!bits.length && scIntake.fromShare && S.photos.length)
-    bits.push({ tone: 'ok', msg: 'Received ' + S.photos.length + ' file' + (S.photos.length === 1 ? '' : 's') + ' from the share sheet.' });
+  if (!bits.length && scIntake.fromShare && S.photos.length) {
+    bits.push({ tone: 'ok', msg: 'Received ' + S.photos.length + ' file' + (S.photos.length === 1 ? '' : 's') + ' from the share sheet.'
+      + (m && m.source === 'fallback' ? ' (The sharing app used a different field name than expected — picked it up anyway.)' : '') });
+  }
 
   if (!bits.length) return '';
 

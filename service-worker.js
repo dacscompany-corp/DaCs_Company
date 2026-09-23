@@ -2,7 +2,7 @@
    Receives the nightly Project Management summary push and shows it.
    Also receives files shared from the Android share sheet (manifest-admin.json
    share_target) and hands them to /share-capture.html via the Cache API.
-   SW_VERSION: 2026-09-23-share-diag  (bump to force clients to pick up icon/badge changes) */
+   SW_VERSION: 2026-09-23-share-diag2  (bump to force clients to pick up icon/badge changes) */
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
@@ -30,6 +30,11 @@ async function shareWriteMeta(cache, meta) {
   } catch (_) { /* meta is best-effort — never let it break the share itself */ }
 }
 
+// Is this form entry a file rather than a plain text field?
+function shareIsFile(v) {
+  return v && typeof v === 'object' && typeof v.size === 'number' && typeof v.name === 'string';
+}
+
 self.addEventListener('fetch', (event) => {
   let url;
   try { url = new URL(event.request.url); } catch (_) { return; }
@@ -39,10 +44,14 @@ self.addEventListener('fetch', (event) => {
     let count = 0;
     const meta = {
       at: new Date().toISOString(),
-      swVersion: '2026-09-23-share-diag',
+      swVersion: '2026-09-23-share-diag2',
       stage: 'start',
       error: '',
-      received: 0,          // entries named "media" in the form, before the size filter
+      contentType: '',      // includes the multipart boundary Android chose
+      bodyBytes: -1,        // -1 = could not measure; 0 = Android sent an empty body
+      entries: [],          // EVERY field in the form, whatever it is named
+      source: 'none',       // which field the files came from
+      received: 0,          // entries named "media", before the size filter
       kept: 0,              // of those, the ones with a real body
       files: [],            // { name, type, size } per kept file
       text: '', title: '', linkUrl: '',
@@ -52,12 +61,47 @@ self.addEventListener('fetch', (event) => {
     try { cache = await caches.open(SHARE_CACHE); } catch (e) { /* reported below */ }
 
     try {
+      meta.contentType = event.request.headers.get('content-type') || '';
+
+      // Measure the raw body BEFORE parsing. An empty body means Android never
+      // attached the picture — nothing this app does could recover it. A full
+      // body with no parsed fields means the multipart parse is the problem.
+      // Must clone first: formData() consumes the stream.
+      let probe = null;
+      try { probe = event.request.clone(); } catch (_) {}
+
       meta.stage = 'formData';
       const form = await event.request.formData();
 
-      const all = form.getAll('media');
-      meta.received = all.length;
-      const files = all.filter((f) => f && typeof f.size === 'number' && f.size > 0);
+      if (probe) {
+        try { meta.bodyBytes = (await probe.arrayBuffer()).byteLength; } catch (_) {}
+      }
+
+      meta.stage = 'entries';
+      for (const [k, v] of form.entries()) {
+        meta.entries.push(shareIsFile(v)
+          ? { key: k, kind: 'file', name: v.name || '', type: v.type || '', size: v.size }
+          : { key: k, kind: 'text', size: String(v || '').length, preview: String(v || '').slice(0, 120) });
+      }
+
+      const named = form.getAll('media');
+      meta.received = named.length;
+
+      // Take the declared "media" field first. If it is empty but the share did
+      // carry a file under some other name, use that instead of dropping the
+      // receipt on the floor — the field name is the sharing app's choice, and
+      // a mismatch used to look identical to an empty share.
+      let files = named.filter((f) => shareIsFile(f) && f.size > 0);
+      if (files.length) {
+        meta.source = 'media';
+      } else {
+        const loose = [];
+        for (const [k, v] of form.entries()) {
+          if (k !== 'media' && shareIsFile(v) && v.size > 0) loose.push(v);
+        }
+        if (loose.length) { files = loose; meta.source = 'fallback'; }
+      }
+
       meta.kept = files.length;
       meta.files = files.map((f) => ({ name: f.name || '', type: f.type || '', size: f.size }));
 
