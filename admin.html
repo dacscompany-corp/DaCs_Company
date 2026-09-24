@@ -3893,76 +3893,261 @@
     </div>
 </div>
 
-<!-- Edit Project -->
-<div id="editProjectModal" class="exp-modal">
+<!-- Edit Project (billing period) — redesigned; scoped .epr-* so the folder modals keep the legacy frame -->
+<style>
+/* ── Edit billing period ─────────────────────────────────────
+   Same design language as the Add Expense modal (.aer-scope):
+   Playfair title, Barlow body, #1A5C3A brand green, sticky
+   header + footer with only the body scrolling.              */
+.epr-scope .exp-modal-box{width:100% !important;max-width:560px !important;border-radius:20px !important;overflow:hidden !important;background:#fff;color:#1C1C1E;font-family:'Barlow',-apple-system,sans-serif;max-height:92vh;display:flex;flex-direction:column;padding:0 !important;}
+.epr-scope .exp-modal-box *{box-sizing:border-box;}
+.epr-scope [hidden]{display:none !important;}
+/* out-specifies `body .exp-modal-box form` in admin-renovation.css, which is !important */
+.epr-scope .exp-modal-box form{display:flex;flex-direction:column;min-height:0;flex:1;overflow:hidden;padding:0 !important;}
+
+/* header */
+.epr-scope .epr-hd{display:flex;align-items:center;gap:14px;padding:22px 26px 18px;border-bottom:1px solid #EEEEEE;flex-shrink:0;}
+.epr-scope .epr-hd-ic{width:44px;height:44px;border-radius:12px;background:#EAF2EC;display:grid;place-items:center;flex-shrink:0;}
+.epr-scope .epr-hd-txt{flex:1;min-width:0;}
+.epr-scope .epr-title{font-family:'Playfair Display',serif;font-size:22px;font-weight:600;line-height:1.1;color:#1C1C1E;}
+.epr-scope .epr-hd-sub{font-size:12.5px;color:#8A8A8E;margin-top:3px;}
+.epr-scope .epr-x{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:#A1A1A6;font-size:22px;line-height:1;background:#F5F5F5;border:none;cursor:pointer;flex-shrink:0;}
+.epr-scope .epr-x:hover{background:#ECECEC;color:#6C6C70;}
+
+/* body + steps */
+.epr-scope .epr-body{flex:1;overflow:auto;padding:20px 26px 12px;}
+.epr-scope .epr-step{display:flex;align-items:center;gap:10px;margin:0 0 12px;}
+.epr-scope .epr-step b{font-size:15px;font-weight:700;color:#1C1C1E;}
+.epr-scope .epr-num{width:22px;height:22px;border-radius:50%;background:#1A5C3A;color:#fff;font-size:12px;font-weight:700;display:grid;place-items:center;flex-shrink:0;}
+.epr-scope .epr-sec{margin-bottom:22px;}
+.epr-scope .epr-sec:last-child{margin-bottom:6px;}
+
+/* fields */
+.epr-scope .epr-fg{margin-bottom:0;}
+.epr-scope .epr-lbl{display:block;font-family:'Barlow',sans-serif;font-size:13px;font-weight:600;color:#3A3A3C;margin-bottom:7px;letter-spacing:0;text-transform:none;}
+.epr-scope .epr-in{width:100%;padding:12px 14px;border:1.5px solid #E5E5E5;border-radius:11px;font-size:14.5px;color:#1C1C1E;font-family:'Barlow',sans-serif;background:#fff;transition:border-color .15s,box-shadow .15s;}
+.epr-scope .epr-in:focus{border-color:#1A5C3A;box-shadow:0 0 0 3px rgba(26,92,58,.13);outline:none;}
+.epr-scope .epr-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.epr-scope .epr-selwrap{position:relative;}
+.epr-scope .epr-selwrap select{appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:38px;}
+.epr-scope .epr-chev{position:absolute;right:14px;top:calc(50% + 10px);transform:translateY(-50%);pointer-events:none;color:#A1A1A6;}
+
+/* funding source chips */
+.epr-scope .epr-funds{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.epr-scope .epr-fund{position:relative;display:flex;align-items:center;gap:11px;padding:12px 13px;border:1.5px solid #E5E5E5;border-radius:13px;background:#fff;cursor:pointer;margin:0;transition:border-color .12s,background .12s;}
+.epr-scope .epr-fund:hover{border-color:#B9CFC1;}
+.epr-scope .epr-fund input{position:absolute;opacity:0;width:0;height:0;}
+.epr-scope .epr-fund-ic{width:32px;height:32px;border-radius:9px;background:#F5F5F5;display:grid;place-items:center;font-size:15px;flex-shrink:0;transition:background .12s;}
+.epr-scope .epr-fund-txt{min-width:0;}
+.epr-scope .epr-fund-t{display:block;font-size:13.5px;font-weight:600;color:#3A3A3C;line-height:1.2;}
+.epr-scope .epr-fund-s{display:block;font-size:11.5px;color:#A1A1A6;margin-top:2px;line-height:1.25;}
+.epr-scope .epr-fund:has(input:checked){border-color:#1A5C3A;background:#F4F8F5;}
+.epr-scope .epr-fund:has(input:checked) .epr-fund-ic{background:#EAF2EC;}
+.epr-scope .epr-fund:has(input:checked) .epr-fund-t{color:#1A5C3A;}
+.epr-scope .epr-fund:has(input:focus-visible){box-shadow:0 0 0 3px rgba(26,92,58,.18);}
+.epr-scope .epr-fund--cover{grid-column:1 / -1;border-style:dashed;}
+.epr-scope .epr-fund--cover:has(input:checked){border-style:solid;border-color:#B45309;background:#FFFBEB;}
+.epr-scope .epr-fund--cover:has(input:checked) .epr-fund-ic{background:#FEF3C7;}
+.epr-scope .epr-fund--cover:has(input:checked) .epr-fund-t{color:#B45309;}
+
+/* amount */
+.epr-scope .epr-amount{display:flex;align-items:center;gap:10px;padding:14px 18px;background:#EAF2EC;border-radius:14px;}
+.epr-scope .epr-amount-lbl{flex:1;min-width:0;font-family:'Barlow',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#1A5C3A;margin:0;}
+.epr-scope .epr-peso{font-family:'Playfair Display',serif;font-size:24px;font-weight:600;color:#1A5C3A;line-height:1;}
+.epr-scope .epr-amount-in{font-family:'Playfair Display',serif;font-size:28px;font-weight:600;color:#1A5C3A;font-variant-numeric:tabular-nums;border:none;border-bottom:2px solid #b9d6c6;border-radius:0;background:transparent;text-align:right;width:180px;max-width:52%;padding:0 0 2px;}
+.epr-scope .epr-amount-in:focus{border-bottom-color:#1A5C3A;box-shadow:none;outline:none;}
+.epr-scope .epr-amount-in::placeholder{color:#a9c6b6;}
+
+/* allocation card */
+.epr-scope .epr-alloc{border:1px solid #E5E5E5;border-radius:14px;background:#fff;overflow:hidden;}
+.epr-scope .epr-alloc-hd{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 16px 12px;}
+.epr-scope .epr-alloc-t{flex:1;min-width:120px;font-size:14px;font-weight:700;color:#1C1C1E;}
+.epr-scope .epr-total{font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;color:#1A5C3A;background:#EAF2EC;border-radius:999px;padding:5px 11px;white-space:nowrap;}
+.epr-scope .epr-alloc-fs{border:0;margin:0;padding:0;min-width:0;}
+.epr-scope .epr-alloc-fs legend{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;}
+.epr-scope .epr-reset{border:1px solid #E5E5E5;background:#F5F5F5;border-radius:8px;color:#6C6C70;font-family:'Barlow',sans-serif;font-size:11.5px;font-weight:600;padding:4px 10px;cursor:pointer;}
+.epr-scope .epr-reset:hover{background:#ECECEC;color:#3A3A3C;}
+
+/* proportion bar */
+.epr-scope .epr-bar{display:flex;height:8px;margin:0 16px 14px;border-radius:999px;overflow:hidden;background:#F0F0F0;}
+.epr-scope .epr-bar-seg{display:block;height:100%;transition:width .18s ease;}
+.epr-scope .epr-bar-seg--direct{background:#2563eb;}
+.epr-scope .epr-bar-seg--indirect{background:#d97706;}
+.epr-scope .epr-bar-seg--reserve{background:#059669;}
+
+/* one row per bucket: swatch · name · % input · peso amount */
+.epr-scope .epr-alloc-row{display:grid;grid-template-columns:auto 1fr 92px minmax(96px,auto);align-items:center;gap:10px;padding:10px 16px;border-top:1px solid #F3F4F6;}
+.epr-scope .epr-alloc-row .pc-allocation-swatch{margin:0;width:10px;height:10px;border-radius:3px;}
+.epr-scope .epr-alloc-row label{font-family:'Barlow',sans-serif;font-size:13.5px;font-weight:600;color:#3A3A3C;margin:0;letter-spacing:0;text-transform:none;min-width:0;}
+.epr-scope .epr-pct{position:relative;}
+.epr-scope .epr-pct input{width:100%;padding:8px 11px;border:1.5px solid #E5E5E5;border-radius:9px;font-family:'Barlow',sans-serif;font-size:14px;font-variant-numeric:tabular-nums;color:#1C1C1E;background:#fff;text-align:right;-moz-appearance:textfield;transition:border-color .15s,box-shadow .15s;}
+.epr-scope .epr-pct input::-webkit-outer-spin-button,.epr-scope .epr-pct input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+.epr-scope .epr-pct input:focus{border-color:#1A5C3A;box-shadow:0 0 0 3px rgba(26,92,58,.13);outline:none;}
+.epr-scope .epr-pct input[aria-invalid="true"]{border-color:#DC2626;background:#FEF2F2;}
+.epr-scope .epr-pct input:disabled{background:#F5F5F5;color:#A1A1A6;}
+.epr-scope .epr-alloc-amt{text-align:right;font-size:14px;font-weight:700;color:#1C1C1E;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.epr-scope .epr-alloc-note{padding:11px 16px;margin:0;border-top:1px solid #F3F4F6;background:#FAFBFA;font-size:11.5px;line-height:1.45;color:#8A8A8E;}
+/* off-100 state: the pill and the fields turn red together */
+.epr-scope .epr-alloc:has(input[aria-invalid="true"]) .epr-total{color:#B91C1C;background:#FEE2E2;}
+
+/* reason callout */
+.epr-scope .epr-reason{margin-top:14px;padding:13px 15px;border:1px solid #FDE68A;background:#FFFBEB;border-radius:12px;}
+.epr-scope .epr-reason label{display:block;font-family:'Barlow',sans-serif;font-size:13px;font-weight:700;color:#92400E;margin-bottom:3px;letter-spacing:0;text-transform:none;}
+.epr-scope .epr-reason p{margin:0 0 8px;font-size:11.5px;line-height:1.45;color:#B45309;}
+.epr-scope .epr-reason textarea{width:100%;min-height:62px;resize:vertical;padding:10px 12px;border:1.5px solid #FDE68A;border-radius:10px;font-family:'Barlow',sans-serif;font-size:13.5px;color:#1C1C1E;background:#fff;}
+.epr-scope .epr-reason textarea:focus{border-color:#B45309;box-shadow:0 0 0 3px rgba(180,83,9,.13);outline:none;}
+
+/* footer */
+.epr-scope .epr-ft{display:flex;align-items:center;gap:12px;padding:16px 26px;border-top:1px solid #EEEEEE;background:#FBFCFB;flex-shrink:0;}
+.epr-scope .epr-btn-cancel{flex:0 0 auto;padding:13px 22px;border-radius:12px;border:1.5px solid #E5E5E5;background:#fff;color:#3A3A3C;font-size:14.5px;font-weight:600;cursor:pointer;font-family:'Barlow',sans-serif;}
+.epr-scope .epr-btn-cancel:hover{background:#F5F5F5;}
+.epr-scope .epr-btn-save{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:9px;padding:13px 24px;border-radius:12px;background:#1A5C3A;color:#fff;font-size:14.5px;font-weight:700;cursor:pointer;border:none;box-shadow:0 3px 12px rgba(26,92,58,.28);font-family:'Barlow',sans-serif;}
+.epr-scope .epr-btn-save:hover:not(:disabled){background:#16482e;}
+.epr-scope .epr-btn-save:disabled{background:#C7CFC9;box-shadow:none;cursor:not-allowed;}
+
+@media (max-width:520px){
+  .epr-scope .epr-row{grid-template-columns:1fr;}
+  .epr-scope .epr-funds{grid-template-columns:1fr;}
+  .epr-scope .epr-fund--cover{grid-column:auto;}
+  .epr-scope .epr-alloc-row{grid-template-columns:auto 1fr 84px;row-gap:4px;}
+  .epr-scope .epr-alloc-amt{grid-column:2 / -1;text-align:left;font-size:13px;color:#6C6C70;}
+  .epr-scope .epr-amount{flex-wrap:wrap;}
+  .epr-scope .epr-amount-in{max-width:none;width:100%;text-align:left;}
+  .epr-scope .epr-ft{padding:14px 18px;}
+  .epr-scope .epr-body{padding:18px 18px 10px;}
+  .epr-scope .epr-hd{padding:18px 18px 16px;}
+}
+</style>
+<div id="editProjectModal" class="exp-modal epr-scope">
     <div class="exp-modal-box">
-        <div class="exp-modal-header"><h2><i data-lucide="pencil" class="modal-icon"></i> Edit Project</h2><button class="exp-modal-close" aria-label="Close" onclick="closeExpModal('editProjectModal')">&times;</button></div>
         <form id="editProjectForm" onsubmit="handleEditProject(event)">
             <input type="hidden" id="editProjectId">
-            <div class="exp-form-row">
-                <div class="exp-form-group">
-                    <label>Month</label>
-                    <select id="editProjMonth" aria-label="Month" required>
-                        <option value="">Select month…</option>
-                        <option>January</option><option>February</option><option>March</option>
-                        <option>April</option><option>May</option><option>June</option>
-                        <option>July</option><option>August</option><option>September</option>
-                        <option>October</option><option>November</option><option>December</option>
-                    </select>
+
+            <!-- header -->
+            <div class="epr-hd">
+                <div class="epr-hd-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1A5C3A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
+                <div class="epr-hd-txt">
+                    <div class="epr-title">Edit billing period</div>
+                    <div class="epr-hd-sub">Which month, where its money came from, and how it is split.</div>
                 </div>
-                <div class="exp-form-group"><label>Year</label><input type="number" id="editProjYear" required min="2020" max="2099" placeholder="e.g. 2026"></div>
+                <button type="button" class="epr-x" aria-label="Close" onclick="closeExpModal('editProjectModal')">&times;</button>
             </div>
-            <div class="exp-form-group">
-                <label>Funding Source</label>
-                <div class="exp-funding-options exp-funding-options-grid">
-                    <label class="exp-funding-option">
-                        <input type="radio" name="editFundingType" id="editFundingMobilization" value="mobilization" checked onchange="onEditFundingTypeChange()">
-                        <span class="exp-funding-icon">🚧</span><span>Mobilization</span>
-                    </label>
-                    <label class="exp-funding-option">
-                        <input type="radio" name="editFundingType" id="editFundingDownpayment" value="downpayment" onchange="onEditFundingTypeChange()">
-                        <span class="exp-funding-icon">💰</span><span>Downpayment</span>
-                    </label>
-                    <label class="exp-funding-option">
-                        <input type="radio" name="editFundingType" id="editFundingProgress" value="progress" onchange="onEditFundingTypeChange()">
-                        <span class="exp-funding-icon">📋</span><span>Progress Billing</span>
-                    </label>
-                    <label class="exp-funding-option">
-                        <input type="radio" name="editFundingType" id="editFundingFinal" value="final" onchange="onEditFundingTypeChange()">
-                        <span class="exp-funding-icon">🏁</span><span>Final Payment</span>
-                    </label>
-                    <label class="exp-funding-option">
-                        <input type="radio" name="editFundingType" id="editFundingPresident" value="president" onchange="onEditFundingTypeChange()">
-                        <span class="exp-funding-icon">🏦</span><span>Cover Expenses</span>
-                    </label>
+
+            <!-- body -->
+            <div class="epr-body">
+                <!-- 1 · when -->
+                <div class="epr-sec">
+                    <div class="epr-step"><span class="epr-num">1</span><b>Which month is this for?</b></div>
+                    <div class="epr-row">
+                        <div class="epr-fg epr-selwrap">
+                            <label class="epr-lbl" for="editProjMonth">Month</label>
+                            <select class="epr-in" id="editProjMonth" required>
+                                <option value="">Select month…</option>
+                                <option>January</option><option>February</option><option>March</option>
+                                <option>April</option><option>May</option><option>June</option>
+                                <option>July</option><option>August</option><option>September</option>
+                                <option>October</option><option>November</option><option>December</option>
+                            </select>
+                            <svg class="epr-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                        </div>
+                        <div class="epr-fg">
+                            <label class="epr-lbl" for="editProjYear">Year</label>
+                            <input class="epr-in" type="number" id="editProjYear" required min="2020" max="2099" placeholder="e.g. 2026">
+                        </div>
+                    </div>
                 </div>
-            </div>
-            <div class="exp-form-group" id="editProjBudgetGroup">
-                <label id="editProjBudgetLabel">Total Monthly Budget (₱)</label>
-                <input type="text" inputmode="decimal" id="editProjBudget" placeholder="e.g. 500000" oninput="fmtBudgetInput(this);pcRenderBillingPreview('editProject')">
-            </div>
-            <fieldset id="editProjectAllocationControls" class="pc-allocation-controls" data-pc-owner-only hidden>
-                <legend>Billing Allocation</legend>
-                <div class="pc-allocation-fields">
-                    <div class="exp-form-group"><label for="editProjectDirectPct">Direct Cost %</label><input type="number" id="editProjectDirectPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editProjectAllocationTotal" oninput="pcRenderPolicyTotal('editProject')"></div>
-                    <div class="exp-form-group"><label for="editProjectIndirectPct">Indirect Cost %</label><input type="number" id="editProjectIndirectPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editProjectAllocationTotal" oninput="pcRenderPolicyTotal('editProject')"></div>
-                    <div class="exp-form-group"><label for="editProjectTargetMarginPct">Target Margin Reserve %</label><input type="number" id="editProjectTargetMarginPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editProjectAllocationTotal" oninput="pcRenderPolicyTotal('editProject')"></div>
+
+                <!-- 2 · where the money came from -->
+                <div class="epr-sec">
+                    <div class="epr-step"><span class="epr-num">2</span><b>Where did the money come from?</b></div>
+                    <div class="epr-funds">
+                        <label class="epr-fund">
+                            <input type="radio" name="editFundingType" id="editFundingMobilization" value="mobilization" checked onchange="onEditFundingTypeChange()">
+                            <span class="epr-fund-ic">🚧</span>
+                            <span class="epr-fund-txt"><span class="epr-fund-t">Mobilization</span><span class="epr-fund-s">Start-up funds</span></span>
+                        </label>
+                        <label class="epr-fund">
+                            <input type="radio" name="editFundingType" id="editFundingDownpayment" value="downpayment" onchange="onEditFundingTypeChange()">
+                            <span class="epr-fund-ic">💰</span>
+                            <span class="epr-fund-txt"><span class="epr-fund-t">Downpayment</span><span class="epr-fund-s">Client's first payment</span></span>
+                        </label>
+                        <label class="epr-fund">
+                            <input type="radio" name="editFundingType" id="editFundingProgress" value="progress" onchange="onEditFundingTypeChange()">
+                            <span class="epr-fund-ic">📋</span>
+                            <span class="epr-fund-txt"><span class="epr-fund-t">Progress Billing</span><span class="epr-fund-s">Billed as work advances</span></span>
+                        </label>
+                        <label class="epr-fund">
+                            <input type="radio" name="editFundingType" id="editFundingFinal" value="final" onchange="onEditFundingTypeChange()">
+                            <span class="epr-fund-ic">🏁</span>
+                            <span class="epr-fund-txt"><span class="epr-fund-t">Final Payment</span><span class="epr-fund-s">Closing payment</span></span>
+                        </label>
+                        <label class="epr-fund epr-fund--cover">
+                            <input type="radio" name="editFundingType" id="editFundingPresident" value="president" onchange="onEditFundingTypeChange()">
+                            <span class="epr-fund-ic">🏦</span>
+                            <span class="epr-fund-txt"><span class="epr-fund-t">Cover Expenses</span><span class="epr-fund-s">The company fronted this month. It still counts as cost, but there is no client allocation to plan.</span></span>
+                        </label>
+                    </div>
                 </div>
-                <div class="pc-allocation-total" id="editProjectAllocationTotal" role="status" aria-live="polite">Total: 100.00%</div>
-            </fieldset>
-            <section id="editProjectAllocationPreview" class="pc-allocation-preview" data-pc-owner-only hidden aria-labelledby="editProjectAllocationPreviewTitle">
-                <div class="pc-allocation-preview__title" id="editProjectAllocationPreviewTitle">Billing Allocation Preview</div>
-                <div class="pc-allocation-preview__row"><span><i class="pc-allocation-swatch pc-allocation-swatch--direct"></i>Direct Cost</span><strong id="editProjectAllocationDirectAmount">₱0.00</strong></div>
-                <div class="pc-allocation-preview__row"><span><i class="pc-allocation-swatch pc-allocation-swatch--indirect"></i>Indirect Cost</span><strong id="editProjectAllocationIndirectAmount">₱0.00</strong></div>
-                <div class="pc-allocation-preview__row"><span><i class="pc-allocation-swatch pc-allocation-swatch--reserve"></i>Target Margin Reserve</span><strong id="editProjectAllocationReserveAmount">₱0.00</strong></div>
-            </section>
-            <div class="exp-form-group" id="editProjAllocationReasonGroup" data-pc-owner-only hidden>
-                <label for="editProjAllocationReason">Reason for adjustment</label>
-                <textarea id="editProjAllocationReason" maxlength="500" aria-describedby="editProjectAllocationTotal"></textarea>
+
+                <!-- 3 · how much -->
+                <div class="epr-sec" id="editProjBudgetGroup">
+                    <div class="epr-step"><span class="epr-num">3</span><b>How much came in?</b></div>
+                    <div class="epr-amount">
+                        <label class="epr-amount-lbl" id="editProjBudgetLabel" for="editProjBudget">Total Monthly Budget</label>
+                        <span class="epr-peso">₱</span>
+                        <input class="epr-amount-in" type="text" inputmode="decimal" id="editProjBudget" placeholder="0.00" oninput="fmtBudgetInput(this);pcRenderBillingPreview('editProject')">
+                    </div>
+                </div>
+
+                <!-- 4 · allocation (owner only; hidden for cover periods) -->
+                <section class="epr-sec" id="editProjectAllocationPreview" data-pc-owner-only hidden aria-labelledby="editProjectAllocationPreviewTitle">
+                    <div class="epr-step"><span class="epr-num">4</span><b>How should it be split?</b></div>
+                    <div class="epr-alloc">
+                        <fieldset id="editProjectAllocationControls" class="epr-alloc-fs" data-pc-owner-only hidden>
+                            <legend>Billing Allocation</legend>
+                            <div class="epr-alloc-hd">
+                                <span class="epr-alloc-t" id="editProjectAllocationPreviewTitle">Billing Allocation</span>
+                                <span class="epr-total" id="editProjectAllocationTotal" role="status" aria-live="polite">Total: 100.00%</span>
+                                <button type="button" class="epr-reset" onclick="pcResetAllocationDefaults('editProject')">Reset to 70 / 20 / 10</button>
+                            </div>
+                            <div class="epr-bar" id="editProjectAllocationBar" aria-hidden="true">
+                                <span class="epr-bar-seg epr-bar-seg--direct" style="width:70%"></span>
+                                <span class="epr-bar-seg epr-bar-seg--indirect" style="width:20%"></span>
+                                <span class="epr-bar-seg epr-bar-seg--reserve" style="width:10%"></span>
+                            </div>
+                            <div class="epr-alloc-row">
+                                <i class="pc-allocation-swatch pc-allocation-swatch--direct"></i>
+                                <label for="editProjectDirectPct">Direct Cost %</label>
+                                <span class="epr-pct"><input type="number" id="editProjectDirectPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editProjectAllocationTotal" oninput="pcRenderPolicyTotal('editProject')"></span>
+                                <strong class="epr-alloc-amt" id="editProjectAllocationDirectAmount">₱0.00</strong>
+                            </div>
+                            <div class="epr-alloc-row">
+                                <i class="pc-allocation-swatch pc-allocation-swatch--indirect"></i>
+                                <label for="editProjectIndirectPct">Indirect Cost %</label>
+                                <span class="epr-pct"><input type="number" id="editProjectIndirectPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editProjectAllocationTotal" oninput="pcRenderPolicyTotal('editProject')"></span>
+                                <strong class="epr-alloc-amt" id="editProjectAllocationIndirectAmount">₱0.00</strong>
+                            </div>
+                            <div class="epr-alloc-row">
+                                <i class="pc-allocation-swatch pc-allocation-swatch--reserve"></i>
+                                <label for="editProjectTargetMarginPct">Target Margin Reserve %</label>
+                                <span class="epr-pct"><input type="number" id="editProjectTargetMarginPct" min="0" max="100" step="0.01" inputmode="decimal" aria-describedby="editProjectAllocationTotal" oninput="pcRenderPolicyTotal('editProject')"></span>
+                                <strong class="epr-alloc-amt" id="editProjectAllocationReserveAmount">₱0.00</strong>
+                            </div>
+                            <p class="epr-alloc-note">Envelopes to spend against for this month's funds — planning only. The three must total 100%.</p>
+                        </fieldset>
+                    </div>
+                    <div class="epr-reason" id="editProjAllocationReasonGroup" data-pc-owner-only hidden>
+                        <label for="editProjAllocationReason">Reason for adjustment</label>
+                        <p>This change is written to the allocation history, so say why.</p>
+                        <textarea id="editProjAllocationReason" maxlength="500" placeholder="e.g. Indirect cost raised to cover the extra coordinator" aria-describedby="editProjectAllocationTotal"></textarea>
+                    </div>
+                </section>
             </div>
-            <div class="exp-modal-footer">
-                <button type="button" class="exp-btn exp-btn-secondary" onclick="closeExpModal('editProjectModal')">Cancel</button>
-                <button type="submit" id="editProjectBtn" class="exp-btn exp-btn-primary" data-label="Save Changes"><i data-lucide="check" class="btn-icon"></i> Save Changes</button>
+
+            <!-- footer -->
+            <div class="epr-ft">
+                <button type="button" class="epr-btn-cancel" onclick="closeExpModal('editProjectModal')">Cancel</button>
+                <button type="submit" id="editProjectBtn" class="epr-btn-save" data-label="Save Changes">Save Changes</button>
             </div>
         </form>
     </div>

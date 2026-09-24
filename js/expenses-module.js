@@ -239,6 +239,19 @@ function _pcUpdateEditAllocationReason(policy, suppressReason) {
     if (!needsReason && input) input.value = '';
 }
 
+// Stacked proportion bar beside the percentage inputs. Widths are drawn from the
+// raw entries (normalised), so an off-100 total still shows the shape being typed.
+// No-op for the forms whose markup has no bar.
+function _pcRenderAllocationBar(prefix, fields) {
+    const bar = document.getElementById(prefix + 'AllocationBar');
+    if (!bar) return;
+    const values = fields.map(field => Math.max(0, Number(field.value) || 0));
+    const sum = values.reduce((carry, value) => carry + value, 0);
+    bar.querySelectorAll('.epr-bar-seg').forEach((segment, index) => {
+        segment.style.width = sum > 0 ? (values[index] / sum * 100).toFixed(4) + '%' : '0%';
+    });
+}
+
 function pcRenderPolicyTotal(prefix) {
     const fields = _pcPolicyInputs(prefix);
     const total = document.getElementById(prefix + 'AllocationTotal');
@@ -252,6 +265,7 @@ function pcRenderPolicyTotal(prefix) {
         field.setCustomValidity(valid ? '' : 'Allocation percentages must total 100.00%.');
         field.setAttribute('aria-invalid', valid ? 'false' : 'true');
     });
+    _pcRenderAllocationBar(prefix, fields);
     const saveButton = document.getElementById(prefix + 'Btn');
     if (saveButton) saveButton.disabled = _pcIsOwner() && !valid;
     if (prefix === 'editProject') _pcUpdateEditAllocationReason(policy);
@@ -321,9 +335,17 @@ function _pcPrepareEditProjectAllocation(project) {
     pcRenderPolicyTotal('editProject');
 }
 
+// "Reset to 70 / 20 / 10" — puts the standard split back without retyping it.
+// Still goes through pcRenderPolicyTotal, so validity/audit state stays honest.
+function pcResetAllocationDefaults(prefix) {
+    _pcSetPolicyInputs(prefix, _pcDefaultPolicy());
+    pcRenderPolicyTotal(prefix);
+}
+
 window.pcReadPolicyInputs = pcReadPolicyInputs;
 window.pcRenderPolicyTotal = pcRenderPolicyTotal;
 window.pcRenderBillingPreview = pcRenderBillingPreview;
+window.pcResetAllocationDefaults = pcResetAllocationDefaults;
 
 // ── Payroll payment method ───────────────────────────────────
 // Stored lowercase (payroll.payment_method, migrations 0037 + 0038); '' / null
@@ -1083,9 +1105,10 @@ function onEditFundingTypeChange() {
     const input = document.getElementById('editProjBudget');
     if (grp)   grp.style.display   = isPresident ? 'none' : '';
     if (input) input.required      = !isPresident;
-    const labels = { mobilization:'Mobilization Amount (₱)', downpayment:'Downpayment Amount (₱)',
-                     progress:'Progress Billing Amount (₱)', final:'Final Payment Amount (₱)' };
-    if (label) label.textContent = labels[type] || 'Total Monthly Budget (₱)';
+    // No "(₱)" here — the redesigned field carries its own peso glyph.
+    const labels = { mobilization:'Mobilization amount', downpayment:'Downpayment amount',
+                     progress:'Progress billing amount', final:'Final payment amount' };
+    if (label) label.textContent = labels[type] || 'Total monthly budget';
     pcRenderBillingPreview('editProject');
 }
 

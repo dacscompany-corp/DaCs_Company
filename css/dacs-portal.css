@@ -1039,17 +1039,59 @@
 .pc-allocation-risk { flex-basis: 100%; color: #a02d2d; font-weight: 600; }
 .pc-allocation-legacy { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 0; border-top: 1px solid #dde3df; font-size: 12px; }
 .pc-allocation-history-button { margin-top: 10px; }
-.pc-allocation-history { width: min(620px, calc(100% - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 20px; border: 1px solid #cbd4ce; border-radius: 8px; color: var(--text-primary, #24352a); background: #fff; overflow: auto; }
-.pc-allocation-history::backdrop { background: rgb(0 0 0 / 35%); }
-.pc-allocation-history-list { margin: 14px 0 0; padding-left: 20px; }
-.pc-allocation-history-list li { padding: 12px 0; border-top: 1px solid #dde3df; }
-.pc-allocation-history-list dl { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px 12px; margin: 0; font-size: 12px; line-height: 1.5; }
-.pc-allocation-history-list dt { font-weight: 600; }
-.pc-allocation-history-list dd { margin: 0; overflow-wrap: anywhere; }
+
+/* Allocation History dialog (redesign 2026-09-23). An audit row is a CHANGE, so it reads as
+   before -> after per share, with the reason and the actor tucked under it as supporting detail.
+   EVERY selector here is qualified by .pc-allocation-history on purpose: the scope reset at the
+   top of this file (".dacs-portal-scope ul, p, h3 { margin:0; padding:0 }") is (0,1,1) and quietly
+   strips the padding off any bare single-class rule, which flushed this card's contents to its
+   own edges until 2026-09-23. */
+.pc-allocation-history { width: min(560px, calc(100% - 32px)); max-height: min(760px, calc(100dvh - 48px)); margin: auto; padding: 0; border: 0; border-radius: 14px; color: var(--text-primary, #24352a); background: #fff; box-shadow: 0 24px 60px rgb(16 32 24 / 22%); overflow-x: hidden; overflow-y: auto; }
+.pc-allocation-history * { min-width: 0; max-width: 100%; }
+.pc-allocation-history::backdrop { background: rgb(16 28 22 / 45%); }
+.pc-allocation-history .pc-ah-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 18px 20px 14px; border-bottom: 1px solid var(--border-light, #e4eae6); background: #fff; }
+.pc-allocation-history .pc-ah-heading { min-width: 0; }
+.pc-allocation-history .pc-ah-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 5px 0 0; color: var(--text-light, #626b66); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.pc-allocation-history .pc-ah-count { flex: 0 0 auto; padding: 2px 8px; border-radius: 999px; background: #eef4f0; color: #236341; font-size: 11px; font-weight: 600; }
+.pc-allocation-history .pc-ah-close { flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center; padding: 0; border: 1px solid var(--border-light, #e4eae6); border-radius: 50%; background: #fff; color: #4a564e; font-size: 18px; line-height: 1; cursor: pointer; }
+.pc-allocation-history .pc-ah-close:hover { background: #f1f4f2; color: #24352a; }
+.pc-allocation-history .pc-allocation-history-list { list-style: none; margin: 0; padding: 4px 20px; }
+.pc-allocation-history .pc-ah-item { padding: 16px 0; border-top: 1px solid var(--border-light, #e8ede9); }
+.pc-allocation-history .pc-allocation-history-list > li:first-child { border-top: 0; }
+.pc-allocation-history .pc-ah-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.pc-allocation-history .pc-ah-time { font-size: 13px; font-weight: 700; }
+.pc-allocation-history .pc-ah-rel { color: var(--text-light, #626b66); font-size: 11px; }
+.pc-allocation-history .pc-ah-tag { margin-left: auto; padding: 2px 9px; border-radius: 999px; background: #f1f4f2; color: #4a564e; font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.pc-allocation-history .pc-ah-tag-first { background: #eaf3ee; color: #236341; }
+.pc-allocation-history .pc-ah-tag-latest { background: #236341; color: #fff; }
+.pc-allocation-history .pc-ah-grid { display: grid; grid-template-columns: minmax(0, 1fr) auto 14px auto; align-items: center; gap: 7px 8px; margin: 12px 0 12px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.pc-allocation-history .pc-ah-head { color: var(--text-light, #626b66); font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; text-align: right; }
+.pc-allocation-history .pc-ah-head-first { text-align: left; }
+.pc-allocation-history .pc-ah-label { color: #3c4a41; overflow-wrap: anywhere; }
+.pc-allocation-history .pc-ah-was { color: var(--text-light, #8a938d); text-align: right; text-decoration: line-through; text-decoration-color: #c3ccc6; }
+.pc-allocation-history .pc-ah-arrow { color: #b4bdb7; text-align: center; }
+.pc-allocation-history .pc-ah-now { display: flex; align-items: baseline; justify-content: flex-end; gap: 6px; font-weight: 700; white-space: nowrap; }
+.pc-allocation-history .pc-ah-delta { padding: 1px 6px; border-radius: 999px; background: #eef4f0; color: #236341; font-size: 10.5px; font-weight: 700; }
+.pc-allocation-history .pc-ah-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.pc-allocation-history .pc-ah-chip { display: inline-flex; align-items: baseline; gap: 6px; padding: 5px 10px; border: 1px solid var(--border-light, #e4eae6); border-radius: 8px; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.pc-allocation-history .pc-ah-chip-k { color: var(--text-light, #626b66); font-size: 11px; }
+.pc-allocation-history .pc-ah-note { margin: 0 0 12px; color: var(--text-light, #626b66); font-size: 11.5px; line-height: 1.5; }
+.pc-allocation-history .pc-ah-detail { display: grid; gap: 7px; padding: 10px 12px; border-radius: 10px; background: #f7f9f8; }
+.pc-allocation-history .pc-ah-line { display: flex; gap: 10px; margin: 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.pc-allocation-history .pc-ah-k { flex: 0 0 76px; color: var(--text-light, #626b66); font-size: 11px; }
+.pc-allocation-history .pc-ah-id { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; }
+.pc-allocation-history .pc-ah-dim { color: #9aa49d; }
+.pc-allocation-history .pc-ah-empty { padding: 30px 20px; text-align: center; }
+.pc-allocation-history .pc-ah-empty p { margin: 6px 0 0; color: var(--text-light, #626b66); font-size: 12px; }
+.pc-allocation-history .pc-ah-foot { margin: 0; padding: 12px 20px 16px; border-top: 1px solid var(--border-light, #e8ede9); color: var(--text-light, #8a938d); font-size: 11px; line-height: 1.5; }
 .pc-allocation-legacy button:focus-visible, .pc-allocation-history-button:focus-visible, .pc-allocation-history button:focus-visible { outline: 2px solid #236341; outline-offset: 3px; }
 @media (max-width: 600px) {
   .pc-allocation-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-  .pc-allocation-history { padding: 16px; }
+  .pc-allocation-history .pc-ah-header { padding: 16px 16px 12px; }
+  .pc-allocation-history .pc-allocation-history-list { padding: 4px 16px; }
+  .pc-allocation-history .pc-ah-foot { padding: 12px 16px 14px; }
+  .pc-allocation-history .pc-ah-grid { gap: 6px; font-size: 12px; }
+  .pc-allocation-history .pc-ah-k { flex-basis: 68px; }
 }
 
 /* Allocation block inside a period card: separate it from the restored stats. */
@@ -1221,19 +1263,8 @@
   font-size: .76rem;
   line-height: 1.45;
 }
-.pc-needs-cta {
-  flex: none;
-  padding: 9px 15px;
-  border: 1.5px solid #e2cd9b;
-  border-radius: 9px;
-  background: #fff;
-  color: #6b5410;
-  font: inherit;
-  font-size: .78rem;
-  font-weight: 650;
-  cursor: pointer;
-}
-.pc-needs-cta:hover { border-color: #d4bb80; background: #fffdf8; }
+/* Geometry and tone now come from the shared overview-CTA primitive in
+   admin-renovation.css (loaded last). Only the focus ring stays here. */
 .pc-needs-cta:focus-visible { outline: 3px solid #8b6914; outline-offset: 2px; }
 .pc-needs--ok {
   display: flex;
@@ -1279,25 +1310,20 @@
 }
 .pc-alloc-headings { min-width: 0; }
 .pc-alloc-eyebrow {
-  font-size: 11.5px; font-weight: 700; letter-spacing: .02em;
+  font-size: 12.5px; font-weight: 700; letter-spacing: .02em;
   color: #6c6c70;
 }
 .pc-alloc-title {
   font-family: var(--serif, 'Playfair Display', serif);
-  font-size: 17px; font-weight: 600; margin: 5px 0 0; line-height: 1.35; letter-spacing: 0;
+  font-size: 19px; font-weight: 600; margin: 5px 0 0; line-height: 1.35; letter-spacing: 0;
 }
-.pc-alloc-chip {
-  flex: none; font-size: 11.5px; font-weight: 700;
-  padding: 6px 13px; border-radius: 999px; white-space: nowrap;
-}
-.pc-alloc-chip--ok   { background: #e3f3ee; color: #157a52; border: 1px solid #cde7d8; }
-.pc-alloc-chip--warn { background: #fff3de; color: #8b6914; border: 1px solid #f0ddb6; }
-.pc-alloc-chip--none { background: #f4f4f2; color: #6c6c70; border: 1px solid #e3e3e0; }
+/* Superseded: the chip is styled as a caption in admin-renovation.css. Two
+   definitions of one chip is how this file and that one drift apart. */
 
 /* Explanatory banners */
 .pc-alloc-note {
   display: flex; gap: 11px; align-items: flex-start; padding: 14px 24px;
-  font-size: 12.5px; line-height: 1.5;
+  font-size: 13.5px; line-height: 1.5;
 }
 .pc-alloc-note p { margin: 0; }
 .pc-alloc-note-ico {
@@ -1322,11 +1348,11 @@
 .pc-alloc-group-id { min-width: 0; }
 .pc-alloc-group-name {
   display: block; font-family: var(--serif, 'Playfair Display', serif);
-  font-size: 15.5px; font-weight: 600;
+  font-size: 17px; font-weight: 600;
 }
-.pc-alloc-group-note { display: block; font-size: 11.5px; color: #6c6c70; }
+.pc-alloc-group-note { display: block; font-size: 12.5px; color: #6c6c70; }
 .pc-alloc-status {
-  font-size: 11px; font-weight: 700; padding: 3px 10px;
+  font-size: 12px; font-weight: 700; padding: 3px 10px;
   border-radius: 999px; white-space: nowrap;
 }
 .pc-alloc-status--ok   { background: #e3f3ee; color: #157a52; }
@@ -1335,8 +1361,8 @@
 .pc-alloc-status--none { background: #f2f1ec; color: #6c6c70; }
 
 .pc-alloc-figs { margin-left: auto; display: flex; gap: 26px; flex-wrap: wrap; }
-.pc-alloc-figs .lbl { display: block; font-size: 10.5px; color: #6c6c70; }
-.pc-alloc-figs .val { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pc-alloc-figs .lbl { display: block; font-size: 11.5px; color: #6c6c70; }
+.pc-alloc-figs .val { font-size: 16.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .pc-alloc-fig-end { text-align: right; }
 .pc-alloc-val--ok   { color: #1a5c3a; }
 .pc-alloc-val--warn { color: #8b6914; }
@@ -1354,7 +1380,7 @@
 .pc-alloc-bar--warn { background: #8b6914; }
 .pc-alloc-bar--over { background: #a02d2d; }
 .pc-alloc-bar--none { background: #d8d5cd; }
-.pc-alloc-used { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.pc-alloc-used { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
 
 /* Cost chips inside a group */
 .pc-alloc-items { display: flex; gap: 10px; padding: 0 24px 16px; flex-wrap: wrap; }
@@ -1385,11 +1411,11 @@
   padding: 16px 24px; border-top: 1px solid #e5e5e5; flex-wrap: wrap;
 }
 .pc-alloc-total-lbl {
-  font-size: 11.5px; letter-spacing: .02em;
+  font-size: 12.5px; letter-spacing: .02em;
   color: #6c6c70; font-weight: 600; white-space: nowrap;
 }
 .pc-alloc-total-amt {
-  font-size: 20px; font-weight: 700; color: #1a5c3a;
+  font-size: 22px; font-weight: 700; color: #1a5c3a;
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .pc-alloc-stack {
@@ -1400,7 +1426,7 @@
 .pc-alloc-seg--green  { background: #1a5c3a; }
 .pc-alloc-seg--amber  { background: #8b6914; }
 .pc-alloc-seg--violet { background: #6b3f8f; }
-.pc-alloc-total-cap { font-size: 12.5px; color: #3a3a3c; white-space: nowrap; }
+.pc-alloc-total-cap { font-size: 13.5px; color: #3a3a3c; white-space: nowrap; }
 
 /* Month-by-month */
 .pc-alloc-toggle {
@@ -1414,7 +1440,7 @@
 .pc-alloc-chev { margin-left: auto; transition: transform .15s; }
 .pc-alloc-chev.is-open { transform: rotate(180deg); }
 .pc-alloc-periods { padding: 4px 24px 20px; border-top: 1px solid #e5e5e5; overflow-x: auto; }
-.pc-alloc-table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 13px; }
+.pc-alloc-table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 14px; }
 .pc-alloc-table th, .pc-alloc-table td { padding: 13px 8px; border-bottom: 1px solid #f1efea; text-align: left; vertical-align: middle; }
 .pc-alloc-table th:first-child, .pc-alloc-table td:first-child { padding-left: 0; }
 .pc-alloc-table th:last-child, .pc-alloc-table td:last-child { padding-right: 0; }
@@ -1422,20 +1448,20 @@
   padding-block: 10px 8px;
   border-bottom-color: #dfe4e0;
   color: #6c6c70;
-  font-size: 10.5px;
+  font-size: 11.5px;
   font-weight: 700;
   letter-spacing: .02em;
 }
 .pc-alloc-table .num { text-align: right; color: #3a3a3c; font-variant-numeric: tabular-nums; }
 .pc-alloc-table .num.strong { color: inherit; font-weight: 600; }
 .pc-alloc-pname { font-family: var(--serif, 'Playfair Display', serif); font-weight: 600; min-width: 0; }
-.pc-alloc-pwhen { display: block; font-family: inherit; font-weight: 400; font-size: .72rem; color: #6c6c70; margin-top: 2px; }
+.pc-alloc-pwhen { display: block; font-family: inherit; font-weight: 400; font-size: .78rem; color: #6c6c70; margin-top: 2px; }
 .pc-alloc-policy {
-  font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 6px;
+  font-size: 12.5px; font-weight: 600; padding: 3px 9px; border-radius: 6px;
   justify-self: start; white-space: nowrap; background: #eaf2ec; color: #1a5c3a;
 }
 .pc-alloc-policy.is-unset { background: #f4f4f2; color: #6c6c70; }
-.pc-alloc-pused { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 11.5px; font-weight: 600; }
+.pc-alloc-pused { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: 12.5px; font-weight: 600; }
 .pc-alloc-pused .pc-alloc-bar { flex: 1 1 60px; height: 6px; }
 
 /* ── Cost rows inside the cost-and-budget card ──────────────────────────────
@@ -1457,19 +1483,19 @@
 .pc-money-row-id .t {
   display: block;
   font-family: var(--serif, 'Playfair Display', serif);
-  font-size: .97rem;
+  font-size: 1.06rem;
   font-weight: 600;
 }
-.pc-money-row-id .s { display: block; color: #6c6c70; font-size: .72rem; }
+.pc-money-row-id .s { display: block; color: #6c6c70; font-size: .8rem; }
 .pc-money-figs {
   margin-inline-start: auto;
   display: flex;
   gap: 26px;
   flex-wrap: wrap;
 }
-.pc-money-figs .lbl { display: block; color: #6c6c70; font-size: .66rem; }
+.pc-money-figs .lbl { display: block; color: #6c6c70; font-size: .74rem; }
 .pc-money-figs .val {
-  font-size: .95rem;
+  font-size: 1.05rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -1485,7 +1511,7 @@
 .pc-money-detail {
   padding: 9px 24px 0;
   color: #6c6c70;
-  font-size: .72rem;
+  font-size: .78rem;
   line-height: 1.45;
 }
 
@@ -1499,12 +1525,12 @@
   flex-wrap: wrap;
 }
 .pc-money-budget-id { flex: 1 1 230px; min-width: 0; }
-.pc-money-budget-id .lbl { display: block; font-size: .8rem; font-weight: 650; }
-.pc-money-budget-id .note { display: block; color: #6c6c70; font-size: .68rem; }
+.pc-money-budget-id .lbl { display: block; font-size: .875rem; font-weight: 650; }
+.pc-money-budget-id .note { display: block; color: #6c6c70; font-size: .75rem; }
 .pc-money-budget-figs { display: flex; gap: 22px; }
-.pc-money-budget-figs .lbl { display: block; color: #6c6c70; font-size: .66rem; }
+.pc-money-budget-figs .lbl { display: block; color: #6c6c70; font-size: .74rem; }
 .pc-money-budget-figs .val {
-  font-size: .9rem;
+  font-size: 1rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -1546,31 +1572,20 @@
 }
 .pc-money-group-name {
   color: #3a3a3c;
-  font-size: .69rem;
+  font-size: .76rem;
   font-weight: 700;
   letter-spacing: .14em;
   text-transform: uppercase;
 }
-.pc-money-group-note { color: #6c6c70; font-size: .72rem; }
+.pc-money-group-note { color: #6c6c70; font-size: .8rem; }
 /* The group header already draws the line, so the first row must not draw a
    second one under it — and a block's last strip must not draw one either. */
 .pc-money-group-head + .pc-money-row { border-top: 0; }
 .pc-money-group-card > .pc-alloc-total { border-top: 0; }
 .pc-months-card .pc-alloc-head { align-items: center; }
 .pc-months-card .pc-alloc-periods { border-top: 1px solid #e5e5e5; }
-.pc-months-cta {
-  flex: none;
-  padding: 8px 14px;
-  border: 1.5px solid #cde7d8;
-  border-radius: 9px;
-  background: #f0faf4;
-  color: #1a5c3f;
-  font: inherit;
-  font-size: .78rem;
-  font-weight: 650;
-  cursor: pointer;
-}
-.pc-months-cta:hover { background: #e6f5ec; }
+/* Geometry and tone now come from the shared overview-CTA primitive in
+   admin-renovation.css (loaded last). Only the focus ring stays here. */
 .pc-months-cta:focus-visible { outline: 3px solid #1a5c3a; outline-offset: 2px; }
 
 @media (max-width: 820px) {

@@ -2052,6 +2052,101 @@ button.btn-primary:hover,
 }
 .dacs-portal-scope .pc-wide-cta--soft:hover { background: #E6F4EC; }
 
+
+/* ── One control primitive for the Project Control overview ──────────────────
+   Three card headers each offered an action and each one dressed differently:
+   serif here and sans there, a 1px border beside a 1.5px one, no two the same
+   height. Meanwhile the loudest pill on the screen — the split chip — did
+   nothing at all, so the eye landed on the one thing it could not press. Every
+   CTA in the overview now shares this geometry and only the tone changes; the
+   chip is demoted to the caption it always was. Scoped and loaded last, so
+   these win over the per-module rules in dacs-portal.css. */
+.dacs-portal-scope .pc-needs-cta,
+.dacs-portal-scope .pc-months-cta,
+.dacs-portal-scope .pc-wide-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: none;
+  min-height: 34px;
+  padding: 8px 15px;
+  border-radius: 10px;
+  border: 1.5px solid var(--brand-hair);
+  background: #fff;
+  color: var(--text-primary);
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, transform .1s ease;
+}
+.dacs-portal-scope .pc-needs-cta:hover,
+.dacs-portal-scope .pc-months-cta:hover,
+.dacs-portal-scope .pc-wide-cta:hover {
+  background: var(--brand-surface-2);
+  border-color: #D6D6D6;
+}
+/* The only motion in the set, and it answers a press. */
+.dacs-portal-scope .pc-needs-cta:active,
+.dacs-portal-scope .pc-months-cta:active,
+.dacs-portal-scope .pc-wide-cta:active { transform: translateY(1px); }
+
+/* Green — moves you deeper into money that already reads healthy. */
+.dacs-portal-scope .pc-months-cta,
+.dacs-portal-scope .pc-wide-cta--soft {
+  border-color: #CDE7D8;
+  background: #F0FAF4;
+  color: #1A5C3F;
+}
+.dacs-portal-scope .pc-months-cta:hover,
+.dacs-portal-scope .pc-wide-cta--soft:hover {
+  background: #E3F3EA;
+  border-color: #B9DCC8;
+}
+
+/* Amber — lives inside the Needs action banner and answers its one warning. */
+.dacs-portal-scope .pc-needs-cta {
+  border-color: #E2CD9B;
+  color: #6B5410;
+}
+.dacs-portal-scope .pc-needs-cta:hover {
+  background: #FFFBF2;
+  border-color: #D4BB80;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dacs-portal-scope .pc-needs-cta,
+  .dacs-portal-scope .pc-months-cta,
+  .dacs-portal-scope .pc-wide-cta { transition: none; }
+  .dacs-portal-scope .pc-needs-cta:active,
+  .dacs-portal-scope .pc-months-cta:active,
+  .dacs-portal-scope .pc-wide-cta:active { transform: none; }
+}
+
+/* The split chip states a fact; it is not an offer, so it stops dressing like
+   one. No pill, no fill, no border — the sentence already carries the meaning,
+   the colour only seconds it, and the button beside it is now the only tinted
+   box in the header row. */
+.dacs-portal-scope .pc-alloc-chip {
+  display: inline-block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.dacs-portal-scope .pc-alloc-chip--ok   { color: #157A52; }
+.dacs-portal-scope .pc-alloc-chip--warn { color: #8B6914; }
+.dacs-portal-scope .pc-alloc-chip--none { color: #6C6C70; }
+
 /* ── Billing & Reports ── */
 .dacs-portal-scope .pc-section-label {
   font-family: var(--sans);

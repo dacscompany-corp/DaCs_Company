@@ -1333,7 +1333,7 @@ function CostBudget({ project, summary, childMonths, payrollRaw, expensesRaw, ov
   const configured = owner ? Number(summary.configuredCount) || 0 : 0;
   const missing = owner ? Number(summary.legacyCount) || 0 : 0;
   const chip = missing === 0 && configured > 0
-    ? "All " + configured + " billing" + (configured === 1 ? "" : "s") + " has a split"
+    ? (configured === 1 ? "The one billing has a split" : "All " + configured + " billings have a split")
     : missing ? missing + " billing" + (missing === 1 ? "" : "s") + " with no split yet" : "No billing has a split yet";
   const reserve = owner ? summary.targetMarginReserve : 0;
   const variance = owner ? summary.targetMarginVariance : null;
@@ -1525,22 +1525,75 @@ function AllocationHistory({ periodId, periodLabel, adjustments, onClose }) {
   const asDate = value => value && typeof value.toDate === "function" ? value.toDate() : new Date(value || 0);
   const rows = (adjustments || []).filter(a => a.projectId === periodId)
     .slice().sort((a, b) => asDate(b.createdAt) - asDate(a.createdAt));
-  const percentages = (row, prefix) => row[prefix + "DirectPct"] == null ? "Allocation not configured"
-    : "Direct " + row[prefix + "DirectPct"] + "% / Indirect " + row[prefix + "IndirectPct"] + "% / Target Margin " + row[prefix + "TargetMarginPct"] + "%";
+  // No old percentages means this row CONFIGURED the envelopes rather than changing them —
+  // before it the period read "Allocation not configured", which is never back-filled.
+  const split = (row, prefix) => row[prefix + "DirectPct"] == null ? null : {
+    direct: row[prefix + "DirectPct"], indirect: row[prefix + "IndirectPct"], margin: row[prefix + "TargetMarginPct"] };
+  const stampText = date => Number.isNaN(date.getTime()) ? "Unavailable"
+    : date.toLocaleString("en-PH", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  const agoText = date => {
+    if (Number.isNaN(date.getTime())) return "";
+    // Local parts only — a UTC date key rolls PH (UTC+8) back a day.
+    const dayKey = d => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const days = Math.round((dayKey(new Date()) - dayKey(date)) / 864e5);
+    return days <= 0 ? "Today" : days === 1 ? "Yesterday" : days < 30 ? days + " days ago" : "";
+  };
+  // The whole id stays in the text (it IS the audit trail); only its tail is dimmed so the
+  // readable head of a uuid carries the row.
+  const actorText = value => {
+    const id = String(value || "Unknown");
+    return id.length > 10 ? [h("strong", { key: "head" }, id.slice(0, 8)), h("span", { key: "tail", className: "pc-ah-dim" }, id.slice(8))]
+      : h("strong", null, id);
+  };
+  const shares = [["Direct", "direct"], ["Indirect", "indirect"], ["Target Margin", "margin"]];
+  // A first allocation has nothing to compare against, so it reads as three plain chips.
+  // Only a real adjustment earns the before -> after table.
+  const sharesChips = after => h("div", { className: "pc-ah-chips" }, shares.map(([label, key]) =>
+    h("span", { key, className: "pc-ah-chip" }, h("span", { className: "pc-ah-chip-k" }, label), h("strong", null, after[key] + "%"))));
+  const changeGrid = (before, after) => h("div", { className: "pc-ah-grid" },
+    h("span", { className: "pc-ah-head pc-ah-head-first" }, "Share"),
+    h("span", { className: "pc-ah-head" }, "Before"),
+    h("span", null),
+    h("span", { className: "pc-ah-head" }, "After"),
+    shares.map(([label, key]) => {
+      const delta = after[key] - before[key];
+      return h(React.Fragment, { key },
+        h("span", { className: "pc-ah-label" }, label),
+        h("span", { className: "pc-ah-was" }, before[key] + "%"),
+        h("span", { className: "pc-ah-arrow", "aria-hidden": "true" }, "→"),
+        h("span", { className: "pc-ah-now" }, after[key] + "%",
+          delta ? h("span", { className: "pc-ah-delta" }, (delta > 0 ? "+" : "−") + Math.abs(delta)) : null));
+    }));
+  const entry = (row, index) => {
+    const stamp = asDate(row.createdAt);
+    const relative = agoText(stamp);
+    const before = split(row, "old"), after = split(row, "new");
+    return h("li", { key: row.id, className: "pc-ah-item" },
+      h("div", { className: "pc-ah-top" },
+        h("span", { className: "pc-ah-time" }, stampText(stamp)),
+        relative && h("span", { className: "pc-ah-rel" }, relative),
+        h("span", { className: "pc-ah-tag" + (before ? (index === 0 ? " pc-ah-tag-latest" : "") : " pc-ah-tag-first") },
+          before ? (index === 0 ? "In effect now" : "Adjusted") : "First allocation")),
+      after ? (before ? changeGrid(before, after) : sharesChips(after)) : null,
+      before ? null : h("p", { className: "pc-ah-note" }, "The period had no allocation before this — these percentages set it."),
+      h("div", { className: "pc-ah-detail" },
+        h("p", { className: "pc-ah-line" }, h("span", { className: "pc-ah-k" }, "Reason"), h("span", null, row.reason || "—")),
+        h("p", { className: "pc-ah-line", title: String(row.createdBy || "Unknown") },
+          h("span", { className: "pc-ah-k" }, "Changed by"), h("span", { className: "pc-ah-id" }, actorText(row.createdBy)))));
+  };
   return h("dialog", { ref: dialog, className: "pc-allocation-history", "aria-labelledby": "pc-allocation-history-title",
-    onCancel: event => { event.preventDefault(); onClose(); }, onClose },
-    h("div", { className: "pc-allocation-band-head" }, h("h3", { id: "pc-allocation-history-title" }, "Allocation History"),
-      h("button", { type: "button", className: "pc-row-icon", "aria-label": "Close allocation history", title: "Close allocation history", autoFocus: true, onClick: onClose }, "\u00D7")),
-    h("p", { className: "pc-allocation-note" }, periodLabel),
-    rows.length ? h("ol", { className: "pc-allocation-history-list" }, rows.map(row =>
-      h("li", { key: row.id },
-        h("dl", null,
-          h("dt", null, "Before"), h("dd", null, percentages(row, "old")),
-          h("dt", null, "After"), h("dd", null, percentages(row, "new")),
-          h("dt", null, "Reason"), h("dd", null, row.reason),
-          h("dt", null, "Actor"), h("dd", null, row.createdBy || "Unknown"),
-          h("dt", null, "Timestamp"), h("dd", null, Number.isNaN(asDate(row.createdAt).getTime()) ? "Unavailable" : asDate(row.createdAt).toLocaleString("en-PH"))))))
-      : h("p", null, "No allocation adjustments recorded."));
+    onCancel: event => { event.preventDefault(); onClose(); }, onClose,
+    onClick: event => { if (event.target === dialog.current) onClose(); } },
+    h("header", { className: "pc-ah-header" },
+      h("div", { className: "pc-ah-heading" },
+        h("h3", { id: "pc-allocation-history-title" }, "Allocation History"),
+        h("p", { className: "pc-ah-sub" }, h("span", null, periodLabel),
+          h("span", { className: "pc-ah-count" }, rows.length, rows.length === 1 ? " change" : " changes"))),
+      h("button", { type: "button", className: "pc-ah-close", "aria-label": "Close allocation history", title: "Close allocation history", autoFocus: true, onClick: onClose }, "×")),
+    rows.length ? h("ul", { className: "pc-allocation-history-list" }, rows.map(entry))
+      : h("div", { className: "pc-ah-empty" }, h("strong", null, "No changes yet"),
+        h("p", null, "This period still uses the allocation it started with.")),
+    h("p", { className: "pc-ah-foot" }, "Allocation history is permanent — entries can never be edited or removed."));
 }
 function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, overheadRaw, allocationMap, allocationAdjustments, onBack }) {
   const h = React.createElement;
@@ -3863,7 +3916,7 @@ function PortalApp() {
       periodCount: childMonths.length,
       ...(isOwner ? { allocationSummary } : {})
     }
-  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(ProjectLedger, { project, inboxPending }), /* @__PURE__ */ React.createElement(NeedsAction, { allocationSummary: isOwner ? allocationSummary : null, inboxPending, onOpen: setView }), /* @__PURE__ */ React.createElement(CostBudget, { project, summary: isOwner ? allocationSummary : null, childMonths, ...allocationCosts, allocationMap: isOwner ? visibleAllocationMap : {}, onOpen: setView, inboxPending }), React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId) }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId, pmPaidByContractId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { key: projectId, project, childMonths, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, ...allocationCosts, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [], onBack: () => setView("dashboard") })));
+  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(ProjectLedger, { project, inboxPending }), React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(NeedsAction, { allocationSummary: isOwner ? allocationSummary : null, inboxPending, onOpen: setView }), /* @__PURE__ */ React.createElement(CostBudget, { project, summary: isOwner ? allocationSummary : null, childMonths, ...allocationCosts, allocationMap: isOwner ? visibleAllocationMap : {}, onOpen: setView, inboxPending }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId) }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId, pmPaidByContractId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { key: projectId, project, childMonths, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, ...allocationCosts, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [], onBack: () => setView("dashboard") })));
 }
 (function() {
   const mount = document.getElementById("dacsPortalRoot");
