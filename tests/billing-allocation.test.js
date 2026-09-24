@@ -756,7 +756,6 @@ function testProjectLedger() {
   assert.match(text, /Net Profit · Forecast/);
   assert.match(text, /Forecast profit rate/, 'forecast percentage is named as profit, not margin jargon');
   assert.doesNotMatch(text, /Forecast margin|Net Profit · Earned/);
-  assert.match(text, /above is a forecast/, 'the forecast is spelled out in words, not just labelled');
   // The profit belongs to the hero banner alone — the strip below must not
   // reprint it, which is the duplication the redesign removed.
   eq((text.match(/825000\.00/g) || []).length, 1, 'the profit is printed once, in the banner');

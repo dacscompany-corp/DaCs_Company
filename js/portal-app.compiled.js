@@ -1077,14 +1077,16 @@ function ProjectLedger({ project, inboxPending }) {
   const heroName = isLoss ? "Net Loss" : "Net Profit";
   const heroLbl = heroName + (m.isForecast ? " · Forecast" : " · Earned");
   const rateLbl = m.isForecast ? "Forecast profit rate" : "Earned profit rate";
+  // Staff never see the hero, so they keep the white row. For everyone else the
+  // contract-and-cost pair lives INSIDE the hero's right side, so the banner
+  // reads as the whole equation — Contract − Actual Cost = the profit beside it.
   const cells = staff ? [
     { lbl: "Actual Cost", val: spentPct == null ? "—" : spentPct.toFixed(1) + "%", note: "of contract spent", tone: "accent" },
     { lbl: "Needs action", val: receipts + " receipt" + (receipts === 1 ? "" : "s"), note: receipts ? "need encoding" : "No receipts waiting", tone: receipts ? "warn" : "ok" }
-  ] : [
-    // The profit lives in the banner above — printing it here too is the
-    // duplication the redesign removed.
+  ] : [];
+  const heroStats = staff ? [] : [
     { lbl: "Total Contract", val: money(contract), note: contract > 0 ? "What the client agreed to pay" : "No contract value set" },
-    { lbl: "Actual Cost", val: money(spent), note: spentPct == null ? "Labor + Material + Overhead" : spentPct.toFixed(1) + "% of contract", tone: "accent" }
+    { lbl: "Actual Cost", val: money(spent), note: spentPct == null ? "Labor + Material + Overhead" : spentPct.toFixed(1) + "% of contract" }
   ];
   const heroSub = m.isForecast
     ? "Contract − Actual cost · assumes the job is completed"
@@ -1100,11 +1102,6 @@ function ProjectLedger({ project, inboxPending }) {
     { lbl: "Budget Remaining", val: money(remaining), note: "Fund Allocated − Actual Cost", tone: remaining < 0 ? "danger" : "ok" },
     { lbl: "Cover Expenses", val: money(cover), note: "Company-fronted · already counted in Actual Cost", tone: coverOver ? "danger" : "", badge: coverOver ? "Over ₱" + COVER_LIMIT.toLocaleString("en-PH") : null }
   ];
-  const foot = staff
-    ? (m.isForecast ? "No accomplishment has been signed off yet, so nothing has been earned or billed on this project."
-      : m.completePct.toFixed(1) + "% of the contract has been accomplished and signed off.")
-    : (m.isForecast ? "No accomplishment has been signed off yet, so nothing has been earned. " + heroName + " above is a forecast — Total Contract − Actual Cost, assuming the job finishes exactly as priced."
-      : m.completePct.toFixed(1) + "% of the contract is accomplished, so " + money(m.earned) + " is earned. " + heroName + " = Earned Revenue − Actual Cost.");
   return h("section", { className: "pc-ledger", "aria-labelledby": "pc-ledger-title" },
     h("h2", { id: "pc-ledger-title", className: "visually-hidden" }, "Project ledger"),
     // Staff never see a profit figure, so they never see the banner.
@@ -1120,6 +1117,11 @@ function ProjectLedger({ project, inboxPending }) {
         h("div", { className: "pc-sm-hero-margin" },
           h("div", { className: "pc-sm-hero-margin-val" }, (m.pct == null ? "0.0" : m.pct.toFixed(1)) + "%"),
           h("div", { className: "pc-sm-hero-margin-lbl" }, rateLbl)),
+        heroStats.length ? h("div", { className: "pc-sm-hero-stats" }, heroStats.map((s) =>
+          h("div", { key: s.lbl, className: "pc-sm-hero-stat" },
+            h("span", { className: "lbl" }, s.lbl),
+            h("span", { className: "val" }, s.val),
+            h("span", { className: "note" }, s.note)))) : null,
         h("button", {
           type: "button",
           className: "pc-eye-toggle",
@@ -1127,18 +1129,17 @@ function ProjectLedger({ project, inboxPending }) {
           title: figsOpen ? "Hide the funding figures" : "Show the funding figures",
           onClick: (e) => { e.stopPropagation(); setFigsOpen((o) => !o); }
         }, _pcEye(figsOpen, 15), figsOpen ? "Hide figures" : "Show figures"))),
-    h("div", { className: "pc-ledger-grid" }, cells.map((c) =>
+    cells.length ? h("div", { className: "pc-ledger-grid" }, cells.map((c) =>
       h("div", { key: c.lbl, className: "pc-ledger-cell pc-ledger-cell--" + (c.tone || "neutral") },
         h("span", { className: "lbl" }, c.lbl),
         h("span", { className: "val" }, c.val),
-        h("span", { className: "note" }, c.note)))),
+        h("span", { className: "note" }, c.note)))) : null,
     !staff && figsOpen && h("div", { className: "pc-ledger-funding" }, funding.map((f) =>
       h("span", { key: f.lbl, className: "pc-ledger-fund pc-ledger-fund--" + (f.tone || "neutral") },
         h("span", { className: "lbl" }, f.lbl),
         h("span", { className: "val" }, f.val),
         f.badge ? h("span", { className: "pc-over-badge" }, f.badge) : null,
-        h("span", { className: "note" }, f.note)))),
-    h("p", { className: "pc-ledger-foot" }, foot));
+        h("span", { className: "note" }, f.note)))));
 }
 // Both warnings, the receipt queue and the billing link in ONE block you can act
 // on. The count keeps the old "needs action" arithmetic — receipts + months
@@ -1295,8 +1296,11 @@ function CostBudget({ project, summary, childMonths, payrollRaw, expensesRaw, ov
       h("span", { className: "pc-money-row-id" },
         h("span", { className: "t" }, r.title),
         h("span", { className: "s" }, r.sub)),
-      h("span", { className: "pc-help-tip", "data-tip": r.tip, onClick: (e) => e.stopPropagation() }, "?"),
-      _flowInboxBadge(r.inbox),
+      // Help dot and receipt badge ride together in one cell, so the head can be
+      // laid out as a grid and the dot can never break away to the figures line.
+      h("span", { className: "pc-money-row-meta" },
+        h("span", { className: "pc-help-tip", "data-tip": r.tip, onClick: (e) => e.stopPropagation() }, "?"),
+        _flowInboxBadge(r.inbox)),
       h("span", { className: "pc-money-figs" },
         staff ? null : h("span", null,
           h("span", { className: "lbl" }, "Spent"),
@@ -1313,6 +1317,12 @@ function CostBudget({ project, summary, childMonths, payrollRaw, expensesRaw, ov
   const envelope = (key, label, note, spentAmt, budget) => {
     const st = pcAllocationStatus(spentAmt, budget);
     const tone = PC_ALLOC_TONE[st.key] || "none";
+    // The strip is an ALARM, not a permanent readout (2026-09-24): a budget that
+    // still has room says nothing the rows above it do not already say, so the
+    // strip only appears once the status turns red — tone "over", i.e. the
+    // "high" (>=90%) and "over" (>100%) bands of pcAllocationStatus(). Green and
+    // amber stay hidden. Bands are still read from there, never re-thresholded.
+    if (tone !== "over") return null;
     const over = budget > 0 && spentAmt > budget;
     return h("div", { className: "pc-money-budget", key },
       h("span", { className: "pc-money-budget-id" },
@@ -1358,51 +1368,62 @@ function CostBudget({ project, summary, childMonths, payrollRaw, expensesRaw, ov
             ? "What was spent, and whether it fits the budget"
             : "What was spent on this project")),
         owner ? h("span", { className: "pc-alloc-chip " + (missing === 0 && configured > 0 ? "pc-alloc-chip--ok" : "pc-alloc-chip--none") }, chip) : null),
-      h("div", { className: "pc-money-group-card" },
-        groupHead("green", "Direct costs", owner
-          ? "Labor and materials share one budget"
-          : "Spent straight on the job"),
-        row(rows[0]),
-        row(rows[1]),
-        owner ? envelope("direct", "One budget covers Labor and Material",
-          "The direct-cost envelope is never split between the two",
-          (project.labor || 0) + (project.material || 0), summary.directBudget) : null),
-      h("div", { className: "pc-money-group-card" },
-        groupHead("violet", "Indirect costs", owner
-          ? "Running the site — its own separate budget"
-          : "Running the site"),
-        row(rows[2]),
-        owner ? envelope("indirect", "Budget for Overhead Cost",
-          "The indirect-cost envelope for site overhead",
-          project.overhead || 0, summary.indirectBudget) : null),
-      // Planning, never revenue: the reserve is what the job is MEANT to earn,
-      // and it is never labelled "Profit" on its own.
-      owner ? h("div", { className: "pc-money-group-card pc-alloc-reserve" },
-        h("div", { className: "pc-alloc-group-head" },
-          h("span", { className: "pc-alloc-dot pc-alloc-dot--violet" }),
-          h("span", { className: "pc-alloc-group-id" },
-            h("span", { className: "pc-alloc-group-name" }, "Target Margin Reserve"),
-            h("span", { className: "pc-alloc-group-note" }, "Never spent — this is what the job is planned to earn")),
-          h("span", { className: "pc-alloc-figs" },
-            h("span", null,
-              h("span", { className: "lbl" }, summary.isForecast ? "Forecast profit" : "Earned so far"),
-              h("span", { className: "val" }, money(summary.actualProfit))),
-            h("span", null,
-              h("span", { className: "lbl" }, "Target margin reserve"),
-              h("span", { className: "val" }, reserve > 0 ? money(reserve) : "—")),
-            h("span", { className: "pc-alloc-fig-end" },
-              h("span", { className: "lbl" }, variance == null ? "" : variance >= 0 ? "Ahead of plan" : "Short of plan"),
-              h("span", { className: "val pc-alloc-val--" + (variance == null ? "none" : variance >= 0 ? "ok" : "over") },
-                variance == null ? (summary.isForecast ? "No comparison yet" : "No target yet") : money(Math.abs(variance))))))) : null,
-      h("div", { className: "pc-money-group-card" },
-      h("div", { className: "pc-alloc-total" },
-        h("span", { className: "pc-alloc-total-lbl" }, "Total spent"),
-        staff ? null : h("span", { className: "pc-alloc-total-amt" }, money(spent)),
-        h("span", { className: "pc-alloc-stack" }, stack.map(([cls, v], i) =>
-          h("span", { key: i, className: "pc-alloc-seg " + cls, style: { width: Math.min(shareOf(v), 100) + "%" } }))),
-        h("span", { className: "pc-alloc-total-cap" }, contract > 0
-          ? shareOf(spent).toFixed(1) + "% of " + (staff ? "the contract" : money(contract) + " contract")
-          : "No contract value set")))),
+      // The two envelopes side by side — direct on the left, indirect on the
+      // right — so the pair of budgets reads as one comparison instead of a
+      // scroll. Each card still owns its own rows and its own strip.
+      h("div", { className: "pc-money-pair" },
+        h("div", { className: "pc-money-group-card" },
+          groupHead("green", "Direct costs", owner
+            ? "Labor and materials share one budget"
+            : "Spent straight on the job"),
+          // Labor and Material sit side by side, split by one hairline: the pair
+          // shares a single direct-cost envelope, so showing them as two halves of
+          // one strip says that before the budget strip underneath repeats it.
+          h("div", { className: "pc-money-split" }, row(rows[0]), row(rows[1])),
+          owner ? envelope("direct", "One budget covers Labor and Material",
+            "The direct-cost envelope is never split between the two",
+            (project.labor || 0) + (project.material || 0), summary.directBudget) : null),
+        h("div", { className: "pc-money-group-card" },
+          groupHead("violet", "Indirect costs", owner
+            ? "Running the site — its own separate budget"
+            : "Running the site"),
+          row(rows[2]),
+          owner ? envelope("indirect", "Budget for Overhead Cost",
+            "The indirect-cost envelope for site overhead",
+            project.overhead || 0, summary.indirectBudget) : null)),
+      // The plan and the outcome, one beside the other: the reserve the job is
+      // meant to earn on the left, what it has actually spent on the right, so
+      // the pair reads as one comparison instead of two stacked strips. With no
+      // reserve to show (a non-owner) Total spent keeps the full row.
+      h("div", { className: "pc-money-foot" + (owner ? "" : " pc-money-foot--solo") },
+        // Planning, never revenue: the reserve is what the job is MEANT to earn,
+        // and it is never labelled "Profit" on its own.
+        owner ? h("div", { className: "pc-money-group-card pc-alloc-reserve" },
+          h("div", { className: "pc-alloc-group-head" },
+            h("span", { className: "pc-alloc-dot pc-alloc-dot--violet" }),
+            h("span", { className: "pc-alloc-group-id" },
+              h("span", { className: "pc-alloc-group-name" }, "Target Margin Reserve"),
+              h("span", { className: "pc-alloc-group-note" }, "Never spent — this is what the job is planned to earn")),
+            h("span", { className: "pc-alloc-figs" },
+              h("span", null,
+                h("span", { className: "lbl" }, summary.isForecast ? "Forecast profit" : "Earned so far"),
+                h("span", { className: "val" }, money(summary.actualProfit))),
+              h("span", null,
+                h("span", { className: "lbl" }, "Target margin reserve"),
+                h("span", { className: "val" }, reserve > 0 ? money(reserve) : "—")),
+              h("span", { className: "pc-alloc-fig-end" },
+                h("span", { className: "lbl" }, variance == null ? "" : variance >= 0 ? "Ahead of plan" : "Short of plan"),
+                h("span", { className: "val pc-alloc-val--" + (variance == null ? "none" : variance >= 0 ? "ok" : "over") },
+                  variance == null ? (summary.isForecast ? "No comparison yet" : "No target yet") : money(Math.abs(variance))))))) : null,
+        h("div", { className: "pc-money-group-card" },
+          h("div", { className: "pc-alloc-total" },
+            h("span", { className: "pc-alloc-total-lbl" }, "Total spent"),
+            staff ? null : h("span", { className: "pc-alloc-total-amt" }, money(spent)),
+            h("span", { className: "pc-alloc-stack" }, stack.map(([cls, v], i) =>
+              h("span", { key: i, className: "pc-alloc-seg " + cls, style: { width: Math.min(shareOf(v), 100) + "%" } }))),
+            h("span", { className: "pc-alloc-total-cap" }, contract > 0
+              ? shareOf(spent).toFixed(1) + "% of " + (staff ? "the contract" : money(contract) + " contract")
+              : "No contract value set"))))),
     owner ? h(BillingBudgets, { childMonths, payrollRaw, expensesRaw, overheadRaw, allocationMap, onOpen }) : null);
 }
 // The same money, billing by billing — NOT month by month: the client pays on the
@@ -3916,7 +3937,7 @@ function PortalApp() {
       periodCount: childMonths.length,
       ...(isOwner ? { allocationSummary } : {})
     }
-  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(ProjectLedger, { project, inboxPending }), React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(NeedsAction, { allocationSummary: isOwner ? allocationSummary : null, inboxPending, onOpen: setView }), /* @__PURE__ */ React.createElement(CostBudget, { project, summary: isOwner ? allocationSummary : null, childMonths, ...allocationCosts, allocationMap: isOwner ? visibleAllocationMap : {}, onOpen: setView, inboxPending }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId) }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId, pmPaidByContractId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { key: projectId, project, childMonths, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, ...allocationCosts, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [], onBack: () => setView("dashboard") })));
+  ), view === "dashboard" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(ProjectLedger, { project, inboxPending }), /* @__PURE__ */ React.createElement(CostBudget, { project, summary: isOwner ? allocationSummary : null, childMonths, ...allocationCosts, allocationMap: isOwner ? visibleAllocationMap : {}, onOpen: setView, inboxPending }), /* @__PURE__ */ React.createElement(KPIStrip, { project }), /* @__PURE__ */ React.createElement(FlowCards, { onOpen: setView, periodCount: childMonths.length, additionalWorksTotal, additionalWorksCount: childFolderStats.length, isAdditionalWorks: !!(activeFolder && activeFolder.parentFolderId) }), /* @__PURE__ */ React.createElement(BillingSummary, { billing }), /* @__PURE__ */ React.createElement(RecentEntries, { onOpen: setView, laborTx: laborOnlyTx, materialTx }), React.createElement(ExpenseInboxMount, { folderId: projectId, label: project && project.name || "" }), /* @__PURE__ */ React.createElement(NeedsAction, { allocationSummary: isOwner ? allocationSummary : null, inboxPending, onOpen: setView })), view === "labor" && /* @__PURE__ */ React.createElement(LaborDrill, { project, childMonths, onBack: () => setView("dashboard"), laborTx: laborOnlyTx, contracts: folderContracts, folderPayroll: contractPayroll, activeFolder, folderId: projectId, pmPaidByContractId }), view === "overhead" && /* @__PURE__ */ React.createElement(OverheadDrill, { key: projectId, project, childMonths, onBack: () => setView("dashboard"), overheadTx, indirectTx: overheadLaborTx, folderId: projectId, ocmPct: activeFolder ? Number(activeFolder.ocmPct) || 0 : 0, contractAmount: activeFolder ? Number(activeFolder.totalBudget) || 0 : 0, allTimeOverhead: allTimeOverheadSpent }), view === "additionalWorks" && /* @__PURE__ */ React.createElement(AdditionalWorksDrill, { project, onBack: () => setView("dashboard"), childFolders: childFolderStats, additionalWorksRaw, onOpenChild: setProjectId, folderId: projectId }), view === "material" && /* @__PURE__ */ React.createElement(MaterialDrill, { project, childMonths, onBack: () => setView("dashboard"), materialTx, activeFolder, folderId: projectId }), view === "periods" && /* @__PURE__ */ React.createElement(BillingPeriodsDrill, { project, childMonths, ...allocationCosts, allocationMap: isOwner ? visibleAllocationMap : {}, allocationAdjustments: isOwner ? allocationAdjustments : [], onBack: () => setView("dashboard") })));
 }
 (function() {
   const mount = document.getElementById("dacsPortalRoot");

@@ -3,6 +3,24 @@
    Minimal, spacious, brand green + Playfair display
 ============================================================ */
 
+/* ------------------------------------------------------------
+   KG Architecturally Artistic — the display face for Project
+   Control titles. Hand-drafted, like a plan sheet annotation.
+
+   It has NO peso glyph (386 glyphs, no U+20B1), so it is kept off
+   every money figure: those stay on --serif / --sans, where the
+   ₱ and the tabular numerals come from one face. Titles only.
+   Licence: fonts/KGFonts-TOU.txt (kimberlygeswein.com).
+------------------------------------------------------------ */
+@font-face {
+  font-family: 'KG Architecturally Artistic';
+  src: url('../fonts/KGArchitecturallyArtistic.woff2') format('woff2'),
+       url('../fonts/KGArchitecturallyArtistic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   /* Brand */
   --brand-green: #1A5C3A;
@@ -33,6 +51,8 @@
   --serif: 'Playfair Display', 'Times New Roman', Georgia, serif;
   --sans: 'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Titles and headings only — never numbers (no ₱ glyph). */
+  --display: 'KG Architecturally Artistic', 'Playfair Display', 'Times New Roman', Georgia, serif;
 }
 
 .theme-dark {
@@ -85,7 +105,7 @@
 .dacs-portal-scope h2,
 .dacs-portal-scope h3,
 .dacs-portal-scope h4 {
-  font-family: var(--serif);
+  font-family: var(--display);
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--ink);
@@ -141,7 +161,7 @@
   line-height: 1.1;
 }
 .brand-name {
-  font-family: var(--serif);
+  font-family: var(--display);
   font-size: 18px;
   font-weight: 700;
   color: var(--ink);
@@ -553,7 +573,7 @@
   min-width: 0;
 }
 .subtab-label {
-  font-family: var(--serif);
+  font-family: var(--display);
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.01em;
@@ -833,7 +853,7 @@
   align-items: center;
 }
 .summary-strip .label-col {
-  font-family: var(--serif);
+  font-family: var(--display);
   font-size: 17px;
   font-weight: 600;
   color: var(--ink);
@@ -1189,14 +1209,6 @@
   margin: 0 0 0 7px;
   align-self: auto;
 }
-.pc-ledger-foot {
-  margin: 0;
-  padding: 12px 22px 14px;
-  border-top: 1px solid #f1efea;
-  color: #6c6c70;
-  font-size: .78rem;
-  line-height: 1.55;
-}
 
 /* ── Needs action ───────────────────────────────────────────────────────────
    Every warning in one block you can act on: the receipt queue, months with no
@@ -1404,15 +1416,38 @@
 
 .pc-alloc-reserve { background: #fafaf9; }
 .pc-alloc-reserve .pc-alloc-group-head { padding-bottom: 15px; }
+/* The foot pair has no green band of its own, so the title carries the colour:
+   an outline that hugs the words (inline-block, or a block title would stretch
+   its rule across the whole card). */
+.pc-alloc-reserve .pc-alloc-group-name {
+  display: inline-block;
+  color: #1b5134;
+  border: 1.5px solid #2f7d52;
+  border-radius: 8px;
+  background: #d5ecdd;
+  /* Shaped like DIRECT COSTS above — the same small uppercase label, so the
+     four groups are named the same way — but set in the display face the
+     project title ("Sulit Residence") uses. The tracking leaves a gap after the
+     last letter, so the right padding is trimmed to keep the word centred. */
+  font-family: var(--display);
+  font-size: .76rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  padding: 4px 8px 4px 10px;
+}
 
 /* Total spent strip */
 .pc-alloc-total {
   display: flex; align-items: center; gap: 16px;
   padding: 16px 24px; border-top: 1px solid #e5e5e5; flex-wrap: wrap;
 }
+/* "Total spent" now heads its own card beside Target Margin Reserve, so it is
+   set like that card's title — same serif, same size — not like a caption. */
 .pc-alloc-total-lbl {
-  font-size: 12.5px; letter-spacing: .02em;
-  color: #6c6c70; font-weight: 600; white-space: nowrap;
+  font-family: var(--display);
+  font-size: 17px; font-weight: 600;
+  color: #1d1d1f; white-space: nowrap;
 }
 .pc-alloc-total-amt {
   font-size: 22px; font-weight: 700; color: #1a5c3a;
@@ -1482,9 +1517,13 @@
 .pc-money-row-id { min-width: 0; }
 .pc-money-row-id .t {
   display: block;
-  font-family: var(--serif, 'Playfair Display', serif);
+  /* Same face as the project title ("Sulit Residence") — the display font,
+     not the serif fallback the cost cards used before. */
+  font-family: var(--display);
   font-size: 1.06rem;
   font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
 .pc-money-row-id .s { display: block; color: #6c6c70; font-size: .8rem; }
 .pc-money-figs {
@@ -1513,6 +1552,51 @@
   color: #6c6c70;
   font-size: .78rem;
   line-height: 1.45;
+}
+
+/* Labor and Material share one envelope, so they share one strip: two halves of
+   the same row, split by a single hairline. The split answers to the WIDTH OF
+   ITS OWN CARD, not the viewport — the card sits in a half-width column beside
+   Indirect costs, so a viewport media query would get this wrong. Too narrow a
+   card and the pair stacks, with the divider back as a horizontal rule. */
+.pc-money-split > .pc-money-row { min-width: 0; border-top: 0; }
+.pc-money-split > .pc-money-row + .pc-money-row { border-top: 1px solid #e5e5e5; }
+.pc-money-row-meta { flex: none; display: inline-flex; align-items: center; }
+@container (min-width: 500px) {
+  .pc-money-split { display: grid; grid-template-columns: 1fr 1fr; }
+  .pc-money-split > .pc-money-row + .pc-money-row { border-top: 0; border-inline-start: 1px solid #e5e5e5; }
+  /* Half the width means the head must break in ONE predictable place. Left to
+     plain flex-wrap it broke wherever the longest subtitle happened to end and
+     the help dot got stranded on the figures line (Labor did, Material didn't).
+     So the head is a small GRID instead: icon + name + help hold the top line,
+     the figures and the arrow hold the bottom one — the same shape in both
+     cells, whatever the subtitle says. */
+  .pc-money-split > .pc-money-row { display: flex; flex-direction: column; }
+  .pc-money-split .pc-money-row-head {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "icon name meta"
+      "figs figs open";
+    align-items: center;
+    gap: 9px 10px;
+    padding-inline: 18px;
+  }
+  .pc-money-split .pc-cost-icon { grid-area: icon; align-self: start; }
+  .pc-money-split .pc-money-row-id { grid-area: name; }
+  .pc-money-split .pc-money-row-meta { grid-area: meta; align-self: start; }
+  /* Both second-line cells hug the foot of the head, so the two rows of figures
+     sit on one line across the divider even when one subtitle wraps. */
+  .pc-money-split .pc-money-figs { grid-area: figs; margin-inline-start: 0; gap: 16px; align-self: end; }
+  .pc-money-split .pc-money-open { grid-area: open; justify-self: end; align-self: end; }
+  .pc-money-split .pc-money-bar { margin-inline: 18px; }
+  .pc-money-split .pc-money-row-id .t { font-size: 1rem; }
+  .pc-money-split .pc-money-figs .val { font-size: .98rem; }
+  /* Two lines are held for the caption so the pair of bars lands on one line
+     even when one caption wraps and the other does not. */
+  .pc-money-split .pc-money-detail { padding-inline: 18px; min-height: 2.9em; }
 }
 
 .pc-money-budget {
@@ -1555,29 +1639,93 @@
   flex-wrap: wrap;
 }
 .pc-money-group-card {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid #e5e5e5;
   border-radius: 16px;
   background: #fff;
   box-shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 1px 1px rgb(0 0 0 / 3%);
+  /* The cost rows inside size themselves against THIS card, not the window. */
+  container-type: inline-size;
 }
+/* Direct costs and Indirect costs, one beside the other. Direct carries two cost
+   rows and Indirect only one, so the budget strip is pushed to the foot of each
+   card — the two envelope readings then line up and can be compared at a glance. */
+.pc-money-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+}
+.pc-money-pair > .pc-money-group-card { min-width: 0; }
+.pc-money-pair .pc-money-budget { margin-top: auto; }
+/* The plan and the outcome on one line: Target Margin Reserve on the left,
+   Total spent on the right. The reserve carries a title and three readings, so
+   it takes the wider column; Total spent keeps the whole row when there is no
+   reserve to show (a non-owner). */
+.pc-money-foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+.pc-money-foot--solo { grid-template-columns: minmax(0, 1fr); }
+.pc-money-foot > .pc-money-group-card { min-width: 0; }
+/* Half the width is not enough for title-then-figures on one line, so the three
+   readings drop under the title as an even three-column row and stay aligned. */
+.pc-money-foot .pc-alloc-reserve .pc-alloc-figs {
+  width: 100%;
+  margin-inline-start: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+/* Total spent stacks in its column: the reading first, the bar and its share of
+   the contract underneath, so neither is squeezed into an unreadable sliver. */
+.pc-money-foot .pc-alloc-total {
+  flex: 1 1 auto;
+  align-content: center;
+  row-gap: 12px;
+}
+.pc-money-foot .pc-alloc-total-lbl {
+  color: #1b5134;
+  border: 1.5px solid #2f7d52;
+  border-radius: 8px;
+  background: #d5ecdd;
+  /* Same label as Target Margin Reserve beside it and DIRECT COSTS above,
+     in the project title's display face. The face is forced: this label alone
+     kept resolving to the inherited sans in the browser while the identical
+     rule on Target Margin Reserve took it, and no rule in any loaded sheet
+     explains the difference (checked 2026-09-24). Drop the !important only
+     with the rendered page in front of you. */
+  font-family: var(--display) !important;
+  font-size: .76rem;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  padding: 4px 8px 4px 10px;
+}
+.pc-money-foot .pc-alloc-total-amt { margin-inline-start: auto; }
+.pc-money-foot .pc-alloc-stack { flex: 1 1 100%; }
+.pc-money-foot .pc-alloc-total-cap { flex: 1 1 100%; white-space: normal; }
 .pc-money-group-head {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 24px;
-  border-bottom: 1px solid #e5e5e5;
-  background: #fafaf9;
+  border-bottom: 1px solid #b4d8c1;
+  background: #d5ecdd;
   flex-wrap: wrap;
 }
 .pc-money-group-name {
-  color: #3a3a3c;
+  color: #1b5134;
   font-size: .76rem;
   font-weight: 700;
   letter-spacing: .14em;
   text-transform: uppercase;
 }
-.pc-money-group-note { color: #6c6c70; font-size: .8rem; }
+.pc-money-group-note { color: #45705a; font-size: .8rem; }
 /* The group header already draws the line, so the first row must not draw a
    second one under it — and a block's last strip must not draw one either. */
 .pc-money-group-head + .pc-money-row { border-top: 0; }
@@ -1588,6 +1736,10 @@
    admin-renovation.css (loaded last). Only the focus ring stays here. */
 .pc-months-cta:focus-visible { outline: 3px solid #1a5c3a; outline-offset: 2px; }
 
+@media (max-width: 980px) {
+  .pc-money-pair { grid-template-columns: 1fr; }
+  .pc-money-foot { grid-template-columns: 1fr; }
+}
 @media (max-width: 820px) {
   .pc-ledger-grid { grid-template-columns: 1fr; }
   .pc-ledger-cell { border-inline-start: 0; border-top: 1px solid #e5e5e5; }
