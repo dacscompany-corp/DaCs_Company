@@ -487,16 +487,14 @@ button.btn-primary:hover,
   background: transparent;
 }
 
-/* In-header placement. align-self/align-items:stretch plus the negative
-   vertical margin cancel the top bar's 16px padding, so each tab runs the full
-   height of the bar and its active underline lands exactly on the header's own
-   bottom border — the same indicator the standalone row had. */
+/* In-header placement. The tabs are pills now, so they sit centred in the bar
+   rather than stretching its full height for an underline. */
 .portal-topnav > .portal-primary-tabs {
   flex: 1 1 auto;
   min-width: 0;
-  align-self: stretch;
-  align-items: stretch;
-  margin: -16px 0;
+  align-self: center;
+  align-items: center;
+  margin: 0;
   padding: 0;
   gap: 2px;
   background: transparent;
@@ -506,21 +504,22 @@ button.btn-primary:hover,
   overflow-y: hidden;
 }
 .portal-topnav > .portal-primary-tabs .portal-ptab {
-  padding: 0 18px;
+  padding: 9px 18px;
   align-items: center;
 }
 .portal-ptab {
-  padding: 14px 22px 16px;
+  position: relative;
+  z-index: 1;
+  padding: 10px 22px;
   font-family: var(--sans);
   font-size: 14px;
   font-weight: 600;
   color: var(--text-light);
   border: 0;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  border-radius: 999px;
   background: transparent;
   cursor: pointer;
-  transition: color .15s, border-color .15s;
+  transition: color .28s ease;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -528,9 +527,41 @@ button.btn-primary:hover,
   flex-shrink: 0;
 }
 .portal-ptab:hover { color: var(--text-primary); }
-.portal-ptab.active {
-  color: var(--brand-green);
-  border-bottom-color: var(--brand-green);
+.portal-ptab.active,
+.portal-ptab.active:hover { color: #FFFFFF; }
+/* The Expense-Inbox mark keeps its own accent colour — a hairline ring holds
+   it apart from the green pill it now sits on. */
+.portal-ptab.active .rm { box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .55); }
+
+/* ── Sliding highlight ──
+   One pill travels to the active tab instead of every tab painting its own
+   background, so switching sections glides. `_movePtabPill()` in js/admin.js
+   writes --ptab-x / --ptab-w / --ptab-h from the active button's box;
+   .pill-instant parks it without animating (first paint, resize, role change)
+   and .pill-ready fades it in once it has a real position. */
+.portal-primary-tabs { position: relative; }
+.portal-ptab-pill {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: var(--ptab-h, 38px);
+  width: var(--ptab-w, 0);
+  transform: translate(var(--ptab-x, 0), -50%);
+  border-radius: 999px;
+  background: var(--brand-green);
+  box-shadow: 0 2px 10px rgba(26, 92, 58, .28);
+  opacity: 0;
+  z-index: 0;
+  pointer-events: none;
+  transition: transform .42s cubic-bezier(.22, 1, .36, 1),
+              width .42s cubic-bezier(.22, 1, .36, 1),
+              height .42s cubic-bezier(.22, 1, .36, 1),
+              opacity .2s ease;
+}
+.portal-primary-tabs.pill-ready .portal-ptab-pill { opacity: 1; }
+.portal-primary-tabs.pill-instant .portal-ptab-pill { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .portal-ptab-pill { transition: opacity .2s ease; }
 }
 .portal-ptab-badge {
   font-size: 10px;
@@ -673,15 +704,16 @@ button.btn-primary:hover,
   .portal-modules-row { padding-left: 20px; padding-right: 20px; }
   /* Too narrow for brand + tabs + tools on one line: let the bar wrap so the
      tabs take their own row underneath, as they did before they moved in.
-     No negative margins here — the bar's padding changes again at 768px and
-     460px, and tying the underline to it would drift at each breakpoint. */
+     The 6px block padding keeps the sliding pill clear of the hairline above
+     it — the bar's own padding changes again at 768px and 460px, so the pill
+     can't be tied to that. */
   .portal-topnav { flex-wrap: wrap; }
   .portal-topnav > .portal-primary-tabs {
     order: 3;
     flex: 1 0 100%;
     align-self: auto;
     margin: 0;
-    padding: 0;
+    padding: 6px 0;
     border-top: 1px solid var(--brand-hair);
   }
   .content-view, .dashboard-header { padding-left: 20px; padding-right: 20px; }

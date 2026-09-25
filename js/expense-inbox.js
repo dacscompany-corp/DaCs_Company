@@ -427,6 +427,9 @@
             els[i].title = count + ' receipt' + (count === 1 ? '' : 's') + ' waiting in the Expense Inbox';
             _eiPaintMark(els[i], count, rose);
         }
+        // Showing or hiding a mark changes the tab's width, so the sliding
+        // highlight under it has to be re-measured (admin.js _movePtabPill).
+        if (els.length && typeof window.syncPtabPill === 'function') window.syncPtabPill(false);
     }
     window.eiSyncTabBadges = function () {
         _eiSetTabBadge('expenses', _eiCounts.pc);

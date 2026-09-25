@@ -2352,6 +2352,40 @@ function findPrimaryForView(view) {
     return null;
 }
 
+// Slides the highlight pill onto the active tab. The pill is one element that
+// travels, so the move has to happen on the SAME nodes — rewriting the bar's
+// markup would restart it from scratch (see _buildTabsBar). Pass animate=false
+// to park it without a glide (first paint, resize, badge width change).
+// Reads offsetLeft/offsetWidth, which are content-box coordinates, so the pill
+// stays aligned even when the bar is scrolled sideways on a phone.
+function _movePtabPill(animate) {
+    const tabs = document.getElementById('portalPrimaryTabs');
+    if (!tabs) return;
+    const pill = tabs.querySelector('.portal-ptab-pill');
+    if (!pill) return;
+    const active = tabs.querySelector('.portal-ptab.active');
+    if (!active) { tabs.classList.remove('pill-ready'); return; }
+    // Bar not laid out yet (chrome rendered while the dashboard is still
+    // display:none) — measuring now would park the pill at zero width.
+    if (!active.offsetWidth) return;
+
+    // Nothing to glide from until the pill has a real position.
+    if (!tabs.classList.contains('pill-ready')) animate = false;
+    if (!animate) tabs.classList.add('pill-instant');
+    tabs.style.setProperty('--ptab-x', active.offsetLeft + 'px');
+    tabs.style.setProperty('--ptab-w', active.offsetWidth + 'px');
+    tabs.style.setProperty('--ptab-h', active.offsetHeight + 'px');
+    tabs.classList.add('pill-ready');
+    if (!animate) {
+        void pill.offsetWidth;          // flush the untransitioned position
+        tabs.classList.remove('pill-instant');
+    }
+}
+// Called from expense-inbox.js too: showing a tab badge changes the tab's
+// width, so the pill under it has to be re-measured.
+window.syncPtabPill = function (animate) { _movePtabPill(animate === true); };
+window.addEventListener('resize', () => _movePtabPill(false));
+
 function _buildTabsBar(activePrimaryId) {
     const tabs = document.getElementById('portalPrimaryTabs');
     if (!tabs) return;
@@ -2359,27 +2393,44 @@ function _buildTabsBar(activePrimaryId) {
     const nav = _visibleNav();
 
     // Always show every section — no collapse/expand toggle.
-    // Project Control / Project Management carry an Expense-Inbox "receipts
-    // waiting" mark; it is filled from the cached counts right after this
-    // rebuild, since re-rendering the bar wipes whatever was in the spans.
-    tabs.innerHTML =
-        nav.map((p) => {
-            const isActive = p.id === activePrimaryId;
-            const badge = (p.id === 'expenses' || p.id === 'pm')
-                ? `<span class="rm rm-count rm-sm" data-ptab-badge="${p.id}" style="margin-left:6px;" hidden></span>`
-                : '';
-            return `<button class="portal-ptab${isActive ? ' active' : ''}" data-primary="${p.id}">${p.label}${badge}</button>`;
-        }).join('');
+    // The bar is rebuilt on every switchView, and re-rendering it would restart
+    // the sliding pill from nothing, so the markup is only rewritten when the
+    // set of sections actually changed (role or module-focus). Otherwise we
+    // just move the active class — and the pill glides.
+    const sig = nav.map(p => p.id).join('|');
+    const rebuilt = tabs.dataset.navSig !== sig;
+
+    if (rebuilt) {
+        tabs.dataset.navSig = sig;
+        // Project Control / Project Management carry an Expense-Inbox "receipts
+        // waiting" mark; it is filled from the cached counts right after this
+        // rebuild, since re-rendering the bar wipes whatever was in the spans.
+        tabs.innerHTML =
+            '<span class="portal-ptab-pill" aria-hidden="true"></span>' +
+            nav.map((p) => {
+                const badge = (p.id === 'expenses' || p.id === 'pm')
+                    ? `<span class="rm rm-count rm-sm" data-ptab-badge="${p.id}" style="margin-left:6px;" hidden></span>`
+                    : '';
+                return `<button class="portal-ptab" data-primary="${p.id}">${p.label}${badge}</button>`;
+            }).join('');
+
+        tabs.querySelectorAll('.portal-ptab').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.dataset.primary;
+                const primary = PRIMARY_NAV.find(p => p.id === id);
+                if (primary) switchView(primary.defaultView);
+            });
+        });
+    }
+
+    tabs.querySelectorAll('.portal-ptab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.primary === activePrimaryId);
+    });
 
     if (typeof window.eiSyncTabBadges === 'function') window.eiSyncTabBadges();
 
-    tabs.querySelectorAll('.portal-ptab').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const id = btn.dataset.primary;
-            const primary = PRIMARY_NAV.find(p => p.id === id);
-            if (primary) switchView(primary.defaultView);
-        });
-    });
+    // A fresh bar has nowhere to slide from — park the pill; otherwise glide.
+    _movePtabPill(!rebuilt);
 }
 
 function renderPortalChrome() {
