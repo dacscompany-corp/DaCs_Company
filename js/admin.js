@@ -2205,14 +2205,6 @@ const PRIMARY_NAV = [
         { view: 'invoices',        label: 'Invoice Receipt',  icon: 'receipt-text' },
       ]
     },
-    { id: 'construction', label: 'Construction', sub: 'Materials & Orders', defaultView: 'consBatch',
-      modules: [
-        { view: 'consBatch',        label: 'Current Batch',   icon: 'package' },
-        { view: 'consUrgent',       label: 'Urgent Requests', icon: 'alert-circle' },
-        { view: 'consBatchHistory', label: 'Batch History',   icon: 'calendar' },
-        { view: 'consInventory',    label: 'Inventory',       icon: 'box' },
-      ]
-    },
     { id: 'pm', label: 'Project Management', sub: 'Projects', defaultView: 'pmProjects',
       modules: [
         { view: 'pmProjects',          label: 'Projects',             icon: 'folder-open' },
@@ -2222,6 +2214,21 @@ const PRIMARY_NAV = [
         // Tracking only; owner-only (0043).
         { view: 'warrantyFund',        label: 'Warranty Fund',        icon: 'shield-check' },
         { view: 'pmReports',           label: 'Reports',              icon: 'file-bar-chart' },
+      ]
+    },
+    // Worker attendance, written by the native Android app through the
+    // RPCs in 0050/0051. Owner + staff only; workers use the app, not
+    // this portal, and must never see other workers' records.
+    { id: 'attendance', label: 'Attendance', sub: 'Workers · Time In / Out', defaultView: 'attToday',
+      modules: [
+        // Plain-language labels, matching the redesign: an owner reads
+        // "Sites & schedule", not "Projects". The VIEW ids are unchanged —
+        // ATT_VIEWS, _FOCUS_SUBVIEWS and switchView all key off those.
+        { view: 'attToday',    label: 'Today on site',    icon: 'calendar-check' },
+        { view: 'attWorkers',  label: 'Workers',          icon: 'user-round' },
+        { view: 'attProjects', label: 'Sites & schedule', icon: 'hard-hat' },
+        { view: 'attReports',  label: 'Hours report',     icon: 'file-bar-chart' },
+        { view: 'attRewards',  label: 'Weekly bonus',     icon: 'award' },
       ]
     },
     // Outgoing client quotations. Pre-sales: a quotation exists before any
@@ -2244,19 +2251,12 @@ const PRIMARY_NAV = [
         { view: 'feedback',     label: 'Feedback',     icon: 'message-square' },
       ]
     },
-    // Worker attendance, written by the native Android app through the
-    // RPCs in 0050/0051. Owner + staff only; workers use the app, not
-    // this portal, and must never see other workers' records.
-    { id: 'attendance', label: 'Attendance', sub: 'Workers · Time In / Out', defaultView: 'attToday',
+    { id: 'construction', label: 'Construction', sub: 'Materials & Orders', defaultView: 'consBatch',
       modules: [
-        // Plain-language labels, matching the redesign: an owner reads
-        // "Sites & schedule", not "Projects". The VIEW ids are unchanged —
-        // ATT_VIEWS, _FOCUS_SUBVIEWS and switchView all key off those.
-        { view: 'attToday',    label: 'Today on site',    icon: 'calendar-check' },
-        { view: 'attWorkers',  label: 'Workers',          icon: 'user-round' },
-        { view: 'attProjects', label: 'Sites & schedule', icon: 'hard-hat' },
-        { view: 'attReports',  label: 'Hours report',     icon: 'file-bar-chart' },
-        { view: 'attRewards',  label: 'Weekly bonus',     icon: 'award' },
+        { view: 'consBatch',        label: 'Current Batch',   icon: 'package' },
+        { view: 'consUrgent',       label: 'Urgent Requests', icon: 'alert-circle' },
+        { view: 'consBatchHistory', label: 'Batch History',   icon: 'calendar' },
+        { view: 'consInventory',    label: 'Inventory',       icon: 'box' },
       ]
     },
     { id: 'users', label: 'Users', sub: 'People', defaultView: 'userNavigator',
