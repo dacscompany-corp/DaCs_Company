@@ -748,6 +748,16 @@ the worker picker: reading the picker made a hidden site — or one still waitin
 vanish from the one screen that can fix it. The Today by-site board still reads the worker picker
 on purpose: a hidden site with nobody on it is not drawn, one with crew still is (from the records).
 
+**Minimum worker-app version (`0077`).** `attendance_config.minAppVersion` (integer, default `0` =
+off). From versionCode 2 the Android app sends `x-dacs-app-version` on every request; the
+`attendance_records_app_version` BEFORE trigger raises `APP_UPDATE_REQUIRED` when the **worker
+writing their own row** declares a lower version (no header = 0). Admin writes (`attendance_abandon`)
+are never checked. **Ships off** — every pre-v2 phone sends no header, so raise it only after the new
+APK is on every phone. A refused row stays queued on the phone and is sent after the update.
+**Turn it on with an UPSERT, not an UPDATE** — as of 2026-09-27 `attendance_config` has **no rows**
+(every setting runs on its defaults), so the `update` shown in 0077's header changes nothing:
+`insert into attendance_config (owner_id, min_app_version) values ('<owner uuid>', 2) on conflict (owner_id) do update set min_app_version = excluded.min_app_version;`
+
 ### The location verdict, on screen (`0068` / `0069`)
 
 `timeinLocationStatus` / `timeoutLocationStatus` are **shown in the admin screens**, not just

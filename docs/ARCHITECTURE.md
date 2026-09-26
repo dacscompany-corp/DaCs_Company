@@ -252,7 +252,8 @@ once. `0020_schema_drift_catchup.sql` captured one round; `0025` (overhead colum
 only in the live DB. **Before adding a field, check the table actually has the column** — the shim
 maps camelCase straight to snake_case and the save fails otherwise.
 
-**Migration numbering.** Highest on disk is `0074`; **next number = highest + 1**, never reuse,
+**Migration numbering.** Highest on disk is `0077`; `0075`/`0076` are taken by the abandoned
+cost-plan branch and are **live in production** though not on `main`. **Next number = highest + 1**, never reuse,
 never a Supabase SQL-editor one-off. Nine numbers are duplicated (two 0006s, 0016s, 0017s, 0018s,
 0019s, 0020s, 0021s, 0022s, 0023s) — each pair was audited and plain filename sort is safe.
 **`0034` is a deliberate gap** (written and withdrawn in the same session; see the header of
