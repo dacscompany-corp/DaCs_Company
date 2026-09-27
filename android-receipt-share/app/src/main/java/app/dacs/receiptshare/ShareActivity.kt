@@ -38,7 +38,13 @@ class ShareActivity : AppCompatActivity() {
 
     companion object {
         private const val WIZARD_URL = "https://dacs-company.vercel.app/share-capture.html"
-        private const val ORIGIN = "https://dacs-company.vercel.app"
+        private const val ORIGIN_HOST = "dacs-company.vercel.app"
+
+        /** Our site and nothing else: https, and the host equal -- not prefixed. */
+        fun isOwnOrigin(uri: Uri): Boolean =
+            uri.scheme.equals("https", ignoreCase = true) &&
+                uri.host.equals(ORIGIN_HOST, ignoreCase = true) &&
+                (uri.port == -1 || uri.port == 443)
 
         /** Refuse anything absurd rather than hanging the bridge on a huge file. */
         private const val MAX_BYTES = 25 * 1024 * 1024
@@ -70,11 +76,20 @@ class ShareActivity : AppCompatActivity() {
 
         web.webViewClient = object : WebViewClient() {
             // Keep our own origin inside the app; send anything else (a bank
-            // link, a Google login popup target) to the real browser.
+            // link, any other site) to the real browser.
+            //
+            // ── EXACT scheme + host, never a string prefix (fixed 2026-09-27).
+            //    Every page this WebView shows can call DacsNative and read the
+            //    shared receipts. `startsWith(ORIGIN)` also matched
+            //    "https://dacs-company.vercel.app.evil.com", so a lookalike
+            //    site would have been kept in-app WITH the bridge. Google's
+            //    login host was allowed in too; the wizard has no Google
+            //    sign-in (email + password only), so it now goes to the browser
+            //    like everything else.
             override fun shouldOverrideUrlLoading(v: WebView?, req: WebResourceRequest?): Boolean {
-                val url = req?.url?.toString() ?: return false
-                if (url.startsWith(ORIGIN) || url.startsWith("https://accounts.google.com")) return false
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                val uri = req?.url ?: return false
+                if (isOwnOrigin(uri)) return false
+                startActivity(Intent(Intent.ACTION_VIEW, uri))
                 return true
             }
         }

@@ -1,20 +1,26 @@
 # ════════════════════════════════════════════════════════════════════
 # CI — runs on every push and pull request.
 #
-# Two jobs, ~30 seconds total, no dependencies to install:
-#   1. syntax   — node --check on every JS file (catches the "one bad
-#                 character broke the whole admin page" class of bug)
-#   2. money    — tests/money-math.test.js: 46 checks that extract the
-#                 LIVE money functions and enforce every invariant in
-#                 CLAUDE.md (one bucket per peso, pakyaw protection,
-#                 earned margins, zero-profit recognition, …)
-#                 plus tests/reimbursement.test.js: the Client Reimbursement
-#                 Tracker must stay ISOLATED — a write to any collection other
-#                 than `reimbursements` fails the build.
+# Two steps, well under a minute, no dependencies to install (every test
+# uses only Node built-ins):
+#   1. syntax — node --check on every authored JS file: the portal modules,
+#               the tests, the service worker, and the two Cloudflare
+#               workers (ES modules, so checked as .mjs). Catches the "one
+#               bad character broke the whole admin page" class of bug.
+#   2. tests  — `npm test`: ALL nine suites, the same command a developer
+#               runs locally. Among them tests/money-math.test.js, which
+#               extracts the LIVE money functions and enforces every
+#               invariant in CLAUDE.md, and the isolation suites
+#               (reimbursements, quotations, attendance) that fail the
+#               build if an isolated module ever touches the money model.
 #
-# If the money job fails, a financial rule was broken (or the source was
-# restructured — the failure says which; see tests/money-math.test.js).
-# Do not merge until it's green.
+# Until 2026-09-27 this ran only 3 of the 9 suites by name, so a new suite
+# added to package.json never reached CI. Running `npm test` keeps the two
+# lists from drifting apart again.
+#
+# If it fails, a financial rule was broken (or the source was restructured
+# — the failure says which; see tests/money-math.test.js). Do not merge
+# until it's green.
 # ════════════════════════════════════════════════════════════════════
 name: CI
 
@@ -35,19 +41,22 @@ jobs:
       - name: Syntax check every JS file
         run: |
           fail=0
-          for f in js/*.js tests/*.js; do
+          for f in js/*.js tests/*.js service-worker.js; do
             if ! node --check "$f"; then
+              echo "::error file=$f::JavaScript syntax error"
+              fail=1
+            fi
+          done
+          # The Cloudflare workers are ES modules (`export default`); a
+          # plain .js check would read them as CommonJS and fail.
+          for f in cloudflare-worker/worker.js cloudflare-worker-notify/worker.js; do
+            cp "$f" "$RUNNER_TEMP/check.mjs"
+            if ! node --check "$RUNNER_TEMP/check.mjs"; then
               echo "::error file=$f::JavaScript syntax error"
               fail=1
             fi
           done
           exit $fail
 
-      - name: Money math invariants
-        run: node tests/money-math.test.js
-
-      - name: Reimbursement tracker isolation
-        run: node tests/reimbursement.test.js
-
-      - name: Project Control billing allocations
-        run: node tests/billing-allocation.test.js
+      - name: All test suites (npm test)
+        run: npm test
