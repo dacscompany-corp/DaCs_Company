@@ -103,6 +103,14 @@ auth.onAuthStateChanged(async user => {
                 showClientLoginError('Access denied. This account is not registered as a client.');
                 return;
             }
+            // Deactivated in Client Accounts. Nothing read this before 2026-09-27.
+            if (((clientDoc.data() || {}).status || 'active') !== 'active') {
+                await auth.signOut();
+                currentUser = null;
+                showLoginPage();
+                showClientLoginError('This account has been deactivated. Please contact DAC\'s.');
+                return;
+            }
         } catch (err) {
             console.error('Auth check error:', err);
             await auth.signOut();

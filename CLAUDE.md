@@ -141,7 +141,7 @@ Tracer: `payroll.payment_method` (migrations 0037/0038) landed in seven files �
 
 **Run `npm test` after ANY change that touches money code** (`portal-app.compiled.js`,
 `expenses-module.js`, `overhead-module.js`, `billing-allocation.js`). Nine suites; the money one
-is `tests/money-math.test.js` — 231 checks that
+is `tests/money-math.test.js` — 239 checks that
 extract the live functions and enforce every invariant above; exits 1 on breakage, runs in ~1s.
 If it fails with "SLICE NOT FOUND", the source was restructured — update the extraction markers
 in the test file, never delete the test.

@@ -35,7 +35,7 @@
     <link rel="stylesheet" href="css/payment-requests.css">
     <link rel="stylesheet" href="css/invoice-module.css">
     <!-- Project Management Module Styles -->
-    <link rel="stylesheet" href="css/pm-admin.css?v=20260915a">
+    <link rel="stylesheet" href="css/pm-admin.css?v=20260927a">
     <!-- Admin PWA manifest (separate from the client-portal manifest.json) -->
     <link rel="manifest" href="manifest-admin-v2.json">
     <meta name="theme-color" content="#0f6342">
@@ -4652,8 +4652,8 @@
                 <div id="payLiabilityForRow" style="display:none;margin-bottom:16px;">
                     <label class="apr-lbl">Whose contribution is this? <small>— burden follows the worker it belongs to</small></label>
                     <div style="display:flex;flex-direction:column;gap:8px;">
-                        <label class="apr-cat"><input type="radio" name="payLiabilityFor" value="direct" checked><span class="apr-badge">D</span><div><div class="apr-cat-t">A direct worker</div><div class="apr-cat-s">Counted in Labor Cost, with the worker it belongs to</div></div></label>
-                        <label class="apr-cat"><input type="radio" name="payLiabilityFor" value="indirect"><span class="apr-badge">O</span><div><div class="apr-cat-t">An overhead / indirect worker</div><div class="apr-cat-s">Coordinator, supervision, procurement — counted in Overhead</div></div></label>
+                        <label class="apr-cat"><input type="radio" name="payLiabilityFor" value="direct" onchange="payToggleContractForType('add')" checked><span class="apr-badge">D</span><div><div class="apr-cat-t">A direct worker</div><div class="apr-cat-s">Counted in Labor Cost, with the worker it belongs to</div></div></label>
+                        <label class="apr-cat"><input type="radio" name="payLiabilityFor" value="indirect" onchange="payToggleContractForType('add')"><span class="apr-badge">O</span><div><div class="apr-cat-t">An overhead / indirect worker</div><div class="apr-cat-s">Coordinator, supervision, procurement — counted in Overhead</div></div></label>
                     </div>
                 </div>
                 <div class="apr-total" style="margin-bottom:20px;">
@@ -5002,8 +5002,8 @@
                 <div id="editPayLiabilityForRow" style="display:none;margin-bottom:16px;">
                     <label class="apr-lbl">Whose contribution is this? <small>— burden follows the worker it belongs to</small></label>
                     <div style="display:flex;flex-direction:column;gap:8px;">
-                        <label class="apr-cat"><input type="radio" name="editPayLiabilityFor" value="direct" checked><span class="apr-badge">D</span><div><div class="apr-cat-t">A direct worker</div><div class="apr-cat-s">Counted in Labor Cost, with the worker it belongs to</div></div></label>
-                        <label class="apr-cat"><input type="radio" name="editPayLiabilityFor" value="indirect"><span class="apr-badge">O</span><div><div class="apr-cat-t">An overhead / indirect worker</div><div class="apr-cat-s">Coordinator, supervision, procurement — counted in Overhead</div></div></label>
+                        <label class="apr-cat"><input type="radio" name="editPayLiabilityFor" value="direct" onchange="payToggleContractForType('edit')" checked><span class="apr-badge">D</span><div><div class="apr-cat-t">A direct worker</div><div class="apr-cat-s">Counted in Labor Cost, with the worker it belongs to</div></div></label>
+                        <label class="apr-cat"><input type="radio" name="editPayLiabilityFor" value="indirect" onchange="payToggleContractForType('edit')"><span class="apr-badge">O</span><div><div class="apr-cat-t">An overhead / indirect worker</div><div class="apr-cat-s">Coordinator, supervision, procurement — counted in Overhead</div></div></label>
                     </div>
                 </div>
                 <div class="apr-total" style="margin-bottom:20px;">

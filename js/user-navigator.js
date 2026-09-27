@@ -178,6 +178,20 @@
 
     window.unToggleStatus = async function (uid, currentStatus) {
         const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+        // Since 2026-09-27 an inactive account is refused at login, so these two
+        // mistakes would lock out the only person able to undo them.
+        if (newStatus === 'inactive') {
+            const target = _allUsers.find(x => x.uid === uid);
+            if (auth.currentUser && auth.currentUser.uid === uid) {
+                alert('You cannot deactivate your own account.');
+                return;
+            }
+            if (target && target.role === 'owner') {
+                alert('An owner account cannot be deactivated.');
+                return;
+            }
+            if (!confirm('Deactivate this account? They will be signed out and unable to log in until reactivated.')) return;
+        }
         try {
             await db.collection('users').doc(uid).update({ status: newStatus });
             const u = _allUsers.find(x => x.uid === uid);

@@ -3105,8 +3105,9 @@ async function handleAddPayroll(e) {
     const liabilityFor = laborType === 'liability'
         ? ((document.querySelector('input[name="payLiabilityFor"]:checked') || {}).value || 'direct')
         : null;
-    // Overhead / indirect pay can't be charged against a pakyaw contract.
-    const contractIds  = laborType === 'indirect' ? [] : lcCheckedContractIds();
+    // Overhead / indirect pay — and an indirect worker's burden — can't be charged
+    // against a pakyaw contract.
+    const contractIds  = lcIsOverheadPay(laborType, liabilityFor) ? [] : lcCheckedContractIds();
     const payMilestone = contractIds.length ? ((document.getElementById('payMilestone') || {}).value || null) : null;
 
     // One payment, several contracts: split it pro-rata by what each still owes.
@@ -4320,9 +4321,9 @@ async function handleEditPayroll(ev) {
         const liabilityFor = laborType === 'liability'
             ? ((document.querySelector('input[name="editPayLiabilityFor"]:checked') || {}).value || 'direct')
             : null;
-        // Re-tagging a row as Overhead / indirect also unlinks it from the contract,
-        // so the worker's agreed amount is credited back.
-        const editContractId = laborType === 'indirect' ? null : ((document.getElementById('editPayContract') || {}).value || null);
+        // Re-tagging a row as Overhead / indirect (or as an indirect worker's burden)
+        // also unlinks it from the contract, so the worker's agreed amount is credited back.
+        const editContractId = lcIsOverheadPay(laborType, liabilityFor) ? null : ((document.getElementById('editPayContract') || {}).value || null);
         const editMilestone = editContractId ? ((document.getElementById('editPayMilestone') || {}).value || null) : null;
         // Over-cap warning excludes THIS row's current contribution so editing isn't double-counted.
         if (editContractId && !lcConfirmOverCap(editContractId, eTotal, _editingPayrollId)) {
@@ -7149,7 +7150,23 @@ function subscribeLaborContracts(folderId) {
 // Overhead / indirect pay (coordination, site supervision, procurement) is a
 // company cost, NOT progress against the worker's agreed pakyaw amount — so it
 // never draws down a contract, even if an old row still carries a contractId.
-function lcDrawsDown(p) { return p.laborType !== 'indirect'; }
+//
+// That includes the statutory BURDEN of an indirect worker (a coordinator's SSS):
+// it is Overhead too — the same rule as _isOverheadPay in portal-app.compiled.js.
+// Until 2026-09-27 only laborType 'indirect' was excluded here and in the save
+// paths, so indirect burden saved against a contract was counted as Overhead AND
+// subtracted from the worker's pakyaw balance. One predicate, used by the drawdown,
+// both save paths and the picker, so they cannot disagree again.
+//
+// Deliberately NO keyword fallback (unlike _ovhdIsIndirectPay): drawdown reads the
+// explicit tag only, so no legacy row's contract balance moves because of its role
+// name. A legacy liability row with no liabilityFor stays DIRECT burden, as before.
+function lcDrawsDown(p) { return !lcIsOverheadPay(p.laborType, p.liabilityFor); }
+// Kept directly BELOW lcDrawsDown on purpose: tests/money-math.test.js slices this
+// file from `function lcDrawsDown`, so the predicate has to live inside that slice.
+function lcIsOverheadPay(laborType, liabilityFor) {
+    return laborType === 'indirect' || (laborType === 'liability' && liabilityFor === 'indirect');
+}
 // Paid-to-date = sum of every payroll row linked to the contract (splits included).
 function lcPaid(contractId, excludeRowId) {
     if (!contractId) return 0;
@@ -8579,8 +8596,10 @@ function lcUpdateRemainingHint(selId, hintId) {
     if (msRow) msRow.style.display = '';
     if (!isEdit) _updatePayContractPreview();
 }
-// Overhead / indirect pay never draws down a pakyaw contract, so the picker is
-// hidden (and any earlier pick discarded) the moment that category is chosen.
+// Overhead / indirect pay — or an indirect worker's statutory burden — never draws
+// down a pakyaw contract, so the picker is hidden (and any earlier pick discarded)
+// the moment either is chosen. The burden radios call this too, so switching a
+// liability row between "direct" and "indirect worker" re-checks it.
 window.payToggleContractForType = function(which) {
     const isEdit = which === 'edit';
     const selId  = isEdit ? 'editPayContract' : 'payContract';
@@ -8588,8 +8607,11 @@ window.payToggleContractForType = function(which) {
     const rowId  = isEdit ? 'editPayContractRow' : 'payContractRow';
     const name   = isEdit ? 'editPayLaborType' : 'payLaborType';
     const type = (document.querySelector('input[name="' + name + '"]:checked') || {}).value || 'direct';
+    const burdenName = isEdit ? 'editPayLiabilityFor' : 'payLiabilityFor';
+    const burdenFor = (document.querySelector('input[name="' + burdenName + '"]:checked') || {}).value || 'direct';
     const row = document.getElementById(rowId);
-    if (type === 'indirect') {
+    // Same predicate the save paths and the drawdown use (lcIsOverheadPay).
+    if (lcIsOverheadPay(type, burdenFor)) {
         if (isEdit) {
             const sel = document.getElementById(selId);
             if (sel) sel.value = '';

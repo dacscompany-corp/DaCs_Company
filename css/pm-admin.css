@@ -1231,6 +1231,9 @@ body.dark-mode .pmst-total { background: #11201a; border-top-color: #243029; }
 #pmw-seg-labor.active     { border-color: #157a52; background: #eaf4ef; color: #0f6342; }
 #pmw-seg-materials.active { border-color: #5b6b7e; background: #eef0f3; color: #3f4d5e; }
 #pmw-seg-both.active      { border-color: #7a5bb5; background: #efeaf8; color: #5b3f96; }
+/* Overhead (0035) arrived after the other three and never got its selected state.
+   Colours are the overhead palette pm-admin.js already uses (_pmWeekCatStyle 'overhead'). */
+#pmw-seg-overhead.active  { border-color: #b0907f; background: #f7f1ed; color: #7a5a48; }
 
 /* add box */
 .pmw-addbox { background: #fafaf8; border: 1px solid #eceae5; border-radius: 13px; padding: 15px; margin-bottom: 18px; }

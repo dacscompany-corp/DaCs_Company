@@ -38,6 +38,19 @@ function checkAuthState() {
                 }
 
                 const data = userDoc.data();
+
+                // Deactivated in User Navigator / the Attendance roster. Until
+                // 2026-09-27 nothing here read status, so a deactivated account
+                // signed in as if nothing had happened. coalesce-to-active, the
+                // same rule the attendance RPCs use: older rows carry no status.
+                if ((data.status || 'active') !== 'active') {
+                    await auth.signOut();
+                    showLogin();
+                    showLoginError('This account has been deactivated. Please contact the office.');
+                    _loginViaForm = false;
+                    return;
+                }
+
                 currentUserRole = data.role || 'owner';
 
                 // Reject if the role is not an admin role

@@ -2049,17 +2049,30 @@ window.pmSaveProject = async function() {
 // Skips anything already paid or partially paid (status Paid / Partial) so money
 // already collected is never altered. Only writes columns that exist on weekly_bills
 // (management_fee, grand_total). Returns the number of bills updated.
+// The fee and grand total one saved bill carries at a new rate — the SAME rule
+// _pmWeekTotals applies when the bill is first saved: direct = labor + materials
+// + overhead, fee on all of it. Pure, so tests/money-math.test.js §V runs it.
+//
+// Overhead used to be missing here (found 2026-09-27): changing a project's fee
+// re-billed every unpaid overhead bill at labor + materials only, so the fee on
+// the overhead vanished and grandTotal stopped equalling directCostTotal + fee.
+// `materials` already includes `combined` (see _pmWeekTotals), so it is not
+// added again.
+function _pmRebillAmounts(b, ratePct) {
+    const rate   = (Number(ratePct) || 0) / 100;
+    const direct = (Number(b.labor) || 0) + (Number(b.materials) || 0) + (Number(b.overhead) || 0);
+    const fee    = direct * rate;
+    return { direct, fee, grand: direct + fee };
+}
+
 async function _pmRecomputeUnpaidBills(projectId, ratePct) {
-    const rate = (Number(ratePct) || 0) / 100;
     const col  = db.collection('constructionProjects').doc(projectId).collection('weeklyBills');
     const snap = await col.get();
     const writes = [];
     snap.docs.forEach(d => {
         const b = d.data();
         if (b.status === 'Paid' || b.status === 'Partial') return;   // leave settled money alone
-        const direct = (b.labor || 0) + (b.materials || 0);
-        const fee    = direct * rate;
-        const grand  = direct + fee;
+        const { fee, grand } = _pmRebillAmounts(b, ratePct);
         if (Math.round(b.managementFee || 0) === Math.round(fee) &&
             Math.round(b.grandTotal   || 0) === Math.round(grand)) return;   // already current
         writes.push(col.doc(d.id).update({

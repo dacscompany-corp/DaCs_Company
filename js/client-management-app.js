@@ -90,6 +90,16 @@ auth.onAuthStateChanged(async function(user) {
                 cmShowLoginError('Access denied. Client accounts are provisioned by DACS admin. Contact your project manager if you need access.');
                 return;
             }
+            // Deactivated by admin. Nothing read this before 2026-09-27. Checked
+            // before the portal-type check so a deactivated partner is told the
+            // real reason, not "use the other portal".
+            if (((doc.data() || {}).status || 'active') !== 'active') {
+                await auth.signOut();
+                cmCurrentUser = null; window.currentUser = null;
+                cmShowLogin();
+                cmShowLoginError('This account has been deactivated. Please contact your project manager.');
+                return;
+            }
             // Portal ↔ account-type enforcement: partner accounts (profiles.role =
             // 'partner') may only enter the Dacs Partnership portal; client accounts
             // only the Client Management portal. Each signs a DIFFERENT agreement, so

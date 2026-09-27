@@ -570,7 +570,7 @@ console.log('\nI. Cover / president money');
       // Page 4's UNANG BAYAD block reads real payroll rows. Deliberately out of
       // order, and one INDIRECT row that must never count as a payment.
       expPayroll: pcPayroll,
-      lcDrawsDown: (p) => p.laborType !== 'indirect',
+      lcDrawsDown: (p) => !(p.laborType === 'indirect' || (p.laborType === 'liability' && p.liabilityFor === 'indirect')),
     },
     ['lcWorkerContracts', 'lcWorkerAgreementDetails', 'lcFirstPayment']);
   const FF = pcFixtures[2];                                   // opened from job 3 of 5
@@ -723,7 +723,7 @@ console.log('\nI. Cover / president money');
         lcWorksList: pakyaw([]).lcWorksList,
         lcOrientationDateLabel: () => 'September 4, 2026',
         expFolders: [], expLaborContracts: pcFixtures,
-        expPayroll: legs, lcDrawsDown: (p) => p.laborType !== 'indirect' },
+        expPayroll: legs, lcDrawsDown: (p) => !(p.laborType === 'indirect' || (p.laborType === 'liability' && p.liabilityFor === 'indirect')) },
       ['lcFirstPayment']);
     eq(split.lcFirstPayment([{ id: 'a1' }, { id: 'b2' }, { id: 'c3' }]).amount,
        '30,000.00', 'a split payment must print as ONE payment, not one leg');
@@ -1186,7 +1186,7 @@ console.log('\nM. Lumpsum contracts');
       expFolders: [{ id: 'f1', name: 'Los Churreros', code: 'LC-01' }],
       expLaborContracts: lumpFixtures,
       expPayroll: [],
-      lcDrawsDown: (p) => p.laborType !== 'indirect',
+      lcDrawsDown: (p) => !(p.laborType === 'indirect' || (p.laborType === 'liability' && p.liabilityFor === 'indirect')),
     },
     ['lcWorkerContracts', 'lcWorkerAgreementDetails']);
 
@@ -2329,6 +2329,91 @@ console.log('\nU. Every written field has a real column');
        'the derived president check is disappearing — something may be reading a stored flag instead');
     const reads = expensesSrc.match(/[a-zA-Z_$][\w$]*\.isPresident\b/g) || [];
     eq(reads.length, 0, 'something now reads a STORED isPresident: ' + reads.join(', '));
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// V. A PM fee change re-bills overhead too
+// ════════════════════════════════════════════════════════════════════
+// PM overhead is a BILLABLE direct cost: the fee is charged on it
+// (ARCHITECTURE §3). Changing a project's fee used to re-bill unpaid bills at
+// labor + materials only, dropping the fee on overhead and leaving grandTotal
+// short of directCostTotal + fee (found 2026-09-27; no live bill was hit).
+console.log('\nV. A PM fee change re-bills overhead too');
+{
+  const { _pmRebillAmounts } = evalWith(
+    slice(pmSrc, 'function _pmRebillAmounts(', 'async function _pmRecomputeUnpaidBills(', 'js/pm-admin.js'),
+    {}, ['_pmRebillAmounts']);
+
+  test('the fee is charged on overhead as well as labor and materials', () => {
+    const r = _pmRebillAmounts({ labor: 100, materials: 200, overhead: 50 }, 10);
+    eq(r.direct, 350);
+    eq(r.fee, 35, 'fee on 350, not on 300');
+    eq(r.grand, 385, 'was 330 before the fix');
+  });
+
+  test('re-billing matches what the bill was first saved with', () => {
+    // _pmWeekTotals: direct = labor + mats (incl. combined) + overhead.
+    const saved = { labor: 1000, materials: 500, combined: 200, overhead: 300,
+                    directCostTotal: 1800, managementFee: 270, grandTotal: 2070 };
+    const r = _pmRebillAmounts(saved, 15);
+    eq(r.direct, saved.directCostTotal, 'combined is already inside materials, not added twice');
+    eq(r.fee, saved.managementFee);
+    eq(r.grand, saved.grandTotal);
+  });
+
+  test('a bill with no overhead is unchanged by the fix', () => {
+    eq(_pmRebillAmounts({ labor: 100, materials: 200 }, 10).grand, 330);
+  });
+
+  test('the recompute uses the shared rule, not its own sum', () => {
+    const body = slice(pmSrc, 'async function _pmRecomputeUnpaidBills(', '\n}\n', 'js/pm-admin.js');
+    ok(body.indexOf('_pmRebillAmounts(') !== -1, 'recompute no longer calls _pmRebillAmounts');
+    ok(!/\(b\.labor \|\| 0\) \+ \(b\.materials \|\| 0\)/.test(body), 'recompute has its own labor+materials sum again');
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+// W. An indirect worker's burden never draws down a pakyaw contract
+// ════════════════════════════════════════════════════════════════════
+// "Overhead pay never draws down a pakyaw contract" (CLAUDE.md). A coordinator's
+// SSS is Overhead (_isOverheadPay), but lcDrawsDown and both save paths only
+// excluded laborType 'indirect', so the burden was counted as Overhead AND taken
+// off the worker's balance (found 2026-09-27; no live row was hit).
+console.log('\nW. An indirect worker\'s burden never draws down a pakyaw contract');
+{
+  const L = evalWith(
+    slice(expensesSrc, 'function lcDrawsDown(', '\n// Paid-to-date', 'js/expenses-module.js'),
+    {}, ['lcIsOverheadPay', 'lcDrawsDown']);
+  const P = evalWith(slice(portalSrc, 'function _isOverheadPay(', '\n}\n', 'js/portal-app.compiled.js') + '\n}',
+    {}, ['_isOverheadPay']);
+
+  test('indirect burden does not draw down; direct burden still does', () => {
+    eq(L.lcDrawsDown({ laborType: 'liability', liabilityFor: 'indirect' }), false, 'the bug');
+    eq(L.lcDrawsDown({ laborType: 'liability', liabilityFor: 'direct' }), true);
+    eq(L.lcDrawsDown({ laborType: 'indirect' }), false);
+    eq(L.lcDrawsDown({ laborType: 'direct' }), true);
+  });
+
+  test('a legacy liability row with no liabilityFor stays direct burden', () => {
+    eq(L.lcDrawsDown({ laborType: 'liability' }), true, 'no legacy balance may move');
+  });
+
+  test('drawdown and the money model agree on every tag', () => {
+    // The portal maps laborType → type; the rule must be the same one.
+    [['direct', null], ['indirect', null], ['liability', 'direct'],
+     ['liability', 'indirect'], ['liability', null]].forEach(([t, f]) =>
+      eq(L.lcIsOverheadPay(t, f), P._isOverheadPay({ type: t, liabilityFor: f }),
+         t + '/' + f + ': drawdown and Overhead disagree'));
+  });
+
+  test('both save paths and the picker use the shared predicate', () => {
+    const create = slice(expensesSrc, 'const contractIds  =', '\n', 'js/expenses-module.js');
+    ok(create.indexOf('lcIsOverheadPay(laborType, liabilityFor)') !== -1, 'create path: ' + create);
+    const edit = slice(expensesSrc, 'const editContractId =', '\n', 'js/expenses-module.js');
+    ok(edit.indexOf('lcIsOverheadPay(laborType, liabilityFor)') !== -1, 'edit path: ' + edit);
+    const picker = slice(expensesSrc, 'window.payToggleContractForType = function(which) {', '\n};\n', 'js/expenses-module.js');
+    ok(picker.indexOf('lcIsOverheadPay(') !== -1, 'picker does not use the shared predicate');
   });
 }
 

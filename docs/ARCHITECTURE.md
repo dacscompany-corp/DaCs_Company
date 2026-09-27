@@ -287,7 +287,7 @@ safety net is small and manual:
 
 | Tool | When | What it does |
 |---|---|---|
-| `npm test` | **After any change to money code** — `portal-app.compiled.js`, `expenses-module.js`, `overhead-module.js`, `billing-allocation.js` | Nine suites. `tests/money-math.test.js` (231 checks) extracts the live functions and enforces every invariant in §6 — including §R, which asserts the allocation engine never reaches `_projSpent` / `_projEarned` / `_projMargin` / `_recognisedProfit`. `tests/billing-allocation.test.js` (`0073`) covers the envelopes, overhead attribution and the report, print and CSV surfaces. Exits 1 on breakage, ~2s |
+| `npm test` | **After any change to money code** — `portal-app.compiled.js`, `expenses-module.js`, `overhead-module.js`, `billing-allocation.js` | Nine suites. `tests/money-math.test.js` (239 checks) extracts the live functions and enforces every invariant in §6 — including §R, which asserts the allocation engine never reaches `_projSpent` / `_projEarned` / `_projMargin` / `_recognisedProfit`. `tests/billing-allocation.test.js` (`0073`) covers the envelopes, overhead attribution and the report, print and CSV surfaces. Exits 1 on breakage, ~2s |
 | `node --check <file>` | Any JS edit | Syntax errors in files the test doesn't cover |
 | Browser | Always | `admin.html`, logged in as owner |
 | CI | Every push + PR | `.github/workflows/ci.yml` runs both of the above |
