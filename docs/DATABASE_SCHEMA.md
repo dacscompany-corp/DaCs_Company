@@ -758,6 +758,18 @@ APK is on every phone. A refused row stays queued on the phone and is sent after
 (every setting runs on its defaults), so the `update` shown in 0077's header changes nothing:
 `insert into attendance_config (owner_id, min_app_version) values ('<owner uuid>', 2) on conflict (owner_id) do update set min_app_version = excluded.min_app_version;`
 
+**Trusted time and `unverified` reward days (`0078`).** From versionCode 3 the app sends
+`p_trusted_at`: the shutter time measured on the phone's uptime counter from the last server `Date`
+header, which changing the phone's clock cannot move (`TrustedTime.kt`). Stored as
+`timeinTrustedAt` / `timeoutTrustedAt`, with the sending build in `timeinAppVersion` /
+`timeoutAppVersion`. `attendance_week_days` judges lateness on `attendance_vouched_time()`: trusted
+time → else (build < 3) the phone's time, as before → else the phone's time if it arrived within
+3 minutes → else **`unverified`**. A Time In with a **known-bad** location (`outside_radius`,
+`mock_location`, `permission_denied`) is also `unverified`. `unverified` = a day worked that cannot
+earn the bonus; it disqualifies the week and is counted in `attendance_weekly_rewards.unverifiedDays`,
+never as late or missing. A phone that claims offline but uploads within 3 minutes is judged live by
+the geofence. **Apply 0078 before installing versionCode 3.**
+
 ### The location verdict, on screen (`0068` / `0069`)
 
 `timeinLocationStatus` / `timeoutLocationStatus` are **shown in the admin screens**, not just

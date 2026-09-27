@@ -600,6 +600,39 @@ test('a Time Out has no bearing on any of it', () => {
   eq(s.status, 'qualified');
 });
 
+test('an unverified day (0078) disqualifies, and is not counted as late or missing', () => {
+  // A known-bad location, or a Time In no clock could vouch for. The worker
+  // was there -- it is a day worked -- but it cannot earn the bonus.
+  const s = M.attRewardSummary([
+    day(MON, 'on_time'), day('2026-09-08', 'unverified'), day('2026-09-09', 'on_time'),
+    day('2026-09-10', 'on_time'), day(FRI, 'on_time')
+  ], '2026-09-14');
+  eq(s.unverifiedDays, 1);
+  eq(s.lateDays, 0, 'not reported as late -- that would be untrue');
+  eq(s.missingDays, 0, 'not reported as missed -- they were there');
+  eq(s.completedDays, 5, 'still a day worked');
+  eq(s.status, 'disqualified');
+});
+
+test('the bonus reason names an unverified day plainly', () => {
+  const why = V.attBonusReason({ status: 'disqualified', late_days: 0, missing_days: 0,
+                                 unverified_days: 2 });
+  ok(/2 days that could not be verified/.test(why), why);
+  ok(!/late/.test(why), 'and never calls it lateness');
+});
+
+test('the reward export carries the unverified count', () => {
+  const csv = M.attRewardCsv([{
+    worker_name: 'Ana', worker_position: 'Mason', week_start: MON, week_end: FRI,
+    required_days: 5, on_time_days: 4, late_days: 0, missing_days: 0, unverified_days: 1,
+    status: 'disqualified', amount: 0, paid: false
+  }]);
+  const [head, row] = csv.split('\r\n');
+  const col = head.split(',').indexOf('Unverified');
+  ok(col !== -1, 'the column exists');
+  eq(row.split(',')[col], '1');
+});
+
 test('totals separate what is owed from what is paid', () => {
   const t = M.attRewardTotals([
     { status: 'qualified',    amount: 500, paid: true  },

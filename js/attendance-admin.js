@@ -431,20 +431,25 @@
     function attRewardSummary(days, todayKey) {
         const out = {
             requiredDays: 0, onTimeDays: 0, lateDays: 0,
-            missingDays: 0, pendingDays: 0, completedDays: 0,
+            missingDays: 0, unverifiedDays: 0, pendingDays: 0, completedDays: 0,
             status: 'in_progress'
         };
         (days || []).forEach(d => {
             const future = String(d.work_date) > String(todayKey);
-            if (d.day_status === 'on_time' || d.day_status === 'late') out.completedDays++;
+            // 'unverified' (0078) is a day WORKED that cannot earn the bonus:
+            // a known-bad location, or a Time In no clock can vouch for.
+            if (d.day_status === 'on_time' || d.day_status === 'late' ||
+                d.day_status === 'unverified') out.completedDays++;
             if (!d.required) return;
             out.requiredDays++;
             if (d.day_status === 'on_time') out.onTimeDays++;
             else if (d.day_status === 'late') out.lateDays++;
+            else if (d.day_status === 'unverified') out.unverifiedDays++;
             else if (future) out.pendingDays++;
             else out.missingDays++;
         });
-        out.status = (out.lateDays > 0 || out.missingDays > 0) ? 'disqualified'
+        out.status = (out.lateDays > 0 || out.missingDays > 0 || out.unverifiedDays > 0)
+                   ? 'disqualified'
                    : out.pendingDays > 0 ? 'in_progress'
                    : out.requiredDays > 0 ? 'qualified'
                    : 'disqualified';
@@ -489,12 +494,13 @@
      */
     function attRewardCsv(rows) {
         const headers = ['Worker', 'Position', 'Week Start', 'Week End', 'Required',
-                         'On Time', 'Late', 'Missing', 'Status', 'Reward', 'Paid'];
+                         'On Time', 'Late', 'Missing', 'Unverified', 'Status', 'Reward', 'Paid'];
         const body = (rows || []).map(r => [
             r.worker_name || '—',
             r.worker_position || '',
             r.week_start, r.week_end,
             r.required_days, r.on_time_days, r.late_days, r.missing_days,
+            Number(r.unverified_days) || 0,
             attRewardStatusLabel(r.status),
             Number(r.amount) || 0,
             r.paid ? 'Yes' : 'No'
@@ -1004,6 +1010,7 @@
     function attBonusReason(r) {
         const late = Number(r.late_days) || 0;
         const missing = Number(r.missing_days) || 0;
+        const unverified = Number(r.unverified_days) || 0;
         const pending = Number(r.pending_days) || 0;
         if (r.status === 'qualified') return 'On time every expected day';
         if (r.status !== 'disqualified') {
@@ -1014,6 +1021,10 @@
         const parts = [];
         if (missing) parts.push('missed ' + missing + (missing === 1 ? ' expected day' : ' expected days'));
         if (late) parts.push('was late on ' + late + (late === 1 ? ' day' : ' days'));
+        // 0078: say WHY, so it is not read as "late" or as a bug.
+        if (unverified) parts.push('had ' + unverified +
+            (unverified === 1 ? ' day that could not be verified' : ' days that could not be verified') +
+            ' (outside the site, or a time no clock could confirm)');
         if (!parts.length) return 'No day was ever required this week';
         const sentence = attAnd(parts);
         return sentence.charAt(0).toUpperCase() + sentence.slice(1) +
@@ -4028,6 +4039,7 @@
                 on_time_days: s.onTimeDays,
                 late_days: s.lateDays,
                 missing_days: s.missingDays,
+                unverified_days: s.unverifiedDays,
                 pending_days: s.pendingDays,
                 status: s.status,
                 amount: 0,
@@ -4042,7 +4054,7 @@
             .from('attendance_weekly_rewards')
             .select('id,worker_id,worker_name,worker_position,week_start,week_end,' +
                     'required_days,completed_days,on_time_days,late_days,missing_days,' +
-                    'status,amount,paid,paid_at')
+                    'unverified_days,status,amount,paid,paid_at')
             .eq('week_start', weekStart)
             .order('worker_name');
         if (error) throw error;
@@ -4200,7 +4212,7 @@
                 '<div class="att-card">' +
                 '<table class="att-table"><thead><tr>' +
                   '<th>Worker</th><th>Days expected</th><th>On time</th><th>Late</th>' +
-                  '<th>Missed</th><th>Result</th>' +
+                  '<th>Missed</th><th>Unverified</th><th>Result</th>' +
                   (hideMoney ? '' : '<th>Amount</th>') +
                   '<th>Handed over</th>' +
                 '</tr></thead><tbody>' +
@@ -4221,6 +4233,7 @@
                         '<td class="att-mono">' + r.on_time_days + '</td>' +
                         '<td class="att-mono">' + r.late_days + '</td>' +
                         '<td class="att-mono">' + r.missing_days + '</td>' +
+                        '<td class="att-mono">' + (Number(r.unverified_days) || 0) + '</td>' +
                         '<td>' + pill +
                           '<div class="att-meta">' + attEsc(
                             (r._live && r.status === 'disqualified' ? 'So far: ' : '') +
