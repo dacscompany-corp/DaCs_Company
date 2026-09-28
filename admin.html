@@ -2618,6 +2618,8 @@
         <div id="attProjectsView"   class="content-view" style="display: none;"></div>
         <div id="attReportsView"    class="content-view" style="display: none;"></div>
         <div id="attRewardsView"    class="content-view" style="display: none;"></div>
+        <!-- Owner-only: publish a worker APK (0079), js/app-updates-admin.js -->
+        <div id="attAppUpdatesView" class="content-view" style="display: none;"></div>
         <div id="quoteEditorView"   class="content-view" style="display: none;"></div>
         <div id="quoteRevisionView" class="content-view" style="display: none;"></div>
 
@@ -5384,6 +5386,7 @@
 <script src="js/boq-module.js"></script>
 <script src="js/quotation-module.js"></script>
 <script src="js/attendance-admin.js"></script>
+<script src="js/app-updates-admin.js"></script>
 <script src="js/quotation-print.js"></script>
 <script src="js/user-navigator.js"></script>
 <script src="js/client-accounts.js"></script>
@@ -6254,6 +6257,7 @@
         attProjects:      'Sites & schedule',
         attReports:       'Hours report',
         attRewards:       'Weekly bonus',
+        attAppUpdates:    'App updates',
     };
 
     window.switchView = function(view) {
@@ -6277,7 +6281,7 @@
                 // by RLS, migration 0041), so it is blocked here too — as is the
                 // Warranty Fund, for the same reason (0043).
                 const blocked = ['userNavigator', 'clientAccounts', 'sysErrors', 'expReports',
-                                 'reimbursements', 'warrantyFund',
+                                 'reimbursements', 'warrantyFund', 'attAppUpdates',
                                  'quoteList', 'quoteEditor', 'quoteRevision'];
                 // Reports and Reimbursement live inside Project Control, so bounce
                 // them back there rather than throwing the user out to the
@@ -6285,6 +6289,7 @@
                 // Management, so it bounces to the projects grid instead.
                 if (blocked.includes(view)) {
                     if (view === 'warrantyFund') view = 'pmProjects';
+                    else if (view === 'attAppUpdates') view = 'attToday';
                     else view = (view === 'expReports' || view === 'reimbursements') ? 'dacsPortal' : 'dashboard';
                 }
             } else if (currentUserRole === 'worker' || currentUserRole === 'teamLeader') {
@@ -6372,6 +6377,8 @@
         if (PM_VIEWS.includes(view)   && typeof initPMModule       === 'function') initPMModule(view);
         if (QUOTE_VIEWS.includes(view) && typeof initQuotationModule === 'function') initQuotationModule(view);
         if (ATT_VIEWS.includes(view)   && typeof initAttendanceModule === 'function') initAttendanceModule(view);
+        if (view === 'attAppUpdates' && typeof initAppUpdatesModule === 'function')
+            initAppUpdatesModule(document.getElementById('attAppUpdatesView'));
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     };

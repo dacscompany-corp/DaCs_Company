@@ -391,7 +391,7 @@ function applyRoleBasedUI() {
         // by RLS too, 0041, and the warranty tables likewise, 0043).
         // Quotations is the same story (0045) — hide the sidebar link too,
         // not just the top-nav tab from _visibleNav().
-        ['userNavigator', 'clientAccounts', 'expReports', 'reimbursements', 'warrantyFund', 'quoteList'].forEach(view => {
+        ['userNavigator', 'clientAccounts', 'expReports', 'reimbursements', 'warrantyFund', 'quoteList', 'attAppUpdates'].forEach(view => {
             const el = document.querySelector(`.nav-item[data-view="${view}"]`);
             if (el) el.style.display = 'none';
         });
@@ -2242,6 +2242,9 @@ const PRIMARY_NAV = [
         { view: 'attProjects', label: 'Sites & schedule', icon: 'hard-hat' },
         { view: 'attReports',  label: 'Hours report',     icon: 'file-bar-chart' },
         { view: 'attRewards',  label: 'Weekly bonus',     icon: 'award' },
+        // Owner-only (0079): publishing locks every older phone out of
+        // attendance until it updates. Hidden from staff below.
+        { view: 'attAppUpdates', label: 'App updates',    icon: 'smartphone' },
       ]
     },
     // Outgoing client quotations. Pre-sales: a quotation exists before any
@@ -2337,6 +2340,11 @@ function _visibleNav() {
                 // column is a peso amount, and its RLS is owner-only (0041).
                 const hidden = ['clientAccounts', 'expReports', 'reimbursements'];
                 return { ...p, modules: p.modules.filter(m => !hidden.includes(m.view)) };
+            }
+            if (role === 'staff' && p.id === 'attendance') {
+                // App updates is owner-only (0079): a publish blocks every
+                // older phone. The RPCs refuse staff too; this hides the tab.
+                return { ...p, modules: p.modules.filter(m => m.view !== 'attAppUpdates') };
             }
             if (role === 'staff' && p.id === 'pm') {
                 // Warranty Fund is peso amounts end to end and owner-only by

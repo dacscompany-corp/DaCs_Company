@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0079** — highest on disk is
-  `0078_attendance_trusted_time.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0081** — highest on disk is
+  `0080_app_releases_owner_check.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble.
 - **`0075` and `0076` are TAKEN but not on `main`.** They belong to the abandoned
   project cost-plan branch (`project_cost_plans`, then its `%` columns) and **both
@@ -128,6 +128,21 @@ Nothing is dropped or rewritten. **The JS was still unmerged when this landed** 
 first, which is the safe order: without the column, every overhead save fails (the shim maps
 camelCase straight to a real column), and creating a billing period fails at
 `_pcInsertInitialAllocation()` and rolls itself back.
+
+**`0079_app_releases.sql` IS applied** — 2026-09-28, SQL editor on DaCs_Company, "Success. No
+rows returned"; confirmed from outside with a signed-out call to `app_latest_release` (200, `[]`).
+**`0080_app_releases_owner_check.sql` IS applied** — 2026-09-28. That same check had shown
+`app_list_releases` answering a signed-out caller (anon grant + a NULL-unsafe owner check).
+Confirmed after 0080 with the anon key: `app_latest_release` 200 `[]`; `app_list_releases` and
+`app_publish_release` both 401 `42501 permission denied`.
+0079 as written: Adds `app_releases`, the
+public `app-releases` storage bucket (owner-only upload; a published APK cannot be deleted),
+`app_latest_release()` (callable by `anon` -- the worker app asks before sign-in),
+`app_list_releases()` and `app_publish_release()` (both owner-only). Applying it changes **no**
+`min_app_version`; only a publish from admin.html → Attendance → App updates does, and that
+publish raises `attendance_config.min_app_version` for every owner in the same transaction.
+**Do not publish versionCode 4 until v4 is installed on every phone** -- v4 is the first build
+with the update dialog; see the file's header.
 
 Get the truth before relying on this line:
 
