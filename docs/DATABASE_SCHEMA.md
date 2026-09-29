@@ -13,6 +13,17 @@
 > Firestore is schemaless — these are the fields the **code actually writes**. A `?`
 > means the field is conditional (only written in some branches).
 
+## Storage access (`uploads` bucket, migration 0081)
+
+The bucket is private (0027) and every read is a signed URL minted as the logged-in user.
+Access is decided per **top folder** by `uploads_can_read(name, owner_id)` and
+`uploads_can_write(name)`. The full folder-by-folder map is in
+`docs/superpowers/plans/2026-09-29-uploads-storage-access-repair.md` ("Access map"). Project-scoped
+folders put the `construction_projects.id` in the **second path segment**
+(`weeklyBillReceipts/<project id>/…`); keep that shape for any new client-facing folder.
+
+---
+
 **Conventions**
 - `userId` = the **owner's** Firebase UID. Staff write the owner's UID (via `ownerUid` indirection), so owner + staff share one dataset.
 - `clientEmail` / `clientUid` = link to a customer; client read access is **email-matched**.

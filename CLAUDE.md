@@ -116,6 +116,7 @@ and list the files. A change that touches only the file you opened is almost alw
 | Save path | usually **two** — create *and* edit | Always |
 | Render | the on-screen table or card | Always |
 | Print / export | `js/print-utils.js`, `js/invoice-module.js` | If it lands on a voucher, invoice or report |
+| Storage folder | `uploads_can_read` / `uploads_can_write` (new migration) + `FOLDERS` in `tests/storage-access.test.js` | If it uploads to a **new** top folder: it is owner/staff-only until given a rule |
 | Staff hiding | `_staff()` in `portal-app.compiled.js`, equivalents elsewhere | **If it is a peso amount** |
 | Both portals | `Client Management.html` **and** `Dacs Partnership.html` | If a client or partner sees it |
 | Schema doc | `docs/DATABASE_SCHEMA.md` | Always |
@@ -140,7 +141,7 @@ Tracer: `payroll.payment_method` (migrations 0037/0038) landed in seven files �
 ## Verifying
 
 **Run `npm test` after ANY change that touches money code** (`portal-app.compiled.js`,
-`expenses-module.js`, `overhead-module.js`, `billing-allocation.js`). Nine suites; the money one
+`expenses-module.js`, `overhead-module.js`, `billing-allocation.js`). Eleven suites; the money one
 is `tests/money-math.test.js` — 239 checks that
 extract the live functions and enforce every invariant above; exits 1 on breakage, runs in ~1s.
 If it fails with "SLICE NOT FOUND", the source was restructured — update the extraction markers

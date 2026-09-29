@@ -7,7 +7,7 @@
 #               the tests, the service worker, and the two Cloudflare
 #               workers (ES modules, so checked as .mjs). Catches the "one
 #               bad character broke the whole admin page" class of bug.
-#   2. tests  — `npm test`: ALL nine suites, the same command a developer
+#   2. tests  — `npm test`: ALL eleven suites, the same command a developer
 #               runs locally. Among them tests/money-math.test.js, which
 #               extracts the LIVE money functions and enforces every
 #               invariant in CLAUDE.md, and the isolation suites

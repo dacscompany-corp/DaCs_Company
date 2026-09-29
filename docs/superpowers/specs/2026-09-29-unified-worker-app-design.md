@@ -1,224 +1,329 @@
-# Unified DACS worker app
+# DACS Worker App — MVP Scope
 
 Date: 29 September 2026
 
-Status: Design for user review; application implementation has not started.
+Status: Draft for review. No application changes have been made.
 
-Scope: Dacs Attendance Android app, Dacs Web administration and shared backend. The dormant Flutter construction app supplies workflow references.
+## 1. What we are building
 
-## 1. Intended outcome
+**One worker app for Attendance, Material Requests and Tools, managed through Dacs Web.**
 
-Workers use one installed app and one existing worker account for attendance, material requests and reusable tools. Team leaders use the same app and project selection, with additional capabilities for their members. Admin/staff processes procurement and inventory in Dacs Web. The owner retains financial authority.
+**Confirmed project scope: Project Control only.** Project Management is excluded from this worker app's requests, project item history, project tool assignments and automatic cost integration. Existing PM operations remain separate. The shared warehouse has one limited admin/staff exception: **Release stock to other job** records materials leaving for an external job, without creating a PM request, expense or cost transfer.
 
-Expand the supported Kotlin/Compose Attendance app. Preserve its attendance workflow, evidence requirements, worker identities, offline records and history. Implement procurement against the current shared Supabase backend; do not reconnect the old Flutter Firebase backend or embed the old application inside Attendance.
+MVP means the smallest useful version that supports the workflows we agreed on. Keep the screens simple and build in small stages, while preserving the rules needed for accurate stock and expenses.
 
-Success means a worker can request items for a selected project, follow fulfillment, change needed quantities, and see tool responsibility without a second account or app. Admin/staff can reconcile physical quantities across sites and the warehouse. Purchases and project cost assignments remain traceable without counting the same purchase twice.
+We will expand the existing Dacs Attendance Android app. Workers keep their accounts and attendance history. The user confirmed the old Flutter Dacs Construction app is an unused prototype; it remains a reference for procurement features. At rollout, verify there are no remaining users submitting to its old Firebase backend, and preserve historical data.
 
-This is a program-level design, divided into four bounded delivery stages. Each stage needs its own implementation details, migration mapping and acceptance checks before execution. Approval of this document permits implementation planning, not an immediate production rollout.
+This rewrite simplifies the design; it does not remove the agreed inventory, tools or expense features. The first stage can be piloted early, but the full MVP below includes all four delivery stages.
 
-## 2. Confirmed business decisions
+**Before the pilot: document-storage repair.** Investigate and repair existing receipt/document access as a separate work item before Stage 1a ships. Preserve authorized clients' and partners' access to their own project documents, and staff's agreed encoding access. Verify live policies, repair them through migrations and test allowed/denied access by role and project. The repository's broad authenticated-read policy is confirmed. The user supplied Claude Code's report of a live anonymous query on 2026-09-29 showing 745 visible files; this is attributed external verification, not an independent test in this chat or proof that file contents were downloaded. Capture current policy evidence and verify access boundaries during the repair. This prerequisite is planned, not completed by writing this document.
 
-| Topic | Agreed behavior |
+## 2. Who uses it
+
+| User | What they can do |
 |---|---|
-| Requesters | Every worker and team leader can request materials and tools. |
-| Team requests | A leader may collect members' needs and submit one combined request per project. |
-| Line details | Each item identifies its trade/work category and team; named members are optional for material requests. Tool issuance requires a named responsible person. |
-| Approval | No team-leader or separate admin approval gate before requests enter the admin/staff purchasing queue. Operational checks still apply. |
-| Project choice | Workers and leaders select projects exactly as available in Attendance; no new permanent project-assignment restriction. |
-| Advance requests | A request does not require a Time In at that project. |
-| Team membership | Admin/staff maintains leaders and members. Membership does not restrict Attendance project selection. |
-| Editing | Requesters and admin/staff may increase or decrease needed quantities, including after purchasing starts. Leaders edit requests they submitted for members. |
-| Purchased excess | Preserve the actual purchase quantity; excess becomes inventory only after physical receipt is confirmed. |
-| Delivered excess | Mark awaiting return; count as available inventory only after admin/staff confirms the return and location. |
-| Locations | Track both project sites and the central warehouse, including transfers. |
-| Material receipts | Only admin/staff confirms receipts and surplus returns. |
-| Stock fulfillment | Use available stock first where appropriate, then purchase the shortage. |
-| Tools | Support reusable tools alongside materials, with individual asset numbers and named responsibility. |
-| Tool handovers | Admin/staff and team leaders may confirm tool issue/return; leaders act for their own team. |
-| Offline | Prepare requests and quantity edits offline; clearly distinguish pending sync from server acceptance. |
-| Conflicts | Admin/staff resolves conflicting offline edits with both versions preserved. |
-| Project cost transfer | Owner may move the original cost of reused materials from Project A to Project B; no second purchase/payment. |
-| Warehouse purchases | Hold as company stock until issued to a project; owner assigns the corresponding cost at issuance. |
-| Money visibility | Staff must not retrieve peso amounts through UI or backend. Procurement quantity/status work must remain possible. |
+| Worker | Record attendance, request materials/tools, edit their requests and see tools assigned to them. |
+| Team leader | Do everything a worker does, submit combined requests for members, and confirm tool handovers for their own team. |
+| Admin/staff | Manage teams, process requests, encode and review purchase amounts and receipts, arrange purchasing, confirm material receipts/returns, manage stock and resolve conflicting edits. |
+| Main owner | Manage all operations and confirm how costs are assigned or transferred between projects. Other owner accounts do not automatically receive cost-transfer authority. |
 
-## 3. Existing behavior and constraints
+All staff may enter and review purchase amounts and supporting receipt documents. Preserve their existing payroll encoding workflow and its current access during this MVP as an explicit legacy exception. This supersedes the earlier blanket staff-peso and payroll restrictions in this design. Broader changes to existing payroll/financial privacy are separate work; this MVP must not silently remove access staff needs for daily encoding. New procurement features do not grant access to unrelated profit or payroll records, and staff cannot approve cost transfers.
 
-The Attendance project picker uses `attendance_projects_for_worker()`. The latest inspected definition is in migration 0072. It combines eligible Project Control folders and Project Management construction projects, applying existing owner, visibility, status and geofence-configuration rules. Reuse this project-selection contract; do not infer team membership from Time In or introduce a one-project-per-worker assignment.
+Workers and team leaders cannot access procurement prices, purchase totals or cost-transfer amounts. Enforce this across requests, item history, images, downloads, notifications, caches and direct data access, including procurement surfaces reachable through the existing Web admin. Product photos must not expose receipt prices. This procurement restriction does not redefine existing Attendance or reward behavior.
 
-A project reference must retain both system and ID. `folders.id` and `construction_projects.id` are different spaces. `projects` in the Web database means billing periods, not construction jobs.
+**Confirmed main owner: `admin@dacsbuilding.com`.** Only this intended main-owner account may approve cost transfers and external cost handling. Other owner-role accounts, including the PM sub-owner, do not automatically receive this authority. During implementation, verify and bind the existing account's stable identity in trusted server-side authorization; do not rely on a browser-supplied email or owner role alone. The user has confirmed the account; no further identity-choice approval is pending.
 
-The current Materials form saves an expense and, if selected, separately increases inventory by the entered quantity. Procurement delivery also independently increases inventory. The current stock table is a quantity counter matched by item name, without the required per-location movement ledger. Editing/deleting an expense does not reconcile its earlier stock addition. These are source observations, not verified production losses.
+## 3. What stays the same in Attendance
 
-Relevant source:
+**Confirmed business scope:** Attendance applies to **Project Control**, not **Project Management**. PM having no attendance is intentional, not evidence of an inactive project or a missing feature. Preserve the current operational workflow; do not activate PM Attendance or change PM statuses to make those projects appear in Time In.
 
-- `js/expenses-module.js`: `handleAddExpense`, `_addExpenseToInventory`, `handleEditExpense`, `deleteExpense`.
-- `js/construction-module.js`: request status updates, `updateInventoryAfterDelivery`, stock rendering and adjustment.
-- `js/supabase-config.js`: request/item and inventory registry and parent/child persistence.
-- `supabase/migrations/0001_init.sql`: existing request, inventory and expense schema.
-- `supabase/migrations/0072_attendance_project_hide.sql`: current inspected worker project selector.
-- `docs/ARCHITECTURE.md`: separate project ledgers, money model and deployment constraints.
+Project Control and Project Management are separate systems with separate project records, expense workflows and billing rules. Similar names across them are not automatically duplicate sites. For example, a completed Project Control record and an ongoing PM record with a similar name may both be valid. Do not merge, link, transfer costs or apply one record's completed status to the other based on its name.
 
-No automatic posting may be built on the current shim's sequential batch semantics where an all-or-nothing operation is required.
+Before rollout, admin/staff verifies the intended Project Control record for each enabled request destination. This prevents wrong-project selection; it is not a requirement to merge similarly named records across systems. PM jobs are not offered as destinations in this worker app.
 
-## 4. Proposed app and admin surfaces
+**PM procurement is excluded by user decision.** Do not add PM jobs to request, request-again or project tool-issue selection, and do not bring PM job history into this app's project gallery. No PM cost adapter or PC-to-PM cost transfer is part of the MVP. The existing backend's technical support for multiple project systems does not override this business scope.
 
-The following organization is proposed for review; labels can change without changing the business rules.
+- Workers and team leaders select projects exactly as they do today.
+- No permanent project assignment is required.
+- Admin/staff manages team membership separately from project selection.
+- Admin/staff explicitly names each team's leader. Acting for a team requires both the team-leader profile role and a current leader assignment to that particular team. The role alone, or ordinary membership in another team, grants no authority over that other team. Enforce this for combined team requests, team-private photo access and tool handovers on the server. Preserve historical actions when leadership changes; recheck current authority when queued actions sync. Leaders can still submit individual requests as ordinary workers.
+- Existing Time In, Time Out, photos, location checks, history and offline attendance continue working.
+- Requests can be made for an upcoming job without first timing in there.
+- Material requests and tool loans do not create attendance records or determine payroll.
 
-Worker app: Home, Attendance, Requests, My Tools and Profile. Home highlights today's attendance, request changes, pending sync and outstanding tools. Requests combines materials and tools in one project-specific document. My Tools shows the individual's current custody and return history. Leaders additionally see team requests and team tool handovers.
+**Procurement exception:** for Project Control, admin/staff may manually enable an upcoming project with **Allow requests**, before it has a geofence or is enabled for attendance. Both workers and team leaders may select that project for requests. Attendance visibility and request availability are separate controls: hiding a site from Attendance does not automatically turn off Allow requests. This setting applies only to Project Control in the MVP and does not enable PM requests.
 
-Dacs Web: a procurement work queue, team management, item catalogue, stock by location, receipts/issues/transfers/returns, tool register and an owner-only cost-assignment queue. Reuse existing navigation patterns and preserve allowed-module access checks. Staff works with quantities, units, specifications and status; financial fields and sensitive purchase documents are restricted to the owner.
+Completed projects block new requests by default, while authorized history access, returns and transfers remain available. Request-again must choose a destination currently accepting requests. Any exception allowing new work on a completed project needs an explicit future policy; normal request submission cannot bypass the block.
 
-Attendance screens and server rules continue to determine attendance. Request activity, material delivery and tool custody do not create attendance, payroll or accomplishment records.
+Apply the same completion check to the selected Additional Works job, independently of its parent. A completed Additional Works job cannot receive a new request even when the parent remains open; an open child does not override a completed parent's block. Check both records and their parent-child relationship on the server when a request or request-again draft is submitted. Preserve authorized history, returns and transfers for completed work. An offline draft that no longer has an eligible destination stays visible for resolution rather than silently creating a request against completed work.
 
-## 5. Roles and access boundaries
+The app keeps request-only projects out of the Time In picker. Existing Attendance server behavior is preserved: for Project Control, hiding is a picker rule and does not reject delayed offline attendance merely because a site was hidden later (0072). Do not describe it as a new server-side Time In prohibition. Procurement eligibility and permissions are checked on the server; enabling requests does not change Attendance's existing checks.
 
-| Operation | Worker | Team leader | Admin/staff | Owner financial authority |
-|---|---|---|---|---|
-| Select available Attendance projects | Yes | Yes | Existing admin access | Existing access |
-| Submit own request | Yes | Yes | Operational assistance | Yes |
-| Submit combined team request | No | Own team | Yes | Yes |
-| Edit needed quantity | Own submitted request | Own submitted request | Authorized requests | Yes |
-| Manage membership | No | No | Yes | Yes |
-| Confirm material receipt/return | No | No | Yes | Yes |
-| Confirm tool issue/return | No | Own team | Yes | Yes |
-| Resolve offline edit conflicts | No | No | Yes | Yes |
-| Enter/retrieve costs; confirm cost assignment | No | No | Staff: no | Yes |
+## 4. MVP features
 
-Owner/admin account naming in the interface must not broaden the underlying role rules. Staff financial restrictions also apply to exports, notifications, request history, APIs, cached data and attachments containing amounts. A worker's membership does not grant permission to view another worker's attendance.
+### A. Material and tool requests
 
-Proposed membership default: allow multiple explicit team memberships, managed by admin/staff, with one team selected on each request. Preserve historical membership and custody records when someone changes teams. A person lacking an active team remains able to submit their own request using an explicit individual-request designation; requests must not be blocked merely because roster setup is incomplete. These defaults are proposed, not prior user decisions.
+A worker selects one Project Control project, then chooses **Main Contract** or a **specific Additional Works job** under that project, and creates a request with one or more items. Choose **one team once for the whole request**, consistent with the approved defaults. A leader combines that team's members' needs; requests for a different team use a separate request. A worker without a team uses the approved individual-request option. This work selection belongs to procurement and does not change Attendance's picker. Only show Additional Works that actually belong to the selected Project Control project.
 
-## 6. Requests, edits and fulfillment
+Each item includes:
 
-A request has one project reference, submitting user, team context and multiple lines. Each line has a stable identity, material/tool type, description/specification, unit, needed quantity, trade, optional intended member, notes and optional photos. Record who submitted a team request separately from who needs or receives an item.
+- Material or reusable tool.
+- Item name and specification, such as size or type.
+- Quantity and unit, such as pieces, bags or metres.
+- Trade/work category, such as electrical or plumbing.
+- Optional intended member from the request's team for materials; no separate team field per item. A tool's responsible person is mandatory at issuance, not at initial request.
+- Optional notes and photos.
 
-Use a catalogue ID for approved stock items. Allow a descriptive request for an item absent from the catalogue; admin/staff maps it before stock receipt or issue. Names alone cannot identify stock. Unit changes require an explicit conversion; never add boxes to pieces or different cable specifications together.
+Stage 1a request photos require their own private storage area from the first pilot; never put new request photos in the legacy shared `uploads` bucket. Stage 1b adds a separate approved-product gallery with its own access rules.
 
-Track needed, reserved, purchased, received, issued, returned and cancelled quantities separately. Changing needed quantity never rewrites completed purchases or handovers. Item status is derived from these facts; different lines can progress independently. Substitutions retain the requested item, replacement, actor and reason.
+**Official item catalogue:** admin/staff maintains the shared list of materials and tools, including their names, specifications and units. Workers and team leaders choose an existing item when available. If an item is missing, they can describe it and attach an optional photo; the request still goes through. Admin/staff matches it to an existing catalogue item or creates the official entry before it is used for stock tracking. This matching is item identification, not an extra team-leader approval step.
 
-When demand increases, reserve additional stock or place the additional quantity in the purchase queue. When demand falls, release unissued reservations first. Unreceived purchases are flagged for cancellation/supplier coordination; physically received extras may be available stock; already-issued extras require confirmed return. Do not create inventory from an arithmetic excess without a physical event.
+For example, “PVC pipe, ½-inch, 3 metres long, piece” is one defined item. Alternate wording must not create duplicate stock, and different sizes or units must not be merged automatically. A box quantity cannot be treated as pieces without a known conversion.
 
-Cancelling a request stops remaining demand but retains fulfilled lines, purchase links, custody and unresolved returns. Completed history is corrected through recorded reversal/correction actions rather than deletion.
+Example: one request for House A contains 10 electrical outlets for Juan, 6 plumbing pipes for Pedro and 1 drill for the team.
 
-## 7. Inventory and movement controls
+Requests go directly to admin/staff for purchasing. Workers do not need team-leader approval, and there is no separate request-approval step before entering the purchasing queue.
 
-Use an item catalogue, locations, purchase/receipt provenance, reservations and a permanent movement history. Maintain balances from confirmed movements, with any cached totals reconciled against that history.
+Admin/staff can use stock already available and purchase only the shortage. For example, 10 outlets needed can be fulfilled with 4 from stock and 6 newly purchased. Stock set aside for that request cannot also be promised to another request.
 
-Distinguish on-hand, reserved, available, in-transit, awaiting-return and damaged/unavailable quantities. Available stock is usable on-hand stock less active reservations. Issued material is no longer available warehouse/site-store stock even if it remains physically at the construction site.
+Each item shows its own progress, including quantities purchased, received, issued and still needed. Admin/staff can substitute an unavailable item, with the replacement and reason visible in the history.
 
-| Event | Required result |
+**Flexible weekly schedule:** regular requests follow Saturday cutoff, Monday purchasing and Wednesday delivery by default. After-cutoff regular requests enter the next weekly batch. Admin/staff can adjust purchasing and expected delivery dates per batch, for example for holidays or supplier delays. Workers see the updated expected delivery date. Completed events retain their actual purchase/delivery dates.
+
+**Urgency is per item**, with a reason and needed-by date. Urgent items may be submitted anytime and appear in the admin/staff urgent queue once received by the server, without making every item in a combined request urgent. Stock already available can fulfill requests without waiting for the purchasing day.
+
+**Batch assignment uses the server's received time in Philippine time (Asia/Manila)**, not the phone's draft/capture time. A regular request drafted before cutoff but first received afterward joins the next batch. Show Pending sync before receipt and the assigned schedule afterward. Admin/staff may move a late item into an earlier batch when feasible, recording the change. Retrying an already-received operation must not reassign its batch. Exact Saturday cutoff time and notification delivery channels will be specified in the implementation plan.
+
+Quantity edits remain allowed after cutoff. Additional units received after cutoff join the next batch by default; admin/staff can override when feasible. Preserve quantities already arranged and alert admin/staff to changes affecting purchasing. One line can have quantity portions in different batches: 10 outlets this week plus 2 added for next week. Do not move the original 10 or duplicate their purchase when scheduling the extra 2. Workers see the quantity and expected date for each portion.
+
+### B. Quantity changes
+
+The requester and admin/staff can increase or decrease quantities, even after purchasing starts. Team leaders can edit requests they submitted for members.
+
+Changing the quantity needed does not erase what was already purchased or delivered.
+
+| Situation | What happens |
 |---|---|
-| Receipt | Admin/staff confirms actual quantity and destination; link to purchase/delivery, once. |
-| Reservation | Server verifies availability and protects stock from competing requests. |
-| Issue | Record recipient, project, request and source stock; reduce stock/reservation consistently. |
-| Transfer dispatch | Remove from source availability and record in transit. |
-| Transfer receipt | Confirm actual quantity at destination; leave shortages/discrepancies visible. |
-| Material return | Admin/staff confirms quantity, condition and destination before availability increases. |
-| Count correction | Require actor and reason; keep before/after and adjustment history. |
+| Worker changes 10 to 12 | The extra 2 become additional demand; after cutoff, default them to the next batch while preserving the original 10's schedule, with admin/staff override available. |
+| Worker changes 10 to 8 before purchase | Purchase only the remaining need after checking available stock. |
+| 10 purchased, but only 8 needed | Keep the purchase record at 10. The extra 2 become usable inventory after receipt is confirmed. |
+| All 10 already issued to the worker | Mark the extra 2 as awaiting return. Admin/staff confirms their return before they become available stock. |
 
-Retain the Materials form's inventory option as “Track this purchase in inventory”, with separate receipt state. A purchase may be paid before receipt or received before payment; physical availability depends on confirmed receipt, not payment status. The same physical receipt cannot be counted again through a request, expense form, retry or delivery-status change.
+If goods are still with the supplier, admin/staff coordinates cancellation or delivery. Undelivered goods are not counted as available inventory.
 
-Preserve source ownership and cost provenance when stock changes location. Location does not by itself establish permission to use materials purchased for a different client/project. Cross-project reuse enters the owner review flow, with any required client-billing adjustment explicit.
+**Reducing a quantity spread across batches:** reduce the newest portion not yet arranged for purchase first. For example, 10 arranged this week plus 2 unarranged next week, reduced to 9: cancel the later 2 first, then flag 1 of this week's arranged quantity for admin/staff action. Do not erase a placed order or completed purchase. If the remaining excess has already been purchased or issued, use the existing cancellation, receipt or confirmed-return process. Release any unused stock reservation consistently and preserve the change history.
 
-## 8. Reusable tools
+Keep a record of who changed an item, when and why. Cancelling a request does not delete completed purchases, tool loans or outstanding returns.
 
-Generate a unique stable asset number for each reusable tool; proposed presentation is `TOOL-0001`, with optional printable QR labels. Store description, photo, condition, location and custody history. Bits, discs and other consumables remain quantity-tracked materials.
+### C. Inventory at sites and the warehouse
 
-Each issue identifies the tool, responsible worker/leader, project, issuing actor and condition. Only one active custody record is permitted per tool. Team leaders can issue/receive for their own members or themselves, using the same available-project selection as ordinary workers. Admin/staff manages all authorized teams.
+Track materials at the central warehouse and each project site.
 
-Returns record condition. A damaged return can be accepted into custody without making the tool available for reissue. Lost/damaged reports remain visible for admin/owner resolution and never create automatic salary deductions or project charges. Changing teams or deactivating a user must not erase outstanding responsibility.
+For each item, show its location and quantities available, reserved for requests, in transit, awaiting return or damaged. Materials already issued to a worker are no longer available store stock.
 
-Registering a newly purchased tool into company inventory remains an admin/staff receipt operation. The team-leader permission concerns tool handovers and returns, not general warehouse procurement or material receipt authority.
+Only admin/staff confirms material receipts and returns. Each confirmation records the actual quantity, condition, location and person who confirmed it.
 
-## 9. Offline operation and conflicts
+Transfers have two steps: sent from the source and received at the destination. Until receipt is confirmed, the materials remain in transit. Missing or damaged quantities remain visible for resolution.
 
-Reuse the Attendance application's durable-storage approach, with separately scoped procurement records and sync work. Every local operation has a stable event ID and authenticated user identity. Keep pending requests and photos until acknowledgement; never upload one worker's queued changes as a different signed-in worker.
+Keep a history of every receipt, issue, return, transfer and stock correction. Different sizes, specifications and units must remain distinguishable; matching names alone is not enough.
 
-Queued edits retain the version they were based on. Server operations validate current permissions, project eligibility, membership and fulfillment state. If an edit conflicts with a newer change, preserve both versions and route it to admin/staff. Disjoint edits may merge only when their validation rules remain satisfied; concurrent edits to the same quantity are not silently added together or overwritten.
+Before launch, admin/staff checks opening quantities and locations. Staff may encode supported purchase information. Unknown historical costs remain marked unknown until the main owner verifies a supported opening cost for financial assignment.
 
-Show Draft, Pending sync, Synced, Needs resolution and Failed states distinctly. Cached stock is informational: it cannot guarantee an offline reservation. New or increased demand does not reserve stock until the server confirms it.
+**Release stock to other job:** admin/staff can record warehouse materials physically released to a job outside Project Control, such as a PM job. Require the item, quantity/unit, source warehouse, recipient, destination name, release date and reason. Keep a source-stock reference and the recording staff member. This is an admin stock movement, not a destination available in the worker request picker.
 
-Proposed first-release boundary: requests and quantity edits work offline; stock confirmation, reservations, tool handovers and cost assignments require connectivity. This prevents competing offline devices from issuing the same tool or stock. Extending offline physical handovers requires a separate design.
+On confirmed physical release, reduce warehouse stock once and retain the movement history. Do not wait for financial review to correct the physical count. The operation must check available quantity and must not silently consume stock reserved for another request. For example, 20 cement bags minus 5 released to Los Churreros leaves 15 in the warehouse. No PM record is created or updated.
 
-Attendance sync must continue independently when a procurement operation fails. Preserve queued changes across process death and restart. Revalidate membership/role after reconnect; do not discard rejected requests without a visible explanation.
+The release initially shows **External cost handling pending**. Only the main owner can confirm **Cost handled outside this app**, with a required external reference or explanation of where/how it was recorded. Preserve who confirmed it and when. Unknown cost or missing evidence remains unresolved; the physical release itself is not proof that the cost has been accounted for. Returns or corrections link back to the original release instead of deleting its history.
 
-## 10. Expenses and project cost assignment
+### D. Reusable tools
 
-Keep three distinct facts: actual purchase/payment history, physical material movement, and which project bears the cost. A request or stock movement does not itself record a second payment. Owner-confirmed cost assignments are explicit financial actions.
+Register each reusable tool with an asset number, such as TOOL-0001, plus its photo, location and condition. Drill bits and cutting discs remain quantity-based materials.
 
-### Project purchase reused elsewhere
+When issuing a tool, record:
 
-Example: A buys ten outlets for PHP 1,000. Two are later issued to B. Owner confirms a PHP 200 transfer: A retains PHP 800 and B carries PHP 200. Preserve the original purchase and receipt; total allocated purchase cost remains PHP 1,000. Moving A's leftovers into warehouse storage alone leaves their cost with A.
+- The specific tool.
+- The named worker or team leader responsible for returning it.
+- The selected project.
+- Who issued it and its condition.
 
-### Direct warehouse purchase
+Admin/staff and team leaders can confirm tool issuance and returns. Leaders do this for their own team. For new issues, use the linked request's procurement-eligible project, including an explicitly enabled upcoming site; Time In is not required. Returns remain linked to the original custody record even if that project is now hidden or completed. Admin/staff confirms newly purchased tools entering inventory.
 
-Record the actual company purchase and its unassigned stock cost without charging an arbitrary project or treating it as company overhead. When stock is issued, owner assigns the corresponding original cost to the receiving project. Show an explicit pending cost-assignment state until confirmation. Remaining stock retains the unassigned cost. A payment against an already-recorded purchase does not create another material-cost entry.
+A tool can have only one current responsible person. A damaged returned tool stays unavailable until cleared for use. Team changes and account deactivation do not erase outstanding tool responsibility. Lost/damaged tools never trigger automatic salary deductions.
 
-### Financial controls
+### E. Offline requests
 
-- Retain original purchase lots/source lines and unit-cost provenance; identify which source quantity each issue uses. Proposed default is oldest usable received stock first, with explicit source selection when needed.
-- Owner-confirmed transfers post balanced source/destination adjustments atomically and once. A failed operation posts neither side. Reversals remain linked to the original event.
-- Never transfer more quantity/cost than remains attributable to the source. Returns reverse or reassign cost only through an explicit owner-reviewed action.
-- Billed or closed projects require exception review. Do not silently rewrite issued invoices, cost-plus fees or frozen warranty contributions.
-- Cost transfers are not client allocations, revenue, accomplishment, cover funding, reimbursements or warranty draws.
-- Preserve Labor/Overhead classification, Cover as a subset of Spent, Forecast labels, and all isolated modules.
-- Project Control and Project Management require separate cost-posting adapters. Do not put a construction-project ID into a billing-period field. A cross-system transfer is disabled until both adapters and their reporting effects are verified.
-- Company stock is not a new job-level Spent bucket. Existing project formulas stay intact; stage 4 must explicitly map approved material-cost adjustments into every affected total and presentation.
+Workers can prepare requests and quantity changes without internet. The app clearly shows whether something is a draft, pending sync, received by the system, failed or needs resolution.
 
-This stage changes cost attribution beyond today's quantity-only inventory. It requires a dedicated financial integration spec and regression evidence before activation. No new general ledger, tax treatment, depreciation, tool rental charge or automatic client billing is included.
+When internet returns, send each operation once. Keep pending requests and photos until receipt is acknowledged. Switching accounts must not show or send another worker's data.
 
-## 11. Technical ownership and consistency
+If a worker changes a quantity to 8 offline while staff changes it to 12 online, retain both versions. Admin/staff resolves the conflict instead of silently overwriting either change.
 
-The Android app owns worker interaction and durable pending operations. Web owns admin work queues, confirmations and owner financial review. Supabase owns authoritative identity, permissions, version checks, state transitions and transactional movement/posting operations. The old Flutter app is a workflow reference only.
+**Approved MVP limit:** stock confirmations, stock reservations, tool handovers and cost assignments require internet. Offline requests remain supported, but an old stock balance cannot guarantee availability. Attendance continues syncing independently.
 
-Conceptual records: teams/memberships, item catalogue, requests/lines/revisions, purchase-source links, locations, stock receipts/movements/reservations, tool assets/custody, conflict resolutions and restricted cost assignments. These are design concepts, not approval to create particular table names or columns without inspecting the live schema.
+### F. Materials expenses and inventory
 
-Use real migrated columns and owner-scoped access. Enforce permissions on the server, not just screen visibility. Restrict worker reads to safe request/tool data and prevent financial values from being returned then hidden. Database operations must prevent overselling stock, duplicate receipts and duplicate custody under concurrent use.
+Keep the existing Materials expense workflow and link purchases to requests and inventory.
 
-Keep financial documents out of worker/staff attachments and offline caches. Notifications identify status, quantities or actions without peso amounts for restricted roles. Existing attendance reward behavior is not expanded by this design.
+The Inventory option becomes **Track this purchase in inventory**, with **Received now** or **Awaiting delivery**. Payment alone does not make goods available stock.
 
-## 12. Delivery stages and release boundaries
+Record the purchase once and the actual physical receipt once. Entering the expense, marking delivery and retrying a save must not add the same stock twice. Paying a purchase already recorded must not create another material expense.
 
-1. **Requests and teams:** existing-account integration, team administration, current project selector, combined requests, line revisions and offline/conflict handling. Show accurate manual progress; do not promise live stock availability before stage 2. Requests for tools are accepted, but tracked tool issuance launches with stage 3.
-2. **Inventory and purchasing:** catalogue, locations, reservations, physical movement history, partial fulfillment, receipts/returns and purchasing links. Replace both legacy automatic stock increments for migrated records. Existing financial entries retain their current treatment. Show cross-project cost review needs; do not activate unimplemented cost-posting features.
-3. **Tool tracking:** asset registration/labels, named custody, leader permissions and condition-aware returns. Existing tools enter through a confirmed opening register, not invented historical purchases.
-4. **Expense integration:** company-stock purchase recording, owner cost assignments, project-to-project reallocation, both ledger adapters and complete reports/exports. Activate only after financial reconciliation tests pass.
+For purchases made for a project, keep the original receipt and project cost history. Moving materials between stores is a stock movement, not another purchase or payment.
 
-Roll out backend support before dependent app versions. Use a controlled pilot and per-stage enablement. Preserve existing Attendance and historical requests throughout. Retiring the Flutter prototype does not authorize deletion of its historical data.
+**Project A to Project B example:** A buys 10 outlets at PHP 100 each. B later receives 2 unused outlets. The main owner can confirm a PHP 200 cost transfer, leaving A with PHP 800 and B with PHP 200. Total purchase spending remains PHP 1,000.
 
-Before switching inventory, take a reviewed opening count per item/location, distinguish outstanding issued tools and unresolved returns, and reconcile duplicates. Existing name-only inventory has no reliable location or purchase provenance: do not fabricate those facts. Quantities can be entered with documented unknown cost; owner must establish supported cost before financial allocation.
+Admin/staff handles physical transfers. Only the main owner account confirms the cost transfer, using the original purchase cost. Both sides must succeed together. Moving A's leftovers into warehouse storage alone leaves their cost with A.
 
-Once a location/item uses the new ledger, prohibit legacy direct stock-counter writes for it. Rollback disables new actions while preserving confirmed movements and financial history; it must not restore an old counter over newer transactions.
+**Warehouse purchase example:** the company buys materials for general stock. Their cost remains with company stock until issued to a project. The main owner then assigns the issued portion to that project; the unused portion remains unassigned stock cost. Pending cost assignments must be visible.
 
-## 13. Acceptance examples
+For **Release stock to other job**, show released quantities and attributable costs separately from stock still on hand. Keep unresolved external costs visible until main-owner confirmation; do not leave released goods appearing as available company stock or silently discard their cost. Confirmation records external handling in the reconciliation history and creates no new purchase, payment, PM expense or automatic PC-to-PM cost transfer. Preserve original purchase/source-project cost records; any financial correction to those records requires its own authorized, traceable handling. Existing purchase cost must be counted once across on-hand stock, PC assignment and pending/confirmed external handling.
 
-- A worker and leader see the same eligible project list as Attendance and may request ahead of Time In.
-- A leader submits electrical and plumbing lines for different members in one project request; unrelated teams cannot access or administer them.
-- Ten requested items are fulfilled with four reserved from stock and six purchased, without a second purchase expense for the four.
-- Reducing demand from ten to eight preserves ten already purchased. If two remain in store they can be unreserved; if already issued they await confirmed return.
-- Marking delivery twice, retrying a receipt or recording its expense cannot add stock twice.
-- Two simultaneous reservations cannot consume the same last item; two handovers cannot issue the same tool.
-- A transfer remains in transit until receipt; a short receipt does not silently create the missing quantity.
-- Offline worker quantity eight versus newer staff quantity twelve creates a visible conflict; admin/staff resolution retains both originals.
-- Switching accounts never exposes or uploads another worker's pending request or photos.
-- A leader returns a damaged drill for a member; custody ends but the tool remains unavailable until cleared.
-- A-to-B cost transfer reduces A and increases B by the same original cost, records no new payment and preserves the original receipt.
-- Warehouse purchases reconcile to cost already assigned plus cost remaining unassigned; outstanding owner confirmations are visible.
-- Staff cannot retrieve amounts through direct API calls, exports, notifications, files or cached responses.
-- Existing attendance, payroll isolation, Cover, Earned/Forecast, overhead and warranty rules remain intact.
+Billed or closed projects require main-owner review before changing cost attribution. Stock transfers must not silently change client invoices, fees or warranty records. Project-to-project cost transfers in this MVP are between Project Control projects only, with verified billing-period and funding treatment. PM cost records are not changed. Similar project names never establish a transfer relationship.
 
-## 14. Verification and implementation mapping
+### G. Project Item History — find and request an item again
 
-Before each implementation stage, inspect current migrations and live schema, trace every save/render/print/export path, and list affected files in that stage's plan. Never reserve a migration number from this document; choose highest plus one at implementation time.
+**User need:** a worker remembers an item previously bought for Project A but cannot recall its exact name. Today procurement searches old Messenger messages and photos to identify it. The app must retain searchable item history with project labels and images so the worker and admin/staff can identify the same item quickly.
 
-Expected Web surfaces include `js/construction-module.js`, `js/expenses-module.js`, `js/supabase-config.js`, `js/admin.js`, `admin.html` and the schema/architecture docs. Stage 4 also includes Project Control calculations, PM costs, print utilities, invoice/report/CSV surfaces and paired client portals where affected. Both portal HTML files must remain aligned.
+**Proposed simple experience:** inside Requests, offer **New Request** and **Find Previous Item**. Start with the selected project's history and a photo-card view. Search by common name, official name, brand, specification or item code. Filter by project, trade, material/tool and date. An optional list view helps admin/staff scan large histories. Viewing another project's history remains subject to explicit access rules.
 
-Expected Android surfaces include navigation, repositories, authenticated local caches, Room migrations, sync scheduling and new request/tool screens. Preserve the existing Attendance RPC payload and trusted-time deployment contract.
+Each card shows a clear product photo, official name, key specification/unit, project label, Main Contract or Additional Works label, and latest recorded activity/date. Display a clear placeholder when no image exists; allow admin/staff to add a product photo later. Common worker terms can be saved as search aliases without creating a second stock item.
 
-Verification includes server permission tests across roles/owners, concurrent stock/custody operations, retry and failure-between-steps tests, offline device scenarios, migration rehearsals, opening-stock reconciliation and cross-ledger cost totals. Run Web money tests after any money-code change and JavaScript syntax checks. Never run the Web build stub. Run Android tests and handset verification for the merged flows. A previously saved test report is not a fresh pass.
+Opening a card shows the photo gallery and dated history of requests, actual purchases, receipts, issues and returns, with quantities and units. Keep these events distinct: requested does not mean purchased, and issued does not prove installed or consumed. Use labels such as **Previously purchased for House A** or **Issued to House A**, rather than claiming an item was used without a usage record. Show current available stock and location separately, only when the inventory feature is active; old purchase quantities are never shown as current availability.
 
-## 15. Review boundary
+**Request this item again** copies the known item/specification and reference photo into a new draft. The worker confirms destination project, Main Contract/Additional Works, team, quantity and needed-by date before submitting. Carry a link to the historical reference for admin/staff. Do not copy old purchase status, payments, reservations, responsible person or cost, and do not submit automatically. If the item is obsolete or substituted, explain that and let admin/staff identify a suitable replacement.
 
-The business rules in section 2 reflect the conversation. Screen organization, multiple-team fallback, online-only physical confirmations, QR presentation and source-lot default selection are explicit proposed defaults in this document.
+Example: a worker opens House A → Electrical and recognizes a photo of a white two-gang outlet. The card shows the brand, specification and earlier delivery. They tap **Request this item again**, choose House B and enter 6 pieces. Admin/staff sees the exact reference instead of searching Messenger. The new request does not imply any of House A's stock has been transferred.
 
-The next step after written-design approval is an implementation plan for stage 1, with its exact schema and API contracts. Subsequent stages each receive their own focused specification and plan, with the financial integration treated as a distinct controlled change.
+Build history from linked operational records rather than asking staff to encode it twice. Stable item and event links must prevent an expense plus its receipt from appearing as two separate purchases. Preserve historical descriptions, photos and actual substitutions even if the catalogue name changes. A tool model may be requested again, but a particular tool asset still follows its availability and custody rules.
+
+For older materials missing from the app, admin/staff can manually add a labelled **Historical reference** with project, description and optional photo/date/source note. Unknown details remain unknown. This entry helps identify an item; it must not create stock, expenses, payment or a fictitious confirmed purchase. Bulk Messenger imports and automatic image recognition are outside the MVP.
+
+**Launch preparation:** before Stage 1b, run a short seeding session with admin/staff to add useful item photos and specifications for active Project Control sites. Choose sites using verified operational needs. Start with frequently requested or hard-to-identify items. Do not seed PM project records into this worker app. Do not promise a complete old purchase history; receipt images containing prices cannot simply become worker gallery photos.
+
+**Two kinds of photos:** store approved product photos in a separate, access-controlled storage area from receipts and raw request attachments. A raw request photo remains restricted to its requester, an authorized team leader and admin/staff; it is never automatically published to the project gallery. Only admin/staff-approved product photos may enter that gallery. Check for visible prices, personal information and unrelated private content; publish a safe product-only image or keep it private. Approval is recorded, and replacing an approved image requires a fresh review. Approval to publish a photo is not a new approval gate on the request itself.
+
+**Proposed visibility:** workers/leaders see a project item reference view containing product photos, specifications and nonfinancial event information for authorized projects. It does not expose colleagues' private requests, contact details, purchase prices or receipt images containing amounts. Admin/staff retains its agreed purchase-encoding access. The worker-facing product gallery must be separate from financial documents; project selection alone is not a blanket permission to read every historical record.
+
+A prior request does not grant permanent access to the entire project's shared history. Keep access to the worker's own request records separate from current authorization to browse shared project references. Final history-access rules must be defined and tested before Stage 1b launches.
+
+Offline, previously cached authorized references can be browsed with a last-updated label and used to prepare a pending request. Do not promise complete history or current stock without a connection. Apply the existing account-isolation and sync rules to history photos and drafts too.
+
+Bound the offline gallery cache to selected projects/recent items, with an explicit size limit in the Stage 1b plan. Remove older cached gallery images as needed. Pending-upload request photos are stored separately and must not be deleted by gallery-cache cleanup.
+
+**Pilot expectations:** Stage 1a shows request records and privately attached photos. Stage 1b adds searchable request history and approved historical references/product photos. Before Stage 2 integration, neither stage claims verified Purchased, Received, Issued or Available stock information. Those events appear only when backed by the corresponding operational records.
+
+## 5. Simple screens
+
+| Worker app | Purpose |
+|---|---|
+| Home | Today's attendance, request updates and pending actions. |
+| Attendance | Existing Time In, Time Out and history. |
+| Requests | Stage 1a: create, edit and track requests. Stage 1b: Find Previous Item opens searchable project history and approved photos. |
+| My Tools | See tools currently assigned and return history. |
+| Profile | Existing account details and settings. |
+
+Team leaders also get access to their team's requests and tool handovers.
+
+Dacs Web provides the request queue, project item history/photo search, team setup, inventory by location, tool register and owner-only cost review. Admin/staff can open the worker's historical item reference directly from a request. These labels are proposed; the agreed permissions do not depend on the final screen layout.
+
+## 6. Build order
+
+| Stage | Deliverable | Release boundary |
+|---|---|---|
+| 1a. Requests pilot | Combined requests, catalogue/unlisted-item matching, teams, Main Contract/Additional Works selection, manual Allow requests, completed-project rules, weekly batches, per-item urgency, quantity portions by batch, private request photos and offline editing/conflicts. | Storage repair verified first. Preserve Attendance and staff payroll encoding. Replace legacy broad worker request access on screen and on the server. No shared gallery or unverified purchase/stock claims. Tool requests are allowed; asset tracking arrives in stage 3. |
+| 1b. Item history and photos | Find Previous Item, project labels, approved product photos, seeded historical references, request-again drafts and bounded offline reference browsing. | Define and verify shared-history permissions. Raw request photos remain private. Display requested events and labelled references only until verified purchase/movement integration arrives. |
+| 2. Inventory and purchasing | Site/warehouse balances, reservations, purchase links, receipts, issues, transfers, returns and Release stock to other job; enrich item history with verified purchasing/movement events and separate current availability. | External releases reduce physical stock once and retain pending external cost handling. Replace duplicate stock-add paths. Keep current expense treatment until stage 4. |
+| 3. Tools | Asset registration, named responsibility, team-leader handovers and condition-aware returns. | Introduce existing tools through a checked opening register. |
+| 4. Expense integration | Company-stock costs, main-owner-confirmed assignments/transfers between Project Control projects, external-release cost reconciliation and matching reports. | Verify Project Control billing-period, funding and report effects before enabling. External handling requires main-owner confirmation/reference; automatic PM cost integration and cross-system transfers are excluded. |
+
+Each stage must work before moving to the next. Keep Attendance usable throughout. New features are enabled only when their supporting functions are ready. Historical data from the old procurement app is preserved.
+
+At Stage 1a launch, remove workers' and team leaders' broad access to colleagues' requests through the legacy Construction screen and its data endpoints. Hiding navigation alone is insufficient. Provide the new own-request/team-scoped workflow and appropriate historical access before switching over, without deleting old records or blocking admin/staff operations.
+
+## 7. Approved MVP defaults
+
+The user approved these defaults for the first release:
+
+- Workers without a team can still submit an individual request.
+- Admin/staff may assign a worker to more than one team; choose one team per request.
+- Physical stock confirmations and tool handovers initially require internet.
+- Asset numbers are included. Printable/scannable QR labels are optional and may follow after basic tool tracking.
+- Suggest the oldest usable received stock first, while keeping its original purchase source identifiable.
+
+## 8. What can wait
+
+The first version does not need supplier portals, automatic supplier ordering, purchase forecasting, offline stock/tool handover confirmation, advanced dashboards or automated tool depreciation/rental charges.
+
+It also does not include an Attendance rewrite, a new payroll calculation or automatic client billing from stock movements. These exclusions do not remove the material requests, inventory, tools or owner-controlled cost rules agreed above.
+
+## 9. How we know the MVP works
+
+- A worker uses one login for attendance and requests.
+- Attendance, requests, project item history, project tool assignments and project cost integration remain within Project Control. PM projects cannot be submitted through the new request endpoints, even by bypassing the picker; PM records/statuses remain unchanged.
+- Similarly named PC and PM projects retain separate identities and lifecycle states; no automatic merge, link or cost transfer occurs.
+- Workers and leaders can select ordinary eligible projects before Time In, plus upcoming projects explicitly enabled for procurement. Attendance checks remain unchanged.
+- A request can identify Main Contract or a specific Additional Works job under its selected project.
+- Regular requests follow the weekly cycle; admin/staff date changes appear to workers without rewriting completed-event dates. Urgent requests and available-stock fulfillment need not wait for the weekly batch.
+- An offline draft arriving after the Philippine-time cutoff joins the next batch unless admin/staff records an override. Retrying the same accepted request preserves its original batch.
+- One urgent line does not make the whole combined request urgent. Adding 2 after cutoff to 10 already arranged preserves the original 10 and schedules the extra 2 separately.
+- Hiding a site from Attendance does not automatically disable its separately enabled requests. Completed sites block new requests but retain authorized history, returns and transfers.
+- A leader submits electrical, plumbing and tool needs in one project request.
+- A profile with the team-leader role can act for Team A only when explicitly assigned as Team A's leader; another team's records and handovers remain inaccessible through both the UI and direct calls.
+- A completed Additional Works job rejects a new request even with an open parent, while history/returns remain available. A completed parent likewise cannot be bypassed through an open child.
+- A worker can submit an unlisted item with a description/photo; admin/staff matches or adds its official catalogue entry without duplicating stock or mixing specifications and units.
+- A worker finds a previously purchased item by project and photo, checks its specification and creates a new request without searching Messenger.
+- Request-again copies the item reference into a draft, not the old purchase, stock reservation, amount or custody record; admin/staff can open the original reference.
+- Item history distinguishes requested, purchased, received and issued quantities from current available stock. Product photos remain accessible without exposing restricted receipt documents.
+- Adding an old photo as a historical reference creates no stock, expense or invented transaction; cached references remain isolated by signed-in account.
+- A request for 10 can be fulfilled with 4 from stock and 6 purchased.
+- Changing 10 to 8 preserves actual purchases and correctly handles the extra 2.
+- Reducing 10 arranged this week plus 2 unarranged next week to 9 removes the later 2 first and flags the remaining 1 for cancellation/return handling without altering purchase history.
+- A returned material does not become available before admin/staff confirms it.
+- Admin/staff releases 5 of 20 warehouse bags to another job: warehouse stock becomes 15 once, and External cost handling pending appears. Only the main owner can confirm external handling with a reference/explanation; no PM record, purchase or payment is created.
+- External-release retries cannot deduct stock twice; returned quantities link to the original release, and unresolved costs remain visible without inflating on-hand stock or duplicating source costs.
+- Duplicate clicks, retries and expense recording cannot duplicate stock or spending.
+- Two requests cannot reserve the same last item; two people cannot receive the same tool at once.
+- Offline edits survive closing the app, and conflicting edits reach admin/staff for resolution.
+- All staff can encode and review purchase amounts and receipts, and their existing payroll encoding/access continues as a documented exception. New procurement features do not expose unrelated financial records or permit staff cost-transfer approval.
+- Workers and team leaders cannot retrieve procurement amounts through any app/Web screen, photo, history, notification, cache, export or direct data call.
+- Before Stage 1a ships, document-storage checks deny unauthorized file access while preserving each client/partner's permitted documents and staff encoding access.
+- The legacy Construction screen and its endpoints no longer allow workers to browse colleagues' requests; scoped replacement access works.
+- Only admin/staff-approved safe product photos appear in the shared gallery; raw request photos remain private. Cache cleanup cannot delete unsent photos.
+- Stage 1b begins with clearly labelled seeded references, not invented purchases or stock. History access and photo caching remain account-scoped and bounded.
+- Only the main owner can confirm cost transfers, preserving original receipts and total purchase cost.
+- Attendance, payroll, project expenses and existing financial reports remain correct.
+
+## 10. Notes for implementation planning
+
+Preserve the repository's existing money rules, project identities and financial isolation requirements. Company stock is not company overhead or a fourth project-spending category. Attendance hours do not determine pay.
+
+The current source has two independent stock-add paths: the Materials inventory option and procurement delivery. Expense editing/deletion does not currently reconcile stock. Replace these paths carefully for migrated items, keeping physical movement history and correction records.
+
+Preserve Attendance's existing Project Control workflow. Do not interpret backend support for PM identifiers as a requirement to introduce PM Attendance. Procurement adds explicit eligibility for upcoming Project Control projects and an Additional Works selection beneath the parent project. New request/project tool endpoints reject PM destinations; hiding PM options alone is insufficient. Project Control jobs and billing periods retain their distinct identities, and PM records remain separate. New procurement permissions must be enforced by the backend, not only by hiding fields on screen. The separate storage repair must still preserve authorized PM client/partner document access because existing PM operations remain in use outside this app.
+
+The existing request-line save deletes and reinserts rows, and the compatibility layer's batch saves are sequential. New stock and linked request operations need stable record identities and database transactions, with safe retry handling. Preserve actual purchase quantity and original unit cost independently of expense funding splits, whose current quantity field cannot reliably represent the original purchase.
+
+**Approved: use new procurement tables** for the new workflow instead of reusing the legacy `requests`/`request_items` save path. Preserve existing requests as read-only history with appropriate permissions; do not delete them or leave their old broad access in place. Define exact table names and migrations in the Stage 1a plan after inspecting the current schema. Give request lines stable identities and enforce Project Control destinations through references to valid Project Control records. Legacy requests remain historical references, not invented new stock or purchases.
+
+Old requests without a project link must not automatically appear in project history. Admin/staff must explicitly map any retained reference to the correct Project Control project before gallery inclusion, with photo approval and history-access rules still applied.
+
+Before Stage 4 is implemented, settle and document the receiving Project Control billing period, client-versus-Cover treatment, source funding history and effect on Direct allocation reports. Project Control-only scope, new procurement tables and `admin@dacsbuilding.com` as the main owner are confirmed. Verify live data counts and the confirmed account's stable identity before configuring access or basing migration work on external observations; this is implementation verification, not a pending user decision.
+
+Before coding a stage, inspect its current database columns and every affected save, display, print and export path. Add migrations for new data, preserve both client portals where affected, and test retries, partial failures, permissions and money totals. Never run the Web build stub.
+
+Reference: [System architecture](../../ARCHITECTURE.md) and the earlier design saved in Git commit `fdc8e19` contain the technical background. This MVP document replaces the longer presentation while retaining the agreed product direction.
+
+**Next step:** plan the separate pre-pilot storage repair, then prepare the focused Stage 1a implementation plan. No further business-scope decision blocks this planning. Stage 1b receives its own gallery/history plan, and the later-stage decisions below are resolved before their affected features are implemented. Writing this document does not repair storage, deploy changes or alter either app.
+
+### Planning readiness and later-stage decisions
+
+The team rule is settled: one team per request, optional intended member per material line. The user has confirmed `admin@dacsbuilding.com` as the main owner. The scope is sufficient to prepare the storage repair plan and Stage 1a plan. The plans must still define exact schemas, permissions, cutoff time, notification behavior, deployment order and acceptance checks; this document alone is not implementation or launch verification. Verify the confirmed main owner's stable account identity when configuring privileged actions.
+
+Before Stage 2/3 implementation, resolve the external-release details in their focused specs:
+
+- Distinguish company-purchased stock from Project Control leftovers whose cost still belongs to the original project. Show the source and require main-owner review of any original-project cost correction; an external-handling acknowledgement cannot silently reduce that project's Spent.
+- Specify whether Stage 2 offers an evidence-only external-handling acknowledgement, with peso reconciliation in Stage 4. Do not label unverified financial reconciliation complete.
+- Specify how partial returns reduce outstanding external quantity and attributable cost, including returns after owner confirmation. Link corrections to the original record and preserve completed confirmations rather than rewriting history.
+- The currently approved external-release feature covers materials only. Lending reusable tools to outside jobs requires a separate decision; it is not implicitly authorized by material release approval.
+
+These later-stage decisions do not prevent Stage 1a planning, but must be resolved before implementing the affected stock, tool or financial operations.

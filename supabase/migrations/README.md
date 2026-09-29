@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0081** — highest on disk is
-  `0080_app_releases_owner_check.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0082** — highest on disk is
+  `0081_uploads_access_repair.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble.
 - **`0075` and `0076` are TAKEN but not on `main`.** They belong to the abandoned
   project cost-plan branch (`project_cost_plans`, then its `%` columns) and **both
@@ -143,6 +143,12 @@ public `app-releases` storage bucket (owner-only upload; a published APK cannot 
 publish raises `attendance_config.min_app_version` for every owner in the same transaction.
 **Do not publish versionCode 4 until v4 is installed on every phone** -- v4 is the first build
 with the update dialog; see the file's header.
+
+**0081 (uploads access repair)** removed two hand-made storage policies that existed in no
+migration, `uploads_read` and `uploads_insert`, both granted to PUBLIC (not-logged-in visitors
+could list and download every file). Applied 2026-09-29 through the SQL editor, so it has no
+`schema_migrations` row; live check `supabase/tests/uploads_access.sql` passed the same day.
+Emergency undo: `supabase/rollback_0081_uploads_access.sql` (does not restore public access).
 
 Get the truth before relying on this line:
 

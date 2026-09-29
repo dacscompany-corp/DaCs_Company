@@ -278,6 +278,16 @@ it at the moment of use. What breaks the pattern: assigning a stored URL straigh
 `location.href` (use `window.dacsMaybeSignUrl(url)` first — see `print-utils.js` for examples)
 or fetching it from a **worker/server** context where the shim isn't loaded.
 
+**Who can read a stored file (`0081`).** Signing only works if the logged-in user is allowed to
+read that file, and the rule follows the file's **top folder**: owner and staff read everything
+except `quotations/` and `reimbursementReceipts/` (owner-only); a construction client or partner
+reads `weeklyBillReceipts/`, `procurementReceipts/`, `accomplishmentReports/` and `projectTerms/`
+only under **their own** construction project's id (same test as the `weekly_bills` read policies);
+`agreementDocs/` is readable by anyone logged in except workers and team leaders; the uploader can always read
+back their own file; workers and team leaders read only the employee agreement PDF (`employeeTermsGlobal/`) and upload only their own employee signature and signed-terms copy. The rules are `uploads_can_read` /
+`uploads_can_write` in migration 0081. **A new upload folder is owner/staff-only until it gets a
+rule there**, and `tests/storage-access.test.js` fails CI until it is classified.
+
 ---
 
 ## 9. Verifying a change
@@ -287,7 +297,7 @@ safety net is small and manual:
 
 | Tool | When | What it does |
 |---|---|---|
-| `npm test` | **After any change to money code** — `portal-app.compiled.js`, `expenses-module.js`, `overhead-module.js`, `billing-allocation.js` | Nine suites. `tests/money-math.test.js` (239 checks) extracts the live functions and enforces every invariant in §6 — including §R, which asserts the allocation engine never reaches `_projSpent` / `_projEarned` / `_projMargin` / `_recognisedProfit`. `tests/billing-allocation.test.js` (`0073`) covers the envelopes, overhead attribution and the report, print and CSV surfaces. Exits 1 on breakage, ~2s |
+| `npm test` | **After any change to money code** — `portal-app.compiled.js`, `expenses-module.js`, `overhead-module.js`, `billing-allocation.js` | Eleven suites. `tests/money-math.test.js` (239 checks) extracts the live functions and enforces every invariant in §6 — including §R, which asserts the allocation engine never reaches `_projSpent` / `_projEarned` / `_projMargin` / `_recognisedProfit`. `tests/billing-allocation.test.js` (`0073`) covers the envelopes, overhead attribution and the report, print and CSV surfaces. Exits 1 on breakage, ~2s |
 | `node --check <file>` | Any JS edit | Syntax errors in files the test doesn't cover |
 | Browser | Always | `admin.html`, logged in as owner |
 | CI | Every push + PR | `.github/workflows/ci.yml` runs both of the above |

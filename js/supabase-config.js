@@ -689,8 +689,9 @@ const storage = {
 //   • <img>/<iframe> src set by any innerHTML   → rewritten via MutationObserver
 //   • fetch(url)                                → wrapped (PDF stamping/merge/sha)
 //   • window.open(url)                          → wrapped (receipt viewers)
-// Every legitimate viewer is logged in (RLS: authenticated may SELECT on the
-// bucket), so signing succeeds; anonymous links now get 404 — which is the point.
+// Signing succeeds only for a logged-in user entitled to that file (migration
+// 0081: uploads_can_read — owner/staff, the project's client/partner, the
+// uploader…); anyone else gets a "sign failed" warning and the dead public URL.
 // DEPLOY ORDER: this file must be live BEFORE migration 0027 runs, or existing
 // links 404 with nothing to resolve them.
 const DACS_PUB_UPLOADS_RE = /\/storage\/v1\/object\/public\/uploads\/([^?#]+)/;
