@@ -769,6 +769,19 @@ APK is on every phone. A refused row stays queued on the phone and is sent after
 (every setting runs on its defaults), so the `update` shown in 0077's header changes nothing:
 `insert into attendance_config (owner_id, min_app_version) values ('<owner uuid>', 2) on conflict (owner_id) do update set min_app_version = excluded.min_app_version;`
 
+**Two worker apps (`0082`).** DAC'S WorkMate (Flutter, Android id `com.dacs.workmate`) runs beside
+the old DACS Attendance app (`com.dacs.attendance`) on the same backend. WorkMate sends
+`x-dacs-app: workmate`; no header means `attendance`, so old phones are unaffected
+(`dacs_request_app()`). Each app has its own minimum: `attendance_config.minAppVersion` (Attendance)
+and `minWorkmateVersion` (WorkMate), chosen by `attendance_required_app_version(owner)` inside the
+0077 trigger. **WorkMate versionCodes start at 1000; Attendance stays below 1000.** The database
+enforces this, because 0078 trusts the phone clock for builds below 3 and `timeinAppVersion` stores
+the number without an app name. The Time In / Time Out gate enforces the same floor: `attendance_required_app_version` never returns less than 1000 for WorkMate, even before its first publish (`minWorkmateVersion` = 0). `app_releases` has an `app` column and the key `(app, version_code)`;
+Attendance files are `<code>.apk`, WorkMate files `workmate/<code>.apk`. Old phones call
+`app_latest_release()` (Attendance stream only); WorkMate calls `app_latest_release_for('workmate')`.
+`app_publish_release(..., p_app)` raises only that app's minimum. The publisher
+(`js/app-updates-admin.js`) reads the package name from the APK and picks the stream itself.
+
 **Trusted time and `unverified` reward days (`0078`).** From versionCode 3 the app sends
 `p_trusted_at`: the shutter time measured on the phone's uptime counter from the last server `Date`
 header, which changing the phone's clock cannot move (`TrustedTime.kt`). Stored as

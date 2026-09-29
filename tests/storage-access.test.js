@@ -83,12 +83,20 @@ test('drops all five catch-all policies', () => {
     ok(new RegExp('drop policy if exists "' + p + '"\\s+on storage\\.objects').test(sql), 'no drop for ' + p);
   }
 });
-test('nothing is granted to public or anon', () => {
+// Every statement except `grant execute on function …` is scanned: a FUNCTION
+// may legitimately be granted to anon (0079/0082's update check runs signed
+// out); a policy, table grant or altered policy open to public/anon must never ship.
+test('nothing but a function EXECUTE is granted to public or anon', () => {
   for (const m of laterMigrations()) {
-    const lower = m.sql.toLowerCase();
-    ok(!/\bto\s+(public|anon)\b/.test(lower), m.file + ': found a policy "to public" / "to anon"');
-    ok(!/\bfor\s+all\b/.test(lower), m.file + ': found a "for all" policy');
-    for (const s of m.sql.match(/create policy[\s\S]*?;/g) || []) if (/on storage\.objects/.test(s)) ok(/\bto authenticated\b/.test(s), m.file + ': storage policy without "to authenticated"');
+    const statements = m.sql.split(';').filter((s) => !/^\s*grant\s+execute\s+on\s+function\b/i.test(s));
+    for (const s of statements) {
+      const lower = s.toLowerCase();
+      ok(!/\bto\s+(public|anon)\b/.test(lower), m.file + ': found "to public" / "to anon" in: ' + s.trim().slice(0, 80));
+      ok(!/\bfor\s+all\b/.test(lower), m.file + ': found a "for all" policy');
+    }
+    for (const s of m.sql.match(/create policy[\s\S]*?;/gi) || []) {
+      if (/on storage\.objects/i.test(s)) ok(/\bto authenticated\b/i.test(s), m.file + ': storage policy without "to authenticated"');
+    }
   }
 });
 test('rule functions are not executable by anon', () => {

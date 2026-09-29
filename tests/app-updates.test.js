@@ -51,6 +51,29 @@ const real = { packageName: 'com.dacs.attendance', versionCode: 5, versionName: 
     ok(threw, 'expected a throw');
   });
 
+  console.log('\nII-b. Two apps: DACS Attendance and DAC\'S WorkMate');
+  const wm = { packageName: 'com.dacs.workmate', versionCode: 1000, versionName: '1.0.0' };
+  await test('the package name picks the app', () => {
+    eq(au.appForPackage('com.dacs.attendance'), 'attendance');
+    eq(au.appForPackage('com.dacs.workmate'), 'workmate');
+    eq(au.appForPackage('com.example.other'), null);
+  });
+  await test('a first WorkMate release is accepted', () => eq(au.refusalFor(wm, { attendance: 4, workmate: 0 }), null));
+  await test('each app is compared with its OWN latest version', () => {
+    eq(au.refusalFor(real, { attendance: 4, workmate: 1500 }), null);
+    ok(/already published/.test(au.refusalFor({ ...wm, versionCode: 1500 }, { attendance: 4, workmate: 1500 })));
+  });
+  await test('a WorkMate build below 1000 is refused', () =>
+    ok(/1000/.test(au.refusalFor({ ...wm, versionCode: 12 }, { attendance: 4, workmate: 0 }))));
+  await test('an Attendance build of 1000 or more is refused', () =>
+    ok(/below 1000/.test(au.refusalFor({ ...real, versionCode: 1000 }, { attendance: 4, workmate: 0 }))));
+  await test('a WorkMate debug build is refused by name', () =>
+    ok(/DEBUG/.test(au.refusalFor({ ...wm, packageName: 'com.dacs.workmate.debug' }, 0))));
+  await test('storage paths: Attendance at the root, WorkMate under workmate/', () => {
+    eq(au.storagePathFor('attendance', 5), '5.apk');
+    eq(au.storagePathFor('workmate', 1003), 'workmate/1003.apk');
+  });
+
   console.log('\nIII. The hash every phone checks against');
   await test('sha256Hex is lower-case hex and matches Node', async () => {
     const bytes = crypto.randomBytes(4096);

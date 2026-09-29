@@ -18,8 +18,39 @@
     'use strict';
 
     const BUCKET = 'app-releases';
-    const PACKAGE = 'com.dacs.attendance';
     const APK_MIME = 'application/vnd.android.package-archive';
+
+    // Two worker apps on one backend (0082). The package name inside the APK
+    // decides which stream a file is published into; the owner never picks.
+    // Attendance versionCodes stay below 1000, WorkMate's start at 1000
+    // (0078's trusted-time rule treats builds below 3 as legacy).
+    const APPS = {
+        attendance: {
+            packageName: 'com.dacs.attendance',
+            label: 'DACS Attendance',
+            bump: 'Raise versionCode in build.gradle.kts',
+            release: 'Build the signed release APK (assembleRelease) and upload that.',
+            codeOk: (code) => code < 1000,
+            codeRule: 'DACS Attendance version numbers must stay below 1000 (1000 and up belong to DAC\'S WorkMate).'
+        },
+        workmate: {
+            packageName: 'com.dacs.workmate',
+            label: 'DAC\'S WorkMate',
+            bump: 'Raise the build number after "+" in pubspec.yaml',
+            release: 'Build the signed release APK (flutter build apk --release) and upload that.',
+            codeOk: (code) => code >= 1000,
+            codeRule: 'DAC\'S WorkMate version numbers start at 1000. Set version: x.y.z+1000 (or higher) in pubspec.yaml.'
+        }
+    };
+
+    function appForPackage(packageName) {
+        for (const key of Object.keys(APPS)) if (APPS[key].packageName === packageName) return key;
+        return null;
+    }
+
+    function storagePathFor(app, versionCode) {
+        return app === 'attendance' ? versionCode + '.apk' : app + '/' + versionCode + '.apk';
+    }
 
     // android.R.attr ids. aapt2 keeps the attribute NAMES too, but the id
     // is what Android itself reads, so it is what this trusts.
@@ -158,21 +189,26 @@
 
     /**
      * Why this file may not be published, in the owner's words -- or null.
-     * [latest] is the highest version already published (0 if none).
+     * [latest] is the highest version already published: a number (compared
+     * with the file's own app), or { attendance: n, workmate: m }.
      */
     function refusalFor(manifest, latest) {
         if (!manifest || !manifest.packageName) return 'This file is not an Android app.';
-        if (manifest.packageName === PACKAGE + '.debug') {
-            return 'This is a DEBUG build. Phones cannot install it as an update. ' +
-                   'Build the signed release APK (assembleRelease) and upload that.';
+        for (const key of Object.keys(APPS)) {
+            if (manifest.packageName === APPS[key].packageName + '.debug') {
+                return 'This is a DEBUG build. Phones cannot install it as an update. ' + APPS[key].release;
+            }
         }
-        if (manifest.packageName !== PACKAGE) {
-            return 'This is not the DACS Attendance app (' + manifest.packageName + ').';
+        const app = appForPackage(manifest.packageName);
+        if (!app) {
+            return 'This is not the DACS Attendance app or DAC\'S WorkMate (' + manifest.packageName + ').';
         }
         if (!manifest.versionCode) return 'Could not read the version number from this file.';
-        if (manifest.versionCode <= latest) {
-            return 'This is version ' + manifest.versionCode + ', but version ' + latest +
-                   ' is already published. Raise versionCode in build.gradle.kts, rebuild, and upload again.';
+        if (!APPS[app].codeOk(manifest.versionCode)) return APPS[app].codeRule;
+        const published = typeof latest === 'number' ? latest : ((latest && latest[app]) || 0);
+        if (manifest.versionCode <= published) {
+            return 'This is version ' + manifest.versionCode + ', but version ' + published +
+                   ' is already published. ' + APPS[app].bump + ', rebuild, and upload again.';
         }
         return null;
     }
@@ -181,7 +217,7 @@
         return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
     }
 
-    const pure = { readApkManifest, sha256Hex, refusalFor, formatSize };
+    const pure = { readApkManifest, sha256Hex, refusalFor, formatSize, appForPackage, storagePathFor, APPS };
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = pure;
@@ -207,6 +243,7 @@
         if (text.includes('OWNER_REQUIRED')) return 'Only the owner account can publish app updates.';
         if (text.includes('APK_SIZE_MISMATCH')) return 'The upload did not arrive complete. Try again.';
         if (text.includes('APK_NOT_UPLOADED')) return 'The upload did not arrive. Try again.';
+        if (text.includes('APP_UNKNOWN')) return 'This app is not recognised by the server. Reload the page.';
         return 'Could not publish: ' + text;
     }
 
@@ -221,7 +258,7 @@
             '<div class="att-stack">' +
             '<div class="att-head"><div>' +
               '<h2 class="att-title">App updates</h2>' +
-              '<div class="att-sub">Publish a new version of the worker app. Every phone on an older version must update before it can Time In or Time Out.</div>' +
+              '<div class="att-sub">Publish a new version of a worker app: DACS Attendance or DAC\'S WorkMate. The file itself says which app it is. Every phone on an older version of that app must update before it can Time In or Time Out.</div>' +
             '</div></div>' +
 
             '<div class="att-card"><div class="att-card-head"><div>' +
@@ -265,8 +302,14 @@
             errorBox.style.display = msg ? '' : 'none';
         }
 
+        // Highest published version per app. Rows arrive ordered by app, then newest first.
         function latest() {
-            return releases.length ? releases[0].version_code : 0;
+            const out = { attendance: 0, workmate: 0 };
+            for (const r of releases) {
+                const app = r.app || 'attendance';
+                if (r.version_code > (out[app] || 0)) out[app] = r.version_code;
+            }
+            return out;
         }
 
         function paintHistory() {
@@ -274,19 +317,25 @@
                 history.innerHTML = '<div class="att-empty">Nothing published yet. Phones keep the version they have until you publish one here.</div>';
                 return;
             }
+            const seen = {};
             history.innerHTML =
                 '<table class="att-table"><thead><tr>' +
-                '<th>Version</th><th>What\'s new</th><th>Size</th><th>Published</th><th></th>' +
+                '<th>App</th><th>Version</th><th>What\'s new</th><th>Size</th><th>Published</th><th></th>' +
                 '</tr></thead><tbody>' +
-                releases.map((r, i) =>
-                    '<tr>' +
-                    '<td><strong>' + esc(r.version_name) + '</strong> <span class="att-mono">(' + esc(r.version_code) + ')</span></td>' +
-                    '<td>' + (r.release_notes ? esc(r.release_notes) : '<span class="att-note">—</span>') + '</td>' +
-                    '<td class="att-mono">' + esc(formatSize(r.size_bytes)) + '</td>' +
-                    '<td>' + esc(new Date(r.published_at).toLocaleString('en-PH',
-                        { dateStyle: 'medium', timeStyle: 'short' })) + '</td>' +
-                    '<td>' + (i === 0 ? '<span class="att-pill att-pill--done">Current</span>' : '') + '</td>' +
-                    '</tr>').join('') +
+                releases.map((r) => {
+                    const app = r.app || 'attendance';
+                    const current = !seen[app];
+                    seen[app] = true;
+                    return '<tr>' +
+                        '<td>' + esc((APPS[app] && APPS[app].label) || app) + '</td>' +
+                        '<td><strong>' + esc(r.version_name) + '</strong> <span class="att-mono">(' + esc(r.version_code) + ')</span></td>' +
+                        '<td>' + (r.release_notes ? esc(r.release_notes) : '<span class="att-note">—</span>') + '</td>' +
+                        '<td class="att-mono">' + esc(formatSize(r.size_bytes)) + '</td>' +
+                        '<td>' + esc(new Date(r.published_at).toLocaleString('en-PH',
+                            { dateStyle: 'medium', timeStyle: 'short' })) + '</td>' +
+                        '<td>' + (current ? '<span class="att-pill att-pill--done">Current</span>' : '') + '</td>' +
+                        '</tr>';
+                }).join('') +
                 '</tbody></table>';
         }
 
@@ -316,6 +365,7 @@
                 const sha = await sha256Hex(buffer);
                 picked = { file, buffer, manifest, sha };
                 facts.innerHTML =
+                    '<strong>' + esc(APPS[appForPackage(manifest.packageName)].label) + '</strong> · ' +
                     '<strong>Version ' + esc(manifest.versionName || '?') + '</strong> ' +
                     '<span class="att-mono">(versionCode ' + esc(manifest.versionCode) + ')</span> · ' +
                     esc(formatSize(file.size)) + '<br><span class="att-mono" style="font-size:11px">SHA-256 ' + esc(sha) + '</span>';
@@ -329,9 +379,10 @@
         publishBtn.addEventListener('click', async function () {
             if (!picked) return;
             const m = picked.manifest;
+            const app = appForPackage(m.packageName);
             const ok = confirm(
-                'Publish version ' + (m.versionName || m.versionCode) + '?\n\n' +
-                'Every phone on an older version will be BLOCKED from Time In and Time Out ' +
+                'Publish ' + APPS[app].label + ' version ' + (m.versionName || m.versionCode) + '?\n\n' +
+                'Every phone on an older version of ' + APPS[app].label + ' will be BLOCKED from Time In and Time Out ' +
                 'until it installs this update.\n\n' +
                 'Make sure this APK is already on at least one phone and working before you publish.'
             );
@@ -339,7 +390,7 @@
 
             publishBtn.disabled = true;
             showError('');
-            const path = m.versionCode + '.apk';
+            const path = storagePathFor(app, m.versionCode);
             const storage = root.sbClient.storage.from(BUCKET);
 
             try {
@@ -357,7 +408,8 @@
                     p_version_name: m.versionName || String(m.versionCode),
                     p_release_notes: notes.value.trim() || null,
                     p_size_bytes: picked.file.size,
-                    p_sha256: picked.sha
+                    p_sha256: picked.sha,
+                    p_app: app
                 });
                 if (error) {
                     await storage.remove([path]); // not a release; don't leave 5 MB behind

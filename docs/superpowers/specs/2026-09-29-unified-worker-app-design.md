@@ -1,4 +1,4 @@
-# DACS Worker App — MVP Scope
+# DAC’S WorkMate — MVP Scope
 
 Date: 29 September 2026
 
@@ -6,13 +6,21 @@ Status: Draft for review. No application changes have been made.
 
 ## 1. What we are building
 
-**One worker app for Attendance, Material Requests and Tools, managed through Dacs Web.**
+**DAC’S WorkMate is the confirmed name of the new worker app for Attendance, Material Requests and Tools, managed through Dacs Web.** The user selected this name on 29 September 2026.
 
 **Confirmed project scope: Project Control only.** Project Management is excluded from this worker app's requests, project item history, project tool assignments and automatic cost integration. Existing PM operations remain separate. The shared warehouse has one limited admin/staff exception: **Release stock to other job** records materials leaving for an external job, without creating a PM request, expense or cost transfer.
 
 MVP means the smallest useful version that supports the workflows we agreed on. Keep the screens simple and build in small stages, while preserving the rules needed for accurate stock and expenses.
 
-We will expand the existing Dacs Attendance Android app. Workers keep their accounts and attendance history. The user confirmed the old Flutter Dacs Construction app is an unused prototype; it remains a reference for procurement features. At rollout, verify there are no remaining users submitting to its old Firebase backend, and preserve historical data.
+**Updated product direction:** create the new worker app as **DAC’S WorkMate**, related to DAC'S / Dacs Building Design Services. Preserve the existing Attendance rules, worker accounts and historical records through the shared backend. Use the current Android Attendance implementation as the behavioral reference when recreating its features in Flutter; Kotlin/Compose screens are not directly reusable as Flutter screens. Do not create duplicate worker accounts.
+
+**Confirmed technology: Flutter with Dart.** The user approved Flutter as the app framework and Dart as its programming language. Keep the existing Supabase backend and Dacs Web management interface. Recreate and test attendance, location, camera, offline capture and synchronization against the current Attendance behavior before rollout. The platform release scope, including whether iPhone support ships with the first release, remains to be specified; choosing Flutter alone does not confirm an iPhone launch.
+
+The implementation plan must specify the Android application identity, repository arrangement, installation/update path and transition from the existing Attendance app. These packaging choices are not settled by choosing a name. Preserve unsynced attendance/photos during transition and verify the new app before retiring the current one. Do not assume that a separate Android application can automatically read the old app's local queue.
+
+The user confirmed the old Flutter Dacs Construction app is an unused prototype; it remains a reference for procurement features. At rollout, verify there are no remaining users submitting to its old Firebase backend, and preserve historical data.
+
+**Confirmed app name: DAC’S WorkMate.** Proposed publisher/subtitle: “By Dacs Building Design Services.” Name selection does not establish trademark or app-store availability. Code packages and release settings remain unchanged until the packaging plan is settled. Flutter with Dart is approved; this document update does not implement the new app or migrate the old Flutter prototype from Firebase.
 
 This rewrite simplifies the design; it does not remove the agreed inventory, tools or expense features. The first stage can be piloted early, but the full MVP below includes all four delivery stages.
 
@@ -254,7 +262,7 @@ The user approved these defaults for the first release:
 
 The first version does not need supplier portals, automatic supplier ordering, purchase forecasting, offline stock/tool handover confirmation, advanced dashboards or automated tool depreciation/rental charges.
 
-It also does not include an Attendance rewrite, a new payroll calculation or automatic client billing from stock movements. These exclusions do not remove the material requests, inventory, tools or owner-controlled cost rules agreed above.
+It also does not include a redesign of Attendance's business rules, a new payroll calculation or automatic client billing from stock movements. Reimplementing the existing Attendance behavior in Flutter is required by the approved technology choice; preserve its rules and verify parity rather than introducing a new attendance algorithm. These exclusions do not remove the material requests, inventory, tools or owner-controlled cost rules agreed above.
 
 ## 9. How we know the MVP works
 
