@@ -4007,3 +4007,21 @@ Report `git status --short`. Do not commit.
 - Parity rows covered here: trusted time, location/geofence/mock/location-off, photo overlay + sampling + caption fit, offline queue (per worker, IN before OUT, retry/drop/fail), work date, total hours, today reconcile, history range/days/summary, week strip, description chips. Camera capture, the flow UI and History UI are 0C-2.
 - Kotlin tests ported: TrustedTime, WorkDate, TotalHours, PhotoOverlay, LocationVerification, AttendanceFailure, SubmissionQueue, TodayReconcile, HistoryRange, DescriptionChips (Dart); CaptionFit, PhotoSampling (Kotlin JUnit).
 - Deliberate differences from the Kotlin app: the queue's `wasOffline` comes from the same VALIDATED-internet check via the bridge; the background task opens its own Supabase client (Flutter isolate) instead of sharing a Hilt singleton — the same session storage and the server's refresh-token reuse window make this safe, verified on device in 0C-2.
+
+## Execution notes (done 2026-10-01)
+
+Built with subagent-driven development; 242 tests pass, `flutter analyze` clean, Gradle unit tests and a debug APK build pass. Uncommitted in `Dacs WorkMate` (the user commits). Deliberate deviations from the code above, each reviewed:
+
+- **Clock anchor** is one prefs value `clock.anchor` = `serverMs|uptimeMs|boot` (one atomic write), not three keys — a torn anchor could skew `p_trusted_at` by days.
+- **`preparePhoto`** catches `Throwable` (out-of-memory answers `PHOTO_FAILED`); `compress()`'s result is checked and a partial target is deleted — the raw capture is deleted only after a good encode.
+- **The phone's mirror wins while a queue row for that day is still unsent** — in `reconcileToday`, `today()`, `history()` and the sync's success/drop paths. The Kotlin app let the server's older row overwrite a queued Time Out.
+- **One token refresher per process.** Workmanager runs every task in a NEW Flutter engine (a second gotrue client over the same stored session; `Supabase.initialize` alone refreshes a stale token). The live app registers an `IsolateNameServer` port (`lib/attendance/sync/sync_host.dart`); the background task hands the drain to it before any Supabase init, and only initializes Supabase itself when no app answers AND something is queued (`hasAnySendable`).
+- **Sync opens its own DB connection** (`singleInstance: false`): sqflite's single-instance handles are shared by all engines and a background `close()` would close the app's.
+- **`submit(r, workerId:)`** refuses to send when the signed-in user is not the row's worker (retry, never filed under someone else). Repository `submit()` refuses an empty worker; an `enqueue` failure no longer fails a saved submit; `ClockAnchorStore.now()` never throws; Workmanager setup can never stop the app from starting.
+
+Carried into 0C-2 (device checks and small follow-ups):
+- Device-verify: real fix + a mock-location app; front-camera caption; full-disk photo failure; offline Time In that uploads after the app is swiped away; app-closed sweeper with an expired session does NOT sign the worker out; app-alive delegation through the sync host; plugins available in the background engine.
+- Re-register the sync host on app resume (a >3 s ack drops the mapping until restart).
+- Runtime location-permission request (the bridge answers `permissionDenied` until then).
+- Consider: sweeper only re-enqueues the one-off (no concurrent drains); store the first line of `unexpected` errors in `last_error`; `Error.throwWithStackTrace` in `today()`; a transaction around queue insert + mirror write.
+- **Dacs Web:** the storage policy "attendance: worker replaces own photo" (UPDATE, needed for upload retries) exists only in the live DB — capture it in a migration.
