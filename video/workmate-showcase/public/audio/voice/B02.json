@@ -1,0 +1,24 @@
+{
+  "sceneId": "B02",
+  "audioPath": "audio/voice/B02.mp3",
+  "audioSeconds": 10.776,
+  "captions": [
+    {
+      "startMs": 187.5,
+      "endMs": 3750.0,
+      "text": "Sa buying list makikita ang project quantity urgency at"
+    },
+    {
+      "startMs": 3787.5,
+      "endMs": 7987.5,
+      "text": "importanteng changes Puwedeng ayusin ang view by batch o"
+    },
+    {
+      "startMs": 8037.5,
+      "endMs": 9950.0,
+      "text": "project para malinaw ang uunahin"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "30a1f310e0c005b566361d1836828e110507a1b902884ec05a261165752c264a"
+}

@@ -1,0 +1,34 @@
+{
+  "sceneId": "D15",
+  "audioPath": "audio/voice/D15.mp3",
+  "audioSeconds": 18.12,
+  "captions": [
+    {
+      "startMs": 200.0,
+      "endMs": 3650.0,
+      "text": "Para sa planned WorkMate workflow dito rerepasuhin ng office"
+    },
+    {
+      "startMs": 3662.5,
+      "endMs": 8675.0,
+      "text": "ang requests catalogue matching teams at schedules Kasama sa"
+    },
+    {
+      "startMs": 8675.0,
+      "endMs": 12700.0,
+      "text": "later stages ang item history tool register at owner-reviewed"
+    },
+    {
+      "startMs": 12737.5,
+      "endMs": 16212.5,
+      "text": "cost assignments na malinaw ang pagkakaiba ng stock movement"
+    },
+    {
+      "startMs": 16275.0,
+      "endMs": 17225.0,
+      "text": "at project cost"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "a4c546c9a86fcfe09b5b8548e02d92e33ee025584e5aed7d018e3c1b610020f7"
+}

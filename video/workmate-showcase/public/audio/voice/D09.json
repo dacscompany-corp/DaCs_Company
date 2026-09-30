@@ -1,0 +1,24 @@
+{
+  "sceneId": "D09",
+  "audioPath": "audio/voice/D09.mp3",
+  "audioSeconds": 13.44,
+  "captions": [
+    {
+      "startMs": 212.5,
+      "endMs": 4237.5,
+      "text": "Sa Project Management may sariling projects daily expense records"
+    },
+    {
+      "startMs": 4475.0,
+      "endMs": 9037.5,
+      "text": "weekly billing procurement at milestones Hiwalay ito sa Project"
+    },
+    {
+      "startMs": 9062.5,
+      "endMs": 12575.0,
+      "text": "Control kaya hindi dapat paghaluin ang kanilang project records"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "96a77da78ce3b2450345cd4ce21caa54a6fc9e1f991c5519731be3b9121dffe8"
+}

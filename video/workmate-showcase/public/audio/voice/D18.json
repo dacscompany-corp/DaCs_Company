@@ -1,0 +1,24 @@
+{
+  "sceneId": "D18",
+  "audioPath": "audio/voice/D18.mp3",
+  "audioSeconds": 9.216,
+  "captions": [
+    {
+      "startMs": 200.0,
+      "endMs": 4250.0,
+      "text": "Nandito rin ang appointments analytics at feedback para masubaybayan"
+    },
+    {
+      "startMs": 4262.5,
+      "endMs": 7787.5,
+      "text": "ang inquiries at client interactions sa public-facing side ng"
+    },
+    {
+      "startMs": 7812.5,
+      "endMs": 8362.5,
+      "text": "business"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "811854a63dda5e07f92ecaf7246d1ee24d8ceca6382f3235925264e7a1646920"
+}

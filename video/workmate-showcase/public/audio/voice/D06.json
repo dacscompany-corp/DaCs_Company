@@ -1,0 +1,29 @@
+{
+  "sceneId": "D06",
+  "audioPath": "audio/voice/D06.mp3",
+  "audioSeconds": 13.296,
+  "captions": [
+    {
+      "startMs": 187.5,
+      "endMs": 3350.0,
+      "text": "Sa Accomplishment binabalikan ang progress ng bawat B O"
+    },
+    {
+      "startMs": 3412.5,
+      "endMs": 8087.5,
+      "text": "Q item Dito nakabatay ang earned revenue Kapag wala"
+    },
+    {
+      "startMs": 8150.0,
+      "endMs": 11862.5,
+      "text": "pang accomplishment data malinaw ang Forecast label sa kaukulang"
+    },
+    {
+      "startMs": 11900.0,
+      "endMs": 12450.0,
+      "text": "estimate"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "84ad6bdde8782130629c0fe28fb1462ffb804441467316862f1a7c4514cb1726"
+}

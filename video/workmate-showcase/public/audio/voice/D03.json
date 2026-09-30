@@ -1,0 +1,24 @@
+{
+  "sceneId": "D03",
+  "audioPath": "audio/voice/D03.mp3",
+  "audioSeconds": 13.104,
+  "captions": [
+    {
+      "startMs": 212.5,
+      "endMs": 4125.0,
+      "text": "Sa Project Control magkakasama ang project overview billing periods"
+    },
+    {
+      "startMs": 4312.5,
+      "endMs": 8837.5,
+      "text": "additional works at cost details Mula sa summary puwedeng"
+    },
+    {
+      "startMs": 8837.5,
+      "endMs": 12250.0,
+      "text": "mag-drill down para makita kung saan nanggagaling ang figures"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "c2de56b5aff457d77e2df0b8a7348279249da3805cc68fd115db089df84fa57e"
+}

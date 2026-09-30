@@ -1,0 +1,29 @@
+{
+  "sceneId": "D13",
+  "audioPath": "audio/voice/D13.mp3",
+  "audioSeconds": 12.84,
+  "captions": [
+    {
+      "startMs": 200.0,
+      "endMs": 3412.5,
+      "text": "Sa Attendance tingnan kung sino ang nasa site i-review"
+    },
+    {
+      "startMs": 3462.5,
+      "endMs": 6300.0,
+      "text": "ang Time In at Time Out records at pamahalaan"
+    },
+    {
+      "startMs": 6325.0,
+      "endMs": 9987.5,
+      "text": "ang workers at sites May hours reports at owner"
+    },
+    {
+      "startMs": 10012.5,
+      "endMs": 11975.0,
+      "text": "controls para sa app updates"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "e6ac8a305831c637188242bfb6f04f88e712f67d35136beba62f39426fad94ef"
+}

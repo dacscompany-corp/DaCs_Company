@@ -1,0 +1,24 @@
+{
+  "sceneId": "B12",
+  "audioPath": "audio/voice/B12.mp3",
+  "audioSeconds": 8.136,
+  "captions": [
+    {
+      "startMs": 237.5,
+      "endMs": 3862.5,
+      "text": "DAC’S WorkMate for Buying Klaro kung sino ang bibili"
+    },
+    {
+      "startMs": 4162.5,
+      "endMs": 6687.5,
+      "text": "ano ang nabili ano pa ang kulang at ano"
+    },
+    {
+      "startMs": 6725.0,
+      "endMs": 7325.0,
+      "text": "ang natanggap"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "b1f7fdfa78e37bb354b8bda594f44c56863d12c2255aaa2c67d80cda5936777c"
+}

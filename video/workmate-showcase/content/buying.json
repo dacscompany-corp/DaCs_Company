@@ -1,0 +1,134 @@
+[
+  {
+    "id": "B01",
+    "title": "Mula shopping list hanggang receiving.",
+    "role": "buyer",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Ito ang DAC’S WorkMate para sa Procurement Staff at Buying. Sa preview na ito, sundan natin ang flow mula assigned items hanggang purchase at receiving.",
+    "spokenText": "Ito ang Daks WorkMate para sa Procurement Staff at Buying. Sa preview na ito, sundan natin ang flow mula assigned items hanggang purchase at receiving.",
+    "minimumSeconds": 10,
+    "visualKey": "B01",
+    "direction": "Logo → buying workspace. Title: “Mula shopping list hanggang receiving.”"
+  },
+  {
+    "id": "B02",
+    "title": "Alam kung ano ang uunahin.",
+    "role": "buyer",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Sa buying list, makikita ang project, quantity, urgency, at importanteng changes. Puwedeng ayusin ang view by batch o project para malinaw ang uunahin.",
+    "spokenText": "Sa buying list, makikita ang project, quantity, urgency, at importanteng changes. Puwedeng ayusin ang view by batch o project para malinaw ang uunahin.",
+    "minimumSeconds": 14,
+    "visualKey": "B02",
+    "direction": "Shopping list; batch/project filters; urgency and changed-quantity badges."
+  },
+  {
+    "id": "B03",
+    "title": "Klaro kung sino ang bibili.",
+    "role": "buyer",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "May items na assigned sa iyo. Para sa available na portion, puwede mong piliin ang I’ll buy this habang online. Makikita ng ibang authorized buyers kung sino ang may hawak.",
+    "spokenText": "May items na assigned sa iyo. Para sa available na portion, puwede mong piliin ang I’ll buy this habang online. Makikita ng ibang authorized buyers kung sino ang may hawak.",
+    "minimumSeconds": 14,
+    "visualKey": "B03",
+    "direction": "Assigned portion; I’ll buy this on unassigned portion; named buyer."
+  },
+  {
+    "id": "B04",
+    "title": "I-record ang actual na binili.",
+    "role": "buyer",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Sa pagbili, i-record ang actual item, specification, quantity, supplier, at purchase date. Ilakip ang receipt at kumpletuhin ang purchase details para malinaw ang record.",
+    "spokenText": "Sa pagbili, i-record ang actual item, specification, quantity, supplier, at purchase date. Ilakip ang receipt at kumpletuhin ang purchase details para malinaw ang record.",
+    "minimumSeconds": 15,
+    "visualKey": "B04",
+    "direction": "Record actual item/spec/unit, supplier/date, receipt; values masked."
+  },
+  {
+    "id": "B05",
+    "title": "Bought six. Four to go.",
+    "role": "buyer",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Halimbawa, sampu ang kailangan at anim ang nabili. Bought: six. Still to buy: four. Sa iyo pa rin ang natitirang assignment, maliban kung i-release mo ito.",
+    "spokenText": "Halimbawa, sampu ang kailangan at anim ang nabili. Bought: six. Still to buy: four. Sa iyo pa rin ang natitirang assignment, maliban kung i-release mo ito.",
+    "minimumSeconds": 14,
+    "visualKey": "B05",
+    "direction": "Needed 10 → Bought 6 → Still to buy 4; release remaining portion."
+  },
+  {
+    "id": "B06",
+    "title": "Isang receipt. Tamang allocation.",
+    "role": "buyer",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Isang receipt, maraming project items? I-attach ito nang isang beses, tapos itugma ang bawat line sa tamang project at work scope, o sa warehouse destination.",
+    "spokenText": "Isang receipt, maraming project items? I-attach ito nang isang beses, tapos itugma ang bawat line sa tamang project at work scope, o sa warehouse destination.",
+    "minimumSeconds": 15,
+    "visualKey": "B06",
+    "direction": "One receipt, two project lines; Main Contract/AW/warehouse destinations."
+  },
+  {
+    "id": "B07",
+    "title": "May pagbabago? May dahilan.",
+    "role": "buyer",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Kung may substitute, panatilihing visible ang original request at ilagay ang dahilan ng replacement. May unplanned purchase? Kailangan din ng reason at tamang destination.",
+    "spokenText": "Kung may substitute, panatilihing visible ang original request at ilagay ang dahilan ng replacement. May unplanned purchase? Kailangan din ng reason at tamang destination.",
+    "minimumSeconds": 13,
+    "visualKey": "B07",
+    "direction": "Original and substitute side by side; required reason; unplanned purchase."
+  },
+  {
+    "id": "B08",
+    "title": "Purchase at payment. Hiwalay.",
+    "role": "buyer",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Hiwalay ang pagbili sa pagbabayad. Puwedeng Unpaid muna ang purchase. Kapag bayad na, idagdag ang payment details sa parehong record, nang walang panibagong material expense.",
+    "spokenText": "Hiwalay ang pagbili sa pagbabayad. Puwedeng Unpaid muna ang purchase. Kapag bayad na, idagdag ang payment details sa parehong record, nang walang panibagong material expense.",
+    "minimumSeconds": 15,
+    "visualKey": "B08",
+    "direction": "Unpaid → payment details → Paid; same purchase ID persists."
+  },
+  {
+    "id": "B09",
+    "title": "Bilangin. I-check. I-confirm.",
+    "role": "buyer",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Hiwalay din ang delivery. Para sa direct-to-site receiving, i-confirm habang online ang actual quantity, location, at condition. Receipt photo lang ay hindi pa proof na available ang stock.",
+    "spokenText": "Hiwalay din ang delivery. Para sa direct-to-site receiving, i-confirm habang online ang actual quantity, location, at condition. Receipt photo lang ay hindi pa proof na available ang stock.",
+    "minimumSeconds": 15,
+    "visualKey": "B09",
+    "direction": "Awaiting delivery → explicit received qty/location/condition → usable stock."
+  },
+  {
+    "id": "B10",
+    "title": "Draft muna. Sync kapag online.",
+    "role": "buyer",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Walang signal sa supplier? I-save muna ang supported purchase details at photos bilang draft. Pending sync pa ito. Sa reconnect, iche-check ang changes bago ma-update ang shared records.",
+    "spokenText": "Walang signal sa supplier? I-save muna ang supported purchase details at photos bilang draft. Pending sync pa ito. Sa reconnect, iche-check ang changes bago ma-update ang shared records.",
+    "minimumSeconds": 15,
+    "visualKey": "B10",
+    "direction": "Offline purchase draft/photo → Pending sync → assignment conflict."
+  },
+  {
+    "id": "B11",
+    "title": "Kita ang materials, bawat location.",
+    "role": "buyer",
+    "label": "PLANNED MODULE",
+    "narration": "Sa planned inventory workflow, malinaw ang warehouse at site quantities, kasama ang reservations, receipts, issues, transfers, at returns. Ang confirmed na usable quantity lang ang magiging available.",
+    "spokenText": "Sa planned inventory workflow, malinaw ang warehouse at site quantities, kasama ang reservations, receipts, issues, transfers, at returns. Ang confirmed na usable quantity lang ang magiging available.",
+    "minimumSeconds": 15,
+    "visualKey": "B11",
+    "direction": "Planned warehouse/site balances, reservations, partial receiving, returns."
+  },
+  {
+    "id": "B12",
+    "title": "Mas malinaw ang bawat bili.",
+    "role": "buyer",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "DAC’S WorkMate for Buying. Klaro kung sino ang bibili, ano ang nabili, ano pa ang kulang, at ano ang natanggap.",
+    "spokenText": "Daks WorkMate for Buying. Klaro kung sino ang bibili, ano ang nabili, ano pa ang kulang, at ano ang natanggap.",
+    "minimumSeconds": 10,
+    "visualKey": "B12",
+    "direction": "Request → buyer → receipt → receiving recap and logo."
+  }
+]

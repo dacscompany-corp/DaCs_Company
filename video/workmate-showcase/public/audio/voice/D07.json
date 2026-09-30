@@ -1,0 +1,24 @@
+{
+  "sceneId": "D07",
+  "audioPath": "audio/voice/D07.mp3",
+  "audioSeconds": 12.408,
+  "captions": [
+    {
+      "startMs": 200.0,
+      "endMs": 3787.5,
+      "text": "Para sa billing nandito ang invoices labor invoices at"
+    },
+    {
+      "startMs": 3862.5,
+      "endMs": 7925.0,
+      "text": "payment requests Puwedeng i-review ang records at gamitin ang"
+    },
+    {
+      "startMs": 7962.5,
+      "endMs": 11550.0,
+      "text": "available print PDF o CSV outputs ng module"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "dad8771e5cba8e39f6ae55988c7a6f71364abe78db1f16b5f01fa1a5a8f34fb1"
+}

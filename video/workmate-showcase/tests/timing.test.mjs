@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {createTimeline,toSrt} from '../scripts/timing.mjs';
+const s={id:'W01',minimumSeconds:3};
+const m={sceneId:'W01',audioPath:'audio/voice/W01.mp3',audioSeconds:7.2,captions:[{startMs:100,endMs:7200,text:'Nabasa ko na.'}]};
+test('long speech extends slot and retains tail',()=>{const t=createTimeline([s],{W01:m});assert.equal(t.durationInFrames,255);assert.equal(t.scenes[0].narrationStartFrame,15)});
+test('missing audio is an explicit error',()=>assert.throws(()=>createTimeline([s],{}),/W01/));
+test('caption offset includes narration lead',()=>assert.match(toSrt(createTimeline([s],{W01:m})),/00:00:00,600 --> 00:00:07,700/));
+test('duplicate scene IDs are rejected',()=>assert.throws(()=>createTimeline([s,s],{W01:m}),/duplicate/i));
+test('caption beyond audio is rejected',()=>assert.throws(()=>createTimeline([s],{W01:{...m,captions:[{startMs:0,endMs:9000,text:'bad'}]}}),/caption/i));
+test('adjacent scenes and global subtitles are contiguous',()=>{const t=createTimeline([s,{...s,id:'W02'}],{W01:m,W02:{...m,sceneId:'W02'}});assert.equal(t.scenes[1].from,255);assert.equal(t.durationInFrames,510);assert.match(toSrt(t),/00:00:09,100 --> 00:00:16,200/)});

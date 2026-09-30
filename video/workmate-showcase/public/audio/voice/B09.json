@@ -1,0 +1,29 @@
+{
+  "sceneId": "B09",
+  "audioPath": "audio/voice/B09.mp3",
+  "audioSeconds": 13.2,
+  "captions": [
+    {
+      "startMs": 150.0,
+      "endMs": 4750.0,
+      "text": "Hiwalay din ang delivery Para sa direct-to-site receiving i-confirm"
+    },
+    {
+      "startMs": 4762.5,
+      "endMs": 9525.0,
+      "text": "habang online ang actual quantity location at condition Receipt"
+    },
+    {
+      "startMs": 9625.0,
+      "endMs": 11937.5,
+      "text": "photo lang ay hindi pa proof na available ang"
+    },
+    {
+      "startMs": 11937.5,
+      "endMs": 12337.5,
+      "text": "stock"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "d90d5e19e3a40012485774b4492c1d3335f08768a85d36b045c9397c75af40f8"
+}

@@ -1,0 +1,24 @@
+{
+  "sceneId": "D11",
+  "audioPath": "audio/voice/D11.mp3",
+  "audioSeconds": 11.736,
+  "captions": [
+    {
+      "startMs": 187.5,
+      "endMs": 3437.5,
+      "text": "Sa Project Closeout malinaw kung completed o terminated ang"
+    },
+    {
+      "startMs": 3462.5,
+      "endMs": 7300.0,
+      "text": "project May hiwalay ding Warranty Fund register para sa"
+    },
+    {
+      "startMs": 7312.5,
+      "endMs": 10925.0,
+      "text": "internal company reserve hindi ito deduction sa client billing"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "74ac86cbb96996014a05538f9141b96a86f8da75dc93c0f3928ab5c0d80810a3"
+}

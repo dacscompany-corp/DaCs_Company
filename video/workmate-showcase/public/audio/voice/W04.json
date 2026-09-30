@@ -1,0 +1,29 @@
+{
+  "sceneId": "W04",
+  "audioPath": "audio/voice/W04.mp3",
+  "audioSeconds": 12.744,
+  "captions": [
+    {
+      "startMs": 175.0,
+      "endMs": 3875.0,
+      "text": "Kailangan ng materials o tools Gumawa ng request para"
+    },
+    {
+      "startMs": 3875.0,
+      "endMs": 7875.0,
+      "text": "sa tamang project at work scope Ilagay ang specification"
+    },
+    {
+      "startMs": 8112.5,
+      "endMs": 10887.5,
+      "text": "unit at quantity para malinaw kung ano talaga ang"
+    },
+    {
+      "startMs": 10900.0,
+      "endMs": 11912.5,
+      "text": "kailangan sa site"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "da2c2a867dfc63c491ceb1f87086a27db5eed02b9eaf4d55f984d855b20abef1"
+}

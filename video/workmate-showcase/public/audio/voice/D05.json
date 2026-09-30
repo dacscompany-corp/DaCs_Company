@@ -1,0 +1,24 @@
+{
+  "sceneId": "D05",
+  "audioPath": "audio/voice/D05.mp3",
+  "audioSeconds": 12.24,
+  "captions": [
+    {
+      "startMs": 187.5,
+      "endMs": 3700.0,
+      "text": "Sa expense at labor records makikita ang supporting details"
+    },
+    {
+      "startMs": 3737.5,
+      "endMs": 7350.0,
+      "text": "at pakyaw contracts Kasama na sa total cost ang"
+    },
+    {
+      "startMs": 7375.0,
+      "endMs": 11362.5,
+      "text": "Cover expenses hindi ito idinadagdag ulit bilang panibagong bucket"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "9462c6526d45779287e47fc31317443ade8268b8fc29b0dce275b6d485e0eb6b"
+}

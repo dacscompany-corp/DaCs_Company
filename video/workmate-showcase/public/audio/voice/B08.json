@@ -1,0 +1,24 @@
+{
+  "sceneId": "B08",
+  "audioPath": "audio/voice/B08.mp3",
+  "audioSeconds": 11.952,
+  "captions": [
+    {
+      "startMs": 137.5,
+      "endMs": 3875.0,
+      "text": "Hiwalay ang pagbili sa pagbabayad Puwedeng Unpaid muna ang"
+    },
+    {
+      "startMs": 3912.5,
+      "endMs": 7925.0,
+      "text": "purchase Kapag bayad na idagdag ang payment details sa"
+    },
+    {
+      "startMs": 7975.0,
+      "endMs": 11137.5,
+      "text": "parehong record nang walang panibagong material expense"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "21736a690414d81f542fd00e5248418b900dfc619851d42620f5895b525aa107"
+}

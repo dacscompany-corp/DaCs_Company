@@ -1,0 +1,24 @@
+{
+  "sceneId": "D12",
+  "audioPath": "audio/voice/D12.mp3",
+  "audioSeconds": 12.144,
+  "captions": [
+    {
+      "startMs": 187.5,
+      "endMs": 4500.0,
+      "text": "Sa Quotations gumawa ng itemized proposal revisions at status"
+    },
+    {
+      "startMs": 4512.5,
+      "endMs": 8112.5,
+      "text": "tracking Ang Won na quotation ay hindi automatic na"
+    },
+    {
+      "startMs": 8150.0,
+      "endMs": 11312.5,
+      "text": "project o revenue hiwalay pa rin ang admin action"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "87dae7dde2cc78874ff7e11d4ccb611c8c163216dc43faacf761a1c0f2a730d6"
+}

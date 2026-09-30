@@ -1,0 +1,24 @@
+{
+  "sceneId": "W01",
+  "audioPath": "audio/voice/W01.mp3",
+  "audioSeconds": 9.648,
+  "captions": [
+    {
+      "startMs": 225.0,
+      "endMs": 2562.5,
+      "text": "Ito ang DAC’S WorkMate para sa workers at team"
+    },
+    {
+      "startMs": 2562.5,
+      "endMs": 6337.5,
+      "text": "leaders Sa product preview na ito tingnan natin kung"
+    },
+    {
+      "startMs": 6362.5,
+      "endMs": 8837.5,
+      "text": "paano magiging mas malinaw ang araw mo sa site"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "478063b0a8ea84c284bd9d707bf960fcaf6e0be20ad290791afa39990b2a77ef"
+}

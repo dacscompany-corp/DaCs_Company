@@ -1,0 +1,24 @@
+{
+  "sceneId": "B05",
+  "audioPath": "audio/voice/B05.mp3",
+  "audioSeconds": 12.456,
+  "captions": [
+    {
+      "startMs": 150.0,
+      "endMs": 4137.5,
+      "text": "Halimbawa sampu ang kailangan at anim ang nabili Bought"
+    },
+    {
+      "startMs": 4487.5,
+      "endMs": 8762.5,
+      "text": "six Still to buy four Sa iyo pa rin"
+    },
+    {
+      "startMs": 8775.0,
+      "endMs": 11537.5,
+      "text": "ang natitirang assignment maliban kung i-release mo ito"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "4d3dba0687154442e8e5a1b0ae17318249d81cd3a3ba59d438856d076ea0571b"
+}

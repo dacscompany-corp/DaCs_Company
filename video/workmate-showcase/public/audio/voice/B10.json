@@ -1,0 +1,29 @@
+{
+  "sceneId": "B10",
+  "audioPath": "audio/voice/B10.mp3",
+  "audioSeconds": 14.136,
+  "captions": [
+    {
+      "startMs": 200.0,
+      "endMs": 4075.0,
+      "text": "Walang signal sa supplier I-save muna ang supported purchase"
+    },
+    {
+      "startMs": 4087.5,
+      "endMs": 8187.5,
+      "text": "details at photos bilang draft Pending sync pa ito"
+    },
+    {
+      "startMs": 9212.5,
+      "endMs": 12612.5,
+      "text": "Sa reconnect iche-check ang changes bago ma-update ang shared"
+    },
+    {
+      "startMs": 12625.0,
+      "endMs": 13275.0,
+      "text": "records"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "84a69873e92760b39d58ed851836845de6dc2502a221f30fa83e25f8b3429309"
+}

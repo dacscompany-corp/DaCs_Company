@@ -4,6 +4,10 @@ Date: 29 September 2026
 
 Status: Design handoff for Claude Code. This guide does not implement the app, repair storage or verify a release.
 
+**Mobile Purchasing design addition:** include the [Mobile Purchasing specification](2026-09-30-workmate-mobile-purchasing-design.md) for authorized buyer screens inside WorkMate. Prototype assignments, shopping lists, partial buying with **Still to buy**, offline purchase drafts, shared receipts, Paid/Unpaid details and explicit receiving. Label these as the additional purchasing workspace; do not imply Stage 1a already implements Stage 2 inventory operations.
+
+**Additional design brief, 30 September 2026:** include the [Meetings & Work Plan specification](2026-09-30-workmate-meetings-work-plan-design.md) when designing the new meeting/task journeys. It defines reviewed AI drafts, targeted shared notes, individual acknowledgements, blockers, final staff completion approval and Tagalog/Taglish output. Use its walkthrough for an explicitly labelled additional prototype module; delivery sequencing must be agreed before expanding the Stage 1a build.
+
 ## 1. Purpose and source of truth
 
 Build **DAC’S WorkMate**, a new worker app by Dacs Building Design Services, using **Flutter with Dart**. Combine Attendance, material/tool requests and, in later MVP stages, inventory visibility and tool responsibility. Admin/staff manages operations through **Dacs Web**. Keep existing Supabase accounts and data.
@@ -21,11 +25,11 @@ Read the [approved decisions and detailed MVP scope](2026-09-29-unified-worker-a
 | 3 | Map screens and sketch simple layouts. | Worker, leader and Web screen map, including empty, offline, loading, error and restricted states. |
 | 4 | Build a clickable prototype with sample data. | Demonstrate the first-pilot journeys end to end. Label later-stage examples and simulated operations. |
 | 5 | Review the prototype with the owner and representative workers/staff. | Record confusing steps, agreed changes and business-rule changes in the source MVP document. |
-| 6 | Prepare focused implementation plans. | Separate storage-repair and Stage 1a plans, with inspected files/schema, access rules, migration, tests and rollout. |
-| 7 | Implement and verify the storage repair and Stage 1a. | Working Flutter app and Web queue; access and offline acceptance checks pass before pilot. |
+| 6 | Prepare focused implementation plans. | Stage 0B foundation next, then roadmap parity/transition and Stage 1a plans. Storage repair 0081 is recorded complete. |
+| 7 | Implement Stage 0 foundation/parity, then Stage 1a; preserve the completed storage repair. | Working Flutter app and Web queue; access and offline acceptance checks pass before pilot. |
 | 8 | Pilot with a small representative group, then expand by stage. | Actual-device results and resolved issues before broader rollout. |
 
-Start the **separate storage repair plan alongside design work**. It does not depend on prototype approval and must be implemented and verified before the live pilot. Use synthetic data and non-sensitive sample photos for the prototype.
+**Current progress:** storage repair 0081 is recorded complete with live role checks (commit `5a3de03`). Stage 0A support exists in 0082 and is reported live by Claude; production was not rechecked here. Next is **Stage 0B**, using the [Stage 0 roadmap](../plans/2026-09-29-workmate-stage0-roadmap.md). Use synthetic prototype data.
 
 The first concrete design deliverable is one complete journey: worker creates a request, admin/staff receives it, worker sees its assigned schedule and subsequent edits. Show an individual request, a combined team request and a late offline submission.
 
@@ -42,7 +46,7 @@ The first concrete design deliverable is one complete journey: worker creates a 
 - Main owner: **admin@dacsbuilding.com**. Privileged actions must bind to the verified account identity on the server, not a supplied email string.
 - Use new procurement tables with stable request/line identities. Preserve old requests as properly scoped read-only history.
 - Physical stock actions, reservations, tool handovers and cost assignments require internet. Offline requests and existing offline Attendance remain supported.
-- Flutter is confirmed. Whether iPhone ships in the first release and the installation/package migration strategy are not yet decided.
+- Flutter/Dart, Android-only first release, separate `com.dacs.workmate` package (debug `.debug`) and the Stage 0 repository/signing direction are settled. Attendance remains maintained.
 
 ## 4. Role and screen map
 
@@ -83,7 +87,7 @@ This is a high-level parity flow, not a replacement Attendance algorithm. Before
 
 Request-only projects must not appear in Time In. PC hidden-site handling remains the existing picker behavior: delayed offline attendance is not newly rejected merely because a site was hidden later. Material requests do not create attendance or determine payroll.
 
-Migration must preserve accounts, historical records and pending attendance/photos. A separately installed app cannot be assumed to read the previous app's local queue. Verify migration/sync completion before retiring the current app.
+Migration must preserve accounts, historical records and pending attendance/photos. A separately installed app cannot be assumed to read the previous app's local queue. Verify migration/sync completion during transition; keep Attendance maintained.
 
 ## 6. New request: worker or leader
 
@@ -179,7 +183,7 @@ Example: need 10 outlets; reserve 4 on hand and purchase 6. Never promise the sa
 
 The Materials option becomes **Track this purchase in inventory**, followed by **Received now** or **Awaiting delivery**. Link the expense and purchase without duplicate spending. Preserve actual quantities/unit costs separately from expense funding splits.
 
-Show demand, purchased, received, issued and outstanding quantities separately when backed by records. Do not use one overall request status to conceal partially fulfilled lines or split batches. Fulfillment status definitions must be specified in the Stage 2 plan.
+Show demand, purchased, received, issued and Still needed and Still to buy quantities (defined in the main MVP) separately when backed by records. Do not use one overall request status to conceal partially fulfilled lines or split batches. Fulfillment status definitions must be specified in the Stage 2 plan.
 
 ## 10. Inventory, surplus, returns and transfers
 
@@ -325,14 +329,14 @@ Separate later-stage demos cover purchase/receipt, surplus return, warehouse tra
 
 | Stage | Deliverable | Before release |
 |---|---|---|
-| Prerequisite | Document-storage repair | Verify current live policies and allowed/denied access. Preserve permitted PC/PM client and partner documents and staff encoding. |
+| Completed prerequisite | Storage repair 0081; ledger records live checks | Preserve scoped policies and verify new integrations. Preserve permitted PC/PM client and partner documents and staff encoding. |
 | 1a | Flutter Attendance parity plus requests, catalogue, teams, PC/AW eligibility, batches, urgency, quantity portions, private photos and offline edits | Verify parity, safe transition, server permissions and retries. Remove legacy broad worker request access in UI and endpoints. |
 | 1b | Searchable item references, approved gallery, request again, bounded caching | Define history permissions, seed safe PC references and test photo privacy/account isolation. |
 | 2 | Purchasing and physical inventory, partial fulfillment, returns/transfers and external material release | Verify balances and duplicate prevention, replace conflicting stock-add paths and settle release/return evidence rules. Keep existing expense treatment until Stage 4. |
 | 3 | Asset register, custody, leader handovers and condition-aware returns | Verify opening tool register, exclusive custody and team authorization. |
 | 4 | Owner cost assignment/transfers and reconciliation | Verify funding/billing/report effects and balanced original-cost treatment, including external cost review. |
 
-Do not retire the current Attendance app before the replacement and transition are verified. Confirm no active submissions remain in the old Flutter/Firebase prototype. Preserve old records without duplicating or fabricating new transactions.
+Keep the current Attendance app maintained; this guide authorizes no retirement. Confirm no active submissions remain in the old Flutter/Firebase prototype. Preserve old records without duplicating or fabricating new transactions.
 
 ## 17. Acceptance checklist
 
@@ -364,7 +368,7 @@ These do not reopen settled business choices. Record outcomes in the source MVP 
 
 | Timing | Remaining detail |
 |---|---|
-| Before detailed Stage 1a implementation | First-release platforms; package/repository and installation transition; minimum supported devices; verified Attendance parity checklist; exact Saturday cutoff; notification channels; schema/functions and failure handling. |
+| Before detailed Stage 1a implementation | Stage 0B implementation and safe transition under the settled Android/package direction; minimum supported devices; verified Attendance parity checklist; exact Saturday cutoff; notification channels; schema/functions and failure handling. |
 | Before Stage 1b | Who can browse each project's shared references, revocation/cache behavior and cache size limit. |
 | Before Stage 2 | External-release evidence acknowledgement timing; project-sourced leftover review; partial returns before/after confirmation and outstanding quantity handling. |
 | Before external tool lending | Explicit scope decision; material release does not authorize external tool custody. |
@@ -374,6 +378,6 @@ These do not reopen settled business choices. Record outcomes in the source MVP 
 
 Use this brief with the source MVP scope:
 
-> Design DAC’S WorkMate using the confirmed Flutter/Dart direction. Read the MVP scope and this workflow guide first. Begin with the role-based workflow diagrams and screen map, then create a clickable Stage 1a prototype using synthetic data. Cover the demo script and exception states. Preserve the current Attendance algorithm by inspecting the existing implementation; do not invent new attendance/payroll rules. Keep Project Management outside procurement, enforce one team per request, and do not add leader approval. Clearly distinguish prototype simulation, later-stage previews and real capabilities. Record any missing decisions without silently changing approved rules. After design review, prepare separate storage-repair and Stage 1a implementation plans grounded in the actual repositories and database schema. Do not treat a polished prototype as proof of secure or working backend behavior.
+> Design DAC’S WorkMate using the confirmed Flutter/Dart direction. Read the MVP scope and this workflow guide first. Begin with the role-based workflow diagrams and screen map, then create a clickable Stage 1a prototype using synthetic data. Cover the demo script and exception states. Preserve the current Attendance algorithm by inspecting the existing implementation; do not invent new attendance/payroll rules. Keep Project Management outside procurement, enforce one team per request, and do not add leader approval. Clearly distinguish prototype simulation, later-stage previews and real capabilities. Record any missing decisions without silently changing approved rules. After design review, continue with Stage 0B and subsequent roadmap stages, then Stage 1a, grounded in the actual repositories/schema. Do not repeat completed storage repair 0081. Do not treat a polished prototype as proof of secure or working backend behavior.
 
 Expected design outputs: updated diagrams, a screen map, a clickable prototype, a review checklist and a concise decision log. Later implementation plans should name actual affected files/migrations, access rules, tests, transition and rollback steps after inspection; this guide intentionally does not invent those details.

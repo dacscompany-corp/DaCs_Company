@@ -4,6 +4,10 @@ Date: 29 September 2026
 
 Status: Draft for review. No application changes have been made.
 
+**Mobile Purchasing addition, 30 September 2026:** [Mobile Purchasing](2026-09-30-workmate-mobile-purchasing-design.md) records the agreed role-based buying workspace inside WorkMate, buyer assignments/claims, offline drafts, shared receipts, substitutions, unplanned purchases, Paid/Unpaid payment details and explicit direct-site receiving. Use **Still to buy** for remaining purchasing quantities. Delivery sequencing belongs in the purchasing/inventory plan.
+
+**Feature addition, 30 September 2026:** [Meetings & Work Plan](2026-09-30-workmate-meetings-work-plan-design.md) records the agreed AI-assisted meeting drafts, staff-reviewed publication, targeted shared notes, worker tasks, blockers, acknowledgements and final staff verification, with clear Tagalog/Taglish wording. Read it alongside this scope. Its release placement remains to be planned; it does not silently add these capabilities to Stage 1a or change the existing Attendance/procurement rules.
+
 ## 1. What we are building
 
 **DAC’S WorkMate is the confirmed name of the new worker app for Attendance, Material Requests and Tools, managed through Dacs Web.** The user selected this name on 29 September 2026.
@@ -14,17 +18,17 @@ MVP means the smallest useful version that supports the workflows we agreed on. 
 
 **Updated product direction:** create the new worker app as **DAC’S WorkMate**, related to DAC'S / Dacs Building Design Services. Preserve the existing Attendance rules, worker accounts and historical records through the shared backend. Use the current Android Attendance implementation as the behavioral reference when recreating its features in Flutter; Kotlin/Compose screens are not directly reusable as Flutter screens. Do not create duplicate worker accounts.
 
-**Confirmed technology: Flutter with Dart.** The user approved Flutter as the app framework and Dart as its programming language. Keep the existing Supabase backend and Dacs Web management interface. Recreate and test attendance, location, camera, offline capture and synchronization against the current Attendance behavior before rollout. The platform release scope, including whether iPhone support ships with the first release, remains to be specified; choosing Flutter alone does not confirm an iPhone launch.
+**Confirmed technology: Flutter with Dart; Android only for the first release.** Preserve Supabase accounts/data and existing Attendance behavior. Follow the [Stage 0 roadmap](../plans/2026-09-29-workmate-stage0-roadmap.md).
 
-The implementation plan must specify the Android application identity, repository arrangement, installation/update path and transition from the existing Attendance app. These packaging choices are not settled by choosing a name. Preserve unsynced attendance/photos during transition and verify the new app before retiring the current one. Do not assume that a separate Android application can automatically read the old app's local queue.
+**Packaging direction:** separate Android app `com.dacs.workmate` (debug `com.dacs.workmate.debug`), planned sibling repository Dacs WorkMate, own signing key and release stream. Keep the old Attendance app maintained; no retirement is authorized here. Preserve pending attendance/photos and never assume the new app can read the old local queue. Stage 0A support exists in migration 0082 and is reported live in the user-supplied Claude review; this update did not independently check production.
 
 The user confirmed the old Flutter Dacs Construction app is an unused prototype; it remains a reference for procurement features. At rollout, verify there are no remaining users submitting to its old Firebase backend, and preserve historical data.
 
-**Confirmed app name: DAC’S WorkMate.** Proposed publisher/subtitle: “By Dacs Building Design Services.” Name selection does not establish trademark or app-store availability. Code packages and release settings remain unchanged until the packaging plan is settled. Flutter with Dart is approved; this document update does not implement the new app or migrate the old Flutter prototype from Firebase.
+**Confirmed app name: DAC’S WorkMate.** Proposed publisher/subtitle: “By Dacs Building Design Services.” Name selection does not establish trademark or app-store availability. Follow the settled Stage 0 package and release-stream direction. Flutter with Dart is approved; this document update does not implement the new app or migrate the old Flutter prototype from Firebase.
 
 This rewrite simplifies the design; it does not remove the agreed inventory, tools or expense features. The first stage can be piloted early, but the full MVP below includes all four delivery stages.
 
-**Before the pilot: document-storage repair.** Investigate and repair existing receipt/document access as a separate work item before Stage 1a ships. Preserve authorized clients' and partners' access to their own project documents, and staff's agreed encoding access. Verify live policies, repair them through migrations and test allowed/denied access by role and project. The repository's broad authenticated-read policy is confirmed. The user supplied Claude Code's report of a live anonymous query on 2026-09-29 showing 745 visible files; this is attributed external verification, not an independent test in this chat or proof that file contents were downloaded. Capture current policy evidence and verify access boundaries during the repair. This prerequisite is planned, not completed by writing this document.
+**Completed prerequisite: document-storage repair.** Migration 0081 shipped in commit `5a3de03`. The migration ledger records application and passing live role-access checks on 29 September 2026. Do not re-plan it as unfinished. This update did not rerun live checks. New request, gallery and shared-receipt storage still require scoped access design and tests preserving legitimate client/partner and staff access.
 
 ## 2. Who uses it
 
@@ -106,6 +110,8 @@ Quantity edits remain allowed after cutoff. Additional units received after cuto
 
 ### B. Quantity changes
 
+**Quantity terminology:** **Still needed** means remaining request demand not yet handed over, accounting for accepted changes and fulfillment. **Still to buy** means the purchasing shortage after accounting for usable stock allocated to the request and purchases already covering it. Bought-but-undelivered goods may still be needed at site without needing to be bought again. Avoid “outstanding” as a purchasing quantity label. Exact corrections, substitutions and return calculations belong in Stage 2.
+
 The requester and admin/staff can increase or decrease quantities, even after purchasing starts. Team leaders can edit requests they submitted for members.
 
 Changing the quantity needed does not erase what was already purchased or delivered.
@@ -171,6 +177,10 @@ If a worker changes a quantity to 8 offline while staff changes it to 12 online,
 ### F. Materials expenses and inventory
 
 Keep the existing Materials expense workflow and link purchases to requests and inventory.
+
+**Confirmed purchase/payment rule:** a project material purchase counts toward Spent when recorded, whether Paid or Unpaid. Marking it Paid records payment details only and must not create another expense or change Spent or Profit by itself. Offline drafts do not count until server acceptance. General warehouse stock retains its separate unassigned-cost and main-owner-confirmed project assignment rules. Payment and physical receipt remain separate events.
+
+**Confirmed warehouse rule (30 September 2026):** a warehouse purchase recorded in Stage 2, including an unplanned warehouse purchase, is **company stock cost, not any project's Spent**. Stage 2 keeps it as a company-stock cost record outside every project's Spent, Labor/Material/Overhead buckets and G&A; the main owner assigns the issued portion to a Project Control project later. It is never charged to a job by default and is not company overhead. Stage 4 completes the assignment/reconciliation reporting on top of these records.
 
 The Inventory option becomes **Track this purchase in inventory**, with **Received now** or **Awaiting delivery**. Payment alone does not make goods available stock.
 
@@ -238,6 +248,7 @@ Dacs Web provides the request queue, project item history/photo search, team set
 
 | Stage | Deliverable | Release boundary |
 |---|---|---|
+| 0. Foundation and Attendance parity | Follow the Stage 0 roadmap; 0B is next. | Separate Android WorkMate app; maintain Attendance and preserve its queue/data. |
 | 1a. Requests pilot | Combined requests, catalogue/unlisted-item matching, teams, Main Contract/Additional Works selection, manual Allow requests, completed-project rules, weekly batches, per-item urgency, quantity portions by batch, private request photos and offline editing/conflicts. | Storage repair verified first. Preserve Attendance and staff payroll encoding. Replace legacy broad worker request access on screen and on the server. No shared gallery or unverified purchase/stock claims. Tool requests are allowed; asset tracking arrives in stage 3. |
 | 1b. Item history and photos | Find Previous Item, project labels, approved product photos, seeded historical references, request-again drafts and bounded offline reference browsing. | Define and verify shared-history permissions. Raw request photos remain private. Display requested events and labelled references only until verified purchase/movement integration arrives. |
 | 2. Inventory and purchasing | Site/warehouse balances, reservations, purchase links, receipts, issues, transfers, returns and Release stock to other job; enrich item history with verified purchasing/movement events and separate current availability. | External releases reduce physical stock once and retain pending external cost handling. Replace duplicate stock-add paths. Keep current expense treatment until stage 4. |
@@ -321,11 +332,11 @@ Before coding a stage, inspect its current database columns and every affected s
 
 Reference: [System architecture](../../ARCHITECTURE.md) and the earlier design saved in Git commit `fdc8e19` contain the technical background. This MVP document replaces the longer presentation while retaining the agreed product direction.
 
-**Next step:** plan the separate pre-pilot storage repair, then prepare the focused Stage 1a implementation plan. No further business-scope decision blocks this planning. Stage 1b receives its own gallery/history plan, and the later-stage decisions below are resolved before their affected features are implemented. Writing this document does not repair storage, deploy changes or alter either app.
+**Next step: Stage 0B - Flutter WorkMate foundation**, following the [Stage 0 roadmap](../plans/2026-09-29-workmate-stage0-roadmap.md). Storage repair is recorded complete and Stage 0A is reported live. Complete foundation, Attendance parity and safe transition before Stage 1a. This documentation edit deploys nothing.
 
 ### Planning readiness and later-stage decisions
 
-The team rule is settled: one team per request, optional intended member per material line. The user has confirmed `admin@dacsbuilding.com` as the main owner. The scope is sufficient to prepare the storage repair plan and Stage 1a plan. The plans must still define exact schemas, permissions, cutoff time, notification behavior, deployment order and acceptance checks; this document alone is not implementation or launch verification. Verify the confirmed main owner's stable account identity when configuring privileged actions.
+The team rule is settled: one team per request, optional intended member per material line. The user has confirmed `admin@dacsbuilding.com` as the main owner. Storage repair is recorded complete; continue Stage 0B and subsequent roadmap stages before Stage 1a. The plans must still define exact schemas, permissions, cutoff time, notification behavior, deployment order and acceptance checks; this document alone is not implementation or launch verification. Verify the confirmed main owner's stable account identity when configuring privileged actions.
 
 Before Stage 2/3 implementation, resolve the external-release details in their focused specs:
 

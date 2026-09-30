@@ -1,0 +1,24 @@
+{
+  "sceneId": "B06",
+  "audioPath": "audio/voice/B06.mp3",
+  "audioSeconds": 11.472,
+  "captions": [
+    {
+      "startMs": 225.0,
+      "endMs": 4437.5,
+      "text": "Isang receipt maraming project items I-attach ito nang isang"
+    },
+    {
+      "startMs": 4450.0,
+      "endMs": 7762.5,
+      "text": "beses tapos itugma ang bawat line sa tamang project"
+    },
+    {
+      "startMs": 7837.5,
+      "endMs": 10637.5,
+      "text": "at work scope o sa warehouse destination"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "eabbcc8048303d49f5b2996348f182c1f96334fe32947a5c3538c8ccf56d8765"
+}

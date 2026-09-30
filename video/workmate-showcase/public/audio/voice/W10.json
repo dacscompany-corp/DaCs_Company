@@ -1,0 +1,29 @@
+{
+  "sceneId": "W10",
+  "audioPath": "audio/voice/W10.mp3",
+  "audioSeconds": 11.832,
+  "captions": [
+    {
+      "startMs": 175.0,
+      "endMs": 2100.0,
+      "text": "May kulang na material o hindi pa tapos na"
+    },
+    {
+      "startMs": 2137.5,
+      "endMs": 7162.5,
+      "text": "preparation I-report ang blocker Kapag tapos na ang trabaho"
+    },
+    {
+      "startMs": 7437.5,
+      "endMs": 10337.5,
+      "text": "i-report ito para sa checking at final verification ng"
+    },
+    {
+      "startMs": 10400.0,
+      "endMs": 11000.0,
+      "text": "office"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "6de5bf50447a4634b03945ac34912a103ea42210728a9364067ac46bbabc4a60"
+}

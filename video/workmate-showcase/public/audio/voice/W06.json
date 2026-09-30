@@ -1,0 +1,29 @@
+{
+  "sceneId": "W06",
+  "audioPath": "audio/voice/W06.mp3",
+  "audioSeconds": 10.608,
+  "captions": [
+    {
+      "startMs": 200.0,
+      "endMs": 2687.5,
+      "text": "Para sa team leader puwedeng pagsamahin ang needs ng"
+    },
+    {
+      "startMs": 2750.0,
+      "endMs": 6700.0,
+      "text": "assigned team Kapag may dagdag na quantity makikita kung"
+    },
+    {
+      "startMs": 6737.5,
+      "endMs": 9212.5,
+      "text": "alin ang arranged na at alin ang nasa susunod"
+    },
+    {
+      "startMs": 9225.0,
+      "endMs": 9725.0,
+      "text": "na batch"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "b08e29ebd604c2ed08451630b877f21babc2a9bee2bf63b714d644a134fc7c3b"
+}

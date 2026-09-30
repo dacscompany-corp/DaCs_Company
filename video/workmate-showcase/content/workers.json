@@ -1,0 +1,134 @@
+[
+  {
+    "id": "W01",
+    "title": "Kasama sa bawat araw sa site.",
+    "role": "worker",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Ito ang DAC’S WorkMate para sa workers at team leaders. Sa product preview na ito, tingnan natin kung paano magiging mas malinaw ang araw mo sa site.",
+    "spokenText": "Ito ang Daks WorkMate para sa workers at team leaders. Sa product preview na ito, tingnan natin kung paano magiging mas malinaw ang araw mo sa site.",
+    "minimumSeconds": 10,
+    "visualKey": "W01",
+    "direction": "Logo → phone Home. Title: “Kasama sa bawat araw sa site.”"
+  },
+  {
+    "id": "W02",
+    "title": "Isang tingin. Alam ang gagawin.",
+    "role": "worker",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Pag-sign in gamit ang account mo, nasa Home ang attendance, request updates, at mga kailangang balikan. Isang tingin, alam mo kung saan magsisimula.",
+    "spokenText": "Pag-sign in gamit ang account mo, nasa Home ang attendance, request updates, at mga kailangang balikan. Isang tingin, alam mo kung saan magsisimula.",
+    "minimumSeconds": 10,
+    "visualKey": "W02",
+    "direction": "Home: Time In, request updates, My Work; profile insert."
+  },
+  {
+    "id": "W03",
+    "title": "Time In. Time Out. All clear.",
+    "role": "worker",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Para sa attendance, piliin ang enabled na site, kumuha ng photo, i-check ang details, at mag-submit. Sa Time Out, sundan ulit ang steps at balikan ang record sa History.",
+    "spokenText": "Para sa attendance, piliin ang enabled na site, kumuha ng photo, i-check ang details, at mag-submit. Sa Time Out, sundan ulit ang steps at balikan ang record sa History.",
+    "minimumSeconds": 16,
+    "visualKey": "W03",
+    "direction": "Eligible site → photo → review → Time In; Time Out and history."
+  },
+  {
+    "id": "W04",
+    "title": "Tamang item. Tamang project.",
+    "role": "worker",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Kailangan ng materials o tools? Gumawa ng request para sa tamang project at work scope. Ilagay ang specification, unit, at quantity para malinaw kung ano talaga ang kailangan sa site.",
+    "spokenText": "Kailangan ng materials o tools? Gumawa ng request para sa tamang project at work scope. Ilagay ang specification, unit, at quantity para malinaw kung ano talaga ang kailangan sa site.",
+    "minimumSeconds": 17,
+    "visualKey": "W04",
+    "direction": "New Request; project, Main Contract/AW; material and tool lines."
+  },
+  {
+    "id": "W05",
+    "title": "Ipakita ang kailangan.",
+    "role": "worker",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Wala sa listahan ang item? Idagdag ang description at helpful na photo. Kung urgent, i-flag ang mismong item para madaling makita ng office.",
+    "spokenText": "Wala sa listahan ang item? Idagdag ang description at helpful na photo. Kung urgent, i-flag ang mismong item para madaling makita ng office.",
+    "minimumSeconds": 12,
+    "visualKey": "W05",
+    "direction": "Unlisted item photo; one item marked Urgent."
+  },
+  {
+    "id": "W06",
+    "title": "Isang team. Isang malinaw na request.",
+    "role": "leader",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Para sa team leader, puwedeng pagsamahin ang needs ng assigned team. Kapag may dagdag na quantity, makikita kung alin ang arranged na at alin ang nasa susunod na batch.",
+    "spokenText": "Para sa team leader, puwedeng pagsamahin ang needs ng assigned team. Kapag may dagdag na quantity, makikita kung alin ang arranged na at alin ang nasa susunod na batch.",
+    "minimumSeconds": 14,
+    "visualKey": "W06",
+    "direction": "Leader badge; assigned team; combined list; 10 arranged + 2 later."
+  },
+  {
+    "id": "W07",
+    "title": "Walang signal? May malinaw na status.",
+    "role": "worker",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "Walang signal? Ang supported offline actions ay puwedeng ma-save muna sa phone. Pending sync means hindi pa ito accepted ng office. Kapag may conflicting changes, makikita ang kailangang ayusin.",
+    "spokenText": "Walang signal? Ang supported offline actions ay puwedeng ma-save muna sa phone. Pending sync means hindi pa ito accepted ng office. Kapag may conflicting changes, makikita ang kailangang ayusin.",
+    "minimumSeconds": 14,
+    "visualKey": "W07",
+    "direction": "No signal → Pending sync → online → conflict preserved."
+  },
+  {
+    "id": "W08",
+    "title": "Hanapin. Kilalanin. Request ulit.",
+    "role": "worker",
+    "label": "PLANNED MODULE",
+    "narration": "Sa planned Find Previous Item, mas madaling hanapin ang dating item gamit ang authorized photos at specifications. Piliin ang tama, saka gumawa ng bagong request.",
+    "spokenText": "Sa planned Find Previous Item, mas madaling hanapin ang dating item gamit ang authorized photos at specifications. Piliin ang tama, saka gumawa ng bagong request.",
+    "minimumSeconds": 12,
+    "visualKey": "W08",
+    "direction": "Planned Find Previous Item: approved photos, specs, new draft."
+  },
+  {
+    "id": "W09",
+    "title": "Klaro ang assignment.",
+    "role": "worker",
+    "label": "DESIGN PREVIEW",
+    "narration": "Sa My Work preview, makikita ang assignment, schedule, at shared meeting notes. I-tap ang I’ve read this para alam ng office na nabasa mo ang instructions.",
+    "spokenText": "Sa My Work preview, makikita ang assignment, schedule, at shared meeting notes. I-tap ang I’ve read this para alam ng office na nabasa mo ang instructions.",
+    "minimumSeconds": 16,
+    "visualKey": "W09",
+    "direction": "Design preview My Work; task owner/helpers; I’ve read this; shared notes."
+  },
+  {
+    "id": "W10",
+    "title": "I-report. I-check. I-verify.",
+    "role": "worker",
+    "label": "DESIGN PREVIEW",
+    "narration": "May kulang na material o hindi pa tapos na preparation? I-report ang blocker. Kapag tapos na ang trabaho, i-report ito para sa checking at final verification ng office.",
+    "spokenText": "May kulang na material o hindi pa tapos na preparation? I-report ang blocker. Kapag tapos na ang trabaho, i-report ito para sa checking at final verification ng office.",
+    "minimumSeconds": 14,
+    "visualKey": "W10",
+    "direction": "Report missing materials; blocker; Reported done → staff verification."
+  },
+  {
+    "id": "W11",
+    "title": "Alam kung kanino ang tools.",
+    "role": "worker",
+    "label": "PLANNED MODULE",
+    "narration": "Sa planned My Tools, makikita ang tool na naka-assign sa iyo, kasama ang handover at return details nito.",
+    "spokenText": "Sa planned My Tools, makikita ang tool na naka-assign sa iyo, kasama ang handover at return details nito.",
+    "minimumSeconds": 9,
+    "visualKey": "W11",
+    "direction": "Planned My Tools: asset, named responsibility, handover/return."
+  },
+  {
+    "id": "W12",
+    "title": "Mas klaro ang araw sa site.",
+    "role": "worker",
+    "label": "PRODUCT PREVIEW · SAMPLE DATA",
+    "narration": "DAC’S WorkMate. Mas malinaw ang request, mas klaro ang gagawin sa site.",
+    "spokenText": "Daks WorkMate. Mas malinaw ang request, mas klaro ang gagawin sa site.",
+    "minimumSeconds": 6,
+    "visualKey": "W12",
+    "direction": "Home/requests/work montage → logo."
+  }
+]

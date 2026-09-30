@@ -1,0 +1,1118 @@
+{
+  "W01": {
+    "sceneId": "W01",
+    "audioPath": "audio/voice/W01.mp3",
+    "audioSeconds": 9.648,
+    "captions": [
+      {
+        "startMs": 225.0,
+        "endMs": 2562.5,
+        "text": "Ito ang DAC’S WorkMate para sa workers at team"
+      },
+      {
+        "startMs": 2562.5,
+        "endMs": 6337.5,
+        "text": "leaders Sa product preview na ito tingnan natin kung"
+      },
+      {
+        "startMs": 6362.5,
+        "endMs": 8837.5,
+        "text": "paano magiging mas malinaw ang araw mo sa site"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "478063b0a8ea84c284bd9d707bf960fcaf6e0be20ad290791afa39990b2a77ef"
+  },
+  "W02": {
+    "sceneId": "W02",
+    "audioPath": "audio/voice/W02.mp3",
+    "audioSeconds": 10.176,
+    "captions": [
+      {
+        "startMs": 200.0,
+        "endMs": 2612.5,
+        "text": "Pag-sign in gamit ang account mo nasa Home ang"
+      },
+      {
+        "startMs": 2637.5,
+        "endMs": 7625.0,
+        "text": "attendance request updates at mga kailangang balikan Isang tingin"
+      },
+      {
+        "startMs": 7725.0,
+        "endMs": 9337.5,
+        "text": "alam mo kung saan magsisimula"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "ce4a0a4aebdad1912b86cbd779af02a17715732a7b2f5d4ebe83a9eb1aa22e1b"
+  },
+  "W03": {
+    "sceneId": "W03",
+    "audioPath": "audio/voice/W03.mp3",
+    "audioSeconds": 12.024,
+    "captions": [
+      {
+        "startMs": 200.0,
+        "endMs": 3350.0,
+        "text": "Para sa attendance piliin ang enabled na site kumuha"
+      },
+      {
+        "startMs": 3375.0,
+        "endMs": 7575.0,
+        "text": "ng photo i-check ang details at mag-submit Sa Time"
+      },
+      {
+        "startMs": 7612.5,
+        "endMs": 10437.5,
+        "text": "Out sundan ulit ang steps at balikan ang record"
+      },
+      {
+        "startMs": 10462.5,
+        "endMs": 11137.5,
+        "text": "sa History"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "3ff48d8b146c2ff798f0b07451cbc3c618a4bc520f5be5ef46f436d27a2ba316"
+  },
+  "W04": {
+    "sceneId": "W04",
+    "audioPath": "audio/voice/W04.mp3",
+    "audioSeconds": 12.744,
+    "captions": [
+      {
+        "startMs": 175.0,
+        "endMs": 3875.0,
+        "text": "Kailangan ng materials o tools Gumawa ng request para"
+      },
+      {
+        "startMs": 3875.0,
+        "endMs": 7875.0,
+        "text": "sa tamang project at work scope Ilagay ang specification"
+      },
+      {
+        "startMs": 8112.5,
+        "endMs": 10887.5,
+        "text": "unit at quantity para malinaw kung ano talaga ang"
+      },
+      {
+        "startMs": 10900.0,
+        "endMs": 11912.5,
+        "text": "kailangan sa site"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "da2c2a867dfc63c491ceb1f87086a27db5eed02b9eaf4d55f984d855b20abef1"
+  },
+  "W05": {
+    "sceneId": "W05",
+    "audioPath": "audio/voice/W05.mp3",
+    "audioSeconds": 10.464,
+    "captions": [
+      {
+        "startMs": 225.0,
+        "endMs": 3750.0,
+        "text": "Wala sa listahan ang item Idagdag ang description at"
+      },
+      {
+        "startMs": 3762.5,
+        "endMs": 7837.5,
+        "text": "helpful na photo Kung urgent i-flag ang mismong item"
+      },
+      {
+        "startMs": 7900.0,
+        "endMs": 9650.0,
+        "text": "para madaling makita ng office"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "79a933df64b4f164fc0aa9829c9f10398ad9f65774396b65302a9cb810b924b5"
+  },
+  "W06": {
+    "sceneId": "W06",
+    "audioPath": "audio/voice/W06.mp3",
+    "audioSeconds": 10.608,
+    "captions": [
+      {
+        "startMs": 200.0,
+        "endMs": 2687.5,
+        "text": "Para sa team leader puwedeng pagsamahin ang needs ng"
+      },
+      {
+        "startMs": 2750.0,
+        "endMs": 6700.0,
+        "text": "assigned team Kapag may dagdag na quantity makikita kung"
+      },
+      {
+        "startMs": 6737.5,
+        "endMs": 9212.5,
+        "text": "alin ang arranged na at alin ang nasa susunod"
+      },
+      {
+        "startMs": 9225.0,
+        "endMs": 9725.0,
+        "text": "na batch"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "b08e29ebd604c2ed08451630b877f21babc2a9bee2bf63b714d644a134fc7c3b"
+  },
+  "W07": {
+    "sceneId": "W07",
+    "audioPath": "audio/voice/W07.mp3",
+    "audioSeconds": 14.352,
+    "captions": [
+      {
+        "startMs": 200.0,
+        "endMs": 4375.0,
+        "text": "Walang signal Ang supported offline actions ay puwedeng ma-save"
+      },
+      {
+        "startMs": 4375.0,
+        "endMs": 7925.0,
+        "text": "muna sa phone Pending sync means hindi pa ito"
+      },
+      {
+        "startMs": 7975.0,
+        "endMs": 12437.5,
+        "text": "accepted ng office Kapag may conflicting changes makikita ang"
+      },
+      {
+        "startMs": 12450.0,
+        "endMs": 13550.0,
+        "text": "kailangang ayusin"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "af1e671ad618ef8acef768584a5be35a55ca0fb61778caad7c0bc96f96216a53"
+  },
+  "W08": {
+    "sceneId": "W08",
+    "audioPath": "audio/voice/W08.mp3",
+    "audioSeconds": 11.112,
+    "captions": [
+      {
+        "startMs": 212.5,
+        "endMs": 3162.5,
+        "text": "Sa planned Find Previous Item mas madaling hanapin ang"
+      },
+      {
+        "startMs": 3175.0,
+        "endMs": 8012.5,
+        "text": "dating item gamit ang authorized photos at specifications Piliin"
+      },
+      {
+        "startMs": 8075.0,
+        "endMs": 10312.5,
+        "text": "ang tama saka gumawa ng bagong request"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "0038e1234e379409f42e2f3f248a30cee8646bad93c85586c736fed7225ae5a0"
+  },
+  "W09": {
+    "sceneId": "W09",
+    "audioPath": "audio/voice/W09.mp3",
+    "audioSeconds": 10.728,
+    "captions": [
+      {
+        "startMs": 187.5,
+        "endMs": 3850.0,
+        "text": "Sa My Work preview makikita ang assignment schedule at"
+      },
+      {
+        "startMs": 3850.0,
+        "endMs": 7312.5,
+        "text": "shared meeting notes I-tap ang I’ve read this para"
+      },
+      {
+        "startMs": 7350.0,
+        "endMs": 9850.0,
+        "text": "alam ng office na nabasa mo ang instructions"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "1e3642fcd442fb921a277753bbdd225179f7483d3e3e888bd7c20b014f8c4dcb"
+  },
+  "W10": {
+    "sceneId": "W10",
+    "audioPath": "audio/voice/W10.mp3",
+    "audioSeconds": 11.832,
+    "captions": [
+      {
+        "startMs": 175.0,
+        "endMs": 2100.0,
+        "text": "May kulang na material o hindi pa tapos na"
+      },
+      {
+        "startMs": 2137.5,
+        "endMs": 7162.5,
+        "text": "preparation I-report ang blocker Kapag tapos na ang trabaho"
+      },
+      {
+        "startMs": 7437.5,
+        "endMs": 10337.5,
+        "text": "i-report ito para sa checking at final verification ng"
+      },
+      {
+        "startMs": 10400.0,
+        "endMs": 11000.0,
+        "text": "office"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "6de5bf50447a4634b03945ac34912a103ea42210728a9364067ac46bbabc4a60"
+  },
+  "W11": {
+    "sceneId": "W11",
+    "audioPath": "audio/voice/W11.mp3",
+    "audioSeconds": 7.104,
+    "captions": [
+      {
+        "startMs": 187.5,
+        "endMs": 3150.0,
+        "text": "Sa planned My Tools makikita ang tool na naka-assign"
+      },
+      {
+        "startMs": 3150.0,
+        "endMs": 6237.5,
+        "text": "sa iyo kasama ang handover at return details nito"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "ce15188a8664f2b37d7e9ae4571dd305e86664c0f36d16abdbfb22012affd37b"
+  },
+  "W12": {
+    "sceneId": "W12",
+    "audioPath": "audio/voice/W12.mp3",
+    "audioSeconds": 5.64,
+    "captions": [
+      {
+        "startMs": 262.5,
+        "endMs": 3900.0,
+        "text": "DAC’S WorkMate Mas malinaw ang request mas klaro ang"
+      },
+      {
+        "startMs": 3925.0,
+        "endMs": 4812.5,
+        "text": "gagawin sa site"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "934a8340db85e5108405bde1442c42d6baf4dc2be0d1ef385f2ca7ae39bcde46"
+  },
+  "B01": {
+    "sceneId": "B01",
+    "audioPath": "audio/voice/B01.mp3",
+    "audioSeconds": 10.32,
+    "captions": [
+      {
+        "startMs": 225.0,
+        "endMs": 2762.5,
+        "text": "Ito ang DAC’S WorkMate para sa Procurement Staff at"
+      },
+      {
+        "startMs": 2812.5,
+        "endMs": 6550.0,
+        "text": "Buying Sa preview na ito sundan natin ang flow"
+      },
+      {
+        "startMs": 6587.5,
+        "endMs": 9487.5,
+        "text": "mula assigned items hanggang purchase at receiving"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "69573580288ad98afe4ed9b962bdec3c07bf806e371448f303cb861838c2480e"
+  },
+  "B02": {
+    "sceneId": "B02",
+    "audioPath": "audio/voice/B02.mp3",
+    "audioSeconds": 10.776,
+    "captions": [
+      {
+        "startMs": 187.5,
+        "endMs": 3750.0,
+        "text": "Sa buying list makikita ang project quantity urgency at"
+      },
+      {
+        "startMs": 3787.5,
+        "endMs": 7987.5,
+        "text": "importanteng changes Puwedeng ayusin ang view by batch o"
+      },
+      {
+        "startMs": 8037.5,
+        "endMs": 9950.0,
+        "text": "project para malinaw ang uunahin"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "30a1f310e0c005b566361d1836828e110507a1b902884ec05a261165752c264a"
+  },
+  "B03": {
+    "sceneId": "B03",
+    "audioPath": "audio/voice/B03.mp3",
+    "audioSeconds": 11.808,
+    "captions": [
+      {
+        "startMs": 175.0,
+        "endMs": 3425.0,
+        "text": "May items na assigned sa iyo Para sa available"
+      },
+      {
+        "startMs": 3425.0,
+        "endMs": 5962.5,
+        "text": "na portion puwede mong piliin ang I’ll buy this"
+      },
+      {
+        "startMs": 5962.5,
+        "endMs": 10225.0,
+        "text": "habang online Makikita ng ibang authorized buyers kung sino"
+      },
+      {
+        "startMs": 10262.5,
+        "endMs": 10975.0,
+        "text": "ang may hawak"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "84a5cfe0c8b97ebf3a8dc5fc1afd9f7b32aba12e4c48c6c558edb1ff5b7ee353"
+  },
+  "B04": {
+    "sceneId": "B04",
+    "audioPath": "audio/voice/B04.mp3",
+    "audioSeconds": 12.0,
+    "captions": [
+      {
+        "startMs": 212.5,
+        "endMs": 4837.5,
+        "text": "Sa pagbili i-record ang actual item specification quantity supplier"
+      },
+      {
+        "startMs": 5012.5,
+        "endMs": 8737.5,
+        "text": "at purchase date Ilakip ang receipt at kumpletuhin ang"
+      },
+      {
+        "startMs": 8775.0,
+        "endMs": 11100.0,
+        "text": "purchase details para malinaw ang record"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "33b854e64a9de5b16f588de85eee756f42de5d73c93dfb630a45c304463462ab"
+  },
+  "B05": {
+    "sceneId": "B05",
+    "audioPath": "audio/voice/B05.mp3",
+    "audioSeconds": 12.456,
+    "captions": [
+      {
+        "startMs": 150.0,
+        "endMs": 4137.5,
+        "text": "Halimbawa sampu ang kailangan at anim ang nabili Bought"
+      },
+      {
+        "startMs": 4487.5,
+        "endMs": 8762.5,
+        "text": "six Still to buy four Sa iyo pa rin"
+      },
+      {
+        "startMs": 8775.0,
+        "endMs": 11537.5,
+        "text": "ang natitirang assignment maliban kung i-release mo ito"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "4d3dba0687154442e8e5a1b0ae17318249d81cd3a3ba59d438856d076ea0571b"
+  },
+  "B06": {
+    "sceneId": "B06",
+    "audioPath": "audio/voice/B06.mp3",
+    "audioSeconds": 11.472,
+    "captions": [
+      {
+        "startMs": 225.0,
+        "endMs": 4437.5,
+        "text": "Isang receipt maraming project items I-attach ito nang isang"
+      },
+      {
+        "startMs": 4450.0,
+        "endMs": 7762.5,
+        "text": "beses tapos itugma ang bawat line sa tamang project"
+      },
+      {
+        "startMs": 7837.5,
+        "endMs": 10637.5,
+        "text": "at work scope o sa warehouse destination"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "eabbcc8048303d49f5b2996348f182c1f96334fe32947a5c3538c8ccf56d8765"
+  },
+  "B07": {
+    "sceneId": "B07",
+    "audioPath": "audio/voice/B07.mp3",
+    "audioSeconds": 11.904,
+    "captions": [
+      {
+        "startMs": 187.5,
+        "endMs": 3437.5,
+        "text": "Kung may substitute panatilihing visible ang original request"
+      },
+      {
+        "startMs": 3575.0,
+        "endMs": 7700.0,
+        "text": "at ilagay ang dahilan ng replacement May unplanned purchase"
+      },
+      {
+        "startMs": 8625.0,
+        "endMs": 11100.0,
+        "text": "Kailangan din ng reason at tamang destination"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "fa2fd880f6c851dcc6c82f4d8f5ae439b356b90975f37b7ed438c2cb5415243b"
+  },
+  "B08": {
+    "sceneId": "B08",
+    "audioPath": "audio/voice/B08.mp3",
+    "audioSeconds": 11.952,
+    "captions": [
+      {
+        "startMs": 137.5,
+        "endMs": 3875.0,
+        "text": "Hiwalay ang pagbili sa pagbabayad Puwedeng Unpaid muna ang"
+      },
+      {
+        "startMs": 3912.5,
+        "endMs": 7925.0,
+        "text": "purchase Kapag bayad na idagdag ang payment details sa"
+      },
+      {
+        "startMs": 7975.0,
+        "endMs": 11137.5,
+        "text": "parehong record nang walang panibagong material expense"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "21736a690414d81f542fd00e5248418b900dfc619851d42620f5895b525aa107"
+  },
+  "B09": {
+    "sceneId": "B09",
+    "audioPath": "audio/voice/B09.mp3",
+    "audioSeconds": 13.2,
+    "captions": [
+      {
+        "startMs": 150.0,
+        "endMs": 4750.0,
+        "text": "Hiwalay din ang delivery Para sa direct-to-site receiving i-confirm"
+      },
+      {
+        "startMs": 4762.5,
+        "endMs": 9525.0,
+        "text": "habang online ang actual quantity location at condition Receipt"
+      },
+      {
+        "startMs": 9625.0,
+        "endMs": 11937.5,
+        "text": "photo lang ay hindi pa proof na available ang"
+      },
+      {
+        "startMs": 11937.5,
+        "endMs": 12337.5,
+        "text": "stock"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "d90d5e19e3a40012485774b4492c1d3335f08768a85d36b045c9397c75af40f8"
+  },
+  "B10": {
+    "sceneId": "B10",
+    "audioPath": "audio/voice/B10.mp3",
+    "audioSeconds": 14.136,
+    "captions": [
+      {
+        "startMs": 200.0,
+        "endMs": 4075.0,
+        "text": "Walang signal sa supplier I-save muna ang supported purchase"
+      },
+      {
+        "startMs": 4087.5,
+        "endMs": 8187.5,
+        "text": "details at photos bilang draft Pending sync pa ito"
+      },
+      {
+        "startMs": 9212.5,
+        "endMs": 12612.5,
+        "text": "Sa reconnect iche-check ang changes bago ma-update ang shared"
+      },
+      {
+        "startMs": 12625.0,
+        "endMs": 13275.0,
+        "text": "records"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "84a69873e92760b39d58ed851836845de6dc2502a221f30fa83e25f8b3429309"
+  },
+  "B11": {
+    "sceneId": "B11",
+    "audioPath": "audio/voice/B11.mp3",
+    "audioSeconds": 13.944,
+    "captions": [
+      {
+        "startMs": 212.5,
+        "endMs": 3500.0,
+        "text": "Sa planned inventory workflow malinaw ang warehouse at site"
+      },
+      {
+        "startMs": 3537.5,
+        "endMs": 8125.0,
+        "text": "quantities kasama ang reservations receipts issues transfers"
+      },
+      {
+        "startMs": 8287.5,
+        "endMs": 11975.0,
+        "text": "at returns Ang confirmed na usable quantity lang ang"
+      },
+      {
+        "startMs": 11987.5,
+        "endMs": 13087.5,
+        "text": "magiging available"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "7269f8cecac7d962f9bf743aba2eedae72aceb2b168ddf444b1cdd9d9af3bd47"
+  },
+  "B12": {
+    "sceneId": "B12",
+    "audioPath": "audio/voice/B12.mp3",
+    "audioSeconds": 8.136,
+    "captions": [
+      {
+        "startMs": 237.5,
+        "endMs": 3862.5,
+        "text": "DAC’S WorkMate for Buying Klaro kung sino ang bibili"
+      },
+      {
+        "startMs": 4162.5,
+        "endMs": 6687.5,
+        "text": "ano ang nabili ano pa ang kulang at ano"
+      },
+      {
+        "startMs": 6725.0,
+        "endMs": 7325.0,
+        "text": "ang natanggap"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "b1f7fdfa78e37bb354b8bda594f44c56863d12c2255aaa2c67d80cda5936777c"
+  },
+  "D01": {
+    "sceneId": "D01",
+    "audioPath": "audio/voice/D01.mp3",
+    "audioSeconds": 11.664,
+    "captions": [
+      {
+        "startMs": 200.0,
+        "endMs": 2850.0,
+        "text": "Ito ang DAC’S Web ang workspace ng office para"
+      },
+      {
+        "startMs": 2850.0,
+        "endMs": 7787.5,
+        "text": "sa projects records billing at coordination Tingnan natin ang"
+      },
+      {
+        "startMs": 7800.0,
+        "endMs": 10800.0,
+        "text": "major modules pati ang planned connection sa WorkMate"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "0dbdd090c5ed0b6c4663c5532d5a16b48f1a42e06893074d4922cfd25b322504"
+  },
+  "D02": {
+    "sceneId": "D02",
+    "audioPath": "audio/voice/D02.mp3",
+    "audioSeconds": 10.44,
+    "captions": [
+      {
+        "startMs": 187.5,
+        "endMs": 3200.0,
+        "text": "Sa Users at access settings nakaayon sa role at"
+      },
+      {
+        "startMs": 3262.5,
+        "endMs": 8012.5,
+        "text": "allowed modules ang makikita ng bawat account Owner-only information"
+      },
+      {
+        "startMs": 8025.0,
+        "endMs": 9575.0,
+        "text": "ay may sariling restrictions"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "27076e996eb85ba071ee5422090256710da368218fd0792da1ad96e554f8948f"
+  },
+  "D03": {
+    "sceneId": "D03",
+    "audioPath": "audio/voice/D03.mp3",
+    "audioSeconds": 13.104,
+    "captions": [
+      {
+        "startMs": 212.5,
+        "endMs": 4125.0,
+        "text": "Sa Project Control magkakasama ang project overview billing periods"
+      },
+      {
+        "startMs": 4312.5,
+        "endMs": 8837.5,
+        "text": "additional works at cost details Mula sa summary puwedeng"
+      },
+      {
+        "startMs": 8837.5,
+        "endMs": 12250.0,
+        "text": "mag-drill down para makita kung saan nanggagaling ang figures"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "c2de56b5aff457d77e2df0b8a7348279249da3805cc68fd115db089df84fa57e"
+  },
+  "D04": {
+    "sceneId": "D04",
+    "audioPath": "audio/voice/D04.mp3",
+    "audioSeconds": 11.928,
+    "captions": [
+      {
+        "startMs": 137.5,
+        "endMs": 3450.0,
+        "text": "Hiwalay ang Labor Material at Overhead para malinaw ang"
+      },
+      {
+        "startMs": 3462.5,
+        "endMs": 7762.5,
+        "text": "gastos Ang billing allocations naman ay planning guide hindi"
+      },
+      {
+        "startMs": 7825.0,
+        "endMs": 11087.5,
+        "text": "ito automatic na dagdag sa revenue cost o profit"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "abd5402adb90178aef27e80e88dd57567dabb20247c747d24d123f2b209097d4"
+  },
+  "D05": {
+    "sceneId": "D05",
+    "audioPath": "audio/voice/D05.mp3",
+    "audioSeconds": 12.24,
+    "captions": [
+      {
+        "startMs": 187.5,
+        "endMs": 3700.0,
+        "text": "Sa expense at labor records makikita ang supporting details"
+      },
+      {
+        "startMs": 3737.5,
+        "endMs": 7350.0,
+        "text": "at pakyaw contracts Kasama na sa total cost ang"
+      },
+      {
+        "startMs": 7375.0,
+        "endMs": 11362.5,
+        "text": "Cover expenses hindi ito idinadagdag ulit bilang panibagong bucket"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "9462c6526d45779287e47fc31317443ade8268b8fc29b0dce275b6d485e0eb6b"
+  },
+  "D06": {
+    "sceneId": "D06",
+    "audioPath": "audio/voice/D06.mp3",
+    "audioSeconds": 13.296,
+    "captions": [
+      {
+        "startMs": 187.5,
+        "endMs": 3350.0,
+        "text": "Sa Accomplishment binabalikan ang progress ng bawat B O"
+      },
+      {
+        "startMs": 3412.5,
+        "endMs": 8087.5,
+        "text": "Q item Dito nakabatay ang earned revenue Kapag wala"
+      },
+      {
+        "startMs": 8150.0,
+        "endMs": 11862.5,
+        "text": "pang accomplishment data malinaw ang Forecast label sa kaukulang"
+      },
+      {
+        "startMs": 11900.0,
+        "endMs": 12450.0,
+        "text": "estimate"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "84ad6bdde8782130629c0fe28fb1462ffb804441467316862f1a7c4514cb1726"
+  },
+  "D07": {
+    "sceneId": "D07",
+    "audioPath": "audio/voice/D07.mp3",
+    "audioSeconds": 12.408,
+    "captions": [
+      {
+        "startMs": 200.0,
+        "endMs": 3787.5,
+        "text": "Para sa billing nandito ang invoices labor invoices at"
+      },
+      {
+        "startMs": 3862.5,
+        "endMs": 7925.0,
+        "text": "payment requests Puwedeng i-review ang records at gamitin ang"
+      },
+      {
+        "startMs": 7962.5,
+        "endMs": 11550.0,
+        "text": "available print PDF o CSV outputs ng module"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "dad8771e5cba8e39f6ae55988c7a6f71364abe78db1f16b5f01fa1a5a8f34fb1"
+  },
+  "D08": {
+    "sceneId": "D08",
+    "audioPath": "audio/voice/D08.mp3",
+    "audioSeconds": 11.928,
+    "captions": [
+      {
+        "startMs": 212.5,
+        "endMs": 3675.0,
+        "text": "May hiwalay na company overhead at owner-only reimbursement tracker"
+      },
+      {
+        "startMs": 4687.5,
+        "endMs": 8112.5,
+        "text": "Ang reimbursement status ay tracking record hindi ito automatic"
+      },
+      {
+        "startMs": 8150.0,
+        "endMs": 11087.5,
+        "text": "na bagong invoice payment o project expense"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "335fdaa240313f64356e79db68a97142ba693c51976ae461f8dbcb1d07b9899f"
+  },
+  "D09": {
+    "sceneId": "D09",
+    "audioPath": "audio/voice/D09.mp3",
+    "audioSeconds": 13.44,
+    "captions": [
+      {
+        "startMs": 212.5,
+        "endMs": 4237.5,
+        "text": "Sa Project Management may sariling projects daily expense records"
+      },
+      {
+        "startMs": 4475.0,
+        "endMs": 9037.5,
+        "text": "weekly billing procurement at milestones Hiwalay ito sa Project"
+      },
+      {
+        "startMs": 9062.5,
+        "endMs": 12575.0,
+        "text": "Control kaya hindi dapat paghaluin ang kanilang project records"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "96a77da78ce3b2450345cd4ce21caa54a6fc9e1f991c5519731be3b9121dffe8"
+  },
+  "D10": {
+    "sceneId": "D10",
+    "audioPath": "audio/voice/D10.mp3",
+    "audioSeconds": 12.432,
+    "captions": [
+      {
+        "startMs": 200.0,
+        "endMs": 4237.5,
+        "text": "Para sa site operations may daily logs walkthroughs accomplishment"
+      },
+      {
+        "startMs": 4250.0,
+        "endMs": 8825.0,
+        "text": "reports at revolving fund records Tinutulungan nitong balikan"
+      },
+      {
+        "startMs": 8850.0,
+        "endMs": 11525.0,
+        "text": "ang updates at supporting details ng isang project"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "2c45a1365ff2921c05a32049860bad5e09a176bf95c90cee4ea88cf23856a0d1"
+  },
+  "D11": {
+    "sceneId": "D11",
+    "audioPath": "audio/voice/D11.mp3",
+    "audioSeconds": 11.736,
+    "captions": [
+      {
+        "startMs": 187.5,
+        "endMs": 3437.5,
+        "text": "Sa Project Closeout malinaw kung completed o terminated ang"
+      },
+      {
+        "startMs": 3462.5,
+        "endMs": 7300.0,
+        "text": "project May hiwalay ding Warranty Fund register para sa"
+      },
+      {
+        "startMs": 7312.5,
+        "endMs": 10925.0,
+        "text": "internal company reserve hindi ito deduction sa client billing"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "74ac86cbb96996014a05538f9141b96a86f8da75dc93c0f3928ab5c0d80810a3"
+  },
+  "D12": {
+    "sceneId": "D12",
+    "audioPath": "audio/voice/D12.mp3",
+    "audioSeconds": 12.144,
+    "captions": [
+      {
+        "startMs": 187.5,
+        "endMs": 4500.0,
+        "text": "Sa Quotations gumawa ng itemized proposal revisions at status"
+      },
+      {
+        "startMs": 4512.5,
+        "endMs": 8112.5,
+        "text": "tracking Ang Won na quotation ay hindi automatic na"
+      },
+      {
+        "startMs": 8150.0,
+        "endMs": 11312.5,
+        "text": "project o revenue hiwalay pa rin ang admin action"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "87dae7dde2cc78874ff7e11d4ccb611c8c163216dc43faacf761a1c0f2a730d6"
+  },
+  "D13": {
+    "sceneId": "D13",
+    "audioPath": "audio/voice/D13.mp3",
+    "audioSeconds": 12.84,
+    "captions": [
+      {
+        "startMs": 200.0,
+        "endMs": 3412.5,
+        "text": "Sa Attendance tingnan kung sino ang nasa site i-review"
+      },
+      {
+        "startMs": 3462.5,
+        "endMs": 6300.0,
+        "text": "ang Time In at Time Out records at pamahalaan"
+      },
+      {
+        "startMs": 6325.0,
+        "endMs": 9987.5,
+        "text": "ang workers at sites May hours reports at owner"
+      },
+      {
+        "startMs": 10012.5,
+        "endMs": 11975.0,
+        "text": "controls para sa app updates"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "e6ac8a305831c637188242bfb6f04f88e712f67d35136beba62f39426fad94ef"
+  },
+  "D14": {
+    "sceneId": "D14",
+    "audioPath": "audio/voice/D14.mp3",
+    "audioSeconds": 12.288,
+    "captions": [
+      {
+        "startMs": 200.0,
+        "endMs": 4550.0,
+        "text": "Sa Construction may batches urgent requests history at inventory"
+      },
+      {
+        "startMs": 5587.5,
+        "endMs": 9200.0,
+        "text": "Sa Expense Inbox puwedeng ipunin ang shared receipt photos"
+      },
+      {
+        "startMs": 9412.5,
+        "endMs": 11412.5,
+        "text": "para sa tamang review at encoding"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "cc22796f54f6a5c784fb80ce24e91014154876e0a89aab8e38c7a27f8a2ad3bc"
+  },
+  "D15": {
+    "sceneId": "D15",
+    "audioPath": "audio/voice/D15.mp3",
+    "audioSeconds": 18.12,
+    "captions": [
+      {
+        "startMs": 200.0,
+        "endMs": 3650.0,
+        "text": "Para sa planned WorkMate workflow dito rerepasuhin ng office"
+      },
+      {
+        "startMs": 3662.5,
+        "endMs": 8675.0,
+        "text": "ang requests catalogue matching teams at schedules Kasama sa"
+      },
+      {
+        "startMs": 8675.0,
+        "endMs": 12700.0,
+        "text": "later stages ang item history tool register at owner-reviewed"
+      },
+      {
+        "startMs": 12737.5,
+        "endMs": 16212.5,
+        "text": "cost assignments na malinaw ang pagkakaiba ng stock movement"
+      },
+      {
+        "startMs": 16275.0,
+        "endMs": 17225.0,
+        "text": "at project cost"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "a4c546c9a86fcfe09b5b8548e02d92e33ee025584e5aed7d018e3c1b610020f7"
+  },
+  "D16": {
+    "sceneId": "D16",
+    "audioPath": "audio/voice/D16.mp3",
+    "audioSeconds": 14.256,
+    "captions": [
+      {
+        "startMs": 212.5,
+        "endMs": 3025.0,
+        "text": "Sa Meetings at Work Plan preview puwedeng gawing draft"
+      },
+      {
+        "startMs": 3062.5,
+        "endMs": 6575.0,
+        "text": "tasks ang notes Staff pa rin ang magre-review at"
+      },
+      {
+        "startMs": 6625.0,
+        "endMs": 11237.5,
+        "text": "magpa-publish Makikita ang acknowledgements blockers at work"
+      },
+      {
+        "startMs": 11262.5,
+        "endMs": 13412.5,
+        "text": "na naghihintay ng final verification"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "531f109d568ff83794f5121b584e427214f5ec0cd9ec4e8e6c645f04a3dbf2cb"
+  },
+  "D17": {
+    "sceneId": "D17",
+    "audioPath": "audio/voice/D17.mp3",
+    "audioSeconds": 11.808,
+    "captions": [
+      {
+        "startMs": 200.0,
+        "endMs": 3437.5,
+        "text": "May hiwalay na portals para sa design clients construction"
+      },
+      {
+        "startMs": 3462.5,
+        "endMs": 7437.5,
+        "text": "clients at partners Ang bawat audience ay may sariling"
+      },
+      {
+        "startMs": 7462.5,
+        "endMs": 10375.0,
+        "text": "project experience at access sa mga records na para"
+      },
+      {
+        "startMs": 10375.0,
+        "endMs": 10987.5,
+        "text": "sa kanila"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "c09d659bc8b69ee2756a76896c6c6c4cb393d9c37b1c35562e18d96431947f90"
+  },
+  "D18": {
+    "sceneId": "D18",
+    "audioPath": "audio/voice/D18.mp3",
+    "audioSeconds": 9.216,
+    "captions": [
+      {
+        "startMs": 200.0,
+        "endMs": 4250.0,
+        "text": "Nandito rin ang appointments analytics at feedback para masubaybayan"
+      },
+      {
+        "startMs": 4262.5,
+        "endMs": 7787.5,
+        "text": "ang inquiries at client interactions sa public-facing side ng"
+      },
+      {
+        "startMs": 7812.5,
+        "endMs": 8362.5,
+        "text": "business"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "811854a63dda5e07f92ecaf7246d1ee24d8ceca6382f3235925264e7a1646920"
+  },
+  "D19": {
+    "sceneId": "D19",
+    "audioPath": "audio/voice/D19.mp3",
+    "audioSeconds": 10.608,
+    "captions": [
+      {
+        "startMs": 200.0,
+        "endMs": 4137.5,
+        "text": "Para sa review may reports at AI-assisted summaries May"
+      },
+      {
+        "startMs": 4137.5,
+        "endMs": 7437.5,
+        "text": "owner-only System Errors view rin para makita ang reported"
+      },
+      {
+        "startMs": 7475.0,
+        "endMs": 9775.0,
+        "text": "issues at masundan ang investigation"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "20568573197454967da8e552b16afa12946d69a236a4c88ecf7f40d05c08dfce"
+  },
+  "D20": {
+    "sceneId": "D20",
+    "audioPath": "audio/voice/D20.mp3",
+    "audioSeconds": 6.864,
+    "captions": [
+      {
+        "startMs": 237.5,
+        "endMs": 3950.0,
+        "text": "DAC’S Web Mas malinaw ang records mas maayos ang"
+      },
+      {
+        "startMs": 3975.0,
+        "endMs": 6025.0,
+        "text": "coordination mula office hanggang site"
+      }
+    ],
+    "voice": "fil-PH-BlessicaNeural",
+    "hash": "89f79f72e8609d7f54a1de5004c04956bcb4d57d5694cd613b5b39ab201db13d"
+  }
+}

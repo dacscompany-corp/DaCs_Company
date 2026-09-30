@@ -1,0 +1,19 @@
+{
+  "sceneId": "W12",
+  "audioPath": "audio/voice/W12.mp3",
+  "audioSeconds": 5.64,
+  "captions": [
+    {
+      "startMs": 262.5,
+      "endMs": 3900.0,
+      "text": "DAC’S WorkMate Mas malinaw ang request mas klaro ang"
+    },
+    {
+      "startMs": 3925.0,
+      "endMs": 4812.5,
+      "text": "gagawin sa site"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "934a8340db85e5108405bde1442c42d6baf4dc2be0d1ef385f2ca7ae39bcde46"
+}

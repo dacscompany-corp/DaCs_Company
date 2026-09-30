@@ -1,0 +1,24 @@
+{
+  "sceneId": "W09",
+  "audioPath": "audio/voice/W09.mp3",
+  "audioSeconds": 10.728,
+  "captions": [
+    {
+      "startMs": 187.5,
+      "endMs": 3850.0,
+      "text": "Sa My Work preview makikita ang assignment schedule at"
+    },
+    {
+      "startMs": 3850.0,
+      "endMs": 7312.5,
+      "text": "shared meeting notes I-tap ang I’ve read this para"
+    },
+    {
+      "startMs": 7350.0,
+      "endMs": 9850.0,
+      "text": "alam ng office na nabasa mo ang instructions"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "1e3642fcd442fb921a277753bbdd225179f7483d3e3e888bd7c20b014f8c4dcb"
+}

@@ -1,0 +1,29 @@
+{
+  "sceneId": "B03",
+  "audioPath": "audio/voice/B03.mp3",
+  "audioSeconds": 11.808,
+  "captions": [
+    {
+      "startMs": 175.0,
+      "endMs": 3425.0,
+      "text": "May items na assigned sa iyo Para sa available"
+    },
+    {
+      "startMs": 3425.0,
+      "endMs": 5962.5,
+      "text": "na portion puwede mong piliin ang I’ll buy this"
+    },
+    {
+      "startMs": 5962.5,
+      "endMs": 10225.0,
+      "text": "habang online Makikita ng ibang authorized buyers kung sino"
+    },
+    {
+      "startMs": 10262.5,
+      "endMs": 10975.0,
+      "text": "ang may hawak"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "84a5cfe0c8b97ebf3a8dc5fc1afd9f7b32aba12e4c48c6c558edb1ff5b7ee353"
+}

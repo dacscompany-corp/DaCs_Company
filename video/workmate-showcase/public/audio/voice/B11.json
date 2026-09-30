@@ -1,0 +1,29 @@
+{
+  "sceneId": "B11",
+  "audioPath": "audio/voice/B11.mp3",
+  "audioSeconds": 13.944,
+  "captions": [
+    {
+      "startMs": 212.5,
+      "endMs": 3500.0,
+      "text": "Sa planned inventory workflow malinaw ang warehouse at site"
+    },
+    {
+      "startMs": 3537.5,
+      "endMs": 8125.0,
+      "text": "quantities kasama ang reservations receipts issues transfers"
+    },
+    {
+      "startMs": 8287.5,
+      "endMs": 11975.0,
+      "text": "at returns Ang confirmed na usable quantity lang ang"
+    },
+    {
+      "startMs": 11987.5,
+      "endMs": 13087.5,
+      "text": "magiging available"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "7269f8cecac7d962f9bf743aba2eedae72aceb2b168ddf444b1cdd9d9af3bd47"
+}

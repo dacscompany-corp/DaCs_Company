@@ -1,0 +1,19 @@
+{
+  "sceneId": "D20",
+  "audioPath": "audio/voice/D20.mp3",
+  "audioSeconds": 6.864,
+  "captions": [
+    {
+      "startMs": 237.5,
+      "endMs": 3950.0,
+      "text": "DAC’S Web Mas malinaw ang records mas maayos ang"
+    },
+    {
+      "startMs": 3975.0,
+      "endMs": 6025.0,
+      "text": "coordination mula office hanggang site"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "89f79f72e8609d7f54a1de5004c04956bcb4d57d5694cd613b5b39ab201db13d"
+}

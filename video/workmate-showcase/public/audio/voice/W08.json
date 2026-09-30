@@ -1,0 +1,24 @@
+{
+  "sceneId": "W08",
+  "audioPath": "audio/voice/W08.mp3",
+  "audioSeconds": 11.112,
+  "captions": [
+    {
+      "startMs": 212.5,
+      "endMs": 3162.5,
+      "text": "Sa planned Find Previous Item mas madaling hanapin ang"
+    },
+    {
+      "startMs": 3175.0,
+      "endMs": 8012.5,
+      "text": "dating item gamit ang authorized photos at specifications Piliin"
+    },
+    {
+      "startMs": 8075.0,
+      "endMs": 10312.5,
+      "text": "ang tama saka gumawa ng bagong request"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "0038e1234e379409f42e2f3f248a30cee8646bad93c85586c736fed7225ae5a0"
+}

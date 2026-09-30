@@ -1,0 +1,24 @@
+{
+  "sceneId": "D19",
+  "audioPath": "audio/voice/D19.mp3",
+  "audioSeconds": 10.608,
+  "captions": [
+    {
+      "startMs": 200.0,
+      "endMs": 4137.5,
+      "text": "Para sa review may reports at AI-assisted summaries May"
+    },
+    {
+      "startMs": 4137.5,
+      "endMs": 7437.5,
+      "text": "owner-only System Errors view rin para makita ang reported"
+    },
+    {
+      "startMs": 7475.0,
+      "endMs": 9775.0,
+      "text": "issues at masundan ang investigation"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "20568573197454967da8e552b16afa12946d69a236a4c88ecf7f40d05c08dfce"
+}

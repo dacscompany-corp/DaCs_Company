@@ -1,0 +1,24 @@
+{
+  "sceneId": "W02",
+  "audioPath": "audio/voice/W02.mp3",
+  "audioSeconds": 10.176,
+  "captions": [
+    {
+      "startMs": 200.0,
+      "endMs": 2612.5,
+      "text": "Pag-sign in gamit ang account mo nasa Home ang"
+    },
+    {
+      "startMs": 2637.5,
+      "endMs": 7625.0,
+      "text": "attendance request updates at mga kailangang balikan Isang tingin"
+    },
+    {
+      "startMs": 7725.0,
+      "endMs": 9337.5,
+      "text": "alam mo kung saan magsisimula"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "ce4a0a4aebdad1912b86cbd779af02a17715732a7b2f5d4ebe83a9eb1aa22e1b"
+}

@@ -1,0 +1,29 @@
+{
+  "sceneId": "W07",
+  "audioPath": "audio/voice/W07.mp3",
+  "audioSeconds": 14.352,
+  "captions": [
+    {
+      "startMs": 200.0,
+      "endMs": 4375.0,
+      "text": "Walang signal Ang supported offline actions ay puwedeng ma-save"
+    },
+    {
+      "startMs": 4375.0,
+      "endMs": 7925.0,
+      "text": "muna sa phone Pending sync means hindi pa ito"
+    },
+    {
+      "startMs": 7975.0,
+      "endMs": 12437.5,
+      "text": "accepted ng office Kapag may conflicting changes makikita ang"
+    },
+    {
+      "startMs": 12450.0,
+      "endMs": 13550.0,
+      "text": "kailangang ayusin"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "af1e671ad618ef8acef768584a5be35a55ca0fb61778caad7c0bc96f96216a53"
+}

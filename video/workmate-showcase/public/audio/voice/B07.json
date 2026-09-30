@@ -1,0 +1,24 @@
+{
+  "sceneId": "B07",
+  "audioPath": "audio/voice/B07.mp3",
+  "audioSeconds": 11.904,
+  "captions": [
+    {
+      "startMs": 187.5,
+      "endMs": 3437.5,
+      "text": "Kung may substitute panatilihing visible ang original request"
+    },
+    {
+      "startMs": 3575.0,
+      "endMs": 7700.0,
+      "text": "at ilagay ang dahilan ng replacement May unplanned purchase"
+    },
+    {
+      "startMs": 8625.0,
+      "endMs": 11100.0,
+      "text": "Kailangan din ng reason at tamang destination"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "fa2fd880f6c851dcc6c82f4d8f5ae439b356b90975f37b7ed438c2cb5415243b"
+}

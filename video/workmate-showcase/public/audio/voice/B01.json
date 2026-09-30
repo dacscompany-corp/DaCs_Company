@@ -1,0 +1,24 @@
+{
+  "sceneId": "B01",
+  "audioPath": "audio/voice/B01.mp3",
+  "audioSeconds": 10.32,
+  "captions": [
+    {
+      "startMs": 225.0,
+      "endMs": 2762.5,
+      "text": "Ito ang DAC’S WorkMate para sa Procurement Staff at"
+    },
+    {
+      "startMs": 2812.5,
+      "endMs": 6550.0,
+      "text": "Buying Sa preview na ito sundan natin ang flow"
+    },
+    {
+      "startMs": 6587.5,
+      "endMs": 9487.5,
+      "text": "mula assigned items hanggang purchase at receiving"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "69573580288ad98afe4ed9b962bdec3c07bf806e371448f303cb861838c2480e"
+}

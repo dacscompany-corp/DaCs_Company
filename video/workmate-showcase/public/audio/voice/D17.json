@@ -1,0 +1,29 @@
+{
+  "sceneId": "D17",
+  "audioPath": "audio/voice/D17.mp3",
+  "audioSeconds": 11.808,
+  "captions": [
+    {
+      "startMs": 200.0,
+      "endMs": 3437.5,
+      "text": "May hiwalay na portals para sa design clients construction"
+    },
+    {
+      "startMs": 3462.5,
+      "endMs": 7437.5,
+      "text": "clients at partners Ang bawat audience ay may sariling"
+    },
+    {
+      "startMs": 7462.5,
+      "endMs": 10375.0,
+      "text": "project experience at access sa mga records na para"
+    },
+    {
+      "startMs": 10375.0,
+      "endMs": 10987.5,
+      "text": "sa kanila"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "c09d659bc8b69ee2756a76896c6c6c4cb393d9c37b1c35562e18d96431947f90"
+}

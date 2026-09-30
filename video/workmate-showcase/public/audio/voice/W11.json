@@ -1,0 +1,19 @@
+{
+  "sceneId": "W11",
+  "audioPath": "audio/voice/W11.mp3",
+  "audioSeconds": 7.104,
+  "captions": [
+    {
+      "startMs": 187.5,
+      "endMs": 3150.0,
+      "text": "Sa planned My Tools makikita ang tool na naka-assign"
+    },
+    {
+      "startMs": 3150.0,
+      "endMs": 6237.5,
+      "text": "sa iyo kasama ang handover at return details nito"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "ce15188a8664f2b37d7e9ae4571dd305e86664c0f36d16abdbfb22012affd37b"
+}

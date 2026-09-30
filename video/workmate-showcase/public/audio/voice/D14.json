@@ -1,0 +1,24 @@
+{
+  "sceneId": "D14",
+  "audioPath": "audio/voice/D14.mp3",
+  "audioSeconds": 12.288,
+  "captions": [
+    {
+      "startMs": 200.0,
+      "endMs": 4550.0,
+      "text": "Sa Construction may batches urgent requests history at inventory"
+    },
+    {
+      "startMs": 5587.5,
+      "endMs": 9200.0,
+      "text": "Sa Expense Inbox puwedeng ipunin ang shared receipt photos"
+    },
+    {
+      "startMs": 9412.5,
+      "endMs": 11412.5,
+      "text": "para sa tamang review at encoding"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "cc22796f54f6a5c784fb80ce24e91014154876e0a89aab8e38c7a27f8a2ad3bc"
+}

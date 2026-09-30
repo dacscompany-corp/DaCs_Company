@@ -1,0 +1,24 @@
+{
+  "sceneId": "D10",
+  "audioPath": "audio/voice/D10.mp3",
+  "audioSeconds": 12.432,
+  "captions": [
+    {
+      "startMs": 200.0,
+      "endMs": 4237.5,
+      "text": "Para sa site operations may daily logs walkthroughs accomplishment"
+    },
+    {
+      "startMs": 4250.0,
+      "endMs": 8825.0,
+      "text": "reports at revolving fund records Tinutulungan nitong balikan"
+    },
+    {
+      "startMs": 8850.0,
+      "endMs": 11525.0,
+      "text": "ang updates at supporting details ng isang project"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "2c45a1365ff2921c05a32049860bad5e09a176bf95c90cee4ea88cf23856a0d1"
+}

@@ -1,0 +1,24 @@
+{
+  "sceneId": "D04",
+  "audioPath": "audio/voice/D04.mp3",
+  "audioSeconds": 11.928,
+  "captions": [
+    {
+      "startMs": 137.5,
+      "endMs": 3450.0,
+      "text": "Hiwalay ang Labor Material at Overhead para malinaw ang"
+    },
+    {
+      "startMs": 3462.5,
+      "endMs": 7762.5,
+      "text": "gastos Ang billing allocations naman ay planning guide hindi"
+    },
+    {
+      "startMs": 7825.0,
+      "endMs": 11087.5,
+      "text": "ito automatic na dagdag sa revenue cost o profit"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "abd5402adb90178aef27e80e88dd57567dabb20247c747d24d123f2b209097d4"
+}

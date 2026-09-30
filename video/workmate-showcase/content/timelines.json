@@ -1,0 +1,1849 @@
+[
+  {
+    "key": "workers",
+    "id": "WorkMateWorkers",
+    "file": "dacs-workmate-workers-taglish",
+    "subtitle": "For Workers",
+    "scenes": [
+      {
+        "scene": {
+          "id": "W01",
+          "title": "Kasama sa bawat araw sa site.",
+          "role": "worker",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Ito ang DAC’S WorkMate para sa workers at team leaders. Sa product preview na ito, tingnan natin kung paano magiging mas malinaw ang araw mo sa site.",
+          "spokenText": "Ito ang Daks WorkMate para sa workers at team leaders. Sa product preview na ito, tingnan natin kung paano magiging mas malinaw ang araw mo sa site.",
+          "minimumSeconds": 10,
+          "visualKey": "W01",
+          "direction": "Logo → phone Home. Title: “Kasama sa bawat araw sa site.”"
+        },
+        "media": {
+          "sceneId": "W01",
+          "audioPath": "audio/voice/W01.mp3",
+          "audioSeconds": 9.648,
+          "captions": [
+            {
+              "startMs": 225,
+              "endMs": 2562.5,
+              "text": "Ito ang DAC’S WorkMate para sa workers at team"
+            },
+            {
+              "startMs": 2562.5,
+              "endMs": 6337.5,
+              "text": "leaders Sa product preview na ito tingnan natin kung"
+            },
+            {
+              "startMs": 6362.5,
+              "endMs": 8837.5,
+              "text": "paano magiging mas malinaw ang araw mo sa site"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "478063b0a8ea84c284bd9d707bf960fcaf6e0be20ad290791afa39990b2a77ef"
+        },
+        "from": 0,
+        "durationInFrames": 329,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "W02",
+          "title": "Isang tingin. Alam ang gagawin.",
+          "role": "worker",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Pag-sign in gamit ang account mo, nasa Home ang attendance, request updates, at mga kailangang balikan. Isang tingin, alam mo kung saan magsisimula.",
+          "spokenText": "Pag-sign in gamit ang account mo, nasa Home ang attendance, request updates, at mga kailangang balikan. Isang tingin, alam mo kung saan magsisimula.",
+          "minimumSeconds": 10,
+          "visualKey": "W02",
+          "direction": "Home: Time In, request updates, My Work; profile insert."
+        },
+        "media": {
+          "sceneId": "W02",
+          "audioPath": "audio/voice/W02.mp3",
+          "audioSeconds": 10.176,
+          "captions": [
+            {
+              "startMs": 200,
+              "endMs": 2612.5,
+              "text": "Pag-sign in gamit ang account mo nasa Home ang"
+            },
+            {
+              "startMs": 2637.5,
+              "endMs": 7625,
+              "text": "attendance request updates at mga kailangang balikan Isang tingin"
+            },
+            {
+              "startMs": 7725,
+              "endMs": 9337.5,
+              "text": "alam mo kung saan magsisimula"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "ce4a0a4aebdad1912b86cbd779af02a17715732a7b2f5d4ebe83a9eb1aa22e1b"
+        },
+        "from": 329,
+        "durationInFrames": 345,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "W03",
+          "title": "Time In. Time Out. All clear.",
+          "role": "worker",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Para sa attendance, piliin ang enabled na site, kumuha ng photo, i-check ang details, at mag-submit. Sa Time Out, sundan ulit ang steps at balikan ang record sa History.",
+          "spokenText": "Para sa attendance, piliin ang enabled na site, kumuha ng photo, i-check ang details, at mag-submit. Sa Time Out, sundan ulit ang steps at balikan ang record sa History.",
+          "minimumSeconds": 16,
+          "visualKey": "W03",
+          "direction": "Eligible site → photo → review → Time In; Time Out and history."
+        },
+        "media": {
+          "sceneId": "W03",
+          "audioPath": "audio/voice/W03.mp3",
+          "audioSeconds": 12.024,
+          "captions": [
+            {
+              "startMs": 200,
+              "endMs": 3350,
+              "text": "Para sa attendance piliin ang enabled na site kumuha"
+            },
+            {
+              "startMs": 3375,
+              "endMs": 7575,
+              "text": "ng photo i-check ang details at mag-submit Sa Time"
+            },
+            {
+              "startMs": 7612.5,
+              "endMs": 10437.5,
+              "text": "Out sundan ulit ang steps at balikan ang record"
+            },
+            {
+              "startMs": 10462.5,
+              "endMs": 11137.5,
+              "text": "sa History"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "3ff48d8b146c2ff798f0b07451cbc3c618a4bc520f5be5ef46f436d27a2ba316"
+        },
+        "from": 674,
+        "durationInFrames": 480,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "W04",
+          "title": "Tamang item. Tamang project.",
+          "role": "worker",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Kailangan ng materials o tools? Gumawa ng request para sa tamang project at work scope. Ilagay ang specification, unit, at quantity para malinaw kung ano talaga ang kailangan sa site.",
+          "spokenText": "Kailangan ng materials o tools? Gumawa ng request para sa tamang project at work scope. Ilagay ang specification, unit, at quantity para malinaw kung ano talaga ang kailangan sa site.",
+          "minimumSeconds": 17,
+          "visualKey": "W04",
+          "direction": "New Request; project, Main Contract/AW; material and tool lines."
+        },
+        "media": {
+          "sceneId": "W04",
+          "audioPath": "audio/voice/W04.mp3",
+          "audioSeconds": 12.744,
+          "captions": [
+            {
+              "startMs": 175,
+              "endMs": 3875,
+              "text": "Kailangan ng materials o tools Gumawa ng request para"
+            },
+            {
+              "startMs": 3875,
+              "endMs": 7875,
+              "text": "sa tamang project at work scope Ilagay ang specification"
+            },
+            {
+              "startMs": 8112.5,
+              "endMs": 10887.5,
+              "text": "unit at quantity para malinaw kung ano talaga ang"
+            },
+            {
+              "startMs": 10900,
+              "endMs": 11912.5,
+              "text": "kailangan sa site"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "da2c2a867dfc63c491ceb1f87086a27db5eed02b9eaf4d55f984d855b20abef1"
+        },
+        "from": 1154,
+        "durationInFrames": 510,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "W05",
+          "title": "Ipakita ang kailangan.",
+          "role": "worker",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Wala sa listahan ang item? Idagdag ang description at helpful na photo. Kung urgent, i-flag ang mismong item para madaling makita ng office.",
+          "spokenText": "Wala sa listahan ang item? Idagdag ang description at helpful na photo. Kung urgent, i-flag ang mismong item para madaling makita ng office.",
+          "minimumSeconds": 12,
+          "visualKey": "W05",
+          "direction": "Unlisted item photo; one item marked Urgent."
+        },
+        "media": {
+          "sceneId": "W05",
+          "audioPath": "audio/voice/W05.mp3",
+          "audioSeconds": 10.464,
+          "captions": [
+            {
+              "startMs": 225,
+              "endMs": 3750,
+              "text": "Wala sa listahan ang item Idagdag ang description at"
+            },
+            {
+              "startMs": 3762.5,
+              "endMs": 7837.5,
+              "text": "helpful na photo Kung urgent i-flag ang mismong item"
+            },
+            {
+              "startMs": 7900,
+              "endMs": 9650,
+              "text": "para madaling makita ng office"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "79a933df64b4f164fc0aa9829c9f10398ad9f65774396b65302a9cb810b924b5"
+        },
+        "from": 1664,
+        "durationInFrames": 360,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "W06",
+          "title": "Isang team. Isang malinaw na request.",
+          "role": "leader",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Para sa team leader, puwedeng pagsamahin ang needs ng assigned team. Kapag may dagdag na quantity, makikita kung alin ang arranged na at alin ang nasa susunod na batch.",
+          "spokenText": "Para sa team leader, puwedeng pagsamahin ang needs ng assigned team. Kapag may dagdag na quantity, makikita kung alin ang arranged na at alin ang nasa susunod na batch.",
+          "minimumSeconds": 14,
+          "visualKey": "W06",
+          "direction": "Leader badge; assigned team; combined list; 10 arranged + 2 later."
+        },
+        "media": {
+          "sceneId": "W06",
+          "audioPath": "audio/voice/W06.mp3",
+          "audioSeconds": 10.608,
+          "captions": [
+            {
+              "startMs": 200,
+              "endMs": 2687.5,
+              "text": "Para sa team leader puwedeng pagsamahin ang needs ng"
+            },
+            {
+              "startMs": 2750,
+              "endMs": 6700,
+              "text": "assigned team Kapag may dagdag na quantity makikita kung"
+            },
+            {
+              "startMs": 6737.5,
+              "endMs": 9212.5,
+              "text": "alin ang arranged na at alin ang nasa susunod"
+            },
+            {
+              "startMs": 9225,
+              "endMs": 9725,
+              "text": "na batch"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "b08e29ebd604c2ed08451630b877f21babc2a9bee2bf63b714d644a134fc7c3b"
+        },
+        "from": 2024,
+        "durationInFrames": 420,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "W07",
+          "title": "Walang signal? May malinaw na status.",
+          "role": "worker",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Walang signal? Ang supported offline actions ay puwedeng ma-save muna sa phone. Pending sync means hindi pa ito accepted ng office. Kapag may conflicting changes, makikita ang kailangang ayusin.",
+          "spokenText": "Walang signal? Ang supported offline actions ay puwedeng ma-save muna sa phone. Pending sync means hindi pa ito accepted ng office. Kapag may conflicting changes, makikita ang kailangang ayusin.",
+          "minimumSeconds": 14,
+          "visualKey": "W07",
+          "direction": "No signal → Pending sync → online → conflict preserved."
+        },
+        "media": {
+          "sceneId": "W07",
+          "audioPath": "audio/voice/W07.mp3",
+          "audioSeconds": 14.352,
+          "captions": [
+            {
+              "startMs": 200,
+              "endMs": 4375,
+              "text": "Walang signal Ang supported offline actions ay puwedeng ma-save"
+            },
+            {
+              "startMs": 4375,
+              "endMs": 7925,
+              "text": "muna sa phone Pending sync means hindi pa ito"
+            },
+            {
+              "startMs": 7975,
+              "endMs": 12437.5,
+              "text": "accepted ng office Kapag may conflicting changes makikita ang"
+            },
+            {
+              "startMs": 12450,
+              "endMs": 13550,
+              "text": "kailangang ayusin"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "af1e671ad618ef8acef768584a5be35a55ca0fb61778caad7c0bc96f96216a53"
+        },
+        "from": 2444,
+        "durationInFrames": 470,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "W08",
+          "title": "Hanapin. Kilalanin. Request ulit.",
+          "role": "worker",
+          "label": "PLANNED MODULE",
+          "narration": "Sa planned Find Previous Item, mas madaling hanapin ang dating item gamit ang authorized photos at specifications. Piliin ang tama, saka gumawa ng bagong request.",
+          "spokenText": "Sa planned Find Previous Item, mas madaling hanapin ang dating item gamit ang authorized photos at specifications. Piliin ang tama, saka gumawa ng bagong request.",
+          "minimumSeconds": 12,
+          "visualKey": "W08",
+          "direction": "Planned Find Previous Item: approved photos, specs, new draft."
+        },
+        "media": {
+          "sceneId": "W08",
+          "audioPath": "audio/voice/W08.mp3",
+          "audioSeconds": 11.112,
+          "captions": [
+            {
+              "startMs": 212.5,
+              "endMs": 3162.5,
+              "text": "Sa planned Find Previous Item mas madaling hanapin ang"
+            },
+            {
+              "startMs": 3175,
+              "endMs": 8012.5,
+              "text": "dating item gamit ang authorized photos at specifications Piliin"
+            },
+            {
+              "startMs": 8075,
+              "endMs": 10312.5,
+              "text": "ang tama saka gumawa ng bagong request"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "0038e1234e379409f42e2f3f248a30cee8646bad93c85586c736fed7225ae5a0"
+        },
+        "from": 2914,
+        "durationInFrames": 373,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "W09",
+          "title": "Klaro ang assignment.",
+          "role": "worker",
+          "label": "DESIGN PREVIEW",
+          "narration": "Sa My Work preview, makikita ang assignment, schedule, at shared meeting notes. I-tap ang I’ve read this para alam ng office na nabasa mo ang instructions.",
+          "spokenText": "Sa My Work preview, makikita ang assignment, schedule, at shared meeting notes. I-tap ang I’ve read this para alam ng office na nabasa mo ang instructions.",
+          "minimumSeconds": 16,
+          "visualKey": "W09",
+          "direction": "Design preview My Work; task owner/helpers; I’ve read this; shared notes."
+        },
+        "media": {
+          "sceneId": "W09",
+          "audioPath": "audio/voice/W09.mp3",
+          "audioSeconds": 10.728,
+          "captions": [
+            {
+              "startMs": 187.5,
+              "endMs": 3850,
+              "text": "Sa My Work preview makikita ang assignment schedule at"
+            },
+            {
+              "startMs": 3850,
+              "endMs": 7312.5,
+              "text": "shared meeting notes I-tap ang I’ve read this para"
+            },
+            {
+              "startMs": 7350,
+              "endMs": 9850,
+              "text": "alam ng office na nabasa mo ang instructions"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "1e3642fcd442fb921a277753bbdd225179f7483d3e3e888bd7c20b014f8c4dcb"
+        },
+        "from": 3287,
+        "durationInFrames": 480,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "W10",
+          "title": "I-report. I-check. I-verify.",
+          "role": "worker",
+          "label": "DESIGN PREVIEW",
+          "narration": "May kulang na material o hindi pa tapos na preparation? I-report ang blocker. Kapag tapos na ang trabaho, i-report ito para sa checking at final verification ng office.",
+          "spokenText": "May kulang na material o hindi pa tapos na preparation? I-report ang blocker. Kapag tapos na ang trabaho, i-report ito para sa checking at final verification ng office.",
+          "minimumSeconds": 14,
+          "visualKey": "W10",
+          "direction": "Report missing materials; blocker; Reported done → staff verification."
+        },
+        "media": {
+          "sceneId": "W10",
+          "audioPath": "audio/voice/W10.mp3",
+          "audioSeconds": 11.832,
+          "captions": [
+            {
+              "startMs": 175,
+              "endMs": 2100,
+              "text": "May kulang na material o hindi pa tapos na"
+            },
+            {
+              "startMs": 2137.5,
+              "endMs": 7162.5,
+              "text": "preparation I-report ang blocker Kapag tapos na ang trabaho"
+            },
+            {
+              "startMs": 7437.5,
+              "endMs": 10337.5,
+              "text": "i-report ito para sa checking at final verification ng"
+            },
+            {
+              "startMs": 10400,
+              "endMs": 11000,
+              "text": "office"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "6de5bf50447a4634b03945ac34912a103ea42210728a9364067ac46bbabc4a60"
+        },
+        "from": 3767,
+        "durationInFrames": 420,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "W11",
+          "title": "Alam kung kanino ang tools.",
+          "role": "worker",
+          "label": "PLANNED MODULE",
+          "narration": "Sa planned My Tools, makikita ang tool na naka-assign sa iyo, kasama ang handover at return details nito.",
+          "spokenText": "Sa planned My Tools, makikita ang tool na naka-assign sa iyo, kasama ang handover at return details nito.",
+          "minimumSeconds": 9,
+          "visualKey": "W11",
+          "direction": "Planned My Tools: asset, named responsibility, handover/return."
+        },
+        "media": {
+          "sceneId": "W11",
+          "audioPath": "audio/voice/W11.mp3",
+          "audioSeconds": 7.104,
+          "captions": [
+            {
+              "startMs": 187.5,
+              "endMs": 3150,
+              "text": "Sa planned My Tools makikita ang tool na naka-assign"
+            },
+            {
+              "startMs": 3150,
+              "endMs": 6237.5,
+              "text": "sa iyo kasama ang handover at return details nito"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "ce15188a8664f2b37d7e9ae4571dd305e86664c0f36d16abdbfb22012affd37b"
+        },
+        "from": 4187,
+        "durationInFrames": 270,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "W12",
+          "title": "Mas klaro ang araw sa site.",
+          "role": "worker",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "DAC’S WorkMate. Mas malinaw ang request, mas klaro ang gagawin sa site.",
+          "spokenText": "Daks WorkMate. Mas malinaw ang request, mas klaro ang gagawin sa site.",
+          "minimumSeconds": 6,
+          "visualKey": "W12",
+          "direction": "Home/requests/work montage → logo."
+        },
+        "media": {
+          "sceneId": "W12",
+          "audioPath": "audio/voice/W12.mp3",
+          "audioSeconds": 5.64,
+          "captions": [
+            {
+              "startMs": 262.5,
+              "endMs": 3900,
+              "text": "DAC’S WorkMate Mas malinaw ang request mas klaro ang"
+            },
+            {
+              "startMs": 3925,
+              "endMs": 4812.5,
+              "text": "gagawin sa site"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "934a8340db85e5108405bde1442c42d6baf4dc2be0d1ef385f2ca7ae39bcde46"
+        },
+        "from": 4457,
+        "durationInFrames": 209,
+        "narrationStartFrame": 15
+      }
+    ],
+    "durationInFrames": 4666
+  },
+  {
+    "key": "buying",
+    "id": "WorkMateBuying",
+    "file": "dacs-workmate-buying-taglish",
+    "subtitle": "For Procurement / Buying",
+    "scenes": [
+      {
+        "scene": {
+          "id": "B01",
+          "title": "Mula shopping list hanggang receiving.",
+          "role": "buyer",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Ito ang DAC’S WorkMate para sa Procurement Staff at Buying. Sa preview na ito, sundan natin ang flow mula assigned items hanggang purchase at receiving.",
+          "spokenText": "Ito ang Daks WorkMate para sa Procurement Staff at Buying. Sa preview na ito, sundan natin ang flow mula assigned items hanggang purchase at receiving.",
+          "minimumSeconds": 10,
+          "visualKey": "B01",
+          "direction": "Logo → buying workspace. Title: “Mula shopping list hanggang receiving.”"
+        },
+        "media": {
+          "sceneId": "B01",
+          "audioPath": "audio/voice/B01.mp3",
+          "audioSeconds": 10.32,
+          "captions": [
+            {
+              "startMs": 225,
+              "endMs": 2762.5,
+              "text": "Ito ang DAC’S WorkMate para sa Procurement Staff at"
+            },
+            {
+              "startMs": 2812.5,
+              "endMs": 6550,
+              "text": "Buying Sa preview na ito sundan natin ang flow"
+            },
+            {
+              "startMs": 6587.5,
+              "endMs": 9487.5,
+              "text": "mula assigned items hanggang purchase at receiving"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "69573580288ad98afe4ed9b962bdec3c07bf806e371448f303cb861838c2480e"
+        },
+        "from": 0,
+        "durationInFrames": 349,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "B02",
+          "title": "Alam kung ano ang uunahin.",
+          "role": "buyer",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Sa buying list, makikita ang project, quantity, urgency, at importanteng changes. Puwedeng ayusin ang view by batch o project para malinaw ang uunahin.",
+          "spokenText": "Sa buying list, makikita ang project, quantity, urgency, at importanteng changes. Puwedeng ayusin ang view by batch o project para malinaw ang uunahin.",
+          "minimumSeconds": 14,
+          "visualKey": "B02",
+          "direction": "Shopping list; batch/project filters; urgency and changed-quantity badges."
+        },
+        "media": {
+          "sceneId": "B02",
+          "audioPath": "audio/voice/B02.mp3",
+          "audioSeconds": 10.776,
+          "captions": [
+            {
+              "startMs": 187.5,
+              "endMs": 3750,
+              "text": "Sa buying list makikita ang project quantity urgency at"
+            },
+            {
+              "startMs": 3787.5,
+              "endMs": 7987.5,
+              "text": "importanteng changes Puwedeng ayusin ang view by batch o"
+            },
+            {
+              "startMs": 8037.5,
+              "endMs": 9950,
+              "text": "project para malinaw ang uunahin"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "30a1f310e0c005b566361d1836828e110507a1b902884ec05a261165752c264a"
+        },
+        "from": 349,
+        "durationInFrames": 420,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "B03",
+          "title": "Klaro kung sino ang bibili.",
+          "role": "buyer",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "May items na assigned sa iyo. Para sa available na portion, puwede mong piliin ang I’ll buy this habang online. Makikita ng ibang authorized buyers kung sino ang may hawak.",
+          "spokenText": "May items na assigned sa iyo. Para sa available na portion, puwede mong piliin ang I’ll buy this habang online. Makikita ng ibang authorized buyers kung sino ang may hawak.",
+          "minimumSeconds": 14,
+          "visualKey": "B03",
+          "direction": "Assigned portion; I’ll buy this on unassigned portion; named buyer."
+        },
+        "media": {
+          "sceneId": "B03",
+          "audioPath": "audio/voice/B03.mp3",
+          "audioSeconds": 11.808,
+          "captions": [
+            {
+              "startMs": 175,
+              "endMs": 3425,
+              "text": "May items na assigned sa iyo Para sa available"
+            },
+            {
+              "startMs": 3425,
+              "endMs": 5962.5,
+              "text": "na portion puwede mong piliin ang I’ll buy this"
+            },
+            {
+              "startMs": 5962.5,
+              "endMs": 10225,
+              "text": "habang online Makikita ng ibang authorized buyers kung sino"
+            },
+            {
+              "startMs": 10262.5,
+              "endMs": 10975,
+              "text": "ang may hawak"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "84a5cfe0c8b97ebf3a8dc5fc1afd9f7b32aba12e4c48c6c558edb1ff5b7ee353"
+        },
+        "from": 769,
+        "durationInFrames": 420,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "B04",
+          "title": "I-record ang actual na binili.",
+          "role": "buyer",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Sa pagbili, i-record ang actual item, specification, quantity, supplier, at purchase date. Ilakip ang receipt at kumpletuhin ang purchase details para malinaw ang record.",
+          "spokenText": "Sa pagbili, i-record ang actual item, specification, quantity, supplier, at purchase date. Ilakip ang receipt at kumpletuhin ang purchase details para malinaw ang record.",
+          "minimumSeconds": 15,
+          "visualKey": "B04",
+          "direction": "Record actual item/spec/unit, supplier/date, receipt; values masked."
+        },
+        "media": {
+          "sceneId": "B04",
+          "audioPath": "audio/voice/B04.mp3",
+          "audioSeconds": 12,
+          "captions": [
+            {
+              "startMs": 212.5,
+              "endMs": 4837.5,
+              "text": "Sa pagbili i-record ang actual item specification quantity supplier"
+            },
+            {
+              "startMs": 5012.5,
+              "endMs": 8737.5,
+              "text": "at purchase date Ilakip ang receipt at kumpletuhin ang"
+            },
+            {
+              "startMs": 8775,
+              "endMs": 11100,
+              "text": "purchase details para malinaw ang record"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "33b854e64a9de5b16f588de85eee756f42de5d73c93dfb630a45c304463462ab"
+        },
+        "from": 1189,
+        "durationInFrames": 450,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "B05",
+          "title": "Bought six. Four to go.",
+          "role": "buyer",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Halimbawa, sampu ang kailangan at anim ang nabili. Bought: six. Still to buy: four. Sa iyo pa rin ang natitirang assignment, maliban kung i-release mo ito.",
+          "spokenText": "Halimbawa, sampu ang kailangan at anim ang nabili. Bought: six. Still to buy: four. Sa iyo pa rin ang natitirang assignment, maliban kung i-release mo ito.",
+          "minimumSeconds": 14,
+          "visualKey": "B05",
+          "direction": "Needed 10 → Bought 6 → Still to buy 4; release remaining portion."
+        },
+        "media": {
+          "sceneId": "B05",
+          "audioPath": "audio/voice/B05.mp3",
+          "audioSeconds": 12.456,
+          "captions": [
+            {
+              "startMs": 150,
+              "endMs": 4137.5,
+              "text": "Halimbawa sampu ang kailangan at anim ang nabili Bought"
+            },
+            {
+              "startMs": 4487.5,
+              "endMs": 8762.5,
+              "text": "six Still to buy four Sa iyo pa rin"
+            },
+            {
+              "startMs": 8775,
+              "endMs": 11537.5,
+              "text": "ang natitirang assignment maliban kung i-release mo ito"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "4d3dba0687154442e8e5a1b0ae17318249d81cd3a3ba59d438856d076ea0571b"
+        },
+        "from": 1639,
+        "durationInFrames": 420,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "B06",
+          "title": "Isang receipt. Tamang allocation.",
+          "role": "buyer",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Isang receipt, maraming project items? I-attach ito nang isang beses, tapos itugma ang bawat line sa tamang project at work scope, o sa warehouse destination.",
+          "spokenText": "Isang receipt, maraming project items? I-attach ito nang isang beses, tapos itugma ang bawat line sa tamang project at work scope, o sa warehouse destination.",
+          "minimumSeconds": 15,
+          "visualKey": "B06",
+          "direction": "One receipt, two project lines; Main Contract/AW/warehouse destinations."
+        },
+        "media": {
+          "sceneId": "B06",
+          "audioPath": "audio/voice/B06.mp3",
+          "audioSeconds": 11.472,
+          "captions": [
+            {
+              "startMs": 225,
+              "endMs": 4437.5,
+              "text": "Isang receipt maraming project items I-attach ito nang isang"
+            },
+            {
+              "startMs": 4450,
+              "endMs": 7762.5,
+              "text": "beses tapos itugma ang bawat line sa tamang project"
+            },
+            {
+              "startMs": 7837.5,
+              "endMs": 10637.5,
+              "text": "at work scope o sa warehouse destination"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "eabbcc8048303d49f5b2996348f182c1f96334fe32947a5c3538c8ccf56d8765"
+        },
+        "from": 2059,
+        "durationInFrames": 450,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "B07",
+          "title": "May pagbabago? May dahilan.",
+          "role": "buyer",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Kung may substitute, panatilihing visible ang original request at ilagay ang dahilan ng replacement. May unplanned purchase? Kailangan din ng reason at tamang destination.",
+          "spokenText": "Kung may substitute, panatilihing visible ang original request at ilagay ang dahilan ng replacement. May unplanned purchase? Kailangan din ng reason at tamang destination.",
+          "minimumSeconds": 13,
+          "visualKey": "B07",
+          "direction": "Original and substitute side by side; required reason; unplanned purchase."
+        },
+        "media": {
+          "sceneId": "B07",
+          "audioPath": "audio/voice/B07.mp3",
+          "audioSeconds": 11.904,
+          "captions": [
+            {
+              "startMs": 187.5,
+              "endMs": 3437.5,
+              "text": "Kung may substitute panatilihing visible ang original request"
+            },
+            {
+              "startMs": 3575,
+              "endMs": 7700,
+              "text": "at ilagay ang dahilan ng replacement May unplanned purchase"
+            },
+            {
+              "startMs": 8625,
+              "endMs": 11100,
+              "text": "Kailangan din ng reason at tamang destination"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "fa2fd880f6c851dcc6c82f4d8f5ae439b356b90975f37b7ed438c2cb5415243b"
+        },
+        "from": 2509,
+        "durationInFrames": 397,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "B08",
+          "title": "Purchase at payment. Hiwalay.",
+          "role": "buyer",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Hiwalay ang pagbili sa pagbabayad. Puwedeng Unpaid muna ang purchase. Kapag bayad na, idagdag ang payment details sa parehong record, nang walang panibagong material expense.",
+          "spokenText": "Hiwalay ang pagbili sa pagbabayad. Puwedeng Unpaid muna ang purchase. Kapag bayad na, idagdag ang payment details sa parehong record, nang walang panibagong material expense.",
+          "minimumSeconds": 15,
+          "visualKey": "B08",
+          "direction": "Unpaid → payment details → Paid; same purchase ID persists."
+        },
+        "media": {
+          "sceneId": "B08",
+          "audioPath": "audio/voice/B08.mp3",
+          "audioSeconds": 11.952,
+          "captions": [
+            {
+              "startMs": 137.5,
+              "endMs": 3875,
+              "text": "Hiwalay ang pagbili sa pagbabayad Puwedeng Unpaid muna ang"
+            },
+            {
+              "startMs": 3912.5,
+              "endMs": 7925,
+              "text": "purchase Kapag bayad na idagdag ang payment details sa"
+            },
+            {
+              "startMs": 7975,
+              "endMs": 11137.5,
+              "text": "parehong record nang walang panibagong material expense"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "21736a690414d81f542fd00e5248418b900dfc619851d42620f5895b525aa107"
+        },
+        "from": 2906,
+        "durationInFrames": 450,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "B09",
+          "title": "Bilangin. I-check. I-confirm.",
+          "role": "buyer",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Hiwalay din ang delivery. Para sa direct-to-site receiving, i-confirm habang online ang actual quantity, location, at condition. Receipt photo lang ay hindi pa proof na available ang stock.",
+          "spokenText": "Hiwalay din ang delivery. Para sa direct-to-site receiving, i-confirm habang online ang actual quantity, location, at condition. Receipt photo lang ay hindi pa proof na available ang stock.",
+          "minimumSeconds": 15,
+          "visualKey": "B09",
+          "direction": "Awaiting delivery → explicit received qty/location/condition → usable stock."
+        },
+        "media": {
+          "sceneId": "B09",
+          "audioPath": "audio/voice/B09.mp3",
+          "audioSeconds": 13.2,
+          "captions": [
+            {
+              "startMs": 150,
+              "endMs": 4750,
+              "text": "Hiwalay din ang delivery Para sa direct-to-site receiving i-confirm"
+            },
+            {
+              "startMs": 4762.5,
+              "endMs": 9525,
+              "text": "habang online ang actual quantity location at condition Receipt"
+            },
+            {
+              "startMs": 9625,
+              "endMs": 11937.5,
+              "text": "photo lang ay hindi pa proof na available ang"
+            },
+            {
+              "startMs": 11937.5,
+              "endMs": 12337.5,
+              "text": "stock"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "d90d5e19e3a40012485774b4492c1d3335f08768a85d36b045c9397c75af40f8"
+        },
+        "from": 3356,
+        "durationInFrames": 450,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "B10",
+          "title": "Draft muna. Sync kapag online.",
+          "role": "buyer",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "Walang signal sa supplier? I-save muna ang supported purchase details at photos bilang draft. Pending sync pa ito. Sa reconnect, iche-check ang changes bago ma-update ang shared records.",
+          "spokenText": "Walang signal sa supplier? I-save muna ang supported purchase details at photos bilang draft. Pending sync pa ito. Sa reconnect, iche-check ang changes bago ma-update ang shared records.",
+          "minimumSeconds": 15,
+          "visualKey": "B10",
+          "direction": "Offline purchase draft/photo → Pending sync → assignment conflict."
+        },
+        "media": {
+          "sceneId": "B10",
+          "audioPath": "audio/voice/B10.mp3",
+          "audioSeconds": 14.136,
+          "captions": [
+            {
+              "startMs": 200,
+              "endMs": 4075,
+              "text": "Walang signal sa supplier I-save muna ang supported purchase"
+            },
+            {
+              "startMs": 4087.5,
+              "endMs": 8187.5,
+              "text": "details at photos bilang draft Pending sync pa ito"
+            },
+            {
+              "startMs": 9212.5,
+              "endMs": 12612.5,
+              "text": "Sa reconnect iche-check ang changes bago ma-update ang shared"
+            },
+            {
+              "startMs": 12625,
+              "endMs": 13275,
+              "text": "records"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "84a69873e92760b39d58ed851836845de6dc2502a221f30fa83e25f8b3429309"
+        },
+        "from": 3806,
+        "durationInFrames": 464,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "B11",
+          "title": "Kita ang materials, bawat location.",
+          "role": "buyer",
+          "label": "PLANNED MODULE",
+          "narration": "Sa planned inventory workflow, malinaw ang warehouse at site quantities, kasama ang reservations, receipts, issues, transfers, at returns. Ang confirmed na usable quantity lang ang magiging available.",
+          "spokenText": "Sa planned inventory workflow, malinaw ang warehouse at site quantities, kasama ang reservations, receipts, issues, transfers, at returns. Ang confirmed na usable quantity lang ang magiging available.",
+          "minimumSeconds": 15,
+          "visualKey": "B11",
+          "direction": "Planned warehouse/site balances, reservations, partial receiving, returns."
+        },
+        "media": {
+          "sceneId": "B11",
+          "audioPath": "audio/voice/B11.mp3",
+          "audioSeconds": 13.944,
+          "captions": [
+            {
+              "startMs": 212.5,
+              "endMs": 3500,
+              "text": "Sa planned inventory workflow malinaw ang warehouse at site"
+            },
+            {
+              "startMs": 3537.5,
+              "endMs": 8125,
+              "text": "quantities kasama ang reservations receipts issues transfers"
+            },
+            {
+              "startMs": 8287.5,
+              "endMs": 11975,
+              "text": "at returns Ang confirmed na usable quantity lang ang"
+            },
+            {
+              "startMs": 11987.5,
+              "endMs": 13087.5,
+              "text": "magiging available"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "7269f8cecac7d962f9bf743aba2eedae72aceb2b168ddf444b1cdd9d9af3bd47"
+        },
+        "from": 4270,
+        "durationInFrames": 458,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "B12",
+          "title": "Mas malinaw ang bawat bili.",
+          "role": "buyer",
+          "label": "PRODUCT PREVIEW · SAMPLE DATA",
+          "narration": "DAC’S WorkMate for Buying. Klaro kung sino ang bibili, ano ang nabili, ano pa ang kulang, at ano ang natanggap.",
+          "spokenText": "Daks WorkMate for Buying. Klaro kung sino ang bibili, ano ang nabili, ano pa ang kulang, at ano ang natanggap.",
+          "minimumSeconds": 10,
+          "visualKey": "B12",
+          "direction": "Request → buyer → receipt → receiving recap and logo."
+        },
+        "media": {
+          "sceneId": "B12",
+          "audioPath": "audio/voice/B12.mp3",
+          "audioSeconds": 8.136,
+          "captions": [
+            {
+              "startMs": 237.5,
+              "endMs": 3862.5,
+              "text": "DAC’S WorkMate for Buying Klaro kung sino ang bibili"
+            },
+            {
+              "startMs": 4162.5,
+              "endMs": 6687.5,
+              "text": "ano ang nabili ano pa ang kulang at ano"
+            },
+            {
+              "startMs": 6725,
+              "endMs": 7325,
+              "text": "ang natanggap"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "b1f7fdfa78e37bb354b8bda594f44c56863d12c2255aaa2c67d80cda5936777c"
+        },
+        "from": 4728,
+        "durationInFrames": 300,
+        "narrationStartFrame": 15
+      }
+    ],
+    "durationInFrames": 5028
+  },
+  {
+    "key": "web",
+    "id": "DacsWeb",
+    "file": "dacs-web-taglish",
+    "subtitle": "The office workspace",
+    "scenes": [
+      {
+        "scene": {
+          "id": "D01",
+          "title": "Mula office hanggang site.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Ito ang DAC’S Web, ang workspace ng office para sa projects, records, billing, at coordination. Tingnan natin ang major modules, pati ang planned connection sa WorkMate.",
+          "spokenText": "Ito ang Daks Web, ang workspace ng office para sa projects, records, billing, at coordination. Tingnan natin ang major modules, pati ang planned connection sa WorkMate.",
+          "minimumSeconds": 10,
+          "visualKey": "D01",
+          "direction": "Logo → desktop; main navigation reveals."
+        },
+        "media": {
+          "sceneId": "D01",
+          "audioPath": "audio/voice/D01.mp3",
+          "audioSeconds": 11.664,
+          "captions": [
+            {
+              "startMs": 200,
+              "endMs": 2850,
+              "text": "Ito ang DAC’S Web ang workspace ng office para"
+            },
+            {
+              "startMs": 2850,
+              "endMs": 7787.5,
+              "text": "sa projects records billing at coordination Tingnan natin ang"
+            },
+            {
+              "startMs": 7800,
+              "endMs": 10800,
+              "text": "major modules pati ang planned connection sa WorkMate"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "0dbdd090c5ed0b6c4663c5532d5a16b48f1a42e06893074d4922cfd25b322504"
+        },
+        "from": 0,
+        "durationInFrames": 389,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D02",
+          "title": "Tamang access sa bawat role.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Sa Users at access settings, nakaayon sa role at allowed modules ang makikita ng bawat account. Owner-only information ay may sariling restrictions.",
+          "spokenText": "Sa Users at access settings, nakaayon sa role at allowed modules ang makikita ng bawat account. Owner-only information ay may sariling restrictions.",
+          "minimumSeconds": 10,
+          "visualKey": "D02",
+          "direction": "Role-specific nav; Users/Navigator; owner versus limited staff."
+        },
+        "media": {
+          "sceneId": "D02",
+          "audioPath": "audio/voice/D02.mp3",
+          "audioSeconds": 10.44,
+          "captions": [
+            {
+              "startMs": 187.5,
+              "endMs": 3200,
+              "text": "Sa Users at access settings nakaayon sa role at"
+            },
+            {
+              "startMs": 3262.5,
+              "endMs": 8012.5,
+              "text": "allowed modules ang makikita ng bawat account Owner-only information"
+            },
+            {
+              "startMs": 8025,
+              "endMs": 9575,
+              "text": "ay may sariling restrictions"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "27076e996eb85ba071ee5422090256710da368218fd0792da1ad96e554f8948f"
+        },
+        "from": 389,
+        "durationInFrames": 353,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D03",
+          "title": "Bawat project, malinaw ang picture.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Sa Project Control, magkakasama ang project overview, billing periods, additional works, at cost details. Mula sa summary, puwedeng mag-drill down para makita kung saan nanggagaling ang figures.",
+          "spokenText": "Sa Project Control, magkakasama ang project overview, billing periods, additional works, at cost details. Mula sa summary, puwedeng mag-drill down para makita kung saan nanggagaling ang figures.",
+          "minimumSeconds": 15,
+          "visualKey": "D03",
+          "direction": "Owner Project Control: folder grid → project detail; main/AW."
+        },
+        "media": {
+          "sceneId": "D03",
+          "audioPath": "audio/voice/D03.mp3",
+          "audioSeconds": 13.104,
+          "captions": [
+            {
+              "startMs": 212.5,
+              "endMs": 4125,
+              "text": "Sa Project Control magkakasama ang project overview billing periods"
+            },
+            {
+              "startMs": 4312.5,
+              "endMs": 8837.5,
+              "text": "additional works at cost details Mula sa summary puwedeng"
+            },
+            {
+              "startMs": 8837.5,
+              "endMs": 12250,
+              "text": "mag-drill down para makita kung saan nanggagaling ang figures"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "c2de56b5aff457d77e2df0b8a7348279249da3805cc68fd115db089df84fa57e"
+        },
+        "from": 742,
+        "durationInFrames": 450,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D04",
+          "title": "Tatlong cost buckets. Isang total.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Hiwalay ang Labor, Material, at Overhead para malinaw ang gastos. Ang billing allocations naman ay planning guide; hindi ito automatic na dagdag sa revenue, cost, o profit.",
+          "spokenText": "Hiwalay ang Labor, Material, at Overhead para malinaw ang gastos. Ang billing allocations naman ay planning guide; hindi ito automatic na dagdag sa revenue, cost, o profit.",
+          "minimumSeconds": 16,
+          "visualKey": "D04",
+          "direction": "Owner cost breakdown: Labor/Material/Overhead; allocation plan separate."
+        },
+        "media": {
+          "sceneId": "D04",
+          "audioPath": "audio/voice/D04.mp3",
+          "audioSeconds": 11.928,
+          "captions": [
+            {
+              "startMs": 137.5,
+              "endMs": 3450,
+              "text": "Hiwalay ang Labor Material at Overhead para malinaw ang"
+            },
+            {
+              "startMs": 3462.5,
+              "endMs": 7762.5,
+              "text": "gastos Ang billing allocations naman ay planning guide hindi"
+            },
+            {
+              "startMs": 7825,
+              "endMs": 11087.5,
+              "text": "ito automatic na dagdag sa revenue cost o profit"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "abd5402adb90178aef27e80e88dd57567dabb20247c747d24d123f2b209097d4"
+        },
+        "from": 1192,
+        "durationInFrames": 480,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D05",
+          "title": "Traceable ang bawat expense.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Sa expense at labor records, makikita ang supporting details at pakyaw contracts. Kasama na sa total cost ang Cover expenses; hindi ito idinadagdag ulit bilang panibagong bucket.",
+          "spokenText": "Sa expense at labor records, makikita ang supporting details at pakyaw contracts. Kasama na sa total cost ang Cover expenses; hindi ito idinadagdag ulit bilang panibagong bucket.",
+          "minimumSeconds": 14,
+          "visualKey": "D05",
+          "direction": "Payroll/material records, pakyaw cap, cover subset highlighted inside cost."
+        },
+        "media": {
+          "sceneId": "D05",
+          "audioPath": "audio/voice/D05.mp3",
+          "audioSeconds": 12.24,
+          "captions": [
+            {
+              "startMs": 187.5,
+              "endMs": 3700,
+              "text": "Sa expense at labor records makikita ang supporting details"
+            },
+            {
+              "startMs": 3737.5,
+              "endMs": 7350,
+              "text": "at pakyaw contracts Kasama na sa total cost ang"
+            },
+            {
+              "startMs": 7375,
+              "endMs": 11362.5,
+              "text": "Cover expenses hindi ito idinadagdag ulit bilang panibagong bucket"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "9462c6526d45779287e47fc31317443ade8268b8fc29b0dce275b6d485e0eb6b"
+        },
+        "from": 1672,
+        "durationInFrames": 420,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D06",
+          "title": "Progress ang basehan.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Sa Accomplishment, binabalikan ang progress ng bawat BOQ item. Dito nakabatay ang earned revenue. Kapag wala pang accomplishment data, malinaw ang Forecast label sa kaukulang estimate.",
+          "spokenText": "Sa Accomplishment, binabalikan ang progress ng bawat B O Q item. Dito nakabatay ang earned revenue. Kapag wala pang accomplishment data, malinaw ang Forecast label sa kaukulang estimate.",
+          "minimumSeconds": 15,
+          "visualKey": "D06",
+          "direction": "BOQ line progress → accomplishment → Earned; Forecast clearly labelled."
+        },
+        "media": {
+          "sceneId": "D06",
+          "audioPath": "audio/voice/D06.mp3",
+          "audioSeconds": 13.296,
+          "captions": [
+            {
+              "startMs": 187.5,
+              "endMs": 3350,
+              "text": "Sa Accomplishment binabalikan ang progress ng bawat B O"
+            },
+            {
+              "startMs": 3412.5,
+              "endMs": 8087.5,
+              "text": "Q item Dito nakabatay ang earned revenue Kapag wala"
+            },
+            {
+              "startMs": 8150,
+              "endMs": 11862.5,
+              "text": "pang accomplishment data malinaw ang Forecast label sa kaukulang"
+            },
+            {
+              "startMs": 11900,
+              "endMs": 12450,
+              "text": "estimate"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "84ad6bdde8782130629c0fe28fb1462ffb804441467316862f1a7c4514cb1726"
+        },
+        "from": 2092,
+        "durationInFrames": 450,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D07",
+          "title": "Mula billing hanggang payment.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Para sa billing, nandito ang invoices, labor invoices, at payment requests. Puwedeng i-review ang records at gamitin ang available print, PDF, o CSV outputs ng module.",
+          "spokenText": "Para sa billing, nandito ang invoices, labor invoices, at payment requests. Puwedeng i-review ang records at gamitin ang available print, PDF, o CSV outputs ng module.",
+          "minimumSeconds": 14,
+          "visualKey": "D07",
+          "direction": "Invoice/receipt, labor invoice, payment review; print/PDF/CSV."
+        },
+        "media": {
+          "sceneId": "D07",
+          "audioPath": "audio/voice/D07.mp3",
+          "audioSeconds": 12.408,
+          "captions": [
+            {
+              "startMs": 200,
+              "endMs": 3787.5,
+              "text": "Para sa billing nandito ang invoices labor invoices at"
+            },
+            {
+              "startMs": 3862.5,
+              "endMs": 7925,
+              "text": "payment requests Puwedeng i-review ang records at gamitin ang"
+            },
+            {
+              "startMs": 7962.5,
+              "endMs": 11550,
+              "text": "available print PDF o CSV outputs ng module"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "dad8771e5cba8e39f6ae55988c7a6f71364abe78db1f16b5f01fa1a5a8f34fb1"
+        },
+        "from": 2542,
+        "durationInFrames": 420,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D08",
+          "title": "Hiwalay ang tamang records.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "May hiwalay na company overhead at owner-only reimbursement tracker. Ang reimbursement status ay tracking record; hindi ito automatic na bagong invoice, payment, o project expense.",
+          "spokenText": "May hiwalay na company overhead at owner-only reimbursement tracker. Ang reimbursement status ay tracking record; hindi ito automatic na bagong invoice, payment, o project expense.",
+          "minimumSeconds": 11,
+          "visualKey": "D08",
+          "direction": "Company overhead separate; isolated reimbursement register."
+        },
+        "media": {
+          "sceneId": "D08",
+          "audioPath": "audio/voice/D08.mp3",
+          "audioSeconds": 11.928,
+          "captions": [
+            {
+              "startMs": 212.5,
+              "endMs": 3675,
+              "text": "May hiwalay na company overhead at owner-only reimbursement tracker"
+            },
+            {
+              "startMs": 4687.5,
+              "endMs": 8112.5,
+              "text": "Ang reimbursement status ay tracking record hindi ito automatic"
+            },
+            {
+              "startMs": 8150,
+              "endMs": 11087.5,
+              "text": "na bagong invoice payment o project expense"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "335fdaa240313f64356e79db68a97142ba693c51976ae461f8dbcb1d07b9899f"
+        },
+        "from": 2962,
+        "durationInFrames": 397,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D09",
+          "title": "Project Management. Sariling workflow.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Sa Project Management, may sariling projects, daily expense records, weekly billing, procurement, at milestones. Hiwalay ito sa Project Control, kaya hindi dapat paghaluin ang kanilang project records.",
+          "spokenText": "Sa Project Management, may sariling projects, daily expense records, weekly billing, procurement, at milestones. Hiwalay ito sa Project Control, kaya hindi dapat paghaluin ang kanilang project records.",
+          "minimumSeconds": 18,
+          "visualKey": "D09",
+          "direction": "Project Management chapter; project → daily costs → milestones/procurement."
+        },
+        "media": {
+          "sceneId": "D09",
+          "audioPath": "audio/voice/D09.mp3",
+          "audioSeconds": 13.44,
+          "captions": [
+            {
+              "startMs": 212.5,
+              "endMs": 4237.5,
+              "text": "Sa Project Management may sariling projects daily expense records"
+            },
+            {
+              "startMs": 4475,
+              "endMs": 9037.5,
+              "text": "weekly billing procurement at milestones Hiwalay ito sa Project"
+            },
+            {
+              "startMs": 9062.5,
+              "endMs": 12575,
+              "text": "Control kaya hindi dapat paghaluin ang kanilang project records"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "96a77da78ce3b2450345cd4ce21caa54a6fc9e1f991c5519731be3b9121dffe8"
+        },
+        "from": 3359,
+        "durationInFrames": 540,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D10",
+          "title": "Site updates na nababalikan.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Para sa site operations, may daily logs, walkthroughs, accomplishment reports, at revolving fund records. Tinutulungan nitong balikan ang updates at supporting details ng isang project.",
+          "spokenText": "Para sa site operations, may daily logs, walkthroughs, accomplishment reports, at revolving fund records. Tinutulungan nitong balikan ang updates at supporting details ng isang project.",
+          "minimumSeconds": 14,
+          "visualKey": "D10",
+          "direction": "Daily logs/walkthroughs/accomplishment/revolving fund detail cards."
+        },
+        "media": {
+          "sceneId": "D10",
+          "audioPath": "audio/voice/D10.mp3",
+          "audioSeconds": 12.432,
+          "captions": [
+            {
+              "startMs": 200,
+              "endMs": 4237.5,
+              "text": "Para sa site operations may daily logs walkthroughs accomplishment"
+            },
+            {
+              "startMs": 4250,
+              "endMs": 8825,
+              "text": "reports at revolving fund records Tinutulungan nitong balikan"
+            },
+            {
+              "startMs": 8850,
+              "endMs": 11525,
+              "text": "ang updates at supporting details ng isang project"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "2c45a1365ff2921c05a32049860bad5e09a176bf95c90cee4ea88cf23856a0d1"
+        },
+        "from": 3899,
+        "durationInFrames": 420,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D11",
+          "title": "Maayos hanggang closeout.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Sa Project Closeout, malinaw kung completed o terminated ang project. May hiwalay ding Warranty Fund register para sa internal company reserve; hindi ito deduction sa client billing.",
+          "spokenText": "Sa Project Closeout, malinaw kung completed o terminated ang project. May hiwalay ding Warranty Fund register para sa internal company reserve; hindi ito deduction sa client billing.",
+          "minimumSeconds": 16,
+          "visualKey": "D11",
+          "direction": "Owner closeout: Completed/Terminated, final bill; warranty reserve register."
+        },
+        "media": {
+          "sceneId": "D11",
+          "audioPath": "audio/voice/D11.mp3",
+          "audioSeconds": 11.736,
+          "captions": [
+            {
+              "startMs": 187.5,
+              "endMs": 3437.5,
+              "text": "Sa Project Closeout malinaw kung completed o terminated ang"
+            },
+            {
+              "startMs": 3462.5,
+              "endMs": 7300,
+              "text": "project May hiwalay ding Warranty Fund register para sa"
+            },
+            {
+              "startMs": 7312.5,
+              "endMs": 10925,
+              "text": "internal company reserve hindi ito deduction sa client billing"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "74ac86cbb96996014a05538f9141b96a86f8da75dc93c0f3928ab5c0d80810a3"
+        },
+        "from": 4319,
+        "durationInFrames": 480,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D12",
+          "title": "Proposal muna. Project kapag ready.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Sa Quotations, gumawa ng itemized proposal, revisions, at status tracking. Ang Won na quotation ay hindi automatic na project o revenue; hiwalay pa rin ang admin action.",
+          "spokenText": "Sa Quotations, gumawa ng itemized proposal, revisions, at status tracking. Ang Won na quotation ay hindi automatic na project o revenue; hiwalay pa rin ang admin action.",
+          "minimumSeconds": 12,
+          "visualKey": "D12",
+          "direction": "Owner quotations: itemized proposal → revision → Won; manual next step."
+        },
+        "media": {
+          "sceneId": "D12",
+          "audioPath": "audio/voice/D12.mp3",
+          "audioSeconds": 12.144,
+          "captions": [
+            {
+              "startMs": 187.5,
+              "endMs": 4500,
+              "text": "Sa Quotations gumawa ng itemized proposal revisions at status"
+            },
+            {
+              "startMs": 4512.5,
+              "endMs": 8112.5,
+              "text": "tracking Ang Won na quotation ay hindi automatic na"
+            },
+            {
+              "startMs": 8150,
+              "endMs": 11312.5,
+              "text": "project o revenue hiwalay pa rin ang admin action"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "87dae7dde2cc78874ff7e11d4ccb611c8c163216dc43faacf761a1c0f2a730d6"
+        },
+        "from": 4799,
+        "durationInFrames": 404,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D13",
+          "title": "Kita ang araw sa site.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Sa Attendance, tingnan kung sino ang nasa site, i-review ang Time In at Time Out records, at pamahalaan ang workers at sites. May hours reports at owner controls para sa app updates.",
+          "spokenText": "Sa Attendance, tingnan kung sino ang nasa site, i-review ang Time In at Time Out records, at pamahalaan ang workers at sites. May hours reports at owner controls para sa app updates.",
+          "minimumSeconds": 15,
+          "visualKey": "D13",
+          "direction": "Attendance Today → photos/history → roster/sites → hours report; updates insert."
+        },
+        "media": {
+          "sceneId": "D13",
+          "audioPath": "audio/voice/D13.mp3",
+          "audioSeconds": 12.84,
+          "captions": [
+            {
+              "startMs": 200,
+              "endMs": 3412.5,
+              "text": "Sa Attendance tingnan kung sino ang nasa site i-review"
+            },
+            {
+              "startMs": 3462.5,
+              "endMs": 6300,
+              "text": "ang Time In at Time Out records at pamahalaan"
+            },
+            {
+              "startMs": 6325,
+              "endMs": 9987.5,
+              "text": "ang workers at sites May hours reports at owner"
+            },
+            {
+              "startMs": 10012.5,
+              "endMs": 11975,
+              "text": "controls para sa app updates"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "e6ac8a305831c637188242bfb6f04f88e712f67d35136beba62f39426fad94ef"
+        },
+        "from": 5203,
+        "durationInFrames": 450,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D14",
+          "title": "Organized ang requests at receipts.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Sa Construction, may batches, urgent requests, history, at inventory. Sa Expense Inbox, puwedeng ipunin ang shared receipt photos para sa tamang review at encoding.",
+          "spokenText": "Sa Construction, may batches, urgent requests, history, at inventory. Sa Expense Inbox, puwedeng ipunin ang shared receipt photos para sa tamang review at encoding.",
+          "minimumSeconds": 14,
+          "visualKey": "D14",
+          "direction": "Construction: batches/urgent/history/inventory; Expense Inbox receipt queue."
+        },
+        "media": {
+          "sceneId": "D14",
+          "audioPath": "audio/voice/D14.mp3",
+          "audioSeconds": 12.288,
+          "captions": [
+            {
+              "startMs": 200,
+              "endMs": 4550,
+              "text": "Sa Construction may batches urgent requests history at inventory"
+            },
+            {
+              "startMs": 5587.5,
+              "endMs": 9200,
+              "text": "Sa Expense Inbox puwedeng ipunin ang shared receipt photos"
+            },
+            {
+              "startMs": 9412.5,
+              "endMs": 11412.5,
+              "text": "para sa tamang review at encoding"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "cc22796f54f6a5c784fb80ce24e91014154876e0a89aab8e38c7a27f8a2ad3bc"
+        },
+        "from": 5653,
+        "durationInFrames": 420,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D15",
+          "title": "WorkMate, connected sa office.",
+          "role": "owner",
+          "label": "PLANNED MODULE",
+          "narration": "Para sa planned WorkMate workflow, dito rerepasuhin ng office ang requests, catalogue matching, teams, at schedules. Kasama sa later stages ang item history, tool register, at owner-reviewed cost assignments, na malinaw ang pagkakaiba ng stock movement at project cost.",
+          "spokenText": "Para sa planned WorkMate workflow, dito rerepasuhin ng office ang requests, catalogue matching, teams, at schedules. Kasama sa later stages ang item history, tool register, at owner-reviewed cost assignments, na malinaw ang pagkakaiba ng stock movement at project cost.",
+          "minimumSeconds": 22,
+          "visualKey": "D15",
+          "direction": "Explicit PLANNED WORKMATE chapter; request queue → matching → schedule → owner cost review."
+        },
+        "media": {
+          "sceneId": "D15",
+          "audioPath": "audio/voice/D15.mp3",
+          "audioSeconds": 18.12,
+          "captions": [
+            {
+              "startMs": 200,
+              "endMs": 3650,
+              "text": "Para sa planned WorkMate workflow dito rerepasuhin ng office"
+            },
+            {
+              "startMs": 3662.5,
+              "endMs": 8675,
+              "text": "ang requests catalogue matching teams at schedules Kasama sa"
+            },
+            {
+              "startMs": 8675,
+              "endMs": 12700,
+              "text": "later stages ang item history tool register at owner-reviewed"
+            },
+            {
+              "startMs": 12737.5,
+              "endMs": 16212.5,
+              "text": "cost assignments na malinaw ang pagkakaiba ng stock movement"
+            },
+            {
+              "startMs": 16275,
+              "endMs": 17225,
+              "text": "at project cost"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "a4c546c9a86fcfe09b5b8548e02d92e33ee025584e5aed7d018e3c1b610020f7"
+        },
+        "from": 6073,
+        "durationInFrames": 660,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D16",
+          "title": "Mula meeting notes sa malinaw na tasks.",
+          "role": "owner",
+          "label": "DESIGN PREVIEW",
+          "narration": "Sa Meetings at Work Plan preview, puwedeng gawing draft tasks ang notes. Staff pa rin ang magre-review at magpa-publish. Makikita ang acknowledgements, blockers, at work na naghihintay ng final verification.",
+          "spokenText": "Sa Meetings at Work Plan preview, puwedeng gawing draft tasks ang notes. Staff pa rin ang magre-review at magpa-publish. Makikita ang acknowledgements, blockers, at work na naghihintay ng final verification.",
+          "minimumSeconds": 20,
+          "visualKey": "D16",
+          "direction": "DESIGN PREVIEW: notes → AI/manual drafts → review → publish → acknowledgements/blockers/final check."
+        },
+        "media": {
+          "sceneId": "D16",
+          "audioPath": "audio/voice/D16.mp3",
+          "audioSeconds": 14.256,
+          "captions": [
+            {
+              "startMs": 212.5,
+              "endMs": 3025,
+              "text": "Sa Meetings at Work Plan preview puwedeng gawing draft"
+            },
+            {
+              "startMs": 3062.5,
+              "endMs": 6575,
+              "text": "tasks ang notes Staff pa rin ang magre-review at"
+            },
+            {
+              "startMs": 6625,
+              "endMs": 11237.5,
+              "text": "magpa-publish Makikita ang acknowledgements blockers at work"
+            },
+            {
+              "startMs": 11262.5,
+              "endMs": 13412.5,
+              "text": "na naghihintay ng final verification"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "531f109d568ff83794f5121b584e427214f5ec0cd9ec4e8e6c645f04a3dbf2cb"
+        },
+        "from": 6733,
+        "durationInFrames": 600,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D17",
+          "title": "Sariling view para sa bawat client.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "May hiwalay na portals para sa design clients, construction clients, at partners. Ang bawat audience ay may sariling project experience at access sa mga records na para sa kanila.",
+          "spokenText": "May hiwalay na portals para sa design clients, construction clients, at partners. Ang bawat audience ay may sariling project experience at access sa mga records na para sa kanila.",
+          "minimumSeconds": 14,
+          "visualKey": "D17",
+          "direction": "Design/construction client and partner portal frames; scoped project view."
+        },
+        "media": {
+          "sceneId": "D17",
+          "audioPath": "audio/voice/D17.mp3",
+          "audioSeconds": 11.808,
+          "captions": [
+            {
+              "startMs": 200,
+              "endMs": 3437.5,
+              "text": "May hiwalay na portals para sa design clients construction"
+            },
+            {
+              "startMs": 3462.5,
+              "endMs": 7437.5,
+              "text": "clients at partners Ang bawat audience ay may sariling"
+            },
+            {
+              "startMs": 7462.5,
+              "endMs": 10375,
+              "text": "project experience at access sa mga records na para"
+            },
+            {
+              "startMs": 10375,
+              "endMs": 10987.5,
+              "text": "sa kanila"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "c09d659bc8b69ee2756a76896c6c6c4cb393d9c37b1c35562e18d96431947f90"
+        },
+        "from": 7333,
+        "durationInFrames": 420,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D18",
+          "title": "Mula inquiry hanggang feedback.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Nandito rin ang appointments, analytics, at feedback para masubaybayan ang inquiries at client interactions sa public-facing side ng business.",
+          "spokenText": "Nandito rin ang appointments, analytics, at feedback para masubaybayan ang inquiries at client interactions sa public-facing side ng business.",
+          "minimumSeconds": 10,
+          "visualKey": "D18",
+          "direction": "Appointments → analytics → feedback montage."
+        },
+        "media": {
+          "sceneId": "D18",
+          "audioPath": "audio/voice/D18.mp3",
+          "audioSeconds": 9.216,
+          "captions": [
+            {
+              "startMs": 200,
+              "endMs": 4250,
+              "text": "Nandito rin ang appointments analytics at feedback para masubaybayan"
+            },
+            {
+              "startMs": 4262.5,
+              "endMs": 7787.5,
+              "text": "ang inquiries at client interactions sa public-facing side ng"
+            },
+            {
+              "startMs": 7812.5,
+              "endMs": 8362.5,
+              "text": "business"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "811854a63dda5e07f92ecaf7246d1ee24d8ceca6382f3235925264e7a1646920"
+        },
+        "from": 7753,
+        "durationInFrames": 316,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D19",
+          "title": "Records na puwedeng balikan.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "Para sa review, may reports at AI-assisted summaries. May owner-only System Errors view rin para makita ang reported issues at masundan ang investigation.",
+          "spokenText": "Para sa review, may reports at AI-assisted summaries. May owner-only System Errors view rin para makita ang reported issues at masundan ang investigation.",
+          "minimumSeconds": 10,
+          "visualKey": "D19",
+          "direction": "Reports, AI summary, owner System Errors; user navigation recap."
+        },
+        "media": {
+          "sceneId": "D19",
+          "audioPath": "audio/voice/D19.mp3",
+          "audioSeconds": 10.608,
+          "captions": [
+            {
+              "startMs": 200,
+              "endMs": 4137.5,
+              "text": "Para sa review may reports at AI-assisted summaries May"
+            },
+            {
+              "startMs": 4137.5,
+              "endMs": 7437.5,
+              "text": "owner-only System Errors view rin para makita ang reported"
+            },
+            {
+              "startMs": 7475,
+              "endMs": 9775,
+              "text": "issues at masundan ang investigation"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "20568573197454967da8e552b16afa12946d69a236a4c88ecf7f40d05c08dfce"
+        },
+        "from": 8069,
+        "durationInFrames": 358,
+        "narrationStartFrame": 15
+      },
+      {
+        "scene": {
+          "id": "D20",
+          "title": "Mas malinaw. Mas maayos.",
+          "role": "owner",
+          "label": "SAMPLE DATA",
+          "narration": "DAC’S Web. Mas malinaw ang records, mas maayos ang coordination mula office hanggang site.",
+          "spokenText": "Daks Web. Mas malinaw ang records, mas maayos ang coordination mula office hanggang site.",
+          "minimumSeconds": 5,
+          "visualKey": "D20",
+          "direction": "Desktop → phone trio → logo."
+        },
+        "media": {
+          "sceneId": "D20",
+          "audioPath": "audio/voice/D20.mp3",
+          "audioSeconds": 6.864,
+          "captions": [
+            {
+              "startMs": 237.5,
+              "endMs": 3950,
+              "text": "DAC’S Web Mas malinaw ang records mas maayos ang"
+            },
+            {
+              "startMs": 3975,
+              "endMs": 6025,
+              "text": "coordination mula office hanggang site"
+            }
+          ],
+          "voice": "fil-PH-BlessicaNeural",
+          "hash": "89f79f72e8609d7f54a1de5004c04956bcb4d57d5694cd613b5b39ab201db13d"
+        },
+        "from": 8427,
+        "durationInFrames": 245,
+        "narrationStartFrame": 15
+      }
+    ],
+    "durationInFrames": 8672
+  }
+]

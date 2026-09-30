@@ -1,0 +1,29 @@
+{
+  "sceneId": "W03",
+  "audioPath": "audio/voice/W03.mp3",
+  "audioSeconds": 12.024,
+  "captions": [
+    {
+      "startMs": 200.0,
+      "endMs": 3350.0,
+      "text": "Para sa attendance piliin ang enabled na site kumuha"
+    },
+    {
+      "startMs": 3375.0,
+      "endMs": 7575.0,
+      "text": "ng photo i-check ang details at mag-submit Sa Time"
+    },
+    {
+      "startMs": 7612.5,
+      "endMs": 10437.5,
+      "text": "Out sundan ulit ang steps at balikan ang record"
+    },
+    {
+      "startMs": 10462.5,
+      "endMs": 11137.5,
+      "text": "sa History"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "3ff48d8b146c2ff798f0b07451cbc3c618a4bc520f5be5ef46f436d27a2ba316"
+}

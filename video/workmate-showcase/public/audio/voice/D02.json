@@ -1,0 +1,24 @@
+{
+  "sceneId": "D02",
+  "audioPath": "audio/voice/D02.mp3",
+  "audioSeconds": 10.44,
+  "captions": [
+    {
+      "startMs": 187.5,
+      "endMs": 3200.0,
+      "text": "Sa Users at access settings nakaayon sa role at"
+    },
+    {
+      "startMs": 3262.5,
+      "endMs": 8012.5,
+      "text": "allowed modules ang makikita ng bawat account Owner-only information"
+    },
+    {
+      "startMs": 8025.0,
+      "endMs": 9575.0,
+      "text": "ay may sariling restrictions"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "27076e996eb85ba071ee5422090256710da368218fd0792da1ad96e554f8948f"
+}

@@ -1,0 +1,29 @@
+{
+  "sceneId": "D16",
+  "audioPath": "audio/voice/D16.mp3",
+  "audioSeconds": 14.256,
+  "captions": [
+    {
+      "startMs": 212.5,
+      "endMs": 3025.0,
+      "text": "Sa Meetings at Work Plan preview puwedeng gawing draft"
+    },
+    {
+      "startMs": 3062.5,
+      "endMs": 6575.0,
+      "text": "tasks ang notes Staff pa rin ang magre-review at"
+    },
+    {
+      "startMs": 6625.0,
+      "endMs": 11237.5,
+      "text": "magpa-publish Makikita ang acknowledgements blockers at work"
+    },
+    {
+      "startMs": 11262.5,
+      "endMs": 13412.5,
+      "text": "na naghihintay ng final verification"
+    }
+  ],
+  "voice": "fil-PH-BlessicaNeural",
+  "hash": "531f109d568ff83794f5121b584e427214f5ec0cd9ec4e8e6c645f04a3dbf2cb"
+}

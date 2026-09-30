@@ -1,0 +1,16 @@
+!*.tsx
+!*.mjs
+!*.py
+!*.mp3
+!*.wav
+!*.srt
+!requirements.txt
+!package-lock.json
+.python-packages/
+node_modules/
+__pycache__/
+.cache/
+out/
+review/*.png
+review/*.jpg
+review/*.mp4
