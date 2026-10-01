@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<title>DAC's Building Design Services</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
+<script src="./image-slot.js"></script>
+<style>
+html{scroll-behavior:auto}
+body{margin:0;font-family:'Barlow',-apple-system,sans-serif;color:#1C1C1E;background:#F5F3EE;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+*{box-sizing:border-box}
+a{color:#1A5C3A;text-decoration:none}
+a:hover{color:#134428}
+::selection{background:rgba(26,92,58,.22)}
+input,select,textarea,button{font-family:inherit}
+@keyframes dacsUp{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+@keyframes dacsIn{from{opacity:0}to{opacity:1}}
+@keyframes dacsBar{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes dacsSlideUp{from{transform:translateY(100%)}to{transform:none}}
+@keyframes dacsPop{0%{transform:scale(.4);opacity:0}70%{transform:scale(1.08);opacity:1}100%{transform:scale(1)}}
+@keyframes dacsCue{0%,100%{transform:translateY(0);opacity:.4}50%{transform:translateY(8px);opacity:1}}
+</style>
+</helmet>
+
+<header style="position:fixed;top:0;left:0;right:0;z-index:60;transition:background .4s ease,border-color .4s ease;background:{{ hdrBg }};backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid {{ hdrLine }}">
+  <div style="max-width:1320px;margin:0 auto;padding:14px clamp(18px,3vw,32px);display:flex;align-items:center;justify-content:space-between;gap:20px">
+    <button onClick="{{ go.home }}" style="all:unset;cursor:pointer;display:flex;align-items:center;gap:12px">
+      <img src="assets/logo.png" alt="DAC's Building Design Services" style="height:46px;width:46px;object-fit:contain;filter:invert(1);mix-blend-mode:screen">
+      <span style="display:flex;flex-direction:column;gap:4px;color:#FFFFFF">
+        <span style="font-family:'Playfair Display',serif;font-size:19px;font-weight:700;letter-spacing:2.5px;line-height:1;white-space:nowrap">DAC'S</span>
+        <span style="font-size:9.5px;font-weight:600;letter-spacing:2.2px;line-height:1;white-space:nowrap;color:#C9D3CC">BUILDING DESIGN SERVICES</span>
+      </span>
+    </button>
+    <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+      <nav style="display:flex;align-items:center;gap:6px">
+        <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="4">
+          <button onClick="{{ n.go }}" style="all:unset;cursor:pointer;position:relative;padding:10px 16px;font-size:15px;font-weight:500;color:{{ n.fg }};transition:color .2s" style-hover="color:#FFFFFF">
+            {{ n.label }}
+            <span style="position:absolute;left:16px;right:16px;bottom:4px;height:2px;background:#80EF80;transform-origin:left;transition:transform .35s cubic-bezier(.2,.7,.2,1);transform:scaleX({{ n.line }})"></span>
+          </button>
+        </sc-for>
+      </nav>
+    </sc-if>
+    <div style="display:flex;align-items:center;gap:10px">
+      <sc-if value="{{ wide }}" hint-placeholder-val="{{ true }}">
+        <a href="client.html" style="display:flex;align-items:center;gap:8px;color:#E5E9E6;font-size:14px;font-weight:600;padding:10px 12px" style-hover="color:#FFFFFF">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          Client Portal
+        </a>
+      </sc-if>
+      <button data-magnetic="1" onClick="{{ go.book }}" style="cursor:pointer;border:0;background:#FFFFFF;color:#134428;font-size:14px;font-weight:700;padding:13px 20px;border-radius:999px;white-space:nowrap" style-hover="background:#80EF80">Book a Consultation</button>
+      <sc-if value="{{ narrow }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ toggleMenu }}" aria-label="Menu" style="width:46px;height:46px;border-radius:50%;border:1px solid rgba(255,255,255,0.3);background:transparent;color:#FFFFFF;cursor:pointer;display:flex;align-items:center;justify-content:center">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="8" x2="20" y2="8"></line><line x1="4" y1="16" x2="20" y2="16"></line></svg>
+        </button>
+      </sc-if>
+    </div>
+  </div>
+</header>
+
+<sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:70;background:#0F1311;color:#FFFFFF;display:flex;flex-direction:column;padding:20px 24px 32px;animation:dacsIn .25s ease both">
+    <div style="display:flex;justify-content:flex-end">
+      <button onClick="{{ toggleMenu }}" aria-label="Close menu" style="width:46px;height:46px;border-radius:50%;border:1px solid rgba(255,255,255,0.3);background:transparent;color:#FFFFFF;cursor:pointer;font-size:22px">×</button>
+    </div>
+    <nav style="display:flex;flex-direction:column;gap:4px;margin-top:32px;flex:1">
+      <sc-for list="{{ navItemsMobile }}" as="n" hint-placeholder-count="5">
+        <button onClick="{{ n.go }}" style="all:unset;cursor:pointer;display:flex;align-items:baseline;gap:16px;padding:14px 0;border-bottom:1px solid rgba(255,255,255,0.1);animation:dacsUp .5s cubic-bezier(.2,.7,.2,1) both;animation-delay:{{ n.delay }}">
+          <span style="font-size:13px;color:#80EF80;font-weight:600">{{ n.num }}</span>
+          <span style="font-family:'Playfair Display',serif;font-size:38px;font-weight:600">{{ n.label }}</span>
+        </button>
+      </sc-for>
+    </nav>
+    <div style="display:flex;flex-direction:column;gap:8px;font-size:15px;color:#C9D3CC">
+      <a href="client.html" style="color:#FFFFFF;font-weight:600">Client Portal →</a>
+      <a href="tel:+639924594334" style="color:#C9D3CC">+63 992 459 4334</a>
+    </div>
+  </div>
+</sc-if>
+
+{{ curtain }}
+
+<main ref="{{ mainRef }}">
+
+<!-- ============ HOME ============ -->
+<sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+  <section data-screen-label="Home · Hero" style="position:relative;height:100vh;min-height:640px;max-height:1100px;overflow:hidden;background:#0F1311;color:#FFFFFF">
+    <div ref="{{ heroParallaxRef }}" style="position:absolute;left:0;right:0;top:-6%;height:112%">{{ heroLayers }}</div>
+    <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,19,17,0.55) 0%,rgba(15,19,17,0.15) 35%,rgba(15,19,17,0.85) 100%)"></div>
+    <div style="position:absolute;inset:0;background:linear-gradient(90deg,rgba(15,19,17,0.7) 0%,rgba(15,19,17,0) 65%)"></div>
+    <div style="position:relative;height:100%;max-width:1320px;margin:0 auto;padding:120px clamp(18px,3vw,32px) 40px;display:flex;flex-direction:column;justify-content:flex-end;gap:36px">
+      <div style="display:flex;flex-direction:column;gap:26px;max-width:960px">
+        <span data-reveal="1" style="display:flex;align-items:center;gap:12px;font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#80EF80"><span style="width:36px;height:1px;background:#80EF80"></span>Design · Build — Established 2026</span>
+        <h1 data-reveal="1" data-delay="100" style="margin:0;font-family:'Playfair Display',serif;font-weight:600;font-size:clamp(46px,7.6vw,112px);line-height:0.98;letter-spacing:-1.5px;text-wrap:balance">Dac's Building Design and Services</h1>
+        <p data-reveal="1" data-delay="200" style="margin:0;font-size:clamp(17px,1.5vw,21px);line-height:1.6;color:#E2E6E3;max-width:560px">A team of engineers, architects, and finishing experts combining strength, utility, and aesthetic appeal</p>
+        <div data-reveal="1" data-delay="300" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:6px">
+          <button data-magnetic="1" onClick="{{ go.book }}" style="cursor:pointer;border:0;display:inline-flex;align-items:center;gap:12px;background:#1A5C3A;color:#FFFFFF;font-weight:600;font-size:16px;padding:18px 28px;border-radius:999px;white-space:nowrap" style-hover="background:#267A4E">
+            Book a Free Consultation
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+          </button>
+          <button data-magnetic="1" onClick="{{ go.projects }}" style="cursor:pointer;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.4);color:#FFFFFF;font-weight:600;font-size:16px;padding:18px 28px;border-radius:999px;white-space:nowrap" style-hover="background:rgba(255,255,255,0.18)">Explore Our Projects</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;border-top:1px solid rgba(255,255,255,0.18);padding-top:20px">
+        <div style="display:flex;align-items:baseline;gap:16px">
+          <span style="font-family:'Playfair Display',serif;font-size:28px;font-weight:600">{{ slideNum }}</span>
+          <span style="font-size:14px;color:#C9D3CC">/ 07</span>
+          <span style="display:flex;flex-direction:column;gap:2px;margin-left:8px">
+            <span style="font-size:16px;font-weight:600">{{ slide.title }}</span>
+            <span style="font-size:13px;color:#C9D3CC">{{ slide.status }} · {{ slide.loc }}</span>
+          </span>
+        </div>
+        <div style="display:flex;align-items:center;gap:18px;flex:1;max-width:420px;min-width:240px">
+          {{ heroBars }}
+          <button onClick="{{ prevSlide }}" aria-label="Previous" style="flex:none;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,0.35);background:transparent;color:#FFFFFF;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(255,255,255,0.12)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+          <button onClick="{{ nextSlide }}" aria-label="Next" style="flex:none;width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,0.35);background:transparent;color:#FFFFFF;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:rgba(255,255,255,0.12)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Home · Stats" style="background:#0F1311;color:#FFFFFF;border-top:1px solid rgba(255,255,255,0.08)">
+    <div style="max-width:1320px;margin:0 auto;padding:56px clamp(18px,3vw,32px);display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:32px">
+      <div data-reveal="1" style="display:flex;flex-direction:column;gap:8px;border-left:1px solid rgba(255,255,255,0.15);padding-left:20px"><span data-count="10" data-suffix="+" style="font-family:'Playfair Display',serif;font-size:clamp(44px,5vw,64px);font-weight:600;line-height:1;color:#FFFFFF">10+</span><span style="font-size:15px;color:#C9D3CC">Projects Completed</span></div>
+      <div data-reveal="1" data-delay="100" style="display:flex;flex-direction:column;gap:8px;border-left:1px solid rgba(255,255,255,0.15);padding-left:20px"><span data-count="10" data-suffix="+" style="font-family:'Playfair Display',serif;font-size:clamp(44px,5vw,64px);font-weight:600;line-height:1;color:#FFFFFF">10+</span><span style="font-size:15px;color:#C9D3CC">Years Combined Experience</span></div>
+      <div data-reveal="1" data-delay="200" style="display:flex;flex-direction:column;gap:8px;border-left:1px solid rgba(255,255,255,0.15);padding-left:20px"><span data-count="7" data-suffix="" style="font-family:'Playfair Display',serif;font-size:clamp(44px,5vw,64px);font-weight:600;line-height:1;color:#FFFFFF">7</span><span style="font-size:15px;color:#C9D3CC">Services Offered</span></div>
+      <div data-reveal="1" data-delay="300" style="display:flex;flex-direction:column;gap:8px;border-left:1px solid rgba(255,255,255,0.15);padding-left:20px"><span data-count="5" data-suffix="" style="font-family:'Playfair Display',serif;font-size:clamp(44px,5vw,64px);font-weight:600;line-height:1;color:#FFFFFF">5</span><span style="font-size:15px;color:#C9D3CC">Cities with completed projects</span></div>
+    </div>
+  </section>
+
+  <section data-screen-label="Home · Intro" style="background:#F5F3EE">
+    <div style="max-width:1320px;margin:0 auto;padding:clamp(80px,10vw,140px) clamp(18px,3vw,32px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:clamp(40px,6vw,96px);align-items:center">
+      <div style="display:flex;flex-direction:column;gap:28px">
+        <span data-reveal="1" style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#1A5C3A">Who We Are</span>
+        <h2 data-reveal="1" data-delay="80" style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(34px,4.2vw,58px);line-height:1.1;letter-spacing:-0.5px;text-wrap:balance">Your hard work deserves a home that lasts.</h2>
+        <p data-reveal="1" data-delay="160" style="margin:0;font-size:18px;line-height:1.7;color:#3A3A3C;max-width:540px">We offer expert design-build solutions that take you from <em style="font-family:'Playfair Display',serif;color:#1A5C3A">'scratch'</em> to <em style="font-family:'Playfair Display',serif;color:#1A5C3A">'reality,'</em> creating spaces where you can truly enjoy the life you've built.</p>
+        <p data-reveal="1" data-delay="220" style="margin:0;font-size:16px;line-height:1.7;color:#6C6C70;max-width:540px">We are engaged in architectural design, building architectural interiors, and architectural interior construction.</p>
+        <button data-reveal="1" data-delay="280" onClick="{{ go.studio }}" style="align-self:flex-start;cursor:pointer;background:none;border:0;border-bottom:1.5px solid #1A5C3A;padding:6px 0;color:#1A5C3A;font-size:16px;font-weight:600" style-hover="color:#134428">Meet the studio →</button>
+      </div>
+      <div data-reveal="1" data-delay="120" style="position:relative;aspect-ratio:4/5;border-radius:6px;overflow:hidden;background:#1C1C1E">
+        <div data-parallax="0.12" style="position:absolute;left:0;right:0;top:-10%;height:120%"><img src="assets/p12.png" alt="Mallari Bldg. — completed" style="width:100%;height:100%;object-fit:cover;display:block"></div>
+        <div style="position:absolute;left:20px;bottom:20px;background:#FFFFFF;border-radius:4px;padding:14px 16px;display:flex;flex-direction:column;gap:2px;max-width:260px">
+          <span style="font-size:12px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:#1A5C3A">Turnover</span>
+          <span style="font-family:'Playfair Display',serif;font-size:18px;font-weight:600">Mallari Bldg., Valenzuela City</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Home · Featured Projects" style="background:#FFFFFF;border-bottom:1px solid #EEEBE4">
+    <div style="max-width:1320px;margin:0 auto;padding:clamp(72px,9vw,110px) clamp(18px,3vw,32px) clamp(56px,7vw,90px);display:flex;flex-direction:column;gap:clamp(40px,5vw,64px)">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+        <h2 data-reveal="1" style="margin:0;font-family:'Playfair Display',serif;font-weight:800;font-size:clamp(22px,3.5vw,30px);line-height:1.2;color:#1C1C1E">Featured Projects</h2>
+        <p data-reveal="1" data-delay="80" style="margin:0;font-size:16px;line-height:1.6;color:#6C6C70;max-width:480px">From initial proposal to final turnover — real projects, real results.</p>
+      </div>
+      <div data-reveal="1" data-delay="120" style="position:relative;width:100%">
+        <div ref="{{ carRef }}" onMouseEnter="{{ carPause }}" onMouseLeave="{{ carPlay }}" onFocus="{{ carPause }}" onBlur="{{ carPlay }}" onTouchStart="{{ carPause }}" onTouchEnd="{{ carPlay }}" style="display:flex;align-items:center;gap:clamp(10px,3vw,28px);overflow-x:auto;scrollbar-width:none;padding:clamp(28px,6vw,56px) 0;-webkit-mask-image:linear-gradient(to right,transparent 0,#000 clamp(24px,8vw,100px),#000 calc(100% - clamp(24px,8vw,100px)),transparent 100%);mask-image:linear-gradient(to right,transparent 0,#000 clamp(24px,8vw,100px),#000 calc(100% - clamp(24px,8vw,100px)),transparent 100%)">
+          <sc-for list="{{ carCards }}" as="c" hint-placeholder-count="6">
+            <button data-car-item="1" onClick="{{ c.open }}" aria-label="View {{ c.title }} project" style="all:unset;cursor:pointer;flex:0 0 auto;position:relative;width:clamp(150px,42vw,300px);aspect-ratio:10/13;border-radius:18px;overflow:hidden;background:#E5E5E5;box-shadow:0 8px 20px rgba(0,0,0,0.1);transform:scale(0.94);opacity:0.92;transition:transform .35s cubic-bezier(.4,0,.2,1),opacity .35s ease,box-shadow .35s ease">
+              <img src="{{ c.img }}" alt="{{ c.title }} – {{ c.status }}" draggable="false" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;display:block;pointer-events:none;user-select:none">
+              <span style="position:absolute;top:14px;left:14px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#FFFFFF;padding:5px 13px;border-radius:50px;backdrop-filter:blur(6px);background:{{ c.badge }}">{{ c.status }}</span>
+              <span style="position:absolute;left:0;right:0;bottom:0;padding:34px 16px 14px;background:linear-gradient(to top,rgba(19,68,40,0.85),transparent);color:#FFFFFF;font-size:15px;font-weight:700;line-height:1.3;text-align:center">{{ c.title }}</span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:center">
+        <button data-magnetic="1" onClick="{{ go.book }}" style="cursor:pointer;border:0;background:#1A5C3A;color:#FFFFFF;font-weight:600;font-size:16px;padding:16px 30px;border-radius:999px;white-space:nowrap" style-hover="background:#134428">Start Your Project</button>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Home · Before/After" style="background:#FFFFFF">
+    <div style="max-width:1320px;margin:0 auto;padding:clamp(80px,10vw,130px) clamp(18px,3vw,32px);display:flex;flex-direction:column;gap:36px">
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:24px">
+        <div style="display:flex;flex-direction:column;gap:16px;max-width:640px">
+          <span data-reveal="1" style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#1A5C3A">Proposal to Turnover</span>
+          <h2 data-reveal="1" data-delay="80" style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(34px,4.2vw,56px);line-height:1.1;letter-spacing:-0.5px">Drag to see the transformation</h2>
+        </div>
+        <div data-reveal="1" data-delay="160" style="display:flex;flex-wrap:wrap;gap:8px">
+          <sc-for list="{{ featTabs }}" as="t" hint-placeholder-count="4">
+            <button onClick="{{ t.pick }}" style="cursor:pointer;padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;transition:all .25s;border:1px solid {{ t.bd }};background:{{ t.bg }};color:{{ t.fg }}">{{ t.label }}</button>
+          </sc-for>
+        </div>
+      </div>
+      <div data-reveal="1" data-delay="120" onPointerDown="{{ baHome.down }}" onPointerMove="{{ baHome.move }}" onPointerUp="{{ baHome.up }}" onPointerCancel="{{ baHome.up }}" style="position:relative;aspect-ratio:16/9;max-height:78vh;width:100%;border-radius:6px;overflow:hidden;background:#1C1C1E;cursor:ew-resize;touch-action:pan-y;user-select:none">
+        <img src="{{ feat.after }}" alt="After" draggable="false" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none">
+        <img src="{{ feat.before }}" alt="Before" draggable="false" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;clip-path:inset(0 {{ baHome.inv }}% 0 0)">
+        <span style="position:absolute;top:18px;left:18px;background:rgba(15,19,17,0.8);color:#FFFFFF;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:8px 12px;border-radius:999px">{{ feat.beforeLabel }}</span>
+        <span style="position:absolute;top:18px;right:18px;background:#1A5C3A;color:#FFFFFF;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:8px 12px;border-radius:999px">{{ feat.afterLabel }}</span>
+        <div style="position:absolute;top:0;bottom:0;width:2px;background:#FFFFFF;left:{{ baHome.pos }}%;transform:translateX(-1px);pointer-events:none">
+          <span style="position:absolute;top:50%;left:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:#FFFFFF;color:#134428;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(0,0,0,0.3)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 3 12 9 18"></polyline><polyline points="15 6 21 12 15 18"></polyline></svg>
+          </span>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px">
+        <p style="margin:0;font-size:16px;line-height:1.6;color:#3A3A3C;max-width:720px">{{ feat.desc }}</p>
+        <button onClick="{{ go.projects }}" style="cursor:pointer;background:none;border:0;border-bottom:1.5px solid #1A5C3A;padding:6px 0;color:#1A5C3A;font-size:16px;font-weight:600;white-space:nowrap">See all projects →</button>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Home · Process" style="background:#0F1311;color:#FFFFFF">
+    <div style="max-width:1320px;margin:0 auto;padding:clamp(80px,10vw,140px) clamp(18px,3vw,32px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:clamp(40px,6vw,96px);align-items:start">
+      <div style="display:flex;flex-direction:column;gap:22px;position:sticky;top:120px">
+        <span data-reveal="1" style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#80EF80">Simple Process</span>
+        <h2 data-reveal="1" data-delay="80" style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(38px,4.6vw,64px);line-height:1.05">How It Works</h2>
+        <p data-reveal="1" data-delay="160" style="margin:0;font-size:18px;line-height:1.65;color:#C9D3CC;max-width:440px">Getting your dream space is easier than you think. Here's how we make it happen.</p>
+        <button data-reveal="1" data-delay="220" data-magnetic="1" onClick="{{ go.book }}" style="align-self:flex-start;margin-top:8px;cursor:pointer;border:0;background:#FFFFFF;color:#134428;font-weight:700;font-size:15px;padding:16px 26px;border-radius:999px" style-hover="background:#80EF80">Start Your Project Today</button>
+      </div>
+      <div ref="{{ tlRef }}" style="position:relative;display:flex;flex-direction:column;gap:clamp(56px,8vw,96px);padding-left:72px">
+        <div style="position:absolute;left:23px;top:8px;bottom:8px;width:2px;background:rgba(255,255,255,0.12)"></div>
+        <div ref="{{ tlFillRef }}" style="position:absolute;left:23px;top:8px;width:2px;height:0;background:#80EF80;transition:height .15s linear"></div>
+        <div data-reveal="1" style="position:relative;display:flex;flex-direction:column;gap:14px">
+          <span data-tl-node="1" style="position:absolute;left:-72px;top:0;width:48px;height:48px;border-radius:50%;border:2px solid rgba(255,255,255,0.2);background:#0F1311;color:#C9D3CC;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;transition:all .4s">01</span>
+          <span style="color:#80EF80;display:flex"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg></span>
+          <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:clamp(26px,2.6vw,34px);font-weight:600">Book a Free Consultation</h3>
+          <p style="margin:0;font-size:17px;line-height:1.65;color:#C9D3CC;max-width:520px">Fill out our appointment form or call us. We'll schedule a no-obligation consultation to discuss your project needs and goals.</p>
+        </div>
+        <div data-reveal="1" style="position:relative;display:flex;flex-direction:column;gap:14px">
+          <span data-tl-node="1" style="position:absolute;left:-72px;top:0;width:48px;height:48px;border-radius:50%;border:2px solid rgba(255,255,255,0.2);background:#0F1311;color:#C9D3CC;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;transition:all .4s">02</span>
+          <span style="color:#80EF80;display:flex"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"></path><path d="m4 20 4-8 4 4 4-6 4 10"></path><circle cx="4" cy="4" r="2"></circle><path d="M4 6v6"></path></svg></span>
+          <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:clamp(26px,2.6vw,34px);font-weight:600">Get Your Design Plan</h3>
+          <p style="margin:0;font-size:17px;line-height:1.65;color:#C9D3CC;max-width:520px">Our architects and engineers craft a detailed design plan tailored to your vision, budget, and timeline — before any construction begins.</p>
+        </div>
+        <div data-reveal="1" style="position:relative;display:flex;flex-direction:column;gap:14px">
+          <span data-tl-node="1" style="position:absolute;left:-72px;top:0;width:48px;height:48px;border-radius:50%;border:2px solid rgba(255,255,255,0.2);background:#0F1311;color:#C9D3CC;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;transition:all .4s">03</span>
+          <span style="color:#80EF80;display:flex"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg></span>
+          <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:clamp(26px,2.6vw,34px);font-weight:600">We Build It — On Time</h3>
+          <p style="margin:0;font-size:17px;line-height:1.65;color:#C9D3CC;max-width:520px">Our expert construction team brings the plan to life with quality craftsmanship, regular progress updates, and on-time delivery.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Home · Testimonials" style="background:#F5F3EE">
+    <div style="max-width:1320px;margin:0 auto;padding:clamp(80px,10vw,130px) clamp(18px,3vw,32px);display:flex;flex-direction:column;gap:40px">
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:24px">
+        <div style="display:flex;flex-direction:column;gap:16px;max-width:640px">
+          <span data-reveal="1" style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#1A5C3A">Stories</span>
+          <h2 data-reveal="1" data-delay="80" style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(34px,4.2vw,56px);line-height:1.1">What Our Clients Say</h2>
+          <p data-reveal="1" data-delay="140" style="margin:0;font-size:17px;line-height:1.65;color:#3A3A3C">Real experiences from clients who trusted us with their projects.</p>
+        </div>
+        <button data-reveal="1" data-magnetic="1" onClick="{{ openFb }}" style="cursor:pointer;display:inline-flex;align-items:center;gap:10px;background:#FFFFFF;border:1px solid #DEDAD0;color:#1C1C1E;font-weight:600;font-size:15px;padding:14px 22px;border-radius:999px" style-hover="border-color:#1A5C3A;color:#1A5C3A">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="#1A5C3A"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+          Share Your Feedback
+        </button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:20px">
+        <sc-for list="{{ testimonialSlots }}" as="t" hint-placeholder-count="3">
+          <figure data-reveal="1" style="margin:0;background:#FFFFFF;border-radius:6px;padding:32px;display:flex;flex-direction:column;gap:20px;min-height:260px">
+            <span style="font-family:'Playfair Display',serif;font-size:56px;line-height:0.6;color:#1A5C3A;height:24px">“</span>
+            <blockquote style="margin:0;font-family:'Playfair Display',serif;font-size:19px;line-height:1.55;color:#6C6C70;font-style:italic;flex:1">Approved client testimonial appears here — loaded live from the feedback you approve in the admin panel.</blockquote>
+            <figcaption style="display:flex;align-items:center;gap:12px;border-top:1px solid #EEEBE4;padding-top:16px">
+              <span style="width:40px;height:40px;border-radius:50%;background:#F5F3EE;color:#1A5C3A;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px">{{ t.n }}</span>
+              <span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:600">Client name</span><span style="font-size:13px;color:#6C6C70">Location · ★★★★★</span></span>
+            </figcaption>
+          </figure>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+</sc-if>
+
+<!-- ============ SERVICES ============ -->
+<sc-if value="{{ isServices }}" hint-placeholder-val="{{ false }}">
+  <section data-screen-label="Services · Header" style="background:#0F1311;color:#FFFFFF">
+    <div style="max-width:1320px;margin:0 auto;padding:clamp(150px,16vw,200px) clamp(18px,3vw,32px) clamp(64px,8vw,100px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:40px;align-items:end">
+      <div style="display:flex;flex-direction:column;gap:22px">
+        <span data-reveal="1" style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#80EF80">Our Services</span>
+        <h1 data-reveal="1" data-delay="80" style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(44px,6vw,88px);line-height:1;letter-spacing:-1px">Professional Design &amp; Build Services</h1>
+      </div>
+      <p data-reveal="1" data-delay="160" style="margin:0;font-size:18px;line-height:1.65;color:#C9D3CC;max-width:520px">Delivering comprehensive design and construction services tailored to your vision — from the first sketch to the final turnover.</p>
+    </div>
+  </section>
+
+  <section data-screen-label="Services · Index" style="background:#FFFFFF;border-bottom:1px solid #E5E5E5;position:sticky;top:74px;z-index:30">
+    <div style="max-width:1320px;margin:0 auto;padding:0 clamp(18px,3vw,32px);display:flex;gap:4px;overflow-x:auto;scrollbar-width:none">
+      <sc-for list="{{ svcPanels }}" as="s" hint-placeholder-count="7">
+        <button onClick="{{ s.jump }}" style="all:unset;cursor:pointer;flex:none;display:flex;align-items:center;gap:8px;padding:16px 14px;font-size:14px;font-weight:600;white-space:nowrap;color:#3A3A3C;border-bottom:2px solid transparent;transition:color .2s,border-color .2s" style-hover="color:#1A5C3A;border-color:#1A5C3A"><span style="font-size:12px;color:#1A5C3A">{{ s.num }}</span>{{ s.title }}</button>
+      </sc-for>
+    </div>
+  </section>
+
+  <sc-for list="{{ svcPanels }}" as="s" hint-placeholder-count="3">
+    <section id="{{ s.anchor }}" data-screen-label="Services · {{ s.title }}" style="background:{{ s.bg }};color:{{ s.fg }};scroll-margin-top:130px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,520px),1fr));min-height:min(92vh,880px)">
+        <div style="order:{{ s.textOrder }};display:flex;flex-direction:column;justify-content:center;gap:28px;padding:clamp(56px,7vw,110px) clamp(22px,6vw,96px)">
+          <span data-reveal="1" style="display:flex;align-items:center;gap:12px;font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:{{ s.accent }}"><span style="width:32px;height:1px;background:{{ s.accent }}"></span>{{ s.num }} · {{ s.category }}</span>
+          <h2 data-reveal="1" data-delay="80" style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(44px,5.6vw,84px);line-height:1.02;letter-spacing:-1px;text-wrap:balance">{{ s.title }}</h2>
+          <p data-reveal="1" data-delay="140" style="margin:0;font-size:17px;line-height:1.7;max-width:520px;color:{{ s.sub }}">{{ s.description }}</p>
+          <ul data-reveal="1" data-delay="200" style="margin:0;padding:0;list-style:none;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2px 28px;max-width:600px">
+            <sc-for list="{{ s.scope }}" as="f" hint-placeholder-count="6">
+              <li style="display:flex;align-items:center;gap:14px;padding:11px 0;border-bottom:1px solid {{ s.line }};font-size:17px"><span style="flex:none;width:6px;height:6px;border-radius:50%;background:{{ s.accent }}"></span>{{ f }}</li>
+            </sc-for>
+          </ul>
+          <div data-reveal="1" data-delay="260" style="display:flex;flex-wrap:wrap;gap:12px;margin-top:6px">
+            <button data-magnetic="1" onClick="{{ s.book }}" style="cursor:pointer;border:0;display:inline-flex;align-items:center;gap:10px;font-weight:700;font-size:15px;padding:16px 26px;border-radius:999px;white-space:nowrap;background:{{ s.btnBg }};color:{{ s.btnFg }}">Book this service →</button>
+          </div>
+        </div>
+        <div style="order:{{ s.imgOrder }};position:relative;overflow:hidden;min-height:min(70vh,560px);background:#1C1C1E">
+          <div data-parallax="0.08" style="position:absolute;left:0;right:0;top:-8%;height:116%">{{ s.layers }}</div>
+          <div style="position:absolute;left:0;right:0;bottom:0;padding:60px 22px 20px;background:linear-gradient(180deg,rgba(15,19,17,0) 0%,rgba(15,19,17,0.8) 100%);display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap">
+            <span style="font-size:14px;font-weight:600;color:#FFFFFF">{{ s.imgLabel }}</span>
+            <div style="display:flex;gap:8px">
+              <sc-for list="{{ s.thumbs }}" as="t" hint-placeholder-count="3">
+                <button onClick="{{ t.pick }}" onMouseEnter="{{ t.pick }}" aria-label="{{ t.label }}" style="padding:0;cursor:pointer;width:58px;height:42px;border-radius:4px;overflow:hidden;background:#1C1C1E;transition:transform .25s,border-color .25s;border:2px solid {{ t.bd }}" style-hover="transform:translateY(-3px)"><img src="{{ t.src }}" alt="" style="width:100%;height:100%;object-fit:cover;display:block"></button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </sc-for>
+
+  <section data-screen-label="Services · Areas" style="background:#FFFFFF">
+    <div style="max-width:1320px;margin:0 auto;padding:clamp(64px,8vw,110px) clamp(18px,3vw,32px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:clamp(32px,5vw,72px);align-items:center">
+      <div style="display:flex;flex-direction:column;gap:22px">
+        <span data-reveal="1" style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#1A5C3A">Service Areas</span>
+        <h2 data-reveal="1" data-delay="80" style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(32px,3.8vw,50px);line-height:1.1">Based in Quezon City, building across the Philippines</h2>
+        <p data-reveal="1" data-delay="140" style="margin:0;font-size:17px;line-height:1.65;color:#3A3A3C">We are based in Quezon City and primarily serve Metro Manila and nearby provinces. We have also completed projects in other regions — contact us to discuss your location.</p>
+        <div data-reveal="1" data-delay="200" style="display:flex;flex-direction:column;border-top:1px solid #E5E5E5">
+          <sc-for list="{{ areas }}" as="a" hint-placeholder-count="5">
+            <button onClick="{{ a.pick }}" style="all:unset;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 8px;border-bottom:1px solid #E5E5E5;transition:background .2s;background:{{ a.bg }}" style-hover="background:#F5F3EE">
+              <span style="display:flex;align-items:center;gap:12px"><span style="width:10px;height:10px;border-radius:50%;background:{{ a.dot }}"></span><span style="font-size:17px;font-weight:600">{{ a.city }}</span><span style="font-size:14px;color:#6C6C70">{{ a.region }}</span></span>
+              <span style="font-size:14px;color:#6C6C70">{{ a.projects }}</span>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+      <div data-reveal="1" data-delay="120" style="position:relative;aspect-ratio:1/1;max-height:640px;width:100%;border-radius:6px;overflow:hidden;background:#E5E5E5">
+        <iframe title="Service area map" src="{{ mapSrc }}" style="position:absolute;inset:0;width:100%;height:100%;border:0;filter:grayscale(0.4) contrast(1.05)" loading="lazy"></iframe>
+      </div>
+    </div>
+  </section>
+</sc-if>
+
+<!-- ============ PROJECTS ============ -->
+<sc-if value="{{ isProjects }}" hint-placeholder-val="{{ false }}">
+  <section data-screen-label="Projects · Header" style="background:#0F1311;color:#FFFFFF">
+    <div style="max-width:1320px;margin:0 auto;padding:clamp(150px,16vw,200px) clamp(18px,3vw,32px) clamp(48px,6vw,72px);display:flex;flex-direction:column;gap:36px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:40px;align-items:end">
+        <div style="display:flex;flex-direction:column;gap:22px">
+          <span data-reveal="1" style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#80EF80">Portfolio</span>
+          <h1 data-reveal="1" data-delay="80" style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(44px,6vw,88px);line-height:1;letter-spacing:-1px">Featured Projects</h1>
+        </div>
+        <p data-reveal="1" data-delay="160" style="margin:0;font-size:18px;line-height:1.65;color:#C9D3CC;max-width:520px">From initial proposal to final turnover — real projects, real results.</p>
+      </div>
+      <div data-reveal="1" data-delay="200" style="display:flex;flex-wrap:wrap;gap:8px">
+        <sc-for list="{{ filters }}" as="f" hint-placeholder-count="3">
+          <button onClick="{{ f.pick }}" style="cursor:pointer;padding:11px 18px;border-radius:999px;font-size:14px;font-weight:600;transition:all .25s;border:1px solid {{ f.bd }};background:{{ f.bg }};color:{{ f.fg }}">{{ f.label }} <span style="opacity:0.6">{{ f.count }}</span></button>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+  <section data-screen-label="Projects · Grid" style="background:#0F1311">
+    <div style="max-width:1240px;margin:0 auto;padding:clamp(24px,3vw,40px) clamp(20px,4vw,40px) clamp(88px,10vw,140px);display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:clamp(28px,3.5vw,48px) clamp(24px,3vw,40px)">
+      <sc-for list="{{ projectCards }}" as="p" hint-placeholder-count="6">
+        <button onClick="{{ p.open }}" style="all:unset;cursor:pointer;position:relative;display:block;border-radius:6px;overflow:hidden;background:#1C1C1E;aspect-ratio:983/1080;animation:dacsUp .6s cubic-bezier(.2,.7,.2,1) both;animation-delay:{{ p.delay }}">
+          <img src="{{ p.img }}" alt="{{ p.title }}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .9s cubic-bezier(.2,.7,.2,1)" style-hover="transform:scale(1.07)">
+          <span style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,19,17,0) 45%,rgba(15,19,17,0.9) 100%);pointer-events:none"></span>
+          <span style="position:absolute;top:16px;left:16px;display:flex;gap:6px;pointer-events:none">
+            <span style="background:rgba(255,255,255,0.92);color:#1C1C1E;font-size:12px;font-weight:700;letter-spacing:1px;text-transform:uppercase;padding:6px 10px;border-radius:999px">{{ p.type }}</span>
+          </span>
+          <span style="position:absolute;left:22px;right:22px;bottom:20px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;color:#FFFFFF;pointer-events:none">
+            <span style="display:flex;flex-direction:column;gap:4px">
+              <span style="font-size:13px;color:#C9D3CC">{{ p.scope }} · {{ p.city }}</span>
+              <span style="font-family:'Playfair Display',serif;font-size:clamp(22px,2.2vw,30px);font-weight:600">{{ p.title }}</span>
+            </span>
+            <span style="flex:none;width:48px;height:48px;border-radius:50%;background:#FFFFFF;color:#134428;display:flex;align-items:center;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="17" x2="17" y2="7"></line><polyline points="7 7 17 7 17 17"></polyline></svg></span>
+          </span>
+        </button>
+      </sc-for>
+    </div>
+  </section>
+</sc-if>
+
+<!-- ============ STUDIO ============ -->
+<sc-if value="{{ isStudio }}" hint-placeholder-val="{{ false }}">
+  <section data-screen-label="Studio · Header" style="background:#0F1311;color:#FFFFFF">
+    <div style="max-width:1320px;margin:0 auto;padding:clamp(150px,16vw,200px) clamp(18px,3vw,32px) clamp(64px,8vw,100px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:40px;align-items:end">
+      <div style="display:flex;flex-direction:column;gap:22px">
+        <span data-reveal="1" style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#80EF80">Who We Are</span>
+        <h1 data-reveal="1" data-delay="80" style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(44px,6vw,88px);line-height:1;letter-spacing:-1px">From scratch to reality.</h1>
+      </div>
+      <p data-reveal="1" data-delay="160" style="margin:0;font-size:18px;line-height:1.65;color:#C9D3CC;max-width:520px">A team of engineers, architects, and finishing experts who complement one another's distinctively varied specialties to produce solutions.</p>
+    </div>
+  </section>
+
+  <section data-screen-label="Studio · Founder" style="background:#F5F3EE">
+    <div style="max-width:1320px;margin:0 auto;padding:clamp(80px,10vw,130px) clamp(18px,3vw,32px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:clamp(40px,6vw,96px);align-items:center">
+      <div data-reveal="1" style="position:relative;aspect-ratio:4/5;width:100%;max-width:520px">
+        <image-slot id="dacs-founder" shape="rounded" radius="6" placeholder="Founder photo — Architect Cristher Dacome"></image-slot>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:26px">
+        <span data-reveal="1" style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#1A5C3A">Our Story</span>
+        <p data-reveal="1" data-delay="80" style="margin:0;font-family:'Playfair Display',serif;font-size:clamp(22px,2.2vw,28px);line-height:1.5;color:#1C1C1E;text-wrap:pretty">Our journey began with a collective of architects and engineers driven by a singular purpose: to redefine modern living through sustainable design in apartments, residences, and condominiums.</p>
+        <p data-reveal="1" data-delay="140" style="margin:0;font-size:17px;line-height:1.75;color:#3A3A3C;text-wrap:pretty">At the heart of this movement is Architect Cristher Dacome, whose personal history of struggle and inspiration paved the way for this new era. He founded DACS not merely as a business, but as a declaration of faith — honoring God's unwavering faithfulness and recognizing the divine provision that continues to sustain this mission.</p>
+        <div data-reveal="1" data-delay="200" style="display:flex;align-items:center;gap:16px;border-top:1px solid #DEDAD0;padding-top:22px">
+          <span style="display:flex;flex-direction:column;gap:2px"><span style="font-family:'Playfair Display',serif;font-size:22px;font-weight:600">Ar. Cristher Dacome</span><span style="font-size:14px;color:#6C6C70">Founder, DAC's Building Design Services</span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Studio · Team" style="background:#FFFFFF">
+    <div style="max-width:1320px;margin:0 auto;padding:clamp(80px,10vw,130px) clamp(18px,3vw,32px);display:flex;flex-direction:column;gap:40px">
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:24px">
+        <div style="display:flex;flex-direction:column;gap:16px;max-width:640px">
+          <span data-reveal="1" style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#1A5C3A">The Team</span>
+          <h2 data-reveal="1" data-delay="80" style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(34px,4.2vw,56px);line-height:1.1">Architects, engineers &amp; finishing experts</h2>
+        </div>
+        <p data-reveal="1" data-delay="140" style="margin:0;font-size:16px;line-height:1.65;color:#3A3A3C;max-width:420px">Our goal is to provide the best architectural design possible that combines use, strength, and aesthetic appeal.</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),1fr));gap:20px">
+        <sc-for list="{{ team }}" as="m" hint-placeholder-count="4">
+          <div data-reveal="1" style="display:flex;flex-direction:column;gap:14px">
+            <div style="position:relative;aspect-ratio:3/4;width:100%"><image-slot id="{{ m.id }}" shape="rounded" radius="6" placeholder="{{ m.ph }}"></image-slot></div>
+            <span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:18px;font-weight:600">{{ m.name }}</span><span style="font-size:14px;color:#6C6C70">{{ m.role }}</span></span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Studio · Values" style="background:#F5F3EE">
+    <div style="max-width:1320px;margin:0 auto;padding:clamp(80px,10vw,130px) clamp(18px,3vw,32px);display:flex;flex-direction:column;gap:48px">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <span data-reveal="1" style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#1A5C3A">Our Foundation</span>
+        <h2 data-reveal="1" data-delay="80" style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(34px,4.2vw,56px);line-height:1.1">Our Values, Mission &amp; Vision</h2>
+      </div>
+      <div style="display:flex;flex-direction:column;border-top:1.5px solid #1C1C1E">
+        <div data-reveal="1" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px 40px;padding:32px 0;border-bottom:1px solid #DEDAD0;align-items:baseline">
+          <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:clamp(28px,3vw,40px);font-weight:500;display:flex;gap:18px;align-items:baseline"><span style="font-family:'Barlow',sans-serif;font-size:14px;font-weight:700;color:#1A5C3A">01</span>Integrity</h3>
+          <p style="margin:0;font-size:18px;line-height:1.65;color:#3A3A3C">It's about doing things that are pure and honest, and encompass the heart.</p>
+        </div>
+        <div data-reveal="1" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px 40px;padding:32px 0;border-bottom:1px solid #DEDAD0;align-items:baseline">
+          <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:clamp(28px,3vw,40px);font-weight:500;display:flex;gap:18px;align-items:baseline"><span style="font-family:'Barlow',sans-serif;font-size:14px;font-weight:700;color:#1A5C3A">02</span>Innovation</h3>
+          <p style="margin:0;font-size:18px;line-height:1.65;color:#3A3A3C">The use of new ideas to create value.</p>
+        </div>
+        <div data-reveal="1" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px 40px;padding:32px 0;border-bottom:1px solid #DEDAD0;align-items:baseline">
+          <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:clamp(28px,3vw,40px);font-weight:500;display:flex;gap:18px;align-items:baseline"><span style="font-family:'Barlow',sans-serif;font-size:14px;font-weight:700;color:#1A5C3A">03</span>Customer Satisfaction</h3>
+          <p style="margin:0;font-size:18px;line-height:1.65;color:#3A3A3C">Rendering service with a good will as to the Lord and not to man, knowing that whatever good anyone does, this he will receive back from the Lord.</p>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr));gap:20px">
+        <div data-reveal="1" style="background:#FFFFFF;border-radius:6px;padding:clamp(28px,4vw,48px);display:flex;flex-direction:column;gap:16px">
+          <span style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#1A5C3A">Mission</span>
+          <p style="margin:0;font-family:'Playfair Display',serif;font-size:clamp(20px,2vw,26px);line-height:1.5">To honor the Creator by building with excellence, serving our clients with the heart of a servant, and ensuring every structure we design and build is rooted in integrity and truth.</p>
+        </div>
+        <div data-reveal="1" data-delay="100" style="background:#134428;color:#FFFFFF;border-radius:6px;padding:clamp(28px,4vw,48px);display:flex;flex-direction:column;gap:16px">
+          <span style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#80EF80">Vision</span>
+          <p style="margin:0;font-family:'Playfair Display',serif;font-size:clamp(20px,2vw,26px);line-height:1.5">To be a light in the construction industry, known for transforming blueprints into blessings and houses into homes built on a firm, lasting foundation.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</sc-if>
+
+<!-- ============ BOOK ============ -->
+<sc-if value="{{ isBook }}" hint-placeholder-val="{{ false }}">
+  <section data-screen-label="Book · Flow" style="background:#F5F3EE">
+    <div style="max-width:1320px;margin:0 auto;padding:clamp(130px,14vw,170px) clamp(18px,3vw,32px) clamp(64px,8vw,100px);display:flex;flex-direction:column;gap:40px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:24px 40px;align-items:end">
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <span data-reveal="1" style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#1A5C3A">Appointment</span>
+          <h1 data-reveal="1" data-delay="80" style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(40px,5vw,72px);line-height:1.02;letter-spacing:-0.5px">Ready to Start Your Project?</h1>
+        </div>
+        <p data-reveal="1" data-delay="140" style="margin:0;font-size:18px;line-height:1.65;color:#3A3A3C;max-width:520px">Fill out the form and we'll get back to you within 24 hours to discuss your architectural needs. Your first consultation is free.</p>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:24px;align-items:start">
+        <div style="grid-column:span {{ formSpan }};background:#FFFFFF;border-radius:8px;box-shadow:0 8px 32px rgba(26,92,58,0.08);overflow:hidden">
+          <sc-if value="{{ notDone }}" hint-placeholder-val="{{ true }}">
+            <div style="padding:22px clamp(20px,3vw,36px) 0;display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:14px">
+                <span style="font-weight:700;color:#1A5C3A">Step {{ step }} of 4</span>
+                <span style="color:#6C6C70">{{ stepTitle }}</span>
+              </div>
+              <div style="height:4px;background:#EEEBE4;border-radius:2px;overflow:hidden"><div style="height:100%;background:#1A5C3A;border-radius:2px;transition:width .5s cubic-bezier(.2,.7,.2,1);width:{{ progress }}%"></div></div>
+            </div>
+            <div style="padding:28px clamp(20px,3vw,36px) 32px;display:flex;flex-direction:column;gap:28px">
+
+              <sc-if value="{{ isS1 }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:28px;animation:dacsUp .45s cubic-bezier(.2,.7,.2,1) both">
+                  <div style="display:flex;flex-direction:column;gap:12px">
+                    <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:26px;font-weight:600">How would you like to meet?</h3>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px">
+                      <sc-for list="{{ meetings }}" as="o" hint-placeholder-count="3">
+                        <button onClick="{{ o.pick }}" style="cursor:pointer;text-align:left;padding:18px;border-radius:8px;display:flex;flex-direction:column;gap:10px;transition:all .2s;border:1.5px solid {{ o.bd }};background:{{ o.bg }}" style-hover="border-color:#1A5C3A">
+                          <span style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:{{ o.iconBg }};color:{{ o.iconFg }}">{{ o.icon }}</span>
+                          <span style="font-size:16px;font-weight:700;color:#1C1C1E">{{ o.label }}</span>
+                          <span style="font-size:14px;color:#6C6C70;line-height:1.4">{{ o.sub }}</span>
+                        </button>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:12px">
+                    <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:22px;font-weight:600">Service Required *</h3>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px">
+                      <sc-for list="{{ serviceChips }}" as="o" hint-placeholder-count="8">
+                        <button onClick="{{ o.pick }}" style="cursor:pointer;padding:11px 16px;border-radius:999px;font-size:14px;font-weight:600;transition:all .2s;border:1.5px solid {{ o.bd }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</button>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ isS2 }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:26px;animation:dacsUp .45s cubic-bezier(.2,.7,.2,1) both">
+                  <div style="display:flex;flex-direction:column;gap:12px">
+                    <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:22px;font-weight:600">Property type *</h3>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px">
+                      <sc-for list="{{ properties }}" as="o" hint-placeholder-count="4">
+                        <button onClick="{{ o.pick }}" style="cursor:pointer;padding:11px 16px;border-radius:999px;font-size:14px;font-weight:600;transition:all .2s;border:1.5px solid {{ o.bd }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</button>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:12px">
+                    <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:22px;font-weight:600">Estimated budget *</h3>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">
+                      <sc-for list="{{ budgets }}" as="o" hint-placeholder-count="6">
+                        <button onClick="{{ o.pick }}" style="cursor:pointer;padding:14px 12px;border-radius:8px;font-size:15px;font-weight:600;transition:all .2s;border:1.5px solid {{ o.bd }};background:{{ o.bg }};color:{{ o.fg }}">{{ o.label }}</button>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:10px">
+                    <label style="display:flex;flex-direction:column;gap:8px;font-family:'Playfair Display',serif;font-size:22px;font-weight:600">Property location *
+                      <input type="text" value="{{ bk.location }}" onChange="{{ setLocation }}" placeholder="City / barangay, e.g. Quezon City" style="font-family:'Barlow',sans-serif;font-size:16px;font-weight:400;padding:15px 16px;border:1.5px solid #DEDAD0;border-radius:8px;outline:none;color:#1C1C1E" style-focus="border-color:#1A5C3A">
+                    </label>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                      <sc-for list="{{ locChips }}" as="c" hint-placeholder-count="6">
+                        <button onClick="{{ c.pick }}" style="cursor:pointer;padding:7px 12px;border-radius:999px;font-size:13px;font-weight:600;border:1px solid #E5E5E5;background:#F5F3EE;color:#3A3A3C" style-hover="border-color:#1A5C3A;color:#1A5C3A">{{ c.label }}</button>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <label style="display:flex;flex-direction:column;gap:8px;font-family:'Playfair Display',serif;font-size:22px;font-weight:600">Project Details (Optional)
+                    <textarea rows="4" value="{{ bk.details }}" onChange="{{ setDetails }}" placeholder="Tell us about your project..." style="font-family:'Barlow',sans-serif;font-size:16px;font-weight:400;padding:15px 16px;border:1.5px solid #DEDAD0;border-radius:8px;outline:none;resize:vertical;color:#1C1C1E" style-focus="border-color:#1A5C3A"></textarea>
+                  </label>
+                  <div style="display:flex;flex-direction:column;gap:12px">
+                    <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:22px;font-weight:600">Photos or floor plans <span style="font-family:'Barlow',sans-serif;font-size:15px;font-weight:500;color:#6C6C70">(Optional)</span></h3>
+                    <label onDragOver="{{ onDragOver }}" onDragLeave="{{ onDragLeave }}" onDrop="{{ onDrop }}" style="cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:28px;border-radius:8px;text-align:center;transition:all .2s;border:1.5px dashed {{ dropBd }};background:{{ dropBg }}">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1A5C3A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                      <span style="font-size:15px;font-weight:600;color:#1C1C1E">Drag files here or <span style="color:#1A5C3A;text-decoration:underline">browse</span></span>
+                      <span style="font-size:13px;color:#6C6C70">JPG, PNG or PDF · up to 10 files</span>
+                      <input type="file" multiple="multiple" accept="image/*,.pdf" onChange="{{ onFiles }}" style="display:none">
+                    </label>
+                    <sc-if value="{{ hasFiles }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px">
+                        <sc-for list="{{ files }}" as="fl" hint-placeholder-count="2">
+                          <div style="position:relative;display:flex;flex-direction:column;gap:6px;animation:dacsPop .35s ease both">
+                            <div style="aspect-ratio:1/1;border-radius:6px;overflow:hidden;background:#F5F3EE;display:flex;align-items:center;justify-content:center;border:1px solid #E5E5E5">
+                              <sc-if value="{{ fl.isImg }}" hint-placeholder-val="{{ true }}"><img src="{{ fl.url }}" alt="{{ fl.name }}" style="width:100%;height:100%;object-fit:cover"></sc-if>
+                              <sc-if value="{{ fl.isDoc }}" hint-placeholder-val="{{ false }}"><span style="font-size:13px;font-weight:700;color:#1A5C3A">PDF</span></sc-if>
+                            </div>
+                            <span style="font-size:12px;color:#3A3A3C;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ fl.name }}</span>
+                            <button onClick="{{ fl.remove }}" aria-label="Remove file" style="position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;border:0;background:rgba(15,19,17,0.8);color:#FFFFFF;cursor:pointer;font-size:14px">×</button>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ isS3 }}" hint-placeholder-val="{{ false }}">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:28px;animation:dacsUp .45s cubic-bezier(.2,.7,.2,1) both">
+                  <div style="display:flex;flex-direction:column;gap:14px">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                      <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:22px;font-weight:600">{{ calTitle }}</h3>
+                      <div style="display:flex;gap:6px">
+                        <button onClick="{{ calPrev }}" aria-label="Previous month" style="width:40px;height:40px;border-radius:50%;border:1px solid #E5E5E5;background:#FFFFFF;cursor:pointer;color:{{ calPrevFg }}">‹</button>
+                        <button onClick="{{ calNext }}" aria-label="Next month" style="width:40px;height:40px;border-radius:50%;border:1px solid #E5E5E5;background:#FFFFFF;cursor:pointer;color:{{ calNextFg }}">›</button>
+                      </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;text-align:center">
+                      <sc-for list="{{ dows }}" as="d" hint-placeholder-count="7"><span style="font-size:12px;font-weight:700;color:#6C6C70;padding:6px 0;text-transform:uppercase;letter-spacing:1px">{{ d }}</span></sc-for>
+                      <sc-for list="{{ calCells }}" as="c" hint-placeholder-count="35">
+                        <button onClick="{{ c.pick }}" disabled="{{ c.disabled }}" style="aspect-ratio:1/1;border-radius:50%;font-size:15px;font-weight:600;transition:all .2s;cursor:{{ c.cursor }};border:1.5px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }};visibility:{{ c.vis }}">{{ c.label }}</button>
+                      </sc-for>
+                    </div>
+                    <span style="font-size:13px;color:#6C6C70">Monday to Saturday. Sundays unavailable.</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:14px">
+                    <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:22px;font-weight:600">Preferred time</h3>
+                    <span style="font-size:15px;color:#3A3A3C">{{ dateLong }}</span>
+                    <div style="display:flex;flex-direction:column;gap:8px">
+                      <sc-for list="{{ times }}" as="t" hint-placeholder-count="5">
+                        <button onClick="{{ t.pick }}" style="cursor:pointer;padding:14px 16px;border-radius:8px;font-size:15px;font-weight:600;text-align:left;display:flex;justify-content:space-between;transition:all .2s;border:1.5px solid {{ t.bd }};background:{{ t.bg }};color:{{ t.fg }}">{{ t.label }}<span>{{ t.check }}</span></button>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ isS4 }}" hint-placeholder-val="{{ false }}">
+                <div style="display:flex;flex-direction:column;gap:18px;animation:dacsUp .45s cubic-bezier(.2,.7,.2,1) both">
+                  <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:26px;font-weight:600">How can we reach you?</h3>
+                  <label style="display:flex;flex-direction:column;gap:8px;font-size:14px;font-weight:600">Full Name *
+                    <input type="text" value="{{ bk.name }}" onChange="{{ setName }}" placeholder="Enter your full name" style="font-size:16px;font-weight:400;padding:15px 16px;border:1.5px solid {{ errName }};border-radius:8px;outline:none;color:#1C1C1E" style-focus="border-color:#1A5C3A">
+                  </label>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:16px">
+                    <label style="display:flex;flex-direction:column;gap:8px;font-size:14px;font-weight:600">Email Address *
+                      <input type="email" value="{{ bk.email }}" onChange="{{ setEmail }}" placeholder="your.email@example.com" style="font-size:16px;font-weight:400;padding:15px 16px;border:1.5px solid {{ errEmail }};border-radius:8px;outline:none;color:#1C1C1E" style-focus="border-color:#1A5C3A">
+                    </label>
+                    <label style="display:flex;flex-direction:column;gap:8px;font-size:14px;font-weight:600">Contact Number *
+                      <input type="tel" value="{{ bk.phone }}" onChange="{{ setPhone }}" placeholder="+63 XXX XXX XXXX" style="font-size:16px;font-weight:400;padding:15px 16px;border:1.5px solid {{ errPhone }};border-radius:8px;outline:none;color:#1C1C1E" style-focus="border-color:#1A5C3A">
+                    </label>
+                  </div>
+                  <span style="font-size:13px;color:#6C6C70;line-height:1.5">By submitting, you agree to be contacted by DAC's Building Design Services about this request.</span>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ hasError }}" hint-placeholder-val="{{ false }}">
+                <span style="display:flex;gap:8px;align-items:center;font-size:14px;font-weight:600;color:#B42318;animation:dacsIn .2s ease both">⚠ {{ error }}</span>
+              </sc-if>
+              <div style="display:flex;align-items:center;gap:12px;padding-top:20px;border-top:1px solid #EEEBE4">
+                <sc-if value="{{ canBack }}" hint-placeholder-val="{{ false }}">
+                  <button onClick="{{ back }}" style="cursor:pointer;background:none;border:0;font-size:15px;font-weight:600;color:#3A3A3C;padding:14px 4px">← Back</button>
+                </sc-if>
+                <span style="flex:1"></span>
+                <button data-magnetic="1" onClick="{{ next }}" style="cursor:pointer;border:0;background:#1A5C3A;color:#FFFFFF;font-size:15px;font-weight:700;padding:16px 28px;border-radius:999px;white-space:nowrap" style-hover="background:#134428">{{ nextLabel }}</button>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ done }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:clamp(32px,5vw,56px);display:flex;flex-direction:column;gap:22px">
+              <span style="width:72px;height:72px;border-radius:50%;background:#1A5C3A;color:#FFFFFF;display:flex;align-items:center;justify-content:center;animation:dacsPop .6s cubic-bezier(.2,.7,.2,1) both"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+              <div style="display:flex;flex-direction:column;gap:10px;animation:dacsUp .5s .15s cubic-bezier(.2,.7,.2,1) both">
+                <span style="font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#1A5C3A">Reference {{ refCode }}</span>
+                <h3 style="margin:0;font-family:'Playfair Display',serif;font-size:clamp(28px,3vw,38px);font-weight:600">Thank you, {{ firstName }}. Your request is in.</h3>
+                <p style="margin:0;font-size:17px;line-height:1.6;color:#3A3A3C">We'll get back to you within 24 hours at {{ bk.email }} or {{ bk.phone }} to confirm your consultation.</p>
+              </div>
+              <div style="display:flex;flex-direction:column;border-top:1px solid #EEEBE4;animation:dacsUp .5s .25s cubic-bezier(.2,.7,.2,1) both">
+                <sc-for list="{{ summaryRows }}" as="r" hint-placeholder-count="6">
+                  <div style="display:flex;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid #EEEBE4;font-size:15px"><span style="color:#6C6C70">{{ r.k }}</span><span style="font-weight:600;text-align:right">{{ r.v }}</span></div>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:10px;animation:dacsUp .5s .35s cubic-bezier(.2,.7,.2,1) both">
+                <a href="https://m.me/61557923249219" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;background:#1A5C3A;color:#FFFFFF;font-weight:600;font-size:15px;padding:14px 22px;border-radius:999px" style-hover="background:#134428;color:#FFFFFF">Message us on Messenger</a>
+                <button onClick="{{ resetBooking }}" style="cursor:pointer;background:none;border:1px solid #DEDAD0;color:#1C1C1E;font-weight:600;font-size:15px;padding:14px 22px;border-radius:999px" style-hover="border-color:#1A5C3A">Book another</button>
+              </div>
+            </div>
+          </sc-if>
+        </div>
+
+        <aside style="position:sticky;top:96px;display:flex;flex-direction:column;gap:16px">
+          <div style="background:#0F1311;color:#FFFFFF;border-radius:8px;padding:26px;display:flex;flex-direction:column;gap:16px">
+            <span style="font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#80EF80">Your request</span>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ summaryRows }}" as="r" hint-placeholder-count="6">
+                <div style="display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.1);font-size:14px"><span style="color:#A9B5AD">{{ r.k }}</span><span style="font-weight:600;text-align:right;color:{{ r.fg }}">{{ r.v }}</span></div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="background:#FFFFFF;border-radius:8px;padding:22px;display:flex;flex-direction:column;gap:12px">
+            <span style="font-size:15px;font-weight:700">Prefer to talk now?</span>
+            <a href="tel:+639924594334" style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:8px;border:1px solid #E5E5E5;color:#1C1C1E" style-hover="border-color:#1A5C3A;color:#1C1C1E">
+              <span style="width:40px;height:40px;border-radius:50%;background:#F5F3EE;color:#1A5C3A;display:flex;align-items:center;justify-content:center;flex:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg></span>
+              <span style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#6C6C70">Call us</span><span style="font-size:15px;font-weight:700">+63 992 459 4334</span></span>
+            </a>
+            <a href="https://m.me/61557923249219" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:8px;border:1px solid #E5E5E5;color:#1C1C1E" style-hover="border-color:#1A5C3A;color:#1C1C1E">
+              <span style="width:40px;height:40px;border-radius:50%;background:#F5F3EE;color:#1A5C3A;display:flex;align-items:center;justify-content:center;flex:none"><svg width="18" height="18" viewBox="0 0 36 36" fill="currentColor"><path d="M18 2C9.163 2 2 8.710 2 17c0 4.556 2.013 8.641 5.218 11.487V33l4.868-2.676A17.232 17.232 0 0018 32c8.837 0 16-6.710 16-15S26.837 2 18 2zm1.662 20.188l-4.115-4.386-8.028 4.386 8.831-9.374 4.218 4.386 7.977-4.386-8.883 9.374z"></path></svg></span>
+              <span style="display:flex;flex-direction:column;gap:1px"><span style="font-size:13px;color:#6C6C70">Chat on Messenger</span><span style="font-size:15px;font-weight:700">Usually replies within the day</span></span>
+            </a>
+            <a href="mailto:dacsdesignservices@gmail.com" style="font-size:14px;font-weight:600;padding:4px 2px;overflow-wrap:anywhere">dacsdesignservices@gmail.com</a>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <section data-screen-label="Book · FAQ" style="background:#FFFFFF">
+    <div style="max-width:1320px;margin:0 auto;padding:clamp(72px,9vw,120px) clamp(18px,3vw,32px);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:48px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:16px">
+        <span data-reveal="1" style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#1A5C3A">Got Questions?</span>
+        <h2 data-reveal="1" data-delay="80" style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(34px,4vw,52px);line-height:1.1">Frequently Asked Questions</h2>
+        <p data-reveal="1" data-delay="140" style="margin:0;font-size:17px;line-height:1.65;color:#3A3A3C">Everything you need to know before getting started.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;border-top:1.5px solid #1C1C1E">
+        <sc-for list="{{ faqs }}" as="q" hint-placeholder-count="6">
+          <div data-reveal="1" style="border-bottom:1px solid #E5E5E5">
+            <button onClick="{{ q.toggle }}" style="all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:24px 4px;font-size:18px;font-weight:600;color:#1C1C1E">
+              <span>{{ q.q }}</span>
+              <span style="flex:none;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:300;transition:all .35s;background:{{ q.bg }};color:{{ q.fg }};transform:rotate({{ q.rot }}deg)">+</span>
+            </button>
+            <div style="display:grid;transition:grid-template-rows .4s cubic-bezier(.2,.7,.2,1);grid-template-rows:{{ q.rows }}">
+              <div style="overflow:hidden"><p style="margin:0;padding:0 56px 24px 4px;font-size:16px;line-height:1.7;color:#3A3A3C">{{ q.a }}</p></div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </section>
+</sc-if>
+
+<!-- ============ CTA (not on Book) ============ -->
+<sc-if value="{{ showCta }}" hint-placeholder-val="{{ true }}">
+  <section data-screen-label="CTA" style="position:relative;background:#134428;color:#FFFFFF;overflow:hidden">
+    <div data-parallax="0.18" style="position:absolute;left:0;right:0;top:-20%;height:140%;opacity:0.18"><img src="assets/p14.png" alt="" style="width:100%;height:100%;object-fit:cover"></div>
+    <div style="position:relative;max-width:1320px;margin:0 auto;padding:clamp(80px,10vw,130px) clamp(18px,3vw,32px);display:flex;flex-direction:column;align-items:flex-start;gap:28px">
+      <h2 data-reveal="1" style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(40px,5.6vw,80px);line-height:1.02;max-width:900px;letter-spacing:-1px">Ready to Start Your Project?</h2>
+      <p data-reveal="1" data-delay="100" style="margin:0;font-size:18px;line-height:1.65;color:#D6E3DA;max-width:560px">Your first consultation with us is completely free and no-obligation.</p>
+      <div data-reveal="1" data-delay="180" style="display:flex;flex-wrap:wrap;gap:12px">
+        <button data-magnetic="1" onClick="{{ go.book }}" style="cursor:pointer;border:0;background:#FFFFFF;color:#134428;font-weight:700;font-size:16px;padding:18px 30px;border-radius:999px;white-space:nowrap" style-hover="background:#80EF80">Book a Free Consultation</button>
+        <a data-magnetic="1" href="tel:+639924594334" style="color:#FFFFFF;font-weight:600;font-size:16px;padding:18px 30px;border-radius:999px;border:1px solid rgba(255,255,255,0.45);white-space:nowrap" style-hover="background:rgba(255,255,255,0.1);color:#FFFFFF">Call +63 992 459 4334</a>
+      </div>
+    </div>
+  </section>
+</sc-if>
+
+</main>
+
+<footer style="background:#0F1311;color:#C9D3CC">
+  <div style="max-width:1320px;margin:0 auto;padding:72px clamp(18px,3vw,32px) 32px;display:flex;flex-direction:column;gap:56px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:40px">
+      <div style="display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <img src="assets/logo.png" alt="DAC's logo" style="height:48px;width:48px;object-fit:contain;filter:invert(1);mix-blend-mode:screen">
+          <span style="display:flex;flex-direction:column;gap:4px"><span style="font-family:'Playfair Display',serif;font-size:19px;font-weight:700;letter-spacing:2.5px;color:#FFFFFF;line-height:1;white-space:nowrap">DAC'S</span><span style="font-size:9.5px;font-weight:600;letter-spacing:2.2px;line-height:1;white-space:nowrap">BUILDING DESIGN SERVICES</span></span>
+        </div>
+        <p style="margin:0;font-size:15px;line-height:1.6;max-width:300px">A team of engineers, architects, and finishing experts combining strength, utility, and aesthetic appeal.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <span style="font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#FFFFFF;margin-bottom:6px">Explore</span>
+        <sc-for list="{{ navItemsMobile }}" as="n" hint-placeholder-count="5">
+          <button onClick="{{ n.go }}" style="all:unset;cursor:pointer;font-size:15px;color:#C9D3CC" style-hover="color:#80EF80">{{ n.label }}</button>
+        </sc-for>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <span style="font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#FFFFFF;margin-bottom:6px">Contact</span>
+        <span style="font-size:15px">Quezon City, National Capital Region, PH</span>
+        <a href="tel:+639924594334" style="font-size:15px;color:#C9D3CC" style-hover="color:#80EF80">+63 992 459 4334</a>
+        <a href="mailto:dacsdesignservices@gmail.com" style="font-size:15px;color:#C9D3CC;overflow-wrap:anywhere" style-hover="color:#80EF80">dacsdesignservices@gmail.com</a>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <a href="https://www.facebook.com/profile.php?id=61557923249219" target="_blank" rel="noopener noreferrer" title="Facebook" style="width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;color:#FFFFFF" style-hover="border-color:#80EF80;color:#80EF80"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"></path></svg></a>
+          <a href="https://m.me/61557923249219" target="_blank" rel="noopener noreferrer" title="Messenger" style="width:44px;height:44px;border-radius:50%;border:1px solid rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;color:#FFFFFF" style-hover="border-color:#80EF80;color:#80EF80"><svg width="18" height="18" viewBox="0 0 36 36" fill="currentColor"><path d="M18 2C9.163 2 2 8.710 2 17c0 4.556 2.013 8.641 5.218 11.487V33l4.868-2.676A17.232 17.232 0 0018 32c8.837 0 16-6.710 16-15S26.837 2 18 2zm1.662 20.188l-4.115-4.386-8.028 4.386 8.831-9.374 4.218 4.386 7.977-4.386-8.883 9.374z"></path></svg></a>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <span style="font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#FFFFFF;margin-bottom:6px">Client Login</span>
+        <a href="client.html" style="font-size:15px;color:#C9D3CC" style-hover="color:#80EF80">Design Client Portal</a>
+        <a href="Client Management.html" style="font-size:15px;color:#C9D3CC" style-hover="color:#80EF80">Construction Client Portal</a>
+        <a href="Dacs Partnership.html" style="font-size:15px;color:#C9D3CC" style-hover="color:#80EF80">Partner Portal</a>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;border-top:1px solid rgba(255,255,255,0.1);padding-top:24px;font-size:14px;color:#8A968E">
+      <span>© 2026 DAC's Building Design Services. All rights reserved.</span>
+      <button onClick="{{ toTop }}" style="all:unset;cursor:pointer;color:#C9D3CC" style-hover="color:#80EF80">Back to top ↑</button>
+    </div>
+  </div>
+</footer>
+
+<a href="https://m.me/61557923249219" target="_blank" rel="noopener noreferrer" title="Chat with us on Messenger" data-magnetic="1" style="position:fixed;right:20px;bottom:20px;z-index:50;width:58px;height:58px;border-radius:50%;background:#1A5C3A;color:#FFFFFF;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(15,19,17,0.35)" style-hover="background:#267A4E;color:#FFFFFF">
+  <svg width="26" height="26" viewBox="0 0 36 36" fill="currentColor"><path d="M18 2C9.163 2 2 8.710 2 17c0 4.556 2.013 8.641 5.218 11.487V33l4.868-2.676A17.232 17.232 0 0018 32c8.837 0 16-6.710 16-15S26.837 2 18 2zm1.662 20.188l-4.115-4.386-8.028 4.386 8.831-9.374 4.218 4.386 7.977-4.386-8.883 9.374z"></path></svg>
+</a>
+
+<!-- ============ CASE VIEW ============ -->
+<sc-if value="{{ caseOpen }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;z-index:80;background:#FFFFFF;overflow-y:auto;animation:dacsSlideUp .6s cubic-bezier(.7,0,.2,1) both">
+    <div style="position:sticky;top:0;z-index:2;background:rgba(255,255,255,0.95);backdrop-filter:blur(10px);border-bottom:1px solid #E5E5E5">
+      <div style="max-width:1320px;margin:0 auto;padding:14px clamp(18px,3vw,32px);display:flex;justify-content:space-between;align-items:center;gap:16px">
+        <button onClick="{{ closeCase }}" style="cursor:pointer;background:none;border:0;font-size:15px;font-weight:600;color:#1C1C1E;display:flex;align-items:center;gap:8px;padding:10px 0">← All projects</button>
+        <span style="font-size:14px;color:#6C6C70">{{ caseNum }} / 07</span>
+        <div style="display:flex;gap:8px">
+          <button onClick="{{ casePrev }}" aria-label="Previous project" style="width:44px;height:44px;border-radius:50%;border:1px solid #E5E5E5;background:#FFFFFF;cursor:pointer;font-size:18px">‹</button>
+          <button onClick="{{ caseNext }}" aria-label="Next project" style="width:44px;height:44px;border-radius:50%;border:1px solid #E5E5E5;background:#FFFFFF;cursor:pointer;font-size:18px">›</button>
+        </div>
+      </div>
+    </div>
+    <div style="max-width:1320px;margin:0 auto;padding:48px clamp(18px,3vw,32px) 80px;display:flex;flex-direction:column;gap:36px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:24px 48px;align-items:end;animation:dacsUp .6s .2s cubic-bezier(.2,.7,.2,1) both">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <span style="font-size:13px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:#1A5C3A">{{ cs.type }} · {{ cs.scope }}</span>
+          <h2 style="margin:0;font-family:'Playfair Display',serif;font-weight:500;font-size:clamp(38px,5vw,72px);line-height:1.02">{{ cs.title }}</h2>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;border-top:1px solid #E5E5E5;padding-top:16px">
+          <span style="display:flex;flex-direction:column;gap:4px"><span style="font-size:13px;color:#6C6C70">Location</span><span style="font-size:16px;font-weight:600">{{ cs.city }}</span></span>
+          <span style="display:flex;flex-direction:column;gap:4px"><span style="font-size:13px;color:#6C6C70">Type</span><span style="font-size:16px;font-weight:600">{{ cs.type }}</span></span>
+          <span style="display:flex;flex-direction:column;gap:4px"><span style="font-size:13px;color:#6C6C70">Scope</span><span style="font-size:16px;font-weight:600">{{ cs.scope }}</span></span>
+        </div>
+      </div>
+      <div onPointerDown="{{ baCase.down }}" onPointerMove="{{ baCase.move }}" onPointerUp="{{ baCase.up }}" onPointerCancel="{{ baCase.up }}" style="position:relative;aspect-ratio:16/10;max-height:80vh;width:100%;border-radius:6px;overflow:hidden;background:#1C1C1E;cursor:ew-resize;touch-action:pan-y;user-select:none;animation:dacsUp .6s .3s cubic-bezier(.2,.7,.2,1) both">
+        <img src="{{ cs.bImg }}" alt="{{ cs.bLabel }}" draggable="false" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none">
+        <img src="{{ cs.aImg }}" alt="{{ cs.aLabel }}" draggable="false" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none;background:#1C1C1E;clip-path:inset(0 {{ baCase.inv }}% 0 0)">
+        <span style="position:absolute;top:18px;left:18px;background:rgba(15,19,17,0.85);color:#FFFFFF;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:8px 12px;border-radius:999px">{{ cs.aLabel }}</span>
+        <span style="position:absolute;top:18px;right:18px;background:#1A5C3A;color:#FFFFFF;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:8px 12px;border-radius:999px">{{ cs.bLabel }}</span>
+        <div style="position:absolute;top:0;bottom:0;width:2px;background:#FFFFFF;left:{{ baCase.pos }}%;transform:translateX(-1px);pointer-events:none">
+          <span style="position:absolute;top:50%;left:50%;width:56px;height:56px;margin:-28px 0 0 -28px;border-radius:50%;background:#FFFFFF;color:#134428;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(0,0,0,0.3)"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 3 12 9 18"></polyline><polyline points="15 6 21 12 15 18"></polyline></svg></span>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:20px">
+        <div style="background:#F5F3EE;border-radius:6px;padding:28px;display:flex;flex-direction:column;gap:10px"><span style="font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#6C6C70">{{ cs.aLabel }}</span><p style="margin:0;font-size:17px;line-height:1.65;color:#1C1C1E">{{ cs.aDesc }}</p></div>
+        <div style="background:#134428;color:#FFFFFF;border-radius:6px;padding:28px;display:flex;flex-direction:column;gap:10px"><span style="font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#80EF80">{{ cs.bLabel }}</span><p style="margin:0;font-size:17px;line-height:1.65">{{ cs.bDesc }}</p></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:20px;border-top:1px solid #E5E5E5;padding-top:28px">
+        <span style="font-family:'Playfair Display',serif;font-size:clamp(22px,2.4vw,30px);font-weight:500">Planning something similar?</span>
+        <button data-magnetic="1" onClick="{{ caseBook }}" style="cursor:pointer;border:0;background:#1A5C3A;color:#FFFFFF;font-weight:700;font-size:15px;padding:16px 28px;border-radius:999px" style-hover="background:#134428">Start a similar project →</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<!-- ============ FEEDBACK MODAL ============ -->
+<sc-if value="{{ fbOpen }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closeFb }}" style="position:fixed;inset:0;z-index:90;background:rgba(15,19,17,0.7);display:flex;align-items:center;justify-content:center;padding:20px;animation:dacsIn .2s ease both">
+    <div onClick="{{ stop }}" style="background:#FFFFFF;border-radius:10px;width:100%;max-width:520px;max-height:calc(100vh - 40px);overflow:auto;padding:32px;display:flex;flex-direction:column;gap:18px;animation:dacsUp .35s cubic-bezier(.2,.7,.2,1) both">
+      <div style="display:flex;justify-content:space-between;align-items:center"><h3 style="margin:0;font-family:'Playfair Display',serif;font-size:26px;font-weight:600">Share Your Feedback</h3><button onClick="{{ closeFb }}" aria-label="Close" style="width:40px;height:40px;border-radius:50%;border:1px solid #E5E5E5;background:#FFFFFF;cursor:pointer;font-size:20px">×</button></div>
+      <sc-if value="{{ fbNotSent }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:14px;font-weight:600">Rating *</span>
+            <div style="display:flex;gap:4px">
+              <sc-for list="{{ stars }}" as="st" hint-placeholder-count="5"><button onClick="{{ st.pick }}" aria-label="Star" style="border:0;background:none;cursor:pointer;font-size:32px;padding:0 2px;transition:transform .15s;color:{{ st.fg }}" style-hover="transform:scale(1.15)">★</button></sc-for>
+            </div>
+          </div>
+          <label style="display:flex;flex-direction:column;gap:8px;font-size:14px;font-weight:600">Your Name *<input type="text" value="{{ fb.name }}" onChange="{{ fbName }}" placeholder="Enter your name" style="font-size:16px;font-weight:400;padding:13px 14px;border:1.5px solid #DEDAD0;border-radius:8px;outline:none" style-focus="border-color:#1A5C3A"></label>
+          <label style="display:flex;flex-direction:column;gap:8px;font-size:14px;font-weight:600">Location *<input type="text" value="{{ fb.loc }}" onChange="{{ fbLoc }}" placeholder="e.g., Quezon City" style="font-size:16px;font-weight:400;padding:13px 14px;border:1.5px solid #DEDAD0;border-radius:8px;outline:none" style-focus="border-color:#1A5C3A"></label>
+          <label style="display:flex;flex-direction:column;gap:8px;font-size:14px;font-weight:600">Your Feedback *<textarea rows="4" value="{{ fb.msg }}" onChange="{{ fbMsg }}" placeholder="Share your experience with us..." style="font-size:16px;font-weight:400;padding:13px 14px;border:1.5px solid #DEDAD0;border-radius:8px;outline:none;resize:vertical" style-focus="border-color:#1A5C3A"></textarea></label>
+          <sc-if value="{{ fbHasErr }}" hint-placeholder-val="{{ false }}"><span style="font-size:14px;font-weight:600;color:#B42318">Please add a rating and fill in all fields.</span></sc-if>
+          <div style="display:flex;justify-content:flex-end;gap:10px">
+            <button onClick="{{ closeFb }}" style="cursor:pointer;background:none;border:1px solid #DEDAD0;border-radius:999px;padding:13px 20px;font-size:15px;font-weight:600">Cancel</button>
+            <button onClick="{{ fbSubmit }}" style="cursor:pointer;border:0;background:#1A5C3A;color:#FFFFFF;border-radius:999px;padding:13px 22px;font-size:15px;font-weight:700" style-hover="background:#134428">Submit Feedback</button>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ fbSent }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:12px;align-items:flex-start;animation:dacsUp .35s ease both">
+          <span style="width:56px;height:56px;border-radius:50%;background:#1A5C3A;color:#FFFFFF;display:flex;align-items:center;justify-content:center;animation:dacsPop .5s ease both"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+          <p style="margin:0;font-size:17px;line-height:1.6;color:#3A3A3C">Thank you for your feedback! It will appear on our site once reviewed.</p>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</sc-if>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const IMG = k => 'assets/' + k + '.png';
+const G = '#1A5C3A';
+const PAGES = ['home','services','projects','studio','book'];
+const NAV_LABELS = { home:'Home', services:'Services', projects:'Projects', studio:'Studio', book:'Book' };
+
+const SERVICES = [
+  { id:'vertical-construction', category:'Construction', title:'Vertical Construction', short:'Our core service: multi-storey building construction from structure to finishing.', description:'Our main service. We build multi-storey residential and commercial structures, handling structural works, formworks, partitions and finishing under one team.', features:['Carpentry Works','Wall Partitions','Painting Works','Glass & Aluminum Installation','Structural Works','Form Works'], images:[['p11','Mallari Bldg. — Proposal'],['p13','AUM Bldg. — Proposal']] },
+  { id:'interior-design', category:'Design', title:'Interior Design', short:'Creating functional and beautiful interior spaces tailored to your lifestyle and preferences.', description:'We craft interior spaces that balance aesthetics with function — transforming bare units into fully personalized living environments. From concept boards to construction-ready design plans, our interior designers handle every detail.', features:['Space planning & layout optimization','Material & finish selection','Furniture & lighting design','Concept to turnover coordination'], images:[['p1','Avida Towers Vita — Proposal'],['p5','San Lorenzo Place — Proposal'],['p9','Health Works — Proposal']] },
+  { id:'architectural-design', category:'Design', title:'Architectural Design', short:'Comprehensive architectural planning and design solutions that bring your vision to life.', description:'Our architects deliver comprehensive building plans that meet local codes, reflect your design vision, and serve as the precise blueprint for your construction team. We specialize in both residential and commercial projects.', features:['Floor plan & elevation design','Permit-ready documentation','Residential & commercial projects','3D architectural visualization'], images:[['p11','Mallari Bldg. — Proposal'],['p13','AUM Bldg. — Proposal']] },
+  { id:'engineering-design', category:'Design', title:'Engineering Design', short:'Structural and engineering solutions ensuring safety, efficiency, and long-term durability.', description:'Structural integrity is non-negotiable. Our civil and structural engineers design systems that are safe, efficient, and built to last — coordinating with architects to ensure every design is buildable and code-compliant.', features:['Structural analysis & design','Electrical & mechanical systems','Foundation & load calculations','Code compliance & safety checks'], images:[['p13','AUM Bldg. — Proposal'],['p11','Mallari Bldg. — Proposal']] },
+  { id:'interior-renovation', category:'Construction', title:'Interior Renovation', short:'Transforming existing spaces with quality craftsmanship, attention to detail, and commitment to excellence.', description:"We bring new life to existing spaces through precision renovation work. Whether it's a condo unit, clinic, or commercial space, our team handles the full scope — from demolition to finishing — with minimal disruption.", features:['Full & partial renovation','Condo & residential units','Commercial space fit-outs','Clean, on-schedule delivery'], images:[['p5','San Lorenzo Place — Proposal'],['p1','Avida Towers Vita — Proposal'],['p9','Health Works — Proposal']] },
+  { id:'residential-construction', category:'Construction', title:'Residential Construction', short:'Building dream homes from foundation to finish with expert planning and quality construction throughout.', description:'From single-family homes to multi-story residential buildings, we manage the full build — from groundbreaking to final handover. We use quality materials, trusted subcontractors, and tight project management to deliver on time.', features:['Single & multi-family homes','Foundation to finishing work','Regular progress updates','On-time project delivery'], images:[['p11','Mallari Bldg. — Proposal'],['p1','Avida Towers Vita — Proposal'],['p5','San Lorenzo Place — Proposal']] },
+  { id:'ground-up-construction', category:'Construction', title:'Ground-Up Construction', short:'Complete construction services from site preparation to final touches, delivering fully finished spaces ready for occupancy.', description:'We handle complete construction from bare land to fully built structure. Our team coordinates every phase — site preparation, structural work, MEP systems, and interior finishing — under one roof for seamless execution.', features:['Site preparation & excavation','Structural framing & concrete work','MEP systems installation','Complete interior & exterior finish'], images:[['p13','AUM Bldg. — Proposal'],['p11','Mallari Bldg. — Proposal']] },
+  { id:'commercial-renovation', category:'Construction', title:'Commercial Renovation', short:'Large-scale commercial projects including subdivisions and townships, executed with precision planning and professional coordination.', description:'We specialize in transforming commercial spaces — offices, clinics, retail stores, and multi-use buildings. Our commercial renovation team delivers polished results that reflect your brand and serve your customers.', features:['Office & retail fit-outs','Clinic & healthcare spaces','Multi-use building renovation','Brand-aligned design execution'], images:[['p9','Health Works — Proposal'],['p13','AUM Bldg. — Proposal']] },
+  { id:'allied-services', category:'Allied', dark:true, title:'Collaborations & Allied Services', short:'Electrical and plumbing works delivered with our partner trades.', description:'Working with trusted partner trades, we deliver the electrical and plumbing systems your building needs, coordinated with our design and construction teams.', features:['Electrical Works','Plumbing Works'], images:[['p13','AUM Bldg. — Proposal'],['p11','Mallari Bldg. — Proposal']] }
+];
+const SCOPE = {
+  'vertical-construction':['Carpentry Works','Wall Partitions','Painting Works','Glass & Aluminum Installation','Structural Works','Form Works'],
+  'allied-services':['Electrical Works','Plumbing Works'],
+  'interior-design':['Space Assessment','Design Conceptualization','Space Planning','Style Guide / Mood Board','Material & Finish Selection','Furniture & Lighting Design','3D Visualization','Working Drawings'],
+  'architectural-design':['Site Analysis','Schematic Design','Floor Plans & Elevations','3D Architectural Visualization','Design Development','Permit-ready Documentation','Construction Drawings'],
+  'engineering-design':['Structural Analysis & Design','Foundation & Load Calculations','Electrical Systems Design','Mechanical Systems Design','Plumbing & Sanitary Design','Code Compliance & Safety Checks'],
+  'interior-renovation':['Site Inspection','Demolition & Hauling','Masonry Works','Ceiling & Wall Partitions','Tile & Flooring Works','Carpentry & Cabinetry','Painting Works','Final Cleaning & Turnover'],
+  'residential-construction':['Housing Projects','Civil & Architectural Works','Structural Works','Masonry Works','Roofing Works','Electrical & Plumbing Works','Finishing Works','Turnover & Handover'],
+  'ground-up-construction':['Site Preparation & Excavation','Formworks','Rebar Works','Concrete & Structural Works','MEP Systems Installation','Glass & Aluminum Installation','Exterior & Interior Finishing'],
+  'commercial-renovation':['Office Fit-outs','Retail & Storefront Works','Clinic & Healthcare Spaces','Multi-use Building Renovation','Glass & Aluminum Installation','Signage & Branding Integration','Brand-aligned Design Execution']
+};
+const PROJECTS = [
+  { title:'Avida Towers Vita', type:'Residential', scope:'Interior', city:'Quezon City', a:['p1','Proposal','Proposed studio unit interior design at Vertis North, Bagong Pag-asa, Quezon City, Metro Manila.'], b:['p2','Turnover','Completed studio unit interior design & construction at Vertis North, Bagong Pag-asa, Quezon City, Metro Manila.'] },
+  { title:'Park Triangle Residences', type:'Residential', scope:'Interior', city:'Taguig', a:['p3','Before','Existing unit condition at 32nd St. corner 11th Ave., Fort Bonifacio, Taguig — before full interior renovation.'], b:['p4','Turnover','Full luxury interior fit-out completed at 32nd St. corner 11th Ave., Fort Bonifacio, Taguig, Metro Manila.'] },
+  { title:'San Lorenzo Place', type:'Residential', scope:'Interior', city:'Makati', a:['p5','Proposal','Proposed dark-luxury interior design at Chino Roces Ave., corner Epifanio delos Santos Ave., Makati, 1223 Metro Manila.'], b:['p6','Turnover','Contemporary dark-luxury interior renovation completed at Chino Roces Ave. corner EDSA, Makati, Metro Manila.'] },
+  { title:'SMDC Grass Residence', type:'Residential', scope:'Interior', city:'Quezon City', a:['p7','Turnover','Cozy modern interior design and furnishing at Grass Residences, Nueva Viscaya, Bago Bantay, Quezon City.'], b:['p8','Detail','Interior detail views — bedroom, living area, and entertainment setup at Grass Residences, Quezon City.'] },
+  { title:'Health Works', type:'Commercial', scope:'Clinic', city:'Quezon City', a:['p9','Proposal','Proposed clinic interior design at 2F Waltermart The Junction Place, Quezon City — featuring pink fluted walls and marble reception.'], b:['p10','Turnover','Completed dental clinic interior construction at 2F Waltermart The Junction Place, Quezon City — pink fluted walls and marble accents.'] },
+  { title:'Mallari Bldg.', type:'Residential', scope:'Building', city:'Valenzuela City', a:['p11','Proposal','Proposed multi-storey residential apartment building at Maya St., Brgy. Ugong, Valenzuela City.'], b:['p12','Turnover','Completed multi-storey residential apartment building at Maya St., Brgy. Ugong, Valenzuela City.'] },
+  { title:'AUM Bldg.', type:'Commercial', scope:'Mixed-Use', city:'Iligan City', a:['p13','Proposal','Proposed mixed-use commercial building for Tom N Toms Coffee & Mayo Diagnostics at Corner Araneta St., Roxas Ave., Iligan City.'], b:['p14','Turnover','Completed mixed-use commercial building housing Tom N Toms Coffee & Mayo Diagnostics at Corner Araneta St., Roxas Ave., Iligan City.'] }
+];
+const SLIDES = [[0,'p2'],[1,'p4'],[2,'p6'],[3,'p8'],[4,'p10'],[5,'p12'],[6,'p14']].map(([i,k]) => ({ k, title: PROJECTS[i].title, loc: PROJECTS[i].city }));
+const FEATURED = [1, 2, 4, 6];
+const SPANS = [[7,'7/5'],[5,'5/5'],[5,'5/5'],[7,'7/5'],[4,'4/5'],[4,'4/5'],[4,'4/5']];
+const AREAS = [
+  { city:'Quezon City', region:'Metro Manila · Home base', n:3, q:'Quezon City, Metro Manila' },
+  { city:'Makati', region:'Metro Manila', n:1, q:'Makati, Metro Manila' },
+  { city:'Taguig', region:'Metro Manila', n:1, q:'Bonifacio Global City, Taguig' },
+  { city:'Valenzuela City', region:'Metro Manila', n:1, q:'Valenzuela City' },
+  { city:'Iligan City', region:'Lanao del Norte, Mindanao', n:1, q:'Iligan City' }
+];
+const FAQS = [
+  ['How long does a typical project take?','Project timelines vary based on scope. Interior design projects typically take 4–8 weeks, while full residential construction can take 3–6 months. We provide a detailed schedule during your consultation.'],
+  ['Is the initial consultation really free?',"Yes! Your first consultation with us is completely free and no-obligation. We'll discuss your project, understand your vision, and give you a clear picture of how we can help — before any commitment."],
+  ['Can I see the design before construction starts?','Absolutely. We provide detailed design plans, floor layouts, and visual references for your approval before any construction work begins. Your sign-off is required before we proceed.'],
+  ['Do you handle building permits?','Yes, we assist with the permit application process. Our licensed architect ensures all plans are compliant with local building codes and ordinances in the Philippines.'],
+  ['What areas do you serve?','We are based in Quezon City and primarily serve Metro Manila and nearby provinces. We have also completed projects in other regions — contact us to discuss your location.'],
+  ['How much does it cost to start?',"Costs depend on project scope, materials, and timeline. We offer solutions for a range of budgets. Book a free consultation and we'll provide a tailored quote at no cost to you."]
+];
+const TEAM = [
+  { id:'dacs-team-1', name:'Name', role:'Architect', ph:'Team photo — Architect' },
+  { id:'dacs-team-2', name:'Name', role:'Civil / Structural Engineer', ph:'Team photo — Engineer' },
+  { id:'dacs-team-3', name:'Name', role:'Interior Designer', ph:'Team photo — Interior Designer' },
+  { id:'dacs-team-4', name:'Name', role:'Finishing & Site Lead', ph:'Team photo — Site Lead' }
+];
+const svgIcon = (paths) => React.createElement('svg', { width:20, height:20, viewBox:'0 0 24 24', fill:'none', stroke:'currentColor', strokeWidth:2, strokeLinecap:'round', strokeLinejoin:'round' }, paths.map((d, i) => React.createElement(d[0], { key:i, ...d[1] })));
+const MEETINGS = [
+  { id:'office', label:'Office visit', sub:'Meet us in Quezon City', icon:[['path',{d:'M3 21h18'}],['path',{d:'M5 21V7l8-4v18'}],['path',{d:'M19 21V11l-6-4'}]] },
+  { id:'site', label:'Site visit', sub:'We visit your property', icon:[['path',{d:'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z'}],['circle',{cx:12,cy:10,r:3}]] },
+  { id:'online', label:'Online call', sub:'Video call from anywhere', icon:[['polygon',{points:'23 7 16 12 23 17 23 7'}],['rect',{x:1,y:5,width:15,height:14,rx:2}]] }
+];
+const SERVICE_OPTS = SERVICES.map(s => [s.id, s.title]).concat([['consultation','General Consultation']]);
+const PROPERTIES = ['Condominium unit','House','Apartment / multi-storey building','Commercial space'];
+const BUDGETS = ['Below ₱500K','₱500K – ₱1M','₱1M – ₱3M','₱3M – ₱10M','₱10M and above','Not sure yet'];
+const LOCS = ['Quezon City','Makati','Taguig','Pasig','Manila','Outside Metro Manila'];
+const TIMES = ['9:00 AM','10:30 AM','1:00 PM','2:30 PM','4:00 PM'];
+const EMPTY = { meeting:'', service:'', property:'', budget:'', location:'', details:'', files:[], date:'', time:'', name:'', email:'', phone:'' };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+class Component extends DCLogic {
+  state = { page:'home', slide:0, scrolled:false, menu:false, w: typeof window !== 'undefined' ? window.innerWidth : 1280,
+    feat:1, ba:{ home:50, case:50 }, filter:'All', caseIdx:-1, openSvc:null, hoverSvc:null, area:0, faq:0,
+    step:1, bk:{ ...EMPTY }, error:'', tried:false, done:false, ref:'', drag:false,
+    cal:(() => { const d = new Date(); d.setDate(d.getDate() + 1); return { y:d.getFullYear(), m:d.getMonth() }; })(),
+    fb:{ open:false, rating:0, name:'', loc:'', msg:'', sent:false, err:false } };
+
+  mainRef = React.createRef(); curtainRef = React.createRef(); heroParallaxRef = React.createRef();
+  tlRef = React.createRef(); tlFillRef = React.createRef(); previewRef = React.createRef();
+  dragging = null;
+  carRef = React.createRef(); carPaused = false;
+
+  carLoop() {
+    const el = this.carRef.current;
+    if (el && !this.carPaused && !this.reduced && this.state.caseIdx < 0) {
+      this.carX = (this.carX ?? el.scrollLeft) + 0.6;
+      const half = el.scrollWidth / 2;
+      if (this.carX >= half) this.carX -= half;
+      el.scrollLeft = this.carX;
+    } else if (el) this.carX = el.scrollLeft;
+    if (el) {
+      const vr = el.getBoundingClientRect(), cx = vr.left + vr.width / 2;
+      let best = null, bd = Infinity;
+      const items = el.querySelectorAll('[data-car-item]');
+      items.forEach(it => { const r = it.getBoundingClientRect(); const d = Math.abs(r.left + r.width / 2 - cx); if (d < bd) { bd = d; best = it; } });
+      if (best !== this.carCenter) {
+        items.forEach(it => { it.style.transform = 'scale(0.94)'; it.style.opacity = '0.92'; it.style.boxShadow = '0 8px 20px rgba(0,0,0,0.1)'; it.style.zIndex = ''; });
+        if (best) { best.style.transform = 'scale(1.12)'; best.style.opacity = '1'; best.style.boxShadow = '0 24px 54px rgba(0,0,0,0.28)'; best.style.zIndex = '2'; }
+        this.carCenter = best;
+      }
+    }
+    this.carRaf = requestAnimationFrame(() => this.carLoop());
+  }
+
+  componentDidMount() {
+    this.carRaf = requestAnimationFrame(() => this.carLoop());
+    this.reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const h = (location.hash || '').replace('#/', '');
+    if (PAGES.includes(h)) this.setState({ page:h });
+    this.timer = setInterval(() => { if (this.state.page === 'home' && this.state.caseIdx < 0) this.setState(s => ({ slide:(s.slide + 1) % SLIDES.length })); }, 6500);
+    this.io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { this.reveal(e.target); this.io.unobserve(e.target); } }), { threshold:0.12, rootMargin:'0px 0px -6% 0px' });
+    this.onScroll = () => { if (!this.raf) this.raf = requestAnimationFrame(() => { this.raf = null; this.fx(); }); };
+    this.onResize = () => this.setState({ w: window.innerWidth });
+    this.onKey = e => { if (e.key === 'Escape') this.setState(s => ({ caseIdx:-1, menu:false, fb:{ ...s.fb, open:false } })); };
+    this.onMouse = e => this.magnet(e);
+    window.addEventListener('scroll', this.onScroll, { passive:true });
+    window.addEventListener('resize', this.onResize);
+    window.addEventListener('keydown', this.onKey);
+    window.addEventListener('mousemove', this.onMouse);
+    this.setupFx(); this.fx();
+  }
+  componentDidUpdate(pp, ps) { this.setupFx(); if (ps.page !== this.state.page) this.fx(); }
+  componentWillUnmount() {
+    clearInterval(this.timer); this.io && this.io.disconnect(); cancelAnimationFrame(this.carRaf);
+    window.removeEventListener('scroll', this.onScroll); window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('keydown', this.onKey); window.removeEventListener('mousemove', this.onMouse);
+  }
+
+  setupFx() {
+    const root = this.mainRef.current; if (!root) return;
+    root.querySelectorAll('[data-reveal]:not([data-rv])').forEach(el => {
+      el.setAttribute('data-rv', '0');
+      if (this.reduced) return;
+      el.style.opacity = '0'; el.style.transform = 'translateY(32px)';
+      el.style.transition = 'opacity .9s cubic-bezier(.2,.7,.2,1), transform .9s cubic-bezier(.2,.7,.2,1)';
+      el.style.transitionDelay = (el.getAttribute('data-delay') || 0) + 'ms';
+      this.io.observe(el);
+    });
+    root.querySelectorAll('[data-count]:not([data-cv])').forEach(el => {
+      el.setAttribute('data-cv', '0'); if (this.reduced) return;
+      el.textContent = '0' + (el.getAttribute('data-suffix') || '');
+      this.io.observe(el);
+    });
+  }
+  reveal(el) {
+    if (el.hasAttribute('data-reveal')) { el.style.opacity = '1'; el.style.transform = 'none'; el.setAttribute('data-rv', '1'); }
+    el.querySelectorAll && [el, ...el.querySelectorAll('[data-count]')].forEach(c => {
+      if (!c.hasAttribute || !c.hasAttribute('data-count') || c.getAttribute('data-cv') === '1') return;
+      c.setAttribute('data-cv', '1');
+      const to = +c.getAttribute('data-count'), suf = c.getAttribute('data-suffix') || '', t0 = performance.now();
+      const tick = t => { const p = clamp((t - t0) / 1600, 0, 1); c.textContent = Math.round(to * (1 - Math.pow(1 - p, 3))) + suf; if (p < 1) requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    });
+  }
+  fx() {
+    const y = window.scrollY, vh = window.innerHeight;
+    const sc = y > 40; if (sc !== this.state.scrolled) this.setState({ scrolled:sc });
+    if (this.reduced) return;
+    const hp = this.heroParallaxRef.current; if (hp) hp.style.transform = 'translate3d(0,' + (y * 0.35) + 'px,0)';
+    const root = this.mainRef.current;
+    if (root) root.querySelectorAll('[data-parallax]').forEach(el => {
+      const r = el.parentElement.getBoundingClientRect(); const f = +el.getAttribute('data-parallax');
+      el.style.transform = 'translate3d(0,' + ((r.top + r.height / 2 - vh / 2) * -f) + 'px,0)';
+    });
+    const tl = this.tlRef.current, fill = this.tlFillRef.current;
+    if (tl && fill) {
+      const r = tl.getBoundingClientRect(); const p = clamp((vh * 0.6 - r.top) / (r.height - 16), 0, 1);
+      fill.style.height = 'calc(' + (p * 100) + '% - ' + (p * 16) + 'px)';
+      tl.querySelectorAll('[data-tl-node]').forEach(n => {
+        const on = n.getBoundingClientRect().top < vh * 0.6;
+        n.style.background = on ? G : '#0F1311'; n.style.borderColor = on ? '#80EF80' : 'rgba(255,255,255,0.2)'; n.style.color = on ? '#FFFFFF' : '#C9D3CC';
+      });
+    }
+  }
+  magnet(e) {
+    if (this.reduced) return;
+    const pv = this.previewRef.current;
+    if (pv) { pv.style.left = e.clientX + 'px'; pv.style.top = e.clientY + 'px'; }
+    const t = e.target.closest ? e.target.closest('[data-magnetic]') : null;
+    if (this.magEl && this.magEl !== t) { this.magEl.style.transform = ''; this.magEl = null; }
+    if (t) {
+      const r = t.getBoundingClientRect();
+      const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+      t.style.transition = 'transform .25s cubic-bezier(.2,.7,.2,1), background .2s, color .2s';
+      t.style.transform = 'translate(' + dx * 0.22 + 'px,' + dy * 0.32 + 'px)';
+      this.magEl = t;
+    }
+  }
+
+  navigate(p, extra) {
+    const apply = () => { this.setState({ page:p, menu:false, caseIdx:-1, hoverSvc:null, ...(extra || {}) }); window.scrollTo(0, 0); try { history.replaceState(null, '', '#/' + p); } catch (e) {} };
+    const c = this.curtainRef.current;
+    if (this.reduced || !c || !c.animate) return apply();
+    if (p === this.state.page && !extra) { window.scrollTo({ top:0, behavior:'smooth' }); return this.setState({ menu:false }); }
+    c.style.transformOrigin = 'bottom';
+    const a = c.animate([{ transform:'scaleY(0)' }, { transform:'scaleY(1)' }], { duration:420, easing:'cubic-bezier(.7,0,.3,1)', fill:'forwards' });
+    a.onfinish = () => {
+      apply();
+      c.style.transformOrigin = 'top';
+      c.animate([{ transform:'scaleY(1)' }, { transform:'scaleY(0)' }], { duration:520, delay:120, easing:'cubic-bezier(.7,0,.3,1)', fill:'forwards' });
+    };
+  }
+  baHandlers(key) {
+    const setPos = e => { const r = e.currentTarget.getBoundingClientRect(); const pos = clamp((e.clientX - r.left) / r.width * 100, 2, 98); this.setState(s => ({ ba:{ ...s.ba, [key]:pos } })); };
+    const pos = this.state.ba[key];
+    return { pos, inv: 100 - pos,
+      down: e => { this.dragging = key; try { e.currentTarget.setPointerCapture(e.pointerId); } catch (x) {} setPos(e); },
+      move: e => { if (this.dragging === key) setPos(e); },
+      up: () => { this.dragging = null; } };
+  }
+  setBk(k, v) { this.setState(s => ({ bk:{ ...s.bk, [k]:v }, error:'' })); }
+  addFiles(list) {
+    const add = Array.from(list || []).slice(0, 10).map(f => ({ name:f.name, isImg: (f.type || '').startsWith('image/'), url: (f.type || '').startsWith('image/') ? URL.createObjectURL(f) : '' }));
+    this.setState(s => ({ bk:{ ...s.bk, files: s.bk.files.concat(add).slice(0, 10) }, drag:false }));
+  }
+  validate() {
+    const b = this.state.bk, st = this.state.step;
+    if (st === 1) { if (!b.meeting) return 'Choose how you would like to meet.'; if (!b.service) return 'Select the service you need.'; }
+    if (st === 2) { if (!b.property) return 'Select your property type.'; if (!b.budget) return 'Select an estimated budget.'; if (!b.location.trim()) return 'Tell us where the property is.'; }
+    if (st === 3) { if (!b.date) return 'Pick a preferred date.'; if (!b.time) return 'Pick a preferred time.'; }
+    if (st === 4) { if (!b.name.trim() || !b.email.trim() || !b.phone.trim()) return 'Please complete all required fields.'; if (!/^\S+@\S+\.\S+$/.test(b.email)) return 'Please enter a valid email address.'; }
+    return '';
+  }
+
+  renderVals() {
+    const s = this.state, b = s.bk;
+    const wide = s.w >= 1000;
+    const onHero = s.page === 'home' && !s.scrolled;
+    const go = {}; PAGES.forEach(p => { go[p] = () => this.navigate(p); });
+
+    const curtain = React.createElement('div', { ref:this.curtainRef, style:{ position:'fixed', inset:0, zIndex:100, background:'#134428', transform:'scaleY(0)', pointerEvents:'none', display:'flex', alignItems:'center', justifyContent:'center' } },
+      React.createElement('span', { style:{ fontFamily:"'Playfair Display',serif", fontSize:'clamp(40px,8vw,96px)', fontWeight:600, letterSpacing:'6px', color:'#FFFFFF' } }, "DAC'S"));
+
+    const heroLayers = SLIDES.map((sl, i) => React.createElement('img', { key:sl.k, src:IMG(sl.k), alt:sl.title, style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', opacity: i === s.slide ? 1 : 0, transform: i === s.slide ? 'scale(1.1)' : 'scale(1)', transition:'opacity 1.6s ease, transform 8s linear' } }));
+    const heroBars = React.createElement('div', { style:{ display:'flex', gap:6, flex:1 } }, SLIDES.map((_, i) => React.createElement('button', { key:i, 'aria-label':'Slide ' + (i + 1), onClick:() => this.setState({ slide:i }), style:{ flex:1, height:16, padding:0, border:0, background:'transparent', cursor:'pointer', display:'flex', alignItems:'center' } },
+      React.createElement('span', { style:{ position:'relative', display:'block', width:'100%', height:2, background:'rgba(255,255,255,0.25)', overflow:'hidden' } },
+        i < s.slide ? React.createElement('span', { style:{ position:'absolute', inset:0, background:'#FFFFFF' } }) :
+        i === s.slide ? React.createElement('span', { key:'b' + s.slide, style:{ position:'absolute', inset:0, background:'#FFFFFF', transformOrigin:'left', animation:'dacsBar 6.5s linear forwards' } }) : null))));
+
+    const fp = PROJECTS[s.feat];
+    const featTabs = FEATURED.map(i => ({ label:PROJECTS[i].title, bd: i === s.feat ? '#1C1C1E' : '#DEDAD0', bg: i === s.feat ? '#1C1C1E' : '#FFFFFF', fg: i === s.feat ? '#FFFFFF' : '#1C1C1E', pick:() => this.setState(st => ({ feat:i, ba:{ ...st.ba, home:50 } })) }));
+
+    const svcPanels = SERVICES.map((x, i) => { const dark = x.dark != null ? x.dark : i % 2 === 1; const cur = (s.svcImg && s.svcImg[x.id]) || 0;
+      return { title:x.title, category: x.category === 'Allied' ? 'Partner Trades' : (x.id === 'vertical-construction' ? 'Our Main Service' : x.category + ' Services'), description:x.description, scope:SCOPE[x.id] || x.features, num:String(i + 1).padStart(2, '0'), anchor:'svc-' + x.id,
+        bg: dark ? '#0F1311' : (i % 4 === 2 ? '#F5F3EE' : '#FFFFFF'), fg: dark ? '#FFFFFF' : '#1C1C1E', sub: dark ? '#C9D3CC' : '#3A3A3C', accent: dark ? '#80EF80' : G, line: dark ? 'rgba(255,255,255,0.12)' : '#E5E5E5',
+        btnBg: dark ? '#FFFFFF' : G, btnFg: dark ? '#134428' : '#FFFFFF', textOrder: (dark && wide) ? 2 : 1, imgOrder: (dark && wide) ? 1 : 2,
+        imgLabel: x.images[cur][1],
+        layers: x.images.map((im, k) => React.createElement('img', { key:im[0] + k, src:IMG(im[0]), alt:im[1], style:{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover', opacity: k === cur ? 1 : 0, transform: k === cur ? 'scale(1.04)' : 'scale(1.1)', transition:'opacity .8s ease, transform 1.4s cubic-bezier(.2,.7,.2,1)' } })),
+        thumbs: x.images.map((im, k) => ({ src:IMG(im[0]), label:im[1], bd: k === cur ? '#FFFFFF' : 'rgba(255,255,255,0.25)', pick:() => this.setState(st => ({ svcImg:{ ...(st.svcImg || {}), [x.id]:k } })) })),
+        jump:() => { const el = document.getElementById('svc-' + x.id); if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 128, behavior:'smooth' }); },
+        book:() => this.navigate('book', { bk:{ ...this.state.bk, service:x.id }, step:1, done:false }) }; });
+
+    const area = AREAS[s.area];
+    const counts = { All:PROJECTS.length, Residential:PROJECTS.filter(p => p.type === 'Residential').length, Commercial:PROJECTS.filter(p => p.type === 'Commercial').length };
+    const vis = PROJECTS.map((p, i) => ({ p, i })).filter(({ p }) => s.filter === 'All' || p.type === s.filter);
+    const projectCards = vis.map(({ p, i }, k) => { const sp = wide ? SPANS[k % SPANS.length] : [12, '4/3']; return { title:p.title, type:p.type, scope:p.scope, city:p.city, img:IMG(p.b[0]), span: s.w < 700 ? 12 : (wide ? sp[0] : 6), ratio: s.w < 700 ? '4/3' : (wide ? sp[1] : '4/5'), delay:(k * 70) + 'ms', open:() => this.setState(st => ({ caseIdx:i, ba:{ ...st.ba, case:50 } })) }; });
+    const cp = PROJECTS[s.caseIdx >= 0 ? s.caseIdx : 0];
+    const caseService = cp.type === 'Commercial' ? 'commercial-renovation' : (cp.scope === 'Building' ? 'residential-construction' : 'interior-design');
+
+    // calendar
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const minD = new Date(today); minD.setDate(minD.getDate() + 1);
+    const maxD = new Date(today); maxD.setMonth(maxD.getMonth() + 3);
+    const first = new Date(s.cal.y, s.cal.m, 1), daysIn = new Date(s.cal.y, s.cal.m + 1, 0).getDate();
+    const lead = (first.getDay() + 6) % 7;
+    const calCells = [];
+    for (let i = 0; i < lead; i++) calCells.push({ label:'', disabled:true, vis:'hidden', bd:'transparent', bg:'transparent', fg:'#1C1C1E', cursor:'default', pick:() => {} });
+    for (let d = 1; d <= daysIn; d++) {
+      const dt = new Date(s.cal.y, s.cal.m, d); const key = dt.toDateString();
+      const dis = dt < minD || dt > maxD || dt.getDay() === 0; const on = b.date === key;
+      calCells.push({ label:d, disabled:dis, vis:'visible', bd: on ? G : 'transparent', bg: on ? G : (dis ? 'transparent' : '#F5F3EE'), fg: on ? '#FFFFFF' : (dis ? '#C4C4C8' : '#1C1C1E'), cursor: dis ? 'not-allowed' : 'pointer', pick:() => { if (!dis) this.setBk('date', key); } });
+    }
+    const canPrev = new Date(s.cal.y, s.cal.m, 1) > new Date(today.getFullYear(), today.getMonth(), 1);
+    const canNext = new Date(s.cal.y, s.cal.m + 1, 1) <= maxD;
+    const dateObj = b.date ? new Date(b.date) : null;
+    const dateLong = dateObj ? dateObj.toLocaleDateString('en-PH', { weekday:'long', month:'long', day:'numeric' }) : 'Select a date first';
+    const svcLabel = (SERVICE_OPTS.find(o => o[0] === b.service) || [0, ''])[1];
+    const mtLabel = (MEETINGS.find(m => m.id === b.meeting) || {}).label || '';
+    const rows = [['Meeting', mtLabel], ['Service', svcLabel], ['Property', b.property], ['Budget', b.budget], ['Location', b.location], ['Schedule', dateObj ? dateObj.toLocaleDateString('en-PH', { month:'short', day:'numeric' }) + (b.time ? ' · ' + b.time : '') : ''], ['Files', b.files.length ? b.files.length + ' attached' : '']];
+    const chip = (on) => ({ bd: on ? G : '#E5E5E5', bg: on ? G : '#FFFFFF', fg: on ? '#FFFFFF' : '#1C1C1E' });
+    const errB = v => (s.tried && s.step === 4 && !String(v).trim()) ? '#B42318' : '#DEDAD0';
+    const stepTitles = ['Consultation','Your project','Schedule','Contact details'];
+
+    return {
+      wide, narrow:!wide, menuOpen: s.menu, toggleMenu:() => this.setState(st => ({ menu:!st.menu })),
+      hdrBg: onHero ? 'rgba(15,19,17,0)' : 'rgba(15,19,17,0.82)', hdrLine: onHero ? 'rgba(255,255,255,0)' : 'rgba(255,255,255,0.08)',
+      navItems: ['home','services','projects','studio'].map(p => ({ label:NAV_LABELS[p], go:go[p], fg: s.page === p ? '#FFFFFF' : '#C9D3CC', line: s.page === p ? 1 : 0 })),
+      navItemsMobile: PAGES.map((p, i) => ({ label: p === 'book' ? 'Book a Consultation' : NAV_LABELS[p], num:'0' + (i + 1), go:go[p], delay:(i * 60 + 80) + 'ms' })),
+      go, curtain, mainRef:this.mainRef, heroParallaxRef:this.heroParallaxRef, tlRef:this.tlRef, tlFillRef:this.tlFillRef,
+      isHome: s.page === 'home', isServices: s.page === 'services', isProjects: s.page === 'projects', isStudio: s.page === 'studio', isBook: s.page === 'book', showCta: s.page !== 'book',
+      toTop:() => window.scrollTo({ top:0, behavior:'smooth' }),
+
+      heroLayers, heroBars, slideNum:String(s.slide + 1).padStart(2, '0'), slide:{ title:SLIDES[s.slide].title, loc:SLIDES[s.slide].loc, status:'Turnover' },
+      prevSlide:() => this.setState(st => ({ slide:(st.slide + SLIDES.length - 1) % SLIDES.length })), nextSlide:() => this.setState(st => ({ slide:(st.slide + 1) % SLIDES.length })),
+      featTabs, feat:{ before:IMG(fp.a[0]), after:IMG(fp.b[0]), beforeLabel:fp.a[1], afterLabel:fp.b[1], desc:fp.b[2] }, baHome:this.baHandlers('home'),
+      carRef:this.carRef, carPause:() => { this.carPaused = true; }, carPlay:() => { this.carPaused = false; },
+      carCards: (() => { const one = []; PROJECTS.forEach((p, i) => [p.a, p.b].filter(v => v[1] === 'Turnover' || v[1] === 'Detail').forEach(v => one.push({ title:p.title, img:IMG(v[0]), status: v[1] === 'Detail' ? 'Turnover' : v[1], badge: v[1] === 'Proposal' ? 'rgba(200,150,62,0.92)' : (v[1] === 'Before' ? 'rgba(60,60,60,0.85)' : 'rgba(26,92,58,0.92)'), open:() => this.setState(st => ({ caseIdx:i, ba:{ ...st.ba, case:50 } })) })));
+        return one.concat(one); })(),
+      testimonialSlots:[{ n:'01' }, { n:'02' }, { n:'03' }],
+
+      svcPanels,
+      areas: AREAS.map((a, i) => ({ ...a, projects: a.n + (a.n === 1 ? ' project' : ' projects'), bg: i === s.area ? '#F5F3EE' : 'transparent', dot: i === s.area ? G : '#C4C4C8', pick:() => this.setState({ area:i }) })),
+      mapSrc: 'https://maps.google.com/maps?q=' + encodeURIComponent(area.q) + '&z=' + (s.area === 4 ? 12 : 13) + '&output=embed',
+
+      filters: ['All','Residential','Commercial'].map(l => ({ label:l, count:counts[l], bd: l === s.filter ? '#FFFFFF' : 'rgba(255,255,255,0.25)', bg: l === s.filter ? '#FFFFFF' : 'transparent', fg: l === s.filter ? '#0F1311' : '#FFFFFF', pick:() => this.setState({ filter:l }) })),
+      projectCards,
+      caseOpen: s.caseIdx >= 0, caseNum:'0' + ((s.caseIdx >= 0 ? s.caseIdx : 0) + 1),
+      cs:{ title:cp.title, type:cp.type, scope:cp.scope, city:cp.city, aImg:IMG(cp.a[0]), aLabel:cp.a[1], aDesc:cp.a[2], bImg:IMG(cp.b[0]), bLabel:cp.b[1], bDesc:cp.b[2] },
+      baCase:this.baHandlers('case'),
+      closeCase:() => this.setState({ caseIdx:-1 }),
+      casePrev:() => this.setState(st => ({ caseIdx:(st.caseIdx + PROJECTS.length - 1) % PROJECTS.length, ba:{ ...st.ba, case:50 } })),
+      caseNext:() => this.setState(st => ({ caseIdx:(st.caseIdx + 1) % PROJECTS.length, ba:{ ...st.ba, case:50 } })),
+      caseBook:() => this.navigate('book', { bk:{ ...this.state.bk, service:caseService }, step:1, done:false }),
+
+      team: TEAM,
+
+      formSpan: wide ? 2 : 1,
+      notDone:!s.done, done:s.done, step:s.step, stepTitle:stepTitles[s.step - 1], progress: s.step * 25,
+      isS1:s.step === 1, isS2:s.step === 2, isS3:s.step === 3, isS4:s.step === 4,
+      meetings: MEETINGS.map(m => { const on = b.meeting === m.id; return { label:m.label, sub:m.sub, icon:svgIcon(m.icon), bd: on ? G : '#E5E5E5', bg: on ? '#EEF5F0' : '#FFFFFF', iconBg: on ? G : '#F5F3EE', iconFg: on ? '#FFFFFF' : G, pick:() => this.setBk('meeting', m.id) }; }),
+      serviceChips: SERVICE_OPTS.map(([id, l]) => ({ label:l, ...chip(b.service === id), pick:() => this.setBk('service', id) })),
+      properties: PROPERTIES.map(l => ({ label:l, ...chip(b.property === l), pick:() => this.setBk('property', l) })),
+      budgets: BUDGETS.map(l => ({ label:l, ...chip(b.budget === l), pick:() => this.setBk('budget', l) })),
+      locChips: LOCS.map(l => ({ label:l, pick:() => this.setBk('location', l) })),
+      bk:b, setLocation:e => this.setBk('location', e.target.value), setDetails:e => this.setBk('details', e.target.value),
+      setName:e => this.setBk('name', e.target.value), setEmail:e => this.setBk('email', e.target.value), setPhone:e => this.setBk('phone', e.target.value),
+      onFiles:e => { this.addFiles(e.target.files); e.target.value = ''; },
+      onDragOver:e => { e.preventDefault(); if (!s.drag) this.setState({ drag:true }); }, onDragLeave:() => this.setState({ drag:false }),
+      onDrop:e => { e.preventDefault(); this.addFiles(e.dataTransfer.files); },
+      dropBd: s.drag ? G : '#C9CFC9', dropBg: s.drag ? '#EEF5F0' : '#FAFAF8',
+      hasFiles: b.files.length > 0,
+      files: b.files.map((f, i) => ({ ...f, isDoc:!f.isImg, remove:e => { e.preventDefault(); this.setState(st => ({ bk:{ ...st.bk, files: st.bk.files.filter((_, j) => j !== i) } })); } })),
+      calTitle: first.toLocaleDateString('en-PH', { month:'long', year:'numeric' }), dows:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'], calCells,
+      calPrevFg: canPrev ? '#1C1C1E' : '#C4C4C8', calNextFg: canNext ? '#1C1C1E' : '#C4C4C8',
+      calPrev:() => { if (canPrev) this.setState(st => ({ cal: st.cal.m === 0 ? { y:st.cal.y - 1, m:11 } : { y:st.cal.y, m:st.cal.m - 1 } })); },
+      calNext:() => { if (canNext) this.setState(st => ({ cal: st.cal.m === 11 ? { y:st.cal.y + 1, m:0 } : { y:st.cal.y, m:st.cal.m + 1 } })); },
+      dateLong, times: TIMES.map(t => { const on = b.time === t; return { label:t, check: on ? '✓' : '', ...chip(on), pick:() => this.setBk('time', t) }; }),
+      errName:errB(b.name), errEmail:errB(b.email), errPhone:errB(b.phone),
+      hasError:!!s.error, error:s.error, canBack:s.step > 1,
+      back:() => this.setState(st => ({ step:st.step - 1, error:'' })),
+      nextLabel: s.step === 4 ? 'Submit Appointment Request' : 'Continue →',
+      next:() => { const err = this.validate(); if (err) return this.setState({ error:err, tried:true });
+        if (s.step < 4) { this.setState({ step:s.step + 1, error:'', tried:false }); return; }
+        this.setState({ done:true, ref:'DACS-' + Math.random().toString(36).slice(2, 6).toUpperCase() }); },
+      summaryRows: rows.map(([k, v]) => ({ k, v: v || '—', fg: v ? '#FFFFFF' : '#5E6A62' })),
+      refCode:s.ref, firstName:(b.name.trim().split(' ')[0]) || 'there',
+      resetBooking:() => this.setState({ done:false, step:1, bk:{ ...EMPTY }, tried:false }),
+      faqs: FAQS.map((q, i) => { const open = s.faq === i; return { q:q[0], a:q[1], rows: open ? '1fr' : '0fr', rot: open ? 45 : 0, bg: open ? G : '#F5F3EE', fg: open ? '#FFFFFF' : G, toggle:() => this.setState({ faq: open ? -1 : i }) }; }),
+
+      fbOpen:s.fb.open, fb:s.fb, fbNotSent:!s.fb.sent, fbSent:s.fb.sent, fbHasErr:s.fb.err,
+      openFb:() => this.setState({ fb:{ open:true, rating:0, name:'', loc:'', msg:'', sent:false, err:false } }),
+      closeFb:() => this.setState(st => ({ fb:{ ...st.fb, open:false } })), stop:e => e.stopPropagation(),
+      stars:[1,2,3,4,5].map(n => ({ fg: n <= s.fb.rating ? '#E8A317' : '#DEDAD0', pick:() => this.setState(st => ({ fb:{ ...st.fb, rating:n, err:false } })) })),
+      fbName:e => { const v = e.target.value; this.setState(st => ({ fb:{ ...st.fb, name:v } })); },
+      fbLoc:e => { const v = e.target.value; this.setState(st => ({ fb:{ ...st.fb, loc:v } })); },
+      fbMsg:e => { const v = e.target.value; this.setState(st => ({ fb:{ ...st.fb, msg:v } })); },
+      fbSubmit:() => { const f = s.fb; if (!f.rating || !f.name.trim() || !f.loc.trim() || !f.msg.trim()) return this.setState(st => ({ fb:{ ...st.fb, err:true } })); this.setState(st => ({ fb:{ ...st.fb, sent:true, err:false } })); }
+    };
+  }
+}
+
+</script>
+</body>
+</html>

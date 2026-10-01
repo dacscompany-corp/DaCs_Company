@@ -920,90 +920,68 @@ function displayRecentAppointments() {
     }).join('');
 }
 
+// Preferred date/time from the v2 booking wizard; '—' for old-form rows.
+function _apptPreferred(a) {
+    if (!a.preferredDate && !a.preferredTime) return '—';
+    return window.DacsBooking ? DacsBooking.formatPreferred(a.preferredDate, a.preferredTime)
+                              : [a.preferredDate, a.preferredTime].filter(Boolean).join(' · ');
+}
+
+// One <tr> — shared by displayAllAppointments and filterAppointments.
+function _apptRowHtml(appointment) {
+    const date = appointment.createdAt?.toDate();
+    const dateStr = date ? date.toLocaleDateString() : 'N/A';
+    const isPending = appointment.status === 'pending';
+    return `
+        <tr onclick="showAppointmentDetails('${_admEsc(appointment.id)}')">
+            <td>${dateStr}</td>
+            <td>${_admEsc(appointment.fullname)}</td>
+            <td>${_admEsc(appointment.email)}</td>
+            <td>${_admEsc(appointment.contact)}</td>
+            <td>${_admEsc(formatService(appointment.service))}</td>
+            <td>${_admEsc(_apptPreferred(appointment))}</td>
+            <td><span class="status-badge status-${_admEsc(appointment.status)}">${_admEsc(appointment.status)}</span></td>
+            <td style="position:relative;">
+                ${isPending ? '<span style="position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%;background:#ef4444;pointer-events:none;"></span>' : ''}
+                <select onchange="updateStatus('${_admEsc(appointment.id)}', this.value)" onclick="event.stopPropagation()">
+                    <option value="">Update Status</option>
+                    <option value="pending" ${isPending ? 'selected' : ''}>Pending</option>
+                    <option value="confirmed" ${appointment.status === 'confirmed' ? 'selected' : ''}>Confirmed</option>
+                    <option value="completed" ${appointment.status === 'completed' ? 'selected' : ''}>Completed</option>
+                    <option value="cancelled" ${appointment.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+                </select>
+            </td>
+        </tr>
+    `;
+}
+
 // Display all appointments
 function displayAllAppointments() {
     const tbody = document.getElementById('appointmentsTableBody');
-    
     if (appointments.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: var(--text-secondary);">No appointments found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-secondary);">No appointments found.</td></tr>';
         return;
     }
-    
-    tbody.innerHTML = appointments.map(appointment => {
-        const date = appointment.createdAt?.toDate();
-        const dateStr = date ? date.toLocaleDateString() : 'N/A';
-        
-        const isPending = appointment.status === 'pending';
-        return `
-            <tr onclick="showAppointmentDetails('${_admEsc(appointment.id)}')">
-                <td>${dateStr}</td>
-                <td>${_admEsc(appointment.fullname)}</td>
-                <td>${_admEsc(appointment.email)}</td>
-                <td>${_admEsc(appointment.contact)}</td>
-                <td>${_admEsc(formatService(appointment.service))}</td>
-                <td><span class="status-badge status-${_admEsc(appointment.status)}">${_admEsc(appointment.status)}</span></td>
-                <td style="position:relative;">
-                    ${isPending ? '<span style="position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%;background:#ef4444;pointer-events:none;"></span>' : ''}
-                    <select onchange="updateStatus('${_admEsc(appointment.id)}', this.value)" onclick="event.stopPropagation()">
-                        <option value="">Update Status</option>
-                        <option value="pending" ${isPending ? 'selected' : ''}>Pending</option>
-                        <option value="confirmed" ${appointment.status === 'confirmed' ? 'selected' : ''}>Confirmed</option>
-                        <option value="completed" ${appointment.status === 'completed' ? 'selected' : ''}>Completed</option>
-                        <option value="cancelled" ${appointment.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
-                    </select>
-                </td>
-            </tr>
-        `;
-    }).join('');
+    tbody.innerHTML = appointments.map(_apptRowHtml).join('');
 }
 
 // Filter appointments
 function filterAppointments() {
     const statusFilter = document.getElementById('statusFilter').value;
     const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-    
     const filtered = appointments.filter(appointment => {
         const matchesStatus = statusFilter === 'all' || appointment.status === statusFilter;
-        const matchesSearch = 
-            appointment.fullname.toLowerCase().includes(searchTerm) ||
-            appointment.email.toLowerCase().includes(searchTerm);
-        
+        const matchesSearch =
+            String(appointment.fullname || '').toLowerCase().includes(searchTerm) ||
+            String(appointment.email || '').toLowerCase().includes(searchTerm);
         return matchesStatus && matchesSearch;
     });
-    
     const tbody = document.getElementById('appointmentsTableBody');
-    
     if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: var(--text-secondary);">No matching appointments found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-secondary);">No matching appointments found.</td></tr>';
         return;
     }
-    
-    tbody.innerHTML = filtered.map(appointment => {
-        const date = appointment.createdAt?.toDate();
-        const dateStr = date ? date.toLocaleDateString() : 'N/A';
-        
-        const isPending = appointment.status === 'pending';
-        return `
-            <tr onclick="showAppointmentDetails('${_admEsc(appointment.id)}')">
-                <td>${dateStr}</td>
-                <td>${_admEsc(appointment.fullname)}</td>
-                <td>${_admEsc(appointment.email)}</td>
-                <td>${_admEsc(appointment.contact)}</td>
-                <td>${_admEsc(formatService(appointment.service))}</td>
-                <td><span class="status-badge status-${_admEsc(appointment.status)}">${_admEsc(appointment.status)}</span></td>
-                <td style="position:relative;">
-                    ${isPending ? '<span style="position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%;background:#ef4444;pointer-events:none;"></span>' : ''}
-                    <select onchange="updateStatus('${_admEsc(appointment.id)}', this.value)" onclick="event.stopPropagation()">
-                        <option value="">Update Status</option>
-                        <option value="pending" ${isPending ? 'selected' : ''}>Pending</option>
-                        <option value="confirmed" ${appointment.status === 'confirmed' ? 'selected' : ''}>Confirmed</option>
-                        <option value="completed" ${appointment.status === 'completed' ? 'selected' : ''}>Completed</option>
-                        <option value="cancelled" ${appointment.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
-                    </select>
-                </td>
-            </tr>
-        `;
-    }).join('');
+    tbody.innerHTML = filtered.map(_apptRowHtml).join('');
 }
 
 // Update appointment status
@@ -1072,6 +1050,16 @@ function _showAdminToast(msg, isError = false) {
     setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
 }
 
+// A details row only when the appointment has that value (old-form rows lack them).
+function _apptOpt(label, value) {
+    if (!value) return '';
+    return `
+        <div class="detail-row">
+            <div class="detail-label">${label}</div>
+            <div class="detail-value">${_admEsc(value)}</div>
+        </div>`;
+}
+
 // Show appointment details
 function showAppointmentDetails(appointmentId) {
     currentAppointment = appointments.find(a => a.id === appointmentId);
@@ -1101,6 +1089,13 @@ function showAppointmentDetails(appointmentId) {
             <div class="detail-label">Service Required</div>
             <div class="detail-value">${_admEsc(formatService(currentAppointment.service))}</div>
         </div>
+        ${_apptOpt('Reference', window.DacsBooking ? DacsBooking.refCode(currentAppointment.id) : '')}
+        ${_apptOpt('Meeting Type', currentAppointment.meetingType
+            ? (window.DacsBooking ? DacsBooking.meetingLabel(currentAppointment.meetingType) : currentAppointment.meetingType) : '')}
+        ${_apptOpt('Property', currentAppointment.propertyType)}
+        ${currentUserRole === 'staff' ? '' : _apptOpt('Budget', currentAppointment.budget)}
+        ${_apptOpt('Location', currentAppointment.location)}
+        ${_apptOpt('Preferred Schedule', (currentAppointment.preferredDate || currentAppointment.preferredTime) ? _apptPreferred(currentAppointment) : '')}
         <div class="detail-row">
             <div class="detail-label">Status</div>
             <div class="detail-value">
@@ -1976,13 +1971,23 @@ function displayWeeklyActivityChart() {
 // Format service name
 function formatService(service) {
     const services = {
+        // Public website v2 (2026-10-01)
+        'vertical-construction': 'Vertical Construction',
+        'interior-design': 'Interior Design',
         'architectural-design': 'Architectural Design',
+        'engineering-design': 'Engineering Design',
+        'interior-renovation': 'Interior Renovation',
+        'residential-construction': 'Residential Construction',
+        'ground-up-construction': 'Ground-Up Construction',
+        'commercial-renovation': 'Commercial Renovation',
+        'allied-services': 'Collaborations & Allied Services',
+        'consultation': 'General Consultation',
+        // Old form — kept so past appointments still read correctly
         'building-interiors': 'Building Architectural Interiors',
         'interior-construction': 'Architectural Interior Construction',
         'structural-inspection': 'Structural Inspection',
         'electrical-engineering': 'Electrical Engineering Services',
-        'cad-operations': 'CAD & Operations',
-        'consultation': 'General Consultation'
+        'cad-operations': 'CAD & Operations'
     };
     return services[service] || service;
 }

@@ -1,865 +1,497 @@
-// ===========================
-// Navbar scroll effect
-// ===========================
-const navbar = document.getElementById('navbar');
-let lastScroll = 0;
+// ════════════════════════════════════════════════════════════════════
+// PUBLIC SITE (index.html) — v2, 2026-10-01.
+// One page, four sections (#/home, #/services, #/projects, #/book); this file
+// shows one at a time, runs the header / curtain / scroll effects, and the
+// Home, Services and Projects behaviour. The booking wizard is js/booking.js;
+// testimonials + feedback + floating buttons are js/site-widgets.js.
+// Ported from docs/design/dacs-website-v2.dc.html (Studio page dropped).
+// ════════════════════════════════════════════════════════════════════
+(function (root) {
+  'use strict';
 
-window.addEventListener('scroll', () => {
-    const currentScroll = window.pageYOffset;
-    if (currentScroll > 50) {
-        navbar.classList.add('scrolled');
-    } else {
-        navbar.classList.remove('scrolled');
-    }
-    lastScroll = currentScroll;
-});
+  const PAGES = ['home', 'services', 'projects', 'book'];
 
-// ===========================
-// Mobile menu toggle
-// ===========================
-const mobileMenuToggle = document.getElementById('mobileMenuToggle');
-const navLinks = document.querySelector('.nav-links');
+  // Design key 'pN' → the portfolio export already in the repo.
+  const img = (k) => encodeURI('assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (' + String(k).slice(1) + ').png');
 
-mobileMenuToggle.addEventListener('click', () => {
-    navLinks.classList.toggle('active');
-    mobileMenuToggle.classList.toggle('active');
-});
+  // ── Data (copied from the design, Task 5/6/7 fill these in) ──
+  const SERVICES = [
+    { id:'vertical-construction', category:'Construction', title:'Vertical Construction', short:'Our core service: multi-storey building construction from structure to finishing.', description:'Our main service. We build multi-storey residential and commercial structures, handling structural works, formworks, partitions and finishing under one team.', features:['Carpentry Works','Wall Partitions','Painting Works','Glass & Aluminum Installation','Structural Works','Form Works'], images:[['p11','Mallari Bldg. — Proposal'],['p13','AUM Bldg. — Proposal']] },
+    { id:'interior-design', category:'Design', title:'Interior Design', short:'Creating functional and beautiful interior spaces tailored to your lifestyle and preferences.', description:'We craft interior spaces that balance aesthetics with function — transforming bare units into fully personalized living environments. From concept boards to construction-ready design plans, our interior designers handle every detail.', features:['Space planning & layout optimization','Material & finish selection','Furniture & lighting design','Concept to turnover coordination'], images:[['p1','Avida Towers Vita — Proposal'],['p5','San Lorenzo Place — Proposal'],['p9','Health Works — Proposal']] },
+    { id:'architectural-design', category:'Design', title:'Architectural Design', short:'Comprehensive architectural planning and design solutions that bring your vision to life.', description:'Our architects deliver comprehensive building plans that meet local codes, reflect your design vision, and serve as the precise blueprint for your construction team. We specialize in both residential and commercial projects.', features:['Floor plan & elevation design','Permit-ready documentation','Residential & commercial projects','3D architectural visualization'], images:[['p11','Mallari Bldg. — Proposal'],['p13','AUM Bldg. — Proposal']] },
+    { id:'engineering-design', category:'Design', title:'Engineering Design', short:'Structural and engineering solutions ensuring safety, efficiency, and long-term durability.', description:'Structural integrity is non-negotiable. Our civil and structural engineers design systems that are safe, efficient, and built to last — coordinating with architects to ensure every design is buildable and code-compliant.', features:['Structural analysis & design','Electrical & mechanical systems','Foundation & load calculations','Code compliance & safety checks'], images:[['p13','AUM Bldg. — Proposal'],['p11','Mallari Bldg. — Proposal']] },
+    { id:'interior-renovation', category:'Construction', title:'Interior Renovation', short:'Transforming existing spaces with quality craftsmanship, attention to detail, and commitment to excellence.', description:"We bring new life to existing spaces through precision renovation work. Whether it's a condo unit, clinic, or commercial space, our team handles the full scope — from demolition to finishing — with minimal disruption.", features:['Full & partial renovation','Condo & residential units','Commercial space fit-outs','Clean, on-schedule delivery'], images:[['p5','San Lorenzo Place — Proposal'],['p1','Avida Towers Vita — Proposal'],['p9','Health Works — Proposal']] },
+    { id:'residential-construction', category:'Construction', title:'Residential Construction', short:'Building dream homes from foundation to finish with expert planning and quality construction throughout.', description:'From single-family homes to multi-story residential buildings, we manage the full build — from groundbreaking to final handover. We use quality materials, trusted subcontractors, and tight project management to deliver on time.', features:['Single & multi-family homes','Foundation to finishing work','Regular progress updates','On-time project delivery'], images:[['p11','Mallari Bldg. — Proposal'],['p1','Avida Towers Vita — Proposal'],['p5','San Lorenzo Place — Proposal']] },
+    { id:'ground-up-construction', category:'Construction', title:'Ground-Up Construction', short:'Complete construction services from site preparation to final touches, delivering fully finished spaces ready for occupancy.', description:'We handle complete construction from bare land to fully built structure. Our team coordinates every phase — site preparation, structural work, MEP systems, and interior finishing — under one roof for seamless execution.', features:['Site preparation & excavation','Structural framing & concrete work','MEP systems installation','Complete interior & exterior finish'], images:[['p13','AUM Bldg. — Proposal'],['p11','Mallari Bldg. — Proposal']] },
+    { id:'commercial-renovation', category:'Construction', title:'Commercial Renovation', short:'Large-scale commercial projects including subdivisions and townships, executed with precision planning and professional coordination.', description:'We specialize in transforming commercial spaces — offices, clinics, retail stores, and multi-use buildings. Our commercial renovation team delivers polished results that reflect your brand and serve your customers.', features:['Office & retail fit-outs','Clinic & healthcare spaces','Multi-use building renovation','Brand-aligned design execution'], images:[['p9','Health Works — Proposal'],['p13','AUM Bldg. — Proposal']] },
+    { id:'allied-services', category:'Allied', dark:true, title:'Collaborations & Allied Services', short:'Electrical and plumbing works delivered with our partner trades.', description:'Working with trusted partner trades, we deliver the electrical and plumbing systems your building needs, coordinated with our design and construction teams.', features:['Electrical Works','Plumbing Works'], images:[['p13','AUM Bldg. — Proposal'],['p11','Mallari Bldg. — Proposal']] }
+  ];
+  const SCOPE = {
+    'vertical-construction':['Carpentry Works','Wall Partitions','Painting Works','Glass & Aluminum Installation','Structural Works','Form Works'],
+    'allied-services':['Electrical Works','Plumbing Works'],
+    'interior-design':['Space Assessment','Design Conceptualization','Space Planning','Style Guide / Mood Board','Material & Finish Selection','Furniture & Lighting Design','3D Visualization','Working Drawings'],
+    'architectural-design':['Site Analysis','Schematic Design','Floor Plans & Elevations','3D Architectural Visualization','Design Development','Permit-ready Documentation','Construction Drawings'],
+    'engineering-design':['Structural Analysis & Design','Foundation & Load Calculations','Electrical Systems Design','Mechanical Systems Design','Plumbing & Sanitary Design','Code Compliance & Safety Checks'],
+    'interior-renovation':['Site Inspection','Demolition & Hauling','Masonry Works','Ceiling & Wall Partitions','Tile & Flooring Works','Carpentry & Cabinetry','Painting Works','Final Cleaning & Turnover'],
+    'residential-construction':['Housing Projects','Civil & Architectural Works','Structural Works','Masonry Works','Roofing Works','Electrical & Plumbing Works','Finishing Works','Turnover & Handover'],
+    'ground-up-construction':['Site Preparation & Excavation','Formworks','Rebar Works','Concrete & Structural Works','MEP Systems Installation','Glass & Aluminum Installation','Exterior & Interior Finishing'],
+    'commercial-renovation':['Office Fit-outs','Retail & Storefront Works','Clinic & Healthcare Spaces','Multi-use Building Renovation','Glass & Aluminum Installation','Signage & Branding Integration','Brand-aligned Design Execution']
+  };
+  const AREAS = [
+    { city:'Quezon City', region:'Metro Manila · Home base', n:3, q:'Quezon City, Metro Manila' },
+    { city:'Makati', region:'Metro Manila', n:1, q:'Makati, Metro Manila' },
+    { city:'Taguig', region:'Metro Manila', n:1, q:'Bonifacio Global City, Taguig' },
+    { city:'Valenzuela City', region:'Metro Manila', n:1, q:'Valenzuela City' },
+    { city:'Iligan City', region:'Lanao del Norte, Mindanao', n:1, q:'Iligan City' }
+  ];
+  const PROJECTS = [
+    { title:'Avida Towers Vita', type:'Residential', scope:'Interior', city:'Quezon City', a:['p1','Proposal','Proposed studio unit interior design at Vertis North, Bagong Pag-asa, Quezon City, Metro Manila.'], b:['p2','Turnover','Completed studio unit interior design & construction at Vertis North, Bagong Pag-asa, Quezon City, Metro Manila.'] },
+    { title:'Park Triangle Residences', type:'Residential', scope:'Interior', city:'Taguig', a:['p3','Before','Existing unit condition at 32nd St. corner 11th Ave., Fort Bonifacio, Taguig — before full interior renovation.'], b:['p4','Turnover','Full luxury interior fit-out completed at 32nd St. corner 11th Ave., Fort Bonifacio, Taguig, Metro Manila.'] },
+    { title:'San Lorenzo Place', type:'Residential', scope:'Interior', city:'Makati', a:['p5','Proposal','Proposed dark-luxury interior design at Chino Roces Ave., corner Epifanio delos Santos Ave., Makati, 1223 Metro Manila.'], b:['p6','Turnover','Contemporary dark-luxury interior renovation completed at Chino Roces Ave. corner EDSA, Makati, Metro Manila.'] },
+    { title:'SMDC Grass Residence', type:'Residential', scope:'Interior', city:'Quezon City', a:['p7','Turnover','Cozy modern interior design and furnishing at Grass Residences, Nueva Viscaya, Bago Bantay, Quezon City.'], b:['p8','Detail','Interior detail views — bedroom, living area, and entertainment setup at Grass Residences, Quezon City.'] },
+    { title:'Health Works', type:'Commercial', scope:'Clinic', city:'Quezon City', a:['p9','Proposal','Proposed clinic interior design at 2F Waltermart The Junction Place, Quezon City — featuring pink fluted walls and marble reception.'], b:['p10','Turnover','Completed dental clinic interior construction at 2F Waltermart The Junction Place, Quezon City — pink fluted walls and marble accents.'] },
+    { title:'Mallari Bldg.', type:'Residential', scope:'Building', city:'Valenzuela City', a:['p11','Proposal','Proposed multi-storey residential apartment building at Maya St., Brgy. Ugong, Valenzuela City.'], b:['p12','Turnover','Completed multi-storey residential apartment building at Maya St., Brgy. Ugong, Valenzuela City.'] },
+    { title:'AUM Bldg.', type:'Commercial', scope:'Mixed-Use', city:'Iligan City', a:['p13','Proposal','Proposed mixed-use commercial building for Tom N Toms Coffee & Mayo Diagnostics at Corner Araneta St., Roxas Ave., Iligan City.'], b:['p14','Turnover','Completed mixed-use commercial building housing Tom N Toms Coffee & Mayo Diagnostics at Corner Araneta St., Roxas Ave., Iligan City.'] }
+  ];
+  const SLIDES = [[0,'p2'],[1,'p4'],[2,'p6'],[3,'p8'],[4,'p10'],[5,'p12'],[6,'p14']].map(([i,k]) => ({ k, title: PROJECTS[i].title, loc: PROJECTS[i].city }));
+  const FEATURED = [1, 2, 4, 6];
+  const SPANS = [[7,'7/5'],[5,'5/5'],[5,'5/5'],[7,'7/5'],[4,'4/5'],[4,'4/5'],[4,'4/5']];
+  const FAQS = [
+    ['How long does a typical project take?','Project timelines vary based on scope. Interior design projects typically take 4–8 weeks, while full residential construction can take 3–6 months. We provide a detailed schedule during your consultation.'],
+    ['Is the initial consultation really free?',"Yes! Your first consultation with us is completely free and no-obligation. We'll discuss your project, understand your vision, and give you a clear picture of how we can help — before any commitment."],
+    ['Can I see the design before construction starts?','Absolutely. We provide detailed design plans, floor layouts, and visual references for your approval before any construction work begins. Your sign-off is required before we proceed.'],
+    ['Do you handle building permits?','Yes, we assist with the permit application process. Our licensed architect ensures all plans are compliant with local building codes and ordinances in the Philippines.'],
+    ['What areas do you serve?','We are based in Quezon City and primarily serve Metro Manila and nearby provinces. We have also completed projects in other regions — contact us to discuss your location.'],
+    ['How much does it cost to start?',"Costs depend on project scope, materials, and timeline. We offer solutions for a range of budgets. Book a free consultation and we'll provide a tailored quote at no cost to you."]
+  ];
 
-// ===========================
-// Smooth scrolling for nav links
-// ===========================
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
-        e.preventDefault();
-        const target = document.querySelector(this.getAttribute('href'));
-        if (target) {
-            const offsetTop = target.offsetTop - 80;
-            window.scrollTo({ top: offsetTop, behavior: 'smooth' });
-            navLinks.classList.remove('active');
-            mobileMenuToggle.classList.remove('active');
-            document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
-            this.classList.add('active');
-        }
+  // '#/services' → 'services'; old '#appointment' bookmarks → 'book';
+  // old '#services' anchors still work; anything else (incl. Studio) → 'home'.
+  function resolveRoute(hash) {
+    const h = String(hash || '').replace(/^#\/?/, '');
+    if (h === 'appointment') return 'book';
+    return PAGES.includes(h) ? h : 'home';
+  }
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { PAGES, resolveRoute, img, SERVICES, SCOPE, AREAS, PROJECTS, SLIDES, FEATURED, SPANS, FAQS };
+    return;
+  }
+
+  // ═════════════════════════ browser only ═════════════════════════
+  const $ = (s, el) => (el || document).querySelector(s);
+  const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  const reduced = !!(root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  let page = null;
+  const inits = [];
+  function registerInit(fn) { inits.push(fn); }
+
+  // ── Router ──
+  function show(p) {
+    page = p;
+    $$('.page').forEach((s) => { s.hidden = s.dataset.page !== p; });
+    $('#ctaBand').hidden = p === 'book';
+    $$('[data-nav]').forEach((a) => {
+      const on = a.dataset.nav === p;
+      a.classList.toggle('is-active', on);
+      if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
-});
+    closeMenu();
+    root.scrollTo(0, 0);
+    try { history.replaceState(null, '', '#/' + p); } catch (e) { /* file:// */ }
+    document.title = (p === 'home' ? '' : ({ services: 'Services', projects: 'Projects', book: 'Book a Consultation' })[p] + ' · ') + "DAC's Building Design Services";
+    document.dispatchEvent(new CustomEvent('dacs:page', { detail: { page: p } }));
+    refreshFx(); fx();
+  }
 
-// ===========================
-// Intersection Observer – scroll animations
-// ===========================
-const observerOptions = { threshold: 0.1, rootMargin: '0px 0px -50px 0px' };
-
-const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-        if (entry.isIntersecting) {
-            entry.target.style.opacity = '1';
-            entry.target.style.transform = 'translateY(0)';
-        }
-    });
-}, observerOptions);
-
-document.querySelectorAll('section, .about-card, .value-card, .team-member, .objective-step').forEach(el => {
-    el.style.opacity = '0';
-    el.style.transform = 'translateY(30px)';
-    el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
-    observer.observe(el);
-});
-
-// ===========================
-// Background Slideshow – auto-play every 10 seconds
-// ===========================
-let currentSlide = 0;
-const bgSlides = document.querySelectorAll('.bg-slide');
-
-if (bgSlides.length > 0) bgSlides[0].classList.add('bg-active');
-
-function showSlide(index) {
-    bgSlides.forEach(s => s.classList.remove('bg-active'));
-    bgSlides[index].classList.add('bg-active');
-}
-
-function nextBgSlide() {
-    currentSlide = (currentSlide + 1) % bgSlides.length;
-    showSlide(currentSlide);
-}
-
-if (bgSlides.length > 1) setInterval(nextBgSlide, 10000);
-
-// ===========================
-// Form submission handler
-// ===========================
-const appointmentForm = document.getElementById('appointmentForm');
-const formMessage     = document.getElementById('formMessage');
-
-appointmentForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-
-    const formData = {
-        fullname:  document.getElementById('fullname').value,
-        email:     document.getElementById('email').value,
-        contact:   document.getElementById('contact').value,
-        service:   document.getElementById('service').value,
-        message:   document.getElementById('message').value,
-        status:    'pending',
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  function navigate(p) {
+    p = PAGES.includes(p) ? p : 'home';
+    if (p === page) { root.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' }); closeMenu(); return; }
+    const c = $('#curtain');
+    if (reduced || !c || !c.animate) return show(p);
+    c.style.transformOrigin = 'bottom';
+    const a = c.animate([{ transform: 'scaleY(0)' }, { transform: 'scaleY(1)' }],
+      { duration: 420, easing: 'cubic-bezier(.7,0,.3,1)', fill: 'forwards' });
+    a.onfinish = () => {
+      show(p);
+      c.style.transformOrigin = 'top';
+      c.animate([{ transform: 'scaleY(1)' }, { transform: 'scaleY(0)' }],
+        { duration: 520, delay: 120, easing: 'cubic-bezier(.7,0,.3,1)', fill: 'forwards' });
     };
+  }
 
-    if (!formData.fullname || !formData.email || !formData.contact || !formData.service) {
-        showMessage('Please fill in all required fields.', 'error');
-        return;
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-        showMessage('Please enter a valid email address.', 'error');
-        return;
-    }
-
-    const submitButton = appointmentForm.querySelector('.btn-submit');
-    const originalText = submitButton.textContent;
-    submitButton.textContent = 'Submitting...';
-    submitButton.disabled = true;
-
-    try {
-        await db.collection('appointments').add(formData);
-        showMessage('Thank you! Your appointment request has been received. We will contact you within 24 hours.', 'success');
-        appointmentForm.reset();
-        formMessage.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    } catch (error) {
-        console.error('Error submitting appointment:', error);
-        showMessage('Sorry, there was an error submitting your request. Please try again or contact us directly.', 'error');
-    } finally {
-        submitButton.textContent = originalText;
-        submitButton.disabled = false;
-    }
-});
-
-function showMessage(message, type) {
-    formMessage.textContent = message;
-    formMessage.className = `form-message ${type}`;
-    if (type === 'success') {
-        setTimeout(() => { formMessage.style.display = 'none'; }, 5000);
-    }
-}
-
-// ===========================
-// Parallax effect for hero decoration (desktop only)
-// ===========================
-window.addEventListener('scroll', () => {
-    const decoration = document.querySelector('.hero-decoration');
-    if (decoration && window.innerWidth > 1024) {
-        decoration.style.transform = `translateY(${window.pageYOffset * 0.3}px)`;
-    }
-});
-
-// ===========================
-// Floating cards hover effect
-// ===========================
-document.querySelectorAll('.floating-card').forEach(card => {
-    card.addEventListener('mouseenter', () => {
-        card.style.animationPlayState = 'paused';
-        card.style.transform = 'scale(1.05)';
-    });
-    card.addEventListener('mouseleave', () => {
-        card.style.animationPlayState = 'running';
-        card.style.transform = 'scale(1)';
-    });
-});
-
-// ===========================
-// Update active nav link on scroll
-// ===========================
-window.addEventListener('scroll', () => {
-    const sections = document.querySelectorAll('section[id]');
-    const scrollY  = window.pageYOffset;
-
-    sections.forEach(section => {
-        const sectionTop = section.offsetTop - 100;
-        const sectionId  = section.getAttribute('id');
-        if (scrollY > sectionTop && scrollY <= sectionTop + section.offsetHeight) {
-            document.querySelectorAll('.nav-link').forEach(link => {
-                link.classList.remove('active');
-                if (link.getAttribute('href') === `#${sectionId}`) link.classList.add('active');
-            });
-        }
-    });
-});
-
-// ===========================
-// Hero animations on page load
-// ===========================
-window.addEventListener('load', () => {
-    document.querySelectorAll('.hero-badge, .hero-title, .hero-subtitle, .hero-cta').forEach((el, i) => {
-        setTimeout(() => {
-            el.style.opacity = '1';
-            el.style.transform = 'translateY(0)';
-        }, i * 200);
-    });
-});
-
-// ===========================
-// Form field focus interactions
-// ===========================
-document.querySelectorAll('.form-group input, .form-group select, .form-group textarea').forEach(field => {
-    field.addEventListener('focus', () => field.parentElement.classList.add('focused'));
-    field.addEventListener('blur',  () => { if (!field.value) field.parentElement.classList.remove('focused'); });
-});
-
-// ===========================
-// Value cards icon hover
-// ===========================
-document.querySelectorAll('.value-card').forEach(card => {
-    const icon = card.querySelector('.value-icon');
-    card.addEventListener('mouseenter', () => {
-        icon.style.transform  = 'translateY(-10px) scale(1.1)';
-        icon.style.transition = 'transform 0.3s ease';
-    });
-    card.addEventListener('mouseleave', () => { icon.style.transform = 'translateY(0) scale(1)'; });
-});
-
-// ===========================
-// Featured Projects – Infinite Marquee Carousel
-// ===========================
-const featuredProjects = [
-    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (1).png',  status: 'proposal', statusLabel: 'Proposal', category: 'Residential · Interior · Proposal', title: 'Avida Towers Vita', desc: 'Proposed studio unit interior design at Vertis North, Bagong Pag-asa, Quezon City, Metro Manila.', authorName: "DAC's Team", authorRole: 'Interior Architect & Constructor' },
-    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (2).png',  status: 'turnover', statusLabel: 'Turnover', category: 'Residential · Interior · Turnover', title: 'Avida Towers Vita', desc: 'Completed studio unit interior design & construction at Vertis North, Bagong Pag-asa, Quezon City, Metro Manila.', authorName: "DAC's Team", authorRole: 'Interior Architect & Constructor' },
-    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (3).png',  status: 'before', statusLabel: 'Before', category: 'Residential · Interior · Before', title: 'Park Triangle Residences', desc: 'Existing unit condition at 32nd St. corner 11th Ave., Fort Bonifacio, Taguig — before full interior renovation.', authorName: "DAC's Team", authorRole: 'Interior Architect & Constructor' },
-    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (4).png',  status: 'turnover', statusLabel: 'Turnover', category: 'Residential · Interior · Turnover', title: 'Park Triangle Residences', desc: 'Full luxury interior fit-out completed at 32nd St. corner 11th Ave., Fort Bonifacio, Taguig, Metro Manila.', authorName: "DAC's Team", authorRole: 'Interior Architect & Constructor' },
-    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (5).png',  status: 'proposal', statusLabel: 'Proposal', category: 'Residential · Interior · Proposal', title: 'San Lorenzo Place', desc: 'Proposed dark-luxury interior design at Chino Roces Ave., corner Epifanio delos Santos Ave., Makati, 1223 Metro Manila.', authorName: "DAC's Team", authorRole: 'Interior Architect & Constructor' },
-    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (6).png',  status: 'turnover', statusLabel: 'Turnover', category: 'Residential · Interior · Turnover', title: 'San Lorenzo Place', desc: 'Contemporary dark-luxury interior renovation completed at Chino Roces Ave. corner EDSA, Makati, Metro Manila.', authorName: "DAC's Team", authorRole: 'Interior Architect & Constructor' },
-    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (7).png',  status: 'turnover', statusLabel: 'Turnover', category: 'Residential · Interior · Turnover', title: 'SMDC Grass Residence', desc: 'Cozy modern interior design and furnishing at Grass Residences, Nueva Viscaya, Bago Bantay, Quezon City.', authorName: "DAC's Team", authorRole: 'Interior Design & Furnishing' },
-    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (8).png',  status: 'turnover', statusLabel: 'Turnover', category: 'Residential · Interior · Detail', title: 'SMDC Grass Residence', desc: 'Interior detail views — bedroom, living area, and entertainment setup at Grass Residences, Quezon City.', authorName: "DAC's Team", authorRole: 'Interior Design & Furnishing' },
-    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (9).png',  status: 'proposal', statusLabel: 'Proposal', category: 'Commercial · Clinic · Proposal', title: 'Health Works', desc: 'Proposed clinic interior design at 2F Waltermart The Junction Place, Quezon City — featuring pink fluted walls and marble reception.', authorName: "DAC's Team", authorRole: 'Commercial Interior Constructor' },
-    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (10).png', status: 'turnover', statusLabel: 'Turnover', category: 'Commercial · Clinic · Turnover', title: 'Health Works', desc: 'Completed dental clinic interior construction at 2F Waltermart The Junction Place, Quezon City — pink fluted walls and marble accents.', authorName: "DAC's Team", authorRole: 'Commercial Interior Constructor' },
-    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (11).png', status: 'proposal', statusLabel: 'Proposal', category: 'Residential · Building · Proposal', title: 'Mallari Bldg.', desc: 'Proposed multi-storey residential apartment building at Maya St., Brgy. Ugong, Valenzuela City.', authorName: "DAC's Team", authorRole: 'Architect & Civil Engineer' },
-    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (12).png', status: 'turnover', statusLabel: 'Turnover', category: 'Residential · Building · Turnover', title: 'Mallari Bldg.', desc: 'Completed multi-storey residential apartment building at Maya St., Brgy. Ugong, Valenzuela City.', authorName: "DAC's Team", authorRole: 'Architect & Civil Engineer' },
-    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (13).png', status: 'proposal', statusLabel: 'Proposal', category: 'Commercial · Mixed-Use · Proposal', title: 'AUM Bldg.', desc: 'Proposed mixed-use commercial building for Tom N Toms Coffee & Mayo Diagnostics at Corner Araneta St., Roxas Ave., Iligan City.', authorName: "DAC's Team", authorRole: 'Architect & Engineers' },
-    { image: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (14).png', status: 'turnover', statusLabel: 'Turnover', category: 'Commercial · Mixed-Use · Turnover', title: 'AUM Bldg.', desc: 'Completed mixed-use commercial building housing Tom N Toms Coffee & Mayo Diagnostics at Corner Araneta St., Roxas Ave., Iligan City.', authorName: "DAC's Team", authorRole: 'Architect & Engineers' }
-];
-
-(function () {
-    const viewport = document.getElementById('projectsMarquee');
-    const track    = document.getElementById('projectsMarqueeTrack');
-    if (!viewport || !track) return;
-
-    function escHtml(s) {
-        return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    }
-
-    function renderItem(p, i) {
-        return `
-            <button class="marquee-item" type="button" data-index="${i}" aria-label="View ${escHtml(p.title)} project">
-                <img src="${p.image}" alt="${escHtml(p.title)} – ${escHtml(p.statusLabel)}" loading="lazy">
-                <span class="marquee-item-badge status-${p.status}">${escHtml(p.statusLabel)}</span>
-                <span class="marquee-item-caption">${escHtml(p.title)}</span>
-            </button>`;
-    }
-
-    // Render the set twice back-to-back so the -50% translateX loop is seamless
-    track.innerHTML = featuredProjects.map(renderItem).join('') + featuredProjects.map(renderItem).join('');
-
-    track.querySelectorAll('.marquee-item').forEach(item => {
-        item.addEventListener('click', () => openProjectModal(Number(item.dataset.index)));
-    });
-
-    // Highlight whichever thumbnail is nearest the viewport's horizontal center
-    let ticking = false;
-    function updateCentered() {
-        ticking = false;
-        const viewportCenter = viewport.getBoundingClientRect().left + viewport.getBoundingClientRect().width / 2;
-        let closest = null;
-        let closestDist = Infinity;
-        track.querySelectorAll('.marquee-item').forEach(item => {
-            const rect = item.getBoundingClientRect();
-            const itemCenter = rect.left + rect.width / 2;
-            const dist = Math.abs(itemCenter - viewportCenter);
-            item.classList.remove('is-centered');
-            if (dist < closestDist) { closestDist = dist; closest = item; }
-        });
-        if (closest) closest.classList.add('is-centered');
-    }
-
-    function requestUpdate() {
-        if (!ticking) {
-            ticking = true;
-            requestAnimationFrame(updateCentered);
-        }
-    }
-
-    requestAnimationFrame(function loop() {
-        requestUpdate();
-        requestAnimationFrame(loop);
-    });
-
-    // Pause the marquee (and via CSS, its animation) on hover/focus so visitors can click precisely
-    viewport.addEventListener('mouseenter', () => viewport.classList.add('paused'));
-    viewport.addEventListener('mouseleave', () => viewport.classList.remove('paused'));
-    viewport.addEventListener('focusin', () => viewport.classList.add('paused'));
-    viewport.addEventListener('focusout', () => viewport.classList.remove('paused'));
-
-    console.log("DAC's Building Design Services – Website Loaded Successfully");
-    console.log('Marquee carousel initialized with', featuredProjects.length, 'projects');
-})();
-
-// ===========================
-// Project Detail Modal
-// ===========================
-const projectModalOverlay = document.getElementById('projectModalOverlay');
-const projectModalClose   = document.getElementById('projectModalClose');
-
-function openProjectModal(index) {
-    const p = featuredProjects[index];
-    if (!p || !projectModalOverlay) return;
-
-    const statusEl = document.getElementById('projectModalStatus');
-    statusEl.textContent = p.statusLabel;
-    statusEl.className = `card-status-badge status-${p.status}`;
-
-    document.getElementById('projectModalCategory').textContent   = p.category;
-    document.getElementById('projectModalTitle').textContent      = p.title;
-    document.getElementById('projectModalDesc').textContent       = p.desc;
-    document.getElementById('projectModalAuthorName').textContent = p.authorName;
-    document.getElementById('projectModalAuthorRole').textContent = p.authorRole;
-    document.getElementById('projectModalImage').src = p.image;
-    document.getElementById('projectModalImage').alt = `${p.title} – ${p.statusLabel}`;
-
-    projectModalOverlay.classList.add('open');
-    document.body.style.overflow = 'hidden';
-}
-
-function closeProjectModal() {
-    projectModalOverlay.classList.remove('open');
-    document.body.style.overflow = '';
-}
-
-if (projectModalClose) projectModalClose.addEventListener('click', closeProjectModal);
-if (projectModalOverlay) {
-    projectModalOverlay.addEventListener('click', e => {
-        if (e.target === projectModalOverlay) closeProjectModal();
-    });
-}
-document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && projectModalOverlay && projectModalOverlay.classList.contains('open')) closeProjectModal();
-});
-
-// ===========================
-// Testimonials / Feedback
-// ===========================
-let selectedRating = 0;
-
-// Load testimonials
-async function loadTestimonials() {
-    const container = document.getElementById('testimonialsGrid');
-    try {
-        const snapshot = await db.collection('testimonials').get();
-        
-        if (snapshot.empty) {
-            container.innerHTML = '<p class="loading-text">No testimonials yet. Be the first to share your experience!</p>';
-            return;
-        }
-        
-        // Filter approved 4-5 star ratings
-        const testimonials = snapshot.docs
-            .map(doc => doc.data())
-            .filter(data => data.status === 'approved' && data.rating >= 4)
-            .sort((a, b) => {
-                if (b.createdAt && a.createdAt) {
-                    return b.createdAt.toMillis() - a.createdAt.toMillis();
-                }
-                return 0;
-            })
-            .slice(0, 6);
-        
-        if (testimonials.length === 0) {
-            container.innerHTML = '<p class="loading-text">No testimonials yet. Be the first to share your experience!</p>';
-            return;
-        }
-        
-        // Testimonials are public submissions rendered to every visitor —
-        // escape all fields (and clamp rating: '★'.repeat throws on negatives).
-        const esc = s => String(s == null ? '' : s)
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-        container.innerHTML = testimonials.map(data => {
-            const initials = String(data.name || '').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-            const r = Math.max(0, Math.min(5, parseInt(data.rating, 10) || 0));
-            const stars = '★'.repeat(r) + '☆'.repeat(5 - r);
-
-            return `
-                <div class="testimonial-card">
-                    <div class="testimonial-quote">"</div>
-                    <div class="testimonial-stars">${stars}</div>
-                    <p class="testimonial-text">"${esc(data.message)}"</p>
-                    <div class="testimonial-author">
-                        <div class="testimonial-avatar">${esc(initials)}</div>
-                        <div class="testimonial-info">
-                            <h4>${esc(data.name)}</h4>
-                            <p>Client from ${esc(data.location)}</p>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    } catch (error) {
-        console.error('Error loading testimonials:', error);
-        container.innerHTML = '<p class="loading-text">No testimonials yet. Be the first to share your experience!</p>';
-    }
-}
-
-// Open feedback modal
-document.getElementById('feedbackBtn').addEventListener('click', () => {
-    document.getElementById('feedbackModal').classList.add('show');
-    document.body.style.overflow = 'hidden';
-});
-
-function closeFeedbackModal() {
-    document.getElementById('feedbackModal').classList.remove('show');
-    document.body.style.overflow = 'auto';
-    document.getElementById('feedbackForm').reset();
-    selectedRating = 0;
-    document.querySelectorAll('.star').forEach(s => s.classList.remove('active'));
-    document.getElementById('feedbackFormMessage').style.display = 'none';
-}
-
-// Star rating
-document.querySelectorAll('.star').forEach(star => {
-    star.addEventListener('click', function() {
-        selectedRating = parseInt(this.dataset.rating);
-        document.getElementById('feedbackRating').value = selectedRating;
-        
-        document.querySelectorAll('.star').forEach((s, index) => {
-            if (index < selectedRating) {
-                s.classList.add('active');
-            } else {
-                s.classList.remove('active');
-            }
-        });
-    });
-});
-
-// Submit feedback
-document.getElementById('feedbackForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    
-    if (selectedRating === 0) {
-        showFeedbackMessage('Please select a rating.', 'error');
-        return;
-    }
-    
-    // Auto-approve 4-5 stars, manual approval for 1-3 stars
-    const autoApprove = selectedRating >= 4;
-    
-    const feedbackData = {
-        name: document.getElementById('feedbackName').value,
-        location: document.getElementById('feedbackLocation').value,
-        rating: selectedRating,
-        message: document.getElementById('feedbackMessage').value,
-        status: autoApprove ? 'approved' : 'pending',
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-    
-    const submitBtn = e.target.querySelector('.btn-primary');
-    const originalText = submitBtn.textContent;
-    submitBtn.textContent = 'Submitting...';
-    submitBtn.disabled = true;
-    
-    try {
-        await db.collection('testimonials').add(feedbackData);
-        
-        if (autoApprove) {
-            showFeedbackMessage('Thank you for your feedback! Your review is now live on our website.', 'success');
-        } else {
-            showFeedbackMessage('Thank you for your feedback! It will be reviewed and published soon.', 'success');
-        }
-        
-        setTimeout(() => {
-            closeFeedbackModal();
-            // Reload testimonials if auto-approved
-            if (autoApprove && typeof loadTestimonials === 'function') {
-                loadTestimonials();
-            }
-        }, 2000);
-    } catch (error) {
-        console.error('Error submitting feedback:', error);
-        showFeedbackMessage('Error submitting feedback. Please try again.', 'error');
-    } finally {
-        submitBtn.textContent = originalText;
-        submitBtn.disabled = false;
-    }
-});
-
-function showFeedbackMessage(message, type) {
-    const msgEl = document.getElementById('feedbackFormMessage');
-    msgEl.textContent = message;
-    msgEl.className = `form-message ${type}`;
-}
-
-// Load testimonials on page load
-if (typeof db !== 'undefined') {
-    loadTestimonials();
-}
-
-// ===========================
-// Animated Stats Counter
-// ===========================
-function animateCounter(el, target, duration) {
-    let start = 0;
-    const increment = target / (duration / 16);
-    const timer = setInterval(() => {
-        start += increment;
-        if (start >= target) {
-            el.textContent = target;
-            clearInterval(timer);
-        } else {
-            el.textContent = Math.floor(start);
-        }
-    }, 16);
-}
-
-const statsObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-        if (entry.isIntersecting) {
-            entry.target.querySelectorAll('.stat-number').forEach(num => {
-                const target = parseInt(num.getAttribute('data-target'));
-                animateCounter(num, target, 1500);
-            });
-            statsObserver.unobserve(entry.target);
-        }
-    });
-}, { threshold: 0.3 });
-
-const statsSection = document.querySelector('.stats-counter');
-if (statsSection) statsObserver.observe(statsSection);
-
-// ===========================
-// FAQ Accordion
-// ===========================
-document.querySelectorAll('.faq-question').forEach(btn => {
-    btn.addEventListener('click', () => {
-        const item = btn.closest('.faq-item');
-        const isOpen = item.classList.contains('open');
-        // Close all
-        document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
-        // Toggle clicked
-        if (!isOpen) item.classList.add('open');
-    });
-});
-
-// ===========================
-// Scroll to Top Button
-// ===========================
-const scrollToTopBtn = document.getElementById('scrollToTop');
-const aboutSection = document.getElementById('about');
-
-window.addEventListener('scroll', () => {
-    if (aboutSection) {
-        const aboutPosition = aboutSection.offsetTop;
-        if (window.pageYOffset >= aboutPosition) {
-            scrollToTopBtn.classList.add('show');
-        } else {
-            scrollToTopBtn.classList.remove('show');
-        }
-    }
-});
-
-scrollToTopBtn.addEventListener('click', () => {
-    window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
-    });
-});
-
-// ===========================
-// Service Detail Modal
-// ===========================
-const svcIconMap = {
-    'interior-design': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
-    'architectural-design': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>`,
-    'engineering-design': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>`,
-    'interior-renovation': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`,
-    'residential-construction': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`,
-    'ground-up-construction': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>`,
-    'commercial-renovation': `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-4 0v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>`
-};
-
-const serviceData = {
-    'interior-design': {
-        category: 'Design',
-        title: 'Interior Design',
-        description: 'We craft interior spaces that balance aesthetics with function — transforming bare units into fully personalized living environments. From concept boards to construction-ready design plans, our interior designers handle every detail.',
-        features: [
-            'Space planning & layout optimization',
-            'Material & finish selection',
-            'Furniture & lighting design',
-            'Concept to turnover coordination'
-        ],
-        images: [
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (1).png', label: 'Bedroom Area' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (2).png', label: 'Kitchen' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (4).png', label: 'Living & Dining Area' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (5).png', label: 'Living Area' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (6).png', label: 'Lounge Area' }
-        ]
-    },
-    'architectural-design': {
-        category: 'Design',
-        title: 'Architectural Design',
-        description: 'Our architects deliver comprehensive building plans that meet local codes, reflect your design vision, and serve as the precise blueprint for your construction team. We specialize in both residential and commercial projects.',
-        features: [
-            'Floor plan & elevation design',
-            'Permit-ready documentation',
-            'Residential & commercial projects',
-            '3D architectural visualization'
-        ],
-        images: [
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (11).png', label: 'Building Exterior — Mallari Bldg.' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (13).png', label: 'Building Exterior — AUM Bldg.' }
-        ]
-    },
-    'engineering-design': {
-        category: 'Design',
-        title: 'Engineering Design',
-        description: 'Structural integrity is non-negotiable. Our civil and structural engineers design systems that are safe, efficient, and built to last — coordinating with architects to ensure every design is buildable and code-compliant.',
-        features: [
-            'Structural analysis & design',
-            'Electrical & mechanical systems',
-            'Foundation & load calculations',
-            'Code compliance & safety checks'
-        ],
-        images: [
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (12).png', label: 'Structural Facade Detail' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (13).png', label: 'Building Structural Massing' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (14).png', label: 'Completed Structure — AUM Bldg.' }
-        ]
-    },
-    'interior-renovation': {
-        category: 'Construction',
-        title: 'Interior Renovation',
-        description: "We bring new life to existing spaces through precision renovation work. Whether it's a condo unit, clinic, or commercial space, our team handles the full scope — from demolition to finishing — with minimal disruption.",
-        features: [
-            'Full & partial renovation',
-            'Condo & residential units',
-            'Commercial space fit-outs',
-            'Clean, on-schedule delivery'
-        ],
-        images: [
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (7).png', label: 'Living Area — After' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (8).png', label: 'Bathroom — After' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (9).png', label: 'Reception Area' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (10).png', label: 'Storefront — After' }
-        ]
-    },
-    'residential-construction': {
-        category: 'Construction',
-        title: 'Residential Construction',
-        description: 'From single-family homes to multi-story residential buildings, we manage the full build — from groundbreaking to final handover. We use quality materials, trusted subcontractors, and tight project management to deliver on time.',
-        features: [
-            'Single & multi-family homes',
-            'Foundation to finishing work',
-            'Regular progress updates',
-            'On-time project delivery'
-        ],
-        images: [
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (11).png', label: 'Living Room & Kitchen' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (12).png', label: 'Completed Building Exterior' }
-        ]
-    },
-    'ground-up-construction': {
-        category: 'Construction',
-        title: 'Ground-Up Construction',
-        description: 'We handle complete construction from bare land to fully built structure. Our team coordinates every phase — site preparation, structural work, MEP systems, and interior finishing — under one roof for seamless execution.',
-        features: [
-            'Site preparation & excavation',
-            'Structural framing & concrete work',
-            'MEP systems installation',
-            'Complete interior & exterior finish'
-        ],
-        images: [
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (12).png', label: 'Site Structure — In Progress' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (14).png', label: 'Completed Building Exterior' }
-        ]
-    },
-    'commercial-renovation': {
-        category: 'Construction',
-        title: 'Commercial Renovation',
-        description: 'We specialize in transforming commercial spaces — offices, clinics, retail stores, and multi-use buildings. Our commercial renovation team delivers polished results that reflect your brand and serve your customers.',
-        features: [
-            'Office & retail fit-outs',
-            'Clinic & healthcare spaces',
-            'Multi-use building renovation',
-            'Brand-aligned design execution'
-        ],
-        images: [
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (9).png', label: 'Clinic Reception Area' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (10).png', label: 'Storefront Entrance' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (13).png', label: 'Commercial Building — Proposal' },
-            { src: 'assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (14).png', label: 'Rooftop Lounge — After' }
-        ]
-    }
-};
-
-const svcModalOverlay = document.getElementById('svcModalOverlay');
-const svcModalClose  = document.getElementById('svcModalClose');
-
-function openSvcModal(key) {
-    const svc = serviceData[key];
-    if (!svc) return;
-
-    // Populate info panel
-    document.getElementById('svcModalIcon').innerHTML     = svcIconMap[key] || '';
-    document.getElementById('svcModalCategory').textContent = svc.category;
-    document.getElementById('svcModalTitle').textContent  = svc.title;
-    document.getElementById('svcModalDesc').textContent   = svc.description;
-    document.getElementById('svcModalFeatures').innerHTML =
-        svc.features.map(f => `<li>${f}</li>`).join('');
-
-    // Populate gallery
-    const mainImg   = document.getElementById('svcGalleryMain');
-    const labelEl   = document.getElementById('svcGalleryLabel');
-    const thumbsEl  = document.getElementById('svcGalleryThumbs');
-
-    function setActive(index) {
-        mainImg.src       = svc.images[index].src;
-        mainImg.alt       = svc.images[index].label;
-        labelEl.textContent = svc.images[index].label;
-        thumbsEl.querySelectorAll('.svc-thumb').forEach((t, i) => {
-            t.classList.toggle('active', i === index);
-        });
-    }
-
-    thumbsEl.innerHTML = svc.images.map((img, i) =>
-        `<button class="svc-thumb${i === 0 ? ' active' : ''}" type="button" aria-label="${img.label}">
-            <img src="${img.src}" alt="${img.label}" loading="lazy">
-        </button>`
-    ).join('');
-
-    thumbsEl.querySelectorAll('.svc-thumb').forEach((thumb, i) => {
-        thumb.addEventListener('click', () => setActive(i));
-    });
-
-    setActive(0);
-
-    svcModalOverlay.classList.add('open');
-    document.body.style.overflow = 'hidden';
-}
-
-function closeSvcModal() {
-    svcModalOverlay.classList.remove('open');
-    document.body.style.overflow = '';
-}
-
-// Attach click to each service row
-document.querySelectorAll('.svc-item[data-service]').forEach(item => {
-    item.addEventListener('click', function(e) {
+  function initRouter() {
+    document.addEventListener('click', (e) => {
+      if (e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      const t = e.target;
+      if (!t || !t.closest) return;
+      if (t.closest('a[href="#main"]')) {
         e.preventDefault();
-        openSvcModal(this.dataset.service);
+        const m = $('#main'); if (m) m.focus();
+        return;
+      }
+      const a = t.closest('a[href^="#/"]');
+      if (!a) return;
+      e.preventDefault();
+      navigate(resolveRoute(a.getAttribute('href')));
     });
-});
+    root.addEventListener('hashchange', () => { if (location.hash === '#main') return; navigate(resolveRoute(location.hash)); });
+  }
 
-// Close on button, overlay click, or Escape
-svcModalClose.addEventListener('click', closeSvcModal);
-svcModalOverlay.addEventListener('click', e => {
-    if (e.target === svcModalOverlay) closeSvcModal();
-});
-document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && svcModalOverlay.classList.contains('open')) closeSvcModal();
-});
+  // ── Header + mobile menu ──
+  function closeMenu() {
+    const m = $('#mmenu'); if (!m || m.hidden) return;
+    m.hidden = true; document.body.style.overflow = '';
+    const t = $('#menuToggle'); if (t) t.setAttribute('aria-expanded', 'false');
+  }
+  function initHeader() {
+    const t = $('#menuToggle');
+    if (t) t.addEventListener('click', () => {
+      const m = $('#mmenu'); const open = m.hidden;
+      m.hidden = !open; document.body.style.overflow = open ? 'hidden' : '';
+      t.setAttribute('aria-expanded', String(open));
+    });
+    root.addEventListener('keydown', (e) => { if (e.key === 'Escape') { closeMenu(); document.dispatchEvent(new Event('dacs:escape')); } });
+    $('#toTop').addEventListener('click', () => root.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' }));
+  }
 
-// ===========================
-// Draggable floating buttons (Messenger + Feedback)
-// ===========================
-function makeDraggable(el, storageKey) {
-    if (!el) return;
-
-    const DRAG_THRESHOLD = 6; // px of movement before it counts as a drag, not a click
-    let startY = 0;
-    let originTop = 0;
-    let dragging = false;
-    let moved = false;
-
-    function clamp(value, min, max) {
-        return Math.min(Math.max(value, min), max);
+  // ── Effects: reveal, count-up, parallax, header state, timeline fill, magnetic ──
+  let io = null;
+  function revealEl(el) {
+    if (el.hasAttribute('data-reveal')) el.setAttribute('data-rv', '1');
+    [el].concat($$('[data-count]', el)).forEach((c) => {
+      if (!c.hasAttribute('data-count') || c.getAttribute('data-cv') === '1') return;
+      c.setAttribute('data-cv', '1');
+      const to = +c.getAttribute('data-count'), suf = c.getAttribute('data-suffix') || '', t0 = performance.now();
+      const tick = (t) => { const p = clamp((t - t0) / 1600, 0, 1);
+        c.textContent = Math.round(to * (1 - Math.pow(1 - p, 3))) + suf; if (p < 1) requestAnimationFrame(tick); };
+      requestAnimationFrame(tick);
+    });
+  }
+  function refreshFx() {
+    if (reduced || !('IntersectionObserver' in root)) return;
+    if (!io) io = new IntersectionObserver((es) => es.forEach((e) => {
+      if (e.isIntersecting) { revealEl(e.target); io.unobserve(e.target); }
+    }), { threshold: 0.12, rootMargin: '0px 0px -6% 0px' });
+    $$('[data-reveal]:not([data-rv])').forEach((el) => {
+      el.setAttribute('data-rv', '0');
+      el.style.transitionDelay = (el.getAttribute('data-delay') || 0) + 'ms';
+      io.observe(el);
+    });
+    $$('[data-count]:not([data-cv])').forEach((el) => {
+      el.setAttribute('data-cv', '0');
+      el.textContent = '0' + (el.getAttribute('data-suffix') || '');
+      io.observe(el);
+    });
+  }
+  function fx() {
+    const y = root.scrollY, vh = root.innerHeight;
+    $('#hdr').classList.toggle('is-clear', page === 'home' && y <= 40);
+    $('#toTop').classList.toggle('is-on', y > vh);
+    const tl = $('#procLine'), fill = $('#procFill');
+    if (tl && fill && page === 'home') {
+      const r = tl.getBoundingClientRect(), p = reduced ? 1 : clamp((vh * 0.6 - r.top) / (r.height - 16), 0, 1);
+      fill.style.height = 'calc(' + (p * 100) + '% - ' + (p * 16) + 'px)';
+      $$('[data-tl-node]', tl).forEach((n) => n.classList.toggle('is-on', reduced || n.getBoundingClientRect().top < vh * 0.6));
     }
+    if (reduced) return;
+    const hp = $('#heroParallax'); if (hp && page === 'home') hp.style.transform = 'translate3d(0,' + (y * 0.35) + 'px,0)';
+    $$('.page:not([hidden]) [data-parallax]').forEach((el) => {
+      const r = el.parentElement.getBoundingClientRect(), f = +el.getAttribute('data-parallax');
+      el.style.transform = 'translate3d(0,' + ((r.top + r.height / 2 - vh / 2) * -f) + 'px,0)';
+    });
+  }
+  function initFx() {
+    let raf = null;
+    root.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(() => { raf = null; fx(); }); }, { passive: true });
+    root.addEventListener('resize', fx);
+    if (reduced || !root.matchMedia('(hover: hover)').matches) return;
+    let mag = null;
+    root.addEventListener('mousemove', (e) => {
+      const t = e.target.closest ? e.target.closest('[data-magnetic]') : null;
+      if (mag && mag !== t) { mag.style.transform = ''; mag = null; }
+      if (!t) return;
+      const r = t.getBoundingClientRect();
+      t.style.transition = 'transform .25s var(--ease), background .2s, color .2s';
+      t.style.transform = 'translate(' + (e.clientX - r.left - r.width / 2) * 0.22 + 'px,' + (e.clientY - r.top - r.height / 2) * 0.32 + 'px)';
+      mag = t;
+    });
+  }
 
-    // Vertical-only: slides up/down the right edge, like a bookmark tab. Horizontal (right: 0) never changes.
-    function applyTop(top) {
-        const rect = el.getBoundingClientRect();
-        const maxTop = window.innerHeight - rect.height;
-        top = clamp(top, 0, Math.max(0, maxTop));
-        el.style.top = `${top}px`;
-        el.style.bottom = 'auto';
-        return top;
+  // Shared before/after slider: el has --pos, role="slider"; returns set(pos).
+  function beforeAfter(el) {
+    const set = (pos) => { pos = clamp(pos, 2, 98); el.style.setProperty('--pos', pos + '%'); el.setAttribute('aria-valuenow', String(Math.round(pos))); };
+    const at = (e) => { const r = el.getBoundingClientRect(); set((e.clientX - r.left) / r.width * 100); };
+    let drag = false;
+    el.addEventListener('pointerdown', (e) => { drag = true; try { el.setPointerCapture(e.pointerId); } catch (x) {} at(e); });
+    el.addEventListener('pointermove', (e) => { if (drag) at(e); });
+    ['pointerup', 'pointercancel'].forEach((t) => el.addEventListener(t, () => { drag = false; }));
+    el.addEventListener('keydown', (e) => {
+      const cur = parseFloat(el.getAttribute('aria-valuenow')) || 50;
+      if (e.key === 'ArrowLeft') { set(cur - 5); e.preventDefault(); }
+      if (e.key === 'ArrowRight') { set(cur + 5); e.preventDefault(); }
+    });
+    set(50);
+    return set;
+  }
+
+  // ── Home ──
+  function initHero() {
+    const wrap = $('#heroSlides'), bars = $('#heroBars'); if (!wrap) return;
+    wrap.innerHTML = SLIDES.map((s, i) => '<img class="hero-img" src="' + img(s.k) + '" alt="' + esc(s.title) +
+      '"' + (i ? ' loading="lazy"' : '') + '>').join('');
+    bars.innerHTML = SLIDES.map((_, i) => '<button type="button" class="hero-bar" aria-label="Slide ' + (i + 1) +
+      '"><span></span></button>').join('');
+    const imgs = $$('.hero-img', wrap), btns = $$('.hero-bar', bars);
+    let cur = 0, timer = null;
+    function go(i) {
+      cur = (i + SLIDES.length) % SLIDES.length;
+      imgs.forEach((im, k) => im.classList.toggle('is-on', k === cur));
+      btns.forEach((b, k) => {
+        b.classList.toggle('is-done', k < cur);
+        b.classList.remove('is-active'); if (k === cur) { void b.offsetWidth; b.classList.add('is-active'); }
+      });
+      $('#heroNum').textContent = String(cur + 1).padStart(2, '0');
+      $('#heroTitle').textContent = SLIDES[cur].title;
+      $('#heroLoc').textContent = SLIDES[cur].loc;
+      start();
     }
-
-    function restorePosition() {
-        try {
-            const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
-            if (saved && typeof saved.top === 'number') {
-                applyTop(saved.top);
-            }
-        } catch (e) { /* ignore malformed storage */ }
+    function start() {
+      clearInterval(timer);
+      if (reduced) return;
+      timer = setInterval(() => { if (page === 'home' && $('#caseView').hidden) go(cur + 1); }, 6500);
     }
+    btns.forEach((b, k) => b.addEventListener('click', () => go(k)));
+    $('#heroPrev').addEventListener('click', () => go(cur - 1));
+    $('#heroNext').addEventListener('click', () => go(cur + 1));
+    go(0);
+  }
 
-    function savePosition(top) {
-        try {
-            localStorage.setItem(storageKey, JSON.stringify({ top }));
-        } catch (e) { /* storage unavailable, skip persistence */ }
+  function initFeatured() {
+    const tabs = $('#featTabs'), ba = $('#featBA'); if (!tabs || !ba) return;
+    const set = beforeAfter(ba);
+    function pick(i) {
+      const p = PROJECTS[i];
+      $('#featBefore').src = img(p.a[0]); $('#featBefore').alt = p.title + ' — ' + p.a[1];
+      $('#featAfter').src = img(p.b[0]);  $('#featAfter').alt = p.title + ' — ' + p.b[1];
+      $('#featBeforeLabel').textContent = p.a[1]; $('#featAfterLabel').textContent = p.b[1];
+      $('#featDesc').textContent = p.b[2];
+      $$('button', tabs).forEach((b) => { const on = +b.dataset.i === i; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on)); });
+      set(50);
     }
+    tabs.innerHTML = FEATURED.map((i) => '<button type="button" class="feat-tab" data-i="' + i + '">' + esc(PROJECTS[i].title) + '</button>').join('');
+    tabs.addEventListener('click', (e) => { const b = e.target.closest('[data-i]'); if (b) pick(+b.dataset.i); });
+    pick(FEATURED[0]);
+  }
 
-    function onPointerDown(e) {
-        if (e.button !== undefined && e.button !== 0) return; // left click / primary touch only
-        const rect = el.getBoundingClientRect();
-        startY = e.clientY;
-        originTop = rect.top;
-        dragging = true;
-        moved = false;
-        try { el.setPointerCapture(e.pointerId); } catch (err) { /* capture not available, drag still works via document listeners */ }
-        el.classList.add('is-dragging');
-    }
+  function initCarousel() {
+    const el = $('#carTrack'); if (!el) return;
+    const one = [];
+    PROJECTS.forEach((p) => [p.a, p.b].filter((v) => v[1] === 'Turnover' || v[1] === 'Detail')
+      .forEach((v) => one.push({ title: p.title, src: img(v[0]) })));
+    el.innerHTML = one.concat(one).map((c, i) => '<a href="#/projects" class="car-item" data-car-item' +
+      (i >= one.length ? ' aria-hidden="true" tabindex="-1"' : '') + '>' +
+      '<img src="' + c.src + '" alt="' + esc(c.title) + '" loading="lazy"><span class="car-cap">' + esc(c.title) +
+      ' · Turnover</span></a>').join('');
+    let paused = false, x = null, center = null;
+    ['mouseenter', 'touchstart', 'focusin'].forEach((t) => el.addEventListener(t, () => { paused = true; }, { passive: true }));
+    ['mouseleave', 'touchend', 'focusout'].forEach((t) => el.addEventListener(t, () => { paused = false; x = null; }));
+    (function loop() {
+      if (page === 'home') {
+        if (!paused && !reduced && $('#caseView').hidden) {
+          x = (x == null ? el.scrollLeft : x) + 0.6;
+          const half = el.scrollWidth / 2; if (x >= half) x -= half;
+          el.scrollLeft = x;
+        } else x = el.scrollLeft;
+        const vr = el.getBoundingClientRect(), cx = vr.left + vr.width / 2;
+        let best = null, bd = Infinity;
+        $$('[data-car-item]', el).forEach((it) => { const r = it.getBoundingClientRect(); const d = Math.abs(r.left + r.width / 2 - cx); if (d < bd) { bd = d; best = it; } });
+        if (best !== center) { if (center) center.classList.remove('is-center'); if (best) best.classList.add('is-center'); center = best; }
+      }
+      requestAnimationFrame(loop);
+    })();
+  }
 
-    function onPointerMove(e) {
-        if (!dragging) return;
-        const dy = e.clientY - startY;
-        if (!moved && Math.abs(dy) > DRAG_THRESHOLD) moved = true;
-        if (moved) {
-            applyTop(originTop + dy);
-        }
-    }
+  function initFaq() {
+    const list = $('#faqList'); if (!list) return;
+    list.innerHTML = FAQS.map((q, i) => '<div class="faq-item' + (i === 0 ? ' is-open' : '') + '">' +
+      '<button type="button" class="faq-q" aria-expanded="' + (i === 0) + '" aria-controls="faq-a' + i + '" id="faq-q' + i + '">' +
+      '<span>' + esc(q[0]) + '</span><span class="faq-icon" aria-hidden="true">+</span></button>' +
+      '<div class="faq-a" id="faq-a' + i + '" role="region" aria-labelledby="faq-q' + i + '"><div><p>' + esc(q[1]) + '</p></div></div></div>').join('');
+    list.addEventListener('click', (e) => {
+      const btn = e.target.closest('.faq-q'); if (!btn) return;
+      const item = btn.parentElement, open = !item.classList.contains('is-open');
+      $$('.faq-item', list).forEach((it) => { it.classList.remove('is-open'); $('.faq-q', it).setAttribute('aria-expanded', 'false'); });
+      if (open) { item.classList.add('is-open'); btn.setAttribute('aria-expanded', 'true'); }
+    });
+  }
 
-    function onPointerUp(e) {
-        if (!dragging) return;
-        dragging = false;
-        el.classList.remove('is-dragging');
-        try { el.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
-        if (moved) {
-            const rect = el.getBoundingClientRect();
-            const finalTop = applyTop(rect.top);
-            savePosition(finalTop);
-            // Swallow the click that follows a real drag so it doesn't also open the link/modal
-            const suppressClick = ev => { ev.preventDefault(); ev.stopPropagation(); el.removeEventListener('click', suppressClick, true); };
-            el.addEventListener('click', suppressClick, true);
-        }
-        moved = false;
-    }
+  registerInit(initHero); registerInit(initFeatured); registerInit(initCarousel); registerInit(initFaq);
 
-    el.addEventListener('pointerdown', onPointerDown);
-    // Listen on document too (not just el) so a drag keeps tracking even if pointer
-    // capture doesn't stick between successive drags — this is what let the first
-    // drag work but later ones silently fail and fall through to a click.
-    document.addEventListener('pointermove', onPointerMove);
-    document.addEventListener('pointerup', onPointerUp);
-    document.addEventListener('pointercancel', onPointerUp);
-    // The Messenger button is an <a>, and browsers natively let you drag links
-    // (e.g. to a new tab) — that native drag competes with ours, so block it.
-    el.addEventListener('dragstart', e => e.preventDefault());
+  // ── Services ──
+  const AREA_ZOOM = (i) => (AREAS[i].city === 'Iligan City' ? 12 : 13);
 
-    window.addEventListener('resize', () => {
-        if (el.style.top === '') return; // still at default fixed position
-        applyTop(el.getBoundingClientRect().top);
+  function bookService(id) {
+    if (typeof root.dacsStartBooking === 'function') root.dacsStartBooking(id);
+    navigate('book');
+  }
+
+  function initServices() {
+    const idx = $('#svcIndex'), wrap = $('#svcPanels'); if (!wrap) return;
+    idx.innerHTML = SERVICES.map((s, i) => '<a href="#svc-' + s.id + '" class="svc-jump" data-jump="' + s.id + '"><span>' +
+      String(i + 1).padStart(2, '0') + '</span>' + esc(s.title) + '</a>').join('');
+    idx.addEventListener('click', (e) => {
+      const a = e.target.closest('[data-jump]'); if (!a) return;
+      e.preventDefault();
+      const el = document.getElementById('svc-' + a.dataset.jump);
+      if (el) root.scrollTo({ top: el.getBoundingClientRect().top + root.scrollY - 128, behavior: reduced ? 'auto' : 'smooth' });
     });
 
-    restorePosition();
-}
+    wrap.innerHTML = SERVICES.map((x, i) => {
+      const dark = x.dark != null ? x.dark : i % 2 === 1;
+      const tone = dark ? 'is-dark' : (i % 4 === 2 ? 'is-cream' : 'is-light');
+      const cat = x.category === 'Allied' ? 'Partner Trades' : (x.id === 'vertical-construction' ? 'Our Main Service' : x.category + ' Services');
+      const num = String(i + 1).padStart(2, '0');
+      return '<section class="svc-panel ' + tone + (dark ? ' is-flip' : '') + '" id="svc-' + x.id + '" aria-labelledby="svc-h-' + x.id + '">' +
+        '<div class="svc-text">' +
+          '<span class="svc-eyebrow" data-reveal>' + num + ' · ' + esc(cat) + '</span>' +
+          '<h2 id="svc-h-' + x.id + '" data-reveal data-delay="80">' + esc(x.title) + '</h2>' +
+          '<p data-reveal data-delay="140">' + esc(x.description) + '</p>' +
+          '<ul class="svc-scope" data-reveal data-delay="200">' + (SCOPE[x.id] || x.features || []).map((f) => '<li>' + esc(f) + '</li>').join('') + '</ul>' +
+          '<div data-reveal data-delay="260"><button type="button" class="svc-book" data-book="' + x.id + '" data-magnetic="1">Book this service →</button></div>' +
+        '</div>' +
+        '<div class="svc-media">' +
+          '<div class="svc-layers" data-parallax="0.08">' + x.images.map((im, k) =>
+            '<img src="' + img(im[0]) + '" alt="' + esc(im[1]) + '" loading="lazy" class="' + (k ? '' : 'is-on') + '">').join('') + '</div>' +
+          '<div class="svc-thumbs-bar"><span class="svc-img-label">' + esc(x.images[0][1]) + '</span><div class="svc-thumbs">' +
+            x.images.map((im, k) => '<button type="button" class="svc-thumb' + (k ? '' : ' is-on') + '" data-k="' + k + '" aria-label="' + esc(im[1]) + '">' +
+              '<img src="' + img(im[0]) + '" alt="" loading="lazy"></button>').join('') +
+          '</div></div>' +
+        '</div></section>';
+    }).join('');
 
-makeDraggable(document.querySelector('.messenger-float-btn'), 'dacs_messengerBtnPos');
-makeDraggable(document.getElementById('feedbackBtn'), 'dacs_feedbackBtnPos');
+    const pickImg = (btn) => {
+      const panel = btn.closest('.svc-panel'), k = +btn.dataset.k;
+      $$('.svc-layers img', panel).forEach((im, j) => im.classList.toggle('is-on', j === k));
+      $$('.svc-thumb', panel).forEach((b, j) => b.classList.toggle('is-on', j === k));
+      $('.svc-img-label', panel).textContent = $$('.svc-layers img', panel)[k].alt;
+    };
+    wrap.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-book]'); if (b) return bookService(b.dataset.book);
+      const t = e.target.closest('.svc-thumb'); if (t) pickImg(t);
+    });
+    wrap.addEventListener('mouseover', (e) => { const t = e.target.closest('.svc-thumb'); if (t) pickImg(t); });
+
+    const list = $('#areaList'), map = $('#areaMap');
+    function pickArea(i) {
+      $$('button', list).forEach((b) => { const on = +b.dataset.i === i; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on)); });
+      map.src = 'https://maps.google.com/maps?q=' + encodeURIComponent(AREAS[i].q) + '&z=' + AREA_ZOOM(i) + '&output=embed';
+    }
+    list.innerHTML = AREAS.map((a, i) => '<button type="button" class="area-item" data-i="' + i + '">' +
+      '<span class="area-dot"></span><span class="area-city">' + esc(a.city) + '</span><span class="area-region">' + esc(a.region) + '</span>' +
+      '<span class="area-n">' + a.n + (a.n === 1 ? ' project' : ' projects') + '</span></button>').join('');
+    list.addEventListener('click', (e) => { const b = e.target.closest('[data-i]'); if (b) pickArea(+b.dataset.i); });
+    pickArea(0);
+  }
+
+  registerInit(initServices);
+
+  // ── Projects + case study ──
+  const caseService = (p) => (p.type === 'Commercial' ? 'commercial-renovation'
+    : (p.scope === 'Building' ? 'residential-construction' : 'interior-design'));
+
+  function initProjects() {
+    const grid = $('#prjGrid'), bar = $('#prjFilters'), cv = $('#caseView'); if (!grid) return;
+    let filter = 'All', idx = -1, lastFocus = null, lastIdx = -1;
+    const setCase = beforeAfter($('#caseBA'));
+
+    const bucket = () => (root.innerWidth >= 1000 ? 'wide' : root.innerWidth >= 700 ? 'mid' : 'small');
+    let curBucket = bucket();
+    function renderGrid() {
+      const wide = curBucket === 'wide', small = curBucket === 'small';
+      const vis = PROJECTS.map((p, i) => ({ p, i })).filter(({ p }) => filter === 'All' || p.type === filter);
+      grid.innerHTML = vis.map(({ p, i }, k) => {
+        const sp = wide ? SPANS[k % SPANS.length] : [small ? 12 : 6, small ? '4/3' : '4/3'];
+        return '<button type="button" class="prj-card" data-i="' + i + '" style="grid-column:span ' + sp[0] + ';aspect-ratio:' + sp[1] + '">' +
+          '<img src="' + img(p.b[0]) + '" alt="' + esc(p.title) + '" loading="lazy"><span class="prj-shade"></span>' +
+          '<span class="prj-type">' + esc(p.type) + '</span>' +
+          '<span class="prj-meta"><span><span class="prj-sub">' + esc(p.scope) + ' · ' + esc(p.city) + '</span>' +
+          '<span class="prj-title">' + esc(p.title) + '</span></span><span class="prj-arrow" aria-hidden="true">↗</span></span></button>';
+      }).join('');
+    }
+    function renderFilters() {
+      if (bar.children.length) {
+        $$('[data-f]', bar).forEach((b) => { const on = b.dataset.f === filter; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on)); });
+        return;
+      }
+      const counts = { All: PROJECTS.length,
+        Residential: PROJECTS.filter((p) => p.type === 'Residential').length,
+        Commercial: PROJECTS.filter((p) => p.type === 'Commercial').length };
+      bar.innerHTML = ['All', 'Residential', 'Commercial'].map((l) => '<button type="button" class="prj-filter' +
+        (l === filter ? ' is-on' : '') + '" aria-pressed="' + (l === filter) + '" data-f="' + l + '">' + l + ' <span>' + counts[l] + '</span></button>').join('');
+    }
+    function openCase(i) {
+      idx = (i + PROJECTS.length) % PROJECTS.length;
+      const p = PROJECTS[idx];
+      $('#caseNum').textContent = String(idx + 1).padStart(2, '0') + ' / ' + String(PROJECTS.length).padStart(2, '0');
+      $('#caseEyebrow').textContent = p.type + ' · ' + p.scope;
+      $('#caseTitle').textContent = p.title;
+      $('#caseCity').textContent = p.city; $('#caseType').textContent = p.type; $('#caseScope').textContent = p.scope;
+      $('#caseA').src = img(p.a[0]); $('#caseA').alt = p.title + ' — ' + p.a[1];
+      $('#caseB').src = img(p.b[0]); $('#caseB').alt = p.title + ' — ' + p.b[1];
+      $('#caseALabel').textContent = p.a[1]; $('#caseBLabel').textContent = p.b[1];
+      $('#caseADesc').textContent = p.a[2]; $('#caseBDesc').textContent = p.b[2];
+      $$('.case-cap-label').forEach((el, k) => { el.textContent = k ? p.b[1] : p.a[1]; });
+      setCase(50);
+      if (cv.hidden) { lastFocus = document.activeElement; lastIdx = lastFocus && lastFocus.dataset ? lastFocus.dataset.i : -1; cv.hidden = false; document.body.style.overflow = 'hidden'; cv.scrollTop = 0; $('#caseClose').focus(); }
+    }
+    function closeCase() {
+      if (cv.hidden) return;
+      cv.hidden = true; document.body.style.overflow = ''; idx = -1;
+      let back = lastFocus;
+      if (back && !back.isConnected && lastIdx != null && lastIdx !== -1) back = grid.querySelector('[data-i="' + lastIdx + '"]');
+      if (back && back.focus) back.focus();
+    }
+
+    bar.addEventListener('click', (e) => { const b = e.target.closest('[data-f]'); if (!b) return; filter = b.dataset.f; renderFilters(); renderGrid(); });
+    grid.addEventListener('click', (e) => { const b = e.target.closest('[data-i]'); if (b) openCase(+b.dataset.i); });
+    $('#caseClose').addEventListener('click', closeCase);
+    $('#casePrev').addEventListener('click', () => openCase(idx - 1));
+    $('#caseNext').addEventListener('click', () => openCase(idx + 1));
+    $('#caseBook').addEventListener('click', () => { const p = PROJECTS[idx]; closeCase(); bookService(caseService(p)); });
+    document.addEventListener('dacs:escape', closeCase);
+    document.addEventListener('dacs:page', closeCase);
+    // Modal: Tab / Shift+Tab wrap inside the case view while it is open.
+    cv.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return;
+      const items = $$('button, [tabindex="0"], a[href]', cv).filter((el) => !el.disabled);
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    });
+    let rt = null;
+    root.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => { const b = bucket(); if (b !== curBucket) { curBucket = b; renderGrid(); } }, 150); });
+    renderFilters(); renderGrid();
+  }
+
+  registerInit(initProjects);
+
+  function initSite() {
+    initRouter(); initHeader(); initFx();
+    inits.forEach((fn) => {
+      try { fn(); } catch (err) {
+        if (typeof _dacsReportError === 'function') _dacsReportError('error', 'init failed: ' + (err && err.message), 'js/script.js', 0, 0, err && err.stack);
+      }
+    });
+    show(resolveRoute(location.hash));
+  }
+
+  root.DacsSite = { SERVICES, SCOPE, AREAS, PROJECTS, navigate, registerInit, beforeAfter, refreshFx, esc, img, $, $$, clamp, reduced,
+    get page() { return page; } };
+  document.addEventListener('DOMContentLoaded', initSite);
+})(typeof window !== 'undefined' ? window : this);

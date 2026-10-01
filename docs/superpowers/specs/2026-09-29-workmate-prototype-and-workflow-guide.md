@@ -91,6 +91,8 @@ Migration must preserve accounts, historical records and pending attendance/phot
 
 ## 6. New request: worker or leader
 
+**Confirmed addition, 1 October 2026:** include live Shopee/Wilcon results within the app: description → product cards → variant/specification review → Use this item → quantity/unit → request draft. External browsing or pasted links alone does not meet the requirement. Follow the main MVP's live supplier search addition, including price privacy and source/variant references. Label prototype results as simulated until permitted live integrations are validated; release placement is pending feasibility, not automatically Stage 1a.
+
 ```mermaid
 flowchart TD
     A[New Request] --> B[Choose eligible PC project]

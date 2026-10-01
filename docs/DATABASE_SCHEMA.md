@@ -618,12 +618,20 @@ Despite the name, this table records a project ending **either way**:
 `type` (e.g. `report_shared`, `report_approved`, `payment_*`, `sowa_request`, `termination_approved`), `message`, `isRead` (bool), `relatedId?`, `createdAt`.
 **Rules:** anyone signed-in can **create** (for any recipient); only the **recipient** reads/updates/deletes theirs.
 
-### `appointments/{id}` (public booking, `script.js`)
-`fullname`, `email`, `contact`, `service`, `message`, `status` (`pending`), `createdAt`, `updatedAt`.
-**Rules:** anyone can create; admins read/manage.
+### `appointments/{id}` (public booking — `index.html` #/book, `js/booking.js`)
+`fullname`, `email`, `contact`, `service`, `message`, `status` (`pending`), `createdAt`, `updatedAt`,
+plus from the v2 booking wizard (migration 0084, all nullable — old rows lack them):
+`meetingType` (`office` / `site` / `online`), `propertyType`, `budget` (a range label, e.g. `₱1M – ₱3M`;
+**hidden from staff** in admin), `location`, `preferredDate` (`date`, the visitor's local calendar day),
+`preferredTime` (e.g. `10:30 AM`). Preferred date/time is a request, not a confirmed booking.
+The client's reference code is `DACS-` + the first 6 hex characters of `id` (`DacsBooking.refCode`).
+**Rules:** anyone can insert (`appt_create`); only owner/staff can read or manage (`appt_admin`) —
+`appt_read` (any signed-in account) was dropped in 0084. The public insert must **not** read the row
+back (`insert().select()` / `db.collection().add()`): RLS then rejects the whole insert.
+
 
 ### `testimonials/{id}` (public feedback)
-`name`, `location`, `rating` (1–5), `message`, `status` (`approved` if rating ≥4 else `pending`), `createdAt`.
+`name`, `location`, `rating` (1–5), `message`, `status` (always `pending` on public insert — an admin approves; RLS `testi_create` rejects anything else), `createdAt`.
 **Rules:** public creates only as `pending`; public reads only `approved` + rating ≥4.
 
 ### `settings/{id}`

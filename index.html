@@ -4,788 +4,496 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DAC's Building Design Services</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <meta name="description" content="Design & build in Quezon City — architectural, interior and engineering design, renovation and construction. Book a free consultation.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700;800;900&family=Playfair+Display:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
+    <a class="skip-link" href="#main">Skip to content</a>
 
-    <!-- =====================
-         NAVIGATION
-    ===================== -->
-    <nav class="navbar" id="navbar">
-        <div class="container nav-container">
-            <a href="#home" class="logo" aria-label="Back to top">
-                <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC's Building Design Services Logo" class="logo-image">
-                <div class="logo-text">
-                    <span class="logo-main">DAC'S</span>
-                    <span class="logo-sub">BUILDING DESIGN SERVICES</span>
-                </div>
+    <header class="hdr" id="hdr">
+        <div class="hdr-in">
+            <a class="hdr-brand" href="#/home" aria-label="DAC's Building Design Services — Home">
+                <img src="assets/images/DACS-TRANSPARENT.png" alt="" class="hdr-logo">
+                <span class="hdr-name">
+                    <span class="hdr-name-main">DAC'S</span>
+                    <span class="hdr-name-sub">BUILDING DESIGN SERVICES</span>
+                </span>
             </a>
-            <div class="nav-links">
-                <a href="#home"        class="nav-link active">Home</a>
-                <a href="#about"       class="nav-link">About</a>
-                <a href="#services"    class="nav-link">Services</a>
-                <a href="#how-it-works" class="nav-link">Process</a>
-                <a href="#appointment" class="nav-link nav-link-cta">Appointment</a>
-            </div>
-            <div class="mobile-menu-toggle" id="mobileMenuToggle">
-                <span></span>
-                <span></span>
-                <span></span>
+            <nav class="hdr-nav" aria-label="Main">
+                <a class="hdr-link" href="#/home" data-nav="home">Home<span class="hdr-line"></span></a>
+                <a class="hdr-link" href="#/services" data-nav="services">Services<span class="hdr-line"></span></a>
+                <a class="hdr-link" href="#/projects" data-nav="projects">Projects<span class="hdr-line"></span></a>
+            </nav>
+            <div class="hdr-actions">
+                <a class="hdr-portal" href="client.html">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    Client Portal
+                </a>
+                <a class="hdr-book" href="#/book" data-nav="book" data-magnetic="1">Book a Consultation</a>
+                <button type="button" class="hdr-toggle" id="menuToggle" aria-label="Menu" aria-controls="mmenu" aria-expanded="false">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="8" x2="20" y2="8"></line><line x1="4" y1="16" x2="20" y2="16"></line></svg>
+                </button>
             </div>
         </div>
-    </nav>
+    </header>
 
-    <!-- =====================
-         MAIN CONTENT
-    ===================== -->
-    <main>
+    <div class="mmenu" id="mmenu" hidden>
+        <div class="mmenu-top">
+            <button type="button" class="mmenu-close" onclick="document.getElementById('menuToggle').click()" aria-label="Close menu">&times;</button>
+        </div>
+        <nav class="mmenu-nav" aria-label="Mobile">
+            <a class="mmenu-link" href="#/home" data-nav="home" style="animation-delay:80ms"><span class="mmenu-num">01</span><span class="mmenu-label">Home</span></a>
+            <a class="mmenu-link" href="#/services" data-nav="services" style="animation-delay:140ms"><span class="mmenu-num">02</span><span class="mmenu-label">Services</span></a>
+            <a class="mmenu-link" href="#/projects" data-nav="projects" style="animation-delay:200ms"><span class="mmenu-num">03</span><span class="mmenu-label">Projects</span></a>
+            <a class="mmenu-link" href="#/book" data-nav="book" style="animation-delay:260ms"><span class="mmenu-num">04</span><span class="mmenu-label">Book a Consultation</span></a>
+        </nav>
+        <div class="mmenu-foot">
+            <a class="mmenu-portal" href="client.html">Client Portal &rarr;</a>
+            <a href="tel:+639924594334">+63 992 459 4334</a>
+        </div>
+    </div>
 
-        <!-- Hero Section -->
-        <section class="hero" id="home">
-            <div class="container">
-                <div class="hero-content">
-                    <div class="hero-badge">
-                        <span>Established 2026</span>
-                    </div>
-                    <h1 class="hero-title">
-                        Dac's Building Design and Services
-                    </h1>
-                    <p class="hero-subtitle">
-                        A team of engineers, architects, and finishing experts combining strength, utility, and aesthetic appeal
-                    </p>
-                    <div class="hero-cta">
-                        <a href="#appointment" class="btn btn-primary btn-consultation">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                                <line x1="16" y1="2" x2="16" y2="6"></line>
-                                <line x1="8" y1="2" x2="8" y2="6"></line>
-                                <line x1="3" y1="10" x2="21" y2="10"></line>
-                            </svg>
-                            Book a Free Consultation
-                        </a>
-                        <a href="tel:+639924594334" class="btn btn-secondary btn-call">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;">
-                                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-                            </svg>
-                            Call Us Now
-                        </a>
-                    </div>
-                </div>
-            </div>
+    <div class="curtain" id="curtain" aria-hidden="true"><span>DAC'S</span></div>
 
-            <div class="hero-decoration">
-                <div class="bg-slideshow-container">
-                    <div class="bg-slide bg-active"><img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (2).png" alt="Avida Towers Vita project"></div>
-                    <div class="bg-slide"><img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (4).png" alt="Park Triangle Residences project"></div>
-                    <div class="bg-slide"><img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (6).png" alt="San Lorenzo Place project"></div>
-                    <div class="bg-slide"><img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (8).png" alt="SMDC Grass Residence project"></div>
-                    <div class="bg-slide"><img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (10).png" alt="Health Works Dental Clinic project"></div>
-                    <div class="bg-slide"><img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (12).png" alt="Mallari Building project"></div>
-                    <div class="bg-slide"><img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (14).png" alt="AUM Building project"></div>
-                </div>
-                <div class="slideshow-indicators"></div>
-            </div>
-        </section>
-
-        <!-- Stats Counter Section -->
-        <section class="stats-counter" id="stats">
-            <div class="container">
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <div class="stat-value">
-                            <span class="stat-number" data-target="10">0</span>
-                            <span class="stat-plus">+</span>
+    <main id="main" tabindex="-1">
+        <section class="page" data-page="home" hidden>
+            <section class="hero" aria-label="Featured projects">
+                <div class="hero-par" id="heroParallax"><div class="hero-slides" id="heroSlides"></div></div>
+                <div class="hero-shade1"></div><div class="hero-shade2"></div>
+                <div class="hero-in">
+                    <div class="hero-copy">
+                        <span class="hero-badge" data-reveal="1"><span class="hero-badge-line"></span>Design · Build — Established 2026</span>
+                        <h1 class="hero-title" data-reveal="1" data-delay="100">Dac's Building Design and Services</h1>
+                        <p class="hero-text" data-reveal="1" data-delay="200">A team of engineers, architects, and finishing experts combining strength, utility, and aesthetic appeal</p>
+                        <div class="hero-btns" data-reveal="1" data-delay="300">
+                            <a class="hero-book" data-magnetic="1" href="#/book">Book a Free Consultation
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></a>
+                            <a class="hero-ghost" data-magnetic="1" href="#/projects">Explore Our Projects</a>
+                            <a class="hero-ghost" href="tel:+639924594334">Call +63 992 459 4334</a>
                         </div>
-                        <div class="stat-label">Projects Completed</div>
                     </div>
-                    <div class="stat-divider"></div>
-                    <div class="stat-item">
-                        <div class="stat-value">
-                            <span class="stat-number" data-target="10">0</span>
-                            <span class="stat-plus">+</span>
+                    <div class="hero-foot">
+                        <div class="hero-meta">
+                            <span class="hero-num" id="heroNum">01</span>
+                            <span class="hero-of">/ 07</span>
+                            <span class="hero-cap"><span class="hero-cap-t" id="heroTitle"></span><span class="hero-cap-l" id="heroLoc"></span></span>
                         </div>
-                        <div class="stat-label">Years Combined Experience</div>
-                    </div>
-                    <div class="stat-divider"></div>
-                    <div class="stat-item">
-                        <div class="stat-value">
-                            <span class="stat-number" data-target="7">0</span>
-                            <span class="stat-plus"></span>
+                        <div class="hero-ctrl">
+                            <div class="hero-bars" id="heroBars"></div>
+                            <button type="button" class="hero-arrow" id="heroPrev" aria-label="Previous project"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg></button>
+                            <button type="button" class="hero-arrow" id="heroNext" aria-label="Next project"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline></svg></button>
                         </div>
-                        <div class="stat-label">Services Offered</div>
                     </div>
-                    <div class="stat-divider"></div>
-                    <div class="stat-item">
-                        <div class="stat-value">
-                            <span class="stat-number" data-target="100">0</span>
-                            <span class="stat-plus">%</span>
+                </div>
+            </section>
+
+            <section class="stats">
+                <div class="stats-in">
+                    <div class="stats-item" data-reveal="1"><span class="stats-n" data-count="10" data-suffix="+">10+</span><span class="stats-l">Projects Completed</span></div>
+                    <div class="stats-item" data-reveal="1" data-delay="100"><span class="stats-n" data-count="10" data-suffix="+">10+</span><span class="stats-l">Years Combined Experience</span></div>
+                    <div class="stats-item" data-reveal="1" data-delay="200"><span class="stats-n" data-count="9" data-suffix="">9</span><span class="stats-l">Services Offered</span></div>
+                    <div class="stats-item" data-reveal="1" data-delay="300"><span class="stats-n" data-count="5" data-suffix="">5</span><span class="stats-l">Cities with completed projects</span></div>
+                </div>
+            </section>
+
+            <section class="intro">
+                <div class="intro-in">
+                    <div class="intro-copy">
+                        <span class="eyebrow" data-reveal="1">Who We Are</span>
+                        <h2 class="intro-title" data-reveal="1" data-delay="80">Your hard work deserves a home that lasts.</h2>
+                        <p class="intro-lead" data-reveal="1" data-delay="160">We offer expert design-build solutions that take you from <em>'scratch'</em> to <em>'reality,'</em> creating spaces where you can truly enjoy the life you've built.</p>
+                        <p class="intro-sub" data-reveal="1" data-delay="220">We are engaged in architectural design, building architectural interiors, and architectural interior construction.</p>
+                    </div>
+                    <div class="intro-photo" data-reveal="1" data-delay="120">
+                        <div class="intro-par" data-parallax="0.12"><img src="assets/images/portfolio/DaCs_AIRBNB%20PROFILE.pdf%20(12).png" alt="Mallari Bldg. — completed" loading="lazy"></div>
+                        <div class="intro-tag"><span class="intro-tag-k">Turnover</span><span class="intro-tag-t">Mallari Bldg., Valenzuela City</span></div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="featured">
+                <div class="featured-in">
+                    <div class="sec-center">
+                        <h2 class="featured-title" data-reveal="1">Featured Projects</h2>
+                        <p class="featured-sub" data-reveal="1" data-delay="80">From initial proposal to final turnover — real projects, real results.</p>
+                    </div>
+                    <div class="car" data-reveal="1" data-delay="120"><div class="car-track" id="carTrack"></div></div>
+                    <div class="featured-cta"><a class="btn-green" data-magnetic="1" href="#/book">Start Your Project</a></div>
+                </div>
+            </section>
+
+            <section class="feat">
+                <div class="feat-in">
+                    <div class="feat-top">
+                        <div class="feat-head">
+                            <span class="eyebrow" data-reveal="1">Proposal to Turnover</span>
+                            <h2 class="feat-title" data-reveal="1" data-delay="80">Drag to see the transformation</h2>
                         </div>
-                        <div class="stat-label">Commitment to Quality</div>
+                        <div class="feat-tabs" id="featTabs" data-reveal="1" data-delay="160"></div>
+                    </div>
+                    <div class="ba feat-ba" id="featBA" data-reveal="1" data-delay="120" role="slider" tabindex="0" aria-label="Before and after comparison" aria-valuemin="0" aria-valuemax="100">
+                        <img id="featBefore" src="" alt="" draggable="false">
+                        <img class="ba-top" id="featAfter" src="" alt="" draggable="false">
+                        <span class="ba-label ba-label-l" id="featBeforeLabel"></span>
+                        <span class="ba-label ba-label-r" id="featAfterLabel"></span>
+                        <div class="ba-handle"><span class="ba-knob"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 3 12 9 18"></polyline><polyline points="15 6 21 12 15 18"></polyline></svg></span></div>
+                    </div>
+                    <div class="feat-foot">
+                        <p class="feat-desc" id="featDesc"></p>
+                        <a class="link-line" href="#/projects">See all projects →</a>
                     </div>
                 </div>
-            </div>
-        </section>
+            </section>
 
-        <!-- About Section -->
-        <section class="about" id="about">
-            <div class="container">
-                <div class="section-header">
-                    <span class="section-tag">Who We Are</span>
-                    <h2 class="section-title">About Us</h2>
-                </div>
-
-                <div class="company-background">
-                    <div class="background-video">
-                        <video autoplay muted loop playsinline preload="metadata" controls>
-                            <source src="assets/video/company-overview.mp4" type="video/mp4">
-                            Your browser does not support the video tag.
-                        </video>
+            <section class="proc">
+                <div class="proc-in">
+                    <div class="proc-copy">
+                        <span class="eyebrow eyebrow-mint" data-reveal="1">Simple Process</span>
+                        <h2 class="proc-title" data-reveal="1" data-delay="80">How It Works</h2>
+                        <p class="proc-text" data-reveal="1" data-delay="160">Getting your dream space is easier than you think. Here's how we make it happen.</p>
+                        <a class="proc-btn" data-reveal="1" data-delay="220" data-magnetic="1" href="#/book">Start Your Project Today</a>
                     </div>
-                    <div class="background-description">
-                        <p>Our journey began with a collective of architects and engineers driven by a singular purpose: to redefine modern living through sustainable design in apartments, residences, and condominiums. At the heart of this movement is Architect Cristher Dacome, whose personal history of struggle and inspiration paved the way for this new era. He founded DACS not merely as a business, but as a declaration of faith — honoring God's unwavering faithfulness and recognizing the divine provision that continues to sustain this mission.</p>
-                        <p>Your hard work deserves a home that lasts. We offer expert design-build solutions that take you from 'scratch' to 'reality,' creating spaces where you can truly enjoy the life you've built.</p>
-                    </div>
-                </div>
-
-                <div class="about-grid">
-                    <div class="about-card">
-                        <div class="about-year">2026</div>
-                        <h3>Founded</h3>
-                        <p>A team of engineers, architects, and finishing experts who complement one another's distinctively varied specialties to produce solutions.</p>
-                    </div>
-                    <div class="about-card">
-                        <div class="about-icon">🏛️</div>
-                        <h3>What We Do</h3>
-                        <p>We are engaged in architectural design, building architectural interiors, and architectural interior construction.</p>
-                    </div>
-                    <div class="about-card">
-                        <div class="about-icon">🎯</div>
-                        <h3>Why Choose Us</h3>
-                        <p>Our goal is to provide the best architectural design possible that combines use, strength, and aesthetic appeal.</p>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Services Section -->
-        <section class="services" id="services">
-            <div class="container">
-                <div class="section-header">
-                    <span class="section-tag">Our Services &amp; Work</span>
-                    <h2 class="section-title">Professional Design & Build <span style="color: var(--primary-color);">Services</span></h2>
-                    <p class="section-description">Delivering comprehensive design and construction services tailored to your vision — see it all below, from what we offer to the projects we've delivered.</p>
-                </div>
-
-                <!-- Design Services Group -->
-                <div class="svc-group">
-                    <div class="svc-group-header">
-                        <div class="svc-group-meta">
-                            <div class="svc-group-badge">A</div>
-                            <h3 class="svc-group-title"><span>Design</span> Services</h3>
-                        </div>
-                        <span class="svc-group-count">3 Services</span>
-                    </div>
-                    <div class="svc-items">
-                        <a class="svc-item" href="#" data-service="interior-design">
-                            <span class="svc-num">01</span>
-                            <div class="svc-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                            </div>
-                            <div class="svc-body">
-                                <h4>Interior Design</h4>
-                                <p>Creating functional and beautiful interior spaces tailored to your lifestyle and preferences.</p>
-                            </div>
-                            <span class="svc-tag">Design</span>
-                            <svg class="svc-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                        </a>
-                        <a class="svc-item" href="#" data-service="architectural-design">
-                            <span class="svc-num">02</span>
-                            <div class="svc-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-                            </div>
-                            <div class="svc-body">
-                                <h4>Architectural Design</h4>
-                                <p>Comprehensive architectural planning and design solutions that bring your vision to life.</p>
-                            </div>
-                            <span class="svc-tag">Design</span>
-                            <svg class="svc-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                        </a>
-                        <a class="svc-item" href="#" data-service="engineering-design">
-                            <span class="svc-num">03</span>
-                            <div class="svc-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
-                            </div>
-                            <div class="svc-body">
-                                <h4>Engineering Design</h4>
-                                <p>Structural and engineering solutions ensuring safety, efficiency, and long-term durability.</p>
-                            </div>
-                            <span class="svc-tag">Design</span>
-                            <svg class="svc-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                        </a>
-                    </div>
-                </div>
-
-                <!-- Construction Services Group -->
-                <div class="svc-group">
-                    <div class="svc-group-header">
-                        <div class="svc-group-meta">
-                            <div class="svc-group-badge">B</div>
-                            <h3 class="svc-group-title"><span>Construction</span> Services</h3>
-                        </div>
-                        <span class="svc-group-count">4 Services</span>
-                    </div>
-                    <div class="svc-items">
-                        <a class="svc-item" href="#" data-service="interior-renovation">
-                            <span class="svc-num">04</span>
-                            <div class="svc-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
-                            </div>
-                            <div class="svc-body">
-                                <h4>Interior Renovation</h4>
-                                <p>Transforming existing spaces with quality craftsmanship, attention to detail, and commitment to excellence.</p>
-                            </div>
-                            <span class="svc-tag">Construction</span>
-                            <svg class="svc-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                        </a>
-                        <a class="svc-item" href="#" data-service="residential-construction">
-                            <span class="svc-num">05</span>
-                            <div class="svc-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                            </div>
-                            <div class="svc-body">
-                                <h4>Residential Construction</h4>
-                                <p>Building dream homes from foundation to finish with expert planning and quality construction throughout.</p>
-                            </div>
-                            <span class="svc-tag">Construction</span>
-                            <svg class="svc-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                        </a>
-                        <a class="svc-item" href="#" data-service="ground-up-construction">
-                            <span class="svc-num">06</span>
-                            <div class="svc-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
-                            </div>
-                            <div class="svc-body">
-                                <h4>Ground-Up Construction</h4>
-                                <p>Complete construction services from site preparation to final touches, delivering fully finished spaces ready for occupancy.</p>
-                            </div>
-                            <span class="svc-tag">Construction</span>
-                            <svg class="svc-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                        </a>
-                        <a class="svc-item" href="#" data-service="commercial-renovation">
-                            <span class="svc-num">07</span>
-                            <div class="svc-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-4 0v2"/><line x1="12" y1="12" x2="12" y2="16"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
-                            </div>
-                            <div class="svc-body">
-                                <h4>Commercial Renovation</h4>
-                                <p>Large-scale commercial projects including subdivisions and townships, executed with precision planning and professional coordination.</p>
-                            </div>
-                            <span class="svc-tag">Construction</span>
-                            <svg class="svc-chevron" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                        </a>
-                    </div>
-                </div>
-                <!-- Featured Projects (merged into Services section) -->
-                <div class="projects-carousel-inline" id="projects">
-                    <div class="carousel-section-header">
-                        <h3 class="carousel-subtitle">Featured Projects</h3>
-                        <p class="section-description">From initial proposal to final turnover — real projects, real results.</p>
-                    </div>
-
-                <div class="marquee-viewport" id="projectsMarquee">
-                    <div class="marquee-track" id="projectsMarqueeTrack">
-                        <!-- JS renders two copies of the thumbnail set here for a seamless loop -->
-                    </div>
-                </div>
-
-                <div class="projects-cta">
-                    <a href="#appointment" class="btn btn-primary">Start Your Project</a>
-                </div>
-
-                </div><!-- /.projects-carousel-inline -->
-
-            </div>
-        </section>
-
-        <!-- How It Works Section -->
-        <section class="how-it-works" id="how-it-works">
-            <div class="container">
-                <div class="section-header">
-                    <span class="section-tag">Simple Process</span>
-                    <h2 class="section-title">How It <span style="color: var(--primary-color);">Works</span></h2>
-                    <p class="section-description">Getting your dream space is easier than you think. Here's how we make it happen.</p>
-                </div>
-
-                <div class="process-flow">
-                    <!-- Step 01 -->
-                    <div class="proc-step">
-                        <div class="proc-node-wrap">
-                            <div class="proc-node">
-                                <span>01</span>
-                            </div>
-                        </div>
-                        <div class="proc-card">
-                            <div class="proc-ghost-num">01</div>
-                            <div class="proc-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                            </div>
+                    <div class="proc-tl" id="procLine">
+                        <div class="proc-track"></div>
+                        <div class="proc-fill" id="procFill"></div>
+                        <div class="proc-step" data-reveal="1">
+                            <span class="proc-node" data-tl-node="1">01</span>
+                            <span class="proc-ico"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg></span>
                             <h3>Book a Free Consultation</h3>
                             <p>Fill out our appointment form or call us. We'll schedule a no-obligation consultation to discuss your project needs and goals.</p>
-                            <div class="proc-bar"></div>
                         </div>
-                    </div>
-
-                    <!-- Step 02 -->
-                    <div class="proc-step">
-                        <div class="proc-node-wrap">
-                            <div class="proc-node">
-                                <span>02</span>
-                            </div>
-                        </div>
-                        <div class="proc-card">
-                            <div class="proc-ghost-num">02</div>
-                            <div class="proc-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"/><path d="m4 20 4-8 4 4 4-6 4 10"/><circle cx="4" cy="4" r="2"/><path d="M4 6v6"/></svg>
-                            </div>
+                        <div class="proc-step" data-reveal="1">
+                            <span class="proc-node" data-tl-node="1">02</span>
+                            <span class="proc-ico"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 20h20"></path><path d="m4 20 4-8 4 4 4-6 4 10"></path><circle cx="4" cy="4" r="2"></circle><path d="M4 6v6"></path></svg></span>
                             <h3>Get Your Design Plan</h3>
                             <p>Our architects and engineers craft a detailed design plan tailored to your vision, budget, and timeline — before any construction begins.</p>
-                            <div class="proc-bar"></div>
                         </div>
-                    </div>
-
-                    <!-- Step 03 -->
-                    <div class="proc-step">
-                        <div class="proc-node-wrap">
-                            <div class="proc-node">
-                                <span>03</span>
-                            </div>
-                        </div>
-                        <div class="proc-card">
-                            <div class="proc-ghost-num">03</div>
-                            <div class="proc-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                            </div>
+                        <div class="proc-step" data-reveal="1">
+                            <span class="proc-node" data-tl-node="1">03</span>
+                            <span class="proc-ico"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg></span>
                             <h3>We Build It — On Time</h3>
                             <p>Our expert construction team brings the plan to life with quality craftsmanship, regular progress updates, and on-time delivery.</p>
-                            <div class="proc-bar"></div>
                         </div>
                     </div>
                 </div>
+            </section>
 
-                <div class="steps-cta">
-                    <a href="#appointment" class="btn btn-primary">Start Your Project Today</a>
+            <section class="testi">
+                <div class="testi-in">
+                    <div class="testi-head">
+                        <span class="eyebrow" data-reveal="1">Stories</span>
+                        <h2 class="testi-title" data-reveal="1" data-delay="80">What Our Clients Say</h2>
+                        <p class="testi-sub" data-reveal="1" data-delay="140">Real experiences from clients who trusted us with their projects.</p>
+                    </div>
+                    <div id="testimonialsGrid" class="testi-grid"><p class="testi-empty">Loading testimonials…</p></div>
+                </div>
+            </section>
+
+            <section class="faq">
+                <div class="faq-in">
+                    <div class="faq-head">
+                        <span class="eyebrow" data-reveal="1">Got Questions?</span>
+                        <h2 class="faq-title" data-reveal="1" data-delay="80">Frequently Asked Questions</h2>
+                        <p class="faq-sub" data-reveal="1" data-delay="140">Everything you need to know before getting started.</p>
+                    </div>
+                    <div class="faq-list" id="faqList"></div>
+                </div>
+            </section>
+        </section>
+        <section class="page" data-page="services" hidden>
+          <div class="svc-head"><div class="svc-head-in">
+            <div class="svc-head-l">
+              <span class="svc-kicker" data-reveal>Our Services</span>
+              <h1 data-reveal data-delay="80">Professional Design &amp; Build Services</h1>
+            </div>
+            <p data-reveal data-delay="160">Delivering comprehensive design and construction services tailored to your vision — from the first sketch to the final turnover.</p>
+          </div></div>
+          <div class="svc-index-bar"><nav class="svc-index" id="svcIndex" aria-label="Services"></nav></div>
+          <div id="svcPanels"></div>
+          <div class="area"><div class="area-in">
+            <div class="area-text">
+              <span class="area-kicker" data-reveal>Service Areas</span>
+              <h2 data-reveal data-delay="80">Based in Quezon City, building across the Philippines</h2>
+              <p data-reveal data-delay="140">We are based in Quezon City and primarily serve Metro Manila and nearby provinces. We have also completed projects in other regions — contact us to discuss your location.</p>
+              <div class="area-list" id="areaList" data-reveal data-delay="200"></div>
+            </div>
+            <div class="area-map" data-reveal data-delay="120"><iframe id="areaMap" title="Service area map" loading="lazy"></iframe></div>
+          </div></div>
+        </section>
+        <section class="page" data-page="projects" hidden>
+          <div class="prj-head"><div class="prj-head-in">
+            <div class="prj-head-row">
+              <div class="prj-head-l">
+                <span class="prj-kicker" data-reveal>Portfolio</span>
+                <h1 data-reveal data-delay="80">Featured Projects</h1>
+              </div>
+              <p data-reveal data-delay="160">From initial proposal to final turnover — real projects, real results.</p>
+            </div>
+            <div class="prj-filters" id="prjFilters" data-reveal data-delay="200" role="group" aria-label="Filter projects"></div>
+          </div></div>
+          <div class="prj-wrap"><div class="prj-grid" id="prjGrid"></div></div>
+        </section>
+        <section class="page" data-page="book" hidden>
+          <div class="bk-bg"><div class="bk-in">
+            <div class="bk-head">
+              <div class="bk-head-l">
+                <span class="bk-kicker" data-reveal>Appointment</span>
+                <h1 data-reveal data-delay="80">Ready to Start Your Project?</h1>
+              </div>
+              <p data-reveal data-delay="140">Fill out the form and we'll get back to you within 24 hours to discuss your architectural needs. Your first consultation is free.</p>
+            </div>
+            <div class="bk-grid">
+              <div class="bk-card" id="bookWizard">
+                <div class="bk-flow">
+                  <div class="bk-prog">
+                    <div class="bk-prog-row"><span class="bk-prog-n" id="bkStepNum">Step 1 of 4</span><span class="bk-prog-t" id="bkStepTitle" tabindex="-1">Consultation</span></div>
+                    <div class="bk-bar"><div id="bkProgress" class="bk-bar-fill" role="progressbar" aria-label="Booking progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="25"></div></div>
+                  </div>
+                  <div class="bk-body">
+                    <div class="bk-pane" id="bkS1">
+                      <div class="bk-grp"><h3 class="bk-h3 bk-h3-lg">How would you like to meet?</h3><div class="bk-meets" id="bkMeetings"></div></div>
+                      <div class="bk-grp"><h3 class="bk-h3">Service Required *</h3><div class="bk-chips" id="bkServices"></div></div>
+                    </div>
+                    <div class="bk-pane" id="bkS2" hidden>
+                      <div class="bk-grp"><h3 class="bk-h3">Property type *</h3><div class="bk-chips" id="bkProperties"></div></div>
+                      <div class="bk-grp"><h3 class="bk-h3">Estimated budget *</h3><div class="bk-budgets" id="bkBudgets"></div></div>
+                      <div class="bk-grp bk-grp-sm">
+                        <label class="bk-lbl-serif">Property location *
+                          <input type="text" id="bkLocation" class="bk-in-text" placeholder="City / barangay, e.g. Quezon City" autocomplete="address-level2">
+                        </label>
+                        <div class="bk-chips bk-chips-sm" id="bkLocChips"></div>
+                      </div>
+                      <label class="bk-lbl-serif">Project Details (Optional)
+                        <textarea id="bkDetails" class="bk-in-text" rows="4" placeholder="Tell us about your project..."></textarea>
+                      </label>
+                      <p class="bk-note">Have photos or plans? <a href="https://m.me/61557923249219" target="_blank" rel="noopener noreferrer">Send them to us on Messenger</a> after booking.</p>
+                    </div>
+                    <div class="bk-pane bk-pane-cal" id="bkS3" hidden>
+                      <div class="bk-cal">
+                        <div class="bk-cal-top">
+                          <h3 class="bk-h3" id="bkCalTitle"></h3>
+                          <div class="bk-cal-nav">
+                            <button type="button" class="bk-cal-btn" id="bkCalPrev" aria-label="Previous month">‹</button>
+                            <button type="button" class="bk-cal-btn" id="bkCalNext" aria-label="Next month">›</button>
+                          </div>
+                        </div>
+                        <div class="bk-cal-grid" id="bkCalGrid" role="grid" aria-label="Preferred date">
+                          <span class="bk-dow">Mon</span><span class="bk-dow">Tue</span><span class="bk-dow">Wed</span><span class="bk-dow">Thu</span><span class="bk-dow">Fri</span><span class="bk-dow">Sat</span><span class="bk-dow">Sun</span>
+                        </div>
+                        <span class="bk-small">Monday to Saturday. Sundays unavailable.</span>
+                      </div>
+                      <div class="bk-times-col">
+                        <h3 class="bk-h3">Preferred time</h3>
+                        <span class="bk-date-long" id="bkDateLong">Select a date first</span>
+                        <div class="bk-times" id="bkTimes"></div>
+                      </div>
+                    </div>
+                    <div class="bk-pane" id="bkS4" hidden>
+                      <h3 class="bk-h3 bk-h3-lg">How can we reach you?</h3>
+                      <label class="bk-lbl">Full Name *
+                        <input type="text" id="bkName" class="bk-in-text" placeholder="Enter your full name" autocomplete="name">
+                      </label>
+                      <div class="bk-two">
+                        <label class="bk-lbl">Email Address *
+                          <input type="email" id="bkEmail" class="bk-in-text" placeholder="your.email@example.com" autocomplete="email">
+                        </label>
+                        <label class="bk-lbl">Contact Number *
+                          <input type="tel" id="bkPhone" class="bk-in-text" placeholder="+63 XXX XXX XXXX" autocomplete="tel">
+                        </label>
+                      </div>
+                      <span class="bk-small">By submitting, you agree to be contacted by DAC's Building Design Services about this request.</span>
+                    </div>
+                    <span class="bk-error" id="bkError" role="alert" hidden></span>
+                    <div class="bk-actions">
+                      <button type="button" class="bk-back" id="bkBack" hidden>← Back</button>
+                      <span class="bk-spacer"></span>
+                      <button type="button" class="bk-next" id="bkNext" data-magnetic="1">Continue →</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="bk-done" id="bkDone" hidden>
+                  <span class="bk-done-tick"><svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg></span>
+                  <div class="bk-done-txt">
+                    <span class="bk-done-ref" id="bkRef"></span>
+                    <h3 id="bkThanks" tabindex="-1"></h3>
+                    <p id="bkDoneMsg"></p>
+                  </div>
+                  <div class="bk-done-sum" id="bkDoneSummary"></div>
+                  <div class="bk-done-btns">
+                    <a class="bk-msgr" href="https://m.me/61557923249219" target="_blank" rel="noopener noreferrer">Message us on Messenger</a>
+                    <button type="button" class="bk-another" id="bkAnother">Book another</button>
+                  </div>
+                </div>
+              </div>
+              <aside class="bk-aside">
+                <div class="bk-sum">
+                  <span class="bk-sum-t">Your request</span>
+                  <div id="bkSummary"></div>
+                </div>
+                <div class="bk-talk">
+                  <span class="bk-talk-t">Prefer to talk now?</span>
+                  <a class="bk-link" href="tel:+639924594334">
+                    <span class="bk-link-ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg></span>
+                    <span class="bk-link-tx"><span>Call us</span><strong>+63 992 459 4334</strong></span>
+                  </a>
+                  <a class="bk-link" href="https://m.me/61557923249219" target="_blank" rel="noopener noreferrer">
+                    <span class="bk-link-ic"><svg width="18" height="18" viewBox="0 0 36 36" fill="currentColor" aria-hidden="true"><path d="M18 2C9.163 2 2 8.710 2 17c0 4.556 2.013 8.641 5.218 11.487V33l4.868-2.676A17.232 17.232 0 0018 32c8.837 0 16-6.710 16-15S26.837 2 18 2zm1.662 20.188l-4.115-4.386-8.028 4.386 8.831-9.374 4.218 4.386 7.977-4.386-8.883 9.374z"></path></svg></span>
+                    <span class="bk-link-tx"><span>Chat on Messenger</span><strong>Usually replies within the day</strong></span>
+                  </a>
+                  <a class="bk-mail" href="mailto:dacsdesignservices@gmail.com">dacsdesignservices@gmail.com</a>
+                </div>
+              </aside>
+            </div>
+          </div></div>
+        </section>
+
+        <section class="cta" id="ctaBand">
+            <div class="cta-bg" data-parallax="0.18"><img src="assets/images/portfolio/DaCs_AIRBNB PROFILE.pdf (14).png" alt="" loading="lazy"></div>
+            <div class="cta-in">
+                <h2 class="cta-title" data-reveal="1">Ready to Start Your Project?</h2>
+                <p class="cta-text" data-reveal="1" data-delay="100">Your first consultation with us is completely free and no-obligation.</p>
+                <div class="cta-btns" data-reveal="1" data-delay="180">
+                    <a class="cta-book" href="#/book" data-magnetic="1">Book a Free Consultation</a>
+                    <a class="cta-call" href="tel:+639924594334" data-magnetic="1">Call +63 992 459 4334</a>
                 </div>
             </div>
         </section>
+    </main>
 
-        <!-- Values + Mission & Vision Section (merged) -->
-        <section class="values" id="values">
-            <div class="container">
-                <div class="section-header">
-                    <span class="section-tag">Our Foundation</span>
-                    <h2 class="section-title">Our Values, Mission &amp; Vision</h2>
+    <footer class="ftr">
+        <div class="ftr-in">
+            <div class="ftr-grid">
+                <div class="ftr-col ftr-about">
+                    <div class="ftr-brand">
+                        <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC's logo" class="ftr-logo" loading="lazy">
+                        <span class="hdr-name"><span class="hdr-name-main">DAC'S</span><span class="hdr-name-sub ftr-sub">BUILDING DESIGN SERVICES</span></span>
+                    </div>
+                    <p class="ftr-blurb">A team of engineers, architects, and finishing experts combining strength, utility, and aesthetic appeal.</p>
                 </div>
-                <div class="values-grid">
-                    <div class="value-card">
-                        <div class="value-icon">⚖️</div>
-                        <h3>Integrity</h3>
-                        <p>It's about doing things that are pure and honest, and encompass the heart.</p>
-                    </div>
-                    <div class="value-card">
-                        <div class="value-icon">💡</div>
-                        <h3>Innovation</h3>
-                        <p>The use of new ideas to create value.</p>
-                    </div>
-                    <div class="value-card">
-                        <div class="value-icon">🤝</div>
-                        <h3>Customer Satisfaction</h3>
-                        <p>Rendering service with a good will as to the Lord and not to man, knowing that whatever good anyone does, this he will receive back from the Lord.</p>
-                    </div>
+                <div class="ftr-col">
+                    <span class="ftr-h">Quick Links</span>
+                    <a class="ftr-link" href="#/home">Home</a>
+                    <a class="ftr-link" href="#/services">Services</a>
+                    <a class="ftr-link" href="#/projects">Projects</a>
+                    <a class="ftr-link" href="#/book">Book a Consultation</a>
                 </div>
-
-                <div class="mission-vision-grid">
-                    <div class="mission-box">
-                        <h3>Mission</h3>
-                        <p>To honor the Creator by building with excellence, serving our clients with the heart of a servant, and ensuring every structure we design and build is rooted in integrity and truth.</p>
-                    </div>
-                    <div class="vision-box">
-                        <h3>Vision</h3>
-                        <p>To be a light in the construction industry, known for transforming blueprints into blessings and houses into homes built on a firm, lasting foundation.</p>
+                <div class="ftr-col">
+                    <span class="ftr-h">Services</span>
+                    <a class="ftr-link" href="#/services">Vertical Construction</a>
+                    <a class="ftr-link" href="#/services">Interior Design</a>
+                    <a class="ftr-link" href="#/services">Architectural Design</a>
+                    <a class="ftr-link" href="#/services">Engineering Design</a>
+                </div>
+                <div class="ftr-col">
+                    <span class="ftr-h">Contact</span>
+                    <span class="ftr-text">Quezon City, National Capital Region, PH</span>
+                    <a class="ftr-link" href="tel:+639924594334">+63 992 459 4334</a>
+                    <a class="ftr-link ftr-mail" href="mailto:dacsdesignservices@gmail.com">dacsdesignservices@gmail.com</a>
+                    <div class="ftr-social">
+                        <a class="ftr-ico" href="https://www.facebook.com/profile.php?id=61557923249219" target="_blank" rel="noopener noreferrer" title="Facebook" aria-label="Facebook"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"></path></svg></a>
                     </div>
                 </div>
             </div>
-        </section>
-
-        <!-- Testimonials Section -->
-        <section class="testimonials" id="testimonials">
-            <div class="container">
-                <div class="section-header">
-                    <span class="section-tag">STORIES</span>
-                    <h2 class="section-title">What Our Clients Say</h2>
-                    <p class="section-description">Real experiences from clients who trusted us with their projects.</p>
-                </div>
-                <div class="testimonials-grid" id="testimonialsGrid">
-                    <p class="loading-text">Loading testimonials...</p>
-                </div>
-            </div>
-        </section>
-
-        <!-- FAQ Section -->
-        <section class="faq-section" id="faq">
-            <div class="container">
-                <div class="section-header">
-                    <span class="section-tag">Got Questions?</span>
-                    <h2 class="section-title">Frequently Asked <span style="color: var(--primary-color);">Questions</span></h2>
-                    <p class="section-description">Everything you need to know before getting started.</p>
-                </div>
-                <div class="faq-grid">
-                    <div class="faq-item">
-                        <button class="faq-question">
-                            <span>How long does a typical project take?</span>
-                            <span class="faq-icon">+</span>
-                        </button>
-                        <div class="faq-answer">
-                            <p>Project timelines vary based on scope. Interior design projects typically take 4–8 weeks, while full residential construction can take 3–6 months. We provide a detailed schedule during your consultation.</p>
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <button class="faq-question">
-                            <span>Is the initial consultation really free?</span>
-                            <span class="faq-icon">+</span>
-                        </button>
-                        <div class="faq-answer">
-                            <p>Yes! Your first consultation with us is completely free and no-obligation. We'll discuss your project, understand your vision, and give you a clear picture of how we can help — before any commitment.</p>
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <button class="faq-question">
-                            <span>Can I see the design before construction starts?</span>
-                            <span class="faq-icon">+</span>
-                        </button>
-                        <div class="faq-answer">
-                            <p>Absolutely. We provide detailed design plans, floor layouts, and visual references for your approval before any construction work begins. Your sign-off is required before we proceed.</p>
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <button class="faq-question">
-                            <span>Do you handle building permits?</span>
-                            <span class="faq-icon">+</span>
-                        </button>
-                        <div class="faq-answer">
-                            <p>Yes, we assist with the permit application process. Our licensed architect ensures all plans are compliant with local building codes and ordinances in the Philippines.</p>
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <button class="faq-question">
-                            <span>What areas do you serve?</span>
-                            <span class="faq-icon">+</span>
-                        </button>
-                        <div class="faq-answer">
-                            <p>We are based in Quezon City and primarily serve Metro Manila and nearby provinces. We have also completed projects in other regions — contact us to discuss your location.</p>
-                        </div>
-                    </div>
-                    <div class="faq-item">
-                        <button class="faq-question">
-                            <span>How much does it cost to start?</span>
-                            <span class="faq-icon">+</span>
-                        </button>
-                        <div class="faq-answer">
-                            <p>Costs depend on project scope, materials, and timeline. We offer solutions for a range of budgets. Book a free consultation and we'll provide a tailored quote at no cost to you.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Appointment Section -->
-        <section class="appointment" id="appointment">
-            <div class="container">
-                <div class="appointment-wrapper">
-                    <div class="appointment-info">
-                        <h2>Ready to Start Your Project?</h2>
-                        <p>Fill out the form and we'll get back to you within 24 hours to discuss your architectural needs.</p>
-                        <div class="contact-details">
-                            <div class="contact-item">
-                                <div class="contact-icon">📍</div>
-                                <div>
-                                    <h4>Location</h4>
-                                    <p>Quezon City, National Capital Region, PH</p>
-                                </div>
-                            </div>
-                            <div class="contact-item">
-                                <div class="contact-icon">📧</div>
-                                <div>
-                                    <h4>Email</h4>
-                                    <p>dacsdesignservices@gmail.com</p>
-                                </div>
-                            </div>
-                            <div class="contact-item">
-                                <div class="contact-icon">📞</div>
-                                <div>
-                                    <h4>Phone</h4>
-                                    <p><a href="tel:+639924594334" style="color: var(--primary-color); text-decoration: none; font-weight: 600;">+63 992 459 4334</a></p>
-                                </div>
-                            </div>
-                            <div class="contact-item">
-                                <div class="contact-icon">📱</div>
-                                <div>
-                                    <h4>Social Media</h4>
-                                    <div class="social-media-buttons">
-                                        <a href="https://www.facebook.com/profile.php?id=61557923249219" target="_blank" rel="noopener noreferrer" class="social-btn facebook-btn" title="Facebook">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-                                            </svg>
-                                        </a>
-                                        <a href="#" target="_blank" rel="noopener noreferrer" class="social-btn instagram-btn" title="Instagram">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                                <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
-                                            </svg>
-                                        </a>
-                                        <a href="#" target="_blank" rel="noopener noreferrer" class="social-btn tiktok-btn" title="TikTok">
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                                                <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"/>
-                                            </svg>
-                                        </a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="appointment-form-container">
-                        <form class="appointment-form" id="appointmentForm">
-                            <h3>Appointment</h3>
-                            <div class="form-group">
-                                <label for="fullname">Full Name *</label>
-                                <input type="text" id="fullname" name="fullname" required placeholder="Enter your full name">
-                            </div>
-                            <div class="form-group">
-                                <label for="email">Email Address *</label>
-                                <input type="email" id="email" name="email" required placeholder="your.email@example.com">
-                            </div>
-                            <div class="form-group">
-                                <label for="contact">Contact Number *</label>
-                                <input type="tel" id="contact" name="contact" required placeholder="+63 XXX XXX XXXX">
-                            </div>
-                            <div class="form-group">
-                                <label for="service">Service Required *</label>
-                                <select id="service" name="service" required>
-                                    <option value="">Select a service</option>
-                                    <option value="architectural-design">Architectural Design</option>
-                                    <option value="building-interiors">Building Architectural Interiors</option>
-                                    <option value="interior-construction">Architectural Interior Construction</option>
-                                    <option value="structural-inspection">Structural Inspection</option>
-                                    <option value="electrical-engineering">Electrical Engineering Services</option>
-                                    <option value="cad-operations">CAD &amp; Operations</option>
-                                    <option value="consultation">General Consultation</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label for="message">Project Details (Optional)</label>
-                                <textarea id="message" name="message" rows="4" placeholder="Tell us about your project..."></textarea>
-                            </div>
-                            <button type="submit" class="btn btn-primary btn-submit">Submit Appointment Request</button>
-                            <div class="form-message" id="formMessage"></div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-    </main><!-- /.main -->
-
-    <!-- =====================
-         FOOTER
-    ===================== -->
-    <footer class="footer">
-        <div class="container">
-            <div class="footer-content">
-                <div class="footer-brand">
-                    <div class="footer-logo-wrapper">
-                        <img src="assets/images/DACS-TRANSPARENT.png" alt="DAC's Building Design Services Logo" class="logo-image footer-logo">
-                        <div class="footer-brand-text">
-                            <h3 class="footer-company-name">DAC'S</h3>
-                            <p class="footer-company-subtitle">BUILDING DESIGN SERVICES</p>
-                        </div>
-                    </div>
-                    <p class="footer-description">A team of engineers, architects, and finishing experts combining strength, utility, and aesthetic appeal.</p>
-                </div>
-                <div class="footer-links">
-                    <div class="footer-column">
-                        <h4>Quick Links</h4>
-                        <a href="#home">Home</a>
-                        <a href="#about">About</a>
-                        <a href="#services">Services</a>
-                        <a href="#how-it-works">Process</a>
-                        <a href="#testimonials">Testimonials</a>
-                        <a href="#faq">FAQ</a>
-                    </div>
-                    <div class="footer-column">
-                        <h4>Services</h4>
-                        <a href="#services">Architectural Design</a>
-                        <a href="#services">Interior Design</a>
-                        <a href="#services">Engineering Design</a>
-                        <a href="#services">Construction</a>
-                        <a href="#appointment">Free Consultation</a>
-                    </div>
-                </div>
-            </div>
-            <div class="footer-bottom">
-                <p>&copy; 2026 DAC's Building Design Services. All rights reserved.</p>
+            <div class="ftr-bottom">
+                <span>&copy; 2026 DAC's Building Design Services. All rights reserved.</span>
+                <a class="ftr-top" href="#main" onclick="window.scrollTo({top:0,behavior:'smooth'});return false;">Back to top &uarr;</a>
             </div>
         </div>
     </footer>
 
-    <!-- =====================
-         FLOATING UI ELEMENTS
-    ===================== -->
+    <div class="case" id="caseView" role="dialog" aria-modal="true" aria-labelledby="caseTitle" hidden>
+      <div class="case-bar"><div class="case-bar-in">
+        <button type="button" class="case-close" id="caseClose">← All projects</button>
+        <span class="case-num" id="caseNum"></span>
+        <div class="case-nav">
+          <button type="button" id="casePrev" aria-label="Previous project">‹</button>
+          <button type="button" id="caseNext" aria-label="Next project">›</button>
+        </div>
+      </div></div>
+      <div class="case-body">
+        <div class="case-top">
+          <div class="case-title">
+            <span class="case-eyebrow" id="caseEyebrow"></span>
+            <h2 id="caseTitle"></h2>
+          </div>
+          <div class="case-facts">
+            <span><span class="case-fact-k">Location</span><span class="case-fact-v" id="caseCity"></span></span>
+            <span><span class="case-fact-k">Type</span><span class="case-fact-v" id="caseType"></span></span>
+            <span><span class="case-fact-k">Scope</span><span class="case-fact-v" id="caseScope"></span></span>
+          </div>
+        </div>
+        <div class="ba case-ba" id="caseBA" role="slider" tabindex="0" aria-label="Before and after comparison" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+          <img id="caseA" src="" alt="" draggable="false">
+          <img class="ba-top" id="caseB" src="" alt="" draggable="false">
+          <span class="ba-label ba-label-l" id="caseALabel"></span>
+          <span class="ba-label ba-label-r" id="caseBLabel"></span>
+          <div class="ba-handle"><span class="ba-knob"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 3 12 9 18"></polyline><polyline points="15 6 21 12 15 18"></polyline></svg></span></div>
+        </div>
+        <div class="case-caps">
+          <div class="case-cap"><span class="case-cap-label"></span><p id="caseADesc"></p></div>
+          <div class="case-cap case-cap-after"><span class="case-cap-label"></span><p id="caseBDesc"></p></div>
+        </div>
+        <div class="case-cta">
+          <span>Planning something similar?</span>
+          <button type="button" class="case-book" id="caseBook" data-magnetic>Start a similar project →</button>
+        </div>
+      </div>
+    </div>
 
-    <!-- Floating Messenger Button -->
-    <a href="https://m.me/61557923249219" target="_blank" rel="noopener noreferrer" class="messenger-float-btn" title="Chat with us on Messenger">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" fill="currentColor">
-            <path d="M18 2C9.163 2 2 8.710 2 17c0 4.556 2.013 8.641 5.218 11.487V33l4.868-2.676A17.232 17.232 0 0018 32c8.837 0 16-6.710 16-15S26.837 2 18 2zm1.662 20.188l-4.115-4.386-8.028 4.386 8.831-9.374 4.218 4.386 7.977-4.386-8.883 9.374z"/>
-        </svg>
-        <span class="messenger-tooltip">Chat with us!</span>
-    </a>
-
-    <!-- Feedback Button -->
-    <button class="feedback-btn" id="feedbackBtn" title="Share Your Feedback">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
-        </svg>
-    </button>
-
-    <!-- Scroll to Top Button -->
-    <button class="scroll-to-top" id="scrollToTop" title="Back to top">
-        <span>↑</span>
-    </button>
-
-    <!-- =====================
-         MODALS & OVERLAYS
-    ===================== -->
-
-    <!-- Feedback Modal -->
     <div id="feedbackModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="feedbackModalTitle">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 id="feedbackModalTitle">Share Your Feedback</h2>
-                <button class="modal-close" onclick="closeFeedbackModal()" aria-label="Close feedback modal">&times;</button>
+                <h3 id="feedbackModalTitle">Share Your Feedback</h3>
+                <button type="button" class="modal-close" onclick="closeFeedbackModal()" aria-label="Close feedback modal">&times;</button>
             </div>
             <form id="feedbackForm" class="modal-body">
-                <div class="form-group">
+                <div class="fb-group">
+                    <label>Rating *</label>
+                    <div class="star-rating" id="starRating">
+                        <button type="button" class="star" data-rating="1" aria-label="1 star" aria-pressed="false">&#9733;</button>
+                        <button type="button" class="star" data-rating="2" aria-label="2 stars" aria-pressed="false">&#9733;</button>
+                        <button type="button" class="star" data-rating="3" aria-label="3 stars" aria-pressed="false">&#9733;</button>
+                        <button type="button" class="star" data-rating="4" aria-label="4 stars" aria-pressed="false">&#9733;</button>
+                        <button type="button" class="star" data-rating="5" aria-label="5 stars" aria-pressed="false">&#9733;</button>
+                    </div>
+                    <input type="hidden" id="feedbackRating">
+                </div>
+                <div class="fb-group">
                     <label for="feedbackName">Your Name *</label>
                     <input type="text" id="feedbackName" required placeholder="Enter your name">
                 </div>
-                <div class="form-group">
+                <div class="fb-group">
                     <label for="feedbackLocation">Location *</label>
                     <input type="text" id="feedbackLocation" required placeholder="e.g., Quezon City">
                 </div>
-                <div class="form-group">
-                    <label>Rating *</label>
-                    <div class="star-rating" id="starRating">
-                        <span class="star" data-rating="1">&#9733;</span>
-                        <span class="star" data-rating="2">&#9733;</span>
-                        <span class="star" data-rating="3">&#9733;</span>
-                        <span class="star" data-rating="4">&#9733;</span>
-                        <span class="star" data-rating="5">&#9733;</span>
-                    </div>
-                    <input type="hidden" id="feedbackRating" required>
-                </div>
-                <div class="form-group">
+                <div class="fb-group">
                     <label for="feedbackMessage">Your Feedback *</label>
                     <textarea id="feedbackMessage" rows="4" required placeholder="Share your experience with us..."></textarea>
                 </div>
+                <div id="feedbackFormMessage" class="form-message" style="display:none" role="status"></div>
                 <div class="modal-footer">
                     <button type="button" class="btn-secondary" onclick="closeFeedbackModal()">Cancel</button>
                     <button type="submit" class="btn-primary">Submit Feedback</button>
                 </div>
-                <div class="form-message" id="feedbackFormMessage"></div>
             </form>
         </div>
     </div>
 
-    <!-- =====================
-         Service Detail Modal
-    ===================== -->
-    <div class="svc-modal-overlay" id="svcModalOverlay" role="dialog" aria-modal="true" aria-labelledby="svcModalTitle">
-        <div class="svc-modal" id="svcModal">
-            <button class="svc-modal-close" id="svcModalClose" aria-label="Close modal">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-            <div class="svc-modal-body">
-                <!-- Left: Info -->
-                <div class="svc-modal-info">
-                    <div class="svc-modal-meta">
-                        <div class="svc-modal-icon-wrap" id="svcModalIcon"></div>
-                        <span class="svc-modal-cat-badge" id="svcModalCategory"></span>
-                    </div>
-                    <h2 class="svc-modal-title" id="svcModalTitle"></h2>
-                    <p class="svc-modal-desc" id="svcModalDesc"></p>
-                    <ul class="svc-modal-features" id="svcModalFeatures"></ul>
-                    <a href="#appointment" class="btn btn-primary svc-modal-cta" id="svcModalCta">
-                        Book a Consultation
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                    </a>
-                </div>
-                <!-- Right: Gallery -->
-                <div class="svc-modal-gallery">
-                    <div class="svc-gallery-main-wrap">
-                        <img class="svc-gallery-main-img" id="svcGalleryMain" src="" alt="">
-                        <div class="svc-gallery-project-label" id="svcGalleryLabel"></div>
-                    </div>
-                    <div class="svc-gallery-thumbs" id="svcGalleryThumbs"></div>
-                </div>
-            </div>
-        </div>
-    </div>
+    <a href="https://m.me/61557923249219" target="_blank" rel="noopener noreferrer" class="float-btn float-messenger" id="messengerBtn" title="Chat with us on Messenger" data-magnetic="1">
+        <svg width="26" height="26" viewBox="0 0 36 36" fill="currentColor" aria-hidden="true"><path d="M18 2C9.163 2 2 8.710 2 17c0 4.556 2.013 8.641 5.218 11.487V33l4.868-2.676A17.232 17.232 0 0018 32c8.837 0 16-6.710 16-15S26.837 2 18 2zm1.662 20.188l-4.115-4.386-8.028 4.386 8.831-9.374 4.218 4.386 7.977-4.386-8.883 9.374z"/></svg>
+    </a>
+    <button type="button" class="float-btn float-feedback" id="feedbackBtn" title="Share your feedback" aria-label="Share your feedback">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+    </button>
+    <button type="button" class="float-btn float-top" id="toTop" aria-label="Back to top">↑</button>
 
-    <!-- =====================
-         Project Detail Modal
-    ===================== -->
-    <div class="svc-modal-overlay" id="projectModalOverlay" role="dialog" aria-modal="true" aria-labelledby="projectModalTitle">
-        <div class="svc-modal" id="projectModal">
-            <button class="svc-modal-close" id="projectModalClose" aria-label="Close modal">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
-            <div class="svc-modal-body">
-                <!-- Left: Info -->
-                <div class="svc-modal-info">
-                    <div class="svc-modal-meta">
-                        <span class="card-status-badge" id="projectModalStatus"></span>
-                        <span class="svc-modal-cat-badge" id="projectModalCategory"></span>
-                    </div>
-                    <h2 class="svc-modal-title" id="projectModalTitle"></h2>
-                    <p class="svc-modal-desc" id="projectModalDesc"></p>
-                    <div class="card-author" id="projectModalAuthor" style="margin-top: auto; padding-top: 16px;">
-                        <div class="author-avatar-fallback">DC</div>
-                        <div class="author-info">
-                            <span class="author-name" id="projectModalAuthorName"></span>
-                            <span class="author-role" id="projectModalAuthorRole"></span>
-                        </div>
-                    </div>
-                    <a href="#appointment" class="btn btn-primary svc-modal-cta" id="projectModalCta" style="margin-top: 24px;">
-                        Start a Project Like This
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-                    </a>
-                </div>
-                <!-- Right: Image -->
-                <div class="svc-modal-gallery">
-                    <div class="svc-gallery-main-wrap">
-                        <img class="svc-gallery-main-img" id="projectModalImage" src="" alt="">
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- =====================
-         SCRIPTS (always last)
-    ===================== -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase-config.js"></script>
     <script src="js/script.js"></script>
-
+    <script src="js/booking.js"></script>
+    <script src="js/site-widgets.js"></script>
 </body>
 </html>
