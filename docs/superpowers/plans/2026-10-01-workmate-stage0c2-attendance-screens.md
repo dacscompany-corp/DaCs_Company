@@ -5009,3 +5009,27 @@ The user runs `flutter build apk --release` (it needs `android/keystore.properti
 - 0C-1 carry-overs closed here: runtime location permission (Task 5), sync-host re-registration on resume (Task 8), the storage-policy migration (Task 9), and every device check (Task 10). Still deferred to 0D: sweeper-only re-enqueue, `last_error` first line, `Error.throwWithStackTrace`, a transaction around queue insert + mirror write.
 - Deliberate differences from DACS Attendance: Home lists submissions the server refused for good (the old app never told the worker); the camera give-up notice names Time Out when it was a Time Out. Both copy lines are marked NEW in `attendance_copy.dart`.
 - `CameraStep` has no widget test (the plugins do not run under `flutter test`); it is covered by analyze, the debug build and device rows 3–5 and 14.
+
+## Execution notes (built 2026-10-01; device checks pending)
+
+Built with subagent-driven development: 336 tests pass, `flutter analyze` clean, debug APK builds; Dacs Web `npm test` passes. Uncommitted until the user commits. Deliberate deviations from the code above, each reviewed:
+
+- **`permission_handler` is pinned at 12.0.1, not 13.0.2.** 13.0.2's Android part (14.1.0) needs AGP 9; WorkMate is on AGP 8.11.1. Same Dart API. Do not "align" it to 13.x until the toolchain moves to AGP 9.
+- **Camera capture is `ResolutionPreset.veryHigh`** (high caps CameraX at 1280x720; DACS files a 1600 px photo).
+- **While a SUBMIT is sending, Back and leaving do nothing to the photo** (the in-flight submit owns it).
+- **Camera step hardening:** the switch is disabled mid-capture and while opening; a camera opened across a pause is closed at once; a failed open is disposed; the photo handoff never runs after the step is gone; a failing permission request falls back to the current status.
+- **Pull-to-refresh** uses always-scrollable lists on Home and History.
+- **`AttendanceSyncHost.register()` is idempotent** (re-registering on every resume would drop an in-flight delegation and remove the new mapping).
+- Thumbnails decode at 160 px; HomeShell abandons an open flow on dispose; `app_identity_test`'s split-per-abi walk skips build folders (plugin build paths are too long for `listSync`).
+- Dacs Web 0083 written (not yet applied); migrations README now says next = 0084.
+
+Device checklist (Task 10) — run these too:
+- Pull the notification shade on the camera step and come back: the preview returns.
+- Deny the camera once (not permanently), then Open Settings → grant → back: the preview opens.
+- Deny location at the camera prompt: SUBMIT is refused with Open Settings (app permission page); after granting, SUBMIT succeeds.
+- Install 0.2.0 over an existing 0.1.1 that has data: it launches.
+- Pull to refresh on an empty History week.
+- Row 8: judge face legibility of the filed photo.
+- Before publishing: repeat rows 3, 5, 6, 8 and 11 on the RELEASE APK (R8 shrinking), and confirm the APK is still under 50 MB.
+
+Deferred to 0D: orphaned raw captures sweep; guard the DB open before runApp; viewer switching between legs and thumbnail semantics labels; refresh generation counters; sweeper-only re-enqueue, `last_error` first line, `Error.throwWithStackTrace`, a queue+mirror transaction (from 0C-1).

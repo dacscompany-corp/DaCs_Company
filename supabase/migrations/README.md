@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0083** — highest on disk is
-  `0082_workmate_app_streams.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0084** — highest on disk is
+  `0083_attendance_photo_replace_policy.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble.
 - **`0075` and `0076` are TAKEN but not on `main`.** They belong to the abandoned
   project cost-plan branch (`project_cost_plans`, then its `%` columns) and **both
@@ -149,6 +149,12 @@ migration, `uploads_read` and `uploads_insert`, both granted to PUBLIC (not-logg
 could list and download every file). Applied 2026-09-29 through the SQL editor, so it has no
 `schema_migrations` row; live check `supabase/tests/uploads_access.sql` passed the same day.
 Emergency undo: `supabase/rollback_0081_uploads_access.sql` (does not restore public access).
+
+**0083 (attendance photo replace policy)** records `attendance: worker replaces own photo` (UPDATE on
+`storage.objects`, bucket `attendance`, first folder = the worker's own id), which existed only in the live
+database. Both worker apps upload with `upsert`, so re-sending a photo after a failed Time In RPC is an
+UPDATE; without the policy a database rebuilt from migrations would refuse every such retry forever. The
+file creates the policy only when it is missing, so applying it live changes nothing.
 
 Get the truth before relying on this line:
 

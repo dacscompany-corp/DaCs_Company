@@ -875,8 +875,10 @@ The fast "has accepted?" flag only. The **evidence** belongs in `agreement_event
 
 ### Storage
 Private bucket `attendance`, path `{worker_id}/{work_date}/{in|out}-{event_id}.jpg`. Worker policies
-are scoped to their own uuid prefix; there is **no `update` or `delete` policy**, so a photo is
-write-once. Photos are files, never base64.
+are scoped to their own uuid prefix. A worker may **replace** their own photo (`attendance: worker
+replaces own photo`, UPDATE, recorded in `0083` after it was found live-only): both worker apps upload
+with `upsert`, so a retry after a failed Time In RPC overwrites the same path. There is **no `delete`
+policy**. Photos are files, never base64.
 
 ---
 
