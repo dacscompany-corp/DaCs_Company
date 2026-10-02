@@ -4499,3 +4499,20 @@ Record any failure in Execution notes, fix, and repeat the affected rows.
 - **Roadmap 0D coverage:** weekly reward view → Tasks 1–3; home-screen widget → Tasks 7–11; profile and password change → Tasks 4–6; update nudges → already at parity (stated above, re-checked in Task 12 row 13); greeting (parity checklist) → Task 3. The 0C-2 gap "Home doesn't auto-refresh after a background send" → Task 8.
 - **Kotlin tests ported:** `WeeklyRewardTest` (18, Task 1), `GreetingTest` (3, Task 3), `PasswordChangeTest` (9, Task 4), `StartFlowRequestTest` (11, Task 11), `WidgetStateTest` (10, Task 9), `WidgetCardTest` (11, Task 9), `WidgetTypeScaleTest` (3, Task 9), `WidgetAwareRepositoriesTest` (as `widget_aware_attendance_test` + `widget_app_sync_test`, Task 7).
 - **Names used across tasks:** `RewardApi` / `SupabaseRewardRemote` / `FakeRewards` (2→3); `AccountServices` (6→8, 11 tests); `WidgetPublisher.publish(AttendanceDb, String)` (7→8); `QueueSettled` (8); `TimeWidgetProvider.EXTRA_START_FLOW` (10→11); channels `com.dacs.workmate/widget` (7↔10) and `com.dacs.workmate/launch` (11).
+
+## Execution notes (2026-10-02)
+
+Run subagent-driven, no commits (the user commits); every task reviewed (spec + quality), then a whole-stage review on Opus, then the phone test on the Xiaomi. Final: 437 Dart tests, 34 Kotlin tests, analyze clean, release APK 37.4 MB (`WorkMate releases\dacs-workmate-0.3.0-1003.apk`).
+
+Deviations from the plan text, and why:
+
+- **Task 2** — the HomeController getter `rewardCells` shadows the top-level `rewardCells()`; home_controller.dart imports weekly_reward.dart with `hide rewardCells` plus `as wr show rewardCells`.
+- **Task 3 → phone fix** — the reward header Row (label + Spacer + pill) overflowed in widget tests; a Wrap replaced it, but on the phone the Wrap shrink-wrapped and glued "WEEKLY REWARDNeeds signal to check". Final form: `Row([Expanded(label), SizedBox(12), status])` — the label gives way, the status stays at the right edge; a layout test pins it.
+- **Task 5** — review finding: the cached Terms accepted date was not tied to the Terms version. `WorkerCache.termsAcceptedAt(id, version)` / `recordTermsAcceptedAt(id, version, at)` store `"<version>|<ms>"` under `terms_at.$id`; a date for another version reads as null.
+- **Task 7** — review finding: unordered widget publishes could let an older worker push land after the sign-out push. `WidgetPublisher.publish` now runs in request order (one queue per publisher).
+- **Final review** — a sign-out during a live-app background send could re-push the previous worker's day. `WidgetPublisher.publishIfCurrent(db, workerId, currentWorkerId)` guards the drain's push (`letInWorker = attendance.currentWorkerId`, set lazily). The background engine is unguarded across engines (accepted residual risk).
+- **Line endings** — `core.autocrlf=true`: pre-existing files show CRLF in the working tree and some new files were written CRLF; git stores LF.
+
+Phone results (Xiaomi 22041216G, 0.3.0+1003): greeting by Manila hour; reward strip matches `attendance_reward_progress` (Mon–Wed missing, Thu/Fri late vs 09:00 → Disqualified, 0 of 5) and offline says "Needs signal to check"; Profile shows Accepted 8 Sep 2026 (only after a load with signal — first load in airplane mode shows the plain row, by design); password: too short / reused / changed, bilingual; widget: Time Out with live ON SITE count, QUEUED while offline then cleared after the background send (12:16:40–44, app closed), SIGN IN with no times after log-out; widget Time In tap opened the flow (START_FLOW_IN 12:15:23 → Time In 12:15:53). No app errors in logcat.
+
+Left for later (watch items): a widget tap while the password sheet is saving closes the sheet without the confirmation; `reauthentication_needed` (old session) or a timeout after the server applied the change gives a vague message; widget clock follows the phone's 12/24-hour setting; midnight roll-over can lag up to ~30 min; overlapping Home refreshes can land out of order; draw() uses the portrait width/height pair; KT-73255 annotation warnings.
