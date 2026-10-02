@@ -895,6 +895,30 @@ policy**. Photos are files, never base64.
 
 ---
 
+## 13. WorkMate Requests (`0085`) — material/tool requests from DAC'S WorkMate
+
+Stage 1a-1 server (plan `docs/superpowers/plans/2026-10-02-workmate-stage1a1-requests-server.md`). **Project Control only. No money anywhere** — no `pr_*` column holds a price, amount or cost. **Workers never read or write `pr_*` tables directly**: RLS is on and no `pr_*` policy grants a worker anything; every worker action is a `SECURITY DEFINER` RPC. Owner/staff read everything; they edit only the setup tables directly (request data changes through RPCs).
+
+| Table | What it is |
+|---|---|
+| `pr_teams`, `pr_team_members` | Teams; membership history (`removed_at`); one current leader per team (`is_leader`). Acting for a team needs the leader row **and** profile role `teamLeader` |
+| `pr_catalog_items` | Official items: `kind` material/tool, `name`, `spec`, `unit`, `category`; one active row per identity |
+| `pr_project_settings` | `allow_requests` per top-level project folder (cascades with the folder) — opens a project to requests even with no geofence yet or when hidden from Time In. Without it, a project is requestable only if it is on today's Attendance picker list (geofence rule met and not hidden) |
+| `pr_batches` | One per weekly cutoff: **Saturday 12:00 noon Asia/Manila** (`cutoff_at`), default `purchase_on` = Monday, `delivery_on` = Wednesday; editable by the office |
+| `pr_requests` | One destination (`folder_id` = project, `work_folder_id` = project itself for Main Contract or a child Additional Works folder), optional `team_id`, `client_op_id` (unique per requester), server `received_at` |
+| `pr_lines` | Stable-id items: kind, optional `catalog_item_id`, description/spec/unit/category, optional `intended_member_id` (materials), per-line `urgent` + reason + `needed_by`, `version`, `has_conflict` |
+| `pr_line_portions` | A line's quantity by batch. `arranged_at` set by the office; `pending_reduction` = quantity a worker reduced that was already arranged (office to act). **Still needed = Σ(quantity − pending_reduction)** |
+| `pr_line_conflicts` | An edit made against an outdated `version` — both values kept for the office |
+| `pr_events` | Append-only history (submitted, quantity_changed, quantity_conflict, line_cancelled, request_cancelled, photo_attached) |
+| `pr_ops` | First result per `(actor_id, op_id)` — a retried phone operation returns it verbatim |
+| `pr_photos` | Private request photos, bucket **`request-photos`** (`{requester}/{request}/{photo}.jpg`; requester, current team leader, owner/staff) |
+
+Every `pr_*` office policy is tenant-scoped with `can_access` (`pr_ops` via its actor's owner), and worker write RPCs serialise retries of the same operation with an advisory lock.
+
+Worker RPCs: `pr_destinations()`, `pr_my_teams()`, `pr_catalog()`, `pr_submit_request(op, request)`, `pr_change_quantity(op, line, base_version, quantity)`, `pr_cancel_line(op, line)`, `pr_cancel_request(op, request)`, `pr_my_requests(limit)`, `pr_attach_photo(op, request, line, path)`. Completed projects / Additional Works refuse new requests and quantity increases (decreases, cancels and reading stay). PM projects are never destinations.
+
+**Legacy `requests` / `request_items`** (Flutter-prototype era) are read-only history since `0085`: owner/staff full access; a worker reads only their own rows and writes nothing.
+
 ## Relationship map
 ```
 users(owner) ──owns──> folders ──> projects ──> expenses / payroll
