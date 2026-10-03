@@ -3618,18 +3618,39 @@ const _receiptStore = {};
 window._receiptStore = _receiptStore;
 
 // ── Worker Receipt Summary Modal ──────────────────────────────
-function openWorkerSummaryModal(workerName) {
-    // Merge current-project payroll + global cache, deduplicate by id
-    const seen = new Set();
-    const pool = [...(expPayroll || []), ...(_ovAllPayroll || [])].filter(p => {
-        if (seen.has(p.id)) return false;
-        seen.add(p.id);
-        return true;
-    });
+// Merge current-project payroll + global cache by id. Prefers a FULL copy over
+// Project Control's photo-free one (`_lazy`, via lcSyncFromPortal) so the
+// receipts don't vanish from the worker summary.
+const _payFullCache = new Map();
+function _mergePayrollPools() {
+    const byId = new Map();
+    for (const p of [...(expPayroll || []), ...(_ovAllPayroll || [])]) {
+        const cur = byId.get(p.id);
+        if (!cur || (cur._lazy && !p._lazy)) byId.set(p.id, p);
+    }
+    for (const [id, p] of byId) if (p._lazy && _payFullCache.has(id)) byId.set(id, _payFullCache.get(id));
+    return [...byId.values()];
+}
+// Fetch the full rows for any photo-free entries that have receipts.
+async function _fillLazyPayroll(entries) {
+    return Promise.all(entries.map(async p => {
+        if (!(p._lazy && p._lazy.receiptImages)) return p;
+        try {
+            const snap = await db.collection('payroll').doc(p.id).get();
+            if (!snap.exists) return p;
+            const full = { id: snap.id, ...snap.data() };
+            _payFullCache.set(p.id, full);
+            return full;
+        } catch (err) { console.error('_fillLazyPayroll:', err); return p; }
+    }));
+}
 
-    const entries = pool
+async function openWorkerSummaryModal(workerName) {
+    const pool = _mergePayrollPools();
+
+    const entries = await _fillLazyPayroll(pool
         .filter(p => (p.workerName || '').toLowerCase() === (workerName || '').toLowerCase())
-        .sort((a, b) => new Date(b.paymentDate || 0) - new Date(a.paymentDate || 0));
+        .sort((a, b) => new Date(b.paymentDate || 0) - new Date(a.paymentDate || 0)));
 
     if (!entries.length) {
         showExpNotif('No payroll entries found for "' + workerName + '".', 'error');
@@ -3735,13 +3756,9 @@ function openWorkerSummaryModal(workerName) {
 window.openWorkerSummaryModal = openWorkerSummaryModal;
 
 function printWorkerReceiptSummary(workerName) {
-    // Merge current-project + global cache, deduplicate
-    const seen2 = new Set();
-    const allPay = [...(expPayroll || []), ...(_ovAllPayroll || [])].filter(p => {
-        if (seen2.has(p.id)) return false;
-        seen2.add(p.id);
-        return true;
-    });
+    // Sync on purpose (window.open below must stay in the click) — the summary
+    // modal already fetched any photo-free rows into _payFullCache.
+    const allPay = _mergePayrollPools();
 
     const entries = allPay
         .filter(p => (p.workerName || '').toLowerCase() === (workerName || '').toLowerCase())
@@ -4212,13 +4229,16 @@ let _editPayKept      = [];
 
 async function openEditPayrollModal(id) {
     let p = expPayroll.find(x => x.id === id);
-    if (!p) {
+    // `_lazy` = Project Control's photo-free copy (lcSyncFromPortal). Editing it
+    // would save receiptImages back empty and wipe the receipts — load the full row.
+    if (!p || p._lazy) {
         try {
             const snap = await db.collection('payroll').doc(id).get();
             if (snap.exists) p = { id: snap.id, ...snap.data() };
         } catch (err) { console.error('openEditPayrollModal fetch:', err); }
     }
     if (!p) { showExpNotif('Payroll entry not found.', 'error'); return; }
+    if (p._lazy) { showExpNotif('Couldn’t load this payroll entry — check your connection and try again.', 'error'); return; }
     _editingPayrollId = id; _editPayStaged = []; _editPayKept = [];
     document.getElementById('editPayWorkerName').value = p.workerName  || '';
     document.getElementById('editPayRole').value       = p.role        || '';
@@ -8677,7 +8697,7 @@ window.lcOpenLedger = function(contractId) {
         const amt = parseFloat(p.totalSalary) || 0;
         running -= amt;
         const imgs = Array.isArray(p.receiptImages) ? p.receiptImages.filter(Boolean) : [];
-        const rcpt = imgs.length ? `<button class="lc-led-rcpt" onclick="lcLedgerViewReceipt('${p.id}')">View</button>` : '<span style="color:#c4c9d4;">—</span>';
+        const rcpt = imgs.length || (p._lazy && p._lazy.receiptImages) ? `<button class="lc-led-rcpt" onclick="lcLedgerViewReceipt('${p.id}')">View</button>` : '<span style="color:#c4c9d4;">—</span>';
         return `<tr>
             <td>${fmtD(p.paymentDate)}</td>
             <td style="color:#A1A1A6;">${mlabel(p.payMilestone)}</td>
@@ -8707,8 +8727,14 @@ window.lcOpenLedger = function(contractId) {
         </table></div>`;
     openExpModal('laborLedgerModal');
 };
-window.lcLedgerViewReceipt = function(payId) {
-    const p = expPayroll.find(x => x.id === payId);
+window.lcLedgerViewReceipt = async function(payId) {
+    let p = expPayroll.find(x => x.id === payId);
+    if (p && p._lazy) {   // photo-free copy from Project Control — fetch the receipts
+        try {
+            const snap = await db.collection('payroll').doc(payId).get();
+            if (snap.exists) p = { id: snap.id, ...snap.data() };
+        } catch (err) { console.error('lcLedgerViewReceipt fetch:', err); showExpNotif('Couldn’t load the receipt — try again.', 'error'); return; }
+    }
     const imgs = p && Array.isArray(p.receiptImages) ? p.receiptImages.filter(Boolean) : [];
     if (!imgs.length) return;
     if (window._receiptStore && typeof window.openLightbox === 'function') {

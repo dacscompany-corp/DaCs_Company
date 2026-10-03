@@ -56,14 +56,23 @@ db.collection('payroll').where('userId', '==', uid).onSnapshot(...)
 - `jsonbData` — tables whose fields live in a single `data` jsonb blob
 - `children` — nested arrays (e.g. `invoices.items` → `invoice_items`)
 - `onSnapshot` is a real Postgres realtime subscription that re-runs the query on change
+- `.omit(...fields)` (not Firestore) — a list read **without** heavy fields. Receipt photos
+  are inline base64 in `expenses` / `payroll` (~14 MB for one owner by 2026-10); Project
+  Control reads both with `.omit()` and fetches a row's photos on demand. Each doc gets
+  `_lazy: {field: true}` per omitted field that holds a value. A `_lazy` doc is a **partial
+  copy**: load the full doc (`doc(id).get()`) before viewing its photos or **saving** it, or
+  the save writes the photos back empty. Fenced by `tests/shim-omit.test.js`.
 
-### The two rules this creates
+### The rules this creates
 
 1. **A new field needs a real column.** Fields map straight to snake_case columns. Write
    `foo: 1` to a table without a `foo` column and the save **fails**. (Unless the table is
    `jsonbData`, where everything goes into the blob.)
 2. **A collection whose table is `jsonbData` must be registered as such**, or reads silently
    return empty objects.
+3. **Never save a `_lazy` doc.** Project Control's payroll list reaches `expenses-module.js`
+   through `lcSyncFromPortal`, so `expPayroll` can hold partial copies — anything there that
+   reads or writes `receiptImages` must refetch first (see `openEditPayrollModal`).
 
 ---
 

@@ -251,6 +251,23 @@ function mapPayrollDoc(d) {
     ref: shortRef("PAY", d.id)
   };
 }
+const PC_EXPENSE_IMAGE_FIELDS = ["poImageUrl", "deliveryReceiptUrl", "supplierInvoiceUrl", "paymentReceiptUrl"];
+// Full expense rows (with their photos), fetched one at a time when a photo is
+// actually viewed. Cleared on every expenses snapshot so an edited photo shows.
+const _pcFullExpense = /* @__PURE__ */ new Map();
+function pcHydrateExpense(m) {
+  if (!m || !m.lazyImages) return Promise.resolve(m);
+  if (!_pcFullExpense.has(m.id)) {
+    const p = db.collection("expenses").doc(m.id).get().then((s) => {
+      if (!s.exists) return m;
+      const f = mapExpenseDoc({ id: s.id, ...s.data() });
+      return { ...m, docs: f.docs, docUrls: f.docUrls, receipts: f.receipts, firstReceipt: f.firstReceipt, lazyImages: false };
+    });
+    p.catch(() => _pcFullExpense.delete(m.id));
+    _pcFullExpense.set(m.id, p);
+  }
+  return _pcFullExpense.get(m.id);
+}
 function mapExpenseDoc(d) {
   const dateTime = (d.dateTime || "").toString();
   const date = dateTime.slice(0, 10);
@@ -260,11 +277,13 @@ function mapExpenseDoc(d) {
     si: d.supplierInvoiceUrl || "",
     pay: d.paymentReceiptUrl || ""
   };
+  // A photo-free list row (.omit) says which photos exist via `_lazy`.
+  const lz = d._lazy || {};
   const docs = {
-    po: !!docUrls.po,
-    dr: !!docUrls.dr,
-    si: !!docUrls.si,
-    pay: !!docUrls.pay
+    po: !!docUrls.po || !!lz.poImageUrl,
+    dr: !!docUrls.dr || !!lz.deliveryReceiptUrl,
+    si: !!docUrls.si || !!lz.supplierInvoiceUrl,
+    pay: !!docUrls.pay || !!lz.paymentReceiptUrl
   };
   const receipts = Array.isArray(d.receiptImages) && d.receiptImages.length ? d.receiptImages : d.receiptURL ? [d.receiptURL] : [];
   return {
@@ -287,6 +306,8 @@ function mapExpenseDoc(d) {
     docUrls,
     receipts,
     firstReceipt: receipts[0] || docUrls.si || docUrls.dr || docUrls.po || docUrls.pay || "",
+    // true = photos exist but aren't loaded yet — pcHydrateExpense(m) fetches them
+    lazyImages: Object.keys(lz).length > 0,
     ref: shortRef("EXP", d.id)
   };
 }
@@ -3021,17 +3042,49 @@ function _lcFirstName(n) {
     )
   );
 }
+// Receipt thumbnail for a photo-free list row: fetches that row's photo only
+// once the cell scrolls into view, so a long table never loads them all at once.
+function LazyReceiptThumb({ m, onOpen }) {
+  const [url, setUrl] = React.useState(m.firstReceipt || "");
+  const [failed, setFailed] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (m.firstReceipt) { setUrl(m.firstReceipt); return; }
+    setUrl("");
+    if (!m.lazyImages || !ref.current) return;
+    let cancelled = false;
+    const load = () => pcHydrateExpense(m).then((f) => { if (!cancelled) setUrl(f.firstReceipt || ""); }).catch(() => { if (!cancelled) setFailed(true); });
+    if (typeof IntersectionObserver === "undefined") { load(); return () => { cancelled = true; }; }
+    const io = new IntersectionObserver((entries) => {
+      if (!entries.some((en) => en.isIntersecting)) return;
+      io.disconnect();
+      load();
+    }, { rootMargin: "200px" });
+    io.observe(ref.current);
+    return () => { cancelled = true; io.disconnect(); };
+  }, [m.id, m.firstReceipt, m.lazyImages]);
+  const box = { width: 44, height: 44, borderRadius: 6, cursor: "pointer", border: "1px solid #e5e7eb", display: "block" };
+  if (url) {
+    return /* @__PURE__ */ React.createElement("img", { src: url, alt: "Receipt", loading: "lazy", onClick: () => onOpen({ ...m, firstReceipt: url }), style: { ...box, objectFit: "cover" } });
+  }
+  return /* @__PURE__ */ React.createElement("span", { ref, onClick: () => onOpen(m), title: failed ? "Couldn't load — click to retry" : "Loading receipt…", style: { ...box, background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 11 } }, failed ? "!" : "…");
+}
 function DocPill({ m, k, label, title }) {
   const attached = !!m.docs[k];
+  const openUrl = (url) => {
+    if (window._receiptStore) {
+      window._receiptStore[`docpill_${m.id}_${k}`] = { images: [url], name: `${title} \u2014 ${m.name}` };
+      if (typeof window.openLightbox === "function") window.openLightbox(`docpill_${m.id}_${k}`, 0);
+    } else {
+      window.open(url, "_blank");
+    }
+  };
   const onClick = (e) => {
     e.stopPropagation();
     if (attached && m.docUrls[k]) {
-      if (window._receiptStore) {
-        window._receiptStore[`docpill_${m.id}_${k}`] = { images: [m.docUrls[k]], name: `${title} \u2014 ${m.name}` };
-        if (typeof window.openLightbox === "function") window.openLightbox(`docpill_${m.id}_${k}`, 0);
-      } else {
-        window.open(m.docUrls[k], "_blank");
-      }
+      openUrl(m.docUrls[k]);
+    } else if (attached && m.lazyImages) {
+      pcHydrateExpense(m).then((f) => f.docUrls[k] && openUrl(f.docUrls[k])).catch(() => alert("Couldn't load this document \u2014 check your connection and try again."));
     } else {
       if (typeof window.openEditExpenseModal === "function") window.openEditExpenseModal(m.id);
     }
@@ -3120,6 +3173,10 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
     return map;
   }, [childMonths]);
   const openReceiptThumb = (m) => {
+    if (!m.firstReceipt && m.lazyImages) {
+      pcHydrateExpense(m).then((f) => f.firstReceipt && openReceiptThumb(f)).catch(() => alert("Couldn't load this receipt — check your connection and try again."));
+      return;
+    }
     if (!m.firstReceipt) return;
     if (window._receiptStore && typeof window.openLightbox === "function") {
       const key = `thumb_${m.id}`;
@@ -3250,16 +3307,7 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
     }
     const m = row.m;
     const billingNum = billingByProjectId.get(m.projectId);
-    return /* @__PURE__ */ React.createElement("tr", { key: m.id || i, className: "row", onClick: () => setDetailsItem(m), title: "Click to view item details" }, /* @__PURE__ */ React.createElement("td", { style: { fontSize: 12.5, color: "var(--ink-2)", whiteSpace: "nowrap" } }, fmtDateTime(m.dateTime || m.date)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { className: "name" }, m.name), /* @__PURE__ */ React.createElement(PaymentTag, { method: m.paymentMethod })), billingNum && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--ink-3)", marginTop: 3, display: "inline-flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("svg", { width: "11", height: "11", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })), "Charged to \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)", fontWeight: 600 } }, "Billing #", billingNum))), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-2)" } }, m.category || "\u2014")), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { className: "pc-docs-row", title: "Purchase Order \xB7 Delivery Receipt \xB7 Supplier Invoice \xB7 Payment Receipt" }, /* @__PURE__ */ React.createElement(DocPill, { m, k: "po", label: "PO", title: "Purchase Order" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "dr", label: "DR", title: "Delivery Receipt" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "si", label: "SI", title: "Supplier Invoice" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "pay", label: "PR", title: "Payment Receipt" }))), /* @__PURE__ */ React.createElement("td", { className: "right" }, /* @__PURE__ */ React.createElement("span", { className: "amt" }, "\u20B1 ", peso(m.amount)), _staff() ? null : /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "var(--ink-3)", marginTop: 2 } }, project.revenue > 0 ? (Number(m.amount) / project.revenue * 100).toFixed(2) + "% of contract" : "\u2014")), /* @__PURE__ */ React.createElement("td", { onClick: (e) => e.stopPropagation() }, m.firstReceipt ? /* @__PURE__ */ React.createElement(
-      "img",
-      {
-        src: m.firstReceipt,
-        alt: "Receipt",
-        loading: "lazy",
-        onClick: () => openReceiptThumb(m),
-        style: { width: 44, height: 44, objectFit: "cover", borderRadius: 6, cursor: "pointer", border: "1px solid #e5e7eb", display: "block" }
-      }
-    ) : /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db", fontSize: 11 } }, "\u2014")), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Print receipt for this material expense", onClick: (e) => {
+    return /* @__PURE__ */ React.createElement("tr", { key: m.id || i, className: "row", onClick: () => setDetailsItem(m), title: "Click to view item details" }, /* @__PURE__ */ React.createElement("td", { style: { fontSize: 12.5, color: "var(--ink-2)", whiteSpace: "nowrap" } }, fmtDateTime(m.dateTime || m.date)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { className: "name" }, m.name), /* @__PURE__ */ React.createElement(PaymentTag, { method: m.paymentMethod })), billingNum && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--ink-3)", marginTop: 3, display: "inline-flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("svg", { width: "11", height: "11", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })), "Charged to \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)", fontWeight: 600 } }, "Billing #", billingNum))), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-2)" } }, m.category || "\u2014")), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { className: "pc-docs-row", title: "Purchase Order \xB7 Delivery Receipt \xB7 Supplier Invoice \xB7 Payment Receipt" }, /* @__PURE__ */ React.createElement(DocPill, { m, k: "po", label: "PO", title: "Purchase Order" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "dr", label: "DR", title: "Delivery Receipt" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "si", label: "SI", title: "Supplier Invoice" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "pay", label: "PR", title: "Payment Receipt" }))), /* @__PURE__ */ React.createElement("td", { className: "right" }, /* @__PURE__ */ React.createElement("span", { className: "amt" }, "\u20B1 ", peso(m.amount)), _staff() ? null : /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "var(--ink-3)", marginTop: 2 } }, project.revenue > 0 ? (Number(m.amount) / project.revenue * 100).toFixed(2) + "% of contract" : "\u2014")), /* @__PURE__ */ React.createElement("td", { onClick: (e) => e.stopPropagation() }, m.firstReceipt || m.lazyImages ? /* @__PURE__ */ React.createElement(LazyReceiptThumb, { m, onOpen: openReceiptThumb }) : /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db", fontSize: 11 } }, "\u2014")), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Print receipt for this material expense", onClick: (e) => {
       e.stopPropagation();
       printMaterialReceipt(m);
     } }, Ico.receipt || "\u{1F9FE}"), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Edit", onClick: (e) => {
@@ -3281,7 +3329,16 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
   ));
 }
 function ItemDetailsModal({ item, billingNum, onClose, onOpenImage, onPrint }) {
-  const m = item;
+  // A photo-free list row: load its photos for the Attachments grid.
+  const [full, setFull] = React.useState(item.lazyImages ? null : item);
+  React.useEffect(() => {
+    if (!item.lazyImages) { setFull(item); return; }
+    setFull(null);
+    let cancelled = false;
+    pcHydrateExpense(item).then((f) => { if (!cancelled) setFull(f); }).catch(() => { if (!cancelled) setFull(item); });
+    return () => { cancelled = true; };
+  }, [item]);
+  const m = full || item;
   const receipts = Array.isArray(m.receipts) ? m.receipts : [];
   const docOrder = [
     { k: "po", label: "Purchase Order" },
@@ -3308,7 +3365,7 @@ function ItemDetailsModal({ item, billingNum, onClose, onOpenImage, onPrint }) {
   return /* @__PURE__ */ React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" } }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: "#fff", borderRadius: 14, maxWidth: 720, width: "100%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, position: "sticky", top: 0, background: "#fff", zIndex: 1, borderRadius: "14px 14px 0 0" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#6b7280", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 } }, "Item Details"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: "#111827", wordBreak: "break-word" } }, m.name)), /* @__PURE__ */ React.createElement("button", { onClick: onClose, "aria-label": "Close", style: { background: "#f3f4f6", border: "none", width: 32, height: 32, borderRadius: 8, fontSize: 18, cursor: "pointer", color: "#6b7280", lineHeight: 1, flexShrink: 0 } }, "\xD7")), /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 24px 20px" } }, /* @__PURE__ */ React.createElement(Row, { label: "Amount" }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 700, color: "#1A5C3A" } }, "\u20B1 ", peso(m.amount))), /* @__PURE__ */ React.createElement(Row, { label: "Date & Time" }, fmtDateTime(m.dateTime || m.date)), /* @__PURE__ */ React.createElement(Row, { label: "Category" }, m.category || /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db" } }, "\u2014")), /* @__PURE__ */ React.createElement(Row, { label: "Payment" }, /* @__PURE__ */ React.createElement(PaymentTag, { method: m.paymentMethod }), " ", !m.paymentMethod && /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db" } }, "\u2014")), m.quantity > 1 && /* @__PURE__ */ React.createElement(Row, { label: "Quantity" }, m.quantity), billingNum && /* @__PURE__ */ React.createElement(Row, { label: "Charged To" }, /* @__PURE__ */ React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })), /* @__PURE__ */ React.createElement("b", null, "Billing #", billingNum))), /* @__PURE__ */ React.createElement(Row, { label: "Documents" }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, docOrder.map((o) => {
     const has = !!(m.docs && m.docs[o.k]);
     return /* @__PURE__ */ React.createElement("span", { key: o.k, title: o.label, style: { padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.05em", background: has ? "#dcfce7" : "#f3f4f6", color: has ? "#166534" : "#9ca3af", border: "1px solid", borderColor: has ? "#86efac" : "#e5e7eb" } }, o.k === "pay" ? "PR" : o.k.toUpperCase(), " ", has ? "\u2713" : "\u2014");
-  }))), m.notes && /* @__PURE__ */ React.createElement(Row, { label: "Notes" }, /* @__PURE__ */ React.createElement("div", { style: { whiteSpace: "pre-wrap", color: "#374151" } }, m.notes)), m.ref && /* @__PURE__ */ React.createElement(Row, { label: "Reference" }, /* @__PURE__ */ React.createElement("code", { style: { fontSize: 12, color: "#6b7280" } }, m.ref)), allImages.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 } }, "Attachments (", allImages.length, ")"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 10 } }, allImages.map((img, i) => /* @__PURE__ */ React.createElement("div", { key: i, onClick: () => openImg(img.url, img.label), style: { cursor: "pointer", borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb", background: "#f9fafb" } }, /* @__PURE__ */ React.createElement("img", { src: img.url, alt: img.label, loading: "lazy", style: { width: "100%", height: 90, objectFit: "cover", display: "block" } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "#6b7280", padding: "4px 6px", textAlign: "center" } }, img.label)))))), /* @__PURE__ */ React.createElement("div", { style: { padding: "14px 24px", borderTop: "1px solid #e5e7eb", display: "flex", gap: 8, justifyContent: "flex-end", position: "sticky", bottom: 0, background: "#fff", borderRadius: "0 0 14px 14px" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => onPrint && onPrint(m), style: { padding: "8px 14px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#374151", fontSize: 13, fontWeight: 600, cursor: "pointer" } }, "Print Receipt"), /* @__PURE__ */ React.createElement("button", { onClick: () => {
+  }))), m.notes && /* @__PURE__ */ React.createElement(Row, { label: "Notes" }, /* @__PURE__ */ React.createElement("div", { style: { whiteSpace: "pre-wrap", color: "#374151" } }, m.notes)), m.ref && /* @__PURE__ */ React.createElement(Row, { label: "Reference" }, /* @__PURE__ */ React.createElement("code", { style: { fontSize: 12, color: "#6b7280" } }, m.ref)), !full && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 18, fontSize: 12.5, color: "#9ca3af" } }, "Loading attachments…"), allImages.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 } }, "Attachments (", allImages.length, ")"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 10 } }, allImages.map((img, i) => /* @__PURE__ */ React.createElement("div", { key: i, onClick: () => openImg(img.url, img.label), style: { cursor: "pointer", borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb", background: "#f9fafb" } }, /* @__PURE__ */ React.createElement("img", { src: img.url, alt: img.label, loading: "lazy", style: { width: "100%", height: 90, objectFit: "cover", display: "block" } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "#6b7280", padding: "4px 6px", textAlign: "center" } }, img.label)))))), /* @__PURE__ */ React.createElement("div", { style: { padding: "14px 24px", borderTop: "1px solid #e5e7eb", display: "flex", gap: 8, justifyContent: "flex-end", position: "sticky", bottom: 0, background: "#fff", borderRadius: "0 0 14px 14px" } }, /* @__PURE__ */ React.createElement("button", { onClick: () => onPrint && onPrint(m), style: { padding: "8px 14px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#374151", fontSize: 13, fontWeight: 600, cursor: "pointer" } }, "Print Receipt"), /* @__PURE__ */ React.createElement("button", { onClick: () => {
     onClose();
     window.openEditExpenseModal && window.openEditExpenseModal(m.id);
   }, style: { padding: "8px 14px", borderRadius: 8, border: "1px solid #1A5C3A", background: "#1A5C3A", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" } }, "Edit"))));
@@ -3539,14 +3596,17 @@ function PortalApp() {
         },
         onErr
       ),
-      db.collection("expenses").where("userId", "==", dataUid).onSnapshot(
+      // Receipt photos are inline base64 (~14 MB across both tables) — load the
+      // rows without them; a row's photos are fetched on demand (pcHydrateExpense).
+      db.collection("expenses").where("userId", "==", dataUid).omit(PC_EXPENSE_IMAGE_FIELDS).onSnapshot(
         (s) => {
+          _pcFullExpense.clear();
           setExpensesRaw(s.docs.map((d) => ({ id: d.id, ...d.data() })));
           onAny();
         },
         onErr
       ),
-      db.collection("payroll").where("userId", "==", dataUid).onSnapshot(
+      db.collection("payroll").where("userId", "==", dataUid).omit("receiptImages").onSnapshot(
         (s) => {
           setPayrollRaw(s.docs.map((d) => ({ id: d.id, ...d.data() })));
           onAny();

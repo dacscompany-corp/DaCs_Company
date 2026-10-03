@@ -307,17 +307,41 @@ function _jbOrd(a, b) {
   return String(a == null ? '' : a).localeCompare(String(b == null ? '' : b));
 }
 
+// Column list per table, learned from one photo-free row (PostgREST has no
+// "all columns except X", and its schema endpoint is service-role only).
+// Learned at runtime so a column added later is never silently dropped.
+const _colCache = {};
+function _tableCols(cfg, omitCols, jsonCols) {
+  if (!_colCache[cfg.table]) {
+    _colCache[cfg.table] = (async () => {
+      let probe = sb.from(cfg.table).select('*').limit(1);
+      for (const col of omitCols) probe = jsonCols.has(col) ? probe.or(`${col}.is.null,${col}.eq.[]`) : probe.is(col, null);
+      let { data, error } = await probe;
+      if (!error && !(data && data.length)) ({ data, error } = await sb.from(cfg.table).select('*').limit(1));
+      return !error && data && data.length ? Object.keys(data[0]) : null;
+    })().catch(() => null);
+    _colCache[cfg.table].then((cols) => { if (!cols) delete _colCache[cfg.table]; });
+  }
+  return _colCache[cfg.table];
+}
+
 class Query {
-  constructor(cfg, ctx) { this.cfg = cfg; this.ctx = ctx; this._w = []; this._o = []; this._lim = null; }
-  _clone() { const q = new Query(this.cfg, this.ctx); q._w = [...this._w]; q._o = [...this._o]; q._lim = this._lim; return q; }
+  constructor(cfg, ctx) { this.cfg = cfg; this.ctx = ctx; this._w = []; this._o = []; this._lim = null; this._omit = null; }
+  _clone() { const q = new Query(this.cfg, this.ctx); q._w = [...this._w]; q._o = [...this._o]; q._lim = this._lim; q._omit = this._omit; return q; }
   where(f, op, v) { const q = this._clone(); q._w.push([f, op, v]); return q; }
   orderBy(f, dir) { const q = this._clone(); q._o.push([f, dir || 'asc']); return q; }
   limit(n) { const q = this._clone(); q._lim = n; return q; }
+  // Not Firestore: leave heavy fields (inline base64 receipt photos) out of a
+  // list read. Every doc then carries `_lazy` — {field: true} for each omitted
+  // field that holds a value — which marks it as a PARTIAL copy: show
+  // "attached" from it, but load the full doc (doc(id).get()) before viewing
+  // the images or saving the row, or the save would wipe them.
+  omit(...fields) { const q = this._clone(); q._omit = fields.flat(); return q; }
 
-  _select() {
+  _select(selOverride) {
     const c = this.cfg;
-    let sel = '*';
-    if (c.children) sel = '*, ' + Object.values(c.children).map((x) => `${x.table}(*)`).join(', ');
+    let sel = selOverride || '*';
+    if (!selOverride && c.children) sel = '*, ' + Object.values(c.children).map((x) => `${x.table}(*)`).join(', ');
     let qb = sb.from(c.table).select(sel);
     if (c.kind) qb = qb.eq('kind', c.kind);
     if (this.ctx) qb = qb.eq(this.ctx.col, this.ctx.val);     // subcollection parent filter
@@ -350,9 +374,41 @@ class Query {
       const docs = items.map((it) => ({ id: it.id, data: () => it._d, exists: true, ref: new DocRef(c, it.id, this.ctx) }));
       return { docs, empty: docs.length === 0, size: docs.length, forEach: (fn) => docs.forEach(fn) };
     }
+    if (this._omit && this._omit.length && !c.children && !c.kv) return this._getOmitted();
     const { data, error } = await this._select();
     if (error) throw error;
     return querySnap(this.cfg, data || [], this.ctx);
+  }
+  async _getOmitted() {
+    const c = this.cfg;
+    const idCol = c.idField || 'id';
+    const jsonCols = new Set((c.json || []).map((f) => fieldToCol(c, f)));
+    const omitCols = this._omit.map((f) => fieldToCol(c, f));
+    const cols = await _tableCols(c, omitCols, jsonCols);
+    if (!cols) {   // couldn't learn the columns — fall back to the full read
+      const { data, error } = await this._select();
+      if (error) throw error;
+      return querySnap(c, data || [], this.ctx);
+    }
+    const [main, ...flags] = await Promise.all([
+      this._select(cols.filter((k) => !omitCols.includes(k)).join(',')),
+      // ids of rows where each omitted field holds a value — a few KB each
+      ...omitCols.map((col) => {
+        const q = this._select(idCol).not(col, 'is', null);
+        return jsonCols.has(col) ? q.neq(col, '[]') : q.neq(col, '');
+      }),
+    ]);
+    if (main.error) throw main.error;
+    // A failed flag read marks every row "maybe attached" — the full doc settles it.
+    const has = flags.map((r) => (r.error ? null : new Set((r.data || []).map((x) => x[idCol]))));
+    const snap = querySnap(c, main.data || [], this.ctx);
+    for (const d of snap.docs) {
+      const base = d.data;
+      const lazy = {};
+      this._omit.forEach((f, i) => { if (!has[i] || has[i].has(d.id)) lazy[f] = true; });
+      d.data = () => ({ ...base(), _lazy: lazy });
+    }
+    return snap;
   }
   onSnapshot(onNext, onErr) {
     let cancelled = false;
