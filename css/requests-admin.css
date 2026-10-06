@@ -1,0 +1,55 @@
+/* ════════════════════════════════════════════════════════════════════
+   REQUESTS (WorkMate) — extra styles for js/requests-admin-*.js.
+   Everything else reuses the Attendance att-* classes and tokens
+   (css/attendance-admin.css) so the two office sections look alike.
+   ════════════════════════════════════════════════════════════════════ */
+
+.req-row { cursor: pointer; }
+.req-row:hover td { background: var(--att-line-soft); }
+.req-row:focus-visible { outline: 2px solid var(--att-green); outline-offset: -2px; }
+
+/* Wide tables scroll inside their card on a phone instead of being clipped
+   (.att-card hides overflow). */
+.req-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+.req-urgent {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--att-red-tint);
+    color: var(--att-red);
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    white-space: nowrap;
+}
+.req-muted { color: var(--att-muted); font-size: 12.5px; }
+
+.req-lines { display: grid; gap: 14px; }
+
+.req-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.req-photos { display: flex; flex-wrap: wrap; gap: 10px; }
+.req-photo {
+    width: 96px;
+    height: 96px;
+    border-radius: 10px;
+    border: 1px solid var(--att-line);
+    object-fit: cover;
+    background: var(--att-field);
+    cursor: zoom-in;
+}
+
+.req-history { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.req-history-item { display: grid; grid-template-columns: 190px 1fr; gap: 12px; font-size: 13px; }
+.req-history-when { color: var(--att-muted); font-size: 12.5px; }
+
+.req-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+.req-toggle input { width: 16px; height: 16px; accent-color: var(--att-green); }
+/* .att-toolbar label (attendance-admin.css) styles field captions in
+   small caps; a checkbox label in the same toolbar reads as plain text. */
+.att-toolbar .req-toggle { font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--att-ink-2); }
+
+@media (max-width: 640px) {
+    .req-history-item { grid-template-columns: 1fr; gap: 2px; }
+}

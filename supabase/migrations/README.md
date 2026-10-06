@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0086** — highest on disk is
-  `0085_workmate_requests.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0088** — highest on disk is
+  `0087_pr_person_name_office.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble.
 - **`0075` and `0076` are TAKEN but not on `main`.** They belong to the abandoned
   project cost-plan branch (`project_cost_plans`, then its `%` columns) and **both
@@ -155,6 +155,10 @@ Emergency undo: `supabase/rollback_0081_uploads_access.sql` (does not restore pu
 database. Both worker apps upload with `upsert`, so re-sending a photo after a failed Time In RPC is an
 UPDATE; without the policy a database rebuilt from migrations would refuse every such retry forever. The
 file creates the policy only when it is missing, so applying it live changes nothing.
+
+**0086 (WorkMate Requests — office)** adds the owner/staff RPCs behind Dacs Web → Requests (queue, arranged, reductions, conflicts, batches, teams, catalogue, Allow requests) and `pr_folder_request_count`, which Dacs Web calls before deleting a project. It also **drops** the direct insert/update policies on `pr_batches`, `pr_teams`, `pr_team_members`, `pr_catalog_items` and `pr_project_settings` — those change only through the office RPCs. Dry-run with `supabase/tests/0086_verify.sql` (self-wrapped in begin/rollback) before applying.
+
+**0087 (Requests — office name)** changes only `pr_person_name`: owner/staff accounts with no display name now read **"Office"** instead of "Worker" in request history and the other office-facing names. Grants unchanged; no table or data changes.
 
 Get the truth before relying on this line:
 

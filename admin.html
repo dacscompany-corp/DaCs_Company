@@ -21,6 +21,7 @@
     <!-- Client Reimbursement Tracker Styles -->
     <link rel="stylesheet" href="css/reimbursement-module.css">
     <link rel="stylesheet" href="css/attendance-admin.css">
+    <link rel="stylesheet" href="css/requests-admin.css">
     <!-- Warranty Retention Register + Fund Styles -->
     <link rel="stylesheet" href="css/warranty-fund.css?v=20260803f">
     <!-- Construction Module Styles -->
@@ -2622,6 +2623,14 @@
         <div id="attAppUpdatesView" class="content-view" style="display: none;"></div>
         <div id="quoteEditorView"   class="content-view" style="display: none;"></div>
         <div id="quoteRevisionView" class="content-view" style="display: none;"></div>
+        <!-- Requests (WorkMate, 0085/0086) — rendered by js/requests-admin-*.js.
+             reqDetail is the drill-down from a row in reqQueue. -->
+        <div id="reqQueueView"      class="content-view" style="display: none;"></div>
+        <div id="reqDetailView"     class="content-view" style="display: none;"></div>
+        <div id="reqBatchesView"    class="content-view" style="display: none;"></div>
+        <div id="reqTeamsView"      class="content-view" style="display: none;"></div>
+        <div id="reqCatalogView"    class="content-view" style="display: none;"></div>
+        <div id="reqProjectsView"   class="content-view" style="display: none;"></div>
 
         <!-- ════════════ USER NAVIGATOR ════════════ -->
         <!-- ════════════ SYSTEM ERRORS VIEW (owner-only; client_errors, 0028/0029) ════════════ -->
@@ -5388,6 +5397,10 @@
 <script src="js/quotation-module.js"></script>
 <script src="js/attendance-admin.js"></script>
 <script src="js/app-updates-admin.js"></script>
+<script src="js/requests-admin-core.js"></script>
+<script src="js/requests-admin-queue.js"></script>
+<script src="js/requests-admin-detail.js"></script>
+<script src="js/requests-admin-setup.js"></script>
 <script src="js/quotation-print.js"></script>
 <script src="js/user-navigator.js"></script>
 <script src="js/client-accounts.js"></script>
@@ -6224,6 +6237,7 @@
     const PM_VIEWS   = ['pmProjects','pmWorkspace'];
     const QUOTE_VIEWS = ['quoteList','quoteEditor','quoteRevision'];
     const ATT_VIEWS   = ['attToday','attWorkers','attWorker','attProjects','attReports','attRewards'];
+    const REQ_VIEWS   = ['reqQueue','reqDetail','reqBatches','reqTeams','reqCatalog','reqProjects'];
     const TITLES = {
         dashboard:        'Dashboard',
         appointments:     'Appointments',
@@ -6259,6 +6273,12 @@
         attReports:       'Hours report',
         attRewards:       'Weekly bonus',
         attAppUpdates:    'App updates',
+        reqQueue:         'Request queue',
+        reqDetail:        'Request',
+        reqBatches:       'Weekly batches',
+        reqTeams:         'Teams',
+        reqCatalog:       'Item catalogue',
+        reqProjects:      'Projects open to requests',
     };
 
     window.switchView = function(view) {
@@ -6380,6 +6400,7 @@
         if (ATT_VIEWS.includes(view)   && typeof initAttendanceModule === 'function') initAttendanceModule(view);
         if (view === 'attAppUpdates' && typeof initAppUpdatesModule === 'function')
             initAppUpdatesModule(document.getElementById('attAppUpdatesView'));
+        if (REQ_VIEWS.includes(view)   && typeof initRequestsModule === 'function') initRequestsModule(view);
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     };

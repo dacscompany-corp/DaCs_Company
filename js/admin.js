@@ -1,7 +1,7 @@
 // Global variables
 let _loginViaForm   = false;   // true only when user clicked Sign In
 let currentUser     = null;
-let currentUserRole = null;   // 'owner' | 'staff' | 'worker' | 'teamLeader'
+let currentUserRole = null;   // 'owner' | 'staff' (workers/teamLeaders are refused at sign-in)
 let currentAllowedModules = null;  // e.g. ['pm'] — when set, this account is "focused" to these PRIMARY_NAV sections on every screen (desktop + mobile). null/empty = full access.
 let currentView     = 'dashboard';
 let appointments = [];
@@ -16,8 +16,11 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
 });
 
-// Roles that are allowed to access the admin dashboard
-const ADMIN_ROLES = ['owner', 'staff', 'worker', 'teamLeader'];
+// Roles that are allowed to access the admin dashboard. Workers and team
+// leaders use the phone apps (DACS Attendance / DAC'S WorkMate): their old
+// Construction screens here write the legacy requests tables, which 0085
+// made read-only history.
+const ADMIN_ROLES = ['owner', 'staff'];
 
 // Check authentication state
 function checkAuthState() {
@@ -57,7 +60,9 @@ function checkAuthState() {
                 if (!ADMIN_ROLES.includes(currentUserRole)) {
                     await auth.signOut();
                     showLogin();
-                    showLoginError('Access denied. This account does not have admin privileges.');
+                    showLoginError(currentUserRole === 'worker' || currentUserRole === 'teamLeader'
+                        ? 'Workers and team leaders use the DACS app on their phone. This portal is for the office.'
+                        : 'Access denied. This account does not have admin privileges.');
                     _loginViaForm = false;
                     return;
                 }
@@ -2252,6 +2257,21 @@ const PRIMARY_NAV = [
         { view: 'attAppUpdates', label: 'App updates',    icon: 'smartphone' },
       ]
     },
+    // WorkMate Requests (0085/0086): workers and team leaders request
+    // materials and tools in DAC'S WorkMate; the office processes them here.
+    // Owner + staff. Quantities only — no price, amount or cost anywhere.
+    { id: 'requests', label: 'Requests', sub: 'Materials & Tools', defaultView: 'reqQueue',
+      modules: [
+        { view: 'reqQueue',    label: 'Queue',          icon: 'inbox' },
+        { view: 'reqBatches',  label: 'Weekly batches', icon: 'calendar-days' },
+        { view: 'reqTeams',    label: 'Teams',          icon: 'users' },
+        { view: 'reqCatalog',  label: 'Catalogue',      icon: 'package-search' },
+        { view: 'reqProjects', label: 'Projects',       icon: 'hard-hat' },
+        // One request's detail: routable, highlighted under Requests, but
+        // not a button in the secondary row (like Appointments' dashboard).
+        { view: 'reqDetail',   label: 'Request',        icon: 'file-text', hidden: true },
+      ]
+    },
     // Outgoing client quotations. Pre-sales: a quotation exists before any
     // project does, and belongs to NEITHER project system — hence its own
     // top-level tab rather than a slot under Project Control.
@@ -2304,6 +2324,8 @@ const _FOCUS_SUBVIEWS = {
     // Drill-down from the today list into one worker's day. Without this
     // an allowed_modules account can open the section but not any row.
     attendance: ['attWorker'],
+    // Drill-down from the queue into one request (also a hidden module).
+    requests: ['reqDetail'],
 };
 // All views reachable inside the focused module(s) — used by the switchView guard.
 window.focusAllowedViews = function () {

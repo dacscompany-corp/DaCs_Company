@@ -2613,6 +2613,22 @@ async function handleEditFolder(e) {
 
 async function deleteFolder(id) {
     const folder = expFolders.find(f => f.id === id);
+    // WorkMate requests (0085) keep their project as history, so a project
+    // with requests is completed, never deleted. Checked BEFORE the confirm
+    // and before anything is removed: the loop below deletes expenses and
+    // payroll first, and only then would the folder delete fail on the
+    // requests' foreign key — leaving the project half-deleted.
+    try {
+        const { data: reqCount, error: reqErr } = await window.sbClient.rpc('pr_folder_request_count', { p_folder: id });
+        if (reqErr) throw reqErr;
+        if (reqCount > 0) {
+            showExpNotif(`"${folder?.name}" has ${reqCount} WorkMate request(s), so it cannot be deleted. Mark the project completed instead.`, 'error');
+            return;
+        }
+    } catch (err) {
+        showExpNotif('Could not check this project for WorkMate requests, so nothing was deleted. ' + (err.message || err), 'error');
+        return;
+    }
     const count  = expProjects.filter(p => p.folderId === id).length;
     const msg    = count > 0
         ? `Delete folder "${folder?.name}" and its ${count} month(s)? All expenses & payroll inside will also be deleted.`

@@ -2331,6 +2331,20 @@ function AdditionalWorksDrill({ project, onBack, childFolders, additionalWorksRa
     setSaving(false);
   };
   const deleteChild = async (child) => {
+    // WorkMate requests (0085) keep their Additional Works job as history:
+    // refuse before the confirm, never after a half-delete. A failed check
+    // deletes nothing.
+    try {
+      const { data: reqCount, error: reqErr } = await window.sbClient.rpc("pr_folder_request_count", { p_folder: child.id });
+      if (reqErr) throw reqErr;
+      if (reqCount > 0) {
+        alert(`"${child.name}" has ${reqCount} WorkMate request(s), so it cannot be deleted — the requests keep it as their history.`);
+        return;
+      }
+    } catch (err) {
+      alert("Could not check for WorkMate requests, so nothing was deleted: " + (err.message || err));
+      return;
+    }
     if (!confirm(`Delete "${child.name}"? This removes its contract amount and any billing periods/entries recorded under it.`)) return;
     try { await db.collection("folders").doc(child.id).delete(); } catch (err) { alert("Delete failed: " + (err.message || err)); }
   };

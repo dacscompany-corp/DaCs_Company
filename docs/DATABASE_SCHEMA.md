@@ -919,6 +919,25 @@ Worker RPCs: `pr_destinations()`, `pr_my_teams()`, `pr_catalog()`, `pr_submit_re
 
 **Legacy `requests` / `request_items`** (Flutter-prototype era) are read-only history since `0085`: owner/staff full access; a worker reads only their own rows and writes nothing.
 
+### Office RPCs (0086)
+
+Every office write is a `SECURITY DEFINER` RPC that refuses non-office callers (`OFFICE_ONLY`) and other companies' rows (`NOT_FOUND`). Line and portion writes lock the `pr_lines` row before its portions (cancel locks the request first, the same order as the worker's `pr_cancel_request`) and record a `pr_events` row; batch, team, catalogue and project settings have no request to record against. Read RPCs return names only — no contact details, no money.
+
+| RPC | What it does |
+|---|---|
+| `pr_office_queue(scope)` / `pr_office_request(id)` | Requests with lines, portions (with batch dates), open conflicts, photos; the single read adds the history. 'open' = an open line, a pending reduction or an unresolved conflict (a cancelled request with an order still to undo stays open). |
+| `pr_office_set_arranged(portion, bool)` | Mark arranged / undo (undo refused while a reduction is pending) |
+| `pr_office_resolve_reduction(portion, outcome, note)` | `order_reduced` or `kept_as_surplus`; the portion keeps only what is still needed |
+| `pr_office_change_quantity(line, qty, reason)` / `pr_office_cancel_line(line, reason)` | Reason required; version rises so an older offline edit becomes a conflict |
+| `pr_office_resolve_conflict(conflict, apply, note)` | Apply the worker's number or keep the current one |
+| `pr_office_match_item(line, item)` | Match a line to an active catalogue item of the same kind (null unmatches) |
+| `pr_office_move_portion(portion, batch, note)` | Move an **unarranged** portion to another weekly batch (merges with that batch's unarranged portion) |
+| `pr_office_batches()` / `pr_office_set_batch_dates(batch, purchase, delivery)` | Batches from 35 days ago on (this week + next two always exist); only purchase/delivery dates change. **0086 dropped the direct insert/update policies on `pr_batches` and on the four setup tables (teams, members, catalogue, project settings)** |
+| `pr_office_people/teams/save_team/add_member/remove_member/set_leader` | Teams; a leader must hold the teamLeader role and be a current member |
+| `pr_office_catalog/save_item` | Catalogue; the same name + spec + unit is refused (`DUPLICATE_ITEM`) |
+| `pr_office_projects/set_allow_requests` | Top-level Project Control projects and the *Allow requests* switch |
+| `pr_folder_request_count(folder)` | Requests on a folder or its children — Dacs Web refuses to delete a project / Additional Works that has any |
+
 ## Relationship map
 ```
 users(owner) ──owns──> folders ──> projects ──> expenses / payroll
