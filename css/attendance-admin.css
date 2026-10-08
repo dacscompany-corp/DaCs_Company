@@ -1195,3 +1195,168 @@ select.att-input { cursor: pointer; }
        stop reading as a key at all. */
     .att-legend { gap: 10px 18px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   Today on site — counter strip, compact tables, quiet-site line.
+
+   Replaces the two banners and the one-card-per-worker rows. The aim
+   is to fit a whole day on one screen: the counts say how it is going,
+   the people who need chasing come first, and a site nobody is on is a
+   name in a line rather than a card.
+   ══════════════════════════════════════════════════════════════════ */
+
+.att-summary { display: flex; flex-direction: column; gap: 12px; }
+
+.att-counts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+}
+.att-count {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+    text-align: left;
+    padding: 14px 18px;
+    background: var(--att-card);
+    border: 1px solid var(--att-line);
+    border-radius: 12px;
+    box-shadow: var(--att-shadow);
+    font-family: inherit;
+    cursor: pointer;
+}
+.att-count:hover:not(:disabled) { background: #FAFBFA; }
+.att-count:disabled { cursor: default; }
+.att-count-value {
+    font-family: var(--att-mono);
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--att-ink);
+}
+.att-count-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--att-muted);
+}
+.att-count--working .att-count-value { color: var(--att-gold); }
+.att-count--done .att-count-value    { color: var(--att-green); }
+.att-count--alert .att-count-value   { color: var(--att-red); }
+.att-count--alert { background: var(--att-red-tint); border-color: var(--att-red-line); }
+.att-count--attn  { background: var(--att-gold-tint); border-color: #E0D2B4; }
+.att-count--attn .att-count-value { color: var(--att-gold); }
+
+.att-statusline {
+    font-size: 14.5px;
+    line-height: 1.5;
+    color: var(--att-ink-2);
+    text-wrap: pretty;
+}
+.att-statusline strong { color: var(--att-ink); font-weight: 600; }
+
+/* ── Status chips above the Full list ───────────────────────────── */
+
+.att-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--att-line-soft);
+}
+.att-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--att-line);
+    border-radius: 999px;
+    background: var(--att-card);
+    color: var(--att-ink-2);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.att-chip:hover { background: #FAFBFA; }
+.att-chip.is-on {
+    background: var(--att-green-tint);
+    border-color: #D3E2D8;
+    color: var(--att-green);
+}
+.att-chip-n {
+    font-family: var(--att-mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--att-muted);
+}
+.att-chip.is-on .att-chip-n { color: var(--att-green); }
+
+/* ── Compact table inside a site card / the not-on-site block ───── */
+
+.att-mini-wrap { overflow-x: auto; }
+.att-mini { width: 100%; border-collapse: collapse; }
+.att-mini th {
+    text-align: left;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--att-muted);
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--att-line);
+    white-space: nowrap;
+}
+.att-mini td {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--att-line-soft);
+    font-size: 13.5px;
+    color: var(--att-ink-2);
+    vertical-align: middle;
+}
+.att-mini tbody tr:last-child td { border-bottom: 0; }
+.att-mini-row { cursor: pointer; }
+.att-mini-row:hover { background: #FAFBFA; }
+.att-mini-name { display: block; font-weight: 600; color: var(--att-ink); }
+.att-mini-meta { display: block; font-size: 12px; color: var(--att-muted); margin-top: 1px; }
+.att-mini-mono { font-family: var(--att-mono); font-size: 12.5px; color: var(--att-ink); white-space: nowrap; }
+.att-mini .att-right { text-align: right; }
+.att-mini-row--done td:first-child      { border-left: 3px solid var(--att-green); }
+.att-mini-row--working td:first-child   { border-left: 3px solid var(--att-gold); }
+.att-mini-row--abandoned td:first-child { border-left: 3px solid var(--att-red); }
+.att-mini-row--none td:first-child      { border-left: 3px solid #C9C8C3; }
+
+/* The not-on-site block sits under the grid at full width. */
+.att-crew-card--wide { margin-top: 20px; }
+.att-crew-grid:empty { display: none; }
+.att-crew-card--wide .att-crew-head { padding: 14px 22px; }
+
+/* ── Sites nobody is on: one line of names ──────────────────────── */
+
+.att-quiet {
+    margin-top: 20px;
+    padding: 14px 22px;
+    background: var(--att-field);
+    border: 1px dashed var(--att-line);
+    border-radius: 12px;
+}
+.att-quiet-label { font-size: 13px; font-weight: 600; color: var(--att-muted); }
+.att-quiet-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.att-quiet-chip {
+    padding: 4px 12px;
+    border: 1px solid var(--att-line);
+    border-radius: 999px;
+    background: var(--att-card);
+    font-size: 13px;
+    color: var(--att-ink-2);
+}
+
+@media (max-width: 720px) {
+    .att-count { padding: 12px 14px; }
+    .att-count-value { font-size: 24px; }
+    .att-chips { padding: 10px 14px; }
+    .att-mini th, .att-mini td { padding: 8px 10px; }
+}

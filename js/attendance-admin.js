@@ -1121,6 +1121,12 @@
         // meant that before the first Time In of the day it had nothing
         // to draw and quietly turned into a list of workers.
         let allSites = [];
+        // Which slice of the day the Full list shows (all / attn / on /
+        // none / done). Set by the counter tiles and the chips.
+        let statusFilter = 'all';
+        // Worker ids that attention() lists, so "Needs you" can be a
+        // filter and the table can put those workers first.
+        let attnIds = new Set();
 
         container.innerHTML = `
             <div class="att-stack">
@@ -1166,6 +1172,31 @@
                 `${label} · last loaded ${at}`;
         }
 
+        /** Does this worker belong to one of the status slices? */
+        function inSlice(key, worker, record) {
+            const tone = attTone(record);
+            switch (key) {
+                case 'attn': return attnIds.has(worker.id);
+                case 'on':   return tone === 'working';
+                case 'none': return tone === 'none';
+                case 'done': return tone === 'done' || tone === 'abandoned';
+                default:     return true;
+            }
+        }
+
+        /**
+         * Problem workers first. Only the order changes -- every worker is
+         * still listed, and the CSV keeps the order it always had.
+         */
+        function sortRank({ worker, record }) {
+            const tone = attTone(record);
+            if (attnIds.has(worker.id)) return 0;
+            if (tone === 'working') return 1;
+            if (tone === 'none') return 2;
+            if (tone === 'abandoned') return 3;
+            return 4;
+        }
+
         /** The rows the filters leave standing — what is drawn AND exported. */
         function visible() {
             const q = (container.querySelector('#attSearch') || {}).value || '';
@@ -1174,6 +1205,7 @@
             return rows.filter(({ worker, record }) => {
                 const project = record ? (record.timein_project_name || '') : '';
                 if (proj && project !== proj) return false;
+                if (!inSlice(statusFilter, worker, record)) return false;
                 if (!needle) return true;
                 return [attWorkerName(worker), worker.position, attWorkerNo(worker.worker_no), project]
                     .some(v => String(v || '').toLowerCase().includes(needle));
@@ -1308,32 +1340,33 @@
             }
             const sentence = bits.length ? attEsc(attAnd(bits)) + '.' : '';
 
-            // Counted from the list itself, by kind. `open` above counts
-            // every worker still on shift, but attention() only lists a
-            // missing Time Out once the day is over -- subtracting one
-            // from the other printed "-2 workers with nothing recorded".
-            const kindCount = k => attn.filter(a => a.kind === k).length;
-            const openN = kindCount('open');
-            const noneN = kindCount('none');
-            const locN = kindCount('location');
-            const flagBody = attn.length
-                ? attEsc(attAnd([
-                    openN ? (openN === 1 ? 'a missing time out'
-                                         : `${openN} missing time outs`) : '',
-                    noneN ? (noneN === 1 ? 'a worker with nothing recorded'
-                                         : `${noneN} workers with nothing recorded`) : '',
-                    locN ? (locN === 1 ? 'a time in with a location problem'
-                                       : `${locN} time ins with a location problem`) : ''
-                  ])) + '.'
-                : !started
-                    // attFlag's own title already says "Nothing needs you";
-                    // the body's job is to say why, not to repeat it.
-                    ? `The first workers are due at ${attEsc(dueAt)}.`
-                    : 'Every worker is accounted for, and no day is waiting on a time out.';
+            // One strip instead of two banners that said the same thing.
+            // Every tile is a way into the Full list, already filtered.
+            const onSite = rows.filter(r => attTone(r.record) === 'working').length;
+            const finished = rows.filter(r => {
+                const t = attTone(r.record);
+                return t === 'done' || t === 'abandoned';
+            }).length;
+            const tile = (label, value, tone, filter) =>
+                '<button type="button" class="att-count att-count--' + tone + '"' +
+                (filter ? ' data-filter="' + filter + '"' : ' disabled') + '>' +
+                  '<span class="att-count-value">' + value + '</span>' +
+                  '<span class="att-count-label">' + attEsc(label) + '</span>' +
+                '</button>';
 
-            return '<div class="att-lede">' +
-                     attBanner(lead, sentence) +
-                     attFlag(attn.length, flagBody, 'attReviewAll', 'Review them') +
+            return '<div class="att-summary">' +
+                     '<div class="att-counts">' +
+                       tile('Expected', total, 'neutral', 'all') +
+                       tile('On site', onSite, onSite ? 'working' : 'neutral', 'on') +
+                       tile('Finished', finished, finished ? 'done' : 'neutral', 'done') +
+                       tile(started ? 'Absent?' : 'Not in yet', absent,
+                            absent && started ? 'alert' : 'neutral', 'none') +
+                       tile('Needs you', attn.length,
+                            attn.length ? 'attn' : 'neutral',
+                            attn.length ? 'attn' : '') +
+                     '</div>' +
+                     '<div class="att-statusline"><strong>' + attEsc(lead) + '</strong>' +
+                       (sentence ? ' ' + sentence : '') + '</div>' +
                    '</div>';
         }
 
@@ -1384,6 +1417,43 @@
             // stops there: a sub-line AND a footer both saying "nobody,
             // due at nine" is the same sentence twice, and across ten
             // empty sites it drowns the two cards that have people on them.
+            /**
+             * One compact table per card, replacing a 56px photo, three
+             * lines of text and a pill for every worker. `absentMode`
+             * drops the time columns, which would all read "—".
+             * A worker number sits beside the name so two people called
+             * the same thing can still be told apart.
+             */
+            const crewTable = (crew, noneLabel, absentMode) => {
+                const head = absentMode
+                    ? '<th>Worker</th><th>Role</th><th>No.</th><th>Status</th>'
+                    : '<th>Worker</th><th>In</th><th>Out</th>' +
+                      '<th class="att-right">Hours</th><th>Status</th>';
+                const body = crew.map(({ worker, record }) => {
+                    const tone = attTone(record);
+                    const name = attEsc(attWorkerName(worker));
+                    const role = attEsc(worker.position || '—');
+                    const no = attEsc(attWorkerNo(worker.worker_no));
+                    const pill = attStatusPillShort(record, noneLabel);
+                    const cells = absentMode
+                        ? '<td><span class="att-mini-name">' + name + '</span></td>' +
+                          '<td>' + role + '</td>' +
+                          '<td class="att-mini-mono">' + no + '</td>' +
+                          '<td>' + pill + '</td>'
+                        : '<td><span class="att-mini-name">' + name + '</span>' +
+                            '<span class="att-mini-meta">' + role + ' · ' + no + '</span></td>' +
+                          '<td class="att-mini-mono">' + attTime(record && record.timein_at) + '</td>' +
+                          '<td class="att-mini-mono">' + attTime(record && record.timeout_at) + '</td>' +
+                          '<td class="att-mini-mono att-right">' + (record && record.total_minutes !== null
+                              ? attEsc(attHours(record.total_minutes)) : '—') + '</td>' +
+                          '<td>' + pill + '</td>';
+                    return '<tr class="att-mini-row att-mini-row--' + tone +
+                           '" data-worker="' + attEsc(worker.id) + '">' + cells + '</tr>';
+                }).join('');
+                return '<div class="att-mini-wrap"><table class="att-mini"><thead><tr>' +
+                       head + '</tr></thead><tbody>' + body + '</tbody></table></div>';
+            };
+
             const card = (title, sub, pill, crew, foot, none, noneLabel, quiet, wide) => `
                 <div class="att-crew-card${none ? ' att-crew-card--none' : ''}${
                     quiet ? ' att-crew-card--quiet' : ''}${
@@ -1395,39 +1465,7 @@
                     </div>
                     ${pill}
                   </div>
-                  ${quiet ? '' : `<div class="att-crew-list">
-                    ${crew.map(({ worker, record }) => {
-                        const tone = attTone(record);
-                        // The hatch is a placeholder, never a signed URL.
-                        // Signing every thumbnail would fire two round
-                        // trips per worker to draw a 56px square; the
-                        // photo itself is one click away on the detail.
-                        const shot = p => `<span class="att-crew-photo${
-                            (record && p) ? '' : ' att-crew-photo--empty'}"></span>`;
-                        const times = !record
-                            ? 'Nothing recorded on the phone'
-                            : record.timeout_at
-                                ? `In ${attTime(record.timein_at)} · Out ${attTime(record.timeout_at)}`
-                                : tone === 'abandoned'
-                                    ? `In ${attTime(record.timein_at)} · no time out`
-                                    : `In ${attTime(record.timein_at)} · still working`;
-                        return `
-                        <div class="att-crew-row" data-worker="${attEsc(worker.id)}">
-                          ${shot(record && record.timein_photo_path)}
-                          <div class="att-crew-body">
-                            <div class="att-crew-name">${attEsc(attWorkerName(worker))}</div>
-                            <div class="att-crew-position">${attEsc(worker.position || '—')}</div>
-                            <div class="att-crew-times">${attEsc(times)}</div>
-                          </div>
-                          <div class="att-crew-right">
-                            ${attStatusPillShort(record, noneLabel)}
-                            <div class="att-crew-hours">${
-                                record && record.total_minutes !== null
-                                    ? attEsc(attHours(record.total_minutes)) : '—'}</div>
-                          </div>
-                        </div>`;
-                    }).join('')}
-                  </div>`}
+                  ${quiet ? '' : crewTable(crew, noneLabel, wide)}
                   ${foot ? `<div class="att-crew-foot">${attEsc(foot)}</div>` : ''}
                 </div>`;
 
@@ -1442,7 +1480,10 @@
                 return String(a.name).localeCompare(String(b.name));
             });
 
-            const cards = ordered.map(g => {
+            const active = ordered.filter(g => g.crew.length);
+            const quietSites = ordered.filter(g => !g.crew.length);
+
+            const cards = active.map(g => {
                 const inCount = g.crew.length;
                 const open = g.crew.filter(c => attTone(c.record) === 'working').length;
                 const closed = g.crew.filter(c => attTone(c.record) === 'abandoned').length;
@@ -1476,15 +1517,6 @@
                         ? 'The office closed a day here because no time out was ever recorded. No hours were counted for it.'
                         : '';
 
-                if (!g.crew.length) {
-                    // Said once, in the sub-line, and phrased about the
-                    // SITE. The workers card below is about people and
-                    // must not read as one more empty site.
-                    return card(g.name,
-                                started ? 'No crew timed in here today'
-                                        : `No crew yet · due at ${dueAt}`,
-                                sourcePill(g.system), [], '', false, null, true);
-                }
                 return card(g.name, sub, sourcePill(g.system), g.crew, foot, false);
             });
 
@@ -1511,7 +1543,27 @@
                 started ? 'Absent?' : 'Not in yet',
                 false, true) : '';
 
-            return '<div class="att-crew-grid">' + cards.join('') + '</div>' + absentCard;
+            // Sites nobody is on are ONE line of names, not one card each.
+            // Still on screen -- "Tanauan is quiet" and "Tanauan is not on
+            // my screen" stay different -- but they no longer push the
+            // workers who need chasing below the fold.
+            const quietCount = quietSites.length;
+            const quietBlock = quietCount ? `
+                <div class="att-quiet">
+                  <div class="att-quiet-label">${attEsc(
+                    `${quietCount} ${quietCount === 1 ? 'site' : 'sites'} with ` +
+                    (started ? (isToday() ? 'nobody timed in today' : 'nobody timed in that day')
+                             : `no crew yet · due at ${dueAt}`))}</div>
+                  <div class="att-quiet-chips">${quietSites.map(g =>
+                    `<span class="att-quiet-chip" title="${attEsc(
+                        g.system === 'pm' ? 'Site works' : g.system === 'pc' ? 'Costing job' : '')}">${
+                        attEsc(g.name)}</span>`).join('')}</div>
+                </div>` : '';
+
+            // Sites with crew, then the workers who need chasing, then the
+            // quiet sites last.
+            return (cards.length ? '<div class="att-crew-grid">' + cards.join('') + '</div>' : '') +
+                   absentCard + quietBlock;
         }
 
         /** The attention panel above the full list. */
@@ -1542,12 +1594,13 @@
         }
 
         function paintRows() {
-            const shown = visible();
+            const shown = visible().slice()
+                .sort((x, y) => sortRank(x) - sortRank(y));
             const tbody = container.querySelector('#attTodayRows');
             if (!tbody) return;
             if (!shown.length) {
                 tbody.innerHTML = '<tr><td colspan="7" class="att-empty">' +
-                                  'No worker matches this search.</td></tr>';
+                                  'No worker matches this search or filter.</td></tr>';
                 return;
             }
             tbody.innerHTML = shown.map(({ worker, record }) => {
@@ -1606,6 +1659,15 @@
                       </select>
                     </div>
                   </div>
+                  <div class="att-chips" id="attStatusChips">
+                    ${[['all', 'Everyone'], ['attn', 'Needs you'], ['on', 'On site'],
+                       ['none', dayHasStarted() ? 'Absent?' : 'Not in yet'],
+                       ['done', 'Finished']].map(([key, label]) => `
+                      <button type="button" class="att-chip${statusFilter === key ? ' is-on' : ''}"
+                              data-status="${key}">${attEsc(label)}
+                        <span class="att-chip-n">${rows.filter(r =>
+                          inSlice(key, r.worker, r.record)).length}</span></button>`).join('')}
+                  </div>
                   <div class="att-legend">
                     <span class="att-legend-title">The colour on the left means</span>
                     <span class="att-legend-item">
@@ -1659,6 +1721,7 @@
 
         function paint() {
             const attn = attention();
+            attnIds = new Set(attn.map(a => a.id));
 
             body.innerHTML =
                 lede(attn) +
@@ -1668,21 +1731,21 @@
                     'so these figures never move money. They are a record of who was ' +
                     'on site.');
 
-            // The all-clear card has no button, so this is absent as often
-            // as it is present.
-            const review = container.querySelector('#attReviewAll');
-            if (review) {
-                review.addEventListener('click', () => {
+            // Each counter tile opens the Full list already filtered to what
+            // it counts. "Needs you" at zero is disabled, so it has no handler.
+            body.querySelectorAll('.att-count[data-filter]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    statusFilter = btn.getAttribute('data-filter');
                     mode = 'list';
                     container.querySelectorAll('#attTodayMode .att-seg-btn')
                         .forEach(b => b.classList.toggle('is-on',
                                                          b.getAttribute('data-mode') === 'list'));
                     paint();
                 });
-            }
+            });
 
             if (mode === 'sites') {
-                body.querySelectorAll('.att-crew-row').forEach(row => {
+                body.querySelectorAll('.att-mini-row').forEach(row => {
                     row.addEventListener('click', () => {
                         window.attendanceOpenWorker(row.getAttribute('data-worker'), workDate);
                     });
@@ -1692,6 +1755,14 @@
                 const filter = container.querySelector('#attProjFilter');
                 if (search) search.addEventListener('input', paintRows);
                 if (filter) filter.addEventListener('change', paintRows);
+                body.querySelectorAll('.att-chip').forEach(chip => {
+                    chip.addEventListener('click', () => {
+                        statusFilter = chip.getAttribute('data-status');
+                        body.querySelectorAll('.att-chip').forEach(c =>
+                            c.classList.toggle('is-on', c === chip));
+                        paintRows();
+                    });
+                });
                 body.querySelectorAll('button[data-attn]').forEach(btn => {
                     btn.addEventListener('click', () => {
                         window.attendanceOpenWorker(btn.getAttribute('data-attn'), workDate);
@@ -1703,6 +1774,7 @@
         }
 
         async function load() {
+            statusFilter = 'all';
             stampDate();
             body.innerHTML = 'Loading…';
             try {
