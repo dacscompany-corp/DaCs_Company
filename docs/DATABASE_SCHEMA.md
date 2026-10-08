@@ -915,7 +915,7 @@ Stage 1a-1 server (plan `docs/superpowers/plans/2026-10-02-workmate-stage1a1-req
 
 Every `pr_*` office policy is tenant-scoped with `can_access` (`pr_ops` via its actor's owner), and worker write RPCs serialise retries of the same operation with an advisory lock.
 
-Worker RPCs: `pr_destinations()`, `pr_my_teams()`, `pr_catalog()`, `pr_submit_request(op, request)`, `pr_change_quantity(op, line, base_version, quantity)`, `pr_cancel_line(op, line)`, `pr_cancel_request(op, request)`, `pr_my_requests(limit)`, `pr_attach_photo(op, request, line, path)`. Completed projects / Additional Works refuse new requests and quantity increases (decreases, cancels and reading stay). PM projects are never destinations.
+Worker RPCs: `pr_destinations()`, `pr_my_teams()`, `pr_catalog()`, `pr_submit_request(op, request)`, `pr_change_quantity(op, line, base_version, quantity)`, `pr_cancel_line(op, line)`, `pr_cancel_request(op, request)`, `pr_my_requests(limit)`, `pr_attach_photo(op, request, line, path)`. Completed projects / Additional Works refuse new requests and quantity increases (decreases, cancels and reading stay). PM projects are never destinations. A worker's cancel of the last open line closes the request (0088); cancelling something already cancelled succeeds without change.
 
 **Legacy `requests` / `request_items`** (Flutter-prototype era) are read-only history since `0085`: owner/staff full access; a worker reads only their own rows and writes nothing.
 
