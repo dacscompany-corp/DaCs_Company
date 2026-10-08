@@ -55,7 +55,16 @@
      * waiting to be resolved, an abandoned one has been. Reporting them
      * under one heading would mean closing a record changed nothing on
      * screen, and the admin would have no way to see their own work.
+     *
+     * hoursDays counts the records that actually CARRY hours. A worker
+     * whose every day is open or closed by the office has totalMinutes
+     * 0, but that is "nothing recorded", not "worked zero hours" -- the
+     * screen reads hoursDays to print '—' instead of "0h 0m".
      */
+    function attHasHours(r) {
+        return r.total_minutes !== null && r.total_minutes !== undefined;
+    }
+
     function attRollUpByWorker(records) {
         const by = new Map();
         (records || []).forEach(r => {
@@ -66,6 +75,7 @@
                     name: r.worker_name || '—',
                     position: r.worker_position || '',
                     daysWorked: 0,
+                    hoursDays: 0,
                     totalMinutes: 0,
                     openDays: 0,
                     abandonedDays: 0
@@ -73,6 +83,7 @@
             }
             const row = by.get(key);
             row.daysWorked += 1;
+            if (attHasHours(r)) row.hoursDays += 1;
             row.totalMinutes += Number(r.total_minutes || 0);
             if (r.status === 'abandoned') row.abandonedDays += 1;
             else if (r.total_minutes === null || r.total_minutes === undefined) row.openDays += 1;
@@ -85,12 +96,21 @@
         const by = new Map();
         (records || []).forEach(r => {
             const key = r.timein_project_name || '—';
-            if (!by.has(key)) by.set(key, { project: key, daysWorked: 0, totalMinutes: 0 });
+            if (!by.has(key)) by.set(key, { project: key, daysWorked: 0, hoursDays: 0, totalMinutes: 0 });
             const row = by.get(key);
             row.daysWorked += 1;
+            if (attHasHours(r)) row.hoursDays += 1;
             row.totalMinutes += Number(r.total_minutes || 0);
         });
         return Array.from(by.values()).sort((a, b) => a.project.localeCompare(b.project));
+    }
+
+    /**
+     * A roll-up's hours as the report prints them: '—' when not one of
+     * its days carries hours, so an all-open worker never reads "0h 0m".
+     */
+    function attRollUpHours(row) {
+        return row && row.hoursDays ? attFormatHours(row.totalMinutes) : attFormatHours(null);
     }
 
     /**
@@ -805,9 +825,13 @@
             : 'Recorded without both photos';
     }
 
-    /** The green sentence that opens a screen. */
-    function attBanner(lead, body) {
-        return '<div class="att-banner">' +
+    /**
+     * The sentence that opens a screen. Green by default; `warn` turns it
+     * amber when the sentence is a task, so the colour says "act" before
+     * the words are read.
+     */
+    function attBanner(lead, body, warn) {
+        return '<div class="att-banner' + (warn ? ' att-banner--warn' : '') + '">' +
                  '<div class="att-banner-lead">' + attEsc(lead) + '</div>' +
                  (body ? '<div class="att-banner-body">' + body + '</div>' : '') +
                '</div>';
@@ -1065,7 +1089,11 @@
 
     // ==== ATT VOCABULARY END ====
 
-    /** One A6 stat card. `alert` reddens the figure — used for open records. */
+    /**
+     * One A6 stat card. `alert` turns the figure amber -- used for open
+     * records. Amber, not red: an open day is a task waiting, and red is
+     * kept for a state the office has already closed.
+     */
     function attStat(label, value, alert) {
         return '<div class="att-stat">' +
                  '<div class="att-stat-label">' + attEsc(label) + '</div>' +
@@ -3370,8 +3398,13 @@
                        'waiting — it does not invent hours, and it changes no pay.</p>' +
                    '</div>' +
                  '</div>' +
-                 '<table class="att-table"><thead><tr>' +
+                 // Hugged columns and a trailing filler cell: at 100% width
+                 // the table spread its spare room between the columns
+                 // and stranded the button at the far edge, a long scan
+                 // away from the row it closes. Now the space is after it.
+                 '<div class="att-scroll"><table class="att-table att-table--hug"><thead><tr>' +
                    '<th>Day</th><th>Worker</th><th>Site</th><th>Arrived</th><th></th>' +
+                   '<th class="att-fill"></th>' +
                  '</tr></thead><tbody>' +
                  openRows.map(function (r) {
                      const [y, m, d] = String(r.work_date).split('-').map(Number);
@@ -3383,7 +3416,7 @@
                             '<div class="att-meta">' + attEsc(r.worker_position || '—') + '</div></td>' +
                         '<td>' + attEsc(r.timein_project_name || '—') + '</td>' +
                         '<td class="att-mono">' + attTime(r.timein_at) + '</td>' +
-                        '<td class="att-right">' + (r._closable
+                        '<td>' + (r._closable
                             ? '<button class="att-btn att-btn--warn" type="button" ' +
                               'data-resolve="' + attEsc(r.id) + '">' +
                               '<i data-lucide="clock"></i>Close this day</button>'
@@ -3392,92 +3425,117 @@
                             // bug rather than a rule.
                             : '<span class="att-meta">' + attEsc(r._reason) + '</span>') +
                         '</td>' +
+                        '<td class="att-fill"></td>' +
                      '</tr>';
                  }).join('') +
-                 '</tbody></table>' +
+                 '</tbody></table></div>' +
                '</div>';
     }
 
     /**
      * A6 -- Hours report.
      *
-     * Same query, same roll-ups, same exports. What changed is the
-     * opening: five stat tiles used to be the first thing on the screen,
-     * and "Missing time out: 3" is a number, not an instruction. The
-     * sentence above them now says what the range contains, and the
-     * things that need doing are a panel with a button on every row.
+     * Same query, same roll-ups, same exports. The screen is ordered by
+     * what needs doing: the banner turns amber and says how many days are
+     * waiting, the panel with a button on each of those days sits right
+     * under it, and only then come the totals -- four of them, with the
+     * rarer counts as chips that appear only when they are not zero.
      *
-     * The header still carries the pakyaw disclaimer. It is the single
-     * most important sentence on the screen -- an hours total that looks
-     * like a payroll basis is exactly the misreading this module exists
-     * to prevent.
+     * The pakyaw disclaimer sits beside the totals, not in the header:
+     * an hours total that looks like a payroll basis is exactly the
+     * misreading this module exists to prevent, so it belongs next to
+     * the numbers it qualifies.
      */
     async function attRenderReports(container) {
         const range = attDefaultRange();
         container.innerHTML =
-            '<div class="att-stack">' +
+            '<div class="att-stack att-report">' +
             '<div class="att-head">' +
               '<div>' +
                 '<h2 class="att-title">Hours report</h2>' +
                 '<div class="att-sub" id="attRangeLabel"></div>' +
               '</div>' +
             '</div>' +
-            // Every control that shapes the report sits in ONE row: the
-            // presets, the two dates those presets rewrite, and the
-            // exports that carry the same range out. Splitting them
-            // between the header and a second bar put "Last 7 days" and
-            // the dates it fills in two different places on the screen.
-            //
-            // The seg and CSV buttons are type="button" on purpose --
-            // inside a form, a bare <button> submits, and the exports
-            // would re-run the query before writing the file.
-            '<form class="att-toolbar" id="attRangeForm">' +
+            // One row: presets, the two dates they rewrite, one Export
+            // menu. Dates apply as soon as they change -- a separate Show
+            // button let the screen sit showing a range other than the one
+            // in the boxes. Every button is type="button" and the bar is
+            // not a form, so nothing can submit and re-run the query.
+            '<div class="att-toolbar" id="attRangeBar">' +
               '<div class="att-seg" id="attPeriod">' +
                 '<button class="att-seg-btn" type="button" data-period="daily">Just today</button>' +
                 '<button class="att-seg-btn is-on" type="button" data-period="weekly">Last 7 days</button>' +
                 '<button class="att-seg-btn" type="button" data-period="monthly">Last 30 days</button>' +
               '</div>' +
-              '<label for="attFrom">From</label>' +
-              '<input class="att-input" type="date" id="attFrom" value="' + attEsc(range.from) + '">' +
-              '<label for="attTo">To</label>' +
-              '<input class="att-input" type="date" id="attTo" value="' + attEsc(range.to) + '">' +
-              '<button class="att-btn att-btn--primary" type="submit">Show</button>' +
-              '<button class="att-btn" type="button" id="attCsvWorker">' +
-                '<i data-lucide="download"></i>Excel: one row per worker</button>' +
-              '<button class="att-btn" type="button" id="attCsvDay">' +
-                '<i data-lucide="download"></i>Excel: one row per day</button>' +
-            '</form>' +
+              '<div class="att-dates">' +
+                '<label for="attFrom">From</label>' +
+                '<input class="att-input" type="date" id="attFrom" value="' + attEsc(range.from) + '">' +
+                '<label for="attTo">To</label>' +
+                '<input class="att-input" type="date" id="attTo" value="' + attEsc(range.to) + '">' +
+              '</div>' +
+              '<details class="att-menu" id="attExport">' +
+                '<summary class="att-btn"><i data-lucide="download"></i>Export' +
+                  '<i data-lucide="chevron-down"></i></summary>' +
+                '<div class="att-menu-list" role="menu">' +
+                  '<button class="att-menu-item" type="button" role="menuitem" id="attCsvWorker">' +
+                    'Excel — one row per worker</button>' +
+                  '<button class="att-menu-item" type="button" role="menuitem" id="attCsvDay">' +
+                    'Excel — one row per day</button>' +
+                '</div>' +
+              '</details>' +
+            '</div>' +
             '<div id="attReportBody">Loading…</div>' +
             '</div>' +
             '<div id="attReportModalHost"></div>';
 
         const body = container.querySelector('#attReportBody');
+        const fromEl = container.querySelector('#attFrom');
+        const toEl = container.querySelector('#attTo');
+        const period = container.querySelector('#attPeriod');
+        const menu = container.querySelector('#attExport');
+
+        // The rows on screen and the range they were loaded for. Exports
+        // read these, never the inputs: a date typed but still loading
+        // must not name a file after a range it does not contain.
         let rows = [];
+        let shown = { from: range.from, to: range.to };
+        // Which roll-up tab is open survives a re-run (a close, a new
+        // range), so resolving a day does not throw the admin back.
+        let tab = 'worker';
+        // Each run takes a ticket; a slower, older response that lands
+        // after a newer one is dropped instead of overwriting it.
+        let ticket = 0;
 
         function stampRange(from, to) {
             container.querySelector('#attRangeLabel').textContent =
-                'Pick any stretch of days and see who was on site. ' +
-                attRangeLabel(from, to) +
-                ' · hours are a record of attendance, NOT a basis for pay — labour is ' +
-                'pakyaw, capped by contract.';
+                'Who was on site, and for how long · ' + attRangeLabel(from, to);
         }
 
+        function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+
         async function run() {
-            const from = container.querySelector('#attFrom').value;
-            const to = container.querySelector('#attTo').value;
+            const from = fromEl.value;
+            const to = toEl.value;
+            if (!from || !to) return;
             if (from > to) {
                 body.innerHTML = '<div class="att-error">The start date is after the end date.</div>';
                 return;
             }
+            const mine = ++ticket;
             stampRange(from, to);
             body.innerHTML = 'Loading…';
+            let loaded;
             try {
-                rows = await attLoadRange(from, to);
+                loaded = await attLoadRange(from, to);
             } catch (e) {
+                if (mine !== ticket) return;
                 body.innerHTML = '<div class="att-error">Could not load: ' +
                                  attEsc(e.message || e) + '</div>';
                 return;
             }
+            if (mine !== ticket) return;
+            rows = loaded;
+            shown = { from: from, to: to };
 
             if (!rows.length) {
                 body.innerHTML = '<div class="att-empty">Nobody was recorded on site ' +
@@ -3495,8 +3553,10 @@
             // on 8h each read as "48h average each day". Open and closed-
             // by-office days have no hours, so they stay out of both sides.
             const totalMinutes = rows.reduce((s, r) => s + (Number(r.total_minutes) || 0), 0);
-            const daysWithHours = rows.filter(r =>
-                r.total_minutes !== null && r.total_minutes !== undefined).length;
+            const daysWithHours = rows.filter(attHasHours).length;
+            // With no finished day the total is '—', not "0h 0m": nothing
+            // recorded is not zero hours worked.
+            const totalHours = attRollUpHours({ hoursDays: daysWithHours, totalMinutes: totalMinutes });
             const complete = rows.filter(r => r.status === 'complete').length;
             // Counted on STATUS, not on a null timeout_at. An abandoned
             // record keeps timeout_at null forever, so the old test kept
@@ -3517,40 +3577,76 @@
                     r.timein_distance_m, r.timein_geofence_radius_m);
             }).length;
 
-            const tail = attAnd([
-                complete ? `${complete} ${complete === 1 ? 'day was' : 'days were'} finished properly` : '',
-                openRecords ? `${openRecords} ${openRecords === 1 ? 'is' : 'are'} still waiting for a time out` : '',
-                abandoned ? `${abandoned} ${abandoned === 1 ? 'was' : 'were'} closed by the office` : ''
-            ]);
+            const onSite = plural(workers, 'worker', 'workers') + ' on site, ' +
+                           attRangeLabel(from, to) + '.';
+            let banner;
+            if (openRecords) {
+                // The task leads; the context follows. Amber, because the
+                // sentence is something to do, not a summary to read.
+                banner = attBanner(
+                    plural(openRecords, 'day is', 'days are') + ' waiting for a time out.',
+                    attEsc(onSite), true);
+            } else {
+                const tail = attAnd([
+                    complete ? plural(complete, 'day was', 'days were') + ' finished properly' : '',
+                    abandoned ? plural(abandoned, 'was', 'were') + ' closed by the office' : ''
+                ]);
+                banner = attBanner(
+                    daysWithHours
+                        ? plural(workers, 'worker', 'workers') + ' recorded ' + totalHours + '.'
+                        : plural(workers, 'worker', 'workers') + ' on site, with no finished day yet.',
+                    attEsc(onSite + (tail ? ' ' + tail.charAt(0).toUpperCase() + tail.slice(1) + '.' : '')));
+            }
+
+            // Rare counts ride as chips, and only when there is something
+            // to count -- a row of zeros is noise the eye still has to read.
+            // Not-confirmed is never amber: most are a weak fix on a cheap
+            // phone, a number to look into rather than a task.
+            const chips = [];
+            if (unchecked) {
+                chips.push('<span class="att-tag">' +
+                    plural(unchecked, 'time in', 'time ins') + ' not confirmed on site</span>');
+            }
+            if (abandoned) {
+                chips.push('<span class="att-tag att-tag--closed">' +
+                    plural(abandoned, 'day', 'days') + ' closed by the office</span>');
+            }
 
             body.innerHTML =
                 '<div class="att-stack">' +
 
-                attBanner(
-                    `${workers} ${workers === 1 ? 'worker' : 'workers'} recorded ` +
-                    `${attFormatHours(totalMinutes)} across ${attRangeLabel(from, to)}.`,
-                    tail ? attEsc(tail.charAt(0).toUpperCase() + tail.slice(1)) + '.' : '') +
-
-                '<div class="att-stats">' +
-                  attStat('Total hours on site', attFormatHours(totalMinutes)) +
-                  attStat('Average day per worker', attFormatHours(
-                      daysWithHours ? Math.round(totalMinutes / daysWithHours) : null)) +
-                  attStat('Days finished properly', complete) +
-                  attStat('Days waiting for a time out', openRecords, openRecords > 0) +
-                  // Never reddened: most of these are a weak fix on a
-                  // cheap phone, which is nobody's fault. It is a number
-                  // to look into, not an alarm.
-                  attStat('Time ins not confirmed on site', unchecked) +
-                  // Shown even at zero, so resolving a record moves a
-                  // figure the admin can see rather than making one
-                  // quietly disappear from the screen.
-                  attStat('Days closed by the office', abandoned) +
-                '</div>' +
+                banner +
 
                 attOpenPanel(openRows) +
 
+                '<div class="att-totals">' +
+                  '<div class="att-stats">' +
+                    attStat('Total hours', totalHours) +
+                    attStat('Average day', attFormatHours(
+                        daysWithHours ? Math.round(totalMinutes / daysWithHours) : null)) +
+                    attStat('Days finished', complete) +
+                    attStat('Needs a time out', openRecords, openRecords > 0) +
+                  '</div>' +
+                  '<div class="att-totals-foot">' +
+                    (chips.length ? '<div class="att-tags">' + chips.join('') + '</div>' : '') +
+                    '<p class="att-paynote"><i data-lucide="info"></i>' +
+                      'Hours record attendance — <strong>not a basis for pay</strong>. ' +
+                      'Labour is pakyaw, capped by contract.</p>' +
+                  '</div>' +
+                '</div>' +
+
+                // Each worker and each site share one card behind tabs:
+                // two long tables stacked made the site totals a scroll
+                // away. Each tab closes on a total row.
                 '<div class="att-card">' +
-                  '<div class="att-card-head"><h3 class="att-subhead">Each worker over these days</h3></div>' +
+                  '<div class="att-card-head">' +
+                    '<div class="att-seg" role="tablist" id="attRollTabs">' +
+                      '<button class="att-seg-btn" type="button" role="tab" data-tab="worker">By worker</button>' +
+                      '<button class="att-seg-btn" type="button" role="tab" data-tab="site">By site</button>' +
+                    '</div>' +
+                  '</div>' +
+
+                  '<div class="att-scroll" role="tabpanel" data-panel="worker">' +
                   '<table class="att-table"><thead><tr>' +
                     '<th>Worker</th><th>Days on site</th><th>Hours recorded</th>' +
                     '<th>Anything to fix</th>' +
@@ -3575,30 +3671,59 @@
                       return '<tr>' +
                           '<td><div class="att-worker">' + attEsc(w.name) + '</div>' +
                               '<div class="att-meta">' + attEsc(w.position || '—') + '</div></td>' +
-                          '<td class="att-mono">' + w.daysWorked + '</td>' +
-                          '<td class="att-mono">' + attFormatHours(w.totalMinutes) + '</td>' +
+                          '<td class="att-num">' + w.daysWorked + '</td>' +
+                          '<td class="att-num">' + attRollUpHours(w) + '</td>' +
                           '<td>' + (flags.length ? flags.join(' ')
                               : '<span class="att-meta">Nothing</span>') + '</td>' +
                       '</tr>';
                   }).join('') +
-                  '</tbody></table>' +
-                '</div>' +
+                  '</tbody><tfoot><tr class="att-sumrow">' +
+                    '<td>All ' + plural(byWorker.length, 'worker', 'workers') + '</td>' +
+                    '<td class="att-num">' + rows.length + '</td>' +
+                    '<td class="att-num">' + totalHours + '</td>' +
+                    '<td>' + (openRecords
+                        ? plural(openRecords, 'day needs', 'days need') + ' a time out'
+                        : '') + '</td>' +
+                  '</tr></tfoot></table>' +
+                  '</div>' +
 
-                '<div class="att-card">' +
-                  '<div class="att-card-head"><h3 class="att-subhead">Each site over these days</h3></div>' +
+                  '<div class="att-scroll" role="tabpanel" data-panel="site">' +
                   '<table class="att-table"><thead><tr>' +
                     '<th>Site</th><th>Days worked</th><th>Hours recorded</th>' +
                   '</tr></thead><tbody>' +
                   byProject.map(function (p) {
                       return '<tr>' +
                           '<td><div class="att-worker">' + attEsc(p.project) + '</div></td>' +
-                          '<td class="att-mono">' + p.daysWorked + '</td>' +
-                          '<td class="att-mono">' + attFormatHours(p.totalMinutes) + '</td>' +
+                          '<td class="att-num">' + p.daysWorked + '</td>' +
+                          '<td class="att-num">' + attRollUpHours(p) + '</td>' +
                       '</tr>';
                   }).join('') +
-                  '</tbody></table>' +
+                  '</tbody><tfoot><tr class="att-sumrow">' +
+                    '<td>All ' + plural(byProject.length, 'site', 'sites') + '</td>' +
+                    '<td class="att-num">' + rows.length + '</td>' +
+                    '<td class="att-num">' + totalHours + '</td>' +
+                  '</tr></tfoot></table>' +
+                  '</div>' +
                 '</div>' +
                 '</div>';
+
+            const tabs = body.querySelector('#attRollTabs');
+            function showTab(name) {
+                tab = name;
+                tabs.querySelectorAll('.att-seg-btn').forEach(function (b) {
+                    const on = b.getAttribute('data-tab') === name;
+                    b.classList.toggle('is-on', on);
+                    b.setAttribute('aria-selected', on ? 'true' : 'false');
+                });
+                body.querySelectorAll('[data-panel]').forEach(function (p) {
+                    p.hidden = p.getAttribute('data-panel') !== name;
+                });
+            }
+            tabs.addEventListener('click', function (e) {
+                const btn = e.target.closest('.att-seg-btn');
+                if (btn) showTab(btn.getAttribute('data-tab'));
+            });
+            showTab(tab);
 
             // Re-runs the whole query after a close rather than patching
             // the row: every stat, both roll-ups, the banner sentence and
@@ -3614,41 +3739,70 @@
             attIcons();
         }
 
-        const period = container.querySelector('#attPeriod');
+        // Light the preset whose range the dates match, or none -- a
+        // hand-picked range must not keep "Last 7 days" lit.
+        function syncPresets() {
+            period.querySelectorAll('.att-seg-btn').forEach(function (b) {
+                const p = attPresetRange(b.getAttribute('data-period'));
+                b.classList.toggle('is-on', p.from === fromEl.value && p.to === toEl.value);
+            });
+        }
+
         period.addEventListener('click', function (e) {
             const btn = e.target.closest('.att-seg-btn');
             if (!btn) return;
-            period.querySelectorAll('.att-seg-btn').forEach(b => b.classList.toggle('is-on', b === btn));
             const preset = attPresetRange(btn.getAttribute('data-period'));
-            container.querySelector('#attFrom').value = preset.from;
-            container.querySelector('#attTo').value = preset.to;
+            fromEl.value = preset.from;
+            toEl.value = preset.to;
+            syncPresets();
             run();
         });
 
-        container.querySelector('#attRangeForm').addEventListener('submit', function (e) {
-            e.preventDefault();
-            run();
+        // A date applies on change. Debounced, because typing a date into
+        // the field fires a change per segment, and each would be a query.
+        let dateTimer = null;
+        [fromEl, toEl].forEach(function (el) {
+            el.addEventListener('change', function () {
+                clearTimeout(dateTimer);
+                dateTimer = setTimeout(function () {
+                    syncPresets();
+                    run();
+                }, 300);
+            });
+        });
+
+        // The Export menu closes on a pick, on Escape and on a click
+        // anywhere else. The document listener removes itself once the
+        // view is gone, so switching screens leaves nothing behind.
+        function closeMenuOutside(e) {
+            if (!menu.isConnected) {
+                document.removeEventListener('click', closeMenuOutside);
+                return;
+            }
+            if (!menu.contains(e.target)) menu.open = false;
+        }
+        document.addEventListener('click', closeMenuOutside);
+        menu.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') { menu.open = false; menu.querySelector('summary').focus(); }
         });
 
         container.querySelector('#attCsvWorker').addEventListener('click', function () {
-            const from = container.querySelector('#attFrom').value;
-            const to = container.querySelector('#attTo').value;
+            menu.open = false;
             const csv = attToCsv(
                 // "Days abandoned" is its own column, not folded into
                 // "Days not closed" -- the two mean different things on
                 // screen and must not merge on the way out.
                 ['Worker', 'Position', 'Days worked', 'Hours', 'Days not closed', 'Days abandoned'],
                 attRollUpByWorker(rows).map(function (w) {
-                    return [w.name, w.position, w.daysWorked, attFormatHours(w.totalMinutes),
+                    return [w.name, w.position, w.daysWorked, attRollUpHours(w),
                             w.openDays, w.abandonedDays];
                 })
             );
-            attDownloadCsv('attendance-by-worker-' + from + '-to-' + to + '.csv', csv);
+            attDownloadCsv('attendance-by-worker-' + shown.from + '-to-' + shown.to + '.csv', csv);
         });
 
         container.querySelector('#attCsvDay').addEventListener('click', function () {
-            const from = container.querySelector('#attFrom').value;
-            const to = container.querySelector('#attTo').value;
+            menu.open = false;
             const csv = attToCsv(
                 ['Work date', 'Worker', 'Position', 'Project', 'Time in', 'Time out',
                  'Hours', 'Status', 'Captured offline', 'Location check',
@@ -3676,7 +3830,7 @@
                     ];
                 })
             );
-            attDownloadCsv('attendance-by-day-' + from + '-to-' + to + '.csv', csv);
+            attDownloadCsv('attendance-by-day-' + shown.from + '-to-' + shown.to + '.csv', csv);
         });
 
         attIcons();

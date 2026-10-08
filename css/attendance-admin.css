@@ -188,7 +188,8 @@
     margin-top: 8px;
     color: var(--att-ink);
 }
-.att-stat-value--alert { color: var(--att-red); }
+/* Amber, not red: an open day is a task waiting (rule 2, THE REDESIGN). */
+.att-stat-value--alert { color: var(--att-gold); }
 
 /* ── Card shell ────────────────────────────────────────────────── */
 
@@ -1610,4 +1611,145 @@ select.att-input { cursor: pointer; }
     .att-fence-grid { grid-template-columns: 1fr; }
     .att-tabs { padding: 0 12px; overflow-x: auto; }
     .att-howto-body { padding-left: 16px; }
+}
+/* ══════════════════════════════════════════════════════════════════
+   A6 · HOURS REPORT — action first, then totals, then the roll-ups
+   ══════════════════════════════════════════════════════════════════
+
+   Type follows .att-sites / .att-sched: Playfair stays on headings
+   only. The banner, tiles, dates and times are Barlow with lining,
+   tabular numerals -- Playfair's old-style "0" made "0h 0m" read as
+   "oh om" in the banner, and Plex Mono set the tiles apart from the
+   prose that reads them.
+
+   The secondary greys are darkened by re-pointing the tokens inside
+   the scope, so every muted label on this screen follows without a
+   rule per class, and no other screen changes. */
+
+.att-report {
+    --att-muted: #55555A;
+    --att-faint: #6C6C70;
+    font-family: var(--att-sans);
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: "lnum" 1, "tnum" 1;
+}
+.att-report .att-banner-lead {
+    font-family: var(--att-sans);
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+.att-report .att-stat-value,
+.att-report .att-mono,
+.att-report .att-num {
+    font-family: var(--att-sans);
+    font-weight: 600;
+    color: var(--att-ink);
+}
+.att-report .att-stat-value { font-size: 30px; line-height: 1.15; }
+.att-report .att-num { white-space: nowrap; }
+.att-report .att-toolbar { margin-bottom: 0; }
+
+/* The banner when it carries a task. Same shape as the green one, so
+   the screen does not jump when the last day is closed. */
+.att-banner--warn { background: var(--att-gold-tint); border-color: #E0D2B4; }
+.att-banner--warn .att-banner-lead { color: #5E4720; }
+
+/* ── Toolbar: presets · dates · Export ─────────────────────────── */
+
+.att-dates { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.att-menu { position: relative; margin-left: auto; }
+.att-menu > summary { list-style: none; }
+.att-menu > summary::-webkit-details-marker { display: none; }
+.att-menu[open] > summary { background: #F5F5F5; }
+.att-menu-list {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 20;
+    min-width: 240px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    background: var(--att-card);
+    border: 1px solid var(--att-line);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+}
+.att-menu-item {
+    text-align: left;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--att-ink);
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.att-menu-item:hover,
+.att-menu-item:focus-visible { background: var(--att-green-tint); color: var(--att-green); outline: none; }
+
+/* ── Totals: four tiles, then chips and the pay note ───────────── */
+
+.att-totals { display: flex; flex-direction: column; gap: 12px; }
+.att-totals .att-stats { margin-bottom: 0; }
+.att-totals-foot {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 20px;
+}
+.att-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Static counts, not filters -- .att-chip is the clickable kind. */
+.att-tag {
+    display: inline-flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: var(--att-line-soft);
+    color: var(--att-ink-2);
+    font-size: 13px;
+    font-weight: 600;
+}
+.att-tag--closed { background: var(--att-red-tint); color: var(--att-red); }
+/* Visible, beside the figures it qualifies -- never a tooltip. */
+.att-paynote {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 0 auto;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--att-ink-2);
+}
+.att-paynote strong { color: var(--att-ink); }
+.att-paynote i, .att-paynote svg { width: 16px; height: 16px; color: var(--att-gold); flex-shrink: 0; }
+
+/* ── Tables ────────────────────────────────────────────────────── */
+
+.att-scroll { overflow-x: auto; }
+
+/* The open-days panel: columns hug their content and a filler cell
+   takes the spare width, so "Close this day" sits beside its row. */
+.att-table--hug th,
+.att-table--hug td { width: 1%; white-space: nowrap; }
+.att-table--hug .att-fill { width: auto; padding: 0; }
+
+/* The total row that closes each roll-up tab. */
+.att-sumrow td {
+    border-top: 1px solid var(--att-line);
+    border-bottom: 0;
+    background: var(--att-field);
+    font-weight: 700;
+    color: var(--att-ink);
+}
+
+@media (max-width: 720px) {
+    .att-report .att-banner-lead { font-size: 20px; }
+    .att-report .att-stat-value { font-size: 26px; }
+    .att-paynote { margin-left: 0; }
 }
