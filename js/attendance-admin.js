@@ -4558,6 +4558,7 @@
             const s = attRewardSummary(res.data || [], todayKey);
             return {
                 _live: true,
+                _days: res.data || [],
                 worker_id: w.id,
                 worker_name: attWorkerName(w),
                 worker_position: w.position || '',
@@ -4608,6 +4609,58 @@
             minimumFractionDigits: v % 1 === 0 ? 0 : 2,
             maximumFractionDigits: 2
         });
+    }
+
+    /**
+     * "Helper (Marc Kelley)" -> the trade and the supervisor it names.
+     * There is no supervisor column on a profile; the position text is
+     * where the office already writes it down.
+     */
+    function attSplitPosition(position) {
+        const text = String(position || '').trim();
+        const m = /^(.*?)\s*\(([^)]+)\)\s*$/.exec(text);
+        return m ? { trade: m[1].trim() || '—', supervisor: m[2].trim() }
+                 : { trade: text || '—', supervisor: '' };
+    }
+
+    /**
+     * Which group a worker sits in on the Weekly bonus page.
+     *
+     * One late, missed or unverified day forfeits the week, so "at risk"
+     * can only mean one thing here: the week is still running and the
+     * ONLY problem is an unverified day -- the one case that can still
+     * clear, because an offline record may yet arrive and vouch for it.
+     */
+    function attBonusGroup(r) {
+        const n = v => Number(v) || 0;
+        if (r._live && n(r.unverified_days) > 0 &&
+            !n(r.late_days) && !n(r.missing_days)) return 'risk';
+        return r.status === 'disqualified' ? 'no' : 'on';
+    }
+
+    /**
+     * The five Mon-Fri cells for one worker, from the per-day rows. The
+     * rule for "missed" is attRewardSummary's own: a day is only pending
+     * once it is LATER than today, so the cells and the status never
+     * disagree.
+     */
+    function attBonusDayCells(days, weekStart, todayKey) {
+        const byDate = new Map((days || []).map(d => [String(d.work_date).slice(0, 10), d]));
+        const out = [];
+        for (let i = 0; i < 5; i++) {
+            const date = attKeyFromDayNum(attDayNum(weekStart) + i);
+            const d = byDate.get(date);
+            let tone;
+            if (!d) tone = 'unknown';
+            else if (!d.required) tone = 'off';
+            else if (d.day_status === 'on_time') tone = 'ok';
+            else if (d.day_status === 'late') tone = 'late';
+            else if (d.day_status === 'unverified') tone = 'unv';
+            else if (date > todayKey) tone = 'pending';
+            else tone = 'missed';
+            out.push({ date: date, tone: tone });
+        }
+        return out;
     }
 
     function attRewardPill(status) {
@@ -4669,6 +4722,28 @@
         const input = container.querySelector('#attRwWeek');
         let rows = [];
         let config = null;
+        // The time in / out and site behind each cell's tooltip.
+        let recs = new Map();
+
+        // Filters. Search, trade and supervisor narrow WHO is listed; the
+        // group cards and the day chips narrow by outcome. They combine.
+        let q = '', trade = '', sup = '';
+        let groupF = 'all';   // all | on | risk | no | owed
+        let dayF = 'all';     // all | ontime | late | missed | unv
+        const collapsed = {};
+
+        const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+        const SVG = {
+            ok:     '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8.5l3 3 6-7"/></svg>',
+            late:   '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="5.6"/><path d="M8 5v3.2l2 1.3"/></svg>',
+            missed: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/></svg>',
+            unv:    '?'
+        };
+        const TONE_WORD = {
+            ok: 'On time', late: 'Late', missed: 'Missed',
+            unv: 'Could not be verified', pending: 'Not yet',
+            off: 'Not a working day', unknown: ''
+        };
 
         function stamp() {
             const end = attWeekEndOf(week);
@@ -4679,6 +4754,211 @@
             };
             container.querySelector('#attRwSub').textContent =
                 pretty(week) + ' to ' + pretty(end);
+        }
+
+        /** Per-day rows for every worker, and the records for the tooltips. */
+        async function loadDetail() {
+            const sb = window.sbClient;
+            recs = new Map();
+            try {
+                await Promise.all(rows.map(async r => {
+                    if (r._days) return;
+                    const res = await sb.rpc('attendance_reward_progress',
+                        { p_worker: r.worker_id, p_week_start: week });
+                    r._days = res.error ? [] : (res.data || []);
+                }));
+            } catch (e) { console.error('att A8: day detail', e); }
+            try {
+                const res = await sb.from('attendance_records')
+                    .select('worker_id,work_date,timein_at,timeout_at,timein_project_name')
+                    .gte('work_date', week).lte('work_date', attWeekEndOf(week));
+                (res.data || []).forEach(x =>
+                    recs.set(x.worker_id + '|' + String(x.work_date).slice(0, 10), x));
+            } catch (e) { console.error('att A8: records', e); }
+
+            const today = attTodayKey();
+            rows.forEach(r => {
+                const sp = attSplitPosition(r.worker_position);
+                r._trade = sp.trade;
+                r._sup = sp.supervisor;
+                r._cells = attBonusDayCells(r._days, week, today);
+                r._group = attBonusGroup(r);
+            });
+        }
+
+        const hasTone = (r, t) => r._cells.some(c => c.tone === t);
+
+        /** Does this worker pass the day-status chip? */
+        function inDayFilter(r) {
+            switch (dayF) {
+                case 'ontime': return hasTone(r, 'ok') && !hasTone(r, 'late') &&
+                                      !hasTone(r, 'missed') && !hasTone(r, 'unv');
+                case 'late':   return hasTone(r, 'late');
+                case 'missed': return hasTone(r, 'missed');
+                case 'unv':    return hasTone(r, 'unv');
+                default:       return true;
+            }
+        }
+
+        function inGroupFilter(r) {
+            if (groupF === 'all') return true;
+            if (groupF === 'owed') return !r._live && r.status === 'qualified' && !r.paid;
+            return r._group === groupF;
+        }
+
+        function passes(r) {
+            if (trade && r._trade !== trade) return false;
+            if (sup && r._sup !== sup) return false;
+            const needle = q.trim().toLowerCase();
+            if (needle && ![r.worker_name, r.worker_position]
+                    .some(v => String(v || '').toLowerCase().includes(needle))) return false;
+            return inGroupFilter(r) && inDayFilter(r);
+        }
+
+        function dayCell(r, c, idx) {
+            const rec = recs.get(r.worker_id + '|' + c.date);
+            const [y, m, d] = c.date.split('-').map(Number);
+            const label = new Date(y, m - 1, d).toLocaleDateString('en-PH',
+                { weekday: 'short', day: 'numeric', month: 'short' });
+            let tip = label + (TONE_WORD[c.tone] ? ' · ' + TONE_WORD[c.tone] : '');
+            if (rec) {
+                tip += ' · In ' + attTime(rec.timein_at);
+                if (rec.timeout_at) tip += ' · Out ' + attTime(rec.timeout_at);
+                if (rec.timein_project_name) tip += ' · ' + rec.timein_project_name;
+            }
+            const glyph = SVG[c.tone] || '';
+            const cls = 'att-day att-day--' + c.tone;
+            const inner = rec
+                ? '<button type="button" class="' + cls + '" data-open="' + attEsc(r.worker_id) +
+                  '" data-date="' + attEsc(c.date) + '" title="' + attEsc(tip) +
+                  '" aria-label="' + attEsc(tip) + '">' + glyph + '</button>'
+                : '<span class="' + cls + '" title="' + attEsc(tip) + '" aria-label="' +
+                  attEsc(tip) + '">' + glyph + '</span>';
+            return '<td class="att-rw-daytd">' + inner + '</td>';
+        }
+
+        function statusCell(r) {
+            const n = v => Number(v) || 0;
+            let pill;
+            if (r._group === 'on') {
+                pill = '<span class="att-pill att-pill--done">' +
+                       (r._live ? 'On track' : 'Earned') + '</span>';
+            } else if (r._group === 'risk') {
+                pill = '<span class="att-pill att-pill--working">' + n(r.unverified_days) +
+                       (n(r.unverified_days) === 1 ? ' day' : ' days') + ' to verify</span>';
+            } else {
+                const parts = [];
+                if (n(r.late_days)) parts.push(n(r.late_days) + ' late');
+                if (n(r.missing_days)) parts.push('Missed ' + n(r.missing_days) +
+                                                  (n(r.missing_days) === 1 ? ' day' : ' days'));
+                if (n(r.unverified_days)) parts.push(n(r.unverified_days) + ' unverified');
+                pill = parts.length
+                    ? '<span class="att-pill att-pill--abandoned">' + attEsc(parts.join(', ')) + '</span>'
+                    : '<span class="att-pill att-pill--none">No day required</span>';
+            }
+            const reason = (r._live && r.status === 'disqualified' ? 'So far: ' : '') +
+                           attBonusReason(r);
+            return '<span title="' + attEsc(reason) + '">' + pill + '</span>';
+        }
+
+        function amountCell(r) {
+            if (r._live) {
+                const potential = Number(config && config.reward_amount) || 500;
+                return r._group === 'on' ? attPeso(potential)
+                     : r._group === 'risk' ? attPeso(potential) + '?'
+                     : '—';
+            }
+            return r.status === 'qualified' ? attPeso(r.amount) : '—';
+        }
+
+        function rowHtml(r, live) {
+            return '<tr class="att-rw-row">' +
+                '<td>' +
+                  '<div class="att-worker">' + attEsc(r.worker_name || '—') + '</div>' +
+                  '<div class="att-meta">' + attEsc(r._trade) +
+                    (r._sup ? ' · ' + attEsc(r._sup) : '') + '</div>' +
+                '</td>' +
+                r._cells.map(dayCell.bind(null, r)).join('') +
+                '<td>' + statusCell(r) + '</td>' +
+                (hideMoney ? '' : '<td class="att-mono att-rw-amount">' + amountCell(r) + '</td>') +
+                (live ? '' : '<td>' + (r.id && r.status === 'qualified'
+                    ? '<button class="att-btn' + (r.paid ? '' : ' att-btn--primary') +
+                      '" type="button" data-paid="' + attEsc(r.id) + '">' +
+                      (r.paid ? 'Handed over' : 'Mark as handed over') + '</button>'
+                    : '<span class="att-meta">—</span>') + '</td>') +
+              '</tr>';
+        }
+
+        /** Only the table body: typing in the search must not lose focus. */
+        function paintRows() {
+            const live = rows.some(r => r._live);
+            const tbody = body.querySelector('#attRwRows');
+            if (!tbody) return;
+            const cols = 7 + (hideMoney ? 0 : 1) + (live ? 0 : 1);
+            const groups = live
+                ? [['risk', 'At risk'], ['on', 'On track'], ['no', 'No bonus']]
+                : [['on', 'Earned'], ['no', 'No bonus']];
+            const name = (x, y) => String(x.worker_name).localeCompare(String(y.worker_name));
+
+            let html = '';
+            groups.forEach(([key, label]) => {
+                const list = rows.filter(r => r._group === key && passes(r)).sort(name);
+                if (!list.length) return;
+                const shut = !!collapsed[key];
+                html += '<tr class="att-rw-group att-rw-group--' + key + '"><td colspan="' + cols + '">' +
+                        '<button type="button" class="att-rw-grouptoggle" data-toggle="' + key +
+                        '" aria-expanded="' + (shut ? 'false' : 'true') + '">' +
+                        '<span class="att-rw-caret">' + (shut ? '▸' : '▾') + '</span>' +
+                        attEsc(label) + ' · ' + list.length + '</button></td></tr>';
+                if (!shut) html += list.map(r => rowHtml(r, live)).join('');
+            });
+            tbody.innerHTML = html || '<tr><td colspan="' + cols + '" class="att-empty">' +
+                              'No worker matches these filters.</td></tr>';
+            wireRows();
+        }
+
+        function wireRows() {
+            body.querySelectorAll('[data-toggle]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const k = btn.getAttribute('data-toggle');
+                    collapsed[k] = !collapsed[k];
+                    paintRows();
+                });
+            });
+            body.querySelectorAll('[data-open]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    window.attendanceOpenWorker(btn.getAttribute('data-open'),
+                                                btn.getAttribute('data-date'));
+                });
+            });
+            body.querySelectorAll('[data-paid]').forEach(function (btn) {
+                btn.addEventListener('click', async function () {
+                    const id = btn.getAttribute('data-paid');
+                    const row = rows.find(function (r) { return r.id === id; });
+                    if (!row) return;
+                    // The full disclaimer lives here, where it matters --
+                    // everywhere else it is a one-line note.
+                    if (!row.paid && !window.confirm(
+                            'Mark ' + (row.worker_name || 'this worker') + '\u2019s bonus as ' +
+                            'handed over?\n\nThis page only keeps a record. No money moves, ' +
+                            'and nothing here touches payroll or a contract.')) return;
+                    btn.disabled = true;
+                    try {
+                        const res = await window.sbClient.rpc('attendance_reward_mark_paid', {
+                            p_reward_id: id,
+                            p_paid: !row.paid
+                        });
+                        if (res.error) throw res.error;
+                        const updated = Array.isArray(res.data) ? res.data[0] : res.data;
+                        row.paid = updated ? updated.paid : !row.paid;
+                        paint();
+                    } catch (e) {
+                        console.error('att A8: mark paid', e);
+                        btn.disabled = false;
+                        alert('Could not update: ' + (e.message || e));
+                    }
+                });
+            });
         }
 
         function paint() {
@@ -4725,90 +5005,123 @@
                     : attEsc(money);
             }
 
-            body.innerHTML =
-                '<div class="att-stack">' +
+            const countGroup = key => rows.filter(r =>
+                key === 'owed' ? (!r._live && r.status === 'qualified' && !r.paid)
+                               : r._group === key).length;
+            const potential = Number(config && config.reward_amount) || 500;
+            const card = (label, key, tone) =>
+                '<button type="button" class="att-count att-count--' + tone +
+                (groupF === key ? ' is-on' : '') + '" data-group="' + key + '">' +
+                  '<span class="att-count-value">' + countGroup(key) + '</span>' +
+                  '<span class="att-count-label">' + attEsc(label) + '</span></button>';
+            const moneyCard = hideMoney ? '' :
+                '<div class="att-count att-count--neutral att-count--static">' +
+                  '<span class="att-count-value">' +
+                    attPeso(live ? countGroup('on') * potential : t.totalAmount) + '</span>' +
+                  '<span class="att-count-label">' +
+                    (live ? 'Bonus if all hold' : 'Total bonus') + '</span></div>';
+            const cards = live
+                ? card('On track', 'on', countGroup('on') ? 'done' : 'neutral') +
+                  card('At risk', 'risk', countGroup('risk') ? 'working' : 'neutral') +
+                  card('No bonus', 'no', countGroup('no') ? 'alert' : 'neutral') +
+                  moneyCard
+                : card('Earned', 'on', countGroup('on') ? 'done' : 'neutral') +
+                  card('No bonus', 'no', countGroup('no') ? 'alert' : 'neutral') +
+                  card('Not handed over yet', 'owed', countGroup('owed') ? 'attn' : 'neutral') +
+                  moneyCard;
 
-                '<div class="att-lede">' +
-                  attBanner(lead, bodyText) +
-                  '<div class="att-explain"><div class="att-info">' +
-                    '<i data-lucide="info"></i>' +
-                    '<div><strong>This page keeps a record, it does not pay anyone.</strong> ' +
-                      'Marking a bonus as handed over only notes that you gave it. No money ' +
-                      'moves, and nothing here touches payroll or a contract.</div>' +
-                  '</div></div>' +
+            const uniq = f => [...new Set(rows.map(f).filter(Boolean))].sort();
+            const opts = (list, cur, all) =>
+                '<option value="">' + all + '</option>' +
+                list.map(v => '<option value="' + attEsc(v) + '"' +
+                              (v === cur ? ' selected' : '') + '>' + attEsc(v) + '</option>').join('');
+
+            const dayChips = [['all', 'Everyone'], ['ontime', 'All on time'],
+                              ['late', 'Late'], ['missed', 'Missed'], ['unv', 'Unverified']]
+                .map(c => {
+                    const save = dayF; dayF = c[0];
+                    const n = rows.filter(inDayFilter).length;
+                    dayF = save;
+                    return '<button type="button" class="att-chip' + (dayF === c[0] ? ' is-on' : '') +
+                           '" data-day="' + c[0] + '">' + attEsc(c[1]) +
+                           '<span class="att-chip-n">' + n + '</span></button>';
+                }).join('');
+
+            body.innerHTML =
+                '<div class="att-stack att-rw">' +
+
+                '<div class="att-summary">' +
+                  '<div class="att-counts">' + cards + '</div>' +
+                  '<div class="att-statusline"><strong>' + attEsc(lead) + '</strong> ' +
+                    bodyText + '</div>' +
                 '</div>' +
 
                 '<div class="att-card">' +
-                '<table class="att-table"><thead><tr>' +
-                  '<th>Worker</th><th>Days expected</th><th>On time</th><th>Late</th>' +
-                  '<th>Missed</th><th>Unverified</th><th>Result</th>' +
-                  (hideMoney ? '' : '<th>Amount</th>') +
-                  '<th>Handed over</th>' +
-                '</tr></thead><tbody>' +
-                rows.map(function (r) {
-                    const tone = r._live ? (r.status === 'disqualified' ? 'none' : 'working')
-                               : r.status === 'qualified' ? 'done'
-                               : r.status === 'disqualified' ? 'none' : 'working';
-                    // Live: "On track" / "No bonus", never "Gets the bonus"
-                    // -- a Friday-evening qualified week is still not final.
-                    const pill = r._live && r.status !== 'disqualified'
-                        ? attRewardPill('in_progress') : attRewardPill(r.status);
-                    return '<tr class="att-row--' + tone + '">' +
-                        '<td>' +
-                          '<div class="att-worker">' + attEsc(r.worker_name || '—') + '</div>' +
-                          '<div class="att-meta">' + attEsc(r.worker_position || '—') + '</div>' +
-                        '</td>' +
-                        '<td class="att-mono">' + r.required_days + '</td>' +
-                        '<td class="att-mono">' + r.on_time_days + '</td>' +
-                        '<td class="att-mono">' + r.late_days + '</td>' +
-                        '<td class="att-mono">' + r.missing_days + '</td>' +
-                        '<td class="att-mono">' + (Number(r.unverified_days) || 0) + '</td>' +
-                        '<td>' + pill +
-                          '<div class="att-meta">' + attEsc(
-                            (r._live && r.status === 'disqualified' ? 'So far: ' : '') +
-                            attBonusReason(r)) + '</div></td>' +
-                        (hideMoney ? '' : '<td class="att-mono">' +
-                          (r._live ? '—' : attPeso(r.amount)) + '</td>') +
-                        '<td>' + (!r._live && r.id && r.status === 'qualified'
-                          ? '<button class="att-btn' + (r.paid ? '' : ' att-btn--primary') +
-                            '" type="button" data-paid="' + attEsc(r.id) + '">' +
-                            (r.paid ? 'Handed over' : 'Mark as handed over') + '</button>'
-                          : '<span class="att-meta">—</span>') + '</td>' +
-                      '</tr>';
-                }).join('') +
-                '</tbody></table>' +
+                  '<div class="att-rw-legend">' +
+                    '<span><i class="att-day att-day--ok">' + SVG.ok + '</i>On time</span>' +
+                    '<span><i class="att-day att-day--late">' + SVG.late + '</i>Late</span>' +
+                    '<span><i class="att-day att-day--missed">' + SVG.missed + '</i>Missed</span>' +
+                    '<span><i class="att-day att-day--unv">?</i>Unverified</span>' +
+                    '<span><i class="att-day att-day--pending"></i>Today / upcoming</span>' +
+                  '</div>' +
+                  '<div class="att-rw-filters">' +
+                    '<div class="att-search-wrap"><i data-lucide="search"></i>' +
+                      '<input class="att-search" type="search" id="attRwSearch" ' +
+                        'placeholder="Search worker…" aria-label="Search worker" value="' +
+                        attEsc(q) + '"></div>' +
+                    '<select class="att-filter" id="attRwTrade" aria-label="Filter by trade">' +
+                      opts(uniq(r => r._trade), trade, 'All trades') + '</select>' +
+                    '<select class="att-filter" id="attRwSup" aria-label="Filter by supervisor">' +
+                      opts(uniq(r => r._sup), sup, 'All supervisors') + '</select>' +
+                    '<span class="att-rw-note" title="This page keeps a record, it does not ' +
+                      'pay anyone. No money moves, and nothing here touches payroll or a ' +
+                      'contract."><i data-lucide="info"></i>Record only, no payments</span>' +
+                  '</div>' +
+                  '<div class="att-chips">' + dayChips + '</div>' +
+                  '<div class="att-rw-tablewrap">' +
+                  '<table class="att-table att-rw-table"><thead><tr>' +
+                    '<th>Worker</th>' +
+                    DAY_NAMES.map(d => '<th class="att-rw-dayth">' + d + '</th>').join('') +
+                    '<th>Status</th>' +
+                    (hideMoney ? '' : '<th>Amount</th>') +
+                    (live ? '' : '<th>Handed over</th>') +
+                  '</tr></thead><tbody id="attRwRows"></tbody></table>' +
+                  '</div>' +
                 '</div>' +
                 '</div>';
 
-            body.querySelectorAll('[data-paid]').forEach(function (btn) {
-                btn.addEventListener('click', async function () {
-                    const id = btn.getAttribute('data-paid');
-                    const row = rows.find(function (r) { return r.id === id; });
-                    if (!row) return;
-                    btn.disabled = true;
-                    try {
-                        const res = await window.sbClient.rpc('attendance_reward_mark_paid', {
-                            p_reward_id: id,
-                            p_paid: !row.paid
-                        });
-                        if (res.error) throw res.error;
-                        const updated = Array.isArray(res.data) ? res.data[0] : res.data;
-                        row.paid = updated ? updated.paid : !row.paid;
-                        paint();
-                    } catch (e) {
-                        console.error('att A8: mark paid', e);
-                        btn.disabled = false;
-                        alert('Could not update: ' + (e.message || e));
-                    }
+            body.querySelectorAll('.att-count[data-group]').forEach(el => {
+                el.addEventListener('click', () => {
+                    const k = el.getAttribute('data-group');
+                    groupF = groupF === k ? 'all' : k;
+                    body.querySelectorAll('.att-count[data-group]').forEach(c =>
+                        c.classList.toggle('is-on', c.getAttribute('data-group') === groupF));
+                    paintRows();
                 });
             });
+            body.querySelectorAll('.att-chip[data-day]').forEach(el => {
+                el.addEventListener('click', () => {
+                    dayF = el.getAttribute('data-day');
+                    body.querySelectorAll('.att-chip[data-day]').forEach(c =>
+                        c.classList.toggle('is-on', c === el));
+                    paintRows();
+                });
+            });
+            const search = body.querySelector('#attRwSearch');
+            const tradeSel = body.querySelector('#attRwTrade');
+            const supSel = body.querySelector('#attRwSup');
+            search.addEventListener('input', () => { q = search.value; paintRows(); });
+            tradeSel.addEventListener('change', () => { trade = tradeSel.value; paintRows(); });
+            supSel.addEventListener('change', () => { sup = supSel.value; paintRows(); });
 
+            paintRows();
             attIcons();
         }
 
         async function run() {
             week = attWeekStartOf(input.value || attTodayKey());
             input.value = week;
+            groupF = 'all'; dayF = 'all';
             stamp();
             body.innerHTML = 'Loading…';
             try {
@@ -4820,6 +5133,7 @@
                 if (!rows.length && week <= thisMonday) {
                     rows = await attLoadLiveWeek(week);
                 }
+                await loadDetail();
             } catch (e) {
                 console.error('att A8: load', e);
                 body.innerHTML = '<div class="att-error">Could not load: ' +
