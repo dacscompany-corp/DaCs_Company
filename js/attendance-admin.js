@@ -2909,9 +2909,22 @@
      * from the module that owns them, and only the schedule is editable
      * here.
      */
+    // What the admin last typed or picked on this page. Kept outside the
+    // render so that toggling one site (which re-reads from the server)
+    // does not throw away the search and filter they were working in.
+    const ATT_SITES_UI = { q: '', filter: 'all' };
+
+    function attSitesViewPref() {
+        try { return localStorage.getItem('dacsAttSitesView') === 'cards' ? 'cards' : 'table'; }
+        catch (e) { return 'table'; }
+    }
+    function attSitesViewSave(v) {
+        try { localStorage.setItem('dacsAttSitesView', v); } catch (e) { /* private mode */ }
+    }
+
     async function attRenderProjects(container) {
         container.innerHTML = `
-            <div class="att-stack">
+            <div class="att-stack att-sites">
               <div class="att-head">
                 <div>
                   <h2 class="att-title">Sites &amp; schedule</h2>
@@ -2924,15 +2937,19 @@
                 </div>
               </div>
 
-              ${attStrip('info', 'You cannot add or rename a site here — sites arrive on ' +
-                  'their own from the module that owns them. <strong>Project Control</strong> ' +
-                  'owns the ones you cost and bill; <strong>Project Management</strong> owns ' +
-                  'the ones you run day to day. What you <em>do</em> set here is the ' +
-                  'schedule: the working days, the time workers are due, and any day the ' +
-                  'site was closed. You can also <strong>hide a site from workers</strong> ' +
-                  'so it stops appearing on their phone. Workers only ever see a site&rsquo;s ' +
-                  'name — contract values and budgets are never sent to the app.')}
+              <details class="att-howto">
+                <summary><i data-lucide="info"></i>How this page works</summary>
+                <div class="att-howto-body">You cannot add or rename a site here — sites arrive on
+                  their own from the module that owns them. <strong>Project Control</strong>
+                  owns the ones you cost and bill; <strong>Project Management</strong> owns
+                  the ones you run day to day. What you <em>do</em> set here is the
+                  schedule: the working days, the time workers are due, and any day the
+                  site was closed. You can also <strong>hide a site from workers</strong>
+                  so it stops appearing on their phone. Workers only ever see a site&rsquo;s
+                  name — contract values and budgets are never sent to the app.</div>
+              </details>
 
+              <div id="attProjectsTools"></div>
               <div id="attProjectsBody">Loading…</div>
             </div>
             <div id="attSchedHost"></div>`;
@@ -2942,6 +2959,7 @@
         attIcons();
 
         const body = container.querySelector('#attProjectsBody');
+        const tools = container.querySelector('#attProjectsTools');
         let rows, todayCounts, configs, closures, cfg;
         try {
             [rows, todayCounts, configs, closures, cfg] = await Promise.all([
@@ -2979,7 +2997,8 @@
         // within each half (Array sort is stable).
         rows = rows.slice().sort((a, b) => (a.hidden ? 1 : 0) - (b.hidden ? 1 : 0));
 
-        body.innerHTML = '<div class="att-site-grid">' + rows.map(function (p) {
+        // Everything a row or a card says about a site, worked out once.
+        const infos = rows.map(function (p) {
             const key = attProjectKey(p.project_system, p.project_id);
             const conf = configs.get(key) || null;
             const here = todayCounts.get(key) || 0;
@@ -2994,9 +3013,8 @@
             // opposite of what the evaluator actually does.
             const daysSet = !!(conf && Array.isArray(conf.working_days) && conf.working_days.length);
             const days = daysSet ? attWorkingDaysLabel(conf.working_days) : 'Mon–Fri';
-            const daysIsDefault = !daysSet;
+            const hasOverride = !!(conf && conf.start_time_override);
             const due = attClock(conf && conf.start_time_override) || defaultStart || 'Not set yet';
-            const dueIsDefault = !(conf && conf.start_time_override) && !!defaultStart;
 
             // Hidden outranks the schedule notes: nobody can pick this
             // site, so what its bonus week looks like is not the point.
@@ -3010,103 +3028,237 @@
                       'instead of failing it.'
                     : 'Every working day counts towards the weekly bonus.';
 
-            return `
-                <div class="att-site-card${hidden ? ' is-hidden' : ''}">
+            return {
+                p: p, key: key, conf: conf, here: here, closed: closed, hidden: hidden,
+                daysSet: daysSet, days: days, daysIsDefault: !daysSet,
+                due: due, dueIsDefault: !hasOverride && !!defaultStart, hasOverride: hasOverride,
+                // "Custom" = the admin has changed something from the default.
+                custom: daysSet || hasOverride,
+                note: note
+            };
+        });
+
+        const counts = {
+            all: infos.length,
+            custom: infos.filter(i => i.custom).length,
+            hidden: infos.filter(i => i.hidden).length,
+            closed: infos.filter(i => i.closed > 0).length
+        };
+        const FILTERS = [
+            ['all', 'All'], ['custom', 'Custom schedule'],
+            ['hidden', 'Hidden'], ['closed', 'Has closed days']
+        ];
+        let view = attSitesViewPref();
+
+        tools.innerHTML =
+            '<div class="att-sites-tools">' +
+              '<div class="att-search"><i data-lucide="search"></i>' +
+                '<input class="att-input" type="search" id="attSitesSearch" ' +
+                       'placeholder="Search sites" aria-label="Search sites" ' +
+                       'value="' + attEsc(ATT_SITES_UI.q) + '"></div>' +
+              '<div class="att-chips att-chips--bare" id="attSitesChips">' +
+                FILTERS.map(function (f) {
+                    return '<button class="att-chip" type="button" data-f="' + f[0] + '">' +
+                           f[1] + ' <span class="att-chip-n">' + counts[f[0]] + '</span></button>';
+                }).join('') +
+              '</div>' +
+              '<div class="att-seg" id="attSitesView" role="group" aria-label="Layout">' +
+                '<button class="att-seg-btn" type="button" data-view="table">Table</button>' +
+                '<button class="att-seg-btn" type="button" data-view="cards">Cards</button>' +
+              '</div>' +
+            '</div>';
+
+        function tableHtml(list) {
+            return '<div class="att-card"><div class="att-mini-wrap">' +
+              '<table class="att-table att-site-table"><thead><tr>' +
+                '<th>Site</th><th>Working days</th><th>Workers due at</th>' +
+                '<th>Closed days</th><th>Visible to workers</th>' +
+                '<th class="att-right">Schedule</th>' +
+              '</tr></thead><tbody>' +
+              list.map(function (i) {
+                  return '<tr class="' + (i.hidden ? 'is-hidden' : '') + '">' +
+                    '<td><div class="att-worker">' + attEsc(i.p.project_name) + '</div>' +
+                      '<div class="att-meta"><span class="att-pill att-pill--' +
+                        attEsc(i.p.project_system) + '">' +
+                        (i.p.project_system === 'pc' ? 'Costing job' : 'Site works') +
+                      '</span>' +
+                      (i.here ? ' ' + i.here + (i.here === 1 ? ' worker' : ' workers') +
+                                ' here today' : '') + '</div></td>' +
+                    '<td class="' + (i.daysIsDefault ? 'att-dim' : 'att-strong') + '">' +
+                      attEsc(i.days) + '</td>' +
+                    '<td class="att-mono ' + (i.hasOverride ? 'att-strong' : 'att-dim') + '">' + attEsc(i.due) + '</td>' +
+                    '<td class="' + (i.closed ? 'att-strong' : 'att-dim') + '">' +
+                      (i.closed || '—') + '</td>' +
+                    '<td class="att-td-ctl">' +
+                      '<button class="att-switch" type="button" role="switch" ' +
+                        'aria-checked="' + (i.hidden ? 'false' : 'true') + '" ' +
+                        'data-hide="' + attEsc(i.key) + '" ' +
+                        'title="' + attEsc(i.hidden ? 'Hidden: workers cannot pick this site.' :
+                                                       'Workers can pick this site.') + '" ' +
+                        'aria-label="Visible to workers: ' + attEsc(i.p.project_name) + '">' +
+                        '<span class="att-switch-track"></span>' +
+                        '<span>' + (i.hidden ? 'Hidden' : 'Visible') + '</span></button></td>' +
+                    '<td class="att-td-ctl att-right">' +
+                      '<button class="att-btn" type="button" data-sched="' + attEsc(i.key) + '">' +
+                        '<i data-lucide="calendar-check"></i>' +
+                        (i.daysSet ? 'Change schedule' : 'Set schedule') + '</button></td>' +
+                  '</tr>';
+              }).join('') +
+              '</tbody></table></div></div>';
+        }
+
+        function cardsHtml(list) {
+            return '<div class="att-site-grid">' + list.map(function (i) {
+                const p = i.p;
+                return `
+                <div class="att-site-card${i.hidden ? ' is-hidden' : ''}">
                   <div class="att-crew-head">
                     <div style="min-width:0">
                       <h3 class="att-crew-title">${attEsc(p.project_name)}</h3>
-                      <p class="att-crew-sub">${here
-                          ? `${here} ${here === 1 ? 'worker' : 'workers'} here today`
-                          : 'No workers here today'}</p>
+                      ${i.here ? `<p class="att-crew-sub">${i.here} ${
+                          i.here === 1 ? 'worker' : 'workers'} here today</p>` : ''}
                     </div>
                     <div class="att-site-pills">
                       <span class="att-pill att-pill--${attEsc(p.project_system)}">${
                           p.project_system === 'pc' ? 'Costing job' : 'Site works'}</span>
-                      ${hidden ? '<span class="att-pill att-pill--hidden">Hidden from workers</span>' : ''}
+                      ${i.hidden ? '<span class="att-pill att-pill--hidden">Hidden from workers</span>' : ''}
                     </div>
                   </div>
                   <div class="att-site-body">
                     <div class="att-site-facts">
                       <div>
                         <div class="att-site-key">Working days</div>
-                        <div class="att-site-val">${attEsc(days)}</div>
-                        ${daysIsDefault
+                        <div class="att-site-val">${attEsc(i.days)}</div>
+                        ${i.daysIsDefault
                           ? '<div class="att-meta">The default — not changed yet</div>' : ''}
                       </div>
                       <div>
                         <div class="att-site-key">Workers due at</div>
-                        <div class="att-site-val att-site-val--mono">${attEsc(due)}</div>
-                        ${dueIsDefault
+                        <div class="att-site-val att-site-val--mono">${attEsc(i.due)}</div>
+                        ${i.dueIsDefault
                           ? '<div class="att-meta">The company default</div>' : ''}
                       </div>
                       <div>
-                        <div class="att-site-key">Closed days set</div>
-                        <div class="att-site-val">${closed || 'none'}</div>
+                        <div class="att-site-key">Closed days</div>
+                        <div class="att-site-val">${i.closed || 'none'}</div>
                       </div>
                     </div>
-                    <div class="att-site-note">${
-                        attEsc(note)}</div>
+                    <div class="att-site-note">${attEsc(i.note)}</div>
                     <div class="att-site-actions">
-                      <button class="att-btn" type="button" data-sched="${attEsc(key)}">
+                      <button class="att-btn" type="button" data-sched="${attEsc(i.key)}">
                         <i data-lucide="calendar-check"></i>${
-                          daysSet ? 'Change the schedule' : 'Set the schedule'}</button>
-                      <button class="att-btn" type="button" data-hide="${attEsc(key)}">
-                        <i data-lucide="${hidden ? 'eye' : 'eye-off'}"></i>${
-                          hidden ? 'Show to workers' : 'Hide from workers'}</button>
+                          i.daysSet ? 'Change the schedule' : 'Set the schedule'}</button>
+                      <button class="att-btn" type="button" data-hide="${attEsc(i.key)}">
+                        <i data-lucide="${i.hidden ? 'eye' : 'eye-off'}"></i>${
+                          i.hidden ? 'Show to workers' : 'Hide from workers'}</button>
                     </div>
                   </div>
                 </div>`;
-        }).join('') + '</div>';
+            }).join('') + '</div>';
+        }
+
+        function matches() {
+            const needle = ATT_SITES_UI.q.trim().toLowerCase();
+            return infos.filter(function (i) {
+                if (needle && String(i.p.project_name || '').toLowerCase().indexOf(needle) === -1) {
+                    return false;
+                }
+                switch (ATT_SITES_UI.filter) {
+                    case 'custom': return i.custom;
+                    case 'hidden': return i.hidden;
+                    case 'closed': return i.closed > 0;
+                    default: return true;
+                }
+            });
+        }
 
         const schedHost = container.querySelector('#attSchedHost');
-        body.querySelectorAll('[data-sched]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const key = btn.getAttribute('data-sched');
-                const project = rows.find(
-                    p => attProjectKey(p.project_system, p.project_id) === key);
-                if (!project) return;
-                attOpenSchedule(schedHost, project, configs.get(key) || null,
-                                () => attRenderProjects(container));
+
+        function paint() {
+            tools.querySelectorAll('[data-f]').forEach(function (b) {
+                b.classList.toggle('is-on', b.getAttribute('data-f') === ATT_SITES_UI.filter);
             });
+            tools.querySelectorAll('[data-view]').forEach(function (b) {
+                b.classList.toggle('is-on', b.getAttribute('data-view') === view);
+            });
+            const list = matches();
+            body.innerHTML = list.length
+                ? (view === 'cards' ? cardsHtml(list) : tableHtml(list))
+                : '<div class="att-card"><div class="att-empty">No sites match' +
+                  (ATT_SITES_UI.q ? ' “' + attEsc(ATT_SITES_UI.q.trim()) + '”' : '') +
+                  ' in this filter.</div></div>';
+            bindActions();
+            attIcons();
+        }
+
+        function bindActions() {
+            body.querySelectorAll('[data-sched]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const key = btn.getAttribute('data-sched');
+                    const project = rows.find(
+                        p => attProjectKey(p.project_system, p.project_id) === key);
+                    if (!project) return;
+                    attOpenSchedule(schedHost, project, configs.get(key) || null,
+                                    () => attRenderProjects(container), defaultStart);
+                });
+            });
+
+            body.querySelectorAll('[data-hide]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const key = btn.getAttribute('data-hide');
+                    const project = rows.find(
+                        p => attProjectKey(p.project_system, p.project_id) === key);
+                    if (!project) return;
+                    const hide = !project.hidden;
+                    if (hide && !confirm('Hide "' + project.project_name + '" from workers?\n\n' +
+                            'It stops appearing on their phone. Anyone already timed in ' +
+                            'there can still time out. You can show it again any time.')) {
+                        return;
+                    }
+                    btn.disabled = true;
+                    try {
+                        // Through the RPC: the browser names the project and the
+                        // server derives the tenant (0070's rule, reused by 0072).
+                        const res = await window.sbClient.rpc('attendance_project_set_hidden', {
+                            p_system: project.project_system,
+                            p_project_id: project.project_id,
+                            p_hidden: hide
+                        });
+                        if (res.error) throw res.error;
+                        const saved = Array.isArray(res.data) ? res.data[0] : res.data;
+                        // No row back means nothing was written. Say so, rather
+                        // than repaint a row that the next refresh contradicts.
+                        if (!saved) throw new Error('the database returned no row');
+                        attRenderProjects(container);
+                    } catch (e) {
+                        console.error('att A5: set hidden', e);
+                        btn.disabled = false;
+                        alert('Could not ' + (hide ? 'hide' : 'show') + ' this site.\n\n' +
+                              [e.message, e.hint, e.details, e.code].filter(Boolean).join(' | '));
+                    }
+                });
+            });
+        }
+
+        tools.querySelector('#attSitesSearch').addEventListener('input', function (ev) {
+            ATT_SITES_UI.q = ev.target.value;
+            paint();
+        });
+        tools.querySelector('#attSitesChips').addEventListener('click', function (ev) {
+            const b = ev.target.closest('[data-f]');
+            if (!b) return;
+            ATT_SITES_UI.filter = b.getAttribute('data-f');
+            paint();
+        });
+        tools.querySelector('#attSitesView').addEventListener('click', function (ev) {
+            const b = ev.target.closest('[data-view]');
+            if (!b) return;
+            view = b.getAttribute('data-view');
+            attSitesViewSave(view);
+            paint();
         });
 
-        body.querySelectorAll('[data-hide]').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const key = btn.getAttribute('data-hide');
-                const project = rows.find(
-                    p => attProjectKey(p.project_system, p.project_id) === key);
-                if (!project) return;
-                const hide = !project.hidden;
-                if (hide && !confirm('Hide "' + project.project_name + '" from workers?\n\n' +
-                        'It stops appearing on their phone. Anyone already timed in ' +
-                        'there can still time out. You can show it again any time.')) {
-                    return;
-                }
-                btn.disabled = true;
-                try {
-                    // Through the RPC: the browser names the project and the
-                    // server derives the tenant (0070's rule, reused by 0072).
-                    const res = await window.sbClient.rpc('attendance_project_set_hidden', {
-                        p_system: project.project_system,
-                        p_project_id: project.project_id,
-                        p_hidden: hide
-                    });
-                    if (res.error) throw res.error;
-                    const saved = Array.isArray(res.data) ? res.data[0] : res.data;
-                    // No row back means nothing was written. Say so, rather
-                    // than repaint a card that the next refresh contradicts.
-                    if (!saved) throw new Error('the database returned no row');
-                    attRenderProjects(container);
-                } catch (e) {
-                    console.error('att A5: set hidden', e);
-                    btn.disabled = false;
-                    alert('Could not ' + (hide ? 'hide' : 'show') + ' this site.\n\n' +
-                          [e.message, e.hint, e.details, e.code].filter(Boolean).join(' | '));
-                }
-            });
-        });
-
-        attIcons();
+        paint();
     }
 
     // ── A6 · Attendance reports ─────────────────────────────────────
@@ -3606,14 +3758,18 @@
         }).join(' ');
     }
 
-    function attOpenSchedule(host, project, config, onSaved) {
+    function attOpenSchedule(host, project, config, onSaved, defaultStart) {
         const system = project.project_system;
         const id = project.project_id;
         const days = (config && config.working_days) || [1, 2, 3, 4, 5];
 
+        const startNow = (config && config.start_time_override) || '';
+        const defaultLabel = defaultStart
+            ? 'Company default (' + attEsc(defaultStart) + ')' : 'Company default';
+
         host.innerHTML =
             '<div class="att-modal" id="attSchedModal">' +
-              '<div class="att-modal-box" role="dialog" aria-modal="true" ' +
+              '<div class="att-modal-box att-sched" role="dialog" aria-modal="true" ' +
                    'aria-labelledby="attSchedTitle">' +
                 '<div class="att-modal-head">' +
                   '<div>' +
@@ -3623,96 +3779,122 @@
                   '<button class="att-modal-x" type="button" id="attScX" ' +
                           'aria-label="Close">&times;</button>' +
                 '</div>' +
+                '<div class="att-tabs" role="tablist">' +
+                  '<button class="att-tab is-on" type="button" role="tab" data-tab="days">' +
+                    'Working days &amp; time</button>' +
+                  '<button class="att-tab" type="button" role="tab" data-tab="location">' +
+                    'Location</button>' +
+                  '<button class="att-tab" type="button" role="tab" data-tab="closed">' +
+                    'Closed dates</button>' +
+                '</div>' +
                 '<form class="att-modal-form" id="attSchedForm" autocomplete="off">' +
                   '<div class="att-modal-body att-modal-body--single">' +
-                    '<div class="att-info">' +
-                      '<i data-lucide="calendar-check"></i>' +
-                      '<div>The reward only ever counts <strong>Monday to Friday</strong>. ' +
-                        'Marking Saturday here records that the site works it — it does ' +
-                        'not add a sixth day to the reward.</div>' +
-                    '</div>' +
-                    '<div class="att-field att-span">' +
-                      '<label>Working days</label>' +
-                      '<div class="att-seg" id="attScDays">' +
-                        ATT_DOW.map(function (d) {
-                          return '<button class="att-seg-btn' +
-                                 (days.indexOf(d.n) !== -1 ? ' is-on' : '') +
-                                 '" type="button" data-dow="' + d.n + '">' + d.label + '</button>';
-                        }).join('') +
+
+                    // ── Tab 1: working days & time ────────────────────
+                    '<section class="att-pane" data-pane="days">' +
+                      '<div class="att-info">' +
+                        '<i data-lucide="calendar-check"></i>' +
+                        '<div>The reward only ever counts <strong>Monday to Friday</strong>. ' +
+                          'Marking Saturday here records that the site works it — it does ' +
+                          'not add a sixth day to the reward.</div>' +
                       '</div>' +
-                      '<div class="att-hint">A day outside this pattern is never required, ' +
-                        'so it shrinks the reward week instead of failing it.</div>' +
-                    '</div>' +
-                    '<div class="att-field att-span">' +
-                      '<label for="attScStart">Start time</label>' +
-                      '<input class="att-input" type="time" id="attScStart" value="' +
-                        attEsc((config && config.start_time_override) || '') + '">' +
-                      '<div class="att-hint">Leave empty to use the company default. ' +
-                        'A Time In after this is late, and one late day forfeits the ' +
-                        'whole week.</div>' +
-                    '</div>' +
-                    '<div class="att-field att-span">' +
-                      '<label>Site location</label>' +
+                      '<div class="att-field">' +
+                        '<label>Working days</label>' +
+                        '<div class="att-seg att-days" id="attScDays">' +
+                          ATT_DOW.map(function (d) {
+                            const on = days.indexOf(d.n) !== -1;
+                            return '<button class="att-seg-btn' + (on ? ' is-on' : '') +
+                                   '" type="button" aria-pressed="' + (on ? 'true' : 'false') +
+                                   '" data-dow="' + d.n + '">' + d.label + '</button>';
+                          }).join('') +
+                        '</div>' +
+                        '<div class="att-presets">' +
+                          '<span>Quick pick:</span>' +
+                          '<button class="att-linkbtn" type="button" data-preset="1,2,3,4,5">Mon–Fri</button>' +
+                          '<button class="att-linkbtn" type="button" data-preset="1,2,3,4,5,6">Mon–Sat</button>' +
+                          '<button class="att-linkbtn" type="button" data-preset="1,2,3,4,5,6,7">Every day</button>' +
+                        '</div>' +
+                        '<div class="att-hint">A day outside this pattern is never required, ' +
+                          'so it shrinks the reward week instead of failing it.</div>' +
+                      '</div>' +
+                      '<div class="att-field">' +
+                        '<label>Workers due at</label>' +
+                        '<label class="att-choice" id="attScModeDefault">' +
+                          '<input type="radio" name="attScMode" value="default"' +
+                            (startNow ? '' : ' checked') + '> ' + defaultLabel + '</label>' +
+                        '<label class="att-choice" id="attScModeCustom">' +
+                          '<input type="radio" name="attScMode" value="custom"' +
+                            (startNow ? ' checked' : '') + '> Custom time for this site' +
+                          '<input class="att-input" type="time" id="attScStart" ' +
+                            'aria-label="Custom time" value="' + attEsc(startNow) + '"></label>' +
+                        '<div class="att-hint">A Time In after this is late, and one late day ' +
+                          'forfeits the whole week.</div>' +
+                      '</div>' +
+                      '<div class="att-sched-summary" id="attScSummary" aria-live="polite"></div>' +
+                      '<div><button class="att-linkbtn" type="button" id="attScReset">' +
+                        'Reset to company default</button></div>' +
+                    '</section>' +
+
+                    // ── Tab 2: location ───────────────────────────────
+                    '<section class="att-pane" data-pane="location" hidden>' +
+                      '<label class="att-choice att-choice--toggle">' +
+                        '<input type="checkbox" id="attScFenceOn" checked> ' +
+                        'Check attendance against this location</label>' +
                       '<div class="att-info">' +
                         '<i data-lucide="map-pin"></i>' +
-                        '<div>Attendance is checked against this point. A worker ' +
-                          'standing outside the radius is refused; one whose phone ' +
+                        '<div>A worker standing outside the radius is refused; one whose phone ' +
                           'cannot get a clear fix is <strong>recorded and flagged</strong>, ' +
                           'never refused.</div>' +
                       '</div>' +
-                      '<div class="att-fence-grid" style="display:flex;gap:10px;' +
-                                  'flex-wrap:wrap;align-items:flex-end;">' +
-                        '<div style="display:flex;flex-direction:column;gap:4px;">' +
-                          '<label for="attScLat" style="font-size:12px;color:#6b7280;">' +
-                            'Latitude</label>' +
+                      '<div class="att-fence-grid">' +
+                        '<div class="att-field">' +
+                          '<label for="attScLat">Latitude</label>' +
                           '<input class="att-input" type="number" step="any" id="attScLat" ' +
-                                 'placeholder="14.6788638">' +
-                        '</div>' +
-                        '<div style="display:flex;flex-direction:column;gap:4px;">' +
-                          '<label for="attScLng" style="font-size:12px;color:#6b7280;">' +
-                            'Longitude</label>' +
+                                 'placeholder="14.6788638"></div>' +
+                        '<div class="att-field">' +
+                          '<label for="attScLng">Longitude</label>' +
                           '<input class="att-input" type="number" step="any" id="attScLng" ' +
-                                 'placeholder="121.018953">' +
-                        '</div>' +
-                        '<div style="display:flex;flex-direction:column;gap:4px;">' +
-                          '<label for="attScRadius" style="font-size:12px;color:#6b7280;">' +
-                            'Radius in metres (10 to 5000)</label>' +
+                                 'placeholder="121.018953"></div>' +
+                        '<div class="att-field">' +
+                          '<label for="attScRadius">Radius (metres)</label>' +
                           '<input class="att-input" type="number" id="attScRadius" ' +
-                                 'min="10" max="5000" placeholder="150" value="150">' +
-                        '</div>' +
+                                 'min="10" max="5000" placeholder="150" value="150"></div>' +
                       '</div>' +
-                      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;' +
-                                  'margin-top:8px;">' +
+                      '<div class="att-hint">Radius runs 10 to 5000 m. 150 m suits most sites.</div>' +
+                      '<div class="att-actions-row">' +
                         '<button class="att-btn" type="button" id="attScHere">' +
                           '<i data-lucide="crosshair"></i>Use my location</button>' +
                         '<button class="att-btn att-btn--primary" type="button" ' +
                                 'id="attScSaveFence">Save location</button>' +
-                        '<label style="display:flex;gap:6px;align-items:center;font-size:13px;">' +
-                          '<input type="checkbox" id="attScFenceOn" checked> Enabled</label>' +
                       '</div>' +
                       '<div class="att-hint" id="attScFenceNow"></div>' +
                       '<div class="att-hint">Editing appends a new location rather than ' +
                         'replacing the old one, so attendance already recorded keeps ' +
                         'being judged against the location that was in force when it ' +
                         'was captured.</div>' +
-                    '</div>' +
-                    '<div class="att-field att-span">' +
-                      '<label for="attScClosed">Closed dates</label>' +
-                      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-                        '<input class="att-input" type="date" id="attScClosed">' +
-                        '<input class="att-input" type="text" id="attScReason" ' +
-                               'maxlength="120" placeholder="Reason, e.g. Independence Day">' +
-                        '<button class="att-btn" type="button" id="attScAdd">Add</button>' +
+                    '</section>' +
+
+                    // ── Tab 3: closed dates ───────────────────────────
+                    '<section class="att-pane" data-pane="closed" hidden>' +
+                      '<div class="att-field">' +
+                        '<label for="attScClosed">Add a closed date</label>' +
+                        '<div class="att-actions-row">' +
+                          '<input class="att-input att-input--auto" type="date" id="attScClosed">' +
+                          '<input class="att-input att-input--grow" type="text" id="attScReason" ' +
+                                 'maxlength="120" placeholder="Reason, e.g. Independence Day">' +
+                          '<button class="att-btn" type="button" id="attScAdd">Add</button>' +
+                        '</div>' +
+                        '<div class="att-hint">A closed day is not required of anyone posted ' +
+                          'here, so the week shrinks and four on-time days out of four still ' +
+                          'earn the full reward.</div>' +
                       '</div>' +
-                      '<div class="att-hint">A closed day is not required of anyone posted ' +
-                        'here, so the week shrinks and four on-time days out of four still ' +
-                        'earn the full reward.<br><strong>Closed dates save as soon as you add ' +
-                        'them</strong> — Close does not undo them.</div>' +
-                    '</div>' +
-                    '<div id="attScList"></div>' +
+                      '<div id="attScList"></div>' +
+                    '</section>' +
+
                     '<div class="att-err att-err--general att-span" id="attScGeneral"></div>' +
                   '</div>' +
                   '<div class="att-modal-foot">' +
+                    '<span class="att-foot-note" id="attScFootNote"></span>' +
                     '<button class="att-btn" type="button" id="attScCancel">Close</button>' +
                     '<button class="att-btn att-btn--primary" type="submit" id="attScSave">' +
                       'Save working days &amp; time</button>' +
@@ -3778,7 +3960,9 @@
         const fenceNow = host.querySelector('#attScFenceNow');
 
         function paintFence(g) {
-            if (!g) {
+            // A row with no coordinates is "no location set", not 0, 0 at
+            // a radius of 0 m -- which is what Number(null) would paint.
+            if (!g || g.latitude == null || g.longitude == null) {
                 fenceNow.textContent = 'No location set. Attendance here is recorded ' +
                                        'unverified until one is.';
                 return;
@@ -3789,7 +3973,7 @@
                 (g.effective_from ? ' · set ' + String(g.effective_from).slice(0, 10) : '');
             host.querySelector('#attScLat').value = g.latitude;
             host.querySelector('#attScLng').value = g.longitude;
-            host.querySelector('#attScRadius').value = Number(g.radius_m);
+            host.querySelector('#attScRadius').value = Number(g.radius_m) || 150;
             host.querySelector('#attScFenceOn').checked = !!g.enabled;
         }
 
@@ -3870,10 +4054,115 @@
             }
         });
 
+        // ── Working days & time: state, summary, unsaved changes ──
+        const dayBtns = host.querySelectorAll('#attScDays [data-dow]');
+        const startEl = host.querySelector('#attScStart');
+        const saveBtn = host.querySelector('#attScSave');
+        const summaryEl = host.querySelector('#attScSummary');
+        const modeEls = host.querySelectorAll('input[name="attScMode"]');
+
+        function chosenDays() {
+            return Array.prototype.slice.call(dayBtns)
+                .filter(function (b) { return b.classList.contains('is-on'); })
+                .map(function (b) { return Number(b.getAttribute('data-dow')); })
+                .sort();
+        }
+        function customMode() {
+            return host.querySelector('input[name="attScMode"]:checked').value === 'custom';
+        }
+        function scheduleSnapshot() {
+            return chosenDays().join(',') + '|' + (customMode() ? startEl.value : '');
+        }
+        const startSnapshot = scheduleSnapshot();
+
+        function refreshSchedule() {
+            const custom = customMode();
+            startEl.disabled = !custom;
+            host.querySelector('#attScModeDefault').classList.toggle('is-on', !custom);
+            host.querySelector('#attScModeCustom').classList.toggle('is-on', custom);
+
+            const chosen = chosenDays();
+            const counted = chosen.filter(function (n) { return n <= 5; }).length;
+            const time = custom ? (attClock(startEl.value) || null) : (defaultStart || null);
+            summaryEl.innerHTML = !chosen.length
+                ? 'Pick at least one working day.'
+                : '<strong>' + attEsc(attWorkingDaysLabel(chosen)) + '</strong>' +
+                  (time ? ', workers due by <strong>' + attEsc(time) + '</strong>' +
+                          (custom ? '' : ' (company default)')
+                        : custom ? ', pick a time' : '') + '. ' +
+                  (counted
+                      ? counted + (counted === 1 ? ' day counts' : ' days count') +
+                        ' towards the weekly bonus.'
+                      : 'None of these days count towards the weekly bonus.');
+
+            // A site that has never been configured can still be saved
+            // as-is (that is how it stops reading "not changed yet");
+            // one that has a config only needs saving when it changed.
+            saveBtn.disabled = !!config && scheduleSnapshot() === startSnapshot;
+        }
+
         host.querySelector('#attScDays').addEventListener('click', function (ev) {
             const btn = ev.target.closest('[data-dow]');
-            if (btn) btn.classList.toggle('is-on');
+            if (!btn) return;
+            btn.classList.toggle('is-on');
+            btn.setAttribute('aria-pressed', btn.classList.contains('is-on') ? 'true' : 'false');
+            refreshSchedule();
         });
+
+        function setDays(list) {
+            dayBtns.forEach(function (b) {
+                const on = list.indexOf(Number(b.getAttribute('data-dow'))) !== -1;
+                b.classList.toggle('is-on', on);
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+        }
+        host.querySelectorAll('[data-preset]').forEach(function (b) {
+            b.addEventListener('click', function () {
+                setDays(b.getAttribute('data-preset').split(',').map(Number));
+                refreshSchedule();
+            });
+        });
+        host.querySelector('#attScReset').addEventListener('click', function () {
+            setDays([1, 2, 3, 4, 5]);
+            host.querySelector('input[name="attScMode"][value="default"]').checked = true;
+            refreshSchedule();
+        });
+        modeEls.forEach(function (r) {
+            r.addEventListener('change', function () {
+                refreshSchedule();
+                if (customMode() && !startEl.value) startEl.focus();
+            });
+        });
+        startEl.addEventListener('input', refreshSchedule);
+
+        // ── Tabs ──────────────────────────────────────────────────
+        const footNote = host.querySelector('#attScFootNote');
+        const TAB_NOTES = {
+            days: '',
+            location: 'This tab saves with its own Save location button.',
+            closed: 'Closed dates save as soon as you add them.'
+        };
+        function showTab(name) {
+            host.querySelectorAll('[data-tab]').forEach(function (t) {
+                const on = t.getAttribute('data-tab') === name;
+                t.classList.toggle('is-on', on);
+                t.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            host.querySelectorAll('[data-pane]').forEach(function (pane) {
+                pane.hidden = pane.getAttribute('data-pane') !== name;
+            });
+            // The footer Save belongs to the first tab only; the other two
+            // save themselves, so a second "Save" here would lie about
+            // what it covers.
+            saveBtn.style.display = name === 'days' ? '' : 'none';
+            footNote.textContent = TAB_NOTES[name] || '';
+            general.style.display = 'none';
+        }
+        host.querySelectorAll('[data-tab]').forEach(function (t) {
+            t.addEventListener('click', function () { showTab(t.getAttribute('data-tab')); });
+        });
+        showTab('days');
+        refreshSchedule();
 
         host.querySelector('#attScAdd').addEventListener('click', async function () {
             const date = host.querySelector('#attScClosed').value;
@@ -3925,19 +4214,26 @@
             }
         });
 
-        host.querySelector('#attScX').addEventListener('click', close);
-        host.querySelector('#attScCancel').addEventListener('click', close);
+        function closeGuarded() {
+            if (scheduleSnapshot() !== startSnapshot && config &&
+                    !confirm('Discard the changes to working days and time?')) {
+                return;
+            }
+            close();
+        }
+        host.querySelector('#attScX').addEventListener('click', closeGuarded);
+        host.querySelector('#attScCancel').addEventListener('click', closeGuarded);
 
         host.querySelector('#attSchedForm').addEventListener('submit', async function (ev) {
             ev.preventDefault();
+            // Enter in a Location or Closed-dates field must not quietly
+            // save working days the admin is not looking at.
+            if (host.querySelector('[data-pane="days"]').hidden) return;
             general.style.display = 'none';
             const btn = host.querySelector('#attScSave');
             btn.disabled = true;
 
-            const chosen = Array.prototype.slice
-                .call(host.querySelectorAll('#attScDays .is-on'))
-                .map(function (b) { return Number(b.getAttribute('data-dow')); })
-                .sort();
+            const chosen = chosenDays();
 
             if (!chosen.length) {
                 btn.disabled = false;
@@ -3945,7 +4241,14 @@
                 return;
             }
 
-            const start = host.querySelector('#attScStart').value;
+            // "Company default" saves no override at all (null), which is
+            // what the old empty box meant.
+            const start = customMode() ? startEl.value : '';
+            if (customMode() && !start) {
+                btn.disabled = false;
+                fail('Pick a time, or choose the company default.');
+                return;
+            }
 
             try {
                 // Same RPC treatment as the closures above. This path
