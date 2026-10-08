@@ -188,7 +188,8 @@
     margin-top: 8px;
     color: var(--att-ink);
 }
-.att-stat-value--alert { color: var(--att-red); }
+/* Amber, not red: an open day is a task waiting (rule 2, THE REDESIGN). */
+.att-stat-value--alert { color: var(--att-gold); }
 
 /* ── Card shell ────────────────────────────────────────────────── */
 
@@ -1194,4 +1195,659 @@ select.att-input { cursor: pointer; }
     /* Four legend items across a phone put one word on each line and
        stop reading as a key at all. */
     .att-legend { gap: 10px 18px; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Today on site — counter strip, compact tables, quiet-site line.
+
+   Replaces the two banners and the one-card-per-worker rows. The aim
+   is to fit a whole day on one screen: the counts say how it is going,
+   the people who need chasing come first, and a site nobody is on is a
+   name in a line rather than a card.
+   ══════════════════════════════════════════════════════════════════ */
+
+.att-summary { display: flex; flex-direction: column; gap: 12px; }
+
+.att-counts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+}
+.att-count {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+    text-align: left;
+    padding: 14px 18px;
+    background: var(--att-card);
+    border: 1px solid var(--att-line);
+    border-radius: 12px;
+    box-shadow: var(--att-shadow);
+    font-family: inherit;
+    cursor: pointer;
+}
+.att-count:hover:not(:disabled) { background: #FAFBFA; }
+.att-count:disabled { cursor: default; }
+.att-count-value {
+    font-family: var(--att-mono);
+    font-size: 28px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--att-ink);
+}
+.att-count-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--att-muted);
+}
+.att-count--working .att-count-value { color: var(--att-gold); }
+.att-count--done .att-count-value    { color: var(--att-green); }
+.att-count--alert .att-count-value   { color: var(--att-red); }
+.att-count--alert { background: var(--att-red-tint); border-color: var(--att-red-line); }
+.att-count--attn  { background: var(--att-gold-tint); border-color: #E0D2B4; }
+.att-count--attn .att-count-value { color: var(--att-gold); }
+
+.att-statusline {
+    font-size: 14.5px;
+    line-height: 1.5;
+    color: var(--att-ink-2);
+    text-wrap: pretty;
+}
+.att-statusline strong { color: var(--att-ink); font-weight: 600; }
+
+/* ── Status chips above the Full list ───────────────────────────── */
+
+.att-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--att-line-soft);
+}
+.att-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--att-line);
+    border-radius: 999px;
+    background: var(--att-card);
+    color: var(--att-ink-2);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.att-chip:hover { background: #FAFBFA; }
+.att-chip.is-on {
+    background: var(--att-green-tint);
+    border-color: #D3E2D8;
+    color: var(--att-green);
+}
+.att-chip-n {
+    font-family: var(--att-mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--att-muted);
+}
+.att-chip.is-on .att-chip-n { color: var(--att-green); }
+
+/* ── Compact table inside a site card / the not-on-site block ───── */
+
+.att-mini-wrap { overflow-x: auto; }
+.att-mini { width: 100%; border-collapse: collapse; }
+.att-mini th {
+    text-align: left;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--att-muted);
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--att-line);
+    white-space: nowrap;
+}
+.att-mini td {
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--att-line-soft);
+    font-size: 13.5px;
+    color: var(--att-ink-2);
+    vertical-align: middle;
+}
+.att-mini tbody tr:last-child td { border-bottom: 0; }
+.att-mini-row { cursor: pointer; }
+.att-mini-row:hover { background: #FAFBFA; }
+.att-mini-name { display: block; font-weight: 600; color: var(--att-ink); }
+.att-mini-meta { display: block; font-size: 12px; color: var(--att-muted); margin-top: 1px; }
+.att-mini-mono { font-family: var(--att-mono); font-size: 12.5px; color: var(--att-ink); white-space: nowrap; }
+.att-mini .att-right { text-align: right; }
+.att-mini-row--done td:first-child      { border-left: 3px solid var(--att-green); }
+.att-mini-row--working td:first-child   { border-left: 3px solid var(--att-gold); }
+.att-mini-row--abandoned td:first-child { border-left: 3px solid var(--att-red); }
+.att-mini-row--none td:first-child      { border-left: 3px solid #C9C8C3; }
+
+/* The not-on-site block sits under the grid at full width. */
+.att-crew-card--wide { margin-top: 20px; }
+.att-crew-grid:empty { display: none; }
+.att-crew-card--wide .att-crew-head { padding: 14px 22px; }
+
+/* ── Sites nobody is on: one line of names ──────────────────────── */
+
+.att-quiet {
+    margin-top: 20px;
+    padding: 14px 22px;
+    background: var(--att-field);
+    border: 1px dashed var(--att-line);
+    border-radius: 12px;
+}
+.att-quiet-label { font-size: 13px; font-weight: 600; color: var(--att-muted); }
+.att-quiet-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.att-quiet-chip {
+    padding: 4px 12px;
+    border: 1px solid var(--att-line);
+    border-radius: 999px;
+    background: var(--att-card);
+    font-size: 13px;
+    color: var(--att-ink-2);
+}
+
+@media (max-width: 720px) {
+    .att-count { padding: 12px 14px; }
+    .att-count-value { font-size: 24px; }
+    .att-chips { padding: 10px 14px; }
+    .att-mini th, .att-mini td { padding: 8px 10px; }
+}
+/* ════════════════════════════════════════════════════════════════════
+   A5 · Sites & schedule — table view, filters, tabbed schedule editor
+   ════════════════════════════════════════════════════════════════════
+
+   Why this block exists: with 14+ sites the cards repeated the same
+   Mon–Fri / 9:00 AM / none on every card and buried the one that was
+   different. The table puts the same field in the same column, mutes the
+   defaults and bolds what an admin changed.
+
+   Type: the serif stays on headings. Data, labels and inputs use the
+   portal's sans with lining, tabular numerals -- Playfair's old-style
+   figures made "0" read as "o" and "1" as "ı" in the radius box and the
+   closed-day count. */
+
+:root {
+    --att-sans: 'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.att-sites,
+.att-sched {
+    font-family: var(--att-sans);
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: "lnum" 1, "tnum" 1;
+}
+.att-sites .att-title,
+.att-sites .att-crew-title,
+.att-sched .att-modal-title {
+    font-family: var(--att-serif);
+    font-feature-settings: "lnum" 1;
+}
+/* Quieter labels were also lower-contrast ones. */
+.att-sites .att-site-key {
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: var(--att-ink-2);
+}
+.att-sites .att-meta,
+.att-sites .att-crew-sub,
+.att-sites .att-sub,
+.att-sched .att-hint,
+.att-sched .att-modal-sub {
+    color: #55555A;
+}
+
+/* The "how this page works" note: closed until asked for. */
+.att-howto {
+    background: #F5F5F5;
+    border-radius: 10px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: var(--att-ink-2);
+}
+.att-howto summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 16px;
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+}
+.att-howto summary::-webkit-details-marker { display: none; }
+.att-howto summary svg { width: 18px; height: 18px; color: var(--att-green); flex-shrink: 0; }
+.att-howto summary::after {
+    content: 'Show';
+    margin-left: auto;
+    font-weight: 500;
+    font-size: 12.5px;
+    color: var(--att-muted);
+}
+.att-howto[open] summary::after { content: 'Hide'; }
+.att-howto-body { padding: 0 16px 14px 44px; }
+
+/* Search · filter chips · layout toggle */
+.att-sites-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+.att-search { position: relative; flex: 0 1 260px; min-width: 200px; }
+.att-search svg {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+    color: var(--att-muted);
+    pointer-events: none;
+}
+.att-search .att-input { height: 40px; padding-left: 36px; }
+.att-chips--bare { padding: 0; border: 0; flex: 1 1 auto; }
+.att-sites-tools .att-seg-btn { padding: 6px 14px; }
+
+/* The table */
+.att-site-table th,
+.att-site-table td { vertical-align: middle; }
+.att-site-table .att-dim { color: var(--att-muted); }
+.att-site-table .att-strong { color: var(--att-ink); font-weight: 700; }
+.att-site-table .att-mono { font-family: var(--att-mono); }
+.att-site-table .att-pill { padding: 2px 9px; font-size: 11.5px; margin-right: 4px; }
+.att-site-table tr.is-hidden td:not(.att-td-ctl) { opacity: 0.55; }
+.att-site-table .att-td-ctl { white-space: nowrap; }
+
+/* Visible-to-workers switch (replaces the "Hide from workers" button). */
+.att-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    color: var(--att-ink-2);
+    cursor: pointer;
+}
+.att-switch-track {
+    position: relative;
+    flex-shrink: 0;
+    width: 38px;
+    height: 22px;
+    border-radius: 999px;
+    background: #C4C4C0;
+    transition: background 0.15s;
+}
+.att-switch-track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    transition: transform 0.15s;
+}
+.att-switch[aria-checked="true"] .att-switch-track { background: var(--att-green); }
+.att-switch[aria-checked="true"] .att-switch-track::after { transform: translateX(16px); }
+.att-switch:disabled { opacity: 0.5; cursor: wait; }
+.att-switch:focus-visible { outline: 2px solid var(--att-green); outline-offset: 3px; border-radius: 999px; }
+
+/* ── Schedule editor: tabs ─────────────────────────────────────── */
+
+.att-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 0 28px;
+    border-bottom: 1px solid var(--att-line);
+}
+.att-tab {
+    margin-bottom: -1px;
+    padding: 12px 14px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: none;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--att-muted);
+    cursor: pointer;
+}
+.att-tab:hover { color: var(--att-ink); }
+.att-tab.is-on { color: var(--att-green); border-bottom-color: var(--att-green); }
+
+.att-pane { display: flex; flex-direction: column; gap: 18px; }
+.att-pane[hidden] { display: none; }
+.att-sched .att-field { display: flex; flex-direction: column; gap: 8px; }
+.att-sched .att-field > label:not(.att-choice) { font-size: 13.5px; font-weight: 600; color: var(--att-ink); }
+
+/* Days: outlined when off, filled green when on. */
+.att-days {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0;
+    background: none;
+    border: 0;
+}
+.att-days .att-seg-btn {
+    min-width: 54px;
+    border: 1px solid #C9C9C5;
+    background: var(--att-card);
+    color: var(--att-ink-2);
+}
+.att-days .att-seg-btn:hover { border-color: var(--att-green); }
+.att-days .att-seg-btn.is-on {
+    background: var(--att-green);
+    border-color: var(--att-green);
+    color: #fff;
+    box-shadow: none;
+}
+
+.att-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 13px; color: var(--att-muted); }
+.att-linkbtn {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--att-green);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+.att-linkbtn:hover { color: var(--att-green-dark); }
+
+/* "Company default" / "Custom time" choice rows. */
+.att-choice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 14px;
+    border: 1px solid var(--att-line);
+    border-radius: 10px;
+    background: var(--att-field);
+    font-size: 14px;
+    color: var(--att-ink);
+    font-weight: 500;
+    cursor: pointer;
+}
+.att-choice.is-on { border-color: var(--att-green); background: var(--att-green-tint); }
+.att-choice input[type="time"] { width: 150px; height: 38px; margin-left: auto; }
+.att-choice input[type="time"]:disabled { opacity: 0.45; }
+.att-choice--toggle { font-weight: 600; }
+
+/* The live sentence: what the settings above mean. */
+.att-sched-summary {
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--att-green-tint);
+    color: var(--att-ink);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* Location + closed dates */
+.att-fence-grid { display: grid; grid-template-columns: 1fr 1fr 150px; gap: 12px; }
+.att-actions-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.att-input--auto { width: auto; }
+.att-input--grow { flex: 1 1 180px; width: auto; min-width: 140px; }
+
+.att-foot-note { margin-right: auto; align-self: center; font-size: 13px; color: var(--att-muted); }
+
+@media (max-width: 560px) {
+    .att-fence-grid { grid-template-columns: 1fr; }
+    .att-tabs { padding: 0 12px; overflow-x: auto; }
+    .att-howto-body { padding-left: 16px; }
+}
+/* ══════════════════════════════════════════════════════════════════
+   A6 · HOURS REPORT — action first, then totals, then the roll-ups
+   ══════════════════════════════════════════════════════════════════
+
+   Type follows .att-sites / .att-sched: Playfair stays on headings
+   only. The banner, tiles, dates and times are Barlow with lining,
+   tabular numerals -- Playfair's old-style "0" made "0h 0m" read as
+   "oh om" in the banner, and Plex Mono set the tiles apart from the
+   prose that reads them.
+
+   The secondary greys are darkened by re-pointing the tokens inside
+   the scope, so every muted label on this screen follows without a
+   rule per class, and no other screen changes. */
+
+.att-report {
+    --att-muted: #55555A;
+    --att-faint: #6C6C70;
+    font-family: var(--att-sans);
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: "lnum" 1, "tnum" 1;
+}
+.att-report .att-banner-lead {
+    font-family: var(--att-sans);
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: 0;
+}
+.att-report .att-stat-value,
+.att-report .att-mono,
+.att-report .att-num {
+    font-family: var(--att-sans);
+    font-weight: 600;
+    color: var(--att-ink);
+}
+.att-report .att-stat-value { font-size: 30px; line-height: 1.15; }
+.att-report .att-num { white-space: nowrap; }
+.att-report .att-toolbar { margin-bottom: 0; }
+
+/* The banner when it carries a task. Same shape as the green one, so
+   the screen does not jump when the last day is closed. */
+.att-banner--warn { background: var(--att-gold-tint); border-color: #E0D2B4; }
+.att-banner--warn .att-banner-lead { color: #5E4720; }
+
+/* ── Toolbar: presets · dates · Export ─────────────────────────── */
+
+.att-dates { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+.att-menu { position: relative; margin-left: auto; }
+.att-menu > summary { list-style: none; }
+.att-menu > summary::-webkit-details-marker { display: none; }
+.att-menu[open] > summary { background: #F5F5F5; }
+.att-menu-list {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    z-index: 20;
+    min-width: 240px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    background: var(--att-card);
+    border: 1px solid var(--att-line);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
+}
+.att-menu-item {
+    text-align: left;
+    border: 0;
+    background: none;
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--att-ink);
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.att-menu-item:hover,
+.att-menu-item:focus-visible { background: var(--att-green-tint); color: var(--att-green); outline: none; }
+
+/* ── Totals: four tiles, then chips and the pay note ───────────── */
+
+.att-totals { display: flex; flex-direction: column; gap: 12px; }
+.att-totals .att-stats { margin-bottom: 0; }
+.att-totals-foot {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 20px;
+}
+.att-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+/* Static counts, not filters -- .att-chip is the clickable kind. */
+.att-tag {
+    display: inline-flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: var(--att-line-soft);
+    color: var(--att-ink-2);
+    font-size: 13px;
+    font-weight: 600;
+}
+.att-tag--closed { background: var(--att-red-tint); color: var(--att-red); }
+/* Visible, beside the figures it qualifies -- never a tooltip. */
+.att-paynote {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 0 auto;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--att-ink-2);
+}
+.att-paynote strong { color: var(--att-ink); }
+.att-paynote i, .att-paynote svg { width: 16px; height: 16px; color: var(--att-gold); flex-shrink: 0; }
+
+/* ── Tables ────────────────────────────────────────────────────── */
+
+.att-scroll { overflow-x: auto; }
+
+/* The open-days panel: columns hug their content and a filler cell
+   takes the spare width, so "Close this day" sits beside its row. */
+.att-table--hug th,
+.att-table--hug td { width: 1%; white-space: nowrap; }
+.att-table--hug .att-fill { width: auto; padding: 0; }
+
+/* The total row that closes each roll-up tab. */
+.att-sumrow td {
+    border-top: 1px solid var(--att-line);
+    border-bottom: 0;
+    background: var(--att-field);
+    font-weight: 700;
+    color: var(--att-ink);
+}
+
+@media (max-width: 720px) {
+    .att-report .att-banner-lead { font-size: 20px; }
+    .att-report .att-stat-value { font-size: 26px; }
+    .att-paynote { margin-left: 0; }
+}
+
+/* ── Weekly bonus: Mon–Fri cells, grouped by outcome ────────────── */
+
+.att-count--static { cursor: default; }
+.att-count.is-on { outline: 2px solid var(--att-green); outline-offset: -1px; }
+
+.att-rw-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--att-line-soft);
+}
+.att-rw-filters .att-search-wrap { flex: 1 1 200px; max-width: 280px; }
+.att-rw-note {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--att-muted);
+    cursor: help;
+}
+.att-rw-note i, .att-rw-note svg { width: 14px; height: 14px; }
+
+.att-rw-tablewrap { overflow-x: auto; }
+.att-rw-table th.att-rw-dayth, .att-rw-daytd { text-align: center; width: 54px; padding-left: 6px; padding-right: 6px; }
+.att-rw .att-table td { padding-top: 10px; padding-bottom: 10px; }
+.att-rw-amount { white-space: nowrap; }
+
+.att-day {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    font: 700 13px/1 inherit;
+    font-style: normal;
+    padding: 0;
+    background: none;
+    vertical-align: middle;
+}
+button.att-day { cursor: pointer; }
+button.att-day:hover { filter: brightness(0.95); }
+.att-day--ok      { background: var(--att-green-tint); color: var(--att-green); }
+.att-day--late    { background: var(--att-gold-tint);  color: var(--att-gold); }
+.att-day--missed  { background: var(--att-red-tint);   color: var(--att-red); }
+.att-day--unv     { background: #E8EEF6; color: #2A4D7A; }
+.att-day--pending { border: 1px dashed #C9C8C3; }
+.att-day--off, .att-day--unknown { opacity: 0.35; }
+.att-day--off::before, .att-day--unknown::before { content: '–'; color: var(--att-faint); }
+
+.att-rw-group td {
+    padding: 0;
+    background: var(--att-field);
+    border-bottom: 1px solid var(--att-line);
+}
+.att-rw-grouptoggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 22px;
+    background: none;
+    border: 0;
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--att-ink-2);
+    text-align: left;
+    cursor: pointer;
+}
+.att-rw-caret { width: 10px; color: var(--att-muted); }
+.att-rw-group--risk .att-rw-grouptoggle { color: var(--att-gold); }
+.att-rw-group--no   .att-rw-grouptoggle { color: var(--att-red); }
+.att-rw-group--on   .att-rw-grouptoggle { color: var(--att-green); }
+
+.att-rw-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 20px;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--att-line-soft);
+    font-size: 12.5px;
+    color: var(--att-muted);
+}
+.att-rw-legend span { display: inline-flex; align-items: center; gap: 8px; }
+.att-rw-legend .att-day { width: 22px; height: 22px; border-radius: 6px; font-size: 11px; }
+.att-rw-legend .att-day svg { width: 12px; height: 12px; }
+
+@media (max-width: 720px) {
+    .att-rw-filters { padding: 12px 14px; }
+    .att-rw-note { margin-left: 0; }
 }
