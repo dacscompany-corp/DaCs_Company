@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0088** — highest on disk is
-  `0087_pr_person_name_office.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0089** — highest on disk is
+  `0088_pr_worker_cancel_alignment.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble.
 - **`0075` and `0076` are TAKEN but not on `main`.** They belong to the abandoned
   project cost-plan branch (`project_cost_plans`, then its `%` columns) and **both
@@ -159,6 +159,8 @@ file creates the policy only when it is missing, so applying it live changes not
 **0086 (WorkMate Requests — office)** adds the owner/staff RPCs behind Dacs Web → Requests (queue, arranged, reductions, conflicts, batches, teams, catalogue, Allow requests) and `pr_folder_request_count`, which Dacs Web calls before deleting a project. It also **drops** the direct insert/update policies on `pr_batches`, `pr_teams`, `pr_team_members`, `pr_catalog_items` and `pr_project_settings` — those change only through the office RPCs. Dry-run with `supabase/tests/0086_verify.sql` (self-wrapped in begin/rollback) before applying.
 
 **0087 (Requests — office name)** changes only `pr_person_name`: owner/staff accounts with no display name now read **"Office"** instead of "Worker" in request history and the other office-facing names. Grants unchanged; no table or data changes.
+
+**0088 (WorkMate Requests — worker cancel alignment)** aligns a worker's cancel with the office's: cancelling the last open line now closes the request (like `pr_office_cancel_line`), and a new cancel of something already cancelled succeeds without change and records no event (same-op retries were already safe through `pr_ops`). The three request-first cancels (`pr_cancel_line`, `pr_cancel_request`, `pr_office_cancel_line`) take the request lock `FOR NO KEY UPDATE`, so they cannot deadlock with line-first RPCs; `pr_office_cancel_line` is re-declared with only that lock change. Grants unchanged; no table or data changes. Dry-run with `supabase/tests/1a_acceptance.sql` (self-wrapped in begin/rollback) before applying.
 
 Get the truth before relying on this line:
 

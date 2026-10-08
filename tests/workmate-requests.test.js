@@ -350,6 +350,59 @@ test('legacy requests: workers read only their own and write nothing', () => {
   }
 });
 
+// ── 0088: worker cancel alignment ──
+const M88 = path.join(ROOT, 'supabase/migrations/0088_pr_worker_cancel_alignment.sql');
+const M86 = path.join(ROOT, 'supabase/migrations/0086_workmate_requests_office.sql');
+const CODE88 = fs.existsSync(M88) ? fs.readFileSync(M88, 'utf8').replace(/--.*$/gm, '') : '';
+const CODE86 = fs.existsSync(M86) ? fs.readFileSync(M86, 'utf8').replace(/--.*$/gm, '') : '';
+function fnIn(code, name) {
+  const m = code.match(new RegExp('create or replace function ' + name + '\\s*\\([\\s\\S]*?\\$\\$;', 'i'));
+  return m ? m[0] : '';
+}
+const norm = x => x.replace(/\s+/g, ' ').trim();
+const REQ_LOCK = /perform 1 from pr_requests r where r\.id = \(select x\.request_id from pr_lines x where x\.id = p_line\) for (no key )?update;/;
+
+console.log('\nworkmate-requests (0088)');
+
+for (const name of ['pr_cancel_line', 'pr_cancel_request']) {
+  test('0088 ' + name + ': definer, pinned path, requester check, pr_ops replay', () => {
+    const f = fnIn(CODE88, name);
+    assert(f, 'no ' + name + ' in 0088');
+    assert(/security definer/i.test(f), 'not security definer');
+    assert(/set search_path = public/i.test(f), 'search_path not pinned');
+    assert(/pr_is_requester\(\)/.test(f), 'no pr_is_requester() check');
+    assert(/select o\.result into v_prev from pr_ops/.test(f), 'no pr_ops replay');
+  });
+}
+
+test('0088 pr_cancel_line: request lock is FOR NO KEY UPDATE and precedes the line lock', () => {
+  const f = fnIn(CODE88, 'pr_cancel_line');
+  const lock = f.search(REQ_LOCK);
+  assert(lock >= 0 && /for no key update;/.test(f.match(REQ_LOCK)[0]), 'request lock must be for no key update');
+  const lineLock = f.indexOf('for update of ln');
+  assert(lineLock > lock, 'request lock must come before "for update of ln"');
+});
+
+test('0088 pr_cancel_request: request lock is FOR NO KEY UPDATE', () => {
+  const f = fnIn(CODE88, 'pr_cancel_request');
+  assert(/from pr_requests where id = p_request for no key update;/.test(f), 'request lock must be for no key update');
+});
+
+test('0088 pr_cancel_line closes the request when no open line is left', () => {
+  const f = fnIn(CODE88, 'pr_cancel_line');
+  assert(f.includes('request_cancelled'), 'no request_cancelled event');
+  assert(f.includes("'by', 'worker'"), "no 'by', 'worker' detail");
+});
+
+test('0088 pr_office_cancel_line equals 0086 except for the NO KEY UPDATE request lock', () => {
+  const f88 = fnIn(CODE88, 'pr_office_cancel_line');
+  const f86 = fnIn(CODE86, 'pr_office_cancel_line');
+  assert(f88 && f86, 'pr_office_cancel_line missing in 0088 or 0086');
+  assert(/for no key update;/.test(f88.match(REQ_LOCK) ? f88.match(REQ_LOCK)[0] : ''), '0088 office cancel must use for no key update');
+  const expected = norm(f86.replace(/(where x\.id = p_line\) )for update;/, '$1for no key update;'));
+  assert(norm(f88) === expected, 'body differs from 0086 beyond the request lock');
+});
+
 // ── SUMMARY (keep last) ──
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) { console.log('\nFAILURES:\n  ' + failures.join('\n  ')); process.exit(1); }
