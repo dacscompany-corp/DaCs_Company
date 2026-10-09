@@ -60,7 +60,7 @@ const src = read('js/attendance-admin.js');
 const M = evalWith(
   slice(src, '// ==== ATT REPORT ENGINE START ====', '// ==== ATT REPORT ENGINE END ====', 'attendance-admin.js'),
   { window: {} },
-  ['attFormatHours', 'attRollUpByWorker', 'attRollUpByProject', 'attCsvCell', 'attToCsv',
+  ['attFormatHours', 'attRollUpByWorker', 'attRollUpByProject', 'attRollUpHours', 'attCsvCell', 'attToCsv',
    'attWorkerNameKey', 'attWorkerRoster', 'attValidateNewWorker',
    'attValidateEditWorker', 'attSplitName', 'attCanAbandon', 'attOpenRecords',
    'attDayNum', 'attKeyFromDayNum', 'attIsoDow', 'attWeekStartOf', 'attWeekEndOf',
@@ -508,6 +508,27 @@ test('an abandoned day still adds NO hours', () => {
   const rows = M.attRollUpByWorker([rec({ total_minutes: null, status: 'abandoned' })]);
   eq(rows[0].totalMinutes, 0);
   eq(M.attFormatHours(rows[0].totalMinutes), '0h 0m');
+});
+
+test('a worker or site with no finished day reads —, never 0h 0m', () => {
+  // totalMinutes stays 0 (the sum is still a sum), but "nothing was
+  // recorded" is not "worked zero hours", and the report must not say so.
+  const recs = [rec({ total_minutes: null, status: 'working' }),
+                rec({ total_minutes: null, status: 'abandoned' })];
+  const w = M.attRollUpByWorker(recs)[0];
+  const p = M.attRollUpByProject(recs)[0];
+  eq(w.hoursDays, 0);
+  eq(p.hoursDays, 0);
+  eq(M.attRollUpHours(w), '—');
+  eq(M.attRollUpHours(p), '—');
+});
+
+test('one finished day is enough to print real hours, even 0h 0m', () => {
+  // A finished day that really was zero minutes is a fact, not a gap.
+  const w = M.attRollUpByWorker([rec({ total_minutes: 0, status: 'complete' }),
+                                 rec({ total_minutes: null, status: 'working' })])[0];
+  eq(w.hoursDays, 1);
+  eq(M.attRollUpHours(w), '0h 0m');
 });
 
 console.log('\nX. The weekly reward (0065 / 0066)');
