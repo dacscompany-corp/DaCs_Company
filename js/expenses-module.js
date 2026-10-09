@@ -2715,29 +2715,42 @@ function setupExpenseFormListeners() {
 
 let _stagedPayReceipts = [];
 
-function compressImageToBase64(file) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-            const img = new Image();
-            img.onload = () => {
-                const MAX = 900;
-                let w = img.width, h = img.height;
-                if (w > MAX || h > MAX) {
-                    if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-                    else       { w = Math.round(w * MAX / h); h = MAX; }
-                }
-                const canvas = document.createElement('canvas');
-                canvas.width = w; canvas.height = h;
-                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-                resolve(canvas.toDataURL('image/jpeg', 0.75));
-            };
-            img.onerror = reject;
-            img.src = ev.target.result;
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
+// ── Receipt photos as FILES (spec 2026-10-08) ─────────────────────────
+// Photos are uploaded to the private `uploads` bucket BEFORE anything is
+// saved; the row keeps the file's public-format URL. A failed upload stops
+// the save and the form keeps its picks, so pressing Save again retries —
+// reusing files already uploaded (cache keyed by the File object).
+const _receiptUploadCache = new WeakMap();
+async function _uploadReceiptFile(kind, file) {
+    const hit = _receiptUploadCache.get(file);
+    if (hit) return hit;
+    const blob = await DacsReceipts.compressToBlob(file);
+    const url  = await DacsReceipts.uploadReceipt(kind, blob, _uid());
+    _receiptUploadCache.set(file, url);
+    return url;
+}
+
+// One id per Save press, kept until the save succeeds, so a retry after a
+// lost response can never create a second copy (0089 unique index).
+let _expSubmissionId = null;
+let _paySubmissionId = null;
+
+// All rows in ONE insert (all-or-nothing). If this submission already landed
+// (a retry after the response was lost), the unique index answers 23505 —
+// confirm the rows exist and report 'already' instead of saving twice.
+async function _saveRowsOnce(collection, rows, submissionId) {
+    try {
+        await db.collection(collection).addMany(rows);
+        return 'saved';
+    } catch (err) {
+        if (err && err.code === '23505' && String(err.message || '').includes('client_submission')) {
+            let snap;
+            try { snap = await db.collection(collection).where('clientSubmissionId', '==', submissionId).get(); }
+            catch (_) { throw new Error('This entry may already be saved — check the list before trying again.'); }
+            if (snap.size > 0) return 'already';
+        }
+        throw err;
+    }
 }
 
 async function handleAddExpense(e) {
@@ -2779,15 +2792,6 @@ async function handleAddExpense(e) {
     const toInventory = !!document.getElementById('expToInventory')?.checked;
     const invUnit     = document.getElementById('expInvUnit')?.value || 'pcs';
     const invMinStock = parseFloat(document.getElementById('expInvMinStock')?.value) || 0;
-    // Supporting docs (PO/DR/SI/PR) — compress only those the user selected
-    const _docMap = { po: 'expDocPO', dr: 'expDocDR', si: 'expDocSI', pay: 'expDocPR' };
-    const docUrls = {};
-    for (const [key, inputId] of Object.entries(_docMap)) {
-        const file = document.getElementById(inputId)?.files?.[0];
-        if (file) {
-            try { docUrls[key] = await compressImageToBase64(file); } catch (_) {}
-        }
-    }
 
     // Priority split: lowest remaining first; true overflow → Cover Expenses record
     const sortedSources = [...checkedSources].sort((a, b) => a.remain - b.remain);
@@ -2809,32 +2813,51 @@ async function handleAddExpense(e) {
     try {
         showExpLoading('addExpenseBtn', true);
 
-        const batch = db.batch();
-        splits.forEach((sp, idx) => {
-            const ref = db.collection('expenses').doc();
-            batch.set(ref, {
-                projectId:     sp.projectId,
-                userId:        _uid(),
-                expenseName:   expName + (splits.length > 1 ? ' (' + (idx + 1) + '/' + splits.length + ')' : ''),
-                category,
-                quantity:      splits.length > 1 ? 1 : qty,
-                amount:        sp.amount,
-                dateTime,
-                notes,
-                ...(paymentMethod ? { paymentMethod } : {}),
-                // Supporting documents (PO/DR/SI/PR) attached only to the first split record.
-                // Payment Receipt (PR) is the single proof-of-payment field — multi-image receipts removed.
-                ...(idx === 0 && docUrls.po  ? { poImageUrl:         docUrls.po  } : {}),
-                ...(idx === 0 && docUrls.dr  ? { deliveryReceiptUrl: docUrls.dr  } : {}),
-                ...(idx === 0 && docUrls.si  ? { supplierInvoiceUrl: docUrls.si  } : {}),
-                ...(idx === 0 && docUrls.pay ? { paymentReceiptUrl:  docUrls.pay } : {}),
-                createdAt:     firebase.firestore.FieldValue.serverTimestamp(),
-                ...(toInventory ? { inInventory: true } : {}),
-                ...(sp.coverExpense && { coverExpense: true }),
-                ...(splits.length > 1 && { splitGroup: dateTime + '_' + expName, splitIndex: idx + 1, splitTotal: splits.length })
-            });
-        });
-        await batch.commit();
+        // Supporting docs (PO/DR/SI/PR): uploaded as files first — a failure
+        // stops here with nothing saved and the form untouched.
+        const _docMap = { po: 'expDocPO', dr: 'expDocDR', si: 'expDocSI', pay: 'expDocPR' };
+        const docUrls = {};
+        for (const [key, inputId] of Object.entries(_docMap)) {
+            const file = document.getElementById(inputId)?.files?.[0];
+            if (file) docUrls[key] = await _uploadReceiptFile('expense', file);
+        }
+
+        if (!_expSubmissionId) _expSubmissionId = DacsReceipts.newId();
+        const rows = splits.map((sp, idx) => ({
+            projectId:     sp.projectId,
+            userId:        _uid(),
+            expenseName:   expName + (splits.length > 1 ? ' (' + (idx + 1) + '/' + splits.length + ')' : ''),
+            category,
+            quantity:      splits.length > 1 ? 1 : qty,
+            amount:        sp.amount,
+            dateTime,
+            notes,
+            ...(paymentMethod ? { paymentMethod } : {}),
+            // Supporting documents (PO/DR/SI/PR) attached only to the first split record.
+            ...(idx === 0 && docUrls.po  ? { poImageUrl:         docUrls.po  } : {}),
+            ...(idx === 0 && docUrls.dr  ? { deliveryReceiptUrl: docUrls.dr  } : {}),
+            ...(idx === 0 && docUrls.si  ? { supplierInvoiceUrl: docUrls.si  } : {}),
+            ...(idx === 0 && docUrls.pay ? { paymentReceiptUrl:  docUrls.pay } : {}),
+            createdAt:     firebase.firestore.FieldValue.serverTimestamp(),
+            clientSubmissionId: _expSubmissionId,
+            ...(toInventory ? { inInventory: true } : {}),
+            ...(sp.coverExpense && { coverExpense: true }),
+            ...(splits.length > 1 && { splitGroup: dateTime + '_' + expName, splitIndex: idx + 1, splitTotal: splits.length })
+        }));
+        const outcome = await _saveRowsOnce('expenses', rows, _expSubmissionId);
+        _expSubmissionId = null;
+        if (outcome === 'already') {
+            if (toInventory && expName) {
+                try { await _addExpenseToInventory(expName, qty, invUnit, invMinStock, notes); }
+                catch (e) { console.warn('Inventory sync failed:', e); showExpNotif('Saved, but inventory sync failed: ' + e.message, 'error'); }
+            }
+            showExpNotif('An earlier attempt of this expense was already saved — check the list; changes made since were not applied.', 'success');
+            refreshOvAllData();
+            document.getElementById('addExpenseForm').reset();
+            document.getElementById('expSplitPreview').style.display = 'none';
+            closeExpModal('addExpenseModal');
+            return;
+        }
 
         // Mirror to the shared Construction inventory when flagged as a stock item.
         if (toInventory && expName) {
@@ -3160,32 +3183,42 @@ async function handleAddPayroll(e) {
         showExpLoading('addPayrollBtn', true);
         const validReceipts = _stagedPayReceipts.filter(r => r !== null);
         const receiptImages = [];
-        for (const item of validReceipts) receiptImages.push(await compressImageToBase64(item.file));
+        for (const item of validReceipts) receiptImages.push(await _uploadReceiptFile('payroll', item.file));
 
+        if (!_paySubmissionId) _paySubmissionId = DacsReceipts.newId();
         const _splitStamp = String(Date.now());
-        const batch = db.batch();
-        splits.forEach((sp, idx) => {
-            const ref = db.collection('payroll').doc();
-            batch.set(ref, {
-                projectId: sp.projectId, userId: _uid(),
-                workerName, role, laborType,
-                ...(liabilityFor && { liabilityFor }),
-                daysWorked: splits.length > 1 ? 0 : d, dailyRate: r,
-                totalSalary: sp.amount,
-                paymentDate, notes,
-                ...(paymentMethod && { paymentMethod }),
-                receiptImages: idx === 0 ? receiptImages : [],
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                ...(sp.contractId && { contractId: sp.contractId }),
-                ...(payMilestone && { payMilestone }),
-                ...(sp.coverExpense && { coverExpense: true }),
-                // Dates are optional, so a dateless split falls back to the save
-                // timestamp — otherwise two dateless splits for the same worker
-                // would share one splitGroup key.
-                ...(splits.length > 1 && { splitGroup: (paymentDate || _splitStamp) + '_' + workerName, splitIndex: idx + 1, splitTotal: splits.length })
-            });
-        });
-        await batch.commit();
+        const rows = splits.map((sp, idx) => ({
+            projectId: sp.projectId, userId: _uid(),
+            workerName, role, laborType,
+            ...(liabilityFor && { liabilityFor }),
+            daysWorked: splits.length > 1 ? 0 : d, dailyRate: r,
+            totalSalary: sp.amount,
+            paymentDate, notes,
+            ...(paymentMethod && { paymentMethod }),
+            receiptImages: idx === 0 ? receiptImages : [],
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            clientSubmissionId: _paySubmissionId,
+            ...(sp.contractId && { contractId: sp.contractId }),
+            ...(payMilestone && { payMilestone }),
+            ...(sp.coverExpense && { coverExpense: true }),
+            // Dates are optional, so a dateless split falls back to the save
+            // timestamp — otherwise two dateless splits for the same worker
+            // would share one splitGroup key.
+            ...(splits.length > 1 && { splitGroup: (paymentDate || _splitStamp) + '_' + workerName, splitIndex: idx + 1, splitTotal: splits.length })
+        }));
+        const outcome = await _saveRowsOnce('payroll', rows, _paySubmissionId);
+        _paySubmissionId = null;
+        if (outcome === 'already') {
+            showExpNotif('An earlier attempt of this payroll entry was already saved — check the list; changes made since were not applied.', 'success');
+            refreshOvAllData();
+            document.getElementById('addPayrollForm').reset();
+            lcResetContractPicks();
+            if (typeof payResetMilestone === 'function') payResetMilestone();
+            if (typeof payToggleMode === 'function') payToggleMode();
+            clearPayReceiptPreview();
+            closeExpModal('addPayrollModal');
+            return;
+        }
 
         const msg = contractAlloc.length > 1
             ? `Split across ${contractAlloc.length} contracts (${splits.length} records) ✓`
@@ -3772,8 +3805,8 @@ async function openWorkerSummaryModal(workerName) {
 window.openWorkerSummaryModal = openWorkerSummaryModal;
 
 function printWorkerReceiptSummary(workerName) {
-    // Sync on purpose (window.open below must stay in the click) — the summary
-    // modal already fetched any photo-free rows into _payFullCache.
+    // window.open stays synchronous at the top (pop-up blockers); signing happens after.
+    // The summary modal already fetched any photo-free rows into _payFullCache.
     const allPay = _mergePayrollPools();
 
     const entries = allPay
@@ -3781,6 +3814,12 @@ function printWorkerReceiptSummary(workerName) {
         .sort((a, b) => new Date(a.paymentDate || 0) - new Date(b.paymentDate || 0));
 
     if (!entries.length) return;
+
+    const w = window.open('', '_blank', 'width=820,height=1050');
+    if (!w) { alert('Please allow pop-ups to print.'); return; }
+    w.document.write('<p style="font:14px Arial,sans-serif;padding:24px;color:#555">Preparing receipts…</p>');
+    let html;
+    try {
 
     const totalPaid   = entries.reduce((s, p) => s + (p.totalSalary || 0), 0);
     const totalDays   = entries.reduce((s, p) => s + (Number(p.daysWorked) || 0), 0);
@@ -3866,9 +3905,7 @@ function printWorkerReceiptSummary(workerName) {
         </div>`;
     }).join('');
 
-    const w = window.open('', '_blank', 'width=820,height=1050');
-    if (!w) { alert('Please allow pop-ups to print.'); return; }
-    w.document.write(`<!DOCTYPE html>
+    html = `<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <title>Payroll Summary — ${esc(workerName)}</title>
 <style>${window.dacsStatementCSS()}</style>
@@ -3923,8 +3960,20 @@ ${window.dacsStatementSigns([
 ${window.dacsStatementFoot([bizName, bizAddr].filter(Boolean).join(' · '), docRef + ' · Naprint ' + today)}
 </div>
 ${window.dacsStatementPrintScript()}
-</body></html>`);
-    w.document.close();
+</body></html>`;
+    } catch (err) {
+        try { w.close(); } catch (_) {}
+        showExpNotif('Couldn’t prepare the print: ' + (err.message || err), 'error');
+        return;
+    }
+
+    // A separate window doesn't run supabase-config §11b — sign the stored
+    // photo links first, then write the page (its print script waits for load).
+    DacsReceipts.signHtml(html).catch(() => html).then((signed) => {
+        w.document.open();
+        w.document.write(signed);
+        w.document.close();
+    });
 }
 window.printWorkerReceiptSummary = printWorkerReceiptSummary;
 
@@ -4222,9 +4271,7 @@ async function handleEditExpense(ev) {
         };
         for (const [field, inputId] of Object.entries(_editDocMap)) {
             const file = document.getElementById(inputId)?.files?.[0];
-            if (file) {
-                try { updateData[field] = await compressImageToBase64(file); } catch (_) {}
-            }
+            if (file) updateData[field] = await _uploadReceiptFile('expense', file);
         }
 
         await db.collection('expenses').doc(_editingExpenseId).update(updateData);
@@ -4351,7 +4398,7 @@ async function handleEditPayroll(ev) {
         const eTotal = _eLamsam ? (parseFloat((document.getElementById('editPayTotal').value||'').replace(/,/g,'')) || 0) : (d * r);
         const newImgs = [];
         for (const item of _editPayStaged.filter(x => x !== null))
-            newImgs.push(await compressImageToBase64(item.file));
+            newImgs.push(await _uploadReceiptFile('payroll', item.file));
         const finalImages = [..._editPayKept, ...newImgs];
         const laborType = (document.querySelector('input[name="editPayLaborType"]:checked') || {}).value || 'direct';
         const liabilityFor = laborType === 'liability'
@@ -4431,6 +4478,11 @@ function openExpModal(id)  {
     const m = document.getElementById(id); if (m) m.classList.add('active');
 }
 function closeExpModal(id) {
+    // A submission id belongs to ONE open form (spec 2026-10-08 §4.3): closing
+    // the form forgets it, so a later, different entry can never be mistaken
+    // for an earlier save whose response was lost.
+    if (id === 'addExpenseModal') _expSubmissionId = null;
+    if (id === 'addPayrollModal') _paySubmissionId = null;
     const m = document.getElementById(id);
     if (m) m.classList.remove('active');
     // Clear staged payroll receipts when closing that modal
@@ -5512,6 +5564,12 @@ function printTransactionReceipt(type, id) {
         : (expPayroll.find(p => p.id === id)  || _pmPay.find(p => p.id === id));
     if (!record) { showExpNotif('Record not found.', 'error'); return; }
 
+    const win = window.open('', '_blank', 'width=600,height=800');
+    if (!win) { showExpNotif('Pop-up blocked. Please allow pop-ups for this site.', 'error'); return; }
+    win.document.write('<p style="font:14px Arial,sans-serif;padding:24px;color:#555">Preparing receipts…</p>');
+    let html;
+    try {
+
     const project = expProjects.find(p => p.id === record.projectId);
     const folder  = project?.folderId ? expFolders.find(f => f.id === project.folderId) : null;
 
@@ -5559,7 +5617,7 @@ function printTransactionReceipt(type, id) {
            <div class="rc-imgs">${images.map((src, i) => `<img src="${src}" alt="Receipt ${i+1}">`).join('')}</div>`
         : '';
 
-    const html = `<!DOCTYPE html>
+    html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -5645,11 +5703,17 @@ function printTransactionReceipt(type, id) {
 <script>window.onload = () => { window.print(); window.onafterprint = () => window.close(); };<\/script>
 </body>
 </html>`;
+    } catch (err) {
+        try { win.close(); } catch (_) {}
+        showExpNotif('Couldn’t prepare the print: ' + (err.message || err), 'error');
+        return;
+    }
 
-    const win = window.open('', '_blank', 'width=600,height=800');
-    if (!win) { showExpNotif('Pop-up blocked. Please allow pop-ups for this site.', 'error'); return; }
-    win.document.write(html);
-    win.document.close();
+    DacsReceipts.signHtml(html).catch(() => html).then((signed) => {
+        win.document.open();
+        win.document.write(signed);
+        win.document.close();
+    });
 }
 
 // ─────────────────────────────────────────────────────────-----------------------------------------------------------

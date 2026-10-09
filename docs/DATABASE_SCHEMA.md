@@ -190,10 +190,11 @@ no envelope.
 | `dateTime` | string | |
 | `notes` | string | |
 | `paymentMethod?` | string | |
-| `poImageUrl?` `deliveryReceiptUrl?` `supplierInvoiceUrl?` `paymentReceiptUrl?` | base64 | docs (PO/DR/SI/PR), only on first split |
+| `poImageUrl?` `deliveryReceiptUrl?` `supplierInvoiceUrl?` `paymentReceiptUrl?` | base64 data URL (older rows) or stored-file URL `…/object/public/uploads/expenseReceipts/…` (0089+) | docs (PO/DR/SI/PR), only on first split |
 | `inInventory?` | bool | mirrored to `inventory` |
 | `coverExpense?` | bool | overflow charged to president fund |
 | `splitGroup?` `splitIndex?` `splitTotal?` | — | multi-source split metadata |
+| `clientSubmissionId?` | uuid | `client_submission_id` — one id per Save press; unique with `split_index` (0089), so a retry cannot duplicate |
 | `createdAt` | ts | |
 
 ### `payroll/{id}` — labor spend (also batch + split)
@@ -203,9 +204,23 @@ no envelope.
 | `workerName`, `role`, `laborType` | string | |
 | `daysWorked`, `dailyRate`, `totalSalary` | number | |
 | `paymentDate`, `notes` | string | |
-| `receiptImages` | base64[] | only on first split |
+| `receiptImages` | base64 data URL[] (older rows) or stored-file URL `…/object/public/uploads/payrollReceipts/…` (0089+) | only on first split |
 | `coverExpense?` / `splitGroup?` / `splitIndex?` / `splitTotal?` | — | as expenses |
+| `clientSubmissionId?` | uuid | `client_submission_id` — one id per Save press; unique with `split_index` (0089), so a retry cannot duplicate |
 | `createdAt` | ts | |
+
+### `receipt_uploads` (migration 0089) — ledger of receipt photo files
+One row per file uploaded to `expenseReceipts/` or `payrollReceipts/` (path `<folder>/<owner_id>/<yyyy-mm>/<uuid>.jpg`). Owner/staff of that company only.
+| Column | Type | Notes |
+|---|---|---|
+| `path` | text PK | storage path; checked against the pattern above |
+| `owner_id` | uuid | data owner (`profiles.id`); must equal path segment 2 |
+| `kind` | text | `expense` or `payroll`; must match the folder |
+| `uploaded_by` | uuid | default `auth.uid()` |
+| `state` | text | `pending` → `attached` (set by trigger when an expenses/payroll row references the file); `migrated` and `deleted` come in plans 2–3 |
+| `created_at`, `attached_at`, `deleted_at` | timestamptz | |
+
+Insert is column-granted to (`path`, `owner_id`, `kind`) only; `uploaded_by`, `state` and the timestamps always take their defaults. The attach trigger only flips the SAME company's pending rows.
 
 ### `laborContracts/{id}` → `labor_contracts` — pakyaw / in-house capped pay (migration 0014; `category` 0057; `works` 0062)
 | Field | Type | Notes |

@@ -56,8 +56,10 @@ db.collection('payroll').where('userId', '==', uid).onSnapshot(...)
 - `jsonbData` — tables whose fields live in a single `data` jsonb blob
 - `children` — nested arrays (e.g. `invoices.items` → `invoice_items`)
 - `onSnapshot` is a real Postgres realtime subscription that re-runs the query on change
-- `.omit(...fields)` (not Firestore) — a list read **without** heavy fields. Receipt photos
-  are inline base64 in `expenses` / `payroll` (~14 MB for one owner by 2026-10); Project
+- `.omit(...fields)` (not Firestore) — a list read **without** heavy fields. Older receipt
+  photos are inline base64 in `expenses` / `payroll` (~14 MB for one owner by 2026-10) until the
+  plan-2 move; new ones are files in `uploads/expenseReceipts|payrollReceipts/<owner>/…`
+  (0089, `js/receipt-storage.js`). Project
   Control reads both with `.omit()` and fetches a row's photos on demand. Each doc gets
   `_lazy: {field: true}` per omitted field that holds a value. A `_lazy` doc is a **partial
   copy**: load the full doc (`doc(id).get()`) before viewing its photos or **saving** it, or
@@ -122,6 +124,7 @@ Also note: **`projects` means billing period**, not project. Read it that way ev
 | Payment Requests | `payment-requests.js` | |
 | Construction (procurement) | `construction-module.js` | Batches, requests, inventory |
 | Clients | `client-accounts.js`, `user-navigator.js` | |
+| Receipt Storage | `receipt-storage.js` | Uploads new expense/payroll receipt photos to the private `uploads` bucket (`0089`) and signs stored-file links for viewing/printing; not a nav section |
 | Expense Inbox | `expense-inbox.js` | Shared receipt photos awaiting encoding — serves **both** project systems (`system: 'pc'` / `'pm'`). No amounts stored |
 | System Errors | `error-log.js` | **Owner-only** reader for `client_errors`. The reporter is `supabase-config.js` §13 |
 | AI | `ai-summary.js`, `ai-assistant.js` | Folder briefings, health check |

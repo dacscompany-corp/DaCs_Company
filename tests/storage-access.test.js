@@ -71,6 +71,7 @@ const FOLDERS = {
   projectTerms: 'clientProject',
   agreementDocs: 'template',
   signatures: 'uploaderOwn', 'signed-terms': 'uploaderOwn',
+  expenseReceipts: 'tenant', payrollReceipts: 'tenant',
 };
 const OWNER_ONLY_SQL = "('quotations', 'reimbursementReceipts')";
 const CLIENT_PROJECT_SQL = "('weeklyBillReceipts', 'procurementReceipts', 'accomplishmentReports', 'projectTerms')";
@@ -163,6 +164,22 @@ test('client uploads are limited to their own signature / signed-terms / project
   ok(sql.includes("'^signatures/(proj_[0-9a-f-]{36}_)?' || v_uid::text || '_[0-9]+\\.png$'"), 'signature path rule changed');
   ok(sql.includes("v_folder = 'signed-terms'  then return v_seg2 = v_uid::text"), 'signed-terms rule changed');
   ok(sql.includes("v_folder = 'procurementReceipts'"), 'procurement receipt upload rule missing');
+});
+
+test('receipt folders are tenant-locked (0089): owner/staff of THAT company only', () => {
+  const r = lastFn('uploads_can_read');
+  const w = lastFn('uploads_can_write');
+  const RULE = "v_folder in ('expenseReceipts', 'payrollReceipts') then\n    return (is_owner() or is_staff()) and split_part(p_name, '/', 2) = data_owner_id()::text;";
+  ok(r.includes(RULE), 'read rule for receipt folders missing or reshaped');
+  ok(w.includes(RULE), 'write rule for receipt folders missing or reshaped');
+  // Must run BEFORE the generic owner/staff grant, or any company's staff could read them.
+  ok(r.indexOf("'expenseReceipts'") < r.indexOf('if is_owner() or is_staff() then return true'), 'read: tenant rule must precede the generic owner/staff rule');
+  ok(w.indexOf("'expenseReceipts'") < w.indexOf('if is_owner() or is_staff() then return true'), 'write: tenant rule must precede the generic owner/staff rule');
+  const sql = allRules();
+  const from = sql.lastIndexOf('create policy "uploads_admin_update"');
+  const upd = sql.slice(from, sql.indexOf(');', from) + 2);
+  ok(upd.includes("split_part(name, '/', 1) in ('expenseReceipts', 'payrollReceipts')") && upd.includes("split_part(name, '/', 2) = data_owner_id()::text"),
+    'overwrite policy is not tenant-locked for receipt folders');
 });
 
 console.log('\nIII. Every upload folder is classified');

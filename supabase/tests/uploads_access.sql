@@ -15,6 +15,9 @@
 --
 -- The expectation (pg_temp.expected_for) is written independently of the
 -- policy functions, as plain joins, so a bug in one is caught by the other.
+--
+-- 0089 tenant-locks expenseReceipts/ and payrollReceipts/ (owner/staff of the
+-- company in path segment 2).
 -- ════════════════════════════════════════════════════════════════════
 begin;
 
@@ -41,7 +44,8 @@ end $$;
 create function pg_temp.expected_for(p_uid uuid) returns int
 language sql as $$
   with me as (
-    select p.id, lower(u.email) as email, coalesce(p.role, '') as role
+    select p.id, lower(u.email) as email, coalesce(p.role, '') as role,
+           case when coalesce(p.role,'') = 'staff' then coalesce(p.owner_id, p.id) else p.id end as data_owner
       from profiles p join auth.users u on u.id = p.id
      where p.id = p_uid
   ),
@@ -54,7 +58,8 @@ language sql as $$
    where o.bucket_id = 'uploads'
      and (   o.owner_id = p_uid::text
           or (split_part(o.name, '/', 1) in ('quotations', 'reimbursementReceipts') and me.role = 'owner')
-          or (split_part(o.name, '/', 1) not in ('quotations', 'reimbursementReceipts') and me.role in ('owner', 'staff'))
+          or (split_part(o.name, '/', 1) not in ('quotations', 'reimbursementReceipts', 'expenseReceipts', 'payrollReceipts') and me.role in ('owner', 'staff'))
+          or (split_part(o.name, '/', 1) in ('expenseReceipts', 'payrollReceipts') and me.role in ('owner', 'staff') and split_part(o.name, '/', 2) = me.data_owner::text)
           or (split_part(o.name, '/', 1) in ('weeklyBillReceipts', 'procurementReceipts', 'accomplishmentReports', 'projectTerms')
               and split_part(o.name, '/', 2) in (select id::text from mine))
           or (split_part(o.name, '/', 1) = 'employeeTermsGlobal' and me.role in ('worker', 'teamLeader'))
@@ -85,7 +90,6 @@ select set_config('t.other_pid', '00000000-0000-4000-8000-000000000000', true);
 select set_config('t.partner', (select p.id::text from profiles p join construction_projects c
                                    on lower(c.partner_email) = lower(p.email) limit 1), true);
 select set_config('t.design',  (select id::text from profiles where kind = 'client' limit 1), true);
-select set_config('t.total',   (select count(*)::text from storage.objects where bucket_id = 'uploads'), true);
 
 -- A fixture that found no row reads back as '' (set_config stores NULL as an
 -- empty string), so test for '' rather than NULL.
@@ -121,9 +125,8 @@ select pg_temp.act_as(current_setting('t.owner')::uuid);
 set local role authenticated;
 select set_config('t.seen', (select count(*)::text from storage.objects where bucket_id = 'uploads'), true);
 reset role;
-select pg_temp.check(current_setting('t.seen')::int = current_setting('t.total')::int
-                 and current_setting('t.seen')::int = pg_temp.expected_for(current_setting('t.owner')::uuid),
-                 'main owner sees every upload');
+select pg_temp.check(current_setting('t.seen')::int = pg_temp.expected_for(current_setting('t.owner')::uuid),
+                 'main owner sees every upload except other companies'' receipts');
 
 select pg_temp.act_as(current_setting('t.subowner')::uuid);
 set local role authenticated;

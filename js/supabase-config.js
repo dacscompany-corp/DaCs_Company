@@ -433,6 +433,23 @@ class CollectionRef extends Query {
     if (c.children) await writeChildren(c, ins.id, data);
     return new DocRef(c, ins.id, this.ctx, ins);
   }
+  // One INSERT for many rows — a single statement, so all rows commit or none
+  // do. batch.commit() writes rows one at a time (a split expense could half-
+  // save). defaultToNull:false: a key missing from some rows takes the column
+  // default, not NULL. Errors are thrown unchanged (callers read err.code).
+  async addMany(list) {
+    const c = this.cfg;
+    if (c.kv || c.jsonbData || c.children) throw new Error('addMany: not supported for ' + c.table);
+    if (!list || !list.length) return [];
+    const rows = list.map((data) => {
+      const row = toRow(c, data);
+      if (this.ctx) row[this.ctx.col] = this.ctx.val;
+      return row;
+    });
+    const { data: ins, error } = await sb.from(c.table).insert(rows, { defaultToNull: false }).select();
+    if (error) throw error;
+    return ins.map((r) => new DocRef(c, r.id, this.ctx, r));
+  }
 }
 
 class DocRef {
