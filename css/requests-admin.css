@@ -53,3 +53,112 @@
 @media (max-width: 640px) {
     .req-history-item { grid-template-columns: 1fr; gap: 2px; }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   Request queue — layout (js/requests-admin-queue.js)
+   Same type rules as the Attendance pages: Barlow with lining numerals
+   for data and controls, the serif for the page title only.
+   ════════════════════════════════════════════════════════════════════ */
+
+.req-queue {
+    font-family: var(--att-sans);
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: "lnum" 1, "tnum" 1;
+}
+.req-queue .att-title { font-family: var(--att-serif); font-feature-settings: "lnum" 1; }
+.req-queue .att-sub,
+.req-queue .req-muted,
+.req-queue .req-count { color: #55555A; }
+.req-queue .att-filter,
+.req-queue .att-search,
+.req-queue .att-seg-btn,
+.req-queue .att-info,
+.req-queue .req-toggle { font-family: var(--att-sans); }
+
+/* This week: cutoff → buy → deliver, each on its own label. */
+.req-week { align-items: center; }
+.req-week-main { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; width: 100%; }
+.req-week-title { font-weight: 700; color: var(--att-ink); }
+.req-steps { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.req-step {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 7px;
+    padding: 4px 11px;
+    background: #fff;
+    border: 1px solid var(--att-line);
+    border-radius: 999px;
+}
+.req-step em {
+    font-style: normal;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #55555A;
+}
+.req-step strong { font-weight: 600; color: var(--att-ink); }
+.req-arrow { color: var(--att-faint); }
+.req-week-note { color: #55555A; }
+.req-week-edit { margin-left: auto; }
+
+/* The one-line picture above the table. */
+.req-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.req-sum {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 12px;
+    border-radius: 999px;
+    background: var(--att-line-soft);
+    font-size: 17px;
+    color: var(--att-ink-2);
+}
+.req-sum strong { font-weight: 700; color: var(--att-ink); }
+.req-sum::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #B9B9B5; }
+.req-sum--plain::before { display: none; }
+.req-sum--red { background: var(--att-red-tint); }
+.req-sum--red::before { background: var(--att-red); }
+.req-sum--gold { background: var(--att-gold-tint); }
+.req-sum--gold::before { background: var(--att-gold); }
+.req-sum--green { background: var(--att-green-tint); }
+.req-sum--green::before { background: var(--att-green); }
+
+.req-tabn { margin-left: 4px; font-weight: 700; opacity: .75; }
+.req-count { margin-left: auto; font-size: 13px; }
+
+/* Table */
+.req-table td { vertical-align: middle; }
+.req-received { white-space: nowrap; color: var(--att-ink-2); }
+.req-status { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.req-urgent--late { background: var(--att-red); color: #fff; }
+
+.req-row.is-urgent td:first-child { box-shadow: inset 4px 0 0 var(--att-red); }
+.req-row.is-overdue td { background: #FDF6F5; }
+.req-row.is-overdue:hover td { background: var(--att-red-tint); }
+.req-row.is-done td:not(.req-status-cell):not(.req-go) { opacity: .72; }
+
+.req-go { width: 40px; text-align: right; color: var(--att-faint); }
+.req-go svg { width: 18px; height: 18px; vertical-align: middle; }
+.req-row:hover .req-go { color: var(--att-green); }
+.req-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Group headings: Urgent · one per weekly batch · Nothing left to arrange */
+.req-group td {
+    padding: 10px 18px;
+    background: #F7F7F5;
+    border-top: 1px solid var(--att-line);
+    border-bottom: 1px solid var(--att-line);
+    font-size: 13px;
+}
+.req-group-title { font-weight: 700; color: var(--att-ink); margin-right: 10px; }
+.req-group-meta { color: #55555A; margin-right: 12px; }
+.req-group-count { float: right; color: #55555A; }
+.req-group--urgent td { background: var(--att-red-tint); }
+.req-group--urgent .req-group-title { color: var(--att-red); }
+.req-group .att-pill { margin-right: 10px; padding: 2px 9px; font-size: 11.5px; }
+
+@media (max-width: 640px) {
+    .req-week-edit { margin-left: 0; }
+    .req-count { margin-left: 0; }
+}
