@@ -507,25 +507,96 @@
 
     const catUi = { text: '', kind: '', showInactive: false };
 
-    function itemModal(item, rerender) {
+    const normText = s => String(s || '').trim().toLowerCase();
+    // "ZZ test pipe · 1/2 in" -- the name and size are one item's identity.
+    const itemLabel = i => i.name + (i.spec ? ' · ' + i.spec : '');
+
+    // The database refuses a second ACTIVE item with the same kind, name,
+    // size and unit (index pr_catalog_identity, 0085). Said here first, so
+    // the admin sees which item they would be duplicating instead of an
+    // error code after pressing Save.
+    function findDuplicate(items, v, selfId) {
+        return items.find(i => i.active && i.id !== selfId && i.kind === v.kind &&
+            normText(i.name) === normText(v.name) && normText(i.spec) === normText(v.spec) &&
+            normText(i.unit) === normText(v.unit)) || null;
+    }
+
+    // Existing values first, so "electrical" is picked rather than retyped as
+    // "Electrical" and split into two categories.
+    function uniqueValues(list, extra) {
+        const seen = new Set();
+        const out = [];
+        list.concat(extra || []).forEach(function (v) {
+            const t = String(v || '').trim();
+            if (t && !seen.has(t.toLowerCase())) { seen.add(t.toLowerCase()); out.push(t); }
+        });
+        return out;
+    }
+
+    function itemModal(item, rerender, items) {
         const v = item || { kind: 'material', name: '', spec: '', unit: '', category: '', active: true };
+        const categories = uniqueValues(items.map(i => i.category)).sort((a, b) => a.localeCompare(b));
+        const units = uniqueValues(items.map(i => i.unit), ['pc', 'bag', 'm', 'kg', 'set', 'roll', 'box', 'sack', 'pail', 'length']);
+        const opts = list => list.map(x => '<option value="' + esc(x) + '"></option>').join('');
         RA.modal({
             title: item ? 'Edit item' : 'New item',
             sub: 'One row = one exact item. A different size or unit is a different item.',
             body:
-                '<div class="att-field"><label for="reqKind">Kind</label><select class="att-input" id="reqKind" name="kind">' +
-                  '<option value="material"' + (v.kind === 'material' ? ' selected' : '') + '>Material</option>' +
-                  '<option value="tool"' + (v.kind === 'tool' ? ' selected' : '') + '>Tool</option></select></div>' +
-                '<div class="att-field"><label for="reqCat">Category <span class="att-hint-inline">(optional)</span></label>' +
-                  '<input class="att-input" id="reqCat" name="category" maxlength="60" value="' + esc(v.category) + '" placeholder="e.g. plumbing"></div>' +
-                '<div class="att-field att-span"><label for="reqName">Name</label>' +
-                  '<input class="att-input" id="reqName" name="name" maxlength="120" value="' + esc(v.name) + '" placeholder="e.g. PVC pipe"></div>' +
-                '<div class="att-field"><label for="reqSpec">Size / spec <span class="att-hint-inline">(optional)</span></label>' +
-                  '<input class="att-input" id="reqSpec" name="spec" maxlength="120" value="' + esc(v.spec) + '" placeholder="e.g. 1/2 in, 3 m"></div>' +
-                '<div class="att-field"><label for="reqUnit">Unit</label>' +
-                  '<input class="att-input" id="reqUnit" name="unit" maxlength="30" value="' + esc(v.unit) + '" placeholder="e.g. pc, bag, m"></div>' +
-                (item ? '<label class="req-toggle att-span"><input type="checkbox" name="active"' + (v.active ? ' checked' : '') + '> Active (workers can pick it)</label>' : ''),
+                '<div class="req-im">' +
+                  '<div class="req-im-grid">' +
+                    '<div class="att-field"><label for="reqKind">Kind</label><select class="att-input" id="reqKind" name="kind">' +
+                      '<option value="material"' + (v.kind === 'material' ? ' selected' : '') + '>Material</option>' +
+                      '<option value="tool"' + (v.kind === 'tool' ? ' selected' : '') + '>Tool</option></select></div>' +
+                    '<div class="att-field"><label for="reqCat">Category <span class="att-hint-inline">(optional)</span></label>' +
+                      '<input class="att-input" id="reqCat" name="category" maxlength="60" list="reqCatList" value="' + esc(v.category) + '" placeholder="e.g. plumbing">' +
+                      '<datalist id="reqCatList">' + opts(categories) + '</datalist></div>' +
+                    '<div class="att-field req-im-wide"><label for="reqName">Name</label>' +
+                      '<input class="att-input" id="reqName" name="name" maxlength="120" required value="' + esc(v.name) + '" placeholder="e.g. PVC pipe"></div>' +
+                    '<div class="att-field"><label for="reqSpec">Size / spec <span class="att-hint-inline">(optional)</span></label>' +
+                      '<input class="att-input" id="reqSpec" name="spec" maxlength="120" value="' + esc(v.spec) + '" placeholder="e.g. 1/2 in, 3 m"></div>' +
+                    '<div class="att-field"><label for="reqUnit">Unit</label>' +
+                      '<input class="att-input" id="reqUnit" name="unit" maxlength="30" required list="reqUnitList" value="' + esc(v.unit) + '" placeholder="e.g. pc, bag, m">' +
+                      '<datalist id="reqUnitList">' + opts(units) + '</datalist></div>' +
+                  '</div>' +
+                  (item ? '<label class="req-toggle"><input type="checkbox" name="active"' + (v.active ? ' checked' : '') + '> Active (workers can pick it)</label>' : '') +
+                  '<div class="req-im-note" data-note aria-live="polite"></div>' +
+                '</div>',
             submitLabel: item ? 'Save' : 'Add item',
+            // The form says back what this item is, warns when it would
+            // duplicate an active one, and keeps Save off until the item is
+            // complete (and, when editing, different from what is saved).
+            onOpen: (form) => {
+                form.closest('.att-modal-box').classList.add('req-im-box');
+                const save = form.querySelector('[data-submit]');
+                const note = form.querySelector('[data-note]');
+                function current() {
+                    return { kind: form.kind.value, name: form.name.value, spec: form.spec.value,
+                             unit: form.unit.value, category: form.category.value,
+                             active: item ? form.active.checked : true };
+                }
+                function refresh() {
+                    const c = current();
+                    const complete = c.name.trim() && c.unit.trim();
+                    const dup = c.active ? findDuplicate(items, c, item ? item.id : null) : null;
+                    const changed = !item || ['kind', 'name', 'spec', 'unit', 'category'].some(k => String(c[k]).trim() !== String(v[k] || '').trim()) ||
+                                    c.active !== v.active;
+                    if (dup) {
+                        note.className = 'req-im-note req-im-note--bad';
+                        note.innerHTML = 'Already in the catalogue: <strong>' + esc(itemLabel(dup)) + '</strong> · ' + esc(dup.unit) +
+                            '. Open that item to change it, or make this one different (size or unit).';
+                    } else if (complete) {
+                        note.className = 'req-im-note';
+                        note.innerHTML = 'This item: <strong>' + esc(itemLabel(c)) + '</strong> · ' + esc(c.unit.trim());
+                    } else {
+                        note.className = 'req-im-note req-im-note--hint';
+                        note.textContent = 'Fill in the name and the unit.';
+                    }
+                    save.disabled = !complete || !!dup || !changed;
+                }
+                form.addEventListener('input', refresh);
+                form.addEventListener('change', refresh);
+                refresh();
+            },
             onSubmit: async (form) => {
                 await RA.rpc('pr_office_save_item', {
                     p_item: item ? item.id : null,
@@ -542,48 +613,104 @@
     }
 
     async function renderCatalog(host) {
-        host.innerHTML = '<div class="att-stack"><div class="att-empty">Loading the catalogue…</div></div>';
+        host.innerHTML = '<div class="att-stack req-catalog"><div class="att-empty">Loading the catalogue…</div></div>';
         let items;
         try { items = await RA.rpc('pr_office_catalog'); } catch (e) { RA.fail(host, e); return; }
-        items = items || [];
+        items = (items || []).slice().sort((a, b) =>
+            (b.active - a.active) || String(a.name).localeCompare(String(b.name)) || String(a.spec).localeCompare(String(b.spec)));
         const rerender = () => renderCatalog(host);
+        const inactiveCount = items.filter(i => !i.active).length;
         host.innerHTML =
-            '<div class="att-stack">' +
+            '<div class="att-stack req-catalog">' +
               head('Item catalogue', 'The materials and tools workers pick from. Unlisted items are matched to an entry here from the request screen.',
                    '<button class="att-btn att-btn--primary" type="button" data-new-item>New item</button>') +
               '<div class="att-toolbar">' +
                 '<div class="att-search-wrap"><i data-lucide="search"></i>' +
                   '<input class="att-search" type="search" data-text aria-label="Search" placeholder="Search name, size, unit, category…" value="' + esc(catUi.text) + '"></div>' +
-                '<select class="att-filter" data-kind aria-label="Kind">' +
-                  '<option value="">Materials and tools</option>' +
-                  '<option value="material"' + (catUi.kind === 'material' ? ' selected' : '') + '>Materials</option>' +
-                  '<option value="tool"' + (catUi.kind === 'tool' ? ' selected' : '') + '>Tools</option></select>' +
-                '<label class="req-toggle"><input type="checkbox" data-inactive' + (catUi.showInactive ? ' checked' : '') + '> Show inactive</label>' +
+                '<div class="att-seg" role="group" aria-label="Kind">' +
+                  '<button type="button" class="att-seg-btn" data-kind="">All <span class="req-tabn" data-n="all"></span></button>' +
+                  '<button type="button" class="att-seg-btn" data-kind="material">Materials <span class="req-tabn" data-n="material"></span></button>' +
+                  '<button type="button" class="att-seg-btn" data-kind="tool">Tools <span class="req-tabn" data-n="tool"></span></button>' +
+                '</div>' +
+                '<label class="req-toggle"><input type="checkbox" data-inactive' + (catUi.showInactive ? ' checked' : '') + '> Show inactive' +
+                  (inactiveCount ? ' <span class="req-muted">(' + inactiveCount + ')</span>' : '') + '</label>' +
+                '<span class="req-count" data-count aria-live="polite"></span>' +
               '</div>' +
               '<div class="att-card"><div class="att-card-body" style="padding:0">' +
-                '<div class="req-table-wrap"><table class="att-table"><thead><tr><th>Kind</th><th>Name</th><th>Size / spec</th><th>Unit</th><th>Category</th><th>Status</th><th></th></tr></thead>' +
-                '<tbody data-rows></tbody></table></div><div class="att-empty" data-empty style="display:none">No item matches.</div>' +
+                '<div class="req-table-wrap"><table class="att-table req-ctable"><thead><tr>' +
+                  '<th>Item</th><th>Kind</th><th>Unit</th><th>Category</th><th>Active</th><th></th></tr></thead>' +
+                '<tbody data-rows></tbody></table></div><div class="att-empty" data-empty style="display:none"></div>' +
               '</div></div>' +
             '</div>';
+
         function draw() {
-            const t = catUi.text.trim().toLowerCase();
-            const list = items.filter(i => (catUi.showInactive || i.active) && (!catUi.kind || i.kind === catUi.kind) &&
+            const t = normText(catUi.text);
+            const pool = items.filter(i => catUi.showInactive || i.active);
+            const list = pool.filter(i => (!catUi.kind || i.kind === catUi.kind) &&
                 (!t || [i.name, i.spec, i.unit, i.category].join(' ').toLowerCase().includes(t)));
+
+            host.querySelector('[data-n="all"]').textContent = pool.length;
+            host.querySelector('[data-n="material"]').textContent = pool.filter(i => i.kind === 'material').length;
+            host.querySelector('[data-n="tool"]').textContent = pool.filter(i => i.kind === 'tool').length;
+            host.querySelectorAll('[data-kind]').forEach(b => b.classList.toggle('is-on', b.dataset.kind === catUi.kind));
+            host.querySelector('[data-count]').textContent = list.length !== pool.length ? 'Showing ' + list.length + ' of ' + pool.length : '';
+
             host.querySelector('[data-rows]').innerHTML = list.map(i =>
-                '<tr><td>' + (i.kind === 'tool' ? 'Tool' : 'Material') + '</td><td><strong>' + esc(i.name) + '</strong></td>' +
-                '<td>' + esc(i.spec || '—') + '</td><td>' + esc(i.unit) + '</td><td>' + esc(i.category || '—') + '</td>' +
-                '<td>' + (i.active ? '<span class="att-pill att-pill--done">Active</span>' : '<span class="att-pill att-pill--hidden">Inactive</span>') + '</td>' +
-                '<td><button class="att-btn" type="button" data-edit="' + esc(i.id) + '">Edit…</button></td></tr>').join('');
-            host.querySelector('[data-empty]').style.display = list.length ? 'none' : 'block';
+                '<tr class="req-crow' + (i.active ? '' : ' is-inactive') + '">' +
+                  '<td><strong>' + esc(i.name) + '</strong>' + (i.spec ? ' <span class="req-spec">' + esc(i.spec) + '</span>' : '') + '</td>' +
+                  '<td><span class="att-pill ' + (i.kind === 'tool' ? 'att-pill--pm' : 'att-pill--pc') + '">' + (i.kind === 'tool' ? 'Tool' : 'Material') + '</span></td>' +
+                  '<td>' + esc(i.unit) + '</td>' +
+                  '<td>' + (i.category ? esc(i.category) : '<span class="req-muted">—</span>') + '</td>' +
+                  '<td class="req-cact"><button class="att-switch" type="button" role="switch" aria-checked="' + (i.active ? 'true' : 'false') +
+                    '" data-toggle="' + esc(i.id) + '" aria-label="Active: ' + esc(itemLabel(i)) + '" title="' +
+                    (i.active ? 'Workers can pick this item.' : 'Hidden from workers.') + '">' +
+                    '<span class="att-switch-track"></span><span>' + (i.active ? 'Active' : 'Inactive') + '</span></button></td>' +
+                  '<td class="req-cact"><button class="att-btn" type="button" data-edit="' + esc(i.id) + '">Edit…</button></td></tr>').join('');
+
+            const empty = host.querySelector('[data-empty]');
+            host.querySelector('.req-ctable').style.display = list.length ? '' : 'none';
+            empty.style.display = list.length ? 'none' : 'block';
+            if (!items.length) {
+                empty.textContent = 'No items yet. Workers can only pick what is listed here — add the first one with New item.';
+            } else if (!list.length) {
+                empty.innerHTML = 'No item matches. <button class="att-link" type="button" data-clear>Clear filters</button>';
+                empty.querySelector('[data-clear]').addEventListener('click', () => {
+                    catUi.text = ''; catUi.kind = ''; catUi.showInactive = false;
+                    renderCatalog(host);
+                });
+            }
         }
         draw();
-        host.querySelector('[data-new-item]').addEventListener('click', () => itemModal(null, rerender));
+        host.querySelector('[data-new-item]').addEventListener('click', () => itemModal(null, rerender, items));
         host.querySelector('[data-text]').addEventListener('input', e => { catUi.text = e.target.value; draw(); });
-        host.querySelector('[data-kind]').addEventListener('change', e => { catUi.kind = e.target.value; draw(); });
+        host.querySelectorAll('[data-kind]').forEach(b => b.addEventListener('click', () => { catUi.kind = b.dataset.kind; draw(); }));
         host.querySelector('[data-inactive]').addEventListener('change', e => { catUi.showInactive = e.target.checked; draw(); });
-        host.querySelector('[data-rows]').addEventListener('click', e => {
+        host.querySelector('[data-rows]').addEventListener('click', async e => {
+            const sw = e.target.closest('[data-toggle]');
+            if (sw) {
+                const item = items.find(i => i.id === sw.dataset.toggle);
+                if (!item) return;
+                const next = !item.active;
+                if (next && findDuplicate(items, item, item.id)) {
+                    alert('Another active item already has the same name, size and unit, so this one cannot be turned on.');
+                    return;
+                }
+                if (!next && !confirm('Make "' + itemLabel(item) + '" inactive?\n\nWorkers can no longer pick it. You can turn it back on any time.')) return;
+                sw.disabled = true;
+                try {
+                    await RA.rpc('pr_office_save_item', {
+                        p_item: item.id, p_kind: item.kind, p_name: item.name, p_spec: item.spec || '',
+                        p_unit: item.unit, p_category: item.category || '', p_active: next,
+                    });
+                    rerender();
+                } catch (err) {
+                    alert(RA.errorMessage(err));
+                    sw.disabled = false;
+                }
+                return;
+            }
             const b = e.target.closest('[data-edit]');
-            if (b) itemModal(items.find(i => i.id === b.dataset.edit), rerender);
+            if (b) itemModal(items.find(i => i.id === b.dataset.edit), rerender, items);
         });
         RA.icons();
     }

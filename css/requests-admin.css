@@ -587,3 +587,59 @@
     font-size: 13px; color: #55555A;
 }
 .req-picker-btns { display: flex; gap: 8px; }
+/* ════════════════════════════════════════════════════════════════════
+   Item catalogue (js/requests-admin-setup.js → renderCatalog, itemModal)
+   Name and size read as one item; kind is a small tag, not a column of
+   repeated words; the Active switch changes an item in one click.
+   ════════════════════════════════════════════════════════════════════ */
+
+.req-catalog {
+    font-family: var(--att-sans);
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: "lnum" 1, "tnum" 1;
+}
+.req-catalog .att-title { font-family: var(--att-serif); font-feature-settings: "lnum" 1; }
+.req-catalog .att-sub,
+.req-catalog .req-muted,
+.req-catalog .req-count { color: #55555A; }
+.req-catalog .att-filter,
+.req-catalog .att-search,
+.req-catalog .att-seg-btn,
+.req-catalog .att-btn,
+.req-catalog .req-toggle { font-family: var(--att-sans); }
+.req-catalog .att-toolbar { align-items: center; }
+
+.req-ctable td { vertical-align: middle; }
+.req-spec { margin-left: 6px; color: #55555A; font-weight: 500; }
+.req-cact { white-space: nowrap; }
+.req-ctable td:last-child { text-align: right; }
+.req-crow.is-inactive td:not(.req-cact) { opacity: .6; }
+.req-crow:hover td { background: var(--att-line-soft); }
+
+/* New item / Edit item modal */
+.req-im-box { max-width: 560px; font-family: var(--att-sans); font-variant-numeric: lining-nums tabular-nums; font-feature-settings: "lnum" 1, "tnum" 1; }
+.req-im-box .att-modal-title { font-family: var(--att-serif); font-feature-settings: "lnum" 1; }
+.req-im-box .att-modal-sub,
+.req-im-box .att-hint-inline { color: #55555A; }
+.req-im-box .att-btn { font-family: var(--att-sans); }
+.req-im-box .att-btn:disabled { background: #D9D9D5; border-color: #D9D9D5; color: #8A8A86; cursor: not-allowed; }
+.req-im { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 16px; }
+.req-im-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.req-im-wide { grid-column: 1 / -1; }
+.req-im .att-field { display: flex; flex-direction: column; gap: 6px; }
+.req-im .att-field > label { font-size: 13.5px; font-weight: 600; color: var(--att-ink); }
+.req-im-note {
+    padding: 11px 14px;
+    border-radius: 10px;
+    background: var(--att-green-tint);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--att-ink);
+}
+.req-im-note--hint { background: var(--att-line-soft); color: #55555A; }
+.req-im-note--bad { background: var(--att-red-tint); color: var(--att-red); }
+.req-im-note--bad strong { color: var(--att-red); }
+
+@media (max-width: 560px) {
+    .req-im-grid { grid-template-columns: 1fr; }
+}
