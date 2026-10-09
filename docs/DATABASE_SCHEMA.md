@@ -912,21 +912,23 @@ policy**. Photos are files, never base64.
 
 ## 13. WorkMate Requests (`0085`) — material/tool requests from DAC'S WorkMate
 
-Stage 1a-1 server (plan `docs/superpowers/plans/2026-10-02-workmate-stage1a1-requests-server.md`). **Project Control only. No money anywhere** — no `pr_*` column holds a price, amount or cost. **Workers never read or write `pr_*` tables directly**: RLS is on and no `pr_*` policy grants a worker anything; every worker action is a `SECURITY DEFINER` RPC. Owner/staff read everything; they edit only the setup tables directly (request data changes through RPCs).
+Stage 1a-1 server (plan `docs/superpowers/plans/2026-10-02-workmate-stage1a1-requests-server.md`). **Project Control only. No money anywhere** — no `pr_*` column holds a price, amount or cost. **Workers never read or write `pr_*` tables directly**: RLS is on and no `pr_*` policy grants a worker anything; every worker action is a `SECURITY DEFINER` RPC. Owner/staff read everything; they change everything only through the office RPCs (since 0086) (request data changes through RPCs).
 
 | Table | What it is |
 |---|---|
 | `pr_teams`, `pr_team_members` | Teams; membership history (`removed_at`); one current leader per team (`is_leader`). Acting for a team needs the leader row **and** profile role `teamLeader` |
-| `pr_catalog_items` | Official items: `kind` material/tool, `name`, `spec`, `unit`, `category`; one active row per identity |
-| `pr_project_settings` | `allow_requests` per top-level project folder (cascades with the folder) — opens a project to requests even with no geofence yet or when hidden from Time In. Without it, a project is requestable only if it is on today's Attendance picker list (geofence rule met and not hidden) |
+| `pr_catalog_items` | Official items: `kind` material/tool, `name`, `spec`, `unit`, `category`; one active row per identity; 0090: `aliases` text[] and `brand` (search aids, not identity) |
+| `pr_project_settings` | `allow_requests` per top-level project folder (cascades with the folder) — opens a project to requests even with no geofence yet or when hidden from Time In. Without it, a project is requestable only if it is on today's Attendance picker list (geofence rule met and not hidden); 0090: `allow_history` (Find Previous Item, off by default, independent of allow_requests, survives completion) |
 | `pr_batches` | One per weekly cutoff: **Saturday 12:00 noon Asia/Manila** (`cutoff_at`), default `purchase_on` = Monday, `delivery_on` = Wednesday; editable by the office |
 | `pr_requests` | One destination (`folder_id` = project, `work_folder_id` = project itself for Main Contract or a child Additional Works folder), optional `team_id`, `client_op_id` (unique per requester), server `received_at` |
-| `pr_lines` | Stable-id items: kind, optional `catalog_item_id`, description/spec/unit/category, optional `intended_member_id` (materials), per-line `urgent` + reason + `needed_by`, `version`, `has_conflict` |
+| `pr_lines` | Stable-id items: kind, optional `catalog_item_id`, description/spec/unit/category, optional `intended_member_id` (materials), per-line `urgent` + reason + `needed_by`, `version`, `has_conflict`; 0090: `ref_kind`/`ref_id` = the history entry a Request Again line came from (both or neither) |
 | `pr_line_portions` | A line's quantity by batch. `arranged_at` set by the office; `pending_reduction` = quantity a worker reduced that was already arranged (office to act). **Still needed = Σ(quantity − pending_reduction)** |
 | `pr_line_conflicts` | An edit made against an outdated `version` — both values kept for the office |
 | `pr_events` | Append-only history (submitted, quantity_changed, quantity_conflict, line_cancelled, request_cancelled, photo_attached) |
 | `pr_ops` | First result per `(actor_id, op_id)` — a retried phone operation returns it verbatim |
-| `pr_photos` | Private request photos, bucket **`request-photos`** (`{requester}/{request}/{photo}.jpg`; requester, current team leader, owner/staff) |
+| `pr_photos` | Private request photos, bucket **`request-photos`** (`{requester}/{request}/{photo}.jpg`; requester, current team leader, owner/staff); 0090: `gallery_review` published / kept_private + who/when |
+| `pr_item_refs` (0090) | Hand-entered **historical references**: item, project + Main Contract/AW, description, `ref_date` + `date_precision` exact/approximate/unknown, `source_note`. No expense, stock or purchase. Retired with a reason, never deleted; cascade with their project |
+| `pr_gallery_photos` (0090) | Reviewed product photos in private bucket **`item-gallery`** (`<owner>/<item>/<uuid>.jpg`): source upload / request_photo (a COPY) / reference, `checklist_confirmed`, one approved `is_cover` per item; `cover_set_by/at` who made it the cover; approved/retired with who, when, why |
 
 Every `pr_*` office policy is tenant-scoped with `can_access` (`pr_ops` via its actor's owner), and worker write RPCs serialise retries of the same operation with an advisory lock.
 
@@ -952,6 +954,25 @@ Every office write is a `SECURITY DEFINER` RPC that refuses non-office callers (
 | `pr_office_catalog/save_item` | Catalogue; the same name + spec + unit is refused (`DUPLICATE_ITEM`) |
 | `pr_office_projects/set_allow_requests` | Top-level Project Control projects and the *Allow requests* switch |
 | `pr_folder_request_count(folder)` | Requests on a folder or its children — Dacs Web refuses to delete a project / Additional Works that has any |
+
+### Item history (0090)
+
+Who sees what is decided in one place, `pr_history_entries(owner, viewer, office, item)`: a worker sees a request line matched to a catalogue item when it is **their own** or its project has **Allow item history** on, and a **non-retired** reference on such a project; Additional Works follow their parent. Workers never get requester names, line notes, raw request photos or retired items.
+
+| RPC | Who | What it does |
+|---|---|---|
+| `pr_history_search(query, kind, category, folder, from, to, limit, offset)` | worker | Item cards with cover and latest visible entry; 30 per page (max 50) + `has_more` |
+| `pr_history_item(item, folder)` | worker | Photos + dated entries (Requested / Requested — cancelled / Historical reference); `HISTORY_NOT_AVAILABLE` if none visible |
+| `pr_history_visible(items[])` | worker | For each still-visible saved item: visible entry keys + approved photo ids (phone deletes the rest); max 500 |
+| `pr_submit_request` (re-declared) | worker | Lines may carry `ref_kind/ref_id`: malformed or unknown → `BAD_REFERENCE`; no longer visible or now another item → saved without the link |
+| `pr_office_set_allow_history`, `pr_office_history_search/item` | office | Switch; search including items with no history; detail with requester names and retired rows |
+| `pr_office_save_item` (re-declared) | office | Gains optional `p_aliases` / `p_brand` (null = unchanged); 7-arg calls still work |
+| `pr_request_doc`, `pr_office_projects`, `pr_office_catalog` (re-declared) | office | `pr_request_doc` lines gain `ref_kind`, `ref_id`, `ref_label`; `pr_office_projects` gains `allow_history`; `pr_office_catalog` gains `brand`, `aliases` |
+| `pr_office_add_ref`, `pr_office_retire_ref` | office | Reference on a project or its own AW; retire needs a reason |
+| `pr_office_photo_queue`, `pr_office_publish_photo`, `pr_office_keep_private` | office | Review private request photos on matched lines; publishing records an already-uploaded COPY after the checklist |
+| `pr_office_add_gallery_photo`, `pr_office_set_cover`, `pr_office_retire_photo` | office | Direct uploads (optionally for a reference), cover, retire with reason (cover passes to the newest approved) |
+
+Storage — `item-gallery`: the office of the company inserts/reads `<owner>/<item>/…`; a worker reads only an approved photo of an item with a visible entry; no update/delete for anyone.
 
 ## Relationship map
 ```

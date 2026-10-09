@@ -1098,3 +1098,16 @@ async function _saveRowsOnce(collection, rows, submissionId) {
   7. **Denied access:** sign in as a worker on admin.html (refused at sign-in, 1a-2), so check with SQL instead — `uploads_can_read` for that worker is false (verify §1 covers it).
 - [ ] **Step 4: Money check.** Run `npm test`. Also run `select sum(amount) from expenses` and `select sum(total_salary) from payroll` before and after the browser tests. The difference must equal exactly the test entries added; then delete those test entries **only with the user's OK**, or leave them labelled `ZZ`.
 - [ ] **Step 5: Docs.** Add `ARCHITECTURE.md` §4 (module map): `js/receipt-storage.js`. Update memory `inline-base64-receipts.md`: part 2a live, and new photos are files. Append Execution notes to this plan. Stop — the user commits; deploying to Vercel happens on the user's push.
+
+---
+
+## Execution notes (2026-10-09)
+
+- Executed subagent-driven; no worktree, nothing committed by the agent. All six tasks reviewed; one final fix wave plus one targeted fix (a `const html` scoping bug that would have frozen every receipt print — caught by the final review and fenced by the runtime test `tests/receipt-print-popups.test.js`).
+- 0089 dry-run in the SQL editor (verify uses `set_config('v89.*')`, not a temp table — the editor's RLS step breaks temp tables), applied live 2026-10-09, standalone verify passed. `supabase/tests/uploads_access.sql` passed live.
+- Browser (local, owner): add expense with 4 docs, add payroll with 2 receipts, payroll edit +1 (3 shown), old base64 photo still opens. DB: photo fields hold `.../object/public/uploads/...` URLs, `client_submission_id` set, ledger attached 6 / pending 0.
+- The Worker Statement of Account (`printWorkerLaborSOA`, invoice-module.js) prints no photos by design and was not touched. `printTransactionReceipt` has no caller in the app (dead code, kept and tested).
+- `npm test` green after merging PR #43 (attendance); pushed as 948124a.
+- Test data left in place: expense "ZZ receipt test" ₱1 and a ₱1,000 payroll payment on test worker "Aeee" (Crossroad) — delete through Dacs Web when the user says so.
+- Deferred minors: addMany subcollection branch untested; storagePathOf can throw on a malformed % escape (matches the shim); the 'already saved' toast uses success styling; "Preparing receipts…" wording on the single receipt.
+- Next: plan 2 (owner move tool + backup/restore for existing base64 rows), plan 3 (cleanup Edge Function), phase E (drop backup after 30 days).

@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0090** — highest on disk is
-  `0089_receipt_storage.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0091** — highest on disk is
+  `0090_workmate_item_history.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble.
 - **`0075` and `0076` are TAKEN but not on `main`.** They belong to the abandoned
   project cost-plan branch (`project_cost_plans`, then its `%` columns) and **both
@@ -163,6 +163,8 @@ file creates the policy only when it is missing, so applying it live changes not
 **0088 (WorkMate Requests — worker cancel alignment)** aligns a worker's cancel with the office's: cancelling the last open line now closes the request (like `pr_office_cancel_line`), and a new cancel of something already cancelled succeeds without change and records no event (same-op retries were already safe through `pr_ops`). The three request-first cancels (`pr_cancel_line`, `pr_cancel_request`, `pr_office_cancel_line`) take the request lock `FOR NO KEY UPDATE`, so they cannot deadlock with line-first RPCs; `pr_office_cancel_line` is re-declared with only that lock change. Grants unchanged; no table or data changes. Dry-run with `supabase/tests/1a_acceptance.sql` (self-wrapped in begin/rollback) before applying.
 
 **0089 (receipt photos as files)** tenant-locks two new upload folders `expenseReceipts/` and `payrollReceipts/` (owner/staff of THAT company only, also for overwrite), adds the `receipt_uploads` ledger with an attach trigger on `expenses`/`payroll`, and grants `authenticated` only `select` plus a column-level `insert (path, owner_id, kind)` on the ledger (state and timestamps always take their defaults), makes the attach trigger match the row's own company (`owner_id = new.owner_id`), and adds `client_submission_id` + a unique index so a retried save cannot duplicate. No data changes. Live check: `supabase/tests/0089_verify.sql` (self-rolling-back; safe in the SQL editor — the editor shows only the last result, so no error = passed).
+
+**0090 (WorkMate Stage 1b-1 — item history server)** adds Find Previous Item: `pr_project_settings.allow_history` (per project, off by default, independent of Allow requests, kept after completion), catalogue `aliases`/`brand` (search aids, not identity), `pr_lines.ref_kind/ref_id` (Request Again link), `pr_photos.gallery_review*`, the tables `pr_item_refs` (hand-entered historical references; retired, never deleted; cascade with their project) and `pr_gallery_photos` (reviewed copies in the private `item-gallery` bucket, several per item, one cover), worker RPCs `pr_history_search/item/visible`, eleven new office RPCs, and re-declares `pr_submit_request`, `pr_request_doc`, `pr_office_catalog`, `pr_office_projects` by adding lines only; `pr_office_save_item` gains two optional arguments (the 7-argument form is dropped; the old call shape still works). One function, `pr_history_entries`, decides per entry what a worker may see. No money. Dry-run with `supabase/tests/1b_acceptance.sql` (self-wrapped in begin/rollback, editor-safe), then re-run `1a_acceptance.sql` through MCP `execute_sql` (it uses a temp table, which the SQL editor breaks). Also adds the `pr_lines_catalog_item` index (history lookups by item).
 
 Get the truth before relying on this line:
 
