@@ -414,3 +414,176 @@
     .req-portion > :first-child, .req-pcell--act { grid-column: 1 / -1; }
     .req-portion .req-actions { justify-content: flex-start; }
 }
+/* ════════════════════════════════════════════════════════════════════
+   Teams (js/requests-admin-setup.js → renderTeams)
+   Summary strip, search, then a grid of compact team cards. The leader
+   line sits right under the name: a team without one can't send
+   requests, so that state is amber and those teams sort first.
+   ════════════════════════════════════════════════════════════════════ */
+
+.req-teams {
+    font-family: var(--att-sans);
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: "lnum" 1, "tnum" 1;
+}
+.req-teams .att-title { font-family: var(--att-serif); font-feature-settings: "lnum" 1; }
+.req-teams .att-sub { color: #55555A; }
+.req-teams .att-btn i[data-lucide], .req-teams .att-btn svg { width: 15px; height: 15px; vertical-align: -3px; margin-right: 4px; }
+
+.req-team-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.req-team-stat {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 16px;
+    background: var(--att-card);
+    border: 1px solid var(--att-line);
+    border-radius: 12px;
+}
+.req-team-stat > svg, .req-team-stat > i { width: 20px; height: 20px; color: var(--att-muted); flex: none; }
+.req-team-stat-v { font-size: 22px; font-weight: 700; line-height: 1.1; color: var(--att-ink); }
+.req-team-stat-l { font-size: 13px; color: #55555A; }
+.req-team-stat--warn { background: var(--att-gold-tint); border-color: #E8DCC2; }
+.req-team-stat--warn > svg, .req-team-stat--warn .req-team-stat-v { color: var(--att-gold); }
+.req-team-stat--ok > svg { color: var(--att-green); }
+
+.req-team-bar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.req-team-search { position: relative; flex: 1 1 280px; max-width: 420px; }
+.req-team-search > svg, .req-team-search > i {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    width: 16px; height: 16px; color: var(--att-faint); pointer-events: none;
+}
+.req-team-search .att-input { width: 100%; padding-left: 36px; }
+.req-team-bar .req-toggle { font-size: 13px; font-weight: 500; color: var(--att-ink-2); }
+
+.req-team-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 16px;
+    align-items: start;
+}
+.req-team-section {
+    margin: 8px 0 0;
+    font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--att-muted);
+}
+
+.req-team {
+    display: flex; flex-direction: column;
+    background: var(--att-card);
+    border: 1px solid var(--att-line);
+    border-radius: 14px;
+    box-shadow: var(--att-shadow);
+    overflow: hidden;
+}
+.req-team[hidden] { display: none; }
+.req-team.is-leaderless { border-color: #E8DCC2; }
+.req-team.is-inactive { opacity: .72; }
+
+.req-team-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 16px 10px; }
+.req-team-title h3 { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.3; color: var(--att-ink); }
+.req-team-count { font-size: 13px; color: #55555A; }
+.req-team-tools { display: flex; align-items: center; gap: 6px; }
+
+.req-team-lead {
+    display: flex; align-items: center; gap: 8px;
+    margin: 0 16px 10px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: var(--att-green-tint);
+    color: var(--att-green-dark);
+    font-size: 13px;
+}
+.req-team-lead > svg, .req-team-lead > i { width: 16px; height: 16px; flex: none; }
+.req-team-lead span { flex: 1; min-width: 0; }
+.req-team-lead--warn { background: var(--att-gold-tint); color: var(--att-gold); }
+.req-team-lead--off { background: var(--att-line-soft); color: #55555A; }
+
+.req-link {
+    background: none; border: 0; padding: 0; cursor: pointer;
+    font: inherit; font-size: 12.5px; color: inherit; text-decoration: underline; text-underline-offset: 2px;
+    opacity: .85;
+}
+.req-link:hover { opacity: 1; }
+
+.req-members { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--att-line-soft); }
+.req-member {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--att-line-soft);
+}
+.req-member:last-child { border-bottom: 0; }
+.req-member:hover { background: var(--att-field); }
+.req-avatar {
+    flex: none; display: grid; place-items: center;
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--att-track); color: var(--att-ink-2);
+    font-size: 12px; font-weight: 700;
+}
+.req-member.is-leader .req-avatar { background: var(--att-green-tint); color: var(--att-green-dark); }
+.req-member-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.req-member-name strong { font-size: 14px; font-weight: 600; color: var(--att-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.req-member-meta { font-size: 12.5px; color: #55555A; }
+.req-member-meta .att-mono { font-size: 12px; }
+.req-member-tools { display: flex; align-items: center; gap: 6px; flex: none; }
+
+.req-btn-sm { padding: 5px 10px; font-size: 12.5px; min-height: 0; }
+.req-icon-btn {
+    display: inline-grid; place-items: center;
+    width: 30px; height: 30px; padding: 0;
+    border: 1px solid transparent; border-radius: 8px;
+    background: transparent; color: var(--att-faint); cursor: pointer;
+}
+.req-icon-btn svg { width: 16px; height: 16px; }
+.req-icon-btn:hover { background: var(--att-line-soft); color: var(--att-ink-2); border-color: var(--att-line); }
+.req-icon-btn[data-act="remove"]:hover { background: var(--att-red-tint); color: var(--att-red); border-color: var(--att-red-line); }
+.req-icon-btn:focus-visible, .req-link:focus-visible { outline: 2px solid var(--att-green); outline-offset: 1px; }
+
+.req-team-empty { padding: 14px 16px; font-size: 13px; color: #55555A; border-top: 1px solid var(--att-line-soft); }
+
+.req-team-add {
+    display: flex; gap: 8px;
+    margin-top: auto;
+    padding: 12px 16px;
+    background: var(--att-field);
+    border-top: 1px solid var(--att-line-soft);
+}
+.req-team-add[hidden], .req-picker[hidden] { display: none; }
+
+@media (max-width: 760px) {
+    .req-team-stats { grid-template-columns: 1fr; }
+    .req-team-grid { grid-template-columns: 1fr; }
+    .req-member { flex-wrap: wrap; }
+    .req-member-tools { margin-left: 44px; }
+}
+
+/* Add members picker: opens in the card, replaces the footer button. */
+.req-picker { border-top: 1px solid var(--att-line-soft); background: var(--att-card); }
+.req-picker-search { position: relative; padding: 12px 16px; border-bottom: 1px solid var(--att-line-soft); }
+.req-picker-search > svg, .req-picker-search > i {
+    position: absolute; left: 28px; top: 50%; transform: translateY(-50%);
+    width: 16px; height: 16px; color: var(--att-faint); pointer-events: none;
+}
+.req-picker-search .att-input { width: 100%; padding-left: 36px; }
+.req-pick-list { max-height: 264px; overflow-y: auto; }
+.req-pick-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 9px 16px; cursor: pointer;
+    border-bottom: 1px solid var(--att-line-soft);
+}
+.req-pick-row[hidden] { display: none; }
+.req-pick-row:hover { background: var(--att-field); }
+.req-pick-row input { width: 16px; height: 16px; flex: none; accent-color: var(--att-green); }
+.req-pick-row:has(input:checked) { background: var(--att-green-tint); }
+.req-pick-none { padding: 14px 16px; font-size: 13px; color: #55555A; }
+.req-tag {
+    flex: none; font-size: 12px; font-weight: 600; white-space: nowrap;
+    padding: 2px 8px; border-radius: 6px;
+    background: #E8EEF6; color: #2A4D7A;
+}
+.req-tag--muted { background: var(--att-line-soft); color: #55555A; font-weight: 500; }
+.req-picker-foot {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 16px; background: var(--att-field);
+    border-top: 1px solid var(--att-line-soft);
+    font-size: 13px; color: #55555A;
+}
+.req-picker-btns { display: flex; gap: 8px; }

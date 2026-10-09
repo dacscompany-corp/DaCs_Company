@@ -231,45 +231,118 @@
     }
 
     // ── Teams ───────────────────────────────────────────────────────
+    //
+    // Layout: a summary strip (teams / need a leader / not in a team), a
+    // search box, then the teams as a grid of compact cards. Each card
+    // puts the leader first because a team without one cannot send
+    // requests -- that is the thing the office has to notice. Inactive
+    // teams sit at the bottom, dimmed. All actions are the same RPCs.
 
-    function teamCard(t, people) {
+    const teamUi = { text: '', showInactive: false };
+
+    function initials(name) {
+        const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+        return ((parts[0] || '?')[0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+    }
+
+    // Add members: a button that opens a searchable, multi-select list in
+    // the card. Each row shows the roster number and role, and where the
+    // person already is, so the office can choose without guessing.
+    function pickerHtml(t, candidates, teams) {
+        const elsewhere = (id) => {
+            const o = teams.find(x => x.id !== t.id && x.active && x.members.some(m => m.worker_id === id));
+            return o ? o.name : '';
+        };
+        const sorted = candidates.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+        const rows = sorted.map(p => {
+            const no = RA.workerNo(p.worker_no);
+            const other = elsewhere(p.id);
+            return '<label class="req-pick-row" data-pick-row data-q="' + esc((p.name + ' ' + no).toLowerCase()) + '">' +
+                '<input type="checkbox" value="' + esc(p.id) + '">' +
+                '<span class="req-avatar" aria-hidden="true">' + esc(initials(p.name)) + '</span>' +
+                '<span class="req-member-name"><strong>' + esc(p.name) + '</strong>' +
+                  '<span class="req-member-meta">' + (no ? '<span class="att-mono">' + esc(no) + '</span> · ' : '') +
+                  (p.role === 'teamLeader' ? 'Team Leader role' : 'Worker') + '</span></span>' +
+                (other ? '<span class="req-tag req-tag--muted">In ' + esc(other) + '</span>'
+                       : p.role === 'teamLeader' ? '<span class="req-tag">Can lead</span>' : '') +
+              '</label>';
+        }).join('');
+        return '<footer class="req-team-add">' +
+            '<button class="att-btn" type="button" data-act="open-add"><i data-lucide="user-plus"></i> Add members</button>' +
+          '</footer>' +
+          '<div class="req-picker" data-picker hidden>' +
+            '<div class="req-picker-search"><i data-lucide="search"></i>' +
+              '<input type="search" class="att-input" data-pick-q placeholder="Search by name or worker number" aria-label="Search workers to add to ' + esc(t.name) + '"></div>' +
+            (rows ? '<div class="req-pick-list">' + rows + '<div class="req-pick-none" data-pick-none hidden>No worker matches that search.</div></div>'
+                  : '<div class="req-pick-none">Everyone is already in this team.</div>') +
+            '<div class="req-picker-foot"><span data-pick-count>None selected</span>' +
+              '<span class="req-picker-btns">' +
+                '<button class="att-btn" type="button" data-act="close-add">Cancel</button>' +
+                '<button class="att-btn att-btn--primary" type="button" data-act="add-selected" data-pick-go>Add to team</button>' +
+              '</span></div>' +
+          '</div>';
+    }
+
+    function teamCard(t, people, teams) {
         const memberIds = t.members.map(m => m.worker_id);
         const candidates = people.filter(p => !memberIds.includes(p.id));
         // pr_office_teams sends names only; the roster number comes from the
         // people list (active workers). A deactivated member shows no number.
         const numberOf = (id) => { const p = people.find(x => x.id === id); return p ? RA.workerNo(p.worker_no) : ''; };
-        return '<div class="att-card" data-team="' + esc(t.id) + '">' +
-            '<div class="att-card-head"><div>' +
-              '<div class="att-card-title">' + esc(t.name) + '</div>' +
-              '<div class="att-card-sub">' + t.members.length + ' member' + (t.members.length === 1 ? '' : 's') + '</div>' +
-            '</div><div class="att-card-tools">' +
-              (t.active ? '<span class="att-pill att-pill--done">Active</span>' : '<span class="att-pill att-pill--hidden">Inactive</span>') +
-              ' <button class="att-btn" type="button" data-act="edit-team">Rename / deactivate…</button>' +
-            '</div></div>' +
-            '<div class="att-card-body att-stack">' +
-              (t.members.length
-                ? '<div class="req-table-wrap"><table class="att-table"><tbody>' + t.members.map(m =>
-                    '<tr><td><strong>' + esc(m.name) + '</strong>' +
-                      (numberOf(m.worker_id) ? ' <span class="req-muted att-mono">' + esc(numberOf(m.worker_id)) + '</span>' : '') +
-                      (m.is_leader ? ' <span class="att-pill att-pill--pc">Leader</span>' : '') + '</td>' +
-                    '<td>' + (m.role === 'teamLeader' ? 'Team Leader' : 'Worker') + '</td>' +
-                    '<td><div class="req-actions">' +
-                      (t.active && m.role === 'teamLeader' && !m.is_leader
-                        ? '<button class="att-btn" type="button" data-act="lead" data-worker="' + esc(m.worker_id) + '">Make leader</button>' : '') +
-                      (t.active && m.is_leader
-                        ? '<button class="att-btn" type="button" data-act="unlead">No leader</button>' : '') +
-                      '<button class="att-btn att-btn--warn" type="button" data-act="remove" data-worker="' + esc(m.worker_id) + '">Remove</button>' +
-                    '</div></td></tr>').join('') + '</tbody></table></div>'
-                : '<div class="att-empty">No members yet.</div>') +
-              (t.active ? '<div class="req-actions">' +
-                '<select class="att-filter" data-pick aria-label="Add a member"><option value="">Add a member…</option>' +
-                  candidates.map(p => '<option value="' + esc(p.id) + '">' + esc(p.name) +
-                    (RA.workerNo(p.worker_no) ? ' · ' + esc(RA.workerNo(p.worker_no)) : '') +
-                    (p.role === 'teamLeader' ? ' (Team Leader)' : '') + '</option>').join('') +
-                '</select>' +
-                '<button class="att-btn att-btn--primary" type="button" data-act="add">Add</button>' +
-              '</div>' : '') +
-            '</div></div>';
+        const leader = t.members.find(m => m.is_leader) || null;
+        const canLead = t.members.filter(m => m.role === 'teamLeader' && !m.is_leader);
+        const n = t.members.length;
+        const search = (t.name + ' ' + t.members.map(m => m.name + ' ' + numberOf(m.worker_id)).join(' ')).toLowerCase();
+
+        // Leader first; then team leaders; then workers, A–Z.
+        const rank = (m) => (m.is_leader ? 0 : m.role === 'teamLeader' ? 1 : 2);
+        const members = t.members.slice().sort((a, b) => rank(a) - rank(b) || String(a.name).localeCompare(String(b.name)));
+
+        let leaderLine;
+        if (!t.active) {
+            leaderLine = '<div class="req-team-lead req-team-lead--off"><i data-lucide="pause-circle"></i>' +
+                '<span>Inactive — this team can\'t send requests.</span></div>';
+        } else if (leader) {
+            leaderLine = '<div class="req-team-lead"><i data-lucide="badge-check"></i>' +
+                '<span>Led by <strong>' + esc(leader.name) + '</strong></span>' +
+                '<button class="req-link" type="button" data-act="unlead">Remove as leader</button></div>';
+        } else {
+            leaderLine = '<div class="req-team-lead req-team-lead--warn"><i data-lucide="alert-triangle"></i>' +
+                '<span><strong>No leader</strong> — this team can\'t send requests' +
+                (canLead.length ? '. Pick one below.' : '. Add someone with the Team Leader role.') + '</span></div>';
+        }
+
+        const rows = members.map(m => {
+            const no = numberOf(m.worker_id);
+            return '<li class="req-member' + (m.is_leader ? ' is-leader' : '') + '">' +
+                '<span class="req-avatar" aria-hidden="true">' + esc(initials(m.name)) + '</span>' +
+                '<span class="req-member-name"><strong>' + esc(m.name) + '</strong>' +
+                  '<span class="req-member-meta">' + (no ? '<span class="att-mono">' + esc(no) + '</span> · ' : '') +
+                  (m.role === 'teamLeader' ? 'Team Leader role' : 'Worker') + '</span></span>' +
+                '<span class="req-member-tools">' +
+                  (m.is_leader ? '<span class="att-pill att-pill--done">Leader</span>' : '') +
+                  (t.active && m.role === 'teamLeader' && !m.is_leader
+                    ? '<button class="att-btn req-btn-sm" type="button" data-act="lead" data-worker="' + esc(m.worker_id) + '">Make leader</button>' : '') +
+                  '<button class="req-icon-btn" type="button" data-act="remove" data-worker="' + esc(m.worker_id) + '"' +
+                    ' aria-label="Remove ' + esc(m.name) + ' from ' + esc(t.name) + '" title="Remove from team"><i data-lucide="x"></i></button>' +
+                '</span></li>';
+        }).join('');
+
+        return '<section class="req-team' + (t.active ? '' : ' is-inactive') + (t.active && !leader ? ' is-leaderless' : '') + '"' +
+                ' data-team="' + esc(t.id) + '" data-search="' + esc(search) + '">' +
+            '<header class="req-team-head">' +
+              '<div class="req-team-title"><h3>' + esc(t.name) + '</h3>' +
+                '<span class="req-team-count">' + n + ' member' + (n === 1 ? '' : 's') + '</span></div>' +
+              '<div class="req-team-tools">' +
+                (t.active ? '' : '<span class="att-pill att-pill--hidden">Inactive</span>') +
+                '<button class="req-icon-btn" type="button" data-act="edit-team" aria-label="Edit ' + esc(t.name) + '" title="Rename or deactivate"><i data-lucide="pencil"></i></button>' +
+              '</div>' +
+            '</header>' +
+            leaderLine +
+            (n ? '<ul class="req-members">' + rows + '</ul>'
+               : '<div class="req-team-empty">No members yet.</div>') +
+            (t.active ? pickerHtml(t, candidates, teams) : '') +
+          '</section>';
     }
 
     function teamModal(team, rerender) {
@@ -292,40 +365,134 @@
         });
     }
 
+    function filterPicker(card) {
+        const q = (card.querySelector('[data-pick-q]').value || '').trim().toLowerCase();
+        let shown = 0;
+        card.querySelectorAll('[data-pick-row]').forEach(r => {
+            const hit = !q || r.dataset.q.includes(q);
+            r.hidden = !hit;
+            if (hit) shown++;
+        });
+        const none = card.querySelector('[data-pick-none]');
+        if (none) none.hidden = shown > 0;
+    }
+
+    function updatePickCount(card) {
+        const n = card.querySelectorAll('.req-pick-row input:checked').length;
+        card.querySelector('[data-pick-count]').textContent = n ? n + ' selected' : 'None selected';
+        card.querySelector('[data-pick-go]').textContent = n ? 'Add ' + n + ' to team' : 'Add to team';
+    }
+
+    function applyTeamFilter(host) {
+        const q = teamUi.text.trim().toLowerCase();
+        let shown = 0;
+        host.querySelectorAll('.req-team').forEach(card => {
+            const hit = !q || card.dataset.search.includes(q);
+            card.hidden = !hit;
+            if (hit) shown++;
+        });
+        const none = host.querySelector('[data-team-none]');
+        if (none) none.hidden = shown > 0 || !q;
+    }
+
     async function renderTeams(host) {
-        host.innerHTML = '<div class="att-stack"><div class="att-empty">Loading teams…</div></div>';
+        host.innerHTML = '<div class="att-stack req-teams"><div class="att-empty">Loading teams…</div></div>';
         let teams, people;
         try { [teams, people] = await Promise.all([RA.rpc('pr_office_teams'), RA.rpc('pr_office_people')]); }
         catch (e) { RA.fail(host, e); return; }
         teams = teams || [];
         people = people || [];
         const rerender = () => renderTeams(host);
+
+        const byName = (a, b) => String(a.name).localeCompare(String(b.name));
+        const active = teams.filter(t => t.active);
+        const inactive = teams.filter(t => !t.active).sort(byName);
+        // Leaderless teams first: they are the ones that need the office.
+        active.sort((a, b) => (a.members.some(m => m.is_leader) - b.members.some(m => m.is_leader)) || byName(a, b));
+        const leaderless = active.filter(t => !t.members.some(m => m.is_leader)).length;
+        const inTeam = new Set();
+        active.forEach(t => t.members.forEach(m => inTeam.add(m.worker_id)));
+        const unassigned = people.filter(p => !inTeam.has(p.id)).length;
+
+        const stat = (label, value, tone, icon) =>
+            '<div class="req-team-stat' + (tone ? ' req-team-stat--' + tone : '') + '">' +
+              '<i data-lucide="' + icon + '"></i><div><div class="req-team-stat-v">' + value + '</div>' +
+              '<div class="req-team-stat-l">' + label + '</div></div></div>';
+
         host.innerHTML =
-            '<div class="att-stack">' +
-              head('Teams', 'A team leader can send requests for the whole team. They need the Team Leader role and to be set as this team\'s leader.',
-                   '<button class="att-btn att-btn--primary" type="button" data-new-team>New team</button>') +
-              (teams.length ? teams.map(t => teamCard(t, people)).join('') : '<div class="att-empty">No teams yet.</div>') +
+            '<div class="att-stack req-teams">' +
+              head('Teams', 'A team can send requests once it has a leader. Only people with the Team Leader role can be made leader.',
+                   '<button class="att-btn att-btn--primary" type="button" data-new-team><i data-lucide="plus"></i> New team</button>') +
+              (teams.length
+                ? '<div class="req-team-stats">' +
+                    stat('Active teams', active.length, '', 'users') +
+                    stat(leaderless === 1 ? 'Team needs a leader' : 'Teams need a leader', leaderless, leaderless ? 'warn' : 'ok', leaderless ? 'alert-triangle' : 'badge-check') +
+                    stat('Workers not in a team', unassigned, '', 'user-x') +
+                  '</div>' +
+                  '<div class="req-team-bar">' +
+                    '<label class="req-team-search"><i data-lucide="search"></i>' +
+                      '<input type="search" class="att-input" data-team-q placeholder="Search a team or worker" value="' + esc(teamUi.text) + '" aria-label="Search teams and workers"></label>' +
+                    (inactive.length ? '<label class="req-toggle"><input type="checkbox" data-team-inactive' + (teamUi.showInactive ? ' checked' : '') + '> Show inactive (' + inactive.length + ')</label>' : '') +
+                  '</div>' +
+                  (active.length ? '<div class="req-team-grid">' + active.map(t => teamCard(t, people, teams)).join('') + '</div>'
+                                 : '<div class="att-empty">No active teams.</div>') +
+                  (inactive.length && teamUi.showInactive
+                    ? '<h3 class="req-team-section">Inactive teams</h3><div class="req-team-grid">' + inactive.map(t => teamCard(t, people, teams)).join('') + '</div>' : '') +
+                  '<div class="att-empty" data-team-none hidden>No team or worker matches that search.</div>'
+                : '<div class="att-empty">No teams yet. Create one, add workers, then pick a leader.</div>') +
             '</div>';
+
         host.querySelector('[data-new-team]').addEventListener('click', () => teamModal(null, rerender));
+        const q = host.querySelector('[data-team-q]');
+        if (q) q.addEventListener('input', () => { teamUi.text = q.value; applyTeamFilter(host); });
+        const inact = host.querySelector('[data-team-inactive]');
+        if (inact) inact.addEventListener('change', () => { teamUi.showInactive = inact.checked; rerender(); });
+        applyTeamFilter(host);
+
+        host.querySelectorAll('[data-team]').forEach(card => {
+            card.addEventListener('input', (e) => { if (e.target.matches('[data-pick-q]')) filterPicker(card); });
+            card.addEventListener('change', (e) => { if (e.target.matches('.req-pick-row input')) updatePickCount(card); });
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && !card.querySelector('[data-picker]').hidden) card.querySelector('[data-act="close-add"]').click();
+            });
+        });
         host.querySelectorAll('[data-team]').forEach(card => card.addEventListener('click', async (e) => {
             const b = e.target.closest('[data-act]');
             if (!b || b.disabled) return;
             const team = teams.find(t => t.id === card.dataset.team);
             const act = b.dataset.act;
             if (act === 'edit-team') { teamModal(team, rerender); return; }
+            if (act === 'open-add' || act === 'close-add') {
+                const panel = card.querySelector('[data-picker]');
+                const open = act === 'open-add';
+                panel.hidden = !open;
+                card.querySelector('.req-team-add').hidden = open;
+                if (open) { const q = panel.querySelector('[data-pick-q]'); q.value = ''; filterPicker(card); q.focus(); }
+                return;
+            }
+            if (act === 'add-selected') {
+                const ids = Array.from(card.querySelectorAll('.req-pick-row input:checked')).map(c => c.value);
+                if (!ids.length) { card.querySelector('[data-pick-q]').focus(); return; }
+                b.disabled = true;
+                const failed = [];
+                for (const id of ids) {
+                    try { await RA.rpc('pr_office_add_member', { p_team: team.id, p_worker: id }); }
+                    catch (err) { const p = people.find(x => x.id === id); failed.push((p ? p.name : 'A worker') + ': ' + RA.errorMessage(err)); }
+                }
+                if (failed.length) alert('Some people could not be added.\n\n' + failed.join('\n'));
+                rerender();
+                return;
+            }
             let call = null;
-            if (act === 'add') {
-                const pick = card.querySelector('[data-pick]').value;
-                if (!pick) return;
-                call = ['pr_office_add_member', { p_team: team.id, p_worker: pick }];
-            } else if (act === 'remove') {
+            if (act === 'remove') {
                 const m = team.members.find(x => x.worker_id === b.dataset.worker);
                 if (!confirm('Remove ' + (m ? m.name : 'this person') + ' from ' + team.name + '?' +
-                    (m && m.is_leader ? ' The team will have no leader.' : ''))) return;
+                    (m && m.is_leader ? ' The team will have no leader and can\'t send requests until you pick one.' : ''))) return;
                 call = ['pr_office_remove_member', { p_team: team.id, p_worker: b.dataset.worker }];
             } else if (act === 'lead') {
                 call = ['pr_office_set_leader', { p_team: team.id, p_worker: b.dataset.worker }];
             } else if (act === 'unlead') {
+                if (!confirm(team.name + ' will have no leader and can\'t send requests until you pick one. Continue?')) return;
                 call = ['pr_office_set_leader', { p_team: team.id, p_worker: null }];
             }
             if (!call) return;
