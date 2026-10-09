@@ -22,31 +22,89 @@
     // ── Weekly batches ──────────────────────────────────────────────
 
     async function renderBatches(host) {
-        host.innerHTML = '<div class="att-stack"><div class="att-empty">Loading batches…</div></div>';
+        host.innerHTML = '<div class="att-stack req-batches"><div class="att-empty">Loading batches…</div></div>';
         let batches;
         try { batches = await RA.rpc('pr_office_batches'); } catch (e) { RA.fail(host, e); return; }
-        batches = batches || [];
+        batches = (batches || []).slice().sort((a, b) => Date.parse(a.cutoff_at) - Date.parse(b.cutoff_at));
         const now = Date.now();
+        const year = new Date(now + 8 * 60 * 60 * 1000).getUTCFullYear();
+
+        // The batch the office is working on is the first one whose cutoff
+        // has not passed -- the same rule the Queue uses for "This week".
+        // It goes first; then what is coming; closed ones last and quiet.
+        const future = batches.filter(b => Date.parse(b.cutoff_at) > now);
+        const current = future[0] || null;
+        const upcoming = future.slice(1);
+        const closed = batches.filter(b => Date.parse(b.cutoff_at) <= now).reverse();
+
+        // "1 day 6 hours" / "5 hours 20 min" until the cutoff.
+        function closesIn(iso) {
+            const ms = Date.parse(iso) - now;
+            const d = Math.floor(ms / 86400000);
+            const h = Math.floor((ms % 86400000) / 3600000);
+            const m = Math.floor((ms % 3600000) / 60000);
+            const part = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+            if (d > 0) return part(d, 'day') + (h ? ' ' + part(h, 'hour') : '');
+            if (h > 0) return part(h, 'hour') + (m ? ' ' + m + ' min' : '');
+            return Math.max(m, 1) + ' min';
+        }
+        // The year is dropped while it is this year.
+        const when = iso => RA.formatManila(iso).replace(' ' + year + ',', ' ·');
+
+        function rowHtml(b, kind) {
+            const items = Number(b.open_portions) || 0;
+            return '<tr class="req-brow' + (kind === 'current' ? ' is-current' : '') +
+                   (kind === 'closed' ? ' is-closed' : '') + '">' +
+                '<td><strong>' + esc(RA.cutoffLabel(b.cutoff_at)) + '</strong></td>' +
+                '<td>' + esc(RA.formatDay(b.purchase_on)) + '</td>' +
+                '<td>' + esc(RA.formatDay(b.delivery_on)) + '</td>' +
+                '<td>' + (items
+                    ? '<strong>' + items + '</strong> ' + (items === 1 ? 'item' : 'items') +
+                      '<div><button class="att-link" type="button" data-queue="' + esc(b.id) + '">View in queue</button></div>'
+                    : '<span class="req-muted">None</span>') + '</td>' +
+                '<td>' + (b.updated_by_name
+                    ? '<span class="att-pill att-pill--working">Dates changed</span>' +
+                      '<div class="req-muted">' + esc(b.updated_by_name) + ' · ' + esc(when(b.updated_at)) + '</div>'
+                    : '<span class="req-muted">Default dates</span>') + '</td>' +
+                '<td class="req-bact"><button class="att-btn" type="button" data-edit="' + esc(b.id) + '">Change dates…</button></td>' +
+                '</tr>';
+        }
+        function headingHtml(title, meta, count) {
+            return '<tr class="req-group"><td colspan="6"><span class="req-group-title">' + esc(title) + '</span>' +
+                (meta ? '<span class="req-group-meta">' + esc(meta) + '</span>' : '') +
+                '<span class="req-group-count">' + count + (count === 1 ? ' batch' : ' batches') + '</span></td></tr>';
+        }
+
+        const rows =
+            (current ? headingHtml('This week', 'Closes in ' + closesIn(current.cutoff_at), 1) + rowHtml(current, 'current') : '') +
+            (upcoming.length ? headingHtml('Upcoming', '', upcoming.length) + upcoming.map(b => rowHtml(b, 'upcoming')).join('') : '') +
+            (closed.length ? headingHtml('Closed', 'Cutoff has passed', closed.length) + closed.map(b => rowHtml(b, 'closed')).join('') : '');
+
         host.innerHTML =
-            '<div class="att-stack">' +
-              head('Weekly batches', 'Requests received before Saturday 12:00 noon (Manila) join that week\'s batch. Holidays or supplier delays? Move the purchasing and delivery dates; workers see the new dates.') +
+            '<div class="att-stack req-batches">' +
+              head('Weekly batches', 'When each week\'s requests are bought and delivered.') +
+              '<div class="att-info"><i data-lucide="calendar-clock"></i><div>Requests received before ' +
+                '<strong>Saturday 12:00 noon</strong> (Manila) join that week\'s batch. Holidays or supplier delays? ' +
+                'Use <strong>Change dates</strong> to move purchasing and delivery — workers see the new dates.</div></div>' +
               '<div class="att-card"><div class="att-card-body" style="padding:0">' +
-                '<div class="req-table-wrap"><table class="att-table"><thead><tr><th>Cutoff</th><th>Purchasing</th><th>Delivery</th><th>Open items</th><th>Last changed</th><th></th></tr></thead><tbody>' +
-                batches.slice().reverse().map(b => {
-                    const past = Date.parse(b.cutoff_at) <= now;
-                    return '<tr>' +
-                        '<td><strong>' + esc(RA.cutoffLabel(b.cutoff_at)) + '</strong>' + (past ? ' <span class="req-muted">(closed)</span>' : '') + '</td>' +
-                        '<td>' + esc(RA.formatDay(b.purchase_on)) + '</td>' +
-                        '<td>' + esc(RA.formatDay(b.delivery_on)) + '</td>' +
-                        '<td>' + esc(String(b.open_portions)) + '</td>' +
-                        '<td>' + (b.updated_by_name ? esc(b.updated_by_name) + '<div class="req-muted">' + esc(RA.formatManila(b.updated_at)) + '</div>' : '<span class="req-muted">Default dates</span>') + '</td>' +
-                        '<td><button class="att-btn" type="button" data-edit="' + esc(b.id) + '">Change dates…</button></td>' +
-                        '</tr>';
-                }).join('') +
-                '</tbody></table></div>' +
+                '<div class="req-table-wrap"><table class="att-table req-btable"><thead><tr>' +
+                  '<th>Cutoff</th><th>Purchasing</th><th>Delivery</th><th>Open items</th><th>Last changed</th><th></th>' +
+                '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
                 (batches.length ? '' : '<div class="att-empty">No batches yet.</div>') +
               '</div></div>' +
             '</div>';
+
+        host.querySelectorAll('[data-queue]').forEach(btn => btn.addEventListener('click', () => {
+            if (RA.showQueueForBatch) RA.showQueueForBatch(btn.dataset.queue);
+        }));
+
+        // A date-only value moved by whole days, never through a time zone.
+        function addDays(key, n) {
+            const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(key || ''));
+            if (!m) return key;
+            return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + n)).toISOString().slice(0, 10);
+        }
+
         host.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => {
             const b = batches.find(x => x.id === btn.dataset.edit);
             if (!b) return;
@@ -57,8 +115,50 @@
                     '<div class="att-field"><label for="reqBuy">Purchasing</label>' +
                       '<input class="att-input" id="reqBuy" name="buy" type="date" value="' + esc(b.purchase_on) + '"></div>' +
                     '<div class="att-field"><label for="reqDeliver">Delivery</label>' +
-                      '<input class="att-input" id="reqDeliver" name="deliver" type="date" value="' + esc(b.delivery_on) + '"></div>',
+                      '<input class="att-input" id="reqDeliver" name="deliver" type="date" value="' + esc(b.delivery_on) + '"></div>' +
+                    '<div class="req-shift"><span>Move both:</span>' +
+                      '<button class="att-link" type="button" data-shift="1">+1 day</button>' +
+                      '<button class="att-link" type="button" data-shift="7">+1 week</button>' +
+                      '<button class="att-link" type="button" data-undo>Undo</button></div>' +
+                    '<div class="req-preview" data-preview aria-live="polite"></div>',
                 submitLabel: 'Save dates',
+                // What the workers will see, said back in words with the
+                // weekday (a date box only shows numbers), and Save stays
+                // off until the dates are valid AND different from saved.
+                onOpen: (form) => {
+                    const buy = form.buy, deliver = form.deliver;
+                    const save = form.querySelector('[data-submit]');
+                    const prev = form.querySelector('[data-preview]');
+                    function refresh() {
+                        const problem = RA.validateDates(buy.value, deliver.value);
+                        const changed = buy.value !== b.purchase_on || deliver.value !== b.delivery_on;
+                        if (problem) {
+                            prev.className = 'req-preview req-preview--bad';
+                            prev.textContent = problem;
+                        } else {
+                            prev.className = 'req-preview';
+                            prev.innerHTML = 'Workers will see: <strong>Buy ' + esc(RA.formatDay(buy.value)) +
+                                '</strong> · <strong>Deliver ' + esc(RA.formatDay(deliver.value)) + '</strong>' +
+                                (changed ? '' : ' <span class="req-muted">(no change yet)</span>');
+                        }
+                        save.disabled = !!problem || !changed;
+                    }
+                    form.addEventListener('input', refresh);
+                    form.addEventListener('change', refresh);
+                    form.querySelectorAll('[data-shift]').forEach(s => s.addEventListener('click', () => {
+                        if (!buy.value || !deliver.value) return;
+                        const n = Number(s.dataset.shift);
+                        buy.value = addDays(buy.value, n);
+                        deliver.value = addDays(deliver.value, n);
+                        refresh();
+                    }));
+                    form.querySelector('[data-undo]').addEventListener('click', () => {
+                        buy.value = b.purchase_on;
+                        deliver.value = b.delivery_on;
+                        refresh();
+                    });
+                    refresh();
+                },
                 onSubmit: async (form) => {
                     const problem = RA.validateDates(form.buy.value, form.deliver.value);
                     if (problem) throw new Error('BAD_DATES');

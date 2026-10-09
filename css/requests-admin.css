@@ -162,3 +162,37 @@
     .req-week-edit { margin-left: 0; }
     .req-count { margin-left: 0; }
 }
+/* ════════════════════════════════════════════════════════════════════
+   Weekly batches — layout (renderBatches in js/requests-admin-setup.js)
+   ════════════════════════════════════════════════════════════════════ */
+
+.req-batches {
+    font-family: var(--att-sans);
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: "lnum" 1, "tnum" 1;
+}
+.req-batches .att-title { font-family: var(--att-serif); font-feature-settings: "lnum" 1; }
+.req-batches .att-sub,
+.req-batches .req-muted { color: #55555A; }
+.req-batches .att-info { font-family: var(--att-sans); }
+
+.req-btable td { vertical-align: middle; }
+.req-btable .att-link { margin-top: 2px; }
+.req-bact { text-align: right; white-space: nowrap; }
+.req-brow.is-current td { background: var(--att-green-tint); }
+.req-brow.is-closed td:not(.req-bact) { opacity: .65; }
+.req-batches .req-group td { font-family: var(--att-sans); }
+
+/* "Change batch dates" modal */
+.req-shift { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 13px; color: #55555A; }
+.req-preview {
+    padding: 11px 14px;
+    border-radius: 10px;
+    background: var(--att-green-tint);
+    font-family: var(--att-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--att-ink);
+}
+.req-preview--bad { background: var(--att-red-tint); color: var(--att-red); font-weight: 600; }
+.req-batches .att-info > div { flex: 1; }

@@ -301,5 +301,15 @@
         RA.icons();
     }
 
+    // Weekly batches → "View in queue": open the Queue already narrowed to
+    // one batch, with nothing else filtered out of sight.
+    RA.showQueueForBatch = function (batchId) {
+        ui.scope = 'open';
+        ui.batchId = batchId || '';
+        ui.text = '';
+        ui.actionOnly = false;
+        root.switchView('reqQueue');
+    };
+
     RA.views.reqQueue = renderQueue;
 })(typeof window !== 'undefined' ? window : globalThis);
