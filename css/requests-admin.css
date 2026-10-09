@@ -643,3 +643,37 @@
 @media (max-width: 560px) {
     .req-im-grid { grid-template-columns: 1fr; }
 }
+/* ════════════════════════════════════════════════════════════════════
+   Projects open to requests (js/requests-admin-setup.js → renderProjects)
+   The status now says WHY a project is open; Allow requests is a switch,
+   labelled as the override it is.
+   ════════════════════════════════════════════════════════════════════ */
+
+.req-projects {
+    font-family: var(--att-sans);
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: "lnum" 1, "tnum" 1;
+}
+.req-projects .att-title { font-family: var(--att-serif); font-feature-settings: "lnum" 1; }
+.req-projects .att-sub,
+.req-projects .req-muted,
+.req-projects .req-count { color: #55555A; }
+.req-projects .att-search,
+.req-projects .att-seg-btn,
+.req-projects .att-howto { font-family: var(--att-sans); }
+.req-projects .att-toolbar { align-items: center; }
+
+.req-ptable td { vertical-align: middle; }
+.req-th-hint {
+    margin-left: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: var(--att-line-soft);
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #55555A;
+}
+.req-prow.is-inactive td:not(.req-pact) { opacity: .6; }
+.req-prow:hover td { background: var(--att-line-soft); }

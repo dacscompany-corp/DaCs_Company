@@ -717,45 +717,137 @@
 
     // ── Projects ────────────────────────────────────────────────────
 
-    function requestableNote(p) {
-        if (p.completed) return '<span class="att-pill att-pill--hidden">Completed</span>';
-        if (p.requestable) return '<span class="att-pill att-pill--done">Workers can request</span>';
-        return '<span class="att-pill att-pill--none">Not open</span>' +
-            '<div class="req-muted">' + (p.hidden_from_time_in ? 'Hidden from Time In.' : 'Not on today\'s Time In list.') + ' Turn on Allow requests to open it.</div>';
+    const projUi = { text: '', filter: 'all' };
+
+    // Why a project is open or not. "Workers can request" next to an Allow
+    // requests switch that said Off read as a contradiction: the project was
+    // open because it is on today's Time In list, and Allow requests is only
+    // the override for one that is not. The reason is now part of the status.
+    function projectStatus(p) {
+        if (p.completed) {
+            return { key: 'completed', label: 'Completed', pill: 'att-pill--hidden',
+                     why: 'Completed projects never accept requests' };
+        }
+        if (p.requestable) {
+            return { key: 'open', label: 'Open', pill: 'att-pill--done',
+                     why: p.allow_requests ? 'Allow requests is on' : 'On today\'s Time In list' };
+        }
+        return { key: 'closed', label: 'Not open', pill: 'att-pill--working',
+                 why: p.hidden_from_time_in ? 'Hidden from Time In' : 'Not on today\'s Time In list' };
     }
 
     async function renderProjects(host) {
-        host.innerHTML = '<div class="att-stack"><div class="att-empty">Loading projects…</div></div>';
+        host.innerHTML = '<div class="att-stack req-projects"><div class="att-empty">Loading projects…</div></div>';
         let projects;
         try { projects = await RA.rpc('pr_office_projects'); } catch (e) { RA.fail(host, e); return; }
         projects = projects || [];
+
+        const stat = projects.map(p => Object.assign({ p: p }, projectStatus(p)));
+        const nOpen = stat.filter(s => s.key === 'open').length;
+        const nClosed = stat.filter(s => s.key === 'closed').length;
+        const nDone = stat.filter(s => s.key === 'completed').length;
+        const nOverride = projects.filter(p => p.allow_requests && !p.completed).length;
+        const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+        const chip = (n, text, tone) => n
+            ? '<span class="req-sum req-sum--' + tone + '"><strong>' + n + '</strong> ' + text + '</span>' : '';
+
         host.innerHTML =
-            '<div class="att-stack">' +
-              head('Projects open to requests', 'A Project Control project accepts requests while it is on today\'s Time In list, or when Allow requests is on — use that for an upcoming site with no geofence yet. Completed projects never accept requests. Open Additional Works under a project are offered with it.') +
+            '<div class="att-stack req-projects">' +
+              head('Projects open to requests', 'Which Project Control projects workers can send requests for.') +
+              '<details class="att-howto">' +
+                '<summary><i data-lucide="info"></i>How this works</summary>' +
+                '<div class="att-howto-body">' +
+                  'A project accepts requests while it is on <strong>today\'s Time In list</strong>. ' +
+                  '<strong>Allow requests</strong> opens one that is not — use it for an upcoming site with no ' +
+                  'geofence yet. Completed projects never accept requests. Open Additional Works under a ' +
+                  'project are offered with it.</div>' +
+              '</details>' +
+              (projects.length
+                ? '<div class="req-summary">' +
+                    '<span class="req-sum req-sum--plain"><strong>' + projects.length + '</strong> ' +
+                      (projects.length === 1 ? 'project' : 'projects') + '</span>' +
+                    chip(nOpen, 'open to workers', 'green') +
+                    chip(nClosed, 'not open', 'gold') +
+                    chip(nOverride, nOverride === 1 ? 'override on' : 'overrides on', 'plain') +
+                    chip(nDone, 'completed', 'plain') +
+                  '</div>' : '') +
+              '<div class="att-toolbar">' +
+                '<div class="att-search-wrap"><i data-lucide="search"></i>' +
+                  '<input class="att-search" type="search" data-text aria-label="Search" placeholder="Search projects…" value="' + esc(projUi.text) + '"></div>' +
+                '<div class="att-seg" role="group" aria-label="Show">' +
+                  '<button type="button" class="att-seg-btn" data-filter="all">All <span class="req-tabn">' + stat.length + '</span></button>' +
+                  '<button type="button" class="att-seg-btn" data-filter="open">Open <span class="req-tabn">' + nOpen + '</span></button>' +
+                  '<button type="button" class="att-seg-btn" data-filter="closed">Not open <span class="req-tabn">' + nClosed + '</span></button>' +
+                  '<button type="button" class="att-seg-btn" data-filter="completed">Completed <span class="req-tabn">' + nDone + '</span></button>' +
+                '</div>' +
+                '<span class="req-count" data-count aria-live="polite"></span>' +
+              '</div>' +
               '<div class="att-card"><div class="att-card-body" style="padding:0">' +
-                '<div class="req-table-wrap"><table class="att-table"><thead><tr><th>Project</th><th>Additional Works</th><th>Requests</th><th>Allow requests</th></tr></thead><tbody>' +
-                projects.map(p =>
-                    '<tr><td><strong>' + esc(p.name) + '</strong></td>' +
-                    '<td>' + esc(String(p.additional_works)) + ' open</td>' +
-                    '<td>' + requestableNote(p) + '</td>' +
-                    '<td><label class="req-toggle"><input type="checkbox" data-folder="' + esc(p.folder_id) + '"' +
-                      (p.allow_requests ? ' checked' : '') + (p.completed ? ' disabled' : '') + '> ' +
-                      (p.allow_requests ? 'On' : 'Off') + '</label></td></tr>').join('') +
-                '</tbody></table></div>' +
-                (projects.length ? '' : '<div class="att-empty">No Project Control projects yet.</div>') +
+                '<div class="req-table-wrap"><table class="att-table req-ptable"><thead><tr>' +
+                  '<th>Project</th><th>Additional Works</th><th>Status</th>' +
+                  '<th>Allow requests <span class="req-th-hint">override</span></th></tr></thead>' +
+                '<tbody data-rows></tbody></table></div>' +
+                '<div class="att-empty" data-empty style="display:none"></div>' +
               '</div></div>' +
             '</div>';
-        host.querySelectorAll('input[data-folder]').forEach(box => box.addEventListener('change', async () => {
-            box.disabled = true;
+
+        function draw() {
+            const t = String(projUi.text || '').trim().toLowerCase();
+            const list = stat.filter(s => (projUi.filter === 'all' || s.key === projUi.filter) &&
+                (!t || String(s.p.name).toLowerCase().includes(t)));
+            host.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('is-on', b.dataset.filter === projUi.filter));
+            host.querySelector('[data-count]').textContent = list.length !== stat.length ? 'Showing ' + list.length + ' of ' + stat.length : '';
+
+            host.querySelector('[data-rows]').innerHTML = list.map(s => {
+                const p = s.p;
+                const on = !!p.allow_requests;
+                const works = Number(p.additional_works) || 0;
+                return '<tr class="req-prow' + (s.key === 'completed' ? ' is-inactive' : '') + '">' +
+                    '<td><strong>' + esc(p.name) + '</strong></td>' +
+                    '<td>' + (works ? '<strong>' + works + ' open</strong>' : '<span class="req-muted">—</span>') + '</td>' +
+                    '<td><span class="att-pill ' + s.pill + '">' + s.label + '</span>' +
+                      '<div class="req-muted">' + esc(s.why) + '</div></td>' +
+                    '<td class="req-pact"><button class="att-switch" type="button" role="switch" aria-checked="' + (on ? 'true' : 'false') + '"' +
+                      ' data-folder="' + esc(p.folder_id) + '"' + (p.completed ? ' disabled' : '') +
+                      ' title="' + esc(p.completed ? 'Completed projects never accept requests.' :
+                        on ? 'On: open to requests even when not on the Time In list.' :
+                             'Off: open only while on today\'s Time In list.') + '"' +
+                      ' aria-label="Allow requests: ' + esc(p.name) + '">' +
+                      '<span class="att-switch-track"></span><span>' + (on ? 'On' : 'Off') + '</span></button></td>' +
+                  '</tr>';
+            }).join('');
+
+            const empty = host.querySelector('[data-empty]');
+            host.querySelector('.req-ptable').style.display = list.length ? '' : 'none';
+            empty.style.display = list.length ? 'none' : 'block';
+            if (!projects.length) {
+                empty.textContent = 'No Project Control projects yet.';
+            } else if (!list.length) {
+                empty.innerHTML = 'No project matches. <button class="att-link" type="button" data-clear>Clear filters</button>';
+                empty.querySelector('[data-clear]').addEventListener('click', () => {
+                    projUi.text = ''; projUi.filter = 'all';
+                    renderProjects(host);
+                });
+            }
+        }
+        draw();
+
+        host.querySelector('[data-text]').addEventListener('input', e => { projUi.text = e.target.value; draw(); });
+        host.querySelectorAll('[data-filter]').forEach(b => b.addEventListener('click', () => { projUi.filter = b.dataset.filter; draw(); }));
+        host.querySelector('[data-rows]').addEventListener('click', async e => {
+            const sw = e.target.closest('[data-folder]');
+            if (!sw || sw.disabled) return;
+            const project = projects.find(p => p.folder_id === sw.dataset.folder);
+            if (!project) return;
+            sw.disabled = true;
             try {
-                await RA.rpc('pr_office_set_allow_requests', { p_folder: box.dataset.folder, p_allow: box.checked });
+                await RA.rpc('pr_office_set_allow_requests', { p_folder: project.folder_id, p_allow: !project.allow_requests });
                 renderProjects(host);
             } catch (err) {
                 alert(RA.errorMessage(err));
-                box.checked = !box.checked;
-                box.disabled = false;
+                sw.disabled = false;
             }
-        }));
+        });
         RA.icons();
     }
 
