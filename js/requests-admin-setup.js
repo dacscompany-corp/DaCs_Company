@@ -105,6 +105,27 @@
             return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + n)).toISOString().slice(0, 10);
         }
 
+        // Whole calendar days between two date-only values (to - from).
+        function dayDiff(from, to) {
+            const a = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(from || ''));
+            const z = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(to || ''));
+            if (!a || !z) return null;
+            return Math.round((Date.UTC(+z[1], +z[2] - 1, +z[3]) - Date.UTC(+a[1], +a[2] - 1, +a[3])) / 86400000);
+        }
+        const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+
+        // One card per date: the day said in words first (a date box only
+        // shows numbers), the picker underneath, what it was once changed.
+        function dateCard(kind, label, icon, id, value) {
+            return '<div class="req-bd-card" data-card="' + kind + '">' +
+                '<div class="req-bd-eyebrow"><i data-lucide="' + icon + '"></i>' + label + '</div>' +
+                '<div class="req-bd-day" data-day="' + kind + '"></div>' +
+                '<div class="req-bd-delta" data-delta="' + kind + '"></div>' +
+                '<label class="req-bd-pick" for="' + id + '"><span>Pick a date</span>' +
+                  '<input class="att-input" id="' + id + '" name="' + kind + '" type="date" value="' + esc(value) + '"></label>' +
+              '</div>';
+        }
+
         host.querySelectorAll('[data-edit]').forEach(btn => btn.addEventListener('click', () => {
             const b = batches.find(x => x.id === btn.dataset.edit);
             if (!b) return;
@@ -112,35 +133,68 @@
                 title: 'Change batch dates',
                 sub: 'Cutoff ' + RA.cutoffLabel(b.cutoff_at) + ' — the cutoff itself does not change',
                 body:
-                    '<div class="att-field"><label for="reqBuy">Purchasing</label>' +
-                      '<input class="att-input" id="reqBuy" name="buy" type="date" value="' + esc(b.purchase_on) + '"></div>' +
-                    '<div class="att-field"><label for="reqDeliver">Delivery</label>' +
-                      '<input class="att-input" id="reqDeliver" name="deliver" type="date" value="' + esc(b.delivery_on) + '"></div>' +
-                    '<div class="req-shift"><span>Move both:</span>' +
-                      '<button class="att-link" type="button" data-shift="1">+1 day</button>' +
-                      '<button class="att-link" type="button" data-shift="7">+1 week</button>' +
-                      '<button class="att-link" type="button" data-undo>Undo</button></div>' +
-                    '<div class="req-preview" data-preview aria-live="polite"></div>',
+                    '<div class="req-bd">' +
+                      '<div class="req-bd-grid">' +
+                        dateCard('buy', 'Purchasing', 'shopping-cart', 'reqBuy', b.purchase_on) +
+                        '<div class="req-bd-link" aria-hidden="true"><i data-lucide="arrow-right"></i>' +
+                          '<span data-gap></span></div>' +
+                        dateCard('deliver', 'Delivery', 'truck', 'reqDeliver', b.delivery_on) +
+                      '</div>' +
+                      '<div class="req-bd-shift"><span class="req-bd-shift-label">Move both</span>' +
+                        '<button class="req-bd-chip" type="button" data-shift="-1">\u22121 day</button>' +
+                        '<button class="req-bd-chip" type="button" data-shift="1">+1 day</button>' +
+                        '<button class="req-bd-chip" type="button" data-shift="7">+1 week</button>' +
+                        '<button class="att-link req-bd-undo" type="button" data-undo>Reset to saved</button></div>' +
+                      '<div class="req-preview" data-preview aria-live="polite"></div>' +
+                    '</div>',
                 submitLabel: 'Save dates',
                 // What the workers will see, said back in words with the
-                // weekday (a date box only shows numbers), and Save stays
-                // off until the dates are valid AND different from saved.
+                // weekday, and Save stays off until the dates are valid AND
+                // different from saved.
                 onOpen: (form) => {
                     const buy = form.buy, deliver = form.deliver;
                     const save = form.querySelector('[data-submit]');
                     const prev = form.querySelector('[data-preview]');
+                    const undo = form.querySelector('[data-undo]');
+                    const gap = form.querySelector('[data-gap]');
+                    form.closest('.att-modal-box').classList.add('req-bd-box');
+
+                    function paintCard(kind, input, saved, bad) {
+                        const card = form.querySelector('[data-card="' + kind + '"]');
+                        const n = dayDiff(saved, input.value);
+                        const delta = form.querySelector('[data-delta="' + kind + '"]');
+                        form.querySelector('[data-day="' + kind + '"]').textContent = RA.formatDay(input.value);
+                        if (n) {
+                            delta.className = 'req-bd-delta is-changed';
+                            delta.textContent = (n > 0 ? '+' : '\u2212') + plural(Math.abs(n), 'day') +
+                                ' \u00b7 was ' + RA.formatDay(saved);
+                        } else {
+                            delta.className = 'req-bd-delta';
+                            delta.textContent = 'Saved date';
+                        }
+                        card.classList.toggle('is-changed', !!n);
+                        card.classList.toggle('is-bad', !!bad);
+                    }
+
                     function refresh() {
                         const problem = RA.validateDates(buy.value, deliver.value);
                         const changed = buy.value !== b.purchase_on || deliver.value !== b.delivery_on;
+                        paintCard('buy', buy, b.purchase_on, false);
+                        paintCard('deliver', deliver, b.delivery_on, problem && problem !== 'Enter both dates.');
+                        const between = dayDiff(buy.value, deliver.value);
+                        gap.textContent = between === null || between < 0 ? ''
+                            : between === 0 ? 'Same day' : plural(between, 'day') + ' later';
                         if (problem) {
                             prev.className = 'req-preview req-preview--bad';
                             prev.textContent = problem;
                         } else {
                             prev.className = 'req-preview';
-                            prev.innerHTML = 'Workers will see: <strong>Buy ' + esc(RA.formatDay(buy.value)) +
-                                '</strong> · <strong>Deliver ' + esc(RA.formatDay(deliver.value)) + '</strong>' +
-                                (changed ? '' : ' <span class="req-muted">(no change yet)</span>');
+                            prev.innerHTML = '<span class="req-bd-eyebrow">Workers will see</span>' +
+                                '<span class="req-bd-see"><span><em>Buy</em> ' + esc(RA.formatDay(buy.value)) + '</span>' +
+                                '<span><em>Deliver</em> ' + esc(RA.formatDay(deliver.value)) + '</span></span>' +
+                                (changed ? '' : '<span class="req-muted">No change yet</span>');
                         }
+                        undo.disabled = !changed;
                         save.disabled = !!problem || !changed;
                     }
                     form.addEventListener('input', refresh);
@@ -152,11 +206,17 @@
                         deliver.value = addDays(deliver.value, n);
                         refresh();
                     }));
-                    form.querySelector('[data-undo]').addEventListener('click', () => {
+                    undo.addEventListener('click', () => {
                         buy.value = b.purchase_on;
                         deliver.value = b.delivery_on;
                         refresh();
                     });
+                    // Anywhere on a card opens its picker, not just the box.
+                    form.querySelectorAll('.req-bd-card').forEach(card => card.addEventListener('click', (e) => {
+                        const input = card.querySelector('input');
+                        if (e.target === input || !input.showPicker) return;
+                        try { input.showPicker(); } catch (err) { /* needs a user gesture; the box still works */ }
+                    }));
                     refresh();
                 },
                 onSubmit: async (form) => {

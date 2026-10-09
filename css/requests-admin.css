@@ -183,16 +183,89 @@
 .req-brow.is-closed td:not(.req-bact) { opacity: .65; }
 .req-batches .req-group td { font-family: var(--att-sans); }
 
-/* "Change batch dates" modal */
-.req-shift { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 13px; color: #55555A; }
+/* "Change batch dates" modal: two date cards, one quick-move row, one
+   "workers will see" line. The modal chrome is the shared att-modal. */
+.req-bd-box { max-width: 600px; }
+.req-bd { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 18px; font-family: var(--att-sans); font-variant-numeric: lining-nums tabular-nums; }
+
+.req-bd-grid { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; }
+.req-bd-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px 18px;
+    border: 1px solid var(--att-line);
+    border-radius: 14px;
+    background: var(--att-card);
+    cursor: pointer;
+    transition: border-color .15s, background .15s, box-shadow .15s;
+}
+.req-bd-card:hover { border-color: #CFCFCA; }
+.req-bd-card:focus-within { border-color: var(--att-green); box-shadow: 0 0 0 3px var(--att-green-tint); }
+.req-bd-card.is-changed { background: var(--att-gold-tint); border-color: #E0D2B4; }
+.req-bd-card.is-bad { background: var(--att-red-tint); border-color: var(--att-red); }
+
+.req-bd-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #55555A;
+}
+.req-bd-eyebrow svg { width: 14px; height: 14px; }
+.req-bd-day { font-family: var(--att-serif); font-size: 26px; font-weight: 600; line-height: 1.15; color: var(--att-ink); font-feature-settings: "lnum" 1; }
+.req-bd-delta { font-size: 12.5px; color: #55555A; min-height: 1.3em; }
+.req-bd-delta.is-changed { color: var(--att-gold); font-weight: 600; }
+.req-bd-pick { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; font-size: 12px; font-weight: 600; color: #55555A; }
+.req-bd-pick .att-input { height: 40px; background: var(--att-card); }
+
+.req-bd-link { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 62px; color: var(--att-faint); font-size: 11.5px; font-weight: 600; text-align: center; }
+.req-bd-link svg { width: 18px; height: 18px; }
+.req-bd-link span { color: #55555A; }
+
+.req-bd-shift { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.req-bd-shift-label { margin-right: 4px; font-size: 12.5px; font-weight: 600; color: #55555A; }
+.req-bd-chip {
+    height: 32px;
+    padding: 0 13px;
+    border: 1px solid var(--att-line);
+    border-radius: 999px;
+    background: var(--att-card);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--att-ink-2);
+    cursor: pointer;
+}
+.req-bd-chip:hover { background: var(--att-field); border-color: #CFCFCA; }
+.req-bd-undo { margin-left: auto; }
+.req-bd-undo:disabled { opacity: .4; cursor: default; }
+
 .req-preview {
-    padding: 11px 14px;
-    border-radius: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    padding: 12px 16px;
+    border-radius: 12px;
     background: var(--att-green-tint);
     font-family: var(--att-sans);
     font-size: 14px;
     line-height: 1.5;
     color: var(--att-ink);
 }
+.req-preview .req-bd-eyebrow { color: var(--att-green); }
+.req-bd-see { display: inline-flex; flex-wrap: wrap; gap: 8px; }
+.req-bd-see > span { padding: 4px 11px; border-radius: 999px; background: var(--att-card); font-weight: 700; }
+.req-bd-see em { margin-right: 4px; font-style: normal; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #55555A; }
 .req-preview--bad { background: var(--att-red-tint); color: var(--att-red); font-weight: 600; }
-.req-batches .att-info > div { flex: 1; }
+
+@media (max-width: 560px) {
+    .req-bd-grid { grid-template-columns: 1fr; }
+    .req-bd-link { flex-direction: row; justify-content: center; }
+    .req-bd-link svg { transform: rotate(90deg); }
+    .req-bd-undo { margin-left: 0; }
+}
