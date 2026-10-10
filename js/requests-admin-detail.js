@@ -17,7 +17,11 @@
 
     function kindLabel(kind) { return kind === 'tool' ? 'Tool' : 'Material'; }
 
-    function portionRows(line) {
+    // One row per weekly batch the item is split across: which batch (with
+    // its buy and deliver days), how much, whether it is arranged, and
+    // what the office can do about it. The label above each value takes
+    // the place of a column header.
+    function portionList(line) {
         const open = line.status === 'open';
         return (line.portions || []).map(p => {
             const pending = Number(p.pending_reduction) > 0;
@@ -32,19 +36,28 @@
             if (pending) {
                 actions.push('<button class="att-btn att-btn--warn" type="button" data-act="reduction" data-portion="' + esc(p.id) + '" data-line="' + esc(line.id) + '">Resolve reduction…</button>');
             }
-            return '<tr>' +
-                '<td><strong>' + esc(RA.cutoffLabel(p.cutoff_at)) + '</strong>' +
-                  '<div class="req-muted">Buy ' + esc(RA.formatDay(p.purchase_on)) + ' · Deliver ' + esc(RA.formatDay(p.delivery_on)) + '</div></td>' +
-                '<td>' + esc(RA.formatQty(p.quantity)) + ' ' + esc(line.unit) + '</td>' +
-                '<td>' + (p.arranged
-                    ? '<span class="att-pill att-pill--done">Arranged</span><div class="req-muted">' +
+            return '<div class="req-portion">' +
+                '<div class="req-pcell">' +
+                  '<div class="req-plabel">Weekly batch</div>' +
+                  '<div class="req-pval"><strong>' + esc(RA.cutoffLabel(p.cutoff_at)) + '</strong></div>' +
+                  '<div class="req-steps"><span class="req-step"><em>Buy</em><strong>' + esc(RA.formatDay(p.purchase_on)) + '</strong></span>' +
+                    '<span class="req-arrow">→</span>' +
+                    '<span class="req-step"><em>Deliver</em><strong>' + esc(RA.formatDay(p.delivery_on)) + '</strong></span></div>' +
+                '</div>' +
+                '<div class="req-pcell">' +
+                  '<div class="req-plabel">Quantity</div>' +
+                  '<div class="req-pval req-pqty">' + esc(RA.formatQty(p.quantity)) + ' ' + esc(line.unit) + '</div>' +
+                '</div>' +
+                '<div class="req-pcell">' +
+                  '<div class="req-plabel">Arranged</div>' +
+                  (p.arranged
+                    ? '<div><span class="att-pill att-pill--done">Arranged</span></div><div class="req-muted">' +
                       esc(p.arranged_by_name || '') + ' · ' + esc(RA.formatManila(p.arranged_at)) + '</div>'
-                    : '<span class="att-pill att-pill--none">Not yet</span>') + '</td>' +
-                '<td>' + (pending
-                    ? '<strong style="color:var(--att-red)">−' + esc(RA.formatQty(p.pending_reduction)) + ' ' + esc(line.unit) + '</strong>'
-                    : '—') + '</td>' +
-                '<td><div class="req-actions">' + actions.join('') + '</div></td>' +
-                '</tr>';
+                    : '<div><span class="att-pill att-pill--none">Not yet</span></div>') +
+                  (pending ? '<div class="req-red">Reduction −' + esc(RA.formatQty(p.pending_reduction)) + ' ' + esc(line.unit) + '</div>' : '') +
+                '</div>' +
+                '<div class="req-pcell req-pcell--act"><div class="req-actions">' + actions.join('') + '</div></div>' +
+                '</div>';
         }).join('');
     }
 
@@ -71,40 +84,37 @@
             ? esc(line.catalog_name) + (line.catalog_spec ? ' · ' + esc(line.catalog_spec) : '') + ' (' + esc(line.catalog_unit) + ')'
             : '<span class="req-muted">Not in the catalogue</span>';
         const linePhotos = photos.filter(ph => ph.line_id === line.id);
-        return '<div class="att-card">' +
-            '<div class="att-card-head"><div>' +
-              '<div class="att-card-title">' + (line.position + 1) + '. ' + esc(line.description) + '</div>' +
-              '<div class="att-card-sub">' + esc(kindLabel(line.kind)) + (line.spec ? ' · ' + esc(line.spec) : '') + ' · ' + esc(line.unit) +
-                (line.category ? ' · ' + esc(line.category) : '') + '</div>' +
-            '</div><div class="att-card-tools">' +
-              (line.urgent ? '<span class="req-urgent">URGENT · by ' + esc(RA.formatDay(line.needed_by)) + '</span> ' : '') +
-              '<span class="att-pill ' + RA.STATE_PILL[st] + '">' + esc(RA.STATE_LABEL[st]) + '</span>' +
-            '</div></div>' +
-            '<div class="att-card-body att-stack">' +
-              '<div class="att-facts">' +
-                '<div class="att-fact"><div class="att-fact-label">Still needed</div><div class="att-fact-val att-fact-strong">' +
-                  esc(RA.formatQty(line.needed)) + ' ' + esc(line.unit) + '</div></div>' +
-                '<div class="att-fact"><div class="att-fact-label">Catalogue</div><div class="att-fact-val">' + catalog +
-                  ' <button class="att-link" type="button" data-act="match" data-line="' + esc(line.id) + '">' +
-                  (line.catalog_item_id ? 'Change' : 'Match') + '</button></div></div>' +
-                (line.intended_member_name ? '<div class="att-fact"><div class="att-fact-label">For</div><div class="att-fact-val">' +
-                  esc(line.intended_member_name) + '</div></div>' : '') +
-                (line.urgent ? '<div class="att-fact"><div class="att-fact-label">Why urgent</div><div class="att-fact-val">' +
-                  esc(line.urgent_reason) + '</div></div>' : '') +
-                (line.notes ? '<div class="att-fact"><div class="att-fact-label">Notes</div><div class="att-fact-val">' +
-                  esc(line.notes) + '</div></div>' : '') +
+        const fact = (label, value, cls) =>
+            '<div><dt>' + label + '</dt><dd' + (cls ? ' class="' + cls + '"' : '') + '>' + value + '</dd></div>';
+        return '<section class="req-item' + (st === 'cancelled' ? ' is-cancelled' : '') + '">' +
+            '<header class="req-item-head">' +
+              '<span class="req-item-no">' + (line.position + 1) + '</span>' +
+              '<div class="req-item-title">' +
+                '<h3>' + esc(line.description) + '</h3>' +
+                '<div class="req-item-meta">' + esc(kindLabel(line.kind)) + (line.spec ? ' · ' + esc(line.spec) : '') + ' · ' + esc(line.unit) +
+                  (line.category ? ' · ' + esc(line.category) : '') + '</div>' +
               '</div>' +
-              conflictBlocks(line) +
-              ((line.portions || []).length
-                ? '<div class="req-table-wrap"><table class="att-table"><thead><tr><th>Weekly batch</th><th>Quantity</th><th>Arranged</th><th>Reduction</th><th></th></tr></thead>' +
-                  '<tbody>' + portionRows(line) + '</tbody></table></div>'
-                : '') +
-              (linePhotos.length ? '<div class="req-photos">' + linePhotos.map(photoImg).join('') + '</div>' : '') +
-              (open ? '<div class="req-actions">' +
+              '<div class="req-item-tags">' +
+                (line.urgent ? '<span class="req-urgent">URGENT · by ' + esc(RA.formatDay(line.needed_by)) + '</span>' : '') +
+                '<span class="att-pill ' + RA.STATE_PILL[st] + '">' + esc(RA.STATE_LABEL[st]) + '</span>' +
+              '</div>' +
+            '</header>' +
+            '<dl class="req-facts">' +
+              fact('Still needed', esc(RA.formatQty(line.needed)) + ' ' + esc(line.unit), 'req-fact-big') +
+              fact('Catalogue', catalog + ' <button class="att-link" type="button" data-act="match" data-line="' + esc(line.id) + '">' +
+                (line.catalog_item_id ? 'Change' : 'Match') + '</button>') +
+              (line.intended_member_name ? fact('For', esc(line.intended_member_name)) : '') +
+              (line.urgent ? fact('Why urgent', esc(line.urgent_reason)) : '') +
+              (line.notes ? fact('Notes', esc(line.notes)) : '') +
+            '</dl>' +
+            conflictBlocks(line) +
+            ((line.portions || []).length ? '<div class="req-portions">' + portionList(line) + '</div>' : '') +
+            (linePhotos.length ? '<div class="req-item-photos"><div class="req-photos">' + linePhotos.map(photoImg).join('') + '</div></div>' : '') +
+            (open ? '<footer class="req-item-foot">' +
                 '<button class="att-btn" type="button" data-act="qty" data-line="' + esc(line.id) + '">Change quantity…</button>' +
                 '<button class="att-btn att-btn--warn" type="button" data-act="cancel" data-line="' + esc(line.id) + '">Cancel item…</button>' +
-              '</div>' : '') +
-            '</div></div>';
+              '</footer>' : '') +
+            '</section>';
     }
 
     function photoImg(ph) {
@@ -291,23 +301,64 @@
         const requestPhotos = photos.filter(ph => !ph.line_id);
         const rerender = () => renderDetail(host);
 
+        // The year is dropped while it is this year, as in the queue.
+        const manilaNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
+        const year = manilaNow.getUTCFullYear();
+        const today = manilaNow.toISOString().slice(0, 10);
+        const when = iso => RA.formatManila(iso).replace(' ' + year + ',', ' ·');
+        const lines = req.lines || [];
+        const sum = RA.requestSummary(req);
+        const states = lines.map(RA.lineState);
+        const count = (...keys) => states.filter(x => keys.includes(x)).length;
+        const chip = (n, text, tone) => n
+            ? '<span class="req-sum req-sum--' + tone + '"><strong>' + n + '</strong> ' + text + '</span>' : '';
+        const overdue = sum.urgent && sum.neededBy && sum.neededBy < today;
+        // "Team Team test" read like a typo: say "Team" only if the name does not.
+        const teamLabel = req.team_name
+            ? (/^team\b/i.test(req.team_name) ? req.team_name : 'Team ' + req.team_name) : '';
+        const meta = (label, value) => value
+            ? '<div class="req-meta-row"><dt>' + label + '</dt><dd>' + value + '</dd></div>' : '';
+
         host.innerHTML =
-            '<div class="att-stack">' +
+            '<div class="att-stack req-detail">' +
               '<div class="att-crumbs"><button class="att-link" type="button" data-act="back">← Request queue</button></div>' +
               '<div class="att-head"><div>' +
                 '<h2 class="att-title">Request from ' + esc(req.requester_name) + '</h2>' +
-                '<p class="att-sub">' + esc(req.project_name) + ' · ' + esc(req.work_name) +
-                  (req.team_name ? ' · Team ' + esc(req.team_name) : '') + ' · Received ' + esc(RA.formatManila(req.received_at)) +
-                  (req.drafted_at ? ' (drafted ' + esc(RA.formatManila(req.drafted_at)) + ')' : '') + '</p>' +
+                '<p class="att-sub">Received ' + esc(when(req.received_at)) + ' · ' + esc(req.project_name) + '</p>' +
               '</div>' +
               (req.status === 'cancelled' ? '<div class="att-head-actions"><span class="att-pill att-pill--hidden">Cancelled</span></div>' : '') +
               '</div>' +
-              (req.note ? '<div class="att-info"><i data-lucide="message-square"></i><div>' + esc(req.note) + '</div></div>' : '') +
-              '<div class="req-lines">' + (req.lines || []).map(l => lineCard(l, photos)).join('') + '</div>' +
-              (requestPhotos.length ? '<div class="att-card"><div class="att-card-head"><div class="att-card-title">Photos</div></div>' +
-                '<div class="att-card-body"><div class="req-photos">' + requestPhotos.map(photoImg).join('') + '</div></div></div>' : '') +
-              '<div class="att-card"><div class="att-card-head"><div class="att-card-title">History</div></div>' +
-                '<div class="att-card-body">' + historyHtml(req) + '</div></div>' +
+              '<div class="req-layout">' +
+                '<div class="req-main">' +
+                  '<div class="req-summary">' +
+                    '<span class="req-sum req-sum--plain"><strong>' + lines.length + '</strong> item' + (lines.length === 1 ? '' : 's') + '</span>' +
+                    (sum.urgent ? '<span class="req-sum req-sum--red"><strong>' + (overdue ? 'Overdue' : 'Urgent') + '</strong> needed ' +
+                      esc(RA.formatDay(sum.neededBy)) + '</span>' : '') +
+                    chip(count('conflict', 'reduction'), 'to resolve', 'red') +
+                    chip(count('unarranged', 'partly'), 'to arrange', 'gold') +
+                    chip(count('arranged'), 'arranged', 'green') +
+                    chip(count('cancelled'), 'cancelled', 'plain') +
+                  '</div>' +
+                  (req.note ? '<div class="att-info"><i data-lucide="message-square"></i><div>' + esc(req.note) + '</div></div>' : '') +
+                  lines.map(l => lineCard(l, photos)).join('') +
+                '</div>' +
+                '<aside class="req-side">' +
+                  '<div class="att-card"><div class="att-card-head"><div class="att-card-title">Request</div></div>' +
+                    '<dl class="req-meta">' +
+                      meta('Requested by', '<strong>' + esc(req.requester_name) + '</strong>') +
+                      meta('Project', esc(req.project_name)) +
+                      meta('Work', esc(req.work_name)) +
+                      meta('Team', esc(teamLabel)) +
+                      meta('Received', esc(when(req.received_at))) +
+                      meta('Drafted on phone', req.drafted_at ? esc(when(req.drafted_at)) : '') +
+                    '</dl></div>' +
+                  (requestPhotos.length ? '<div class="att-card"><div class="att-card-head"><div class="att-card-title">Photos</div></div>' +
+                    '<div class="att-card-body"><div class="req-photos">' + requestPhotos.map(photoImg).join('') + '</div></div></div>' : '') +
+                  '<details class="att-card req-hist"' + ((req.events || []).length <= 6 ? ' open' : '') + '>' +
+                    '<summary>History <span class="req-muted">' + (req.events || []).length + '</span></summary>' +
+                    '<div class="req-hist-body">' + historyHtml(req) + '</div></details>' +
+                '</aside>' +
+              '</div>' +
             '</div>';
 
         host.querySelector('.att-stack').addEventListener('click', async (e) => {
