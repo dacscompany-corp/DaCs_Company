@@ -138,29 +138,41 @@
         const toggleBtn = user.status === 'active'
             ? `<button class="un-btn-toggle un-btn-deactivate" onclick="unToggleStatus('${user.uid}','active')">Deactivate</button>`
             : `<button class="un-btn-toggle un-btn-activate"   onclick="unToggleStatus('${user.uid}','inactive')">Activate</button>`;
+        // Owners sign no agreement, so the column says so instead of staying blank.
+        const agreement = _empAgreementBadge(user) || '<span class="un-muted">—</span>';
 
         return `<tr data-uid="${user.uid}">
             <td><div class="un-user-cell">
                 <div class="un-avatar">${avatarContent}</div>
-                <div style="display:flex;flex-direction:column;">
+                <div class="un-id">
                     <span class="un-user-name">${_esc(name)}</span>
-                    <span class="un-role-badge ${_roleClass(user.role)}" style="margin-top:3px;align-self:flex-start;">${_roleLabel(user.role)}</span>
+                    <span class="un-user-email">${_esc(user.email)}</span>
                 </div>
             </div></td>
-            <td style="color:#6b7280;font-size:13px;">${_esc(user.email)}</td>
-            <td style="color:#6b7280;font-size:13px;">${_formatDate(user.createdAt)}</td>
-            <td><div style="display:flex;flex-direction:column;align-items:flex-start;">${_statusBadge(user.status)}${_empAgreementBadge(user)}</div></td>
-            <td><div class="un-actions">
+            <td><span class="un-role-badge ${_roleClass(user.role)}">${_roleLabel(user.role)}</span></td>
+            <td class="un-col-agree">${agreement}</td>
+            <td>${_statusBadge(user.status)}</td>
+            <td class="un-col-created un-muted">${_formatDate(user.createdAt)}</td>
+            <td class="un-col-actions"><div class="un-actions">
                 <button class="un-btn-view" onclick="unViewProfile('${user.uid}','admin')">
                     <i data-lucide="eye" style="width:13px;height:13px;"></i> View
                 </button>
-                <button class="un-btn-view" onclick="unOpenEditModal('${user.uid}','admin')" style="background:#f0fdf4;color:#16a34a;border-color:#bbf7d0;">
+                <button class="un-btn-view" onclick="unOpenEditModal('${user.uid}','admin')">
                     <i data-lucide="pencil" style="width:13px;height:13px;"></i> Edit
                 </button>
                 ${toggleBtn}
             </div></td>
         </tr>`;
     }
+
+    // The status chips set the (hidden) status select and refilter.
+    window.unSetStatus = function (value) {
+        const sel = document.getElementById('unStatusFilter');
+        if (sel) sel.value = value || '';
+        document.querySelectorAll('#un-panel-all .un-chip').forEach(c =>
+            c.classList.toggle('is-on', (c.getAttribute('data-un-status') || '') === (value || '')));
+        unFilterUsers();
+    };
 
     window.unFilterUsers = function () {
         const q      = (document.getElementById('unSearchInput')?.value  || '').toLowerCase().trim();
@@ -1881,9 +1893,11 @@ match /clientUsers/{uid} {
         const table   = document.getElementById('unTable');
         const empty   = document.getElementById('unEmptyState');
         if (on) {
-            if (loading) { loading.style.display = 'flex'; loading.innerHTML = '<div class="un-loading-spinner"></div><span>Loading users…</span>'; }
+            if (loading) { loading.style.display = 'flex'; loading.innerHTML = '<div class="un-loading-spinner"></div><span>Loading employees…</span>'; }
             if (table)   table.style.display = 'none';
             if (empty)   empty.style.display = 'none';
+            // A "0" while loading reads as "nobody"; a dash reads as "not yet".
+            ['unTotalCount', 'unActiveCount', 'unInactiveCount'].forEach(id => _setText(id, '–'));
         } else {
             if (loading) loading.style.display = 'none';
         }
