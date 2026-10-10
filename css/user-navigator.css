@@ -770,3 +770,7 @@
 #un-panel-construction .un-table-wrap { overflow-x: auto; overflow-y: hidden; }
 #un-panel-construction .un-table { min-width: 860px; }
 #un-panel-construction .un-table tbody tr[data-uid]:focus-visible { outline: 2px solid #1A5C3A; outline-offset: -2px; }
+
+/* Client portal accounts: same treatment as Client accounts above. */
+#un-panel-portal .un-table-wrap { overflow-x: auto; overflow-y: hidden; }
+#un-panel-portal .un-table { min-width: 860px; }
