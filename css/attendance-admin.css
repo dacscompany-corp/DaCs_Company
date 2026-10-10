@@ -1851,3 +1851,129 @@ button.att-day:hover { filter: brightness(0.95); }
     .att-rw-filters { padding: 12px 14px; }
     .att-rw-note { margin-left: 0; }
 }
+/* ════════════════════════════════════════════════════════════════════
+   App updates (js/app-updates-admin.js)
+   What is live now comes first; publishing is two numbered steps with a
+   proper drop box instead of the browser's bare file control; the
+   consequence of publishing is said once the file is checked.
+   Barlow with lining numerals: a version like 1002 must not read "ı oo2".
+   ════════════════════════════════════════════════════════════════════ */
+
+.au {
+    font-family: var(--att-sans);
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: "lnum" 1, "tnum" 1;
+}
+.au .att-title,
+.au .att-card-title { font-family: var(--att-serif); font-feature-settings: "lnum" 1; }
+.au .att-sub,
+.au .att-card-sub,
+.au .au-muted,
+.au .au-opt,
+.au .au-hint,
+.au .au-counter,
+.au .au-app-meta { color: #55555A; }
+.au .att-input,
+.au .att-btn,
+.au .att-info,
+.au .att-seg-btn,
+.au .att-table { font-family: var(--att-sans); }
+.au .att-mono { font-family: var(--att-sans); }
+
+/* Live now: one card per app */
+.au-live { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.au-app {
+    padding: 18px 20px;
+    border: 1px solid var(--att-line);
+    border-radius: 14px;
+    background: var(--att-card);
+}
+.au-app-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.au-app-name { font-weight: 700; color: var(--att-ink); }
+.au-app-version { font-size: 28px; font-weight: 700; line-height: 1.15; color: var(--att-ink); }
+.au-code { font-size: 13px; font-weight: 500; color: #55555A; }
+.au-app-version .au-code { font-size: 15px; }
+.au-app-meta { margin-top: 4px; font-size: 13px; line-height: 1.5; }
+
+/* Publish steps */
+.au .att-info--warn { margin-bottom: 20px; }
+.au-step { display: flex; gap: 16px; margin-bottom: 22px; }
+.au-step-n {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--att-green-tint);
+    color: var(--att-green);
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.au-step-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.au-step-title { font-weight: 600; font-size: 14.5px; color: var(--att-ink); line-height: 28px; }
+.au-opt { margin-left: 8px; font-weight: 500; font-size: 13px; }
+
+/* The drop box. The real <input type=file> stays in the page (keyboard,
+   screen readers) but is not drawn. */
+.au-file-input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.au-drop {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 20px;
+    border: 2px dashed #C4C4C0;
+    border-radius: 12px;
+    background: var(--att-field);
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+}
+.au-drop:hover,
+.au-drop.is-over { border-color: var(--att-green); background: var(--att-green-tint); }
+.au-step-main:focus-within .au-drop { border-color: var(--att-green); }
+.au-drop svg { width: 28px; height: 28px; color: var(--att-green); flex-shrink: 0; }
+.au-drop-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.au-drop-text strong { color: var(--att-ink); word-break: break-all; }
+.au-drop-text span { font-size: 13px; color: #55555A; }
+.au-drop.has-file { border-style: solid; border-color: var(--att-line); background: var(--att-card); }
+
+/* The checked file */
+.au-ready { border: 1px solid var(--att-line); border-radius: 12px; padding: 16px 18px; background: var(--att-card); }
+.au-ready-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 14.5px; }
+.au-checks { margin: 12px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--att-ink-2); }
+.au-checks li::before { content: '\2713'; margin-right: 9px; font-weight: 700; color: var(--att-green); }
+.au-consequence {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-top: 14px;
+    padding: 11px 14px;
+    border-radius: 10px;
+    background: var(--att-gold-tint);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--att-ink);
+}
+.au-consequence svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 2px; color: var(--att-gold); }
+.au-tech { margin-top: 12px; font-size: 13px; color: #55555A; }
+.au-tech summary { cursor: pointer; font-weight: 600; }
+.au-sha { margin-top: 8px; font-family: var(--att-mono); font-size: 11.5px; word-break: break-all; }
+.au-done { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 10px; background: var(--att-green-tint); color: var(--att-ink); font-size: 14px; }
+.au-done svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 2px; color: var(--att-green); }
+
+.au-counter { align-self: flex-end; font-size: 12.5px; }
+.au-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
+.au-hint { margin-right: auto; font-size: 13.5px; }
+.au .att-btn:disabled { background: #D9D9D5; border-color: #D9D9D5; color: #8A8A86; cursor: not-allowed; }
+
+/* Published versions */
+.au-hist-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.au-n { margin-left: 4px; font-weight: 700; opacity: .75; }
+.au-row-current td { background: var(--att-green-tint); }
+.au-table-wrap { overflow-x: auto; }
+
+@media (max-width: 720px) {
+    .au-live { grid-template-columns: 1fr; }
+    .au-step { gap: 12px; }
+}
