@@ -854,10 +854,18 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
 
             _conProjects = projSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            const projectByEmail = {};
+            // One account can own SEVERAL projects (same clientEmail). Keep every
+            // name: the row used to keep only the last one and hide the rest.
+            const projectsByEmail = {};
+            const addProj = (email, name) => {
+                const k = (email || '').toLowerCase();
+                if (!k || !name) return;
+                (projectsByEmail[k] = projectsByEmail[k] || []);
+                if (projectsByEmail[k].indexOf(name) === -1) projectsByEmail[k].push(name);
+            };
             _conProjects.forEach(p => {
-                if (p.clientEmail)  projectByEmail[(p.clientEmail  || '').toLowerCase()] = p.projectName || '';
-                if (p.partnerEmail) projectByEmail[(p.partnerEmail || '').toLowerCase()] = p.projectName || '';
+                addProj(p.clientEmail,  p.projectName || '');
+                addProj(p.partnerEmail, p.projectName || '');
             });
 
             _allConClients = conSnap.docs.map(doc => {
@@ -871,7 +879,8 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
                     email    : d.email     || '',
                     status   : d.status    || 'active',
                     createdAt: d.createdAt || null,
-                    project  : projectByEmail[email] || '',
+                    projects : projectsByEmail[email] || [],
+                    project  : (projectsByEmail[email] || [])[0] || '',
                     role     : d.role || 'client',
                     isPartner: d.role === 'partner',   // partner accounts use the Dacs Partnership portal
                     agreementAccepted  : d.agreementAccepted === true,
@@ -899,6 +908,13 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         }
     }
 
+    // An ACTIVE account that has not signed the document for ITS role. Inactive
+    // accounts can't sign, so they never count as waiting.
+    function _ccNeedsSignature(c) {
+        if (c.status !== 'active') return false;
+        return c.isPartner ? !c.partnerAgreementAccepted : !c.agreementAccepted;
+    }
+
     function _renderConStats(clients) {
         const total  = clients.length;
         const active = clients.filter(c => c.status === 'active').length;
@@ -906,7 +922,21 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         _setText('ccActiveCount',   active);
         _setText('ccInactiveCount', total - active);
         // Redesigned header shows one compact stats line instead of stat cards.
-        _setText('cc-stats-line', total + ' client' + (total === 1 ? '' : 's') + ' · ' + active + ' active · ' + (total - active) + ' inactive');
+        const waiting = clients.filter(_ccNeedsSignature).length;
+        const line = document.getElementById('cc-stats-line');
+        if (line) {
+            line.textContent = total + ' client' + (total === 1 ? '' : 's') + ' · ' + active + ' active · ' + (total - active) + ' inactive';
+            if (waiting) {
+                const w = document.createElement('span');
+                w.style.cssText = 'color:#b45309;font-weight:600;';
+                w.textContent = ' · ' + waiting + ' waiting for signature';
+                line.appendChild(w);
+            }
+        }
+        _setText('cc-n-all',      total      ? '(' + total + ')' : '');
+        _setText('cc-n-active',   total      ? '(' + active + ')' : '');
+        _setText('cc-n-inactive', total      ? '(' + (total - active) + ')' : '');
+        _setText('cc-n-unsigned', total      ? '(' + waiting + ')' : '');
     }
 
     // Segmented status filter (All / Active / Inactive) — writes the hidden
@@ -919,6 +949,7 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
             const on = b.getAttribute('data-v') === v;
             b.style.background = on ? '#1A5C3A' : 'transparent';
             b.style.color = on ? '#fff' : '#6b7280';
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
         });
         ccFilterClients();
     };
@@ -929,13 +960,29 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         const empty = document.getElementById('ccEmptyState');
         if (!tbody) return;
 
-        if (!clients.length) {
+        if (!clients.length && _allConClients.length) {
+            // Accounts exist but the search/filter matches none: say so, don't
+            // claim there are no accounts and offer "Create First Account".
+            if (table) table.style.display = 'table';
+            if (empty) empty.style.display = 'none';
+            tbody.innerHTML = '<tr><td colspan="5" style="padding:36px 16px;text-align:center;color:#6b7280;font-size:14px;">' +
+                'No accounts match this search or filter. ' +
+                '<button type="button" onclick="ccClearFilters()" style="background:none;border:none;padding:0;color:#1A5C3A;font-weight:700;font-family:inherit;font-size:14px;cursor:pointer;text-decoration:underline;">Clear filters</button></td></tr>';
+        } else if (!clients.length) {
             if (table) table.style.display = 'none';
             if (empty) empty.style.display = 'flex';
         } else {
             if (table) table.style.display = 'table';
             if (empty) empty.style.display = 'none';
             tbody.innerHTML = clients.map(_buildConRow).join('');
+            if (!tbody.dataset.rowClick) {
+                tbody.dataset.rowClick = '1';
+                tbody.addEventListener('click', function (ev) {
+                    if (ev.target.closest('button, a, input')) return;   // the buttons do their own thing
+                    const tr = ev.target.closest('tr[data-uid]');
+                    if (tr && typeof window.ccViewProfile === 'function') window.ccViewProfile(tr.getAttribute('data-uid'));
+                });
+            }
         }
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
@@ -955,13 +1002,31 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
             const pwhen = c.partnerAgreementAcceptedAt ? _formatDate(c.partnerAgreementAcceptedAt) : '';
             return `<span title="Partnership agreement signed by ${_esc(c.partnerAgreementSignature || c.name || '')}${pwhen ? ' on ' + _esc(pwhen) : ''}" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#5b3f96;background:#efeaf8;padding:3px 11px;border-radius:99px;white-space:nowrap;">✓ Partner${pwhen ? ' · ' + _esc(pwhen) : ''}</span>`;
         };
-        const pending = (label) =>
-            `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#b45309;background:#fff7e6;padding:3px 11px;border-radius:99px;white-space:nowrap;">${label}</span>`;
+        // How long this active account has been waiting. The agreement is sent on
+        // account creation, so account age is the honest measure ("4 months").
+        const waited = () => {
+            const ms = _tsToMs(c.createdAt);
+            if (!ms) return '';
+            const days = Math.floor((Date.now() - ms) / 86400000);
+            if (days < 1)  return 'today';
+            if (days < 14) return days + (days === 1 ? ' day' : ' days');
+            if (days < 60) return Math.floor(days / 7) + ' weeks';
+            return Math.floor(days / 30) + ' months';
+        };
+        const pending = (label) => {
+            const w = waited();
+            const since = c.createdAt ? 'Account created ' + _formatDate(c.createdAt) : '';
+            return `<span title="${_esc(since)}" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#b45309;background:#fff7e6;padding:3px 11px;border-radius:99px;white-space:nowrap;">${label}${w ? ' · ' + w : ''}</span>`;
+        };
 
+        // An inactive account can't sign, so "waiting" would be misleading: show a quiet grey chip.
+        const notSigned = () =>
+            `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#6b7280;background:#f3f4f6;padding:3px 11px;border-radius:99px;white-space:nowrap;">Not signed</span>`;
+        const inactive = c.status !== 'active';
         if (c.isPartner) {
-            chips.push(c.partnerAgreementAccepted ? partnerSigned() : pending('Partner agreement pending'));
+            chips.push(c.partnerAgreementAccepted ? partnerSigned() : (inactive ? notSigned() : pending('Partner agreement pending')));
         } else {
-            chips.push(c.agreementAccepted ? clientSigned() : pending('Waiting for signature'));
+            chips.push(c.agreementAccepted ? clientSigned() : (inactive ? notSigned() : pending('Waiting for signature')));
         }
         return chips.join(' ');
     }
@@ -974,7 +1039,7 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         const name    = c.name || _nameFromEmail(c.email);
         const initial = (name[0] || 'C').toUpperCase();
         const active  = c.status === 'active';
-        return `<tr data-uid="${c.uid}">
+        return `<tr data-uid="${c.uid}" style="cursor:pointer;">
             <td>
                 <div style="display:flex;align-items:center;gap:12px;min-width:0;">
                     <span style="width:38px;height:38px;border-radius:50%;flex-shrink:0;background:#eaf5ee;color:#1A5C3A;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;">${initial}</span>
@@ -985,15 +1050,18 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
                 </div>
             </td>
             <td>
-                <div style="font-size:14px;font-weight:600;color:${c.project ? '#143523' : '#a8b0ba'};margin-bottom:5px;">${c.project ? _esc(c.project) : 'No project linked'}</div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;min-width:0;">
+                    <span style="font-size:14px;font-weight:600;color:${c.project ? '#143523' : '#a8b0ba'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.project ? _esc(c.project) : 'No project linked'}</span>
+                    ${(c.projects || []).length > 1 ? `<span title="${_esc(c.projects.join('\n'))}" style="flex:none;font-size:12px;font-weight:700;color:#4b5563;background:#eef0ee;padding:2px 9px;border-radius:99px;">+${c.projects.length - 1} more</span>` : ''}
+                </div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;">${_agreementChip(c)}</div>
             </td>
             <td style="color:#6b7280;font-size:13.5px;white-space:nowrap;">${_formatDate(c.createdAt)}</td>
             <td><span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;border-radius:99px;padding:4px 12px;background:${active ? '#ecfdf3' : '#f3f4f6'};color:${active ? '#15803d' : '#6b7280'};">${active ? 'Active' : 'Inactive'}</span></td>
             <td>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
-                    <button onclick="ccViewProfile('${c.uid}')" style="padding:9px 16px;border:1.5px solid #d6dcd7;border-radius:10px;background:#fff;color:#143523;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;">View</button>
-                    <button id="cc-more-${c.uid}" onclick="ccToggleRowMenu('${c.uid}', event)" style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;border:1.5px solid #d6dcd7;background:#fff;color:#143523;">
+                    <button onclick="ccViewProfile('${c.uid}')" aria-label="View ${_esc(name)}" style="padding:9px 16px;border:1.5px solid #d6dcd7;border-radius:10px;background:#fff;color:#143523;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;">View</button>
+                    <button id="cc-more-${c.uid}" onclick="ccToggleRowMenu('${c.uid}', event)" aria-haspopup="menu" aria-label="More actions for ${_esc(name)}" style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;border:1.5px solid #d6dcd7;background:#fff;color:#143523;">
                         More <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
                 </div>
@@ -1045,15 +1113,22 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         _ccRowMenuUid = null;
     };
 
+    window.ccClearFilters = function () {
+        const input = document.getElementById('ccSearchInput');
+        if (input) input.value = '';
+        window.ccSetStatusTab('');
+    };
+
     window.ccFilterClients = function () {
         const q      = (document.getElementById('ccSearchInput')?.value  || '').toLowerCase().trim();
         const status = (document.getElementById('ccStatusFilter')?.value || '');
         const filtered = _allConClients.filter(c => {
             const name    = (c.name || _nameFromEmail(c.email)).toLowerCase();
             const email   = (c.email || '').toLowerCase();
-            const project = (c.project || '').toLowerCase();
-            return (!q      || name.includes(q) || email.includes(q) || project.includes(q))
-                && (!status || c.status === status);
+            const project = ((c.projects || []).join(' ') || c.project || '').toLowerCase();
+            const okStatus = !status
+                || (status === 'unsigned' ? _ccNeedsSignature(c) : c.status === status);
+            return (!q || name.includes(q) || email.includes(q) || project.includes(q)) && okStatus;
         });
         _renderConTable(filtered);
     };

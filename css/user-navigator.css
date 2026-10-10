@@ -764,3 +764,9 @@
     #un-panel-all .un-col-agree { display: none; }
     #un-panel-all .un-emp-spacer { display: none; }
 }
+/* Client accounts: keep the table readable on narrower windows. Scroll sideways
+   instead of cutting off the Actions column (overflow stays hidden vertically so
+   the rounded corners still clip). Scoped to this panel on purpose. */
+#un-panel-construction .un-table-wrap { overflow-x: auto; overflow-y: hidden; }
+#un-panel-construction .un-table { min-width: 860px; }
+#un-panel-construction .un-table tbody tr[data-uid]:focus-visible { outline: 2px solid #1A5C3A; outline-offset: -2px; }
