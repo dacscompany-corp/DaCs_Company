@@ -2686,28 +2686,13 @@
 
             <!-- ── ALL USERS PANEL ── -->
             <div id="un-panel-all">
-                <!-- Stats Row -->
-                <div class="un-stats-row">
-                    <div class="un-stat-card">
-                        <div class="un-stat-icon un-icon-total"><i data-lucide="users"></i></div>
-                        <div class="un-stat-info"><h3 id="unTotalCount">0</h3><p>Total Employees</p></div>
-                    </div>
-                    <div class="un-stat-card">
-                        <div class="un-stat-icon un-icon-active"><i data-lucide="user-check"></i></div>
-                        <div class="un-stat-info"><h3 id="unActiveCount">0</h3><p>Active</p></div>
-                    </div>
-                    <div class="un-stat-card">
-                        <div class="un-stat-icon un-icon-inactive"><i data-lucide="user-x"></i></div>
-                        <div class="un-stat-info"><h3 id="unInactiveCount">0</h3><p>Inactive</p></div>
-                    </div>
-                </div>
-                <!-- Toolbar -->
+                <!-- One toolbar: find, narrow, count, act -->
                 <div class="un-toolbar">
                     <div class="un-search-wrap">
                         <i data-lucide="search" class="un-search-icon"></i>
                         <input type="text" id="unSearchInput" class="un-search-input" placeholder="Search by name or email…" oninput="unFilterUsers()">
                     </div>
-                    <select id="unRoleFilter" class="un-filter-select" onchange="unFilterUsers()">
+                    <select id="unRoleFilter" class="un-filter-select" onchange="unFilterUsers()" aria-label="Filter by role">
                         <option value="">All Roles</option>
                         <option value="owner">Owner</option>
                         <option value="staff">Staff</option>
@@ -2715,15 +2700,22 @@
                         <option value="teamLeader">Team Leader</option>
                         <option value="engineer">Engineer</option>
                     </select>
-                    <select id="unStatusFilter" class="un-filter-select" onchange="unFilterUsers()">
+                    <!-- The chips below drive this; it only holds the value. -->
+                    <select id="unStatusFilter" hidden>
                         <option value="">All Status</option>
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
                     </select>
-                    <button class="pr-btn-create" onclick="unOpenEmployeeTermsModal()" style="margin-left:auto;background:#fff;color:#7c3aed;border:1.5px solid #ddd6fe;">
+                    <div class="un-chips" role="group" aria-label="Filter by status">
+                        <button type="button" class="un-chip is-on" data-un-status="" onclick="unSetStatus('')">All <span class="un-chip-n" id="unTotalCount">–</span></button>
+                        <button type="button" class="un-chip" data-un-status="active" onclick="unSetStatus('active')">Active <span class="un-chip-n" id="unActiveCount">–</span></button>
+                        <button type="button" class="un-chip" data-un-status="inactive" onclick="unSetStatus('inactive')">Inactive <span class="un-chip-n" id="unInactiveCount">–</span></button>
+                    </div>
+                    <span class="un-emp-spacer"></span>
+                    <button class="un-btn-ghost" type="button" onclick="unOpenEmployeeTermsModal()">
                         <i data-lucide="file-text" style="width:15px;height:15px;"></i> Terms &amp; Conditions
                     </button>
-                    <button class="pr-btn-create" onclick="unOpenAddEmployeeModal()">
+                    <button class="pr-btn-create" type="button" onclick="unOpenAddEmployeeModal()">
                         <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Add Employee
                     </button>
                 </div>
@@ -2740,8 +2732,9 @@
                     <table class="un-table" id="unTable" style="display:none;">
                         <thead>
                             <tr>
-                                <th>Full Name</th><th>Email</th>
-                                <th>Created</th><th>Status</th><th>Actions</th>
+                                <th>Employee</th><th>Role</th>
+                                <th class="un-col-agree">Agreement</th><th>Status</th>
+                                <th class="un-col-created">Created</th><th class="un-col-actions">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="unTableBody"></tbody>
@@ -2771,14 +2764,15 @@
                 <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
                     <div style="flex:1;min-width:240px;position:relative;">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9aa4ad" stroke-width="2" style="position:absolute;left:15px;top:50%;transform:translateY(-50%);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                        <input type="text" id="ccSearchInput" placeholder="Search by name or email…" oninput="ccFilterClients()"
+                        <input type="text" id="ccSearchInput" placeholder="Search by name, email or project…" oninput="ccFilterClients()"
                                style="width:100%;box-sizing:border-box;padding:12px 16px 12px 42px;border:1.5px solid #e1e6e2;border-radius:11px;font-size:14.5px;font-family:inherit;background:#fff;outline:none;color:#1f2937;">
                     </div>
                     <input type="hidden" id="ccStatusFilter" value="">
-                    <div id="cc-status-tabs" style="display:flex;gap:6px;background:#fff;border:1.5px solid #e1e6e2;border-radius:11px;padding:4px;">
-                        <button type="button" data-v="" onclick="ccSetStatusTab('')" style="padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;background:#1A5C3A;color:#fff;">All</button>
-                        <button type="button" data-v="active" onclick="ccSetStatusTab('active')" style="padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;background:transparent;color:#6b7280;">Active</button>
-                        <button type="button" data-v="inactive" onclick="ccSetStatusTab('inactive')" style="padding:8px 16px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;background:transparent;color:#6b7280;">Inactive</button>
+                    <div id="cc-status-tabs" role="group" aria-label="Filter client accounts" style="display:flex;gap:6px;background:#fff;border:1.5px solid #e1e6e2;border-radius:11px;padding:4px;">
+                        <button type="button" data-v="" aria-pressed="true" onclick="ccSetStatusTab('')" style="padding:8px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;background:#1A5C3A;color:#fff;white-space:nowrap;">All <span id="cc-n-all" style="font-weight:500;opacity:.8;"></span></button>
+                        <button type="button" data-v="active" aria-pressed="false" onclick="ccSetStatusTab('active')" style="padding:8px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;background:transparent;color:#6b7280;white-space:nowrap;">Active <span id="cc-n-active" style="font-weight:500;opacity:.8;"></span></button>
+                        <button type="button" data-v="inactive" aria-pressed="false" onclick="ccSetStatusTab('inactive')" style="padding:8px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;background:transparent;color:#6b7280;white-space:nowrap;">Inactive <span id="cc-n-inactive" style="font-weight:500;opacity:.8;"></span></button>
+                        <button type="button" data-v="unsigned" aria-pressed="false" onclick="ccSetStatusTab('unsigned')" style="padding:8px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;background:transparent;color:#6b7280;white-space:nowrap;">Needs signature <span id="cc-n-unsigned" style="font-weight:500;opacity:.8;"></span></button>
                     </div>
                 </div>
                 <!-- Table -->
@@ -2808,35 +2802,31 @@
 
             <!-- ── CLIENT PORTAL PANEL ── -->
             <div id="un-panel-portal" style="display:none;">
-                <!-- Stats Row -->
-                <div class="un-stats-row">
-                    <div class="un-stat-card">
-                        <div class="un-stat-icon un-icon-total"><i data-lucide="monitor"></i></div>
-                        <div class="un-stat-info"><h3 id="cpTotalCount">0</h3><p>Total Clients</p></div>
+                <!-- Page header -->
+                <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px;">
+                    <div>
+                        <h1 style="font-family:'Playfair Display',serif;font-size:26px;font-weight:700;color:#143523;margin:0 0 4px;">Client portal accounts</h1>
+                        <div id="cp-stats-line" style="font-size:14.5px;color:#6b7280;">0 clients · 0 active · 0 inactive</div>
                     </div>
-                    <div class="un-stat-card">
-                        <div class="un-stat-icon un-icon-active"><i data-lucide="user-check"></i></div>
-                        <div class="un-stat-info"><h3 id="cpActiveCount">0</h3><p>Active</p></div>
-                    </div>
-                    <div class="un-stat-card">
-                        <div class="un-stat-icon un-icon-inactive"><i data-lucide="user-x"></i></div>
-                        <div class="un-stat-info"><h3 id="cpInactiveCount">0</h3><p>Inactive</p></div>
-                    </div>
-                </div>
-                <!-- Toolbar -->
-                <div class="un-toolbar">
-                    <div class="un-search-wrap">
-                        <i data-lucide="search" class="un-search-icon"></i>
-                        <input type="text" id="cpSearchInput" class="un-search-input" placeholder="Search by name or email…" oninput="cpFilterClients()">
-                    </div>
-                    <select id="cpStatusFilter" class="un-filter-select" onchange="cpFilterClients()">
-                        <option value="">All Status</option>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                    </select>
-                    <button class="pr-btn-create" onclick="cpOpenCreateModal()" style="margin-left:auto;">
-                        <i data-lucide="user-plus" style="width:15px;height:15px;"></i> Create Account
+                    <button onclick="cpOpenCreateModal()" style="display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border:none;border-radius:11px;background:#1A5C3A;color:#fff;font-size:14.5px;font-weight:700;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px rgba(26,92,58,0.25);">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Create account
                     </button>
+                </div>
+                <!-- Toolbar: search + segmented status tabs -->
+                <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+                    <div style="flex:1;min-width:240px;position:relative;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9aa4ad" stroke-width="2" style="position:absolute;left:15px;top:50%;transform:translateY(-50%);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="cpSearchInput" placeholder="Search by name, email or project…" oninput="cpFilterClients()" aria-label="Search client portal accounts"
+                               style="width:100%;box-sizing:border-box;padding:12px 16px 12px 42px;border:1.5px solid #e1e6e2;border-radius:11px;font-size:14.5px;font-family:inherit;background:#fff;outline:none;color:#1f2937;">
+                    </div>
+                    <input type="hidden" id="cpStatusFilter" value="">
+                    <div id="cp-status-tabs" role="group" aria-label="Filter client portal accounts" style="display:flex;gap:6px;background:#fff;border:1.5px solid #e1e6e2;border-radius:11px;padding:4px;">
+                        <button type="button" data-v="" aria-pressed="true" onclick="cpSetStatusTab('')" style="padding:8px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;background:#1A5C3A;color:#fff;white-space:nowrap;">All <span id="cp-n-all" style="font-weight:500;opacity:.8;"></span></button>
+                        <button type="button" data-v="active" aria-pressed="false" onclick="cpSetStatusTab('active')" style="padding:8px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;background:transparent;color:#6b7280;white-space:nowrap;">Active <span id="cp-n-active" style="font-weight:500;opacity:.8;"></span></button>
+                        <button type="button" data-v="inactive" aria-pressed="false" onclick="cpSetStatusTab('inactive')" style="padding:8px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;background:transparent;color:#6b7280;white-space:nowrap;">Inactive <span id="cp-n-inactive" style="font-weight:500;opacity:.8;"></span></button>
+                        <button type="button" id="cp-tab-unsigned" data-v="unsigned" aria-pressed="false" onclick="cpSetStatusTab('unsigned')" style="display:none;padding:8px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;background:transparent;color:#6b7280;white-space:nowrap;">Needs signature <span id="cp-n-unsigned" style="font-weight:500;opacity:.8;"></span></button>
+                    </div>
                 </div>
                 <!-- Table -->
                 <div class="un-table-wrap">
@@ -2854,8 +2844,8 @@
                     <table class="un-table" id="cpTable" style="display:none;">
                         <thead>
                             <tr>
-                                <th>Full Name</th><th>Email</th><th>Project</th>
-                                <th>Created</th><th>Status</th><th>Actions</th>
+                                <th>Client</th><th>Project &amp; Agreement</th>
+                                <th>Created</th><th>Status</th><th style="text-align:right;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="cpTableBody"></tbody>
