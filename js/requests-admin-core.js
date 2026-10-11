@@ -118,7 +118,9 @@
         conflict: 'att-pill--abandoned',
         reduction: 'att-pill--abandoned',
         cancelled: 'att-pill--hidden',
-        unarranged: 'att-pill--none',
+        // Amber, not grey: "To arrange" is the state that needs the office,
+        // and a grey pill on nearly every row hid it.
+        unarranged: 'att-pill--working',
         partly: 'att-pill--working',
         arranged: 'att-pill--done',
     };

@@ -138,29 +138,41 @@
         const toggleBtn = user.status === 'active'
             ? `<button class="un-btn-toggle un-btn-deactivate" onclick="unToggleStatus('${user.uid}','active')">Deactivate</button>`
             : `<button class="un-btn-toggle un-btn-activate"   onclick="unToggleStatus('${user.uid}','inactive')">Activate</button>`;
+        // Owners sign no agreement, so the column says so instead of staying blank.
+        const agreement = _empAgreementBadge(user) || '<span class="un-muted">—</span>';
 
         return `<tr data-uid="${user.uid}">
             <td><div class="un-user-cell">
                 <div class="un-avatar">${avatarContent}</div>
-                <div style="display:flex;flex-direction:column;">
+                <div class="un-id">
                     <span class="un-user-name">${_esc(name)}</span>
-                    <span class="un-role-badge ${_roleClass(user.role)}" style="margin-top:3px;align-self:flex-start;">${_roleLabel(user.role)}</span>
+                    <span class="un-user-email">${_esc(user.email)}</span>
                 </div>
             </div></td>
-            <td style="color:#6b7280;font-size:13px;">${_esc(user.email)}</td>
-            <td style="color:#6b7280;font-size:13px;">${_formatDate(user.createdAt)}</td>
-            <td><div style="display:flex;flex-direction:column;align-items:flex-start;">${_statusBadge(user.status)}${_empAgreementBadge(user)}</div></td>
-            <td><div class="un-actions">
+            <td><span class="un-role-badge ${_roleClass(user.role)}">${_roleLabel(user.role)}</span></td>
+            <td class="un-col-agree">${agreement}</td>
+            <td>${_statusBadge(user.status)}</td>
+            <td class="un-col-created un-muted">${_formatDate(user.createdAt)}</td>
+            <td class="un-col-actions"><div class="un-actions">
                 <button class="un-btn-view" onclick="unViewProfile('${user.uid}','admin')">
                     <i data-lucide="eye" style="width:13px;height:13px;"></i> View
                 </button>
-                <button class="un-btn-view" onclick="unOpenEditModal('${user.uid}','admin')" style="background:#f0fdf4;color:#16a34a;border-color:#bbf7d0;">
+                <button class="un-btn-view" onclick="unOpenEditModal('${user.uid}','admin')">
                     <i data-lucide="pencil" style="width:13px;height:13px;"></i> Edit
                 </button>
                 ${toggleBtn}
             </div></td>
         </tr>`;
     }
+
+    // The status chips set the (hidden) status select and refilter.
+    window.unSetStatus = function (value) {
+        const sel = document.getElementById('unStatusFilter');
+        if (sel) sel.value = value || '';
+        document.querySelectorAll('#un-panel-all .un-chip').forEach(c =>
+            c.classList.toggle('is-on', (c.getAttribute('data-un-status') || '') === (value || '')));
+        unFilterUsers();
+    };
 
     window.unFilterUsers = function () {
         const q      = (document.getElementById('unSearchInput')?.value  || '').toLowerCase().trim();
@@ -842,10 +854,18 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
 
             _conProjects = projSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            const projectByEmail = {};
+            // One account can own SEVERAL projects (same clientEmail). Keep every
+            // name: the row used to keep only the last one and hide the rest.
+            const projectsByEmail = {};
+            const addProj = (email, name) => {
+                const k = (email || '').toLowerCase();
+                if (!k || !name) return;
+                (projectsByEmail[k] = projectsByEmail[k] || []);
+                if (projectsByEmail[k].indexOf(name) === -1) projectsByEmail[k].push(name);
+            };
             _conProjects.forEach(p => {
-                if (p.clientEmail)  projectByEmail[(p.clientEmail  || '').toLowerCase()] = p.projectName || '';
-                if (p.partnerEmail) projectByEmail[(p.partnerEmail || '').toLowerCase()] = p.projectName || '';
+                addProj(p.clientEmail,  p.projectName || '');
+                addProj(p.partnerEmail, p.projectName || '');
             });
 
             _allConClients = conSnap.docs.map(doc => {
@@ -859,7 +879,8 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
                     email    : d.email     || '',
                     status   : d.status    || 'active',
                     createdAt: d.createdAt || null,
-                    project  : projectByEmail[email] || '',
+                    projects : projectsByEmail[email] || [],
+                    project  : (projectsByEmail[email] || [])[0] || '',
                     role     : d.role || 'client',
                     isPartner: d.role === 'partner',   // partner accounts use the Dacs Partnership portal
                     agreementAccepted  : d.agreementAccepted === true,
@@ -887,6 +908,13 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         }
     }
 
+    // An ACTIVE account that has not signed the document for ITS role. Inactive
+    // accounts can't sign, so they never count as waiting.
+    function _ccNeedsSignature(c) {
+        if (c.status !== 'active') return false;
+        return c.isPartner ? !c.partnerAgreementAccepted : !c.agreementAccepted;
+    }
+
     function _renderConStats(clients) {
         const total  = clients.length;
         const active = clients.filter(c => c.status === 'active').length;
@@ -894,7 +922,21 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         _setText('ccActiveCount',   active);
         _setText('ccInactiveCount', total - active);
         // Redesigned header shows one compact stats line instead of stat cards.
-        _setText('cc-stats-line', total + ' client' + (total === 1 ? '' : 's') + ' · ' + active + ' active · ' + (total - active) + ' inactive');
+        const waiting = clients.filter(_ccNeedsSignature).length;
+        const line = document.getElementById('cc-stats-line');
+        if (line) {
+            line.textContent = total + ' client' + (total === 1 ? '' : 's') + ' · ' + active + ' active · ' + (total - active) + ' inactive';
+            if (waiting) {
+                const w = document.createElement('span');
+                w.style.cssText = 'color:#b45309;font-weight:600;';
+                w.textContent = ' · ' + waiting + ' waiting for signature';
+                line.appendChild(w);
+            }
+        }
+        _setText('cc-n-all',      total      ? '(' + total + ')' : '');
+        _setText('cc-n-active',   total      ? '(' + active + ')' : '');
+        _setText('cc-n-inactive', total      ? '(' + (total - active) + ')' : '');
+        _setText('cc-n-unsigned', total      ? '(' + waiting + ')' : '');
     }
 
     // Segmented status filter (All / Active / Inactive) — writes the hidden
@@ -907,6 +949,7 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
             const on = b.getAttribute('data-v') === v;
             b.style.background = on ? '#1A5C3A' : 'transparent';
             b.style.color = on ? '#fff' : '#6b7280';
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
         });
         ccFilterClients();
     };
@@ -917,15 +960,44 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         const empty = document.getElementById('ccEmptyState');
         if (!tbody) return;
 
-        if (!clients.length) {
+        if (!clients.length && _allConClients.length) {
+            // Accounts exist but the search/filter matches none: say so, don't
+            // claim there are no accounts and offer "Create First Account".
+            if (table) table.style.display = 'table';
+            if (empty) empty.style.display = 'none';
+            tbody.innerHTML = '<tr><td colspan="5" style="padding:36px 16px;text-align:center;color:#6b7280;font-size:14px;">' +
+                'No accounts match this search or filter. ' +
+                '<button type="button" onclick="ccClearFilters()" style="background:none;border:none;padding:0;color:#1A5C3A;font-weight:700;font-family:inherit;font-size:14px;cursor:pointer;text-decoration:underline;">Clear filters</button></td></tr>';
+        } else if (!clients.length) {
             if (table) table.style.display = 'none';
             if (empty) empty.style.display = 'flex';
         } else {
             if (table) table.style.display = 'table';
             if (empty) empty.style.display = 'none';
             tbody.innerHTML = clients.map(_buildConRow).join('');
+            if (!tbody.dataset.rowClick) {
+                tbody.dataset.rowClick = '1';
+                tbody.addEventListener('click', function (ev) {
+                    if (ev.target.closest('button, a, input')) return;   // the buttons do their own thing
+                    const tr = ev.target.closest('tr[data-uid]');
+                    if (tr && typeof window.ccViewProfile === 'function') window.ccViewProfile(tr.getAttribute('data-uid'));
+                });
+            }
         }
         if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    // "today" / "5 days" / "6 weeks" / "4 months" since an account was created. The
+    // agreement is sent when the account is made, so account age is the honest
+    // measure of how long it has been waiting. Used by both client lists.
+    function _waitingFor(createdAt) {
+        const ms = _tsToMs(createdAt);
+        if (!ms) return '';
+        const days = Math.floor((Date.now() - ms) / 86400000);
+        if (days < 1)  return 'today';
+        if (days < 14) return days + (days === 1 ? ' day' : ' days');
+        if (days < 60) return Math.floor(days / 7) + ' weeks';
+        return Math.floor(days / 30) + ' months';
     }
 
     function _agreementChip(c) {
@@ -943,13 +1015,21 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
             const pwhen = c.partnerAgreementAcceptedAt ? _formatDate(c.partnerAgreementAcceptedAt) : '';
             return `<span title="Partnership agreement signed by ${_esc(c.partnerAgreementSignature || c.name || '')}${pwhen ? ' on ' + _esc(pwhen) : ''}" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#5b3f96;background:#efeaf8;padding:3px 11px;border-radius:99px;white-space:nowrap;">✓ Partner${pwhen ? ' · ' + _esc(pwhen) : ''}</span>`;
         };
-        const pending = (label) =>
-            `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#b45309;background:#fff7e6;padding:3px 11px;border-radius:99px;white-space:nowrap;">${label}</span>`;
+        const waited = () => _waitingFor(c.createdAt);
+        const pending = (label) => {
+            const w = waited();
+            const since = c.createdAt ? 'Account created ' + _formatDate(c.createdAt) : '';
+            return `<span title="${_esc(since)}" style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#b45309;background:#fff7e6;padding:3px 11px;border-radius:99px;white-space:nowrap;">${label}${w ? ' · ' + w : ''}</span>`;
+        };
 
+        // An inactive account can't sign, so "waiting" would be misleading: show a quiet grey chip.
+        const notSigned = () =>
+            `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:#6b7280;background:#f3f4f6;padding:3px 11px;border-radius:99px;white-space:nowrap;">Not signed</span>`;
+        const inactive = c.status !== 'active';
         if (c.isPartner) {
-            chips.push(c.partnerAgreementAccepted ? partnerSigned() : pending('Partner agreement pending'));
+            chips.push(c.partnerAgreementAccepted ? partnerSigned() : (inactive ? notSigned() : pending('Partner agreement pending')));
         } else {
-            chips.push(c.agreementAccepted ? clientSigned() : pending('Waiting for signature'));
+            chips.push(c.agreementAccepted ? clientSigned() : (inactive ? notSigned() : pending('Waiting for signature')));
         }
         return chips.join(' ');
     }
@@ -962,7 +1042,7 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         const name    = c.name || _nameFromEmail(c.email);
         const initial = (name[0] || 'C').toUpperCase();
         const active  = c.status === 'active';
-        return `<tr data-uid="${c.uid}">
+        return `<tr data-uid="${c.uid}" style="cursor:pointer;">
             <td>
                 <div style="display:flex;align-items:center;gap:12px;min-width:0;">
                     <span style="width:38px;height:38px;border-radius:50%;flex-shrink:0;background:#eaf5ee;color:#1A5C3A;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;">${initial}</span>
@@ -973,15 +1053,18 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
                 </div>
             </td>
             <td>
-                <div style="font-size:14px;font-weight:600;color:${c.project ? '#143523' : '#a8b0ba'};margin-bottom:5px;">${c.project ? _esc(c.project) : 'No project linked'}</div>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;min-width:0;">
+                    <span style="font-size:14px;font-weight:600;color:${c.project ? '#143523' : '#a8b0ba'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.project ? _esc(c.project) : 'No project linked'}</span>
+                    ${(c.projects || []).length > 1 ? `<span title="${_esc(c.projects.join('\n'))}" style="flex:none;font-size:12px;font-weight:700;color:#4b5563;background:#eef0ee;padding:2px 9px;border-radius:99px;">+${c.projects.length - 1} more</span>` : ''}
+                </div>
                 <div style="display:flex;gap:6px;flex-wrap:wrap;">${_agreementChip(c)}</div>
             </td>
             <td style="color:#6b7280;font-size:13.5px;white-space:nowrap;">${_formatDate(c.createdAt)}</td>
             <td><span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;border-radius:99px;padding:4px 12px;background:${active ? '#ecfdf3' : '#f3f4f6'};color:${active ? '#15803d' : '#6b7280'};">${active ? 'Active' : 'Inactive'}</span></td>
             <td>
                 <div style="display:flex;gap:8px;justify-content:flex-end;">
-                    <button onclick="ccViewProfile('${c.uid}')" style="padding:9px 16px;border:1.5px solid #d6dcd7;border-radius:10px;background:#fff;color:#143523;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;">View</button>
-                    <button id="cc-more-${c.uid}" onclick="ccToggleRowMenu('${c.uid}', event)" style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;border:1.5px solid #d6dcd7;background:#fff;color:#143523;">
+                    <button onclick="ccViewProfile('${c.uid}')" aria-label="View ${_esc(name)}" style="padding:9px 16px;border:1.5px solid #d6dcd7;border-radius:10px;background:#fff;color:#143523;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;">View</button>
+                    <button id="cc-more-${c.uid}" onclick="ccToggleRowMenu('${c.uid}', event)" aria-haspopup="menu" aria-label="More actions for ${_esc(name)}" style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:10px;cursor:pointer;font-family:inherit;font-size:13.5px;font-weight:600;border:1.5px solid #d6dcd7;background:#fff;color:#143523;">
                         More <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
                     </button>
                 </div>
@@ -1033,15 +1116,22 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         _ccRowMenuUid = null;
     };
 
+    window.ccClearFilters = function () {
+        const input = document.getElementById('ccSearchInput');
+        if (input) input.value = '';
+        window.ccSetStatusTab('');
+    };
+
     window.ccFilterClients = function () {
         const q      = (document.getElementById('ccSearchInput')?.value  || '').toLowerCase().trim();
         const status = (document.getElementById('ccStatusFilter')?.value || '');
         const filtered = _allConClients.filter(c => {
             const name    = (c.name || _nameFromEmail(c.email)).toLowerCase();
             const email   = (c.email || '').toLowerCase();
-            const project = (c.project || '').toLowerCase();
-            return (!q      || name.includes(q) || email.includes(q) || project.includes(q))
-                && (!status || c.status === status);
+            const project = ((c.projects || []).join(' ') || c.project || '').toLowerCase();
+            const okStatus = !status
+                || (status === 'unsigned' ? _ccNeedsSignature(c) : c.status === status);
+            return (!q || name.includes(q) || email.includes(q) || project.includes(q)) && okStatus;
         });
         _renderConTable(filtered);
     };
@@ -1610,20 +1700,48 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         }
     }
 
-    function _renderPortalStats(clients) {
-        const total  = clients.length;
-        const active = clients.filter(c => c.status === 'active').length;
-        _setText('cpTotalCount',    total);
-        _setText('cpActiveCount',   active);
-        _setText('cpInactiveCount', total - active);
+    // Portal accounts that still have to sign. Only meaningful while a client-portal
+    // Terms PDF exists (that is what the badge has always keyed on); inactive
+    // accounts can't sign, so they never count as waiting.
+    function _cpNeedsSignature(c) {
+        return _cpGlobalHasPdf && c.status === 'active' && !c.agreementAccepted;
     }
 
+    function _renderPortalStats(clients) {
+        const total   = clients.length;
+        const active  = clients.filter(c => c.status === 'active').length;
+        const waiting = clients.filter(_cpNeedsSignature).length;
+        const line = document.getElementById('cp-stats-line');
+        if (line) {
+            line.textContent = total + ' client' + (total === 1 ? '' : 's') + ' · ' + active + ' active · ' + (total - active) + ' inactive';
+            if (waiting) {
+                const w = document.createElement('span');
+                w.style.cssText = 'color:#b45309;font-weight:600;';
+                w.textContent = ' · ' + waiting + ' waiting for signature';
+                line.appendChild(w);
+            }
+        }
+        _setText('cp-n-all',      total ? '(' + total + ')' : '');
+        _setText('cp-n-active',   total ? '(' + active + ')' : '');
+        _setText('cp-n-inactive', total ? '(' + (total - active) + ')' : '');
+        _setText('cp-n-unsigned', total ? '(' + waiting + ')' : '');
+        const tab = document.getElementById('cp-tab-unsigned');
+        if (tab) tab.style.display = _cpGlobalHasPdf ? '' : 'none';
+    }
     function _renderPortalTable(clients) {
         const tbody = document.getElementById('cpTableBody');
         const table = document.getElementById('cpTable');
         const empty = document.getElementById('cpEmptyState');
         if (!tbody) return;
-        if (!clients.length) {
+        if (!clients.length && _allPortalClients.length) {
+            // Accounts exist but the search/filter matches none: say so, don't
+            // claim there are no accounts and offer "Create First Account".
+            if (table) table.style.display = 'table';
+            if (empty) empty.style.display = 'none';
+            tbody.innerHTML = '<tr><td colspan="5" style="padding:36px 16px;text-align:center;color:#6b7280;font-size:14px;">' +
+                'No accounts match this search or filter. ' +
+                '<button type="button" onclick="cpClearFilters()" style="background:none;border:none;padding:0;color:#1A5C3A;font-weight:700;font-family:inherit;font-size:14px;cursor:pointer;text-decoration:underline;">Clear filters</button></td></tr>';
+        } else if (!clients.length) {
             if (table) table.style.display = 'none';
             if (empty) empty.style.display = 'flex';
         } else {
@@ -1633,28 +1751,34 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
         }
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
-
     function _buildPortalRow(c) {
         const name    = c.name || _nameFromEmail(c.email);
         const initial = (name[0] || 'C').toUpperCase();
-        const toggleBtn = c.status === 'active'
-            ? `<button class="un-btn-toggle un-btn-deactivate" onclick="cpToggleStatus('${c.uid}','active')">Deactivate</button>`
-            : `<button class="un-btn-toggle un-btn-activate"   onclick="cpToggleStatus('${c.uid}','inactive')">Activate</button>`;
-        const projectCell = c.projects?.length
-            ? c.projects.map(p => `<span class="ca-project-tag">${_esc(p)}</span>`).join(' ')
-            : `<span style="color:#d1d5db;font-size:12px;">No project linked</span>`;
+        const active  = c.status === 'active';
+        const projects = c.projects || [];
+        const toggleBtn = active
+            ? `<button type="button" onclick="cpToggleStatus('${c.uid}','active')" aria-label="Deactivate ${_esc(name)}" style="padding:9px 16px;border:1.5px solid #d6dcd7;border-radius:10px;background:#fff;color:#b91c1c;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;">Deactivate</button>`
+            : `<button type="button" onclick="cpToggleStatus('${c.uid}','inactive')" aria-label="Activate ${_esc(name)}" style="padding:9px 16px;border:1.5px solid #bfe3cb;border-radius:10px;background:#f1faf4;color:#15803d;font-size:13.5px;font-weight:600;cursor:pointer;font-family:inherit;">Activate</button>`;
         return `<tr data-uid="${c.uid}">
-            <td><div class="un-user-cell">
-                <div class="un-avatar un-avatar-client">${initial}</div>
-                <span class="un-user-name">${_esc(name)}</span>
-            </div></td>
-            <td style="color:#6b7280;font-size:13px;">${_esc(c.email)}</td>
-            <td>${projectCell}</td>
-            <td style="color:#6b7280;font-size:13px;">${_formatDate(c.createdAt)}</td>
-            <td><div style="display:flex;flex-direction:column;align-items:flex-start;">${_statusBadge(c.status)}${_cpTermsBadge(c)}</div></td>
-            <td><div class="un-actions">
-                ${toggleBtn}
-            </div></td>
+            <td>
+                <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+                    <span style="width:38px;height:38px;border-radius:50%;flex-shrink:0;background:#eaf5ee;color:#1A5C3A;display:inline-flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;">${_esc(initial)}</span>
+                    <span style="min-width:0;">
+                        <span style="display:block;font-size:15px;font-weight:700;color:#143523;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(name)}</span>
+                        <span style="display:block;font-size:13px;color:#8a94a1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${_esc(c.email)}</span>
+                    </span>
+                </div>
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:${_cpTermsBadge(c) ? '5px' : '0'};min-width:0;">
+                    <span style="font-size:14px;font-weight:600;color:${projects.length ? '#143523' : '#a8b0ba'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${projects.length ? _esc(projects[0]) : 'No project linked'}</span>
+                    ${projects.length > 1 ? `<span title="${_esc(projects.join('\n'))}" style="flex:none;font-size:12px;font-weight:700;color:#4b5563;background:#eef0ee;padding:2px 9px;border-radius:99px;">+${projects.length - 1} more</span>` : ''}
+                </div>
+                ${_cpTermsBadge(c)}
+            </td>
+            <td style="color:#6b7280;font-size:13.5px;white-space:nowrap;">${_formatDate(c.createdAt)}</td>
+            <td><span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;border-radius:99px;padding:4px 12px;background:${active ? '#ecfdf3' : '#f3f4f6'};color:${active ? '#15803d' : '#6b7280'};">${active ? 'Active' : 'Inactive'}</span></td>
+            <td><div style="display:flex;justify-content:flex-end;">${toggleBtn}</div></td>
         </tr>`;
     }
 
@@ -1662,31 +1786,61 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
     let _cpGlobalHasPdf = false;
     function _cpTermsBadge(c) {
         if (!_cpGlobalHasPdf) return '';
+        const chip = (fg, bg, text, title) =>
+            `<span${title ? ` title="${_esc(title)}"` : ''} style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;color:${fg};background:${bg};padding:3px 11px;border-radius:99px;white-space:nowrap;">${text}</span>`;
         if (c.agreementAccepted) {
             const when = c.agreementAcceptedAt ? _formatDate(c.agreementAcceptedAt) : '';
-            return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#15803d;background:#dcfce7;padding:3px 9px;border-radius:20px;white-space:nowrap;margin-top:6px;"><i data-lucide="check-circle" style="width:12px;height:12px;"></i> Signed${when ? ' · ' + _esc(when) : ''}</span>`;
+            return chip('#15803d', '#ecfdf3', '✓ Signed' + (when ? ' · ' + _esc(when) : ''), 'Signed by ' + (c.name || c.email) + (when ? ' on ' + when : ''));
         }
-        return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#b45309;background:#fef3c7;padding:3px 9px;border-radius:20px;white-space:nowrap;margin-top:6px;"><i data-lucide="clock" style="width:12px;height:12px;"></i> Pending agreement</span>`;
+        // An inactive account can't sign, so "waiting" would be misleading.
+        if (c.status !== 'active') return chip('#6b7280', '#f3f4f6', 'Not signed');
+        const w = _waitingFor(c.createdAt);
+        return chip('#b45309', '#fff7e6', 'Waiting for signature' + (w ? ' · ' + w : ''), c.createdAt ? 'Account created ' + _formatDate(c.createdAt) : '');
     }
+
+    window.cpSetStatusTab = function (v) {
+        const hid = document.getElementById('cpStatusFilter');
+        if (hid) hid.value = v;
+        const wrap = document.getElementById('cp-status-tabs');
+        if (wrap) wrap.querySelectorAll('button').forEach(b => {
+            const on = b.getAttribute('data-v') === v;
+            b.style.background = on ? '#1A5C3A' : 'transparent';
+            b.style.color = on ? '#fff' : '#6b7280';
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        cpFilterClients();
+    };
+
+    window.cpClearFilters = function () {
+        const input = document.getElementById('cpSearchInput');
+        if (input) input.value = '';
+        window.cpSetStatusTab('');
+    };
 
     window.cpFilterClients = function () {
         const q      = (document.getElementById('cpSearchInput')?.value  || '').toLowerCase().trim();
         const status = (document.getElementById('cpStatusFilter')?.value || '');
         const filtered = _allPortalClients.filter(c => {
-            const name  = (c.name || _nameFromEmail(c.email)).toLowerCase();
-            const email = (c.email || '').toLowerCase();
-            return (!q      || name.includes(q) || email.includes(q))
-                && (!status || c.status === status);
+            const name    = (c.name || _nameFromEmail(c.email)).toLowerCase();
+            const email   = (c.email || '').toLowerCase();
+            const project = (c.projects || []).join(' ').toLowerCase();
+            const okStatus = !status
+                || (status === 'unsigned' ? _cpNeedsSignature(c) : c.status === status);
+            return (!q || name.includes(q) || email.includes(q) || project.includes(q)) && okStatus;
         });
         _renderPortalTable(filtered);
     };
-
     window.cpToggleStatus = async function (uid, currentStatus) {
         const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+        const target = _allPortalClients.find(x => x.uid === uid);
+        // Deactivating was a one-click red button on every row. Ask first.
+        if (newStatus === 'inactive') {
+            const who = target ? (target.name || _nameFromEmail(target.email)) : 'this account';
+            if (!confirm('Deactivate ' + who + '? You can reactivate the account at any time.')) return;
+        }
         try {
             await db.collection('clientUsers').doc(uid).update({ status: newStatus });
-            const c = _allPortalClients.find(x => x.uid === uid);
-            if (c) c.status = newStatus;
+            if (target) target.status = newStatus;
             _renderPortalStats(_allPortalClients);
             cpFilterClients();
         } catch (err) {
@@ -1694,8 +1848,6 @@ By agreeing, you confirm that you have read, understood, and accept these Terms 
             alert('Could not update account status. Please try again.');
         }
     };
-
-    // ── Create Portal Account Modal ───────────────────────────────
 
     window.cpOpenCreateModal = async function () {
         const modal = document.getElementById('cpCreateModal');
@@ -1881,9 +2033,11 @@ match /clientUsers/{uid} {
         const table   = document.getElementById('unTable');
         const empty   = document.getElementById('unEmptyState');
         if (on) {
-            if (loading) { loading.style.display = 'flex'; loading.innerHTML = '<div class="un-loading-spinner"></div><span>Loading users…</span>'; }
+            if (loading) { loading.style.display = 'flex'; loading.innerHTML = '<div class="un-loading-spinner"></div><span>Loading employees…</span>'; }
             if (table)   table.style.display = 'none';
             if (empty)   empty.style.display = 'none';
+            // A "0" while loading reads as "nobody"; a dash reads as "not yet".
+            ['unTotalCount', 'unActiveCount', 'unInactiveCount'].forEach(id => _setText(id, '–'));
         } else {
             if (loading) loading.style.display = 'none';
         }

@@ -253,49 +253,87 @@
         return data || [];
     }
 
+    // ── Screen helpers ──────────────────────────────────────────────
+
+    const APP_ORDER = ['attendance', 'workmate'];
+
+    function fmtDate(iso) {
+        return new Date(iso).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' });
+    }
+    function appLabel(app) { return (APPS[app] && APPS[app].label) || app; }
+
     async function render(container) {
         container.innerHTML =
-            '<div class="att-stack">' +
-            '<div class="att-head"><div>' +
-              '<h2 class="att-title">App updates</h2>' +
-              '<div class="att-sub">Publish a new version of a worker app: DACS Attendance or DAC\'S WorkMate. The file itself says which app it is. Every phone on an older version of that app must update before it can Time In or Time Out.</div>' +
-            '</div></div>' +
+            '<div class="att-stack au">' +
+              '<div class="att-head"><div>' +
+                '<h2 class="att-title">App updates</h2>' +
+                '<div class="att-sub">Publish a new version of a worker app. Every phone on an older version of that app must update before it can Time In or Time Out.</div>' +
+              '</div></div>' +
 
-            '<div class="att-card"><div class="att-card-head"><div>' +
-              '<h3 class="att-card-title">Publish a new version</h3>' +
-              '<p class="att-card-sub">Upload the signed release APK. The version number is read from the file.</p>' +
-            '</div></div><div class="att-card-body">' +
-              '<div class="att-info att-info--warn" style="margin-bottom:16px">' +
-                '<strong>Use the same signing key every time.</strong> Phones refuse an update signed with a different key, ' +
-                'and a debug build cannot be installed over the real app.' +
-              '</div>' +
-              '<div class="att-field"><label for="auFile">APK file</label>' +
-                '<input class="att-input" type="file" id="auFile" accept=".apk,' + APK_MIME + '"></div>' +
-              '<div id="auFacts" class="att-note"></div>' +
-              '<div class="att-field" style="margin-top:14px"><label for="auNotes">What\'s new (optional, shown to workers)</label>' +
-                '<textarea class="att-input" id="auNotes" rows="3" maxlength="500" placeholder="Fixed the camera on older phones"></textarea></div>' +
-              '<div id="auError" class="att-error" style="display:none"></div>' +
-              '<div class="att-actions" style="margin-top:16px">' +
-                '<button class="att-btn att-btn--primary" type="button" id="auPublish" disabled>' +
-                  '<i data-lucide="upload"></i>Publish update</button>' +
-              '</div>' +
-            '</div></div>' +
+              // What is live right now, per app: the first thing an owner
+              // wants to know, and it used to sit below the fold in a table.
+              '<div class="au-live" id="auLive"></div>' +
 
-            '<div class="att-card"><div class="att-card-head"><div>' +
-              '<h3 class="att-card-title">Published versions</h3>' +
-              '<p class="att-card-sub">Each phone downloads the newest one once. Mind the size: every worker downloads it.</p>' +
-            '</div></div><div class="att-card-body" id="auHistory">Loading…</div></div>' +
+              '<div class="att-card"><div class="att-card-head"><div>' +
+                '<h3 class="att-card-title">Publish a new version</h3>' +
+                '<p class="att-card-sub">Upload the signed release APK. The file itself says which app it is, and the version number is read from it.</p>' +
+              '</div></div><div class="att-card-body">' +
+                '<div class="att-info att-info--warn"><i data-lucide="key-round"></i><div>' +
+                  '<strong>Use the same signing key every time.</strong> Phones refuse an update signed with a different key, ' +
+                  'and a debug build cannot be installed over the real app.</div></div>' +
+
+                '<div class="au-step"><div class="au-step-n">1</div><div class="au-step-main">' +
+                  '<div class="au-step-title">Choose the APK</div>' +
+                  '<label class="au-drop" id="auDrop" for="auFile">' +
+                    '<i data-lucide="upload-cloud"></i>' +
+                    '<span class="au-drop-text"><strong id="auDropTitle">Choose the release APK</strong>' +
+                    '<span id="auDropSub">or drop the file here</span></span>' +
+                  '</label>' +
+                  '<input class="au-file-input" type="file" id="auFile" accept=".apk,' + APK_MIME + '">' +
+                  '<div id="auError" class="att-error" style="display:none"></div>' +
+                  '<div id="auFacts"></div>' +
+                '</div></div>' +
+
+                '<div class="au-step"><div class="au-step-n">2</div><div class="au-step-main">' +
+                  '<label class="au-step-title" for="auNotes">What\'s new <span class="au-opt">optional, shown to workers</span></label>' +
+                  '<textarea class="att-input" id="auNotes" rows="3" maxlength="500" placeholder="Fixed the camera on older phones"></textarea>' +
+                  '<div class="au-counter" id="auCount">0 / 500</div>' +
+                '</div></div>' +
+
+                '<div class="au-actions">' +
+                  '<span class="au-hint" id="auHint">Choose an APK to continue.</span>' +
+                  '<button class="att-btn" type="button" id="auClear" style="display:none">Choose another file</button>' +
+                  '<button class="att-btn att-btn--primary" type="button" id="auPublish" disabled>' +
+                    '<i data-lucide="upload"></i>Publish update</button>' +
+                '</div>' +
+              '</div></div>' +
+
+              '<div class="att-card"><div class="att-card-head au-hist-head"><div>' +
+                '<h3 class="att-card-title">Published versions</h3>' +
+                '<p class="att-card-sub">Each phone downloads the newest one once. Mind the size: every worker downloads it.</p>' +
+              '</div><div class="att-seg" id="auFilter" role="group" aria-label="Show versions of"></div></div>' +
+              '<div class="att-card-body" id="auHistory" style="padding:0">Loading…</div></div>' +
             '</div>';
 
         const fileInput = container.querySelector('#auFile');
+        const drop = container.querySelector('#auDrop');
+        const dropTitle = container.querySelector('#auDropTitle');
+        const dropSub = container.querySelector('#auDropSub');
         const facts = container.querySelector('#auFacts');
         const notes = container.querySelector('#auNotes');
+        const counter = container.querySelector('#auCount');
         const errorBox = container.querySelector('#auError');
+        const hint = container.querySelector('#auHint');
+        const clearBtn = container.querySelector('#auClear');
         const publishBtn = container.querySelector('#auPublish');
         const history = container.querySelector('#auHistory');
+        const live = container.querySelector('#auLive');
+        const filterBar = container.querySelector('#auFilter');
 
         let releases = [];
         let picked = null; // { file, buffer, manifest, sha }
+        let histFilter = 'all';
+        let readToken = 0;
 
         function showError(msg) {
             errorBox.textContent = msg || '';
@@ -311,69 +349,162 @@
             }
             return out;
         }
+        function currentRow(app) {
+            let best = null;
+            for (const r of releases) {
+                if ((r.app || 'attendance') === app && (!best || r.version_code > best.version_code)) best = r;
+            }
+            return best;
+        }
+
+        function paintLive() {
+            live.innerHTML = APP_ORDER.map(function (app) {
+                const r = currentRow(app);
+                return '<div class="au-app">' +
+                    '<div class="au-app-top"><span class="au-app-name">' + esc(appLabel(app)) + '</span>' +
+                      (r ? '<span class="att-pill att-pill--done">Live now</span>' : '<span class="att-pill att-pill--none">Nothing yet</span>') + '</div>' +
+                    (r
+                        ? '<div class="au-app-version">' + esc(r.version_name) + ' <span class="au-code">(' + esc(r.version_code) + ')</span></div>' +
+                          '<div class="au-app-meta">' + esc(formatSize(r.size_bytes)) + ' · published ' + esc(fmtDate(r.published_at)) + '</div>'
+                        : '<div class="au-app-meta">Nothing published yet. Phones keep the version they have until you publish one here.</div>') +
+                    '</div>';
+            }).join('');
+        }
 
         function paintHistory() {
+            const counts = { all: releases.length, attendance: 0, workmate: 0 };
+            releases.forEach(r => { counts[r.app || 'attendance'] = (counts[r.app || 'attendance'] || 0) + 1; });
+            filterBar.innerHTML =
+                '<button type="button" class="att-seg-btn' + (histFilter === 'all' ? ' is-on' : '') + '" data-f="all">All <span class="au-n">' + counts.all + '</span></button>' +
+                APP_ORDER.map(app => '<button type="button" class="att-seg-btn' + (histFilter === app ? ' is-on' : '') + '" data-f="' + app + '">' +
+                    esc(appLabel(app)) + ' <span class="au-n">' + (counts[app] || 0) + '</span></button>').join('');
+
             if (!releases.length) {
                 history.innerHTML = '<div class="att-empty">Nothing published yet. Phones keep the version they have until you publish one here.</div>';
                 return;
             }
-            const seen = {};
-            history.innerHTML =
-                '<table class="att-table"><thead><tr>' +
-                '<th>App</th><th>Version</th><th>What\'s new</th><th>Size</th><th>Published</th><th></th>' +
-                '</tr></thead><tbody>' +
-                releases.map((r) => {
-                    const app = r.app || 'attendance';
-                    const current = !seen[app];
-                    seen[app] = true;
-                    return '<tr>' +
-                        '<td>' + esc((APPS[app] && APPS[app].label) || app) + '</td>' +
-                        '<td><strong>' + esc(r.version_name) + '</strong> <span class="att-mono">(' + esc(r.version_code) + ')</span></td>' +
-                        '<td>' + (r.release_notes ? esc(r.release_notes) : '<span class="att-note">—</span>') + '</td>' +
-                        '<td class="att-mono">' + esc(formatSize(r.size_bytes)) + '</td>' +
-                        '<td>' + esc(new Date(r.published_at).toLocaleString('en-PH',
-                            { dateStyle: 'medium', timeStyle: 'short' })) + '</td>' +
-                        '<td>' + (current ? '<span class="att-pill att-pill--done">Current</span>' : '') + '</td>' +
-                        '</tr>';
-                }).join('') +
-                '</tbody></table>';
+            const rows = releases.filter(r => histFilter === 'all' || (r.app || 'attendance') === histFilter);
+            const top = latest();
+            history.innerHTML = !rows.length
+                ? '<div class="att-empty">No versions of this app yet.</div>'
+                : '<div class="au-table-wrap"><table class="att-table"><thead><tr>' +
+                  '<th>Version</th><th>App</th><th>What\'s new</th><th>Size</th><th>Published</th><th></th>' +
+                  '</tr></thead><tbody>' +
+                  rows.map(function (r) {
+                      const app = r.app || 'attendance';
+                      const current = r.version_code === top[app];
+                      return '<tr class="' + (current ? 'au-row-current' : '') + '">' +
+                          '<td><strong>' + esc(r.version_name) + '</strong> <span class="au-code">(' + esc(r.version_code) + ')</span></td>' +
+                          '<td><span class="att-pill ' + (app === 'workmate' ? 'att-pill--pm' : 'att-pill--pc') + '">' + esc(appLabel(app)) + '</span></td>' +
+                          '<td>' + (r.release_notes ? esc(r.release_notes) : '<span class="au-muted">—</span>') + '</td>' +
+                          '<td>' + esc(formatSize(r.size_bytes)) + '</td>' +
+                          '<td>' + esc(fmtDate(r.published_at)) + '</td>' +
+                          '<td>' + (current ? '<span class="att-pill att-pill--done">Current</span>' : '') + '</td>' +
+                          '</tr>';
+                  }).join('') +
+                  '</tbody></table></div>';
         }
 
         async function refresh() {
             try {
                 releases = await loadReleases();
+                paintLive();
                 paintHistory();
             } catch (e) {
-                history.innerHTML = '<div class="att-error">Could not load published versions: ' + esc(e.message || e) + '</div>';
+                live.innerHTML = '';
+                history.innerHTML = '<div class="att-error" style="margin:18px">Could not load published versions: ' + esc(e.message || e) + '</div>';
             }
         }
 
-        fileInput.addEventListener('change', async function () {
+        // Back to "nothing chosen" -- the state the page opens in.
+        function reset(message) {
+            picked = null;
+            readToken++;
+            fileInput.value = '';
+            showError('');
+            facts.innerHTML = message || '';
+            dropTitle.textContent = 'Choose the release APK';
+            dropSub.textContent = 'or drop the file here';
+            drop.classList.remove('has-file');
+            clearBtn.style.display = 'none';
+            publishBtn.disabled = true;
+            hint.textContent = 'Choose an APK to continue.';
+        }
+
+        async function handleFile(file) {
+            const token = ++readToken;
             picked = null;
             publishBtn.disabled = true;
             showError('');
-            facts.textContent = '';
-            const file = fileInput.files && fileInput.files[0];
-            if (!file) return;
+            facts.innerHTML = '';
+            if (!file) { reset(); return; }
 
-            facts.textContent = 'Reading ' + file.name + '…';
+            dropTitle.textContent = file.name;
+            dropSub.textContent = formatSize(file.size);
+            drop.classList.add('has-file');
+            clearBtn.style.display = '';
+            hint.textContent = 'Reading the file…';
             try {
                 const buffer = await file.arrayBuffer();
                 const manifest = await readApkManifest(buffer);
+                if (token !== readToken) return; // a newer pick took over
                 const refusal = refusalFor(manifest, latest());
-                if (refusal) { facts.textContent = ''; showError(refusal); return; }
+                if (refusal) { showError(refusal); hint.textContent = 'Fix the problem above to continue.'; return; }
                 const sha = await sha256Hex(buffer);
+                if (token !== readToken) return;
                 picked = { file, buffer, manifest, sha };
+
+                const app = appForPackage(manifest.packageName);
+                const liveCode = latest()[app];
                 facts.innerHTML =
-                    '<strong>' + esc(APPS[appForPackage(manifest.packageName)].label) + '</strong> · ' +
-                    '<strong>Version ' + esc(manifest.versionName || '?') + '</strong> ' +
-                    '<span class="att-mono">(versionCode ' + esc(manifest.versionCode) + ')</span> · ' +
-                    esc(formatSize(file.size)) + '<br><span class="att-mono" style="font-size:11px">SHA-256 ' + esc(sha) + '</span>';
+                    '<div class="au-ready">' +
+                      '<div class="au-ready-head"><span class="att-pill att-pill--done">Ready to publish</span>' +
+                        '<strong>' + esc(appLabel(app)) + '</strong> · Version ' + esc(manifest.versionName || '?') +
+                        ' <span class="au-code">(' + esc(manifest.versionCode) + ')</span> · ' + esc(formatSize(file.size)) + '</div>' +
+                      '<ul class="au-checks">' +
+                        '<li>Release build, not a debug build</li>' +
+                        '<li>' + (liveCode ? 'Newer than the live version (' + esc(liveCode) + ')' : 'First version of this app: nothing is live yet') + '</li>' +
+                      '</ul>' +
+                      '<div class="au-consequence"><i data-lucide="triangle-alert"></i><span>Every phone on an older version of ' + esc(appLabel(app)) +
+                        ' will be <strong>blocked from Time In and Time Out</strong> until it installs this update.</span></div>' +
+                      '<details class="au-tech"><summary>Technical details</summary>' +
+                        '<div class="au-sha">SHA-256 ' + esc(sha) + '</div></details>' +
+                    '</div>';
+                hint.textContent = '';
                 publishBtn.disabled = false;
+                icons();
             } catch (e) {
-                facts.textContent = '';
+                if (token !== readToken) return;
                 showError('This file could not be read as an Android app (' + (e.message || e) + ').');
+                hint.textContent = 'Fix the problem above to continue.';
             }
+        }
+
+        fileInput.addEventListener('change', () => handleFile(fileInput.files && fileInput.files[0]));
+        clearBtn.addEventListener('click', () => reset());
+
+        // Drop the APK straight onto the box.
+        drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('is-over'); });
+        ['dragleave', 'dragend'].forEach(ev => drop.addEventListener(ev, () => drop.classList.remove('is-over')));
+        drop.addEventListener('drop', (e) => {
+            e.preventDefault();
+            drop.classList.remove('is-over');
+            const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+            if (!f) return;
+            try {
+                const dt = new DataTransfer();
+                dt.items.add(f);
+                fileInput.files = dt.files;
+            } catch (err) { /* an older browser: the file is still read below */ }
+            handleFile(f);
+        });
+
+        notes.addEventListener('input', () => { counter.textContent = notes.value.length + ' / 500'; });
+        filterBar.addEventListener('click', (e) => {
+            const b = e.target.closest('[data-f]');
+            if (!b) return;
+            histFilter = b.dataset.f;
+            paintHistory();
         });
 
         publishBtn.addEventListener('click', async function () {
@@ -389,6 +520,7 @@
             if (!ok) return;
 
             publishBtn.disabled = true;
+            hint.textContent = 'Publishing…';
             showError('');
             const path = storagePathFor(app, m.versionCode);
             const storage = root.sbClient.storage.from(BUCKET);
@@ -416,13 +548,15 @@
                     throw error;
                 }
 
-                fileInput.value = '';
                 notes.value = '';
-                facts.innerHTML = '<strong>Published.</strong> Phones will show the update the next time the app is opened with internet.';
-                picked = null;
+                counter.textContent = '0 / 500';
+                reset('<div class="au-done"><i data-lucide="circle-check"></i><div><strong>Published.</strong> ' +
+                      'Phones will show the update the next time the app is opened with internet.</div></div>');
+                icons();
                 await refresh();
             } catch (e) {
                 showError(publishError(e));
+                hint.textContent = '';
                 publishBtn.disabled = false;
             }
         });

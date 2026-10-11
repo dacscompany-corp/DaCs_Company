@@ -614,3 +614,163 @@
 #caProfileModal .ca-d-toggle-on { border-color:#bfe0cf; color:#157a52; }
 #caProfileModal .ca-d-done { flex:1; background:#157a52; border:none; border-radius:9px; padding:11px; font:600 12.5px 'IBM Plex Sans'; color:#fff; cursor:pointer; }
 #caProfileModal .ca-d-done:hover { background:#11653f; }
+
+/* ════════════════════════════════════════════════════════════════════
+   Users → Employees — the portal's own look: one toolbar, one table.
+   Scoped to #un-panel-all so Client Management keeps its styles.
+   ════════════════════════════════════════════════════════════════════ */
+
+#un-panel-all {
+    font-family: var(--att-sans);
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: "lnum" 1, "tnum" 1;
+}
+#un-panel-all .un-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 16px; }
+#un-panel-all .un-search-wrap { flex: 1 1 260px; max-width: 420px; }
+#un-panel-all .un-search-input,
+#un-panel-all .un-filter-select {
+    height: 40px;
+    border: 1px solid var(--att-line);
+    border-radius: 10px;
+    background-color: var(--att-card);
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--att-ink);
+}
+#un-panel-all .un-search-input:focus,
+#un-panel-all .un-filter-select:focus {
+    outline: none;
+    border-color: var(--att-green);
+    box-shadow: 0 0 0 3px var(--att-green-tint);
+}
+#un-panel-all select[hidden] { display: none; }
+
+#un-panel-all .un-chips {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--att-line);
+    border-radius: 999px;
+    background: var(--att-field);
+}
+#un-panel-all .un-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--att-ink-2);
+    cursor: pointer;
+}
+#un-panel-all .un-chip.is-on { background: var(--att-card); color: var(--att-green); box-shadow: var(--att-shadow); }
+#un-panel-all .un-chip-n { font-family: var(--att-mono); font-size: 12px; font-weight: 500; color: var(--att-muted); }
+#un-panel-all .un-chip.is-on .un-chip-n { color: var(--att-green); }
+#un-panel-all .un-emp-spacer { flex: 1; }
+
+#un-panel-all .un-btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 40px;
+    padding: 0 14px;
+    border: 1px solid var(--att-line);
+    border-radius: 10px;
+    background: var(--att-card);
+    font: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--att-ink-2);
+    cursor: pointer;
+}
+#un-panel-all .un-btn-ghost:hover { background: var(--att-field); }
+#un-panel-all .pr-btn-create {
+    height: 40px;
+    margin-left: 0;
+    border-radius: 10px;
+    background: var(--att-green);
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+}
+
+#un-panel-all .un-table-wrap {
+    border: 1px solid var(--att-line);
+    border-radius: 16px;
+    background: var(--att-card);
+    box-shadow: var(--att-shadow);
+    overflow-x: auto;
+}
+#un-panel-all .un-table th {
+    padding: 12px 18px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #55555A;
+    background: var(--att-card);
+    border-bottom: 1px solid var(--att-line);
+}
+#un-panel-all .un-table td { padding: 12px 18px; vertical-align: middle; border-bottom: 1px solid var(--att-line-soft); }
+#un-panel-all .un-table tbody tr:hover td { background: var(--att-field); }
+#un-panel-all .un-user-cell { display: flex; align-items: center; gap: 12px; }
+#un-panel-all .un-avatar { background: var(--att-green-tint); color: var(--att-green); font-weight: 700; }
+#un-panel-all .un-id { display: flex; flex-direction: column; min-width: 0; }
+#un-panel-all .un-user-name { font-size: 14.5px; font-weight: 700; color: var(--att-ink); }
+#un-panel-all .un-user-email { font-size: 13px; color: #55555A; overflow: hidden; text-overflow: ellipsis; }
+#un-panel-all .un-muted { font-size: 13.5px; color: #55555A; }
+
+/* Calmer role and status pills in the portal's palette. */
+#un-panel-all .un-role-badge { font-size: 12px; font-weight: 700; }
+#un-panel-all .un-role-owner      { background: var(--att-ink);        color: #fff; }
+#un-panel-all .un-role-staff      { background: #E8EEF6;               color: #2A4D7A; }
+#un-panel-all .un-role-worker     { background: var(--att-gold-tint);  color: var(--att-gold); }
+#un-panel-all .un-role-teamleader { background: var(--att-green-tint); color: var(--att-green); }
+#un-panel-all .un-role-engineer   { background: var(--att-field);      color: var(--att-ink-2); }
+#un-panel-all .un-status-active   { background: var(--att-green-tint); color: var(--att-green); }
+#un-panel-all .un-status-inactive { background: var(--att-red-tint);   color: var(--att-red); }
+
+/* Row actions: three quiet buttons of one size. */
+#un-panel-all .un-actions { gap: 6px; flex-wrap: nowrap; }
+#un-panel-all .un-btn-view,
+#un-panel-all .un-btn-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 30px;
+    padding: 0 11px;
+    border: 1px solid var(--att-line);
+    border-radius: 8px;
+    background: var(--att-card);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--att-ink-2);
+    cursor: pointer;
+}
+#un-panel-all .un-btn-view:hover,
+#un-panel-all .un-btn-toggle:hover { background: var(--att-field); }
+#un-panel-all .un-btn-deactivate { color: var(--att-red); }
+#un-panel-all .un-btn-activate   { color: var(--att-green); }
+
+@media (max-width: 960px) {
+    #un-panel-all .un-col-created,
+    #un-panel-all .un-col-agree { display: none; }
+    #un-panel-all .un-emp-spacer { display: none; }
+}
+/* Client accounts: keep the table readable on narrower windows. Scroll sideways
+   instead of cutting off the Actions column (overflow stays hidden vertically so
+   the rounded corners still clip). Scoped to this panel on purpose. */
+#un-panel-construction .un-table-wrap { overflow-x: auto; overflow-y: hidden; }
+#un-panel-construction .un-table { min-width: 860px; }
+#un-panel-construction .un-table tbody tr[data-uid]:focus-visible { outline: 2px solid #1A5C3A; outline-offset: -2px; }
+
+/* Client portal accounts: same treatment as Client accounts above. */
+#un-panel-portal .un-table-wrap { overflow-x: auto; overflow-y: hidden; }
+#un-panel-portal .un-table { min-width: 860px; }

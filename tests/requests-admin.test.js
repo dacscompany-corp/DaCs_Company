@@ -278,13 +278,15 @@ test('the catalogue form sends aliases and brand, checked against the server cap
 
 test('the Projects tab switches Item history separately from Allow requests', () => {
   const s = src('js/requests-admin-setup.js');
-  ok(s.includes("RA.rpc('pr_office_set_allow_history', { p_folder: box.dataset.history, p_allow: box.checked })"), 'calls pr_office_set_allow_history');
-  ok(s.includes('p.allow_history ? \' checked\' : \'\''), 'checkbox reflects allow_history');
-  ok(s.includes("RA.rpc('pr_office_set_allow_requests', { p_folder: box.dataset.folder, p_allow: box.checked })"), 'Allow requests unchanged');
+  ok(s.includes("RA.rpc('pr_office_set_allow_history', { p_folder: proj.folder_id, p_allow: !proj.allow_history })"), 'calls pr_office_set_allow_history');
+  ok(s.includes("aria-checked=\"' + (p.allow_history ? 'true' : 'false')"), 'the switch reflects allow_history');
+  ok(s.includes("RA.rpc('pr_office_set_allow_requests', { p_folder: project.folder_id, p_allow: !project.allow_requests })"), 'Allow requests unchanged');
+  // History outlives the job: unlike Allow requests, the history switch is never disabled for a completed project.
+  ok(!/data-history="' \+ esc\(p\.folder_id\) \+ '"' \+ \(p\.completed/.test(s), 'history switch stays usable on completed projects');
 });
 
 test('a request line shows where Request Again came from', () => {
-  ok(src('js/requests-admin-detail.js').includes("line.ref_label ? '<div class=\"att-fact\"><div class=\"att-fact-label\">Requested again from</div>"), 'detail renders ref_label');
+  ok(src('js/requests-admin-detail.js').includes("(line.ref_label ? fact('Requested again from', esc(line.ref_label)) : '')"), 'detail renders ref_label');
 });
 
 test('setup uses the shared RA.head', () => {
