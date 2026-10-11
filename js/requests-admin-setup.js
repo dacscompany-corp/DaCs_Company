@@ -4,20 +4,15 @@
 //   reqBatches  — weekly batches; change purchasing / delivery dates
 //   reqTeams    — teams, members and the one leader per team
 //   reqCatalog  — the item catalogue (deactivate, never delete)
-//   reqProjects — which Project Control projects accept requests
-// Every change is a 0086 office RPC.
+//   reqProjects — which projects accept requests, and show their item history
+// Every change is a 0086/0090 office RPC.
 // ════════════════════════════════════════════════════════════════════
 (function (root) {
     'use strict';
     const RA = root.RequestsAdmin;
     if (!RA) return;
     const esc = RA.esc;
-
-    function head(title, sub, actions) {
-        return '<div class="att-head"><div><h2 class="att-title">' + esc(title) + '</h2>' +
-            '<p class="att-sub">' + esc(sub) + '</p></div>' +
-            (actions ? '<div class="att-head-actions">' + actions + '</div>' : '') + '</div>';
-    }
+    const head = RA.head;
 
     // ── Weekly batches ──────────────────────────────────────────────
 
@@ -181,7 +176,7 @@
     const catUi = { text: '', kind: '', showInactive: false };
 
     function itemModal(item, rerender) {
-        const v = item || { kind: 'material', name: '', spec: '', unit: '', category: '', active: true };
+        const v = item || { kind: 'material', name: '', spec: '', unit: '', category: '', brand: '', aliases: [], active: true };
         RA.modal({
             title: item ? 'Edit item' : 'New item',
             sub: 'One row = one exact item. A different size or unit is a different item.',
@@ -197,9 +192,17 @@
                   '<input class="att-input" id="reqSpec" name="spec" maxlength="120" value="' + esc(v.spec) + '" placeholder="e.g. 1/2 in, 3 m"></div>' +
                 '<div class="att-field"><label for="reqUnit">Unit</label>' +
                   '<input class="att-input" id="reqUnit" name="unit" maxlength="30" value="' + esc(v.unit) + '" placeholder="e.g. pc, bag, m"></div>' +
+                '<div class="att-field att-span"><label for="reqBrand">Brand <span class="att-hint-inline">(optional)</span></label>' +
+                  '<input class="att-input" id="reqBrand" name="brand" maxlength="80" value="' + esc(v.brand || '') + '" placeholder="e.g. Omni"></div>' +
+                '<div class="att-field att-span"><label for="reqAliases">Other names workers use <span class="att-hint-inline">(optional — for search only)</span></label>' +
+                  '<textarea class="att-input" id="reqAliases" name="aliases" rows="2" placeholder="e.g. saksakan, outlet, plug">' +
+                    esc((v.aliases || []).join(', ')) + '</textarea></div>' +
                 (item ? '<label class="req-toggle att-span"><input type="checkbox" name="active"' + (v.active ? ' checked' : '') + '> Active (workers can pick it)</label>' : ''),
             submitLabel: item ? 'Save' : 'Add item',
             onSubmit: async (form) => {
+                const aliases = RA.parseAliases(form.aliases.value);
+                const problem = RA.aliasesProblem(aliases);
+                if (problem) throw new Error(problem);
                 await RA.rpc('pr_office_save_item', {
                     p_item: item ? item.id : null,
                     p_kind: form.kind.value,
@@ -208,6 +211,8 @@
                     p_unit: form.unit.value.trim(),
                     p_category: form.category.value.trim(),
                     p_active: item ? form.active.checked : true,
+                    p_aliases: aliases,
+                    p_brand: form.brand.value.trim(),
                 });
             },
             onDone: rerender,
@@ -226,7 +231,7 @@
                    '<button class="att-btn att-btn--primary" type="button" data-new-item>New item</button>') +
               '<div class="att-toolbar">' +
                 '<div class="att-search-wrap"><i data-lucide="search"></i>' +
-                  '<input class="att-search" type="search" data-text aria-label="Search" placeholder="Search name, size, unit, category…" value="' + esc(catUi.text) + '"></div>' +
+                  '<input class="att-search" type="search" data-text aria-label="Search" placeholder="Search name, size, unit, category, brand, other names…" value="' + esc(catUi.text) + '"></div>' +
                 '<select class="att-filter" data-kind aria-label="Kind">' +
                   '<option value="">Materials and tools</option>' +
                   '<option value="material"' + (catUi.kind === 'material' ? ' selected' : '') + '>Materials</option>' +
@@ -234,17 +239,19 @@
                 '<label class="req-toggle"><input type="checkbox" data-inactive' + (catUi.showInactive ? ' checked' : '') + '> Show inactive</label>' +
               '</div>' +
               '<div class="att-card"><div class="att-card-body" style="padding:0">' +
-                '<div class="req-table-wrap"><table class="att-table"><thead><tr><th>Kind</th><th>Name</th><th>Size / spec</th><th>Unit</th><th>Category</th><th>Status</th><th></th></tr></thead>' +
+                '<div class="req-table-wrap"><table class="att-table"><thead><tr><th>Kind</th><th>Name</th><th>Size / spec</th><th>Unit</th><th>Category</th><th>Brand</th><th>Status</th><th></th></tr></thead>' +
                 '<tbody data-rows></tbody></table></div><div class="att-empty" data-empty style="display:none">No item matches.</div>' +
               '</div></div>' +
             '</div>';
         function draw() {
             const t = catUi.text.trim().toLowerCase();
             const list = items.filter(i => (catUi.showInactive || i.active) && (!catUi.kind || i.kind === catUi.kind) &&
-                (!t || [i.name, i.spec, i.unit, i.category].join(' ').toLowerCase().includes(t)));
+                (!t || [i.name, i.spec, i.unit, i.category, i.brand].concat(i.aliases || []).join(' ').toLowerCase().includes(t)));
             host.querySelector('[data-rows]').innerHTML = list.map(i =>
-                '<tr><td>' + (i.kind === 'tool' ? 'Tool' : 'Material') + '</td><td><strong>' + esc(i.name) + '</strong></td>' +
+                '<tr><td>' + (i.kind === 'tool' ? 'Tool' : 'Material') + '</td><td><strong>' + esc(i.name) + '</strong>' +
+                  ((i.aliases || []).length ? '<div class="req-muted">Also called: ' + esc(i.aliases.join(', ')) + '</div>' : '') + '</td>' +
                 '<td>' + esc(i.spec || '—') + '</td><td>' + esc(i.unit) + '</td><td>' + esc(i.category || '—') + '</td>' +
+                '<td>' + esc(i.brand || '—') + '</td>' +
                 '<td>' + (i.active ? '<span class="att-pill att-pill--done">Active</span>' : '<span class="att-pill att-pill--hidden">Inactive</span>') + '</td>' +
                 '<td><button class="att-btn" type="button" data-edit="' + esc(i.id) + '">Edit…</button></td></tr>').join('');
             host.querySelector('[data-empty]').style.display = list.length ? 'none' : 'block';
@@ -277,16 +284,18 @@
         projects = projects || [];
         host.innerHTML =
             '<div class="att-stack">' +
-              head('Projects open to requests', 'A Project Control project accepts requests while it is on today\'s Time In list, or when Allow requests is on — use that for an upcoming site with no geofence yet. Completed projects never accept requests. Open Additional Works under a project are offered with it.') +
+              head('Projects open to requests', 'A Project Control project accepts requests while it is on today\'s Time In list, or when Allow requests is on — use that for an upcoming site with no geofence yet. Completed projects never accept requests. Open Additional Works under a project are offered with it. Item history lets workers browse what was requested on that project before (Find Previous Item); it is separate from Allow requests and stays on after the project is completed.') +
               '<div class="att-card"><div class="att-card-body" style="padding:0">' +
-                '<div class="req-table-wrap"><table class="att-table"><thead><tr><th>Project</th><th>Additional Works</th><th>Requests</th><th>Allow requests</th></tr></thead><tbody>' +
+                '<div class="req-table-wrap"><table class="att-table"><thead><tr><th>Project</th><th>Additional Works</th><th>Requests</th><th>Allow requests</th><th>Item history</th></tr></thead><tbody>' +
                 projects.map(p =>
                     '<tr><td><strong>' + esc(p.name) + '</strong></td>' +
                     '<td>' + esc(String(p.additional_works)) + ' open</td>' +
                     '<td>' + requestableNote(p) + '</td>' +
                     '<td><label class="req-toggle"><input type="checkbox" data-folder="' + esc(p.folder_id) + '"' +
                       (p.allow_requests ? ' checked' : '') + (p.completed ? ' disabled' : '') + '> ' +
-                      (p.allow_requests ? 'On' : 'Off') + '</label></td></tr>').join('') +
+                      (p.allow_requests ? 'On' : 'Off') + '</label></td>' +
+                    '<td><label class="req-toggle"><input type="checkbox" data-history="' + esc(p.folder_id) + '"' +
+                      (p.allow_history ? ' checked' : '') + '> ' + (p.allow_history ? 'Workers can browse' : 'Off') + '</label></td></tr>').join('') +
                 '</tbody></table></div>' +
                 (projects.length ? '' : '<div class="att-empty">No Project Control projects yet.</div>') +
               '</div></div>' +
@@ -295,6 +304,17 @@
             box.disabled = true;
             try {
                 await RA.rpc('pr_office_set_allow_requests', { p_folder: box.dataset.folder, p_allow: box.checked });
+                renderProjects(host);
+            } catch (err) {
+                alert(RA.errorMessage(err));
+                box.checked = !box.checked;
+                box.disabled = false;
+            }
+        }));
+        host.querySelectorAll('input[data-history]').forEach(box => box.addEventListener('change', async () => {
+            box.disabled = true;
+            try {
+                await RA.rpc('pr_office_set_allow_history', { p_folder: box.dataset.history, p_allow: box.checked });
                 renderProjects(host);
             } catch (err) {
                 alert(RA.errorMessage(err));

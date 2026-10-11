@@ -21,7 +21,7 @@
     <!-- Client Reimbursement Tracker Styles -->
     <link rel="stylesheet" href="css/reimbursement-module.css">
     <link rel="stylesheet" href="css/attendance-admin.css">
-    <link rel="stylesheet" href="css/requests-admin.css">
+    <link rel="stylesheet" href="css/requests-admin.css?v=20261009b">
     <!-- Warranty Retention Register + Fund Styles -->
     <link rel="stylesheet" href="css/warranty-fund.css?v=20260803f">
     <!-- Construction Module Styles -->
@@ -2630,6 +2630,7 @@
         <div id="reqBatchesView"    class="content-view" style="display: none;"></div>
         <div id="reqTeamsView"      class="content-view" style="display: none;"></div>
         <div id="reqCatalogView"    class="content-view" style="display: none;"></div>
+        <div id="reqHistoryView"     class="content-view" style="display: none;"></div>
         <div id="reqProjectsView"   class="content-view" style="display: none;"></div>
 
         <!-- ════════════ USER NAVIGATOR ════════════ -->
@@ -5387,7 +5388,7 @@
 <!-- ?v= is a cache-buster, same convention as expenses-module.js below. Bump
      it whenever a change to this file must reach an already-open browser —
      admin.js carries PRIMARY_NAV, so a stale copy silently hides new tabs. -->
-<script src="js/admin.js?v=20261001a"></script>
+<script src="js/admin.js?v=20261009b"></script>
 <script src="js/print-utils.js"></script>
 <script src="js/receipt-storage.js?v=20261008a"></script>
 <script src="js/expenses-module.js?v=20261008a"></script>
@@ -5398,10 +5399,12 @@
 <script src="js/quotation-module.js"></script>
 <script src="js/attendance-admin.js"></script>
 <script src="js/app-updates-admin.js"></script>
-<script src="js/requests-admin-core.js"></script>
-<script src="js/requests-admin-queue.js"></script>
-<script src="js/requests-admin-detail.js"></script>
-<script src="js/requests-admin-setup.js"></script>
+<script src="js/requests-admin-core.js?v=20261009b"></script>
+<script src="js/requests-admin-queue.js?v=20261009b"></script>
+<script src="js/requests-admin-detail.js?v=20261009b"></script>
+<script src="js/requests-admin-setup.js?v=20261009b"></script>
+<script src="js/requests-admin-history.js?v=20261009b"></script>
+<script src="js/requests-admin-gallery.js?v=20261009b"></script>
 <script src="js/quotation-print.js"></script>
 <script src="js/user-navigator.js"></script>
 <script src="js/client-accounts.js"></script>
@@ -6238,7 +6241,7 @@
     const PM_VIEWS   = ['pmProjects','pmWorkspace'];
     const QUOTE_VIEWS = ['quoteList','quoteEditor','quoteRevision'];
     const ATT_VIEWS   = ['attToday','attWorkers','attWorker','attProjects','attReports','attRewards'];
-    const REQ_VIEWS   = ['reqQueue','reqDetail','reqBatches','reqTeams','reqCatalog','reqProjects'];
+    const REQ_VIEWS   = ['reqQueue','reqDetail','reqBatches','reqTeams','reqCatalog','reqHistory','reqProjects'];
     const TITLES = {
         dashboard:        'Dashboard',
         appointments:     'Appointments',
@@ -6279,6 +6282,7 @@
         reqBatches:       'Weekly batches',
         reqTeams:         'Teams',
         reqCatalog:       'Item catalogue',
+        reqHistory:       'Item history',
         reqProjects:      'Projects open to requests',
     };
 

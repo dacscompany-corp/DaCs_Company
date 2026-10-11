@@ -5,7 +5,9 @@
 // The office (owner + staff) processes them in the Requests section:
 //   js/requests-admin-queue.js  — the queue and one request's detail
 //   js/requests-admin-setup.js  — weekly batches, teams, catalogue, projects
-// Every change goes through a 0086 office RPC; nothing here writes a table.
+//   js/requests-admin-history.js — Item history: search, item page, references (0090)
+//   js/requests-admin-gallery.js — Item history: product photos and photo review (0090)
+// Every change goes through a 0086/0090 office RPC; nothing here writes a table.
 // NO MONEY: quantities only — no price, amount or cost anywhere.
 //
 // Works in a browser (window.RequestsAdmin, window.initRequestsModule) and
@@ -242,10 +244,25 @@
         NOT_IN_TEAM: 'Add this person to the team first.',
         DUPLICATE_ITEM: 'This item (same name, size/spec and unit) is already in the catalogue.',
         DUPLICATE_TEAM: 'An active team already has this name.',
-        BAD_ITEM: 'Fill in the item name and unit, and choose Material or Tool.',
+        BAD_ITEM: 'Fill in the item name and unit, choose Material or Tool, and keep other names to 20 or fewer, each up to 60 characters.',
         BAD_OUTCOME: 'Choose what happened to the order.',
         BAD_TEAM: 'Give the team a name. To change members, the team must be active — reload the page if it still fails.',
         BAD_WORKER: 'Only active workers and team leaders of your company can join a team.',
+        // 0090 — item history
+        HISTORY_NOT_AVAILABLE: 'This item has no history to show. Reload the page.',
+        BAD_REFERENCE: 'Write what was used, and give a date unless you choose "Date unknown".',
+        BAD_DESTINATION: 'Pick the project, then Main Contract or one of that project\'s own Additional Works.',
+        CHECKLIST_REQUIRED: 'Tick all three checks before a photo goes to the workers\' gallery.',
+        BAD_PATH: 'The photo was stored in the wrong place. Try again.',
+        FILE_MISSING: 'The photo upload did not finish. Try again.',
+        ALREADY_IN_GALLERY: 'This photo is already in the gallery.',
+        ALREADY_REVIEWED: 'Someone already reviewed this photo. Reload the page.',
+        NOT_MATCHED: 'Match the request line to a catalogue item first (open the request).',
+        PHOTO_RETIRED: 'This photo is retired. Pick an approved photo.',
+        TOO_MANY_ITEMS: 'Too many items at once. Try again with fewer.',
+        // Browser-side (never sent by the server)
+        NO_PHOTO: 'Choose a photo first.',
+        UPLOAD_FAILED: 'The photo upload failed. Check the connection and try again.',
     };
 
     function errorMessage(error) {
@@ -280,9 +297,67 @@
             .sort((a, b) => a.name.localeCompare(b.name) || String(a.spec).localeCompare(String(b.spec)));
     }
 
+    // ── Item history (0090) ─────────────────────────────────────────
+
+    // Workers' own words for an item, comma or new-line separated: trimmed,
+    // blanks dropped, one per spelling. The server cleans the same way.
+    function parseAliases(text) {
+        const seen = new Set();
+        const out = [];
+        String(text || '').split(/[,\n]/).forEach(s => {
+            const a = s.trim();
+            if (a && !seen.has(a.toLowerCase())) { seen.add(a.toLowerCase()); out.push(a); }
+        });
+        return out;
+    }
+
+    // pr_office_save_item's caps: at most 20 aliases, 60 characters each.
+    function aliasesProblem(list) {
+        return (list || []).length > 20 || (list || []).some(a => a.length > 60) ? 'BAD_ITEM' : null;
+    }
+
+    // A history entry's date is a calendar day (or a month, or unknown):
+    // read its parts, never pass it through a time zone.
+    function entryDateLabel(e) {
+        if (!e || e.date_precision === 'unknown') return 'Date unknown';
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(e.date || ''));
+        if (!m) return 'Date unknown';
+        if (e.date_precision === 'approximate') return 'around ' + MONTHS[+m[2] - 1] + ' ' + m[1];
+        return (+m[3]) + ' ' + MONTHS[+m[2] - 1] + ' ' + m[1];
+    }
+
+    const ENTRY_PILL = {
+        'Requested': 'att-pill--done',
+        'Requested — cancelled': 'att-pill--hidden',
+        'Historical reference': 'att-pill--pc',
+    };
+    function entryPill(e) {
+        if (!e || e.retired) return 'att-pill--hidden';
+        return ENTRY_PILL[e.label] || 'att-pill--none';
+    }
+
+    // pr_office_add_ref's rule: a description, a known precision, and a
+    // date exactly when the precision is not 'unknown'.
+    function refProblem(r) {
+        const v = r || {};
+        if (!String(v.description || '').trim()) return 'BAD_REFERENCE';
+        if (!['exact', 'approximate', 'unknown'].includes(v.precision)) return 'BAD_REFERENCE';
+        const hasDate = /^\d{4}-\d{2}-\d{2}$/.test(String(v.date || ''));
+        return (v.precision === 'unknown') === hasDate ? 'BAD_REFERENCE' : null;
+    }
+
+    // <company>/<item>/<uuid>.jpg in lower case — the only shape
+    // pr_gallery_check_path accepts.
+    function galleryPath(ownerId, itemId, id) {
+        if (!ownerId) throw new Error('No company account to file the photo under — sign in again.');
+        if (!itemId || !id) throw new Error('Missing the item or the photo id.');
+        return [ownerId, itemId, id].map(x => String(x).toLowerCase()).join('/') + '.jpg';
+    }
+
     const pure = { formatQty, parseQty, manilaParts, formatManila, formatDay, shortDay, cutoffLabel, batchLabel,
                    validateDates, lineState, STATE_LABEL, STATE_PILL, needsAction, requestSummary, sortQueue,
-                   filterQueue, eventText, ERRORS, errorMessage, workerNo, itemLabel, catalogMatches };
+                   filterQueue, eventText, ERRORS, errorMessage, workerNo, itemLabel, catalogMatches,
+                   parseAliases, aliasesProblem, entryDateLabel, entryPill, refProblem, galleryPath };
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = pure;
@@ -374,6 +449,24 @@
         return { close };
     }
 
+    function head(title, sub, actions) {
+        return '<div class="att-head"><div><h2 class="att-title">' + esc(title) + '</h2>' +
+            '<p class="att-sub">' + esc(sub) + '</p></div>' +
+            (actions ? '<div class="att-head-actions">' + actions + '</div>' : '') + '</div>';
+    }
+
+    // <img data-sign-bucket="item-gallery" data-sign-path="…"> → a 10-minute
+    // signed link to a PRIVATE bucket; a click opens the full-size photo.
+    async function signImages(scope) {
+        for (const img of scope.querySelectorAll('img[data-sign-path]')) {
+            const { data, error } = await root.sbClient.storage.from(img.dataset.signBucket)
+                .createSignedUrl(img.dataset.signPath, 600);
+            if (error || !data) { img.alt = 'Photo unavailable'; continue; }
+            img.src = data.signedUrl;
+            img.addEventListener('click', () => root.open(data.signedUrl, '_blank', 'noopener'));
+        }
+    }
+
     const state = { detailId: null };
     const views = {};
 
@@ -382,7 +475,7 @@
         root.switchView('reqDetail');
     }
 
-    root.RequestsAdmin = Object.assign({}, pure, { esc, icons, rpc, fail, modal, openRequest, state, views });
+    root.RequestsAdmin = Object.assign({}, pure, { esc, icons, rpc, fail, modal, head, signImages, openRequest, state, views });
 
     root.initRequestsModule = function (view) {
         const host = document.getElementById(view + 'View');

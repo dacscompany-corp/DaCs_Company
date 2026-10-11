@@ -2266,6 +2266,7 @@ const PRIMARY_NAV = [
         { view: 'reqBatches',  label: 'Weekly batches', icon: 'calendar-days' },
         { view: 'reqTeams',    label: 'Teams',          icon: 'users' },
         { view: 'reqCatalog',  label: 'Catalogue',      icon: 'package-search' },
+        { view: 'reqHistory',  label: 'Item history',   icon: 'images' },
         { view: 'reqProjects', label: 'Projects',       icon: 'hard-hat' },
         // One request's detail: routable, highlighted under Requests, but
         // not a button in the secondary row (like Appointments' dashboard).

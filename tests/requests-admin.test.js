@@ -12,6 +12,10 @@
 // ════════════════════════════════════════════════════════════════════
 'use strict';
 const ra = require('../js/requests-admin-core.js');
+const fs = require('fs');
+const path = require('path');
+const src = (rel) => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+function ok(cond, msg) { if (!cond) throw new Error(msg); }
 
 let passed = 0, failed = 0;
 const failures = [];
@@ -172,14 +176,17 @@ test('eventText covers every 0085 and 0086 event kind', () => {
   eq(ra.eventText({ kind: 'something_new', detail: {} }), 'something_new');
 });
 
-test('errorMessage maps every 0086 code and never matches a code inside another', () => {
+test('errorMessage maps every 0086 and 0090 code and never matches a code inside another', () => {
   const codes = ['OFFICE_ONLY', 'NOT_FOUND', 'LINE_CLOSED', 'REDUCTION_PENDING', 'NOTHING_PENDING', 'ALREADY_RESOLVED', 'BAD_QUANTITY',
     'REASON_REQUIRED', 'BAD_CATALOG_ITEM', 'BAD_BATCH', 'BAD_DATES', 'ARRANGED', 'NOT_A_TEAM_LEADER', 'NOT_IN_TEAM', 'DUPLICATE_ITEM',
-    'DUPLICATE_TEAM', 'BAD_ITEM', 'BAD_OUTCOME', 'BAD_TEAM', 'BAD_WORKER'];
+    'DUPLICATE_TEAM', 'BAD_ITEM', 'BAD_OUTCOME', 'BAD_TEAM', 'BAD_WORKER',
+    'HISTORY_NOT_AVAILABLE', 'BAD_REFERENCE', 'BAD_DESTINATION', 'CHECKLIST_REQUIRED', 'BAD_PATH', 'FILE_MISSING',
+    'ALREADY_IN_GALLERY', 'ALREADY_REVIEWED', 'NOT_MATCHED', 'PHOTO_RETIRED', 'TOO_MANY_ITEMS', 'NO_PHOTO', 'UPLOAD_FAILED'];
   eq(Object.keys(ra.ERRORS).sort(), codes.slice().sort());
   for (const c of codes) eq(ra.errorMessage({ message: c }), ra.ERRORS[c], c);
   eq(ra.errorMessage({ message: 'BAD_CATALOG_ITEM' }), ra.ERRORS.BAD_CATALOG_ITEM);
   eq(ra.errorMessage({ message: 'NOT_A_TEAM_LEADER' }), ra.ERRORS.NOT_A_TEAM_LEADER);
+  eq(ra.errorMessage({ message: 'UPLOAD_FAILED: network error' }), ra.ERRORS.UPLOAD_FAILED);
   eq(ra.errorMessage({ message: 'boom' }), 'Something went wrong: boom');
   eq(ra.errorMessage(null), 'Something went wrong: unknown error');
 });
@@ -210,6 +217,144 @@ test('itemLabel and catalogMatches (active, same kind, text)', () => {
   eq(ra.catalogMatches(items, 'material', 'pipe').map(i => i.id), ['1']);
   eq(ra.catalogMatches(items, 'tool', 'pipe').map(i => i.id), ['3']);
   eq(ra.catalogMatches(items, 'material', 'plumb').map(i => i.id), ['1']);
+});
+
+console.log('\nrequests-admin: item history (0090)');
+
+test('parseAliases trims, drops blanks and keeps one per spelling', () => {
+  eq(ra.parseAliases(' saksakan, Plug\n\nplug ,SAKSAKAN, outlet '), ['saksakan', 'Plug', 'outlet']);
+  eq(ra.parseAliases(''), []);
+  eq(ra.parseAliases(null), []);
+});
+
+test('aliasesProblem uses the server caps (20 aliases, 60 characters each)', () => {
+  eq(ra.aliasesProblem(['a']), null);
+  eq(ra.aliasesProblem(Array.from({ length: 20 }, (_, i) => 'a' + i)), null);
+  eq(ra.aliasesProblem(Array.from({ length: 21 }, (_, i) => 'a' + i)), 'BAD_ITEM');
+  eq(ra.aliasesProblem(['x'.repeat(61)]), 'BAD_ITEM');
+});
+
+test('entryDateLabel: an exact day, "around" a month, or Date unknown — never shifted a day', () => {
+  eq(ra.entryDateLabel({ date: '2026-10-03', date_precision: 'exact' }), '3 Oct 2026');
+  eq(ra.entryDateLabel({ date: '2026-08-01', date_precision: 'approximate' }), 'around Aug 2026');
+  eq(ra.entryDateLabel({ date: null, date_precision: 'unknown' }), 'Date unknown');
+  eq(ra.entryDateLabel({ date: null, date_precision: 'exact' }), 'Date unknown');
+  eq(ra.entryDateLabel(null), 'Date unknown');
+});
+
+test('entryPill: requested, cancelled, reference and retired read differently', () => {
+  eq(ra.entryPill({ label: 'Requested' }), 'att-pill--done');
+  eq(ra.entryPill({ label: 'Requested — cancelled' }), 'att-pill--hidden');
+  eq(ra.entryPill({ label: 'Historical reference' }), 'att-pill--pc');
+  eq(ra.entryPill({ label: 'Historical reference', retired: true }), 'att-pill--hidden');
+});
+
+test('refProblem mirrors pr_office_add_ref: a description, and a date exactly when not unknown', () => {
+  eq(ra.refProblem({ description: 'x', precision: 'exact', date: '2026-10-03' }), null);
+  eq(ra.refProblem({ description: 'x', precision: 'approximate', date: '2026-08-01' }), null);
+  eq(ra.refProblem({ description: 'x', precision: 'unknown', date: '' }), null);
+  eq(ra.refProblem({ description: '  ', precision: 'exact', date: '2026-10-03' }), 'BAD_REFERENCE');
+  eq(ra.refProblem({ description: 'x', precision: 'unknown', date: '2026-10-03' }), 'BAD_REFERENCE');
+  eq(ra.refProblem({ description: 'x', precision: 'approximate', date: '' }), 'BAD_REFERENCE');
+  eq(ra.refProblem({ description: 'x', precision: 'later', date: '2026-10-03' }), 'BAD_REFERENCE');
+});
+
+test('galleryPath is <company>/<item>/<uuid>.jpg in lower case, and needs a company', () => {
+  eq(ra.galleryPath('AAAA-1', 'BBBB-2', 'CCCC-3'), 'aaaa-1/bbbb-2/cccc-3.jpg');
+  let threw = false;
+  try { ra.galleryPath(null, 'b', 'c'); } catch (e) { threw = true; }
+  eq(threw, true, 'no company');
+});
+
+console.log('\nrequests-admin: catalogue, projects and request detail (0090)');
+
+test('the catalogue form sends aliases and brand, checked against the server caps', () => {
+  const s = src('js/requests-admin-setup.js');
+  ok(s.includes('RA.parseAliases(form.aliases.value)'), 'aliases parsed from the form');
+  ok(s.includes('RA.aliasesProblem(aliases)'), 'aliases capped before sending');
+  ok(s.includes('p_aliases: aliases,') && s.includes('p_brand: form.brand.value.trim(),'), 'save sends p_aliases and p_brand');
+  ok(/\[i\.name, i\.spec, i\.unit, i\.category, i\.brand\]\.concat\(i\.aliases \|\| \[\]\)/.test(s), 'catalogue search includes brand and aliases');
+});
+
+test('the Projects tab switches Item history separately from Allow requests', () => {
+  const s = src('js/requests-admin-setup.js');
+  ok(s.includes("RA.rpc('pr_office_set_allow_history', { p_folder: box.dataset.history, p_allow: box.checked })"), 'calls pr_office_set_allow_history');
+  ok(s.includes('p.allow_history ? \' checked\' : \'\''), 'checkbox reflects allow_history');
+  ok(s.includes("RA.rpc('pr_office_set_allow_requests', { p_folder: box.dataset.folder, p_allow: box.checked })"), 'Allow requests unchanged');
+});
+
+test('a request line shows where Request Again came from', () => {
+  ok(src('js/requests-admin-detail.js').includes("line.ref_label ? '<div class=\"att-fact\"><div class=\"att-fact-label\">Requested again from</div>"), 'detail renders ref_label');
+});
+
+test('setup uses the shared RA.head', () => {
+  ok(!/function head\(/.test(src('js/requests-admin-setup.js')), 'no private head() left in setup');
+});
+
+console.log('\nrequests-admin: item history screen (0090)');
+
+test('Item history is wired into the Requests section', () => {
+  const html = src('admin.html'), nav = src('js/admin.js');
+  ok(html.includes('<div id="reqHistoryView"     class="content-view" style="display: none;"></div>'), 'view host');
+  ok(/const REQ_VIEWS\s*=\s*\[[^\]]*'reqHistory'/.test(html), 'REQ_VIEWS lists reqHistory');
+  ok(/reqHistory:\s*'Item history'/.test(html), 'title');
+  const core = html.indexOf('js/requests-admin-core.js'), hist = html.indexOf('js/requests-admin-history.js');
+  ok(core > 0 && hist > core, 'the history script loads after the core');
+  ok(html.includes('css/requests-admin.css?v=20261009b') && html.includes('js/requests-admin-history.js?v=20261009b'), 'cache-busted');
+  const start = nav.indexOf("id: 'requests'");
+  const block = nav.slice(start, nav.indexOf(']', start));
+  ok(block.includes("{ view: 'reqHistory'"), 'PRIMARY_NAV Requests lists reqHistory');
+});
+
+test('the history screen writes only through 0090 office RPCs and warns about reference text', () => {
+  const s = src('js/requests-admin-history.js');
+  ok(s.includes('RA.views.reqHistory = render;'), 'registers the view');
+  const rpcs = [...s.matchAll(/RA\.rpc\('([a-z_]+)'/g)].map(m => m[1]);
+  const allowed = ['pr_office_projects', 'pr_office_catalog', 'pr_office_history_search', 'pr_office_history_item',
+                   'pr_office_add_ref', 'pr_office_retire_ref'];
+  ok(rpcs.length > 0 && rpcs.every(r => allowed.includes(r)), 'unexpected RPC: ' + rpcs.filter(r => !allowed.includes(r)).join(', '));
+  ok(!/\.(insert|update|delete|upsert|remove)\(/.test(s), 'no direct writes');
+  ok(!/\.from\('pr_/.test(s), 'no direct pr_ table access');
+  ok(s.includes("root.sbClient.from('folders').select('id, name, completed_at')"), 'reads Additional Works from folders only');
+  ok(s.includes('RA.refProblem(ref)'), 'checks a reference before sending it');
+  ok(/Never type a price, an amount or a person/.test(s), 'warns that workers read the reference text');
+});
+
+console.log('\nrequests-admin: gallery photos (0090)');
+
+test('every gallery photo passes the three checks before anything is uploaded', () => {
+  const s = src('js/requests-admin-gallery.js');
+  const checks = /const CHECKS = \[([\s\S]*?)\];/.exec(s);
+  ok(checks && (checks[1].match(/'/g) || []).length === 6, 'exactly three checks');
+  ok((s.match(/if \(!checklistOk\(form\)\) throw new Error\('CHECKLIST_REQUIRED'\);/g) || []).length === 2,
+     'both the upload and the approve-copy forms refuse without all three ticks');
+  for (const fn of ['uploadModal', 'approveModal']) {
+    const body = s.slice(s.indexOf('function ' + fn), s.indexOf('onDone', s.indexOf('function ' + fn)));
+    ok(body.indexOf('checklistOk(form)') < body.indexOf('storeCopy('), fn + ' checks before it stores');
+  }
+});
+
+test('photos are re-encoded and stored only in item-gallery, never overwritten or deleted', () => {
+  const s = src('js/requests-admin-gallery.js');
+  ok(s.includes('root.DacsReceipts.compressToBlob(source, 1200, 0.8)'), 're-encoded (drops camera metadata such as GPS)');
+  ok(s.includes('RA.galleryPath(root.currentDataUserId, itemId, root.DacsReceipts.newId())'), '<company>/<item>/<uuid>.jpg');
+  const uploads = [...s.matchAll(/storage\.from\(([A-Z_]+)\)\.upload\(/g)].map(m => m[1]);
+  ok(uploads.length === 1 && uploads[0] === 'GALLERY', 'one upload, to item-gallery');
+  ok(s.includes("{ upsert: false, contentType: 'image/jpeg' }"), 'never overwrites');
+  ok(!/from\(REQUEST_PHOTOS\)\.(upload|remove|update|move|copy)\(/.test(s), 'the worker\'s original is only read');
+  ok(!/\.remove\(|\.delete\(/.test(s), 'nothing is deleted');
+});
+
+test('the gallery screen writes only through 0090 office RPCs', () => {
+  const s = src('js/requests-admin-gallery.js');
+  ok(s.includes('RA.gallery = { uploadModal, setCover, retireModal, renderReview };'), 'exports RA.gallery');
+  const rpcs = [...s.matchAll(/RA\.rpc\('([a-z_]+)'/g)].map(m => m[1]);
+  const allowed = ['pr_office_add_gallery_photo', 'pr_office_set_cover', 'pr_office_retire_photo',
+                   'pr_office_photo_queue', 'pr_office_publish_photo', 'pr_office_keep_private'];
+  ok(rpcs.length === allowed.length && allowed.every(r => rpcs.includes(r)), 'RPCs: ' + rpcs.join(', '));
+  ok(!/\.from\('pr_/.test(s), 'no direct pr_ table access');
+  const html = src('admin.html');
+  ok(html.indexOf('js/requests-admin-gallery.js?v=20261009b') > html.indexOf('js/requests-admin-core.js'), 'loaded after the core');
 });
 
 // ── SUMMARY (keep last) ──

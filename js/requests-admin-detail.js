@@ -87,6 +87,8 @@
                 '<div class="att-fact"><div class="att-fact-label">Catalogue</div><div class="att-fact-val">' + catalog +
                   ' <button class="att-link" type="button" data-act="match" data-line="' + esc(line.id) + '">' +
                   (line.catalog_item_id ? 'Change' : 'Match') + '</button></div></div>' +
+                (line.ref_label ? '<div class="att-fact"><div class="att-fact-label">Requested again from</div><div class="att-fact-val">' +
+                  esc(line.ref_label) + '</div></div>' : '') +
                 (line.intended_member_name ? '<div class="att-fact"><div class="att-fact-label">For</div><div class="att-fact-val">' +
                   esc(line.intended_member_name) + '</div></div>' : '') +
                 (line.urgent ? '<div class="att-fact"><div class="att-fact-label">Why urgent</div><div class="att-fact-val">' +

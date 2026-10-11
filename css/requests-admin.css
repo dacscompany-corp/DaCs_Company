@@ -50,6 +50,36 @@
    small caps; a checkbox label in the same toolbar reads as plain text. */
 .att-toolbar .req-toggle { font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--att-ink-2); }
 
+/* Item history (0090) — thumbnails, photo grid, review queue, checklist. */
+.hist-thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    border: 1px solid var(--att-line);
+    object-fit: cover;
+    background: var(--att-field);
+    display: block;
+    cursor: zoom-in;
+}
+.hist-thumb--empty { display: flex; align-items: center; justify-content: center; color: var(--att-muted); cursor: default; }
+.hist-thumb--empty svg { width: 18px; height: 18px; }
+.hist-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.hist-photo-card { display: grid; gap: 6px; align-content: start; }
+.hist-photo-card .req-photo { width: 100%; height: 140px; }
+.hist-photo-card--retired { opacity: .55; }
+.hist-review { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.hist-review-img {
+    width: 100%;
+    max-height: 260px;
+    border-radius: 10px;
+    border: 1px solid var(--att-line);
+    object-fit: contain;
+    background: var(--att-field);
+    cursor: zoom-in;
+}
+.hist-checks { border: 1px solid var(--att-line); border-radius: 10px; padding: 10px 12px; display: grid; gap: 8px; margin: 0; }
+.hist-checks legend { font-size: 12.5px; font-weight: 600; color: var(--att-ink-2); padding: 0 4px; }
+
 @media (max-width: 640px) {
     .req-history-item { grid-template-columns: 1fr; gap: 2px; }
 }
