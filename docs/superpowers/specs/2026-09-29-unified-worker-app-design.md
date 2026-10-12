@@ -98,7 +98,7 @@ Requests go directly to admin/staff for purchasing. Workers do not need team-lea
 
 Admin/staff can use stock already available and purchase only the shortage. For example, 10 outlets needed can be fulfilled with 4 from stock and 6 newly purchased. Stock set aside for that request cannot also be promised to another request.
 
-Each item shows its own progress, including quantities purchased, received, issued and still needed. Admin/staff can substitute an unavailable item, with the replacement and reason visible in the history.
+Each item shows its own progress, including quantities purchased, received, issued and still needed. Model/code/brand is optional unless an exact item is required. Buyers may choose equivalents meeting the confirmed specifications. An important specification change requires confirmation before buying from the requester or their assigned team leader, with admin/staff resolving unclear cases. Keep the original item, actual replacement, reason and confirmation in history; ordinary matching purchases need no additional approval gate. See the Mobile Purchasing specification for protected purchase corrections and buyer assignment versus supplier arrangement.
 
 **Flexible weekly schedule:** regular requests follow Saturday cutoff, Monday purchasing and Wednesday delivery by default. After-cutoff regular requests enter the next weekly batch. Admin/staff can adjust purchasing and expected delivery dates per batch, for example for holidays or supplier delays. Workers see the updated expected delivery date. Completed events retain their actual purchase/delivery dates.
 

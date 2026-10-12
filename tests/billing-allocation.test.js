@@ -581,7 +581,8 @@ function dashboardHarness() {
     peso: n => Number(n).toFixed(2), Ico: {}, COVER_LIMIT: 50000,
     _staff: () => context.window.currentUserRole === 'staff'
   });
-  vm.runInContext(sourceSlice(portalSource, 'function _pcChev(', 'function shortRef(', 'dashboard icons')
+  vm.runInContext(sourceSlice(portalSource, 'const _pcMoneyAction =', '// ── Recently opened', 'financial action guard')
+    + sourceSlice(portalSource, 'function _pcChev(', 'function shortRef(', 'dashboard icons')
     + sourceSlice(portalSource, 'function _rmIcon(', 'function _pcInboxTotal(', 'receipt marks')
     + sourceSlice(portalSource, 'function shortRef(', 'function mapExpenseDoc', 'payroll mapper')
     + sourceSlice(portalSource, 'function _isOverheadPay', 'function FoldersGrid', 'money helpers')

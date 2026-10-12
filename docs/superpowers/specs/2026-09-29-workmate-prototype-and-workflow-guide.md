@@ -163,6 +163,8 @@ flowchart TD
 
 ## 9. Admin/staff processing and purchasing
 
+**Buyer-phone review decisions, 12 October 2026:** follow the Mobile Purchasing specification's Buyer capability, separate buyer assignment/supplier arrangement, stock-covered shopping quantities, excess destinations, specification-changing substitute confirmation, editable drafts/protected accepted purchases and separate later payment/receipt actions. Safe supplier names/product references need not be hidden; procurement amounts and financial receipts remain restricted. Shared delivery fees and discounts require explicit allocation rules before coding.
+
 Stage 1a provides the queue, catalogue matching, scheduling and changes. Stage 2 adds verified purchasing and movement quantities. A prototype may simulate Stage 2 but must label it accordingly.
 
 ```mermaid
