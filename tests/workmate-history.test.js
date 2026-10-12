@@ -351,6 +351,33 @@ test('package.json runs this suite', () => {
   assert(read('package.json').includes('node tests/workmate-history.test.js'), 'npm test does not run workmate-history');
 });
 
+// ── 0091: the source label says when the source line was cancelled ──
+console.log('\npr_ref_label cancelled wording (0091)');
+const SQL91 = read('supabase/migrations/0091_pr_ref_label_cancelled.sql');
+const CODE91 = SQL91.replace(/--.*$/gm, '');
+const label91 = fnBlockIn(CODE91, 'pr_ref_label');
+
+test('0091 exists, sets a lock timeout and re-declares only pr_ref_label', () => {
+  assert(SQL91.length > 0, 'missing 0091');
+  assert(/set local lock_timeout = '5s';/.test(CODE91), 'no lock timeout');
+  assert(label91, 'pr_ref_label not re-declared');
+  assert((CODE91.match(/create or replace function/gi) || []).length === 1, 'only one function');
+  assert(!/\b(create|alter|drop)\s+table\b|\binsert\s+into\b|\bupdate\s+\w+\s+set\b|\bdelete\s+from\b/i.test(CODE91), 'no table or data changes');
+});
+
+test('0091 request-line label comes from pr_entry_label with the same cancelled rule as pr_history_entries', () => {
+  assert(label91.includes("pr_entry_label('request_line', (l.status = 'cancelled' or r.status = 'cancelled'))"), 'label via pr_entry_label');
+  assert(!label91.includes("' · Requested'"), 'the fixed " · Requested" text is gone');
+  assert(fnBlock('pr_history_entries').includes("(l.status = 'cancelled' or r.status = 'cancelled')"), 'same rule as 0090 entries');
+});
+
+test('0091 keeps the reference branch, fallback, signature and permissions', () => {
+  assert(label91.includes("' · Historical reference'"), 'reference wording kept');
+  assert(label91.includes("'Source no longer available'"), 'fallback kept');
+  assert(/create or replace function pr_ref_label\(p_kind text, p_id uuid\) returns text\s+language sql stable security definer set search_path = public as/.test(label91), 'signature kept');
+  assert(CODE91.includes('revoke all on function pr_ref_label(text, uuid) from public, anon, authenticated;'), 'still internal');
+});
+
 // ── Tasks 2–5 append their tests above this line ──
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

@@ -166,6 +166,8 @@ file creates the policy only when it is missing, so applying it live changes not
 
 **0090 (WorkMate Stage 1b-1 — item history server)** adds Find Previous Item: `pr_project_settings.allow_history` (per project, off by default, independent of Allow requests, kept after completion), catalogue `aliases`/`brand` (search aids, not identity), `pr_lines.ref_kind/ref_id` (Request Again link), `pr_photos.gallery_review*`, the tables `pr_item_refs` (hand-entered historical references; retired, never deleted; cascade with their project) and `pr_gallery_photos` (reviewed copies in the private `item-gallery` bucket, several per item, one cover), worker RPCs `pr_history_search/item/visible`, eleven new office RPCs, and re-declares `pr_submit_request`, `pr_request_doc`, `pr_office_catalog`, `pr_office_projects` by adding lines only; `pr_office_save_item` gains two optional arguments (the 7-argument form is dropped; the old call shape still works). One function, `pr_history_entries`, decides per entry what a worker may see. No money. Dry-run with `supabase/tests/1b_acceptance.sql` (self-wrapped in begin/rollback, editor-safe), then re-run `1a_acceptance.sql` through MCP `execute_sql` (it uses a temp table, which the SQL editor breaks). Also adds the `pr_lines_catalog_item` index (history lookups by item).
 
+**0091 (Request Again source label)** re-declares only `pr_ref_label`: a request-line source now ends with `pr_entry_label(...)` ("Requested" or "Requested — cancelled", cancelled = the line or its request), matching what the worker's phone shows. Before, a cancelled source read "Requested" in Dacs Web (found in the 1b-4 pilot, 2026-10-12). Display text only — no table, data or permission change.
+
 Get the truth before relying on this line:
 
 ```sql

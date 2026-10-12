@@ -967,7 +967,7 @@ Who sees what is decided in one place, `pr_history_entries(owner, viewer, office
 | `pr_submit_request` (re-declared) | worker | Lines may carry `ref_kind/ref_id`: malformed or unknown → `BAD_REFERENCE`; no longer visible or now another item → saved without the link |
 | `pr_office_set_allow_history`, `pr_office_history_search/item` | office | Switch; search including items with no history; detail with requester names and retired rows |
 | `pr_office_save_item` (re-declared) | office | Gains optional `p_aliases` / `p_brand` (null = unchanged); 7-arg calls still work |
-| `pr_request_doc`, `pr_office_projects`, `pr_office_catalog` (re-declared) | office | `pr_request_doc` lines gain `ref_kind`, `ref_id`, `ref_label`; `pr_office_projects` gains `allow_history`; `pr_office_catalog` gains `brand`, `aliases` |
+| `pr_request_doc`, `pr_office_projects`, `pr_office_catalog` (re-declared) | office | `pr_request_doc` lines gain `ref_kind`, `ref_id`, `ref_label` (from `pr_ref_label`; since `0091` a cancelled source line reads "Requested — cancelled"); `pr_office_projects` gains `allow_history`; `pr_office_catalog` gains `brand`, `aliases` |
 | `pr_office_add_ref`, `pr_office_retire_ref` | office | Reference on a project or its own AW; retire needs a reason |
 | `pr_office_photo_queue`, `pr_office_publish_photo`, `pr_office_keep_private` | office | Review private request photos on matched lines; publishing records an already-uploaded COPY after the checklist |
 | `pr_office_add_gallery_photo`, `pr_office_set_cover`, `pr_office_retire_photo` | office | Direct uploads (optionally for a reference), cover, retire with reason (cover passes to the newest approved) |
