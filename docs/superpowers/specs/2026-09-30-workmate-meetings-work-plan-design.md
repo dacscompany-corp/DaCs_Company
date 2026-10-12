@@ -4,6 +4,8 @@ Date: 30 September 2026
 
 Status: Agreed feature decisions consolidated for written review. Design only; no application, database, AI service or notification changes have been made.
 
+Updated: 12 October 2026. Placed as **Stage 1c** and all open decisions answered — see **§15 Decisions (12 October 2026)** and the [Stage 1c questions](2026-10-12-workmate-stage1c-questions.md). Awaiting the user's spec review before implementation plans.
+
 ## 1. Purpose and scope
 
 Turn meeting notes into clear assignments that workers can find, acknowledge and follow. Show what each person needs to do, when it is planned, and what must be ready before work can begin. Replace dependence on finding old Messenger messages with persistent tasks and selected shared meeting notes.
@@ -12,7 +14,7 @@ This is a companion to the [WorkMate MVP scope](2026-09-29-unified-worker-app-de
 
 One meeting may cover multiple Project Control projects. Each task belongs to exactly one Project Control project and Main Contract or one valid Additional Works job. This does not introduce Project Management tasks, change Attendance or calculate payroll.
 
-The feature is approved for design. Its release position is not yet assigned; do not silently enlarge Stage 1a or promise inventory integration before the supporting stage exists. Meeting scheduling, compulsory meeting attendance tracking and attendance penalties are not approved by this task-management design.
+The feature is approved for design. **Release position (12 October 2026): Stage 1c**, built before purchasing (2A) and shipped to workers with WorkMate 0.5.0 at the switch-over. Do not silently enlarge Stage 1a or promise inventory integration before the supporting stage exists. Meeting scheduling, compulsory meeting attendance tracking and attendance penalties are not approved by this task-management design.
 
 ## 2. Approved flow
 
@@ -190,9 +192,9 @@ Use synthetic names/data and label simulated operations. Show restricted views a
 
 ### Dependencies and decisions before implementation
 
-- Team assignments and authority depend on Stage 1a. Recommend a separate post-1a delivery stage, provisionally called 1c; the label/order relative to gallery Stage 1b still needs agreement. Inventory is not required to launch manual staff-confirmed material readiness.
-- Mobile push/reminder delivery is a new dependency. Existing Web notification work does not establish Android task notifications. Plan device registration, role/account isolation, delivery failures, reminder scheduling and persistent in-app updates; choose the transport after inspection. Do not promise push already exists or guarantees delivery.
-- Keep AI credentials and requests on a trusted server endpoint, never in Flutter or browser source. A Supabase Edge Function is a proposed fit, not a deployed capability. Before sending real notes to an external AI provider, identify the provider, data sent/retained and obtain the owner's agreement. No external note processing is authorized merely by approving this feature; manual operation remains available.
+- Team assignments and authority depend on Stage 1a. Recommend a separate post-1a delivery stage, provisionally called 1c; the label/order relative to gallery Stage 1b still needs agreement. Inventory is not required to launch manual staff-confirmed material readiness. **Decided 12 October 2026:** Stage 1c, after 1b, before 2A (§15).
+- Mobile push/reminder delivery is a new dependency. Existing Web notification work does not establish Android task notifications. Plan device registration, role/account isolation, delivery failures, reminder scheduling and persistent in-app updates; choose the transport after inspection. Do not promise push already exists or guarantees delivery. **Decided 12 October 2026:** no Android push in 1c; in-app badge/highlights plus Dacs Web alert lists (§15). Push is a later addition.
+- Keep AI credentials and requests on a trusted server endpoint, never in Flutter or browser source. A Supabase Edge Function is a proposed fit, not a deployed capability. Before sending real notes to an external AI provider, identify the provider, data sent/retained and obtain the owner's agreement. No external note processing is authorized merely by approving this feature; manual operation remains available. **Decided 12 October 2026:** reuse the existing Cloudflare AI worker (`dacs-ai`, Workers AI) with Llama 3.3 70B; the user approved sending meeting notes to it (§15).
 - **Individual tasks — confirmed 30 September 2026:** a task may target one worker with no team. That worker is responsible and acknowledges it; there is no leader check; admin/staff gives final completion approval.
 - **Blocked tasks — confirmed 30 September 2026:** while any blocker or unfinished predecessor remains, **Start work and Report done stay locked** for the responsible person, and the task explains what is still missing. A new problem reported during work locks Report done until admin/staff clears it. Reading, acknowledging and reporting problems stay available.
 - Apply the Web navigation checklist when adding Meetings: PRIMARY_NAV, _FOCUS_SUBVIEWS, view groups, role filters, markup/script loading, database permissions and architecture map. Include role-aware My Work navigation in Flutter and verify limited accounts, not only the main owner.
@@ -202,3 +204,25 @@ The next design deliverable is the task/meeting screen map and clickable walkthr
 Before implementation, specify release sequencing; server states and permissions; completion rejection/rework/reopening; cancellation and reassignment; task eligibility for completed PC/AW destinations; role-scoped attachments; dependency validation; notification controls; and atomic/retry-safe publication and synchronization. Keep these as explicit unresolved technical/workflow details rather than treating this document as a finished implementation plan.
 
 No automatic meeting recording, AI-only publication, automatic schedule changes, PM task integration, salary penalties or inventory movements are authorized by this feature. Human review and manual fallback are part of the core workflow.
+
+## 15. Decisions (12 October 2026)
+
+All answered in the [Stage 1c questions](2026-10-12-workmate-stage1c-questions.md); these settle the matching "define before implementation" items above.
+
+| Topic | Decision |
+|---|---|
+| **Timing** | **Stage 1c**, built before 2A; ships to workers with **WorkMate 0.5.0 at the switch-over**. 2A starts right after 1c. |
+| **AI drafting** | Existing **Cloudflare AI worker** (`dacs-ai.dacsbuilding.workers.dev`, Workers AI) switched to **Llama 3.3 70B** for meeting drafts. Key stays on the server; never in Flutter or browser code. AI only drafts; staff review and publish; manual drafting always works. (Its `cloudflare-worker/SETUP.md` still describes Groq — update it when the worker changes.) |
+| **Notifications** | **No phone push in 1c.** My Work shows a badge and highlights new/changed tasks when the app opens. |
+| **Office alerts** | Dacs Web lists per project: **Not acknowledged after 24 hours**, **Overdue**, **Blocked**. No automatic messages. |
+| **Task states** | **Draft → Not started → In progress → Reported done → Leader checked** (only when a leader applies) **→ Completed**, plus **Blocked** (derived while any blocker or unfinished earlier task remains), **Sent back** and **Cancelled**. |
+| **Rejected "done"** | **Send back with a reason** → In progress; the leader's check is cleared; history keeps both reports; any dependent task that had become ready returns to waiting. |
+| **Reopening** | Only **admin/staff**, with a reason; same effect as Send back; completion history stays. |
+| **Standalone tasks** | Staff may create a task **without a meeting**; same rules. |
+| **Dependencies** | Only between tasks of the **same project**; circular links are refused. |
+| **Photos** | **Optional photo** on blocker and progress reports, in private storage (like request photos); visible to the responsible person, that team's leader and the office. A new storage top folder needs its `uploads_can_read`/`uploads_can_write` rule and a `FOLDERS` entry in `tests/storage-access.test.js` (or its own private bucket like `request-photos`). |
+| **Dacs Web placement** | New top-level **Work Plan** section for **owner, admin and staff**. PM-only accounts (e.g. `admin-pm@`) only if granted in `allowed_modules`. Follow the CLAUDE.md nav checklist, including `_FOCUS_SUBVIEWS`. |
+| **Shared meeting notes** | Visible only to the **people staff select** when publishing (default: everyone assigned a task from that meeting). Never amounts or private details. |
+| **Pilot** | Test workers **W-0007, W-0019, W-0021** (Team test / Team pilot B) on **Barlin Residence**, with synthetic tasks. |
+
+**Build plans:** 1c-1 Server (tables, RLS, RPCs, acceptance SQL; migration = highest on disk + 1) → 1c-2 Dacs Web (Work Plan section) → 1c-3 WorkMate app (My Work) → 1c-4 Pilot (§12 scenario, §13 checks).

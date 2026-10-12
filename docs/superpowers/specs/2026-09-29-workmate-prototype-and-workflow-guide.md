@@ -4,7 +4,15 @@ Date: 29 September 2026
 
 Status: Design handoff for Claude Code. This guide does not implement the app, repair storage or verify a release.
 
-**Mobile Purchasing design addition:** include the [Mobile Purchasing specification](2026-09-30-workmate-mobile-purchasing-design.md) for authorized buyer screens inside WorkMate. Prototype assignments, shopping lists, partial buying with **Still to buy**, offline purchase drafts, shared receipts, Paid/Unpaid details and explicit receiving. Label these as the additional purchasing workspace; do not imply Stage 1a already implements Stage 2 inventory operations.
+**Mobile Purchasing design addition:** include the [Mobile Purchasing specification](2026-09-30-workmate-mobile-purchasing-design.md) for authorized buyer screens inside WorkMate. Prototype assignments, shopping lists, partial buying with **Still to buy**, offline purchase drafts, shared receipts, deposits/multiple payments with remaining balances and overpayment review, and explicit receiving. Label these as the additional purchasing workspace; do not imply Stage 1a already implements Stage 2 inventory operations.
+
+**Petty cash — confirmed 12 October:** prototype the owner giving company money to a buyer, recording actual supplier payments, returning the unused balance, **an owner tracker per buyer and a daily report from the same records**. Let the owner open purchase/project/payment-date/receipt details; show latest synced balances and freshness, with offline pending changes distinct from accepted entries. Show daily opening cash, issues, actual supplier refunds received back into petty cash, actual petty-cash-funded payments, **owner-confirmed returns** and recorded closing balance without duplicate encoding. **Buyer-reported returns await owner confirmation:** show Return awaiting confirmation and the pending amount; only actual receipt confirmed by the owner reduces the recorded balance. Preserve handover/confirmation history. Keep cash given/paid/returned/held separate from recorded project cost and supplier debt. Issuing petty cash is not another expense or an automatic Cover flag. Return deadline, evidence/correction rules, report handling of late confirmations, offline behavior and other permissions remain to design.
+
+**Personal-money fallback — approved 12 October (Q26):** the normal response to insufficient petty cash is to **ask the owner for more petty cash**. A buyer may instead use personal money for a purchase/extra amount **only when the owner allows it**. Record that authorization and the actual personal-funded payment separately from company-funded payments. Track the amount **Company owes buyer**, with supporting purchase/payment evidence, repayments and remaining balance. A repayment settles that advance; it is not a new material expense, supplier payment or petty-cash issue. Do not infer personal funding merely from who handed money to the supplier. Exact authorization/evidence, verification, repayment permissions and partial repayment/correction rules still need design.
+
+**Overpayment refunds/credits — approved 12 October (Q27):** show original excess, linked actual cash refund and confirmed supplier credit with evidence/history; credit remains visible until used and is not cash returned. A note alone cannot clear the excess. An actual refund back into company petty cash increases that cash balance; personal refunds/credits must not be counted as company cash. Preserve original payment/purchase cost and prevent duplicate resolution/application. Recipient/source allocation and review permissions still need design.
+
+**Main Contract purchase funding — confirmed 12 October:** actual purchase month/year; earliest billing number with funds first, then the next eligible same-month period, then Cover for the shortage. Keep the single purchase linked to its funding splits. If the purchase month/year has no matching period, record under Cover and flag **No matching monthly period — office review needed**. Preserve the cost once while awaiting review; a later funding correction must not duplicate it. **Additional Works keeps its own period and today's no-monthly-limit rule (Q24 approved):** record full actual cost, show overruns, and do not automatically put contract excess in Cover. A valid Cover billing-period link, missing/equal-number tie-breaks, valid Additional Works owning-period handling and warehouse-assignment funding still need definition. PC-to-PC transfers reduce the original source cost rows/periods and charge the receiving project's actual receiving month/year (Q25 approved); precise split-row/client/Cover treatment remains to define.
 
 **Additional design brief, 30 September 2026:** include the [Meetings & Work Plan specification](2026-09-30-workmate-meetings-work-plan-design.md) when designing the new meeting/task journeys. It defines reviewed AI drafts, targeted shared notes, individual acknowledgements, blockers, final staff completion approval and Tagalog/Taglish output. Use its walkthrough for an explicitly labelled additional prototype module; delivery sequencing must be agreed before expanding the Stage 1a build.
 
@@ -287,7 +295,7 @@ Raw request photos stay private to requester, authorized leader and admin/staff.
 
 History authorization must be defined before Stage 1b. A previous request is not permanent permission to see all project history. Offline browsing uses bounded account-scoped cached references, last-updated labels and no promise of current stock. Keep pending uploads outside gallery cleanup.
 
-## 14. Cost flow — Stage 4
+## 14. Cost flow — 2C warehouse assignment and PC-to-PC transfers, joint launch with 2B stock; broader reconciliation in Stage 4
 
 Physical movement and financial attribution are distinct. Staff records movements; the main owner confirms authorized financial assignments and transfers.
 
@@ -295,13 +303,13 @@ Physical movement and financial attribution are distinct. Staff records movement
 |---|---|
 | Project A buys materials | Preserve original expense, receipt and cost source. |
 | A's leftovers move to warehouse | Location changes; cost remains with A. |
-| B receives A's leftovers | Main owner may authorize balanced PC-to-PC cost transfer using original cost. |
-| Company buys general warehouse stock | Unused cost remains unassigned stock cost; main owner assigns issued portions to PC jobs. |
+| B receives A's leftovers | 2B records the physical move; 2C handles cost transfer, with both launching together. Cost stays with A and shows Cost transfer pending until main-owner approval. Confirmation transfers the original portion cost from A to B together and once. |
+| Company buys general warehouse stock | 2B records issued quantities; 2C handles cost assignment, with both launching together. Show Cost assignment pending; main-owner confirmation assigns only the issued cost to PC Material/Spent. Unused cost remains company stock cost; no duplicated purchase/payment. |
 | External job receives materials | Physical release and pending/confirmed external handling stay traceable; no PM automatic entry. |
 
 Example: A buys 10 outlets at PHP 100. B receives 2; an authorized PHP 200 transfer leaves A at PHP 800 and B at PHP 200. Total purchase cost remains PHP 1,000. Both financial sides must succeed together; retry must not duplicate them.
 
-Before Stage 4, define receiving billing period, client/Cover funding treatment, source history and report effects. Main owner reviews billed/closed projects. No automatic changes to client invoices, fees, payroll, reimbursements or warranty reserves. Preserve the existing money model: no invented fourth spending category and no project charge for company overhead.
+For 2C PC-to-PC transfers, use the original source cost rows/periods and the destination's actual receiving month/year (Q25 approved); retain shipping/receiving/approval dates separately. Before implementation, define split-row reversals, client/Cover attribution, eligible same-month ordering/missing periods, warehouse assignment funding, valuation, source history, partial returns, retries and report effects. Define broader external cost reconciliation before Stage 4. Main owner reviews billed/closed projects. No automatic changes to client invoices, fees, payroll, reimbursements or warranty reserves. Preserve the existing money model: no invented fourth spending category and no project charge for company overhead.
 
 ## 15. Prototype design requirements
 
@@ -336,7 +344,7 @@ Separate later-stage demos cover purchase/receipt, surplus return, warehouse tra
 | Completed prerequisite | Storage repair 0081; ledger records live checks | Preserve scoped policies and verify new integrations. Preserve permitted PC/PM client and partner documents and staff encoding. |
 | 1a | Flutter Attendance parity plus requests, catalogue, teams, PC/AW eligibility, batches, urgency, quantity portions, private photos and offline edits | Verify parity, safe transition, server permissions and retries. Remove legacy broad worker request access in UI and endpoints. |
 | 1b | Searchable item references, approved gallery, request again, bounded caching | Define history permissions, seed safe PC references and test photo privacy/account isolation. |
-| 2 | Purchasing and physical inventory, partial fulfillment, returns/transfers and external material release | Verify balances and duplicate prevention, replace conflicting stock-add paths and settle release/return evidence rules. Keep existing expense treatment until Stage 4. |
+| 2 | Purchasing and physical inventory, partial fulfillment, returns/transfers and external material release | Verify balances and duplicate prevention, replace conflicting stock-add paths and settle release/return evidence rules. 2B covers physical stock operations; 2C covers main-owner-confirmed warehouse-to-project assignment and PC-to-PC material cost transfers. Use separate implementation/pilot plans and launch 2B/2C together (Q28 approved); external cost handling and broader reconciliation/reporting stay in Stage 4. |
 | 3 | Asset register, custody, leader handovers and condition-aware returns | Verify opening tool register, exclusive custody and team authorization. |
 | 4 | Owner cost assignment/transfers and reconciliation | Verify funding/billing/report effects and balanced original-cost treatment, including external cost review. |
 
@@ -376,7 +384,8 @@ These do not reopen settled business choices. Record outcomes in the source MVP 
 | Before Stage 1b | Who can browse each project's shared references, revocation/cache behavior and cache size limit. |
 | Before Stage 2 | External-release evidence acknowledgement timing; project-sourced leftover review; partial returns before/after confirmation and outstanding quantity handling. |
 | Before external tool lending | Explicit scope decision; material release does not authorize external tool custody. |
-| Before Stage 4 | Cost reconciliation, source funding, receiving billing periods and financial report effects. |
+| Before the joint 2B stock / 2C cost-move launch | Verified portion valuation; PC-to-PC source rows and actual receiving month confirmed (Q25). Still define split-row/client/Cover treatment, eligible same-month ordering/missing periods, warehouse assignment funding, source history, transferable quantities, partial issues/returns, pending/rejected decisions, retries and report effects. |
+| Before Stage 4 | External cost handling and broader reconciliation/reporting, source funding and financial report effects. |
 
 ## 19. Handoff brief for Claude Code
 

@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0091** — highest on disk is
-  `0090_workmate_item_history.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0094** — highest on disk is
+  `0093_workmate_my_work.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble.
 - **`0075` and `0076` are TAKEN but not on `main`.** They belong to the abandoned
   project cost-plan branch (`project_cost_plans`, then its `%` columns) and **both
@@ -169,6 +169,8 @@ file creates the policy only when it is missing, so applying it live changes not
 **0091 (Request Again source label)** re-declares only `pr_ref_label`: a request-line source now ends with `pr_entry_label(...)` ("Requested" or "Requested — cancelled", cancelled = the line or its request), matching what the worker's phone shows. Before, a cancelled source read "Requested" in Dacs Web (found in the 1b-4 pilot, 2026-10-12). Display text only — no table, data or permission change.
 
 **0092 (catalogue kind/unit lock)** re-declares `pr_office_save_item` and `pr_office_catalog` (0090 copies, lines only added): once any request line (cancelled included) is matched to an item, changing its **Kind or Unit** is refused with `ITEM_IN_USE` — add a new item and deactivate the old one; name, spec, category, brand, other names and Active stay editable. `pr_office_catalog` gains `in_use` so Dacs Web locks the two fields before Save. Required before Stage 2 (stock counts in the item's unit). No table, data or permission change.
+
+**0093 (WorkMate Stage 1c-1 — My Work server)** adds the work plan: `wp_meetings` (office-only `original_notes`) with published shared-note versions `wp_meeting_versions` + `wp_note_recipients`, `wp_tasks` (draft → not_started → in_progress → reported_done → leader_checked → completed, or cancelled; `sent_back`; `version` for re-acknowledgement), `wp_task_people` (one responsible + helpers, history kept), `wp_acks` (per version), `wp_blockers` (office clears with a note), `wp_dependencies` (same project, no cycles), `wp_events`, `wp_ops` (retry-safe worker writes) and `wp_photos` in the private `task-photos` bucket. Blocked is derived (`wp_task_blocked`) and locks Start work / Report done / approval. Worker RPCs `wp_my_work`, `wp_my_notes`, `wp_acknowledge`, `wp_start_work`, `wp_report_progress`, `wp_report_blocker`, `wp_report_done`, `wp_leader_check`, `wp_propose_task`, `wp_attach_photo`; office RPCs `wp_office_*`. No money; nothing feeds Spent, Attendance or payroll. Dry-run with `supabase/tests/1c_acceptance.sql` (self-wrapped, editor-safe).
 
 Get the truth before relying on this line:
 

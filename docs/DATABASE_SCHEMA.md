@@ -974,6 +974,37 @@ Who sees what is decided in one place, `pr_history_entries(owner, viewer, office
 
 Storage — `item-gallery`: the office of the company inserts/reads `<owner>/<item>/…`; a worker reads only an approved photo of an item with a visible entry; no update/delete for anyone.
 
+## 14. WorkMate My Work (`0093`) — meetings, tasks and work checks
+
+Stage 1c-1 server (plan `docs/superpowers/plans/2026-10-12-workmate-stage1c1-my-work-server.md`). **Project Control only. No money.** Workers reach nothing directly: every `wp_*` table is RLS-on with office SELECT policies only; workers use `SECURITY DEFINER` RPCs that re-check their role on the task when they run.
+
+| Table | What it is |
+|---|---|
+| `wp_meetings` | Title, `held_on`, **office-only** `original_notes`, `current_version` (0 = never published) |
+| `wp_meeting_versions`, `wp_note_recipients` | Each publish of shared notes is a version; recipients chosen by staff (default: people assigned in that meeting). Workers read only the latest version they received |
+| `wp_tasks` | One project + Main Contract/AW (`folder_id`, `work_folder_id`), optional `meeting_id` (null = standalone) and `team_id`; status draft/not_started/in_progress/reported_done/leader_checked/completed/cancelled; `sent_back`; `version` (0 = draft, raised by an important revision); office-only `source_passage`, `office_flags`, `proposed_by` |
+| `wp_task_people` | One current `responsible` + `helper`s; removal sets `removed_at` |
+| `wp_acks` | Acknowledgement per person per task **version** |
+| `wp_blockers` | materials/tool/preparation/other, optional `request_id`; cleared only by the office with `clear_note` |
+| `wp_dependencies` | Task waits for another task of the same project; no cycles |
+| `wp_events` | Append-only history (drafted, published, revised, acknowledged, started, progress, blocker_reported/cleared, reported_done, leader_checked, sent_back, approved, reopened, cancelled, proposed, photo_attached, notes_published) |
+| `wp_ops` | First result per `(actor_id, op_id)` — a retried phone operation returns it verbatim |
+| `wp_photos` | Private bucket **`task-photos`** (`<uploader>/<task>/<uuid>.jpg`): uploader, responsible, current team leader, office |
+
+**Blocked** is derived (`wp_task_blocked`): an open blocker or a dependency not `completed`. It locks Start work, Report done and office approval.
+
+| RPC | Who | What it does |
+|---|---|---|
+| `wp_my_work()`, `wp_my_notes()` | worker | Tasks with a role (responsible/helper/current leader); latest received shared notes |
+| `wp_acknowledge(op, task, version)` | assigned | Outdated version → `stale` answer, nothing recorded |
+| `wp_start_work`, `wp_report_progress`, `wp_report_done` | responsible | Start/Done refused while blocked (`TASK_BLOCKED`); Start also needs the current version acknowledged (`NOT_ACKNOWLEDGED`) |
+| `wp_report_blocker(op, task, kind, description, request)` | any role | Never creates a purchase or moves a date |
+| `wp_leader_check(op, task, note)` | current leader | Never work they are assigned to — responsible or helper (`OWN_WORK`); office approval still required |
+| `wp_propose_task(op, team, folder, work, title, details)` | current leader | Arrives as a draft for the office |
+| `wp_attach_photo(op, task, blocker, event, path)` | any role | Upload first, then attach |
+| `wp_office_destinations/meetings/meeting/save_meeting/save_task/publish/board/task` | office | Plan, publish (version 1, recipients), board with `blocked` / `not_acknowledged_24h` / `overdue` |
+| `wp_office_clear_blocker/approve/send_back/reopen/cancel` | office | Note/reason required where it matters; cancel refused while another task waits for it |
+
 ## Relationship map
 ```
 users(owner) ──owns──> folders ──> projects ──> expenses / payroll
