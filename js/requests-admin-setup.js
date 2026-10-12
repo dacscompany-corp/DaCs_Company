@@ -530,6 +530,9 @@
 
     function itemModal(item, rerender, items) {
         const v = item || { kind: 'material', name: '', spec: '', unit: '', category: '', brand: '', aliases: [], active: true };
+        // 0092: once a request uses the item, its kind and unit are fixed
+        // (pr_office_save_item refuses ITEM_IN_USE). Locked here before Save.
+        const locked = !!(item && item.in_use);
         const categories = uniqueValues(items.map(i => i.category)).sort((a, b) => a.localeCompare(b));
         const units = uniqueValues(items.map(i => i.unit), ['pc', 'bag', 'm', 'kg', 'set', 'roll', 'box', 'sack', 'pail', 'length']);
         const opts = list => list.map(x => '<option value="' + esc(x) + '"></option>').join('');
@@ -539,7 +542,7 @@
             body:
                 '<div class="req-im">' +
                   '<div class="req-im-grid">' +
-                    '<div class="att-field"><label for="reqKind">Kind</label><select class="att-input" id="reqKind" name="kind">' +
+                    '<div class="att-field"><label for="reqKind">Kind</label><select class="att-input" id="reqKind" name="kind"' + (locked ? ' disabled' : '') + '>' +
                       '<option value="material"' + (v.kind === 'material' ? ' selected' : '') + '>Material</option>' +
                       '<option value="tool"' + (v.kind === 'tool' ? ' selected' : '') + '>Tool</option></select></div>' +
                     '<div class="att-field"><label for="reqCat">Category <span class="att-hint-inline">(optional)</span></label>' +
@@ -550,7 +553,7 @@
                     '<div class="att-field"><label for="reqSpec">Size / spec <span class="att-hint-inline">(optional)</span></label>' +
                       '<input class="att-input" id="reqSpec" name="spec" maxlength="120" value="' + esc(v.spec) + '" placeholder="e.g. 1/2 in, 3 m"></div>' +
                     '<div class="att-field"><label for="reqUnit">Unit</label>' +
-                      '<input class="att-input" id="reqUnit" name="unit" maxlength="30" required list="reqUnitList" value="' + esc(v.unit) + '" placeholder="e.g. pc, bag, m">' +
+                      '<input class="att-input" id="reqUnit" name="unit" maxlength="30" required list="reqUnitList" value="' + esc(v.unit) + '" placeholder="e.g. pc, bag, m"' + (locked ? ' disabled' : '') + '>' +
                       '<datalist id="reqUnitList">' + opts(units) + '</datalist></div>' +
                     '<div class="att-field req-im-wide"><label for="reqBrand">Brand <span class="att-hint-inline">(optional)</span></label>' +
                       '<input class="att-input" id="reqBrand" name="brand" maxlength="80" value="' + esc(v.brand || '') + '" placeholder="e.g. Omni"></div>' +
@@ -558,6 +561,7 @@
                       '<textarea class="att-input" id="reqAliases" name="aliases" rows="2" placeholder="e.g. saksakan, outlet, plug">' +
                         esc((v.aliases || []).join(', ')) + '</textarea></div>' +
                   '</div>' +
+                  (locked ? '<div class="req-im-note req-im-note--hint" data-locked>Already used in requests, so <strong>kind and unit are locked</strong>. To change them, add a new item and deactivate this one.</div>' : '') +
                   (item ? '<label class="req-toggle"><input type="checkbox" name="active"' + (v.active ? ' checked' : '') + '> Active (workers can pick it)</label>' : '') +
                   '<div class="req-im-note" data-note aria-live="polite"></div>' +
                 '</div>',

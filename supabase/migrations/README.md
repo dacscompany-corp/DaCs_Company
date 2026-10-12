@@ -168,6 +168,8 @@ file creates the policy only when it is missing, so applying it live changes not
 
 **0091 (Request Again source label)** re-declares only `pr_ref_label`: a request-line source now ends with `pr_entry_label(...)` ("Requested" or "Requested — cancelled", cancelled = the line or its request), matching what the worker's phone shows. Before, a cancelled source read "Requested" in Dacs Web (found in the 1b-4 pilot, 2026-10-12). Display text only — no table, data or permission change.
 
+**0092 (catalogue kind/unit lock)** re-declares `pr_office_save_item` and `pr_office_catalog` (0090 copies, lines only added): once any request line (cancelled included) is matched to an item, changing its **Kind or Unit** is refused with `ITEM_IN_USE` — add a new item and deactivate the old one; name, spec, category, brand, other names and Active stay editable. `pr_office_catalog` gains `in_use` so Dacs Web locks the two fields before Save. Required before Stage 2 (stock counts in the item's unit). No table, data or permission change.
+
 Get the truth before relying on this line:
 
 ```sql

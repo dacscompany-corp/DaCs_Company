@@ -378,6 +378,44 @@ test('0091 keeps the reference branch, fallback, signature and permissions', () 
   assert(CODE91.includes('revoke all on function pr_ref_label(text, uuid) from public, anon, authenticated;'), 'still internal');
 });
 
+// ── 0092: a used catalogue item keeps its kind and unit ──
+console.log('\ncatalogue kind/unit lock (0092)');
+const SQL92 = read('supabase/migrations/0092_pr_catalog_kind_unit_lock.sql');
+const CODE92 = SQL92.replace(/--.*$/gm, '');
+
+test('0092 exists, sets a lock timeout and re-declares only the two catalogue functions', () => {
+  assert(SQL92.length > 0, 'missing 0092');
+  assert(/set local lock_timeout = '5s';/.test(CODE92), 'no lock timeout');
+  assert((CODE92.match(/create or replace function/gi) || []).length === 2, 'two functions');
+  assert(!/\b(create|alter|drop)\s+table\b|\binsert\s+into\s+(?!pr_catalog_items)\w+|\bdelete\s+from\b|\bdrop\s+function\b/i.test(CODE92), 'no table, data or signature change');
+});
+
+test('0092 keeps every 0090 line of pr_office_save_item and pr_office_catalog, in order', () => {
+  for (const name of ['pr_office_save_item', 'pr_office_catalog']) {
+    const orig = fnBlock(name), now = fnBlockIn(CODE92, name);
+    assert(orig && now, 'missing ' + name);
+    const lost = missingOriginalLine(orig, now);
+    assert(lost === null, name + ' lost or changed the line: ' + lost);
+    assert(now.split('\n').length > orig.split('\n').length, name + ' gained no lines');
+  }
+});
+
+test('0092 refuses a kind or unit change once any request line uses the item', () => {
+  const b = fnBlockIn(CODE92, 'pr_office_save_item');
+  assert(b.includes('select kind, unit into v_kind, v_unit from pr_catalog_items where id = p_item for update;'), 'reads the saved kind and unit, locked');
+  assert(b.includes('if (p_kind <> v_kind or btrim(p_unit) <> v_unit)'), 'compares kind and trimmed unit');
+  assert(b.includes('and exists (select 1 from pr_lines l where l.catalog_item_id = p_item) then'), 'any matched line, cancelled included');
+  assert(/raise exception 'ITEM_IN_USE'/.test(b), 'ITEM_IN_USE');
+  assert(b.indexOf("'ITEM_IN_USE'") < b.indexOf('update pr_catalog_items'), 'checked before the update');
+});
+
+test('0092 tells Dacs Web which items are in use; permissions unchanged', () => {
+  assert(fnBlockIn(CODE92, 'pr_office_catalog').includes("'in_use', exists (select 1 from pr_lines l where l.catalog_item_id = c.id),"), 'in_use field');
+  assert(CODE92.includes('revoke all on function pr_office_save_item(uuid, text, text, text, text, text, boolean, text[], text) from public, anon;'), 'revoke kept');
+  assert(CODE92.includes('grant execute on function pr_office_save_item(uuid, text, text, text, text, text, boolean, text[], text) to authenticated;'), 'grant kept');
+  assert(!/\bto\s+(anon|public)\b/i.test(CODE92), 'nothing for anon/public');
+});
+
 // ── Tasks 2–5 append their tests above this line ──
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

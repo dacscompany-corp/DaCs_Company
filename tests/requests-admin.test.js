@@ -181,7 +181,8 @@ test('errorMessage maps every 0086 and 0090 code and never matches a code inside
     'REASON_REQUIRED', 'BAD_CATALOG_ITEM', 'BAD_BATCH', 'BAD_DATES', 'ARRANGED', 'NOT_A_TEAM_LEADER', 'NOT_IN_TEAM', 'DUPLICATE_ITEM',
     'DUPLICATE_TEAM', 'BAD_ITEM', 'BAD_OUTCOME', 'BAD_TEAM', 'BAD_WORKER',
     'HISTORY_NOT_AVAILABLE', 'BAD_REFERENCE', 'BAD_DESTINATION', 'CHECKLIST_REQUIRED', 'BAD_PATH', 'FILE_MISSING',
-    'ALREADY_IN_GALLERY', 'ALREADY_REVIEWED', 'NOT_MATCHED', 'PHOTO_RETIRED', 'TOO_MANY_ITEMS', 'NO_PHOTO', 'UPLOAD_FAILED'];
+    'ALREADY_IN_GALLERY', 'ALREADY_REVIEWED', 'NOT_MATCHED', 'PHOTO_RETIRED', 'TOO_MANY_ITEMS', 'NO_PHOTO', 'UPLOAD_FAILED',
+    'ITEM_IN_USE'];
   eq(Object.keys(ra.ERRORS).sort(), codes.slice().sort());
   for (const c of codes) eq(ra.errorMessage({ message: c }), ra.ERRORS[c], c);
   eq(ra.errorMessage({ message: 'BAD_CATALOG_ITEM' }), ra.ERRORS.BAD_CATALOG_ITEM);
@@ -302,7 +303,7 @@ test('Item history is wired into the Requests section', () => {
   ok(/reqHistory:\s*'Item history'/.test(html), 'title');
   const core = html.indexOf('js/requests-admin-core.js'), hist = html.indexOf('js/requests-admin-history.js');
   ok(core > 0 && hist > core, 'the history script loads after the core');
-  ok(html.includes('css/requests-admin.css?v=20261009b') && html.includes('js/requests-admin-history.js?v=20261009b'), 'cache-busted');
+  ok(html.includes('css/requests-admin.css?v=20261012a') && html.includes('js/requests-admin-history.js?v=20261012a'), 'cache-busted');
   const start = nav.indexOf("id: 'requests'");
   const block = nav.slice(start, nav.indexOf(']', start));
   ok(block.includes("{ view: 'reqHistory'"), 'PRIMARY_NAV Requests lists reqHistory');
@@ -356,7 +357,16 @@ test('the gallery screen writes only through 0090 office RPCs', () => {
   ok(rpcs.length === allowed.length && allowed.every(r => rpcs.includes(r)), 'RPCs: ' + rpcs.join(', '));
   ok(!/\.from\('pr_/.test(s), 'no direct pr_ table access');
   const html = src('admin.html');
-  ok(html.indexOf('js/requests-admin-gallery.js?v=20261009b') > html.indexOf('js/requests-admin-core.js'), 'loaded after the core');
+  ok(html.indexOf('js/requests-admin-gallery.js?v=20261012a') > html.indexOf('js/requests-admin-core.js'), 'loaded after the core');
+});
+
+test('0092: an item already used in requests opens with kind and unit locked, and says why', () => {
+  const setup = src('js/requests-admin-setup.js');
+  ok(setup.includes('const locked = !!(item && item.in_use);'), 'locked comes from in_use');
+  ok(setup.includes('id="reqKind" name="kind"\' + (locked ? \' disabled\' : \'\') + \'>'), 'kind disabled when locked');
+  ok(/id="reqUnit"[^\n]*\(locked \? ' disabled' : ''\)/.test(setup), 'unit disabled when locked');
+  ok(setup.includes('kind and unit are locked'), 'the form says why');
+  ok(ra.ERRORS.ITEM_IN_USE.includes('new item') && ra.ERRORS.ITEM_IN_USE.includes('deactivate'), 'the refusal tells the office what to do');
 });
 
 // ── SUMMARY (keep last) ──

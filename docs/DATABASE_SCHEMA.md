@@ -951,7 +951,7 @@ Every office write is a `SECURITY DEFINER` RPC that refuses non-office callers (
 | `pr_office_move_portion(portion, batch, note)` | Move an **unarranged** portion to another weekly batch (merges with that batch's unarranged portion) |
 | `pr_office_batches()` / `pr_office_set_batch_dates(batch, purchase, delivery)` | Batches from 35 days ago on (this week + next two always exist); only purchase/delivery dates change. **0086 dropped the direct insert/update policies on `pr_batches` and on the four setup tables (teams, members, catalogue, project settings)** |
 | `pr_office_people/teams/save_team/add_member/remove_member/set_leader` | Teams; a leader must hold the teamLeader role and be a current member |
-| `pr_office_catalog/save_item` | Catalogue; the same name + spec + unit is refused (`DUPLICATE_ITEM`) |
+| `pr_office_catalog/save_item` | Catalogue; the same name + spec + unit is refused (`DUPLICATE_ITEM`). Since `0092`: once any request line uses an item, a Kind or Unit change is refused (`ITEM_IN_USE` — add a new item, deactivate the old); `pr_office_catalog` returns `in_use` |
 | `pr_office_projects/set_allow_requests` | Top-level Project Control projects and the *Allow requests* switch |
 | `pr_folder_request_count(folder)` | Requests on a folder or its children — Dacs Web refuses to delete a project / Additional Works that has any |
 
