@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0094** — highest on disk is
-  `0093_workmate_my_work.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0096** — highest on disk is
+  `0095_ai_request_gate.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble.
 - **`0075` and `0076` are TAKEN but not on `main`.** They belong to the abandoned
   project cost-plan branch (`project_cost_plans`, then its `%` columns) and **both
@@ -171,6 +171,10 @@ file creates the policy only when it is missing, so applying it live changes not
 **0092 (catalogue kind/unit lock)** re-declares `pr_office_save_item` and `pr_office_catalog` (0090 copies, lines only added): once any request line (cancelled included) is matched to an item, changing its **Kind or Unit** is refused with `ITEM_IN_USE` — add a new item and deactivate the old one; name, spec, category, brand, other names and Active stay editable. `pr_office_catalog` gains `in_use` so Dacs Web locks the two fields before Save. Required before Stage 2 (stock counts in the item's unit). No table, data or permission change.
 
 **0093 (WorkMate Stage 1c-1 — My Work server)** adds the work plan: `wp_meetings` (office-only `original_notes`) with published shared-note versions `wp_meeting_versions` + `wp_note_recipients`, `wp_tasks` (draft → not_started → in_progress → reported_done → leader_checked → completed, or cancelled; `sent_back`; `version` for re-acknowledgement), `wp_task_people` (one responsible + helpers, history kept), `wp_acks` (per version), `wp_blockers` (office clears with a note), `wp_dependencies` (same project, no cycles), `wp_events`, `wp_ops` (retry-safe worker writes) and `wp_photos` in the private `task-photos` bucket. Blocked is derived (`wp_task_blocked`) and locks Start work / Report done / approval. Worker RPCs `wp_my_work`, `wp_my_notes`, `wp_acknowledge`, `wp_start_work`, `wp_report_progress`, `wp_report_blocker`, `wp_report_done`, `wp_leader_check`, `wp_propose_task`, `wp_attach_photo`; office RPCs `wp_office_*`. No money; nothing feeds Spent, Attendance or payroll. Dry-run with `supabase/tests/1c_acceptance.sql` (self-wrapped, editor-safe).
+
+**0094 (WorkMate Stage 1c-2 — office Work Plan server)** (1) `pr_is_office()` now also requires an active profile, so a deactivated owner/staff account loses every office RPC that calls it (Requests, Item History, Work Plan) — the role-only storage helpers `pr_office_gallery_path_ok` / `wp_office_task_path_ok` and the 0085 direct-read policies are a recorded follow-up; (2) adds the read-only worker RPC `wp_my_proposals()` — the caller's own proposals from the last 90 days as `sent` / `published` / `declined` / `cancelled` with the office's reason, never office-only fields; (3) replaces `wp_office_save_task` so a published task's version rises automatically for any change of responsible person, helpers, team or planned dates, and for a wording change unless `minor_text_only` (which never covers people, team or dates). 0093 is not edited. No money. Dry-run with `supabase/tests/1c2_acceptance.sql` and `supabase/tests/1c2_office_active.sql` (both self-wrapped, editor-safe).
+
+**0095 (AI request gate)** adds `ai_requests` (who / feature / characters / when — never the text; no client access) and `ai_authorize(feature, chars)`, which the `dacs-ai` Cloudflare worker calls as the signed-in caller before running any model: active account; `work_plan_draft` for owner/staff (module-focused: `workplan`), `budget_summary` and `health_briefing` for owner (module-focused: `expenses`); input ≤ 40,000 / 4,000 / 12,000 characters; per person 10 per 10 min and 50 per rolling 24 h (drafts), 20 and 100 (budget summary and health briefing, each counted on its own); per company 300 per rolling 24 h (never a calendar day). Apply before deploying the worker. Dry-run with `supabase/tests/1c2_ai_gate.sql` (self-wrapped, editor-safe); simultaneous requests: `supabase/tests/1c2_ai_gate_concurrency.mjs` (two connections, after applying).
 
 Get the truth before relying on this line:
 

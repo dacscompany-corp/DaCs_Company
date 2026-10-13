@@ -309,7 +309,12 @@ test('the acceptance script is self-rolling-back, editor-safe and ends with the 
 
 test('docs record 0093 and the next number', () => {
   const readme = read('supabase/migrations/README.md');
-  assert(/\*\*0093 \(WorkMate Stage 1c-1/.test(readme) && /\*\*0094\*\*/.test(readme), 'README paragraph + next number');
+  assert(/\*\*0093 \(WorkMate Stage 1c-1/.test(readme), 'README paragraph');
+  const m = /\*\*(\d{4})\*\* — highest on disk is\s+`(\d{4})_/.exec(readme);
+  assert(m, 'README next-number line');
+  assert(Number(m[1]) === Number(m[2]) + 1 && Number(m[2]) >= 93, 'next number is highest + 1 and at least 0094');
+  const files = fs.readdirSync(path.join(ROOT, 'supabase/migrations')).filter(f => /^\d{4}_.*\.sql$/.test(f)).sort();
+  assert(files[files.length - 1].startsWith(m[2]), 'README names the highest migration on disk: ' + files[files.length - 1]);
   assert(/wp_tasks/.test(read('docs/DATABASE_SCHEMA.md')), 'DATABASE_SCHEMA.md section');
 });
 

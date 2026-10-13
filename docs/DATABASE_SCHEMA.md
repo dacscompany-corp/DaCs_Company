@@ -1001,6 +1001,8 @@ Stage 1c-1 server (plan `docs/superpowers/plans/2026-10-12-workmate-stage1c1-my-
 | `wp_report_blocker(op, task, kind, description, request)` | any role | Never creates a purchase or moves a date |
 | `wp_leader_check(op, task, note)` | current leader | Never work they are assigned to — responsible or helper (`OWN_WORK`); office approval still required |
 | `wp_propose_task(op, team, folder, work, title, details)` | current leader | Arrives as a draft for the office |
+| `wp_my_proposals()` (0094) | worker | The caller's own proposals (last 90 days): `sent` / `published` / `declined` / `cancelled`, the office's reason, when decided — no office-only fields |
+| `wp_office_save_task` (replaced in 0094) | office | Full save; on a published task people / team / planned-date changes always raise `version`, wording changes unless `minor_text_only`; history note `Changed: …` |
 | `wp_attach_photo(op, task, blocker, event, path)` | any role | Upload first, then attach |
 | `wp_office_destinations/meetings/meeting/save_meeting/save_task/publish/board/task` | office | Plan, publish (version 1, recipients), board with `blocked` / `not_acknowledged_24h` / `overdue` |
 | `wp_office_clear_blocker/approve/send_back/reopen/cancel` | office | Note/reason required where it matters; cancel refused while another task waits for it |
@@ -1021,3 +1023,10 @@ constructionProjects ──> weeklyBills / procurementList / revolvingFund* / lo
 requests ──batchId──> batches ;  delivered items ──> inventory
 notifications/{uid}/items  = glue between admin & client
 ```
+
+## AI request gate (0095)
+
+| Object | Purpose |
+|---|---|
+| `ai_requests` (`owner_id`, `user_id`, `feature` `budget_summary`/`work_plan_draft`/`health_briefing`, `input_chars`, `created_at`) | One row per allowed AI request; never the text; RLS on with no policy (no client access); rows older than 30 days removed |
+| `ai_authorize(p_feature, p_chars)` | Called by the `dacs-ai` worker as the caller: active account, feature allowed for the role and `allowed_modules`, size, per-person and per-company limits; raises `AI_NOT_SIGNED_IN` / `AI_NOT_ALLOWED` / `AI_TOO_LARGE` / `AI_RATE_LIMITED` |

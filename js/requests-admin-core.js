@@ -440,7 +440,7 @@
                 close();
                 if (opts.onDone) opts.onDone();
             } catch (err) {
-                errorBox.textContent = errorMessage(err);
+                errorBox.textContent = (opts.errorMessage || errorMessage)(err);
                 errorBox.style.display = 'block';
                 submit.disabled = false;
             }

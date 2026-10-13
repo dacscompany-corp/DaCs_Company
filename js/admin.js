@@ -2273,6 +2273,20 @@ const PRIMARY_NAV = [
         { view: 'reqDetail',   label: 'Request',        icon: 'file-text', hidden: true },
       ]
     },
+    // WorkMate My Work (0093/0094, Stage 1c): the office turns meeting notes
+    // into tasks (AI or by hand), publishes them with shared notes, and
+    // checks the work. Owner + staff — no money anywhere. A module-focused
+    // account gets it only with 'workplan' in allowed_modules.
+    { id: 'workplan', label: 'Work Plan', sub: 'Meetings & Tasks', defaultView: 'wpBoard',
+      modules: [
+        { view: 'wpBoard',    label: 'Board',    icon: 'clipboard-list' },
+        { view: 'wpMeetings', label: 'Meetings', icon: 'book-open' },
+        // Drill-downs: routable and highlighted under Work Plan, but not
+        // buttons in the secondary row (like reqDetail).
+        { view: 'wpMeeting',  label: 'Meeting',  icon: 'book-open', hidden: true },
+        { view: 'wpTask',     label: 'Task',     icon: 'clipboard-check', hidden: true },
+      ]
+    },
     // Outgoing client quotations. Pre-sales: a quotation exists before any
     // project does, and belongs to NEITHER project system — hence its own
     // top-level tab rather than a slot under Project Control.
@@ -2327,6 +2341,8 @@ const _FOCUS_SUBVIEWS = {
     attendance: ['attWorker'],
     // Drill-down from the queue into one request (also a hidden module).
     requests: ['reqDetail'],
+    // Drill-downs from the Board / Meetings into one meeting or task.
+    workplan: ['wpMeeting', 'wpTask'],
 };
 // All views reachable inside the focused module(s) — used by the switchView guard.
 window.focusAllowedViews = function () {

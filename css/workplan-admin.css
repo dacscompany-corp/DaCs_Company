@@ -1,0 +1,25 @@
+/* ════════════════════════════════════════════════════════════════════
+   Work Plan (WorkMate My Work, 1c-2) — small additions on top of the
+   attendance (att-*) and Requests (req-*) styles the screens reuse.
+   ════════════════════════════════════════════════════════════════════ */
+.wp-checks { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 6px 14px;
+             max-height: 220px; overflow: auto; padding: 4px 0; }
+.wp-checks[hidden] { display: none; }
+.wp-text { white-space: pre-wrap; margin: 4px 0 0; }
+.wp-passage { margin: 6px 0 0; padding: 8px 12px; border-left: 3px solid var(--att-line, #d9d6cf);
+              color: var(--att-ink-2, #444); font-style: italic; white-space: pre-wrap; }
+.wp-flags { margin: 6px 0 0; padding-left: 18px; color: #8a5a00; }
+.wp-chip { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .02em;
+           padding: 2px 8px; border-radius: 999px; margin-left: 6px; }
+.wp-chip--red { background: #fde8e6; color: #b42318; }
+.wp-chip--gold { background: #fff4d6; color: #8a5a00; }
+.wp-confirm { margin-top: 6px; font-weight: 600; color: #b42318; }
+.wp-list { list-style: none; margin: 0; padding: 0; }
+.wp-list li, .wp-row { padding: 8px 0; border-top: 1px solid var(--att-line-soft, #eeece8); }
+.wp-list li:first-child, .wp-row:first-child { border-top: 0; }
+.wp-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.wp-row.is-added { opacity: .6; }
+.wp-recipients { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.wp-recipients legend { font-size: 12.5px; font-weight: 600; margin-bottom: 4px; color: var(--att-ink-2, #444); }
+.wp-photo { display: grid; gap: 4px; width: 96px; align-content: start; }
+@media (max-width: 640px) { .wp-row { flex-direction: column; } }

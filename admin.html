@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="css/reimbursement-module.css">
     <link rel="stylesheet" href="css/attendance-admin.css">
     <link rel="stylesheet" href="css/requests-admin.css?v=20261012a">
+    <link rel="stylesheet" href="css/workplan-admin.css?v=20261013a">
     <!-- Warranty Retention Register + Fund Styles -->
     <link rel="stylesheet" href="css/warranty-fund.css?v=20260803f">
     <!-- Construction Module Styles -->
@@ -2632,6 +2633,12 @@
         <div id="reqCatalogView"    class="content-view" style="display: none;"></div>
         <div id="reqHistoryView"     class="content-view" style="display: none;"></div>
         <div id="reqProjectsView"   class="content-view" style="display: none;"></div>
+        <!-- Work Plan (WorkMate My Work, 0093/0094) — rendered by js/workplan-admin-*.js.
+             wpMeeting and wpTask are drill-downs from the Board and Meetings. -->
+        <div id="wpBoardView" class="content-view" style="display: none;"></div>
+        <div id="wpMeetingsView" class="content-view" style="display: none;"></div>
+        <div id="wpMeetingView" class="content-view" style="display: none;"></div>
+        <div id="wpTaskView" class="content-view" style="display: none;"></div>
 
         <!-- ════════════ USER NAVIGATOR ════════════ -->
         <!-- ════════════ SYSTEM ERRORS VIEW (owner-only; client_errors, 0028/0029) ════════════ -->
@@ -5378,7 +5385,7 @@
 <!-- ?v= is a cache-buster, same convention as expenses-module.js below. Bump
      it whenever a change to this file must reach an already-open browser —
      admin.js carries PRIMARY_NAV, so a stale copy silently hides new tabs. -->
-<script src="js/admin.js?v=20261009b"></script>
+<script src="js/admin.js?v=20261013a"></script>
 <script src="js/print-utils.js"></script>
 <script src="js/receipt-storage.js?v=20261008a"></script>
 <script src="js/expenses-module.js?v=20261008a"></script>
@@ -5389,12 +5396,17 @@
 <script src="js/quotation-module.js"></script>
 <script src="js/attendance-admin.js"></script>
 <script src="js/app-updates-admin.js"></script>
-<script src="js/requests-admin-core.js?v=20261012a"></script>
+<script src="js/requests-admin-core.js?v=20261013a"></script>
 <script src="js/requests-admin-queue.js?v=20261012a"></script>
 <script src="js/requests-admin-detail.js?v=20261012a"></script>
 <script src="js/requests-admin-setup.js?v=20261012a"></script>
 <script src="js/requests-admin-history.js?v=20261012a"></script>
 <script src="js/requests-admin-gallery.js?v=20261012a"></script>
+<script src="js/workplan-admin-core.js?v=20261013a"></script>
+<script src="js/workplan-admin-form.js?v=20261013a"></script>
+<script src="js/workplan-admin-board.js?v=20261013a"></script>
+<script src="js/workplan-admin-task.js?v=20261013a"></script>
+<script src="js/workplan-admin-meetings.js?v=20261013a"></script>
 <script src="js/quotation-print.js"></script>
 <script src="js/user-navigator.js"></script>
 <script src="js/client-accounts.js"></script>
@@ -5412,8 +5424,8 @@
 <script src="js/warranty-fund.js?v=20260803f"></script>
 <script src="js/termination-requests.js?v=20260803f"></script>
 <script src="js/error-log.js"></script>
-<script src="js/ai-summary.js"></script>
-<script src="js/ai-assistant.js"></script>
+<script src="js/ai-summary.js?v=20261013a"></script>
+<script src="js/ai-assistant.js?v=20261013a"></script>
 
 <!-- ════════════ DACS PORTAL (Project Control) — React via CDN ════════════
      React + ReactDOM are loaded from CDN. js/portal-app.compiled.js IS the
@@ -6232,6 +6244,7 @@
     const QUOTE_VIEWS = ['quoteList','quoteEditor','quoteRevision'];
     const ATT_VIEWS   = ['attToday','attWorkers','attWorker','attProjects','attReports','attRewards'];
     const REQ_VIEWS   = ['reqQueue','reqDetail','reqBatches','reqTeams','reqCatalog','reqHistory','reqProjects'];
+    const WP_VIEWS    = ['wpBoard','wpMeetings','wpMeeting','wpTask'];
     const TITLES = {
         dashboard:        'Dashboard',
         appointments:     'Appointments',
@@ -6274,6 +6287,10 @@
         reqCatalog:       'Item catalogue',
         reqHistory:       'Item history',
         reqProjects:      'Projects open to requests',
+        wpBoard:          'Work Plan',
+        wpMeetings:       'Meetings',
+        wpMeeting:        'Meeting',
+        wpTask:           'Task',
     };
 
     window.switchView = function(view) {
@@ -6396,6 +6413,7 @@
         if (view === 'attAppUpdates' && typeof initAppUpdatesModule === 'function')
             initAppUpdatesModule(document.getElementById('attAppUpdatesView'));
         if (REQ_VIEWS.includes(view)   && typeof initRequestsModule === 'function') initRequestsModule(view);
+        if (WP_VIEWS.includes(view)    && typeof initWorkPlanModule === 'function') initWorkPlanModule(view);
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     };

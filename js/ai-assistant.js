@@ -229,10 +229,14 @@
       'Issues detected (' + issuesPlain.length + '): ' + (issuesPlain.length ? issuesPlain.join('; ') : 'none — all projects are healthy');
 
     try {
+      // The AI worker serves signed-in, active owner accounts only
+      // (ai_authorize, migration 0095): send the session.
+      var session = window.sbClient ? (await window.sbClient.auth.getSession()).data.session : null;
+      if (!session) throw new Error('Your sign-in has expired. Reload the page and sign in again.');
       var res = await fetch(AI_WORKER_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [{ role: 'user', content: prompt }], max_tokens: 600 }),
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
+        body: JSON.stringify({ feature: 'health_briefing', messages: [{ role: 'user', content: prompt }], max_tokens: 600 }),
       });
       var data = await res.json();
       if (!res.ok) throw new Error((data && data.error && (data.error.message || data.error)) || ('Request failed (' + res.status + ')'));

@@ -29,6 +29,8 @@
 !*.yaml
 !.gitignore
 !.gitattributes
+!cloudflare-worker/wrangler.toml
+!supabase/tests/*.mjs
 
 # ── Exclude generated/build folders ────────────────────────
 node_modules/
@@ -49,6 +51,9 @@ package-lock.json
 *.txt
 gradlew
 gradlew.bat
+
+# ── Agent working scratch (plan ledgers, test results) — never commit ───────
+.superpowers/
 
 # ── android-receipt-share/ is HAND-WRITTEN source, so it is tracked ─────────
 # The blanket app/, gradle/, gradlew rules above exist for the bubblewrap-
