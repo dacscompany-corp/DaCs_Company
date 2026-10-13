@@ -1,101 +1,45 @@
-# AI Budget Summary — Setup (free tools only)
+# DAC's AI worker (`dacs-ai`) — setup
 
-This adds a **✨ AI summary** button to each project-folder card. It uses:
+The portal's AI features call this Cloudflare Worker:
 
-- **Groq** — free, fast LLM API (runs `llama-3.3-70b-versatile`)
-- **Cloudflare Worker** — free proxy that hides your Groq API key
+| Feature | Caller | Who may use it | Answer cap |
+|---|---|---|---|
+| `budget_summary` — Project Control AI budget summary | `js/ai-summary.js` | active **owner** accounts (module-focused: `expenses`) | 700 tokens, input 4,000 characters |
+| `work_plan_draft` — Work Plan meeting drafts | `js/workplan-admin-core.js` | active **owner or staff** (module-focused: `workplan`) | 2,000 tokens, input 40,000 characters |
+| `health_briefing` — Project Control AI health briefing | `js/ai-assistant.js` | active **owner** accounts (module-focused: `expenses`) | 600 tokens, input 12,000 characters |
+
+All three features (`work_plan_draft`, `budget_summary`, `health_briefing`) use **Cloudflare Workers AI** model `@cf/meta/llama-3.3-70b-instruct-fp8-fast` (Llama 3.1 8B was retired on 30 May 2026). No external AI provider, no API key, no secret.
 
 ```
-Portal (admin.html) → Cloudflare Worker (holds key) → Groq → summary
+Portal (signed in) → dacs-ai worker → ai_authorize() in Supabase (as the caller) → Workers AI → answer
 ```
 
-Everything below is **100% free** and needs **no credit card**.
+## How requests are checked
 
----
+1. No `Authorization: Bearer <Supabase session>` header → refused (401).
+2. Flood guard: 30 requests per 60 s per connecting address (`PREAUTH_LIMITER`).
+3. Body ≤ 64 KB, 1–4 messages (`system`/`user`), input within the feature's size.
+4. `ai_authorize()` (migration 0095), run as the caller: active account, allowed feature, size, and limits — per person drafts 10 per 10 minutes and 50 per rolling 24 hours, summaries 20 per 10 minutes and 100 per rolling 24 hours, briefings 20 per 10 minutes and 100 per rolling 24 hours; per company 300 per rolling 24 hours ("rolling" = the 24 hours before the request, not a calendar day). Each allowed request is recorded in `ai_requests` (never the text).
 
-## STEP 1 — Get a free Groq API key
+The worker chooses the model and the answer length; a `model` sent by the browser is ignored.
 
-1. Go to https://console.groq.com and sign in (Google/GitHub — free).
-2. Left menu → **API Keys** → **Create API Key**.
-3. Name it `dacs-portal`, click **Submit**, and **copy the key** (starts with `gsk_...`).
-   You only see it once — copy it now.
+## Deploy
 
----
-
-## STEP 2 — Create a free Cloudflare account
-
-1. Go to https://dash.cloudflare.com/sign-up and create a free account.
-2. Verify your email.
-
----
-
-## STEP 3 — Deploy the Worker
-
-You can deploy from the command line. In a terminal **inside the `cloudflare-worker` folder**:
+Order: **apply migration 0095 first** (without it every AI request is refused). In a terminal inside the `cloudflare-worker` folder:
 
 ```powershell
-cd "cloudflare-worker"
-npx wrangler login          # opens a browser, click "Allow"
-npx wrangler secret put GROQ_API_KEY
-#   ↑ paste your gsk_... key when prompted, press Enter
+npx wrangler --version                                  # must be 4.36 or newer (rate-limit binding)
+npx wrangler login                                      # first time only
+npx wrangler ai models --json | findstr "llama-3.3-70b-instruct-fp8-fast"   # the model must be listed
 npx wrangler deploy
 ```
 
-After `deploy`, Wrangler prints your worker URL, e.g.:
+The worker URL is `https://dacs-ai.dacsbuilding.workers.dev` (`AI_WORKER_URL` in `js/ai-summary.js`, `js/ai-assistant.js` and `js/workplan-admin-core.js`).
 
-```
-https://dacs-ai.YOURNAME.workers.dev
-```
+## Configuration
 
-**Copy that URL** — you need it in Step 4.
+`wrangler.toml` (tracked in git): the `[ai]` binding, `[vars]` `SUPABASE_URL` / `SUPABASE_ANON_KEY` (public values, the same as `js/supabase-config.js`), and the `PREAUTH_LIMITER` binding. `ALLOWED_ORIGINS` in `worker.js` lists the local dev server and the live site; any `*.vercel.app` preview is also allowed.
 
-> No command line? Use the dashboard instead:
-> Cloudflare dashboard → **Workers & Pages** → **Create** → **Create Worker** →
-> paste the contents of `worker.js` → **Deploy**. Then open the worker →
-> **Settings → Variables → Add variable**, name `GROQ_API_KEY`, paste your key,
-> check **Encrypt**, **Save**.
+## Privacy
 
----
-
-## STEP 4 — Point the portal at your Worker
-
-1. Open `js/ai-summary.js`.
-2. Find this line near the top:
-   ```js
-   const AI_WORKER_URL = 'PASTE_YOUR_WORKER_URL_HERE';
-   ```
-3. Replace it with your worker URL from Step 3:
-   ```js
-   const AI_WORKER_URL = 'https://dacs-ai.YOURNAME.workers.dev';
-   ```
-4. Save.
-
----
-
-## STEP 5 — (When you go live) allow your real domain
-
-In `worker.js`, add your deployed site URL to `ALLOWED_ORIGINS`, e.g.:
-
-```js
-const ALLOWED_ORIGINS = [
-  'http://127.0.0.1:5501',
-  'http://localhost:5501',
-  'https://your-app.web.app',   // ← your Firebase Hosting URL
-];
-```
-Then re-run `npx wrangler deploy`.
-
----
-
-## Done — test it
-
-1. Hard-refresh the portal: **Ctrl + Shift + R**
-2. Go to **Project Control → Overview**
-3. Hover a project card → click the **✨** button (top-right, next to ✏️ / 🗑️)
-4. A modal opens and writes a budget summary in a few seconds.
-
-### Troubleshooting
-- **"AI is not configured yet"** → you skipped Step 4 (worker URL not set).
-- **CORS error in console** → add your current site origin to `ALLOWED_ORIGINS` in `worker.js`, redeploy.
-- **"GROQ_API_KEY secret not set"** → re-run `npx wrangler secret put GROQ_API_KEY`.
-- **Free limits:** Groq free tier is ~30 requests/min, plenty for this. If you hit a limit, wait a minute.
+Meeting notes sent for drafting go to Workers AI on Cloudflare (approved, WorkMate spec §15). The office reviews every draft before anything reaches workers.

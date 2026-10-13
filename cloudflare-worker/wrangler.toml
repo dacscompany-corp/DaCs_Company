@@ -1,0 +1,22 @@
+name = "dacs-ai"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Cloudflare Workers AI — on-platform models, no external API, no key.
+[ai]
+binding = "AI"
+
+# Public project values, the same as js/supabase-config.js (not secrets).
+# The worker calls ai_authorize() (migration 0095) with the caller's session.
+[vars]
+SUPABASE_URL = "https://hqbgduyonlbbsvjuapre.supabase.co"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxYmdkdXlvbmxiYnN2anVhcHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Mjc3NDEsImV4cCI6MjA5NjIwMzc0MX0.sDKSroNIm-1Lip6ueq2lN1VTsvO1g4mT7Rf_WZ5AxWo"
+
+# Flood guard per connecting address, before any database call (needs
+# Wrangler 4.36+). The real per-account limits are in ai_authorize().
+[[ratelimits]]
+name = "PREAUTH_LIMITER"
+namespace_id = "1095"
+  [ratelimits.simple]
+  limit = 30
+  period = 60
