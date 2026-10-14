@@ -142,3 +142,72 @@
     .wp-form-box .att-field { grid-column: 1 / -1; }
 }
 .wp-form-box textarea.att-input { height: auto; min-height: 120px; resize: vertical; line-height: 1.5; }
+
+/* ════════════════════════════════════════════════════════════════════
+   One task — layout (js/workplan-admin-task.js)
+   Same pattern as the Requests detail page: what needs the office first,
+   facts and people on the side, history collapsed. Lining numerals so
+   "1c3" and "Version 1" read as numbers.
+   ════════════════════════════════════════════════════════════════════ */
+
+.wp-task .att-card-title { font-family: var(--att-sans); font-size: 15px; font-weight: 700; }
+.wp-task .att-card-head { padding: 14px 20px; }
+.wp-task .att-card-body { font-size: 14.5px; line-height: 1.55; }
+.wp-task .att-crumbs { display: flex; align-items: center; gap: 8px; }
+.wp-dot { color: var(--att-faint); }
+
+.wp-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+.wp-main, .wp-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.wp-main > .att-card + .att-card, .wp-side > .att-card + .att-card { margin-top: 0; }
+
+/* What needs the office */
+.wp-alert { display: flex; gap: 12px; align-items: flex-start; padding: 13px 16px; border-radius: 12px; font-size: 14px; line-height: 1.5; border: 1px solid transparent; }
+.wp-alert > svg, .wp-alert > i { width: 20px; height: 20px; flex: none; margin-top: 1px; }
+.wp-alert strong { display: block; font-size: 14.5px; }
+.wp-alert--gold { background: var(--att-gold-tint); border-color: #E8DCC2; color: #5f4a21; }
+.wp-alert--gold > svg, .wp-alert--gold > i { color: var(--att-gold); }
+.wp-alert--red { background: var(--att-red-tint); border-color: var(--att-red-line); color: #7a271d; }
+.wp-alert--red > svg, .wp-alert--red > i { color: var(--att-red); }
+.wp-alert .wp-flags { color: inherit; }
+
+.wp-clear { display: flex; align-items: center; gap: 8px; padding: 2px 4px; font-size: 14px; color: var(--att-green); font-weight: 600; }
+.wp-clear > svg, .wp-clear > i { width: 18px; height: 18px; }
+.wp-pad { padding: 14px 20px; }
+
+/* Side: facts */
+.wp-meta .req-meta-row { grid-template-columns: 90px 1fr; }
+
+/* Side: people */
+.wp-readline { padding: 10px 20px; font-size: 13px; font-weight: 600; color: var(--att-gold); background: var(--att-gold-tint); border-bottom: 1px solid var(--att-line-soft); }
+.wp-readline.is-all { color: var(--att-green); background: var(--att-green-tint); }
+.wp-people { list-style: none; margin: 0; padding: 0; }
+.wp-people li { display: flex; align-items: center; gap: 12px; padding: 11px 20px; border-top: 1px solid var(--att-line-soft); }
+.wp-people li:first-child { border-top: 0; }
+.wp-avatar { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--att-track); color: var(--att-ink-2); font-size: 12px; font-weight: 700; }
+.wp-person { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.wp-person strong { font-size: 14.5px; font-weight: 600; color: var(--att-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-person .req-muted { font-size: 12.5px; }
+
+/* Side: history (collapsed when long) */
+.wp-hist > summary { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; cursor: pointer; font-size: 15px; font-weight: 700; color: var(--att-ink); list-style: none; }
+.wp-hist > summary::-webkit-details-marker { display: none; }
+.wp-hist > summary::after { content: '+'; color: var(--att-faint); font-weight: 400; font-size: 18px; margin-left: 10px; }
+.wp-hist[open] > summary::after { content: '–'; }
+.wp-hist > summary .req-muted { margin-left: 8px; font-weight: 500; }
+.wp-hist > summary { justify-content: flex-start; }
+.wp-hist > summary::after { margin-left: auto; }
+.wp-hist[open] > summary { border-bottom: 1px solid var(--att-line-soft); }
+.wp-timeline { list-style: none; margin: 0; padding: 6px 20px 12px; }
+.wp-timeline li { position: relative; padding: 9px 0 9px 18px; font-size: 13.5px; line-height: 1.45; }
+.wp-timeline li::before { content: ''; position: absolute; left: 3px; top: 15px; width: 7px; height: 7px; border-radius: 50%; background: var(--att-faint); }
+.wp-timeline li::after { content: ''; position: absolute; left: 6px; top: 24px; bottom: -6px; width: 1px; background: var(--att-line); }
+.wp-timeline li:last-child::after { display: none; }
+.wp-tl-text { color: var(--att-ink); }
+.wp-timeline .req-muted { font-size: 12.5px; }
+
+/* Cancel / Decline: apart from Edit and Approve */
+.wp-danger { padding: 2px 4px; }
+
+@media (max-width: 960px) {
+    .wp-layout { grid-template-columns: 1fr; }
+}
