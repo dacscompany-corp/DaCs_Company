@@ -211,3 +211,56 @@
 @media (max-width: 960px) {
     .wp-layout { grid-template-columns: 1fr; }
 }
+
+/* ════════════════════════════════════════════════════════════════════
+   Meetings — list and one meeting (js/workplan-admin-meetings.js)
+   Same two-column page as one task: the work in the middle (notes, AI
+   drafts, publish), the tasks and published versions on the side.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Every Work Plan page starts a little below the tab bar, not against it. */
+.wp { padding-top: 22px; }
+
+.wp-meetings .att-card-body,
+.wp-meeting .att-card-body { font-size: 14.5px; line-height: 1.55; }
+.wp-meeting .att-card-title { font-family: var(--att-sans); font-size: 15px; font-weight: 700; }
+.wp-meeting .att-card-head { padding: 14px 20px; }
+.wp-meeting .att-crumbs { display: flex; align-items: center; gap: 8px; }
+.wp-meeting--new { max-width: 760px; }
+
+.wp-mtable td { vertical-align: middle; }
+.wp-mtable tbody tr { cursor: pointer; }
+.wp-nowrap { white-space: nowrap; color: var(--att-ink-2, #444); }
+.wp-count-text { color: var(--att-ink-2, #444); }
+.wp-chip--first { margin: 0 8px 0 0; }
+
+/* Notes: title and date share a row; the notes get the room */
+.wp-meeting .att-card-body > .att-field { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+.wp-meeting .att-card-body > .wp-notes-top + .att-field { margin-top: 14px; }
+.wp-notes-top { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 14px; }
+.wp-notes-top .att-field,
+.wp-meeting .att-field { display: flex; flex-direction: column; gap: 6px; }
+.wp-meeting .att-field > label { font-size: 14px; font-weight: 600; color: var(--att-ink); }
+.wp-meeting textarea.att-input { height: auto; min-height: 120px; resize: vertical; line-height: 1.5; }
+.wp-meeting .att-card-body > .att-field + .att-field { margin-top: 14px; }
+.wp-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+/* Publish: the choice, then one clear button */
+.wp-meeting .wp-recipients { margin: 14px 0; padding: 12px 14px; border: 1px solid var(--att-line); border-radius: 10px; }
+
+/* Side: tasks of this meeting */
+.wp-mtasks { list-style: none; margin: 0; padding: 0; }
+.wp-mtasks li { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--att-line-soft); }
+.wp-mtasks li:first-child { border-top: 0; }
+.wp-mtask-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wp-mtask-main strong { font-size: 14.5px; }
+.wp-mtask-main .req-muted { font-size: 12.5px; }
+.wp-mtask-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+.wp-versions { padding: 4px 20px 10px; }
+.wp-versions li { padding: 10px 0; font-size: 13.5px; }
+
+@media (max-width: 640px) {
+    .wp-notes-top { grid-template-columns: 1fr; }
+}
+.wp-meeting .att-card-head { flex-wrap: nowrap; align-items: center; gap: 12px; }
+.wp-meeting .att-card-tools { flex: none; }
