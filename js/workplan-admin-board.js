@@ -122,9 +122,11 @@
         if (ui.folder && !projects.some(p => p.folder_id === ui.folder)) ui.folder = '';
 
         host.innerHTML = '<div class="att-stack wp">' +
+            // An empty board says how a task starts in its own container, so
+            // the header stays quiet. Once there are tasks that container is
+            // gone, so "New task" comes back here; Meetings is the other tab.
             WP.head('Work Plan', 'Tasks from meetings and the office. Workers see their own tasks in DAC\'S WorkMate (My Work).',
-                '<button class="att-btn" type="button" data-meetings><i data-lucide="book-open"></i> Meetings</button>' +
-                '<button class="att-btn att-btn--primary" type="button" data-new><i data-lucide="plus"></i> New task</button>') +
+                all.length ? '<button class="att-btn att-btn--primary" type="button" data-new><i data-lucide="plus"></i> New task</button>' : '') +
             '<div data-summary></div>' +
             '<div class="att-toolbar" data-tools>' +
               '<select class="att-filter" data-folder aria-label="Project"><option value="">All projects</option>' +

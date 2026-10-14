@@ -112,11 +112,16 @@
 .wp-form-box .att-modal-body { grid-template-columns: 1fr 1fr; gap: 16px 18px; }
 .wp-form-box .att-field { display: flex; flex-direction: column; gap: 6px; }
 .wp-form-box .att-field > label,
-.wp-lbl { font-size: 13.5px; font-weight: 600; color: var(--att-ink); }
+.wp-lbl { font-size: 14.5px; font-weight: 600; color: var(--att-ink); }
 .wp-req { color: var(--att-red); margin-left: 2px; }
-.wp-sec { display: flex; align-items: center; gap: 12px; margin-top: 6px; }
+.wp-sec { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
 .wp-sec:first-child { margin-top: 0; }
-.wp-sec-title { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: #55555A; }
+/* Numbered parts in plain sentence case: a person reads "1  What needs to be done", not a grey label. */
+.wp-sec-num { display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--att-green-tint); color: var(--att-green); font-size: 13px; font-weight: 700; }
+.wp-sec-title { font-size: 16px; font-weight: 700; color: var(--att-ink); }
+.wp-sec-help { margin: -8px 0 0; font-size: 14px; line-height: 1.45; color: #55555A; }
+.wp-hint { display: block; font-size: 13px; line-height: 1.4; color: #55555A; }
+.wp-intro { margin-bottom: 2px; }
 .wp-sec::after { content: ''; flex: 1; height: 1px; background: var(--att-line); }
 .wp-helper-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .wp-count { font-size: 12.5px; font-weight: 600; color: var(--att-green); }
