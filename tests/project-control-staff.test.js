@@ -79,6 +79,15 @@ function staffSafe(tree) {
   assert(!/₱|\bPHP\b|1,234|1234/.test(output), 'staff output contains a peso amount: ' + text(tree));
   assert(!nodes(tree).some(n => n.type === 'img' || (n.type === 'a' && n.props.href)), 'staff can open a financial document');
 }
+// Materials and Labor lists show staff the peso amounts they enter (owner
+// decision 2026-10-15) — but never a share of the CONTRACT, which together
+// with the pesos would reveal the contract value, and never a document.
+function staffEntrySafe(tree, contractShares) {
+  const out = text(tree);
+  contractShares.forEach(p => assert(!out.includes(p), 'staff sees share of contract ' + p + ': ' + out));
+  assert(!/Share of contract|of contract/.test(out), 'staff sees a share-of-contract label');
+  assert(!nodes(tree).some(n => n.type === 'img' || (n.type === 'a' && n.props.href)), 'staff can open a financial document');
+}
 function button(tree, label) {
   return nodes(tree).find(n => n.type === 'button' && (text(n).trim() === label || n.props.title === label));
 }
@@ -125,20 +134,26 @@ async function test(name, fn) {
     const tree = harness(role).render('MaterialDrill', materialProps);
     assert(text(tree).includes('Wire'));
     if (role === 'staff') {
-      staffSafe(tree); assert(text(tree).includes('1.23%'));
-      for (const label of ['Export CSV', 'Add Expense', 'Edit', 'Print receipt for this material expense']) assert(!button(tree, label), label + ' visible');
+      staffEntrySafe(tree, ['1.23%', '1.2%']); assert(text(tree).includes('1,234'), 'staff sees the amount they entered');
+      for (const label of ['Export CSV', 'Print receipt for this material expense']) assert(!button(tree, label), label + ' visible');
+      // Staff record and correct materials (owner decision 2026-10-15) — the
+      // list itself still shows no pesos (staffSafe above).
+      for (const label of ['Add Expense', 'Edit']) assert(button(tree, label), label + ' missing for staff');
     } else { assert(text(tree).includes('1,234')); assert(button(tree, 'Export CSV')); assert(button(tree, 'Add Expense')); }
   });
   for (const role of ['staff', 'owner']) await test(role + ' material details and attachments', () => {
     const tree = harness(role).render('ItemDetailsModal', { item: material, billingNum: 1, onClose() {}, onPrint() {} });
-    if (role === 'staff') { staffSafe(tree); assert(!button(tree, 'Print Receipt')); assert(!button(tree, 'Edit')); }
+    if (role === 'staff') { staffEntrySafe(tree, ['1.23%']); assert(text(tree).includes('1,234')); assert(!button(tree, 'Print Receipt')); assert(button(tree, 'Edit')); }
     else { assert(text(tree).includes('1,234')); assert(button(tree, 'Print Receipt')); }
   });
   for (const role of ['staff', 'owner']) await test(role + ' expanded labor and worker statement menu', () => {
     const tree = harness(role).render('LaborDrill', laborProps, { 2: true, 3: { Mason: true } });
     if (role === 'staff') {
-      staffSafe(tree); assert(text(tree).includes('24.7%'));
-      for (const label of ['Export CSV', 'Worker Statement', 'Worker statement', 'Ledger', 'Edit contract', 'Raise cap', 'Worker agreement', 'View', 'Receipt / Invoice', 'Edit', 'Pay', 'Add Payment', 'New Contract']) assert(!button(tree, label), label + ' visible');
+      staffEntrySafe(tree, ['1.2%']); assert(text(tree).includes('1,234'), 'staff sees the payment they entered');
+      assert(/Total Agreed\s*—/.test(text(tree)), 'agreed total stays hidden');
+      for (const label of ['Export CSV', 'Worker Statement', 'Worker statement', 'Ledger', 'Edit contract', 'Raise cap', 'Worker agreement', 'View', 'Receipt / Invoice', 'New Contract']) assert(!button(tree, label), label + ' visible');
+      // Staff record and correct payroll (owner decision 2026-10-15).
+      for (const label of ['Edit', 'Pay', 'Add Payment']) assert(button(tree, label), label + ' missing for staff');
     } else { assert(text(tree).includes('1,234')); assert(button(tree, 'Export CSV')); assert(button(tree, 'Worker Statement')); }
   });
   for (const role of ['staff', 'owner']) await test(role + ' overhead records', () => {
@@ -182,9 +197,11 @@ async function test(name, fn) {
     const h = harness('staff'); const tree = h.render('DocPill', { m: material, k: 'po', label: 'PO', title: 'Purchase Order' });
     assert(text(tree).includes('PO')); assert(!tree.props.onClick); assert(!tree.props.role);
   });
-  await test('staff financial entry shortcut cannot open a form', async () => {
-    const h = harness('staff'); await h.api.openAddEntry('labor', months, project);
-    assert.equal(h.calls.length, 0);
+  await test('staff entry shortcut opens the payroll and expense forms', async () => {
+    const h = harness('staff');
+    await h.api.openAddEntry('labor', months, project);
+    await h.api.openAddEntry('material', months, project);
+    assert.deepEqual(h.calls, ['addPayrollModal', 'addExpenseModal']);
   });
   await test('staff header cannot open the folder budget editor', () => {
     const tree = harness('staff').render('PageHead', { project, projects: [project], period: 'All Time' });

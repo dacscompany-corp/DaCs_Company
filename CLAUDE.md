@@ -98,7 +98,8 @@ Profit   = Earned − Spent
 - **Purchasing (WorkMate Stage 2) — staff exception.** Staff with the **Buyer** switch may see
   purchase prices, totals, supplier payments and receipts **within their buying scope**, in
   Purchasing screens only. Project profit, reimbursements, warranty fund and quotations stay
-  restricted, and Project Control stays amount-free for staff. Approving cost moves between
+  restricted, and Project Control stays amount-free for staff (apart from its Add/Edit forms —
+  see *Verifying*). Approving cost moves between
   projects or from warehouse stock is **main owner only**. Workers and team leaders never see
   prices, receipts or payments. (Approved 2026-10-14; spec
   `docs/superpowers/specs/2026-09-30-workmate-mobile-purchasing-design.md`.)
@@ -174,5 +175,14 @@ CI (`.github/workflows/ci.yml`) runs both of the above on every push and PR — 
 JS and runs the money tests. Red CI on a `salvs` merge usually means the merge reverted a money
 rule or the staff amount-hiding; don't merge until green.
 
-Staff accounts (`currentUserRole === 'staff'`) must not see peso amounts anywhere — the one
-exception is the Buyer purchasing rule under *Money invariants*.
+Staff accounts (`currentUserRole === 'staff'`) must not see peso amounts anywhere — two
+exceptions: the Buyer purchasing rule under *Money invariants*, and **data entry in Project
+Control** (owner decision 2026-10-15): staff add and edit material expenses and payroll there, so
+the Add/Edit Expense and Payroll forms, and the Materials and Labor lists (rows, category
+subtotals, paid so far), show staff the peso amounts. **Never a share of the contract** in those
+screens — with the pesos it would reveal the contract value. Everything else in Project Control
+stays amount-free for staff — profit, contract, actual cost, fund allocated, budget remaining,
+cover, agreed contract totals, CSV, prints, receipts and contract management (caps, ledgers,
+statements). Staff never see billing budgets, so their payroll goes to
+the payment month's client-funded period (`_payStaffPeriodId`); their purchases are funded by the
+server (`pur_record`). `tests/project-control-staff.test.js` fences both sides.

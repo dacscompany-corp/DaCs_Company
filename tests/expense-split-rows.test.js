@@ -125,7 +125,7 @@ test('older splits open the details window instead of editing part 1', () => {
   eq((body.match(/if \(isOldSplit\(m\)\) \{ setDetailsItem\(m\); return; \}/g) || []).length, 2, 'edit and delete');
   const modal = fnBody(portal, 'function ItemDetailsModal', 'function PaymentTag');
   ok(/openEditExpenseModal\(p\.id\)/.test(modal) && /deleteExpense\(p\.id\)/.test(modal), 'per-part buttons');
-  ok(/!_staff\(\) && !oldSplit &&/.test(modal), 'no whole-row Edit for an older split');
+  ok(/"Print Receipt"\), !oldSplit &&/.test(modal), 'no whole-row Edit for an older split');
 });
 test('Recent entries groups materials', () => {
   const body = fnBody(portal, 'function RecentEntries', '\nfunction ');
@@ -135,6 +135,17 @@ test('Reports table, CSV and print group the expense detail', () => {
   ok(/_expListRows\(model\.expenses\)\.forEach/.test(fnBody(expenses, 'function exportRptTable', '\nfunction ')), 'CSV');
   ok(/_expListRows\(\[\.\.\.model\.expenses\]/.test(fnBody(expenses, 'function _pcReportDetails', '\nfunction ')), 'print');
   ok(/'rptExpDetail', _expListRows\(model\.expenses\)/.test(fnBody(expenses, 'function _rptRenderDetailTables', '\nfunction ')), 'screen');
+});
+
+test('Materials rows show "From purchase" and "Office review" tags', () => {
+  const body = fnBody(portal, 'function MaterialDrill', 'function ItemDetailsModal');
+  ok(/PaymentTag, \{ method: m\.paymentMethod \}\), purchaseTags\(m\)\)/.test(body), 'tags beside the name');
+  ok(/"From purchase"/.test(body) && /"Office review"/.test(body), 'both labels');
+  ok(/\(m\._parts \|\| \[m\]\)\.some\(\(p\) => window\.expPurNeedsReview\(p\.purchaseLineId\)\)/.test(body), 'review checks every part');
+  ok(/addEventListener\("dacs:pur-review-flags"/.test(body), 're-renders when the flags load');
+  const loader = fnBody(expenses, 'async function _purLoadReviewFlags', '\n}\n');
+  ok(/dispatchEvent\(new Event\('dacs:pur-review-flags'\)\)/.test(loader), 'loader announces the flags');
+  ok(/window\.expPurNeedsReview = id =>/.test(expenses), 'flag lookup exposed');
 });
 
 console.log('\nC. Money stays on the raw rows');

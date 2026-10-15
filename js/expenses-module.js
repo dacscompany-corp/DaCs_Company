@@ -2909,15 +2909,18 @@ function _expNoPeriodSpent(folderId) {
 }
 
 // Lines the server charged to Cover because their month had no billing
-// period (Q23) — shown as "Office review" in the Expenses list.
+// period (Q23) — shown as "Office review" in the Expenses list and in
+// Project Control's Materials list (which listens for the event below).
 let _purReviewLines = new Set();
 async function _purLoadReviewFlags() {
     try {
         const { data, error } = await window.sbClient.from('purchase_lines').select('id').eq('needs_funding_review', true);
         if (error) throw error;
         _purReviewLines = new Set((data || []).map(r => r.id));
+        window.dispatchEvent(new Event('dacs:pur-review-flags'));
     } catch (err) { console.warn('purchase review flags:', err); }
 }
+window.expPurNeedsReview = id => !!id && _purReviewLines.has(id);
 
 // Set while the Edit Expense modal is correcting a purchase (else null).
 let _editingPurchase = null;
@@ -3254,6 +3257,27 @@ function _updatePaySplitPreview() {
     if (typeof _updatePayContractPreview === 'function') _updatePayContractPreview();
 }
 
+// Staff can't read billing budgets — every period reads ₱0 to them — so to
+// them nothing is fundable and the payment falls back to the "active" period,
+// which is just the latest month and can be the Cover period. For staff, pick
+// the client-funded period of the payment's month, else the latest
+// client-funded one. The owner's path is unchanged (it never reaches here
+// while a period still has budget).
+function _payStaffPeriodId() {
+    const cur = expCurrentProject;
+    if (window.currentUserRole !== 'staff' || !cur || !cur.folderId) return cur && cur.id;
+    const periods = expProjects.filter(p => p.folderId === cur.folderId && p.fundingType !== 'president');
+    if (!periods.length) return cur.id;
+    const order = p => Number(p.year || 0) * 100 + _PAY_MONTH_NAMES.indexOf(p.month) * 1 + (Number(p.billingNumber) || 0) / 1000;
+    const paid = (document.getElementById('payDate') || {}).value;   // 'YYYY-MM-DD' or ''
+    if (paid) {
+        const [y, m] = paid.split('-').map(Number);
+        const sameMonth = periods.filter(p => Number(p.year) === y && _PAY_MONTH_NAMES.indexOf(p.month) === m - 1);
+        if (sameMonth.length) return sameMonth.sort((a, b) => order(b) - order(a))[0].id;
+    }
+    return periods.sort((a, b) => order(b) - order(a))[0].id;
+}
+
 async function handleAddPayroll(e) {
     e.preventDefault();
 
@@ -3269,7 +3293,7 @@ async function handleAddPayroll(e) {
     if (!expCurrentProject) { showExpNotif('Select a project first.', 'error'); return; }
     const _fundable = (_expSources || []).filter(s => s.remain > 0);
     const _active   = _fundable.find(s => s.id === expCurrentProject.id);
-    const checkedSources = [_active || _fundable[0] || { id: expCurrentProject.id, remain: Infinity, label: 'Current Period' }];
+    const checkedSources = [_active || _fundable[0] || { id: _payStaffPeriodId(), remain: Infinity, label: 'Current Period' }];
 
     const _payLamsam = _payIsLamsam();
     const d = parseFloat((document.getElementById('payDays') || {}).value) || 0;
