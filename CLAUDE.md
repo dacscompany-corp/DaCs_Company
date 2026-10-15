@@ -95,6 +95,19 @@ Profit   = Earned − Spent
   counts.** Attributed or not, a project-overhead row is in that project's Spent exactly once;
   unattributed rows (including a link to another folder's period) report as **Unallocated Indirect
   Cost**. Null is the normal state — rent has no billing period.
+- **Purchasing (WorkMate Stage 2) — staff exception.** Staff with the **Buyer** switch may see
+  purchase prices, totals, supplier payments and receipts **within their buying scope**, in
+  Purchasing screens only. Project profit, reimbursements, warranty fund and quotations stay
+  restricted, and Project Control stays amount-free for staff. Approving cost moves between
+  projects or from warehouse stock is **main owner only**. Workers and team leaders never see
+  prices, receipts or payments. (Approved 2026-10-14; spec
+  `docs/superpowers/specs/2026-09-30-workmate-mobile-purchasing-design.md`.)
+- **Petty cash, personal advances, supplier refunds and supplier credits stay outside Spent,
+  Earned and Profit.** Issuing, returning or repaying that money never creates an expense.
+  Project purchase costs enter Material/Spent once, after server acceptance through the shared
+  recording operation. Warehouse purchases stay outside project Spent until owner-approved cost
+  assignment; approved cost transfers follow their separate rules. Payroll and overhead remain
+  unchanged.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 
@@ -142,7 +155,7 @@ Tracer: `payroll.payment_method` (migrations 0037/0038) landed in seven files �
 
 **Run `npm test` after ANY change that touches money code** (`portal-app.compiled.js`,
 `expenses-module.js`, `overhead-module.js`, `billing-allocation.js`). Eleven suites; the money one
-is `tests/money-math.test.js` — 239 checks that
+is `tests/money-math.test.js` — 248 checks that
 extract the live functions and enforce every invariant above; exits 1 on breakage, runs in ~1s.
 If it fails with "SLICE NOT FOUND", the source was restructured — update the extraction markers
 in the test file, never delete the test.
@@ -161,4 +174,5 @@ CI (`.github/workflows/ci.yml`) runs both of the above on every push and PR — 
 JS and runs the money tests. Red CI on a `salvs` merge usually means the merge reverted a money
 rule or the staff amount-hiding; don't merge until green.
 
-Staff accounts (`currentUserRole === 'staff'`) must not see peso amounts anywhere.
+Staff accounts (`currentUserRole === 'staff'`) must not see peso amounts anywhere — the one
+exception is the Buyer purchasing rule under *Money invariants*.

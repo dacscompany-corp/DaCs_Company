@@ -195,6 +195,8 @@ no envelope.
 | `coverExpense?` | bool | overflow charged to president fund |
 | `splitGroup?` `splitIndex?` `splitTotal?` | — | multi-source split metadata |
 | `clientSubmissionId?` | uuid | `client_submission_id` — one id per Save press; unique with `split_index` (0089), so a retry cannot duplicate |
+| `purchaseLineId?` `purchaseChargeId?` | uuid | `purchase_line_id` / `purchase_charge_id` (0096): the row was written by a **purchase** (`pur_record`). It changes only through `pur_correct` / `pur_refund` / `pur_void` — the `expenses_purchase_guard` trigger refuses any other insert, update or delete |
+| `folderId?` | uuid | `folder_id` (0096): set ONLY on a purchase row for a project with **no billing period** for the purchase month and no Cover period (`projectId` null). It is that project's Cover Material — counted once in Material, Spent and Cover, in no period's envelope, shown as "No billing period" — until a re-fund moves it onto a period |
 | `createdAt` | ts | |
 
 ### `payroll/{id}` — labor spend (also batch + split)
@@ -1030,3 +1032,24 @@ notifications/{uid}/items  = glue between admin & client
 |---|---|
 | `ai_requests` (`owner_id`, `user_id`, `feature` `budget_summary`/`work_plan_draft`/`health_briefing`, `input_chars`, `created_at`) | One row per allowed AI request; never the text; RLS on with no policy (no client access); rows older than 30 days removed |
 | `ai_authorize(p_feature, p_chars)` | Called by the `dacs-ai` worker as the caller: active account, feature allowed for the role and `allowed_modules`, size, per-person and per-company limits; raises `AI_NOT_SIGNED_IN` / `AI_NOT_ALLOWED` / `AI_TOO_LARGE` / `AI_RATE_LIMITED` |
+
+## Purchases (0096) — WorkMate Stage 2A-1
+
+One recording operation for every purchase, shared by Dacs Web (Expenses → Add expense) and, later, the WorkMate buyer app. Spec `docs/superpowers/specs/2026-09-30-workmate-mobile-purchasing-design.md` §3; plan `docs/superpowers/plans/2026-10-14-workmate-stage2a1-purchase-recording.md`. RLS: owner and their staff read (`can_access`); nobody writes directly — only the functions. Callers: active owner/staff accounts allowed the **Expenses** section; source `workmate` is refused until the Buyer switch (2A-2).
+
+| Object | Purpose |
+|---|---|
+| `purchases` (`owner_id`, `source` `expenses_form`/`workmate`, `purchase_date` = the ACTUAL purchase date, `date_time`, `supplier`, `receipt_total`, `notes`, `payment_method`, `docs` {po/dr/si/payment receipt URLs}, `status` `recorded`/`void`, `recorded_by`) | One receipt |
+| `purchase_lines` (`purchase_id`, `line_no`, `destination` `project`/`warehouse`, `folder_id` + `folder_name` — history, **no foreign key**, `item_name`, `category`, `quantity` (up to 3 decimals), `unit`, `gross_amount`, `in_inventory`, `min_stock`, `needs_funding_review`) | What was bought, for which project (Main Contract or Additional Works folder). Warehouse lines write no expense rows |
+| `purchase_charges` (`kind` `delivery_fee`/`discount`, `amount`) + `purchase_charge_shares` (`charge_id`, `line_id`, `amount`) | A shared fee or discount and how it is split across lines (default: by line amount, to the centavo by largest remainder — never a negative share, always exactly the charge) |
+| `purchase_history` (`kind` `recorded`/`corrected`/`refunded`/`voided`/`replaced`, `reason`, `before`, `after`, `actor_id`) | Never edited |
+| `pur_ops` (`actor_id`, `op_id`, `kind`, `result`) | First answer per operation id — a retry or an overlapping call returns it, nothing is recorded twice |
+| `purchase_stock_moves` (`line_id` **primary key**, `inventory_id`, `quantity`, `moved_at`) | The "track in inventory" stock added for a line — once, ever. Stock items are matched within the company: its own item, else an unowned one (the old browser mirror wrote items with no owner), never another company's |
+| `pur_record(p_op, p_body)` | Records a purchase and writes its `expenses` rows: per project line, the net amount (item − discount shares) funded by the **actual purchase month** — that month's client periods with a budget (this company's, this project's), **earliest billing number first**, each up to budget − expenses − payroll; shortage → Cover (`cover_expense = true`, on the project's Cover period, else a client period of **that month only** — never another month's); no eligible period that month → all Cover and `needs_funding_review`; **no Cover period and no billing period in the purchase month** → one Cover row tied to the project (`folder_id`), flagged. Additional Works → their own period in full. Fee shares → "Delivery fee (share)" rows, funded the same way. Adds stock for "track in inventory" lines. Refuses: totals ≠ receipt, shares ≠ charge, discount > line, sub-centavo or negative amounts, another company's project, staff on a completed project (or an Additional Works job under one) |
+| `pur_correct(p_op, p_purchase, p_body, p_reason)` | Same lines, new content: the purchase's rows are replaced and re-funded in one transaction; reason required. Moving a line to another project, or any change on a completed project, is owner-only. Stock already moved is not moved again |
+| `pur_refund(p_op, p_purchase, p_reason)` | Re-funds a purchase as it stands — e.g. after the office adds the billing period a "No billing period" line was waiting for. Same purchase date, same total; only where the pesos are charged changes |
+| `pur_void(p_op, p_purchase, p_reason)` | Its rows leave Spent; purchase, docs and history stay. Not a return or a refund; stock is not taken back |
+| `pur_replace(p_op, p_purchase, p_body, p_reason)` | A new version with a different number of lines: the old purchase is voided (`replaced_by`) and the new one recorded in ONE transaction; stock the old one moved is carried over to the new lines of the same item, never added twice. Same owner-only rules as a correction |
+| `pur_live_purchases(p_folder, p_period)` | How many live purchases touch this project or any of its Additional Works jobs (any line, even discounted to zero) or this period — asked by Dacs Web before deleting anything |
+| `folders_purchase_delete_guard`, `projects_purchase_delete_guard` (triggers) | Refuse deleting a project or period with a live purchase, BEFORE its cascade removes anything (`PURCHASES_LIVE`) |
+| `pur_reader()` | The read rule of every purchase table: an active owner/staff account allowed the Expenses section (the same as recording) |

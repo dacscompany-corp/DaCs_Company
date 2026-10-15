@@ -292,6 +292,8 @@ function mapExpenseDoc(d) {
   return {
     id: d.id,
     projectId: d.projectId,
+    // Set only on a purchase for a project with NO billing period (0096).
+    folderId: d.projectId ? null : d.folderId || null,
     date,
     dateTime,
     // full timestamp for date+time display
@@ -635,7 +637,7 @@ function FoldersGrid({ folders, foldersRaw, monthsRaw, payrollRaw, expensesRaw, 
     const childMonths = monthsRaw.filter((m) => m.folderId === f.id).map(mapMonthlyProject);
     const childIds = new Set(childMonths.map((m) => m.id));
     const labor = payrollRaw.filter((p) => childIds.has(p.projectId)).map(mapPayrollDoc);
-    const material = expensesRaw.filter((e) => childIds.has(e.projectId)).map(mapExpenseDoc);
+    const material = expensesRaw.filter((e) => childIds.has(e.projectId) || !e.projectId && e.folderId === f.id).map(mapExpenseDoc);
     const _raw = foldersRaw.find((x) => x.id === f.id) || {};
     const ovhd = (overheadRaw || []).filter((e) => e.folderId === f.id);
     const built = buildProject(_raw, childMonths, labor, material, ovhd);
@@ -1674,7 +1676,10 @@ function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, ov
       payCount: payrollRaw.filter(p => p.projectId === m.id).length };
   }).sort((a, b) => b.label.localeCompare(a.label));
   const totalAllocated = cards.reduce((sum, c) => sum + c.budget, 0);
-  const totalSpent = cards.reduce((sum, c) => sum + c.totalCost, 0);
+  // A purchase on a project with NO billing period (0096) belongs to no card,
+  // but it is spent: it counts in Total Spent and is named below the cards.
+  const noPeriodSpent = expensesRaw.filter(e => !e.projectId && e.folderId === project.id).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const totalSpent = cards.reduce((sum, c) => sum + c.totalCost, 0) + noPeriodSpent;
   const historyPeriod = owner && cards.find(c => c.id === historyId && !c.cover);
   // Two DIFFERENT styles: .drill-stat is the big header block, .pc-period-stat the
   // compact in-card row. Using the card class in the header kills .drill-stat's type scale.
@@ -1699,6 +1704,9 @@ function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, ov
       headStat("Total Allocated", totalAllocated),
       headStat("Total Spent", totalSpent),
       headStat("Remaining", totalAllocated - totalSpent, totalAllocated - totalSpent >= 0 ? "accent" : "")),
+    noPeriodSpent > 0 && h("div", { className: "pc-feed-empty", role: "note" }, owner
+      ? ["₱ ", peso(noPeriodSpent), " of Cover material has no billing period yet — it counts in Total Spent; office review needed."]
+      : "Some Cover material has no billing period yet — office review needed."),
     !cards.length ? h("div", { className: "pc-feed-empty" }, "No billing periods yet.")
       : h("div", { className: "pc-period-grid" }, cards.map(c => h("div", { key: c.id, className: "pc-period-card" },
         h("div", { className: "pc-period-head" },
@@ -2356,6 +2364,17 @@ function AdditionalWorksDrill({ project, onBack, childFolders, additionalWorksRa
       }
     } catch (err) {
       alert("Could not check for WorkMate requests, so nothing was deleted: " + (err.message || err));
+      return;
+    }
+    try {
+      const { data: purCount, error: purErr } = await window.sbClient.rpc("pur_live_purchases", { p_folder: child.id, p_period: null });
+      if (purErr) throw purErr;
+      if (purCount > 0) {
+        alert(`"${child.name}" has ${purCount} purchase(s), so it cannot be deleted. Void them in Expenses first.`);
+        return;
+      }
+    } catch (err) {
+      alert("Could not check for purchases, so nothing was deleted: " + (err.message || err));
       return;
     }
     if (!confirm(`Delete "${child.name}"? This removes its contract amount and any billing periods/entries recorded under it.`)) return;
@@ -3775,8 +3794,8 @@ function PortalApp() {
     [payrollRaw, childMonthIds]
   );
   const allMaterialTx = React.useMemo(
-    () => expensesRaw.filter((e) => childMonthIds.has(e.projectId)).map(mapExpenseDoc).sort((a, b) => (b.date || "").localeCompare(a.date || "")),
-    [expensesRaw, childMonthIds]
+    () => expensesRaw.filter((e) => childMonthIds.has(e.projectId) || !e.projectId && e.folderId === projectId).map(mapExpenseDoc).sort((a, b) => (b.date || "").localeCompare(a.date || "")),
+    [expensesRaw, childMonthIds, projectId]
   );
   // Soft-deleted rows (deleted from the admin Overhead page) must not resurface here.
   const overheadRows = React.useMemo(
@@ -3803,7 +3822,7 @@ function PortalApp() {
       const cfMonths = monthsRaw.filter((m) => m.folderId === cf.id).map(mapMonthlyProject);
       const cfMonthIds = new Set(cfMonths.map((m) => m.id));
       const cfLabor = filterByPeriod(payrollRaw.filter((p) => cfMonthIds.has(p.projectId)).map(mapPayrollDoc), period);
-      const cfMaterial = filterByPeriod(expensesRaw.filter((e) => cfMonthIds.has(e.projectId)).map(mapExpenseDoc), period);
+      const cfMaterial = filterByPeriod(expensesRaw.filter((e) => cfMonthIds.has(e.projectId) || !e.projectId && e.folderId === cf.id).map(mapExpenseDoc), period);
       const cfOverhead = filterByPeriod((overheadRaw || []).filter((e) => e.folderId === cf.id && !e.deletedAt), period);
       return { ...buildProject(cf, cfMonths, cfLabor, cfMaterial, cfOverhead), raw: cf };
     }),

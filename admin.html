@@ -4801,6 +4801,7 @@
                 </div>
             </div>
             <div class="exp-form-group"><label>Notes (optional)</label><textarea id="editExpNotes" rows="2" placeholder="Additional details…"></textarea></div>
+            <div class="exp-form-group" id="editExpReasonGroup" style="display:none;"><label for="editExpReason">Reason for the change <span style="color:#b91c1c;">*</span></label><input type="text" id="editExpReason" maxlength="500" placeholder="e.g. wrong amount on the receipt"><small style="display:block;margin-top:4px;color:#6b7280;">This expense came from a purchase. The change is kept in its history and the billing periods are worked out again.</small></div>
             <div class="exp-modal-footer">
                 <button type="button" class="exp-btn exp-btn-secondary" onclick="closeExpModal('editExpenseModal')">Cancel</button>
                 <button type="submit" id="editExpenseBtn" class="exp-btn exp-btn-primary" data-label="Save Changes"><i data-lucide="check" class="btn-icon"></i> Save Changes</button>

@@ -1,18 +1,23 @@
 # ════════════════════════════════════════════════════════════════════
 # CI — runs on every push and pull request.
 #
-# Two steps, well under a minute, no dependencies to install (every test
-# uses only Node built-ins):
+# Three steps. The first two need no dependencies (every test uses only Node
+# built-ins):
 #   1. syntax — node --check on every authored JS file: the portal modules,
 #               the tests, the service worker, and the two Cloudflare
 #               workers (ES modules, so checked as .mjs). Catches the "one
 #               bad character broke the whole admin page" class of bug.
-#   2. tests  — `npm test`: ALL eleven suites, the same command a developer
+#   2. tests  — `npm test`: ALL the suites, the same command a developer
 #               runs locally. Among them tests/money-math.test.js, which
 #               extracts the LIVE money functions and enforces every
 #               invariant in CLAUDE.md, and the isolation suites
 #               (reimbursements, quotations, attendance) that fail the
 #               build if an isolated module ever touches the money model.
+#
+#   3. sql    — `npm run test:sql`: migration 0096's money rules on PostgreSQL
+#               in memory (PGlite), then two sessions at once on a throwaway
+#               real PostgreSQL (embedded-postgres). It installs those test
+#               tools into supabase/tests only — never into the app.
 #
 # Until 2026-09-27 this ran only 3 of the 9 suites by name, so a new suite
 # added to package.json never reached CI. Running `npm test` keeps the two
@@ -60,3 +65,6 @@ jobs:
 
       - name: All test suites (npm test)
         run: npm test
+
+      - name: SQL money rules and two-session races (npm run test:sql)
+        run: npm run test:sql

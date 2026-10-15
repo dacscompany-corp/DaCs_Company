@@ -457,6 +457,78 @@ console.log('\nI. Cover / president money');
       ok(!actual.includes('4,731'), 'contract-minus-spent is not available cash');
     });
   }
+  test('P. report totals are unchanged when the same rows come from a purchase', () => {
+    vm.runInContext(`_ovAllExpenses.forEach((e, i) => { e.purchaseLineId = 'L' + i; if (e.coverExpense) e.purchaseChargeId = 'C'; });
+                     _rptState.allExpenses = _ovAllExpenses;`, report);
+    const m2 = report._pcDashboardReport().model;
+    eq(m2.totals.mats, 150); eq(m2.totals.totalSpent, 269); eq(m2.totals.cover, 75); eq(m2.totals.remaining, 731);
+  });
+  // A purchase on a project with NO billing period (0096): one ₱40 Cover row
+  // tied to the project. Every Spent site must count it once, inside Cover.
+  test('P. a no-period purchase row counts once in the report: Material, Spent, Cover', () => {
+    vm.runInContext(`_ovAllExpenses.push({folderId:'f',amount:40,coverExpense:true,purchaseLineId:'LNP',dateTime:'2026-09-15T08:00'});
+                     _rptState.allExpenses = _ovAllExpenses;`, report);
+    const m3 = report._pcDashboardReport().model;
+    eq(m3.totals.mats, 190); eq(m3.totals.totalSpent, 309); eq(m3.totals.cover, 115); eq(m3.totals.remaining, 691);
+    eq(m3.totals.noPeriodMaterial, 40);
+    report._rptRenderKPIs(m3);
+    ok(elements.rptKpiRow.innerHTML.includes('₱691.00'), 'KPI Funds Available must include the no-period row');
+  });
+  for (const [name, arg, spent, remaining] of [
+    ['printFullBillingSummary','f','309.00','691.00'],
+    ['printBillingSummaryReceipt','p','205.00','795.00'],
+    ['printReportsDashboard',null,'309.00','691.00']
+  ]) {
+    test('P. ' + name + ' counts the no-period row exactly where it belongs', () => {
+      report[name](arg);
+      const actual = printed.match(/<caption>Actual Costs<\/caption>[\s\S]*?<tbody>([\s\S]*?)<\/tbody>/)[1];
+      ok(actual.includes('₱' + spent), 'incorrect Spent');
+      ok(actual.includes('₱' + remaining), 'incorrect Funds Available');
+      ok(name === 'printBillingSummaryReceipt' ? !printed.includes('No billing period') : printed.includes('No billing period'),
+         'the no-period line belongs on the project summaries, never on one period\'s receipt');
+    });
+  }
+}
+
+// == P. PURCHASES (0096) ARE ORDINARY EXPENSE ROWS ======================
+// WorkMate Stage 2A-1: a purchase is charged by writing ordinary `expenses`
+// rows (spec §3.2), linked back by purchaseLineId / purchaseChargeId, Cover
+// rows flagged coverExpense. Every site that totals Spent or Cover must read
+// them EXACTLY like any other expense row — the link fields may never change
+// a total, and the funding decision lives only on the server (pur_record).
+// A project with NO billing period gets a Cover row tied to the project
+// itself (folderId, no projectId): it counts once, inside Cover.
+console.log('\nP. Purchases are ordinary expense rows');
+{
+  const folder = { id: 'f1', totalBudget: 1000000 };
+  const months = [
+    { id: 'm1', monthlyBudget: 7000, fundingType: 'progress' },
+    { id: 'm2', monthlyBudget: 0,    fundingType: 'president' }
+  ];
+  // The §3.3 example as the server writes it: 3,000 + 4,000 + 1,000 Cover.
+  const plain = [
+    { projectId: 'm1', amount: 3000, docs: {} },
+    { projectId: 'm1', amount: 4000, docs: {} },
+    { projectId: 'm2', amount: 1000, docs: {}, coverExpense: true }
+  ];
+  const linked = plain.map((r, i) => ({ ...r, purchaseLineId: 'L1', ...(i === 2 ? { purchaseChargeId: 'C1' } : {}) }));
+  const a = portal.buildProject(folder, months, [], plain, []);
+  const b = portal.buildProject(folder, months, [], linked, []);
+  test('Project Control: purchase links change no total', () => {
+    eq(b.material, a.material); eq(b.spent, a.spent); eq(b.coverCost, a.coverCost);
+  });
+  test('Project Control: the purchase counts once, Cover inside it', () => {
+    eq(b.spent, 8000); eq(b.coverCost, 1000);
+  });
+  test('Project Control: a no-period Cover row counts once in Material, Spent and Cover', () => {
+    const c = portal.buildProject(folder, months, [], linked.concat([{ folderId: 'f1', amount: 500, docs: {}, coverExpense: true, purchaseLineId: 'L2' }]), []);
+    eq(c.material, 8500); eq(c.spent, 8500); eq(c.coverCost, 1500);
+  });
+  test('Add expense decides no funding in the browser (pur_record does)', () => {
+    const add = expensesSrc.slice(expensesSrc.indexOf('async function handleAddExpense('), expensesSrc.indexOf('\nasync function deleteExpense('));
+    ok(add.includes("rpc('pur_record'"), 'Add expense must record through pur_record');
+    ok(!/sortedSources|\.remain\b|coverExpense/.test(add), 'Add expense still splits or picks Cover itself');
+  });
 }
 
 // == J. OUT SOURCE IS NOT A FOURTH BUCKET (migration 0057) ==========

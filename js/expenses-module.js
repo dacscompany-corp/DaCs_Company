@@ -632,6 +632,7 @@ function loadProjects() {
     _pcAdjustmentRows = [];
     // Start global overview subscription
     subscribeOvAllData();
+    _purLoadReviewFlags();
 
     // Confidential financials are owner-only. Subscribe to them only when the
     // current user is NOT staff; staff sessions keep empty maps so contract
@@ -805,7 +806,8 @@ function _pcRefreshReportViews() {
 function updateDashboardBudget() {
     const totalContract  = expFolders.reduce((s, f) => s + (f.totalBudget || 0), 0);
     const totalAllocated = expProjects.reduce((s, p) => s + (p.monthlyBudget || 0), 0);
-    const totalSpent     = expProjects.reduce((s, p) => s + (p._spent || 0), 0);
+    // …plus purchases on projects with no billing period (0096).
+    const totalSpent     = expProjects.reduce((s, p) => s + (p._spent || 0), 0) + _expNoPeriodSpent(null);
     const remaining      = totalAllocated - totalSpent;
     const spentPct       = totalAllocated > 0 ? (totalSpent / totalAllocated) * 100 : 0;
     const remPct         = totalAllocated > 0 ? Math.max(0, 100 - spentPct) : 0;
@@ -862,7 +864,7 @@ function updateDashboardBudget() {
 
     // ── MVP Dashboard Stacked Bar ────────────────────────────
     // We need mat/lab breakdown; use totals from expProjects
-    const _totalMat = expProjects.reduce((s, p) => s + (p._matSpent || 0), 0);
+    const _totalMat = expProjects.reduce((s, p) => s + (p._matSpent || 0), 0) + _expNoPeriodSpent(null);
     const _totalLab = expProjects.reduce((s, p) => s + (p._labSpent || 0), 0);
     const _base = totalAllocated > 0 ? totalAllocated : 1;
     const _matP = Math.min((_totalMat / _base) * 100, 100);
@@ -904,7 +906,7 @@ function renderProjectPanel(containerId) {
         var isExpanded   = _expandedFolders.has(fid);
         var folderProjs        = expProjects.filter(function(p){ return p.folderId === fid; });
         var totalMonthlyBudget = folderProjs.reduce(function(s,p){ return s+(p.monthlyBudget||0); }, 0);
-        var totalSpent   = folderProjs.reduce(function(s,p){ return s+(p._spent||0); }, 0);
+        var totalSpent   = folderProjs.reduce(function(s,p){ return s+(p._spent||0); }, 0) + _expNoPeriodSpent(fid);
         var usedPct      = folderBudget > 0 ? Math.min((totalSpent/folderBudget)*100, 100) : 0;
         var barColor     = usedPct>90?'#ef4444':usedPct>70?'#f59e0b':'#059669';
         var chevCls      = isExpanded ? 'exp-folder-chevron expanded' : 'exp-folder-chevron';
@@ -1247,6 +1249,21 @@ function subscribeFolderData(folderId) {
     const projectIds = expProjects
         .filter(p => p.folderId === folderId)
         .map(p => p.id);
+
+    // A purchase on a project with NO billing period is tied to the project
+    // itself (expenses.folderId, no projectId — migration 0096). It matches no
+    // period id below, so it is loaded on its own — even with no period at all.
+    let allExpenses = [];
+    let folderRows  = [];
+    const unsubFolderRows = db.collection('expenses')
+        .where('folderId', '==', folderId)
+        .where('userId', '==', _uid())
+        .onSnapshot(snap => {
+            folderRows = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => !e.projectId);
+            expExpenses = allExpenses.concat(folderRows);
+            updateBudgetOverview(); populateMonthDropdown(); renderExpensesTable();
+        }, err => console.error('folder expenses:', err));
+    expUnsubscribers.push(unsubFolderRows);
     if (projectIds.length === 0) { updateBudgetOverview(); return; }
 
     // Firestore 'in' supports up to 30 values; chunk if needed
@@ -1254,7 +1271,6 @@ function subscribeFolderData(folderId) {
     for (let i = 0; i < projectIds.length; i += 30)
         chunks.push(projectIds.slice(i, i + 30));
 
-    let allExpenses = [];
     let allPayroll  = [];
     let expDone = 0, payDone = 0;
     const total = chunks.length;
@@ -1267,7 +1283,7 @@ function subscribeFolderData(folderId) {
                 const ids = new Set(chunk);
                 allExpenses = allExpenses.filter(e => !ids.has(e.projectId));
                 snap.docs.forEach(d => allExpenses.push({ id: d.id, ...d.data() }));
-                expExpenses = allExpenses;
+                expExpenses = allExpenses.concat(folderRows);
                 expDone++;
                 if (expDone >= total) { updateBudgetOverview(); populateMonthDropdown(); renderExpensesTable(); }
             });
@@ -1773,6 +1789,8 @@ function updateBudgetOverview() {
     if (_fid && _periodMonth && _periodYear) {
         periodExpenses = expExpenses.filter(e => {
             if (!e.dateTime) return false;
+            // A no-period purchase (0096) belongs to no period; the panels add it separately.
+            if (!e.projectId && e.folderId) return false;
             const d = new Date(e.dateTime);
             return _monthNames[d.getMonth()] === _periodMonth && d.getFullYear() === Number(_periodYear);
         });
@@ -2030,7 +2048,10 @@ function renderExpensesTable() {
         _projExpMap[e.projectId].push(e);
     });
     const _coverSet = new Set();
-    Object.keys(_projExpMap).forEach(pid => {
+    // Staff cannot read budgets — every budget reads 0 to them — so this guess
+    // would tag every row Cover. Purchase rows (0096) carry their real Cover
+    // flag from the server and are never guessed.
+    if (window.currentUserRole !== 'staff') Object.keys(_projExpMap).forEach(pid => {
         const proj = expProjects.find(p => p.id === pid);
         if (!proj || proj.fundingType === 'president') return;
         const budget = proj.monthlyBudget || 0;
@@ -2038,6 +2059,7 @@ function renderExpensesTable() {
         let cum = 0;
         sorted.forEach(e => {
             cum += (e.amount || 0);
+            if (e.purchaseLineId || e.purchaseChargeId) return;
             if (e.coverExpense || cum > budget) _coverSet.add(e.id);
         });
     });
@@ -2049,10 +2071,14 @@ function renderExpensesTable() {
         const fundingBadge = (_coverSet.has(e.id) || e.coverExpense) ? _fundingBadgeHTML(null, true) : (srcProj ? _fundingBadgeHTML(srcProj, false) : '');
         const catBadge = showCategoryBadge ? getCategoryPillHTML(e.category) : '';
         const invBadge = e.inInventory ? '<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;border-radius:999px;background:#ecfdf5;color:#15803d;font-size:10.5px;font-weight:700;border:1px solid #a7f3d0;">📦 In Inventory</span>' : '';
+        const purBadge = (e.purchaseLineId || e.purchaseChargeId)
+            ? '<span title="Recorded as a purchase — edit or void it to change it" style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:10.5px;font-weight:700;border:1px solid #c7d2fe;">From purchase</span>'
+              + (_purReviewLines.has(e.purchaseLineId) ? '<span title="No billing period for its month — charged to Cover until the office reviews it" style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#fff7ed;color:#c2410c;font-size:10.5px;font-weight:700;border:1px solid #fed7aa;">Office review</span>' : '')
+            : '';
         return `
         <tr class="exp-group-row">
             <td>${formatDate(e.dateTime)}</td>
-            <td><strong>${_highlightMatch(e.expenseName || '—', name)}</strong>${catBadge}${fundingBadge}${invBadge}</td>
+            <td><strong>${_highlightMatch(e.expenseName || '—', name)}</strong>${catBadge}${fundingBadge}${invBadge}${purBadge}</td>
             <td class="exp-notes-cell">${e.notes ? '<span class="exp-notes-text">' + e.notes + '</span>' : '<span class="exp-notes-empty">—</span>'}</td>
             <td>${e.quantity || 1}</td>
             <td>₱${formatNum(e.amount)}</td>
@@ -2629,6 +2655,20 @@ async function deleteFolder(id) {
         showExpNotif('Could not check this project for WorkMate requests, so nothing was deleted. ' + (err.message || err), 'error');
         return;
     }
+    // Purchases (0096): a project with a LIVE purchase — even one discounted to
+    // zero — cannot be deleted; the database refuses it too. Asked here, before
+    // anything is removed, so the loop below can never stop half-way.
+    try {
+        const { data: purCount, error: purErr } = await window.sbClient.rpc('pur_live_purchases', { p_folder: id, p_period: null });
+        if (purErr) throw purErr;
+        if (purCount > 0) {
+            showExpNotif(`"${folder?.name}" has ${purCount} purchase(s), so it cannot be deleted. Void them first, or mark the project completed.`, 'error');
+            return;
+        }
+    } catch (err) {
+        showExpNotif('Could not check this project for purchases, so nothing was deleted. ' + _purErrorText(err), 'error');
+        return;
+    }
     const count  = expProjects.filter(p => p.folderId === id).length;
     const msg    = count > 0
         ? `Delete folder "${folder?.name}" and its ${count} month(s)? All expenses & payroll inside will also be deleted.`
@@ -2666,6 +2706,19 @@ async function deleteFolder(id) {
 }
 
 async function deleteProject(id) {
+    // A billing period carrying a LIVE purchase cannot be deleted (0096); asked
+    // before the confirm and before anything is removed.
+    try {
+        const { data: purCount, error: purErr } = await window.sbClient.rpc('pur_live_purchases', { p_folder: null, p_period: id });
+        if (purErr) throw purErr;
+        if (purCount > 0) {
+            showExpNotif(`This billing period carries ${purCount} purchase(s), so it cannot be deleted. Void them first.`, 'error');
+            return;
+        }
+    } catch (err) {
+        showExpNotif('Could not check this billing period for purchases, so nothing was deleted. ' + _purErrorText(err), 'error');
+        return;
+    }
     if (!await showDeleteConfirm('Delete this project and ALL its expenses & payroll?')) return;
     try {
         const uid = _uid();
@@ -2735,6 +2788,141 @@ async function _uploadReceiptFile(kind, file) {
 let _expSubmissionId = null;
 let _paySubmissionId = null;
 
+// ════════════════════════════════════════════════════════════
+// PURCHASES (migration 0096) — one server operation records them
+// ════════════════════════════════════════════════════════════
+// Add expense records a one-line purchase through pur_record. The SERVER
+// picks the billing periods from the actual purchase month — earliest
+// billing number first, any shortage to Cover, no period that month → Cover
+// flagged for office review, no Cover period and no period that month → a Cover row
+// tied to the project itself (expenses.folder_id, no period), flagged;
+// Additional Works in full on their own period — for owner and staff alike
+// (staff cannot read the budgets, the server can). Nothing is split in the
+// browser, and the stock update ("track in inventory") is the server's too.
+// Rows made by a purchase change only through pur_correct / pur_refund /
+// pur_void; the database refuses any other write.
+
+// "YYYY-MM-DD" from LOCAL date parts (PH is UTC+8 — never toISOString).
+function _purLocalDateKey(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// Server refusals in plain words. Unknown errors keep their own message.
+function _purErrorText(err) {
+    const m = String((err && (err.message || err.code)) || err || '');
+    if (err && err.code === 'PGRST202') return 'The server is not updated for purchases yet (migration 0096) — nothing was changed.';
+    const known = {
+        AW_NO_PERIOD:          'This Additional Works job has no billing period yet — add one first.',
+        COMPLETED_PROJECT:     'This project is marked completed — only the owner can add or change its costs.',
+        OWNER_APPROVAL_NEEDED: 'Moving a cost to another project needs the owner.',
+        NOT_OFFICE:            'Only office accounts can record expenses.',
+        NOT_ALLOWED:           'This account is not set up for Expenses.',
+        BUYER_REQUIRED:        'Phone purchasing needs the Buyer switch (not available yet).',
+        PURCHASES_LIVE:        'It has purchases — void them first.',
+        REASON_REQUIRED:       'Please give a reason.',
+        BAD_STATE:             'This purchase was already voided.',
+        LINES_CHANGED:         'This purchase has several items — it cannot be changed from here.',
+        BAD_DATE:              'Check the date.',
+        BAD_AMOUNT:            'Check the amount (pesos and centavos only).',
+        BAD_NAME:              'Give the expense a name.',
+        BAD_QUANTITY:          'Quantity must be more than zero.',
+        BAD_PROJECT:           'This project no longer exists or belongs to another account — refresh the page.',
+        NOT_FOUND:             'That purchase or project was not found — refresh the page.',
+        PURCHASE_ROW:          'This row was made by a purchase — use Edit or Void on it instead.',
+        TOTAL_MISMATCH:        'The items and fees do not add up to the receipt total.',
+        BAD_LINES:             'Check the item lines.',
+    };
+    const code = Object.keys(known).find(k => m.includes(k));
+    return code ? known[code] : (err && err.hint) || m;
+}
+
+// A short reason dialog (correction or void). Resolves the trimmed text, or
+// null when cancelled. Same look as the labor-contract dialogs (.lcm-*).
+function _purAskReason(title, sub, okLabel) {
+    return new Promise(resolve => {
+        const old = document.getElementById('purReasonOverlay');
+        if (old) old.remove();
+        const ov = document.createElement('div');
+        ov.id = 'purReasonOverlay';
+        ov.className = 'lcm-ov';
+        ov.innerHTML = `
+            <div class="lcm-card" style="max-width:420px;">
+              <div class="lcm-head"><div><h3 class="lcm-title">${_mvpEsc(title)}</h3><div class="lcm-sub">${_mvpEsc(sub)}</div></div>
+                <button type="button" class="lcm-x" data-pr-close aria-label="Close">&times;</button></div>
+              <div class="lcm-body">
+                <label for="purReasonInput" style="font-size:12.5px;font-weight:600;color:#3A3A3C;">Reason (kept in the purchase history)</label>
+                <textarea id="purReasonInput" rows="3" maxlength="500" style="width:100%;margin-top:6px;border:1.5px solid #d1d5db;border-radius:8px;padding:8px 10px;font:inherit;"></textarea>
+              </div>
+              <div class="lcm-foot"><button type="button" class="lcm-btn" data-pr-close>Cancel</button>
+                <button type="button" class="lcm-btn primary" id="purReasonOk">${_mvpEsc(okLabel)}</button></div>
+            </div>`;
+        const done = (v) => { ov.remove(); resolve(v); };
+        ov.onclick = e => { if (e.target === ov) done(null); };
+        ov.querySelectorAll('[data-pr-close]').forEach(b => b.onclick = () => done(null));
+        ov.querySelector('#purReasonOk').onclick = () => {
+            const v = ov.querySelector('#purReasonInput').value.trim();
+            if (!v) { ov.querySelector('#purReasonInput').focus(); return; }
+            done(v);
+        };
+        document.body.appendChild(ov);
+        ov.querySelector('#purReasonInput').focus();
+    });
+}
+
+// The purchase behind a purchase-made expense row, with its one line.
+// Null when the row is not from a purchase. `simple` = one line, no charges:
+// the only shape the Expenses form can correct.
+async function _purForRow(e) {
+    if (!e || (!e.purchaseLineId && !e.purchaseChargeId)) return null;
+    const sb = window.sbClient;
+    let purchaseId = null, line = null;
+    if (e.purchaseLineId) {
+        const r = await sb.from('purchase_lines')
+            .select('id, purchase_id, line_no, folder_id, item_name, category, quantity, unit, gross_amount, in_inventory, min_stock')
+            .eq('id', e.purchaseLineId).single();
+        if (r.error) throw r.error;
+        line = r.data; purchaseId = line.purchase_id;
+    } else {
+        const r = await sb.from('purchase_charges').select('purchase_id').eq('id', e.purchaseChargeId).single();
+        if (r.error) throw r.error;
+        purchaseId = r.data.purchase_id;
+    }
+    const [p, lines, charges] = await Promise.all([
+        sb.from('purchases').select('id, status, purchase_date, date_time, supplier, receipt_total, notes, payment_method, docs').eq('id', purchaseId).single(),
+        sb.from('purchase_lines').select('id', { count: 'exact', head: true }).eq('purchase_id', purchaseId),
+        sb.from('purchase_charges').select('id', { count: 'exact', head: true }).eq('purchase_id', purchaseId),
+    ]);
+    if (p.error) throw p.error;
+    return { purchase: p.data, line, lineCount: lines.count || 0, simple: !!line && lines.count === 1 && (charges.count || 0) === 0 };
+}
+
+// A purchase on a project with NO billing period (0096) is tied to the project
+// itself (folderId, no projectId) — it belongs to no period, so the period-
+// by-period sums (p._spent) never see it. It is spent, though: every folder-
+// and company-level total adds it, once. folderId null = every project.
+function _expNoPeriodRows(folderId) {
+    const src = _ovAllExpenses.length ? _ovAllExpenses : expExpenses;
+    return src.filter(e => !e.projectId && e.folderId && (folderId == null || e.folderId === folderId));
+}
+function _expNoPeriodSpent(folderId) {
+    return _expNoPeriodRows(folderId).reduce((s, e) => s + (parseFloat(e.amount) || 0), 0);
+}
+
+// Lines the server charged to Cover because their month had no billing
+// period (Q23) — shown as "Office review" in the Expenses list.
+let _purReviewLines = new Set();
+async function _purLoadReviewFlags() {
+    try {
+        const { data, error } = await window.sbClient.from('purchase_lines').select('id').eq('needs_funding_review', true);
+        if (error) throw error;
+        _purReviewLines = new Set((data || []).map(r => r.id));
+    } catch (err) { console.warn('purchase review flags:', err); }
+}
+
+// Set while the Edit Expense modal is correcting a purchase (else null).
+let _editingPurchase = null;
+let _purEditOpId = null;
+
 // All rows in ONE insert (all-or-nothing). If this submission already landed
 // (a retry after the response was lost), the unique index answers 23505 —
 // confirm the rows exist and report 'already' instead of saving twice.
@@ -2756,59 +2944,24 @@ async function _saveRowsOnce(collection, rows, submissionId) {
 async function handleAddExpense(e) {
     e.preventDefault();
 
-    // Auto-pick the billing period this expense is charged to (the "Which budget
-    // pays for this?" picker was removed). Preference mirrors what that picker
-    // defaulted to, so behaviour is unchanged in the common single-period case:
-    //   1. Additional Works       → the current period (no monthly-budget concept)
-    //   2. the active period       → if it still has remaining budget
-    //   3. the first fundable one  → otherwise
-    //   4. nothing fundable left   → Cover Expenses (the overflow logic below still runs)
-    const checkedSources = [];
-    if (_expIsAdditionalWorks() && expCurrentProject) {
-        checkedSources.push({ id: expCurrentProject.id, remain: Infinity, label: 'Additional Works' });
-    } else {
-        const fundable = (_expSources || []).filter(s => s.remain > 0);
-        const active   = expCurrentProject && fundable.find(s => s.id === expCurrentProject.id);
-        const pick     = active || fundable[0] || null;
-        if (pick) {
-            checkedSources.push(pick);
-        } else {
-            // No remaining budget anywhere → record as a Cover Expense.
-            const fsSel      = document.getElementById('expFundingSourceSelect');
-            const fallbackId = (fsSel && fsSel.value) ? fsSel.value : (expCurrentProject ? expCurrentProject.id : null);
-            if (!fallbackId) { showExpNotif('No billing period to charge this to — add a billing period first.', 'error'); return; }
-            checkedSources.push({ id: fallbackId, remain: 0, label: 'Cover Expenses' });
-        }
-    }
+    // The project this expense belongs to. The SERVER picks its billing
+    // periods (see "PURCHASES (migration 0096)" above); nothing is split here.
+    const folderId = expCurrentProject ? (expCurrentProject.folderId || null) : (expCurrentFolder ? expCurrentFolder.id : null);
+    if (!folderId) { showExpNotif('Open a project first — this expense needs one.', 'error'); return; }
 
-    const totalAmt   = parseFloat((document.getElementById('expAmount').value || '').replace(/,/g, '')) || 0;
+    const totalAmt   = Math.round((parseFloat((document.getElementById('expAmount').value || '').replace(/,/g, '')) || 0) * 100) / 100;
     const expName    = document.getElementById('expName').value.trim();
     const category   = document.getElementById('expCategory').value;
-    const qty        = parseFloat(document.getElementById('expQty').value) || 1;
+    const qty        = Math.round((parseFloat(document.getElementById('expQty').value) || 1) * 1000) / 1000 || 1;
     const dateTime   = _buildDateTime('expDate', 'expTime');
     const notes      = document.getElementById('expNotes').value.trim();
     const paymentMethod = (document.getElementById('expPaymentMethod')?.value || '').trim();
     // Inventory toggle — when on, this material is also tracked as a stock item.
     const toInventory = !!document.getElementById('expToInventory')?.checked;
     const invUnit     = document.getElementById('expInvUnit')?.value || 'pcs';
-    const invMinStock = parseFloat(document.getElementById('expInvMinStock')?.value) || 0;
-
-    // Priority split: lowest remaining first; true overflow → Cover Expenses record
-    const sortedSources = [...checkedSources].sort((a, b) => a.remain - b.remain);
-    let left = totalAmt;
-    const splits = [];
-    for (const s of sortedSources) {
-        if (left <= 0) break;
-        const charge = s.remain > 0 ? Math.min(s.remain, left) : 0;
-        if (charge > 0) { left -= charge; splits.push({ projectId: s.id, amount: charge, coverExpense: false }); }
-    }
-    // Any remaining overflow → Cover Expenses (use current project id, flagged as cover)
-    if (left > 0) {
-        const fid = expCurrentProject?.folderId;
-        const coverProj = fid ? expProjects.find(p => p.folderId === fid && p.fundingType === 'president') : null;
-        const coverId = coverProj?.id || expCurrentProject?.id || splits[splits.length - 1]?.projectId;
-        splits.push({ projectId: coverId, amount: left, coverExpense: true });
-    }
+    const invMinStock = Math.round(Math.max(0, parseFloat(document.getElementById('expInvMinStock')?.value) || 0) * 1000) / 1000;
+    // The ACTUAL purchase date decides the billing month (spec §3.3).
+    const purchaseDate = dateTime ? dateTime.slice(0, 10) : _purLocalDateKey(new Date());
 
     try {
         showExpLoading('addExpenseBtn', true);
@@ -2822,63 +2975,57 @@ async function handleAddExpense(e) {
             if (file) docUrls[key] = await _uploadReceiptFile('expense', file);
         }
 
+        // One id per Save press: a resent request is recorded once (pur_ops).
         if (!_expSubmissionId) _expSubmissionId = DacsReceipts.newId();
-        const rows = splits.map((sp, idx) => ({
-            projectId:     sp.projectId,
-            userId:        _uid(),
-            expenseName:   expName + (splits.length > 1 ? ' (' + (idx + 1) + '/' + splits.length + ')' : ''),
-            category,
-            quantity:      splits.length > 1 ? 1 : qty,
-            amount:        sp.amount,
-            dateTime,
+        const body = {
+            source: 'expenses_form',
+            purchase_date: purchaseDate,
+            date_time: dateTime || purchaseDate,
+            receipt_total: totalAmt,
             notes,
-            ...(paymentMethod ? { paymentMethod } : {}),
-            // Supporting documents (PO/DR/SI/PR) attached only to the first split record.
-            ...(idx === 0 && docUrls.po  ? { poImageUrl:         docUrls.po  } : {}),
-            ...(idx === 0 && docUrls.dr  ? { deliveryReceiptUrl: docUrls.dr  } : {}),
-            ...(idx === 0 && docUrls.si  ? { supplierInvoiceUrl: docUrls.si  } : {}),
-            ...(idx === 0 && docUrls.pay ? { paymentReceiptUrl:  docUrls.pay } : {}),
-            createdAt:     firebase.firestore.FieldValue.serverTimestamp(),
-            clientSubmissionId: _expSubmissionId,
-            ...(toInventory ? { inInventory: true } : {}),
-            ...(sp.coverExpense && { coverExpense: true }),
-            ...(splits.length > 1 && { splitGroup: dateTime + '_' + expName, splitIndex: idx + 1, splitTotal: splits.length })
-        }));
-        const outcome = await _saveRowsOnce('expenses', rows, _expSubmissionId);
+            payment_method: paymentMethod,
+            docs: {
+                ...(docUrls.po  ? { po_image_url:         docUrls.po  } : {}),
+                ...(docUrls.dr  ? { delivery_receipt_url: docUrls.dr  } : {}),
+                ...(docUrls.si  ? { supplier_invoice_url: docUrls.si  } : {}),
+                ...(docUrls.pay ? { payment_receipt_url:  docUrls.pay } : {}),
+            },
+            lines: [{ destination: 'project', folder_id: folderId, item_name: expName, category,
+                      quantity: qty, unit: toInventory ? invUnit : '', amount: totalAmt,
+                      in_inventory: toInventory, min_stock: toInventory ? invMinStock : 0 }],
+            charges: [],
+        };
+        const { data, error } = await window.sbClient.rpc('pur_record', { p_op: _expSubmissionId, p_body: body });
+        if (error) throw error;
         _expSubmissionId = null;
-        if (outcome === 'already') {
-            if (toInventory && expName) {
-                try { await _addExpenseToInventory(expName, qty, invUnit, invMinStock, notes); }
-                catch (e) { console.warn('Inventory sync failed:', e); showExpNotif('Saved, but inventory sync failed: ' + e.message, 'error'); }
-            }
-            showExpNotif('An earlier attempt of this expense was already saved — check the list; changes made since were not applied.', 'success');
-            refreshOvAllData();
-            document.getElementById('addExpenseForm').reset();
-            document.getElementById('expSplitPreview').style.display = 'none';
-            closeExpModal('addExpenseModal');
-            return;
-        }
 
-        // Mirror to the shared Construction inventory when flagged as a stock item.
-        if (toInventory && expName) {
-            try { await _addExpenseToInventory(expName, qty, invUnit, invMinStock, notes); }
-            catch (e) { console.warn('Inventory sync failed:', e); showExpNotif('Saved, but inventory sync failed: ' + e.message, 'error'); }
-        }
-
-        const msg = toInventory
-            ? 'Expense added & sent to inventory ✓'
-            : (splits.length > 1
-                ? `Split into ${splits.length} records across funding sources ✓`
-                : 'Expense added! ✓');
+        // The stock update ("track in inventory") happens on the SERVER, inside
+        // the same transaction and once per purchase line — never here, so a
+        // retry or an overlapping save can never add the stock twice.
+        const rows = (data && data.rows) || [];
+        const review = (data && data.needs_review) || [];
+        const noPeriod = rows.some(r => !r.period_id);
+        // A replayed answer (a retry of a press that had already saved) is the
+        // FIRST press's result: edits made to the form since were not applied.
+        const msg = (data && data.replayed)
+            ? 'An earlier attempt of this expense was already saved — check the list; changes made since were not applied.'
+            : noPeriod
+            ? 'Saved ✓ — this project has no billing period for that month yet, so it was charged to Cover for office review'
+            : review.length
+                ? 'Saved ✓ — no billing period for that month, so it was charged to Cover for office review'
+                : (data && data.stock_moves)
+                    ? 'Expense added & sent to inventory ✓'
+                    : (rows.length > 1 ? `Split into ${rows.length} records across funding sources ✓` : 'Expense added! ✓');
         showExpNotif(msg, 'success');
         refreshOvAllData();
+        if (review.length) _purLoadReviewFlags().then(refreshOvAllData);
 
         document.getElementById('addExpenseForm').reset();
         document.getElementById('expSplitPreview').style.display = 'none';
         if (typeof window.expToggleInventoryFields === 'function') window.expToggleInventoryFields();
         closeExpModal('addExpenseModal');
     } catch (err) {
-        showExpNotif('Error saving expense: ' + err.message, 'error');
+        showExpNotif('Error saving expense: ' + _purErrorText(err), 'error');
         console.error(err);
     } finally {
         showExpLoading('addExpenseBtn', false);
@@ -2886,6 +3033,29 @@ async function handleAddExpense(e) {
 }
 
 async function deleteExpense(id) {
+    // A purchase-made row is VOIDED through its purchase: it leaves Spent, the
+    // receipt and history stay. The database refuses a plain delete of it.
+    let pe = expExpenses.find(x => x.id === id);
+    if (!pe) {
+        try { const snap = await db.collection('expenses').doc(id).get(); if (snap.exists) pe = { id: snap.id, ...snap.data() }; }
+        catch (err) { console.error('deleteExpense fetch:', err); }
+    }
+    if (pe && (pe.purchaseLineId || pe.purchaseChargeId)) {
+        let pur;
+        try { pur = await _purForRow(pe); } catch (err) { showExpNotif('Error: ' + _purErrorText(err), 'error'); return; }
+        if (pur.purchase.status !== 'recorded') { showExpNotif('This purchase was already voided.', 'error'); return; }
+        const many = pur.lineCount > 1 ? ' — all ' + pur.lineCount + ' items on its receipt' : '';
+        const reason = await _purAskReason('Void this purchase?', 'It leaves Spent' + many + '. The receipt and its history are kept.', 'Void purchase');
+        if (!reason) return;
+        try {
+            const { error } = await window.sbClient.rpc('pur_void', { p_op: DacsReceipts.newId(), p_purchase: pur.purchase.id, p_reason: reason });
+            if (error) throw error;
+            showExpNotif('Purchase voided.', 'success');
+            refreshOvAllData();
+            _purLoadReviewFlags();
+        } catch (err) { showExpNotif('Error: ' + _purErrorText(err), 'error'); }
+        return;
+    }
     if (!await showDeleteConfirm('Delete this expense?')) return;
     try { await db.collection('expenses').doc(id).delete(); showExpNotif('Deleted.', 'success'); refreshOvAllData(); }
     catch (err) { showExpNotif('Error: ' + err.message, 'error'); }
@@ -2911,32 +3081,6 @@ window.expSetMoreDetails = function (open) {
     if (label) label.textContent = open ? 'Fewer details' : 'More details — payment, date, notes';
 };
 window.expToggleMoreDetails = function () { window.expSetMoreDetails(); };
-
-// Stock-in to the shared Construction inventory. If an item with the same name
-// already exists, the quantity is added to its current stock; otherwise a new
-// inventory item is created. (The expense itself still lives in Materials.)
-async function _addExpenseToInventory(itemName, qty, unit, minStock, notes) {
-    const now = firebase.firestore.FieldValue.serverTimestamp();
-    const by  = (firebase.auth().currentUser || {}).uid || null;
-    const addQty = parseFloat(qty) || 0;
-    const snap = await db.collection('inventory').where('itemName', '==', itemName).limit(1).get();
-    if (!snap.empty) {
-        const doc = snap.docs[0];
-        const cur = parseFloat(doc.data().currentStock) || 0;
-        await doc.ref.update({ currentStock: cur + addQty, lastUpdated: now, lastAdjustedBy: by });
-    } else {
-        await db.collection('inventory').add({
-            itemName,
-            unit:         unit || 'pcs',
-            currentStock: addQty,
-            minStock:     parseFloat(minStock) || 0,
-            notes:        notes || null,
-            lastUpdated:    now,
-            lastAdjustedBy: by,
-            createdAt:      now
-        });
-    }
-}
 
 // ════════════════════════════════════════════════════════════
 // PAYROLL FORM
@@ -4165,6 +4309,30 @@ async function openEditExpenseModal(id) {
         } catch (err) { console.error('openEditExpenseModal fetch:', err); }
     }
     if (!e) { showExpNotif('Expense not found.', 'error'); return; }
+
+    // A purchase-made row is corrected through its purchase: the form shows the
+    // purchase's FULL amount (not one funding split), the server re-funds it,
+    // and a reason is required. The billing period is the server's to choose.
+    _editingPurchase = null;
+    _purEditOpId = null;
+    if (e.purchaseLineId || e.purchaseChargeId) {
+        let pur;
+        try { pur = await _purForRow(e); } catch (err) { showExpNotif('Error: ' + _purErrorText(err), 'error'); return; }
+        if (pur.purchase.status !== 'recorded') { showExpNotif('This purchase was voided.', 'error'); return; }
+        if (!pur.simple) { showExpNotif('This expense is part of a purchase with several items or a shared fee — it cannot be changed from here yet.', 'error'); return; }
+        _editingPurchase = pur;
+        const d = pur.purchase.docs || {};
+        e = { ...e, expenseName: pur.line.item_name, category: pur.line.category, quantity: Number(pur.line.quantity),
+              amount: Number(pur.line.gross_amount), dateTime: pur.purchase.date_time, notes: pur.purchase.notes,
+              paymentMethod: pur.purchase.payment_method, poImageUrl: d.po_image_url, deliveryReceiptUrl: d.delivery_receipt_url,
+              supplierInvoiceUrl: d.supplier_invoice_url, paymentReceiptUrl: d.payment_receipt_url };
+    }
+    const _fsGroup = document.getElementById('editExpFundingSource')?.closest('.exp-form-group');
+    if (_fsGroup) _fsGroup.style.display = _editingPurchase ? 'none' : '';
+    const _reasonGroup = document.getElementById('editExpReasonGroup');
+    if (_reasonGroup) _reasonGroup.style.display = _editingPurchase ? '' : 'none';
+    const _reasonEl = document.getElementById('editExpReason');
+    if (_reasonEl) _reasonEl.value = '';
     _editingExpenseId = id;
 
     // Populate funding source dropdown (with remaining budget like Add Expense)
@@ -4244,9 +4412,59 @@ function setupEditExpenseFormListeners() {
     form.addEventListener('submit', handleEditExpense);
 }
 
+// Edit Expense on a purchase-made row → pur_correct with the full amount.
+// The project stays the same; the server recomputes the billing periods.
+async function _purSaveCorrection() {
+    const pur = _editingPurchase;
+    const reason = (document.getElementById('editExpReason')?.value || '').trim();
+    if (!reason) { showExpNotif('Please give a reason for the change.', 'error'); document.getElementById('editExpReason')?.focus(); return; }
+    try {
+        showExpLoading('editExpenseBtn', true);
+        const amount   = Math.round((parseFloat((document.getElementById('editExpAmount').value || '').replace(/,/g, '')) || 0) * 100) / 100;
+        const dateTime = _buildDateTime('editExpDate', 'editExpTime');
+        const purchaseDate = dateTime ? dateTime.slice(0, 10) : pur.purchase.purchase_date;
+        // Supporting docs: only the ones re-attached are replaced.
+        const docs = {};
+        const _map = { po_image_url: 'editExpDocPO', delivery_receipt_url: 'editExpDocDR', supplier_invoice_url: 'editExpDocSI', payment_receipt_url: 'editExpDocPR' };
+        for (const [field, inputId] of Object.entries(_map)) {
+            const file = document.getElementById(inputId)?.files?.[0];
+            if (file) docs[field] = await _uploadReceiptFile('expense', file);
+        }
+        if (!_purEditOpId) _purEditOpId = DacsReceipts.newId();
+        const body = {
+            purchase_date: purchaseDate,
+            date_time: dateTime || purchaseDate,
+            supplier: pur.purchase.supplier || '',
+            receipt_total: amount,
+            notes: document.getElementById('editExpNotes').value.trim(),
+            payment_method: (document.getElementById('editExpPaymentMethod')?.value || '').trim(),
+            docs,
+            lines: [{ destination: 'project', folder_id: pur.line.folder_id, item_name: document.getElementById('editExpName').value.trim(),
+                      category: document.getElementById('editExpCategory').value,
+                      quantity: Math.round((parseFloat(document.getElementById('editExpQty').value) || 1) * 1000) / 1000 || 1,
+                      unit: pur.line.unit || '', amount, in_inventory: !!pur.line.in_inventory,
+                      min_stock: Number(pur.line.min_stock) || 0 }],
+            charges: [],
+        };
+        const { data, error } = await window.sbClient.rpc('pur_correct', { p_op: _purEditOpId, p_purchase: pur.purchase.id, p_body: body, p_reason: reason });
+        if (error) throw error;
+        _purEditOpId = null;
+        _editingPurchase = null;
+        _editingExpenseId = null;
+        showExpNotif((data && data.replayed)
+            ? 'An earlier attempt of this correction was already saved — check the list; changes made since were not applied.'
+            : 'Purchase corrected ✓', 'success');
+        refreshOvAllData();
+        _purLoadReviewFlags();
+        closeExpModal('editExpenseModal');
+    } catch (err) { showExpNotif('Error: ' + _purErrorText(err), 'error'); console.error(err); }
+    finally { showExpLoading('editExpenseBtn', false); }
+}
+
 async function handleEditExpense(ev) {
     ev.preventDefault();
     if (!_editingExpenseId) return;
+    if (_editingPurchase) return _purSaveCorrection();
     try {
         showExpLoading('editExpenseBtn', true);
         const editFsSel = document.getElementById('editExpFundingSource');
@@ -4529,6 +4747,16 @@ function _updateExpBudgetBanner() {
     if (!p && !fid) { banner.style.display = 'none'; if (fsWrap) fsWrap.style.display = 'none'; return; }
 
     if (_expIsAdditionalWorks()) {
+        _expCoverExpensesMode = false;
+        banner.style.display = 'none';
+        if (fsWrap) fsWrap.style.display = 'none';
+        return;
+    }
+
+    // Staff cannot read billing budgets, so every period looks empty here and
+    // this banner would wrongly promise Cover. The server (pur_record, 0096)
+    // reads the budgets and funds the expense; show staff nothing.
+    if (window.currentUserRole === 'staff') {
         _expCoverExpensesMode = false;
         banner.style.display = 'none';
         if (fsWrap) fsWrap.style.display = 'none';
@@ -4848,7 +5076,9 @@ function loadRptData() {
     // Use global cache if populated; otherwise fetch from Firestore.
     // For specific folder: filter by projectId only.
     // For All Folders: same — no year filtering on expenses (all-time totals).
-    const cachedExp = _ovAllExpenses.filter(e => idSet.has(e.projectId));
+    const scopeFolders = _rptState.folderId ? _pcReportFolderIds(_rptState.folderId) : null;
+    const inScope = e => idSet.has(e.projectId) || (!e.projectId && !!e.folderId && (!scopeFolders || scopeFolders.has(e.folderId)));
+    const cachedExp = _ovAllExpenses.filter(inScope);
     const cachedPay = _ovAllPayroll.filter(p => idSet.has(p.projectId));
 
     if (cachedExp.length || cachedPay.length) {
@@ -4880,6 +5110,14 @@ function loadRptData() {
         // Specific folder: fetch by billing period IDs (chunked)
         const chunks = [];
         for (let i = 0; i < ids.length; i += 30) chunks.push(ids.slice(i, i + 30));
+        // …and the no-period rows tied to these projects themselves (0096).
+        const fChunks = [];
+        const fIds = Array.from(scopeFolders || []);
+        for (let i = 0; i < fIds.length; i += 30) fChunks.push(fIds.slice(i, i + 30));
+        fChunks.forEach(fChunk => promises.push(
+            db.collection('expenses').where('folderId', 'in', fChunk).where('userId', '==', uid).get()
+              .then(snap => snap.docs.forEach(d => { const e = { id: d.id, ...d.data() }; if (!e.projectId) allExp.push(e); }))
+        ));
         chunks.forEach(chunk => {
             promises.push(
                 db.collection('expenses').where('projectId', 'in', chunk).where('userId', '==', uid).get()
@@ -4930,7 +5168,9 @@ function _rptAllTimeGroups() {
     const allProjIdSet  = new Set(allProjs.map(p => p.id));
     const _src2Exp = _ovAllExpenses.length ? _ovAllExpenses : expExpenses;
     const _src2Pay = _ovAllPayroll.length  ? _ovAllPayroll  : expPayroll;
-    const allExps       = _src2Exp.filter(e => allProjIdSet.has(e.projectId));
+    const allFolderSet  = _rptState.folderId ? _pcReportFolderIds(_rptState.folderId) : null;
+    const allExps       = _src2Exp.filter(e => allProjIdSet.has(e.projectId)
+        || (!e.projectId && !!e.folderId && (!allFolderSet || allFolderSet.has(e.folderId))));
     const allPay        = _src2Pay.filter(p => allProjIdSet.has(p.projectId));
     const clientProjs   = allProjs.filter(p => p.fundingType !== 'president');
 
@@ -5021,7 +5261,12 @@ function _pcReportModel(folderId, options = {}) {
         const p = periods.find(p => p.id === row.projectId);
         return p && inWindow(row[key] ? new Date(row[key]) : periodDate(p));
     };
-    const expenses = (options.expenses || (_ovAllExpenses.length ? _ovAllExpenses : expExpenses)).filter(e => belongs(e, 'dateTime'));
+    const expSource = options.expenses || (_ovAllExpenses.length ? _ovAllExpenses : expExpenses);
+    const expenses = expSource.filter(e => belongs(e, 'dateTime'));
+    // A purchase on a project with NO billing period (0096): tied to the project,
+    // Cover material, in no period's envelope — like Unallocated Indirect.
+    const noPeriodRows = options.projectId ? [] : expSource.filter(e => !e.projectId && folders.has(e.folderId)
+        && inWindow(new Date(e.dateTime || '')));
     const payroll = (options.payroll || (_ovAllPayroll.length ? _ovAllPayroll : expPayroll)).filter(p => belongs(p, 'paymentDate'));
     const overheadSource = _rptOvhdRows || [];
     const overheadRows = overheadSource.filter(e => !e.deletedAt && e.scope !== 'company' && folders.has(e.folderId)
@@ -5059,16 +5304,17 @@ function _pcReportModel(folderId, options = {}) {
     const unallocatedRows = options.projectId ? [] : overheadRows.filter(e =>
         !expProjects.some(p => assignedTo(e, p)));
     const unallocatedIndirect = sum(unallocatedRows, 'amount');
-    const totals = { label:'TOTAL', budget:sum(rows, 'budget'), mats:sum(rows, 'mats'), labor:sum(rows, 'labor'),
-        overhead:sum(rows, 'overhead') + unallocatedIndirect, totalSpent:sum(rows, 'totalSpent') + unallocatedIndirect,
-        unallocatedIndirect, cover:sum(rows, 'cover'), txCount:expenses.length,
+    const noPeriodMaterial = sum(noPeriodRows, 'amount');
+    const totals = { label:'TOTAL', budget:sum(rows, 'budget'), mats:sum(rows, 'mats') + noPeriodMaterial, labor:sum(rows, 'labor'),
+        overhead:sum(rows, 'overhead') + unallocatedIndirect, totalSpent:sum(rows, 'totalSpent') + unallocatedIndirect + noPeriodMaterial,
+        unallocatedIndirect, noPeriodMaterial, cover:sum(rows, 'cover') + noPeriodMaterial, txCount:expenses.length + noPeriodRows.length,
         workerCount:new Set(payroll.map(p => p.workerName || p.id)).size };
     totals.remaining = totals.budget - totals.totalSpent;
     totals.usedPct = totals.budget > 0 ? totals.totalSpent / totals.budget * 100 : 0;
     const allocation = pcProjectAllocationRollup(rows.map(r => r.allocation), unallocatedIndirect, 0, true);
     allocation.configuredCount = rows.filter(r => r.allocation).length;
     allocation.legacyCount = rows.filter(r => r.status === 'Allocation not configured').length;
-    return { rows, totals, allocation, expenses, payroll, overheadRows: options.projectId
+    return { rows, totals, allocation, expenses: expenses.concat(noPeriodRows), payroll, overheadRows: options.projectId
         ? overheadRows.filter(e => periods.some(p => assignedTo(e, p))) : overheadRows };
 }
 
@@ -5127,6 +5373,9 @@ function _pcAllocationReportHtml(model) {
     if (model.totals.unallocatedIndirect) rows.push(_pcReportCells({ label:'Unallocated Indirect',
         overhead:model.totals.unallocatedIndirect, totalSpent:model.totals.unallocatedIndirect,
         remaining:-model.totals.unallocatedIndirect, allocation:null, status:'Unallocated Indirect' }));
+    if (model.totals.noPeriodMaterial) rows.push(_pcReportCells({ label:'No billing period (Cover)',
+        mats:model.totals.noPeriodMaterial, totalSpent:model.totals.noPeriodMaterial,
+        remaining:-model.totals.noPeriodMaterial, allocation:null, status:'No billing period — office review' }));
     rows.push(_pcReportCells({ ...model.totals, allocation:totalAllocation, status:model.allocation.legacyCount ? 'Allocation not configured: ' + model.allocation.legacyCount : '' }));
     return _pcReportTable(_PC_REPORT_HEADERS, rows, 'Billing Allocation Performance')
         + '<p class="pc-report-note">Target Margin Reserve: planning only. Variance = planned minus actual. Cover Expenses are included above.</p>';
@@ -5530,6 +5779,9 @@ function exportRptTable() {
         if (model.totals.unallocatedIndirect) rows.push(_pcReportCells({ label:'Unallocated Indirect',
             overhead:model.totals.unallocatedIndirect,totalSpent:model.totals.unallocatedIndirect,
             remaining:-model.totals.unallocatedIndirect,status:'Unallocated Indirect' }));
+        if (model.totals.noPeriodMaterial) rows.push(_pcReportCells({ label:'No billing period (Cover)',
+            mats:model.totals.noPeriodMaterial,totalSpent:model.totals.noPeriodMaterial,
+            remaining:-model.totals.noPeriodMaterial,status:'No billing period — office review' }));
         const a = model.allocation;
         rows.push(_pcReportCells({ ...model.totals, allocation:a.configuredCount ? { ...a,
             directRemaining:a.directBudget-a.directActual, indirectRemaining:a.indirectBudget-a.indirectActual } : null }));
@@ -5780,6 +6032,10 @@ function _pcPrintFundingSummary(model) {
         const amount = model.totals.unallocatedIndirect;
         html += _pcReportTable(headers, [['','Unallocated Indirect','','','',0,0,0,amount,amount,-amount]], 'Unallocated Indirect');
     }
+    if (model.totals.noPeriodMaterial) {
+        const amount = model.totals.noPeriodMaterial;
+        html += _pcReportTable(headers, [['','No billing period (Cover) — office review','','','',0,amount,0,0,amount,-amount]], 'No billing period');
+    }
     return html + _pcReportTable(['Materials','Labor','Overhead','Grand Total Balance'],
         [[model.totals.mats,model.totals.labor,model.totals.overhead,model.totals.remaining]], 'Grand Total Balance');
 }
@@ -5877,7 +6133,7 @@ function _rptRenderDetailTables(model) {
         if (card) card.style.display = owner && _rptState.folderId ? '' : 'none';
         const tbody = document.getElementById(id + 'Tbody');
         if (tbody) tbody.innerHTML = owner ? rows.map(r => {
-            const period = model.rows.find(p => p.id === r.projectId);
+            const period = model.rows.find(p => p.id === r.projectId) || (!r.projectId && r.folderId ? { label:'No billing period' } : null);
             const cells = kind === 'expense'
                 ? [r.dateTime || '', period?.label || '', r.expenseName || '', r.category || '', r.notes || '', String(r.quantity || 1), Number(r.amount) || 0]
                 : [r.paymentDate || '', period?.label || '', r.workerName || '', r.role || '', String(r.daysWorked || 0), Number(r.dailyRate) || 0, Number(r.totalSalary) || 0];
@@ -6003,6 +6259,7 @@ function mvpRenderFolderGrid() {
                 return s + e + l;
               }, 0)
             : fProjs.reduce(function(s, p) { return s + (p._spent || 0); }, 0);
+        totalCost += _expNoPeriodSpent(folder.id);   // no-period purchases (0096)
         var variance   = budgetReceived - totalCost;
         var remPct     = budgetReceived > 0 ? ((budgetReceived - totalCost) / budgetReceived) * 100 : 100;
         var spentPct   = budgetReceived > 0 ? Math.min((totalCost / budgetReceived) * 100, 100) : 0;
@@ -6016,10 +6273,11 @@ function mvpRenderFolderGrid() {
                        + (createdStr ? ' &bull; Created ' + createdStr : '');
         var varClass   = variance >= 0 ? 'ov-folder-card__stat-value--positive' : 'ov-folder-card__stat-value--negative';
         var _presPIds  = fProjs.filter(function(p) { return p.fundingType === 'president'; }).map(function(p) { return p.id; });
-        var coverCost  = _useOvCache
+        // No-period purchases (0096) are Cover material: inside the cost above and here.
+        var coverCost  = _expNoPeriodSpent(folder.id) + (_useOvCache
             ? _ovAllExpenses.filter(function(x) { return fProjs.some(function(p){ return p.id === x.projectId; }) && (x.coverExpense || _presPIds.indexOf(x.projectId) !== -1); }).reduce(function(s,x){ return s+(parseFloat(x.amount)||0); }, 0)
               + _ovAllPayroll.filter(function(x) { return _presPIds.indexOf(x.projectId) !== -1; }).reduce(function(s,x){ return s+(parseFloat(x.totalSalary)||0); }, 0)
-            : 0;
+            : 0);
 
         return '<div class="ov-folder-card">'
             + '<div class="ov-folder-card__title-row">'
@@ -6516,7 +6774,8 @@ function mvpRenderOvFolderDetail(folderId) {
     setText('mvpOvKpiCoverPct', coverOfContract.toFixed(1) + '%');
 
     // ── Row 2: MATERIALS card
-    var expCount = expExpenses.filter(function(e) { return fProjs.some(function(p) { return p.id === e.projectId; }); }).length;
+    var expCount = expExpenses.filter(function(e) { return fProjs.some(function(p) { return p.id === e.projectId; }); }).length
+        + _expNoPeriodRows(null).filter(function(e) { return scopeIds.has(e.folderId); }).length;
     setText('mvpOvKpiMatVal', fmt(matCost));
     setText('mvpOvKpiMatSub', expCount + ' transaction' + (expCount !== 1 ? 's' : '') + ' · ' + matPct.toFixed(1) + '% of budget');
     setText('mvpOvKpiMatSub2', expCount + ' transaction' + (expCount !== 1 ? 's' : ''));
