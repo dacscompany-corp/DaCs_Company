@@ -307,6 +307,13 @@ function mapExpenseDoc(d) {
     quantity: Number(d.quantity) || 1,
     coverExpense: !!d.coverExpense,
     // flagged as a "cover expense" (no budget remaining)
+    // One expense split across billing periods — lists show it as one row
+    // (expense-split-rows.js). Display only; totals use every part.
+    splitGroup: d.splitGroup || "",
+    splitIndex: Number(d.splitIndex) || 0,
+    splitTotal: Number(d.splitTotal) || 0,
+    purchaseLineId: d.purchaseLineId || null,
+    purchaseChargeId: d.purchaseChargeId || null,
     docs,
     docUrls,
     receipts,
@@ -1736,15 +1743,17 @@ function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, ov
 function RecentEntries({ onOpen, laborTx, materialTx }) {
   const [tab, setTab] = React.useState("all");
   const [feedOpen, setFeedOpen] = React.useState(false);
+  // A material split across billing periods is one entry (expense-split-rows.js).
+  const materialRows = typeof window.expGroupSplitRows === "function" ? window.expGroupSplitRows(materialTx, "name") : materialTx;
   const items = [
     ...laborTx.map((t) => ({ ...t, kind: "labor" })),
-    ...materialTx.map((t) => ({ ...t, kind: "material" }))
+    ...materialRows.map((t) => ({ ...t, kind: "material" }))
   ].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
   const filtered = (tab === "all" ? items : items.filter((i) => i.kind === tab)).slice(0, 10);
   const tabs = [
     ["all", "All", items.length],
     ["labor", "Labor", laborTx.length],
-    ["material", "Material", materialTx.length]
+    ["material", "Material", materialRows.length]
   ];
   return /* @__PURE__ */ React.createElement("section", { className: "pc-card", style: feedOpen ? void 0 : { paddingTop: 14, paddingBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { className: "pc-card-head", style: feedOpen ? void 0 : { marginBottom: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } }, React.createElement("h3", null, "Recent Entries"), React.createElement("span", { className: "pc-help-tip", "data-tip": "A live feed of the latest labor and material transactions recorded in this project. Use the tabs to filter by All, Labor, or Material entries.", onClick: (e) => e.stopPropagation() }, "?"), React.createElement("span", { className: "pc-flow-expand", role: "button", "aria-label": feedOpen ? "Collapse recent entries" : "Expand recent entries", onClick: (e) => { e.stopPropagation(); setFeedOpen((o) => !o); }, style: { cursor: "pointer", display: "inline-flex", alignItems: "center", color: "var(--brand-green)", transition: "transform .15s ease", transform: feedOpen ? "rotate(180deg)" : "rotate(0deg)" } }, React.createElement("svg", { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.5, strokeLinecap: "round", strokeLinejoin: "round" }, React.createElement("polyline", { points: "6 9 12 15 18 9" })))), /* @__PURE__ */ React.createElement("div", { className: "panel-tabs", style: { padding: 3, background: "var(--brand-surface-2)", borderRadius: 8, display: "flex", gap: 2 } }, tabs.map(([k, l, count]) => /* @__PURE__ */ React.createElement(
     "button",
@@ -3204,9 +3213,23 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
       w.print();
     }, 400);
   };
-  const dc = project.docCounts;
   const share = (amount) => project.revenue > 0 ? (Number(amount) / project.revenue * 100).toFixed(2) + "%" : "—";
-  const count = materialTx.length;
+  // One expense split across billing periods is ONE row here, not "(1/2)" and
+  // "(2/2)" (expense-split-rows.js). Display only — Spent still adds every part.
+  const displayTx = React.useMemo(
+    () => typeof window.expGroupSplitRows === "function" ? window.expGroupSplitRows(materialTx, "name") : materialTx,
+    [materialTx]
+  );
+  const count = displayTx.length;
+  // Counted per expense, so a split's documents (kept on part 1) count once.
+  const dc = React.useMemo(() => displayTx.reduce((acc, e) => {
+    const d = e.docs || {};
+    if (d.po) acc.po++;
+    if (d.dr) acc.dr++;
+    if (d.si) acc.si++;
+    if (d.pay) acc.pay++;
+    return acc;
+  }, { po: 0, dr: 0, si: 0, pay: 0 }), [displayTx]);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [docFilter, setDocFilter] = React.useState("all");
   const [detailsItem, setDetailsItem] = React.useState(null);
@@ -3225,6 +3248,20 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
     sorted.forEach((m, i) => map.set(m.id, i + 1));
     return map;
   }, [childMonths]);
+  // "Billing #1 ₱5,000 · Billing #2 ₱3,000" for a split expense. Staff see the
+  // periods without pesos.
+  const splitChargedTo = (m) => {
+    const label = (p) => {
+      if (!p.projectId) return "No billing period";
+      const n = billingByProjectId.get(p.projectId);
+      return n ? "Billing #" + n : "Billing period";
+    };
+    const parts = m._parts.map((p, i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: p.id || i }, i > 0 && " \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)", fontWeight: 600 } }, label(p)), !_staff() && " ₱" + peso(p.amount)));
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, parts, m._partial && " \xB7 part of a larger expense");
+  };
+  // A purchase (0096) is edited / voided as a whole. An older split is changed
+  // part by part, from the details window.
+  const isOldSplit = (m) => !!m._parts && !(window.expIsPurchaseRow && window.expIsPurchaseRow(m));
   const openReceiptThumb = (m) => {
     if (_staff()) return;
     if (!m.firstReceipt && m.lazyImages) {
@@ -3241,7 +3278,7 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
     }
   };
   const filteredTx = React.useMemo(() => {
-    let result = materialTx;
+    let result = displayTx;
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(
@@ -3260,7 +3297,7 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
       });
     }
     return result;
-  }, [materialTx, searchQuery, docFilter]);
+  }, [displayTx, searchQuery, docFilter]);
   const MAT_PALETTE = ["#157a52", "#c8a45a", "#7f9cb0", "#9fb98a", "#b0907f", "#8a7fb0", "#5e9d80", "#c0564a"];
   const matCatColor = (name) => { let n = 0; const x = String(name || ""); for (let i = 0; i < x.length; i++) n = (n * 31 + x.charCodeAt(i)) >>> 0; return MAT_PALETTE[n % MAT_PALETTE.length]; };
   // Groups are ordered by the NEWEST entry each one holds, most recent first —
@@ -3362,14 +3399,16 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
     }
     const m = row.m;
     const billingNum = billingByProjectId.get(m.projectId);
-    return /* @__PURE__ */ React.createElement("tr", { key: m.id || i, className: "row", onClick: () => setDetailsItem(m), title: "Click to view item details" }, /* @__PURE__ */ React.createElement("td", { style: { fontSize: 12.5, color: "var(--ink-2)", whiteSpace: "nowrap" } }, fmtDateTime(m.dateTime || m.date)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { className: "name" }, m.name), /* @__PURE__ */ React.createElement(PaymentTag, { method: m.paymentMethod })), billingNum && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--ink-3)", marginTop: 3, display: "inline-flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("svg", { width: "11", height: "11", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })), "Charged to \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)", fontWeight: 600 } }, "Billing #", billingNum))), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-2)" } }, m.category || "\u2014")), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { className: "pc-docs-row", title: "Purchase Order \xB7 Delivery Receipt \xB7 Supplier Invoice \xB7 Payment Receipt" }, /* @__PURE__ */ React.createElement(DocPill, { m, k: "po", label: "PO", title: "Purchase Order" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "dr", label: "DR", title: "Delivery Receipt" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "si", label: "SI", title: "Supplier Invoice" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "pay", label: "PR", title: "Payment Receipt" }))), /* @__PURE__ */ React.createElement("td", { className: "right" }, /* @__PURE__ */ React.createElement("span", { className: "amt" }, _staff() ? share(m.amount) : ["\u20B1 ", peso(m.amount)]), _staff() ? null : /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "var(--ink-3)", marginTop: 2 } }, project.revenue > 0 ? (Number(m.amount) / project.revenue * 100).toFixed(2) + "% of contract" : "\u2014")), /* @__PURE__ */ React.createElement("td", { onClick: (e) => e.stopPropagation() }, !_staff() && (m.firstReceipt || m.lazyImages) ? /* @__PURE__ */ React.createElement(LazyReceiptThumb, { m, onOpen: openReceiptThumb }) : /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db", fontSize: 11 } }, "\u2014")), /* @__PURE__ */ React.createElement("td", null, !_staff() && /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Print receipt for this material expense", onClick: (e) => {
+    return /* @__PURE__ */ React.createElement("tr", { key: m.id || i, className: "row", onClick: () => setDetailsItem(m), title: "Click to view item details" }, /* @__PURE__ */ React.createElement("td", { style: { fontSize: 12.5, color: "var(--ink-2)", whiteSpace: "nowrap" } }, fmtDateTime(m.dateTime || m.date)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { className: "name" }, m.name), /* @__PURE__ */ React.createElement(PaymentTag, { method: m.paymentMethod })), (billingNum || m._parts) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--ink-3)", marginTop: 3, display: "inline-flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("svg", { width: "11", height: "11", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })), "Charged to \xB7 ", m._parts ? splitChargedTo(m) : /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)", fontWeight: 600 } }, "Billing #", billingNum))),/* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-2)" } }, m.category || "\u2014")), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { className: "pc-docs-row", title: "Purchase Order \xB7 Delivery Receipt \xB7 Supplier Invoice \xB7 Payment Receipt" }, /* @__PURE__ */ React.createElement(DocPill, { m, k: "po", label: "PO", title: "Purchase Order" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "dr", label: "DR", title: "Delivery Receipt" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "si", label: "SI", title: "Supplier Invoice" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "pay", label: "PR", title: "Payment Receipt" }))), /* @__PURE__ */ React.createElement("td", { className: "right" }, /* @__PURE__ */ React.createElement("span", { className: "amt" }, _staff() ? share(m.amount) : ["\u20B1 ", peso(m.amount)]), _staff() ? null : /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "var(--ink-3)", marginTop: 2 } }, project.revenue > 0 ? (Number(m.amount) / project.revenue * 100).toFixed(2) + "% of contract" : "\u2014")), /* @__PURE__ */ React.createElement("td", { onClick: (e) => e.stopPropagation() }, !_staff() && (m.firstReceipt || m.lazyImages) ? /* @__PURE__ */ React.createElement(LazyReceiptThumb, { m, onOpen: openReceiptThumb }) : /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db", fontSize: 11 } }, "\u2014")), /* @__PURE__ */ React.createElement("td", null, !_staff() && /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Print receipt for this material expense", onClick: (e) => {
       e.stopPropagation();
       printMaterialReceipt(m);
-    } }, Ico.receipt || "\u{1F9FE}"), !_staff() && /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Edit", onClick: (e) => {
+    } }, Ico.receipt || "\u{1F9FE}"), !_staff() && /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: isOldSplit(m) ? "Edit \u2014 choose which part" : "Edit", onClick: (e) => {
       e.stopPropagation();
+      if (isOldSplit(m)) { setDetailsItem(m); return; }
       if (!_staff()) window.openEditExpenseModal && window.openEditExpenseModal(m.id);
-    } }, Ico.pencil || "\u270E"), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon pc-row-icon-danger", title: "Delete", onClick: (e) => {
+    } }, Ico.pencil || "\u270E"), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon pc-row-icon-danger", title: isOldSplit(m) ? "Delete \u2014 choose which part" : "Delete", onClick: (e) => {
       e.stopPropagation();
+      if (isOldSplit(m)) { setDetailsItem(m); return; }
       window.deleteExpense && window.deleteExpense(m.id);
     } }, Ico.trash || "\u{1F5D1}")));
   })))), detailsItem && /* @__PURE__ */ React.createElement(
@@ -3377,13 +3416,28 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
     {
       item: detailsItem,
       billingNum: billingByProjectId.get(detailsItem.projectId),
+      billingOf: (pid) => billingByProjectId.get(pid),
       onClose: () => setDetailsItem(null),
       onOpenImage: openReceiptThumb,
       onPrint: printMaterialReceipt
     }
   ));
 }
-function ItemDetailsModal({ item, billingNum, onClose, onOpenImage, onPrint }) {
+function ItemDetailsModal({ item, billingNum, billingOf, onClose, onOpenImage, onPrint }) {
+  // A split expense: one line per part. An older split is edited / deleted
+  // part by part here; a purchase (0096) is edited / voided as a whole.
+  const oldSplit = !!item._parts && !(window.expIsPurchaseRow && window.expIsPurchaseRow(item));
+  const partsList = item._parts ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, item._parts.map((p, i) => {
+    const n = p.projectId && billingOf ? billingOf(p.projectId) : null;
+    const btn = { padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid #e5e7eb", background: "#fff", color: "#374151" };
+    return /* @__PURE__ */ React.createElement("div", { key: p.id || i, style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("b", null, !p.projectId ? "No billing period" : n ? "Billing #" + n : "Billing period"), !_staff() && /* @__PURE__ */ React.createElement("span", null, "₱ ", peso(p.amount)), p.coverExpense && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "#b45309", fontWeight: 600 } }, "Cover"), oldSplit && !_staff() && /* @__PURE__ */ React.createElement("button", { type: "button", style: btn, onClick: () => {
+      onClose();
+      window.openEditExpenseModal && window.openEditExpenseModal(p.id);
+    } }, "Edit"), oldSplit && /* @__PURE__ */ React.createElement("button", { type: "button", style: { ...btn, color: "#b91c1c", borderColor: "#fecaca" }, onClick: () => {
+      onClose();
+      window.deleteExpense && window.deleteExpense(p.id);
+    } }, "Delete"));
+  }), item._partial && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#6b7280" } }, "Other parts are outside this view.")) : null;
   // A photo-free list row: load its photos for the Attachments grid.
   const [full, setFull] = React.useState(item.lazyImages ? null : item);
   React.useEffect(() => {
@@ -3419,10 +3473,10 @@ function ItemDetailsModal({ item, billingNum, onClose, onOpenImage, onPrint }) {
     }
   };
   const Row = ({ label, children }) => /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, padding: "10px 0", borderBottom: "1px solid #f3f4f6" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 130, fontSize: 12, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", flexShrink: 0 } }, label), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 14, color: "#111827" } }, children));
-  return /* @__PURE__ */ React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" } }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: "#fff", borderRadius: 14, maxWidth: 720, width: "100%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, position: "sticky", top: 0, background: "#fff", zIndex: 1, borderRadius: "14px 14px 0 0" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#6b7280", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 } }, "Item Details"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: "#111827", wordBreak: "break-word" } }, m.name)), /* @__PURE__ */ React.createElement("button", { onClick: onClose, "aria-label": "Close", style: { background: "#f3f4f6", border: "none", width: 32, height: 32, borderRadius: 8, fontSize: 18, cursor: "pointer", color: "#6b7280", lineHeight: 1, flexShrink: 0 } }, "\xD7")), /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 24px 20px" } }, !_staff() && /* @__PURE__ */ React.createElement(Row, { label: "Amount" }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 700, color: "#1A5C3A" } }, "\u20B1 ", peso(m.amount))), /* @__PURE__ */ React.createElement(Row, { label: "Date & Time" }, fmtDateTime(m.dateTime || m.date)), /* @__PURE__ */ React.createElement(Row, { label: "Category" }, m.category || /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db" } }, "\u2014")), /* @__PURE__ */ React.createElement(Row, { label: "Payment" }, /* @__PURE__ */ React.createElement(PaymentTag, { method: m.paymentMethod }), " ", !m.paymentMethod && /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db" } }, "\u2014")), m.quantity > 1 && /* @__PURE__ */ React.createElement(Row, { label: "Quantity" }, m.quantity), billingNum && /* @__PURE__ */ React.createElement(Row, { label: "Charged To" }, /* @__PURE__ */ React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })), /* @__PURE__ */ React.createElement("b", null, "Billing #", billingNum))), /* @__PURE__ */ React.createElement(Row, { label: "Documents" }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, docOrder.map((o) => {
+  return /* @__PURE__ */ React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" } }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: "#fff", borderRadius: 14, maxWidth: 720, width: "100%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, position: "sticky", top: 0, background: "#fff", zIndex: 1, borderRadius: "14px 14px 0 0" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#6b7280", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 } }, "Item Details"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: "#111827", wordBreak: "break-word" } }, m.name)), /* @__PURE__ */ React.createElement("button", { onClick: onClose, "aria-label": "Close", style: { background: "#f3f4f6", border: "none", width: 32, height: 32, borderRadius: 8, fontSize: 18, cursor: "pointer", color: "#6b7280", lineHeight: 1, flexShrink: 0 } }, "\xD7")), /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 24px 20px" } }, !_staff() && /* @__PURE__ */ React.createElement(Row, { label: "Amount" }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 700, color: "#1A5C3A" } }, "\u20B1 ", peso(m.amount))), /* @__PURE__ */ React.createElement(Row, { label: "Date & Time" }, fmtDateTime(m.dateTime || m.date)), /* @__PURE__ */ React.createElement(Row, { label: "Category" }, m.category || /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db" } }, "\u2014")), /* @__PURE__ */ React.createElement(Row, { label: "Payment" }, /* @__PURE__ */ React.createElement(PaymentTag, { method: m.paymentMethod }), " ", !m.paymentMethod && /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db" } }, "\u2014")), m.quantity > 1 && /* @__PURE__ */ React.createElement(Row, { label: "Quantity" }, m.quantity), partsList ? /* @__PURE__ */ React.createElement(Row, { label: "Charged To" }, partsList) : billingNum && /* @__PURE__ */ React.createElement(Row, { label: "Charged To" }, /* @__PURE__ */ React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })), /* @__PURE__ */ React.createElement("b", null, "Billing #", billingNum))), /* @__PURE__ */ React.createElement(Row, { label: "Documents" }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, docOrder.map((o) => {
     const has = !!(m.docs && m.docs[o.k]);
     return /* @__PURE__ */ React.createElement("span", { key: o.k, title: o.label, style: { padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.05em", background: has ? "#dcfce7" : "#f3f4f6", color: has ? "#166534" : "#9ca3af", border: "1px solid", borderColor: has ? "#86efac" : "#e5e7eb" } }, o.k === "pay" ? "PR" : o.k.toUpperCase(), " ", has ? "\u2713" : "\u2014");
-  }))), m.notes && /* @__PURE__ */ React.createElement(Row, { label: "Notes" }, /* @__PURE__ */ React.createElement("div", { style: { whiteSpace: "pre-wrap", color: "#374151" } }, m.notes)), m.ref && /* @__PURE__ */ React.createElement(Row, { label: "Reference" }, /* @__PURE__ */ React.createElement("code", { style: { fontSize: 12, color: "#6b7280" } }, m.ref)), !full && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 18, fontSize: 12.5, color: "#9ca3af" } }, "Loading attachments…"), allImages.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 } }, "Attachments (", allImages.length, ")"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 10 } }, allImages.map((img, i) => /* @__PURE__ */ React.createElement("div", { key: i, onClick: () => openImg(img.url, img.label), style: { cursor: "pointer", borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb", background: "#f9fafb" } }, /* @__PURE__ */ React.createElement("img", { src: img.url, alt: img.label, loading: "lazy", style: { width: "100%", height: 90, objectFit: "cover", display: "block" } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "#6b7280", padding: "4px 6px", textAlign: "center" } }, img.label)))))), /* @__PURE__ */ React.createElement("div", { style: { padding: "14px 24px", borderTop: "1px solid #e5e7eb", display: "flex", gap: 8, justifyContent: "flex-end", position: "sticky", bottom: 0, background: "#fff", borderRadius: "0 0 14px 14px" } }, !_staff() && /* @__PURE__ */ React.createElement("button", { onClick: _pcMoneyAction(() => onPrint && onPrint(m)), style: { padding: "8px 14px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#374151", fontSize: 13, fontWeight: 600, cursor: "pointer" } }, "Print Receipt"), !_staff() && /* @__PURE__ */ React.createElement("button", { onClick: () => {
+  }))), m.notes && /* @__PURE__ */ React.createElement(Row, { label: "Notes" }, /* @__PURE__ */ React.createElement("div", { style: { whiteSpace: "pre-wrap", color: "#374151" } }, m.notes)), m.ref && /* @__PURE__ */ React.createElement(Row, { label: "Reference" }, /* @__PURE__ */ React.createElement("code", { style: { fontSize: 12, color: "#6b7280" } }, m.ref)), !full && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 18, fontSize: 12.5, color: "#9ca3af" } }, "Loading attachments…"), allImages.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 } }, "Attachments (", allImages.length, ")"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 10 } }, allImages.map((img, i) => /* @__PURE__ */ React.createElement("div", { key: i, onClick: () => openImg(img.url, img.label), style: { cursor: "pointer", borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb", background: "#f9fafb" } }, /* @__PURE__ */ React.createElement("img", { src: img.url, alt: img.label, loading: "lazy", style: { width: "100%", height: 90, objectFit: "cover", display: "block" } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "#6b7280", padding: "4px 6px", textAlign: "center" } }, img.label)))))), /* @__PURE__ */ React.createElement("div", { style: { padding: "14px 24px", borderTop: "1px solid #e5e7eb", display: "flex", gap: 8, justifyContent: "flex-end", position: "sticky", bottom: 0, background: "#fff", borderRadius: "0 0 14px 14px" } }, !_staff() && /* @__PURE__ */ React.createElement("button", { onClick: _pcMoneyAction(() => onPrint && onPrint(m)), style: { padding: "8px 14px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#374151", fontSize: 13, fontWeight: 600, cursor: "pointer" } }, "Print Receipt"), !_staff() && !oldSplit && /* @__PURE__ */ React.createElement("button", { onClick: () => {
     onClose();
     if (!_staff()) window.openEditExpenseModal && window.openEditExpenseModal(m.id);
   }, style: { padding: "8px 14px", borderRadius: 8, border: "1px solid #1A5C3A", background: "#1A5C3A", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" } }, "Edit"))));

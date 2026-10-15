@@ -5760,6 +5760,16 @@ function _rptRenderTable(groups, model) {
 // ════════════════════════════════════════════════════════════
 // CSV EXPORT
 // ════════════════════════════════════════════════════════════
+// One expense split across billing periods is ONE line in the Reports detail,
+// CSV and print (expense-split-rows.js). Display only — the period summaries
+// above them still add every part.
+function _expListRows(rows) {
+    return typeof expGroupSplitRows === 'function' ? expGroupSplitRows(rows) : rows;
+}
+function _expPeriodCell(r, labelOf) {
+    return typeof expSplitPeriodLabel === 'function' ? expSplitPeriodLabel(r, labelOf) : (labelOf(r.projectId) || '');
+}
+
 function exportRptTable() {
     if (_pcEnsureReportOverhead(exportRptTable)) return;
     const report = _pcDashboardReport();
@@ -5786,8 +5796,9 @@ function exportRptTable() {
         rows.push(_pcReportCells({ ...model.totals, allocation:a.configuredCount ? { ...a,
             directRemaining:a.directBudget-a.directActual, indirectRemaining:a.indirectBudget-a.indirectActual } : null }));
         rows.push([], ['EXPENSE DETAIL'], ['Date','Period','Expense Name','Category','Notes','Qty','Amount']);
-        model.expenses.forEach(e => rows.push([e.dateTime || '',model.rows.find(p => p.id === e.projectId)?.label || '',
-            e.expenseName || '',e.category || '',e.notes || '',String(e.quantity || 1),Number(e.amount) || 0]));
+        const expLabel = id => model.rows.find(p => p.id === id)?.label || '';
+        _expListRows(model.expenses).forEach(e => rows.push([e.dateTime || '',_expPeriodCell(e, expLabel),
+            e.expenseName || '',e.category || '',e.notes || '',e._qtyUnknown ? '' : String(e.quantity || 1),Number(e.amount) || 0]));
         rows.push([], ['PAYROLL DETAIL'], ['Date','Period','Worker Name','Role','Notes','Days','Daily Rate','Total Salary']);
         model.payroll.forEach(p => rows.push([p.paymentDate || '',model.rows.find(r => r.id === p.projectId)?.label || '',
             p.workerName || '',p.role || '',p.notes || '',String(p.daysWorked || 0),Number(p.dailyRate) || 0,Number(p.totalSalary) || 0]));
@@ -5980,10 +5991,10 @@ function _pcReportDetails(model) {
     const period = id => _pcPrintPeriodLabel(expProjects.find(p => p.id === id));
     const date = value => value ? new Date(value).toLocaleDateString('en-PH', {month:'short',day:'numeric',year:'numeric'}) : '';
     const total = (rows, key) => rows.reduce((sum, row) => sum + (Number(row[key]) || 0), 0);
-    const expenses = [...model.expenses].sort((a,b) => new Date(b.dateTime || 0) - new Date(a.dateTime || 0));
+    const expenses = _expListRows([...model.expenses].sort((a,b) => new Date(b.dateTime || 0) - new Date(a.dateTime || 0)));
     const payroll = [...model.payroll].sort((a,b) => new Date(b.paymentDate || 0) - new Date(a.paymentDate || 0));
     return _pcReportTable(['Date','Billing Period','Expense','Category','Notes','Qty','Amount'], expenses.map(e => [
-        date(e.dateTime),period(e.projectId),e.expenseName || '',e.category || '',e.notes || '',String(e.quantity || 1),Number(e.amount) || 0])
+        date(e.dateTime),_expPeriodCell(e, period),e.expenseName || '',e.category || '',e.notes || '',e._qtyUnknown ? '' : String(e.quantity || 1),Number(e.amount) || 0])
         .concat([['Expenses Subtotal','','','','','',model.totals.mats]]), 'Expense Detail - ' + expenses.length + (expenses.length === 1 ? ' transaction' : ' transactions'))
         + _pcReportTable(['Date','Billing Period','Worker','Role','Notes','Days','Daily Rate','Salary'], payroll.map(p => [
             date(p.paymentDate),period(p.projectId),p.workerName || '',p.role || '',p.notes || '',String(p.daysWorked || 0),
@@ -6128,14 +6139,15 @@ function printBillingSummaryReceipt(projectId) {
 // ════════════════════════════════════════════════════════════
 function _rptRenderDetailTables(model) {
     const owner = _pcIsOwner();
-    for (const [id, rows, kind] of [['rptExpDetail', model.expenses, 'expense'], ['rptPayDetail', model.payroll, 'payroll']]) {
+    for (const [id, rows, kind] of [['rptExpDetail', _expListRows(model.expenses), 'expense'], ['rptPayDetail', model.payroll, 'payroll']]) {
         const card = document.getElementById(id + 'Card');
         if (card) card.style.display = owner && _rptState.folderId ? '' : 'none';
         const tbody = document.getElementById(id + 'Tbody');
         if (tbody) tbody.innerHTML = owner ? rows.map(r => {
             const period = model.rows.find(p => p.id === r.projectId) || (!r.projectId && r.folderId ? { label:'No billing period' } : null);
             const cells = kind === 'expense'
-                ? [r.dateTime || '', period?.label || '', r.expenseName || '', r.category || '', r.notes || '', String(r.quantity || 1), Number(r.amount) || 0]
+                ? [r.dateTime || '', r._parts ? _expPeriodCell(r, pid => model.rows.find(p => p.id === pid)?.label || '') : period?.label || '',
+                   r.expenseName || '', r.category || '', r.notes || '', r._qtyUnknown ? '' : String(r.quantity || 1), Number(r.amount) || 0]
                 : [r.paymentDate || '', period?.label || '', r.workerName || '', r.role || '', String(r.daysWorked || 0), Number(r.dailyRate) || 0, Number(r.totalSalary) || 0];
             return '<tr>' + cells.map(v => '<td>' + _mvpEsc(typeof v === 'number' ? _pcReportMoney(v) : v) + '</td>').join('') + '</tr>';
         }).join('') : '';
