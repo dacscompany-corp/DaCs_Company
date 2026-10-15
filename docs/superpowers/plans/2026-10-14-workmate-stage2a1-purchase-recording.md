@@ -5447,3 +5447,35 @@ Revision 3 was built and tested in a scratch clone before execution; revision 4 
 - **`npm test`:** exit 0, 969 `ok` lines (967 where no built Dacs Attendance APK sits next to the repo: `tests/app-updates.test.js` skips two checks).
 - **Acceptance dry run:** `2a1_acceptance.sql` (A–N) was dry-run on PGlite with the real 0002 budget, expense and project RLS and `request.jwt.claims`. It printed `2a1 acceptance: all checks passed`, and nothing remained after the rollback.
 - **Plan re-application:** the plan's 7 new files and 54 edits were applied, in plan order, to a fresh worktree of `main` @ `51c9a3b`. All **18** files came out **byte-identical** to the built and reviewed repo copy. `npm test` exited 0 (967 `ok` there: no APK next door), and the SQL suites gave 45 + 10 passed. Fail-first: Task 1 Step 4 gives ENOENT; Task 2 Step 2 gives 18 passed, 9 failed, then 1 passed, 7 failed.
+
+## Execution notes (Task 4, 15 Oct 2026)
+
+**Live apply.** 0096 was already live from a pre-final draft run by hand. The five final-fix functions were tested in a rolled-back run, then applied as `0096_purchase_recording_final_functions`; all 31 `pur_` bodies match the file (the plan's "29" predates `pur_qty`/`pur_uuid`). Web pushed after the apply (R12), then `0f51c55` (staff data entry in Project Control) before the browser checks.
+
+**Browser checks** (local Live Server against the live database, verified row by row through MCP read-only queries):
+
+| # | Result | Notes |
+|---|---|---|
+| B1 | PASS | ₱8,000 → Billing #1 ₱5,000 + Billing #2 ₱3,000 (two periods, not three — #1 was empty). Shown as **one row** since `9a68422` (user decision: never show `(1/2)` parts). |
+| B2 | PASS | staff@ ₱100 → Billing #2, not Cover; `purchases.recorded_by` = staff. |
+| B3 | PASS | Aug 15 ₱200 → Cover period (Billing #3, `president`), `cover_expense`, `needs_funding_review`, **Office review** tag. |
+| B4 | PASS | Reason required; ₱8,000 → ₱8,500; re-split #1 ₱5,000 + #2 ₱3,500; history before/after + reason. |
+| B5 | PASS | "Void this purchase?" with reason; both parts gone; status `void`, history kept. |
+| B6 | PASS | Staff on completed GemzonTan: "This project is marked completed — only the owner can add or change its costs." Nothing saved. (Cruz Residence has no periods, so the Project Control period gate fired first — not a B6 result.) |
+| B7 | PASS | Old row "ZZ receipt test" (Crossroad, 9 Oct, ₱1): edit with no reason box / no tag; old plain delete. Crossroad ₱80,079 → ₱80,078. |
+| B8 | PASS | Test AW job "ZZ 2a1 AW": ₱1,000 on its own period, not Cover, nothing on the parent. |
+| B9 | NOT REACHABLE | The web has no path: Project Control refuses a project with no billing period ("Add a billing period first") and the old Expenses screen is no longer in the navigation. Server side proven by live acceptance H. Becomes reachable in 2A-3 (phone). |
+| B10 | NOT REACHABLE | Depends on B9. |
+| B11 | PASS | "ZZ 2a1 bolts" 6 × ₱10 with inventory ticked: one inventory item, stock 6, one `purchase_stock_moves` row. |
+| B12 | PASS (on "ZZ 2a1 browser" instead of "ZZ 2a1 no period") | "has 4 purchase(s), so it cannot be deleted" — counted the AW job's purchase; nothing removed. |
+| B13 | PASS | All purchases voided, then the project deleted with its AW job. 0 live purchase rows, 5 void purchases, 12 history rows kept. |
+
+**Step 7:** `client_errors`, last 3 hours: none.
+
+**Step 8 clean-up:** ZZ 2a1 browser + ZZ 2a1 AW deleted (B13). The user deletes "ZZ 2a1 no period" (empty) and the "ZZ 2a1 bolts" inventory item — voiding does not take stock back (R18, by design until 2B).
+
+**Findings for later (none touch the money):**
+1. "Charged to · Billing #3" does not say the period is the Cover period — label it "Billing #3 (Cover)".
+2. Project Control's "Add a billing period to this folder first via Budget Overview" is shown to staff, who cannot open Budget Overview.
+3. **Pre-existing:** opening a new Additional Works job auto-provisions its hidden period **twice** (0.8 s apart). Barlin Additional Works has three empty duplicate periods from 8 Jul. Empty (₱0), so no money is wrong.
+4. Project Control's Material Total includes Additional Works jobs while the list below shows only the project's own rows (₱1,360 vs ₱360) — by design, but may read as a mismatch.
