@@ -1603,6 +1603,23 @@
 
     const QT_STATES = ['normal', 'optional', 'waived', 'removed'];
 
+    const QT_UNITS = [
+        'lot', 'set', 'pc', 'pcs', 'unit', 'pair',
+        'm', 'lm', 'mm', 'cm', 'ft', 'in', 'sqm', 'sq.ft', 'cu.m', 'cu.ft',
+        'kg', 'ton', 'lb', 'L', 'mL', 'gal',
+        'bag', 'sack', 'box', 'pack', 'bundle', 'roll', 'sheet', 'length',
+        'can', 'pail', 'drum', 'tube', 'bottle', 'load', 'trip',
+        'hr', 'day', 'week', 'month', 'man-hour', 'man-day'
+    ];
+
+    function qtUnitOptions(value) {
+        const current = value == null ? '' : String(value);
+        // Keep older quotations and presets with a unit outside this list intact.
+        const units = current && !QT_UNITS.includes(current) ? [current, ...QT_UNITS] : QT_UNITS;
+        return `<option value=""${current === '' ? ' selected' : ''}>—</option>` +
+            units.map(unit => `<option value="${qtEscHtml(unit)}"${unit === current ? ' selected' : ''}>${qtEscHtml(unit)}</option>`).join('');
+    }
+
     // Section / group numbering, matching the BOQ report's I. / A. / 1. tree.
     const QT_ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X',
                       'XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'];
@@ -1739,9 +1756,10 @@
             <td class="qt-col-qty"><input class="qt-cell-input qt-center" placeholder="—"
                        value="${qtEscHtml(g.qty || '')}"
                        oninput="qtSetNodeField('group',${si},${gi},0,'qty',this.value)"></td>
-            <td class="qt-col-unit"><input class="qt-cell-input qt-center" placeholder="—"
-                       value="${qtEscHtml(g.unit || '')}"
-                       oninput="qtSetNodeField('group',${si},${gi},0,'unit',this.value)"></td>
+            <td class="qt-col-unit"><select class="qt-cell-select qt-center" aria-label="Group unit"
+                       onchange="qtSetNodeField('group',${si},${gi},0,'unit',this.value)">
+                ${qtUnitOptions(g.unit)}
+            </select></td>
             <td class="qt-col-rate qt-amt">${isLump ? `
                 <input class="qt-cell-input qt-amt" placeholder="Amount"
                        value="${qtEscHtml(g.lumpAmount)}"
@@ -1767,8 +1785,10 @@
                        oninput="qtSetNodeField('line',${si},${gi},${li},'description',this.value)"></td>
             <td class="qt-col-qty"><input class="qt-cell-input qt-center" value="${qtEscHtml(l.qty)}"
                        oninput="qtSetNodeField('line',${si},${gi},${li},'qty',this.value)"></td>
-            <td class="qt-col-unit"><input class="qt-cell-input qt-center" value="${qtEscHtml(l.unit)}"
-                       oninput="qtSetNodeField('line',${si},${gi},${li},'unit',this.value)"></td>
+            <td class="qt-col-unit"><select class="qt-cell-select qt-center" aria-label="Item unit"
+                       onchange="qtSetNodeField('line',${si},${gi},${li},'unit',this.value)">
+                ${qtUnitOptions(l.unit)}
+            </select></td>
             ${sec.pricing === 'rated' ? `
             <td class="qt-col-rate"><input class="qt-cell-input qt-amt" value="${qtEscHtml(l.unitPrice)}"
                        oninput="qtSetNodeField('line',${si},${gi},${li},'unitPrice',this.value)"></td>

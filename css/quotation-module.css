@@ -350,7 +350,7 @@
 .qt-col-no      { width: 54px;  min-width: 54px; }
 .qt-col-desc    { min-width: 200px; }
 .qt-col-qty     { width: 68px;  min-width: 68px; }
-.qt-col-unit    { width: 72px;  min-width: 72px; }
+.qt-col-unit    { width: 96px;  min-width: 96px; }
 .qt-col-rate    { width: 118px; min-width: 118px; }
 .qt-col-amount  { width: 124px; min-width: 124px; }
 .qt-col-state   { width: 112px; min-width: 112px; }
