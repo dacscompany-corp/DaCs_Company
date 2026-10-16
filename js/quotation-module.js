@@ -1620,6 +1620,136 @@
             units.map(unit => `<option value="${qtEscHtml(unit)}"${unit === current ? ' selected' : ''}>${qtEscHtml(unit)}</option>`).join('');
     }
 
+    // Editor-only state: never part of a quotation, preset or revision payload.
+    // Keep node references so reordering/deleting rows cannot redirect an action.
+    let qtUnitPrompt = null;
+    let qtUnitUndo = null;
+
+    function qtUnitItems() {
+        const items = [];
+        qtSections().forEach((sec, si) => (sec.groups || []).forEach((group, gi) =>
+            (group.lines || []).forEach((node, li) => items.push({
+                node, group, selectId: `qtLineUnit-${si}-${gi}-${li}`
+            }))));
+        return items;
+    }
+
+    function qtUnitTargets(scope) {
+        const p = qtUnitPrompt;
+        if (!p || p.quote !== qtState.current || p.source.unit !== p.unit) return [];
+        const items = qtUnitItems();
+        const source = items.find(item => item.node === p.source);
+        if (!source) return [];
+        return items.filter(item => item.node !== p.source && item.node.unit !== p.unit
+            && (scope === 'all' || item.group === source.group));
+    }
+
+    function qtFocusUnit(node) {
+        const item = qtUnitItems().find(item => item.node === node);
+        const select = item && qtEl(item.selectId);
+        if (select) select.focus({ preventScroll: true });
+    }
+
+    function qtRefreshUnitControls() {
+        qtUnitItems().forEach(item => {
+            const select = qtEl(item.selectId);
+            if (select) select.innerHTML = qtUnitOptions(item.node.unit);
+        });
+    }
+
+    window.qtChangeLineUnit = function (si, gi, li, unit) {
+        const node = qtSections()[si].groups[gi].lines[li];
+        if (node.unit === unit) return;
+        // A later manual choice belongs to the user, even if they select the
+        // bulk unit again. Undo must never overwrite that later choice.
+        if (qtUnitUndo && qtUnitUndo.quote === qtState.current) {
+            qtUnitUndo.changes = qtUnitUndo.changes.filter(change => change.node !== node);
+        }
+        window.qtSetNodeField('line', si, gi, li, 'unit', unit);
+        qtUnitPrompt = unit ? { quote: qtState.current, source: node, unit } : null;
+        qtRenderUnitFeedback(unit ? `Unit changed to ${unit}. Apply it to other items using the choices below this row.` : 'Unit cleared.');
+    };
+
+    window.qtDismissUnitPrompt = function () {
+        const source = qtUnitPrompt && qtUnitPrompt.source;
+        qtUnitPrompt = null;
+        qtRenderUnitFeedback('Unit kept for this item only.');
+        qtFocusUnit(source);
+    };
+
+    window.qtApplyUnit = function (scope) {
+        if (scope !== 'group' && scope !== 'all') return;
+        const targets = qtUnitTargets(scope);
+        if (!targets.length) return;
+        const p = qtUnitPrompt;
+        qtUnitUndo = {
+            quote: qtState.current, source: p.source, unit: p.unit,
+            changes: targets.map(item => ({ node: item.node, unit: item.node.unit,
+                hadUnit: Object.prototype.hasOwnProperty.call(item.node, 'unit') })),
+            message: `Updated ${qtPlural(targets.length, 'item')} to ${p.unit}.`
+        };
+        targets.forEach(item => { item.node.unit = p.unit; });
+        qtUnitPrompt = null;
+        qtMarkDirty();
+        qtRefreshUnitControls();
+        qtRenderUnitFeedback(qtUnitUndo.message + ' Undo is available above the table.');
+        qtFocusUnit(p.source);
+    };
+
+    window.qtUndoUnits = function () {
+        const undo = qtUnitUndo;
+        if (!undo || undo.quote !== qtState.current) return;
+        const live = new Set(qtUnitItems().map(item => item.node));
+        let restored = 0;
+        undo.changes.forEach(change => {
+            if (!live.has(change.node) || change.node.unit !== undo.unit) return;
+            if (change.hadUnit) change.node.unit = change.unit;
+            else delete change.node.unit;
+            restored++;
+        });
+        undo.changes = [];
+        undo.message = `Restored units on ${qtPlural(restored, 'item')}.`;
+        qtUnitPrompt = null;
+        if (restored) qtMarkDirty();
+        qtRefreshUnitControls();
+        qtRenderUnitFeedback(undo.message);
+        qtFocusUnit(live.has(undo.source) ? undo.source : live.values().next().value);
+    };
+
+    function qtRenderUnitFeedback(announcement) {
+        if (qtUnitPrompt && qtUnitPrompt.quote !== qtState.current) qtUnitPrompt = null;
+        if (qtUnitUndo && qtUnitUndo.quote !== qtState.current) qtUnitUndo = null;
+        const oldRow = qtEl('qtUnitPromptRow');
+        if (oldRow) oldRow.remove();
+        const notice = qtEl('qtUnitUndoNotice');
+        if (notice) {
+            notice.hidden = !qtUnitUndo;
+            qtEl('qtUnitUndoMessage').textContent = qtUnitUndo ? qtUnitUndo.message : '';
+            qtEl('qtUnitUndoButton').hidden = !qtUnitUndo || !qtUnitUndo.changes.length;
+        }
+        const status = qtEl('qtUnitAnnouncement');
+        if (status && announcement) status.textContent = announcement;
+        if (!qtUnitPrompt) return;
+        const groupCount = qtUnitTargets('group').length;
+        const allCount = qtUnitTargets('all').length;
+        if (!allCount) { qtUnitPrompt = null; return; }
+        const item = qtUnitItems().find(item => item.node === qtUnitPrompt.source);
+        const select = item && qtEl(item.selectId);
+        if (!select) return;
+        select.closest('tr').insertAdjacentHTML('afterend', `
+            <tr id="qtUnitPromptRow" class="qt-unit-prompt-row"><td colspan="${QT_COLS}">
+                <div class="qt-unit-feedback">
+                    <span>Apply <strong>${qtEscHtml(qtUnitPrompt.unit)}</strong> to other items?</span>
+                    <button type="button" class="qt-btn qt-btn-outline qt-btn-sm" ${groupCount ? '' : 'disabled'}
+                        onclick="qtApplyUnit('group')">This group (${groupCount})</button>
+                    <button type="button" class="qt-btn qt-btn-outline qt-btn-sm"
+                        onclick="qtApplyUnit('all')">Entire quotation (${allCount})</button>
+                    <button type="button" class="qt-btn qt-btn-sm"
+                        onclick="qtDismissUnitPrompt()">Keep this item only</button>
+                </div>
+            </td></tr>`);
+    }
+
     // Section / group numbering, matching the BOQ report's I. / A. / 1. tree.
     const QT_ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X',
                       'XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'];
@@ -1658,6 +1788,12 @@
                     </button>
                 </span>
             </div>
+            <span id="qtUnitAnnouncement" class="qt-unit-announcement" role="status" aria-atomic="true"></span>
+            <div id="qtUnitUndoNotice" class="qt-unit-feedback qt-unit-undo" hidden>
+                <span id="qtUnitUndoMessage"></span>
+                <button type="button" id="qtUnitUndoButton" class="qt-btn qt-btn-outline qt-btn-sm"
+                    onclick="qtUndoUnits()">Undo</button>
+            </div>
             <div class="qt-table-scroll">
                 <table class="qt-table qt-table-wide">
                     <thead>
@@ -1684,6 +1820,7 @@
         </div>`;
 
         qtRenderPresetBar();     // the heading was just repainted over
+        qtRenderUnitFeedback();
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
@@ -1785,8 +1922,8 @@
                        oninput="qtSetNodeField('line',${si},${gi},${li},'description',this.value)"></td>
             <td class="qt-col-qty"><input class="qt-cell-input qt-center" value="${qtEscHtml(l.qty)}"
                        oninput="qtSetNodeField('line',${si},${gi},${li},'qty',this.value)"></td>
-            <td class="qt-col-unit"><select class="qt-cell-select qt-center" aria-label="Item unit"
-                       onchange="qtSetNodeField('line',${si},${gi},${li},'unit',this.value)">
+            <td class="qt-col-unit"><select id="qtLineUnit-${si}-${gi}-${li}" class="qt-cell-select qt-center" aria-label="Item unit"
+                       onchange="qtChangeLineUnit(${si},${gi},${li},this.value)">
                 ${qtUnitOptions(l.unit)}
             </select></td>
             ${sec.pricing === 'rated' ? `

@@ -443,6 +443,99 @@ test('a group with no qty / unit still totals normally', () => {
   });
 }
 
+// Bulk unit edits must respect group/quotation boundaries and Undo must not
+// overwrite a later manual edit. Run the live module with no DOM or database.
+function unitEditor() {
+  const app = { document: { getElementById: () => null } };
+  app.window = app;
+  require('vm').runInNewContext(src, app);
+  const makeLine = (id, unit) => ({ id, unit, qty: 2, unitPrice: 150, state: 'normal' });
+  const a = makeLine('a', 'set'), b = makeLine('b', 'sqm'), c = makeLine('c', 'lot');
+  const d = makeLine('d', 'bag'), e = makeLine('e', 'pc');
+  const q = { sections: [
+    { groups: [{ unit: 'heading', lines: [a, b, c] }, { unit: 'set', lines: [d] }] },
+    { groups: [{ unit: 'lot', lines: [e] }] }
+  ] };
+  app.qtState.current = q;
+  return { app, q, a, b, c, d, e };
+}
+
+console.log('\n── Bulk quotation units ──');
+test('changing a unit updates only that item until a scope is chosen', () => {
+  const { app, a, b, d } = unitEditor();
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  eq(a.unit, 'lot'); eq(b.unit, 'sqm'); eq(d.unit, 'bag');
+  eq(app.qtState.isDirty, true);
+});
+test('keep this item only dismisses the pending bulk change', () => {
+  const { app, a, b } = unitEditor();
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  app.qtDismissUnitPrompt();
+  app.qtApplyUnit('all');
+  eq(a.unit, 'lot'); eq(b.unit, 'sqm');
+});
+test('this group changes other items in that group and leaves headings intact', () => {
+  const { app, q, a, b, c, d, e } = unitEditor();
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  app.qtApplyUnit('group');
+  eq(a.unit, 'lot'); eq(b.unit, 'lot'); eq(c.unit, 'lot');
+  eq(d.unit, 'bag'); eq(e.unit, 'pc');
+  eq(q.sections[0].groups[0].unit, 'heading');
+  app.qtUndoUnits();
+  eq(a.unit, 'lot', 'source selection stays'); eq(b.unit, 'sqm'); eq(c.unit, 'lot');
+});
+test('entire quotation crosses sections without changing quantities, prices or headings', () => {
+  const { app, q, a, b, c, d, e } = unitEditor();
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  app.qtApplyUnit('all');
+  for (const item of [a, b, c, d, e]) {
+    eq(item.unit, 'lot'); eq(item.qty, 2); eq(item.unitPrice, 150); eq(item.state, 'normal');
+  }
+  eq(q.sections[0].groups[1].unit, 'set');
+  eq(q.sections[1].groups[0].unit, 'lot');
+});
+test('undo restores custom, blank and missing units exactly', () => {
+  const { app, b, d, e } = unitEditor();
+  b.unit = 'custom unit'; d.unit = ''; delete e.unit;
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  app.qtApplyUnit('all');
+  app.qtUndoUnits();
+  eq(b.unit, 'custom unit'); eq(d.unit, ''); eq(Object.hasOwn(e, 'unit'), false);
+});
+test('undo keeps later manual unit edits and skips deleted rows after reordering', () => {
+  const { app, q, b, d, e } = unitEditor();
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  app.qtApplyUnit('all');
+  app.qtChangeLineUnit(0, 0, 1, 'kg');
+  app.qtChangeLineUnit(0, 0, 1, 'lot');
+  q.sections.reverse();
+  q.sections[1].groups[1].lines = [];
+  app.qtUndoUnits();
+  eq(b.unit, 'lot', 'manual re-selection is kept'); eq(d.unit, 'lot', 'detached row is untouched');
+  eq(e.unit, 'pc');
+});
+test('a stale prompt or undo never changes another quotation', () => {
+  const { app, b } = unitEditor();
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  const other = { sections: [{ groups: [{ lines: [{ unit: 'bag' }] }] }] };
+  app.qtState.current = other;
+  app.qtApplyUnit('all');
+  eq(other.sections[0].groups[0].lines[0].unit, 'bag'); eq(b.unit, 'sqm');
+  const second = unitEditor();
+  second.app.qtChangeLineUnit(0, 0, 0, 'lot');
+  second.app.qtApplyUnit('all');
+  second.app.qtState.current = other;
+  second.app.qtUndoUnits();
+  eq(other.sections[0].groups[0].lines[0].unit, 'bag'); eq(second.b.unit, 'lot');
+});
+test('deleting the prompt source cancels the bulk action', () => {
+  const { app, q, b, d } = unitEditor();
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  q.sections[0].groups[0].lines.shift();
+  app.qtApplyUnit('all');
+  eq(b.unit, 'sqm'); eq(d.unit, 'bag');
+});
+
 // ── Summary ──────────────────────────────────────────────────────────
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed) { console.log('\nFailures:'); failures.forEach(f => console.log('  · ' + f)); process.exit(1); }
