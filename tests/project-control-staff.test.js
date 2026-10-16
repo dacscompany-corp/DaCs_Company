@@ -223,6 +223,45 @@ async function test(name, fn) {
       { 0: true, 1: { category: 'Water', amount: '1234', date: '2026-10-12', description: '', billingPeriodId: '' } });
     staffSafe(tree);
   });
+  // 16 Oct 2026 fixes from the 2A-1 browser checks.
+  await test('a row on the Cover period reads "Billing #2 (Cover)"', () => {
+    const cover = { id: 'p2', folderId: 'f1', month: 'October', year: 2026, monthlyBudget: 0, fundingType: 'president' };
+    const tree = harness('owner').render('MaterialDrill', { ...materialProps, childMonths: [...months, cover],
+      materialTx: [material, { ...material, id: 'e2', projectId: 'p2', name: 'Sand' }] });
+    const out = text(tree);
+    assert(/Billing #\s*2 \(Cover\)/.test(out), out);
+    assert(/Billing #\s*1(?! \(Cover\))/.test(out), 'a client period must not say Cover');
+  });
+  await test('owner Material Total notes the Additional Works share', () => {
+    const owner = text(harness('owner').render('MaterialDrill', { ...materialProps, project: { ...project, awMaterial: 1000 } }));
+    assert(/incl\. ₱\s*1,000\s+Additional Works/.test(owner), owner);
+    const none = text(harness('owner').render('MaterialDrill', materialProps));
+    assert(!/Additional Works/.test(none), 'no note when the project has no Additional Works cost');
+  });
+  await test('no billing period: staff are sent to the owner, not to Budget Overview', async () => {
+    const said = [], savedAlert = globalThis.alert;
+    globalThis.alert = msg => said.push(msg);
+    try {
+      await harness('staff').api.openAddEntry('material', [], { id: 'f9' });
+      await harness('owner').api.openAddEntry('material', [], { id: 'f9' });
+    } finally { globalThis.alert = savedAlert; }
+    assert(/Ask the owner/.test(said[0]) && !/Budget Overview/.test(said[0]), said[0]);
+    assert(/Manage Periods/.test(said[1]), said[1]);
+  });
+  await test('Additional Works: two quick clicks make ONE hidden period', async () => {
+    const saved = { db: globalThis.db, firebase: globalThis.firebase };
+    let adds = 0;
+    globalThis.firebase = { auth: () => ({ currentUser: { uid: 'u1' } }),
+      firestore: { FieldValue: { serverTimestamp: () => 'ts' } } };
+    globalThis.db = { collection: () => ({ add: async () => { adds++; await new Promise(r => setImmediate(r)); return { id: 'aw-p' + adds }; } }) };
+    try {
+      const h = harness('staff'), aw = { id: 'aw1', parentFolderId: 'f1' };
+      await Promise.all([h.api.openAddEntry('material', [], aw), h.api.openAddEntry('material', [], aw)]);
+      await h.api.openAddEntry('labor', [], aw);   // later click, period list not refreshed yet
+      assert.equal(adds, 1, 'periods created: ' + adds);
+      assert.deepEqual(h.calls, ['addExpenseModal', 'addExpenseModal', 'addPayrollModal']);
+    } finally { globalThis.db = saved.db; globalThis.firebase = saved.firebase; }
+  });
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exitCode = 1;
 })();

@@ -157,6 +157,42 @@
         return { added, removed, changed,
                  delta: qtParseNum(curr && curr.totalAmount) - qtParseNum(prev && prev.totalAmount) };
     }
+
+    // "Duplicate" — start a NEW quotation from a past one so a similar job is
+    // a few edits, not a rebuild. `blank` is a fresh qtBlankQuote(): it brings
+    // the new number, today's date, a fresh validity window, draft status and
+    // EMPTY client fields. A duplicate is for a different client, so the old
+    // client's name/email/address must never ride along onto a sheet that
+    // gets sent to someone else. Everything describing the WORK is copied.
+    // Every node is re-id'd: the revision diff pairs lines by id, so the copy
+    // must not share ids with its source. Lines 'removed' from a sent quote
+    // are retired history, not scope — they are left behind.
+    function qtDuplicateOf(src, blank, newId) {
+        const q = JSON.parse(JSON.stringify(blank));
+        const c = JSON.parse(JSON.stringify(src || {}));
+        ['projectName', 'location', 'area', 'subject', 'scopeNote',
+         'discount', 'discountType', 'vatMode', 'vatPct',
+         'preparedBy', 'submittedBy'].forEach(k => {
+            if (c[k] !== undefined && c[k] !== null) q[k] = c[k];
+        });
+        q.showLinePricing = c.showLinePricing !== false;
+        q.showLogo        = c.showLogo !== false;
+        if (c.terms && typeof c.terms === 'object') q.terms = c.terms;
+        q.images   = Array.isArray(c.images) ? c.images : [];
+        q.sections = (c.sections || []).map(sec => {
+            sec.id = newId();
+            sec.groups = (sec.groups || []).map(g => {
+                g.id = newId();
+                g.lines = (g.lines || [])
+                    .filter(l => (l.state || 'normal') !== 'removed')
+                    .map(l => { l.id = newId(); return l; });
+                return g;
+            });
+            return sec;
+        });
+        q.totalAmount = qtGrandTotal(q);
+        return q;
+    }
     // ==== QT CALC ENGINE END ====
 
     // Expose the calc engine for the rest of the module and the console.
@@ -164,7 +200,7 @@
         qtParseNum, qtFmt, qtEscHtml, qtTodayKey, qtLineAmount, qtRawLineAmount, qtGroupTotal,
         qtSectionTotal, qtProjectCost, qtDiscountAmount, qtSubTotal,
         qtVatAmount, qtGrandTotal, qtIsExpired, qtNextQuoteNo,
-        qtFlattenLines, qtDiffSnapshots
+        qtFlattenLines, qtDiffSnapshots, qtDuplicateOf
     });
 
     // ── State ─────────────────────────────────────────────────────────
@@ -361,6 +397,7 @@
             <td class="qt-center">
                 <button class="qt-icon-btn qt-icon-btn-edit" title="Open" onclick="qtOpenQuote('${q.id}')"><i data-lucide="pencil"></i></button>
                 <button class="qt-icon-btn" title="Print" onclick="qtOpenQuote('${q.id}'); setTimeout(qtPrintSheet, 200);"><i data-lucide="printer"></i></button>
+                <button class="qt-icon-btn" title="Duplicate — new quotation from this one" onclick="qtDuplicateQuote('${q.id}')"><i data-lucide="copy"></i></button>
             </td>
         </tr>`;
     }
@@ -506,6 +543,27 @@
         switchView('quoteEditor');
         qtRenderEditor();
         qtLoadRevisions(id);                                  // defined in Task 10
+    };
+
+    // Opens an UNSAVED copy — nothing is written until the user presses Save,
+    // so a mis-click leaves no stray quotation behind. Marked dirty so leaving
+    // without saving still asks first.
+    window.qtDuplicateQuote = function (id) {
+        const src = qtState.list.find(x => x.id === id);
+        if (!src) { qtToast('Quotation not found', 'error'); return; }
+        if (qtState.current && qtState.isDirty
+            && !confirm('You have unsaved changes. Leave anyway?')) return;
+        const from = JSON.parse(JSON.stringify(src));
+        qtHoistLegacyImages(from);                            // 0045 → 0046 shape
+        const q = qtDuplicateOf(from, qtBlankQuote(), qtNewId);
+        qtState.current   = q;
+        qtState.revisions = [];
+        if (qtState.revUnsub) { qtState.revUnsub(); qtState.revUnsub = null; }
+        qtPushHistory('draft', null, `Duplicated from ${src.quoteNo || 'a past quotation'}`);
+        qtState.isDirty   = true;
+        switchView('quoteEditor');
+        qtRenderEditor();
+        qtToast(`Copied ${src.quoteNo || 'quotation'} — enter the new client, then Save`);
     };
 
     window.qtBackToList = function () {

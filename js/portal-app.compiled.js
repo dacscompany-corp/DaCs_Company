@@ -1828,20 +1828,39 @@ async function ensureAdditionalWorksPeriod(folderId) {
     throw err;
   }
 }
+// One hidden period per Additional Works job: a second click while the first
+// is still saving (three writes, ~1 s) reused to create a duplicate period.
+// The job's period list only updates later, so later clicks reuse it too.
+// A failed attempt is forgotten, so the next click can try again.
+const _awPeriodPending = new Map();
+function ensureAdditionalWorksPeriodOnce(folderId) {
+  let pending = _awPeriodPending.get(folderId);
+  if (!pending) {
+    pending = ensureAdditionalWorksPeriod(folderId).catch((err) => {
+      _awPeriodPending.delete(folderId);
+      throw err;
+    });
+    _awPeriodPending.set(folderId, pending);
+  }
+  return pending;
+}
 async function openAddEntry(kind, childMonths, folder) {
   // Staff record materials and payroll too (owner decision 2026-10-15); the
   // forms hide budgets from them and Project Control's totals stay hidden.
   let latest = pickLatestMonth(childMonths);
   if (!latest && folder && folder.parentFolderId) {
     try {
-      latest = await ensureAdditionalWorksPeriod(folder.id);
+      latest = await ensureAdditionalWorksPeriodOnce(folder.id);
     } catch (err) {
       alert("Could not prepare this Additional Works folder: " + (err.message || err));
       return;
     }
   }
   if (!latest) {
-    alert("Add a billing period to this folder first via Budget Overview, then return to record entries.");
+    // Staff cannot open Billing Periods or Budget Overview — send them to the owner.
+    alert(_staff()
+      ? "This project has no billing period yet. Ask the owner to add one, then record entries here."
+      : "Add a billing period to this project first (Billing Periods → Manage Periods), then return to record entries.");
     return;
   }
   window.expCurrentProject = { id: latest.id, folderId: latest.folderId, month: latest.month, year: latest.year, monthlyBudget: latest.monthlyBudget };
@@ -3247,8 +3266,10 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
       if (ya !== yb) return ya - yb;
       return monthNum(a.month) - monthNum(b.month);
     });
+    // A Cover (president-funded) period reads "3 (Cover)", so every
+    // "Billing #…" label below says where the money really came from.
     const map = /* @__PURE__ */ new Map();
-    sorted.forEach((m, i) => map.set(m.id, i + 1));
+    sorted.forEach((m, i) => map.set(m.id, m.fundingType === "president" ? i + 1 + " (Cover)" : i + 1));
     return map;
   }, [childMonths]);
   // "Billing #1 ₱5,000 · Billing #2 ₱3,000" for a split expense. Staff see the
@@ -3390,7 +3411,7 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
   };
   const pillBase = { padding: "6px 12px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", whiteSpace: "nowrap" };
   const pillActive = { ...pillBase, background: "#1A5C3A", color: "#fff", borderColor: "#1A5C3A" };
-  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("section", { className: "drill" }, /* @__PURE__ */ React.createElement("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"), /* @__PURE__ */ React.createElement(ExpenseInboxMount, { folderId, label: project && project.name || "", kind: "material" }), /* @__PURE__ */ React.createElement("div", { className: "drill-head" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Material Cost \xB7 Transaction History"), /* @__PURE__ */ React.createElement("h2", null, "Materials", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "var(--sans)", color: "var(--brand-green)", fontWeight: 700, fontSize: "22px", letterSpacing: "0.02em", marginLeft: 18, background: "rgba(26,90,58,0.12)", padding: "8px 20px", borderRadius: "999px", whiteSpace: "nowrap", verticalAlign: "middle", fontVariantNumeric: "tabular-nums" } }, project.revenue > 0 && !_staff() ? (project.material / project.revenue * 100).toFixed(1) + "%" : "\u2014")), /* @__PURE__ */ React.createElement("div", { className: "sub" }, project.name, " \xB7 ", project.code)), /* @__PURE__ */ React.createElement("button", { className: "btn-primary", onClick: () => openAddEntry("material", childMonths, activeFolder) }, Ico.plus, " Add Expense")), /* @__PURE__ */ React.createElement("div", { className: "drill-stats" }, /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Purchase Order"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.po, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Delivery Receipt"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.dr, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Supplier Invoice"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.si, " / ", count)), _staff() ? null : /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Material Total \xB7 Actual"), /* @__PURE__ */ React.createElement("div", { className: "val total" }, "\u20B1 ", peso(project.material)))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "14px 4px 4px" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", flex: "1 1 220px", minWidth: 200, maxWidth: 380 } }, /* @__PURE__ */ React.createElement(
+  return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("section", { className: "drill" }, /* @__PURE__ */ React.createElement("button", { className: "back-btn", onClick: onBack, title: "Go back to Project Control" }, Ico.arrowL, " Back to Project Control"), /* @__PURE__ */ React.createElement(ExpenseInboxMount, { folderId, label: project && project.name || "", kind: "material" }), /* @__PURE__ */ React.createElement("div", { className: "drill-head" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Material Cost \xB7 Transaction History"), /* @__PURE__ */ React.createElement("h2", null, "Materials", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: "var(--sans)", color: "var(--brand-green)", fontWeight: 700, fontSize: "22px", letterSpacing: "0.02em", marginLeft: 18, background: "rgba(26,90,58,0.12)", padding: "8px 20px", borderRadius: "999px", whiteSpace: "nowrap", verticalAlign: "middle", fontVariantNumeric: "tabular-nums" } }, project.revenue > 0 && !_staff() ? (project.material / project.revenue * 100).toFixed(1) + "%" : "\u2014")), /* @__PURE__ */ React.createElement("div", { className: "sub" }, project.name, " \xB7 ", project.code)), /* @__PURE__ */ React.createElement("button", { className: "btn-primary", onClick: () => openAddEntry("material", childMonths, activeFolder) }, Ico.plus, " Add Expense")), /* @__PURE__ */ React.createElement("div", { className: "drill-stats" }, /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Purchase Order"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.po, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Delivery Receipt"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.dr, " / ", count)), /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Supplier Invoice"), /* @__PURE__ */ React.createElement("div", { className: "val" }, dc.si, " / ", count)), _staff() ? null : /* @__PURE__ */ React.createElement("div", { className: "drill-stat" }, /* @__PURE__ */ React.createElement("div", { className: "lbl" }, "Material Total \xB7 Actual"), /* @__PURE__ */ React.createElement("div", { className: "val total" }, "\u20B1 ", peso(project.material)), project.awMaterial > 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--ink-3)", marginTop: 4 } }, "incl. \u20B1 ", peso(project.awMaterial), " Additional Works \u2014 not listed below"))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "14px 4px 4px" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", flex: "1 1 220px", minWidth: 200, maxWidth: 380 } }, /* @__PURE__ */ React.createElement(
     "input",
     {
       type: "text",
@@ -3941,6 +3962,9 @@ function PortalApp() {
       revenue: base.revenue + childRevenue,
       labor: base.labor + childLabor,
       material: base.material + childMaterial,
+      // Display only: the Materials screen notes the Additional Works share,
+      // since its list shows this project's own rows.
+      awMaterial: childMaterial,
       allocated: base.allocated + childAllocated,
       overhead: base.overhead + childOverhead,
       overheadBreakdown: {

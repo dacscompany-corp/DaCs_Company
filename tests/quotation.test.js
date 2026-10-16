@@ -58,7 +58,7 @@ const M = evalWith(
   { window: {} },
   ['qtParseNum','qtFmt','qtLineAmount','qtRawLineAmount','qtGroupTotal','qtSectionTotal',
    'qtProjectCost','qtDiscountAmount','qtSubTotal','qtVatAmount','qtGrandTotal','qtIsExpired',
-   'qtNextQuoteNo','qtFlattenLines','qtDiffSnapshots','qtTodayKey']
+   'qtNextQuoteNo','qtFlattenLines','qtDiffSnapshots','qtTodayKey','qtDuplicateOf']
 );
 
 // ── Fixtures ─────────────────────────────────────────────────────────
@@ -383,6 +383,65 @@ test('a group with no qty / unit still totals normally', () => {
   eq(M.qtSectionTotal(sec), 25000);
   eq(P.qtGroupPrintAmount(sec, sec.groups[0]), '', 'and it prints no amount');
 });
+
+// ── Duplicate: a new quotation from a past one ───────────────────────
+// The copy is for a DIFFERENT client: the work is copied, the client is not,
+// and no node may keep its source id (the revision diff pairs lines by id).
+{
+  const blank = () => ({ id: null, quoteNo: 'Q-NEW', revNo: 1, quoteDate: '2026-10-16',
+    validUntil: '2026-11-15', clientName: '', clientEmail: '', clientAddress: '',
+    projectName: '', location: '', area: '', subject: 'Project Estimate', scopeNote: '',
+    images: [], showLinePricing: true, showLogo: true, sections: [],
+    discount: 0, discountType: 'amount', vatMode: 'none', vatPct: 12, totalAmount: 0,
+    status: 'draft', statusNote: '', decidedAt: null, followUpDate: '', followUpNote: '',
+    terms: { payment: 'default' }, preparedBy: '', submittedBy: '', history: [] });
+  const past = {
+    id: 'OLD', quoteNo: 'Q-001', revNo: 3, quoteDate: '2026-01-05', validUntil: '2026-02-04',
+    clientName: 'Old Client', clientEmail: 'old@x.ph', clientAddress: 'Old St.',
+    projectName: '2-storey house', location: 'Cavite', area: '120 sqm', subject: 'Estimate',
+    scopeNote: 'note', images: [{ url: 'u1', name: 'a.jpg', caption: '' }],
+    showLinePricing: false, showLogo: false,
+    sections: [{ id: 'S1', label: 'ELEC', pricing: 'rated', lumpAmount: '',
+      groups: [{ id: 'G1', label: 'Wiring', lumpAmount: '',
+        lines: [line('L1', 2, 850), line('L2', 1, 1000, 'optional'), line('L3', 5, 999, 'removed')] }] }],
+    discount: 100, discountType: 'amount', vatMode: 'exclusive', vatPct: 12, totalAmount: 0,
+    status: 'won', statusNote: 'signed', decidedAt: '2026-01-20', followUpDate: '2026-01-10',
+    followUpNote: 'call', terms: { payment: '50% down' }, preparedBy: 'JT', submittedBy: 'Engr. X',
+    history: [{ status: 'won' }] };
+  let n = 0;
+  const newId = () => 'x' + (++n);
+  const d = M.qtDuplicateOf(past, blank(), newId);
+
+  test('duplicate: client fields stay blank', () => {
+    eq(d.clientName, ''); eq(d.clientEmail, ''); eq(d.clientAddress, '');
+  });
+  test('duplicate: new number, rev 1, fresh dates, unsaved draft', () => {
+    eq(d.id, null); eq(d.quoteNo, 'Q-NEW'); eq(d.revNo, 1);
+    eq(d.quoteDate, '2026-10-16'); eq(d.validUntil, '2026-11-15');
+    eq(d.status, 'draft'); eq(d.statusNote, ''); eq(d.decidedAt, null);
+    eq(d.followUpDate, ''); eq(d.followUpNote, ''); eq(d.history.length, 0);
+  });
+  test('duplicate: work, terms, images, discount/VAT and print options copied', () => {
+    eq(d.projectName, '2-storey house'); eq(d.location, 'Cavite'); eq(d.area, '120 sqm');
+    eq(d.subject, 'Estimate'); eq(d.scopeNote, 'note');
+    eq(d.terms.payment, '50% down'); eq(d.images.length, 1); eq(d.images[0].url, 'u1');
+    eq(d.discount, 100); eq(d.vatMode, 'exclusive');
+    eq(d.showLinePricing, false); eq(d.showLogo, false);
+    eq(d.preparedBy, 'JT'); eq(d.submittedBy, 'Engr. X');
+  });
+  test('duplicate: every node re-id\'d, removed lines left behind', () => {
+    const s = d.sections[0], g = s.groups[0];
+    ok(s.id !== 'S1' && g.id !== 'G1', 'section/group ids must be new');
+    eq(g.lines.length, 2, 'removed line dropped');
+    ok(g.lines.every(l => !['L1','L2','L3'].includes(l.id)), 'line ids must be new');
+    eq(new Set([s.id, g.id, ...g.lines.map(l => l.id)]).size, 4, 'ids unique');
+  });
+  test('duplicate: total recomputed, source untouched', () => {
+    eq(d.totalAmount, M.qtGrandTotal(d));
+    eq(past.sections[0].id, 'S1'); eq(past.sections[0].groups[0].lines.length, 3);
+    eq(past.clientName, 'Old Client');
+  });
+}
 
 // ── Summary ──────────────────────────────────────────────────────────
 console.log(`\n${passed} passed, ${failed} failed`);
