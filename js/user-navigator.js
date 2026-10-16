@@ -25,6 +25,9 @@
         return dup ? full + ' · ID ' + String(p.id).slice(0, 8) : full;
     }
     let _boqProjects     = [];
+    // Purchasing (0097): user_id → { is_buyer, can_buy, expenses_ok } for staff.
+    // Owner only — the server (pur_office_buyers / pur_set_buyer) refuses others.
+    let _buyers          = {};
     let _loading         = false;
     let _activeTab       = 'all';
 
@@ -94,6 +97,18 @@
             console.warn('UserNavigator: could not load employee users —', e.message);
         }
 
+        _buyers = {};
+        if (window.currentUserRole === 'owner' && window.sbClient) {
+            try {
+                const { data, error } = await window.sbClient.rpc('pur_office_buyers');
+                if (error) throw error;
+                (data || []).forEach(b => { _buyers[b.user_id] = b; });
+            } catch (e) {
+                // Before migration 0097 the switch simply does not show.
+                console.warn('UserNavigator: Buyer switch unavailable —', e.message || e);
+            }
+        }
+
         _loading = false;
         _showLoading(false);
 
@@ -140,6 +155,15 @@
             : `<button class="un-btn-toggle un-btn-activate"   onclick="unToggleStatus('${user.uid}','inactive')">Activate</button>`;
         // Owners sign no agreement, so the column says so instead of staying blank.
         const agreement = _empAgreementBadge(user) || '<span class="un-muted">—</span>';
+        // The Buyer switch (0097): staff with it on may buy in Requests →
+        // Purchasing and see purchase prices there. Owner only.
+        const b = user.role === 'staff' ? _buyers[user.uid] : null;
+        const buyerBtn = b
+            ? `<button class="un-btn-toggle ${b.is_buyer ? 'un-btn-activate' : 'un-btn-deactivate'}" title="${b.is_buyer
+                  ? (b.expenses_ok ? 'May buy in Requests → Purchasing. Click to turn off.' : 'Switch is on, but this account is not allowed the Expenses section, so it cannot buy.')
+                  : 'Click to let this staff member buy and see purchase prices in Requests → Purchasing.'}"
+                  onclick="unToggleBuyer('${user.uid}', ${b.is_buyer ? 'false' : 'true'})">Buyer: ${b.is_buyer ? 'On' : 'Off'}</button>`
+            : '';
 
         return `<tr data-uid="${user.uid}">
             <td><div class="un-user-cell">
@@ -160,10 +184,24 @@
                 <button class="un-btn-view" onclick="unOpenEditModal('${user.uid}','admin')">
                     <i data-lucide="pencil" style="width:13px;height:13px;"></i> Edit
                 </button>
+                ${buyerBtn}
                 ${toggleBtn}
             </div></td>
         </tr>`;
     }
+
+    // Turn a staff member's Buyer switch on or off (0097, owner only).
+    window.unToggleBuyer = async function (uid, on) {
+        try {
+            const { error } = await window.sbClient.rpc('pur_set_buyer', { p_user: uid, p_on: !!on });
+            if (error) throw error;
+            if (_buyers[uid]) _buyers[uid].is_buyer = !!on;
+            // Redraw with the current search/status filters kept.
+            if (typeof window.unFilterUsers === 'function') window.unFilterUsers(); else _renderTable(_allUsers);
+        } catch (e) {
+            alert('Could not change the Buyer switch: ' + ((e && e.message) || e));
+        }
+    };
 
     // The status chips set the (hidden) status select and refilter.
     window.unSetStatus = function (value) {

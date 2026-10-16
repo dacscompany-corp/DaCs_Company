@@ -77,6 +77,16 @@ function checkAuthState() {
                 // every screen (desktop + mobile). Empty/missing = full access.
                 currentAllowedModules = Array.isArray(data.allowedModules) ? data.allowedModules : null;
                 window.currentAllowedModules = currentAllowedModules;
+
+                // Purchasing (0097): the SERVER decides who may buy — the owner,
+                // admin accounts allowed Expenses, staff with the Buyer switch.
+                // The Requests → Purchasing tab follows it. Before 0097 is applied
+                // the call fails and the tab simply stays hidden.
+                window.currentCanBuy = false;
+                try {
+                    const { data: purMe } = await window.sbClient.rpc('pur_me');
+                    window.currentCanBuy = !!(purMe && purMe.can_buy);
+                } catch (_) { /* tab stays hidden */ }
             } catch (e) {
                 console.warn('Could not fetch user role:', e);
                 await auth.signOut();
@@ -2259,10 +2269,12 @@ const PRIMARY_NAV = [
     },
     // WorkMate Requests (0085/0086): workers and team leaders request
     // materials and tools in DAC'S WorkMate; the office processes them here.
-    // Owner + staff. Quantities only — no price, amount or cost anywhere.
+    // Owner + staff. Quantities only — no price, amount or cost anywhere —
+    // EXCEPT Purchasing (0097): buyers only (window.currentCanBuy), with prices.
     { id: 'requests', label: 'Requests', sub: 'Materials & Tools', defaultView: 'reqQueue',
       modules: [
         { view: 'reqQueue',    label: 'Queue',          icon: 'inbox' },
+        { view: 'reqPurchasing', label: 'Purchasing',   icon: 'shopping-cart' },
         { view: 'reqBatches',  label: 'Weekly batches', icon: 'calendar-days' },
         { view: 'reqTeams',    label: 'Teams',          icon: 'users' },
         { view: 'reqCatalog',  label: 'Catalogue',      icon: 'package-search' },
@@ -2271,6 +2283,8 @@ const PRIMARY_NAV = [
         // One request's detail: routable, highlighted under Requests, but
         // not a button in the secondary row (like Appointments' dashboard).
         { view: 'reqDetail',   label: 'Request',        icon: 'file-text', hidden: true },
+        // One purchase, opened from Purchasing (buyers only, like its tab).
+        { view: 'reqPurchase', label: 'Purchase',       icon: 'receipt', hidden: true },
       ]
     },
     // WorkMate My Work (0093/0094, Stage 1c): the office turns meeting notes
@@ -2339,11 +2353,20 @@ const _FOCUS_SUBVIEWS = {
     // Drill-down from the today list into one worker's day. Without this
     // an allowed_modules account can open the section but not any row.
     attendance: ['attWorker'],
-    // Drill-down from the queue into one request (also a hidden module).
-    requests: ['reqDetail'],
+    // Drill-downs: the queue into one request, Purchasing into one purchase
+    // (both also hidden modules).
+    requests: ['reqDetail', 'reqPurchase'],
     // Drill-downs from the Board / Meetings into one meeting or task.
     workplan: ['wpMeeting', 'wpTask'],
 };
+// Q3 = B (0097): an account focused on other sections may still BUY when it
+// has the Expenses section — the server (pur_me) says so. Without Requests
+// in its focus it gets Requests → Purchasing alone (and one purchase).
+const _PURCHASING_VIEWS = ['reqPurchasing', 'reqPurchase'];
+function _purchasingOnly() {
+    const focus = _activeFocus();
+    return !!(window.currentCanBuy && focus && !focus.includes('requests'));
+}
 // All views reachable inside the focused module(s) — used by the switchView guard.
 window.focusAllowedViews = function () {
     if (!Array.isArray(currentAllowedModules) || !currentAllowedModules.length) return [];
@@ -2353,6 +2376,7 @@ window.focusAllowedViews = function () {
         p.modules.forEach(m => views.push(m.view));
         (_FOCUS_SUBVIEWS[p.id] || []).forEach(v => views.push(v));
     });
+    if (_purchasingOnly()) _PURCHASING_VIEWS.forEach(v => views.push(v));
     return views;
 };
 // Landing view for the first focused module (e.g. 'pm' → 'pmProjects').
@@ -2390,6 +2414,13 @@ function _visibleNav() {
                 // older phone. The RPCs refuse staff too; this hides the tab.
                 return { ...p, modules: p.modules.filter(m => m.view !== 'attAppUpdates') };
             }
+            if (p.id === 'requests' && !window.currentCanBuy) {
+                // Purchasing shows prices and needs an account that may buy
+                // (0097: owner / admin with Expenses / staff with the Buyer
+                // switch). The server refuses everyone else; this hides it.
+                const hidden = ['reqPurchasing', 'reqPurchase'];
+                return { ...p, modules: p.modules.filter(m => !hidden.includes(m.view)) };
+            }
             if (role === 'staff' && p.id === 'pm') {
                 // Warranty Fund is peso amounts end to end and owner-only by
                 // RLS (0043) — same reasoning as Reimbursement above.
@@ -2402,9 +2433,17 @@ function _visibleNav() {
     // Module-focus: an account flagged with allowed_modules sees ONLY those
     // sections, on every screen size. Falls back to the full nav if the focus
     // list matches nothing (avoids an empty menu).
+    // An account allowed to buy whose focus lacks Requests keeps a Requests
+    // tab holding Purchasing only (Q3 = B; the server checks every call).
     const focus = _activeFocus();
     if (focus) {
-        const narrowed = nav.filter(p => focus.includes(p.id));
+        const buyOnly = _purchasingOnly();
+        const narrowed = nav
+            .filter(p => focus.includes(p.id) || (buyOnly && p.id === 'requests'))
+            .map(p => (buyOnly && p.id === 'requests')
+                ? { ...p, sub: 'Purchasing', defaultView: 'reqPurchasing',
+                    modules: p.modules.filter(m => _PURCHASING_VIEWS.includes(m.view)) }
+                : p);
         if (narrowed.length) nav = narrowed;
     }
     return nav;
@@ -2482,7 +2521,9 @@ function _buildTabsBar(activePrimaryId) {
         tabs.querySelectorAll('.portal-ptab').forEach(btn => {
             btn.addEventListener('click', () => {
                 const id = btn.dataset.primary;
-                const primary = PRIMARY_NAV.find(p => p.id === id);
+                // The visible section's landing view (a Purchasing-only Requests
+                // tab lands on Purchasing, not on the queue it cannot open).
+                const primary = nav.find(p => p.id === id) || PRIMARY_NAV.find(p => p.id === id);
                 if (primary) switchView(primary.defaultView);
             });
         });

@@ -773,6 +773,16 @@ window.dacsSignedUrl = async function (urlOrPath, expiresIn = 3600) {
   let path = String(urlOrPath || '');
   const m = path.match(DACS_PUB_UPLOADS_RE);
   if (m) path = decodeURIComponent(m[1]);
+  // Purchase receipts (0097, buyers only) never get a signed link: a signed
+  // URL stays valid until it expires even after the Buyer switch is turned
+  // off. Download with this account's own session instead — Storage checks
+  // uploads_can_read on EVERY download — and hand back a blob: copy that
+  // lives only in this page (and the tab it opens). Never cached.
+  if (path.startsWith('purchases/')) {
+    const { data, error } = await sb.storage.from('uploads').download(path);
+    if (error) throw error;
+    return URL.createObjectURL(data);
+  }
   const hit = _dacsSignCache.get(path);
   if (hit && hit.exp > Date.now()) return hit.url;
   const { data, error } = await sb.storage.from('uploads').createSignedUrl(path, expiresIn);

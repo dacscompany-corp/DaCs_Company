@@ -2817,7 +2817,11 @@ function _purErrorText(err) {
         OWNER_APPROVAL_NEEDED: 'Moving a cost to another project needs the owner.',
         NOT_OFFICE:            'Only office accounts can record expenses.',
         NOT_ALLOWED:           'This account is not set up for Expenses.',
-        BUYER_REQUIRED:        'Phone purchasing needs the Buyer switch (not available yet).',
+        BUYER_REQUIRED:        'This needs an account that may buy (the owner, or staff with the Buyer switch).',
+        BAD_DOCS:              'A receipt photo link is not valid — attach the photo again.',
+        EXTRA_REASON_REQUIRED: 'This purchase covers a request and would now be more than the request needs — correct it in Requests → Purchasing, where you can give the reason.',
+        BAD_REQUEST_LINK:      'This purchase is linked to a request for another project — correct it in Requests → Purchasing.',
+        ALREADY_PENDING:       'A change to this purchase is already waiting for the owner.',
         PURCHASES_LIVE:        'It has purchases — void them first.',
         REASON_REQUIRED:       'Please give a reason.',
         BAD_STATE:             'This purchase was already voided.',
@@ -2869,31 +2873,54 @@ function _purAskReason(title, sub, okLabel) {
     });
 }
 
+// Staff: a change the server keeps for the owner (a completed project, or a
+// cost moved to another project) can be SENT to the owner instead (0097).
+function _purNeedsOwner(err) {
+    return window.currentUserRole === 'staff' && /OWNER_APPROVAL_NEEDED|COMPLETED_PROJECT/.test(String((err && (err.message || err)) || ''));
+}
+function _purConfirm(title, sub, okLabel) {
+    return new Promise(resolve => {
+        const ov = document.createElement('div');
+        ov.className = 'lcm-ov';
+        ov.innerHTML = `
+            <div class="lcm-card" style="max-width:420px;">
+              <div class="lcm-head"><div><h3 class="lcm-title">${_mvpEsc(title)}</h3><div class="lcm-sub">${_mvpEsc(sub)}</div></div>
+                <button type="button" class="lcm-x" data-pc-close aria-label="Close">&times;</button></div>
+              <div class="lcm-foot"><button type="button" class="lcm-btn" data-pc-close>Cancel</button>
+                <button type="button" class="lcm-btn primary" data-pc-ok>${_mvpEsc(okLabel)}</button></div>
+            </div>`;
+        const done = (v) => { ov.remove(); resolve(v); };
+        ov.onclick = e => { if (e.target === ov) done(false); };
+        ov.querySelectorAll('[data-pc-close]').forEach(b => b.onclick = () => done(false));
+        ov.querySelector('[data-pc-ok]').onclick = () => done(true);
+        document.body.appendChild(ov);
+    });
+}
+async function _purSendToOwner(purchaseId, kind, body, reason) {
+    const ok = await _purConfirm('Send to the owner?',
+        'Only the owner can make this change. The owner sees exactly this version and approves or rejects it in Requests → Purchasing → Owner approvals.',
+        'Send for approval');
+    if (!ok) return false;
+    const { error } = await window.sbClient.rpc('pur_request_change', { p_op: DacsReceipts.newId(), p_purchase: purchaseId,
+        p_kind: kind, p_body: body, p_reason: reason });
+    if (error) throw error;
+    showExpNotif('Sent to the owner for approval.', 'success');
+    return true;
+}
+
 // The purchase behind a purchase-made expense row, with its one line.
 // Null when the row is not from a purchase. `simple` = one line, no charges:
-// the only shape the Expenses form can correct.
+// the only shape the Expenses form can correct. Read through pur_entry_row
+// (0097): purchase tables are readable by buyers only, and this is all the
+// edit form needs — staff without the Buyer switch read nothing more.
 async function _purForRow(e) {
     if (!e || (!e.purchaseLineId && !e.purchaseChargeId)) return null;
-    const sb = window.sbClient;
-    let purchaseId = null, line = null;
-    if (e.purchaseLineId) {
-        const r = await sb.from('purchase_lines')
-            .select('id, purchase_id, line_no, folder_id, item_name, category, quantity, unit, gross_amount, in_inventory, min_stock')
-            .eq('id', e.purchaseLineId).single();
-        if (r.error) throw r.error;
-        line = r.data; purchaseId = line.purchase_id;
-    } else {
-        const r = await sb.from('purchase_charges').select('purchase_id').eq('id', e.purchaseChargeId).single();
-        if (r.error) throw r.error;
-        purchaseId = r.data.purchase_id;
-    }
-    const [p, lines, charges] = await Promise.all([
-        sb.from('purchases').select('id, status, purchase_date, date_time, supplier, receipt_total, notes, payment_method, docs').eq('id', purchaseId).single(),
-        sb.from('purchase_lines').select('id', { count: 'exact', head: true }).eq('purchase_id', purchaseId),
-        sb.from('purchase_charges').select('id', { count: 'exact', head: true }).eq('purchase_id', purchaseId),
-    ]);
-    if (p.error) throw p.error;
-    return { purchase: p.data, line, lineCount: lines.count || 0, simple: !!line && lines.count === 1 && (charges.count || 0) === 0 };
+    const { data, error } = await window.sbClient.rpc('pur_entry_row', {
+        p_line: e.purchaseLineId || null, p_charge: e.purchaseLineId ? null : e.purchaseChargeId });
+    if (error) throw error;
+    const lineCount = Number(data.line_count) || 0;
+    return { purchase: data.purchase, line: data.line, lineCount,
+             simple: !!data.line && lineCount === 1 && (Number(data.charge_count) || 0) === 0 };
 }
 
 // A purchase on a project with NO billing period (0096) is tied to the project
@@ -2914,9 +2941,10 @@ function _expNoPeriodSpent(folderId) {
 let _purReviewLines = new Set();
 async function _purLoadReviewFlags() {
     try {
-        const { data, error } = await window.sbClient.from('purchase_lines').select('id').eq('needs_funding_review', true);
+        // Ids only, through the server (0097: purchase tables are buyers-only).
+        const { data, error } = await window.sbClient.rpc('pur_review_lines');
         if (error) throw error;
-        _purReviewLines = new Set((data || []).map(r => r.id));
+        _purReviewLines = new Set(data || []);
         window.dispatchEvent(new Event('dacs:pur-review-flags'));
     } catch (err) { console.warn('purchase review flags:', err); }
 }
@@ -2925,6 +2953,8 @@ window.expPurNeedsReview = id => !!id && _purReviewLines.has(id);
 // Set while the Edit Expense modal is correcting a purchase (else null).
 let _editingPurchase = null;
 let _purEditOpId = null;
+// The correction last sent, so staff can forward it to the owner (0097).
+let _purLastBody = null;
 
 // All rows in ONE insert (all-or-nothing). If this submission already landed
 // (a retry after the response was lost), the unique index answers 23505 —
@@ -3056,7 +3086,14 @@ async function deleteExpense(id) {
             showExpNotif('Purchase voided.', 'success');
             refreshOvAllData();
             _purLoadReviewFlags();
-        } catch (err) { showExpNotif('Error: ' + _purErrorText(err), 'error'); }
+        } catch (err) {
+            if (_purNeedsOwner(err)) {
+                try { await _purSendToOwner(pur.purchase.id, 'void', null, reason); }
+                catch (e2) { showExpNotif('Error: ' + _purErrorText(e2), 'error'); }
+                return;
+            }
+            showExpNotif('Error: ' + _purErrorText(err), 'error');
+        }
         return;
     }
     if (!await showDeleteConfirm('Delete this expense?')) return;
@@ -4345,7 +4382,12 @@ async function openEditExpenseModal(id) {
         if (pur.purchase.status !== 'recorded') { showExpNotif('This purchase was voided.', 'error'); return; }
         if (!pur.simple) { showExpNotif('This expense is part of a purchase with several items or a shared fee — it cannot be changed from here yet.', 'error'); return; }
         _editingPurchase = pur;
-        const d = pur.purchase.docs || {};
+        const d = { ...(pur.purchase.docs || {}) };
+        // A non-buyer cannot open a receipt kept in purchases/ (Storage refuses it) — leave those out.
+        // The correction body sends only re-attached photos, so nothing stored is cleared.
+        if (!window.currentCanBuy) Object.keys(d).forEach(k => {
+            if (/^purchases\//.test(DacsReceipts.storagePathOf(d[k]) || '')) delete d[k];
+        });
         e = { ...e, expenseName: pur.line.item_name, category: pur.line.category, quantity: Number(pur.line.quantity),
               amount: Number(pur.line.gross_amount), dateTime: pur.purchase.date_time, notes: pur.purchase.notes,
               paymentMethod: pur.purchase.payment_method, poImageUrl: d.po_image_url, deliveryReceiptUrl: d.delivery_receipt_url,
@@ -4470,6 +4512,7 @@ async function _purSaveCorrection() {
                       min_stock: Number(pur.line.min_stock) || 0 }],
             charges: [],
         };
+        _purLastBody = body;
         const { data, error } = await window.sbClient.rpc('pur_correct', { p_op: _purEditOpId, p_purchase: pur.purchase.id, p_body: body, p_reason: reason });
         if (error) throw error;
         _purEditOpId = null;
@@ -4481,7 +4524,18 @@ async function _purSaveCorrection() {
         refreshOvAllData();
         _purLoadReviewFlags();
         closeExpModal('editExpenseModal');
-    } catch (err) { showExpNotif('Error: ' + _purErrorText(err), 'error'); console.error(err); }
+    } catch (err) {
+        if (_purNeedsOwner(err) && _purLastBody) {
+            try {
+                if (await _purSendToOwner(pur.purchase.id, 'correct', _purLastBody, reason)) {
+                    _purEditOpId = null; _editingPurchase = null; _editingExpenseId = null;
+                    closeExpModal('editExpenseModal');
+                }
+            } catch (e2) { showExpNotif('Error: ' + _purErrorText(e2), 'error'); }
+            return;
+        }
+        showExpNotif('Error: ' + _purErrorText(err), 'error'); console.error(err);
+    }
     finally { showExpLoading('editExpenseBtn', false); }
 }
 

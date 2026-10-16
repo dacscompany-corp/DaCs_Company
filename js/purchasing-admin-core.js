@@ -1,0 +1,462 @@
+// ════════════════════════════════════════════════════════════════════
+// Purchasing (WorkMate Stage 2A-2, migration 0097) — shared core for the
+// office Purchasing tab inside Requests:
+//   js/purchasing-admin-list.js      — the shopping list: who is buying what
+//   js/purchasing-admin-record.js    — record a purchase (one receipt, many lines)
+//   js/purchasing-admin-purchases.js — purchases, one purchase, owner approvals
+//
+// Unlike the rest of Requests this tab shows PESO amounts — only to those
+// the server lets buy (owner, admin accounts allowed Expenses, staff with
+// the Buyer switch: CLAUDE.md "Purchasing — staff exception"). Every rule
+// is the server's (0096/0097); this file only previews and explains.
+//
+// Works in a browser (window.PurchasingAdmin) and in Node for
+// tests/purchasing-admin.test.js (module.exports = pure half).
+// ════════════════════════════════════════════════════════════════════
+(function (root) {
+    'use strict';
+
+    // ── Numbers ─────────────────────────────────────────────────────
+
+    const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+    const round3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
+
+    function peso(n) {
+        const x = Number(n);
+        if (n === null || n === undefined || n === '' || !isFinite(x)) return '—';
+        return '₱' + x.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function qty(n) {
+        const x = Number(n);
+        if (n === null || n === undefined || n === '' || !isFinite(x)) return '—';
+        return x.toLocaleString('en-US', { maximumFractionDigits: 3 });
+    }
+
+    // Same rules as the server's pur_money / pur_qty: plain decimals,
+    // pesos to the centavo, quantities to 3 decimals. Commas are allowed
+    // while typing. Null = refused.
+    function parseMoney(text) {
+        const s = String(text === null || text === undefined ? '' : text).replace(/,/g, '').trim();
+        return /^\d+(\.\d{1,2})?$/.test(s) ? Number(s) : null;
+    }
+    function parseQty(text) {
+        const s = String(text === null || text === undefined ? '' : text).replace(/,/g, '').trim();
+        if (!/^\d+(\.\d{1,3})?$/.test(s)) return null;
+        const x = Number(s);
+        return x > 0 && x <= 1000000 ? x : null;
+    }
+
+    // ── The shopping list ───────────────────────────────────────────
+
+    function sameUnit(a, b) {
+        return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+    }
+
+    // Which buttons a portion offers. The server decides again; this only
+    // avoids offering what it would refuse. me = { userId, isOwner }.
+    function portionActions(p, me) {
+        const still = Number(p.still_to_buy) > 0;
+        const mine = !!p.buyer_id && p.buyer_id === me.userId;
+        return {
+            claim: still && !p.buyer_id,
+            release: still && !!p.buyer_id && (mine || me.isOwner),
+            assign: still && (!p.buyer_id || me.isOwner),
+        };
+    }
+
+    function buyerLabel(p, me) {
+        if (!p.buyer_id) return 'Unassigned';
+        return p.buyer_id === me.userId ? 'You' : (p.buyer_name || 'Buyer');
+    }
+
+    // Text filter, "mine only", "urgent only". Order stays the server's.
+    function filterList(lines, opts) {
+        const o = opts || {};
+        const t = String(o.text || '').trim().toLowerCase();
+        return (lines || []).filter(l => {
+            if (o.urgentOnly && !l.urgent) return false;
+            if (o.mineOnly && !(l.portions || []).some(p => p.buyer_id && p.buyer_id === o.userId)) return false;
+            if (o.unassignedOnly && !(l.portions || []).some(p => !p.buyer_id && Number(p.still_to_buy) > 0)) return false;
+            if (!t) return true;
+            return [l.description, l.spec, l.catalog_name, l.project_name, l.work_name, l.requester_name, l.category]
+                .join(' ').toLowerCase().includes(t);
+        });
+    }
+
+    // The one-line picture of a list.
+    function listSummary(lines, userId) {
+        const s = { lines: 0, urgent: 0, unassigned: 0, mine: 0, changed: 0, unitChecks: 0 };
+        (lines || []).forEach(l => {
+            s.lines++;
+            if (l.urgent) s.urgent++;
+            if (Number(l.unit_checks) > 0) s.unitChecks++;
+            const ps = l.portions || [];
+            if (ps.some(p => !p.buyer_id && Number(p.still_to_buy) > 0)) s.unassigned++;
+            if (ps.some(p => p.buyer_id === userId && Number(p.still_to_buy) > 0)) s.mine++;
+            if (ps.some(p => p.changed)) s.changed++;
+        });
+        return s;
+    }
+
+    // ── Recording a purchase ────────────────────────────────────────
+
+    // What a line will cover — a preview of pur_cover_lines for a line
+    // linked to a request with `still` left to buy (for this buyer).
+    // countsDirectly = same unit as the request and not a substitute;
+    // otherwise it waits for an office check.
+    function coverPreview(still, quantity, countsDirectly) {
+        const q = Number(quantity) || 0;
+        const s = Math.max(0, Number(still) || 0);
+        if (!countsDirectly) return { covers: 0, extra: 0, unitCheck: true };
+        return { covers: round3(Math.min(q, s)), extra: round3(Math.max(0, q - s)), unitCheck: false };
+    }
+
+    // Picked portions are the ONLY ones a line covers (0097, review 16 Oct):
+    // what they can still take — each pick up to its portion's Still to buy.
+    function pickedStill(portions, picks) {
+        const byId = {};
+        (portions || []).forEach(p => { byId[p.id] = p; });
+        return round3((picks || []).reduce((s, k) => {
+            const p = byId[k.portionId];
+            return s + (p ? Math.min(Math.max(0, Number(k.quantity) || 0), Math.max(0, Number(p.still_to_buy) || 0)) : 0);
+        }, 0));
+    }
+
+    // The Still to buy a line's preview uses: its picks when it has any
+    // (and the portions are known), otherwise everything this buyer may cover.
+    function lineStill(l) {
+        const picks = (l.portionPicks || []).filter(k => Number(k.quantity) > 0);
+        return picks.length && l.portions ? pickedStill(l.portions, picks) : (Number(l.still) || 0);
+    }
+
+    // The portions a batch-filtered list shows for a line, as the picks a
+    // purchase from that list covers: the ones this buyer may cover (own or
+    // unassigned; the owner: all), each at its Still to buy, in list order.
+    // Picks are authoritative on the server, so it covers exactly these.
+    function defaultPicks(portions, me) {
+        return (portions || [])
+            .filter(p => (me.isOwner || !p.buyer_id || p.buyer_id === me.userId) && Number(p.still_to_buy) > 0)
+            .map(p => ({ portionId: p.id, quantity: Number(p.still_to_buy) }));
+    }
+
+    // A request line's own words, to tell a renamed item from the request.
+    const norm = (s) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+    // Same unit and not marked a substitute: the line counts toward Bought at once.
+    function countsDirectly(l) {
+        return sameUnit(l.unit, l.requestUnit) && l.match !== 'substitute';
+    }
+
+    // Receipt photos to upload on save: every selected file not yet uploaded
+    // AS THAT FILE — a replacement chosen after an earlier upload goes up too
+    // (it used to be skipped because a URL was already there).
+    // The receipt photos a stored purchase already has (non-empty text, the
+    // four known slots only). A correction that changes the number of lines
+    // is a replacement purchase, which takes its photos from the body alone.
+    function storedDocs(docs) {
+        const out = {};
+        ['po_image_url', 'delivery_receipt_url', 'supplier_invoice_url', 'payment_receipt_url'].forEach(k => {
+            const v = docs && docs[k];
+            if (typeof v === 'string' && v) out[k] = v;
+        });
+        return out;
+    }
+
+    function docUploads(files, uploaded) {
+        return Object.keys(files || {}).filter(k => files[k] && !(uploaded && uploaded[k] && uploaded[k].file === files[k]));
+    }
+
+    // The server's default charge split (pur_prorate): each share rounded
+    // DOWN to the centavo, then the left-over centavos one each to the
+    // biggest remainders, the earliest line on a tie. Always adds up.
+    function prorate(total, weights) {
+        const n = (weights || []).length;
+        if (!n) return [];
+        const ws = weights.map(w => Math.max(Number(w) || 0, 0));
+        let sum = ws.reduce((a, b) => a + b, 0);
+        if (sum <= 0) return prorate(total, ws.map(() => 1));
+        const cents = Math.round(total * 100);
+        const exact = ws.map(w => cents * w / sum);
+        const out = exact.map(x => Math.floor(x + 1e-9));
+        let left = cents - out.reduce((a, b) => a + b, 0);
+        const order = exact.map((x, i) => ({ i, r: x - Math.floor(x + 1e-9) })).sort((a, b) => (b.r - a.r) || (a.i - b.i));
+        for (let k = 0; k < order.length && left > 0; k++, left--) out[order[k].i] += 1;
+        return out.map(c => c / 100);
+    }
+
+    function receiptTotal(lines, charges) {
+        const items = (lines || []).reduce((s, l) => s + (Number(l.amount) || 0), 0);
+        const fees = (charges || []).filter(c => c.kind === 'delivery_fee').reduce((s, c) => s + (Number(c.amount) || 0), 0);
+        const disc = (charges || []).filter(c => c.kind === 'discount').reduce((s, c) => s + (Number(c.amount) || 0), 0);
+        return round2(items + fees - disc);
+    }
+
+    // The pur_record / pur_correct / pur_replace body from the form state.
+    function buildBody(st) {
+        const lines = (st.lines || []).map(l => {
+            const out = {
+                destination: l.destination || 'project',
+                folder_id: l.destination === 'warehouse' ? null : l.folderId,
+                item_name: String(l.itemName || '').trim(),
+                category: l.category || '',
+                quantity: round3(l.quantity),
+                unit: String(l.unit || '').trim(),
+                amount: round2(l.amount),
+                in_inventory: !!l.inInventory,
+                min_stock: 0,
+            };
+            if (l.requestLineId) {
+                out.request_line_id = l.requestLineId;
+                out.portion_picks = (l.portionPicks || []).filter(p => Number(p.quantity) > 0)
+                    .map(p => ({ portion_id: p.portionId, quantity: round3(p.quantity) }));
+                out.extra_reason = String(l.extraReason || '').trim();
+                out.extra_location = l.extraLocation || null;
+                out.substitute = l.match === 'substitute';
+                out.substitute_reason = out.substitute ? String(l.substituteReason || '').trim() : '';
+            } else {
+                out.request_line_id = null;
+                out.unplanned_reason = String(l.unplannedReason || '').trim();
+            }
+            return out;
+        });
+        const charges = (st.charges || []).map(c => {
+            const ch = { kind: c.kind, amount: round2(c.amount) };
+            if (c.shares && c.shares.length) ch.shares = c.shares.map((a, i) => ({ line: i + 1, amount: round2(a) }));
+            return ch;
+        });
+        const body = {
+            source: 'purchasing',
+            purchase_date: st.purchaseDate,
+            // A correction keeps the stored time of day while the date is unchanged.
+            date_time: st.dateTime && String(st.dateTime).slice(0, 10) === st.purchaseDate ? st.dateTime : st.purchaseDate,
+            supplier: String(st.supplier || '').trim(),
+            supplier_id: st.supplierId || null,
+            payment_method: String(st.paymentMethod || '').trim(),
+            notes: String(st.notes || '').trim(),
+            docs: st.docs || {},
+            receipt_total: receiptTotal(lines, charges),
+            lines,
+            charges,
+        };
+        if (st.boughtBy) body.bought_by = st.boughtBy;
+        return body;
+    }
+
+    // What the server would refuse, said before sending. [{ code, line }].
+    // still[i] = Still to buy for line i (linked lines only).
+    function formProblems(st) {
+        const out = [];
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(st.purchaseDate || ''))) out.push({ code: 'BAD_DATE' });
+        const lines = st.lines || [];
+        if (!lines.length || lines.length > 50) out.push({ code: 'BAD_LINES' });
+        lines.forEach((l, i) => {
+            const line = i + 1;
+            if (!String(l.itemName || '').trim()) out.push({ code: 'BAD_NAME', line });
+            if (!(Number(l.quantity) > 0)) out.push({ code: 'BAD_QUANTITY', line });
+            if (!(Number(l.amount) >= 0) || l.amount === null || l.amount === '') out.push({ code: 'BAD_AMOUNT', line });
+            if (l.destination !== 'warehouse' && !l.folderId) out.push({ code: 'BAD_PROJECT', line });
+            if (l.requestLineId) {
+                const pv = coverPreview(lineStill(l), l.quantity, countsDirectly(l));
+                // A correction whose quantity did not rise gets the server's own reason.
+                const keepsQty = l.origQuantity != null && Number(l.quantity) <= Number(l.origQuantity);
+                if (pv.extra > 0 && !keepsQty && (!String(l.extraReason || '').trim() || !l.extraLocation)) out.push({ code: 'EXTRA_REASON_REQUIRED', line });
+                // An item named differently from its request is either the same
+                // thing in other words or a substitute — the buyer says which.
+                if ((l.match || 'same') === 'same' && l.requestName && norm(l.itemName) !== norm(l.requestName)) out.push({ code: 'NAME_DIFFERS', line });
+                if (l.match === 'substitute' && !String(l.substituteReason || '').trim()) out.push({ code: 'SUBSTITUTE_REASON_REQUIRED', line });
+            } else if (!String(l.unplannedReason || '').trim()) {
+                out.push({ code: 'UNPLANNED_REASON_REQUIRED', line });
+            }
+        });
+        (st.charges || []).forEach((c, i) => {
+            if (!(Number(c.amount) > 0)) out.push({ code: 'BAD_AMOUNT', charge: i + 1 });
+            if (c.shares && c.shares.length && round2(c.shares.reduce((a, b) => a + (Number(b) || 0), 0)) !== round2(c.amount)) {
+                out.push({ code: 'SPLIT_MISMATCH', charge: i + 1 });
+            }
+        });
+        return out;
+    }
+
+    // ── Purchases ───────────────────────────────────────────────────
+
+    const HISTORY_LABEL = {
+        recorded: 'Recorded', corrected: 'Corrected', refunded: 'Billing periods re-checked',
+        voided: 'Voided', replaced: 'Replaced by a new version', unit_checked: 'Office check (different unit or substitute)',
+    };
+    const REQUEST_STATUS = {
+        pending: 'Waiting for the owner', approved: 'Approved', rejected: 'Rejected',
+        withdrawn: 'Withdrawn', stale: 'Out of date — the purchase changed',
+    };
+
+    function purchaseFlags(p) {
+        const f = [];
+        if (p.status === 'void') f.push({ text: 'Void', tone: 'hidden' });
+        if (p.pending_change) f.push({ text: 'Owner approval pending', tone: 'working' });
+        if (p.unit_check) f.push({ text: 'Unit check', tone: 'abandoned' });
+        if (p.needs_review) f.push({ text: 'Office review', tone: 'working' });
+        if (p.extra) f.push({ text: 'Extra', tone: 'pc' });
+        if (p.unplanned) f.push({ text: 'Unplanned', tone: 'pc' });
+        return f;
+    }
+
+    // Changes the server keeps for the owner (staff then get "send to the owner").
+    function needsOwner(error) {
+        return /OWNER_APPROVAL_NEEDED|COMPLETED_PROJECT/.test(String((error && (error.message || error)) || ''));
+    }
+
+    // ── Owner approvals: the whole change, field by field ──────────
+    //
+    // base / proposed are pur_review_doc documents (0097): the purchase as
+    // the staff member saw it, and as it would be after approval. One row
+    // per header field, per line field and per fee or discount (amount and
+    // split) — every field, changed or not, so nothing the owner approves is
+    // hidden. fmtCutoff turns a weekly cutoff into words (the browser passes
+    // RequestsAdmin.cutoffLabel).
+    function changeRows(base, proposed, fmtCutoff) {
+        const day = fmtCutoff || (x => String(x || '').slice(0, 10));
+        const b = base || {}, p = proposed || {};
+        const rows = [];
+        const add = (group, label, x, y) => rows.push({ group, label, before: x, after: y, changed: x !== y });
+        const receipts = d => Object.keys(d.receipts || {}).sort().map(k => k.replace(/_url$/, '').replace(/_/g, ' ') + ' #' + d.receipts[k]).join(', ') || 'none';
+        add('Receipt', 'Date and time bought', String(b.date_time || b.purchase_date || ''), String(p.date_time || p.purchase_date || ''));
+        add('Receipt', 'Supplier', b.supplier || '—', p.supplier || '—');
+        // A body that leaves "bought by" out keeps the purchase's buyer.
+        add('Receipt', 'Bought by', b.bought_by || '—', p.bought_by || b.bought_by || '—');
+        add('Receipt', 'Paid by', b.payment_method || '—', p.payment_method || '—');
+        add('Receipt', 'Notes', b.notes || '—', p.notes || '—');
+        add('Receipt', 'Receipt total', peso(b.receipt_total), peso(p.receipt_total));
+        add('Receipt', 'Receipt photos', receipts(b), receipts(p));
+        const line = (l) => {
+            if (!l) return null;
+            const picks = (l.picks || []).map(k => qty(k.quantity) + ' from ' + (k.cutoff_at ? 'the ' + day(k.cutoff_at) + ' batch' + (k.buyer ? ' (held by ' + k.buyer + ')' : ' (unassigned)') : 'a portion no longer there')).join(', ');
+            return {
+                Item: l.item_name || '—',
+                Quantity: qty(l.quantity) + ' ' + (l.unit || ''),
+                Amount: peso(l.amount),
+                'Project / warehouse': l.where || '—',
+                Request: l.request ? l.request + (picks ? ' — picked: ' + picks : '') : (l.unplanned_reason ? 'Unplanned: ' + l.unplanned_reason : 'none'),
+                Extra: l.extra_reason ? l.extra_reason + ' (' + (l.extra_location === 'warehouse' ? 'warehouse' : 'same project') + ')' : '—',
+                Substitute: l.substitute ? 'Yes — ' + (l.substitute_reason || '') : 'No',
+                Category: l.category || '—',
+            };
+        };
+        const n = Math.max((b.lines || []).length, (p.lines || []).length);
+        for (let i = 0; i < n; i++) {
+            const x = line((b.lines || [])[i]), y = line((p.lines || [])[i]);
+            Object.keys(x || y).forEach(k => add('Line ' + (i + 1), k, x ? x[k] : '(no line)', y ? y[k] : '(removed)'));
+        }
+        const charge = (c) => c ? (c.kind === 'discount' ? 'Discount ' : 'Delivery fee ') + peso(c.amount) + ' — split ' +
+            (c.shares || []).map((s, k) => 'line ' + (k + 1) + ': ' + peso(s)).join(', ') : '(none)';
+        const m = Math.max((b.charges || []).length, (p.charges || []).length);
+        for (let i = 0; i < m; i++) add('Fees and discounts', 'Fee / discount ' + (i + 1), charge((b.charges || [])[i]), charge((p.charges || [])[i]));
+        return rows;
+    }
+
+    // ── Server error codes → sentences ─────────────────────────────
+
+    const ERRORS = {
+        BUYER_REQUIRED: 'This needs an account that may buy: the owner, or staff with the Buyer switch on. Linking a purchase to a request or picking its portions always does.',
+        NAME_DIFFERS: 'The item name differs from the request. Choose "Same item, other words", or "Substitute" if an important specification changed.',
+        SUBSTITUTE_REASON_REQUIRED: 'A substitute needs a reason (what changed and who agreed). It counts toward Bought after an office check.',
+        OWNER_ONLY: 'Only the owner can do this.',
+        NOT_STAFF: 'The Buyer switch is for your own staff accounts only.',
+        BAD_SWITCH: 'Choose on or off.',
+        BAD_BUYER: 'Pick someone who may buy (the owner or a staff member with the Buyer switch). Only the owner records a purchase for someone else.',
+        ASSIGNED_TO_OTHER: 'Another buyer is handling this. Ask the owner to reassign it.',
+        NOT_YOUR_PORTION: 'You can only release what you are buying yourself.',
+        NOTHING_TO_BUY: 'Nothing is left to buy here.',
+        BAD_QUANTITY: 'Enter a quantity above 0 (at most 3 decimals) and no more than what is left.',
+        BAD_NOTE: 'Keep the note to 300 characters.',
+        LINE_CLOSED: 'This item was cancelled. Reload the list.',
+        REDUCTION_PENDING: 'A reduction is waiting on this quantity. Resolve it in the request first.',
+        BOUGHT: 'Something was already bought for this quantity, so it stays in its weekly batch.',
+        BAD_REQUEST_LINK: 'A purchase line must go to the same project and work (Main Contract or Additional Works) as its request.',
+        BAD_PORTION: 'That part of the request is no longer available. Reload the list.',
+        BAD_DOCS: 'A receipt photo link is not valid — attach the photo again.',
+        EXTRA_REASON_REQUIRED: 'You bought more than is still needed. Say why (pack size, spare, cheaper in bulk) and where the extra goes.',
+        BAD_EXTRA: 'The extra goes to the same project or to the warehouse.',
+        UNPLANNED_REASON_REQUIRED: 'A purchase with no request needs a reason.',
+        BAD_SUPPLIER: 'Give the supplier a name (branch and contact are optional).',
+        DUPLICATE_SUPPLIER: 'This supplier and branch are already on the list.',
+        OWN_PURCHASE: 'Someone else must check a purchase you bought or recorded yourself.',
+        NO_UNIT_CHECK: 'This line has nothing to check. Reload the purchase.',
+        MORE_THAN_NEEDED: 'That is more than the request still needs. Enter what this purchase really covers.',
+        OWNER_APPROVAL_NEEDED: 'Moving a cost to another project needs the owner. You can send it for approval.',
+        COMPLETED_PROJECT: 'This project is marked completed — only the owner can change its costs. You can send it for approval.',
+        OWNER_CAN_DO_IT: 'You are the owner — make the change directly.',
+        ALREADY_PENDING: 'A change to this purchase is already waiting for the owner.',
+        NOT_PENDING: 'This request was already decided. Reload the page.',
+        BAD_KIND: 'Choose correct, replace or void.',
+        BAD_DECISION: 'Choose approve or reject.',
+        LINES_CHANGED: 'A correction keeps the same number of lines. To add or remove a line, use Replace.',
+        TOTAL_MISMATCH: 'The lines, fees and discounts do not add up to the receipt total.',
+        SPLIT_MISMATCH: 'A fee or discount split must add up to the fee or discount exactly.',
+        DISCOUNT_TOO_LARGE: 'A discount cannot be larger than the line it applies to.',
+        BAD_DATE: 'Enter the date the goods were actually bought.',
+        BAD_AMOUNT: 'Check the amounts (pesos and centavos only).',
+        BAD_NAME: 'Give every line an item name.',
+        BAD_LINES: 'A purchase has 1 to 50 lines. Check the reasons (300 characters at most).',
+        BAD_CHARGES: 'Check the fees and discounts.',
+        BAD_PROJECT: 'Pick a project and its work, or the warehouse.',
+        BAD_DESTINATION: 'Pick a project and its work, or the warehouse.',
+        AW_NO_PERIOD: 'This Additional Works job has no billing period yet.',
+        REASON_REQUIRED: 'Write a short reason. It is kept in the history.',
+        NOT_FOUND: 'This record no longer exists or belongs to another company. Reload the page.',
+        BAD_STATE: 'This purchase was already voided or replaced. Reload the page.',
+        NOT_OFFICE: 'Only office accounts can do this.',
+        NOT_ALLOWED: 'This account is not set up for Expenses.',
+        PGRST202: 'The server is not updated for the Purchasing tab yet (migration 0097). Nothing was changed.',
+    };
+
+    function errorMessage(error) {
+        const text = String((error && (error.message || error.code || error.error_description)) || (typeof error === 'string' ? error : '') || '');
+        if (error && error.code === 'PGRST202') return ERRORS.PGRST202;
+        for (const code of Object.keys(ERRORS)) {
+            if (new RegExp('(^|[^A-Z_])' + code + '($|[^A-Z_])').test(text)) {
+                return ERRORS[code] + (code === 'EXTRA_REASON_REQUIRED' && error && error.hint ? ' (' + error.hint + ')' : '');
+            }
+        }
+        return 'Something went wrong: ' + (text || 'unknown error');
+    }
+
+    const pure = { round2, round3, peso, qty, parseMoney, parseQty, sameUnit, portionActions, buyerLabel, filterList,
+                   listSummary, coverPreview, pickedStill, lineStill, defaultPicks, countsDirectly, docUploads, storedDocs, prorate, receiptTotal,
+                   buildBody, formProblems, HISTORY_LABEL, REQUEST_STATUS, purchaseFlags, needsOwner, changeRows, ERRORS,
+                   errorMessage };
+
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = pure;
+        return;
+    }
+
+    // ── Browser helpers (Requests' own: esc, rpc, modal, head …) ────
+
+    const RA = root.RequestsAdmin;
+    const state = { me: null, purchaseId: null };
+
+    async function me() {
+        if (!state.me) {
+            const data = await RA.rpc('pur_me');
+            state.me = { userId: data && data.user_id, isOwner: !!(data && data.is_owner), canBuy: !!(data && data.can_buy) };
+        }
+        return state.me;
+    }
+
+    function openPurchase(id) {
+        state.purchaseId = id;
+        root.switchView('reqPurchase');
+    }
+
+    // A refusal from the server, in words, in a one-button box.
+    function notice(error, title) {
+        const plain = typeof error === 'string' && !/^[A-Z][A-Z_]+$/.test(error);
+        RA.modal({ title: title || 'Not done', body: '<p>' + RA.esc(plain ? error : errorMessage(error)) + '</p>', submitLabel: 'OK', onSubmit: () => {} });
+    }
+
+    function pill(text, tone) {
+        return '<span class="att-pill att-pill--' + tone + '">' + RA.esc(text) + '</span>';
+    }
+
+    root.PurchasingAdmin = Object.assign({}, pure, { me, openPurchase, pill, notice, state });
+})(typeof window !== 'undefined' ? window : globalThis);

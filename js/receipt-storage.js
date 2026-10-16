@@ -4,11 +4,13 @@
 // 2026-10-08-receipt-photos-storage-design.md). The row stores the public-
 // FORMAT URL; supabase-config.js §11b signs it wherever the page shows it.
 // Separate print windows don't run §11b, so their HTML goes through signHtml.
-// Access (migration 0089): owner/staff of the company in path segment 2 only.
+// Access (migration 0089): owner/staff of the company in path segment 2 only;
+// purchases/ (0097): only those who may buy in that company.
 // ════════════════════════════════════════════════════════════════════
 (function (root) {
   'use strict';
-  const FOLDER = { expense: 'expenseReceipts', payroll: 'payrollReceipts' };
+  // 'purchase' (0097): one receipt for a whole purchase — buyers of the company only.
+  const FOLDER = { expense: 'expenseReceipts', payroll: 'payrollReceipts', purchase: 'purchases' };
   const PUB_RE = /\/storage\/v1\/object\/public\/uploads\/([^?#"'\s<>)]+)/;
   const PUB_RE_G = /https?:\/\/[^"'\s<>)]*\/storage\/v1\/object\/public\/uploads\/[^"'\s<>)]+/g;
 

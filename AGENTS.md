@@ -83,6 +83,20 @@ Profit   = Earned − Spent
   projects or from warehouse stock is **main owner only**. Workers and team leaders never see
   prices, receipts or payments. (Approved 2026-10-14; spec
   `docs/superpowers/specs/2026-09-30-workmate-mobile-purchasing-design.md`.)
+- **Buying a request (0097).** The Buyer switch is `pur_buyers`, set by the main owner only;
+  who may buy is the server's `pur_buyer()` (owner / admin allowed Expenses / Buyer staff, own
+  company). **Bought is never a counter**: `purchase_line_covers` is rebuilt from the stored
+  purchase lines by `pur_cover_lines` on every record / correct / replace / void, and only
+  recorded purchases count — so Still to buy is never negative. Actual quantity, quantity
+  covering the request and extras stay separate; a different unit counts only after an
+  audited office check (`pur_check_unit`). An extra's location (project / warehouse) never
+  moves its cost — cost moves are Stage 2C (owner-confirmed cost moves), main owner only. Purchase receipts live in the
+  buyer-only `purchases/` storage folder and are never given a signed link.
+  Linking a purchase to a request needs the Buyer switch **whatever the source**; picked
+  portions are the only ones covered, and a correction keeps the portions a line covered
+  and the quantity of each; a portion newly picked in a correction is checked like a new one.
+  Purchase rows are readable by buyers only — Project Control reads its one line through
+  `pur_entry_row`; never add a direct purchase-table read for staff.
 - **Petty cash, personal advances, supplier refunds and supplier credits stay outside Spent,
   Earned and Profit.** Issuing, returning or repaying that money never creates an expense.
   Project purchase costs enter Material/Spent once, after server acceptance through the shared

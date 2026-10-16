@@ -17,6 +17,11 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.DACS_ROOT || path.join(HERE, '..', '..');
 const MIG = process.env.DACS_0096 || path.join(ROOT, 'supabase/migrations/0096_purchase_recording.sql');
 const read = (p) => fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
+// --with-0097: the same tests with 2A-2's migration applied on top — 0097
+// must not change how a purchase is recorded, funded, corrected or voided.
+const WITH_0097 = process.argv.includes('--with-0097');
+const PR_BASE = WITH_0097 ? (await import('./pr_base.mjs')).prBase(ROOT) : '';
+const M97 = WITH_0097 ? read(path.join(ROOT, 'supabase/migrations/0097_purchasing_office.sql')) : '';
 const fnText = (src, name) => {
   const m = src.match(new RegExp('create or replace function ' + name + '\\s*\\([\\s\\S]*?\\n\\$\\$;', 'i'));
   if (!m) throw new Error('function ' + name + ' not found');
@@ -87,6 +92,7 @@ async function fresh() {
   const db = new PGlite();
   await db.exec(BASE);
   await db.exec(read(MIG));
+  if (WITH_0097) { await db.exec(PR_BASE); await db.exec(M97); }
   await db.exec(`insert into profiles values
     ('${OWNER}', 'owner', null, 'active', null), ('${STAFF}', 'staff', '${OWNER}', 'active', null),
     ('${WORKER}', 'worker', '${OWNER}', 'active', null), ('${OTHER}', 'owner', null, 'active', null),
@@ -132,7 +138,7 @@ async function code(promise) {
   try { await promise; return 'no error'; } catch (e) { return e.message; }
 }
 
-console.log('\n2A-1 purchase recording (0096 on PGlite)');
+console.log('\n2A-1 purchase recording (0096' + (WITH_0097 ? ' + 0097' : '') + ' on PGlite)');
 
 await test('§3.3 example: ₱8,000 on 14 Oct → ₱3,000 + ₱4,000 + ₱1,000 Cover (earliest billing number first)', async () => {
   const db = await fresh(); await as(db, OWNER);
@@ -519,7 +525,7 @@ await test('Expenses access only: a PM-focused account is refused; phone purchas
   assert((await code(record(db, body([{ folder_id: f, item_name: 'x', amount: 1 }])))).includes('NOT_ALLOWED'), 'PM-only refused');
   await as(db, EXPSTAFF);
   await record(db, body([{ folder_id: f, item_name: 'x', amount: 1 }]));
-  await as(db, OWNER);
+  // A staff account allowed Expenses but without the Buyer switch (2A-2).
   assert((await code(record(db, body([{ folder_id: f, item_name: 'x', amount: 1 }], { source: 'workmate' })))).includes('BUYER_REQUIRED'), 'workmate refused');
 });
 
@@ -621,9 +627,13 @@ await test('reading purchases needs the same access as recording them: PM-only s
     await db.exec('reset role');
     return Object.values(n).join(',');
   };
+  // 0097 narrows this (review R3): purchase rows are read by those who may
+  // BUY — the owner and staff with the Buyer switch. Other staff keep
+  // Project Control's entry through pur_entry_row, and read no table.
+  if (WITH_0097) { await as(db, OWNER); await db.query(`select pur_set_buyer($1, true)`, [EXPSTAFF]); }
   eq(await seen(OWNER), '1,1,1,1,1');
   eq(await seen(EXPSTAFF), '1,1,1,1,1');
-  eq(await seen(STAFF), '1,1,1,1,1');
+  eq(await seen(STAFF), WITH_0097 ? '0,0,0,0,0' : '1,1,1,1,1', WITH_0097 ? 'staff without the Buyer switch read nothing (0097)' : 'staff');
   eq(await seen(PMONLY), '0,0,0,0,0', 'a PM-only account must read nothing');
   eq(await seen(WORKER), '0,0,0,0,0');
   eq(await seen(OTHER), '0,0,0,0,0', 'another company reads nothing');

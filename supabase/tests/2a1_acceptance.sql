@@ -68,6 +68,19 @@ begin
   perform set_config('v2a1.paw', v_paw::text, true);
 end $$;
 
+-- 0097 (2A-2, review R3) lets only those who may BUY read purchase rows.
+-- This script reads them to check its own results, so where 0097 is applied
+-- its staff account gets the Buyer switch for this rolled-back transaction.
+-- Recording from the Expenses form works the same either way (0096).
+do $$
+begin
+  if to_regclass('public.pur_buyers') is not null then
+    execute 'insert into pur_buyers (user_id, owner_id, is_buyer, updated_by) values ($1, $2, true, $2)
+             on conflict (user_id) do update set is_buyer = true'
+      using current_setting('v2a1.staff')::uuid, current_setting('v2a1.owner')::uuid;
+  end if;
+end $$;
+
 set local role authenticated;
 
 -- ═══ A. The §3.3 example, recorded by STAFF (B: budgets they cannot read) ═══
@@ -210,6 +223,15 @@ begin
 end $$;
 
 -- ═══ I. Phone purchasing needs the Buyer switch (2A-2) ═══
+-- (with 0097: the switch given above is off for this check, then back on)
+reset role;
+do $$
+begin
+  if to_regclass('public.pur_buyers') is not null then
+    execute 'update pur_buyers set is_buyer = false where user_id = $1' using current_setting('v2a1.staff')::uuid;
+  end if;
+end $$;
+set local role authenticated;
 do $$
 begin
   begin
@@ -220,6 +242,14 @@ begin
     assert sqlerrm like '%BUYER_REQUIRED%', 'I1 wrong error: ' || sqlerrm;
   end;
 end $$;
+reset role;
+do $$
+begin
+  if to_regclass('public.pur_buyers') is not null then
+    execute 'update pur_buyers set is_buyer = true where user_id = $1' using current_setting('v2a1.staff')::uuid;
+  end if;
+end $$;
+set local role authenticated;
 
 -- ═══ J. Stock: added inside the purchase, once — a retry adds nothing ═══
 do $$

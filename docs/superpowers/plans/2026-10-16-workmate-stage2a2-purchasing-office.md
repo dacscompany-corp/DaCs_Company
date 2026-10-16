@@ -8,6 +8,8 @@
 
 **Revision 2 (16 Oct 2026)** answers the review of revision 1 — five findings and three rulings. See **Review response** below; every fix has a regression test that fails on revision 1.
 
+**Revision 3 (16 Oct 2026)** answers the second review — two more coverage gaps. See **Re-review response**; both have regression tests that fail on revision 2.
+
 **Tech Stack:** PostgreSQL / Supabase (plpgsql, RLS, Storage policies), vanilla JS (no build step), Node test scripts (zero-dependency `npm test`; `npm run test:sql` = PGlite + embedded-postgres in `supabase/tests` only).
 
 **Spec:** `docs/superpowers/specs/2026-09-30-workmate-mobile-purchasing-design.md` (Buyer assignment, Partial buying, One receipt across projects, Office side). Answers: `docs/superpowers/specs/2026-10-16-workmate-stage2a2-questions.md` (Q1–Q14 + six rules, 16 Oct 2026). Base: 2A-1 as built — `docs/superpowers/plans/2026-10-14-workmate-stage2a1-purchase-recording.md`.
@@ -32,6 +34,15 @@ Also found and fixed while proving the above (none was in the review):
 - **The rev 1 live acceptance script could not pass**: it called `pr_line_bought()` as a signed-in user, but 0097 revokes that helper from them (`permission denied`). It now reads Bought the way a buyer does, from `pur_shopping_list`.
 - **Stale caches**: rev 1 changed `js/admin.js` and `js/expenses-module.js` without bumping their `?v=` in `admin.html` (the file warns a stale `admin.js` hides new tabs). Bumped, with `supabase-config.js`; a wiring test now checks it.
 - **Line endings**: `docs/DATABASE_SCHEMA.md` and `supabase/migrations/README.md` are stored with **CRLF** in the repo; every other file the plan touches is LF. Apply those two patches with the Edit tool (or convert the patch), keeping the files' CRLF endings — a plain `git apply` refuses them.
+
+## Re-review response (revision 3, 16 Oct 2026)
+
+The second review ran 38 database and 44 server/web checks (all passed; revision 1's four database failures now pass) and found two more scenarios. Both lived in `pur_cover_lines`; both are fixed there.
+
+| # | Finding | Fix | Regression tests |
+|---|---|---|---|
+| 1 | A price correction still moved quantities between weeks: a purchase covering 4 from week 1 + 4 from week 2 became 8 + 0 after an earlier purchase was voided — history kept *which* portions, not *how much* of each. | History now keeps each portion's **quantity** as well as its identity: a correction, replacement or unit check covers each earlier portion again **at most the quantity it covered before**. Room freed since (a voided purchase, a released reduction) never pulls coverage from one week to another. Only quantity the change ADDS is looked for elsewhere — through the usual order, or (unchanged picks) more of the picked portions up to each pick. | 2a2 *re-review 1* (correction, replacement, then +2 from week 1 with week 2 unchanged); static *re-review*; mutation 9 |
+| 2 | A buyer could consume another buyer's assignment through a correction: recording checked ownership, but editing a purchase's picks skipped the check whenever the line had history (a gap revision 2 introduced). | Picks are "new" when they differ from the line's history; a picked portion the line **did not cover before** is a new choice and gets the same check as when recording — never another buyer's (the owner may cover it without taking it over). Portions the line already covered stay coverable. The same check guards quantity added to unchanged picks. | 2a2 *re-review 2* (record, correct and replace all refused; the owner may); static *re-review*; acceptance RR2; mutation 10 |
 
 ## Global Constraints
 
@@ -81,7 +92,7 @@ From CLAUDE.md (unchanged by this plan):
 | R2 | "Main owner" = an owner account acting on **its own** staff (`is_owner()` and `staff.owner_id = auth.uid()`). An admin account such as `admin-pm@` is its own data scope (`data_owner_id()` = itself), so it can never touch the main company's switch, portions or purchases. | Matches every other owner check (0074, 0096) and the live roles (checked 16 Oct). | None. |
 | R3 | **Revised after review.** `pur_reader()` (0096) is narrowed to `pur_buyer()`: purchase rows are read only by those who may buy. Project Control's staff entry reads exactly what its Edit form needs through `pur_entry_row(line, charge)` — the one line, its purchase header, line and charge counts — and the review marks through `pur_review_lines()` (ids). | Unrestricted reads are not approved just to support an Edit form (review). Staff keep the approved data-entry exception and see nothing more. | The 2A-1 live acceptance reads purchase rows as staff to check itself; it now gives its staff account the switch inside its rolled-back transaction (Task 1). |
 | R4 | Covers are per portion and keep `request_line_id`; a portion the office later removes sets `portion_id` null (the line's Bought stays right). A void keeps its covers as history; readers count recorded purchases only. | Bought can never drift from the purchases (rule 5). | None. |
-| R5 | **Revised after review.** Picked portions are **authoritative**: a picked line covers only its picks, each at most its pick and its Still to buy — the rest is extra. Without picks: the buyer's own, then unassigned (the buyer then holds them — "I'll buy this" by buying), then — owner only — other buyers' portions (without taking them over); earliest batch first. A line's earlier covers are its **history**: a correction, replacement or unit check covers them first, in their old order, and covers other portions only for quantity it ADDS. A new request link, new picks or handing an unassigned portion over need someone who may buy, for a buyer who may buy — whatever the source. | Rule 2: exact portions, automatic where possible; a price fix never moves coverage to another week; the Buyer switch cannot be bypassed through the Expenses form (review). | None. |
+| R5 | **Revised after review.** Picked portions are **authoritative**: a picked line covers only its picks, each at most its pick and its Still to buy — the rest is extra. Without picks: the buyer's own, then unassigned (the buyer then holds them — "I'll buy this" by buying), then — owner only — other buyers' portions (without taking them over); earliest batch first. A line's earlier covers are its **history**: a correction, replacement or unit check covers them first, in their old order and **at most the same quantity of each**, and covers other portions only for quantity it ADDS. A portion picked in a correction that the line did not cover before is checked exactly as when recording. A new request link, new picks or handing an unassigned portion over need someone who may buy, for a buyer who may buy — whatever the source. | Rule 2: exact portions, automatic where possible; a price fix never moves coverage to another week; the Buyer switch cannot be bypassed through the Expenses form (review). | None. |
 | R6 | Extra needs reason + location when recording or replacing, or when a change **raises** what a line counts toward its request. A change that does not (e.g. a price fix after the request was reduced) gets the system reason "The request was reduced after this was bought". | Never ask someone fixing a price for a buying reason they never had; never invent a buyer's reason either. | None. |
 | R7 | An office check (different unit, or substitute — R14) is made by the owner or a buyer who neither recorded nor bought the purchase; it survives a correction or replacement only while the line's request, item, unit, quantity and substitute mark stay the same; it cannot cover more than is still needed (`MORE_THAN_NEEDED`); it counts as a change to the purchase (`updated_at`). | "Audited office confirmation" (rule 3). | None. |
 | R8 | A Buyer may claim an unassigned portion, give an unassigned portion to another buyer, release their own; the owner may do anything. Handing over a partly bought portion splits off its still-to-buy part; the bought part stays with whoever bought it. | Q4/Q5, rule 2. | None. |
@@ -101,12 +112,12 @@ From CLAUDE.md (unchanged by this plan):
 |---|---|---|
 | `supabase/migrations/0097_purchasing_office.sql` | 1 | The whole server side (tables, rules, RPCs, storage) |
 | `supabase/tests/pr_base.mjs` | 1 | Minimal Requests tables + lifted helpers for PGlite / PostgreSQL tests |
-| `supabase/tests/2a2_purchasing.pglite.mjs` | 1 | 34 behaviour tests on PGlite |
+| `supabase/tests/2a2_purchasing.pglite.mjs` | 1 | 44 behaviour tests on PGlite |
 | `supabase/tests/2a2_concurrency.mjs` | 1 | 5 two-session races on a throwaway PostgreSQL |
 | `supabase/tests/2a2_acceptance.sql` | 1 | Live acceptance, self-rolling-back |
 | `supabase/tests/2a1_acceptance.sql` | 1 | Its staff account gets the Buyer switch inside its own rolled-back run (R3) |
 | `supabase/tests/2a1_purchase.pglite.mjs` | 1 | `--with-0097`: the 45 2A-1 tests with 0097 on top |
-| `tests/purchasing-server.test.js` | 1 | 20 static checks on 0097 |
+| `tests/purchasing-server.test.js` | 1 | 23 static checks on 0097 |
 | `tests/storage-access.test.js` | 1 | `purchases` folder class + rule check |
 | `supabase/migrations/README.md`, `package.json` (part 1) | 1 | 0097 entry, next number 0098; test scripts |
 | `js/purchasing-admin-core.js`, `-list.js`, `-record.js`, `-purchases.js`, `css/purchasing-admin.css` | 2 | The Purchasing tab |
@@ -115,7 +126,7 @@ From CLAUDE.md (unchanged by this plan):
 | `js/user-navigator.js` | 2 | The Buyer switch |
 | `js/expenses-module.js` | 2 | Project Control: "Send to the owner"; the purchase behind a row through `pur_entry_row` |
 | `js/supabase-config.js` | 2 | `purchases/` receipts downloaded with the viewer's session, never signed (R13) |
-| `tests/purchasing-admin.test.js`, `package.json` (part 2) | 2 | 24 screen / wiring checks |
+| `tests/purchasing-admin.test.js`, `package.json` (part 2) | 2 | 33 screen / wiring checks |
 | `docs/DATABASE_SCHEMA.md`, `docs/ARCHITECTURE.md`, `CLAUDE.md`, `AGENTS.md`, `.github/workflows/ci.yml`, the questions doc | 3 | Documentation |
 
 ---
@@ -648,6 +659,62 @@ await test('review 2: a price fix, a unit check on another line or a replacement
   eq(await line1(rep.purchase_id), [[w2, 5], [r.portion, 2]], 'week 2 kept, the added 2 from week 1');
 });
 
+await test('re-review 1: a price fix keeps each week\'s QUANTITY — 4 + 4 stays 4 + 4 after an earlier purchase is voided', async () => {
+  // Week 1 needs 8, week 2 needs 4. An earlier purchase took 4 of week 1, so
+  // this one covered the other 4 of week 1 and 4 of week 2. Voiding the
+  // earlier one frees week 1; a price fix must not turn 4 + 4 into 8 + 0.
+  const db = await fresh();
+  const f = await folder(db, 'Barlin'); await period(db, f);
+  const r = await request(db, f, { quantity: 8 });
+  const next = (await one(db, `select pr_batch_for($1, now() + interval '8 days') b`, [OWNER])).b;
+  const w2 = (await one(db, `insert into pr_line_portions (owner_id, line_id, batch_id, quantity) values ($1, $2, $3, 4) returning id`, [OWNER, r.line, next])).id;
+  await as(db, BUYER);
+  const early = await record(db, body([{ folder_id: f, item_name: 'Cement', quantity: 4, amount: 1000, request_line_id: r.line }]));
+  const line = { folder_id: f, item_name: 'Cement', quantity: 8, amount: 2000, request_line_id: r.line };
+  const res = await record(db, body([line]));
+  const covers = async (pid) => (await all(db, `select c.portion_id, c.quantity from purchase_line_covers c join purchase_lines l on l.id = c.line_id
+                                                  join purchases pu on pu.id = l.purchase_id
+                                                 where l.purchase_id = $1 and pu.status = 'recorded' order by c.id`, [pid]))
+    .map(c => [c.portion_id, num(c.quantity)]);
+  eq(await covers(res.purchase_id), [[r.portion, 4], [w2, 4]], '4 + 4');
+  await db.query(`select pur_void($1, $2, 'duplicate')`, [op(), early.purchase_id]);
+  await db.query(`select pur_correct($1, $2, $3::jsonb, 'price')`, [op(), res.purchase_id, JSON.stringify(body([{ ...line, amount: 1950 }]))]);
+  eq(await covers(res.purchase_id), [[r.portion, 4], [w2, 4]], 'a price fix keeps 4 + 4');
+  eq((await portions(db, r.line)).map(p => p.bought), [4, 4], 'week 1 still has 4 to buy');
+  const rep = (await one(db, `select pur_replace($1, $2, $3::jsonb, 'new receipt') r`, [op(), res.purchase_id,
+    JSON.stringify(body([{ ...line, amount: 1950 }, { folder_id: f, item_name: 'Tape', amount: 20, unplanned_reason: 'r' }]))])).r;
+  eq(await covers(rep.purchase_id), [[r.portion, 4], [w2, 4]], 'and so does a replacement');
+  // Two more: added quantity follows the usual order (own portions, earliest week first).
+  await db.query(`select pur_correct($1, $2, $3::jsonb, 'two more')`, [op(), rep.purchase_id,
+    JSON.stringify(body([{ ...line, quantity: 10, amount: 2450 }, { folder_id: f, item_name: 'Tape', amount: 20, unplanned_reason: 'r' }]))]);
+  eq(await covers(rep.purchase_id), [[r.portion, 4], [w2, 4], [r.portion, 2]], 'the 2 added come from week 1; week 2 unchanged');
+});
+
+await test('re-review 2: a correction cannot pick another buyer\'s portion — recording and correcting check the same', async () => {
+  const db = await fresh();
+  const f = await folder(db, 'Barlin'); await period(db, f);
+  const r = await request(db, f, { quantity: 4 });
+  const next = (await one(db, `select pr_batch_for($1, now() + interval '8 days') b`, [OWNER])).b;
+  const w2 = (await one(db, `insert into pr_line_portions (owner_id, line_id, batch_id, quantity) values ($1, $2, $3, 6) returning id`, [OWNER, r.line, next])).id;
+  await as(db, OWNER); await db.query(`select pur_assign_portion($1, $2, null, null)`, [w2, BUYER2]);
+  await as(db, BUYER);
+  const line = { folder_id: f, item_name: 'Cement', quantity: 4, amount: 1000, request_line_id: r.line,
+                 portion_picks: [{ portion_id: r.portion, quantity: 4 }] };
+  const res = await record(db, body([line]));
+  const repick = body([{ ...line, quantity: 6, amount: 1500, portion_picks: [{ portion_id: r.portion, quantity: 4 }, { portion_id: w2, quantity: 2 }] }]);
+  assert((await code(record(db, repick))).includes('ASSIGNED_TO_OTHER'), 'recording refuses Pedro\'s portion');
+  assert((await code(db.query(`select pur_correct($1, $2, $3::jsonb, 'two more')`, [op(), res.purchase_id, JSON.stringify(repick)]))).includes('ASSIGNED_TO_OTHER'),
+    'so does a correction that newly picks it');
+  assert((await code(db.query(`select pur_replace($1, $2, $3::jsonb, 'two more')`, [op(), res.purchase_id,
+    JSON.stringify(body([repick.lines[0], { folder_id: f, item_name: 'Tape', amount: 20, unplanned_reason: 'r' }]))]))).includes('ASSIGNED_TO_OTHER'),
+    'and a replacement');
+  eq((await portions(db, r.line)).map(p => [p.bought, p.buyer]), [[4, BUYER], [0, BUYER2]], 'Pedro\'s portion untouched');
+  // The owner may cover it — without taking it over.
+  await as(db, OWNER);
+  await db.query(`select pur_correct($1, $2, $3::jsonb, 'two more')`, [op(), res.purchase_id, JSON.stringify(repick)]);
+  eq((await portions(db, r.line)).map(p => [p.bought, p.buyer]), [[4, BUYER], [2, BUYER2]], 'the owner covered 2, Pedro still holds it');
+});
+
 await test('R14: a substitute states why and covers nothing until someone else checks it', async () => {
   const db = await fresh();
   const f = await folder(db, 'Barlin'); await period(db, f);
@@ -982,6 +1049,166 @@ await test('purchase receipts: buyers of that company only — not non-buyer sta
   await db.query(`insert into receipt_uploads (path, owner_id, kind) values ($1, $2, 'purchase')`, [p, OWNER]);
 });
 
+// ── H. Fix round 1 ───────────────────────────────────────────────────
+
+await test('fix 1: a replacement keeps who bought and the supplier — whoever replaces it, whatever the body omits', async () => {
+  const db = await fresh();
+  const f = await folder(db, 'Barlin'); await period(db, f);
+  const r = await request(db, f, { quantity: 10 });
+  await as(db, OWNER);
+  const sup = (await one(db, `select pur_save_supplier(null, 'Wilcon', 'Cubao', '', true) s`)).s;
+  await as(db, BUYER);
+  const line = { folder_id: f, item_name: 'Cement', quantity: 10, amount: 2500, request_line_id: r.line };
+  const res = await record(db, body([line], { supplier_id: sup.id }));
+  // (a) Pedro replaces Juan's purchase; the body says nothing about who bought.
+  await as(db, BUYER2);
+  const rep = (await one(db, `select pur_replace($1, $2, $3::jsonb, 'price') r`, [op(), res.purchase_id, JSON.stringify(body([{ ...line, amount: 2400 }]))])).r;
+  const np = await one(db, `select bought_by, recorded_by, supplier_id from purchases where id = $1`, [rep.purchase_id]);
+  eq([np.bought_by, np.recorded_by, np.supplier_id], [BUYER, BUYER2, sup.id], 'Juan still bought it; Pedro recorded the change; the supplier stays (c)');
+  eq((await all(db, `select distinct c.buyer_id from purchase_line_covers c join purchase_lines l on l.id = c.line_id where l.purchase_id = $1`, [rep.purchase_id])).map(x => x.buyer_id),
+     [BUYER], 'every cover is still Juan\'s');
+  // (b) Sending the same buyer explicitly is accepted too.
+  const rep2 = (await one(db, `select pur_replace($1, $2, $3::jsonb, 'again') r`, [op(), rep.purchase_id,
+    JSON.stringify(body([{ ...line, amount: 2450 }], { bought_by: BUYER }))])).r;
+  eq((await one(db, `select bought_by from purchases where id = $1`, [rep2.purchase_id])).bought_by, BUYER, 'bought_by: Juan accepted');
+});
+
+await test('fix 1: the owner approving a staff replacement does not become the buyer', async () => {
+  const db = await fresh();
+  const f = await folder(db, 'Barlin'); await period(db, f);
+  const g = await folder(db, 'Prado'); await period(db, g);
+  await as(db, BUYER);
+  const res = await record(db, body([{ folder_id: f, item_name: 'Tape', amount: 100, unplanned_reason: 'r' }]));
+  await as(db, STAFF);
+  const moved = { ...body([{ folder_id: g, item_name: 'Tape', amount: 100 }]), source: 'expenses_form' };
+  const cr = (await one(db, `select pur_request_change($1, $2, 'replace', $3::jsonb, 'wrong site') r`, [op(), res.purchase_id, JSON.stringify(moved)])).r;
+  await as(db, OWNER);
+  const d = (await one(db, `select pur_decide_change($1, $2, true, null) r`, [op(), cr.request_id])).r;
+  eq(d.status, 'approved', 'approved');
+  const np = await one(db, `select bought_by, recorded_by from purchases where id = $1`, [d.result.purchase_id]);
+  eq([np.bought_by, np.recorded_by], [BUYER, OWNER], 'Juan bought it, the owner applied it');
+});
+
+await test('fix 2: non-buyers see a whole purchase only when it is one line without fees; their change request shows no base or current', async () => {
+  const db = await fresh();
+  const f = await folder(db, 'Barlin'); await period(db, f);
+  await as(db, BUYER);
+  const two = await record(db, body([{ folder_id: f, item_name: 'Tape', amount: 100, unplanned_reason: 'r' },
+                                     { folder_id: f, item_name: 'Nails', amount: 50, unplanned_reason: 'r' }], { supplier: 'Secret Supplier' }));
+  const one1 = await record(db, body([{ folder_id: f, item_name: 'Wire', amount: 30, unplanned_reason: 'r' }]));
+  const lineOf = async (p) => (await one(db, `select id from purchase_lines where purchase_id = $1 order by line_no limit 1`, [p])).id;
+  await as(db, STAFF);
+  const r2 = (await one(db, `select pur_entry_row($1, null) r`, [await lineOf(two.purchase_id)])).r;
+  eq(Object.keys(r2.purchase).sort(), ['id', 'status'], 'a two-line purchase: id and status only');
+  eq([num(r2.line_count), r2.line.item_name], [2, 'Tape'], 'the line and the counts stay');
+  assert(!JSON.stringify(r2).includes('Secret'), 'no supplier');
+  const r1 = (await one(db, `select pur_entry_row($1, null) r`, [await lineOf(one1.purchase_id)])).r;
+  eq([r1.purchase.supplier, num(r1.purchase.receipt_total)], ['Wilcon', 30], 'a one-line purchase keeps its header');
+  const cr = (await one(db, `select pur_request_change($1, $2, 'void', null, 'duplicate') r`, [op(), two.purchase_id])).r;
+  const mine = (await one(db, `select pur_change_requests('pending') l`)).l.find(x => x.id === cr.request_id);
+  eq([mine.base, mine.current], [null, null], 'the requester sees neither the stored purchase nor its present state');
+  await as(db, OWNER);
+  const seen = (await one(db, `select pur_change_requests('pending') l`)).l.find(x => x.id === cr.request_id);
+  eq([seen.base.lines.length, seen.current.lines.length], [2, 2], 'the owner sees both');
+});
+
+await test('fix 3: the owner sees whose portion a change picks', async () => {
+  const db = await fresh();
+  const f = await folder(db, 'Barlin'); await period(db, f);
+  const r = await request(db, f, { quantity: 10 });
+  await as(db, OWNER); await db.query(`select pur_assign_portion($1, $2, null, null)`, [r.portion, BUYER2]);
+  await as(db, BUYER);
+  const res = await record(db, body([{ folder_id: f, item_name: 'Tape', amount: 100, unplanned_reason: 'r' }]));
+  const asked = body([{ folder_id: f, item_name: 'Cement', quantity: 4, amount: 100, request_line_id: r.line,
+                        portion_picks: [{ portion_id: r.portion, quantity: 4 }] }]);
+  const cr = (await one(db, `select pur_request_change($1, $2, 'replace', $3::jsonb, 'it was cement') r`, [op(), res.purchase_id, JSON.stringify(asked)])).r;
+  await as(db, OWNER);
+  const req = (await one(db, `select pur_change_requests('pending') l`)).l.find(x => x.id === cr.request_id);
+  eq(req.proposed.lines[0].picks.map(p => [num(p.quantity), p.buyer]), [[4, 'Pedro']], 'Pedro holds it');
+});
+
+await test('fix 5: no NEW link to a cancelled line — a price fix on an already-linked one still works', async () => {
+  const db = await fresh();
+  const f = await folder(db, 'Barlin'); await period(db, f);
+  const r = await request(db, f, { quantity: 10 });
+  const r2 = await request(db, f, { quantity: 5, description: 'Sand', unit: 'cu.m' });
+  await as(db, BUYER);
+  const line = { folder_id: f, item_name: 'Cement', quantity: 4, amount: 1000, request_line_id: r.line };
+  const res = await record(db, body([line]));
+  await db.query(`update pr_lines set status = 'cancelled' where id = $1`, [r.line]);
+  await db.query(`update pr_lines set status = 'cancelled' where id = $1`, [r2.line]);
+  await db.query(`select pur_correct($1, $2, $3::jsonb, 'price')`, [op(), res.purchase_id, JSON.stringify(body([{ ...line, amount: 900 }]))]);
+  eq(await spent(db, f), 900, 'the price fix went through');
+  assert((await code(record(db, body([{ folder_id: f, item_name: 'Sand', quantity: 1, unit: 'cu.m', amount: 10, request_line_id: r2.line }])))).includes('LINE_CLOSED'),
+    'a new link to the cancelled line is refused');
+  await db.query(`update pr_lines set status = 'open' where id = $1`, [r2.line]);
+  await db.query(`update pr_requests set status = 'cancelled' where id = $1`, [r2.req]);
+  assert((await code(record(db, body([{ folder_id: f, item_name: 'Sand', quantity: 1, unit: 'cu.m', amount: 10, request_line_id: r2.line }])))).includes('LINE_CLOSED'),
+    'nor to a line of a cancelled request');
+});
+
+await test('fix 9: a replacement that puts a new line AHEAD of a linked one keeps the linked line on its old portion', async () => {
+  const db = await fresh();
+  const f = await folder(db, 'Barlin'); await period(db, f);
+  const r = await request(db, f, { quantity: 5 });
+  const next = (await one(db, `select pr_batch_for($1, now() + interval '8 days') b`, [OWNER])).b;
+  const w2 = (await one(db, `insert into pr_line_portions (owner_id, line_id, batch_id, quantity) values ($1, $2, $3, 5) returning id`, [OWNER, r.line, next])).id;
+  await as(db, OWNER); await db.query(`select pur_assign_portion($1, $2, null, null)`, [r.portion, BUYER2]);
+  await as(db, BUYER);
+  const cement = { folder_id: f, item_name: 'Cement', quantity: 5, amount: 1250, request_line_id: r.line };
+  const res = await record(db, body([cement]));     // week 1 is Pedro's, so this covers week 2
+  await as(db, OWNER); await db.query(`select pur_assign_portion($1, $2, null, 'Pedro is off')`, [r.portion, BUYER]);
+  const covered = async (pid) => (await all(db, `select c.portion_id, c.quantity from purchase_line_covers c join purchase_lines l on l.id = c.line_id
+                                                   where l.purchase_id = $1 order by c.id`, [pid])).map(c => [c.portion_id, num(c.quantity)]);
+  eq(await covered(res.purchase_id), [[w2, 5]], 'week 2 to begin with');
+  await as(db, BUYER);
+  const tape = { folder_id: f, item_name: 'Tape', amount: 20, unplanned_reason: 'r' };
+  const rep = (await one(db, `select pur_replace($1, $2, $3::jsonb, 'forgot the tape') r`, [op(), res.purchase_id, JSON.stringify(body([tape, { ...cement, amount: 1200 }]))])).r;
+  eq(await covered(rep.purchase_id), [[w2, 5]], 'the Cement line (now line 2) still covers week 2');
+  // Project Control (no switch) can do the same without being refused for "a new link".
+  await as(db, STAFF);
+  const nails = { folder_id: f, item_name: 'Nails', amount: 10 };
+  const rep2 = (await one(db, `select pur_replace($1, $2, $3::jsonb, 'forgot the nails') r`, [op(), rep.purchase_id,
+    JSON.stringify({ ...body([nails, tape, { ...cement, amount: 1200 }]), source: 'expenses_form' })])).r;
+  eq(await covered(rep2.purchase_id), [[w2, 5]], 'a non-buyer keeps it too, no BUYER_REQUIRED');
+});
+
+await test('fix 10: someone without the switch cannot unlink a request line; a buyer can (as Unplanned, with a reason)', async () => {
+  const db = await fresh();
+  const f = await folder(db, 'Barlin'); await period(db, f);
+  const r = await request(db, f, { quantity: 10 });
+  await as(db, BUYER);
+  const line = { folder_id: f, item_name: 'Cement', quantity: 4, amount: 1000, request_line_id: r.line };
+  const res = await record(db, body([line]));
+  const unlink = { ...body([{ ...line, request_line_id: null }]), source: 'expenses_form' };
+  await as(db, STAFF);
+  assert((await code(db.query(`select pur_correct($1, $2, $3::jsonb, 'x')`, [op(), res.purchase_id, JSON.stringify(unlink)]))).includes('BUYER_REQUIRED'), 'correct');
+  assert((await code(db.query(`select pur_request_change($1, $2, 'correct', $3::jsonb, 'x')`, [op(), res.purchase_id, JSON.stringify(unlink)]))).includes('BUYER_REQUIRED'), 'request a correction');
+  assert((await code(db.query(`select pur_request_change($1, $2, 'replace', $3::jsonb, 'x')`, [op(), res.purchase_id, JSON.stringify(unlink)]))).includes('BUYER_REQUIRED'), 'request a replacement');
+  assert((await code(db.query(`select pur_replace($1, $2, $3::jsonb, 'x')`, [op(), res.purchase_id, JSON.stringify(unlink)]))).includes('BUYER_REQUIRED'), 'replace');
+  await as(db, BUYER);
+  eq(num((await listLine(db, r.line)).bought), 4, 'the link and Bought are unchanged');
+  await db.query(`select pur_correct($1, $2, $3::jsonb, 'it was not for that request')`, [op(), res.purchase_id,
+    JSON.stringify(body([{ ...line, request_line_id: null, unplanned_reason: 'bought for the roof' }]))]);
+  eq(num((await listLine(db, r.line)).bought), 0, 'a buyer may unlink');
+});
+
+await test('final minor 6: a receipt link that is not https is refused on record and on correct; an uploads URL is kept', async () => {
+  const db = await fresh();
+  const f = await folder(db, 'Barlin'); await period(db, f);
+  await as(db, BUYER);
+  const line = { folder_id: f, item_name: 'Cement', quantity: 4, amount: 1000, unplanned_reason: 'roof' };
+  const evil = body([line], { docs: { po_image_url: 'javascript:alert(1)' } });
+  assert((await code(db.query(`select pur_record($1, $2::jsonb)`, [op(), JSON.stringify(evil)]))).includes('BAD_DOCS'), 'record');
+  const good = 'https://x.supabase.co/storage/v1/object/public/uploads/purchases/a.jpg';
+  const res = await record(db, body([line], { docs: { po_image_url: good, delivery_receipt_url: '' } }));
+  eq((await one(db, `select docs from purchases where id = $1`, [res.purchase_id])).docs.po_image_url, good, 'https kept; an empty value is not refused (stored as before)');
+  const bad = body([line], { docs: { payment_receipt_url: 'javascript:alert(1)' } });
+  assert((await code(db.query(`select pur_correct($1, $2, $3::jsonb, 'x')`, [op(), res.purchase_id, JSON.stringify(bad)]))).includes('BAD_DOCS'), 'correct');
+  assert((await code(db.query(`select pur_replace($1, $2, $3::jsonb, 'x')`, [op(), res.purchase_id, JSON.stringify(bad)]))).includes('BAD_DOCS'), 'replace');
+  await db.query(`select pur_correct($1, $2, $3::jsonb, 'new photo')`, [op(), res.purchase_id, JSON.stringify(body([line], { docs: { payment_receipt_url: good } }))]);
+});
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) { console.log('\nFAILURES:\n  ' + failures.join('\n  ')); process.exit(1); }
 ````
@@ -1160,9 +1387,14 @@ ${fnText(M94, 'pr_is_office')}`);
       const out = await pair(BUYER, REC, [buy(f, [{ quantity: 6, amount: 600, request_line_id: t.line }])],
                              OWNER, `select pr_office_change_quantity($1, 3, 'site has some') r`, [t.line]);
       if (deadlock(out)) dead++;
-      const still = Number((await admin.query(`select coalesce(sum(greatest(0, quantity - pending_reduction - pr_portion_bought(id))), 0) s
-                                                 from pr_line_portions where line_id = $1`, [t.line])).rows[0].s);
-      if (still < 0 || !(await portionsOk(t.line))) over++;
+      // What the line needed BEFORE the reduction was 10: whichever order the two ran in,
+      // what is recorded as bought never exceeds that, and no cover exceeds its portion.
+      const bought = Number((await admin.query(`select coalesce(sum(c.quantity), 0) s from purchase_line_covers c
+                                                  join purchase_lines l on l.id = c.line_id join purchases pu on pu.id = l.purchase_id
+                                                 where c.request_line_id = $1 and pu.status = 'recorded'`, [t.line])).rows[0].s);
+      const fat = Number((await admin.query(`select count(*) n from purchase_line_covers c join pr_line_portions p on p.id = c.portion_id
+                                              where p.line_id = $1 and c.quantity > p.quantity`, [t.line])).rows[0].n);
+      if (bought > 10 || fat > 0 || !(await portionsOk(t.line))) over++;
     }
     check('3. a purchase against an office reduction: no deadlock, nothing over-covered', over === 0 && dead === 0,
       `bad states ${over}, deadlocks ${dead}`);
@@ -1354,17 +1586,27 @@ test('review 1: a new request link, new picks or a takeover need the Buyer switc
 });
 test('review 2: picked portions are the only ones a line covers; history comes first and is taken before the change', () => {
   const cov = fnBody('pur_cover_lines');
-  ok(/v_auto := case when v_picked then 0\s+when v_h is null then v_target\s+else greatest\(0, v_target - \(v_h ->> 'target'\)::numeric\) end;/.test(cov), 'automatic only for a new link or added quantity');
+  ok(/v_auto := case when v_repicked then 0\s+when v_h is null then v_target\s+else greatest\(0, v_target - \(v_h ->> 'target'\)::numeric\) end;/.test(cov), 'automatic only for a new link or added quantity');
+  ok(/if v_left > 0 and v_auto > 0 and not v_picked then/.test(cov), 'a picked line never covers automatically');
   ok(cov.indexOf("v_h -> 'covers'") > 0 && cov.indexOf("v_h -> 'covers'") < cov.indexOf('order by case when p.buyer_id = v_buyer'), 'history before automatic');
   const cor = fnBody('pur_correct');
   const h = 'v_hist := pur_cover_history(p_purchase)';
   ok(cor.indexOf(h) > 0 && cor.indexOf(h) < cor.indexOf('delete from purchase_lines'), 'correction: history before the lines go');
   ok(/pur_cover_lines\(p_purchase, v_uid, v_hist\)/.test(cor), 'correction uses it');
   const rp = fnBody('pur_replace');
-  ok(rp.indexOf(h) > 0 && rp.indexOf(h) < rp.indexOf("update purchases set status = 'void'") && /pur_insert\(v_owner, v_uid, p_body, v_carry, v_keep, v_hist\)/.test(rp), 'replacement');
+  ok(rp.indexOf(h) > 0 && rp.indexOf(h) < rp.indexOf("update purchases set status = 'void'") && /pur_insert\(v_owner, v_uid, v_body, v_carry, v_keep, v_hist, coalesce\(pu\.bought_by, pu\.recorded_by\)\)/.test(rp), 'replacement');
   const chk = fnBody('pur_check_unit');
   ok(chk.indexOf(h) > 0 && chk.indexOf(h) < chk.indexOf("set unit_check = 'confirmed'") && /pur_cover_lines\(p_purchase, v_uid, v_hist\)/.test(chk), 'unit check');
   ok(/pur_cover_lines\(v_id, p_actor, coalesce\(p_history, '\[\]'::jsonb\)\)/.test(fnBody('pur_insert')), 'a new purchase has no history');
+});
+test('re-review: history keeps each portion\'s quantity; a portion newly picked in a correction is checked like a new purchase', () => {
+  const cov = fnBody('pur_cover_lines');
+  const hist = cov.slice(cov.indexOf("from jsonb_array_elements(v_h -> 'covers')"), cov.indexOf('if v_left > 0 and v_auto > 0 and v_picked then'));
+  ok(/v_take := least\(v_left, \(v_pick ->> 'quantity'\)::numeric, v_cap\);/.test(hist), 'each historical portion at most its old quantity');
+  ok(/v_repicked := v_picked and \(v_h is null or v_line\.portion_picks is distinct from v_h -> 'picks'\);/.test(cov), 'picks made in this change');
+  ok((cov.match(/if not \(v_p\.id = any \(v_had\)\) and not v_owner_caller and v_p\.buyer_id is not null and v_p\.buyer_id <> v_buyer then\s+raise exception 'ASSIGNED_TO_OTHER'/g) || []).length === 2,
+     'a portion the line did not cover before: never another buyer\'s (new picks, and more of unchanged picks)');
+  ok(!/v_h is null and not v_owner_caller/.test(cov), 'the check is no longer skipped for lines with history');
 });
 test('review 3: a change request keeps the purchase as seen; approval re-checks all of it; a unit check counts as a change', () => {
   ok(/base_doc jsonb not null/.test(CODE), 'base_doc column');
@@ -1372,7 +1614,9 @@ test('review 3: a change request keeps the purchase as seen; approval re-checks 
   ok(/pu\.updated_at <> r\.base_updated_at or pur_doc\(pu\.id\) is distinct from r\.base_doc then/.test(fnBody('pur_decide_change')), 'stale on any change');
   ok(/update purchases set updated_at = now\(\) where id = p_purchase;/.test(fnBody('pur_check_unit')), 'a check changes the purchase');
   const cr = fnBody('pur_change_requests');
-  ok(/'base', pur_review_doc/.test(cr) && /'proposed'/.test(cr) && /'changed_since'/.test(cr), 'the owner gets both versions');
+  ok(/'base', case when coalesce\(is_owner\(\), false\) or pur_buyer\(\) then pur_review_doc/.test(cr)
+     && /'current', case when coalesce\(is_owner\(\), false\) or pur_buyer\(\) then pur_review_doc/.test(cr)
+     && /'proposed'/.test(cr) && /'changed_since'/.test(cr), 'the owner and buyers get both versions; others only their own proposal');
   const rv = fnBody('pur_review_doc');
   for (const k of ["'purchase_date'", "'date_time'", "'supplier'", "'bought_by'", "'quantity'", "'unit'", "'picks'", "'shares'", "'receipts'"]) ok(rv.includes(k), 'review shows ' + k);
   ok(/pur_prorate\(/.test(rv), 'the automatic fee split is shown, not left blank');
@@ -1384,10 +1628,33 @@ test('R3: purchase rows are buyers-only; Project Control reads one line, nothing
   ok(!/purchase_line_covers|purchase_history|request_line_id|bought_by|change_requests/.test(e), 'nothing beyond the edit form');
   ok(/select coalesce\(jsonb_agg\(l\.id\), '\[\]'::jsonb\)/.test(fnBody('pur_review_lines')), 'review flags: ids only');
 });
+test('fix round 1: a replacement keeps the buyer and supplier; non-buyers do not read whole purchases or drop links', () => {
+  ok(/revoke all on function pur_insert\(uuid, uuid, jsonb, jsonb, jsonb, jsonb, uuid\) from public, anon, authenticated;/.test(CODE), 'pur_insert (7 arguments) is internal');
+  ok(/pur_bought_by\(p_owner, p_body, p_current_buyer\)/.test(fnBody('pur_insert')), 'the current buyer is kept');
+  ok(/v_body := v_body \|\| jsonb_build_object\('supplier_id', pu\.supplier_id\)/.test(fnBody('pur_replace')), 'the supplier is kept');
+  ok(/revoke all on function pur_links_dropped\(uuid, jsonb\) from public, anon, authenticated;/.test(CODE), 'pur_links_dropped is internal');
+  ok(/not pur_buyer\(\) and pur_links_dropped\(p_purchase, v_body\)/.test(fnBody('pur_correct')), 'a correction cannot drop a link');
+  ok(/not pur_buyer\(\) and pur_links_dropped\(p_purchase, p_body\)/.test(fnBody('pur_replace')), 'a replacement cannot');
+  ok(/pur_links_dropped\(p_purchase, case when p_kind = 'correct' then pur_inherit\(p_purchase, p_body\) else p_body end\)/.test(fnBody('pur_request_change')), 'nor a request');
+  const ent = fnBody('pur_entry_row');
+  ok(/'purchase', case when v_whole then/.test(ent) && /else jsonb_build_object\('id', pu\.id, 'status', pu\.status\) end/.test(ent), 'non-buyers get id and status of a larger purchase');
+  const cov = fnBody('pur_cover_lines');
+  ok(/raise exception 'LINE_CLOSED'/.test(cov) && /if v_h is null and \(v_req\.line_status <> 'open' or v_req\.request_status <> 'submitted'\) then/.test(cov), 'no new link to a cancelled line');
+  ok(/row_number\(\) over \(order by \(h ->> 'line_no'\)::int\)/.test(cov) && !/\(h ->> 'line_no'\)::int = v_line\.line_no/.test(cov), 'history by request line and order, not line number');
+  ok(/order by l\.urgent desc, l\.needed_by nulls last, first_cutoff nulls last, f\.name, r\.received_at, l\.position\s+limit 500/.test(fnBody('pur_shopping_list')), 'the shopping list is ordered before the limit');
+  ok(/'buyer', case when po\.buyer_id is null then null else pur_person_name\(po\.buyer_id\) end/.test(fnBody('pur_review_doc')), 'the owner sees whose portion a pick takes');
+});
 test('R14: a substitute needs a reason and an office check before it covers anything', () => {
   ok(/'SUBSTITUTE_REASON_REQUIRED'/.test(fnBody('pur_store')), 'reason');
   ok(/v_direct := lower\(btrim\(v_line\.unit\)\) = lower\(btrim\(v_req\.unit\)\) and not v_line\.substitute;/.test(fnBody('pur_cover_lines')), 'covers only after a check');
   ok(/'item', lower\(btrim\(l\.item_name\)\), 'substitute', l\.substitute/.test(fnBody('pur_keep_checks')), 'a check is kept for the same item only');
+});
+
+test('final minor 6: a receipt link must be https — recording and correcting refuse anything else', () => {
+  for (const name of ['pur_insert', 'pur_correct']) {
+    const b = fnBody(name);
+    ok(/jsonb_typeof\(v\) = 'string' and v #>> '\{\}' <> '' and v #>> '\{\}' !~ '\^https:\/\/'\) then\s+raise exception 'BAD_DOCS'/.test(b), name + ' refuses a non-https docs value');
+  }
 });
 
 console.log('\n0097: proof');
@@ -2549,14 +2816,18 @@ $$;
 --   counts         → same unit and not a substitute: up to its quantity;
 --                    otherwise nothing until the office confirms how much
 --                    (unit_check 'confirmed', unit_covers), then that much;
---   picked         → portions picked on the form are AUTHORITATIVE: the line
---                    covers those, at most the picked quantity each, and no
---                    other portion — the rest is extra;
---   history        → otherwise the portions this line covered before come
---                    first, in their old order; other portions are covered
---                    only for what the line's target ROSE by, so a price fix,
---                    a reduced request or a check on another line never moves
---                    coverage to another week;
+--   picked         → portions picked in THIS change are AUTHORITATIVE: the
+--                    line covers those, at most the picked quantity each, and
+--                    no other portion — the rest is extra. A picked portion
+--                    the line did not cover before is a new choice: never
+--                    another buyer's (the owner's to give);
+--   history        → otherwise each portion this line covered before is
+--                    covered again — in the old order and at most the SAME
+--                    quantity — and quantity is looked for elsewhere only for
+--                    what the line's target ROSE by (unchanged picks: more of
+--                    the picked portions only). A price fix, a voided earlier
+--                    purchase, a reduced request or a check on another line
+--                    never moves coverage between weeks;
 --   automatically  → a new link: the buyer's own portions, then unassigned
 --                    ones (the buyer now holds them), then — the owner only —
 --                    other buyers' portions; within each, the earliest batch
@@ -2583,6 +2854,8 @@ declare
   v_p record;
   v_direct boolean;
   v_picked boolean;
+  v_repicked boolean;
+  v_had uuid[];
   v_target numeric;
   v_left numeric;
   v_auto numeric;
@@ -2600,36 +2873,54 @@ begin
   end if;
 
   for v_line in select * from purchase_lines where purchase_id = p_purchase and request_line_id is not null order by line_no loop
-    select ln.id, ln.unit, ln.request_id, ln.owner_id into v_req
-      from pr_lines ln where ln.id = v_line.request_line_id for update;
-    -- This line's history: the same line number, still for the same request.
-    v_h := (select h from jsonb_array_elements(v_hist) h
-             where (h ->> 'line_no')::int = v_line.line_no and h ->> 'request_line_id' = v_line.request_line_id::text);
+    select ln.id, ln.unit, ln.request_id, ln.owner_id, ln.status as line_status, rq.status as request_status into v_req
+      from pr_lines ln join pr_requests rq on rq.id = ln.request_id
+     where ln.id = v_line.request_line_id for update of ln;
+    -- This line's history: its request, and its place among this purchase's
+    -- lines for that request (1st line for X ↔ 1st history entry for X), so
+    -- a line inserted ahead of it changes nothing.
+    v_h := (select e.h from (select h, row_number() over (order by (h ->> 'line_no')::int) rn
+                               from jsonb_array_elements(v_hist) h
+                              where h ->> 'request_line_id' = v_line.request_line_id::text) e
+             where e.rn = (select count(*) from purchase_lines x
+                            where x.purchase_id = p_purchase and x.request_line_id = v_line.request_line_id
+                              and x.line_no <= v_line.line_no));
+    -- A NEW link to a cancelled line or request is refused; a line that was
+    -- bought before it was cancelled keeps working (it has history).
+    if v_h is null and (v_req.line_status <> 'open' or v_req.request_status <> 'submitted') then
+      raise exception 'LINE_CLOSED' using errcode = 'P0001',
+        hint = 'Line ' || v_line.line_no || ': that request line was cancelled.';
+    end if;
     if not v_may_buy and (v_h is null or v_line.portion_picks is distinct from v_h -> 'picks') then
       raise exception 'BUYER_REQUIRED' using errcode = 'P0001',
         hint = 'Line ' || v_line.line_no || ': linking a purchase to a request needs the Buyer switch.';
     end if;
     v_direct := lower(btrim(v_line.unit)) = lower(btrim(v_req.unit)) and not v_line.substitute;
     v_picked := jsonb_array_length(v_line.portion_picks) > 0;
+    -- Picks made in THIS change: none before, or different from before.
+    v_repicked := v_picked and (v_h is null or v_line.portion_picks is distinct from v_h -> 'picks');
+    -- The portions this line covered before. Any other portion is a new
+    -- choice, and another buyer's is the owner's alone to give.
+    v_had := coalesce((select array_agg((c ->> 'portion_id')::uuid) from jsonb_array_elements(v_h -> 'covers') c), '{}');
     v_target := case when v_direct then v_line.quantity
                      when v_line.unit_check = 'confirmed' then coalesce(v_line.unit_covers, 0)
                      else 0 end;
     v_left := v_target;
-    v_auto := case when v_picked then 0
+    v_auto := case when v_repicked then 0
                    when v_h is null then v_target
                    else greatest(0, v_target - (v_h ->> 'target')::numeric) end;
 
-    if v_picked then
+    if v_repicked then
       -- The portions picked on the form, in the order given — and only those.
       for v_pick in select value from jsonb_array_elements(v_line.portion_picks) loop
         exit when v_left <= 0;
         select * into v_p from pr_line_portions
          where id = (v_pick ->> 'portion_id')::uuid and line_id = v_line.request_line_id for update;
         if v_p.id is null then
-          continue when v_h is not null;   -- a portion removed since: nothing to cover there
+          continue when (v_pick ->> 'portion_id')::uuid = any (v_had);   -- covered before, removed since
           raise exception 'BAD_PORTION' using errcode = 'P0001';
         end if;
-        if v_h is null and not v_owner_caller and v_p.buyer_id is not null and v_p.buyer_id <> v_buyer then
+        if not (v_p.id = any (v_had)) and not v_owner_caller and v_p.buyer_id is not null and v_p.buyer_id <> v_buyer then
           raise exception 'ASSIGNED_TO_OTHER' using errcode = 'P0001';
         end if;
         v_cap := greatest(0, v_p.quantity - v_p.pending_reduction - pr_portion_bought(v_p.id));
@@ -2646,25 +2937,60 @@ begin
                                      'by_purchase', p_purchase));
         end if;
       end loop;
-    elsif v_h is not null then
-      -- The portions this line covered before, in their old order. Nothing
-      -- is taken over: they were this purchase's already.
-      for v_pick in select value from jsonb_array_elements(v_h -> 'covers') loop
-        exit when v_left <= 0;
-        select * into v_p from pr_line_portions
-         where id = (v_pick ->> 'portion_id')::uuid and line_id = v_line.request_line_id for update;
-        continue when v_p.id is null;
-        v_cap := greatest(0, v_p.quantity - v_p.pending_reduction - pr_portion_bought(v_p.id));
-        v_take := least(v_left, v_cap);
-        continue when v_take <= 0;
-        insert into purchase_line_covers (owner_id, line_id, request_line_id, portion_id, buyer_id, quantity)
-        values (v_line.owner_id, v_line.id, v_line.request_line_id, v_p.id, v_buyer, v_take);
-        v_left := v_left - v_take;
-      end loop;
+    else
+      if v_h is not null then
+        -- What this line covered before: the same portions, in their old
+        -- order, and at most the SAME quantity of each — room freed since
+        -- (another purchase voided) never pulls coverage from one week to
+        -- another. Nothing is taken over: they were this purchase's already.
+        for v_pick in select value from jsonb_array_elements(v_h -> 'covers') loop
+          exit when v_left <= 0;
+          select * into v_p from pr_line_portions
+           where id = (v_pick ->> 'portion_id')::uuid and line_id = v_line.request_line_id for update;
+          continue when v_p.id is null;
+          v_cap := greatest(0, v_p.quantity - v_p.pending_reduction - pr_portion_bought(v_p.id));
+          v_take := least(v_left, (v_pick ->> 'quantity')::numeric, v_cap);
+          continue when v_take <= 0;
+          insert into purchase_line_covers (owner_id, line_id, request_line_id, portion_id, buyer_id, quantity)
+          values (v_line.owner_id, v_line.id, v_line.request_line_id, v_p.id, v_buyer, v_take);
+          v_left := v_left - v_take;
+        end loop;
+      end if;
+
+      -- Quantity the change ADDS, on a line whose picks are unchanged: more
+      -- of the picked portions only, up to each pick.
+      if v_left > 0 and v_auto > 0 and v_picked then
+        for v_pick in select value from jsonb_array_elements(v_line.portion_picks) loop
+          exit when v_left <= 0 or v_auto <= 0;
+          select * into v_p from pr_line_portions
+           where id = (v_pick ->> 'portion_id')::uuid and line_id = v_line.request_line_id for update;
+          continue when v_p.id is null;
+          if not (v_p.id = any (v_had)) and not v_owner_caller and v_p.buyer_id is not null and v_p.buyer_id <> v_buyer then
+            raise exception 'ASSIGNED_TO_OTHER' using errcode = 'P0001';
+          end if;
+          v_cap := greatest(0, v_p.quantity - v_p.pending_reduction - pr_portion_bought(v_p.id));
+          v_take := least(v_left, v_auto, v_cap,
+                          (v_pick ->> 'quantity')::numeric - (select coalesce(sum(c.quantity), 0) from purchase_line_covers c
+                                                               where c.line_id = v_line.id and c.portion_id = v_p.id));
+          continue when v_take <= 0;
+          insert into purchase_line_covers (owner_id, line_id, request_line_id, portion_id, buyer_id, quantity)
+          values (v_line.owner_id, v_line.id, v_line.request_line_id, v_p.id, v_buyer, v_take);
+          v_left := v_left - v_take;
+          v_auto := v_auto - v_take;
+          if v_p.buyer_id is null and v_may_assign then
+            update pr_line_portions set buyer_id = v_buyer, assigned_by = p_actor, assigned_at = now() where id = v_p.id;
+            insert into pr_events (owner_id, request_id, line_id, actor_id, kind, detail)
+            values (v_req.owner_id, v_req.request_id, v_req.id, p_actor, 'portion_claimed',
+                    jsonb_build_object('portion_id', v_p.id, 'quantity', v_p.quantity, 'to_buyer', pur_person_name(v_buyer),
+                                       'by_purchase', p_purchase));
+          end if;
+        end loop;
+      end if;
     end if;
 
-    -- Then automatically, up to v_auto: own, unassigned, (owner only) others'.
-    if v_left > 0 and v_auto > 0 then
+    -- Then automatically (a line without picks), up to v_auto: own,
+    -- unassigned, (owner only) others'.
+    if v_left > 0 and v_auto > 0 and not v_picked then
       for v_p in
         select p.* from pr_line_portions p join pr_batches b on b.id = p.batch_id
          where p.line_id = v_line.request_line_id
@@ -2692,7 +3018,6 @@ begin
         end if;
       end loop;
     end if;
-
     v_extra := case when v_direct then v_line.quantity - (v_target - v_left) else 0 end;
     -- The line's target did not rise since its history: the extra comes from
     -- the request shrinking after buying — say so, never ask the person
@@ -2789,10 +3114,13 @@ $$;
 -- 0096's insert, plus who bought, the supplier picked, kept unit checks
 -- (p_keep) and the request covers — all in the same transaction as the
 -- expense rows. p_history: what a replaced purchase covered (none for a new
--- one). Replaces the 4-argument 0096 version.
+-- one). p_current_buyer: who bought the purchase this one replaces — kept
+-- when the body names nobody, so a replacement never re-attributes the
+-- earlier purchase to whoever happens to make the change. Replaces the
+-- 4-argument 0096 version.
 drop function if exists pur_insert(uuid, uuid, jsonb, jsonb);
 create or replace function pur_insert(p_owner uuid, p_actor uuid, p_body jsonb, p_carry jsonb, p_keep jsonb default null,
-                                      p_history jsonb default null) returns jsonb
+                                      p_history jsonb default null, p_current_buyer uuid default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   v_id uuid;
@@ -2800,6 +3128,13 @@ declare
   v_covers jsonb;
   v_result jsonb;
 begin
+  -- A receipt "link" must be an https address (a stored javascript: value
+  -- would run when someone opens it). Empty values are ignored as before.
+  if exists (select 1 from jsonb_each(coalesce(p_body -> 'docs', '{}'::jsonb)) d(k, v)
+              where k in ('po_image_url', 'delivery_receipt_url', 'supplier_invoice_url', 'payment_receipt_url')
+                and jsonb_typeof(v) = 'string' and v #>> '{}' <> '' and v #>> '{}' !~ '^https://') then
+    raise exception 'BAD_DOCS' using errcode = 'P0001';
+  end if;
   insert into purchases (owner_id, source, purchase_date, date_time, supplier, receipt_total, notes, payment_method, docs,
                          recorded_by, bought_by, supplier_id)
   values (p_owner, coalesce(p_body ->> 'source', 'expenses_form'), (p_body ->> 'purchase_date')::date,
@@ -2811,7 +3146,7 @@ begin
           coalesce((select jsonb_object_agg(k, v) from jsonb_each(coalesce(p_body -> 'docs', '{}'::jsonb)) d(k, v)
                      where k in ('po_image_url', 'delivery_receipt_url', 'supplier_invoice_url', 'payment_receipt_url')
                        and jsonb_typeof(v) = 'string'), '{}'::jsonb),
-          p_actor, pur_bought_by(p_owner, p_body, null), v_supplier)
+          p_actor, pur_bought_by(p_owner, p_body, p_current_buyer), v_supplier)
   returning id into v_id;
 
   perform pur_store(p_owner, v_id, p_body);
@@ -2879,6 +3214,10 @@ begin
     raise exception 'OWNER_APPROVAL_NEEDED' using errcode = 'P0001';
   end if;
   v_body := pur_inherit(p_purchase, p_body);
+  if not pur_buyer() and pur_links_dropped(p_purchase, v_body) then
+    raise exception 'BUYER_REQUIRED' using errcode = 'P0001',
+      hint = 'Taking a purchase off its request needs the Buyer switch.';
+  end if;
 
   v_before := pur_doc(p_purchase);
   v_keep := pur_keep_checks(p_purchase);
@@ -2895,6 +3234,13 @@ begin
   delete from purchase_charges where purchase_id = p_purchase;
   delete from purchase_lines where purchase_id = p_purchase;
 
+  -- A receipt "link" must be an https address (a stored javascript: value
+  -- would run when someone opens it). Empty values are ignored as before.
+  if exists (select 1 from jsonb_each(coalesce(v_body -> 'docs', '{}'::jsonb)) d(k, v)
+              where k in ('po_image_url', 'delivery_receipt_url', 'supplier_invoice_url', 'payment_receipt_url')
+                and jsonb_typeof(v) = 'string' and v #>> '{}' <> '' and v #>> '{}' !~ '^https://') then
+    raise exception 'BAD_DOCS' using errcode = 'P0001';
+  end if;
   update purchases set
     purchase_date = (v_body ->> 'purchase_date')::date,
     date_time = coalesce(nullif(v_body ->> 'date_time', ''), v_body ->> 'purchase_date'),
@@ -2930,8 +3276,8 @@ $$;
 
 -- 0096's replacement, with the old purchase voided BEFORE the new one is
 -- recorded — so the new one can cover the request portions the old one
--- covered, and does (its lines' history, matched by line number and
--- request) — and with matching office checks kept.
+-- covered, and does (its lines' history, matched by request line and its
+-- order among that request's lines) — and with matching office checks kept.
 create or replace function pur_replace(p_op uuid, p_purchase uuid, p_body jsonb, p_reason text) returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
@@ -2943,6 +3289,7 @@ declare
   v_carry jsonb;
   v_keep jsonb;
   v_hist jsonb;
+  v_body jsonb := p_body;
   v_result jsonb;
 begin
   v_prev := pur_op_begin(p_op);
@@ -2964,6 +3311,15 @@ begin
                             and l.folder_id is not distinct from pur_uuid(n.v ->> 'folder_id'))) then
     raise exception 'OWNER_APPROVAL_NEEDED' using errcode = 'P0001';
   end if;
+  -- The supplier picked stays unless the body says otherwise (as in pur_inherit).
+  if not (v_body ? 'supplier_id') and pu.supplier_id is not null then
+    v_body := v_body || jsonb_build_object('supplier_id', pu.supplier_id);
+  end if;
+  -- Without the Buyer switch nobody drops a request link.
+  if not pur_buyer() and pur_links_dropped(p_purchase, p_body) then
+    raise exception 'BUYER_REQUIRED' using errcode = 'P0001',
+      hint = 'Taking a purchase off its request needs the Buyer switch.';
+  end if;
 
   v_before := pur_doc(p_purchase);
   v_keep := pur_keep_checks(p_purchase);
@@ -2975,7 +3331,7 @@ begin
   perform pur_clear_rows(p_purchase);
   delete from purchase_stock_moves m using purchase_lines l where l.id = m.line_id and l.purchase_id = p_purchase;
   update purchases set status = 'void', updated_at = now() where id = p_purchase;
-  v_result := pur_insert(v_owner, v_uid, p_body, v_carry, v_keep, v_hist);
+  v_result := pur_insert(v_owner, v_uid, v_body, v_carry, v_keep, v_hist, coalesce(pu.bought_by, pu.recorded_by));
   update purchases set replaced_by = (v_result ->> 'purchase_id')::uuid where id = p_purchase;
   insert into purchase_history (owner_id, purchase_id, kind, reason, before, after, actor_id)
   values (v_owner, p_purchase, 'replaced', btrim(p_reason), v_before, jsonb_build_object('replaced_by', v_result ->> 'purchase_id'), v_uid);
@@ -3118,6 +3474,22 @@ language sql stable security definer set search_path = public as $$
                is distinct from l.portion_picks))
 $$;
 
+-- Does this change body take a request link OFF the stored purchase? Per
+-- request line: the body must carry at least as many lines linked to it as
+-- the stored purchase has. For a correction pass the body AFTER pur_inherit
+-- (an omitted key keeps the link; an explicit null drops it).
+create or replace function pur_links_dropped(p_purchase uuid, p_body jsonb) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1
+      from (select l.request_line_id, count(*) n from purchase_lines l
+             where l.purchase_id = p_purchase and l.request_line_id is not null
+             group by l.request_line_id) s
+     where s.n > (select count(*)
+                    from jsonb_array_elements(case when jsonb_typeof(p_body -> 'lines') = 'array' then p_body -> 'lines' else '[]'::jsonb end) b(v)
+                   where pur_uuid(b.v ->> 'request_line_id') = s.request_line_id))
+$$;
+
 -- Staff send a change the server reserves for the owner — moving a cost to
 -- another project, or touching a completed project — as a request. It
 -- stores exactly what the owner will apply, and the purchase exactly as the
@@ -3174,6 +3546,11 @@ begin
   end if;
   if p_kind <> 'void' and not pur_buyer() and pur_links_changed(p_purchase, p_body) then
     raise exception 'BUYER_REQUIRED' using errcode = 'P0001';
+  end if;
+  if p_kind <> 'void' and not pur_buyer()
+     and pur_links_dropped(p_purchase, case when p_kind = 'correct' then pur_inherit(p_purchase, p_body) else p_body end) then
+    raise exception 'BUYER_REQUIRED' using errcode = 'P0001',
+      hint = 'Taking a purchase off its request needs the Buyer switch.';
   end if;
   begin
     insert into purchase_change_requests (owner_id, purchase_id, kind, body, reason, base_updated_at, base_doc, requested_by, op_id)
@@ -3314,7 +3691,8 @@ begin
                            where f.id = pur_uuid(v_l ->> 'folder_id') and f.owner_id = p_owner) end,
       'request', (select rl.description || case when rl.spec <> '' then ' ' || rl.spec else '' end || ' (' || rl.unit || ')'
                     from pr_lines rl where rl.id = pur_uuid(v_l ->> 'request_line_id') and rl.owner_id = p_owner),
-      'picks', (select coalesce(jsonb_agg(jsonb_build_object('quantity', pur_qty(p.v ->> 'quantity'), 'cutoff_at', b.cutoff_at) order by p.k), '[]'::jsonb)
+      'picks', (select coalesce(jsonb_agg(jsonb_build_object('quantity', pur_qty(p.v ->> 'quantity'), 'cutoff_at', b.cutoff_at,
+                                                         'buyer', case when po.buyer_id is null then null else pur_person_name(po.buyer_id) end) order by p.k), '[]'::jsonb)
                   from jsonb_array_elements(case when jsonb_typeof(v_l -> 'portion_picks') = 'array' then v_l -> 'portion_picks' else '[]'::jsonb end)
                        with ordinality p(v, k)
                   left join pr_line_portions po on po.id = pur_uuid(p.v ->> 'portion_id') and po.owner_id = p_owner
@@ -3373,8 +3751,9 @@ begin
             'decided_at', r.decided_at, 'decision_note', r.decision_note,
             'changed_since', r.status = 'pending' and (pu.status <> 'recorded' or pu.updated_at <> r.base_updated_at
                                                        or pur_doc(pu.id) is distinct from r.base_doc),
-            'base', pur_review_doc(r.owner_id, r.base_doc),
-            'current', pur_review_doc(r.owner_id, pur_doc(r.purchase_id)),
+            -- Whoever may not read purchases (R3) gets only their own proposal back.
+            'base', case when coalesce(is_owner(), false) or pur_buyer() then pur_review_doc(r.owner_id, r.base_doc) end,
+            'current', case when coalesce(is_owner(), false) or pur_buyer() then pur_review_doc(r.owner_id, pur_doc(r.purchase_id)) end,
             'proposed', case when r.body is null then null
                              when r.kind = 'correct' then pur_review_doc(r.owner_id,
                                jsonb_set(pur_inherit(r.purchase_id, r.body), '{docs}',
@@ -3461,6 +3840,7 @@ begin
                                    and p.quantity - p.pending_reduction - pr_portion_bought(p.id) > 0))
                 or exists (select 1 from purchase_lines pl join purchases pu on pu.id = pl.purchase_id
                             where pl.request_line_id = l.id and pu.status = 'recorded' and pl.unit_check = 'pending'))
+         order by l.urgent desc, l.needed_by nulls last, first_cutoff nulls last, f.name, r.received_at, l.position
          limit 500
       ) x);
 end;
@@ -3568,6 +3948,7 @@ language plpgsql stable security definer set search_path = public as $$
 declare
   v_owner uuid := pur_actor_owner('expenses_form');
   v_purchase uuid;
+  v_whole boolean;
   l purchase_lines;
 begin
   if p_line is not null then
@@ -3579,10 +3960,15 @@ begin
   if v_purchase is null then
     raise exception 'NOT_FOUND' using errcode = 'P0001';
   end if;
+  -- The header (supplier, total, notes, receipts) only where the form can
+  -- edit it: a buyer, or a purchase of one line without fees.
+  v_whole := pur_buyer() or ((select count(*) from purchase_lines x where x.purchase_id = v_purchase) = 1
+                             and not exists (select 1 from purchase_charges x where x.purchase_id = v_purchase));
   return (select jsonb_build_object(
-            'purchase', jsonb_build_object('id', pu.id, 'status', pu.status, 'purchase_date', pu.purchase_date,
+            'purchase', case when v_whole then jsonb_build_object('id', pu.id, 'status', pu.status, 'purchase_date', pu.purchase_date,
                                            'date_time', pu.date_time, 'supplier', pu.supplier, 'receipt_total', pu.receipt_total,
-                                           'notes', pu.notes, 'payment_method', pu.payment_method, 'docs', pu.docs),
+                                           'notes', pu.notes, 'payment_method', pu.payment_method, 'docs', pu.docs)
+                             else jsonb_build_object('id', pu.id, 'status', pu.status) end,
             'line', case when l.id is null then null else jsonb_build_object(
                        'id', l.id, 'purchase_id', l.purchase_id, 'line_no', l.line_no, 'folder_id', l.folder_id,
                        'item_name', l.item_name, 'category', l.category, 'quantity', l.quantity, 'unit', l.unit,
@@ -3840,11 +4226,12 @@ revoke all on function pur_store(uuid, uuid, jsonb) from public, anon, authentic
 revoke all on function pur_cover_history(uuid) from public, anon, authenticated;
 revoke all on function pur_cover_lines(uuid, uuid, jsonb) from public, anon, authenticated;
 revoke all on function pur_links_changed(uuid, jsonb) from public, anon, authenticated;
+revoke all on function pur_links_dropped(uuid, jsonb) from public, anon, authenticated;
 revoke all on function pur_review_doc(uuid, jsonb) from public, anon, authenticated;
 revoke all on function pur_keep_checks(uuid) from public, anon, authenticated;
 revoke all on function pur_apply_checks(uuid, jsonb) from public, anon, authenticated;
 revoke all on function pur_inherit(uuid, jsonb) from public, anon, authenticated;
-revoke all on function pur_insert(uuid, uuid, jsonb, jsonb, jsonb, jsonb) from public, anon, authenticated;
+revoke all on function pur_insert(uuid, uuid, jsonb, jsonb, jsonb, jsonb, uuid) from public, anon, authenticated;
 revoke all on function pur_header_ok(jsonb) from public, anon, authenticated;
 revoke all on function pur_doc(uuid) from public, anon, authenticated;
 revoke all on function pur_purchase_view(uuid) from public, anon, authenticated;
@@ -3872,6 +4259,7 @@ Create `supabase/tests/2a2_acceptance.sql`:
 --   R3. the owner sees the whole change; a unit check makes it stale
 --   R4. non-buyer staff read no purchase row — only Project Control's line
 --   R5. a substitute needs a reason and waits for an office check
+--   RR2. a correction cannot newly pick another buyer's portion (re-review)
 -- Bought is read as a buyer reads it (pur_shopping_list): the counting
 -- helpers are internal and signed-in users cannot call them.
 -- ════════════════════════════════════════════════════════════════════
@@ -3974,6 +4362,8 @@ select set_config('request.jwt.claims', json_build_object('sub', current_setting
 do $$
 begin
   perform pur_set_buyer(current_setting('v2a2.staff')::uuid, true);
+  -- RR2 (set-up). Next week's sand is the owner's to buy.
+  perform pur_assign_portion(current_setting('v2a2.p3b')::uuid, current_setting('v2a2.owner')::uuid, null, null);
 end $$;
 
 -- ═══ B–F as the Buyer ═══
@@ -4049,6 +4439,19 @@ begin
    where x ->> 'line_id' = current_setting('v2a2.line3');
   assert (select (p ->> 'bought')::numeric from jsonb_array_elements(v_l -> 'portions') p where p ->> 'id' = current_setting('v2a2.p3b')) = 0,
     'R2c next week untouched: ' || v_l::text;
+  -- RR2. A correction cannot newly pick a portion another buyer holds (here the owner's next week).
+  begin
+    perform pur_correct(gen_random_uuid(), (r ->> 'purchase_id')::uuid, jsonb_build_object('source', 'purchasing',
+      'purchase_date', '2026-10-14', 'receipt_total', 600,
+      'lines', jsonb_build_array(jsonb_build_object('folder_id', current_setting('v2a2.a'), 'item_name', 'ZZ 2a2 sand', 'quantity', 6,
+                 'unit', 'bag', 'amount', 600, 'request_line_id', current_setting('v2a2.line3'),
+                 'portion_picks', jsonb_build_array(jsonb_build_object('portion_id', current_setting('v2a2.p3a'), 'quantity', 4),
+                                                    jsonb_build_object('portion_id', current_setting('v2a2.p3b'), 'quantity', 2))))),
+      'ZZ 2a2 cover the other 2 from next week');
+    raise exception 'RR2 a correction covered a portion the owner holds';
+  exception when others then
+    assert sqlerrm like '%ASSIGNED_TO_OTHER%', 'RR2 wrong error: ' || sqlerrm;
+  end;
 
   -- R5. A substitute: a reason first; then it covers nothing until the office checks it.
   begin
@@ -4226,7 +4629,7 @@ Patch `supabase/migrations/README.md`:
 
 ````diff
 diff --git a/supabase/migrations/README.md b/supabase/migrations/README.md
-index 9a200b1..748eaa9 100644
+index 9a200b1..b98924d 100644
 --- a/supabase/migrations/README.md
 +++ b/supabase/migrations/README.md
 @@ -6,8 +6,8 @@
@@ -4244,7 +4647,7 @@ index 9a200b1..748eaa9 100644
  
  **0096 (WorkMate Stage 2A-1 — one purchase recording operation)** adds `purchases` (one receipt: actual `purchase_date`, `receipt_total`, docs, `recorded`/`void`), `purchase_lines` (project or AW folder — kept as history with `folder_name`, no foreign key, so a project whose purchases are all voided can be deleted — or warehouse), `purchase_charges` + `purchase_charge_shares` (delivery fee / discount, split by line to the centavo, largest remainder), `purchase_history` (recorded / corrected / refunded / voided / replaced, before and after), `pur_ops` (first answer per operation id) and `purchase_stock_moves` (one stock move per line, ever); `expenses.purchase_line_id` / `purchase_charge_id` / `folder_id`. `pur_record`, `pur_correct`, `pur_refund`, `pur_void`, `pur_replace` (void + record in one transaction, stock carried over) — active owner/staff accounts allowed the **Expenses** section only, for recording AND reading (module-focused accounts refused; source `workmate` refused until the 2A-2 Buyer switch) — write ORDINARY `expenses` rows funded by the ACTUAL purchase month: earliest billing number first, each period up to budget − expenses − payroll, shortage to Cover (`cover_expense`) on the project's Cover period, else a client period of **that month only** (never another month's — it would use up that month's client money), no eligible period that month → all Cover + `needs_funding_review`; no Cover period and no billing period in the purchase month → a Cover row tied to the project (`folder_id`, no `project_id`), flagged — no period is ever invented; Additional Works in full on their own period. Quantities and minimum stock take **at most 3 decimals** (more is refused, `BAD_QUANTITY`; Dacs Web rounds first). Every call locks its operation, then (for a change to an existing purchase) that purchase, then every project and stock item it touches, in one fixed order, before writing. The "track in inventory" stock update runs inside the recording, once per line, matched within the company. Trigger `expenses_purchase_guard` refuses any other write to a purchase-made or project-level row; triggers `folders_purchase_delete_guard` / `projects_purchase_delete_guard` refuse deleting a project or period with a live purchase BEFORE anything is removed (a fully discounted purchase counts), and Dacs Web asks `pur_live_purchases()` first — it counts the project's Additional Works jobs too, since they cascade-delete with it. Dacs Web Expenses → Add expense records through `pur_record` from this migration on: **apply 0096 before deploying the web change.** Prove with `npm run test:sql` (PGlite + two sessions on a throwaway real PostgreSQL; CI runs it too); live: `supabase/tests/2a1_acceptance.sql` (self-wrapped, rolls back). **Live history:** on 15 Oct 2026 a pre-final draft of this file was first run by hand (SQL editor); the same day, after a rolled-back live run of the acceptance checks, the five function bodies the final review changed (`pur_cover_period`, `pur_fund`, `pur_store`, `pur_op_begin`, `pur_open`) were applied via MCP migration `0096_purchase_recording_final_functions`. No purchase existed in between. Live now matches this file (all 31 `pur_` function bodies verified by checksum).
  
-+**0097 (WorkMate Stage 2A-2 — the office Purchasing tab and the Buyer switch)** adds `pur_buyers` + `pur_buyer_events` (the per-staff **Buyer** switch, set by the main owner only: `pur_set_buyer`, listed by `pur_office_buyers`), `suppliers` (`pur_suppliers`, `pur_save_supplier`), `pr_line_portions.buyer_id` / `assigned_by` / `assigned_at` (who is buying a portion — `pur_assign_portion`: the owner assigns or reassigns anything, a buyer claims an unassigned portion, gives an unassigned one to another buyer, or releases their own; part of a portion is split off; a partly bought portion keeps its bought part with whoever bought it), `purchases.bought_by` / `supplier_id` and the `purchasing` source, `purchase_lines.request_line_id` + covering columns (`portion_picks`, `covered_qty`, `extra_qty` / `extra_reason` / `extra_location`, `unit_check` / `unit_covers`, `unplanned_reason`), `purchase_line_covers` (which portions a line covers — rebuilt from the stored lines by `pur_cover_lines` every time a purchase is recorded, corrected, replaced or voided, in the same transaction as its expense rows; only RECORDED purchases count, so Bought is never doubled and Still to buy never negative), `purchase_change_requests` (staff changes the owner must approve — `pur_request_change`, `pur_decide_change` runs the very same `pur_correct` / `pur_replace` / `pur_void`, `pur_withdraw_change`, `pur_change_requests`; stale if the purchase changed) and `pur_check_unit` (an audited office check of what a different-unit line covers; never by its own buyer; history kind `unit_checked`). Who may BUY (`pur_buyer()` / `pur_can_buy`): an active owner account or that owner's staff with the switch on, allowed the **Expenses** section, inside its own company — sources `purchasing` and `workmate` need it; `expenses_form` keeps 0096's rule. Redefines `pur_actor_owner`, `pur_header_ok`, `pur_body_keys` / `pur_stored_keys` (adding `pr_line:` locks), `pur_store`, `pur_insert` (now 5 arguments; the 4-argument version is dropped), `pur_correct` (lines a body leaves unlinked keep their stored request link — `pur_inherit`), `pur_replace` (voids the old purchase BEFORE recording the new), `pur_doc`; and 0085/0086's `pr_apply_quantity` (bought quantity is protected like arranged quantity: reduced only by flagging) and `pr_office_move_portion` (a bought portion stays in its batch, `BOUGHT`). Purchase receipt photos: `purchases/<company>/<yyyy-mm>/<uuid>.jpg`, readable and writable only by `pur_buyer()` of that company (`uploads_can_read` / `uploads_can_write` / the overwrite policy redefined from 0089; `receipt_uploads` accepts kind `purchase`; a purchase's own docs mark its upload attached). Reading: `pur_shopping_list` (quantities and names only), `pur_purchases`, `pur_purchase`, `pur_buyer_options`, `pur_me`. Spent is computed exactly as in 0096. Dacs Web Requests → Purchasing (js/purchasing-admin-*.js) and the Buyer switch (Users → Navigator) need it: **apply 0097 before deploying the web change.** Prove with `npm run test:sql` (2A-2 behaviour on PGlite, two-session races on a throwaway PostgreSQL, and the 2A-1 suite re-run with 0097 on top); live: `supabase/tests/2a2_acceptance.sql` (self-wrapped, rolls back).
++**0097 (WorkMate Stage 2A-2 — the office Purchasing tab and the Buyer switch)** adds `pur_buyers` + `pur_buyer_events` (the per-staff **Buyer** switch, set by the main owner only: `pur_set_buyer`, listed by `pur_office_buyers`), `suppliers` (`pur_suppliers`, `pur_save_supplier`), `pr_line_portions.buyer_id` / `assigned_by` / `assigned_at` (who is buying a portion — `pur_assign_portion`: the owner assigns or reassigns anything, a buyer claims an unassigned portion, gives an unassigned one to another buyer, or releases their own; part of a portion is split off; a partly bought portion keeps its bought part with whoever bought it), `purchases.bought_by` / `supplier_id` and the `purchasing` source, `purchase_lines.request_line_id` + covering columns (`portion_picks`, `covered_qty`, `extra_qty` / `extra_reason` / `extra_location`, `unit_check` / `unit_covers`, `unplanned_reason`), `purchase_line_covers` (which portions a line covers — rebuilt from the stored lines by `pur_cover_lines` every time a purchase is recorded, corrected, replaced or voided, in the same transaction as its expense rows; only RECORDED purchases count, so Bought is never doubled and Still to buy never negative), `purchase_change_requests` (staff changes the owner must approve — `pur_request_change`, `pur_decide_change` runs the very same `pur_correct` / `pur_replace` / `pur_void`, `pur_withdraw_change`, `pur_change_requests`; stale if the purchase changed) and `pur_check_unit` (an audited office check of what a different-unit line covers; never by its own buyer; history kind `unit_checked`). Who may BUY (`pur_buyer()` / `pur_can_buy`): an active owner account or that owner's staff with the switch on, allowed the **Expenses** section, inside its own company — sources `purchasing` and `workmate` need it; `expenses_form` keeps 0096's rule. Redefines `pur_actor_owner`, `pur_header_ok`, `pur_body_keys` / `pur_stored_keys` (adding `pr_line:` locks), `pur_store`, `pur_insert` (now 7 arguments; the 4-argument version is dropped; refuses a receipt link that is not https — `BAD_DOCS`), `pur_correct` (lines a body leaves unlinked keep their stored request link — `pur_inherit`), `pur_replace` (voids the old purchase BEFORE recording the new, keeping its buyer and supplier), `pur_doc`; purchase rows become readable by buyers only (`pur_reader` = `pur_buyer`), with Project Control reading its one line through `pur_entry_row` / `pur_review_lines`; a line can be a substitute (waits for an office check); and 0085/0086's `pr_apply_quantity` (bought quantity is protected like arranged quantity: reduced only by flagging) and `pr_office_move_portion` (a bought portion stays in its batch, `BOUGHT`). Purchase receipt photos: `purchases/<company>/<yyyy-mm>/<uuid>.jpg`, readable and writable only by `pur_buyer()` of that company (`uploads_can_read` / `uploads_can_write` / the overwrite policy redefined from 0089; `receipt_uploads` accepts kind `purchase`; a purchase's own docs mark its upload attached). Reading: `pur_shopping_list` (quantities and names only), `pur_purchases`, `pur_purchase`, `pur_buyer_options`, `pur_me`. Spent is computed exactly as in 0096. Dacs Web Requests → Purchasing (js/purchasing-admin-*.js) and the Buyer switch (Users → Navigator) need it: **apply 0097 before deploying the web change, then push the web change right after applying 0097 and its acceptance** (until then staff Project Control purchase edits fail: they need `pur_entry_row`). Prove with `npm run test:sql` (2A-2 behaviour on PGlite, two-session races on a throwaway PostgreSQL, and the 2A-1 suite re-run with 0097 on top); live: `supabase/tests/2a2_acceptance.sql` (self-wrapped, rolls back).
 +
  Get the truth before relying on this line:
  
@@ -4299,8 +4702,8 @@ diff --git a/package.json b/package.json
 
 - [ ] **Step 4: Run everything**
 
-Run: `npm test` → Expected: exit 0 (every suite `… passed, 0 failed`; `purchasing-server` 20 passed, `storage-access` 19 passed).
-Run: `npm run test:sql` → Expected, in order: `45 passed` (2A-1), `10 passed` (2A-1 races), `45 passed` (2A-1 with 0097), `34 passed` (2A-2), `5 passed` (2A-2 races); exit 0.
+Run: `npm test` → Expected: exit 0 (every suite `… passed, 0 failed`; `purchasing-server` 23 passed, `storage-access` 19 passed).
+Run: `npm run test:sql` → Expected, in order: `45 passed` (2A-1), `10 passed` (2A-1 races), `45 passed` (2A-1 with 0097), `44 passed` (2A-2), `5 passed` (2A-2 races); exit 0.
 
 - [ ] **Step 5: Commit (the user)** — files above; suggested message: `2A-2 server: migration 0097 (Buyer switch, portions, request covers, approvals, buyer-only receipts) + tests`.
 
@@ -4458,7 +4861,7 @@ test('admin.html loads the purchasing files after Requests, with their views', (
   ok(/REQ_VIEWS\s*=\s*\[[^\]]*'reqPurchasing','reqPurchase'\]/.test(html), 'REQ_VIEWS');
   ok(html.indexOf('css/purchasing-admin.css') > 0, 'styles');
   // Files this stage changes must reach an already-open browser (a stale admin.js hides the tab).
-  for (const f of ['supabase-config', 'admin', 'receipt-storage', 'expenses-module']) {
+  for (const f of ['supabase-config', 'admin', 'receipt-storage', 'expenses-module', 'user-navigator']) {
     const m = html.match(new RegExp('js/' + f + '\\.js\\?v=(\\d{8})'));
     ok(m && Number(m[1]) >= 20261016, f + '.js cache-buster not bumped for 2A-2');
   }
@@ -4543,15 +4946,17 @@ test('review 3: the owner sees every field — quantities, units, dates, supplie
     charges: [{ kind: 'delivery_fee', amount: 100, shares: [90, 10] }] };
   const proposed = { ...base, date_time: '2026-10-13T08:00', supplier: 'Wilcon · Cubao', bought_by: null, receipt_total: 1150,
     receipts: { delivery_receipt_url: 'bbbb2222' },
-    lines: [base.lines[0], { ...base.lines[1], quantity: 3, amount: 150, where: 'Prado · Main Contract' }],
+    lines: [{ ...base.lines[0], picks: [{ quantity: 2, cutoff_at: '2026-10-17T04:00:00Z', buyer: 'Pedro' }] }, { ...base.lines[1], quantity: 3, amount: 150, where: 'Prado · Main Contract' }],
     charges: [{ kind: 'delivery_fee', amount: 100, shares: [40, 60] }] };
   const rows = pa.changeRows(base, proposed);
   const changed = rows.filter(r => r.changed).map(r => r.group + ' / ' + r.label);
   eq(changed, ['Receipt / Date and time bought', 'Receipt / Supplier', 'Receipt / Receipt total', 'Receipt / Receipt photos',
-               'Line 2 / Quantity', 'Line 2 / Amount', 'Line 2 / Project / warehouse', 'Fees and discounts / Fee / discount 1']);
+               'Line 1 / Request', 'Line 2 / Quantity', 'Line 2 / Amount', 'Line 2 / Project / warehouse', 'Fees and discounts / Fee / discount 1']);
   const q = rows.find(r => r.group === 'Line 2' && r.label === 'Quantity');
   eq([q.before, q.after], ['1 roll', '3 roll']);
   ok(rows.find(r => r.label === 'Fee / discount 1').after.includes('line 1: ₱40.00, line 2: ₱60.00'), 'the split asked for');
+  const req1 = rows.find(r => r.group === 'Line 1' && r.label === 'Request');
+  ok(req1.after.includes('held by Pedro') && req1.changed, 'a pick shows who holds the portion');
   ok(!rows.find(r => r.label === 'Bought by').changed, 'a body without "bought by" keeps the buyer');
   ok(rows.length > changed.length, 'unchanged fields are listed too');
   const two = pa.changeRows(base, { ...base, lines: [base.lines[0]] });
@@ -4607,6 +5012,85 @@ test('R3: Project Control reads the purchase behind a row through pur_entry_row 
   const src = read('js/expenses-module.js');
   ok(/rpc\('pur_entry_row', \{/.test(src) && /rpc\('pur_review_lines'\)/.test(src), 'server reads');
   ok(!/from\('purchase(s|_lines|_charges|_charge_shares|_history)'\)/.test(src), 'no direct read of a purchase table');
+});
+
+test('fix 1: a correction keeps the stored receipt photos (a replacement of a different line count has no other source)', () => {
+  const d = pa.storedDocs({ po_image_url: 'a1', delivery_receipt_url: 'b2', supplier_invoice_url: 'c3', payment_receipt_url: 'd4',
+                            other_url: 'zz', extra: '' });
+  eq(d, { po_image_url: 'a1', delivery_receipt_url: 'b2', supplier_invoice_url: 'c3', payment_receipt_url: 'd4' });
+  eq(pa.storedDocs({ po_image_url: '', delivery_receipt_url: null, supplier_invoice_url: 5, payment_receipt_url: 'ok' }), { payment_receipt_url: 'ok' });
+  eq(pa.storedDocs(null), {});
+  const b = pa.buildBody({ purchaseDate: '2026-10-14', docs: pa.storedDocs({ po_image_url: 'a1' }), lines: [], charges: [] });
+  eq(b.docs, { po_image_url: 'a1' }, 'the body carries them');
+  const rec = read('js/purchasing-admin-record.js');
+  ok(/docs: PA\.storedDocs\(doc\.docs\)/.test(rec), 'fromPurchase seeds docs from the stored purchase');
+  ok(/st\.stored\b/.test(rec) && /delete st\.docs\[field\];[\s\S]{0,120}st\.stored/.test(rec), 'Remove on a new choice falls back to the stored photo');
+});
+test('fix 2: a Purchasing correction keeps the stored time of day unless the date was changed', () => {
+  const base = { purchaseDate: '2026-10-14', dateTime: '2026-10-14T09:30', lines: [], charges: [] };
+  eq(pa.buildBody(base).date_time, '2026-10-14T09:30', 'same date: stored time kept');
+  eq(pa.buildBody({ ...base, purchaseDate: '2026-10-15' }).date_time, '2026-10-15', 'changed date: the new date');
+  eq(pa.buildBody({ purchaseDate: '2026-10-14', lines: [], charges: [] }).date_time, '2026-10-14', 'a new purchase sends the date');
+  const rec = read('js/purchasing-admin-record.js');
+  ok(/dateTime: doc\.date_time/.test(rec) && /dateTime: st\.dateTime/.test(rec), 'the state carries the stored date_time into the body');
+});
+test('fix 3: picking a listed supplier clears the typed supplier text', () => {
+  const rec = read('js/purchasing-admin-record.js');
+  ok(/dataset\.h === 'supplierId'[^\n]*st\.supplier = ''/.test(rec), 'the supplier select clears the typed text');
+  ok(/st\.supplierId = s\.id;\s*st\.supplier = '';/.test(rec), 'a new supplier clears it too');
+});
+test('fix 4: a pick shows its holder only while the portion still exists', () => {
+  const mk = (picks) => ({ item_name: 'x', quantity: 1, unit: 'u', amount: 1, request: 'R', picks });
+  const rows = (picks) => pa.changeRows({ lines: [mk([])] }, { lines: [mk(picks)] }).find(r => r.group === 'Line 1' && r.label === 'Request').after;
+  ok(rows([{ quantity: 1, cutoff_at: '2026-10-17T04:00:00Z' }]).includes('(unassigned)'), 'no buyer → unassigned');
+  const gone = rows([{ quantity: 1, cutoff_at: null, buyer: 'Pedro' }]);
+  ok(gone.includes('a portion no longer there') && !/held by|unassigned/.test(gone), 'a removed portion has no suffix');
+});
+test('fix 5: the staff void notice is shown after the modal has closed', () => {
+  const src = read('js/purchasing-admin-purchases.js');
+  const i = src.indexOf("p_kind: 'void'");
+  const onSubmitTail = src.slice(i, src.indexOf('onDone', i));
+  ok(!/PA\.notice\(/.test(onSubmitTail), 'no notice inside onSubmit');
+  ok(/onDone: \(\) => \{[^}]*PA\.notice\(/.test(src.slice(i)), 'shown from onDone');
+});
+test('fix 6: a non-buyer is not handed purchase receipts they cannot open', () => {
+  const src = read('js/expenses-module.js');
+  const at = src.indexOf('const d = { ...(pur.purchase.docs');
+  ok(at > 0 && /currentCanBuy[\s\S]{0,300}purchases\\\/[\s\S]{0,200}storagePathOf\(/.test(src.slice(at, at + 1200)), 'purchases/ URLs are left out unless the account may buy');
+});
+
+console.log('\npurchasing-admin: final review fixes (16 Oct)');
+
+test('final 1: a batch-filtered list picks the portions it shows, so the server covers exactly those', () => {
+  const portions = [{ id: 'A', still_to_buy: 4, buyer_id: 'me' }, { id: 'B', still_to_buy: 3, buyer_id: null },
+                    { id: 'C', still_to_buy: 5, buyer_id: 'other' }, { id: 'D', still_to_buy: 0, buyer_id: 'me' }];
+  eq(pa.defaultPicks(portions, { userId: 'me', isOwner: false }), [{ portionId: 'A', quantity: 4 }, { portionId: 'B', quantity: 3 }],
+     'own + unassigned, not another buyer\'s, nothing-left skipped, list order');
+  eq(pa.defaultPicks(portions, { userId: 'boss', isOwner: true }), [{ portionId: 'A', quantity: 4 }, { portionId: 'B', quantity: 3 }, { portionId: 'C', quantity: 5 }],
+     'the owner: every portion with something left');
+  eq(pa.defaultPicks(null, { userId: 'me' }), []);
+  const list = read('js/purchasing-admin-list.js');
+  ok(/PA\.openRecord\(\{ requestLines: picked, batchId: ui\.batchId \|\| ''/.test(list), 'the list passes the batch it is filtered to');
+  const rec = read('js/purchasing-admin-record.js');
+  ok(/portionPicks: batchId \? PA\.defaultPicks\(l\.portions, me\) : \[\]/.test(rec), 'picks are pre-filled only when a batch is set');
+  ok(/fromRequest\(l, me, ctx\.batchId\)/.test(rec), 'the form hands the batch to fromRequest');
+  const picks = pa.defaultPicks(portions, { userId: 'me' });
+  const l = { requestLineId: 'L', requestUnit: 'bag', unit: 'bag', still: 7, portions: portions.slice(0, 2), folderId: 'F', itemName: 'Cement', amount: 700,
+              quantity: 7, portionPicks: picks };
+  eq(pa.lineStill(l), 7, 'default quantity equals the picks\' total');
+  eq(pa.formProblems({ purchaseDate: '2026-10-14', lines: [l], charges: [] }), []);
+});
+test('final minor 2: a correction that did not raise the quantity is not asked for an extra reason', () => {
+  const base = { requestLineId: 'L', requestUnit: 'bag', unit: 'bag', still: 7, folderId: 'F', itemName: 'Cement', amount: 100, quantity: 10 };
+  const st = (x) => ({ purchaseDate: '2026-10-14', lines: [x], charges: [] });
+  eq(pa.formProblems(st(base)).map(p => p.code), ['EXTRA_REASON_REQUIRED'], 'a new purchase of 10 against 7 still needs it');
+  eq(pa.formProblems(st({ ...base, origQuantity: 10 })), [], 'price fix: the server labels the extra itself');
+  eq(pa.formProblems(st({ ...base, origQuantity: 9 })).map(p => p.code), ['EXTRA_REASON_REQUIRED'], 'raised above the stored quantity: still asked');
+  ok(/origQuantity: Number\(l\.quantity\)/.test(read('js/purchasing-admin-record.js')), 'fromPurchase remembers the stored quantity');
+});
+test('final minor 6: BAD_DOCS has plain words in the Purchasing tab and in Expenses', () => {
+  ok(/receipt photo link is not valid/.test(pa.ERRORS.BAD_DOCS), 'ERRORS');
+  ok(/BAD_DOCS:\s+'A receipt photo link is not valid/.test(read('js/expenses-module.js')), '_purErrorText');
 });
 
 Promise.all(pending).then(() => {
@@ -4772,6 +5256,16 @@ Create `js/purchasing-admin-core.js`:
         return picks.length && l.portions ? pickedStill(l.portions, picks) : (Number(l.still) || 0);
     }
 
+    // The portions a batch-filtered list shows for a line, as the picks a
+    // purchase from that list covers: the ones this buyer may cover (own or
+    // unassigned; the owner: all), each at its Still to buy, in list order.
+    // Picks are authoritative on the server, so it covers exactly these.
+    function defaultPicks(portions, me) {
+        return (portions || [])
+            .filter(p => (me.isOwner || !p.buyer_id || p.buyer_id === me.userId) && Number(p.still_to_buy) > 0)
+            .map(p => ({ portionId: p.id, quantity: Number(p.still_to_buy) }));
+    }
+
     // A request line's own words, to tell a renamed item from the request.
     const norm = (s) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase();
 
@@ -4783,6 +5277,18 @@ Create `js/purchasing-admin-core.js`:
     // Receipt photos to upload on save: every selected file not yet uploaded
     // AS THAT FILE — a replacement chosen after an earlier upload goes up too
     // (it used to be skipped because a URL was already there).
+    // The receipt photos a stored purchase already has (non-empty text, the
+    // four known slots only). A correction that changes the number of lines
+    // is a replacement purchase, which takes its photos from the body alone.
+    function storedDocs(docs) {
+        const out = {};
+        ['po_image_url', 'delivery_receipt_url', 'supplier_invoice_url', 'payment_receipt_url'].forEach(k => {
+            const v = docs && docs[k];
+            if (typeof v === 'string' && v) out[k] = v;
+        });
+        return out;
+    }
+
     function docUploads(files, uploaded) {
         return Object.keys(files || {}).filter(k => files[k] && !(uploaded && uploaded[k] && uploaded[k].file === files[k]));
     }
@@ -4848,7 +5354,8 @@ Create `js/purchasing-admin-core.js`:
         const body = {
             source: 'purchasing',
             purchase_date: st.purchaseDate,
-            date_time: st.purchaseDate,
+            // A correction keeps the stored time of day while the date is unchanged.
+            date_time: st.dateTime && String(st.dateTime).slice(0, 10) === st.purchaseDate ? st.dateTime : st.purchaseDate,
             supplier: String(st.supplier || '').trim(),
             supplier_id: st.supplierId || null,
             payment_method: String(st.paymentMethod || '').trim(),
@@ -4877,7 +5384,9 @@ Create `js/purchasing-admin-core.js`:
             if (l.destination !== 'warehouse' && !l.folderId) out.push({ code: 'BAD_PROJECT', line });
             if (l.requestLineId) {
                 const pv = coverPreview(lineStill(l), l.quantity, countsDirectly(l));
-                if (pv.extra > 0 && (!String(l.extraReason || '').trim() || !l.extraLocation)) out.push({ code: 'EXTRA_REASON_REQUIRED', line });
+                // A correction whose quantity did not rise gets the server's own reason.
+                const keepsQty = l.origQuantity != null && Number(l.quantity) <= Number(l.origQuantity);
+                if (pv.extra > 0 && !keepsQty && (!String(l.extraReason || '').trim() || !l.extraLocation)) out.push({ code: 'EXTRA_REASON_REQUIRED', line });
                 // An item named differently from its request is either the same
                 // thing in other words or a substitute — the buyer says which.
                 if ((l.match || 'same') === 'same' && l.requestName && norm(l.itemName) !== norm(l.requestName)) out.push({ code: 'NAME_DIFFERS', line });
@@ -4946,7 +5455,7 @@ Create `js/purchasing-admin-core.js`:
         add('Receipt', 'Receipt photos', receipts(b), receipts(p));
         const line = (l) => {
             if (!l) return null;
-            const picks = (l.picks || []).map(k => qty(k.quantity) + ' from ' + (k.cutoff_at ? 'the ' + day(k.cutoff_at) + ' batch' : 'a portion no longer there')).join(', ');
+            const picks = (l.picks || []).map(k => qty(k.quantity) + ' from ' + (k.cutoff_at ? 'the ' + day(k.cutoff_at) + ' batch' + (k.buyer ? ' (held by ' + k.buyer + ')' : ' (unassigned)') : 'a portion no longer there')).join(', ');
             return {
                 Item: l.item_name || '—',
                 Quantity: qty(l.quantity) + ' ' + (l.unit || ''),
@@ -4990,6 +5499,7 @@ Create `js/purchasing-admin-core.js`:
         BOUGHT: 'Something was already bought for this quantity, so it stays in its weekly batch.',
         BAD_REQUEST_LINK: 'A purchase line must go to the same project and work (Main Contract or Additional Works) as its request.',
         BAD_PORTION: 'That part of the request is no longer available. Reload the list.',
+        BAD_DOCS: 'A receipt photo link is not valid — attach the photo again.',
         EXTRA_REASON_REQUIRED: 'You bought more than is still needed. Say why (pack size, spare, cheaper in bulk) and where the extra goes.',
         BAD_EXTRA: 'The extra goes to the same project or to the warehouse.',
         UNPLANNED_REASON_REQUIRED: 'A purchase with no request needs a reason.',
@@ -5037,7 +5547,7 @@ Create `js/purchasing-admin-core.js`:
     }
 
     const pure = { round2, round3, peso, qty, parseMoney, parseQty, sameUnit, portionActions, buyerLabel, filterList,
-                   listSummary, coverPreview, pickedStill, lineStill, countsDirectly, docUploads, prorate, receiptTotal,
+                   listSummary, coverPreview, pickedStill, lineStill, defaultPicks, countsDirectly, docUploads, storedDocs, prorate, receiptTotal,
                    buildBody, formProblems, HISTORY_LABEL, REQUEST_STATUS, purchaseFlags, needsOwner, changeRows, ERRORS,
                    errorMessage };
 
@@ -5227,7 +5737,7 @@ Create `js/purchasing-admin-list.js`:
         body.querySelectorAll('[data-pick]').forEach(c => c.addEventListener('change', () => { ui.picked[c.dataset.pick] = c.checked; reload(); }));
         body.querySelector('[data-record]').addEventListener('click', () => {
             const picked = lines.filter(l => ui.picked[l.line_id]);
-            if (picked.length) PA.openRecord({ requestLines: picked, onDone: () => { ui.picked = {}; } });
+            if (picked.length) PA.openRecord({ requestLines: picked, batchId: ui.batchId || '', onDone: () => { ui.picked = {}; } });
         });
         body.querySelector('[data-unplanned]').addEventListener('click', () => PA.openRecord({ requestLines: [] }));
         body.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => act(b.dataset.act, b.dataset.portion, lines, me, reload)));
@@ -5331,7 +5841,7 @@ Create `js/purchasing-admin-record.js`:
     if (!RA || !PA) return;
     const esc = RA.esc;
 
-    let ctx = null;   // { requestLines, purchase, onDone }
+    let ctx = null;   // { requestLines, batchId, purchase, onDone }
     let st = null;    // the form
 
     const DOCS = [['po', 'po_image_url', 'Purchase order'], ['dr', 'delivery_receipt_url', 'Delivery receipt'],
@@ -5359,13 +5869,17 @@ Create `js/purchasing-admin-record.js`:
                  match: 'same', substituteReason: '', unplannedReason: '', inInventory: false };
     }
 
-    function fromRequest(l, me) {
+    function fromRequest(l, me, batchId) {
         const still = stillFor(l, me);
         const name = l.description + (l.spec ? ' ' + l.spec : '');
+        const portions = (l.portions || []).filter(p => mayCover(p, me) && Number(p.still_to_buy) > 0);
         return Object.assign(newLine(), {
             requestLineId: l.line_id, requestUnit: l.unit, requestName: name, still,
             // The portions this buyer may pick (own, unassigned; the owner: all).
-            portions: (l.portions || []).filter(p => mayCover(p, me) && Number(p.still_to_buy) > 0),
+            portions,
+            // A list filtered to one weekly batch shows only that batch's portions:
+            // pick them, so the server covers exactly what the form describes.
+            portionPicks: batchId ? PA.defaultPicks(l.portions, me) : [],
             folderId: l.work_id, folderLabel: l.project_name + ' · ' + l.work_name, itemName: name,
             category: l.category || 'Materials', quantity: still || 1, unit: l.unit,
         });
@@ -5378,7 +5892,8 @@ Create `js/purchasing-admin-record.js`:
             opId: root.DacsReceipts.newId(), editId: doc.id, editLines: (doc.lines || []).length, reason: '',
             purchaseDate: doc.purchase_date, supplierId: doc.supplier_id || '', supplier: doc.supplier_id ? '' : (doc.supplier || ''),
             paymentMethod: doc.payment_method || '', notes: doc.notes || '', boughtBy: doc.bought_by || '',
-            docs: {}, files: {}, uploaded: {}, onFile: Object.keys(doc.docs || {}).filter(k => (doc.docs || {})[k]),
+            dateTime: doc.date_time || '',
+            stored: PA.storedDocs(doc.docs), docs: PA.storedDocs(doc.docs), files: {}, uploaded: {}, onFile: Object.keys(PA.storedDocs(doc.docs)),
             lines: (doc.lines || []).map(l => {
                 const r = reqs[l.line];
                 const name = r ? r.description + (r.spec ? ' ' + r.spec : '') : '';
@@ -5390,7 +5905,7 @@ Create `js/purchasing-admin-record.js`:
                     itemName: l.item_name, category: l.category || '', quantity: Number(l.quantity), unit: l.unit || '',
                     amount: String(l.amount), extraReason: l.extra_reason || '', extraLocation: l.extra_location || '',
                     match: l.substitute ? 'substitute' : 'wording', substituteReason: l.substitute_reason || '',
-                    unplannedReason: l.unplanned_reason || '', inInventory: !!l.in_inventory,
+                    unplannedReason: l.unplanned_reason || '', inInventory: !!l.in_inventory, origQuantity: Number(l.quantity),
                     // Kept as they are: a correction never re-picks (the server keeps the portions covered).
                     portionPicks: (l.portion_picks || []).map(p => ({ portionId: p.portion_id, quantity: p.quantity })),
                 });
@@ -5554,7 +6069,7 @@ Create `js/purchasing-admin-record.js`:
     // The form, as the server will read it.
     function formState() {
         return {
-            purchaseDate: st.purchaseDate, supplierId: st.supplierId || null, supplier: st.supplier, paymentMethod: st.paymentMethod,
+            purchaseDate: st.purchaseDate, dateTime: st.dateTime, supplierId: st.supplierId || null, supplier: st.supplier, paymentMethod: st.paymentMethod,
             notes: st.notes, docs: st.docs, boughtBy: st.boughtBy || null,
             lines: st.lines.map(l => Object.assign({}, l, { quantity: PA.parseQty(l.quantity), amount: PA.parseMoney(l.amount),
                 portionPicks: (l.portionPicks || []).map(k => ({ portionId: k.portionId, quantity: PA.parseQty(k.quantity) || 0 })) })),
@@ -5667,7 +6182,7 @@ Create `js/purchasing-admin-record.js`:
                 opId: root.DacsReceipts.newId(), editId: null, editLines: 0, reason: '',
                 purchaseDate: todayKey(), supplierId: '', supplier: '', paymentMethod: 'Cash', notes: '', boughtBy: me.userId,
                 docs: {}, files: {}, uploaded: {}, onFile: [],
-                lines: ctx.requestLines.length ? ctx.requestLines.map(l => fromRequest(l, me)) : [newLine()],
+                lines: ctx.requestLines.length ? ctx.requestLines.map(l => fromRequest(l, me, ctx.batchId)) : [newLine()],
                 charges: [],
             };
         }
@@ -5712,7 +6227,7 @@ Create `js/purchasing-admin-record.js`:
               '<button type="button" class="att-btn att-btn--primary" data-save>' + (st.editId ? 'Save correction' : 'Save purchase') + '</button></div>';
 
         const rerender = () => renderRecord(host, me);
-        host.querySelectorAll('[data-h]').forEach(el => el.addEventListener('input', () => { st[el.dataset.h] = el.value; refresh(host); }));
+        host.querySelectorAll('[data-h]').forEach(el => el.addEventListener('input', () => { st[el.dataset.h] = el.value; if (el.dataset.h === 'supplierId' && el.value) st.supplier = ''; refresh(host); }));
         host.querySelectorAll('[data-f]').forEach(el => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
             const l = st.lines[Number(el.dataset.i)];
             if (el.dataset.f === 'where') {
@@ -5743,7 +6258,10 @@ Create `js/purchasing-admin-record.js`:
             const field = DOCS.find(d => d[0] === key)[1];
             delete st.files[key];
             // An upload made for this choice is not sent (the stored receipt stays as it was).
-            if (st.uploaded[key]) { delete st.uploaded[key]; delete st.docs[field]; }
+            if (st.uploaded[key]) {
+                delete st.uploaded[key]; delete st.docs[field];
+                if (st.stored && st.stored[field]) st.docs[field] = st.stored[field];
+            }
             rerender();
         }));
         host.querySelectorAll('[data-remove]').forEach(b => b.addEventListener('click', () => {
@@ -5779,6 +6297,7 @@ Create `js/purchasing-admin-record.js`:
                 const s = await RA.rpc('pur_save_supplier', { p_id: null, p_name: form.name.value, p_branch: form.branch.value,
                                                              p_contact: form.contact.value, p_active: true });
                 st.supplierId = s.id;
+                st.supplier = '';
             },
             onDone: rerender,
         }));
@@ -5951,6 +6470,7 @@ Create `js/purchasing-admin-purchases.js`:
         }));
         const corr = host.querySelector('[data-correct]');
         if (corr) corr.addEventListener('click', () => PA.openRecord({ purchase: doc }));
+        let sentToOwner = false;
         const vd = host.querySelector('[data-void]');
         if (vd) vd.addEventListener('click', () => RA.modal({
             title: 'Void this purchase?',
@@ -5961,15 +6481,17 @@ Create `js/purchasing-admin-purchases.js`:
             onSubmit: async (form) => {
                 const reason = form.reason.value.trim();
                 if (!reason) throw new Error('REASON_REQUIRED');
+                sentToOwner = false;
                 try {
                     await RA.rpc('pur_void', { p_op: root.DacsReceipts.newId(), p_purchase: doc.id, p_reason: reason });
                 } catch (e) {
                     if (me.isOwner || !PA.needsOwner(e)) throw e;
                     await RA.rpc('pur_request_change', { p_op: root.DacsReceipts.newId(), p_purchase: doc.id, p_kind: 'void', p_body: null, p_reason: reason });
-                    PA.notice('Only the owner can void this one (completed project). It was sent to the owner for approval.', 'Sent to the owner');
+                    sentToOwner = true;
                 }
             },
-            onDone: reload,
+            // The modal has closed (and cleared the shared host) by now.
+            onDone: () => { reload(); if (sentToOwner) PA.notice('Only the owner can void this one (completed project). It was sent to the owner for approval.', 'Sent to the owner'); },
         }));
         host.querySelectorAll('[data-check]').forEach(b => b.addEventListener('click', () => {
             const l = doc.lines.find(x => String(x.line) === b.dataset.check);
@@ -6266,7 +6788,7 @@ Patch `admin.html` (stylesheet, views, scripts, `REQ_VIEWS`, titles; the receipt
 
 ````diff
 diff --git a/admin.html b/admin.html
-index 488600a..dc48863 100644
+index 488600a..8ea7760 100644
 --- a/admin.html
 +++ b/admin.html
 @@ -22,6 +22,7 @@
@@ -6310,7 +6832,7 @@ index 488600a..dc48863 100644
  <script src="js/overhead-module.js"></script>
  <script src="js/reimbursement-module.js"></script>
  <script src="js/construction-module.js"></script>
-@@ -5404,6 +5409,10 @@
+@@ -5404,13 +5409,17 @@
  <script src="js/requests-admin-setup.js?v=20261012a"></script>
  <script src="js/requests-admin-history.js?v=20261012a"></script>
  <script src="js/requests-admin-gallery.js?v=20261012a"></script>
@@ -6321,6 +6843,14 @@ index 488600a..dc48863 100644
  <script src="js/workplan-admin-core.js?v=20261013a"></script>
  <script src="js/workplan-admin-form.js?v=20261013a"></script>
  <script src="js/workplan-admin-board.js?v=20261013a"></script>
+ <script src="js/workplan-admin-task.js?v=20261013a"></script>
+ <script src="js/workplan-admin-meetings.js?v=20261013a"></script>
+ <script src="js/quotation-print.js"></script>
+-<script src="js/user-navigator.js"></script>
++<script src="js/user-navigator.js?v=20261016a"></script>
+ <script src="js/client-accounts.js"></script>
+ <script src="js/payment-requests.js"></script>
+ <script src="js/invoice-module.js"></script>
 @@ -6245,7 +6254,7 @@
      const PM_VIEWS   = ['pmProjects','pmWorkspace'];
      const QUOTE_VIEWS = ['quoteList','quoteEditor','quoteRevision'];
@@ -6425,22 +6955,23 @@ Patch `js/expenses-module.js` (Project Control: staff send an owner-only correct
 
 ````diff
 diff --git a/js/expenses-module.js b/js/expenses-module.js
-index 73dc884..22e5e11 100644
+index 73dc884..930ab7e 100644
 --- a/js/expenses-module.js
 +++ b/js/expenses-module.js
-@@ -2817,7 +2817,10 @@ function _purErrorText(err) {
+@@ -2817,7 +2817,11 @@ function _purErrorText(err) {
          OWNER_APPROVAL_NEEDED: 'Moving a cost to another project needs the owner.',
          NOT_OFFICE:            'Only office accounts can record expenses.',
          NOT_ALLOWED:           'This account is not set up for Expenses.',
 -        BUYER_REQUIRED:        'Phone purchasing needs the Buyer switch (not available yet).',
 +        BUYER_REQUIRED:        'This needs an account that may buy (the owner, or staff with the Buyer switch).',
++        BAD_DOCS:              'A receipt photo link is not valid — attach the photo again.',
 +        EXTRA_REASON_REQUIRED: 'This purchase covers a request and would now be more than the request needs — correct it in Requests → Purchasing, where you can give the reason.',
 +        BAD_REQUEST_LINK:      'This purchase is linked to a request for another project — correct it in Requests → Purchasing.',
 +        ALREADY_PENDING:       'A change to this purchase is already waiting for the owner.',
          PURCHASES_LIVE:        'It has purchases — void them first.',
          REASON_REQUIRED:       'Please give a reason.',
          BAD_STATE:             'This purchase was already voided.',
-@@ -2869,31 +2872,54 @@ function _purAskReason(title, sub, okLabel) {
+@@ -2869,31 +2873,54 @@ function _purAskReason(title, sub, okLabel) {
      });
  }
  
@@ -6516,7 +7047,7 @@ index 73dc884..22e5e11 100644
  }
  
  // A purchase on a project with NO billing period (0096) is tied to the project
-@@ -2914,9 +2940,10 @@ function _expNoPeriodSpent(folderId) {
+@@ -2914,9 +2941,10 @@ function _expNoPeriodSpent(folderId) {
  let _purReviewLines = new Set();
  async function _purLoadReviewFlags() {
      try {
@@ -6529,7 +7060,7 @@ index 73dc884..22e5e11 100644
          window.dispatchEvent(new Event('dacs:pur-review-flags'));
      } catch (err) { console.warn('purchase review flags:', err); }
  }
-@@ -2925,6 +2952,8 @@ window.expPurNeedsReview = id => !!id && _purReviewLines.has(id);
+@@ -2925,6 +2953,8 @@ window.expPurNeedsReview = id => !!id && _purReviewLines.has(id);
  // Set while the Edit Expense modal is correcting a purchase (else null).
  let _editingPurchase = null;
  let _purEditOpId = null;
@@ -6538,7 +7069,7 @@ index 73dc884..22e5e11 100644
  
  // All rows in ONE insert (all-or-nothing). If this submission already landed
  // (a retry after the response was lost), the unique index answers 23505 —
-@@ -3056,7 +3085,14 @@ async function deleteExpense(id) {
+@@ -3056,7 +3086,14 @@ async function deleteExpense(id) {
              showExpNotif('Purchase voided.', 'success');
              refreshOvAllData();
              _purLoadReviewFlags();
@@ -6554,7 +7085,21 @@ index 73dc884..22e5e11 100644
          return;
      }
      if (!await showDeleteConfirm('Delete this expense?')) return;
-@@ -4470,6 +4506,7 @@ async function _purSaveCorrection() {
+@@ -4345,7 +4382,12 @@ async function openEditExpenseModal(id) {
+         if (pur.purchase.status !== 'recorded') { showExpNotif('This purchase was voided.', 'error'); return; }
+         if (!pur.simple) { showExpNotif('This expense is part of a purchase with several items or a shared fee — it cannot be changed from here yet.', 'error'); return; }
+         _editingPurchase = pur;
+-        const d = pur.purchase.docs || {};
++        const d = { ...(pur.purchase.docs || {}) };
++        // A non-buyer cannot open a receipt kept in purchases/ (Storage refuses it) — leave those out.
++        // The correction body sends only re-attached photos, so nothing stored is cleared.
++        if (!window.currentCanBuy) Object.keys(d).forEach(k => {
++            if (/^purchases\//.test(DacsReceipts.storagePathOf(d[k]) || '')) delete d[k];
++        });
+         e = { ...e, expenseName: pur.line.item_name, category: pur.line.category, quantity: Number(pur.line.quantity),
+               amount: Number(pur.line.gross_amount), dateTime: pur.purchase.date_time, notes: pur.purchase.notes,
+               paymentMethod: pur.purchase.payment_method, poImageUrl: d.po_image_url, deliveryReceiptUrl: d.delivery_receipt_url,
+@@ -4470,6 +4512,7 @@ async function _purSaveCorrection() {
                        min_stock: Number(pur.line.min_stock) || 0 }],
              charges: [],
          };
@@ -6562,7 +7107,7 @@ index 73dc884..22e5e11 100644
          const { data, error } = await window.sbClient.rpc('pur_correct', { p_op: _purEditOpId, p_purchase: pur.purchase.id, p_body: body, p_reason: reason });
          if (error) throw error;
          _purEditOpId = null;
-@@ -4481,7 +4518,18 @@ async function _purSaveCorrection() {
+@@ -4481,7 +4524,18 @@ async function _purSaveCorrection() {
          refreshOvAllData();
          _purLoadReviewFlags();
          closeExpModal('editExpenseModal');
@@ -6613,7 +7158,7 @@ index 2343bdf..66c3d1f 100644
 - [ ] **Step 4: Run everything**
 
 Run: `for f in js/purchasing-admin-*.js js/admin.js js/user-navigator.js js/expenses-module.js js/supabase-config.js; do node --check "$f"; done` → Expected: no output.
-Run: `npm test` → Expected: exit 0; `purchasing-admin` 24 passed.
+Run: `npm test` → Expected: exit 0; `purchasing-admin` 33 passed.
 
 - [ ] **Step 5: Commit (the user)** — suggested message: `2A-2 web: Requests → Purchasing (shopping list, record, purchases, owner approvals), Buyer switch, send-to-owner in Project Control`.
 
@@ -6627,7 +7172,7 @@ Run: `npm test` → Expected: exit 0; `purchasing-admin` 24 passed.
 
 ````diff
 diff --git a/docs/DATABASE_SCHEMA.md b/docs/DATABASE_SCHEMA.md
-index 7c98f2d..d3e57f7 100644
+index 7c98f2d..55f808b 100644
 --- a/docs/DATABASE_SCHEMA.md
 +++ b/docs/DATABASE_SCHEMA.md
 @@ -1052,4 +1052,27 @@ One recording operation for every purchase, shared by Dacs Web (Expenses → Add
@@ -6644,21 +7189,21 @@ index 7c98f2d..d3e57f7 100644
 +| Object | Purpose |
 +|---|---|
 +| `pur_buyers` (`user_id` PK, `owner_id`, `is_buyer`, `updated_by`, `updated_at`) + `pur_buyer_events` | The per-staff **Buyer** switch and its history. Set only by the main owner (`pur_set_buyer`), for their own staff |
-+| `pur_buyer()` / `pur_can_buy(user, owner)` | Who may BUY: an active owner account, or that owner's active staff with the switch on — in both cases allowed the **Expenses** section (an account focused elsewhere, e.g. `admin-pm@`, cannot), inside its own company. Linking a purchase line to a request, picking portions or taking a portion over needs it **whatever the source** — the Expenses form included |
++| `pur_buyer()` / `pur_can_buy(user, owner)` | Who may BUY: an active owner account, or that owner's active staff with the switch on (also an office account, `pr_is_office()`) — in both cases allowed the **Expenses** section (an account focused elsewhere, e.g. `admin-pm@`, cannot), inside its own company. Linking a purchase line to a request, picking portions or taking a portion over needs it **whatever the source** — the Expenses form included; so does dropping a link (`pur_links_dropped`). A NEW link to a cancelled request line is refused (`LINE_CLOSED`); a purchase already linked still corrects |
 +| `pur_reader()` (0096, narrowed) | Now `= pur_buyer()`: purchase rows (`purchases`, lines, charges, shares, history, covers) are read only by those who may buy. Staff without the switch read none — Project Control's entry reads its one line through `pur_entry_row` |
 +| `suppliers` (`owner_id`, `name`, `branch`, `contact`, `active`; unique per company by name + branch) | The supplier list. Buyers read and add (`pur_suppliers`, `pur_save_supplier`). Old purchases keep their typed supplier text |
 +| `pr_line_portions.buyer_id` / `assigned_by` / `assigned_at` | Who is buying a portion (null = unassigned). `pur_assign_portion(portion, buyer, quantity, note)`: the owner assigns or reassigns anything; a buyer claims an unassigned portion ("I'll buy this"), gives one to another buyer, or releases their own. Part of a portion is split off; a partly bought portion keeps its bought part with whoever bought it. Logged in `pr_events` (`portion_claimed` / `portion_assigned` / `portion_released`) |
 +| `purchases.bought_by` / `supplier_id`; `source` adds `purchasing` | Who actually bought (the encoder stays `recorded_by`; only the owner records for someone else) and the supplier picked from the list |
 +| `purchase_lines.request_line_id`, `portion_picks`, `covered_qty`, `extra_qty` / `extra_reason` / `extra_location`, `unit_check` (`none`/`pending`/`confirmed`) / `unit_covers` / `unit_checked_by` / `unit_checked_at` / `unit_note`, `unplanned_reason`, `substitute` / `substitute_reason` | A line's request (same project and work), what it covered, the extra beyond Still to buy (reason and location required; the location — same project or warehouse — never moves the cost), a different unit or a **substitute** (an important specification differs; reason required) waiting for an office check, or the reason for a purchase with no request |
-+| `purchase_line_covers` (`line_id` → cascade, `request_line_id`, `portion_id` → set null, `buyer_id`, `quantity`) | Which portions a line covers. Rebuilt from the stored lines by `pur_cover_lines` whenever the purchase is recorded, corrected, replaced, voided or unit-checked — in the same transaction as its expense rows. **Picked portions are authoritative** (only they are covered; the rest is extra). Otherwise a line's earlier covers (`pur_cover_history`) come first and other portions are covered only for quantity a change ADDS — a price fix never moves coverage to another week. Only RECORDED purchases count (`pr_portion_bought`, `pr_line_bought`), so Bought is never doubled and Still to buy never negative |
-+| `pur_check_unit(op, purchase, line_no, covers, note)` | The office confirms how much a different-unit or substitute line covers, in the request's unit. Never by its own buyer or recorder; history kind `unit_checked`; counts as a change to the purchase (`updated_at`) |
-+| `purchase_change_requests` (`purchase_id`, `kind` `correct`/`replace`/`void`, `body`, `reason`, `base_updated_at`, `base_doc`, `requested_by`, `status` `pending`/`approved`/`rejected`/`withdrawn`/`stale`, `decided_by`, `decision_note`, `result`) | A staff change only the owner may make (another project, a completed project). One pending per purchase. `base_doc` = the purchase (`pur_doc`) as the requester saw it; `pur_decide_change` applies only while the purchase still reads exactly the same (any correction, unit check or receipt → `stale`) and runs the very same `pur_correct` / `pur_replace` / `pur_void` as the owner. Staff without the switch cannot ask for a new request link (`pur_links_changed`) |
-+| `pur_change_requests(scope)` | Each request with `base`, `current` and `proposed` in `pur_review_doc`'s words (every header field, line, pick, receipt and fee split — the automatic split when none is given) and `changed_since` |
++| `purchase_line_covers` (`line_id` → cascade, `request_line_id`, `portion_id` → set null, `buyer_id`, `quantity`) | Which portions a line covers. Rebuilt from the stored lines by `pur_cover_lines` whenever the purchase is recorded, corrected, replaced, voided or unit-checked — in the same transaction as its expense rows. **Picked portions are authoritative** (only they are covered; the rest is extra). Otherwise a line's earlier covers (`pur_cover_history`) come first — the same portions and at most the same quantity of each — and other portions are covered only for quantity a change ADDS: a price fix, even after an earlier purchase is voided, never moves coverage between weeks. A portion newly picked in a correction is checked like one picked when recording (never another buyer's, except by the owner). Only RECORDED purchases count (`pr_portion_bought`, `pr_line_bought`), so Bought is never doubled and Still to buy never negative |
++| `pur_check_unit(op, purchase, line_no, covers, note)` | The office confirms how much a different-unit or substitute line covers, in the request's unit. Never by its own buyer or recorder, except the owner; history kind `unit_checked`; counts as a change to the purchase (`updated_at`) |
++| `purchase_change_requests` (`purchase_id`, `kind` `correct`/`replace`/`void`, `body`, `reason`, `base_updated_at`, `base_doc`, `requested_by`, `status` `pending`/`approved`/`rejected`/`withdrawn`/`stale`, `decided_by`, `decision_note`, `result`) | A staff change only the owner may make (another project, a completed project). One pending per purchase. `base_doc` = the purchase (`pur_doc`) as the requester saw it; `pur_decide_change` applies only while the purchase still reads exactly the same (any correction, unit check or receipt → `stale`) and runs the very same `pur_correct` / `pur_replace` / `pur_void` as the owner. Staff without the switch cannot ask for a new request link, or drop one (`pur_links_changed`, `pur_links_dropped`) |
++| `pur_change_requests(scope)` | Each request with `base`, `current` and `proposed` in `pur_review_doc`'s words (every header field, line, pick, receipt and fee split — the automatic split when none is given) and `changed_since`. An account that is neither the owner nor a buyer gets no `base` / `current` (its own `proposed` only) |
 +| `pur_shopping_list(batch, folder, scope)` | Open request lines with something still to buy, with their portions and who is buying each. Quantities and names only |
 +| `pur_purchases(...)`, `pur_purchase(id)`, `pur_buyer_options()`, `pur_me()`, `pur_office_buyers()`, `pur_withdraw_change(id)` | What the Purchasing tab and the Buyer switch read |
-+| `pur_entry_row(line, charge)`, `pur_review_lines()` | Project Control's data entry for every account that may record: the ONE purchase line behind an expense row with its purchase header and line / charge counts; the ids of lines flagged for office review. Nothing else |
++| `pur_entry_row(line, charge)`, `pur_review_lines()` | Project Control's data entry for every account that may record: the ONE purchase line behind an expense row with its purchase header and line / charge counts; the ids of lines flagged for office review. Nothing else; for an account that may not buy, a purchase that is not one line without fees comes back as its id and status only |
 +| Storage `uploads/purchases/<company>/<yyyy-mm>/<uuid>.jpg` | One receipt per purchase, read and written only by `pur_buyer()` of that company — not by non-buyer staff, workers, clients or partners. Dacs Web never signs a link for this folder: it downloads with the viewer's session, so Storage checks the rule on every view (`supabase-config.js` §11b). `receipt_uploads` accepts kind `purchase` |
-+| Changed 0085/0086/0096 functions | `pr_apply_quantity` (bought quantity is protected like arranged: reduced only by flagging), `pr_office_move_portion` (`BOUGHT`), `pur_reader` (buyers only), `pur_actor_owner` (sources `purchasing`/`workmate` need the switch), `pur_store`, `pur_insert` (6 arguments), `pur_correct` (keeps a line's request link when the body leaves it out — Project Control's form — and its covers' portions), `pur_replace` (voids first, keeps covers' portions), `pur_doc`, `pur_header_ok`, `pur_body_keys` / `pur_stored_keys` (`pr_line:` locks) |
++| Changed 0085/0086/0096 functions | `pr_apply_quantity` (bought quantity is protected like arranged: reduced only by flagging), `pr_office_move_portion` (`BOUGHT`), `pur_reader` (buyers only), `pur_actor_owner` (sources `purchasing`/`workmate` need the switch), `pur_store`, `pur_insert` (7 arguments), `pur_correct` (keeps a line's request link when the body leaves it out — Project Control's form — and its covers' portions), `pur_replace` (voids first, keeps covers' portions, the old buyer and the supplier), `pur_doc`, `pur_header_ok`, `pur_body_keys` / `pur_stored_keys` (`pr_line:` locks) |
 ````
 
 ````diff
@@ -6678,10 +7223,10 @@ index af4baef..022975e 100644
 
 ````diff
 diff --git a/CLAUDE.md b/CLAUDE.md
-index a8ee494..eedb55c 100644
+index a8ee494..0889952 100644
 --- a/CLAUDE.md
 +++ b/CLAUDE.md
-@@ -103,6 +103,19 @@ Profit   = Earned − Spent
+@@ -103,6 +103,20 @@ Profit   = Earned − Spent
    projects or from warehouse stock is **main owner only**. Workers and team leaders never see
    prices, receipts or payments. (Approved 2026-10-14; spec
    `docs/superpowers/specs/2026-09-30-workmate-mobile-purchasing-design.md`.)
@@ -6692,10 +7237,11 @@ index a8ee494..eedb55c 100644
 +  recorded purchases count — so Still to buy is never negative. Actual quantity, quantity
 +  covering the request and extras stay separate; a different unit counts only after an
 +  audited office check (`pur_check_unit`). An extra's location (project / warehouse) never
-+  moves its cost — cost moves are 2C, main owner only. Purchase receipts live in the
++  moves its cost — cost moves are Stage 2C (owner-confirmed cost moves), main owner only. Purchase receipts live in the
 +  buyer-only `purchases/` storage folder and are never given a signed link.
 +  Linking a purchase to a request needs the Buyer switch **whatever the source**; picked
-+  portions are the only ones covered, and a correction keeps the portions a line covered.
++  portions are the only ones covered, and a correction keeps the portions a line covered
++  and the quantity of each; a portion newly picked in a correction is checked like a new one.
 +  Purchase rows are readable by buyers only — Project Control reads its one line through
 +  `pur_entry_row`; never add a direct purchase-table read for staff.
  - **Petty cash, personal advances, supplier refunds and supplier credits stay outside Spent,
@@ -6705,10 +7251,10 @@ index a8ee494..eedb55c 100644
 
 ````diff
 diff --git a/AGENTS.md b/AGENTS.md
-index 7717471..23793de 100644
+index 7717471..51c84af 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -83,6 +83,19 @@ Profit   = Earned − Spent
+@@ -83,6 +83,20 @@ Profit   = Earned − Spent
    projects or from warehouse stock is **main owner only**. Workers and team leaders never see
    prices, receipts or payments. (Approved 2026-10-14; spec
    `docs/superpowers/specs/2026-09-30-workmate-mobile-purchasing-design.md`.)
@@ -6719,10 +7265,11 @@ index 7717471..23793de 100644
 +  recorded purchases count — so Still to buy is never negative. Actual quantity, quantity
 +  covering the request and extras stay separate; a different unit counts only after an
 +  audited office check (`pur_check_unit`). An extra's location (project / warehouse) never
-+  moves its cost — cost moves are 2C, main owner only. Purchase receipts live in the
++  moves its cost — cost moves are Stage 2C (owner-confirmed cost moves), main owner only. Purchase receipts live in the
 +  buyer-only `purchases/` storage folder and are never given a signed link.
 +  Linking a purchase to a request needs the Buyer switch **whatever the source**; picked
-+  portions are the only ones covered, and a correction keeps the portions a line covered.
++  portions are the only ones covered, and a correction keeps the portions a line covered
++  and the quantity of each; a portion newly picked in a correction is checked like a new one.
 +  Purchase rows are readable by buyers only — Project Control reads its one line through
 +  `pur_entry_row`; never add a direct purchase-table read for staff.
  - **Petty cash, personal advances, supplier refunds and supplier credits stay outside Spent,
@@ -6806,9 +7353,10 @@ The Supabase connector must be authorized. **Ask before every production call.**
   - `select to_regclass('public.purchase_line_covers'), to_regclass('public.purchase_change_requests'), to_regclass('public.suppliers')` → three names;
   - `select has_function_privilege('anon', 'pur_shopping_list(uuid,uuid,text)', 'execute')` → false;
   - `select prosrc like '%return pur_buyer();%' from pg_proc where proname = 'pur_reader'` → true (purchase rows buyers-only, R3);
-  - `select has_function_privilege('authenticated', 'pur_entry_row(uuid,uuid)', 'execute'), has_function_privilege('authenticated', 'pur_cover_lines(uuid,uuid,jsonb)', 'execute')` → true, false.
+  - `select has_function_privilege('authenticated', 'pur_entry_row(uuid,uuid)', 'execute'), has_function_privilege('authenticated', 'pur_cover_lines(uuid,uuid,jsonb)', 'execute')` → true, false;
+  - `select policyname, cmd from pg_policies where schemaname = 'storage' and tablename = 'objects' and cmd in ('SELECT', 'ALL')` → the only policy that can read bucket `uploads` is `uploads_select_scoped` (the live database has drifted on these policies before; any other SELECT/ALL policy on `uploads` would bypass the buyer-only `purchases/` rule — stop and report it).
 - [ ] **Step 3: Live acceptance.** Run `supabase/tests/2a2_acceptance.sql` through MCP `execute_sql` → `2a2 acceptance: all checks passed`; then `supabase/tests/2a1_acceptance.sql` → `2a1 acceptance: all checks passed` (2A-1 unchanged).
-- [ ] **Step 4: Push the web change** (the user). Only after Step 2 (R15).
+- [ ] **Step 4: Push the web change** (the user). Only after Step 2 (R15) — and **right after Step 3**: from the moment 0097 is applied, staff without the Buyer switch read no purchase rows, so Project Control's edit of a purchase-made row and the "Office review" mark need Task 2's `pur_entry_row` / `pur_review_lines` client (the reverse order fails too: those RPCs exist only after 0097).
 - [ ] **Step 5: Browser checks** on `dacs-company.vercel.app/admin.html` (Ctrl+Shift+R first). Test project **"ZZ 2a2 browser"** with an October billing period, and a request for it made from the test phone (W-0007) with four lines: **ZZ cement 10 bag**, **ZZ hinge 24 pcs**, **ZZ sand 10 bag** and **ZZ Boysen paint 2 gal**.
 
 | # | Who | Action | Expected |
@@ -6819,6 +7367,7 @@ The Supabase connector must be authorized. **Ask before every production call.**
 | C4 | Staff | **I'll buy this** on ZZ cement | Buyer reads **You**. |
 | C5 | Owner | Same portion: **Reassign…** to staff, quantity **4** | Two portions: 6 Unassigned, 4 the staff member's. |
 | C6 | Staff | Tick ZZ cement → **Record purchase**: quantity 6, ₱1,500, supplier **+ New supplier** "ZZ Hardware", a receipt photo | Saved. List: **Bought 6 · Still to buy 4**; the 4 stay with the staff member. Project Control → ZZ 2a2 browser Materials ₱1,500. |
+| C6b | Owner → Staff | Owner: Purchasing, **All weekly batches**, give the staff member a portion of ZZ cement in a LATER batch (or move one there). Staff: back to the default **this week** list, tick ZZ cement → Record purchase without opening Weekly portions | The form's portions show this week's only, pre-filled; saving covers **this week's** portion — the later-batch portion stays untouched (final review Important 1). |
 | C7 | Staff | Record ZZ cement again: quantity 6, ₱1,500 — leave the reason empty, then fill "sold in sixes", Extra goes to **Warehouse** | First refused with the extra message; then saved. **Still to buy 0**, **Extra 2**. Materials ₱3,000 (the extra's cost stays on the project). |
 | C8 | Staff | ZZ hinge: quantity **2**, unit **box**, ₱900 | Preview says different unit; saved; list shows **Unit check waiting**, Still to buy 24. |
 | C9 | Staff | Purchases → that purchase → **Check unit…** | Refused: someone else must check. |
@@ -6854,13 +7403,52 @@ The Supabase connector must be authorized. **Ask before every production call.**
 - **Review (rev 2):** the switch cannot be bypassed from any source; picks and earlier covers are authoritative; the owner approves exactly what is shown, never a purchase that has changed since; Expenses-focused buyers reach Purchasing; receipt replacements and unsaved choices survive; purchase rows are buyers-only with Project Control's one-line read; receipts are never signed links; substitutes are an explicit, checked exception.
 - **Not built (R14):** payments, petty cash, badge, phone, offline drafts (and the requester / team-leader substitute confirmation that comes with them), supplier grouping, stock coverage.
 
-## Execution evidence (16 Oct 2026, scratch build — revision 2)
+## Execution evidence (16 Oct 2026, scratch build — revision 3)
 
-Built and tested in a scratch copy of the 16 Oct working tree (it includes the uncommitted Project Control fixes of that morning; this plan touches none of those files). Totals below are without the WorkMate APK folder next door — the repo runs 2 more checks with it. Revision 1 is kept in the scratch build as its own commit, so every new test was also run against it.
+Built and tested in a scratch copy of the 16 Oct working tree (it includes the uncommitted Project Control fixes of that morning; this plan touches none of those files). Totals below are without the WorkMate APK folder next door — the repo runs 2 more checks with it. Revisions 1 and 2 are kept in the scratch build as their own commits, so every new test was also run against them.
 
-- **Every fix has a test that fails on revision 1.** 2A-2 behaviour suite: **34** tests — the 27 of revision 1 (all still pass) plus 7 new; on revision 1's migration the 7 new fail and the 27 pass. Static checks on 0097: **20** (5 new, all failing on revision 1). Screen / wiring checks: **24** (8 new, all failing on revision 1's screens). Live acceptance: the new checks R1–R5; on revision 1 it stops at R1.
-- **Mutation checks for the new rules** — each fix broken alone, the 2A-2 suite run: **10 / 10 caught** (any source links a request; a change request smuggles a link; anyone hands an unassigned portion over; picks not authoritative; history ignored; a unit check taking its history after the change; approval blind to anything but `updated_at`; every Expenses account reading purchase rows; a substitute counting at once; a substitute without a reason). The first run missed "anyone hands an unassigned portion over" — the test *a correction by someone who may not buy never hands a portion over* was added for it. Revision 1's 14 mutations were not re-run as a set; the rules they fenced are unchanged and their tests still pass.
-- **A flaky test from revision 1 fixed:** *the shopping list is quantities and names only* looked for `777` in a JSON that also holds random ids, which contain `777` a few percent of the time. It now looks for the amount itself, `777.77`.
-- **Full runs on the build:** `npm test` exit 0 (**1,041** ok); `npm run test:sql` suites **45 / 10 / 45 / 34 / 5** (2A-1, 2A-1 races, 2A-1 with 0097, 2A-2, 2A-2 races), exit 0.
-- **Live acceptance scripts**, dry-run on PGlite as role `authenticated` with a JWT-claims `auth.uid()` and RLS on: `2a2 acceptance: all checks passed`; `2a1 acceptance: all checks passed` with 0097 **and** without it. Unchanged, the 2A-1 script fails after 0097 (at A5 — its staff account can no longer read purchase rows, R3), which is why it gets the Buyer switch inside its own rolled-back run. Revision 1's 2A-2 script could not pass at all (`permission denied for function pr_line_bought`); fixed.
-- **Rehearsal from this plan's text**, task by task: Task 1 Step 2 fails as stated (ENOENT on 0097 twice; storage test: `purchase receipts are buyer-locked` and `the scan still finds the known upload sites`); Task 2 Step 2 fails as stated (`Cannot find module '../js/purchasing-admin-core.js'`). All **29** files byte-identical to the tested build — on a fresh LF checkout, and on a clone of the real repository's HEAD (06d69bd, `core.autocrlf=false`) where `docs/DATABASE_SCHEMA.md` and `supabase/migrations/README.md` keep their CRLF endings when their hunks are applied CRLF-preserving.
+- **Every fix has a test that fails on the revision it fixes.** 2A-2 behaviour suite: **36** tests. On revision 2's migration the two re-review tests fail and the other 34 pass. On revision 1's, 8 fail: the 7 review tests and *re-review 1* — *re-review 2* passes there, because revision 1 checked every pick; that gap came in with revision 2's history rule. Static checks on 0097: **21** (the re-review check fails on revision 2; the 5 review checks fail on revision 1). Screen / wiring checks: **24** (8 fail on revision 1's screens; revision 3 changed no screen). Live acceptance: R1–R5 and RR2; revision 2 stops at RR2, revision 1 at R1.
+- **Mutation checks** — each rule broken alone, the 2A-2 suite run: **12 / 12 caught** (any source links a request; a change request smuggles a link; anyone hands an unassigned portion over; picks not authoritative; history ignored; a unit check taking its history after the change; approval blind to anything but `updated_at`; every Expenses account reading purchase rows; **history keeping which portions but not how much of each**; **a correction picking another buyer's portion when the line has history**; a substitute counting at once; a substitute without a reason). Revision 1's original 14 mutations were not re-run as a set; the rules they fenced are unchanged and their tests still pass.
+- **A flaky test from revision 1 fixed (revision 2):** *the shopping list is quantities and names only* looked for `777` in a JSON that also holds random ids; it now looks for `777.77`.
+- **Full runs on the build:** `npm test` exit 0 (**1,042** ok); `npm run test:sql` suites **45 / 10 / 45 / 36 / 5** (2A-1, 2A-1 races, 2A-1 with 0097, 2A-2, 2A-2 races), exit 0.
+- **Live acceptance scripts**, dry-run on PGlite as role `authenticated` with a JWT-claims `auth.uid()` and RLS on: `2a2 acceptance: all checks passed`; `2a1 acceptance: all checks passed` with 0097 **and** without it. Unchanged, the 2A-1 script fails after 0097 (at A5 — its staff account can no longer read purchase rows, R3), which is why it gets the Buyer switch inside its own rolled-back run. Revision 1's 2A-2 script could not pass at all (`permission denied for function pr_line_bought`); fixed in revision 2.
+- **Rehearsal from this plan's text**, task by task: Task 1 Step 2 fails as stated (ENOENT on 0097 twice; storage test: `purchase receipts are buyer-locked` and `the scan still finds the known upload sites`); Task 2 Step 2 fails as stated (`Cannot find module '../js/purchasing-admin-core.js'`). All **29** files byte-identical to the tested build — on a fresh LF checkout, and on a clone of the real repository's HEAD (d05b980, `core.autocrlf=false`) where `docs/DATABASE_SCHEMA.md` and `supabase/migrations/README.md` keep their CRLF endings when their hunks are applied CRLF-preserving.
+
+## Implementation notes — Task 1 (16 Oct 2026, after its task review)
+
+Task 1 was first built verbatim from revision 3 (byte-identical to the rehearsed copy). Its task review found one Important issue the plan carried, and seven Minor ones that were fixed in the same round; the code blocks above are the as-built files.
+
+- **A replacement keeps who bought and the supplier** (review Important 1, rule 2). `pur_insert` takes `p_current_buyer`; `pur_replace` passes the old purchase's buyer (`coalesce(bought_by, recorded_by)`) and its `supplier_id` when the body has none. Before, a buyer replacing another's purchase became the buyer, and an owner-approved staff replacement recorded the owner.
+- **Non-buyers read no whole purchase** (R3): `pur_entry_row` returns only `id` / `status` of a purchase that is not one line without fees; `pur_change_requests` gives a non-owner non-buyer no `base` / `current`.
+- **The owner sees whose portion a pick takes**: each pick in `pur_review_doc` carries its holder's name (`buyer`). Task 2's approval screen shows it.
+- **The shopping list orders before its 500-line limit.**
+- **No new link to a cancelled request line** (`LINE_CLOSED`); a purchase already linked still corrects.
+- **History is matched by request line and its occurrence**, not line number, so inserting a line ahead of a linked one in a replacement keeps that line's history.
+- **A non-buyer cannot unlink a request line** (`pur_links_dropped`, in `pur_correct`, `pur_replace`, `pur_request_change`).
+- **Concurrency test 3** lost a check that could never fail.
+- Tests: 2A-2 suite 43 (7 new, each failing before its fix), static 22, races 5; `npm test` exit 0; `npm run test:sql` 45 / 10 / 45 / 43 / 5; the three acceptance dry-runs pass. Re-review: all findings addressed. Deferred to the final review (in the SDD ledger): the deploy window (now in Task 4 Step 4), a reduction flag after a void, `pur_assign_portion` retries, different-unit surplus as extra, per-row policy calls, and five small follow-ups from the re-review.
+
+## Implementation notes — Task 2 (16 Oct 2026, after its task review)
+
+Task 2 was first built verbatim from the plan (byte-identical to the rehearsed copy), plus the Task 1 ruling that the owner's approval comparison names who holds each picked portion ("held by …" / "unassigned"). Its task review found one Important issue the plan carried and six Minor ones, fixed in one round; the code blocks above are the as-built files.
+
+- **A correction that adds or removes a line keeps the receipt photos** (review Important 1). It goes through `pur_replace`, whose new purchase takes its photos from the body only, and the form had started with none. The form now starts from the stored photos (`storedDocs`); a newly chosen photo still replaces its slot, and "Remove" on a new choice falls back to the stored photo.
+- The staff "sent to the owner" void notice is shown after the dialog closes (it was wiped at once).
+- A Purchasing correction keeps the stored time of day unless the date changed.
+- Picking a listed supplier (or adding one) replaces typed supplier text.
+- `js/user-navigator.js` gets a cache-buster (the Buyer switch reached open owner tabs only after a hard refresh).
+- A removed portion reads "a portion no longer there" without a holder label; "(unassigned)" is tested.
+- Staff without the Buyer switch editing a purchase-made row in Project Control are not shown `purchases/` receipt links they cannot open; the correction still sends only re-attached photos, so nothing stored is cleared.
+- Tests: `purchasing-admin` 30 (6 new, each failing before its fix); `npm test` exit 0; `npm run test:sql` (one clean run) 45 / 10 / 45 / 43 / 5. Re-review: all findings addressed. Deferred to the final review (in the SDD ledger): blob URLs never revoked and a silent failed receipt download, `_purLastBody` never cleared, Owner approvals loading the whole history, the record form re-fetching its lists on every redraw, one misplaced comment.
+
+## Implementation notes — final review (16 Oct 2026)
+
+The whole-branch review of Tasks 1–3 found the server sound (authorization, company scope, storage, money isolation, coverage arithmetic, concurrency, live-migration safety) and one Important web issue, fixed with four Minor ones in a single fix wave; the code blocks above are the as-built files.
+
+- **A list filtered to one weekly batch pre-fills the record form's picks** with that batch's portions this buyer may cover (`defaultPicks`), so the server covers exactly the week the screen shows. Before, with no picks, the server covered the buyer's own portions first in any batch — a "this week" purchase could cover next week while this week still read "to buy". "All weekly batches" keeps the automatic order. New browser check C6b.
+- **Receipt links must be https URLs** (`BAD_DOCS` in `pur_insert` / `pur_correct`): a stored `javascript:` value could otherwise run when someone opens it. Every web path stores Storage public URLs.
+- **A correction that does not raise a line's quantity is not asked for an extra reason** — the server writes "The request was reduced after this was bought" itself (R6).
+- README 0097 entry corrected (7-argument `pur_insert`, buyers-only purchase rows, `pur_entry_row`, substitutes, push right after applying); doc wording fixes.
+- Task 4 Step 2 now checks that `uploads_select_scoped` is the only policy that can read bucket `uploads`.
+- Tests: 2A-2 suite 44, static 23, screen/wiring 33 (each new test failing before its fix); `npm test` exit 0; `npm run test:sql` (alone) all green; the three acceptance dry-runs pass. Re-review: all addressed.
+- Parked with rulings in the SDD ledger, to carry into 2A-3: staff may void a request-linked purchase (they cannot unlink one); the substitute prompt is browser-only; a change request is compared with the purchase as it was when sent; non-buyer staff cannot see or withdraw a change sent from Project Control. Also parked: receipt blob housekeeping, a retry-safe lock-order deadlock, and the earlier deferred minors (all triaged "can follow").

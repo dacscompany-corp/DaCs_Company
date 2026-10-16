@@ -22,6 +22,7 @@
     <link rel="stylesheet" href="css/reimbursement-module.css">
     <link rel="stylesheet" href="css/attendance-admin.css">
     <link rel="stylesheet" href="css/requests-admin.css?v=20261012a">
+    <link rel="stylesheet" href="css/purchasing-admin.css?v=20261016a">
     <link rel="stylesheet" href="css/workplan-admin.css?v=20261013a">
     <!-- Warranty Retention Register + Fund Styles -->
     <link rel="stylesheet" href="css/warranty-fund.css?v=20260803f">
@@ -2633,6 +2634,10 @@
         <div id="reqCatalogView"    class="content-view" style="display: none;"></div>
         <div id="reqHistoryView"     class="content-view" style="display: none;"></div>
         <div id="reqProjectsView"   class="content-view" style="display: none;"></div>
+        <!-- Purchasing (WorkMate Stage 2A-2, 0097) — js/purchasing-admin-*.js.
+             Buyers only; reqPurchase is one purchase, opened from Purchasing. -->
+        <div id="reqPurchasingView" class="content-view" style="display: none;"></div>
+        <div id="reqPurchaseView"   class="content-view" style="display: none;"></div>
         <!-- Work Plan (WorkMate My Work, 0093/0094) — rendered by js/workplan-admin-*.js.
              wpMeeting and wpTask are drill-downs from the Board and Meetings. -->
         <div id="wpBoardView" class="content-view" style="display: none;"></div>
@@ -5380,17 +5385,17 @@
 <!-- ══════════ SCRIPTS ══════════ -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="js/supabase-config.js"></script>
+<script src="js/supabase-config.js?v=20261016a"></script>
 <script src="js/billing-allocation.js"></script>
 <script src="js/booking.js"></script>
 <!-- ?v= is a cache-buster, same convention as expenses-module.js below. Bump
      it whenever a change to this file must reach an already-open browser —
      admin.js carries PRIMARY_NAV, so a stale copy silently hides new tabs. -->
-<script src="js/admin.js?v=20261013a"></script>
+<script src="js/admin.js?v=20261016a"></script>
 <script src="js/print-utils.js"></script>
-<script src="js/receipt-storage.js?v=20261008a"></script>
+<script src="js/receipt-storage.js?v=20261016a"></script>
 <script src="js/expense-split-rows.js?v=20261015a"></script>
-<script src="js/expenses-module.js?v=20261015a"></script>
+<script src="js/expenses-module.js?v=20261016a"></script>
 <script src="js/overhead-module.js"></script>
 <script src="js/reimbursement-module.js"></script>
 <script src="js/construction-module.js"></script>
@@ -5404,13 +5409,17 @@
 <script src="js/requests-admin-setup.js?v=20261012a"></script>
 <script src="js/requests-admin-history.js?v=20261012a"></script>
 <script src="js/requests-admin-gallery.js?v=20261012a"></script>
+<script src="js/purchasing-admin-core.js?v=20261016a"></script>
+<script src="js/purchasing-admin-list.js?v=20261016a"></script>
+<script src="js/purchasing-admin-record.js?v=20261016a"></script>
+<script src="js/purchasing-admin-purchases.js?v=20261016a"></script>
 <script src="js/workplan-admin-core.js?v=20261013a"></script>
 <script src="js/workplan-admin-form.js?v=20261013a"></script>
 <script src="js/workplan-admin-board.js?v=20261013a"></script>
 <script src="js/workplan-admin-task.js?v=20261013a"></script>
 <script src="js/workplan-admin-meetings.js?v=20261013a"></script>
 <script src="js/quotation-print.js"></script>
-<script src="js/user-navigator.js"></script>
+<script src="js/user-navigator.js?v=20261016a"></script>
 <script src="js/client-accounts.js"></script>
 <script src="js/payment-requests.js"></script>
 <script src="js/invoice-module.js"></script>
@@ -6245,7 +6254,7 @@
     const PM_VIEWS   = ['pmProjects','pmWorkspace'];
     const QUOTE_VIEWS = ['quoteList','quoteEditor','quoteRevision'];
     const ATT_VIEWS   = ['attToday','attWorkers','attWorker','attProjects','attReports','attRewards'];
-    const REQ_VIEWS   = ['reqQueue','reqDetail','reqBatches','reqTeams','reqCatalog','reqHistory','reqProjects'];
+    const REQ_VIEWS   = ['reqQueue','reqDetail','reqBatches','reqTeams','reqCatalog','reqHistory','reqProjects','reqPurchasing','reqPurchase'];
     const WP_VIEWS    = ['wpBoard','wpMeetings','wpMeeting','wpTask'];
     const TITLES = {
         dashboard:        'Dashboard',
@@ -6289,6 +6298,8 @@
         reqCatalog:       'Item catalogue',
         reqHistory:       'Item history',
         reqProjects:      'Projects open to requests',
+        reqPurchasing:    'Purchasing',
+        reqPurchase:      'Purchase',
         wpBoard:          'Work Plan',
         wpMeetings:       'Meetings',
         wpMeeting:        'Meeting',

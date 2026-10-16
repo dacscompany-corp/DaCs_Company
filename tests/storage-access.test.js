@@ -72,6 +72,8 @@ const FOLDERS = {
   agreementDocs: 'template',
   signatures: 'uploaderOwn', 'signed-terms': 'uploaderOwn',
   expenseReceipts: 'tenant', payrollReceipts: 'tenant',
+  // 0097: one receipt per purchase — only accounts that may BUY in that company.
+  purchases: 'buyer',
 };
 const OWNER_ONLY_SQL = "('quotations', 'reimbursementReceipts')";
 const CLIENT_PROJECT_SQL = "('weeklyBillReceipts', 'procurementReceipts', 'accomplishmentReports', 'projectTerms')";
@@ -182,6 +184,21 @@ test('receipt folders are tenant-locked (0089): owner/staff of THAT company only
     'overwrite policy is not tenant-locked for receipt folders');
 });
 
+test('purchase receipts are buyer-locked (0097): buyers of THAT company only, before every other rule', () => {
+  const r = lastFn('uploads_can_read');
+  const w = lastFn('uploads_can_write');
+  ok(r.includes("v_folder = 'purchases' then\n    return pur_buyer() and split_part(p_name, '/', 2) = data_owner_id()::text;"), 'read rule for purchases missing or reshaped');
+  ok(w.includes("v_folder = 'purchases' then\n    return pur_buyer() and v_seg2 = data_owner_id()::text;"), 'write rule for purchases missing or reshaped');
+  // Before the uploader read-back (a buyer switched off loses access) and the generic owner/staff grant.
+  ok(r.indexOf("v_folder = 'purchases'") < r.indexOf('p_owner_id = v_uid::text then return true'), 'read: purchases rule must precede the uploader read-back');
+  ok(r.indexOf("v_folder = 'purchases'") < r.indexOf('if is_owner() or is_staff() then return true'), 'read: purchases rule must precede the generic rule');
+  ok(w.indexOf("v_folder = 'purchases'") < w.indexOf('if is_owner() or is_staff() then return true'), 'write: purchases rule must precede the generic rule');
+  const sql = allRules();
+  const from = sql.lastIndexOf('create policy "uploads_admin_update"');
+  const upd = sql.slice(from, sql.indexOf(');', from) + 2);
+  ok(upd.includes("split_part(name, '/', 1) = 'purchases'") && upd.includes('pur_buyer()'), 'overwrite policy is not buyer-locked for purchases');
+});
+
 console.log('\nIII. Every upload folder is classified');
 function uploadFolders() {
   const files = fs.readdirSync(path.join(ROOT, 'js')).filter((f) => f.endsWith('.js')).map((f) => path.join(ROOT, 'js', f));
@@ -191,6 +208,7 @@ function uploadFolders() {
     /storage\.ref\(\s*[`'"]([A-Za-z][\w-]*)\//g,          // storage.ref('folder/…')
     /const path\s*=\s*[`'"]([A-Za-z][\w-]*)\//g,           // const path = `folder/…`
     /\b(?:store|contracts):\s*'([A-Za-z][\w-]*)'/g,        // expenses-module agreement config
+    /\b(?:expense|payroll|purchase):\s*'([A-Za-z][\w-]*)'/g, // receipt-storage.js FOLDER map
   ];
   for (const f of files) {
     const src = fs.readFileSync(f, 'utf8');
@@ -209,7 +227,8 @@ test('every folder the app uploads to has an access decision', () => {
 test('the scan still finds the known upload sites (guards against a silent regex miss)', () => {
   const found = uploadFolders();
   for (const f of ['expenseInbox', 'weeklyBillReceipts', 'procurementReceipts', 'signatures', 'signed-terms',
-                   'quotations', 'reimbursementReceipts', 'workerAgreementGlobal', 'workerAgreements']) {
+                   'quotations', 'reimbursementReceipts', 'workerAgreementGlobal', 'workerAgreements',
+                   'expenseReceipts', 'payrollReceipts', 'purchases']) {
     ok(found.has(f), 'scan no longer sees uploads to ' + f);
   }
 });

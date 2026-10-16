@@ -2,7 +2,7 @@
 
 Date: 16 October 2026
 
-Status: **Open — for the owner to answer.** Nothing here is built. The implementation plan is written after these answers.
+Status: **Answered 16 October 2026** — all recommended (A) except **Q3 = B, Q7 = B and Q13 = B**, plus six rules (below). Implementation plan: [2A-2 plan](../plans/2026-10-16-workmate-stage2a2-purchasing-office.md).
 
 Related: [Mobile Purchasing spec](2026-09-30-workmate-mobile-purchasing-design.md) · [Stage 2 questions (all answered 12 Oct)](2026-10-12-workmate-stage2-questions.md) · [2A-1 plan, as built](../plans/2026-10-14-workmate-stage2a1-purchase-recording.md)
 
@@ -128,3 +128,22 @@ Answer:
 
 1. I write the 2A-2 implementation plan (server migration + Purchasing tab + tests), with every answer above built in.
 2. You review the plan, then the build runs task by task with reviews, like 2A-1.
+
+---
+
+## Answers (16 October 2026)
+
+All recommended except:
+
+- **Q3 = B** — an admin account focused on other sections may buy **if it also has the Expenses section** (inside its own account scope).
+- **Q7 = B** — link each purchase line to the **exact portion**.
+- **Q13 = B** — build the **approval queue now** (staff submit → the owner approves in a list).
+
+Rules to include in the plan (the owner's words):
+
+1. Q2's "no prices" applies to Purchasing. Preserve the approved Project Control data-entry and Materials/Labor list exceptions for staff.
+2. Link purchases to their exact assigned portions automatically where possible. Buying 6 of 10 leaves the remaining 4 assigned until explicitly released. Reassignment must preserve who bought earlier quantities.
+3. Keep actual purchased quantity, quantity covering the request, and extras separate. "Still to buy" cannot become negative. Different-unit purchases count toward coverage only after an audited office confirmation.
+4. A warehouse destination for project-owned extras records their location; it must not silently remove their cost from the original project. Cost moves follow the owner-approved 2C rules.
+5. Recording, correcting, replacing or voiding a purchase must update its request coverage and expense rows together, without duplication.
+6. Buyer permissions and receipt access must be enforced on the server within the correct company and account scope. Workers and team leaders receive quantity information only.
