@@ -123,6 +123,14 @@ Profit   = Earned − Spent
   recording operation. Warehouse purchases stay outside project Spent until owner-approved cost
   assignment; approved cost transfers follow their separate rules. Payroll and overhead remain
   unchanged.
+- **PM profit sharing (0098) is an internal allocation outside the money model.** Sharing balance =
+  PM remaining cash (paid - direct cost) - warranty reserve (recorded at closeout for completed
+  projects; `max(0, 5%)` estimate otherwise), split per project by `pm_sharing_agreements.partner_pct`
+  (no row = 50/50). Never a payout, amount owed, invoice or accounting entry, and never touches Project
+  Control's Spent / Earned / Profit. Only `pm_set_sharing` changes a split - main owner only
+  (role owner, `owner_id` null, active; **never** `allowed_modules`). History is append-only. Only
+  `js/pm-sharing.js` computes it; warranty data reaches it only through `WF.reserveFor`. Owner-role
+  only; staff never see it. Spec: `docs/superpowers/specs/2026-10-18-pm-profit-sharing-mvp-terms.md`.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 

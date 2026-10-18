@@ -406,7 +406,7 @@ function applyRoleBasedUI() {
         // by RLS too, 0041, and the warranty tables likewise, 0043).
         // Quotations is the same story (0045) — hide the sidebar link too,
         // not just the top-nav tab from _visibleNav().
-        ['userNavigator', 'clientAccounts', 'expReports', 'reimbursements', 'warrantyFund', 'quoteList', 'attAppUpdates'].forEach(view => {
+        ['userNavigator', 'clientAccounts', 'expReports', 'reimbursements', 'warrantyFund', 'pmSharing', 'quoteList', 'attAppUpdates'].forEach(view => {
             const el = document.querySelector(`.nav-item[data-view="${view}"]`);
             if (el) el.style.display = 'none';
         });
@@ -781,6 +781,7 @@ function switchView(view) {
         expOverhead:      'Overhead Expenses',
         reimbursements:   'Client Reimbursement',
         warrantyFund:     'Warranty Fund',
+        pmSharing:        'Profit Sharing',
         boqBuilder:       'Accomplishment Report',
         clientAccounts:   'Client Accounts',
         paymentRequests:  'Payment Requests',
@@ -2246,6 +2247,9 @@ const PRIMARY_NAV = [
         // project completes, and draws against the accumulated pool.
         // Tracking only; owner-only (0043).
         { view: 'warrantyFund',        label: 'Warranty Fund',        icon: 'shield-check' },
+        // Profit Sharing (0098) — completed-project owner/partner allocation.
+        // Internal allocation, never a payout. Owner-role only; hidden from staff below.
+        { view: 'pmSharing',           label: 'Profit Sharing',       icon: 'pie-chart' },
         { view: 'pmReports',           label: 'Reports',              icon: 'file-bar-chart' },
       ]
     },
@@ -2424,7 +2428,8 @@ function _visibleNav() {
             if (role === 'staff' && p.id === 'pm') {
                 // Warranty Fund is peso amounts end to end and owner-only by
                 // RLS (0043) — same reasoning as Reimbursement above.
-                const hidden = ['warrantyFund'];
+                // Profit Sharing is peso amounts end to end too (0098).
+                const hidden = ['warrantyFund', 'pmSharing'];
                 return { ...p, modules: p.modules.filter(m => !hidden.includes(m.view)) };
             }
             return p;

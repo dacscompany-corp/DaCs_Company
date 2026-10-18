@@ -58,6 +58,30 @@
     const WF_CONST = { pct: 5, months: 12 };
     window.WF_CONST = WF_CONST;
 
+    // Read-only reserve lookup for PM profit sharing (spec 2026-10-18 §4.5).
+    // The ONLY way another module learns a project's recorded reserve: a
+    // company-checked server read (wf_reserves_for, 0098) — never a table
+    // query, so this file stays the sole owner of the warranty tables.
+    // Amounts are rounded to centavos on read; storage is left untouched.
+    window.WF = window.WF || {};
+    window.WF.reserveFor = async function (projectIds) {
+        const ids = (projectIds || []).filter(Boolean);
+        if (!ids.length) return {};
+        const { data, error } = await window.sbClient.rpc('wf_reserves_for', { p_projects: ids });
+        if (error) throw new Error(error.message || 'Reserve read failed');
+        const cents = (v) => Math.round((Number(v) || 0) * 100 + 1e-6) / 100;
+        const out = {};
+        (data || []).forEach(r => {
+            out[r.project_id] = {
+                contributedAmount: cents(r.contributed_amount),
+                status: r.status, deleted: !!r.deleted, refNo: r.ref_no,
+                totalPaid: Number(r.total_paid) || 0, directCost: Number(r.direct_cost) || 0,
+                completedAt: r.completed_at || null,
+            };
+        });
+        return out;
+    };
+
     // ── State ──────────────────────────────────────────────────────
     let _wfRet      = [];      // live, non-deleted register rows
     let _wfExp      = [];      // live, non-deleted fund draws

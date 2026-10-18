@@ -38,7 +38,7 @@
     <link rel="stylesheet" href="css/payment-requests.css">
     <link rel="stylesheet" href="css/invoice-module.css">
     <!-- Project Management Module Styles -->
-    <link rel="stylesheet" href="css/pm-admin.css?v=20260927a">
+    <link rel="stylesheet" href="css/pm-admin.css?v=20261018a">
     <!-- Admin PWA manifest (separate from the client-portal manifest.json) -->
     <link rel="manifest" href="manifest-admin-v2.json">
     <meta name="theme-color" content="#0f6342">
@@ -232,6 +232,9 @@
                     </a>
                     <a href="#" class="nav-item nav-child" data-view="warrantyFund">
                         <span class="nav-icon-wrap"><i data-lucide="shield-check" class="nav-icon"></i></span><span>Warranty Fund</span>
+                    </a>
+                    <a href="#" class="nav-item nav-child" data-view="pmSharing">
+                        <span class="nav-icon-wrap"><i data-lucide="pie-chart" class="nav-icon"></i></span><span>Profit Sharing</span>
                     </a>
                 </div>
             </div>
@@ -1956,6 +1959,11 @@
             </div>
 
           </div>
+        </div>
+
+        <!-- PM → Profit Sharing (0098). Owner-role only; js/pm-sharing-dashboard.js renders it. -->
+        <div id="pmSharingView" class="content-view" style="display:none;">
+            <div id="pmSharingRoot"></div>
         </div>
 
         <!-- Warranty Fund — Record / Edit a draw -->
@@ -5391,7 +5399,7 @@
 <!-- ?v= is a cache-buster, same convention as expenses-module.js below. Bump
      it whenever a change to this file must reach an already-open browser —
      admin.js carries PRIMARY_NAV, so a stale copy silently hides new tabs. -->
-<script src="js/admin.js?v=20261016a"></script>
+<script src="js/admin.js?v=20261018a"></script>
 <script src="js/print-utils.js"></script>
 <script src="js/receipt-storage.js?v=20261016a"></script>
 <script src="js/expense-split-rows.js?v=20261015a"></script>
@@ -5424,7 +5432,8 @@
 <script src="js/payment-requests.js"></script>
 <script src="js/invoice-module.js"></script>
 <script src="js/labor-invoice-module.js"></script>
-<script src="js/pm-admin.js?v=20260915a"></script>
+<script src="js/pm-sharing.js?v=20261018a"></script>
+<script src="js/pm-admin.js?v=20261018a"></script>
 <script src="js/pm-report-print.js?v=20260915a"></script>
 <script src="js/expense-inbox.js"></script>
 <script src="js/push-notify.js"></script>
@@ -5432,8 +5441,9 @@
      reads window.WF_CONST and calls window.wfRecordCloseout(). Both are
      resolved lazily, so this order is for clarity rather than correctness —
      the closeout still works if this file is missing. -->
-<script src="js/warranty-fund.js?v=20260803f"></script>
+<script src="js/warranty-fund.js?v=20261018a"></script>
 <script src="js/termination-requests.js?v=20260803f"></script>
+<script src="js/pm-sharing-dashboard.js?v=20261018a"></script>
 <script src="js/error-log.js"></script>
 <script src="js/ai-summary.js?v=20261013a"></script>
 <script src="js/ai-assistant.js?v=20261013a"></script>
@@ -5532,6 +5542,30 @@
           <input type="number" id="pmProjectFeePct" min="0" max="100" step="0.5" placeholder="15" value="15">
           <span>%</span>
         </div>
+      </div>
+      <!-- Financial agreement (profit sharing, 0098). Owner-role only: removed
+           from the DOM for staff by _pmShareOpenForm. Editable only when the
+           server says this is the main owner (pm_sharing_read.can_edit). -->
+      <div id="pmShareSection" style="display:none;">
+        <div class="pm-form-section">Financial agreement</div>
+        <div style="font-size:12px;color:#6b7280;margin:-2px 0 10px;">Fee changes what the client is billed. Shares divide the cash left after costs and the warranty reserve.</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="pm-form-group">
+            <label class="pm-field-label" for="pmShareOwnerPct">Your share %</label>
+            <input type="text" inputmode="decimal" id="pmShareOwnerPct" class="pm-input" oninput="pmShareLink('owner')">
+          </div>
+          <div class="pm-form-group">
+            <label class="pm-field-label" for="pmSharePartnerPct">Partner share %</label>
+            <input type="text" inputmode="decimal" id="pmSharePartnerPct" class="pm-input" oninput="pmShareLink('partner')">
+          </div>
+        </div>
+        <div class="pm-field-err" id="err-pmSharePct"></div>
+        <div class="pm-form-group" id="pmShareReasonWrap" style="display:none;">
+          <label class="pm-field-label" for="pmShareReason">Reason for the change <span style="color:#b91c1c;">*</span></label>
+          <input type="text" id="pmShareReason" class="pm-input" maxlength="300">
+        </div>
+        <div id="pmShareStatus" style="font-size:12px;color:#6b7280;margin-top:4px;"></div>
+        <div id="pmShareHistory" style="margin-top:8px;"></div>
       </div>
 
       <div class="pm-form-section">Project Terms (client sign-off)</div>
@@ -6267,6 +6301,7 @@
         expOverhead:      'Overhead Expenses',
         reimbursements:   'Client Reimbursement',
         warrantyFund:     'Warranty Fund',
+        pmSharing:        'Profit Sharing',
         consBatch:        'Current Batch',
         consUrgent:       'Urgent Requests',
         consBatchHistory: 'Batch History',
@@ -6327,14 +6362,14 @@
                 // by RLS, migration 0041), so it is blocked here too — as is the
                 // Warranty Fund, for the same reason (0043).
                 const blocked = ['userNavigator', 'clientAccounts', 'sysErrors', 'expReports',
-                                 'reimbursements', 'warrantyFund', 'attAppUpdates',
+                                 'reimbursements', 'warrantyFund', 'pmSharing', 'attAppUpdates',
                                  'quoteList', 'quoteEditor', 'quoteRevision'];
                 // Reports and Reimbursement live inside Project Control, so bounce
                 // them back there rather than throwing the user out to the
                 // Appointments dashboard. Warranty Fund lives in Project
                 // Management, so it bounces to the projects grid instead.
                 if (blocked.includes(view)) {
-                    if (view === 'warrantyFund') view = 'pmProjects';
+                    if (view === 'warrantyFund' || view === 'pmSharing') view = 'pmProjects';
                     else if (view === 'attAppUpdates') view = 'attToday';
                     else view = (view === 'expReports' || view === 'reimbursements') ? 'dacsPortal' : 'dashboard';
                 }
@@ -6389,6 +6424,7 @@
         // idempotent — it unsubscribes any existing listener first.
         if (view === 'terminationRequests' && typeof initTerminationRequests === 'function') initTerminationRequests();
         if (view === 'warrantyFund' && typeof initWarrantyFundModule === 'function') initWarrantyFundModule();
+        if (view === 'pmSharing' && typeof initPMSharingDashboard === 'function') initPMSharingDashboard();
 
         if (EXP_VIEWS.includes(view)) {
             if (typeof _syncAllEmptyStates === 'function') _syncAllEmptyStates();
