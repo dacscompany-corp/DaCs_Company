@@ -2507,3 +2507,40 @@ body.dark-mode .pm-modal-header h3 { color: #e8f0ec; }
 @media (max-width: 700px) {
   .rp-lot-note td { font-size: 0.72rem; }
 }
+
+/* ── PM Profit Sharing dashboard (spec 2026-10-18 §7) ── */
+.pms-head h2{font:700 22px 'IBM Plex Sans',sans-serif;margin:0;}
+.pms-note,.pms-caption{font-size:12px;color:#6b7280;margin-top:4px;}
+.pms-filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0;}
+.pms-filters input,.pms-filters select,.pms-filters button{font:inherit;font-size:13px;padding:7px 10px;border:1px solid #d6dde4;border-radius:8px;background:#fff;}
+.pms-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;}
+.pms-card{border:1px solid #e5e7eb;border-radius:12px;padding:12px 14px;background:#fff;}
+.pms-card-l{font-size:11.5px;font-weight:600;color:#7c7b75;}
+.pms-card-v{font:700 18px 'IBM Plex Sans',sans-serif;margin-top:6px;font-variant-numeric:tabular-nums;}
+.pms-card-s{font-size:11px;color:#9a9992;margin-top:4px;}
+.pms-neg .pms-card-v,.pms-neg{color:#8f352c;}
+.pms-tablewrap{overflow-x:auto;margin-top:12px;}
+.pms-table{width:100%;border-collapse:collapse;font-size:12.5px;}
+.pms-table th,.pms-table td{padding:8px;border-bottom:1px solid #eef0f3;text-align:left;white-space:nowrap;}
+.pms-table td.n{text-align:right;font-variant-numeric:tabular-nums;}
+.pms-row{cursor:pointer;} .pms-row:hover{background:#f7f9fb;}
+.pms-sub{font-size:11px;color:#9ca3af;}
+.pms-chip,.pms-tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:99px;background:#eef2f6;color:#44525f;}
+.pms-tag{background:#fbf2dc;color:#9a6c12;}
+.pms-review-h{font:700 14px 'IBM Plex Sans',sans-serif;margin:18px 0 0;color:#9a6c12;}
+.pms-state{padding:28px;text-align:center;color:#6b7280;} .pms-err{color:#8f352c;}
+.pms-chart{margin-top:14px;} .pms-chart-row{display:grid;grid-template-columns:180px 1fr 120px;gap:8px;align-items:center;font-size:12px;margin:4px 0;}
+.pms-chart-t{position:relative;height:14px;background:#f5f6f8;border-radius:4px;}
+.pms-axis{position:absolute;left:50%;top:0;bottom:0;width:1px;background:#9ca3af;}
+.pms-bar{position:absolute;top:2px;bottom:2px;background:#9dc9b4;border-radius:3px;overflow:hidden;}
+.pms-own{display:block;height:100%;background:#0f6342;} .pms-short{background:#c2564a;}
+.pms-chart-v{text-align:right;font-variant-numeric:tabular-nums;}
+.pms-legend{font-size:11px;color:#6b7280;margin-top:6px;}
+.pms-own-k,.pms-par-k,.pms-short-k{display:inline-block;width:10px;height:10px;border-radius:2px;vertical-align:middle;margin-left:8px;}
+.pms-own-k{background:#0f6342;} .pms-par-k{background:#9dc9b4;} .pms-short-k{background:#c2564a;}
+@media (max-width:640px){.pms-chart-row{grid-template-columns:1fr;}}
+
+.pms-detail{margin-top:16px;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;background:#fff;}
+.pms-detail-h{display:flex;justify-content:space-between;align-items:center;} .pms-detail h4{font-size:12.5px;margin:12px 0 4px;}
+.pms-dl{display:flex;justify-content:space-between;font-size:12.5px;padding:2px 0;} .pms-hist{font-size:12px;color:#4b5563;padding:2px 0;}
+.pms-warn{font-size:12px;color:#9a6c12;margin-top:4px;}

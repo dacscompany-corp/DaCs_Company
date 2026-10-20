@@ -157,6 +157,42 @@
         return { added, removed, changed,
                  delta: qtParseNum(curr && curr.totalAmount) - qtParseNum(prev && prev.totalAmount) };
     }
+
+    // "Duplicate" — start a NEW quotation from a past one so a similar job is
+    // a few edits, not a rebuild. `blank` is a fresh qtBlankQuote(): it brings
+    // the new number, today's date, a fresh validity window, draft status and
+    // EMPTY client fields. A duplicate is for a different client, so the old
+    // client's name/email/address must never ride along onto a sheet that
+    // gets sent to someone else. Everything describing the WORK is copied.
+    // Every node is re-id'd: the revision diff pairs lines by id, so the copy
+    // must not share ids with its source. Lines 'removed' from a sent quote
+    // are retired history, not scope — they are left behind.
+    function qtDuplicateOf(src, blank, newId) {
+        const q = JSON.parse(JSON.stringify(blank));
+        const c = JSON.parse(JSON.stringify(src || {}));
+        ['projectName', 'location', 'area', 'subject', 'scopeNote',
+         'discount', 'discountType', 'vatMode', 'vatPct',
+         'preparedBy', 'submittedBy'].forEach(k => {
+            if (c[k] !== undefined && c[k] !== null) q[k] = c[k];
+        });
+        q.showLinePricing = c.showLinePricing !== false;
+        q.showLogo        = c.showLogo !== false;
+        if (c.terms && typeof c.terms === 'object') q.terms = c.terms;
+        q.images   = Array.isArray(c.images) ? c.images : [];
+        q.sections = (c.sections || []).map(sec => {
+            sec.id = newId();
+            sec.groups = (sec.groups || []).map(g => {
+                g.id = newId();
+                g.lines = (g.lines || [])
+                    .filter(l => (l.state || 'normal') !== 'removed')
+                    .map(l => { l.id = newId(); return l; });
+                return g;
+            });
+            return sec;
+        });
+        q.totalAmount = qtGrandTotal(q);
+        return q;
+    }
     // ==== QT CALC ENGINE END ====
 
     // Expose the calc engine for the rest of the module and the console.
@@ -164,7 +200,7 @@
         qtParseNum, qtFmt, qtEscHtml, qtTodayKey, qtLineAmount, qtRawLineAmount, qtGroupTotal,
         qtSectionTotal, qtProjectCost, qtDiscountAmount, qtSubTotal,
         qtVatAmount, qtGrandTotal, qtIsExpired, qtNextQuoteNo,
-        qtFlattenLines, qtDiffSnapshots
+        qtFlattenLines, qtDiffSnapshots, qtDuplicateOf
     });
 
     // ── State ─────────────────────────────────────────────────────────
@@ -361,6 +397,7 @@
             <td class="qt-center">
                 <button class="qt-icon-btn qt-icon-btn-edit" title="Open" onclick="qtOpenQuote('${q.id}')"><i data-lucide="pencil"></i></button>
                 <button class="qt-icon-btn" title="Print" onclick="qtOpenQuote('${q.id}'); setTimeout(qtPrintSheet, 200);"><i data-lucide="printer"></i></button>
+                <button class="qt-icon-btn" title="Duplicate — new quotation from this one" onclick="qtDuplicateQuote('${q.id}')"><i data-lucide="copy"></i></button>
             </td>
         </tr>`;
     }
@@ -506,6 +543,27 @@
         switchView('quoteEditor');
         qtRenderEditor();
         qtLoadRevisions(id);                                  // defined in Task 10
+    };
+
+    // Opens an UNSAVED copy — nothing is written until the user presses Save,
+    // so a mis-click leaves no stray quotation behind. Marked dirty so leaving
+    // without saving still asks first.
+    window.qtDuplicateQuote = function (id) {
+        const src = qtState.list.find(x => x.id === id);
+        if (!src) { qtToast('Quotation not found', 'error'); return; }
+        if (qtState.current && qtState.isDirty
+            && !confirm('You have unsaved changes. Leave anyway?')) return;
+        const from = JSON.parse(JSON.stringify(src));
+        qtHoistLegacyImages(from);                            // 0045 → 0046 shape
+        const q = qtDuplicateOf(from, qtBlankQuote(), qtNewId);
+        qtState.current   = q;
+        qtState.revisions = [];
+        if (qtState.revUnsub) { qtState.revUnsub(); qtState.revUnsub = null; }
+        qtPushHistory('draft', null, `Duplicated from ${src.quoteNo || 'a past quotation'}`);
+        qtState.isDirty   = true;
+        switchView('quoteEditor');
+        qtRenderEditor();
+        qtToast(`Copied ${src.quoteNo || 'quotation'} — enter the new client, then Save`);
     };
 
     window.qtBackToList = function () {
@@ -1545,6 +1603,153 @@
 
     const QT_STATES = ['normal', 'optional', 'waived', 'removed'];
 
+    const QT_UNITS = [
+        'lot', 'set', 'pc', 'pcs', 'unit', 'pair',
+        'm', 'lm', 'mm', 'cm', 'ft', 'in', 'sqm', 'sq.ft', 'cu.m', 'cu.ft',
+        'kg', 'ton', 'lb', 'L', 'mL', 'gal',
+        'bag', 'sack', 'box', 'pack', 'bundle', 'roll', 'sheet', 'length',
+        'can', 'pail', 'drum', 'tube', 'bottle', 'load', 'trip',
+        'hr', 'day', 'week', 'month', 'man-hour', 'man-day'
+    ];
+
+    function qtUnitOptions(value) {
+        const current = value == null ? '' : String(value);
+        // Keep older quotations and presets with a unit outside this list intact.
+        const units = current && !QT_UNITS.includes(current) ? [current, ...QT_UNITS] : QT_UNITS;
+        return `<option value=""${current === '' ? ' selected' : ''}>—</option>` +
+            units.map(unit => `<option value="${qtEscHtml(unit)}"${unit === current ? ' selected' : ''}>${qtEscHtml(unit)}</option>`).join('');
+    }
+
+    // Editor-only state: never part of a quotation, preset or revision payload.
+    // Keep node references so reordering/deleting rows cannot redirect an action.
+    let qtUnitPrompt = null;
+    let qtUnitUndo = null;
+
+    function qtUnitItems() {
+        const items = [];
+        qtSections().forEach((sec, si) => (sec.groups || []).forEach((group, gi) =>
+            (group.lines || []).forEach((node, li) => items.push({
+                node, group, selectId: `qtLineUnit-${si}-${gi}-${li}`
+            }))));
+        return items;
+    }
+
+    function qtUnitTargets(scope) {
+        const p = qtUnitPrompt;
+        if (!p || p.quote !== qtState.current || p.source.unit !== p.unit) return [];
+        const items = qtUnitItems();
+        const source = items.find(item => item.node === p.source);
+        if (!source) return [];
+        return items.filter(item => item.node !== p.source && item.node.unit !== p.unit
+            && (scope === 'all' || item.group === source.group));
+    }
+
+    function qtFocusUnit(node) {
+        const item = qtUnitItems().find(item => item.node === node);
+        const select = item && qtEl(item.selectId);
+        if (select) select.focus({ preventScroll: true });
+    }
+
+    function qtRefreshUnitControls() {
+        qtUnitItems().forEach(item => {
+            const select = qtEl(item.selectId);
+            if (select) select.innerHTML = qtUnitOptions(item.node.unit);
+        });
+    }
+
+    window.qtChangeLineUnit = function (si, gi, li, unit) {
+        const node = qtSections()[si].groups[gi].lines[li];
+        if (node.unit === unit) return;
+        // A later manual choice belongs to the user, even if they select the
+        // bulk unit again. Undo must never overwrite that later choice.
+        if (qtUnitUndo && qtUnitUndo.quote === qtState.current) {
+            qtUnitUndo.changes = qtUnitUndo.changes.filter(change => change.node !== node);
+        }
+        window.qtSetNodeField('line', si, gi, li, 'unit', unit);
+        qtUnitPrompt = unit ? { quote: qtState.current, source: node, unit } : null;
+        qtRenderUnitFeedback(unit ? `Unit changed to ${unit}. Apply it to other items using the choices below this row.` : 'Unit cleared.');
+    };
+
+    window.qtDismissUnitPrompt = function () {
+        const source = qtUnitPrompt && qtUnitPrompt.source;
+        qtUnitPrompt = null;
+        qtRenderUnitFeedback('Unit kept for this item only.');
+        qtFocusUnit(source);
+    };
+
+    window.qtApplyUnit = function (scope) {
+        if (scope !== 'group' && scope !== 'all') return;
+        const targets = qtUnitTargets(scope);
+        if (!targets.length) return;
+        const p = qtUnitPrompt;
+        qtUnitUndo = {
+            quote: qtState.current, source: p.source, unit: p.unit,
+            changes: targets.map(item => ({ node: item.node, unit: item.node.unit,
+                hadUnit: Object.prototype.hasOwnProperty.call(item.node, 'unit') })),
+            message: `Updated ${qtPlural(targets.length, 'item')} to ${p.unit}.`
+        };
+        targets.forEach(item => { item.node.unit = p.unit; });
+        qtUnitPrompt = null;
+        qtMarkDirty();
+        qtRefreshUnitControls();
+        qtRenderUnitFeedback(qtUnitUndo.message + ' Undo is available above the table.');
+        qtFocusUnit(p.source);
+    };
+
+    window.qtUndoUnits = function () {
+        const undo = qtUnitUndo;
+        if (!undo || undo.quote !== qtState.current) return;
+        const live = new Set(qtUnitItems().map(item => item.node));
+        let restored = 0;
+        undo.changes.forEach(change => {
+            if (!live.has(change.node) || change.node.unit !== undo.unit) return;
+            if (change.hadUnit) change.node.unit = change.unit;
+            else delete change.node.unit;
+            restored++;
+        });
+        undo.changes = [];
+        undo.message = `Restored units on ${qtPlural(restored, 'item')}.`;
+        qtUnitPrompt = null;
+        if (restored) qtMarkDirty();
+        qtRefreshUnitControls();
+        qtRenderUnitFeedback(undo.message);
+        qtFocusUnit(live.has(undo.source) ? undo.source : live.values().next().value);
+    };
+
+    function qtRenderUnitFeedback(announcement) {
+        if (qtUnitPrompt && qtUnitPrompt.quote !== qtState.current) qtUnitPrompt = null;
+        if (qtUnitUndo && qtUnitUndo.quote !== qtState.current) qtUnitUndo = null;
+        const oldRow = qtEl('qtUnitPromptRow');
+        if (oldRow) oldRow.remove();
+        const notice = qtEl('qtUnitUndoNotice');
+        if (notice) {
+            notice.hidden = !qtUnitUndo;
+            qtEl('qtUnitUndoMessage').textContent = qtUnitUndo ? qtUnitUndo.message : '';
+            qtEl('qtUnitUndoButton').hidden = !qtUnitUndo || !qtUnitUndo.changes.length;
+        }
+        const status = qtEl('qtUnitAnnouncement');
+        if (status && announcement) status.textContent = announcement;
+        if (!qtUnitPrompt) return;
+        const groupCount = qtUnitTargets('group').length;
+        const allCount = qtUnitTargets('all').length;
+        if (!allCount) { qtUnitPrompt = null; return; }
+        const item = qtUnitItems().find(item => item.node === qtUnitPrompt.source);
+        const select = item && qtEl(item.selectId);
+        if (!select) return;
+        select.closest('tr').insertAdjacentHTML('afterend', `
+            <tr id="qtUnitPromptRow" class="qt-unit-prompt-row"><td colspan="${QT_COLS}">
+                <div class="qt-unit-feedback">
+                    <span>Apply <strong>${qtEscHtml(qtUnitPrompt.unit)}</strong> to other items?</span>
+                    <button type="button" class="qt-btn qt-btn-outline qt-btn-sm" ${groupCount ? '' : 'disabled'}
+                        onclick="qtApplyUnit('group')">This group (${groupCount})</button>
+                    <button type="button" class="qt-btn qt-btn-outline qt-btn-sm"
+                        onclick="qtApplyUnit('all')">Entire quotation (${allCount})</button>
+                    <button type="button" class="qt-btn qt-btn-sm"
+                        onclick="qtDismissUnitPrompt()">Keep this item only</button>
+                </div>
+            </td></tr>`);
+    }
+
     // Section / group numbering, matching the BOQ report's I. / A. / 1. tree.
     const QT_ROMAN = ['I','II','III','IV','V','VI','VII','VIII','IX','X',
                       'XI','XII','XIII','XIV','XV','XVI','XVII','XVIII','XIX','XX'];
@@ -1583,6 +1788,12 @@
                     </button>
                 </span>
             </div>
+            <span id="qtUnitAnnouncement" class="qt-unit-announcement" role="status" aria-atomic="true"></span>
+            <div id="qtUnitUndoNotice" class="qt-unit-feedback qt-unit-undo" hidden>
+                <span id="qtUnitUndoMessage"></span>
+                <button type="button" id="qtUnitUndoButton" class="qt-btn qt-btn-outline qt-btn-sm"
+                    onclick="qtUndoUnits()">Undo</button>
+            </div>
             <div class="qt-table-scroll">
                 <table class="qt-table qt-table-wide">
                     <thead>
@@ -1609,6 +1820,7 @@
         </div>`;
 
         qtRenderPresetBar();     // the heading was just repainted over
+        qtRenderUnitFeedback();
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
 
@@ -1681,9 +1893,10 @@
             <td class="qt-col-qty"><input class="qt-cell-input qt-center" placeholder="—"
                        value="${qtEscHtml(g.qty || '')}"
                        oninput="qtSetNodeField('group',${si},${gi},0,'qty',this.value)"></td>
-            <td class="qt-col-unit"><input class="qt-cell-input qt-center" placeholder="—"
-                       value="${qtEscHtml(g.unit || '')}"
-                       oninput="qtSetNodeField('group',${si},${gi},0,'unit',this.value)"></td>
+            <td class="qt-col-unit"><select class="qt-cell-select qt-center" aria-label="Group unit"
+                       onchange="qtSetNodeField('group',${si},${gi},0,'unit',this.value)">
+                ${qtUnitOptions(g.unit)}
+            </select></td>
             <td class="qt-col-rate qt-amt">${isLump ? `
                 <input class="qt-cell-input qt-amt" placeholder="Amount"
                        value="${qtEscHtml(g.lumpAmount)}"
@@ -1709,8 +1922,10 @@
                        oninput="qtSetNodeField('line',${si},${gi},${li},'description',this.value)"></td>
             <td class="qt-col-qty"><input class="qt-cell-input qt-center" value="${qtEscHtml(l.qty)}"
                        oninput="qtSetNodeField('line',${si},${gi},${li},'qty',this.value)"></td>
-            <td class="qt-col-unit"><input class="qt-cell-input qt-center" value="${qtEscHtml(l.unit)}"
-                       oninput="qtSetNodeField('line',${si},${gi},${li},'unit',this.value)"></td>
+            <td class="qt-col-unit"><select id="qtLineUnit-${si}-${gi}-${li}" class="qt-cell-select qt-center" aria-label="Item unit"
+                       onchange="qtChangeLineUnit(${si},${gi},${li},this.value)">
+                ${qtUnitOptions(l.unit)}
+            </select></td>
             ${sec.pricing === 'rated' ? `
             <td class="qt-col-rate"><input class="qt-cell-input qt-amt" value="${qtEscHtml(l.unitPrice)}"
                        oninput="qtSetNodeField('line',${si},${gi},${li},'unitPrice',this.value)"></td>

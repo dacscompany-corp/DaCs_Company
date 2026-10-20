@@ -1,0 +1,19 @@
+name: workmate_widget_bridge
+description: "WorkMate's home-screen widget bridge: the snapshot push, from any Flutter engine. Android only, in-repo."
+version: 1.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.10.8
+  flutter: '>=3.38.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.dacs.workmate_widget_bridge
+        pluginClass: WorkmateWidgetBridgePlugin

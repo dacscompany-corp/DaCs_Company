@@ -3,8 +3,10 @@
 // Zero dependencies. Static fences on js/expenses-module.js (spec
 // 2026-10-08-receipt-photos-storage-design.md §4.3–4.4):
 //   • the four receipt save paths upload files — never base64 in the row;
-//   • add-expense / add-payroll save all split rows in ONE insert (addMany)
-//     with a submission id, so a retry can't duplicate;
+//   • add-payroll saves all split rows in ONE insert (addMany) with a
+//     submission id, so a retry can't duplicate; add-expense records ONE
+//     purchase through pur_record (0096) with a per-Save operation id, and
+//     the server (not the browser) adds any stock, once per line;
 //   • a failure keeps the form (no reset in the catch);
 //   • the two print popups sign photo links before writing the window.
 // If a check fails with "SLICE NOT FOUND", update the markers — don't delete it.
@@ -41,7 +43,7 @@ test('_saveRowsOnce: one addMany; a 23505 on the submission index means "already
   ok(f.includes("err.code === '23505'") && f.includes('client_submission'), 'duplicate check');
   ok(f.includes("where('clientSubmissionId', '==', submissionId)"), 'must confirm the earlier rows exist');
 });
-for (const [name, kind, idVar] of [['async function handleAddExpense(', 'expense', '_expSubmissionId'], ['async function handleAddPayroll(', 'payroll', '_paySubmissionId']]) {
+for (const [name, kind, idVar] of [['async function handleAddPayroll(', 'payroll', '_paySubmissionId']]) {
   test(name + ' uploads files, saves once with a submission id, never batches', () => {
     const f = fn(name);
     ok(f.includes("_uploadReceiptFile('" + kind + "'"), 'no file upload');
@@ -65,10 +67,19 @@ test('closing an add form forgets its submission id (a later entry can never be 
   ok(f.includes("if (id === 'addExpenseModal') _expSubmissionId = null;"), 'expense id not cleared on close');
   ok(f.includes("if (id === 'addPayrollModal') _paySubmissionId = null;"), 'payroll id not cleared on close');
 });
-test('the "already saved" branch of add-expense still mirrors to inventory', () => {
+test('async function handleAddExpense( uploads files, then records ONE purchase through pur_record (0096)', () => {
   const f = fn('async function handleAddExpense(');
-  const a = f.indexOf("if (outcome === 'already')");
-  ok(a !== -1 && f.indexOf('_addExpenseToInventory(', a) !== -1 && f.indexOf('_addExpenseToInventory(', a) < f.indexOf('return;', a), 'inventory mirror missing from the already branch');
+  ok(f.includes("_uploadReceiptFile('expense'"), 'no file upload');
+  ok(f.includes("rpc('pur_record', { p_op: _expSubmissionId, p_body: body })"), 'not recorded through pur_record with the Save id');
+  ok(!f.includes("_saveRowsOnce('expenses'") && !f.includes('.addMany(') && !f.includes("collection('expenses')"), 'still writes expense rows itself');
+  ok(f.includes('_expSubmissionId = null'), 'operation id not cleared after success');
+  const c = f.slice(f.lastIndexOf('} catch'));
+  ok(!/\.reset\(\)/.test(c), 'the catch branch must keep the form and its attachments');
+});
+test('add-expense never touches stock itself — the server adds it once per purchase line', () => {
+  const f = fn('async function handleAddExpense(');
+  ok(!f.includes('_addExpenseToInventory('), 'a browser stock update could run twice (retry / overlapping save)');
+  ok(f.includes('in_inventory: toInventory') && f.includes('min_stock:'), 'the line must carry the stock request to the server');
 });
 test('both print popups open in the click, then sign photo links before writing', () => {
   for (const name of ['function printWorkerReceiptSummary(', 'function printTransactionReceipt(']) {

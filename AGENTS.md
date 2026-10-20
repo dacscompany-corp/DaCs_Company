@@ -75,6 +75,34 @@ Profit   = Earned − Spent
   a folder, construction project, invoice or contract value — converting a won quote into a
   project is a manual admin action. Only `js/quotation-module.js` and `js/quotation-print.js` may
   touch those tables. Owner-only; staff never see it.
+- **Purchasing (WorkMate Stage 2) — staff exception.** Staff with the **Buyer** switch may see
+  purchase prices, totals, supplier payments and receipts **within their buying scope**, in
+  Purchasing screens only. Project profit, reimbursements, warranty fund and quotations stay
+  restricted, and Project Control stays amount-free for staff (apart from its Add/Edit forms —
+  see *Verifying*). Approving cost moves between
+  projects or from warehouse stock is **main owner only**. Workers and team leaders never see
+  prices, receipts or payments. (Approved 2026-10-14; spec
+  `docs/superpowers/specs/2026-09-30-workmate-mobile-purchasing-design.md`.)
+- **Buying a request (0097).** The Buyer switch is `pur_buyers`, set by the main owner only;
+  who may buy is the server's `pur_buyer()` (owner / admin allowed Expenses / Buyer staff, own
+  company). **Bought is never a counter**: `purchase_line_covers` is rebuilt from the stored
+  purchase lines by `pur_cover_lines` on every record / correct / replace / void, and only
+  recorded purchases count — so Still to buy is never negative. Actual quantity, quantity
+  covering the request and extras stay separate; a different unit counts only after an
+  audited office check (`pur_check_unit`). An extra's location (project / warehouse) never
+  moves its cost — cost moves are Stage 2C (owner-confirmed cost moves), main owner only. Purchase receipts live in the
+  buyer-only `purchases/` storage folder and are never given a signed link.
+  Linking a purchase to a request needs the Buyer switch **whatever the source**; picked
+  portions are the only ones covered, and a correction keeps the portions a line covered
+  and the quantity of each; a portion newly picked in a correction is checked like a new one.
+  Purchase rows are readable by buyers only — Project Control reads its one line through
+  `pur_entry_row`; never add a direct purchase-table read for staff.
+- **Petty cash, personal advances, supplier refunds and supplier credits stay outside Spent,
+  Earned and Profit.** Issuing, returning or repaying that money never creates an expense.
+  Project purchase costs enter Material/Spent once, after server acceptance through the shared
+  recording operation. Warehouse purchases stay outside project Spent until owner-approved cost
+  assignment; approved cost transfers follow their separate rules. Payroll and overhead remain
+  unchanged.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 
@@ -139,4 +167,14 @@ CI (`.github/workflows/ci.yml`) runs both of the above on every push and PR — 
 JS and runs the money tests. Red CI on a `salvs` merge usually means the merge reverted a money
 rule or the staff amount-hiding; don't merge until green.
 
-Staff accounts (`currentUserRole === 'staff'`) must not see peso amounts anywhere.
+Staff accounts (`currentUserRole === 'staff'`) must not see peso amounts anywhere — two
+exceptions: the Buyer purchasing rule under *Money invariants*, and **data entry in Project
+Control** (owner decision 2026-10-15): staff add and edit material expenses and payroll there, so
+the Add/Edit Expense and Payroll forms, and the Materials and Labor lists (rows, category
+subtotals, paid so far), show staff the peso amounts. **Never a share of the contract** in those
+screens — with the pesos it would reveal the contract value. Everything else in Project Control
+stays amount-free for staff — profit, contract, actual cost, fund allocated, budget remaining,
+cover, agreed contract totals, CSV, prints, receipts and contract management (caps, ledgers,
+statements). Staff never see billing budgets, so their payroll goes to
+the payment month's client-funded period (`_payStaffPeriodId`); their purchases are funded by the
+server (`pur_record`). `tests/project-control-staff.test.js` fences both sides.

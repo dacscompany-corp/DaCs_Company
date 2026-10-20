@@ -1,0 +1,55 @@
+/* ════════════════════════════════════════════════════════════════════
+   PURCHASING (WorkMate Stage 2A-2) — extra styles for
+   js/purchasing-admin-*.js. Everything else reuses the Attendance att-*
+   and Requests req-* classes and tokens, so the tab looks like Requests.
+   ════════════════════════════════════════════════════════════════════ */
+
+.pur-tab .att-card { margin-bottom: 12px; }
+.pur-h3 { margin: 0 0 8px; font-size: 15px; font-weight: 700; }
+
+/* Shopping list */
+.pur-line.is-urgent { border-left: 3px solid var(--att-red); }
+.pur-line-head { display: flex; gap: 12px; align-items: flex-start; }
+.pur-pick { padding-top: 3px; min-width: 18px; }
+.pur-line-main { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.pur-figures { font-size: 13px; }
+.pur-figures strong { font-variant-numeric: tabular-nums; }
+.pur-portions { display: grid; gap: 6px; margin-top: 10px; padding-left: 30px; }
+.pur-portion {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+    padding: 8px 10px; border: 1px solid var(--att-line); border-radius: 10px; background: var(--att-field);
+}
+.pur-portion.is-changed { border-color: var(--att-red); }
+.pur-portion-batch { font-size: 12px; color: var(--att-muted); min-width: 150px; }
+.pur-portion-qty { font-size: 13px; font-variant-numeric: tabular-nums; }
+.pur-portion-who { font-weight: 700; font-size: 13px; }
+.pur-portion-who.is-open { color: var(--att-muted); font-weight: 600; }
+.pur-portion-acts { margin-left: auto; display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Record purchase */
+.pur-rec-line .att-card-body { display: grid; gap: 8px; }
+.pur-rec-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 10px; }
+.pur-rec-row .att-label { flex: 1 1 120px; min-width: 0; }
+.pur-rec-row .att-label.pur-w2 { flex: 2 1 220px; }
+.pur-rec-row[hidden] { display: none; }
+.pur-preview { font-size: 12.5px; color: var(--att-muted); }
+.pur-shares { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
+.pur-shares .att-label { flex: 0 1 110px; }
+.pur-picks summary { cursor: pointer; font-size: 12.5px; color: var(--att-muted); }
+.pur-picks[open] summary { margin-bottom: 6px; }
+.pur-rec-foot {
+    position: sticky; bottom: 0; display: flex; align-items: center; gap: 10px; justify-content: flex-end;
+    padding: 12px 0; background: var(--att-bg, #fff); border-top: 1px solid var(--att-line);
+}
+.pur-rec-foot span { margin-right: auto; font-size: 15px; }
+
+/* One purchase */
+.pur-change td { vertical-align: top; font-size: 13px; }
+.pur-change tr.pur-changed td { background: var(--att-field); font-weight: 600; }
+.pur-history { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
+.pur-docs { display: flex; flex-wrap: wrap; gap: 8px; text-transform: capitalize; }
+
+@media (max-width: 640px) {
+    .pur-portions { padding-left: 0; }
+    .pur-portion-acts { margin-left: 0; }
+}

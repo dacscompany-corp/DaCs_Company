@@ -1094,6 +1094,8 @@ async function testExpenseReportLoading() {
 
   let deliver;
   c.db = { collection(name) {
+    // Reports also fetch a project's no-period purchase rows (0096): none here.
+    if (name === 'expenses') { const q = { where: () => q, get: async () => ({ docs: [] }) }; return q; }
     eq(name, 'overheadExpenses');
     return { where(field, op, uid) {
       eq([field,op,uid], ['userId','==','owner']);

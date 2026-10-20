@@ -1,0 +1,68 @@
+name: workmate
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.5.0+1005
+
+environment:
+  sdk: ^3.10.8
+
+dependencies:
+  camera: 0.12.0+2
+  crypto: 3.0.7
+  device_info_plus: 13.2.0
+  flutter:
+    sdk: flutter
+  flutter_secure_storage: 11.2.0
+  http: 1.6.0
+  package_info_plus: 10.2.1
+  path_provider: 2.1.6
+  permission_handler: 12.0.1
+  shared_preferences: 2.5.5
+  sqflite: 2.4.2+1
+  supabase_flutter: 2.17.2
+  workmanager: 0.10.10
+  # The home-screen widget's push, usable from WorkManager's engine too (0D).
+  workmate_widget_bridge:
+    path: packages/workmate_widget_bridge
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
+  sqflite_common_ffi: 2.4.0+3
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/icon/workmate-icon-512.png
+
+  fonts:
+    - family: Barlow
+      fonts:
+        - asset: assets/fonts/barlow_regular.ttf
+        - asset: assets/fonts/barlow_semibold.ttf
+          weight: 600
+        - asset: assets/fonts/barlow_bold.ttf
+          weight: 700
+        - asset: assets/fonts/barlow_extrabold.ttf
+          weight: 800
+    - family: IBM Plex Mono
+      fonts:
+        - asset: assets/fonts/ibm_plex_mono_regular.ttf
+        - asset: assets/fonts/ibm_plex_mono_bold.ttf
+          weight: 700
+
+# Launcher icon: the "2b Gable frame" WorkMate mark (WorkMate Logo Redesign, 2026-09-30).
+# Regenerate after changing an image: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/workmate-icon-512.png"
+  min_sdk_android: 24
+  # Android 8+ shaped icons: the mark on the app's own green (#1A5C3A, WmColors.green).
+  adaptive_icon_background: "#1A5C3A"
+  adaptive_icon_foreground: "assets/icon/adaptive-foreground-432.png"
+  # 2b's base corners reach past the 66dp circular safe zone; 7% keeps them inside circle masks.
+  adaptive_icon_foreground_inset: 7

@@ -79,6 +79,15 @@ function staffSafe(tree) {
   assert(!/₱|\bPHP\b|1,234|1234/.test(output), 'staff output contains a peso amount: ' + text(tree));
   assert(!nodes(tree).some(n => n.type === 'img' || (n.type === 'a' && n.props.href)), 'staff can open a financial document');
 }
+// Materials and Labor lists show staff the peso amounts they enter (owner
+// decision 2026-10-15) — but never a share of the CONTRACT, which together
+// with the pesos would reveal the contract value, and never a document.
+function staffEntrySafe(tree, contractShares) {
+  const out = text(tree);
+  contractShares.forEach(p => assert(!out.includes(p), 'staff sees share of contract ' + p + ': ' + out));
+  assert(!/Share of contract|of contract/.test(out), 'staff sees a share-of-contract label');
+  assert(!nodes(tree).some(n => n.type === 'img' || (n.type === 'a' && n.props.href)), 'staff can open a financial document');
+}
 function button(tree, label) {
   return nodes(tree).find(n => n.type === 'button' && (text(n).trim() === label || n.props.title === label));
 }
@@ -125,20 +134,26 @@ async function test(name, fn) {
     const tree = harness(role).render('MaterialDrill', materialProps);
     assert(text(tree).includes('Wire'));
     if (role === 'staff') {
-      staffSafe(tree); assert(text(tree).includes('1.23%'));
-      for (const label of ['Export CSV', 'Add Expense', 'Edit', 'Print receipt for this material expense']) assert(!button(tree, label), label + ' visible');
+      staffEntrySafe(tree, ['1.23%', '1.2%']); assert(text(tree).includes('1,234'), 'staff sees the amount they entered');
+      for (const label of ['Export CSV', 'Print receipt for this material expense']) assert(!button(tree, label), label + ' visible');
+      // Staff record and correct materials (owner decision 2026-10-15) — the
+      // list itself still shows no pesos (staffSafe above).
+      for (const label of ['Add Expense', 'Edit']) assert(button(tree, label), label + ' missing for staff');
     } else { assert(text(tree).includes('1,234')); assert(button(tree, 'Export CSV')); assert(button(tree, 'Add Expense')); }
   });
   for (const role of ['staff', 'owner']) await test(role + ' material details and attachments', () => {
     const tree = harness(role).render('ItemDetailsModal', { item: material, billingNum: 1, onClose() {}, onPrint() {} });
-    if (role === 'staff') { staffSafe(tree); assert(!button(tree, 'Print Receipt')); assert(!button(tree, 'Edit')); }
+    if (role === 'staff') { staffEntrySafe(tree, ['1.23%']); assert(text(tree).includes('1,234')); assert(!button(tree, 'Print Receipt')); assert(button(tree, 'Edit')); }
     else { assert(text(tree).includes('1,234')); assert(button(tree, 'Print Receipt')); }
   });
   for (const role of ['staff', 'owner']) await test(role + ' expanded labor and worker statement menu', () => {
     const tree = harness(role).render('LaborDrill', laborProps, { 2: true, 3: { Mason: true } });
     if (role === 'staff') {
-      staffSafe(tree); assert(text(tree).includes('24.7%'));
-      for (const label of ['Export CSV', 'Worker Statement', 'Worker statement', 'Ledger', 'Edit contract', 'Raise cap', 'Worker agreement', 'View', 'Receipt / Invoice', 'Edit', 'Pay', 'Add Payment', 'New Contract']) assert(!button(tree, label), label + ' visible');
+      staffEntrySafe(tree, ['1.2%']); assert(text(tree).includes('1,234'), 'staff sees the payment they entered');
+      assert(/Total Agreed\s*—/.test(text(tree)), 'agreed total stays hidden');
+      for (const label of ['Export CSV', 'Worker Statement', 'Worker statement', 'Ledger', 'Edit contract', 'Raise cap', 'Worker agreement', 'View', 'Receipt / Invoice', 'New Contract']) assert(!button(tree, label), label + ' visible');
+      // Staff record and correct payroll (owner decision 2026-10-15).
+      for (const label of ['Edit', 'Pay', 'Add Payment']) assert(button(tree, label), label + ' missing for staff');
     } else { assert(text(tree).includes('1,234')); assert(button(tree, 'Export CSV')); assert(button(tree, 'Worker Statement')); }
   });
   for (const role of ['staff', 'owner']) await test(role + ' overhead records', () => {
@@ -182,9 +197,11 @@ async function test(name, fn) {
     const h = harness('staff'); const tree = h.render('DocPill', { m: material, k: 'po', label: 'PO', title: 'Purchase Order' });
     assert(text(tree).includes('PO')); assert(!tree.props.onClick); assert(!tree.props.role);
   });
-  await test('staff financial entry shortcut cannot open a form', async () => {
-    const h = harness('staff'); await h.api.openAddEntry('labor', months, project);
-    assert.equal(h.calls.length, 0);
+  await test('staff entry shortcut opens the payroll and expense forms', async () => {
+    const h = harness('staff');
+    await h.api.openAddEntry('labor', months, project);
+    await h.api.openAddEntry('material', months, project);
+    assert.deepEqual(h.calls, ['addPayrollModal', 'addExpenseModal']);
   });
   await test('staff header cannot open the folder budget editor', () => {
     const tree = harness('staff').render('PageHead', { project, projects: [project], period: 'All Time' });
@@ -205,6 +222,45 @@ async function test(name, fn) {
       folderId: 'f1', childMonths: months, contractAmount: 100000, allTimeOverhead: 0 },
       { 0: true, 1: { category: 'Water', amount: '1234', date: '2026-10-12', description: '', billingPeriodId: '' } });
     staffSafe(tree);
+  });
+  // 16 Oct 2026 fixes from the 2A-1 browser checks.
+  await test('a row on the Cover period reads "Billing #2 (Cover)"', () => {
+    const cover = { id: 'p2', folderId: 'f1', month: 'October', year: 2026, monthlyBudget: 0, fundingType: 'president' };
+    const tree = harness('owner').render('MaterialDrill', { ...materialProps, childMonths: [...months, cover],
+      materialTx: [material, { ...material, id: 'e2', projectId: 'p2', name: 'Sand' }] });
+    const out = text(tree);
+    assert(/Billing #\s*2 \(Cover\)/.test(out), out);
+    assert(/Billing #\s*1(?! \(Cover\))/.test(out), 'a client period must not say Cover');
+  });
+  await test('owner Material Total notes the Additional Works share', () => {
+    const owner = text(harness('owner').render('MaterialDrill', { ...materialProps, project: { ...project, awMaterial: 1000 } }));
+    assert(/incl\. ₱\s*1,000\s+Additional Works/.test(owner), owner);
+    const none = text(harness('owner').render('MaterialDrill', materialProps));
+    assert(!/Additional Works/.test(none), 'no note when the project has no Additional Works cost');
+  });
+  await test('no billing period: staff are sent to the owner, not to Budget Overview', async () => {
+    const said = [], savedAlert = globalThis.alert;
+    globalThis.alert = msg => said.push(msg);
+    try {
+      await harness('staff').api.openAddEntry('material', [], { id: 'f9' });
+      await harness('owner').api.openAddEntry('material', [], { id: 'f9' });
+    } finally { globalThis.alert = savedAlert; }
+    assert(/Ask the owner/.test(said[0]) && !/Budget Overview/.test(said[0]), said[0]);
+    assert(/Manage Periods/.test(said[1]), said[1]);
+  });
+  await test('Additional Works: two quick clicks make ONE hidden period', async () => {
+    const saved = { db: globalThis.db, firebase: globalThis.firebase };
+    let adds = 0;
+    globalThis.firebase = { auth: () => ({ currentUser: { uid: 'u1' } }),
+      firestore: { FieldValue: { serverTimestamp: () => 'ts' } } };
+    globalThis.db = { collection: () => ({ add: async () => { adds++; await new Promise(r => setImmediate(r)); return { id: 'aw-p' + adds }; } }) };
+    try {
+      const h = harness('staff'), aw = { id: 'aw1', parentFolderId: 'f1' };
+      await Promise.all([h.api.openAddEntry('material', [], aw), h.api.openAddEntry('material', [], aw)]);
+      await h.api.openAddEntry('labor', [], aw);   // later click, period list not refreshed yet
+      assert.equal(adds, 1, 'periods created: ' + adds);
+      assert.deepEqual(h.calls, ['addExpenseModal', 'addExpenseModal', 'addPayrollModal']);
+    } finally { globalThis.db = saved.db; globalThis.firebase = saved.firebase; }
   });
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exitCode = 1;

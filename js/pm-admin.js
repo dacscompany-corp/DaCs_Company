@@ -24,6 +24,7 @@ let _pmTermsPdfName   = '';       // existing Terms PDF display name when editin
 let _pmProcFilter     = 'all';   // materials status filter: all | pending | bought
 let _pmOvBills        = [];       // weekly bills for the active project (overview date filter)
 let _pmOvReqs         = [];       // payment requests for the active project (overview date filter)
+let _pmOvShare        = null;     // sharing split + recorded reserve for the active project (owner-role only)
 let _pmOvContractVal  = 0;        // contract value (range-independent) for the KPI refresh
 let _pmOvProgressVal  = 0;        // milestone progress % (range-independent) for the KPI refresh
 // ── This-week inline bill builder ──
@@ -163,16 +164,18 @@ async function _pmLoadOverview() {
     const pid = _pmActiveProject.id;
     try {
         const base = db.collection('constructionProjects').doc(pid);
-        const [msSnap, billsSnap, paySnap] = await Promise.all([
+        const [msSnap, billsSnap, paySnap, share] = await Promise.all([
             base.collection('milestones').get(),
             base.collection('weeklyBills').get(),
             db.collection('paymentRequests').where('constructionProjectId', '==', pid).get(),
+            _pmCanSeeShare() ? _pmLoadShareFor(pid) : Promise.resolve(null),
         ]);
         const ms    = msSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const bills = billsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         const reqs  = paySnap.docs.map(d => ({ id: d.id, ...d.data() }));
         _pmOvBills = bills;
         _pmOvReqs  = reqs;
+        _pmOvShare = share;
         _pmOvContractVal = Number(_pmActiveProject.budget) || 0;
         _pmOvProgressVal = _pmOvProgress(ms);
         root.innerHTML = _pmOvHtml(_pmActiveProject, ms, bills, reqs);
@@ -193,14 +196,72 @@ function _pmOvProgress(ms) {
     return Math.max(0, Math.min(100, Math.round(pct)));
 }
 function _pmOvOutstanding(reqs) {
-    return reqs.filter(r => r.status === 'unpaid' || r.status === 'partial')
-        .reduce((s, r) => s + ((r.totalAmount || 0) - (r.amountPaid || 0)), 0);
+    return window.PMShare.outstanding(reqs);
 }
 function _pmOvPaid(reqs) {
-    return reqs.reduce((s, r) => {
-        if (r.status === 'verified') return s + (r.amountPaid || r.paidAmount || r.totalAmount || 0);
-        return s + (r.amountPaid || 0);
-    }, 0);
+    return window.PMShare.paid(reqs);
+}
+
+// ── Profit sharing (spec 2026-10-18) ─────────────────────────────────
+// Owner-role accounts only. Staff never receive these figures: the cards
+// are not rendered for them at all (CLAUDE.md staff rule; spec §6.2).
+function _pmCanSeeShare() { return window.currentUserRole === 'owner'; }
+
+// The split + recorded reserve for ONE project. Never throws: a failed read
+// comes back as { error } so the cards say "Unavailable", never ₱0.
+async function _pmLoadShareFor(projectId) {
+    try {
+        const [read, reserves] = await Promise.all([
+            window.PMShare.load([projectId]),
+            window.WF.reserveFor([projectId]),
+        ]);
+        const row = (read.projects || []).find(x => x.project_id === projectId);
+        if (!row) return { error: 'PROJECT_UNMAPPED' };
+        return { partnerPct: Number(row.partner_pct), isDefault: !!row.is_default, version: row.version,
+                 canEdit: !!read.can_edit, reserveRow: reserves[projectId] || null,
+                 history: (read.history || []).filter(h => h.project_id === projectId) };
+    } catch (e) {
+        console.warn('PM: sharing read failed', e.message);
+        return { error: e.message || 'failed' };
+    }
+}
+
+// Lifetime sharing figures for one project, from the shared calculation.
+function _pmShareModel(p, bills, reqs, share) {
+    if (!share || share.error) return null;
+    return window.PMShare.project({
+        id: p.id, name: p.projectName, clientName: p.clientName, partnerEmail: p.partnerEmail,
+        status: p.status, terminatedAt: p.terminatedAt, bills, reqs,
+        reserveRow: share.reserveRow, partnerPct: share.partnerPct,
+    });
+}
+
+// Display text for the reserve + sharing cards (screen and print share it).
+function _pmShareTexts(m, share) {
+    if (!m) {
+        const why = _esc(share && share.error ? window.PMShare.errorText(share.error) : 'Could not load sharing data');
+        return { unavailable: true, reserveValue: 'Unavailable', reserveSub: why, balanceLabel: 'Sharing balance',
+                 balanceValue: 'Unavailable', balanceColor: '#8f352c', splitLine: why, caption: '', floorNote: '' };
+    }
+    const P = window.PMShare;
+    const kind = m.reserve.kind;
+    const reserveSub = (kind === 'recorded' ? 'Recorded at closeout'
+                     : kind === 'provisional' ? 'Provisional · Reserve needs review'
+                     : 'Estimate · 5% of remaining cash')
+                     + (m.reserve.changedSinceCloseout ? ' · Collections/costs changed since closeout' : '');
+    const shortfall = m.balanceCents < 0;
+    return {
+        unavailable: false,
+        reserveValue: P.pesos(m.reserve.cents),
+        reserveSub,
+        balanceLabel: shortfall ? 'Shortfall' : 'Sharing balance',
+        balanceValue: P.pesos(m.balanceCents),
+        balanceColor: shortfall ? '#8f352c' : '#0f6342',
+        splitLine: 'You ' + P.pesos(m.ownerCents) + ' (' + P.fmtPct(m.ownerPct) + '%) · Partner '
+                 + P.pesos(m.partnerCents) + ' (' + P.fmtPct(m.partnerPct) + '%)',
+        caption: 'Internal allocation — not a payout.',
+        floorNote: m.reserve.floored ? 'Retention is floored at ₱0 when costs exceed collections.' : '',
+    };
 }
 
 function _pmOvHtml(p, ms, bills, reqs) {
@@ -232,13 +293,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
     // grandTotal − managementFee for older bills missing the split.
     // Treat 0 as "missing" too: a `default 0` column or the legacy weekly-entry
     // modal can leave directCostTotal at 0 on bills that really have labor/materials.
-    const directCost = bills.reduce((s, b) => {
-        const dct = Number(b.directCostTotal) || 0;
-        if (dct) return s + dct;
-        const lm = (Number(b.labor) || 0) + (Number(b.materials) || 0);
-        if (lm) return s + lm;
-        return s + ((Number(b.grandTotal) || 0) - (Number(b.managementFee) || 0));
-    }, 0);
+    const directCost = window.PMShare.directCost(bills);
     const feeTotal = bills.reduce((s, b) => s + (b.managementFee || 0), 0);
 
     // Direct-cost breakdown. The stored `materials` field is client-facing and
@@ -516,12 +571,10 @@ function _pmOvHtml(p, ms, bills, reqs) {
         const pct = _kpiBudgetPct(val);
         return (pct >= 10 ? pct.toFixed(0) : pct.toFixed(1)) + '% of budget';
     };
-    // Warranty retention = a FIXED 5% withheld from the Remaining cash receipt.
-    // Profit share = one 50% half of whatever's left after that retention.
-    const warrantyRetention = netCash * 0.05;
-    const profitShare = (netCash - warrantyRetention) / 2;
-    const retColor = warrantyRetention < 0 ? '#8f352c' : '#9a6c12';
-    const psColor  = profitShare < 0 ? '#8f352c' : '#0f6342';
+    // Warranty reserve + sharing balance — lifetime figures from the shared
+    // calculation (js/pm-sharing.js). Owner-role only: staff get neither card.
+    const showShare = _pmCanSeeShare();
+    const shareTx = showShare ? _pmShareTexts(_pmShareModel(p, bills, reqs, _pmOvShare), _pmOvShare) : null;
 
     // ── KPI strip: design layout (gauge + icon cards) on TINTED colour cards ───
     // Circular budget gauge on the LEFT (Total Project Cost as a % of contract);
@@ -582,8 +635,8 @@ function _pmOvHtml(p, ms, bills, reqs) {
         ${card(_ico.direct, 'Direct cost', '#44525f', _fmt(pureDirect), 'pm-ov-kpi-direct', barFooter('pm-ov-bar-direct', 'pm-ov-kpi-direct-pct', pureDirect, '#44525f'), '#eef0f3', '#d6dde4')}
         ${card(_ico.indirect, 'Indirect cost', '#7a5a48', _fmt(bd.overhead), 'pm-ov-kpi-indirect', barFooter('pm-ov-bar-indirect', 'pm-ov-kpi-indirect-pct', bd.overhead, '#7a5a48'), '#f7f1ed', '#e6d7cd')}
         ${card(_ico.cash, 'Remaining cash receipt', netColor, (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), 'pm-ov-kpi-net', barFooter('pm-ov-bar-net', 'pm-ov-kpi-net-pct', netCash, netColor), '#fbf3e2', '#f0e2c5')}
-        ${card(_ico.shield, 'Warranty retention', retColor, (warrantyRetention < 0 ? '−' : '') + _fmt(Math.abs(warrantyRetention)), 'pm-ov-kpi-retention', pillFooter('pm-ov-kpi-retention-pct', '5% of remaining cash', '#9a6c12'), '#fbf2dc', '#ecd8a6')}
-        ${card(_ico.trend, 'Profit share', psColor, (profitShare < 0 ? '−' : '') + _fmt(Math.abs(profitShare)), 'pm-ov-kpi-profitshare', pillFooter('pm-ov-kpi-profitshare-pct', '50% after retention', '#0f6342'), '#eaf4ef', '#c6e6d5')}
+        ${showShare ? card(_ico.shield, 'Warranty reserve', shareTx.unavailable ? '#8f352c' : '#9a6c12', shareTx.reserveValue, 'pm-ov-kpi-retention', subFooter(shareTx.reserveSub), '#fbf2dc', '#ecd8a6') : ''}
+        ${showShare ? card(_ico.trend, shareTx.balanceLabel, shareTx.balanceColor, shareTx.balanceValue, 'pm-ov-kpi-sharing', subFooter([shareTx.splitLine, shareTx.caption, shareTx.floorNote].filter(Boolean).join('<br>')), '#eaf4ef', '#c6e6d5') : ''}
       </div>
     </div>`;
 
@@ -895,13 +948,7 @@ window.pmOvApplyRange = function() {
 
     // ── Top KPI cards (recomputed for the selected range) ──
     // Direct cost = labor + materials for the bills in range (matches the breakdown).
-    const directCost = bills.reduce((s, b) => {
-        const dct = Number(b.directCostTotal) || 0;
-        if (dct) return s + dct;
-        const lm = (Number(b.labor) || 0) + (Number(b.materials) || 0);
-        if (lm) return s + lm;
-        return s + ((Number(b.grandTotal) || 0) - (Number(b.managementFee) || 0));
-    }, 0);
+    const directCost = window.PMShare.directCost(bills);
     // Paid is intentionally all-time (matches the Payment status donut, which
     // isn't range-filtered) so the tile doesn't flip negative just because the
     // selected week happened to collect no payment. Direct cost stays per-range.
@@ -952,20 +999,9 @@ window.pmOvApplyRange = function() {
     const netPctEl = document.getElementById('pm-ov-kpi-net-pct');
     if (netPctEl) netPctEl.style.color = netColor;
 
-    // Warranty retention (5% of netCash) and Profit share (half of what's left).
-    // Pills keep their fixed translucent styling; only the big value colour reacts.
-    const warrantyRetention = netCash * 0.05;
-    const profitShare = (netCash - warrantyRetention) / 2;
-    const retEl = document.getElementById('pm-ov-kpi-retention');
-    if (retEl) {
-        retEl.textContent = (warrantyRetention < 0 ? '−' : '') + _fmt(Math.abs(warrantyRetention));
-        retEl.style.color = warrantyRetention < 0 ? '#8f352c' : '#9a6c12';
-    }
-    const psEl = document.getElementById('pm-ov-kpi-profitshare');
-    if (psEl) {
-        psEl.textContent = (profitShare < 0 ? '−' : '') + _fmt(Math.abs(profitShare));
-        psEl.style.color = profitShare < 0 ? '#8f352c' : '#0f6342';
-    }
+    // Warranty reserve + sharing balance are LIFETIME figures (all bills, all
+    // payments) and are deliberately not range-filtered (plan D5): a split of
+    // all-time paid minus in-range cost would mean nothing.
 
     setAmt('pm-ov-direct',    bd.direct);
     setAmt('pm-ov-labor',     bd.labor);
@@ -1056,23 +1092,12 @@ window.pmOvPrintReport = function() {
     const paid = _pmOvPaid(reqs);
     // Total spend — same figure the on-screen KPI uses (directCostTotal already
     // folds in overhead, so this is every peso spent, counted once).
-    const directCost = bills.reduce((s, b) => {
-        const dct = Number(b.directCostTotal) || 0;
-        if (dct) return s + dct;
-        const lm = (Number(b.labor) || 0) + (Number(b.materials) || 0);
-        if (lm) return s + lm;
-        return s + ((Number(b.grandTotal) || 0) - (Number(b.managementFee) || 0));
-    }, 0);
+    const directCost = window.PMShare.directCost(bills);
     const bd = _pmOvBreakdown(bills);
     const netCash = paid - directCost;
-    const warrantyRetention = netCash * 0.05;
-    // `distributable` is the whole pool left after retention; `profitShare` is
-    // ONE party's half of it. "Profit Share" must render profitShare — the
-    // printed report used to show the undivided pool under that label, which
-    // read as double the figure on the Overview and Reports KPIs. The pool is
-    // still shown, in the card's subtitle, so nothing is lost.
-    const distributable = netCash - warrantyRetention;
-    const profitShare = distributable / 2;
+    // Same lifetime sharing figures as the on-screen cards (owner-role only).
+    const showShare = _pmCanSeeShare();
+    const shareTx = showShare ? _pmShareTexts(_pmShareModel(p, bills, reqs, _pmOvShare), _pmOvShare) : null;
     const entries = (bd.laborCount || 0) + (bd.matCount || 0) + (bd.combinedCount || 0) + (bd.overheadCount || 0);
     const weeks = _pmOvWeekGroups().length;
 
@@ -1099,7 +1124,7 @@ window.pmOvPrintReport = function() {
 
     const S = { h2: 'font:700 17px Helvetica,Arial,sans-serif;' };
 
-    // One KPI card. The settlement pair (retention / profit share) passes
+    // One KPI card. The settlement pair (retention / sharing balance — per-project split) passes
     // `small` so the second row reads as a footnote to the four figures above it.
     const kpi = (label, val, bg, border, valCol, sub, small) => `
       <div style="border:1px solid ${border};background:${bg};border-radius:16px;padding:${small ? '18px 18px 16px' : '20px 20px 18px'};">
@@ -1167,8 +1192,8 @@ window.pmOvPrintReport = function() {
     ${kpi('Total Cost', round(directCost), '#eef0f3', '#d6dde4', '#44525f', 'Direct ' + round(pureDirect) + ' + indirect ' + round(bd.overhead || 0))}
     ${kpi('Indirect Cost', round(bd.overhead || 0), '#f7f1ed', '#e6d7cd', '#7a5a48', 'Site running &amp; support costs')}
     ${kpi('Remaining Cash Receipt', (leftPos ? '' : '&minus;') + round(Math.abs(netCash)), '#fbf3e2', '#f0e2c5', leftCol, pctText(netCash))}
-    ${kpi('Warranty Retention (5%)', peso(warrantyRetention), '#fbf2dc', '#ecd8a6', '#9a6c12', 'Released after final acceptance', true)}
-    ${kpi('Profit Share', peso(profitShare), '#eaf4ef', '#c6e6d5', '#0f6342', '50% of ' + peso(distributable) + ' after retention', true)}
+    ${showShare ? kpi('Warranty Reserve', shareTx.reserveValue, '#fbf2dc', '#ecd8a6', '#9a6c12', shareTx.reserveSub, true) : ''}
+    ${showShare ? kpi(shareTx.balanceLabel, shareTx.balanceValue, '#eaf4ef', '#c6e6d5', shareTx.balanceColor, [shareTx.splitLine, shareTx.caption].filter(Boolean).join(' · '), true) : ''}
   </div>
 
   ${contractValue > 0 ? `
@@ -1906,6 +1931,73 @@ async function _pmPopulateFolderPicker(selectedId) {
     sel.value = selectedId || '';
 }
 
+// ── Financial agreement on the project form (profit sharing) ─────────
+// Owner-role accounts see it; only the main owner may edit (the server
+// decides — can_edit comes from pm_sharing_read). Staff never get it.
+let _pmShareForm = null;      // { projectId, partnerPct, version, canEdit, isNew }
+let _pmShareFormSeq = 0;      // drops a slow read for a modal that has moved on
+
+window.pmShareLink = function(which) {
+    const o = document.getElementById('pmShareOwnerPct');
+    const p = document.getElementById('pmSharePartnerPct');
+    if (!o || !p) return;
+    const src = which === 'owner' ? o : p;
+    const dst = which === 'owner' ? p : o;
+    const r = window.PMShare.parsePct(src.value);
+    if (r.ok) { dst.value = window.PMShare.fmtPct(100 - r.value); _pmClearErr('err-pmSharePct'); }
+    _pmShareSyncReason();
+};
+
+function _pmShareSyncReason() {
+    const wrap = document.getElementById('pmShareReasonWrap');
+    if (!wrap || !_pmShareForm) return;
+    const r = window.PMShare.parsePct(document.getElementById('pmSharePartnerPct').value);
+    wrap.style.display = (!_pmShareForm.isNew && r.ok && r.value !== _pmShareForm.partnerPct) ? 'block' : 'none';
+}
+
+function _pmShareHistoryHtml(history) {
+    if (!history || !history.length) return '<div style="font-size:12px;color:#9ca3af;">No changes recorded — split is the original setting.</div>';
+    const P = window.PMShare;
+    return '<div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px;">Change history</div>'
+        + history.map(h => '<div style="font-size:12px;color:#4b5563;padding:3px 0;border-top:1px solid #f0f0f0;">'
+            + _esc(new Date(h.changed_at).toLocaleString('en-PH')) + ' · ' + _esc(h.actor_email || '')
+            + ' · partner ' + _esc(P.fmtPct(h.old_pct)) + '% → ' + _esc(P.fmtPct(h.new_pct)) + '%'
+            + (h.old_was_default ? ' (from the 50/50 default)' : '') + ' · ' + _esc(h.reason) + '</div>').join('');
+}
+
+async function _pmShareOpenForm(projectId) {
+    const sec = document.getElementById('pmShareSection');
+    if (!sec) return;
+    _pmShareForm = null;
+    if (!_pmCanSeeShare()) { sec.remove(); return; }
+    const seq = ++_pmShareFormSeq;
+    const o = document.getElementById('pmShareOwnerPct'), p = document.getElementById('pmSharePartnerPct');
+    const status = document.getElementById('pmShareStatus'), hist = document.getElementById('pmShareHistory');
+    sec.style.display = 'block';
+    o.value = '50'; p.value = '50'; o.disabled = true; p.disabled = true;
+    document.getElementById('pmShareReason').value = '';
+    document.getElementById('pmShareReasonWrap').style.display = 'none';
+    _pmClearErr('err-pmSharePct');
+    status.textContent = 'Loading split…'; hist.innerHTML = '';
+    try {
+        const read = await window.PMShare.load(projectId ? [projectId] : []);
+        if (seq !== _pmShareFormSeq) return;
+        const row = projectId ? (read.projects || []).find(x => x.project_id === projectId) : null;
+        if (projectId && !row) { status.textContent = window.PMShare.errorText('PROJECT_UNMAPPED'); return; }
+        const partnerPct = row ? Number(row.partner_pct) : 50;
+        _pmShareForm = { projectId: projectId || null, partnerPct, version: row ? row.version : 0,
+                         canEdit: !!read.can_edit, isNew: !projectId };
+        p.value = window.PMShare.fmtPct(partnerPct); o.value = window.PMShare.fmtPct(100 - partnerPct);
+        o.disabled = p.disabled = !_pmShareForm.canEdit;
+        status.textContent = _pmShareForm.canEdit ? (row && row.is_default ? 'Using the 50/50 default.' : '')
+                                                  : 'View only — only the main owner can change the split.';
+        hist.innerHTML = projectId ? _pmShareHistoryHtml((read.history || []).filter(h => h.project_id === projectId)) : '';
+    } catch (e) {
+        if (seq !== _pmShareFormSeq) return;
+        status.textContent = 'Could not load the sharing split: ' + window.PMShare.errorText(e.message);
+    }
+}
+
 window.pmOpenProjectModal = function() {
     document.getElementById('pmProjectModalTitle').textContent = 'Add Construction Project';
     document.getElementById('pmProjectId').value        = '';
@@ -1925,6 +2017,7 @@ window.pmOpenProjectModal = function() {
     document.getElementById('pmProjectEndDate').value    = '';
     document.getElementById('pmProjectFeePct').value     = '15';
     ['err-pmProjectClientName','err-pmProjectName'].forEach(_pmClearErr);
+    _pmShareOpenForm(null);
     document.getElementById('pmProjectModal').style.display = 'flex';
     if (window.lucide) lucide.createIcons();
 };
@@ -1950,9 +2043,25 @@ window.pmEditProject = function(p) {
     const _tpiE = document.getElementById('pmProjectTermsPdfInput'); if (_tpiE) _tpiE.value = '';
     _pmRenderTermsPdfState();
     ['err-pmProjectClientName','err-pmProjectName'].forEach(_pmClearErr);
+    _pmShareOpenForm(p.id);
     document.getElementById('pmProjectModal').style.display = 'flex';
     if (window.lucide) lucide.createIcons();
 };
+
+// Saves the split after the project row is saved. Returns '' or the
+// partial-save message — the project itself is already saved either way.
+async function _pmShareSaveAfter(projectId, shareReq) {
+    if (!shareReq || !projectId) return '';
+    try {
+        await window.PMShare.save(projectId, shareReq.value, shareReq.version, shareReq.reason);
+        _pmRptState.share = null;
+        return '';
+    } catch (e) {
+        const P = window.PMShare;
+        return 'Project saved; sharing not saved — still ' + P.fmtPct(100 - shareReq.before) + '/' + P.fmtPct(shareReq.before)
+             + '. ' + P.errorText(e.message);
+    }
+}
 
 window.pmSaveProject = async function() {
     const projectId  = document.getElementById('pmProjectId').value;
@@ -1978,6 +2087,26 @@ window.pmSaveProject = async function() {
     let valid = true;
     if (!clientName)  { _pmShowErr('err-pmProjectClientName','Client name is required.'); valid = false; }
     if (!projectName) { _pmShowErr('err-pmProjectName','Project name is required.');      valid = false; }
+    // Sharing split — validated BEFORE anything is saved, saved AFTER the
+    // project (it needs the id). Never part of `data`: the split lives in its
+    // own private table, and changing it never re-bills (spec §6.1).
+    let shareReq = null;
+    if (_pmShareForm && _pmShareForm.canEdit) {
+        _pmClearErr('err-pmSharePct');
+        const ro = window.PMShare.parsePct(document.getElementById('pmShareOwnerPct').value);
+        const r = window.PMShare.parsePct(document.getElementById('pmSharePartnerPct').value);
+        if (!ro.ok) { _pmShowErr('err-pmSharePct', ro.error); valid = false; }
+        else if (!r.ok) { _pmShowErr('err-pmSharePct', r.error); valid = false; }
+        else if (Math.round(ro.value * 100) + Math.round(r.value * 100) !== 10000) {
+            _pmShowErr('err-pmSharePct', 'Your share and partner share must total 100%.'); valid = false;
+        }
+        else if (r.value !== _pmShareForm.partnerPct) {
+            const reason = _pmShareForm.isNew ? 'Set when the project was created'
+                         : (document.getElementById('pmShareReason').value || '').trim();
+            if (!reason) { _pmShowErr('err-pmSharePct', 'Give a reason for changing the split.'); valid = false; }
+            else shareReq = { value: r.value, version: _pmShareForm.version, reason, before: _pmShareForm.partnerPct };
+        }
+    }
     if (!valid) return;
 
     const data = { clientName, projectName, clientEmail, partnerEmail, folderId, status, startDate, address, budget, plannedEndDate, managementFeePct,
@@ -2019,8 +2148,12 @@ window.pmSaveProject = async function() {
                 try { reBilled = await _pmRecomputeUnpaidBills(projectId, managementFeePct); }
                 catch(e) { console.warn('PM: re-bill unpaid weeks failed', e.message); }
             }
-            if (feeChanged && reBilled > 0) _pmToast(`Fee set to ${managementFeePct}% · re-billed ${reBilled} unpaid week${reBilled > 1 ? 's' : ''}`);
+            const shareMsg = await _pmShareSaveAfter(projectId, shareReq);
+            if (shareMsg) _pmToast(shareMsg, true);
+            else if (feeChanged && reBilled > 0) _pmToast(`Fee set to ${managementFeePct}% · re-billed ${reBilled} unpaid week${reBilled > 1 ? 's' : ''}`);
             else _pmToast('Project saved');
+            if (_pmActiveProject && _pmActiveProject.id === projectId && document.getElementById('pm-ov-root')
+                && typeof _pmLoadOverview === 'function' && !shareMsg && shareReq) _pmLoadOverview();
         } else {
             data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
             const ref = await db.collection('constructionProjects').add(data);
@@ -2031,13 +2164,14 @@ window.pmSaveProject = async function() {
                 await db.collection('constructionProjects').doc(ref.id)
                     .update({ partnerTermsPdfUrl: up.url, partnerTermsPdfName: up.name });
             }
-            _pmToast('Project created');
+            const shareMsg = await _pmShareSaveAfter(ref && ref.id, shareReq);
+            _pmToast(shareMsg || 'Project created', !!shareMsg);
         }
         _pmProjects = [];
         pmCloseModal('pmProjectModal');
         _pmLoadProjectsList();
     } catch(e) {
-        _pmToast('Save failed: ' + e.message, true);
+        _pmToast('Save failed: ' + (window.PMShare ? window.PMShare.errorText(e.message) : e.message), true);
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<i data-lucide="save" style="width:14px;height:14px;"></i> Save Project';
@@ -8732,6 +8866,8 @@ let _pmRptState = {
     bills: [],        // weeklyBills docs (across selected project or all projects)
     contracts: [],    // laborContracts docs (for worker-name resolution)
     projects: [],      // the PM project(s) currently in scope
+    share: null,       // { read, reserves, error } — owner-role only; never derived from a failed fetch
+    fetchError: false, // bills/payments fetch failed — sharing figures must not render
     payReqs: [],       // paymentRequests docs (across selected project or all projects) — cash-receipt section, always all-time
 };
 
@@ -8874,7 +9010,7 @@ async function loadPMRptData() {
             // paymentRequests fetched alongside bills/contracts — same query
             // Overview uses (_pmLoadOverview) — powers the Cash Receipt section
             // below, which mirrors Overview's Remaining cash receipt / Warranty
-            // retention / Profit share so nothing on Overview is Reports-invisible.
+            // retention / sharing balance (per-project split) so nothing on Overview is Reports-invisible.
             const [billsSnap, lcSnap, payReqSnap] = await Promise.all([
                 _pmRptCol(p.id).get(),
                 _pmRptLcCol(p.id).get(),
@@ -8888,11 +9024,26 @@ async function loadPMRptData() {
         _pmRptState.bills = results.flatMap(r => r.bills);
         _pmRptState.contracts = results.flatMap(r => r.contracts);
         _pmRptState.payReqs = results.flatMap(r => r.payReqs);
+        _pmRptState.fetchError = false;
     } catch (err) {
         console.error('PM Reports fetch error:', err);
         _pmRptState.bills = [];
         _pmRptState.contracts = [];
         _pmRptState.payReqs = [];
+        _pmRptState.fetchError = true;
+    }
+    // Sharing split + recorded reserves for the projects in scope (owner-role
+    // only). Kept separate from the cost fetch so a failure here shows as an
+    // error card instead of ₱0 figures (plan D7).
+    _pmRptState.share = null;
+    if (_pmCanSeeShare() && scopeProjects.length) {
+        const ids = scopeProjects.map(p => p.id);
+        try {
+            const [read, reserves] = await Promise.all([window.PMShare.load(ids), window.WF.reserveFor(ids)]);
+            _pmRptState.share = { read, reserves, error: null };
+        } catch (e) {
+            _pmRptState.share = { error: e.message || 'failed' };
+        }
     }
     _pmRptState.loading = false;
     renderPMReportsDashboard();
@@ -9125,7 +9276,7 @@ function _pmRptRenderKPIs(groups) {
         + '</div>';
 
     // ── Cash Receipt: what the client has actually paid, mirrored from
-    // Overview (Remaining cash receipt / Warranty retention / Profit share)
+    // Overview (Remaining cash receipt / Warranty retention / sharing balance, per-project split)
     // so nothing visible there is invisible here. ALWAYS all-time — these
     // read straight off _pmRptState.payReqs, not the period-filtered `groups`,
     // same as Overview (which has no period filter at all). Sums across every
@@ -9148,22 +9299,28 @@ function _pmRptRenderKPIs(groups) {
         +   '<div class="rpt-kpi-sub">client still owes</div>'
         + '</div>'
         + '</div>';
+    const sc = _pmRptShareCards(cr);
     html += '<div class="rpt-grid rpt-grid-3" style="margin-top:12px;">'
         + '<div class="rpt-kpi-card' + (crOver ? ' rpt-kpi-card--over' : '') + '">'
         +   '<div class="rpt-kpi-dotrow"><span class="rpt-kpi-label">Remaining Cash Receipt</span></div>'
         +   '<div class="rpt-kpi-val">' + (crOver ? '&minus;' : '+') + '&#8369;' + formatNum(Math.abs(cr.netCash)) + '</div>'
         +   '<div class="rpt-kpi-sub">Paid &minus; Direct Cost</div>'
         + '</div>'
-        + '<div class="rpt-kpi-card">'
-        +   '<div class="rpt-kpi-dotrow"><span class="rpt-kpi-label">Warranty Retention</span></div>'
-        +   '<div class="rpt-kpi-val">' + (cr.warrantyRetention < 0 ? '&minus;' : '') + '&#8369;' + formatNum(Math.abs(cr.warrantyRetention)) + '</div>'
-        +   '<div class="rpt-kpi-sub">5% of Remaining Cash Receipt</div>'
-        + '</div>'
-        + '<div class="rpt-kpi-card">'
-        +   '<div class="rpt-kpi-dotrow"><span class="rpt-kpi-label">Profit Share</span></div>'
-        +   '<div class="rpt-kpi-val">' + (cr.profitShare < 0 ? '&minus;' : '') + '&#8369;' + formatNum(Math.abs(cr.profitShare)) + '</div>'
-        +   '<div class="rpt-kpi-sub">50% of Remaining after retention</div>'
-        + '</div>'
+        + (sc.error
+            ? '<div class="rpt-kpi-card rpt-kpi-card--over" style="grid-column:span 2;">'
+              + '<div class="rpt-kpi-dotrow"><span class="rpt-kpi-label">Sharing unavailable</span></div>'
+              + '<div class="rpt-kpi-sub">' + _esc(sc.error) + '</div></div>'
+            : '<div class="rpt-kpi-card">'
+              + '<div class="rpt-kpi-dotrow"><span class="rpt-kpi-label">Warranty Reserve</span></div>'
+              + '<div class="rpt-kpi-val">' + sc.reserveValue + '</div>'
+              + '<div class="rpt-kpi-sub">' + sc.reserveSub + '</div>'
+              + '</div>'
+              + '<div class="rpt-kpi-card">'
+              + '<div class="rpt-kpi-dotrow"><span class="rpt-kpi-label">' + sc.balanceLabel + '</span></div>'
+              + '<div class="rpt-kpi-val">' + sc.balanceValue + '</div>'
+              + '<div class="rpt-kpi-sub">' + sc.splitLine + '<br>' + sc.caption
+              +   (sc.notes.length ? '<br>' + sc.notes.join('<br>') : '') + '</div>'
+              + '</div>')
         + '</div>';
 
     row.innerHTML = html;
@@ -9171,27 +9328,52 @@ function _pmRptRenderKPIs(groups) {
 }
 
 // Cash-receipt figures for the current Reports scope (one project or "All
-// Projects") — same formulas as Overview (_pmOvHtml), always all-time so this
-// section reads consistently regardless of the period/year tabs above it.
+// Projects"), always all-time. Paid / cost use the shared PM rules. The
+// sharing split is computed PER PROJECT first (its own %, its own reserve)
+// and only then combined — never 5% / 50% of a pooled balance.
 function _pmRptCashReceipt() {
+    const P = window.PMShare;
     const reqs = _pmRptState.payReqs || [];
-    const paid = _pmOvPaid(reqs);
-    const outstanding = _pmOvOutstanding(reqs);
-    // Direct cost, all-time, across every bill in scope — same fallback chain
-    // as Overview's `directCost` (prefers directCostTotal, then labor+materials,
-    // then grandTotal-fee) so this figure matches Overview exactly when scoped
-    // to a single project.
-    const directCost = (_pmRptState.bills || []).reduce((s, b) => {
-        const dct = Number(b.directCostTotal) || 0;
-        if (dct) return s + dct;
-        const lm = (Number(b.labor) || 0) + (Number(b.materials) || 0);
-        if (lm) return s + lm;
-        return s + ((Number(b.grandTotal) || 0) - (Number(b.managementFee) || 0));
-    }, 0);
-    const netCash = paid - directCost;
-    const warrantyRetention = netCash * 0.05;
-    const profitShare = (netCash - warrantyRetention) / 2;
-    return { paid, outstanding, directCost, netCash, warrantyRetention, profitShare };
+    const bills = _pmRptState.bills || [];
+    const paid = P.paid(reqs);
+    const outstanding = P.outstanding(reqs);
+    const directCost = P.directCost(bills);
+    const out = { paid, outstanding, directCost, netCash: paid - directCost, share: null, shareError: null };
+    if (!_pmCanSeeShare()) return out;
+    const sh = _pmRptState.share;
+    if (_pmRptState.fetchError) { out.shareError = 'Report data failed to load'; return out; }
+    if (!sh || sh.error) { out.shareError = sh && sh.error ? P.errorText(sh.error) : 'Sharing data not loaded'; return out; }
+    const rows = {};
+    (sh.read.projects || []).forEach(r => { rows[r.project_id] = r; });
+    const scope = _pmRptState.projects || [];
+    const results = scope.filter(p => rows[p.id]).map(p => P.project({
+        id: p.id, name: p.projectName, clientName: p.clientName, partnerEmail: p.partnerEmail,
+        status: p.status, terminatedAt: p.terminatedAt,
+        bills: bills.filter(b => b.projectId === p.id), reqs: reqs.filter(r => r.projectId === p.id),
+        reserveRow: (sh.reserves || {})[p.id] || null, partnerPct: Number(rows[p.id].partner_pct),
+    }));
+    const c = P.combine(results);
+    out.share = { results, totals: c.totals, review: c.review, unmapped: scope.length - results.length };
+    return out;
+}
+
+// Card text for the Reports sharing section (screen + print share it).
+function _pmRptShareCards(cr) {
+    if (cr.shareError || !cr.share) return { error: cr.shareError || 'Sharing data not loaded' };
+    const P = window.PMShare, t = cr.share.totals;
+    const notes = [];
+    if (t.estimateCount) notes.push('Includes estimates for ' + t.estimateCount + ' project' + (t.estimateCount > 1 ? 's' : '') + ' not yet completed');
+    if (t.reviewCount) notes.push(t.reviewCount + ' project' + (t.reviewCount > 1 ? 's need' : ' needs') + ' reserve review (not in totals)');
+    if (cr.share.unmapped) notes.push(cr.share.unmapped + ' project' + (cr.share.unmapped > 1 ? 's' : '') + ' not linked to a company (sharing locked)');
+    return {
+        reserveValue: P.pesos(t.reserveCents),
+        reserveSub: 'Recorded at closeout for completed projects; 5% estimate otherwise',
+        balanceLabel: t.netCents < 0 ? 'Shortfall' : 'Sharing Balance',
+        balanceValue: P.pesos(t.netCents),
+        splitLine: 'You ' + P.pesos(t.ownerCents) + ' · Partner ' + P.pesos(t.partnerCents),
+        caption: 'Internal allocation — not a payout.',
+        notes,
+    };
 }
 
 function _pmRptRenderTrendChart(groups) {
@@ -9527,11 +9709,12 @@ window.printPMReportsDashboard = function () {
       <div class="kpi-v">${cr.netCash < 0 ? '−' : '+'}${peso(Math.abs(cr.netCash))}</div>
       <div class="kpi-s">Paid − Direct Cost</div>
     </div>
-    ${kpi('Warranty Retention', (cr.warrantyRetention < 0 ? '−' : '') + peso(Math.abs(cr.warrantyRetention)), '5% of Remaining Cash Receipt')}
   </div>
-  <div class="kpis" style="grid-template-columns:1fr 3fr;">
-    ${kpi('Profit Share', (cr.profitShare < 0 ? '−' : '') + peso(Math.abs(cr.profitShare)), '50% of Remaining after retention')}
-    <div></div>
+  <div class="kpis" style="grid-template-columns:repeat(2,1fr);">
+    ${(() => { const sc = _pmRptShareCards(cr); return sc.error
+        ? kpi('Sharing unavailable', '—', _esc(sc.error))
+        : kpi('Warranty Reserve', sc.reserveValue, sc.reserveSub)
+          + kpi(sc.balanceLabel, sc.balanceValue, sc.splitLine + ' · ' + sc.caption + (sc.notes.length ? ' · ' + sc.notes.join(' · ') : '')); })()}
   </div>
 
   <div class="footer">

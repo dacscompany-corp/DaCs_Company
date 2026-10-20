@@ -58,7 +58,7 @@ const M = evalWith(
   { window: {} },
   ['qtParseNum','qtFmt','qtLineAmount','qtRawLineAmount','qtGroupTotal','qtSectionTotal',
    'qtProjectCost','qtDiscountAmount','qtSubTotal','qtVatAmount','qtGrandTotal','qtIsExpired',
-   'qtNextQuoteNo','qtFlattenLines','qtDiffSnapshots','qtTodayKey']
+   'qtNextQuoteNo','qtFlattenLines','qtDiffSnapshots','qtTodayKey','qtDuplicateOf']
 );
 
 // ── Fixtures ─────────────────────────────────────────────────────────
@@ -382,6 +382,158 @@ test('a group with no qty / unit still totals normally', () => {
                 groups: [{ id: 'D', label: 'Clearing', lumpAmount: 25000, lines: [] }] };
   eq(M.qtSectionTotal(sec), 25000);
   eq(P.qtGroupPrintAmount(sec, sec.groups[0]), '', 'and it prints no amount');
+});
+
+// ── Duplicate: a new quotation from a past one ───────────────────────
+// The copy is for a DIFFERENT client: the work is copied, the client is not,
+// and no node may keep its source id (the revision diff pairs lines by id).
+{
+  const blank = () => ({ id: null, quoteNo: 'Q-NEW', revNo: 1, quoteDate: '2026-10-16',
+    validUntil: '2026-11-15', clientName: '', clientEmail: '', clientAddress: '',
+    projectName: '', location: '', area: '', subject: 'Project Estimate', scopeNote: '',
+    images: [], showLinePricing: true, showLogo: true, sections: [],
+    discount: 0, discountType: 'amount', vatMode: 'none', vatPct: 12, totalAmount: 0,
+    status: 'draft', statusNote: '', decidedAt: null, followUpDate: '', followUpNote: '',
+    terms: { payment: 'default' }, preparedBy: '', submittedBy: '', history: [] });
+  const past = {
+    id: 'OLD', quoteNo: 'Q-001', revNo: 3, quoteDate: '2026-01-05', validUntil: '2026-02-04',
+    clientName: 'Old Client', clientEmail: 'old@x.ph', clientAddress: 'Old St.',
+    projectName: '2-storey house', location: 'Cavite', area: '120 sqm', subject: 'Estimate',
+    scopeNote: 'note', images: [{ url: 'u1', name: 'a.jpg', caption: '' }],
+    showLinePricing: false, showLogo: false,
+    sections: [{ id: 'S1', label: 'ELEC', pricing: 'rated', lumpAmount: '',
+      groups: [{ id: 'G1', label: 'Wiring', lumpAmount: '',
+        lines: [line('L1', 2, 850), line('L2', 1, 1000, 'optional'), line('L3', 5, 999, 'removed')] }] }],
+    discount: 100, discountType: 'amount', vatMode: 'exclusive', vatPct: 12, totalAmount: 0,
+    status: 'won', statusNote: 'signed', decidedAt: '2026-01-20', followUpDate: '2026-01-10',
+    followUpNote: 'call', terms: { payment: '50% down' }, preparedBy: 'JT', submittedBy: 'Engr. X',
+    history: [{ status: 'won' }] };
+  let n = 0;
+  const newId = () => 'x' + (++n);
+  const d = M.qtDuplicateOf(past, blank(), newId);
+
+  test('duplicate: client fields stay blank', () => {
+    eq(d.clientName, ''); eq(d.clientEmail, ''); eq(d.clientAddress, '');
+  });
+  test('duplicate: new number, rev 1, fresh dates, unsaved draft', () => {
+    eq(d.id, null); eq(d.quoteNo, 'Q-NEW'); eq(d.revNo, 1);
+    eq(d.quoteDate, '2026-10-16'); eq(d.validUntil, '2026-11-15');
+    eq(d.status, 'draft'); eq(d.statusNote, ''); eq(d.decidedAt, null);
+    eq(d.followUpDate, ''); eq(d.followUpNote, ''); eq(d.history.length, 0);
+  });
+  test('duplicate: work, terms, images, discount/VAT and print options copied', () => {
+    eq(d.projectName, '2-storey house'); eq(d.location, 'Cavite'); eq(d.area, '120 sqm');
+    eq(d.subject, 'Estimate'); eq(d.scopeNote, 'note');
+    eq(d.terms.payment, '50% down'); eq(d.images.length, 1); eq(d.images[0].url, 'u1');
+    eq(d.discount, 100); eq(d.vatMode, 'exclusive');
+    eq(d.showLinePricing, false); eq(d.showLogo, false);
+    eq(d.preparedBy, 'JT'); eq(d.submittedBy, 'Engr. X');
+  });
+  test('duplicate: every node re-id\'d, removed lines left behind', () => {
+    const s = d.sections[0], g = s.groups[0];
+    ok(s.id !== 'S1' && g.id !== 'G1', 'section/group ids must be new');
+    eq(g.lines.length, 2, 'removed line dropped');
+    ok(g.lines.every(l => !['L1','L2','L3'].includes(l.id)), 'line ids must be new');
+    eq(new Set([s.id, g.id, ...g.lines.map(l => l.id)]).size, 4, 'ids unique');
+  });
+  test('duplicate: total recomputed, source untouched', () => {
+    eq(d.totalAmount, M.qtGrandTotal(d));
+    eq(past.sections[0].id, 'S1'); eq(past.sections[0].groups[0].lines.length, 3);
+    eq(past.clientName, 'Old Client');
+  });
+}
+
+// Bulk unit edits must respect group/quotation boundaries and Undo must not
+// overwrite a later manual edit. Run the live module with no DOM or database.
+function unitEditor() {
+  const app = { document: { getElementById: () => null } };
+  app.window = app;
+  require('vm').runInNewContext(src, app);
+  const makeLine = (id, unit) => ({ id, unit, qty: 2, unitPrice: 150, state: 'normal' });
+  const a = makeLine('a', 'set'), b = makeLine('b', 'sqm'), c = makeLine('c', 'lot');
+  const d = makeLine('d', 'bag'), e = makeLine('e', 'pc');
+  const q = { sections: [
+    { groups: [{ unit: 'heading', lines: [a, b, c] }, { unit: 'set', lines: [d] }] },
+    { groups: [{ unit: 'lot', lines: [e] }] }
+  ] };
+  app.qtState.current = q;
+  return { app, q, a, b, c, d, e };
+}
+
+console.log('\n── Bulk quotation units ──');
+test('changing a unit updates only that item until a scope is chosen', () => {
+  const { app, a, b, d } = unitEditor();
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  eq(a.unit, 'lot'); eq(b.unit, 'sqm'); eq(d.unit, 'bag');
+  eq(app.qtState.isDirty, true);
+});
+test('keep this item only dismisses the pending bulk change', () => {
+  const { app, a, b } = unitEditor();
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  app.qtDismissUnitPrompt();
+  app.qtApplyUnit('all');
+  eq(a.unit, 'lot'); eq(b.unit, 'sqm');
+});
+test('this group changes other items in that group and leaves headings intact', () => {
+  const { app, q, a, b, c, d, e } = unitEditor();
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  app.qtApplyUnit('group');
+  eq(a.unit, 'lot'); eq(b.unit, 'lot'); eq(c.unit, 'lot');
+  eq(d.unit, 'bag'); eq(e.unit, 'pc');
+  eq(q.sections[0].groups[0].unit, 'heading');
+  app.qtUndoUnits();
+  eq(a.unit, 'lot', 'source selection stays'); eq(b.unit, 'sqm'); eq(c.unit, 'lot');
+});
+test('entire quotation crosses sections without changing quantities, prices or headings', () => {
+  const { app, q, a, b, c, d, e } = unitEditor();
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  app.qtApplyUnit('all');
+  for (const item of [a, b, c, d, e]) {
+    eq(item.unit, 'lot'); eq(item.qty, 2); eq(item.unitPrice, 150); eq(item.state, 'normal');
+  }
+  eq(q.sections[0].groups[1].unit, 'set');
+  eq(q.sections[1].groups[0].unit, 'lot');
+});
+test('undo restores custom, blank and missing units exactly', () => {
+  const { app, b, d, e } = unitEditor();
+  b.unit = 'custom unit'; d.unit = ''; delete e.unit;
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  app.qtApplyUnit('all');
+  app.qtUndoUnits();
+  eq(b.unit, 'custom unit'); eq(d.unit, ''); eq(Object.hasOwn(e, 'unit'), false);
+});
+test('undo keeps later manual unit edits and skips deleted rows after reordering', () => {
+  const { app, q, b, d, e } = unitEditor();
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  app.qtApplyUnit('all');
+  app.qtChangeLineUnit(0, 0, 1, 'kg');
+  app.qtChangeLineUnit(0, 0, 1, 'lot');
+  q.sections.reverse();
+  q.sections[1].groups[1].lines = [];
+  app.qtUndoUnits();
+  eq(b.unit, 'lot', 'manual re-selection is kept'); eq(d.unit, 'lot', 'detached row is untouched');
+  eq(e.unit, 'pc');
+});
+test('a stale prompt or undo never changes another quotation', () => {
+  const { app, b } = unitEditor();
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  const other = { sections: [{ groups: [{ lines: [{ unit: 'bag' }] }] }] };
+  app.qtState.current = other;
+  app.qtApplyUnit('all');
+  eq(other.sections[0].groups[0].lines[0].unit, 'bag'); eq(b.unit, 'sqm');
+  const second = unitEditor();
+  second.app.qtChangeLineUnit(0, 0, 0, 'lot');
+  second.app.qtApplyUnit('all');
+  second.app.qtState.current = other;
+  second.app.qtUndoUnits();
+  eq(other.sections[0].groups[0].lines[0].unit, 'bag'); eq(second.b.unit, 'lot');
+});
+test('deleting the prompt source cancels the bulk action', () => {
+  const { app, q, b, d } = unitEditor();
+  app.qtChangeLineUnit(0, 0, 0, 'lot');
+  q.sections[0].groups[0].lines.shift();
+  app.qtApplyUnit('all');
+  eq(b.unit, 'sqm'); eq(d.unit, 'bag');
 });
 
 // ── Summary ──────────────────────────────────────────────────────────
