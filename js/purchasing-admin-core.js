@@ -5,6 +5,9 @@
 //   js/purchasing-admin-record.js    — record a purchase (one receipt, many lines)
 //   js/purchasing-admin-purchases.js — purchases, one purchase, owner approvals
 //
+// 2A-3a (0101): where a purchase came from (Source), a search over the
+// list, the word typed before a void (R6), "No receipt", Record again (R7).
+//
 // Unlike the rest of Requests this tab shows PESO amounts — only to those
 // the server lets buy (owner, admin accounts allowed Expenses, staff with
 // the Buyer switch: CLAUDE.md "Purchasing — staff exception"). Every rule
@@ -292,12 +295,106 @@
     function purchaseFlags(p) {
         const f = [];
         if (p.status === 'void') f.push({ text: 'Void', tone: 'hidden' });
+        if (p.no_receipt_reason) f.push({ text: 'No receipt', tone: 'abandoned' });
         if (p.pending_change) f.push({ text: 'Owner approval pending', tone: 'working' });
         if (p.unit_check) f.push({ text: 'Unit check', tone: 'abandoned' });
         if (p.needs_review) f.push({ text: 'Office review', tone: 'working' });
         if (p.extra) f.push({ text: 'Extra', tone: 'pc' });
         if (p.unplanned) f.push({ text: 'Unplanned', tone: 'pc' });
         return f;
+    }
+
+    // Where a purchase was entered (purchases.source).
+    const SOURCE_LABEL = { expenses_form: 'Project Control', purchasing: 'Purchasing', workmate: 'Phone' };
+    function sourceLabel(source) {
+        return SOURCE_LABEL[source] || String(source || '');
+    }
+
+    // The Purchases list's search: every typed word must appear in the
+    // supplier, a project, who bought or recorded it, the source or the total.
+    function searchPurchases(rows, text) {
+        const words = String(text || '').toLowerCase().split(/\s+/).filter(Boolean);
+        if (!words.length) return (rows || []).slice();
+        return (rows || []).filter(p => {
+            const hay = [p.supplier, (p.projects || []).join(' '), p.warehouse ? 'warehouse' : '', p.bought_by_name,
+                         p.recorded_by_name, sourceLabel(p.source), String(p.receipt_total == null ? '' : p.receipt_total)]
+                .join(' ').toLowerCase();
+            return words.every(w => hay.includes(w));
+        });
+    }
+
+    // R6: before a void the person types a word. One project → its first
+    // word (brackets and quotes trimmed off); several projects, the
+    // warehouse, or nothing known → VOID. places = one label per line.
+    function voidWord(places) {
+        const names = Array.from(new Set((places || []).map(x => String(x || '').trim())));
+        if (names.length !== 1 || !names[0] || names[0] === 'Warehouse') return 'VOID';
+        const first = names[0].split(/\s+/)[0].replace(/^[("'[]+|[)"'\],;:]+$/g, '');
+        return first || 'VOID';
+    }
+    function voidConfirmed(word, typed) {
+        return !!word && String(typed == null ? '' : typed).trim().toLowerCase() === String(word).toLowerCase();
+    }
+    // A label per line: the purchase view's lines (destination, folder_name)
+    // or an approval's review doc (where).
+    function placesOf(doc) {
+        return ((doc && doc.lines) || []).map(l => l.where != null ? l.where
+            : (l.destination === 'warehouse' ? 'Warehouse' : (l.folder_name || '')));
+    }
+
+    // R7: only a purchase voided on its own — one a correction replaced has
+    // its newer version already.
+    function canRecordAgain(doc) {
+        return !!doc && doc.status === 'void' && !doc.replaced_by;
+    }
+
+    // A fee or discount as the record form holds it: a split the office
+    // adjusted stays adjusted; an automatic one stays automatic.
+    function chargesOf(doc) {
+        const lines = (doc && doc.lines) || [];
+        return ((doc && doc.charges) || []).map(c => {
+            const given = lines.map(l => {
+                const sh = (c.shares || []).find(x => x.line === l.line);
+                return sh ? Number(sh.amount) : 0;
+            });
+            const auto = prorate(Number(c.amount), lines.map(l => Number(l.amount)));
+            const custom = given.some((g, i) => round2(g) !== round2(auto[i]));
+            return { kind: c.kind, amount: String(c.amount), adjust: custom, shares: custom ? given.map(String) : null };
+        });
+    }
+
+    // R7: the record form's state for a NEW purchase copied from a voided
+    // one (the screen adds its blank-line defaults and an operation id).
+    // Request links are kept and re-checked by the server when it is saved;
+    // weekly picks are NOT copied (the server covers in its usual order, so
+    // a portion bought since is simply not covered). Still to buy is what the
+    // request needs now. Only the owner records for someone else.
+    function recordAgainState(doc, me) {
+        const reqs = {};
+        (doc.requests || []).forEach(r => { reqs[r.line] = r; });
+        const docs = storedDocs(doc.docs);
+        return {
+            purchaseDate: doc.purchase_date, dateTime: doc.date_time || '',
+            supplierId: doc.supplier_id || '', supplier: doc.supplier_id ? '' : (doc.supplier || ''),
+            paymentMethod: doc.payment_method || '', notes: doc.notes || '',
+            boughtBy: me && me.isOwner ? (doc.bought_by || me.userId) : (me && me.userId) || null,
+            docs, stored: Object.assign({}, docs), onFile: Object.keys(docs),
+            lines: (doc.lines || []).map(l => {
+                const r = reqs[l.line];
+                return {
+                    requestLineId: l.request_line_id || null, requestUnit: r ? r.unit : '',
+                    requestName: r ? r.description + (r.spec ? ' ' + r.spec : '') : '',
+                    still: r ? Math.max(0, round3(Number(r.needed) - Number(r.bought))) : 0,
+                    portions: null, portionPicks: [], copied: true,
+                    destination: l.destination, folderId: l.folder_id || '', folderLabel: l.folder_name || '',
+                    itemName: l.item_name, category: l.category || '', quantity: Number(l.quantity), unit: l.unit || '',
+                    amount: String(l.amount), extraReason: l.extra_reason || '', extraLocation: l.extra_location || '',
+                    match: l.substitute ? 'substitute' : 'wording', substituteReason: l.substitute_reason || '',
+                    unplannedReason: l.unplanned_reason || '', inInventory: !!l.in_inventory,
+                };
+            }),
+            charges: chargesOf(doc),
+        };
     }
 
     // Changes the server keeps for the owner (staff then get "send to the owner").
@@ -401,6 +498,9 @@
         BAD_PROJECT: 'Pick a project and its work, or the warehouse.',
         BAD_DESTINATION: 'Pick a project and its work, or the warehouse.',
         AW_NO_PERIOD: 'This Additional Works job has no billing period yet.',
+        NO_RECEIPT: 'A phone purchase needs a receipt photo, or a reason why there is none.',
+        BAD_REASON: 'Keep the reason to 300 characters.',
+        CONFIRM_WORD: 'Type the word shown to confirm.',
         REASON_REQUIRED: 'Write a short reason. It is kept in the history.',
         NOT_FOUND: 'This record no longer exists or belongs to another company. Reload the page.',
         BAD_STATE: 'This purchase was already voided or replaced. Reload the page.',
@@ -423,7 +523,8 @@
     const pure = { round2, round3, peso, qty, parseMoney, parseQty, sameUnit, portionActions, buyerLabel, filterList,
                    listSummary, coverPreview, pickedStill, lineStill, defaultPicks, countsDirectly, docUploads, storedDocs, prorate, receiptTotal,
                    buildBody, formProblems, HISTORY_LABEL, REQUEST_STATUS, purchaseFlags, needsOwner, changeRows, ERRORS,
-                   errorMessage };
+                   errorMessage, SOURCE_LABEL, sourceLabel, searchPurchases, voidWord, voidConfirmed, placesOf, canRecordAgain,
+                   chargesOf, recordAgainState };
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = pure;

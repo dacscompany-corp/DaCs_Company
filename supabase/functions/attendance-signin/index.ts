@@ -1,7 +1,9 @@
 // ════════════════════════════════════════════════════════════════════
 // Edge Function: attendance-signin
 //
-// Signs a construction worker into the native Android attendance app.
+// Signs a construction worker into the native Android attendance app —
+// and, from DAC'S WorkMate only (x-dacs-app: workmate), an office account
+// that may buy (WorkMate Stage 2A-3a, migration 0101).
 //
 // ── WHY THE APP DOES NOT CALL /auth/v1/token DIRECTLY. This project
 //    enforces Cloudflare Turnstile on auth (Auth → Bot & Abuse
@@ -21,6 +23,16 @@
 //    or a non-worker account never receives tokens at all, and the ones
 //    that were minted along the way are revoked before we answer. The
 //    app therefore cannot end up holding a session it should not have.
+//    The rule lives in eligibility.mjs (tests/signin-eligibility.test.js):
+//      old app (no header) — workers and team leaders only, exactly as
+//        before 0101;
+//      WorkMate — workers and team leaders as "worker", plus any account
+//        pur_signin_can_buy (0101) says may buy, as "buyer" (the same
+//        answer as the server's pur_buyer()); everyone else
+//        NO_WORKMATE_ACCESS.
+//    A refusal revokes only the session it just made (an office account
+//    that tried the phone stays signed in to Dacs Web), except a
+//    deactivated account, which loses every session.
 //
 // ── NO CORS HEADERS, deliberately. This endpoint is for the native app.
 //    Without Access-Control-Allow-Origin a browser cannot read the
@@ -30,7 +42,9 @@
 // POST { email, password }
 //   → 200 { session: { access_token, refresh_token, expires_in, token_type },
 //           worker:  { id, email, display_name, position, worker_no, role, status } }
-//   → 4xx { error: CODE }   INVALID_CREDENTIALS | NOT_A_WORKER |
+//         + access: "worker" | "buyer"            (WorkMate only)
+//   → 4xx { error: CODE }   INVALID_CREDENTIALS | NOT_A_WORKER (old app) |
+//                           NO_WORKMATE_ACCESS (WorkMate) |
 //                           ACCOUNT_INACTIVE | TOO_MANY_ATTEMPTS | BAD_REQUEST
 //   → 5xx { error: "SERVER_ERROR" }
 //
@@ -40,13 +54,10 @@
 // Deploy: supabase functions deploy attendance-signin
 // ════════════════════════════════════════════════════════════════════
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { decideAccess, isWorkMate, needsBuyerCheck, revokeScope } from "./eligibility.mjs";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-// Same rule as attendance_time_in (0050 §8): teamLeader records
-// attendance exactly like a worker does.
-const WORKER_ROLES = ["worker", "teamLeader"];
 
 const json = (body: unknown, status: number) =>
   new Response(JSON.stringify(body), {
@@ -69,6 +80,10 @@ Deno.serve(async (req) => {
   const email = String(body.email ?? "").trim().toLowerCase();
   const password = String(body.password ?? "");
   if (!email || !password) return fail("BAD_REQUEST", 400);
+
+  // 0082: WorkMate says who it is; the old app sends nothing.
+  const app = req.headers.get("x-dacs-app");
+  const fromWorkMate = isWorkMate(app);
 
   // First hop only: the rest of x-forwarded-for is caller-supplied and
   // trivially spoofed, so throttling on it would be throttling on a
@@ -126,9 +141,10 @@ Deno.serve(async (req) => {
   const session = auth.session;
 
   // Tokens exist from here on. Any refusal below must revoke them.
-  const revoke = async () => {
+  const revoke = async (code: string) => {
+    const scope = revokeScope(code);
     try {
-      await admin.auth.admin.signOut(session.access_token, "global");
+      await admin.auth.admin.signOut(session.access_token, scope);
     } catch (e) {
       console.error("could not revoke session for refused sign-in", e);
     }
@@ -143,28 +159,41 @@ Deno.serve(async (req) => {
 
   if (profErr) {
     console.error("profile read failed", profErr);
-    await revoke();
+    await revoke("SERVER_ERROR");
     return fail("SERVER_ERROR", 500);
   }
 
-  if (!profile || !WORKER_ROLES.includes(profile.role ?? "")) {
-    await record(true); // the password WAS right; not a brute-force signal
-    await revoke();
-    return fail("NOT_A_WORKER", 403);
+  const role = profile?.role ?? null;
+  // coalesce(status,'active') — matches the RPCs exactly (eligibility.mjs).
+  // Older profiles rows carry no status, and locking those workers out would
+  // be a bug attendance_time_in does not have.
+  const status = profile?.status ?? null;
+
+  // ── 4. May this account buy? (WorkMate, active non-workers only) ──
+  let canBuy = false;
+  if (profile && needsBuyerCheck({ role, status, app })) {
+    const { data: buys, error: buyErr } = await admin.rpc(
+      "pur_signin_can_buy", { p_user: auth.user.id },
+    );
+    if (buyErr) {
+      console.error("buyer check failed", buyErr);
+      await revoke("SERVER_ERROR");
+      return fail("SERVER_ERROR", 500);
+    }
+    canBuy = buys === true;
   }
 
-  // coalesce(status,'active') — matches the RPCs exactly. Older profiles
-  // rows carry no status, and locking those workers out would be a bug
-  // attendance_time_in does not have.
-  if ((profile.status ?? "active") !== "active") {
-    await record(true);
-    await revoke();
-    return fail("ACCOUNT_INACTIVE", 403);
+  const decision = profile
+    ? decideAccess({ role, status, app, canBuy })
+    : { ok: false as const, code: fromWorkMate ? "NO_WORKMATE_ACCESS" : "NOT_A_WORKER" };
+
+  await record(true); // the password WAS right; not a brute-force signal
+  if (!decision.ok) {
+    await revoke(decision.code);
+    return fail(decision.code, 403);
   }
 
-  await record(true);
-
-  return json({
+  const payload = {
     session: {
       access_token: session.access_token,
       refresh_token: session.refresh_token,
@@ -172,5 +201,7 @@ Deno.serve(async (req) => {
       token_type: session.token_type,
     },
     worker: profile,
-  }, 200);
+  };
+  // The old app gets exactly the old shape.
+  return json(fromWorkMate ? { ...payload, access: decision.access } : payload, 200);
 });

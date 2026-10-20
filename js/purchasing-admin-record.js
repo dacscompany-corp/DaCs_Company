@@ -2,7 +2,9 @@
 // Requests → Purchasing → Record purchase (0097). One receipt, many lines,
 // several projects. Opens from the shopping list with the ticked request
 // lines, empty ("Purchase with no request"), or from a purchase to correct
-// it. Saves through the SAME server operations as everything else:
+// it, or from a voided purchase to record it again (R7, 2A-3a: a NEW
+// purchase filled in from the old one). Saves through the SAME server
+// operations as everything else:
 //   new            → pur_record   (source 'purchasing')
 //   same lines     → pur_correct  (reason required)
 //   lines added or removed → pur_replace (reason required)
@@ -23,7 +25,7 @@
     if (!RA || !PA) return;
     const esc = RA.esc;
 
-    let ctx = null;   // { requestLines, batchId, purchase, onDone }
+    let ctx = null;   // { requestLines, batchId, purchase, again, onDone }
     let st = null;    // the form
 
     const DOCS = [['po', 'po_image_url', 'Purchase order'], ['dr', 'delivery_receipt_url', 'Delivery receipt'],
@@ -94,16 +96,20 @@
             }),
             // A split the office adjusted stays adjusted: a correction never
             // quietly resets it to the automatic one.
-            charges: (doc.charges || []).map(c => {
-                const given = (doc.lines || []).map(l => {
-                    const sh = (c.shares || []).find(x => x.line === l.line);
-                    return sh ? Number(sh.amount) : 0;
-                });
-                const auto = PA.prorate(Number(c.amount), (doc.lines || []).map(l => Number(l.amount)));
-                const custom = given.some((g, i) => PA.round2(g) !== PA.round2(auto[i]));
-                return { kind: c.kind, amount: String(c.amount), adjust: custom, shares: custom ? given.map(String) : null };
-            }),
+            charges: PA.chargesOf(doc),
         };
+    }
+
+    // R7: a NEW purchase filled in from a voided one (PurchasingAdmin.
+    // recordAgainState): request links are re-checked by the server, picks
+    // are not copied, nothing is saved until Save.
+    function fromAgain(doc, me) {
+        const s = PA.recordAgainState(doc, me);
+        return Object.assign(s, {
+            opId: root.DacsReceipts.newId(), editId: null, editLines: 0, reason: '', againOf: doc.id,
+            files: {}, uploaded: {},
+            lines: s.lines.map(l => Object.assign(newLine(), l)),
+        });
     }
 
     // The line with its typed quantity, for the pure previews.
@@ -133,6 +139,7 @@
     // ones it covers; none picked = the server's automatic order.
     function picksHtml(l, i) {
         if (!l.requestLineId) return '';
+        if (l.copied) return '<div class="req-muted">Covers your own portions first, then unassigned ones, earliest first — checked again when you save.</div>';
         if (!l.portions) {
             const kept = (l.portionPicks || []).filter(k => Number(k.quantity) > 0);
             return kept.length ? '<div class="req-muted">Picked portions are kept: ' + esc(kept.map(k => PA.qty(k.quantity)).join(' + ')) + '</div>'
@@ -360,7 +367,7 @@
             });
         } catch (e) { RA.fail(host, e); return; }
         if (!st) {
-            st = ctx.purchase ? fromPurchase(ctx.purchase) : {
+            st = ctx.purchase ? fromPurchase(ctx.purchase) : ctx.again ? fromAgain(ctx.again, me) : {
                 opId: root.DacsReceipts.newId(), editId: null, editLines: 0, reason: '',
                 purchaseDate: todayKey(), supplierId: '', supplier: '', paymentMethod: 'Cash', notes: '', boughtBy: me.userId,
                 docs: {}, files: {}, uploaded: {}, onFile: [],
@@ -371,7 +378,8 @@
 
         host.innerHTML =
             '<div class="att-card"><div class="att-card-body">' +
-              '<h3 class="pur-h3">' + (st.editId ? 'Correct this purchase' : 'Record a purchase') + '</h3>' +
+              '<h3 class="pur-h3">' + (st.editId ? 'Correct this purchase' : st.againOf ? 'Record again — a new purchase copied from a voided one' : 'Record a purchase') + '</h3>' +
+              (st.againOf ? '<p class="req-muted">Check every line: it is saved as a new purchase. The voided one stays voided, as history.</p>' : '') +
               '<div class="pur-rec-row">' +
                 '<label class="att-label">Date bought<input class="att-input" type="date" data-h="purchaseDate" value="' + esc(st.purchaseDate) + '"></label>' +
                 '<label class="att-label pur-w2">Supplier<select class="att-input" data-h="supplierId">' +
@@ -484,7 +492,7 @@
             onDone: rerender,
         }));
         host.querySelector('[data-cancel]').addEventListener('click', () => {
-            const back = st.editId;
+            const back = st.editId || st.againOf;
             ctx = null; st = null;
             PA.ui.tab = back ? 'purchases' : 'list';
             if (back) PA.openPurchase(back); else root.switchView('reqPurchasing');

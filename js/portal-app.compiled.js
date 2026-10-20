@@ -3299,7 +3299,9 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
   const purchaseTags = (m) => {
     if (!(window.expIsPurchaseRow && window.expIsPurchaseRow(m))) return null;
     const review = typeof window.expPurNeedsReview === "function" && (m._parts || [m]).some((p) => window.expPurNeedsReview(p.purchaseLineId));
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { title: "Recorded as a purchase — edit or void it to change it", style: tagStyle("#eef2ff", "#3730a3", "#c7d2fe") }, "From purchase"), review && /* @__PURE__ */ React.createElement("span", { title: "No billing period for its month — charged to Cover until the office reviews it", style: tagStyle("#fff7ed", "#c2410c", "#fed7aa") }, "Office review"));
+    // 2A-3a (Q16): a change this account sent to the owner, not yet decided.
+    const waiting = typeof window.expPurPendingChange === "function" && (m._parts || [m]).some((p) => window.expPurPendingChange(p.purchaseLineId || p.purchaseChargeId));
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { title: "Recorded as a purchase — edit or void it to change it", style: tagStyle("#eef2ff", "#3730a3", "#c7d2fe") }, "From purchase"), review && /* @__PURE__ */ React.createElement("span", { title: "No billing period for its month — charged to Cover until the office reviews it", style: tagStyle("#fff7ed", "#c2410c", "#fed7aa") }, "Office review"), waiting && /* @__PURE__ */ React.createElement("span", { title: "You sent a change of this purchase to the owner — open the row to withdraw it", style: tagStyle("#fefce8", "#a16207", "#fde68a") }, "Waiting for the owner"));
   };
   const openReceiptThumb = (m) => {
     if (_staff()) return;

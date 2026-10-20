@@ -1077,6 +1077,22 @@ The office side of buying: who may buy, who is buying which part of a request, a
 | Storage `uploads/purchases/<company>/<yyyy-mm>/<uuid>.jpg` | One receipt per purchase, read and written only by `pur_buyer()` of that company — not by non-buyer staff, workers, clients or partners. Dacs Web never signs a link for this folder: it downloads with the viewer's session, so Storage checks the rule on every view (`supabase-config.js` §11b). `receipt_uploads` accepts kind `purchase` |
 | Changed 0085/0086/0096 functions | `pr_apply_quantity` (bought quantity is protected like arranged: reduced only by flagging), `pr_office_move_portion` (`BOUGHT`), `pur_reader` (buyers only), `pur_actor_owner` (sources `purchasing`/`workmate` need the switch), `pur_store`, `pur_insert` (7 arguments), `pur_correct` (keeps a line's request link when the body leaves it out — Project Control's form — and its covers' portions), `pur_replace` (voids first, keeps covers' portions, the old buyer and the supplier), `pur_doc`, `pur_header_ok`, `pur_body_keys` / `pur_stored_keys` (`pr_line:` locks) |
 
+## Phone purchasing (0101) — WorkMate Stage 2A-3a
+
+What buying from the WorkMate phone needs from the server. Spec `docs/superpowers/specs/2026-09-30-workmate-mobile-purchasing-design.md`; answers `docs/superpowers/specs/2026-10-20-workmate-stage2a3-questions.md`; plan `docs/superpowers/plans/2026-10-20-workmate-stage2a3a-server-web.md`.
+
+| Table / object | Columns and rules |
+|---|---|
+| `pur_signin_can_buy(user)` | **Service role only.** The `attendance-signin` Edge Function's buyer check: `pur_can_buy` in that account's own company (worked out as `data_owner_id()` does) — the same answer `pur_buyer()` gives the account signed in |
+| `pur_fund` (0096, redefined, now VOLATILE) | An Additional Works job with no billing period gets ONE hidden period (`funding_type 'downpayment'`, the purchase's month and year, no budget row, no allocation snapshot) instead of `AW_NO_PERIOD`. Charged in full to it, never Cover, as before. The job's `pur_folder:` lock keeps it to one |
+| `purchases.no_receipt_reason` (text, ≤ 300, default `''`) | Why a phone purchase has no receipt photo. Trigger `purchases_require_receipt`: a `workmate` purchase must keep an https link in `docs` or a non-blank reason (`NO_RECEIPT`), on insert and on every update of `docs` / the reason / `source`. Web sources keep receipts optional |
+| `pur_insert` (0097, redefined) | Stores `no_receipt_reason` (`BAD_REASON` over 300). Nothing else changed |
+| `pur_list_doc(purchase)` | One purchases-list row: 0097's row plus `no_receipt_reason` and `replaced_by`. Used by `pur_purchases` and `pur_my_purchases` (internal) |
+| `pur_my_purchases(days default 60)` | Buyers only: what the caller bought or recorded, every status, purchase date within the last 1–366 Philippine days (`BAD_DAYS`), newest first, at most 300 |
+| `pur_destinations()` | Buyers only: the company's open projects (name not blank) with their open Additional Works jobs (`works`), for the phone's record form |
+| `pur_my_pending_changes()` | Any account that may record (0096's rule), buyer or not: the caller's OWN pending change requests — `id`, `purchase_id`, `kind`, `reason`, `requested_at`, and the purchase's `line_ids` / `charge_ids`. No amounts. Project Control and Expenses show "Waiting for the owner" on those rows and offer Withdraw (`pur_withdraw_change`) |
+| `pur_purchase_view` (0097, redefined) | Adds `no_receipt_reason` |
+
 ## PM profit sharing (0098)
 
 An internal owner/partner allocation per PM project - **outside the money model** (never a payout, invoice or accounting entry). Spec `docs/superpowers/specs/2026-10-18-pm-profit-sharing-mvp-terms.md`; plan `docs/superpowers/plans/2026-10-18-pm-profit-sharing.md`. `project_id` is a `construction_projects.id` (never a `folders.id`). The three tables have **RLS on, no policies, and all privileges revoked** from `anon`/`authenticated`: nothing reads or writes them directly. Read through `pm_sharing_read` (owner-role accounts of the company); write through `pm_set_sharing` (main owner only).

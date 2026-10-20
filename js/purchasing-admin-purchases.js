@@ -2,10 +2,16 @@
 // Requests → Purchasing → Purchases, one purchase (reqPurchase) and Owner
 // approvals (0097). Buyers only.
 //
-//   Purchases        — newest first, a date range and a project.
+//   Purchases        — newest first, a date range, a project (with its
+//                      Additional Works) and a search; where each was
+//                      entered (Source: Project Control / Purchasing /
+//                      Phone) — real Project Control purchases share this
+//                      list (2A-3a, Q17).
 //   One purchase     — its lines, what each covered on its request, extras,
-//                      unit checks, receipt photos, history; Correct (the
-//                      record form), Void, Check a different unit.
+//                      unit checks, receipt photos ("No receipt" and why),
+//                      history; Correct (the record form), Void (the person
+//                      types the project's first word, R6), Check a
+//                      different unit, Record again from a voided one (R7).
 //   Owner approvals  — staff changes the server keeps for the owner. The
 //                      owner approves (the server runs the very same
 //                      correct / replace / void) or rejects with a note;
@@ -26,13 +32,29 @@
         const d = new Date();
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
-    const ui = { from: null, to: null, status: 'recorded' };
+    const ui = { from: null, to: null, status: 'recorded', folder: '', search: '', projects: null };
+
+    // One row of the Purchases list.
+    function purchaseRow(p) {
+        return '<tr class="req-row" tabindex="0" data-id="' + esc(p.id) + '">' +
+            '<td>' + esc(RA.formatDay(p.purchase_date)) + '</td>' +
+            '<td>' + esc(p.supplier || '—') + '</td>' +
+            '<td>' + esc((p.projects || []).join(', ') + (p.warehouse ? ((p.projects || []).length ? ' · ' : '') + 'Warehouse' : '')) +
+              '<div class="req-muted">' + esc(p.lines + (p.lines === 1 ? ' line' : ' lines') + (p.linked ? ' · ' + p.linked + ' from requests' : '')) + '</div></td>' +
+            '<td>' + esc(PA.sourceLabel(p.source)) + '</td>' +
+            '<td><strong>' + esc(PA.peso(p.receipt_total)) + '</strong></td>' +
+            '<td>' + esc(p.bought_by_name) + (p.bought_by_name !== p.recorded_by_name ? '<div class="req-muted">recorded by ' + esc(p.recorded_by_name) + '</div>' : '') + '</td>' +
+            '<td>' + PA.purchaseFlags(p).map(f => PA.pill(f.text, f.tone)).join(' ') + '</td>' +
+          '</tr>';
+    }
 
     async function renderPurchases(body, me) {
         if (ui.from === null) { ui.from = monthStart(); ui.to = todayKey(); }
         let rows;
         try {
-            rows = await RA.rpc('pur_purchases', { p_from: ui.from || null, p_to: ui.to || null, p_folder: null, p_status: ui.status });
+            // Every project, completed ones too (an old purchase may need finding).
+            if (!ui.projects) ui.projects = (await RA.rpc('pr_office_projects')) || [];
+            rows = await RA.rpc('pur_purchases', { p_from: ui.from || null, p_to: ui.to || null, p_folder: ui.folder || null, p_status: ui.status });
         } catch (e) { RA.fail(body, e); return; }
         rows = rows || [];
         body.innerHTML =
@@ -42,30 +64,39 @@
               '<select class="att-filter" data-status aria-label="Status">' +
                 [['recorded', 'Recorded'], ['void', 'Voided'], ['all', 'All']].map(s => '<option value="' + s[0] + '"' + (s[0] === ui.status ? ' selected' : '') + '>' + s[1] + '</option>').join('') +
               '</select>' +
+              '<select class="att-filter" data-folder aria-label="Project">' +
+                '<option value="">All projects</option>' +
+                ui.projects.map(f => '<option value="' + esc(f.folder_id) + '"' + (f.folder_id === ui.folder ? ' selected' : '') + '>' +
+                  esc(f.name + (f.completed ? ' (completed)' : '')) + '</option>').join('') +
+              '</select>' +
+              '<input class="att-input" type="search" data-search placeholder="Search supplier, project, person, source…" aria-label="Search" value="' + esc(ui.search) + '">' +
               (rows.length >= 300 ? '<span class="req-muted">Showing the newest 300 — narrow the dates.</span>' : '') +
             '</div>' +
+            '<p class="req-muted">Project Control purchases are listed here too — check the Source and the project before you void anything.</p>' +
             (rows.length
               ? '<div class="att-card"><div class="att-card-body" style="padding:0"><div class="req-table-wrap"><table class="att-table req-table">' +
-                  '<thead><tr><th>Date</th><th>Supplier</th><th>For</th><th>Total</th><th>Bought by</th><th>Status</th></tr></thead><tbody>' +
-                  rows.map(p => '<tr class="req-row" tabindex="0" data-id="' + esc(p.id) + '">' +
-                    '<td>' + esc(RA.formatDay(p.purchase_date)) + '</td>' +
-                    '<td>' + esc(p.supplier || '—') + '</td>' +
-                    '<td>' + esc((p.projects || []).join(', ') + (p.warehouse ? ((p.projects || []).length ? ' · ' : '') + 'Warehouse' : '')) +
-                      '<div class="req-muted">' + esc(p.lines + (p.lines === 1 ? ' line' : ' lines') + (p.linked ? ' · ' + p.linked + ' from requests' : '')) + '</div></td>' +
-                    '<td><strong>' + esc(PA.peso(p.receipt_total)) + '</strong></td>' +
-                    '<td>' + esc(p.bought_by_name) + (p.bought_by_name !== p.recorded_by_name ? '<div class="req-muted">recorded by ' + esc(p.recorded_by_name) + '</div>' : '') + '</td>' +
-                    '<td>' + PA.purchaseFlags(p).map(f => PA.pill(f.text, f.tone)).join(' ') + '</td>' +
-                  '</tr>').join('') +
-                '</tbody></table></div></div></div>'
+                  '<thead><tr><th>Date</th><th>Supplier</th><th>For</th><th>Source</th><th>Total</th><th>Bought by</th><th>Status</th></tr></thead><tbody data-rows></tbody>' +
+                '</table></div></div></div><div class="att-empty" data-none hidden>Nothing matches the search.</div>'
               : '<div class="att-empty">No purchases in these dates.</div>');
         const reload = () => renderPurchases(body, me);
+        // The search filters what the server sent, without a reload (the box keeps its focus).
+        const draw = () => {
+            const tb = body.querySelector('[data-rows]');
+            if (!tb) return;
+            const shown = PA.searchPurchases(rows, ui.search);
+            tb.innerHTML = shown.map(purchaseRow).join('');
+            body.querySelector('[data-none]').hidden = shown.length > 0;
+            tb.querySelectorAll('tr[data-id]').forEach(tr => {
+                tr.addEventListener('click', () => PA.openPurchase(tr.dataset.id));
+                tr.addEventListener('keydown', e => { if (e.key === 'Enter') PA.openPurchase(tr.dataset.id); });
+            });
+        };
         body.querySelector('[data-from]').addEventListener('change', e => { ui.from = e.target.value; reload(); });
         body.querySelector('[data-to]').addEventListener('change', e => { ui.to = e.target.value; reload(); });
         body.querySelector('[data-status]').addEventListener('change', e => { ui.status = e.target.value; reload(); });
-        body.querySelectorAll('tr[data-id]').forEach(tr => {
-            tr.addEventListener('click', () => PA.openPurchase(tr.dataset.id));
-            tr.addEventListener('keydown', e => { if (e.key === 'Enter') PA.openPurchase(tr.dataset.id); });
-        });
+        body.querySelector('[data-folder]').addEventListener('change', e => { ui.folder = e.target.value; reload(); });
+        body.querySelector('[data-search]').addEventListener('input', e => { ui.search = e.target.value; draw(); });
+        draw();
         RA.icons();
     }
 
@@ -103,16 +134,22 @@
         const open = doc.status === 'recorded';
         const pending = (doc.change_requests || []).find(r => r.status === 'pending');
         const docs = Object.entries(doc.docs || {}).filter(([, v]) => v);
+        // R6: the word typed before a void (the one project's first word, else VOID).
+        const word = PA.voidWord(PA.placesOf(doc));
         host.innerHTML =
             '<div class="att-stack pur-tab">' +
               RA.head('Purchase · ' + RA.formatDay(doc.purchase_date), (doc.supplier || 'No supplier') + ' · ' + PA.peso(doc.receipt_total) +
-                ' · bought by ' + doc.bought_by_name + (doc.bought_by_name !== doc.recorded_by_name ? ', recorded by ' + doc.recorded_by_name : ''),
+                ' · bought by ' + doc.bought_by_name + (doc.bought_by_name !== doc.recorded_by_name ? ', recorded by ' + doc.recorded_by_name : '') +
+                ' · entered in ' + PA.sourceLabel(doc.source),
                 '<button type="button" class="att-btn" data-back>← Purchases</button>' +
-                (open && !pending ? '<button type="button" class="att-btn" data-correct>Correct…</button><button type="button" class="att-btn att-btn--warn" data-void>Void…</button>' : '')) +
+                (open && !pending ? '<button type="button" class="att-btn" data-correct>Correct…</button><button type="button" class="att-btn att-btn--warn" data-void>Void…</button>' : '') +
+                (PA.canRecordAgain(doc) ? '<button type="button" class="att-btn" data-again>Record again…</button>' : '')) +
               (doc.status === 'void' ? '<div class="att-info att-info--warn"><i data-lucide="ban"></i><div>Voided — it counts for nothing in Spent or Bought. ' +
                   (doc.replaced_by ? 'It was replaced by a newer version.' : 'Its receipt and history are kept.') + '</div></div>' : '') +
               (pending ? '<div class="att-info"><i data-lucide="hourglass"></i><div>A change is waiting for the owner (' + esc(pending.kind) + ', by ' +
                   esc(pending.requested_by_name) + '): ' + esc(pending.reason) + '</div></div>' : '') +
+              (doc.no_receipt_reason ? '<div class="att-info att-info--warn"><i data-lucide="receipt"></i><div>No receipt: ' +
+                  esc(doc.no_receipt_reason) + '</div></div>' : '') +
               '<div class="att-card"><div class="att-card-body" style="padding:0"><div class="req-table-wrap"><table class="att-table req-table">' +
                 '<thead><tr><th>#</th><th>Item</th><th>Quantity</th><th>Amount</th><th>Request</th><th></th></tr></thead><tbody>' +
                 (doc.lines || []).map(l => lineRow(l, doc)).join('') +
@@ -144,17 +181,24 @@
         }));
         const corr = host.querySelector('[data-correct]');
         if (corr) corr.addEventListener('click', () => PA.openRecord({ purchase: doc }));
+        // R7: a NEW purchase filled in from this voided one; nothing is saved until Save.
+        const again = host.querySelector('[data-again]');
+        if (again) again.addEventListener('click', () => PA.openRecord({ again: doc }));
         let sentToOwner = false;
         const vd = host.querySelector('[data-void]');
         if (vd) vd.addEventListener('click', () => RA.modal({
             title: 'Void this purchase?',
             sub: 'It leaves Spent and Bought — all ' + (doc.lines || []).length + ' line(s). The receipt and history are kept; it does not say goods were returned or money refunded.',
-            body: '<label class="att-label">Reason (kept in the history)<input class="att-input" name="reason" maxlength="500" required></label>',
+            body: '<p><strong>' + esc((doc.lines || []).map(l => l.destination === 'warehouse' ? 'Warehouse' : l.folder_name).filter((v, i, a) => a.indexOf(v) === i).join(', ') || '—') +
+                    '</strong> · ' + esc(doc.supplier || 'No supplier') + ' · <strong>' + esc(PA.peso(doc.receipt_total)) + '</strong> · entered in ' + esc(PA.sourceLabel(doc.source)) + '</p>' +
+                  '<label class="att-label">Reason (kept in the history)<input class="att-input" name="reason" maxlength="500" required></label>' +
+                  '<label class="att-label">Type <strong>' + esc(word) + '</strong> to confirm<input class="att-input" name="confirm" autocomplete="off" required></label>',
             submitLabel: 'Void purchase', warn: true,
             errorMessage: PA.errorMessage,
             onSubmit: async (form) => {
                 const reason = form.reason.value.trim();
                 if (!reason) throw new Error('REASON_REQUIRED');
+                if (!PA.voidConfirmed(word, form.confirm.value)) throw new Error('CONFIRM_WORD');
                 sentToOwner = false;
                 try {
                     await RA.rpc('pur_void', { p_op: root.DacsReceipts.newId(), p_purchase: doc.id, p_reason: reason });
@@ -244,12 +288,29 @@
             (decided.length ? '<h3 class="pur-h3">Decided</h3>' + decided.map(card).join('') : '');
         const reload = () => renderApprovals(body, me);
         body.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => PA.openPurchase(b.dataset.open)));
+        const approve = async (id) => {
+            const res = await RA.rpc('pur_decide_change', { p_op: root.DacsReceipts.newId(), p_request: id, p_approve: true, p_note: null });
+            if (res && res.status === 'stale') PA.notice('The purchase changed after this was asked, so nothing was applied. Ask for a new request.', 'Out of date');
+        };
         body.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', async () => {
+            const r = list.find(x => x.id === b.dataset.approve);
+            // R6: approving a void voids for good — the owner types the word too.
+            if (r && r.kind === 'void') {
+                const word = PA.voidWord(PA.placesOf(r.base));
+                return RA.modal({
+                    title: 'Approve this void?',
+                    sub: 'The whole purchase leaves Spent and Bought. There is no undo.',
+                    body: '<label class="att-label">Type <strong>' + esc(word) + '</strong> to confirm<input class="att-input" name="confirm" autocomplete="off" required></label>',
+                    submitLabel: 'Approve void', warn: true, errorMessage: PA.errorMessage,
+                    onSubmit: async (form) => {
+                        if (!PA.voidConfirmed(word, form.confirm.value)) throw new Error('CONFIRM_WORD');
+                        await approve(r.id);
+                    },
+                    onDone: reload,
+                });
+            }
             b.disabled = true;
-            try {
-                const res = await RA.rpc('pur_decide_change', { p_op: root.DacsReceipts.newId(), p_request: b.dataset.approve, p_approve: true, p_note: null });
-                if (res && res.status === 'stale') PA.notice('The purchase changed after this was asked, so nothing was applied. Ask for a new request.', 'Out of date');
-            } catch (e) { PA.notice(e); }
+            try { await approve(b.dataset.approve); } catch (e) { PA.notice(e); }
             reload();
         }));
         body.querySelectorAll('[data-reject]').forEach(b => b.addEventListener('click', () => RA.modal({

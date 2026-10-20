@@ -2074,6 +2074,7 @@ function renderExpensesTable() {
         const purBadge = (e.purchaseLineId || e.purchaseChargeId)
             ? '<span title="Recorded as a purchase — edit or void it to change it" style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:10.5px;font-weight:700;border:1px solid #c7d2fe;">From purchase</span>'
               + (_purReviewLines.has(e.purchaseLineId) ? '<span title="No billing period for its month — charged to Cover until the office reviews it" style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#fff7ed;color:#c2410c;font-size:10.5px;font-weight:700;border:1px solid #fed7aa;">Office review</span>' : '')
+              + (window.expPurPendingChange(e.purchaseLineId || e.purchaseChargeId) ? '<span title="You sent a change of this purchase to the owner — open the row to withdraw it" style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#fefce8;color:#a16207;font-size:10.5px;font-weight:700;border:1px solid #fde68a;">Waiting for the owner</span>' : '')
             : '';
         return `
         <tr class="exp-group-row">
@@ -2938,17 +2939,47 @@ function _expNoPeriodSpent(folderId) {
 // Lines the server charged to Cover because their month had no billing
 // period (Q23) — shown as "Office review" in the Expenses list and in
 // Project Control's Materials list (which listens for the event below).
+// Also (2A-3a, Q16) the changes THIS account sent to the owner and the owner
+// has not decided: "Waiting for the owner", with Withdraw. Staff without the
+// Buyer switch read no purchase rows, so both come through the server as ids
+// (pur_review_lines, pur_my_pending_changes — no amounts).
 let _purReviewLines = new Set();
+let _purPending = new Map();   // purchase line / charge id → my pending change request
 async function _purLoadReviewFlags() {
     try {
         // Ids only, through the server (0097: purchase tables are buyers-only).
         const { data, error } = await window.sbClient.rpc('pur_review_lines');
         if (error) throw error;
         _purReviewLines = new Set(data || []);
-        window.dispatchEvent(new Event('dacs:pur-review-flags'));
     } catch (err) { console.warn('purchase review flags:', err); }
+    try {
+        const { data, error } = await window.sbClient.rpc('pur_my_pending_changes');
+        if (error) throw error;
+        const byId = new Map();
+        (data || []).forEach(r => (r.line_ids || []).concat(r.charge_ids || []).forEach(id => byId.set(id, r)));
+        _purPending = byId;
+    } catch (err) { console.warn('purchase changes waiting for the owner:', err); }
+    window.dispatchEvent(new Event('dacs:pur-review-flags'));
 }
 window.expPurNeedsReview = id => !!id && _purReviewLines.has(id);
+window.expPurPendingChange = id => (id && _purPending.get(id)) || null;
+
+// Q16: a purchase-made row whose purchase has a change this account sent to
+// the owner. Changing it now would make that request out of date, so offer
+// to withdraw it first. true = nothing is waiting, or it was withdrawn (go on).
+async function _purOfferWithdraw(e) {
+    const r = window.expPurPendingChange(e && (e.purchaseLineId || e.purchaseChargeId));
+    if (!r) return true;
+    const ok = await _purConfirm('Waiting for the owner',
+        'You sent this purchase to the owner to ' + (r.kind === 'void' ? 'void' : 'change') + ' it. Your reason: "' + (r.reason || '') +
+        '". Withdraw that request to change the purchase yourself?', 'Withdraw request');
+    if (!ok) return false;
+    const { error } = await window.sbClient.rpc('pur_withdraw_change', { p_request: r.id });
+    if (error) { showExpNotif('Error: ' + _purErrorText(error), 'error'); return false; }
+    showExpNotif('Request withdrawn.', 'success');
+    await _purLoadReviewFlags();
+    return true;
+}
 
 // Set while the Edit Expense modal is correcting a purchase (else null).
 let _editingPurchase = null;
@@ -3074,6 +3105,7 @@ async function deleteExpense(id) {
         catch (err) { console.error('deleteExpense fetch:', err); }
     }
     if (pe && (pe.purchaseLineId || pe.purchaseChargeId)) {
+        if (!await _purOfferWithdraw(pe)) return;
         let pur;
         try { pur = await _purForRow(pe); } catch (err) { showExpNotif('Error: ' + _purErrorText(err), 'error'); return; }
         if (pur.purchase.status !== 'recorded') { showExpNotif('This purchase was already voided.', 'error'); return; }
@@ -4377,6 +4409,7 @@ async function openEditExpenseModal(id) {
     _editingPurchase = null;
     _purEditOpId = null;
     if (e.purchaseLineId || e.purchaseChargeId) {
+        if (!await _purOfferWithdraw(e)) return;
         let pur;
         try { pur = await _purForRow(e); } catch (err) { showExpNotif('Error: ' + _purErrorText(err), 'error'); return; }
         if (pur.purchase.status !== 'recorded') { showExpNotif('This purchase was voided.', 'error'); return; }

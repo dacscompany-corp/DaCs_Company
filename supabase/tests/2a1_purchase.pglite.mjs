@@ -19,9 +19,12 @@ const MIG = process.env.DACS_0096 || path.join(ROOT, 'supabase/migrations/0096_p
 const read = (p) => fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
 // --with-0097: the same tests with 2A-2's migration applied on top — 0097
 // must not change how a purchase is recorded, funded, corrected or voided.
-const WITH_0097 = process.argv.includes('--with-0097');
+// --with-0101: the same again with 2A-3a's 0101 on top of 0097.
+const WITH_0101 = process.argv.includes('--with-0101');
+const WITH_0097 = process.argv.includes('--with-0097') || WITH_0101;
 const PR_BASE = WITH_0097 ? (await import('./pr_base.mjs')).prBase(ROOT) : '';
 const M97 = WITH_0097 ? read(path.join(ROOT, 'supabase/migrations/0097_purchasing_office.sql')) : '';
+const M101 = WITH_0101 ? read(path.join(ROOT, 'supabase/migrations/0101_purchasing_phone.sql')) : '';
 const fnText = (src, name) => {
   const m = src.match(new RegExp('create or replace function ' + name + '\\s*\\([\\s\\S]*?\\n\\$\\$;', 'i'));
   if (!m) throw new Error('function ' + name + ' not found');
@@ -93,6 +96,7 @@ async function fresh() {
   await db.exec(BASE);
   await db.exec(read(MIG));
   if (WITH_0097) { await db.exec(PR_BASE); await db.exec(M97); }
+  if (WITH_0101) { await db.exec(`create role service_role`); await db.exec(M101); }
   await db.exec(`insert into profiles values
     ('${OWNER}', 'owner', null, 'active', null), ('${STAFF}', 'staff', '${OWNER}', 'active', null),
     ('${WORKER}', 'worker', '${OWNER}', 'active', null), ('${OTHER}', 'owner', null, 'active', null),
@@ -138,7 +142,7 @@ async function code(promise) {
   try { await promise; return 'no error'; } catch (e) { return e.message; }
 }
 
-console.log('\n2A-1 purchase recording (0096' + (WITH_0097 ? ' + 0097' : '') + ' on PGlite)');
+console.log('\n2A-1 purchase recording (0096' + (WITH_0097 ? ' + 0097' : '') + (WITH_0101 ? ' + 0101' : '') + ' on PGlite)');
 
 await test('§3.3 example: ₱8,000 on 14 Oct → ₱3,000 + ₱4,000 + ₱1,000 Cover (earliest billing number first)', async () => {
   const db = await fresh(); await as(db, OWNER);

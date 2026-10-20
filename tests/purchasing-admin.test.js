@@ -144,7 +144,9 @@ test('the screens call only purchasing RPCs and write no table directly', () => 
   const allowed = new Set(['pur_me', 'pur_shopping_list', 'pur_assign_portion', 'pr_office_set_arranged', 'pr_office_batches',
     'pur_buyer_options', 'pur_suppliers', 'pur_save_supplier', 'pur_record', 'pur_correct', 'pur_replace', 'pur_void',
     'pur_purchases', 'pur_purchase', 'pur_check_unit', 'pur_request_change', 'pur_change_requests', 'pur_decide_change',
-    'pur_withdraw_change']);
+    'pur_withdraw_change',
+    // 2A-3a: the Purchases list's project filter (read-only, office accounts).
+    'pr_office_projects']);
   for (const f of ['purchasing-admin-core', 'purchasing-admin-list', 'purchasing-admin-record', 'purchasing-admin-purchases']) {
     const src = read('js/' + f + '.js');
     for (const m of src.matchAll(/rpc\('([a-z_]+)'/g)) ok(allowed.has(m[1]), f + ' calls ' + m[1]);
@@ -365,6 +367,128 @@ test('final minor 2: a correction that did not raise the quantity is not asked f
 test('final minor 6: BAD_DOCS has plain words in the Purchasing tab and in Expenses', () => {
   ok(/receipt photo link is not valid/.test(pa.ERRORS.BAD_DOCS), 'ERRORS');
   ok(/BAD_DOCS:\s+'A receipt photo link is not valid/.test(read('js/expenses-module.js')), '_purErrorText');
+});
+
+console.log('\npurchasing-admin: 2A-3a (20 Oct) — where a purchase came from, typed void, Record again, waiting for the owner');
+
+test('Q17: each purchase says where it came from — Project Control, Purchasing or Phone', () => {
+  eq(pa.sourceLabel('expenses_form'), 'Project Control');
+  eq(pa.sourceLabel('purchasing'), 'Purchasing');
+  eq(pa.sourceLabel('workmate'), 'Phone');
+  eq(pa.sourceLabel('something new'), 'something new', 'an unknown source is shown as it is');
+  const list = read('js/purchasing-admin-purchases.js');
+  ok(/<th>Source<\/th>/.test(list) && /PA\.sourceLabel\(p\.source\)/.test(list), 'the list has a Source column');
+});
+test('Q17: search matches every word against supplier, projects, people and source', () => {
+  const rows = [
+    { id: 1, supplier: 'Wilcon Depot', projects: ['Barlin Residence'], warehouse: false, bought_by_name: 'Juan', recorded_by_name: 'Juan', source: 'workmate', receipt_total: 1500 },
+    { id: 2, supplier: 'Citi Hardware', projects: ['Sulit Residence', 'Prado'], warehouse: true, bought_by_name: 'Pedro', recorded_by_name: 'admin', source: 'expenses_form', receipt_total: 15750 },
+  ];
+  eq(pa.searchPurchases(rows, '').map(r => r.id), [1, 2], 'empty search keeps all');
+  eq(pa.searchPurchases(rows, 'barlin').map(r => r.id), [1], 'project, any case');
+  eq(pa.searchPurchases(rows, 'hardware sulit').map(r => r.id), [2], 'every word must match');
+  eq(pa.searchPurchases(rows, 'project control').map(r => r.id), [2], 'by source label');
+  eq(pa.searchPurchases(rows, 'phone').map(r => r.id), [1], 'phone');
+  eq(pa.searchPurchases(rows, 'warehouse').map(r => r.id), [2], 'warehouse');
+  eq(pa.searchPurchases(rows, 'admin').map(r => r.id), [2], 'who recorded it');
+  eq(pa.searchPurchases(rows, '15750').map(r => r.id), [2], 'the total');
+  eq(pa.searchPurchases(rows, 'nothing-like-this').map(r => r.id), [], 'no match');
+});
+test('Q17: the Purchases list filters by project (and its Additional Works) on the server', () => {
+  const list = read('js/purchasing-admin-purchases.js');
+  ok(/RA\.rpc\('pur_purchases', \{ p_from: ui\.from \|\| null, p_to: ui\.to \|\| null, p_folder: ui\.folder \|\| null, p_status: ui\.status \}\)/.test(list), 'p_folder is the chosen project');
+  ok(/RA\.rpc\('pr_office_projects'\)/.test(list), 'the project choices come from pr_office_projects (completed ones included)');
+  ok(/data-folder/.test(list) && /data-search/.test(list), 'a project filter and a search box');
+});
+test('R6: the word to type — the one project\'s first word, else VOID', () => {
+  eq(pa.voidWord(['Barlin Residence']), 'Barlin');
+  eq(pa.voidWord(['Barlin Residence', 'Barlin Residence']), 'Barlin', 'several lines, one project');
+  eq(pa.voidWord(['J. Apo Residence']), 'J.', 'the first word as written');
+  eq(pa.voidWord(['(ZZ) test']), 'ZZ', 'brackets around a word are not part of it');
+  eq(pa.voidWord(['Barlin Residence · Main Contract']), 'Barlin', 'an approval\'s "where" label');
+  eq(pa.voidWord(['Barlin Residence', 'Prado']), 'VOID', 'two projects');
+  eq(pa.voidWord(['Warehouse']), 'VOID', 'warehouse only');
+  eq(pa.voidWord(['Barlin', 'Warehouse']), 'VOID', 'project + warehouse');
+  eq(pa.voidWord([]), 'VOID', 'nothing known');
+  eq(pa.voidWord(['   ']), 'VOID', 'a blank name');
+  ok(pa.voidConfirmed('Barlin', ' barlin ') && pa.voidConfirmed('VOID', 'void'), 'trimmed, any case');
+  ok(!pa.voidConfirmed('Barlin', 'Barli') && !pa.voidConfirmed('Barlin', '') && !pa.voidConfirmed('Barlin', null), 'anything else is refused');
+});
+test('R6: the places of a purchase (purchase view) and of an approval (review doc)', () => {
+  eq(pa.placesOf({ lines: [{ destination: 'project', folder_name: 'Barlin' }, { destination: 'warehouse', folder_name: '' }] }), ['Barlin', 'Warehouse']);
+  eq(pa.placesOf({ lines: [{ where: 'Sulit · Main Contract' }, { where: 'Warehouse' }] }), ['Sulit · Main Contract', 'Warehouse']);
+  eq(pa.placesOf(null), []);
+});
+test('R6: Void asks for the word, and so does the owner\'s approval of a staff void', () => {
+  const src = read('js/purchasing-admin-purchases.js');
+  ok(/const word = PA\.voidWord\(PA\.placesOf\(doc\)\)/.test(src), 'the purchase page works the word out');
+  ok(/if \(!PA\.voidConfirmed\(word, form\.confirm\.value\)\) throw new Error\('CONFIRM_WORD'\)/.test(src), 'Void is refused without it');
+  ok(/r\.kind === 'void'/.test(src) && /PA\.voidWord\(PA\.placesOf\(r\.base\)\)/.test(src), 'an approved void asks for the word too');
+  ok(/CONFIRM_WORD:/.test(read('js/purchasing-admin-core.js')), 'the refusal has words');
+  // Project Control's own delete keeps its dialog (R6): one row, its project already on screen.
+  ok(!/voidWord/.test(read('js/expenses-module.js')), 'Project Control is unchanged');
+});
+test('Q8: "No receipt" is flagged in the list and shown on the purchase', () => {
+  eq(pa.purchaseFlags({ status: 'recorded', no_receipt_reason: 'sari-sari store' }).map(f => f.text), ['No receipt']);
+  eq(pa.purchaseFlags({ status: 'recorded', no_receipt_reason: '' }).map(f => f.text), []);
+  ok(/doc\.no_receipt_reason/.test(read('js/purchasing-admin-purchases.js')), 'the purchase page shows the reason');
+  ok(/NO_RECEIPT:/.test(read('js/purchasing-admin-core.js')), 'NO_RECEIPT has words');
+});
+test('R7: Record again only from a voided purchase nothing replaced', () => {
+  ok(pa.canRecordAgain({ status: 'void', replaced_by: null }), 'voided');
+  ok(!pa.canRecordAgain({ status: 'void', replaced_by: 'x' }), 'voided because a correction replaced it: its newer version exists');
+  ok(!pa.canRecordAgain({ status: 'recorded' }), 'still recorded');
+  ok(/PA\.canRecordAgain\(doc\)/.test(read('js/purchasing-admin-purchases.js')) &&
+     /PA\.openRecord\(\{ again: doc \}\)/.test(read('js/purchasing-admin-purchases.js')), 'the button opens the form with the copy');
+});
+test('R7: Record again copies the purchase into a NEW one; request links are re-checked, picks are not copied', () => {
+  const doc = {
+    id: 'P1', status: 'void', purchase_date: '2026-10-14', date_time: '2026-10-14T09:30', supplier: 'Wilcon', supplier_id: 'S1',
+    payment_method: 'Cash', notes: 'n', bought_by: 'B1', docs: { po_image_url: 'https://x/a.jpg', delivery_receipt_url: '' },
+    lines: [
+      { line: 1, destination: 'project', folder_id: 'F1', folder_name: 'Barlin', item_name: 'Cement', category: 'Materials', quantity: 6, unit: 'bag',
+        amount: 1500, request_line_id: 'L1', portion_picks: [{ portion_id: 'X', quantity: 6 }], covered: 6, extra: 0, substitute: false },
+      { line: 2, destination: 'warehouse', folder_id: null, folder_name: '', item_name: 'Tape', category: 'Materials', quantity: 2, unit: 'roll',
+        amount: 100, request_line_id: null, unplanned_reason: 'spare', in_inventory: true },
+    ],
+    requests: [{ line: 1, request_line_id: 'L1', description: 'Cement', spec: '40kg', unit: 'bag', needed: 10, bought: 4 }],
+    charges: [{ kind: 'delivery_fee', amount: 100, shares: [{ line: 1, amount: 50 }, { line: 2, amount: 50 }] }],
+  };
+  const s = pa.recordAgainState(doc, { userId: 'B2', isOwner: false });
+  eq([s.purchaseDate, s.dateTime, s.supplierId, s.supplier, s.paymentMethod, s.notes], ['2026-10-14', '2026-10-14T09:30', 'S1', '', 'Cash', 'n'], 'header');
+  eq(s.boughtBy, 'B2', 'a non-owner records it as their own purchase');
+  eq(pa.recordAgainState(doc, { userId: 'O', isOwner: true }).boughtBy, 'B1', 'the owner keeps who bought it');
+  eq(s.docs, { po_image_url: 'https://x/a.jpg' }, 'the receipt photo is copied (empty slots dropped)');
+  eq(s.onFile, ['po_image_url'], 'shown as on file');
+  const [a, b] = s.lines;
+  eq([a.requestLineId, a.requestName, a.requestUnit, a.still, a.portionPicks, a.portions, a.copied], ['L1', 'Cement 40kg', 'bag', 6, [], null, true],
+    'request link kept; Still to buy as it is NOW (10 − 4); no picks copied');
+  eq(a.origQuantity, undefined, 'a new purchase: buying over Still to buy needs its reason again');
+  eq([a.match, a.quantity, a.amount, a.folderId, a.folderLabel], ['wording', 6, '1500', 'F1', 'Barlin'], 'line copied');
+  eq([b.destination, b.requestLineId, b.unplannedReason, b.inInventory], ['warehouse', null, 'spare', true], 'warehouse line copied');
+  eq(s.charges, [{ kind: 'delivery_fee', amount: '100', adjust: true, shares: ['50', '50'] }], 'an adjusted split stays adjusted');
+  const body = pa.buildBody(Object.assign({}, s, { lines: s.lines.map(l => Object.assign({}, l, { quantity: l.quantity, amount: Number(l.amount) })),
+    charges: s.charges.map(c => ({ kind: c.kind, amount: Number(c.amount), shares: c.shares.map(Number) })) }));
+  eq(body.lines[0].portion_picks, [], 'the server covers in its usual order — never a portion bought since');
+  eq(body.receipt_total, 1700, 'adds up');
+  const rec = read('js/purchasing-admin-record.js');
+  ok(/ctx\.again \? fromAgain\(ctx\.again, me\)/.test(rec), 'the form starts from the copy');
+  ok(/editId: null/.test(rec.slice(rec.indexOf('function fromAgain'))), 'a copy is a new purchase (pur_record), never a correction');
+});
+test('Q16: Project Control shows "Waiting for the owner" and offers Withdraw', () => {
+  const em = read('js/expenses-module.js');
+  ok(/rpc\('pur_my_pending_changes'\)/.test(em), 'loads the sender\'s own pending changes');
+  ok(/window\.expPurPendingChange = /.test(em), 'exposes them per line / charge id');
+  ok(/rpc\('pur_withdraw_change', \{ p_request: /.test(em), 'Withdraw');
+  ok((em.match(/await _purOfferWithdraw\(/g) || []).length >= 2, 'asked before editing AND before voiding a row that is waiting');
+  ok(/Waiting for the owner/.test(read('js/portal-app.compiled.js')) && /expPurPendingChange/.test(read('js/portal-app.compiled.js')),
+    'Project Control\'s Materials list shows the pill');
+});
+test('2A-3a: changed scripts are re-fetched (cache-busters bumped)', () => {
+  const html = read('admin.html');
+  for (const f of ['purchasing-admin-core', 'purchasing-admin-purchases', 'purchasing-admin-record', 'expenses-module']) {
+    ok(new RegExp('js/' + f + '\\.js\\?v=20261020a').test(html), f + ' bumped');
+  }
 });
 
 Promise.all(pending).then(() => {

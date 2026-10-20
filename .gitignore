@@ -31,6 +31,8 @@
 !.gitattributes
 !cloudflare-worker/wrangler.toml
 !supabase/tests/*.mjs
+# An Edge Function's plain-JS module (Node-tested, e.g. attendance-signin/eligibility.mjs).
+!supabase/functions/*/*.mjs
 
 # ── Exclude generated/build folders ────────────────────────
 node_modules/
