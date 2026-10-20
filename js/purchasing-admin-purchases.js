@@ -259,28 +259,39 @@
         list = list || [];
         const pending = list.filter(r => r.status === 'pending');
         const decided = list.filter(r => r.status !== 'pending').slice(0, 30);
-        const card = (r) => '<div class="att-card"><div class="att-card-body">' +
-            '<div><strong>' + esc(r.kind === 'void' ? 'Void' : r.kind === 'replace' ? 'Replace' : 'Correct') + '</strong> — asked by ' +
-              esc(r.requested_by_name) + ', ' + esc(RA.formatManila(r.requested_at)) + ' · ' + PA.pill(PA.REQUEST_STATUS[r.status] || r.status,
-              r.status === 'pending' ? 'working' : r.status === 'approved' ? 'done' : 'hidden') + '</div>' +
-            '<div>Reason: ' + esc(r.reason) + '</div>' +
-            (r.changed_since ? '<div class="att-info att-info--warn"><i data-lucide="alert-triangle"></i><div>The purchase changed after this was asked ' +
-                '(a correction, an office check or a receipt). It cannot be approved — ask for a new request.</div></div>' : '') +
-            (r.status === 'pending' ? changeTable(r) : '') +
-            (r.decision_note ? '<div class="req-muted">Note: ' + esc(r.decision_note) + '</div>' : '') +
-            '<div class="pur-rec-row">' +
-              '<button type="button" class="att-btn att-btn--sm" data-open="' + esc(r.purchase_id) + '">Open purchase</button>' +
-              (r.status === 'pending' && me.isOwner ? '<button type="button" class="att-btn att-btn--sm att-btn--primary" data-approve="' + esc(r.id) + '"' +
-                  (r.changed_since ? ' disabled title="The purchase changed after this was asked"' : '') + '>Approve</button>' +
-                '<button type="button" class="att-btn att-btn--sm att-btn--warn" data-reject="' + esc(r.id) + '">Reject…</button>' : '') +
-              (r.status === 'pending' && !me.isOwner && r.requested_by === me.userId ? '<button type="button" class="att-btn att-btn--sm" data-withdraw="' + esc(r.id) + '">Withdraw</button>' : '') +
-            '</div></div></div>';
+        const KIND = { void: 'Void', replace: 'Replace' };
+        const card = (r) => {
+            const isOpen = r.status === 'pending';
+            return '<div class="att-card pur-req' + (isOpen ? ' is-pending' : '') + '">' +
+              '<div class="pur-req-head">' +
+                '<div class="pur-req-title"><span class="pur-req-kind pur-req-kind--' + esc(r.kind || 'correct') + '">' + esc(KIND[r.kind] || 'Correct') + '</span>' +
+                  '<span class="pur-req-by">asked by <strong>' + esc(r.requested_by_name) + '</strong></span>' +
+                  '<span class="req-muted">' + esc(RA.formatManila(r.requested_at)) + '</span></div>' +
+                PA.pill(PA.REQUEST_STATUS[r.status] || r.status, isOpen ? 'working' : r.status === 'approved' ? 'done' : 'hidden') +
+              '</div>' +
+              '<div class="pur-req-body">' +
+                '<div class="pur-req-reason"><span class="pur-req-label">Reason</span>' + esc(r.reason) + '</div>' +
+                (r.changed_since ? '<div class="att-info att-info--warn"><i data-lucide="alert-triangle"></i><div>The purchase changed after this was asked ' +
+                    '(a correction, an office check or a receipt). It cannot be approved — ask for a new request.</div></div>' : '') +
+                (isOpen ? changeTable(r) : '') +
+                (r.decision_note ? '<div class="pur-req-reason"><span class="pur-req-label">Note</span>' + esc(r.decision_note) + '</div>' : '') +
+              '</div>' +
+              '<div class="pur-req-foot">' +
+                '<button type="button" class="att-link" data-open="' + esc(r.purchase_id) + '">Open purchase →</button>' +
+                '<span class="pur-spacer"></span>' +
+                (isOpen && me.isOwner ? '<button type="button" class="att-btn att-btn--warn" data-reject="' + esc(r.id) + '">Reject…</button>' +
+                  '<button type="button" class="att-btn att-btn--primary" data-approve="' + esc(r.id) + '"' +
+                    (r.changed_since ? ' disabled title="The purchase changed after this was asked"' : '') + '>Approve</button>' : '') +
+                (isOpen && !me.isOwner && r.requested_by === me.userId ? '<button type="button" class="att-btn" data-withdraw="' + esc(r.id) + '">Withdraw</button>' : '') +
+              '</div></div>';
+        };
         body.innerHTML =
-            '<p class="req-muted">' + (me.isOwner
+            '<div class="att-info"><i data-lucide="shield-check"></i><div>' + (me.isOwner
                 ? 'Changes your staff asked for that only you can make. Approving applies exactly the "Asked for" column, through the normal correction — and only while the purchase still reads as it did when they asked.'
-                : 'Changes you sent to the owner.') + '</p>' +
-            (pending.length ? pending.map(card).join('') : '<div class="att-empty">Nothing is waiting.</div>') +
-            (decided.length ? '<h3 class="pur-h3">Decided</h3>' + decided.map(card).join('') : '');
+                : 'Changes you sent to the owner.') + '</div></div>' +
+            '<div class="pur-req-section"><h3 class="pur-h3">Waiting for the owner</h3><span class="pur-req-count' + (pending.length ? ' is-on' : '') + '">' + pending.length + '</span></div>' +
+            (pending.length ? pending.map(card).join('') : '<div class="att-card"><div class="att-empty">Nothing is waiting.</div></div>') +
+            (decided.length ? '<div class="pur-req-section"><h3 class="pur-h3">Decided</h3><span class="pur-req-count">' + decided.length + '</span></div>' + decided.map(card).join('') : '');
         const reload = () => renderApprovals(body, me);
         body.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => PA.openPurchase(b.dataset.open)));
         body.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', async () => {
