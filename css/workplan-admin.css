@@ -23,3 +23,244 @@
 .wp-recipients legend { font-size: 12.5px; font-weight: 600; margin-bottom: 4px; color: var(--att-ink-2, #444); }
 .wp-photo { display: grid; gap: 4px; width: 96px; align-content: start; }
 @media (max-width: 640px) { .wp-row { flex-direction: column; } }
+
+/* ════════════════════════════════════════════════════════════════════
+   Board + New task form — layout
+   Same type rules as the other admin pages: Barlow with lining numerals
+   for data and controls, the serif for headings only (so a count of 0
+   reads "0", not "o").
+   ════════════════════════════════════════════════════════════════════ */
+
+.wp,
+.wp-form-box {
+    font-family: var(--att-sans);
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: "lnum" 1, "tnum" 1;
+}
+.wp .att-title,
+.wp-form-box .att-modal-title { font-family: var(--att-serif); font-feature-settings: "lnum" 1; }
+.wp .att-sub,
+.wp .req-muted,
+.wp .req-count,
+.wp-form-box .att-modal-sub,
+.wp-form-box .att-hint-inline,
+.wp-form-box .req-muted { color: #55555A; }
+.wp .att-filter,
+.wp .att-search,
+.wp .att-btn,
+.wp-form-box .att-btn,
+.wp-form-box .req-toggle { font-family: var(--att-sans); }
+.wp [hidden],
+.wp-form-box [hidden] { display: none !important; }
+
+/* Board */
+.wp-late { color: var(--att-red); font-weight: 700; }
+.wp .req-group.wp-group--gold td { background: var(--att-gold-tint); }
+.wp .req-group.wp-group--red td { background: var(--att-red-tint); }
+.wp .req-group.wp-group--red .req-group-title { color: var(--att-red); }
+
+.wp-empty-body { padding: 36px 28px 30px; text-align: center; }
+.wp-empty-title { margin: 0; font-family: var(--att-serif); font-size: 22px; color: var(--att-ink); }
+.wp-empty-sub { margin: 6px 0 20px; color: #55555A; }
+.wp-ways { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; max-width: 640px; margin: 0 auto; }
+.wp-way {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 20px 18px;
+    border: 1px solid var(--att-line);
+    border-radius: 14px;
+    background: var(--att-card);
+    text-align: center;
+}
+.wp-way > svg { width: 26px; height: 26px; color: var(--att-green); }
+.wp-way > span { font-size: 14px; line-height: 1.5; color: #55555A; }
+.wp-way .att-btn { margin-top: 6px; }
+.wp-steps {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    max-width: 640px;
+    margin: 24px auto 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: wpstep;
+    text-align: left;
+}
+.wp-steps li { position: relative; padding-left: 34px; font-size: 13.5px; line-height: 1.5; color: #55555A; counter-increment: wpstep; }
+.wp-steps li::before {
+    content: counter(wpstep);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--att-green-tint);
+    color: var(--att-green);
+    font-weight: 700;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.wp-steps li strong { display: block; color: var(--att-ink); }
+
+/* New task / Edit task form: one column becomes sections with paired fields */
+.wp-form-box { max-width: 760px; }
+.wp-form-box .att-modal-body { grid-template-columns: 1fr 1fr; gap: 16px 18px; }
+.wp-form-box .att-field { display: flex; flex-direction: column; gap: 6px; }
+.wp-form-box .att-field > label,
+.wp-lbl { font-size: 14.5px; font-weight: 600; color: var(--att-ink); }
+.wp-req { color: var(--att-red); margin-left: 2px; }
+.wp-sec { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.wp-sec:first-child { margin-top: 0; }
+/* Numbered parts in plain sentence case: a person reads "1  What needs to be done", not a grey label. */
+.wp-sec-num { display: inline-grid; place-items: center; flex: none; width: 24px; height: 24px; border-radius: 50%; background: var(--att-green-tint); color: var(--att-green); font-size: 13px; font-weight: 700; }
+.wp-sec-title { font-size: 16px; font-weight: 700; color: var(--att-ink); }
+.wp-sec-help { margin: -8px 0 0; font-size: 14px; line-height: 1.45; color: #55555A; }
+.wp-hint { display: block; font-size: 13px; line-height: 1.4; color: #55555A; }
+.wp-intro { margin-bottom: 2px; }
+.wp-sec::after { content: ''; flex: 1; height: 1px; background: var(--att-line); }
+.wp-helper-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.wp-count { font-size: 12.5px; font-weight: 600; color: var(--att-green); }
+.wp-helper-search { height: 38px; }
+.wp-form-box .wp-checks { max-height: 190px; border: 1px solid var(--att-line); border-radius: 10px; padding: 10px 12px; background: var(--att-field); }
+.wp-inline-err { padding: 9px 12px; border-radius: 10px; background: var(--att-red-tint); color: var(--att-red); font-size: 13.5px; font-weight: 600; }
+.wp-adv { border: 1px solid var(--att-line); border-radius: 10px; padding: 0 14px; }
+.wp-adv > summary { padding: 11px 0; cursor: pointer; font-weight: 600; font-size: 13.5px; color: var(--att-ink); }
+.wp-adv[open] > summary { border-bottom: 1px solid var(--att-line); margin-bottom: 10px; }
+.wp-adv-hint { margin-bottom: 8px; }
+.wp-adv .wp-checks { border: 0; padding: 0 0 12px; background: none; }
+.wp-form-box .att-btn:disabled { background: #D9D9D5; border-color: #D9D9D5; color: #8A8A86; cursor: not-allowed; }
+
+@media (max-width: 640px) {
+    .wp-ways,
+    .wp-steps { grid-template-columns: 1fr; }
+    .wp-form-box .att-modal-body { grid-template-columns: 1fr; }
+    .wp-form-box .att-field { grid-column: 1 / -1; }
+}
+.wp-form-box textarea.att-input { height: auto; min-height: 120px; resize: vertical; line-height: 1.5; }
+
+/* ════════════════════════════════════════════════════════════════════
+   One task — layout (js/workplan-admin-task.js)
+   Same pattern as the Requests detail page: what needs the office first,
+   facts and people on the side, history collapsed. Lining numerals so
+   "1c3" and "Version 1" read as numbers.
+   ════════════════════════════════════════════════════════════════════ */
+
+.wp-task .att-card-title { font-family: var(--att-sans); font-size: 15px; font-weight: 700; }
+.wp-task .att-card-head { padding: 14px 20px; }
+.wp-task .att-card-body { font-size: 14.5px; line-height: 1.55; }
+.wp-task .att-crumbs { display: flex; align-items: center; gap: 8px; }
+.wp-dot { color: var(--att-faint); }
+
+.wp-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+.wp-main, .wp-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.wp-main > .att-card + .att-card, .wp-side > .att-card + .att-card { margin-top: 0; }
+
+/* What needs the office */
+.wp-alert { display: flex; gap: 12px; align-items: flex-start; padding: 13px 16px; border-radius: 12px; font-size: 14px; line-height: 1.5; border: 1px solid transparent; }
+.wp-alert > svg, .wp-alert > i { width: 20px; height: 20px; flex: none; margin-top: 1px; }
+.wp-alert strong { display: block; font-size: 14.5px; }
+.wp-alert--gold { background: var(--att-gold-tint); border-color: #E8DCC2; color: #5f4a21; }
+.wp-alert--gold > svg, .wp-alert--gold > i { color: var(--att-gold); }
+.wp-alert--red { background: var(--att-red-tint); border-color: var(--att-red-line); color: #7a271d; }
+.wp-alert--red > svg, .wp-alert--red > i { color: var(--att-red); }
+.wp-alert .wp-flags { color: inherit; }
+
+.wp-clear { display: flex; align-items: center; gap: 8px; padding: 2px 4px; font-size: 14px; color: var(--att-green); font-weight: 600; }
+.wp-clear > svg, .wp-clear > i { width: 18px; height: 18px; }
+.wp-pad { padding: 14px 20px; }
+
+/* Side: facts */
+.wp-meta .req-meta-row { grid-template-columns: 90px 1fr; }
+
+/* Side: people */
+.wp-readline { padding: 10px 20px; font-size: 13px; font-weight: 600; color: var(--att-gold); background: var(--att-gold-tint); border-bottom: 1px solid var(--att-line-soft); }
+.wp-readline.is-all { color: var(--att-green); background: var(--att-green-tint); }
+.wp-people { list-style: none; margin: 0; padding: 0; }
+.wp-people li { display: flex; align-items: center; gap: 12px; padding: 11px 20px; border-top: 1px solid var(--att-line-soft); }
+.wp-people li:first-child { border-top: 0; }
+.wp-avatar { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--att-track); color: var(--att-ink-2); font-size: 12px; font-weight: 700; }
+.wp-person { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.wp-person strong { font-size: 14.5px; font-weight: 600; color: var(--att-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wp-person .req-muted { font-size: 12.5px; }
+
+/* Side: history (collapsed when long) */
+.wp-hist > summary { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; cursor: pointer; font-size: 15px; font-weight: 700; color: var(--att-ink); list-style: none; }
+.wp-hist > summary::-webkit-details-marker { display: none; }
+.wp-hist > summary::after { content: '+'; color: var(--att-faint); font-weight: 400; font-size: 18px; margin-left: 10px; }
+.wp-hist[open] > summary::after { content: '–'; }
+.wp-hist > summary .req-muted { margin-left: 8px; font-weight: 500; }
+.wp-hist > summary { justify-content: flex-start; }
+.wp-hist > summary::after { margin-left: auto; }
+.wp-hist[open] > summary { border-bottom: 1px solid var(--att-line-soft); }
+.wp-timeline { list-style: none; margin: 0; padding: 6px 20px 12px; }
+.wp-timeline li { position: relative; padding: 9px 0 9px 18px; font-size: 13.5px; line-height: 1.45; }
+.wp-timeline li::before { content: ''; position: absolute; left: 3px; top: 15px; width: 7px; height: 7px; border-radius: 50%; background: var(--att-faint); }
+.wp-timeline li::after { content: ''; position: absolute; left: 6px; top: 24px; bottom: -6px; width: 1px; background: var(--att-line); }
+.wp-timeline li:last-child::after { display: none; }
+.wp-tl-text { color: var(--att-ink); }
+.wp-timeline .req-muted { font-size: 12.5px; }
+
+/* Cancel / Decline: apart from Edit and Approve */
+.wp-danger { padding: 2px 4px; }
+
+@media (max-width: 960px) {
+    .wp-layout { grid-template-columns: 1fr; }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Meetings — list and one meeting (js/workplan-admin-meetings.js)
+   Same two-column page as one task: the work in the middle (notes, AI
+   drafts, publish), the tasks and published versions on the side.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* Every Work Plan page starts a little below the tab bar, not against it. */
+.wp { padding-top: 22px; }
+
+.wp-meetings .att-card-body,
+.wp-meeting .att-card-body { font-size: 14.5px; line-height: 1.55; }
+.wp-meeting .att-card-title { font-family: var(--att-sans); font-size: 15px; font-weight: 700; }
+.wp-meeting .att-card-head { padding: 14px 20px; }
+.wp-meeting .att-crumbs { display: flex; align-items: center; gap: 8px; }
+.wp-meeting--new { max-width: 760px; }
+
+.wp-mtable td { vertical-align: middle; }
+.wp-mtable tbody tr { cursor: pointer; }
+.wp-nowrap { white-space: nowrap; color: var(--att-ink-2, #444); }
+.wp-count-text { color: var(--att-ink-2, #444); }
+.wp-chip--first { margin: 0 8px 0 0; }
+
+/* Notes: title and date share a row; the notes get the room */
+.wp-meeting .att-card-body > .att-field { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; }
+.wp-meeting .att-card-body > .wp-notes-top + .att-field { margin-top: 14px; }
+.wp-notes-top { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 14px; }
+.wp-notes-top .att-field,
+.wp-meeting .att-field { display: flex; flex-direction: column; gap: 6px; }
+.wp-meeting .att-field > label { font-size: 14px; font-weight: 600; color: var(--att-ink); }
+.wp-meeting textarea.att-input { height: auto; min-height: 120px; resize: vertical; line-height: 1.5; }
+.wp-meeting .att-card-body > .att-field + .att-field { margin-top: 14px; }
+.wp-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+/* Publish: the choice, then one clear button */
+.wp-meeting .wp-recipients { margin: 14px 0; padding: 12px 14px; border: 1px solid var(--att-line); border-radius: 10px; }
+
+/* Side: tasks of this meeting */
+.wp-mtasks { list-style: none; margin: 0; padding: 0; }
+.wp-mtasks li { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--att-line-soft); }
+.wp-mtasks li:first-child { border-top: 0; }
+.wp-mtask-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.wp-mtask-main strong { font-size: 14.5px; }
+.wp-mtask-main .req-muted { font-size: 12.5px; }
+.wp-mtask-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex: none; }
+.wp-versions { padding: 4px 20px 10px; }
+.wp-versions li { padding: 10px 0; font-size: 13.5px; }
+
+@media (max-width: 640px) {
+    .wp-notes-top { grid-template-columns: 1fr; }
+}
+.wp-meeting .att-card-head { flex-wrap: nowrap; align-items: center; gap: 12px; }
+.wp-meeting .att-card-tools { flex: none; }

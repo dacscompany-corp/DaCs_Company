@@ -25,6 +25,13 @@
     if (!RA || !PA) return;
     const esc = RA.esc;
 
+    // A numbered part of the form with one line saying what it is for.
+    function secHtml(num, title, help) {
+        return '<div class="pur-sec"><span class="pur-sec-num" aria-hidden="true">' + num + '</span>' +
+            '<span class="pur-sec-title">' + esc(title) + '</span></div>' +
+            (help ? '<p class="pur-sec-help">' + esc(help) + '</p>' : '');
+    }
+
     let ctx = null;   // { requestLines, batchId, purchase, again, onDone }
     let st = null;    // the form
 
@@ -175,19 +182,21 @@
         const linked = !!l.requestLineId;
         const where = linked
             ? '<div class="req-muted">' + esc(l.folderLabel) + '</div>'
-            : '<select class="att-input" data-f="where" data-i="' + i + '" aria-label="Project or warehouse">' +
+            : '<label class="att-label pur-w2">Charged to<select class="att-input" data-f="where" data-i="' + i + '" aria-label="Project or warehouse">' +
                 '<option value="">Choose…</option>' +
                 '<option value="warehouse"' + (l.destination === 'warehouse' ? ' selected' : '') + '>Warehouse (company stock)</option>' +
                 folders.map(f => '<option value="' + esc(f.id) + '"' + (l.destination !== 'warehouse' && f.id === l.folderId ? ' selected' : '') + '>' + esc(f.label) + '</option>').join('') +
-              '</select>';
+              '</select><span class="pur-hint">Pick the project it was for, or Warehouse if it goes to company stock.</span></label>';
         return '<div class="att-card pur-rec-line"><div class="att-card-body">' +
+            '<div class="pur-rec-head"><span class="pur-rec-no">' + (i + 1) + '</span>' +
+              '<span class="pur-rec-kind' + (linked ? '' : ' is-open') + '">' + (linked ? 'From a request' : 'No request') + '</span>' +
+              '<button type="button" class="att-btn att-btn--sm pur-rec-remove" data-remove="' + i + '" aria-label="Remove this item"><i data-lucide="trash-2"></i> Remove</button></div>' +
             '<div class="pur-rec-row">' +
               '<label class="att-label pur-w2">Item<input class="att-input" data-f="itemName" data-i="' + i + '" maxlength="200" value="' + esc(l.itemName) + '"></label>' +
               '<label class="att-label">Quantity<input class="att-input" data-f="quantity" data-i="' + i + '" inputmode="decimal" value="' + esc(l.quantity) + '"></label>' +
               '<label class="att-label">Unit<input class="att-input" data-f="unit" data-i="' + i + '" maxlength="30" value="' + esc(l.unit) + '"></label>' +
               '<label class="att-label">Amount (₱)<input class="att-input" data-f="amount" data-i="' + i + '" inputmode="decimal" value="' + esc(l.amount) + '"></label>' +
               '<label class="att-label">Category<input class="att-input" data-f="category" data-i="' + i + '" maxlength="100" value="' + esc(l.category) + '"></label>' +
-              '<button type="button" class="att-btn att-btn--sm" data-remove="' + i + '" aria-label="Remove line">&times;</button>' +
             '</div>' +
             '<div class="pur-rec-row">' + where +
               '<span class="pur-preview" data-preview="' + i + '">' + esc(previewText(l)) + '</span></div>' +
@@ -202,7 +211,7 @@
               '</select></label>' +
             '</div>' +
             (linked ? '' :
-              '<div class="pur-rec-row"><label class="att-label pur-w2">Reason (no request)<input class="att-input" data-f="unplannedReason" data-i="' + i + '" maxlength="300" placeholder="What it was for and why it was not requested" value="' + esc(l.unplannedReason) + '"></label></div>') +
+              '<div class="pur-rec-row"><label class="att-label pur-w2">Why was it bought without a request?<input class="att-input" data-f="unplannedReason" data-i="' + i + '" maxlength="300" placeholder="What it was for and why it was not requested" value="' + esc(l.unplannedReason) + '"></label></div>') +
             '</div></div>';
     }
 
@@ -377,9 +386,15 @@
         }
 
         host.innerHTML =
+            (!st.editId && !st.againOf && !(ctx.requestLines || []).length
+                ? '<div class="att-info"><i data-lucide="info"></i><div><strong>Bought something nobody asked for?</strong> ' +
+                  'Add each item below, choose the project it was for (or Warehouse), and say why it was bought.</div></div>'
+                : '') +
+            (st.againOf ? '<div class="att-info"><i data-lucide="copy"></i><div><strong>Record again</strong> — a new purchase copied from a voided one. ' +
+                  'Check every line: it is saved as a new purchase. The voided one stays voided, as history.</div></div>' : '') +
+            secHtml('1', st.editId ? 'Correct this purchase' : st.againOf ? 'Record again — purchase details' : 'Purchase details',
+                    'Who sold it, when it was bought and how it was paid.') +
             '<div class="att-card"><div class="att-card-body">' +
-              '<h3 class="pur-h3">' + (st.editId ? 'Correct this purchase' : st.againOf ? 'Record again — a new purchase copied from a voided one' : 'Record a purchase') + '</h3>' +
-              (st.againOf ? '<p class="req-muted">Check every line: it is saved as a new purchase. The voided one stays voided, as history.</p>' : '') +
               '<div class="pur-rec-row">' +
                 '<label class="att-label">Date bought<input class="att-input" type="date" data-h="purchaseDate" value="' + esc(st.purchaseDate) + '"></label>' +
                 '<label class="att-label pur-w2">Supplier<select class="att-input" data-h="supplierId">' +
@@ -397,17 +412,18 @@
               '</div>' +
               '<label class="att-label">Notes<input class="att-input" data-h="notes" maxlength="2000" value="' + esc(st.notes) + '"></label>' +
             '</div></div>' +
+            secHtml('2', 'What was bought', 'One card for each item on the receipt.') +
             '<div data-lines>' + st.lines.map((l, i) => lineHtml(l, i, folders)).join('') + '</div>' +
             '<button type="button" class="att-btn" data-add-line>+ Add a line with no request</button>' +
+            secHtml('3', 'Delivery fees and discounts', 'Optional. Skip this if the receipt has neither.') +
             '<div class="att-card"><div class="att-card-body">' +
-              '<h3 class="pur-h3">Delivery fees and discounts</h3>' +
               '<p class="req-muted">Shared across the lines by line amount unless you adjust it. Never charged to one project automatically.</p>' +
               st.charges.map((c, i) => chargeHtml(c, i)).join('') +
               '<button type="button" class="att-btn att-btn--sm" data-add-charge="delivery_fee">+ Delivery fee</button> ' +
               '<button type="button" class="att-btn att-btn--sm" data-add-charge="discount">+ Discount</button>' +
             '</div></div>' +
+            secHtml('4', 'Receipt photos', 'Optional.') +
             '<div class="att-card"><div class="att-card-body">' +
-              '<h3 class="pur-h3">Receipt photos (optional)</h3>' +
               '<p class="req-muted">Kept once for the whole receipt, office buyers only — never shown to clients, partners or workers.</p>' +
               '<div class="pur-rec-row">' + DOCS.map(docHtml).join('') + '</div></div></div>' +
             (st.editId ? '<label class="att-label">Reason for the change (kept in the history)<input class="att-input" data-h="reason" maxlength="500" value="' + esc(st.reason) + '"></label>' : '') +

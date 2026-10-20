@@ -486,9 +486,17 @@ test('Q16: Project Control shows "Waiting for the owner" and offers Withdraw', (
 });
 test('2A-3a: changed scripts are re-fetched (cache-busters bumped)', () => {
   const html = read('admin.html');
-  for (const f of ['purchasing-admin-core', 'purchasing-admin-purchases', 'purchasing-admin-record', 'expenses-module']) {
+  // purchasing-admin-list.js and the CSS changed in PR #46 (record form sections) and were bumped at the merge.
+  for (const f of ['purchasing-admin-core', 'purchasing-admin-purchases', 'purchasing-admin-record', 'purchasing-admin-list', 'expenses-module']) {
     ok(new RegExp('js/' + f + '\\.js\\?v=20261020a').test(html), f + ' bumped');
   }
+  ok(/css\/purchasing-admin\.css\?v=20261020a/.test(html), 'purchasing-admin.css bumped');
+});
+test('merge with PR #46: the "nobody asked for it" banner never reads requestLines of a Record again form', () => {
+  const rec = read('js/purchasing-admin-record.js');
+  ok(/!st\.editId && !st\.againOf && !\(ctx\.requestLines \|\| \[\]\)\.length/.test(rec), 'guarded (a Record again ctx has no requestLines)');
+  ok(!/!ctx\.requestLines\.length/.test(rec), 'no unguarded read left');
+  ok(/st\.againOf \? 'Record again — purchase details'/.test(rec), 'Record again names its first section');
 });
 
 Promise.all(pending).then(() => {
