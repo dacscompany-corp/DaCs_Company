@@ -35,29 +35,47 @@
             rows = await RA.rpc('pur_purchases', { p_from: ui.from || null, p_to: ui.to || null, p_folder: null, p_status: ui.status });
         } catch (e) { RA.fail(body, e); return; }
         rows = rows || [];
+        // Newest first from the server; one heading per day, with that day's total.
+        const days = [];
+        rows.forEach(p => {
+            let g = days[days.length - 1];
+            if (!g || g.date !== p.purchase_date) { g = { date: p.purchase_date, rows: [] }; days.push(g); }
+            g.rows.push(p);
+        });
+        const sum = list => list.filter(p => p.status !== 'void').reduce((t, p) => t + (Number(p.receipt_total) || 0), 0);
+        const COLS = 6;
+        const rowHtml = p => '<tr class="req-row" tabindex="0" data-id="' + esc(p.id) + '">' +
+            '<td><strong>' + esc((p.projects || []).join(', ') + (p.warehouse ? ((p.projects || []).length ? ' · ' : '') + 'Warehouse' : '') || '—') + '</strong>' +
+              '<div class="req-muted">' + esc(p.lines + (p.lines === 1 ? ' line' : ' lines') + (p.linked ? ' · ' + p.linked + ' from requests' : '')) + '</div></td>' +
+            '<td>' + (p.supplier ? esc(p.supplier) : '<span class="req-muted">No supplier</span>') + '</td>' +
+            '<td>' + esc(p.bought_by_name) + (p.bought_by_name !== p.recorded_by_name ? '<div class="req-muted">recorded by ' + esc(p.recorded_by_name) + '</div>' : '') + '</td>' +
+            '<td class="pur-num"><strong>' + esc(PA.peso(p.receipt_total)) + '</strong></td>' +
+            '<td>' + PA.purchaseFlags(p).map(f => PA.pill(f.text, f.tone)).join(' ') + '</td>' +
+            '<td class="req-go"><i data-lucide="chevron-right"></i></td></tr>';
+        const total = sum(rows);
         body.innerHTML =
-            '<div class="att-toolbar">' +
-              '<label class="att-label">From<input class="att-input" type="date" data-from value="' + esc(ui.from) + '"></label>' +
-              '<label class="att-label">To<input class="att-input" type="date" data-to value="' + esc(ui.to) + '"></label>' +
-              '<select class="att-filter" data-status aria-label="Status">' +
-                [['recorded', 'Recorded'], ['void', 'Voided'], ['all', 'All']].map(s => '<option value="' + s[0] + '"' + (s[0] === ui.status ? ' selected' : '') + '>' + s[1] + '</option>').join('') +
-              '</select>' +
-              (rows.length >= 300 ? '<span class="req-muted">Showing the newest 300 — narrow the dates.</span>' : '') +
+            '<div class="pur-filters-bar">' +
+              '<div class="pur-filter-fields">' +
+                '<label class="att-label">From<input class="att-input" type="date" data-from value="' + esc(ui.from) + '"></label>' +
+                '<label class="att-label">To<input class="att-input" type="date" data-to value="' + esc(ui.to) + '"></label>' +
+                '<label class="att-label">Show<select class="att-filter" data-status aria-label="Status">' +
+                  [['recorded', 'Recorded'], ['void', 'Voided'], ['all', 'All']].map(s => '<option value="' + s[0] + '"' + (s[0] === ui.status ? ' selected' : '') + '>' + s[1] + '</option>').join('') +
+                '</select></label>' +
+              '</div>' +
+              (rows.length
+                ? '<div class="pur-summary"><span class="pur-summary-label">' + rows.length + (rows.length === 1 ? ' purchase' : ' purchases') + (ui.status === 'void' ? '' : ' · total') + '</span>' +
+                  (ui.status === 'void' ? '' : '<strong>' + esc(PA.peso(total)) + '</strong>') + '</div>'
+                : '') +
             '</div>' +
+            (rows.length >= 300 ? '<div class="req-muted">Showing the newest 300 — narrow the dates.</div>' : '') +
             (rows.length
-              ? '<div class="att-card"><div class="att-card-body" style="padding:0"><div class="req-table-wrap"><table class="att-table req-table">' +
-                  '<thead><tr><th>Date</th><th>Supplier</th><th>For</th><th>Total</th><th>Bought by</th><th>Status</th></tr></thead><tbody>' +
-                  rows.map(p => '<tr class="req-row" tabindex="0" data-id="' + esc(p.id) + '">' +
-                    '<td>' + esc(RA.formatDay(p.purchase_date)) + '</td>' +
-                    '<td>' + esc(p.supplier || '—') + '</td>' +
-                    '<td>' + esc((p.projects || []).join(', ') + (p.warehouse ? ((p.projects || []).length ? ' · ' : '') + 'Warehouse' : '')) +
-                      '<div class="req-muted">' + esc(p.lines + (p.lines === 1 ? ' line' : ' lines') + (p.linked ? ' · ' + p.linked + ' from requests' : '')) + '</div></td>' +
-                    '<td><strong>' + esc(PA.peso(p.receipt_total)) + '</strong></td>' +
-                    '<td>' + esc(p.bought_by_name) + (p.bought_by_name !== p.recorded_by_name ? '<div class="req-muted">recorded by ' + esc(p.recorded_by_name) + '</div>' : '') + '</td>' +
-                    '<td>' + PA.purchaseFlags(p).map(f => PA.pill(f.text, f.tone)).join(' ') + '</td>' +
-                  '</tr>').join('') +
+              ? '<div class="att-card"><div class="att-card-body" style="padding:0"><div class="req-table-wrap"><table class="att-table req-table pur-ptable">' +
+                  '<thead><tr><th>For</th><th>Supplier</th><th>Bought by</th><th class="pur-num">Total</th><th>Status</th><th class="req-go"><span class="req-sr">Open</span></th></tr></thead><tbody>' +
+                  days.map(g => '<tr class="req-group"><td colspan="' + COLS + '"><span class="req-group-title">' + esc(RA.formatDay(g.date)) + '</span>' +
+                    '<span class="req-group-count">' + g.rows.length + (g.rows.length === 1 ? ' purchase' : ' purchases') +
+                    (ui.status === 'void' ? '' : ' · ' + esc(PA.peso(sum(g.rows)))) + '</span></td></tr>' + g.rows.map(rowHtml).join('')).join('') +
                 '</tbody></table></div></div></div>'
-              : '<div class="att-empty">No purchases in these dates.</div>');
+              : '<div class="att-card"><div class="att-empty">No purchases in these dates. Try a wider range.</div></div>');
         const reload = () => renderPurchases(body, me);
         body.querySelector('[data-from]').addEventListener('change', e => { ui.from = e.target.value; reload(); });
         body.querySelector('[data-to]').addEventListener('change', e => { ui.to = e.target.value; reload(); });
@@ -86,7 +104,7 @@
         }
         return '<tr><td>' + esc(l.line) + '</td><td><strong>' + esc(l.item_name) + '</strong><div class="req-muted">' +
             esc(l.destination === 'warehouse' ? 'Warehouse' : l.folder_name) + '</div></td>' +
-            '<td>' + esc(PA.qty(l.quantity) + ' ' + (l.unit || '')) + '</td><td>' + esc(PA.peso(l.amount)) + '</td>' +
+            '<td class="pur-num">' + esc(PA.qty(l.quantity) + ' ' + (l.unit || '')) + '</td><td class="pur-num">' + esc(PA.peso(l.amount)) + '</td>' +
             '<td>' + what + (l.needs_funding_review ? ' ' + PA.pill('Office review', 'working') : '') + '</td>' +
             '<td>' + (l.unit_check === 'pending' ? '<button type="button" class="att-btn att-btn--sm" data-check="' + esc(l.line) + '">' +
               (l.substitute ? 'Check substitute…' : 'Check unit…') + '</button>' : '') + '</td></tr>';
@@ -103,33 +121,54 @@
         const open = doc.status === 'recorded';
         const pending = (doc.change_requests || []).find(r => r.status === 'pending');
         const docs = Object.entries(doc.docs || {}).filter(([, v]) => v);
+        const projects = Array.from(new Set((doc.lines || []).map(l => l.destination === 'warehouse' ? 'Warehouse' : l.folder_name).filter(Boolean)));
+        const events = (doc.history || []).map(h => ({ at: h.at, html: '<strong>' + esc(PA.HISTORY_LABEL[h.kind] || h.kind) + '</strong> by ' + esc(h.actor_name) + (h.reason ? ': ' + esc(h.reason) : '') }))
+            .concat((doc.change_requests || []).map(r => ({ at: r.requested_at, html: 'Owner approval asked by ' + esc(r.requested_by_name) + ' (' + esc(r.kind) + '): ' + esc(r.reason) +
+                ' — <strong>' + esc(PA.REQUEST_STATUS[r.status] || r.status) + '</strong>' + (r.decision_note ? ': ' + esc(r.decision_note) : '') })))
+            .sort((x, y) => String(y.at).localeCompare(String(x.at)));
+        const metaRow = (label, value) => value ? '<div class="req-meta-row"><dt>' + esc(label) + '</dt><dd>' + value + '</dd></div>' : '';
+        const nLines = (doc.lines || []).length;
+        const main =
+            '<div class="att-card"><div class="att-card-head"><div class="att-card-title">Items</div><div class="att-card-sub">' + nLines + (nLines === 1 ? ' line' : ' lines') + '</div></div>' +
+              '<div class="att-card-body" style="padding:0"><div class="req-table-wrap"><table class="att-table req-table pur-lines">' +
+                '<thead><tr><th>#</th><th>Item</th><th class="pur-num">Quantity</th><th class="pur-num">Amount</th><th>Request</th><th></th></tr></thead><tbody>' +
+                (doc.lines || []).map(l => lineRow(l, doc)).join('') +
+                (doc.charges || []).map(c => '<tr><td></td><td>' + esc(c.kind === 'discount' ? 'Discount' : 'Delivery fee') + '</td><td></td><td class="pur-num">' +
+                  esc((c.kind === 'discount' ? '−' : '') + PA.peso(c.amount)) + '</td><td class="req-muted">' +
+                  esc((c.shares || []).map(s => 'line ' + s.line + ': ' + PA.peso(s.amount)).join(' · ')) + '</td><td></td></tr>').join('') +
+              '</tbody><tfoot><tr class="pur-total"><td></td><td>Total</td><td></td><td class="pur-num"><strong>' + esc(PA.peso(doc.receipt_total)) + '</strong></td><td></td><td></td></tr></tfoot>' +
+              '</table></div></div></div>';
+        const side =
+            '<div class="att-card"><div class="att-card-head"><div class="att-card-title">Purchase</div></div>' +
+              '<dl class="req-meta pur-meta">' +
+                metaRow('Date', esc(RA.formatDay(doc.purchase_date))) +
+                metaRow('For', esc(projects.join(', '))) +
+                metaRow('Supplier', doc.supplier ? esc(doc.supplier) : '<span class="req-muted">No supplier</span>') +
+                metaRow('Total', '<strong>' + esc(PA.peso(doc.receipt_total)) + '</strong>') +
+                metaRow('Bought by', esc(doc.bought_by_name)) +
+                (doc.bought_by_name !== doc.recorded_by_name ? metaRow('Recorded by', esc(doc.recorded_by_name)) : '') +
+                metaRow('Status', (doc.status === 'void' ? PA.pill('Voided', 'hidden') : PA.pill('Recorded', 'done')) +
+                  (pending ? ' ' + PA.pill('Owner approval pending', 'working') : '')) +
+              '</dl></div>' +
+            '<div class="att-card"><div class="att-card-head"><div class="att-card-title">Receipt photos</div></div>' +
+              (docs.length
+                ? '<div class="pur-docs">' + docs.map(([k, v]) => '<a class="pur-doc" href="#" data-doc-url="' + esc(v) + '"><span class="pur-doc-ico"><i data-lucide="image"></i></span>' +
+                    '<span class="pur-doc-name">' + esc(k.replace(/_url$/, '').replace(/_/g, ' ')) + '</span><span class="pur-doc-open">Open <i data-lucide="external-link"></i></span></a>').join('') + '</div>'
+                : '<div class="wp-pad pur-pad req-muted">No receipt photos were added.</div>') + '</div>' +
+            '<details class="att-card pur-hist" open><summary>History <span class="req-muted">' + events.length + '</span></summary>' +
+              '<ul class="pur-timeline">' + events.map(e => '<li><div>' + e.html + '</div><div class="req-muted">' + esc(RA.formatManila(e.at)) + '</div></li>').join('') + '</ul></details>' +
+            (open && !pending ? '<div class="pur-danger"><button type="button" class="att-link att-link--danger" data-void>Void this purchase…</button></div>' : '');
         host.innerHTML =
             '<div class="att-stack pur-tab">' +
-              RA.head('Purchase · ' + RA.formatDay(doc.purchase_date), (doc.supplier || 'No supplier') + ' · ' + PA.peso(doc.receipt_total) +
-                ' · bought by ' + doc.bought_by_name + (doc.bought_by_name !== doc.recorded_by_name ? ', recorded by ' + doc.recorded_by_name : ''),
-                '<button type="button" class="att-btn" data-back>← Purchases</button>' +
-                (open && !pending ? '<button type="button" class="att-btn" data-correct>Correct…</button><button type="button" class="att-btn att-btn--warn" data-void>Void…</button>' : '')) +
+              '<div class="att-crumbs"><button type="button" class="att-link" data-back>← Purchases</button></div>' +
+              RA.head('Purchase · ' + RA.formatDay(doc.purchase_date), (projects.join(', ') || 'Purchase') + ' · ' + (doc.supplier || 'No supplier') +
+                ' · bought by ' + doc.bought_by_name,
+                (open && !pending ? '<button type="button" class="att-btn att-btn--primary" data-correct>Correct…</button>' : '')) +
               (doc.status === 'void' ? '<div class="att-info att-info--warn"><i data-lucide="ban"></i><div>Voided — it counts for nothing in Spent or Bought. ' +
                   (doc.replaced_by ? 'It was replaced by a newer version.' : 'Its receipt and history are kept.') + '</div></div>' : '') +
               (pending ? '<div class="att-info"><i data-lucide="hourglass"></i><div>A change is waiting for the owner (' + esc(pending.kind) + ', by ' +
                   esc(pending.requested_by_name) + '): ' + esc(pending.reason) + '</div></div>' : '') +
-              '<div class="att-card"><div class="att-card-body" style="padding:0"><div class="req-table-wrap"><table class="att-table req-table">' +
-                '<thead><tr><th>#</th><th>Item</th><th>Quantity</th><th>Amount</th><th>Request</th><th></th></tr></thead><tbody>' +
-                (doc.lines || []).map(l => lineRow(l, doc)).join('') +
-                (doc.charges || []).map(c => '<tr><td></td><td>' + esc(c.kind === 'discount' ? 'Discount' : 'Delivery fee') + '</td><td></td><td>' +
-                  esc((c.kind === 'discount' ? '−' : '') + PA.peso(c.amount)) + '</td><td class="req-muted">' +
-                  esc((c.shares || []).map(s => 'line ' + s.line + ': ' + PA.peso(s.amount)).join(' · ')) + '</td><td></td></tr>').join('') +
-              '</tbody></table></div></div></div>' +
-              (docs.length ? '<div class="att-card"><div class="att-card-body"><h3 class="pur-h3">Receipt photos</h3><div class="pur-docs">' +
-                  docs.map(([k, v]) => '<a class="att-link" href="#" data-doc-url="' + esc(v) + '">' + esc(k.replace(/_url$/, '').replace(/_/g, ' ')) + '</a>').join(' · ') +
-                '</div></div></div>' : '') +
-              '<div class="att-card"><div class="att-card-body"><h3 class="pur-h3">History</h3><ul class="pur-history">' +
-                (doc.history || []).map(h => '<li>' + esc(RA.formatManila(h.at)) + ' — <strong>' + esc(PA.HISTORY_LABEL[h.kind] || h.kind) + '</strong> by ' +
-                  esc(h.actor_name) + (h.reason ? ': ' + esc(h.reason) : '') + '</li>').join('') +
-                (doc.change_requests || []).map(r => '<li>' + esc(RA.formatManila(r.requested_at)) + ' — owner approval asked by ' + esc(r.requested_by_name) +
-                  ' (' + esc(r.kind) + '): ' + esc(r.reason) + ' — <strong>' + esc(PA.REQUEST_STATUS[r.status] || r.status) + '</strong>' +
-                  (r.decision_note ? ': ' + esc(r.decision_note) : '') + '</li>').join('') +
-              '</ul></div></div>' +
+              '<div class="pur-layout"><div class="pur-main">' + main + '</div><aside class="pur-side">' + side + '</aside></div>' +
             '</div>';
 
         const reload = () => renderPurchase(host);

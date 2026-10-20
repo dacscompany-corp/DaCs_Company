@@ -4,6 +4,8 @@
    and Requests req-* classes and tokens, so the tab looks like Requests.
    ════════════════════════════════════════════════════════════════════ */
 
+.pur-tab { padding-top: 22px; font-family: var(--att-sans); font-feature-settings: "lnum" 1, "tnum" 1; }
+.pur-tab button, .pur-tab input, .pur-tab select, .pur-tab summary, .pur-tab .att-btn, .pur-tab .att-link { font-family: var(--att-sans); }
 .pur-tab .att-card { margin-bottom: 12px; }
 .pur-tab .att-label { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--att-ink-2); }
 .pur-hint { font-size: 12.5px; font-weight: 400; color: #55555A; }
@@ -97,12 +99,51 @@
 .pur-rec-foot span { margin-right: auto; font-size: 17px; }
 .pur-rec-foot strong { font-size: 20px; }
 
-/* One purchase */
+/* Purchases list: filter bar, then one table grouped by day */
+.pur-filters-bar { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 14px 24px; margin-bottom: 14px; }
+.pur-filter-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 14px; }
+.pur-summary { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.pur-summary-label { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #55555A; }
+.pur-summary strong { font-size: 24px; font-weight: 700; color: var(--att-green); }
+.pur-ptable th, .pur-lines th { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: #55555A; }
+.pur-num { text-align: right; white-space: nowrap; }
+.pur-ptable tr.req-group td { background: var(--att-field); padding: 9px 16px; border-top: 1px solid var(--att-line); }
+.pur-ptable tr.req-group .req-group-title { font-weight: 700; color: var(--att-ink); }
+.pur-ptable tr.req-group .req-group-count { margin-left: 10px; font-size: 13px; color: #55555A; }
+.pur-ptable .req-row td { padding-top: 12px; padding-bottom: 12px; vertical-align: middle; }
+
+/* One purchase: items on the left, facts / receipts / history on the right */
+.pur-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.pur-main, .pur-side { min-width: 0; }
+.pur-layout .att-card { margin-bottom: 14px; }
+.pur-crumbs-spacer { height: 0; }
+.pur-lines tfoot td { border-top: 2px solid var(--att-line); padding-top: 12px; font-size: 15px; }
+.pur-meta { margin: 0; padding: 4px 18px 14px; }
+.pur-meta .req-meta-row { display: grid; grid-template-columns: 96px 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--att-line-soft); }
+.pur-meta .req-meta-row:last-child { border-bottom: 0; }
+.pur-meta dt { font-size: 12.5px; font-weight: 600; color: #55555A; }
+.pur-meta dd { margin: 0; font-size: 14.5px; color: var(--att-ink); }
+.pur-docs { padding: 4px 18px 16px; }
+.pur-pad { padding: 4px 18px 16px; }
+.pur-hist summary { cursor: pointer; padding: 14px 18px; font-size: 15px; font-weight: 700; list-style: none; }
+.pur-hist summary::-webkit-details-marker { display: none; }
+.pur-timeline { list-style: none; margin: 0; padding: 0 18px 16px 30px; display: grid; gap: 12px; font-size: 14px; border-left: 0; position: relative; }
+.pur-timeline li { position: relative; }
+.pur-timeline li::before { content: ""; position: absolute; left: -16px; top: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--att-green); }
+.pur-timeline li::after { content: ""; position: absolute; left: -12.5px; top: 17px; bottom: -14px; width: 1px; background: var(--att-line); }
+.pur-timeline li:last-child::after { display: none; }
+.pur-danger { padding: 2px 4px 12px; text-align: center; }
+
+/* One purchase (change table, shared with approvals) */
 .pur-change td { vertical-align: top; font-size: 13px; }
 .pur-change tr.pur-changed td { background: var(--att-field); font-weight: 600; }
 .pur-history { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
 .pur-docs { display: flex; flex-wrap: wrap; gap: 8px; text-transform: capitalize; }
 
+@media (max-width: 1000px) {
+    .pur-layout { grid-template-columns: 1fr; }
+    .pur-summary { align-items: flex-start; }
+}
 @media (max-width: 900px) {
     .pur-portion { grid-template-columns: 1fr 1fr; }
     .pur-portion-acts { grid-column: 1 / -1; justify-content: flex-start; }
@@ -114,3 +155,17 @@
     .pur-portion-acts { margin-left: 0; }
     .pur-rec-row .att-label.pur-w2 { grid-column: auto; }
 }
+/* Final alignment fixes for the redesigned Purchases pages */
+.pur-ptable th.pur-num, .pur-lines th.pur-num { text-align: right; }
+.pur-side .pur-docs { padding: 4px 18px 16px; gap: 14px; }
+.pur-filter-fields .att-filter, .pur-filter-fields .att-input { height: 46px; box-sizing: border-box; }
+
+/* Receipt photos: one tidy row per photo */
+.pur-side .pur-docs { display: grid; gap: 8px; padding: 14px 18px 18px; }
+.pur-doc { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--att-line); border-radius: 12px; background: var(--att-field); color: var(--att-ink); text-decoration: none; font-size: 14.5px; font-weight: 600; text-transform: capitalize; }
+.pur-doc:hover, .pur-doc:focus-visible { border-color: var(--att-green); background: var(--att-green-tint); outline: none; }
+.pur-doc-ico { display: inline-grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 9px; background: var(--att-green-tint); color: var(--att-green); }
+.pur-doc-ico svg, .pur-doc-ico i { width: 18px; height: 18px; }
+.pur-doc-name { flex: 1; min-width: 0; }
+.pur-doc-open { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--att-green); text-transform: none; }
+.pur-doc-open svg, .pur-doc-open i { width: 14px; height: 14px; }
