@@ -131,6 +131,16 @@ Profit   = Earned − Spent
   (role owner, `owner_id` null, active; **never** `allowed_modules`). History is append-only. Only
   `js/pm-sharing.js` computes it; warranty data reaches it only through `WF.reserveFor`. Owner-role
   only; staff never see it. Spec: `docs/superpowers/specs/2026-10-18-pm-profit-sharing-mvp-terms.md`.
+- **Worker cash advances (0100) are a tracking ledger outside the money model.** Money advanced to a
+  worker on a PM project and the repayments the owner records by hand. Balance = advance −
+  non-voided repayments; a repayment can never exceed it, and the server locks the advance row for
+  every repayment, edit and void. The suggested repayment (payroll × %, default 30%, capped at the
+  balance) is a **label** — never a deduction, payment or repayment. Nothing may feed advances or
+  repayments into payroll, Spent / Earned / Profit, an expense, invoice or accounting entry, and the
+  project link charges nothing to the project. Mistakes are **voided with a reason, never deleted**;
+  every write carries an operation id so a retry records once. Only `js/cash-advance.js` calls the
+  `pm_ca_*` functions (`tests/cash-advance.test.js` fences it). Owner-role only; staff never see it.
+  Spec: `docs/superpowers/specs/2026-10-19-worker-cash-advances-design.md`.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 

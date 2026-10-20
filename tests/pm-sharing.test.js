@@ -187,10 +187,10 @@ test('C1 Overview shows the recorded reserve and the 60/40 split for project A',
   }
   ok(!html.includes('Profit share') && !html.includes('50% after retention'), 'old 50/50 card gone');
 });
-test('C2 a loss shows ₱0 estimate reserve and a −₱50,000 each Shortfall', () => {
+test('C2 a loss shows ₱0 estimate reserve and a −₱50,000 each Loss to split', () => {
   const p = { ...projA, status: 'active' };
   const { html } = overview('owner', p, [bill(100000)], [], shareOf(50, null));
-  for (const s of ['Estimate · 5% of remaining cash', 'Shortfall', '−₱100,000.00', 'You −₱50,000.00 (50%)',
+  for (const s of ['Estimate · 5% of remaining cash', 'Loss to split', '−₱100,000.00', 'You −₱50,000.00 (50%)',
                    'Partner −₱50,000.00 (50%)', 'Retention is floored at ₱0']) ok(html.includes(s), 'missing: ' + s);
 });
 test('C3 a failed sharing read shows Unavailable, never ₱0', () => {
@@ -227,6 +227,12 @@ test('C7 Overview paid/cost delegate to the shared rules', () => {
   eq(sb.ctx._pmOvOutstanding([{ status: 'unpaid', totalAmount: 9 }]), 9);
 });
 
+test('C8 Overview: a completed project with no recorded reserve reads "Provisional · Not counted yet"', () => {
+  const { html } = overview('owner', projA, [], [verified(800000)], shareOf(40, null));
+  ok(html.includes('Provisional · Not counted yet'), 'new provisional label');
+  ok(html.includes('₱40,000.00'), 'provisional reserve = 5% of ₱800,000 remaining');
+  for (const s of ['Reserve needs review', 'Shortfall']) ok(!html.includes(s), 'old word: ' + s);
+});
 // ══ D. Reports (real pm-admin.js) ════════════════════════════════════
 function reports(role, share, fetchError = false) {
   const sb = loadPmAdmin({ role });
@@ -260,7 +266,9 @@ test('D3 a reserve-needs-review project stays out of totals and is counted in a 
   const cr = sb.ctx._pmRptCashReceipt();
   eq([cr.share.totals.count, cr.share.totals.reviewCount, cr.share.totals.ownerCents], [1, 1, 45600000]);
   sb.ctx._pmRptRenderKPIs([]);
-  ok(sb.ctx.document.getElementById('pmRptKpiRow').innerHTML.includes('1 project needs reserve review (not in totals)'), 'note');
+  const kh = sb.ctx.document.getElementById('pmRptKpiRow').innerHTML;
+  ok(kh.includes('1 project not counted yet (reserve not recorded)'), 'note');
+  ok(!kh.includes('reserve review'), 'old note wording gone');
 });
 test('D4 a failed load shows an error, never ₱0 sharing figures', () => {
   for (const sb of [reports('owner', { error: 'boom' }), reports('owner', rptShare, true)]) {
@@ -287,6 +295,21 @@ test('D6 staff: Reports KPI row hidden and print refused (unchanged behaviour)',
   eq(sb.printed.length, 0);
 });
 
+test('D7 Reports: a negative combined balance is labelled "Loss to split", never "Shortfall"', () => {
+  const sb = loadPmAdmin({ role: 'owner' });
+  const bills = [{ directCostTotal: 900000, projectId: 'A' }];          // A: 800,000 paid − 900,000 cost
+  const reqs = [{ ...verified(800000), projectId: 'A' }];
+  const share = { read: { can_edit: true, history: [], partners: [], projects: [{ project_id: 'A', partner_pct: 50, is_default: true, version: 0 }] },
+                  reserves: { A: rec(0, 800000, 900000) }, error: null };
+  sb.run(`_pmRptState.projects = ${JSON.stringify([projA])}; _pmRptState.bills = ${JSON.stringify(bills)};
+          _pmRptState.payReqs = ${JSON.stringify(reqs)}; _pmRptState.share = ${JSON.stringify(share)}; _pmRptState.fetchError = false;`);
+  const cr = sb.ctx._pmRptCashReceipt();
+  eq([cr.share.totals.netCents, cr.share.totals.ownerCents, cr.share.totals.partnerCents], [-10000000, -5000000, -5000000]);
+  sb.ctx._pmRptRenderKPIs([]);
+  const h = sb.ctx.document.getElementById('pmRptKpiRow').innerHTML;
+  ok(h.includes('Loss to split') && h.includes('−₱100,000.00'), 'loss label + amount');
+  ok(!h.includes('Shortfall'), 'old word gone');
+});
 // ══ E. Project form (real pm-admin.js) ════════════════════════════════
 function formSandbox(role, opts = {}) {
   const sb = loadPmAdmin({ role });
@@ -410,15 +433,21 @@ const dashData = () => ({
                 C: { bills: [], reqs: [verified(1000)] } },
   reserves: { A: rec(40000, 800000, 0), B: rec(25000, 500000, 0) },   // C has no reserve → needs review
 });
-test('F1 summary = confirmed projects only; worked example totals; C in review', async () => {
+// The list page renders into three ids: the shell (#pmSharingRoot), the filter-dependent
+// summary above the toolbar (#pmSharingSummary) and the table below it (#pmSharingResults).
+const pageHtml = (sb) => ['pmSharingRoot', 'pmSharingSummary', 'pmSharingResults']
+  .map(id => sb.ctx.document.getElementById(id).innerHTML).join('');
+test('F1 summary = counted projects only; worked example totals; C not counted yet', async () => {
   const sb = loadDash('owner');
   sb.ctx.PMShareDash._setFetch(async () => dashData());
   await sb.ctx.PMShareDash.load();
-  const h = sb.ctx.document.getElementById('pmSharingRoot').innerHTML + sb.ctx.document.getElementById('pmSharingResults').innerHTML;
-  for (const s of ['2 confirmed · 1 with reserve needing review', '₱693,500.00', '₱541,500.00',
-                   'Internal allocation — not a payout or amount owed.', 'Reserve needs review', 'Provisional']) {
+  const h = pageHtml(sb);
+  for (const s of ['From 2 completed projects', '₱693,500.00', '₱541,500.00', '₱1,235,000.00', 'Total · 2 counted',
+                   'Internal allocation — not a payout or amount owed.', 'Not counted yet', 'Provisional']) {
     ok(h.includes(s), 'missing: ' + s);
   }
+  ok(!h.includes('₱1,235,950.00'), 'review project C (balance ₱950) is not in the totals');
+  ok(!h.includes('Reserve needs review'), 'old wording gone');
 });
 test('F2 filters: partner unassigned, undated only, date range, search', () => {
   const sb = loadDash('owner');
@@ -447,7 +476,7 @@ test('F4 chips coexist; Ready only when nothing else applies', () => {
   const P = sb.ctx.PMShare, D = sb.ctx.PMShareDash;
   eq(D.chipsFor(P.project(inA)), ['Ready']);
   const both = P.project({ ...inB, reqs: [verified(500000), { status: 'unpaid', totalAmount: 1, amountPaid: 0 }], reserveRow: rec(25000, 1, 0) });
-  eq(D.chipsFor(both), ['Unpaid client balance', 'Changed since closeout']);
+  eq(D.chipsFor(both), ['Client still owes', 'Edited after closeout']);
 });
 test('F5 a stale response is discarded', async () => {
   const sb = loadDash('owner');
@@ -502,11 +531,12 @@ test('F9 typing in search re-renders results only; the filter bar is not rebuilt
   const res = doc.getElementById('pmSharingResults').innerHTML;
   ok(res !== resBefore, 'results changed');
   ok(res.includes('Alpha') && !res.includes('Beta'), 'only Alpha remains');
-  ok(res.includes('1 confirmed · 0 with reserve needing review'), 'count is project A only');
+  ok(res.includes('Total · 1 counted'), 'count is project A only');
+  ok(doc.getElementById('pmSharingSummary').innerHTML.includes('From 1 completed project,'), 'summary re-rendered too');
   const t = D.buildModel(D._state.results, D._state.filters).totals;
   eq([t.count, t.paidCents, t.reserveCents], [1, 80000000, 4000000], 'totals reflect only project A');
   D.setFilter('q', 'zzz');
-  ok(doc.getElementById('pmSharingResults').innerHTML.includes('No completed projects match these filters.'), 'empty message inside results');
+  ok(doc.getElementById('pmSharingResults').innerHTML.includes('No completed projects match.'), 'empty message inside results');
   eq(doc.getElementById('pmSharingRoot').innerHTML, rootBefore, 'filter bar still there');
 });
 test('F10 rows are data-driven: data-pms-id, no inline open handler', async () => {
@@ -544,7 +574,7 @@ test('G2 CSV = same model: meta lines, rows, provisional review rows, totals', a
   ok(csv.includes('Internal allocation — not a payout or amount owed.'), 'label');
   ok(/As of,/.test(csv) && csv.includes('Filters,'), 'meta');
   ok(csv.includes('Alpha,') && csv.includes(',456000,') && csv.includes(',304000,'), 'A row numbers');
-  ok(csv.includes('Provisional — reserve needs review'), 'review row marked');
+  ok(csv.includes('Provisional — not counted yet'), 'review row marked');
   ok(/Totals \(confirmed\),.*,693500,.*,541500/.test(csv), 'totals row');
   ok(!csv.includes('Cash shortfall'), 'no Cash shortfall line when nothing is short');
 });
@@ -556,7 +586,7 @@ test('G3 print uses the same model and labels', async () => {
   D.print();
   const h = sb.printed.join('');
   for (const s of ['Profit Sharing', '₱693,500.00', '₱541,500.00', 'Internal allocation — not a payout or amount owed.',
-                   'Reserve needs review', 'As of']) ok(h.includes(s), 'print missing: ' + s);
+                   'Not counted yet', 'estimated', 'As of']) ok(h.includes(s), 'print missing: ' + s);
 });
 test('G4 details panel: breakdown, reserve basis, history, acceptance facts; no action buttons', async () => {
   const sb = loadDash('owner');
@@ -569,12 +599,16 @@ test('G4 details panel: breakdown, reserve basis, history, acceptance facts; no 
   await D.load();
   D.open('A');
   const h = sb.ctx.document.getElementById('pmSharingDetail').innerHTML;
-  for (const s of ['Collected', 'Labor', 'Supply &amp; install', 'Site overhead', 'Recorded at closeout', 'Agreed 60/40',
+  for (const s of ['Client paid', 'Labor', 'Pure materials', 'Supply &amp; install', 'Site overhead', 'Set aside at closeout',
+                   'Partner 50% → 40%', 'Agreed 60/40', 'admin@dacs.test',
                    'This acceptance record does not capture a project sharing percentage.',
                    'Split changed after last signed agreement.', 'Internal allocation — not a payout or amount owed.']) {
     ok(h.includes(s), 'detail missing: ' + s);
   }
-  ok(!/<button[^>]*>(?!Close)/.test(h), 'only a Close button');
+  const buttons = h.match(/<button[^>]*>/g) || [];
+  eq(buttons.map(b => (b.match(/onclick="([^"]*)"/) || [])[1]).sort(), ['PMShareDash.close()', 'PMShareDash.print()'],
+     'only Back and Print');
+  ok(!/<(input|select|textarea)\b/.test(h), 'no form controls in the detail');
 });
 
 
@@ -647,7 +681,7 @@ test("G6b a project name starting with = is protected as text in the CSV Project
   eq(row[0], '\'=HYPERLINK("http://x")', "unquoted Project cell");
   ok(csvRows(csv).flat().every(x => !x.startsWith("=")), "no cell starts with =");
 });
-test("G7 negative project: Shortfall in CSV and print, Cash shortfall line", async () => {
+test("G7 negative project: Loss in CSV and print, Cash shortfall line", async () => {
   const sb = loadDash("owner");
   const D = sb.ctx.PMShareDash;
   D._setFetch(async () => lossData());
@@ -656,13 +690,13 @@ test("G7 negative project: Shortfall in CSV and print, Cash shortfall line", asy
   const row = csvRows(csv).find(r => r[0] === "Loss");
   ok(row, "Loss row");
   ok(row.includes("-100000"), "balance is a number");
-  ok(/Shortfall/.test(row[row.length - 1]), "review cell says Shortfall");
+  ok(/^Loss/.test(row[row.length - 1]), "review cell says Loss");
   ok(csv.includes(",-100000,"), "numeric -100000 cell");
   ok(csv.split("\r\n").includes("Cash shortfall,-100000"), "Cash shortfall line");
   D.print();
   const h = sb.printed.join("");
   ok(h.includes("−₱100,000.00"), "negative peso in print");
-  ok(h.includes("Shortfall"), "Shortfall in print");
+  ok(h.includes(">Loss<"), "Loss in print");
 });
 test("G8 file format: CRLF lines, BOM on downloaded file", async () => {
   const sb = loadDash("owner");
@@ -675,6 +709,368 @@ test("G8 file format: CRLF lines, BOM on downloaded file", async () => {
   sb.ctx.Blob = function (p) { parts = p; };
   D.downloadCsv();
   ok(parts && parts[0].startsWith("\uFEFF"), "BOM first");
+});
+
+// ══ R. Redesign 1a (split first) ══════════════════════════════════
+async function loadedDash(data, role = 'owner') {
+  const sb = loadDash(role);
+  sb.ctx.PMShareDash._setFetch(async () => data);
+  await sb.ctx.PMShareDash.load();
+  return sb;
+}
+const summaryOf = (sb) => sb.ctx.document.getElementById('pmSharingSummary').innerHTML;
+test("R1 hero: your share vs partners' share, worked example, internal-figures sentence", async () => {
+  const sb = await loadedDash(dashData());
+  const h = summaryOf(sb);
+  for (const s of ['Your share', '₱693,500.00', "Partners' share", '₱541,500.00',
+                   '56.15% of the amount left to share', '43.85% · 1 partner',
+                   'From 2 completed projects, <b>₱1,235,000.00</b> is left after costs and warranty reserves.',
+                   "That amount is split project by project, using each project's agreed percentage.",
+                   'These are internal figures, not payouts or amounts owed.']) ok(h.includes(s), 'hero missing: ' + s);
+  ok(/class="pms-hero-own" style="width:56\.15\d*%"/.test(h), 'bar width = owner %');
+});
+test('R2 sum boxes: client paid − costs − reserve = left to share', async () => {
+  const h = summaryOf(await loadedDash(dashData()));
+  for (const s of ['How the amount to share is worked out', 'Client paid', '₱1,300,000.00', 'All payments received',
+                   'Project costs', '₱0.00', 'Labor, materials, site overhead', 'Warranty reserve', '₱65,000.00',
+                   'Set aside at closeout for repairs', 'Left to share', '₱1,235,000.00', 'After costs and reserve']) {
+    ok(h.includes(s), 'sum missing: ' + s);
+  }
+  const l = summaryOf(await loadedDash(lossData()));
+  ok(l.includes('Includes ₱100,000.00 loss on 1 project'), 'loss subline');
+  ok(l.includes('₱1,135,000.00'), 'net includes the loss');
+});
+test('R3 attention lists the not-counted project; hidden when nothing needs a look', async () => {
+  const sb = await loadedDash(dashData());
+  const h = summaryOf(sb);
+  ok(h.includes('1 project needs a look'), 'heading');
+  ok(/class="pms-attn-card"[^>]*data-pms-id="C"/.test(h), 'card for C, clickable by data-pms-id');
+  ok(h.includes('Not counted yet') && h.includes('Warranty reserve wasn&#39;t recorded at closeout. Left out of the totals.'), 'C explanation');
+  ok(!/data-pms-id="A"/.test(h) && !/data-pms-id="B"/.test(h), 'ready projects not listed');
+  sb.ctx.PMShareDash.setFilter('q', 'ana');
+  ok(!/need(s)? a look/.test(summaryOf(sb)), 'section hidden with 0 flagged projects');
+  const l = summaryOf(await loadedDash(lossData()));
+  ok(l.includes('2 projects need a look'), 'two flagged');
+  ok(l.indexOf('data-pms-id="C"') < l.indexOf('data-pms-id="L"'), 'Not counted yet sorts before Loss');
+  ok(l.includes('Lost ₱100,000.00 after costs and reserve. The loss lowers both shares.'), 'loss explanation');
+});
+test('R4 status priority: one main pill, other flags as minor pills; chipsFor returns all', async () => {
+  const sb = loadDash('owner');
+  const P = sb.ctx.PMShare, D = sb.ctx.PMShareDash;
+  const all = P.project({ id: 'Z', status: 'completed', bills: [bill(100000)],
+                          reqs: [{ status: 'unpaid', totalAmount: 5, amountPaid: 0 }], reserveRow: null, partnerPct: 50 });
+  eq(D.chipsFor(all), ['Not counted yet', 'Loss', 'Client still owes']);
+  eq(D.mainStatus(all), 'reserve_review');
+  eq(D.mainStatus(P.project(inA)), 'ready');
+  const d = dashData();
+  d.perProject.B.reqs = [verified(500000), { status: 'unpaid', totalAmount: 1000, amountPaid: 0 }];
+  d.reserves.B = rec(25000, 400000, 0);                       // closeout snapshot differs → edited after closeout
+  const sb2 = await loadedDash(d);
+  const res = sb2.ctx.document.getElementById('pmSharingResults').innerHTML;
+  const rowB = res.slice(res.indexOf('data-pms-id="B"'), res.indexOf('data-pms-id="C"'));
+  ok(/pms-pill pms-pill--unpaid">Client still owes</.test(rowB), 'main pill');
+  ok(/pms-pill pms-pill--minor">Edited after closeout</.test(rowB), 'minor pill');
+  ok(rowB.indexOf('Client still owes') < rowB.indexOf('Edited after closeout'), 'main first');
+  const att = summaryOf(sb2);
+  ok(att.includes('Client still owes ₱1,000.00. Counted with what has been paid so far.'), 'attention uses the main status');
+});
+test('R5 open(id) shows the full-page detail instead of the list; close() returns', async () => {
+  const sb = await loadedDash(dashData());
+  const D = sb.ctx.PMShareDash, doc = sb.ctx.document;
+  D.open('A');
+  const root = doc.getElementById('pmSharingRoot').innerHTML;
+  ok(root.includes('id="pmSharingDetail"'), 'detail holder');
+  ok(!root.includes('pmSharingResults') && !root.includes('pms-table') && !root.includes('Search project or client'), 'no list');
+  const h = doc.getElementById('pmSharingDetail').innerHTML;
+  for (const s of ['onclick="PMShareDash.close()"', 'Profit Sharing', 'Alpha', 'Ready', 'Ana · Completed Aug 2, 2026 · Partner p@x.test',
+                   "How this project's share was worked out", 'Client paid', '₱800,000.00', 'Minus project costs',
+                   'Cash left after costs', 'Minus warranty reserve', '−₱40,000.00', 'Left to share', '₱760,000.00',
+                   'You · 60%', '₱456,000.00', 'Partner · 40%', '₱304,000.00',
+                   'Payments, costs and the warranty reserve are final. This project is counted in the totals.',
+                   'Client balance', 'No changes. This is the original split.', 'Partner agreement',
+                   'No Partnership Agreement acceptance on record.', 'Internal allocation — not a payout or amount owed.']) {
+    ok(h.includes(s), 'detail missing: ' + s);
+  }
+  D.open('C');
+  const c = doc.getElementById('pmSharingDetail').innerHTML;
+  for (const s of ['Not counted yet', 'No warranty reserve was recorded at closeout, so the reserve shown is an estimate.',
+                   'Estimate only. No reserve was recorded at closeout, so this uses 5% of the cash left after costs.',
+                   'Completed Sep 10, 2026', 'No partner assigned']) ok(c.includes(s), 'C detail missing: ' + s);
+  D.open('B');
+  ok(doc.getElementById('pmSharingDetail').innerHTML.includes('Ben · No completion date · Partner No partner assigned'), 'undated B');
+  const sbAcc = loadDash('owner');
+  const d = dashData();
+  d.read.partners = [{ email: 'p@x.test', accepted: true, accepted_at: '2026-08-12T02:00:00Z', doc_version: 3 }];
+  sbAcc.ctx.PMShareDash._setFetch(async () => d);
+  await sbAcc.ctx.PMShareDash.load();
+  sbAcc.ctx.PMShareDash.open('A');
+  ok(sbAcc.ctx.document.getElementById('pmSharingDetail').innerHTML
+       .includes('This acceptance record does not capture a project sharing percentage.'), 'acceptance facts verbatim');
+  D.close();
+  const back = doc.getElementById('pmSharingRoot').innerHTML;
+  ok(back.includes('id="pmSharingResults"') && back.includes('Search project or client') && !back.includes('id="pmSharingDetail"'), 'list back');
+  ok(doc.getElementById('pmSharingResults').innerHTML.includes('pms-table'), 'table back');
+  eq(D._state.openId, null);
+});
+test('R6 nothing positive to share → no NaN, no negative widths, amounts still shown', async () => {
+  const d = lossData();
+  d.read.projects = d.read.projects.filter(x => x.project_id === 'L');
+  d.projects = d.projects.filter(p => p.id === 'L');
+  for (const data of [d, { ...dashData(), read: { ...dashData().read, projects: [] }, projects: [] }]) {
+    const sb = await loadedDash(data);
+    const h = pageHtml(sb);
+    ok(!h.includes('NaN') && !h.includes('Infinity'), 'no NaN');
+    ok(!/width:\s*-/.test(h), 'no negative width');
+    ok(summaryOf(sb).includes('No positive amount to share'), 'empty bar text');
+  }
+  const sb = await loadedDash(d);
+  const h = summaryOf(sb);
+  ok(h.includes('−₱50,000.00') && h.includes('−₱100,000.00'), 'amounts still shown');
+  sb.ctx.PMShareDash.open('L');
+  const det = sb.ctx.document.getElementById('pmSharingDetail').innerHTML;
+  ok(det.includes('Loss to split') && det.includes('pms-step4 pms-neg'), 'detail loss tint');
+  ok(!det.includes('Shortfall') && !det.includes('NaN'), 'no old word, no NaN');
+});
+test('R7 CSV and print use the new status words', async () => {
+  const sb = await loadedDash(lossData());
+  const D = sb.ctx.PMShareDash;
+  const csv = D.toCsv(D.buildModel(D._state.results, D._state.filters), D.metaLines());
+  D.print();
+  const pr = sb.printed.join('');
+  for (const [name, out] of [['csv', csv], ['print', pr]]) {
+    for (const s of ['Not counted yet', 'Loss', 'Ready']) ok(out.includes(s), name + ' missing: ' + s);
+    for (const s of ['Reserve needs review', 'reserve needing review', 'Unpaid client balance', 'Changed since closeout', 'Shortfall']) {
+      ok(!out.includes(s), name + ' still says: ' + s);
+    }
+  }
+  ok(csv.includes('Provisional — not counted yet'), 'CSV provisional marking');
+  ok(/Totals \(confirmed\),.*1 not counted yet \(not in totals\)/.test(csv), 'CSV totals note');
+});
+test('R8 partner chips and dates: data attributes, escaped, no data in handlers', async () => {
+  const d = dashData();
+  d.projects[0] = { ...projA, partnerEmail: '"><img src=x onerror=alert(1)>@x.test' };
+  const sb = await loadedDash(d);
+  const root = sb.ctx.document.getElementById('pmSharingRoot').innerHTML;
+  ok(root.includes('data-pms-partner="all"') && root.includes('data-pms-partner="unassigned"'), 'constant chips');
+  ok(root.includes('All partners') && root.includes('No partner'), 'chip labels');
+  ok(!root.includes('<img src=x'), 'hostile email escaped');
+  ok(root.includes('data-pms-partner="&quot;&gt;&lt;img src=x onerror=alert(1)&gt;@x.test"'), 'escaped attribute');
+  ok(!/onclick="[^"]*setFilter\('partner'/.test(root), 'no partner value inside a handler');
+  ok(root.includes('Any completion date'), 'default date label');
+  const D = sb.ctx.PMShareDash;
+  D.setFilter('from', '2026-08-01'); D.setFilter('to', '2026-08-31');
+  ok(sb.ctx.document.getElementById('pmSharingRoot').innerHTML.includes('Aug 1 – Aug 31, 2026'), 'range label');
+  D.setFilter('undatedOnly', true);
+  ok(sb.ctx.document.getElementById('pmSharingRoot').innerHTML.includes('>Undated only<'), 'undated label');
+  D.setFilter('partner', 'unassigned');
+  ok(/aria-pressed="true" data-pms-partner="unassigned"/.test(sb.ctx.document.getElementById('pmSharingRoot').innerHTML), 'active chip');
+});
+test('R9 header: title, updated time, Print / CSV / Refresh with constant handlers', async () => {
+  const sb = await loadedDash(dashData());
+  const root = sb.ctx.document.getElementById('pmSharingRoot').innerHTML;
+  for (const s of ['<h1 class="pms-title">Profit Sharing</h1>', 'Completed projects · Updated ', 'onclick="PMShareDash.print()"',
+                   'Print / PDF', 'onclick="PMShareDash.downloadCsv()"', 'onclick="PMShareDash.load()"', 'title="Refresh"']) {
+    ok(root.includes(s), 'header missing: ' + s);
+  }
+  ok(root.includes('id="pmSharingSummary"') && root.indexOf('id="pmSharingSummary"') < root.indexOf('Search project or client')
+     && root.indexOf('Search project or client') < root.indexOf('id="pmSharingResults"'), 'summary · toolbar · table order');
+});
+
+test('R10 mixed profit and loss: owner share above the net → no % in the hero, amounts still shown', async () => {
+  // A: +₱760,000 at 60/40 (owner ₱456,000). L2: −₱700,000 at 0/100 (owner ₱0, partner −₱700,000).
+  // Net ₱60,000; owner ₱456,000 = 760% of it — a % would be meaningless.
+  const d = dashData();
+  d.read.projects = [{ project_id: 'A', partner_pct: 40, is_default: false, version: 1 },
+                     { project_id: 'L2', partner_pct: 100, is_default: false, version: 1 }];
+  d.projects = [projA, { ...projB, id: 'L2', projectName: 'Loss two', terminatedAt: '2026-09-01T02:00:00Z' }];
+  d.perProject.L2 = { bills: [bill(700000)], reqs: [] };
+  d.reserves = { A: rec(40000, 800000, 0), L2: rec(0, 0, 700000) };
+  const sb = await loadedDash(d);
+  const t = sb.ctx.PMShareDash.buildModel(sb.ctx.PMShareDash._state.results, sb.ctx.PMShareDash._state.filters).totals;
+  eq([t.netCents, t.ownerCents, t.partnerCents], [6000000, 45600000, -39600000], 'fixture: owner > net');
+  const h = summaryOf(sb);
+  const hero = h.slice(h.indexOf('pms-hero'), h.indexOf('pms-hero-p'));
+  ok(h.includes('No positive amount to share'), 'fallback bar');
+  ok(h.includes('₱456,000.00') && h.includes('−₱396,000.00'), 'amounts still shown');
+  ok(!/−?\d+(\.\d+)?%/.test(hero), 'no % at all in the hero: ' + (hero.match(/[-−]?\d+(\.\d+)?%/g) || []).join(','));
+  ok(!/[-−]\d+(\.\d+)?%/.test(h), 'no negative % anywhere in the summary');
+  ok(!(h.match(/(\d+(?:\.\d+)?)%/g) || []).some(x => parseFloat(x) > 100), 'no % above 100 in the summary');
+  ok(!/width:\s*-/.test(h) && !h.includes('NaN'), 'no negative width, no NaN');
+  ok(!/aria-label="Your share/.test(h), 'no % in an aria-label either');
+});
+test('R11 table rows: focusable buttons named by project and amount, no table/row roles wrapping them', async () => {
+  const sb = await loadedDash(dashData());
+  const res = sb.ctx.document.getElementById('pmSharingResults').innerHTML;
+  ok(!/role="(table|row|cell|columnheader)"/.test(res), 'no table/row roles');
+  ok(/role="button" tabindex="0" aria-label="Alpha, left to share ₱760,000.00, Ready" data-pms-id="A"/.test(res), 'row A named');
+  ok(/aria-label="Beta · 2026-09-10 · C, left to share ₱950.00, provisional, Not counted yet" data-pms-id="C"/.test(res), 'review row named');
+  ok(/pms-thead" aria-hidden="true"/.test(res), 'visual header hidden from screen readers');
+});
+test('R12 date popover closes on Escape and outside click; one listener pair, removed on close', async () => {
+  const sb = await loadedDash(dashData());
+  const D = sb.ctx.PMShareDash, doc = sb.ctx.document;
+  const live = new Map();
+  let adds = 0;
+  doc.addEventListener = (type, fn) => { adds++; live.set(type, fn); };
+  doc.removeEventListener = (type, fn) => { if (live.get(type) === fn) live.delete(type); };
+  const pop = doc.getElementById('pmSharingDatePop'), btn = doc.getElementById('pmSharingDateBtn');
+  D.toggleDates();
+  eq([D._state.dateOpen, pop.hidden, [...live.keys()].sort()], [true, false, ['click', 'keydown']]);
+  D.setFilter('from', '2026-08-01');                      // re-render while open: still open, no new listeners
+  eq([D._state.dateOpen, adds], [true, 2]);
+  ok(doc.getElementById('pmSharingRoot').innerHTML.includes('id="pmSharingDatePop" class="pms-pop">'), 'rendered open');
+  const tIn = {}, tOut = {};
+  pop.contains = (t) => t === tIn; btn.contains = () => false;
+  live.get('click')({ target: tIn });
+  eq(D._state.dateOpen, true, 'click inside keeps it open');
+  live.get('keydown')({ key: 'Tab' });
+  eq(D._state.dateOpen, true, 'other keys ignored');
+  live.get('keydown')({ key: 'Escape' });
+  eq([D._state.dateOpen, pop.hidden, live.size], [false, true, 0], 'Escape closes and unbinds');
+  D.toggleDates();
+  live.get('click')({ target: tOut });
+  eq([D._state.dateOpen, live.size, adds], [false, 0, 4], 'outside click closes and unbinds');
+  D.toggleDates(); D.open('A');
+  eq([D._state.dateOpen, live.size], [false, 0], 'opening a project closes it too');
+});
+
+// ══ P. Printed statement v2 ═══════════════════════════════════════════
+const printOf = async (data) => { const sb = await loadedDash(data); sb.ctx.PMShareDash.print(); return sb.printed.join(''); };
+test('P1 header, summary values and the "how it is worked out" box', async () => {
+  const h = await printOf(dashData());
+  for (const s of ["Completed projects · DAC's Building Design Services", '/assets/images/DACS-TRANSPARENT.png', '<div class="t">Profit Sharing</div>',
+                   '<span class="k">As of</span>', '<span class="k">Completed</span><span class="v">All dates</span>', '<span class="k">Partners</span><span class="v">All partners</span>',
+                   'Your share · 56.15%', '₱693,500.00', "Partners' share · 43.85%", '₱541,500.00',
+                   'How the amount to share is worked out', '− Project costs (labor, materials, site overhead)', '− Warranty reserve (set aside at closeout)',
+                   '= Left to share · 2 projects', '₱1,235,000.00', "Split project by project, using each project&#39;s agreed percentage.",
+                   'Basis: left to share = client paid',
+                   'fonts.googleapis.com/css2?family=Barlow']) ok(h.includes(s), 'print missing: ' + s);
+  ok(!h.includes('Includes a ') , 'no loss sentence when nothing is short');
+});
+test('P2 by-partner lines: fixture partner sum, unassigned confirmed rows', async () => {
+  const h = await printOf(dashData());
+  ok(h.includes('<span>p@x.test · 1 project</span><span class="n b right">₱304,000.00</span>'), 'partner A sum is its partnerCents');
+  ok(h.includes('<span>No partner assigned · 1 project</span>'), 'unassigned confirmed row');
+});
+test('P3 loss fixture: Loss to split in red, loss sentence, partner "includes a loss"', async () => {
+  const d = lossData();
+  d.projects.find(x => x.id === 'L').partnerEmail = 'q@x.test';
+  const h = await printOf(d);
+  ok(h.includes('<td class="r b negc">−₱100,000.00</td>'), 'red left-to-share cell');
+  ok(h.includes('class="r negc">−₱50,000.00<div class="grey pct">50%</div>'), 'red share cells with pct');
+  ok(h.includes('<span>q@x.test · 1 project, includes a loss</span><span class="n b right negc">−₱50,000.00</span>'), 'partner line red + loss mark');
+  ok(h.includes('Includes a ₱100,000.00 loss on 1 project.'), 'loss sentence');
+  ok(h.includes('<span class="pill" style="background:#F8E7E4;color:#8F352C">Loss</span>'), 'Loss pill');
+  ok(h.includes('<div class="grey">Loss to split') === false, 'sanity');
+});
+test('P3b a net loss prints "= Loss to split" in red', async () => {
+  const d = { ...dashData() };
+  d.reserves = { A: rec(0, 0, 0), B: rec(0, 0, 0) };
+  d.perProject = { A: { bills: [bill(900000)], reqs: [verified(800000)] }, B: { bills: [bill(900000)], reqs: [verified(500000)] }, C: d.perProject.C };
+  const h = await printOf(d);
+  ok(h.includes('<div class="ln tot neg"><span>= Loss to split · 2 projects</span>'), 'net loss label in red');
+});
+test('P4 review row: own section, estimated, excluded from totals and by-partner sums', async () => {
+  const h = await printOf(dashData());
+  ok(h.includes('<h2 class="tight">Not counted yet</h2>') && h.includes('estimated</span>'), 'review card');
+  ok(h.includes('− estimated reserve') && h.includes('No warranty reserve was recorded at closeout, so this project is left out of the totals until it is.'), 'copy');
+  const counted = h.slice(h.indexOf('<h2>Counted projects</h2>'), h.indexOf('<h2 class="tight">Not counted yet</h2>'));
+  ok(!counted.includes('Beta') || counted.split('Beta').length - 1 === 1, 'review project is not a counted row (only confirmed Beta B)');
+  ok(counted.includes('Total · 2 projects'), 'count excludes review');
+  ok(h.includes('<span>No partner assigned · 1 project</span>'), 'by-partner counts confirmed only');
+  ok(h.includes('Not counted yet'), 'status');
+});
+test('P5 per-page footer, spacer, landscape page, empty state', async () => {
+  const h = await printOf(dashData());
+  ok(h.includes('</tbody><tfoot><tr><td><div class="foot-space"></div></td></tr></tfoot></table>') && h.includes('<table class="sheet"><thead>'), 'tfoot spacer wraps the statement');
+  ok(h.includes('.foot-space{height:0.55in}') && h.includes('position:fixed') && h.includes('print-color-adjust:exact'), 'print css');
+  ok(h.includes("Profit Sharing · DAC's Building Design Services · As of ") && h.includes('Internal allocation — not a payout or amount owed.'), 'footer');
+  const sb = await loadedDash(dashData());
+  sb.ctx.PMShareDash._state.filters.q = 'zzzz-no-match';
+  sb.ctx.PMShareDash.print();
+  const e = sb.printed.join('');
+  ok(e.includes('No completed projects match these filters.') && e.includes('Profit Sharing') && e.includes('Internal allocation'), 'empty state');
+  ok(!e.includes('Counted projects'), 'no table when empty');
+});
+test('V1 landscape page and the Counted projects table with its total row', async () => {
+  const h = await printOf(dashData());
+  ok(h.includes('@page{size:letter landscape;margin:0.5in}'), 'landscape @page');
+  ok(h.includes('@media screen{') && h.includes('max-width:11in') && h.includes('min-height:8.5in'), 'screen landscape sheet');
+  for (const s of ['<h2>Counted projects</h2>', '<table class="grid"><thead>', '>Client paid</th>', '>Left to share</th>', '>Your share</th>', '>Partner share</th>', '>Status</th>',
+                   '<tr class="total"><td>Total · 2 projects</td>', 'class="r green">₱693,500.00', '<td class="r">₱541,500.00</td>']) ok(h.includes(s), 'missing: ' + s);
+  ok(h.includes('<b>Alpha</b>') && h.includes('Ana · Aug 2, 2026 · p@x.test'), 'row label + subline');
+});
+test('V2 the Not counted yet section is omitted when there are no review rows', async () => {
+  const d = dashData();
+  d.reserves.C = rec(25000, 1000, 0);
+  const h = await printOf(d);
+  ok(!h.includes('Not counted yet'), 'no review section');
+  ok(h.includes('What the statuses mean') && h.includes('grid-template-columns:1fr"'), 'legend takes the space');
+});
+test('V3 legend lists only present statuses plus Ready, with the unpaid amount', async () => {
+  const d = dashData();
+  d.perProject.A.reqs.push({ status: 'unpaid', totalAmount: 1000, amountPaid: 0 });
+  const h = await printOf(d);
+  const lg = h.slice(h.indexOf('What the statuses mean'));
+  ok(lg.includes('>Ready</b>') && lg.includes('Payments, costs and reserve are final.'), 'Ready');
+  ok(lg.includes('>Client still owes</b>') && lg.includes('Counted with what has been paid so far. Alpha: ₱1,000.00 unpaid.'), 'unpaid line');
+  ok(lg.includes('>Not counted yet</b>') && lg.includes('left out of the totals.'), 'review status present');
+  ok(!lg.includes('>Loss</b>') && !lg.includes('>Edited after closeout</b>'), 'absent statuses omitted');
+});
+test('P6 card title: name (+ short id only when duplicated), date once in the subline', async () => {
+  const d = dashData();
+  d.projects[2] = { ...d.projects[2], projectName: 'Alpha' };   // C duplicates A's name
+  const h = await printOf(d);
+  ok(h.includes('<b>Beta</b>') && h.includes('<b>Alpha · A</b>') && h.includes('<b>Alpha · C</b>'), 'plain name and name + short id');
+  ok(!h.includes('<b>Alpha · Aug') && !h.includes('undated'), 'no date in the title');
+});
+test('P7 hostile name, client and partner are escaped exactly once in print', async () => {
+  const d = dashData();
+  d.projects[0] = { ...projA, projectName: '<b>X</b>', clientName: '<i>Y</i>', partnerEmail: "\"q'@x.test" };
+  const h = await printOf(d);
+  ok(!h.includes('<b>X') && !h.includes('<i>Y'), 'no raw tags');
+  ok(h.includes('&lt;b&gt;X&lt;/b&gt;') && h.includes('&lt;i&gt;Y&lt;/i&gt;'), 'escaped');
+  ok(h.includes('&quot;q&#39;@x.test') && !h.includes('&amp;quot;') && !h.includes('&amp;lt;') && !h.includes('&amp;#39;'), 'escaped once, not twice');
+});
+test('P8 share % rule is one helper shared by hero and print', () => {
+  const src = read('js/pm-sharing-dashboard.js');
+  eq(src.split('function shareSplit(').length - 1, 1);
+  eq(src.split('shareSplit(t)').length - 1, 3, 'defined once, used by hero and print');
+});
+test('P9 print waits link -> fonts.load -> fonts.ready (+ logo), prints once; hard cap', async () => {
+  const src = read('js/pm-sharing-dashboard.js');
+  ok(src.includes('setTimeout(go, 1500)') && src.includes('id="pmsFonts"') && src.includes('id="pmsLogo"'), 'cap + ids');
+  const sb = await loadedDash(dashData());
+  let prints = 0;
+  const order = [], lis = { font: {}, logo: {} };
+  const mk = (k, extra) => ({ addEventListener: (ev, fn) => { (lis[k][ev] = lis[k][ev] || []).push(fn); }, ...extra });
+  const fontsEl = mk('font', { sheet: null }), logoEl = mk('logo', { complete: false });
+  const fonts = { load: (spec) => { order.push('load:' + spec); return Promise.resolve([]); },
+                  get ready() { order.push('ready'); return Promise.resolve(); } };
+  sb.ctx.open = () => ({ print() { order.push('print'); prints++; }, document: { write() {}, close() {}, fonts,
+    getElementById: (id) => id === 'pmsFonts' ? fontsEl : id === 'pmsLogo' ? logoEl : null } });
+  sb.ctx.PMShareDash.print();
+  const tick = () => new Promise(r => setTimeout(r, 20));
+  await tick();
+  eq(order, [], 'no fonts.load / fonts.ready / print before the stylesheet link resolves');
+  lis.font.load.forEach(fn => fn()); await tick();
+  eq(order.slice(0, 3).sort(), ['load:400 12pt Barlow', 'load:600 30pt "Playfair Display"', 'load:700 12pt Barlow'], 'faces requested after the link');
+  eq(order[3], 'ready', 'fonts.ready only after the loads');
+  eq(prints, 0, 'logo still pending');
+  lis.logo.error.forEach(fn => fn()); await tick();
+  eq([prints, order[order.length - 1]], [1, 'print'], 'printed once, last');
+  lis.font.load.forEach(fn => fn()); lis.logo.load.forEach(fn => fn()); await tick();
+  eq(prints, 1, 'never twice');
+});
+test('P10 duplicated names use name + short id everywhere in print, never the date', async () => {
+  const d = lossData();
+  d.projects.find(x => x.id === 'L').partnerEmail = 'q@x.test';
+  d.projects.push({ ...projB, id: 'M', projectName: 'Loss', clientName: 'Mia', terminatedAt: '2026-09-13T02:00:00Z', partnerEmail: 'q@x.test' });
+  d.read.projects.push({ project_id: 'M', partner_pct: 50, is_default: true, version: 0 });
+  d.perProject.M = { bills: [bill(100000)], reqs: [] }; d.reserves.M = rec(0, 0, 100000);
+  const h = await printOf(d);
+  ok(h.includes('<b>Loss · L</b>') && h.includes('<b>Loss · M</b>'), 'titles with short ids');
+  ok(!h.includes('Loss · Sep') && !h.includes('Loss · undated'), 'no date in any title');
 });
 
 // ── runner ───────────────────────────────────────────────────────────

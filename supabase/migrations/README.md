@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0100** — highest on disk is
-  `0099_pm_project_company_map.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0101** — highest on disk is
+  `0100_pm_cash_advances.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble.
 - **`0075` and `0076` are TAKEN but not on `main`.** They belong to the abandoned
   project cost-plan branch (`project_cost_plans`, then its `%` columns) and **both
@@ -183,6 +183,8 @@ file creates the policy only when it is missing, so applying it live changes not
 **0098 (PM profit sharing)** PM profit sharing — private split tables, pm_set_sharing / pm_sharing_read / wf_reserves_for; spec docs/superpowers/specs/2026-10-18-pm-profit-sharing-mvp-terms.md
 
 **0099 (PM project company map)** Data only — maps the six owner-verified PM projects (19 Oct 2026) to the main owner's company in `pm_project_companies` (source `owner_verified`). Explicit ids; fails if one is missing or mapped elsewhere.
+
+**0100 (PM worker cash advances)** Worker cash-advance tracking ledger — four private tables (advances, repayments, append-only events, operation ids) and the `pm_ca_*` functions; owner-role accounts of the company only; outside the money model. Spec docs/superpowers/specs/2026-10-19-worker-cash-advances-design.md **Apply 0100 before pushing the web change** — the Cash Advances tab calls the pm_ca_* functions; without them it shows a raw "could not find the function" error and reports to client_errors.
 
 Get the truth before relying on this line:
 

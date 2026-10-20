@@ -84,7 +84,7 @@ This document does not establish legal partnership or loss-sharing terms.
 2. One shared calculation used by PM Overview (initial render and refresh), Overview print and
    Reports (Phase A).
 3. Project Management → **Profit Sharing** dashboard of completed projects, with project details,
-   chart, Print/PDF and CSV (Phase B).
+   split bars, Print/PDF and CSV (Phase B; layout in §7.5).
 
 ### Excluded
 
@@ -276,7 +276,7 @@ balance.
 | Project state | Reserve used | Label / flag |
 |---|---|---|
 | Completed, recorded row, not void, not deleted | `contributedAmount` (₱0 is valid, not missing) | "Recorded at closeout" |
-| Completed, no row / void / deleted | provisional `max(0, Remaining × 5%)` | **Reserve needs review**. Excluded from confirmed totals; the only exclusion reason |
+| Completed, no row / void / deleted | provisional `max(0, Remaining × 5%)` | **Reserve needs review** (shown as **Not counted yet**, §7.4). Excluded from confirmed totals; the only exclusion reason |
 | Not completed | `max(0, Remaining × 5%)` | **"Estimate"**. Never in completed totals |
 
 - The recorded reserve is **frozen**. Collections or costs after closeout change the sharing
@@ -285,13 +285,13 @@ balance.
 - Warranty draws never become project costs and never reduce the contribution used here.
 
 **"Needs review" defined once:** a completed, authorized project is excluded from confirmed totals
-**only** when its reserve data is unresolved (no row, void or deleted). **Unpaid client balance,
-Shortfall and Changed since closeout are warning chips only**; those projects stay in confirmed
-totals.
+**only** when its reserve data is unresolved (no row, void or deleted) — shown as **Not counted
+yet**. **Client still owes, Loss and Edited after closeout are warning pills only**; those
+projects stay in confirmed totals.
 
 ### 5.4 Shortfalls
 
-- A negative sharing balance is a **Shortfall**, shown in red, never "owed", "debt" or "payout".
+- A negative sharing balance is shown as **Loss** / **Loss to split** (dashboard, Overview and Reports), in red, never "owed", "debt" or "payout".
 - Positive balances add to **Available for sharing**, negative ones to **Cash shortfall**, and
   both, signed, to **Net sharing balance**. No offset or collection is created.
 
@@ -319,7 +319,9 @@ The four sites (`js/pm-admin.js` ~522, ~958, ~1075, ~9193 on 18 Oct) all switch 
 
 - **Warranty reserve** card: recorded / provisional / estimate per §5.3, with its flags.
 - **"Profit Share" (one party's half) is replaced by "Sharing balance"**: *Your share ₱ (x%)* and
-  *Partner ₱ (y%)*, with Shortfall labelling. Caption, also in print: *"Internal allocation — not
+  *Partner ₱ (y%)*; a negative balance is labelled **Loss to split** (Overview and Reports). A
+  completed project with no recorded reserve reads **"Provisional · Not counted yet"**, and the Reports
+  note reads *"N project(s) not counted yet (reserve not recorded)"*. Caption, also in print: *"Internal allocation — not
   a payout."*
 - A short note on screen explains that retention is now floored at zero, for projects where that
   changes the figure.
@@ -335,7 +337,7 @@ The four sites (`js/pm-admin.js` ~522, ~958, ~1075, ~9193 on 18 Oct) all switch 
   `_FOCUS_SUBVIEWS` so PM-focused owners can open it. Hidden for staff in `_visibleNav` (like
   `warrantyFund`), and the view **refuses to render for staff** if reached directly. Matching
   `*_VIEWS` entry in `admin.html` and the `switchView()` path.
-- Project details open in a side panel inside the same view, so there is no extra view to guard.
+- Project details open as a full page inside the same view (it replaces the list), so there is no extra view to guard.
 
 ### 7.2 Loading
 
@@ -360,59 +362,67 @@ Default: **Completed · All completion dates · All partners.** Completed projec
 - Partner: All / each partner email / **Partner unassigned**.
 - Search: project or client name.
 
-### 7.4 Summary cards — confirmed projects only
+### 7.4 Status words (owner decision, 19 Oct 2026)
 
-Projects (*n confirmed · m with reserve needing review*) · Client cash collected · Project costs · Recorded
-warranty reserve · **Available for sharing** · **Cash shortfall** · **Net sharing balance** ·
-**Your allocation** · **Partner allocation** (shortfall portions shown separately) · Outstanding
-client balance. Caption on every card group: *"Internal allocation — not a payout or amount owed."*
+The flags in §5.3 keep their internal names; on the dashboard, in print and in CSV they read:
 
-### 7.5 Project table
-
-| Column | Meaning |
+| Flag | Shown as |
 |---|---|
-| Project / client | Name, plus completion date and short id when names repeat |
-| Partner | `partnerEmail`, or **Partner unassigned** |
-| Completion date | `terminatedAt`, or "Undated" |
-| Collected | Lifetime eligible client receipts |
-| Costs | Lifetime project costs |
-| Remaining cash | Collected − costs |
-| Warranty reserve | Recorded, or provisional (marked) |
-| Sharing balance | Remaining − reserve |
-| Your % / amount | Project-specific |
-| Partner % / amount | Project-specific |
-| Client balance | Existing PM outstanding balance, definition shown |
-| Review status | **One or more chips:** Ready · Unpaid client balance · Shortfall · Reserve needs review · Changed since closeout |
+| `reserve_review` | **Not counted yet** (provisional figures, left out of totals) |
+| `shortfall` | **Loss** (detail: "Loss to split") |
+| `unpaid_balance` | **Client still owes** |
+| `changed_since_closeout` | **Edited after closeout** |
+| none | **Ready** |
 
-- Chips **can coexist** (e.g. *Unpaid client balance* + *Changed since closeout*). *Ready* appears
-  only when no other chip applies.
-- **Reserve-needs-review projects sit in their own section below** with figures marked
-  *Provisional*, and never count in the summary cards. Projects with only warning chips (Unpaid
-  client balance, Shortfall, Changed since closeout) stay in the main table and the totals (§5.3).
+One **main pill** per project, by priority Not counted yet → Loss → Client still owes → Edited after
+closeout; any other flags appear as smaller grey pills beside it. `chipsFor()` still returns every
+label, main first. Never "owed" for the partner, never "debt" or "payout" for an allocation.
 
-### 7.6 Chart
+### 7.5 List page ("Direction 1a — Split first")
 
-One horizontal bar per confirmed project, split into your part and the partner's part. Shortfalls
-extend left of zero in red. Drawn from the same result object as the table and cards.
+Everything below is built from one `buildModel()` result, filtered; totals are
+`PMShare.combine` over **counted (confirmed) projects only**.
 
-### 7.7 Project details panel (read-only)
+1. **Header:** "Profit Sharing", "Completed projects · Updated …", Print / PDF, CSV, Refresh.
+2. **Hero split:** Your share vs Partners' share (amounts, % of the amount left to share, number
+   of partners) and one bar. When the amount left to share is ≤ 0, or the owner part falls
+   outside 0–100% (mixed profit and loss), no % is shown: the bar is empty and reads "No positive
+   amount to share"; the amounts stay. Sentence: *"From N completed projects, ₱X is
+   left after costs and warranty reserves … These are internal figures, not payouts or amounts
+   owed."*
+3. **One sum:** Client paid − Project costs − Warranty reserve = Left to share (with "Includes
+   ₱X loss on N projects" when a counted project has a loss).
+4. **"N projects need a look":** one card per flagged project (counted or not), main pill and a
+   one-line reason; hidden when none.
+5. **All completed projects:** search, partner chips (All partners / each partner / No partner),
+   completion-date popover (From / To / Undated only; closes on Escape or an outside click). Table: Project (client · completion date) ·
+   Partner (or "No partner assigned") · Left to share · Your share · Partner share · Split bar ·
+   Status. Counted rows first, then Not counted yet rows marked **Provisional**; total row
+   "Total · N counted" with "“Not counted yet” is left out". The unmapped-project notice sits
+   above the table. Each row is a focusable button named by project, amount and status. Footer: *"Internal allocation — not a payout or amount owed."*
+6. **Phone (≤ 640px):** the same markup restacked by CSS — the sum becomes a vertical list, the
+   attention cards one column, table rows become cards.
 
-1. Collected, with the payment records.
-2. Costs: labor, pure materials, supply & install (counted once), billable site overhead.
-3. Remaining cash.
-4. Reserve: recorded amount, closeout cash and cost, "changed since closeout" when it applies.
-5. Sharing balance, both percentages, both amounts.
-6. Outstanding client balance.
-7. Split history: old → new, who, when, reason.
-8. Partner acceptance facts (§8).
+### 7.6 Chart (removed)
 
-No control in the panel creates any financial record.
+Replaced by the hero bar and the per-row split bars (19 Oct 2026).
+
+### 7.7 Project detail page (read-only)
+
+Opening a project replaces the list (Back link "‹ Profit Sharing" returns). Left: *How this
+project's share was worked out* — 1 Client paid with payment rows; 2 Minus project costs (labor,
+pure materials, supply & install counted once, site overhead); Cash left after costs; 3 Minus
+warranty reserve with its basis (recorded at closeout with ref and closeout paid/cost, or the
+estimate note) and "Collections/costs changed since closeout" when it applies; 4 Left to share /
+Loss to split, bar, You · x% and Partner · y%. Right: status box for the main status (other flags
+listed under it), client balance, split history (old → new, reason, when · who), partner
+acceptance facts (§8), and the internal-allocation label. The only controls are Back and Print.
 
 ### 7.8 Print / PDF and CSV
 
 - Both are built from the **same result object** as the screen.
 - Header: filters, basis line, as-of date and time, and the internal-allocation label. The
-  needs-review section is included and marked.
+  needs-review (Not counted yet) section is included and marked. Status cells use the §7.4 words.
 - CSV: one row per project, a totals row, and a short header with the same information.
   **Formula protection applies to text cells only** (a text cell starting with `= + - @`, tab or
   CR is prefixed with `'`). **Monetary cells stay real numbers**, so negative values are kept
@@ -461,7 +471,7 @@ requests. The Buyer purchasing exception does not apply here.
 |---|---|
 | New migration (next free number) | `pm_project_companies` + insert trigger, `pm_sharing_agreements`, `pm_sharing_changes`, RLS, `pm_set_sharing`, explicit mapping of the §4.6 ids |
 | `js/pm-sharing.js` (new) | Pure calculation, aggregation, rounding, flags; reads of agreements/history |
-| `js/pm-sharing-dashboard.js` (new) + styles | Dashboard, filters, details, chart, print, CSV |
+| `js/pm-sharing-dashboard.js` (new) + styles | Dashboard (hero split, sum, need-a-look cards, table with split bars), filters, detail page, print, CSV |
 | `js/warranty-fund.js` | `WF.reserveFor(ids)`, read-only; closeout writes unchanged |
 | `js/pm-admin.js` | Form section, save path, four calculation sites, Reports per-project combine |
 | `admin.html` | Form markup, dashboard view markup, script tags, `*_VIEWS` entry |
@@ -481,15 +491,16 @@ changed** in Release 1 (Phase C). Repeat repository searches immediately before 
 **Calculation tests (`tests/pm-sharing.test.js`)**
 
 - [ ] Worked example gives exactly ₱693,500 owner and ₱541,500 partner.
-- [ ] −₱100,000 remaining cash → reserve ₱0, −₱50,000 each, labelled Shortfall.
+- [ ] −₱100,000 remaining cash → reserve ₱0, −₱50,000 each, labelled **Loss** (dashboard) / **Loss to split**
+  (detail, Overview, Reports).
 - [ ] Mixed percentages are calculated per project before combining; 0/100, 100/0 and decimal %
   work.
 - [ ] Centavo amounts reconcile per project and across the report; float-noisy reserves round
   cleanly.
-- [ ] Recorded ₱0 reserve accepted; missing / void / deleted reserve → needs review, excluded from
-  totals.
-- [ ] Changed-since-closeout flag; chips coexist. Projects with only Unpaid client balance,
-  Shortfall or Changed-since-closeout chips **stay in** confirmed totals.
+- [ ] Recorded ₱0 reserve accepted; missing / void / deleted reserve → **Not counted yet**, excluded
+  from totals.
+- [ ] Edited-after-closeout flag; flags coexist (one main pill, others minor, §7.4). Projects with only
+  Client still owes, Loss or Edited after closeout **stay in** confirmed totals.
 - [ ] Legacy bills (no `directCostTotal`, with overhead) and supply-and-install are counted once.
 - [ ] **All four existing calculation sites produce the correct actual results** on shared
   fixtures, driven by executing the live functions (money-math.test.js style extraction). A source

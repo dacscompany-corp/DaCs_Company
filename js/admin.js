@@ -406,7 +406,7 @@ function applyRoleBasedUI() {
         // by RLS too, 0041, and the warranty tables likewise, 0043).
         // Quotations is the same story (0045) — hide the sidebar link too,
         // not just the top-nav tab from _visibleNav().
-        ['userNavigator', 'clientAccounts', 'expReports', 'reimbursements', 'warrantyFund', 'pmSharing', 'quoteList', 'attAppUpdates'].forEach(view => {
+        ['userNavigator', 'clientAccounts', 'expReports', 'reimbursements', 'warrantyFund', 'pmSharing', 'pmCashAdvances', 'quoteList', 'attAppUpdates'].forEach(view => {
             const el = document.querySelector(`.nav-item[data-view="${view}"]`);
             if (el) el.style.display = 'none';
         });
@@ -782,6 +782,7 @@ function switchView(view) {
         reimbursements:   'Client Reimbursement',
         warrantyFund:     'Warranty Fund',
         pmSharing:        'Profit Sharing',
+        pmCashAdvances:   'Cash Advances',
         boqBuilder:       'Accomplishment Report',
         clientAccounts:   'Client Accounts',
         paymentRequests:  'Payment Requests',
@@ -2250,6 +2251,9 @@ const PRIMARY_NAV = [
         // Profit Sharing (0098) — completed-project owner/partner allocation.
         // Internal allocation, never a payout. Owner-role only; hidden from staff below.
         { view: 'pmSharing',           label: 'Profit Sharing',       icon: 'pie-chart' },
+        // Worker Cash Advances (0100) — money advanced to workers and what they
+        // paid back. Tracking ledger outside the money model. Owner-role only.
+        { view: 'pmCashAdvances',      label: 'Cash Advances',        icon: 'wallet' },
         { view: 'pmReports',           label: 'Reports',              icon: 'file-bar-chart' },
       ]
     },
@@ -2406,6 +2410,11 @@ function _visibleNav() {
             return true;
         })
         .map(p => {
+            if (p.id === 'pm' && role !== 'owner') {
+                // Cash Advances (0100) is worker money end to end — owner-role
+                // accounts only. The server (pm_owner_company) refuses the rest.
+                p = { ...p, modules: p.modules.filter(m => m.view !== 'pmCashAdvances') };
+            }
             if (role === 'staff' && p.id === 'expenses') {
                 // Reports is a money dashboard end to end — hidden from staff
                 // along with Client Accounts. Reimbursement is the same: every

@@ -38,7 +38,7 @@
     <link rel="stylesheet" href="css/payment-requests.css">
     <link rel="stylesheet" href="css/invoice-module.css">
     <!-- Project Management Module Styles -->
-    <link rel="stylesheet" href="css/pm-admin.css?v=20261018a">
+    <link rel="stylesheet" href="css/pm-admin.css?v=20261020a">
     <!-- Admin PWA manifest (separate from the client-portal manifest.json) -->
     <link rel="manifest" href="manifest-admin-v2.json">
     <meta name="theme-color" content="#0f6342">
@@ -235,6 +235,9 @@
                     </a>
                     <a href="#" class="nav-item nav-child" data-view="pmSharing">
                         <span class="nav-icon-wrap"><i data-lucide="pie-chart" class="nav-icon"></i></span><span>Profit Sharing</span>
+                    </a>
+                    <a href="#" class="nav-item nav-child" data-view="pmCashAdvances">
+                        <span class="nav-icon-wrap"><i data-lucide="wallet" class="nav-icon"></i></span><span>Cash Advances</span>
                     </a>
                 </div>
             </div>
@@ -1964,6 +1967,13 @@
         <!-- PM → Profit Sharing (0098). Owner-role only; js/pm-sharing-dashboard.js renders it. -->
         <div id="pmSharingView" class="content-view" style="display:none;">
             <div id="pmSharingRoot"></div>
+        </div>
+
+        <!-- PM → Cash Advances (0100). Owner-role only; js/cash-advance-admin.js renders
+             the list / one advance into the root, js/cash-advance-forms.js the pop-ups. -->
+        <div id="pmCashAdvancesView" class="content-view" style="display:none;">
+            <div id="pmCashAdvancesRoot"></div>
+            <div id="pmCashAdvancesModal"></div>
         </div>
 
         <!-- Warranty Fund — Record / Edit a draw -->
@@ -5433,7 +5443,7 @@
 <script src="js/invoice-module.js"></script>
 <script src="js/labor-invoice-module.js"></script>
 <script src="js/pm-sharing.js?v=20261018a"></script>
-<script src="js/pm-admin.js?v=20261018a"></script>
+<script src="js/pm-admin.js?v=20261019a"></script>
 <script src="js/pm-report-print.js?v=20260915a"></script>
 <script src="js/expense-inbox.js"></script>
 <script src="js/push-notify.js"></script>
@@ -5443,7 +5453,12 @@
      the closeout still works if this file is missing. -->
 <script src="js/warranty-fund.js?v=20261018a"></script>
 <script src="js/termination-requests.js?v=20260803f"></script>
-<script src="js/pm-sharing-dashboard.js?v=20261018a"></script>
+<script src="js/pm-sharing-dashboard.js?v=20261019f"></script>
+<!-- Worker Cash Advances (0100). After pm-admin.js: the screen borrows its
+     _pmNamesSimilar / _pmLaborNameGroups name helpers. -->
+<script src="js/cash-advance.js?v=20261020a"></script>
+<script src="js/cash-advance-admin.js?v=20261020a"></script>
+<script src="js/cash-advance-forms.js?v=20261020a"></script>
 <script src="js/error-log.js"></script>
 <script src="js/ai-summary.js?v=20261013a"></script>
 <script src="js/ai-assistant.js?v=20261013a"></script>
@@ -6302,6 +6317,7 @@
         reimbursements:   'Client Reimbursement',
         warrantyFund:     'Warranty Fund',
         pmSharing:        'Profit Sharing',
+        pmCashAdvances:   'Cash Advances',
         consBatch:        'Current Batch',
         consUrgent:       'Urgent Requests',
         consBatchHistory: 'Batch History',
@@ -6377,6 +6393,9 @@
                 const allowed = ['consBatch','consUrgent','consBatchHistory'];
                 if (!allowed.includes(view)) view = 'consBatch';
             }
+            // Cash Advances (0100) is owner-role only — staff and everyone else
+            // bounce to the projects grid. The server refuses them too.
+            if (view === 'pmCashAdvances' && currentUserRole !== 'owner') view = 'pmProjects';
         }
 
         // Module-focus guard — a focused account can only land on views inside
@@ -6425,6 +6444,7 @@
         if (view === 'terminationRequests' && typeof initTerminationRequests === 'function') initTerminationRequests();
         if (view === 'warrantyFund' && typeof initWarrantyFundModule === 'function') initWarrantyFundModule();
         if (view === 'pmSharing' && typeof initPMSharingDashboard === 'function') initPMSharingDashboard();
+        if (view === 'pmCashAdvances' && typeof initCashAdvances === 'function') initCashAdvances();
 
         if (EXP_VIEWS.includes(view)) {
             if (typeof _syncAllEmptyStates === 'function') _syncAllEmptyStates();

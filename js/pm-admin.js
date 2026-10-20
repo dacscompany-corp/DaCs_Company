@@ -246,7 +246,7 @@ function _pmShareTexts(m, share) {
     const P = window.PMShare;
     const kind = m.reserve.kind;
     const reserveSub = (kind === 'recorded' ? 'Recorded at closeout'
-                     : kind === 'provisional' ? 'Provisional · Reserve needs review'
+                     : kind === 'provisional' ? 'Provisional · Not counted yet'
                      : 'Estimate · 5% of remaining cash')
                      + (m.reserve.changedSinceCloseout ? ' · Collections/costs changed since closeout' : '');
     const shortfall = m.balanceCents < 0;
@@ -254,7 +254,7 @@ function _pmShareTexts(m, share) {
         unavailable: false,
         reserveValue: P.pesos(m.reserve.cents),
         reserveSub,
-        balanceLabel: shortfall ? 'Shortfall' : 'Sharing balance',
+        balanceLabel: shortfall ? 'Loss to split' : 'Sharing balance',
         balanceValue: P.pesos(m.balanceCents),
         balanceColor: shortfall ? '#8f352c' : '#0f6342',
         splitLine: 'You ' + P.pesos(m.ownerCents) + ' (' + P.fmtPct(m.ownerPct) + '%) · Partner '
@@ -9363,12 +9363,12 @@ function _pmRptShareCards(cr) {
     const P = window.PMShare, t = cr.share.totals;
     const notes = [];
     if (t.estimateCount) notes.push('Includes estimates for ' + t.estimateCount + ' project' + (t.estimateCount > 1 ? 's' : '') + ' not yet completed');
-    if (t.reviewCount) notes.push(t.reviewCount + ' project' + (t.reviewCount > 1 ? 's need' : ' needs') + ' reserve review (not in totals)');
+    if (t.reviewCount) notes.push(t.reviewCount + ' project' + (t.reviewCount > 1 ? 's' : '') + ' not counted yet (reserve not recorded)');
     if (cr.share.unmapped) notes.push(cr.share.unmapped + ' project' + (cr.share.unmapped > 1 ? 's' : '') + ' not linked to a company (sharing locked)');
     return {
         reserveValue: P.pesos(t.reserveCents),
         reserveSub: 'Recorded at closeout for completed projects; 5% estimate otherwise',
-        balanceLabel: t.netCents < 0 ? 'Shortfall' : 'Sharing Balance',
+        balanceLabel: t.netCents < 0 ? 'Loss to split' : 'Sharing Balance',
         balanceValue: P.pesos(t.netCents),
         splitLine: 'You ' + P.pesos(t.ownerCents) + ' · Partner ' + P.pesos(t.partnerCents),
         caption: 'Internal allocation — not a payout.',
