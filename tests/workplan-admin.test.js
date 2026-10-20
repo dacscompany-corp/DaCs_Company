@@ -367,7 +367,7 @@ test('admin.html: view hosts, WP_VIEWS in switchView, titles, init, scripts in o
   }
   ok(/const WP_VIEWS\s+= \['wpBoard','wpMeetings','wpMeeting','wpTask'\];/.test(h), 'WP_VIEWS');
   ok(/if \(WP_VIEWS\.includes\(view\)\s+&& typeof initWorkPlanModule === 'function'\) initWorkPlanModule\(view\);/.test(h), 'init dispatch');
-  ok(h.includes('<link rel="stylesheet" href="css/workplan-admin.css?v=20261013a">'), 'stylesheet');
+  ok(h.includes('<link rel="stylesheet" href="css/workplan-admin.css?v=20261014a">'), 'stylesheet');
   const order = ['js/requests-admin-core.js', 'js/workplan-admin-core.js', 'js/workplan-admin-form.js', 'js/workplan-admin-board.js',
                  'js/workplan-admin-task.js', 'js/workplan-admin-meetings.js'].map(s => h.indexOf('<script src="' + s));
   ok(order.every(i => i > 0) && order.every((i, k) => k === 0 || i > order[k - 1]), 'scripts present and in order: ' + order);

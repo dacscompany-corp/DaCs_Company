@@ -60,33 +60,45 @@
     // ── Meetings list ───────────────────────────────────────────────
 
     async function renderMeetings(host) {
-        host.innerHTML = '<div class="att-stack"><div class="att-empty">Loading meetings…</div></div>';
+        host.innerHTML = '<div class="att-stack wp"><div class="att-empty">Loading meetings…</div></div>';
         let list;
         try { list = await WP.rpc('wp_office_meetings'); } catch (e) { WP.fail(host, e); return; }
         list = list || [];
         const rows = list.map(m =>
             '<tr tabindex="0" data-id="' + esc(m.id) + '">' +
-            '<td>' + esc(WP.formatDay(m.held_on)) + '</td>' +
+            '<td class="wp-nowrap">' + esc(WP.formatDay(m.held_on)) + '</td>' +
             '<td><strong>' + esc(m.title) + '</strong></td>' +
             '<td>' + (m.current_version
                 ? '<span class="att-pill att-pill--done">Published · version ' + esc(m.current_version) + '</span>'
                 : '<span class="att-pill att-pill--none">Not published</span>') + '</td>' +
-            '<td>' + esc(m.draft_count) + ' draft' + (m.draft_count === 1 ? '' : 's') + ' · ' + esc(m.task_count) + ' task' +
-              (m.task_count === 1 ? '' : 's') + '</td>' +
+            '<td>' + ((m.draft_count || m.task_count)
+                ? (m.draft_count ? '<span class="wp-chip wp-chip--gold wp-chip--first">' + esc(m.draft_count) + ' draft' + (m.draft_count === 1 ? '' : 's') + '</span>' : '') +
+                  (m.task_count ? '<span class="wp-count-text">' + esc(m.task_count) + ' task' + (m.task_count === 1 ? '' : 's') + '</span>' : '')
+                : '<span class="req-muted">No tasks yet</span>') + '</td>' +
             '<td class="req-go"><i data-lucide="chevron-right"></i></td></tr>').join('');
-        host.innerHTML = '<div class="att-stack">' +
-            WP.head('Meetings', 'Type or paste the notes, let the AI suggest tasks, check each one, then publish.',
+        const waiting = list.filter(m => m.draft_count > 0).length;
+        host.innerHTML = '<div class="att-stack wp wp-meetings">' +
+            WP.head('Meetings', list.length
+                    ? list.length + (list.length === 1 ? ' meeting' : ' meetings') + '. Type or paste the notes, let the AI suggest tasks, check each one, then publish.'
+                    : 'Type or paste the notes, let the AI suggest tasks, check each one, then publish.',
                 '<button class="att-btn" type="button" data-board><i data-lucide="clipboard-list"></i> Board</button>' +
                 '<button class="att-btn att-btn--primary" type="button" data-new><i data-lucide="plus"></i> New meeting</button>') +
+            (waiting
+                ? '<div class="wp-alert wp-alert--gold"><i data-lucide="file-pen-line"></i><div><strong>' + waiting +
+                  (waiting === 1 ? ' meeting has' : ' meetings have') + ' draft tasks waiting</strong>' +
+                  '<div>Open it, check each draft, then publish so workers see the tasks and the notes.</div></div></div>'
+                : '') +
             '<div class="att-card"><div class="att-card-body" style="padding:0">' +
             (list.length
-                ? '<div class="req-table-wrap"><table class="att-table req-table"><thead><tr><th>Held on</th><th>Meeting</th>' +
+                ? '<div class="req-table-wrap"><table class="att-table req-table wp-mtable"><thead><tr><th>Held on</th><th>Meeting</th>' +
                   '<th>Shared notes</th><th>Tasks</th><th class="req-go"><span class="req-sr">Open</span></th></tr></thead>' +
                   '<tbody data-rows>' + rows + '</tbody></table></div>'
-                : '<div class="att-empty">No meetings yet.</div>') +
+                : '<div class="wp-empty-body"><h3 class="wp-empty-title">No meetings yet</h3>' +
+                  '<p class="wp-empty-sub">Paste the notes from your meeting. The AI suggests the tasks; you check them before anything reaches workers.</p>' +
+                  '<button class="att-btn att-btn--primary" type="button" data-new><i data-lucide="plus"></i> New meeting</button></div>') +
             '</div></div></div>';
         host.querySelector('[data-board]').addEventListener('click', () => root.switchView('wpBoard'));
-        host.querySelector('[data-new]').addEventListener('click', () => WP.openMeeting(null));
+        host.querySelectorAll('[data-new]').forEach(b => b.addEventListener('click', () => WP.openMeeting(null)));
         const body = host.querySelector('[data-rows]');
         if (body) {
             body.addEventListener('click', e => { const tr = e.target.closest('tr[data-id]'); if (tr) WP.openMeeting(tr.dataset.id); });
@@ -101,11 +113,12 @@
     // ── One meeting ─────────────────────────────────────────────────
 
     function notesFields(f) {
-        return '<div class="att-field att-span"><label for="wpmTitle">Meeting</label>' +
+        return '<div class="wp-notes-top">' +
+            '<div class="att-field"><label for="wpmTitle">Meeting</label>' +
               '<input class="att-input" id="wpmTitle" data-title maxlength="200" value="' + esc(f.title) + '"></div>' +
-            '<div class="att-field att-span"><label for="wpmDate">Held on</label>' +
-              '<input class="att-input" type="date" id="wpmDate" data-date value="' + esc(f.held_on) + '"></div>' +
-            '<div class="att-field att-span"><label for="wpmNotes">Original notes <span class="att-hint-inline">(office only — never shown to workers)</span></label>' +
+            '<div class="att-field"><label for="wpmDate">Held on</label>' +
+              '<input class="att-input" type="date" id="wpmDate" data-date value="' + esc(f.held_on) + '"></div></div>' +
+            '<div class="att-field"><label for="wpmNotes">Original notes <span class="att-hint-inline">(office only — never shown to workers)</span></label>' +
               '<textarea class="att-input" id="wpmNotes" data-notes rows="10">' + esc(f.notes) + '</textarea></div>';
     }
 
@@ -151,11 +164,11 @@
     function renderNew(host) {
         loaded.new = { held_on: WP.todayManila() };
         const f = WP.meetingFields(loaded.new, pending.new);
-        host.innerHTML = '<div class="att-stack">' +
-            '<div class="req-actions"><button class="att-btn" type="button" data-back><i data-lucide="arrow-left"></i> Meetings</button></div>' +
+        host.innerHTML = '<div class="att-stack wp wp-meeting wp-meeting--new">' +
+            '<div class="att-crumbs"><button class="att-link" type="button" data-back>← Meetings</button></div>' +
             WP.head('New meeting', 'Save the notes first; then draft tasks with AI or add them by hand.') +
             card('Notes', notesFields(f) +
-                '<div class="req-actions"><button class="att-btn att-btn--primary" type="button" data-save>Save meeting</button></div>') +
+                '<div class="wp-actions"><button class="att-btn att-btn--primary" type="button" data-save>Save meeting</button></div>') +
             '</div>';
         track(host, 'new');
         host.querySelector('[data-back]').addEventListener('click', () => root.switchView('wpMeetings'));
@@ -204,12 +217,13 @@
 
     function tasksHtml(m) {
         const tasks = m.tasks || [];
-        if (!tasks.length) return '<div class="req-muted">No tasks yet.</div>';
-        return tasks.map(t =>
-            '<div class="wp-row"><div><strong>' + esc(t.title) + '</strong><div class="req-muted">' +
-            esc(t.project_name + ' · ' + t.work_name + (t.responsible ? ' · ' + t.responsible.name : ' · no responsible person yet')) + '</div></div>' +
-            '<div><span class="att-pill ' + WP.statusPill(t) + '">' + esc(WP.statusLabel(t)) + '</span> ' +
-            '<button class="att-link" type="button" data-task="' + esc(t.id) + '">Open</button></div></div>').join('');
+        if (!tasks.length) return '<div class="wp-pad req-muted">No tasks yet. Draft them with AI, or add one by hand.</div>';
+        return '<ul class="wp-mtasks">' + tasks.map(t =>
+            '<li><div class="wp-mtask-main"><strong>' + esc(t.title) + '</strong><div class="req-muted">' +
+            esc(t.project_name + ' · ' + t.work_name) + '</div>' +
+            '<div class="req-muted">' + (t.responsible ? esc(t.responsible.name) : '<span class="wp-late">No responsible person yet</span>') + '</div></div>' +
+            '<div class="wp-mtask-side"><span class="att-pill ' + WP.statusPill(t) + '">' + esc(WP.statusLabel(t)) + '</span>' +
+            '<button class="att-link" type="button" data-task="' + esc(t.id) + '">Open</button></div></li>').join('') + '</ul>';
     }
 
     function publishHtml(m, f, L) {
@@ -233,13 +247,13 @@
             '<div class="req-muted">' + (drafts.length
                 ? drafts.length + ' draft task' + (drafts.length === 1 ? '' : 's') + ' will be published with the notes. Each needs a responsible person.'
                 : 'No draft tasks — this publishes the notes only.') + '</div>' +
-            '<div class="req-actions"><button class="att-btn att-btn--primary" type="button" data-publish>Publish…</button></div>';
+            '<div class="wp-actions"><button class="att-btn att-btn--primary" type="button" data-publish>Publish…</button></div>';
     }
 
     function versionsHtml(m) {
         const versions = m.versions || [];
         if (!versions.length) return '<div class="req-muted">Not published yet.</div>';
-        return '<ul class="wp-list">' + versions.map(v =>
+        return '<ul class="wp-list wp-versions">' + versions.map(v =>
             '<li><strong>Version ' + esc(v.version) + '</strong> <span class="req-muted">' + esc(WP.formatManila(v.published_at)) + ' · ' +
             esc(v.published_by) + '</span>' + (v.change_note ? '<div>' + esc(v.change_note) + '</div>' : '') +
             '<div class="req-muted">To: ' + esc((v.recipients || []).map(r => r.name).join(', ') || 'no one') + '</div></li>').join('') + '</ul>';
@@ -250,7 +264,7 @@
         const ticket = tickets.take();            // a newer load — another meeting, or New meeting — wins
         if (!id) { renderNew(host); return; }
         const current = () => tickets.isLatest(ticket) && WP.state.meetingId === id;
-        host.innerHTML = '<div class="att-stack"><div class="att-empty">Loading the meeting…</div></div>';
+        host.innerHTML = '<div class="att-stack wp wp-meeting"><div class="att-empty">Loading the meeting…</div></div>';
         let m, L;
         try { [m, L] = await Promise.all([WP.rpc('wp_office_meeting', { p_meeting: id }), WP.loadLookups(true)]); }
         catch (e) { if (current()) WP.fail(host, e); return; }
@@ -261,20 +275,31 @@
         const rerender = () => { if (WP.state.meetingId === id) renderMeeting(host); };
         const s = suggestions[id];
 
-        host.innerHTML = '<div class="att-stack">' +
-            '<div class="req-actions"><button class="att-btn" type="button" data-back><i data-lucide="arrow-left"></i> Meetings</button></div>' +
-            WP.head(m.title, WP.formatDay(m.held_on) + (m.current_version
-                ? ' · shared notes published (version ' + m.current_version + ')' : ' · not published yet')) +
+        const drafts = (m.tasks || []).filter(t => t.status === 'draft').length;
+        const nv = (m.versions || []).length;
+        const main =
             card('Notes', notesFields(f) +
-                '<div class="req-actions"><button class="att-btn" type="button" data-save>Save notes</button></div>') +
+                '<div class="wp-actions"><button class="att-btn" type="button" data-save>Save notes</button></div>') +
             card('AI drafts', '<div data-ai>' + (drafting[id] ? DRAFTING_HTML : suggestionsHtml(s, aiErrors[id])) + '</div>',
                 'Saves the notes, then sends them to Cloudflare\'s AI to suggest tasks. Nothing reaches workers until you review and publish.',
                 '<button class="att-btn att-btn--primary" type="button" data-ai-run' + (drafting[id] ? ' disabled' : '') + '><i data-lucide="sparkles"></i> ' +
                 (s ? 'Draft again' : 'Draft tasks with AI') + '</button>') +
+            card('Publish', publishHtml(m, f, L));
+        const side =
             card('Tasks from this meeting', tasksHtml(m), '',
-                '<button class="att-btn" type="button" data-add><i data-lucide="plus"></i> Add task by hand</button>') +
-            card('Publish', publishHtml(m, f, L)) +
-            card('Published versions', versionsHtml(m)) +
+                '<button class="att-btn" type="button" data-add><i data-lucide="plus"></i> Add task</button>') +
+            '<details class="att-card wp-hist"' + (nv <= 3 ? ' open' : '') + '><summary>Published versions <span class="req-muted">' + nv +
+              '</span></summary>' + versionsHtml(m) + '</details>';
+
+        host.innerHTML = '<div class="att-stack wp wp-meeting">' +
+            '<div class="att-crumbs"><button class="att-link" type="button" data-back>← Meetings</button></div>' +
+            WP.head(m.title, WP.formatDay(m.held_on) + (m.current_version
+                ? ' · shared notes published (version ' + m.current_version + ')' : ' · not published yet')) +
+            (drafts
+                ? '<div class="wp-alert wp-alert--gold"><i data-lucide="file-pen-line"></i><div><strong>' + drafts + ' draft task' + (drafts === 1 ? '' : 's') +
+                  ' waiting to be published</strong><div>Check each one, make sure it has a responsible person, then use Publish.</div></div></div>'
+                : '') +
+            '<div class="wp-layout"><div class="wp-main">' + main + '</div><aside class="wp-side">' + side + '</aside></div>' +
             '</div>';
         const p = track(host, id);
 

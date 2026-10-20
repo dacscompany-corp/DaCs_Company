@@ -30,13 +30,17 @@
             t('list', 'Shopping list') + t('purchases', 'Purchases') + t('approvals', 'Owner approvals') + '</div>';
     }
 
+    // Needed · Bought · Still to buy, as three blocks the eye can compare.
     function figures(l) {
-        const parts = ['Needed <strong>' + esc(PA.qty(l.needed)) + '</strong>'];
-        if (Number(l.from_stock) > 0) parts.push('From stock <strong>' + esc(PA.qty(l.from_stock)) + '</strong>');
-        parts.push('Bought <strong>' + esc(PA.qty(l.bought)) + '</strong>');
-        parts.push('Still to buy <strong>' + esc(PA.qty(l.still_to_buy)) + '</strong>');
-        if (Number(l.extra) > 0) parts.push('Extra <strong>' + esc(PA.qty(l.extra)) + '</strong>');
-        return '<div class="pur-figures">' + parts.join(' · ') + ' <span class="req-muted">' + esc(l.unit) + '</span></div>';
+        const stat = (label, value, cls) => '<div class="pur-stat' + (cls ? ' ' + cls : '') + '"><span class="pur-stat-label">' + label +
+            '</span><strong>' + esc(PA.qty(value)) + '</strong></div>';
+        return '<div class="pur-stats">' +
+            stat('Needed', l.needed) +
+            (Number(l.from_stock) > 0 ? stat('From stock', l.from_stock) : '') +
+            stat('Bought', l.bought) +
+            stat('Still to buy', l.still_to_buy, 'is-key') +
+            (Number(l.extra) > 0 ? stat('Extra', l.extra) : '') +
+            '<span class="pur-stat-unit">' + esc(l.unit) + '</span></div>';
     }
 
     function portionRow(p, me) {
@@ -45,12 +49,16 @@
         const btn = (act, label, extra) => '<button type="button" class="att-btn att-btn--sm' + (extra || '') + '" data-act="' + act +
             '" data-portion="' + esc(p.id) + '">' + label + '</button>';
         return '<div class="pur-portion' + (p.changed ? ' is-changed' : '') + '">' +
-            '<span class="pur-portion-batch">' + esc('Cutoff ' + RA.cutoffLabel(p.cutoff_at)) + '</span>' +
-            '<span class="pur-portion-qty">' + esc(PA.qty(p.quantity - p.pending_reduction)) + ' needed · ' +
-              esc(PA.qty(p.bought)) + ' bought · <strong>' + esc(PA.qty(p.still_to_buy)) + ' still to buy</strong></span>' +
-            '<span class="pur-portion-who' + (p.buyer_id ? '' : ' is-open') + '">' + esc(who) + '</span>' +
-            (p.arranged ? PA.pill('Arranged', 'done') : '') +
-            (p.changed ? PA.pill('Quantity changed', 'abandoned') : '') +
+            '<div class="pur-pcell"><span class="pur-plabel">Weekly batch</span>' +
+              '<span class="pur-portion-batch">' + esc('Cutoff ' + RA.cutoffLabel(p.cutoff_at)) + '</span></div>' +
+            '<div class="pur-pcell"><span class="pur-plabel">To buy</span>' +
+              '<span class="pur-portion-qty">' + esc(PA.qty(p.quantity - p.pending_reduction)) + ' needed · ' +
+              esc(PA.qty(p.bought)) + ' bought · <strong>' + esc(PA.qty(p.still_to_buy)) + ' still to buy</strong></span></div>' +
+            '<div class="pur-pcell"><span class="pur-plabel">Buyer</span>' +
+              '<span class="pur-portion-who' + (p.buyer_id ? '' : ' is-open') + '">' + esc(who) + '</span></div>' +
+            '<div class="pur-ptags">' +
+              (p.arranged ? PA.pill('Arranged', 'done') : '') +
+              (p.changed ? PA.pill('Quantity changed', 'abandoned') : '') + '</div>' +
             '<span class="pur-portion-acts">' +
               (a.claim ? btn('claim', 'I\'ll buy this', ' att-btn--primary') : '') +
               (a.assign ? btn('assign', p.buyer_id ? 'Reassign…' : 'Assign…') : '') +
@@ -69,12 +77,12 @@
                   ? '<input type="checkbox" data-pick="' + esc(l.line_id) + '"' + (ui.picked[l.line_id] ? ' checked' : '') + ' aria-label="Add to the purchase">'
                   : '') + '</label>' +
                 '<div class="pur-line-main">' +
-                  '<div><strong>' + esc(l.description) + '</strong>' + (l.spec ? ' <span class="req-muted">' + esc(l.spec) + '</span>' : '') +
+                  '<div class="pur-line-title"><strong>' + esc(l.description) + '</strong>' + (l.spec ? ' <span class="req-muted">' + esc(l.spec) + '</span>' : '') +
                     (l.catalog_name ? ' <span class="req-muted">· ' + esc(l.catalog_name) + '</span>' : '') + ' ' + urgent +
                     (Number(l.unit_checks) > 0 ? ' ' + PA.pill('Office check waiting', 'abandoned') : '') + '</div>' +
                   '<div class="req-muted">' + esc(l.project_name) + ' · ' + esc(l.work_name) + ' · requested by ' + esc(l.requester_name) + '</div>' +
-                  figures(l) +
                 '</div>' +
+                figures(l) +
               '</div>' +
               '<div class="pur-portions">' + (l.portions || []).map(p => portionRow(p, me)).join('') + '</div>' +
             '</div></div>';
@@ -110,7 +118,9 @@
 
         host.querySelector('[data-body]').innerHTML =
             summaryHtml(lines, me) +
-            '<div class="att-toolbar">' +
+            '<div class="pur-filters">' +
+              '<div class="att-search-wrap"><i data-lucide="search"></i>' +
+                '<input class="att-search" type="search" data-text aria-label="Search" placeholder="Search item, project, worker…" value="' + esc(ui.text) + '"></div>' +
               '<select class="att-filter" data-batch aria-label="Weekly batch">' +
                 '<option value="">All weekly batches</option>' +
                 batches.map(b => '<option value="' + esc(b.id) + '"' + (b.id === ui.batchId ? ' selected' : '') + '>' +
@@ -120,18 +130,25 @@
                 '<option value="">All projects</option>' +
                 projects.map(p => '<option value="' + esc(p.id) + '"' + (p.id === ui.folderId ? ' selected' : '') + '>' + esc(p.name) + '</option>').join('') +
               '</select>' +
-              '<div class="att-search-wrap"><i data-lucide="search"></i>' +
-                '<input class="att-search" type="search" data-text aria-label="Search" placeholder="Search item, project, worker…" value="' + esc(ui.text) + '"></div>' +
-              '<label class="req-toggle"><input type="checkbox" data-mine' + (ui.mine ? ' checked' : '') + '> Mine</label>' +
-              '<label class="req-toggle"><input type="checkbox" data-unassigned' + (ui.unassigned ? ' checked' : '') + '> Unassigned</label>' +
-              '<label class="req-toggle"><input type="checkbox" data-urgent' + (ui.urgent ? ' checked' : '') + '> Urgent</label>' +
-              '<button type="button" class="att-btn att-btn--primary" data-record' + (pickedCount ? '' : ' disabled') + '>' +
-                '<i data-lucide="shopping-cart"></i> Record purchase' + (pickedCount ? ' (' + pickedCount + ')' : '') + '</button>' +
+              '<div class="pur-quick" role="group" aria-label="Quick filters">' +
+                '<label class="pur-chip"><input type="checkbox" data-mine' + (ui.mine ? ' checked' : '') + '><span>Mine</span></label>' +
+                '<label class="pur-chip"><input type="checkbox" data-unassigned' + (ui.unassigned ? ' checked' : '') + '><span>Unassigned</span></label>' +
+                '<label class="pur-chip"><input type="checkbox" data-urgent' + (ui.urgent ? ' checked' : '') + '><span>Urgent</span></label>' +
+              '</div>' +
+              '<span class="pur-spacer"></span>' +
               '<button type="button" class="att-btn" data-unplanned><i data-lucide="plus"></i> Purchase with no request</button>' +
             '</div>' +
+            (shown.length && !pickedCount
+              ? '<p class="pur-howto"><i data-lucide="mouse-pointer-click"></i> Bought something on the list? Tick it, then press <strong>Record purchase</strong>.</p>' : '') +
             (shown.length
               ? shown.map(l => lineCard(l, me)).join('')
-              : '<div class="att-empty">' + (lines.length ? 'Nothing matches these filters.' : 'Nothing left to buy in this batch.') + '</div>');
+              : '<div class="att-empty">' + (lines.length ? 'Nothing matches these filters.' : 'Nothing left to buy in this batch.') + '</div>') +
+            (pickedCount
+              ? '<div class="pur-bar" role="region" aria-label="Ticked items"><span><strong>' + pickedCount + '</strong> item' + (pickedCount === 1 ? '' : 's') + ' ticked</span>' +
+                '<span class="pur-spacer"></span>' +
+                '<button type="button" class="att-btn" data-clear-picks>Clear</button>' +
+                '<button type="button" class="att-btn att-btn--primary" data-record><i data-lucide="shopping-cart"></i> Record purchase (' + pickedCount + ')</button></div>'
+              : '');
 
         const body = host.querySelector('[data-body]');
         const reload = () => renderList(host, me);
@@ -142,10 +159,13 @@
         body.querySelector('[data-unassigned]').addEventListener('change', e => { ui.unassigned = e.target.checked; reload(); });
         body.querySelector('[data-urgent]').addEventListener('change', e => { ui.urgent = e.target.checked; reload(); });
         body.querySelectorAll('[data-pick]').forEach(c => c.addEventListener('change', () => { ui.picked[c.dataset.pick] = c.checked; reload(); }));
-        body.querySelector('[data-record]').addEventListener('click', () => {
+        const rec = body.querySelector('[data-record]');
+        if (rec) rec.addEventListener('click', () => {
             const picked = lines.filter(l => ui.picked[l.line_id]);
             if (picked.length) PA.openRecord({ requestLines: picked, batchId: ui.batchId || '', onDone: () => { ui.picked = {}; } });
         });
+        const clr = body.querySelector('[data-clear-picks]');
+        if (clr) clr.addEventListener('click', () => { ui.picked = {}; reload(); });
         body.querySelector('[data-unplanned]').addEventListener('click', () => PA.openRecord({ requestLines: [] }));
         body.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => act(b.dataset.act, b.dataset.portion, lines, me, reload)));
         RA.icons();
@@ -190,7 +210,7 @@
     }
 
     async function renderPurchasing(host) {
-        host.innerHTML = '<div class="att-stack pur-tab"><div class="att-empty">Loading…</div></div>';
+        host.innerHTML = '<div class="att-stack pur-tab req-detail"><div class="att-empty">Loading…</div></div>';
         let me;
         try { me = await PA.me(); } catch (e) { RA.fail(host, e); return; }
         if (!me.canBuy) {
@@ -200,7 +220,7 @@
             return;
         }
         host.innerHTML =
-            '<div class="att-stack pur-tab">' +
+            '<div class="att-stack pur-tab req-detail">' +
               RA.head('Purchasing', 'Who is buying what, what was bought, and what is still to buy. Prices show here only.', tabs()) +
               '<div data-body><div class="att-empty">Loading…</div></div>' +
             '</div>';

@@ -66,57 +66,104 @@
         return '<label class="req-toggle"><input type="checkbox" name="' + name + '" value="' + esc(value) + '"' +
             (on ? ' checked' : '') + '> ' + esc(label) + '</label>';
     }
-    function field(id, label, inner, unresolved) {
-        return '<div class="att-field att-span"><label for="' + id + '">' + esc(label) +
+    // half = sits beside its neighbour (two columns); otherwise full width.
+    // `hint` is one plain sentence under the box: what to put here.
+    function field(id, label, inner, unresolved, half, required, hint) {
+        return '<div class="att-field' + (half ? '' : ' att-span') + '"><label for="' + id + '">' + esc(label) +
+            (required ? ' <span class="wp-req" aria-hidden="true">*</span>' : '') +
             (unresolved ? ' <span class="wp-chip wp-chip--red" data-needs>Needs your choice</span>' : '') +
-            '</label>' + inner + '</div>';
+            '</label>' + inner + (hint ? '<span class="wp-hint">' + esc(hint) + '</span>' : '') + '</div>';
+    }
+    // The form reads top to bottom as the task is thought of: what, where, who, when.
+    // A numbered part with one line saying what it is for.
+    function section(num, title, help) {
+        return '<div class="wp-sec att-span"><span class="wp-sec-num" aria-hidden="true">' + num + '</span>' +
+            '<span class="wp-sec-title">' + esc(title) + '</span></div>' +
+            (help ? '<p class="wp-sec-help att-span">' + esc(help) + '</p>' : '');
     }
     function confirmBox(key, text) {
         return '<label class="req-toggle wp-confirm"><input type="checkbox" name="check_' + key + '"> ' + esc(text) + '</label>';
     }
 
-    function formHtml(v, L, published) {
+    function formHtml(v, L, published, fresh) {
         const checks = v.checks || [];
-        return field('wpfFolder', 'Project',
-                '<select class="att-input" id="wpfFolder" name="folder"' + (published ? ' disabled' : '') + '>' +
-                (v.folder_id === CHOOSE ? chooseOpt() : '<option value="">Choose a project…</option>') +
-                L.projects.map(p => opt(p.folder_id, p.name, v.folder_id)).join('') + '</select>' +
-                (published ? '<span class="att-hint-inline">A published task keeps its project.</span>' : ''),
-                v.folder_id === CHOOSE) +
-            field('wpfWork', 'Main Contract or Additional Works',
-                '<select class="att-input" id="wpfWork" name="work"' + (published ? ' disabled' : '') + '></select>',
-                v.work_id === CHOOSE) +
-            field('wpfTeam', 'Team',
-                '<select class="att-input" id="wpfTeam" name="team">' + (v.team_id === CHOOSE ? chooseOpt() : '') +
-                '<option value="">No team (individual task)</option>' +
-                L.teams.map(t => opt(t.id, t.name, v.team_id)).join('') + '</select>', v.team_id === CHOOSE) +
-            field('wpfResp', 'Responsible person', '<select class="att-input" id="wpfResp" name="responsible"></select>',
-                v.responsible_id === CHOOSE) +
-            '<div class="att-field att-span"><span class="att-hint-inline">Helpers</span><div class="wp-checks" data-helpers></div>' +
-              (checks.includes('helpers') ? confirmBox('helpers', 'I have checked the helpers (the AI named someone it could not match)') : '') +
-            '</div>' +
-            field('wpfTitle', 'Task title', '<input class="att-input" id="wpfTitle" name="title" maxlength="200" value="' + esc(v.title) + '">') +
-            field('wpfInstr', 'Instructions', '<textarea class="att-input" id="wpfInstr" name="instructions" rows="4">' + esc(v.instructions) + '</textarea>') +
-            field('wpfStart', 'Planned start', '<input class="att-input" type="date" id="wpfStart" name="planned_start" value="' + esc(v.planned_start) + '">') +
-            field('wpfEnd', 'Planned end', '<input class="att-input" type="date" id="wpfEnd" name="planned_end" value="' + esc(v.planned_end) + '">') +
-            (checks.includes('dates')
-                ? '<div class="att-field att-span">' + confirmBox('dates', 'I have checked the dates (the notes were unclear)') + '</div>' : '') +
-            '<div class="att-field att-span"><span class="att-hint-inline">Waits for (tasks of the same project; untick to remove a link)</span>' +
-              '<div class="wp-checks" data-deps></div></div>' +
+        return (
+            // What the AI or the meeting left for the office to check comes
+            // first: it changes how the rest is filled in.
             ((v.office_flags || []).length
                 ? '<div class="att-info att-info--warn att-span"><i data-lucide="flag"></i><div><strong>To check:</strong>' +
                   '<ul class="wp-flags">' + v.office_flags.map(f => '<li>' + esc(f) + '</li>').join('') + '</ul>' +
                   '<label class="req-toggle"><input type="checkbox" name="clear_flags"> All checked — clear these notes</label></div></div>'
                 : '') +
             (v.source_passage
-                ? '<div class="att-field att-span"><span class="att-hint-inline">From the meeting notes</span>' +
+                ? '<div class="att-field att-span"><span class="wp-lbl">From the meeting notes</span>' +
                   '<blockquote class="wp-passage">' + esc(v.source_passage) + '</blockquote></div>'
                 : '') +
+
+            // Only on a brand-new task: say what is asked of the person, once.
+            (fresh
+                ? '<div class="att-info att-span wp-intro"><i data-lucide="info"></i><div><strong>Four short parts: what, where, who and when.</strong> ' +
+                  'Only the title and the project are needed (marked <span class="wp-req">*</span>). ' +
+                  'Everything else can wait, and you can change it all before you publish.</div></div>'
+                : '') +
+
+            section('1', 'What needs to be done', 'Give the task a short name, then explain it the way you would tell the worker.') +
+            field('wpfTitle', 'Task title', '<input class="att-input" id="wpfTitle" name="title" maxlength="200" placeholder="e.g. Install ceiling lights, 2nd floor" value="' + esc(v.title) + '">', false, false, true, 'Keep it short. Workers read this first.') +
+            field('wpfInstr', 'Instructions', '<textarea class="att-input" id="wpfInstr" name="instructions" rows="5" placeholder="What the worker should do, and anything they must know.">' + esc(v.instructions) + '</textarea>', false, false, false,
+                'Optional. Say what to do, which part of the site, and anything to be careful about.') +
+
+            section('2', 'Where is the work', 'Choose the project this task belongs to.') +
+            field('wpfFolder', 'Project',
+                '<select class="att-input" id="wpfFolder" name="folder"' + (published ? ' disabled' : '') + '>' +
+                (v.folder_id === CHOOSE ? chooseOpt() : '<option value="">Choose a project…</option>') +
+                L.projects.map(p => opt(p.folder_id, p.name, v.folder_id)).join('') + '</select>' +
+                (published ? '<span class="att-hint-inline">A published task keeps its project.</span>' : ''),
+                v.folder_id === CHOOSE, true, true) +
+            field('wpfWork', 'Main Contract or Additional Works',
+                '<select class="att-input" id="wpfWork" name="work"' + (published ? ' disabled' : '') + '></select>',
+                v.work_id === CHOOSE, true, true, 'Pick Main Contract unless the task is for an Additional Work.') +
+
+            section('3', 'Who will do it', 'Workers see the task in their WorkMate app, under My Work, once you publish it.') +
+            field('wpfTeam', 'Team',
+                '<select class="att-input" id="wpfTeam" name="team">' + (v.team_id === CHOOSE ? chooseOpt() : '') +
+                '<option value="">No team (individual task)</option>' +
+                L.teams.map(t => opt(t.id, t.name, v.team_id)).join('') + '</select>', v.team_id === CHOOSE, true, false, 'Choose a team if a group does the task together. Otherwise leave it as it is.') +
+            field('wpfResp', 'Responsible person', '<select class="att-input" id="wpfResp" name="responsible"></select>',
+                v.responsible_id === CHOOSE, true, false, 'The main person for this task. You can choose later, but choose someone before you publish.') +
+            '<div class="att-field att-span"><div class="wp-helper-head"><span class="wp-lbl">Helpers <span class="att-hint-inline">optional</span></span>' +
+              '<span class="wp-count" data-helper-count></span></div>' +
+              '<span class="wp-hint">Tick anyone who will help with this task.</span>' +
+              '<input class="att-input wp-helper-search" type="search" data-helper-search placeholder="Find a person…" aria-label="Find a helper" hidden>' +
+              '<div class="wp-checks" data-helpers></div>' +
+              (checks.includes('helpers') ? confirmBox('helpers', 'I have checked the helpers (the AI named someone it could not match)') : '') +
+            '</div>' +
+
+            section('4', 'When', 'Optional. Leave the dates empty if there is no fixed date.') +
+            field('wpfStart', 'Planned start', '<input class="att-input" type="date" id="wpfStart" name="planned_start" value="' + esc(v.planned_start) + '">', false, true, false, 'The day the work should begin.') +
+            field('wpfEnd', 'Planned end', '<input class="att-input" type="date" id="wpfEnd" name="planned_end" value="' + esc(v.planned_end) + '">', false, true, false, 'The day it should be finished.') +
+            '<div class="wp-inline-err att-span" data-date-err hidden>The end date is before the start date.</div>' +
+            (checks.includes('dates')
+                ? '<div class="att-field att-span">' + confirmBox('dates', 'I have checked the dates (the notes were unclear)') + '</div>' : '') +
+
+            // Rarely needed, so it starts closed -- unless the task already
+            // waits for something, which must stay in view.
+            '<details class="wp-adv att-span" data-adv' + ((v.depends_on || []).length ? ' open' : '') + '>' +
+              '<summary>Waits for other tasks <span class="att-hint-inline">optional</span></summary>' +
+              '<div class="att-hint-inline wp-adv-hint">Use this only if this task cannot start until another task is finished. Only tasks of the same project are listed. Untick a task to remove its link.</div>' +
+              '<div class="wp-checks" data-deps></div>' +
+            '</details>' +
+
+            (fresh
+                ? '<div class="att-info att-span"><i data-lucide="arrow-right"></i><div><strong>What happens next:</strong> after you save, ' +
+                  'the task stays a draft that only the office can see. Open it and press Publish when it is ready for the workers.</div></div>'
+                : '') +
+
             (published
                 ? '<div class="att-field att-span" data-revision aria-live="polite"></div>' +
                   field('wpfChange', 'What changed (optional, shown in the history)',
                         '<input class="att-input" id="wpfChange" name="change_note" maxlength="300">')
-                : '');
+                : '')
+        );
     }
 
     function read(form, v) {
@@ -154,11 +201,31 @@
             (o.doc.helpers || []).forEach(h => { if (!names[h.id]) names[h.id] = h.name + ' (not available — untick)'; });
         }
 
+        const publishedTask = !!o.doc && o.doc.status !== 'draft';
         function fillWorks() {
             const p = L.projects.find(x => x.folder_id === sel('folder').value);
             const works = p ? [{ work_id: p.folder_id, name: 'Main Contract' }].concat(p.works || []) : [];
             const current = v.work_id === CHOOSE ? CHOOSE : (v.work_id || (p ? p.folder_id : ''));
-            sel('work').innerHTML = (current === CHOOSE ? chooseOpt() : '') + works.map(w => opt(w.work_id, w.name, current)).join('');
+            // Before a project is chosen the list is empty: say so, instead of a blank box.
+            const waiting = !p && current !== CHOOSE;
+            sel('work').innerHTML = waiting
+                ? '<option value="">Choose a project first</option>'
+                : (current === CHOOSE ? chooseOpt() : '') + works.map(w => opt(w.work_id, w.name, current)).join('');
+            sel('work').disabled = publishedTask || waiting;
+        }
+
+        // Helpers: a search box once the list is long, and a count of who is ticked.
+        const helperSearch = form.querySelector('[data-helper-search]');
+        function applyHelperFilter() {
+            const q = helperSearch.value.trim().toLowerCase();
+            form.querySelectorAll('[data-helpers] label').forEach(l => { l.hidden = !!q && !l.textContent.toLowerCase().includes(q); });
+            const n = ticked('helper').length;
+            form.querySelector('[data-helper-count]').textContent = n ? n + ' selected' : '';
+        }
+
+        function checkDates() {
+            const a = sel('planned_start').value, b = sel('planned_end').value;
+            form.querySelector('[data-date-err]').hidden = !(a && b && b < a);
         }
         function pool() {
             const team = L.teams.find(t => t.id === sel('team').value);
@@ -184,6 +251,9 @@
                 helperIds.filter(id => id !== chosen).map(id => check('helper', id, labelFor(id, ps), keep.includes(id))).join('') ||
                 '<span class="req-muted">No one else to add.</span>';
             helpersDrawn = true;
+            helperSearch.hidden = helperIds.length <= 8;
+            if (helperSearch.hidden) helperSearch.value = '';
+            applyHelperFilter();
         }
 
         let depsDrawn = false;
@@ -232,9 +302,13 @@
         form.addEventListener('change', e => {
             const chip = e.target.closest('.att-field') && e.target.closest('.att-field').querySelector('[data-needs]');
             if (chip && e.target.tagName === 'SELECT' && e.target.value !== CHOOSE) chip.remove();
+            applyHelperFilter();
+            checkDates();
             showRevision();
         });
         form.addEventListener('input', showRevision);
+        helperSearch.addEventListener('input', applyHelperFilter);
+        checkDates();
     }
 
     // opts: { taskId, doc, values, meetingId, onDone(savedDoc) }
@@ -261,8 +335,11 @@
             title: o.taskId ? 'Edit task' : 'New task',
             sub: o.taskId ? '' : 'Saved as a draft. Workers see it only after you publish.',
             submitLabel: o.taskId ? 'Save' : 'Save as draft',
-            body: formHtml(v, look, published),
-            onOpen: form => wire(form, v, look, { doc: o.doc, others, depInfo }),
+            body: formHtml(v, look, published, !o.taskId && !o.meetingId),
+            onOpen: form => {
+                form.closest('.att-modal-box').classList.add('wp-form-box');
+                wire(form, v, look, { doc: o.doc, others, depInfo });
+            },
             onSubmit: async form => {
                 const values = read(form, v);
                 const problem = WP.taskProblem(values);
