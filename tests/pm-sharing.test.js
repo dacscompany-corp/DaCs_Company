@@ -470,6 +470,12 @@ test('F3 same-named projects get completion date + short id', () => {
   eq(sb.ctx.PMShareDash.labelFor(b, [b, c]), 'Beta · undated · b1aaaa');
   eq(sb.ctx.PMShareDash.labelFor(c, [b, c]), 'Beta · 2026-09-10 · c2bbbb');
   eq(sb.ctx.PMShareDash.labelFor(P.project(inA), [P.project(inA)]), 'Alpha');
+  // Same name, different address → "Project · Address", no date or id.
+  const m = P.project({ ...projB, id: 'm1aaaaaa', name: 'Los Churreros', address: 'Dapitan, Manila ' });
+  const s = P.project({ ...projB, id: 's2bbbbbb', name: 'Los Churreros', address: 'San Rafael' });
+  eq(sb.ctx.PMShareDash.labelFor(m, [m, s]), 'Los Churreros · Dapitan, Manila');
+  eq(sb.ctx.PMShareDash.labelFor(s, [m, s]), 'Los Churreros · San Rafael');
+  eq(sb.ctx.PMShareDash.applyFilters([m, s], { from: '', to: '', undatedOnly: false, partner: 'all', q: 'rafael' }).map(r => r.id), ['s2bbbbbb']);
 });
 test('F4 chips coexist; Ready only when nothing else applies', () => {
   const sb = loadDash('owner');

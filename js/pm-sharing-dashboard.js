@@ -53,7 +53,7 @@
         const rows = {};
         (d.read.projects || []).forEach(r => { rows[r.project_id] = r; });
         return d.projects.filter(p => rows[p.id]).map(p => window.PMShare.project({
-            id: p.id, name: p.projectName, clientName: p.clientName, partnerEmail: p.partnerEmail,
+            id: p.id, name: p.projectName, address: p.address, clientName: p.clientName, partnerEmail: p.partnerEmail,
             status: p.status, terminatedAt: p.terminatedAt,
             bills: (d.perProject[p.id] || {}).bills || [], reqs: (d.perProject[p.id] || {}).reqs || [],
             reserveRow: d.reserves[p.id] || null, partnerPct: Number(rows[p.id].partner_pct),
@@ -87,13 +87,16 @@
                 if (f.from && key < f.from) return false;
                 if (f.to && key > f.to) return false;
             }
-            if (q && (r.name + ' ' + r.clientName).toLowerCase().indexOf(q) === -1) return false;
+            if (q && (r.name + ' ' + (r.address || '') + ' ' + r.clientName).toLowerCase().indexOf(q) === -1) return false;
             return true;
         });
     }
+    // "Project · Address" (same as the project lists). Date + short id only when that still collides.
+    const baseLabel = (r) => r.address ? r.name + ' · ' + r.address : r.name;
     function labelFor(r, all) {
-        const dup = all.filter(x => x.name === r.name).length > 1;
-        return dup ? r.name + ' · ' + (r.completionKey || 'undated') + ' · ' + String(r.id).slice(0, 6) : r.name;
+        const base = baseLabel(r);
+        const dup = all.filter(x => baseLabel(x) === base).length > 1;
+        return dup ? base + ' · ' + (r.completionKey || 'undated') + ' · ' + String(r.id).slice(0, 6) : base;
     }
     // Status words (owner decision D-A, 2026-10-19). PRIORITY picks the ONE main pill (D-B).
     const PRIORITY = ['reserve_review', 'shortfall', 'unpaid_balance', 'changed_since_closeout'];
@@ -550,7 +553,7 @@
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     }
     // Printed project name: the name, plus a short id only when the name is duplicated (the date lives in the subline).
-    const printTitle = (r, all) => r.name + (all.filter(x => x.name === r.name).length > 1 ? ' · ' + String(r.id).slice(0, 6) : '');
+    const printTitle = (r, all) => baseLabel(r) + (all.filter(x => baseLabel(x) === baseLabel(r)).length > 1 ? ' · ' + String(r.id).slice(0, 6) : '');
     function print() {
         if (!canSee() || !S.data) return;
         const m = buildModel(S.results, S.filters), t = m.totals, p = P(), f = S.filters;

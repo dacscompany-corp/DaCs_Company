@@ -110,7 +110,8 @@
     if (balanceCents < 0) flags.push('shortfall');
     if (reserve.changedSinceCloseout) flags.push('changed_since_closeout');
     return {
-      id: input.id, name: input.name || '', clientName: input.clientName || '',
+      id: input.id, name: input.name || '', address: String(input.address || '').trim(),
+      clientName: input.clientName || '',
       partnerEmail: String(input.partnerEmail || '').trim().toLowerCase(),
       status: input.status || '', completionKey: dateKey(input.terminatedAt),
       paidCents, costCents, outstandingCents, remainingCents, reserve, balanceCents,
