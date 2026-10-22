@@ -8,7 +8,7 @@
 
 **Tech Stack:** PostgreSQL / Supabase (plpgsql), Supabase Edge Function (Deno, `supabase-js@2`), vanilla JS (no build step), Node test files with no dependencies, PGlite + embedded-postgres for `npm run test:sql`.
 
-**Spec:** [Mobile Purchasing](../specs/2026-09-30-workmate-mobile-purchasing-design.md) · answers: [2A-3 questions](../specs/2026-10-20-workmate-stage2a3-questions.md) (Q1–Q22 = A; Q23 pending for 2A-3b) · rulings R1–R8: [2A-3 roadmap](2026-10-20-workmate-stage2a3-roadmap.md) (approved 20 Oct) · before: [2A-2 plan, as built](2026-10-16-workmate-stage2a2-purchasing-office.md)
+**Spec:** [Mobile Purchasing](../specs/2026-09-30-workmate-mobile-purchasing-design.md) · answers: [2A-3 questions](../specs/2026-10-20-workmate-stage2a3-questions.md) (Q1–Q22 = A; Q23 = A, answered 21 Oct, for 2A-3b) · rulings R1–R8: [2A-3 roadmap](2026-10-20-workmate-stage2a3-roadmap.md) (approved 20 Oct) · before: [2A-2 plan, as built](2026-10-16-workmate-stage2a2-purchasing-office.md)
 
 **Status:** Revision 1, 20 October 2026, **for the user's review**. Nothing is applied live and nothing is in the repo yet. The code below was built and tested first in a scratch clone (one commit per task, `npm test` green after each task, `npm run test:sql` all 13 suites green). This text was then re-applied to a fresh clone of `main` at 4fc97ec, and the result was byte-identical to the tested build (rehearsal: see the end).
 
@@ -2929,7 +2929,7 @@ Append `## Execution notes` to this plan (what passed, what was rerouted, anythi
 |---|---|
 | Q1, R1, R3 (sign-in) | Task 1 `pur_signin_can_buy`, Task 2 `eligibility.mjs` + `index.ts`; app side in 2A-3b |
 | Q2, Q4–Q7, Q9–Q13, Q20–Q22 (phone screens) | Plan 2A-3b. This plan provides their server reads (`pur_destinations`, `pur_my_purchases`) and the rules they rely on |
-| Q23 (the Terms screen for buyers) | **Pending**: not approved yet. Decided before plan 2A-3b. Nothing in this plan depends on it |
+| Q23 (the Terms screen for buyers) | **A** (answered 21 Oct): buyers skip the Attendance Terms. Plan 2A-3b. Nothing in this plan depends on it |
 | Q8, R5 (receipt or reason, phone only) | Task 1 column + trigger + `pur_insert`; Task 3 shows "No receipt" |
 | Q12 (My purchases) | Task 1 `pur_my_purchases` |
 | Q14, Q15 (keep staff void; stale stays stale) | No change: kept as built in 2A-2 |
@@ -2952,3 +2952,41 @@ This text was re-applied to a fresh clone of `main` at 4fc97ec:
 - the two CRLF docs patched with their CRs kept.
 
 The result was compared with the tested build, file by file: **byte-identical**. `npm test` exit 0; `npm run test:sql` exit 0.
+
+## Execution notes (Task 4)
+
+**Steps 1–4 (20 Oct).** 0101 applied by the user in the SQL editor at 14:34 and checked live: 10 functions, the column, check and trigger, the grants, and every body matching the file once CRs are stripped. `2a3_acceptance` and `2a1_acceptance` passed through MCP and rolled back. `2a2_acceptance` was not run, because its A0 needs staff@'s Buyer switch off. `attendance-signin` v3 was deployed at about 15:19 and smoke-tested (400 / 401). Tasks 1–3 were committed (0e7704d) and pushed. On 21 Oct the live site was serving `purchasing-admin-*.js?v=20261020a`.
+
+**Bug found by the phone check, fixed (21 Oct).** staff@ signing in to WorkMate got a **500**, not a 403. The log read `buyer check failed … 42501 permission denied for function pur_signin_can_buy`. Cause: `index.ts` signed in with `admin.auth.signInWithPassword`. supabase-js keeps the new session on the client that signed in, so every later `admin.rpc` ran as the **user**, and the service_role-only `pur_signin_can_buy` was refused. The same cause had silently dropped every `record(true)` since 0052: successful sign-ins were never written to `attendance_signin_attempts`. That was harmless, because the throttle counts failures only. Workers were never affected, because the buyer check runs only for non-workers from WorkMate. Acceptance missed it because it calls the SQL as service_role directly. **Fix:** the password sign-in uses its own `signer` client, and `admin` stays service_role. A new test in `tests/signin-eligibility.test.js` (section V) fails on the old code and passes on the fix. `npm test` exit 0. The user deployed it as **v4** with `npx supabase functions deploy attendance-signin` (the MCP deploy was blocked by this session's permission mode). Checked: v4 active, both files, `verify_jwt` true.
+
+**Step 3 phone checks (21 Oct, test phone).**
+
+| # | Check | Result |
+|---|---|---|
+| P1 | Old app Time In (W-0007, Barlin Residence, 14:23) | PASS. Record arrived, `timein_app_version` 3. The old app was already signed in, so its sign-in branch was not re-run; that branch is unchanged and unit-tested |
+| P2 | W-0007 signs in to WorkMate 0.6.0 | PASS. 200 at 14:15, reaches Home |
+| P3 | staff@ (Buyer off) signs in to WorkMate | PASS after the fix: **403** at 14:18, no `buyer check failed`. The app shows its general "Something went wrong" because 0.6.0 does not know `NO_WORKMATE_ACCESS` yet (2A-3b maps it). **R9:** the staff@ Dacs Web tab stayed signed in after a refresh |
+
+**Step 5 browser checks (21 Oct, owner admin@ + staff@).** These ran on the local copy (`127.0.0.1:5501`, same web code as live) against the live database. Test project `ZZ 2a3 browser`, with AW job `ZZ 2a3 job` (no period) and Billing #1. staff@'s Buyer switch was turned off for the round.
+
+| # | Result |
+|---|---|
+| W1 | PASS. Source column, Project Control rows read "Project Control", the real-purchases note is shown |
+| W2 | PASS. Typed search narrows without a reload and keeps focus. The project filter hides other projects; completed projects are listed as "(completed)" |
+| W3 | PASS. A purchase for the job with no period saved. The server made one hidden period (`funding_type 'downpayment'`, no `project_budgets` row). This closes B9/B10 of 2A-1 |
+| W4 | PASS. The dialog shows project, supplier, total and Source; `abc` was refused ("Type the word shown to confirm."); `ZZ` voided it |
+| W5 | PASS. Record again opened the filled-in form and saved a new purchase; the voided one stayed voided. A replaced purchase (₱200 → ₱210 by adding a line) reads "replaced by a newer version" with no Record again |
+| W6 | PASS. staff@ deleting a row on the completed project: "Void this purchase?" → "Send to the owner?" → toast, pill **Waiting for the owner**, one pending void request in the database. No new peso amount for staff |
+| W7 | PASS. Withdraw from the row; the pill is gone; the request is `withdrawn` |
+| W8 | PASS in the database: the second request was approved and the purchase was voided. The code puts "Approve this void?" with a typed word in front of it; the user had not confirmed seeing that box when these notes were written |
+| W9 | PASS. 0 `client_errors` since the push |
+
+**Follow-ups (display only, none blocks 2A-3b):**
+- The **Waiting for the owner** pill appears only after a page refresh. The pending-change cache is read at load, not after sending.
+- Correcting a **Project Control** purchase in Purchasing requires a reason on every no-request line, including lines made in Project Control, which has no reason field.
+- The replacing purchase's history reads only "Recorded"; the link to what it replaced is shown on the old purchase only.
+- A replacement made in the Purchasing tab changes the Source from "Project Control" to "Purchasing".
+
+**Clean-up (21 Oct).** The owner voided the last two ZZ purchases in the app, with the list filtered to the ZZ project. The user then ran a guarded transaction in the SQL editor (the MCP delete was declined by this session's permission mode). It removed the two ZZ folders with their periods, budget, allocation and policy rows; 5 voided purchases with 6 lines, 10 history rows and 2 change requests; and the supplier ZZ Hardware. Checked afterwards: 0 ZZ rows, and the 4 real recorded purchases untouched. The `pur_ops` rows of the test stay, as an operation log with no link.
+
+**2A-3a is live.** Q23 was answered A on 21 Oct (buyers skip the Attendance Terms), for plan 2A-3b.

@@ -2,9 +2,9 @@
 
 Date: 20 October 2026
 
-Status: **Approved 20 October 2026** (R1–R8 as written). Plan 2A-3a written 20 Oct: [2026-10-20-workmate-stage2a3a-server-web.md](2026-10-20-workmate-stage2a3a-server-web.md) (adds R9–R15; R9 approved by the user 20 Oct). Where this roadmap and the plan differ, the plan is the as-tested version; the differences found on 20 Oct are corrected below.
+Status: **Approved 20 October 2026** (R1–R8 as written). Plan 2A-3a written 20 Oct: [2026-10-20-workmate-stage2a3a-server-web.md](2026-10-20-workmate-stage2a3a-server-web.md) (adds R9–R15; R9 approved by the user 20 Oct). Plan 2A-3b written 21 Oct: [2026-10-21-workmate-stage2a3b-buyer-app.md](2026-10-21-workmate-stage2a3b-buyer-app.md) (adds R16–R27; R18–R21 approved 21 Oct). Where this roadmap and the plan differ, the plan is the as-tested version; the differences found on 20 Oct are corrected below.
 
-Answers: [2A-3 questions](../specs/2026-10-20-workmate-stage2a3-questions.md) (Q1–Q22 = A; **Q23 pending**, for 2A-3b) · Spec: [Mobile Purchasing](../specs/2026-09-30-workmate-mobile-purchasing-design.md) · Before: [2A-2 plan, as built](2026-10-16-workmate-stage2a2-purchasing-office.md)
+Answers: [2A-3 questions](../specs/2026-10-20-workmate-stage2a3-questions.md) (Q1–Q22 = A; Q23 = A, answered 21 Oct) · Spec: [Mobile Purchasing](../specs/2026-09-30-workmate-mobile-purchasing-design.md) · Before: [2A-2 plan, as built](2026-10-16-workmate-stage2a2-purchasing-office.md)
 
 2A-3 is split into **two plans**, like 1a (server → office → app → pilot):
 
@@ -35,10 +35,10 @@ Read before planning, so the plans don't promise what the server can't do.
 4. **My purchases (Q12).** A new `pur_my_purchases(p_days)`: what I bought **or** recorded, every status, the last 60 days.
 5. **Where a phone purchase can go (Q11).** `pr_office_projects()` returns top-level projects only, with a count of AW jobs. A new `pur_destinations()` returns open projects **with their open AW jobs** (id, name) for the record form.
 
-**Needs the app as well as the server (Q1; Q23 pending).**
+**Needs the app as well as the server (Q1, Q23).**
 - The app checks the role itself after sign-in (`eligibilityOf` in `lib/auth/worker_profile.dart`, called by `AppController._afterWorker`) and would sign a buyer out as "not a worker".
 - Startup re-check: a buyer's access is confirmed with `pur_me()` (`can_buy`). Offline, the last answer this phone saw is used, as workers' profiles are today.
-- What buyers see at the Terms gate: **Q23 is pending** (not approved). It is decided before plan 2A-3b.
+- What buyers see at the Terms gate: **Q23 = A** (21 Oct). Buyers skip the Attendance Terms; workers still accept them as today.
 - **Gallery photos (Q8 "camera or gallery"):** the app has the camera package only. Plan 2A-3b adds **`image_picker`**, version pinned. If it needs a newer Android build tool than the app uses (as `permission_handler` 13 did), 2A-3b falls back to **camera only** and says so; it does not upgrade the build tools.
 
 ---
@@ -76,7 +76,7 @@ Read before planning, so the plans don't promise what the server can't do.
 
 | Task | Deliverable |
 |---|---|
-| **1. Buyer accounts** | Sign-in reads `access`; `WorkMateAccount` (worker / buyer); startup re-check with `pur_me()`; the Terms gate for buyers as Q23 decides (**pending**); buyer shell: **Shopping list · My purchases · Profile** (Q2); Buyer switch off → wipe (R2) |
+| **1. Buyer accounts** | Sign-in reads `access`; `WorkMateAccount` (worker / buyer); startup re-check with `pur_me()`; buyers skip the Attendance Terms gate (Q23 = A); buyer shell: **Shopping list · My purchases · Profile** (Q2); Buyer switch off → wipe (R2) |
 | **2. Purchasing data** | Its own local database (drafts, send-once queue, saved copy), the server calls, receipt upload to `purchases/<owner>/…`, sync with "Waiting to send" / "Needs attention" (Q7), bilingual error copy (Q22) |
 | **3. Shopping list** | This week first; Mine → Unassigned → others (Q4); urgent and changed marks; project filter; claim (whole/part), release, Mark arranged on own portions, online only (Q5, Q6) |
 | **4. Record purchase** | Lines with request picks; project/AW/warehouse; unplanned with reason; extra with reason + location; "Is this the same item?" with reason + optional photo (Q10, Q11); fee/discount split; receipt photos or "No receipt" + reason (Q8); total check (Q9); works offline (Q7) |

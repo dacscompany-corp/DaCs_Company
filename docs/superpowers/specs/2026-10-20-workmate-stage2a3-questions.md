@@ -2,7 +2,7 @@
 
 Date: 20 October 2026
 
-Status: **Q1–Q22 answered 20 October 2026: all recommended (A). Q23 (added after those answers) is pending, for 2A-3b.** Implementation plan: [2A-3a](../plans/2026-10-20-workmate-stage2a3a-server-web.md) (server, sign-in, Dacs Web); 2A-3b (the app) to be written.
+Status: **Q1–Q22 answered 20 October 2026: all recommended (A). Q23 (added after those answers) answered 21 October 2026: A.** Implementation plan: [2A-3a](../plans/2026-10-20-workmate-stage2a3a-server-web.md) (server, sign-in, Dacs Web); [2A-3b](../plans/2026-10-21-workmate-stage2a3b-buyer-app.md) (the app, written 21 Oct).
 
 Related: [Mobile Purchasing spec](2026-09-30-workmate-mobile-purchasing-design.md) · [Stage 2 questions (all answered 12 Oct)](2026-10-12-workmate-stage2-questions.md) · [2A-2 questions (answered 16 Oct)](2026-10-16-workmate-stage2a2-questions.md) · [2A-2 plan, as built + execution notes](../plans/2026-10-16-workmate-stage2a2-purchasing-office.md)
 
@@ -199,7 +199,7 @@ Today WorkMate shows every signed-in person the **Attendance Terms** (version `2
 - **A (R):** Buyers **skip the Attendance Terms**. They are office accounts and never take a Time In, a photo or a location, so those terms don't apply to them. If a buyer account ever also needed attendance, that is a separate decision.
 - B: Buyers accept the same Attendance Terms as workers before the app opens.
 
-Answer: **pending** (not approved; decide before plan 2A-3b)
+Answer: **A** (21 October 2026)
 
 ---
 
@@ -215,7 +215,7 @@ Answer: **pending** (not approved; decide before plan 2A-3b)
 
 **Q1–Q22: all recommended (A).** Those were the questions on the sheet when "all R" was given.
 
-**Q23 (added afterwards): pending.** The user has not approved the Terms-screen choice (correction, 20 Oct). It is decided before plan 2A-3b. Nothing in plan 2A-3a depends on it.
+**Q23 (added afterwards): A, answered 21 October 2026.** It was still pending on 20 Oct (the user corrected an earlier note that called it approved). Buyers skip the Attendance Terms; this goes into plan 2A-3b. Nothing in plan 2A-3a depends on it.
 
 Checked while recording the answers:
 - **Q21 is safe to publish.** In the live database only one account has ever used WorkMate (test worker W-0007, build 1006, last on 16 Oct). Publishing 0.7.0 reaches no real worker. The 1b-3 "publish-day" to-dos (deactivate the ZZ pilot items, switch Item history ON for the 10 sites) stay tied to the **worker switch-over**, not to this publish.

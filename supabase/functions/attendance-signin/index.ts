@@ -114,8 +114,15 @@ Deno.serve(async (req) => {
 
   // ── 2. The actual sign-in ─────────────────────────────────────────
   // This client carries the service_role key, which is what lets the
-  // password grant through without a captcha token.
-  const { data: auth, error: authErr } = await admin.auth.signInWithPassword({
+  // password grant through without a captcha token. It is a SEPARATE
+  // client: signInWithPassword keeps the user's session on the client that
+  // made it, and every later call from that client then runs as the user.
+  // On `admin` that refused the service_role-only pur_signin_can_buy (42501)
+  // and silently dropped every record(true).
+  const signer = createClient(SUPABASE_URL, SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: auth, error: authErr } = await signer.auth.signInWithPassword({
     email,
     password,
   });

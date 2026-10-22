@@ -107,6 +107,16 @@ const STATUSES = ['active', null, 'inactive', 'deleted'];
     ok(/fromWorkMate \? \{ \.\.\.payload, access: decision\.access \} : payload/.test(src), 'access only for WorkMate');
     ok(/signOut\(session\.access_token, scope\)/.test(src), 'revoke with the decided scope');
   });
+  // Found live 2026-10-21: signInWithPassword stores the user's session on the
+  // client that made it, so every later admin.rpc ran AS the user — the
+  // service_role-only pur_signin_can_buy was refused (42501) and staff@ got a 500.
+  await test('the password sign-in uses its own client, so the admin client stays service_role', () => {
+    ok(!/admin\.auth\.signInWithPassword/.test(src), 'admin never signs in');
+    ok(/(\w+)\.auth\.signInWithPassword/.test(src), 'some client signs in');
+    const signer = src.match(/(\w+)\.auth\.signInWithPassword/)[1];
+    ok(new RegExp('const ' + signer + ' = createClient\\(').test(src), 'the signing client is its own createClient');
+    ok(!new RegExp(signer + '\\.(rpc|from)\\(').test(src), 'the signing client never reads or calls the database');
+  });
 
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) { console.log('\nFAILURES:\n  ' + failures.join('\n  ')); process.exit(1); }
