@@ -778,7 +778,9 @@ window.dacsSignedUrl = async function (urlOrPath, expiresIn = 3600) {
   // off. Download with this account's own session instead — Storage checks
   // uploads_can_read on EVERY download — and hand back a blob: copy that
   // lives only in this page (and the tab it opens). Never cached.
-  if (path.startsWith('purchases/')) {
+  // Petty-cash return photos (0102, R13: the main owner and their uploader
+  // only) are handled the same way — a signed link could be passed on.
+  if (path.startsWith('purchases/') || path.startsWith('pettyCash/')) {
     const { data, error } = await sb.storage.from('uploads').download(path);
     if (error) throw error;
     return URL.createObjectURL(data);

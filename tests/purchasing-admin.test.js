@@ -290,6 +290,11 @@ test('R13: purchase receipts are downloaded with the viewer\'s session — never
   eq(await ctx.window.dacsSignedUrl(pub(p1)), 'blob:local/' + p1);
   eq(await ctx.window.dacsSignedUrl(pub(p1)), 'blob:local/' + p1);
   eq(calls, ['download ' + p1, 'download ' + p1], 'checked by Storage on every view; no signed URL');
+  // 0102 (R13): a petty-cash return photo is the main owner's and its uploader's only — a signed link could be passed on.
+  const p2 = 'pettyCash/c0/2026-10/ret.jpg';
+  eq(await ctx.window.dacsSignedUrl(pub(p2)), 'blob:local/' + p2, 'return photos are downloaded too');
+  eq(calls.slice(2), ['download ' + p2], 'never signed');
+  calls.length = 0;
   eq(await ctx.window.dacsSignedUrl(pub('expenseReceipts/c0/2026-10/e.jpg')), 'https://signed/expenseReceipts/c0/2026-10/e.jpg', 'other receipts unchanged');
   ok(!/dacsMaybeSignUrl/.test(read('js/purchasing-admin-purchases.js')), 'the purchase screen opens receipts through the shim, not a signed link');
 });
