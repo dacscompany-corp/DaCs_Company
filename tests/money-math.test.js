@@ -94,6 +94,25 @@ test('allocation planning never enters Spent, Earned or recognised Profit', () =
   eq(portal._recognisedProfit(project), 0);
 });
 
+// 2A-4a (0102): supplier payments, petty cash, refunds, supplier credit and a
+// buyer's own money are tracked against the purchase, never as expense rows.
+// No Spent / Earned / Profit function may read them, and a payment state on
+// a purchase-made row (Project Control's owner badge) changes no total.
+test('payments, petty cash and own money never enter Spent, Earned or recognised Profit', () => {
+  for (const name of ['_projSpent', '_projEarned', '_projMargin', '_recognisedProfit', 'buildProject']) {
+    ok(!/pur_pay|pur_payments|payBadge|PayBadge|pettyCash|petty_cash|ownMoney|own_money|supplierCredit|pur_refunds|cashHeld|owesBuyer/.test(portal[name].toString()),
+      name + ' must stay independent of payments');
+  }
+  const folder = { id: 'f1', totalBudget: 100000 };
+  const months = [{ id: 'm1', monthlyBudget: 50000, fundingType: 'progress' }];
+  const rows = [{ projectId: 'm1', amount: 3000, docs: {}, purchaseLineId: 'L1' }];
+  const paid = rows.map(r => ({ ...r, payState: 'overpaid', payPaid: 9000 }));
+  const a = portal.buildProject(folder, months, [], rows, []);
+  const b = portal.buildProject(folder, months, [], paid, []);
+  eq(b.material, a.material); eq(b.spent, a.spent); eq(b.coverCost, a.coverCost);
+  eq(b.spent, 3000);   // the purchase, not what was paid
+});
+
 function pakyaw(expPayroll) {
   return evalWith(
     slice(expensesSrc, 'function lcDrawsDown', '// Worker names seen on this folder', 'expenses-module.js'),

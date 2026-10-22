@@ -74,6 +74,8 @@ const FOLDERS = {
   expenseReceipts: 'tenant', payrollReceipts: 'tenant',
   // 0097: one receipt per purchase — only accounts that may BUY in that company.
   purchases: 'buyer',
+  // 0102 (R13): a petty-cash return photo — the main owner and the buyer who uploaded it.
+  pettyCash: 'pettyCash',
 };
 const OWNER_ONLY_SQL = "('quotations', 'reimbursementReceipts')";
 const CLIENT_PROJECT_SQL = "('weeklyBillReceipts', 'procurementReceipts', 'accomplishmentReports', 'projectTerms')";
@@ -197,6 +199,22 @@ test('purchase receipts are buyer-locked (0097): buyers of THAT company only, be
   const from = sql.lastIndexOf('create policy "uploads_admin_update"');
   const upd = sql.slice(from, sql.indexOf(');', from) + 2);
   ok(upd.includes("split_part(name, '/', 1) = 'purchases'") && upd.includes('pur_buyer()'), 'overwrite policy is not buyer-locked for purchases');
+});
+
+test('petty-cash return photos are locked to the main owner and their uploader (0102, R13), before every other rule', () => {
+  const r = lastFn('uploads_can_read');
+  const w = lastFn('uploads_can_write');
+  ok(r.includes("v_folder = 'pettyCash' then\n    return pur_petty_reader(p_name);"), 'read rule for pettyCash missing or reshaped');
+  ok(w.includes("v_folder = 'pettyCash' then\n    return pur_buyer() and v_seg2 = data_owner_id()::text;"), 'write rule for pettyCash missing or reshaped');
+  ok(r.indexOf("v_folder = 'pettyCash'") < r.indexOf('p_owner_id = v_uid::text then return true'), 'read: pettyCash rule must precede the uploader read-back');
+  ok(r.indexOf("v_folder = 'pettyCash'") < r.indexOf('if is_owner() or is_staff() then return true'), 'read: pettyCash rule must precede the generic rule');
+  ok(w.indexOf("v_folder = 'pettyCash'") < w.indexOf('if is_owner() or is_staff() then return true'), 'write: pettyCash rule must precede the generic rule');
+  // The purchases rule is still there, unchanged, in the same latest definition.
+  ok(r.includes("v_folder = 'purchases' then\n    return pur_buyer() and split_part(p_name, '/', 2) = data_owner_id()::text;"), 'purchases read rule kept');
+  const sql = allRules();
+  const from = sql.lastIndexOf('create policy "uploads_admin_update"');
+  const upd = sql.slice(from, sql.indexOf(');', from) + 2);
+  ok(upd.includes("split_part(name, '/', 1) = 'pettyCash' then false"), 'a return photo is never overwritten');
 });
 
 console.log('\nIII. Every upload folder is classified');

@@ -22,7 +22,11 @@ const M96 = read(path.join(ROOT, 'supabase/migrations/0096_purchase_recording.sq
 const M97 = read(path.join(ROOT, 'supabase/migrations/0097_purchasing_office.sql'));
 // --with-0101: the same tests with 2A-3a's 0101 on top — 0101 must not change
 // how the Purchasing tab buys, covers, corrects or approves.
-const WITH_0101 = process.argv.includes('--with-0101');
+// --with-0102: and 2A-4a's 0102 on top of 0101.
+const WITH_0102 = process.argv.includes('--with-0102');
+const M98 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0098_pm_profit_sharing.sql')) : '';
+const M102 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0102_purchase_payments.sql')) : '';
+const WITH_0101 = process.argv.includes('--with-0101') || WITH_0102;
 const M101 = WITH_0101 ? read(path.join(ROOT, 'supabase/migrations/0101_purchasing_phone.sql')) : '';
 
 // The 2A-1 base schema (same as 2a1_purchase.pglite.mjs).
@@ -92,6 +96,7 @@ async function fresh() {
   await db.exec(prBase(ROOT));
   await db.exec(M97);
   if (WITH_0101) { await db.exec(`create role service_role`); await db.exec(M101); }
+  if (WITH_0102) { await db.exec(fnText(M98, 'pm_main_owner_id')); await db.exec(M102); }
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
     ('${STAFF}', 'staff', '${OWNER}', 'active', null, 'staff@dacs.test', null),
@@ -158,7 +163,7 @@ async function spent(db, folderId) {
   return num((await one(db, `select coalesce(sum(e.amount), 0) s from expenses e join projects p on p.id = e.project_id where p.folder_id = $1`, [folderId])).s);
 }
 
-console.log('\n2A-2 purchasing tab + Buyer switch (0096 + 0097' + (WITH_0101 ? ' + 0101' : '') + ' on PGlite)');
+console.log('\n2A-2 purchasing tab + Buyer switch (0096 + 0097' + (WITH_0101 ? ' + 0101' : '') + (WITH_0102 ? ' + 0102' : '') + ' on PGlite)');
 
 // ── A. The Buyer switch ──────────────────────────────────────────────
 

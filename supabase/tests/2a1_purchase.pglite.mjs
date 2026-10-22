@@ -20,7 +20,11 @@ const read = (p) => fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
 // --with-0097: the same tests with 2A-2's migration applied on top — 0097
 // must not change how a purchase is recorded, funded, corrected or voided.
 // --with-0101: the same again with 2A-3a's 0101 on top of 0097.
-const WITH_0101 = process.argv.includes('--with-0101');
+// --with-0102: and 2A-4a's 0102 on top of those (payments must not change recording).
+const WITH_0102 = process.argv.includes('--with-0102');
+const M98 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0098_pm_profit_sharing.sql')) : '';
+const M102 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0102_purchase_payments.sql')) : '';
+const WITH_0101 = process.argv.includes('--with-0101') || WITH_0102;
 const WITH_0097 = process.argv.includes('--with-0097') || WITH_0101;
 const PR_BASE = WITH_0097 ? (await import('./pr_base.mjs')).prBase(ROOT) : '';
 const M97 = WITH_0097 ? read(path.join(ROOT, 'supabase/migrations/0097_purchasing_office.sql')) : '';
@@ -97,6 +101,7 @@ async function fresh() {
   await db.exec(read(MIG));
   if (WITH_0097) { await db.exec(PR_BASE); await db.exec(M97); }
   if (WITH_0101) { await db.exec(`create role service_role`); await db.exec(M101); }
+  if (WITH_0102) { await db.exec(fnText(M98, 'pm_main_owner_id')); await db.exec(M102); }
   await db.exec(`insert into profiles values
     ('${OWNER}', 'owner', null, 'active', null), ('${STAFF}', 'staff', '${OWNER}', 'active', null),
     ('${WORKER}', 'worker', '${OWNER}', 'active', null), ('${OTHER}', 'owner', null, 'active', null),
@@ -142,7 +147,7 @@ async function code(promise) {
   try { await promise; return 'no error'; } catch (e) { return e.message; }
 }
 
-console.log('\n2A-1 purchase recording (0096' + (WITH_0097 ? ' + 0097' : '') + (WITH_0101 ? ' + 0101' : '') + ' on PGlite)');
+console.log('\n2A-1 purchase recording (0096' + (WITH_0097 ? ' + 0097' : '') + (WITH_0101 ? ' + 0101' : '') + (WITH_0102 ? ' + 0102' : '') + ' on PGlite)');
 
 await test('§3.3 example: ₱8,000 on 14 Oct → ₱3,000 + ₱4,000 + ₱1,000 Cover (earliest billing number first)', async () => {
   const db = await fresh(); await as(db, OWNER);

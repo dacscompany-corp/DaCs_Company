@@ -21,6 +21,10 @@ const M94 = read(path.join(ROOT, 'supabase/migrations/0094_workmate_work_plan_of
 const M96 = read(path.join(ROOT, 'supabase/migrations/0096_purchase_recording.sql'));
 const M97 = read(path.join(ROOT, 'supabase/migrations/0097_purchasing_office.sql'));
 const M101 = read(path.join(ROOT, 'supabase/migrations/0101_purchasing_phone.sql'));
+// --with-0102: the same tests with 2A-4a's 0102 on top — payments must not change the phone server.
+const WITH_0102 = process.argv.includes('--with-0102');
+const M98 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0098_pm_profit_sharing.sql')) : '';
+const M102 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0102_purchase_payments.sql')) : '';
 
 // The 2A-1 base schema (same as 2a1_purchase.pglite.mjs), plus the service
 // role the sign-in function runs as.
@@ -104,6 +108,7 @@ async function fresh() {
   await db.exec(prBase(ROOT));
   await db.exec(M97);
   await db.exec(M101);
+  if (WITH_0102) { await db.exec(fnText(M98, 'pm_main_owner_id')); await db.exec(M102); }
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
     ('${STAFF}', 'staff', '${OWNER}', 'active', null, 'staff@dacs.test', null),
@@ -160,7 +165,7 @@ async function periodsOf(db, folderId) {
                     from projects p where p.folder_id = $1 order by p.created_at, p.id`, [folderId]);
 }
 
-console.log('\n2A-3a phone purchasing server (0096 + 0097 + 0101 on PGlite)');
+console.log('\n2A-3a phone purchasing server (0096 + 0097 + 0101' + (WITH_0102 ? ' + 0102' : '') + ' on PGlite)');
 
 // ── A. Signing a buyer in (Q1, R1, R3) ──────────────────────────────
 
@@ -411,9 +416,10 @@ await test('My purchases rows have the office list shape (same builder) plus not
   const a = (await one(db, `select pur_my_purchases(60) l`)).l[0];
   const b = (await one(db, `select pur_purchases(null, null, null, 'all') l`)).l.find(x => x.id === r.purchase_id);
   eq(a, b, 'identical rows');
-  eq(Object.keys(b).sort(), ['bought_by_name', 'extra', 'id', 'lines', 'linked', 'needs_review', 'no_receipt_reason', 'pending_change',
+  eq(Object.keys(b).sort(), ['bought_by_name', 'extra', 'id', 'lines', 'linked', 'needs_review', 'no_receipt_reason',
+    ...(WITH_0102 ? ['pay'] : []), 'pending_change',
     'projects', 'purchase_date', 'receipt_total', 'recorded_by_name', 'replaced_by', 'source', 'status', 'supplier', 'unit_check',
-    'unplanned', 'warehouse'], '0097 keys + no_receipt_reason + replaced_by');
+    'unplanned', 'warehouse'], '0097 keys + no_receipt_reason + replaced_by' + (WITH_0102 ? ' + pay (0102)' : ''));
 });
 
 await test('My purchases is for buyers only, and the window is 1–366 days', async () => {
