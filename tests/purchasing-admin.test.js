@@ -484,19 +484,78 @@ test('Q16: Project Control shows "Waiting for the owner" and offers Withdraw', (
   ok(/Waiting for the owner/.test(read('js/portal-app.compiled.js')) && /expPurPendingChange/.test(read('js/portal-app.compiled.js')),
     'Project Control\'s Materials list shows the pill');
 });
+// The cache-buster of a file in admin.html, e.g. "20261022a".
+const busterOf = (html, file) => ((html.match(new RegExp(file.replace(/[.\/]/g, '\\$&') + '\\?v=(\\d{8}[a-z])')) || [])[1] || '');
 test('2A-3a: changed scripts are re-fetched (cache-busters bumped)', () => {
   const html = read('admin.html');
   // purchasing-admin-list.js and the CSS changed in PR #46 (record form sections) and were bumped at the merge.
+  // A later bump is fine: the buster may only move forward.
   for (const f of ['purchasing-admin-core', 'purchasing-admin-purchases', 'purchasing-admin-record', 'purchasing-admin-list', 'expenses-module']) {
-    ok(new RegExp('js/' + f + '\\.js\\?v=20261020a').test(html), f + ' bumped');
+    ok(busterOf(html, 'js/' + f + '.js') >= '20261020a', f + ' bumped');
   }
-  ok(/css\/purchasing-admin\.css\?v=20261020a/.test(html), 'purchasing-admin.css bumped');
+  ok(busterOf(html, 'css/purchasing-admin.css') >= '20261020a', 'purchasing-admin.css bumped');
 });
 test('merge with PR #46: the "nobody asked for it" banner never reads requestLines of a Record again form', () => {
   const rec = read('js/purchasing-admin-record.js');
   ok(/!st\.editId && !st\.againOf && !\(ctx\.requestLines \|\| \[\]\)\.length/.test(rec), 'guarded (a Record again ctx has no requestLines)');
   ok(!/!ctx\.requestLines\.length/.test(rec), 'no unguarded read left');
   ok(/st\.againOf \? 'Record again — purchase details'/.test(rec), 'Record again names its first section');
+});
+
+console.log('\npurchasing-admin: 2A-3a follow-ups (22 Oct) — pill now, a Project Control purchase keeps its rules, the two versions link');
+
+test('follow-up 2: the no-request reason is asked only where the server asks it (Purchasing and phone purchases)', () => {
+  ok(pa.unplannedReasonNeeded('purchasing') && pa.unplannedReasonNeeded('workmate') && pa.unplannedReasonNeeded(undefined), 'Purchasing, phone, a new purchase');
+  ok(!pa.unplannedReasonNeeded('expenses_form'), 'a Project Control purchase never had the field');
+  const line = { itemName: 'Plywood', quantity: 2, amount: 900, destination: 'project', folderId: 'F1', unplannedReason: '' };
+  const st = (source) => ({ source, purchaseDate: '2026-10-22', lines: [line], charges: [] });
+  eq(pa.formProblems(st('expenses_form')), [], 'correcting a Project Control purchase');
+  eq(pa.formProblems(st('purchasing')).map(p => p.code), ['UNPLANNED_REASON_REQUIRED']);
+  eq(pa.formProblems(st('workmate')).map(p => p.code), ['UNPLANNED_REASON_REQUIRED']);
+  eq(pa.formProblems(st(undefined)).map(p => p.code), ['UNPLANNED_REASON_REQUIRED'], 'a new purchase in the tab');
+  const rec = read('js/purchasing-admin-record.js');
+  ok(/PA\.unplannedReasonNeeded\(st\.source\) \? '' : ' \(optional\)'/.test(rec), 'the field says optional when it is');
+});
+test('follow-up 4: a correction or replacement keeps where the purchase was entered', () => {
+  const base = { purchaseDate: '2026-10-22', lines: [], charges: [] };
+  eq(pa.buildBody(base).source, 'purchasing', 'a new purchase in the tab');
+  eq(pa.buildBody({ ...base, source: 'expenses_form' }).source, 'expenses_form', 'Project Control stays Project Control');
+  eq(pa.buildBody({ ...base, source: 'workmate' }).source, 'workmate', 'Phone stays Phone');
+  const rec = read('js/purchasing-admin-record.js');
+  const from = rec.slice(rec.indexOf('function fromPurchase'), rec.indexOf('function fromAgain'));
+  ok(/source: doc\.source \|\| 'purchasing'/.test(from), 'fromPurchase takes the stored source');
+  ok(!/source:/.test(rec.slice(rec.indexOf('function fromAgain'), rec.indexOf('function parsed'))), 'Record again is a new purchase of this tab');
+});
+test('follow-up 4: a phone purchase\'s "No receipt" reason goes with its replacement (the server refuses a phone purchase with neither)', () => {
+  const base = { purchaseDate: '2026-10-22', lines: [], charges: [], source: 'workmate' };
+  eq(pa.buildBody({ ...base, noReceiptReason: ' sari-sari store ' }).no_receipt_reason, 'sari-sari store');
+  ok(!('no_receipt_reason' in pa.buildBody(base)), 'none sent when there is none');
+  ok(/noReceiptReason: doc\.no_receipt_reason \|\| ''/.test(read('js/purchasing-admin-record.js')), 'fromPurchase keeps it');
+});
+test('follow-up 1: "Waiting for the owner" shows at once after sending, from every place that sends', () => {
+  const em = read('js/expenses-module.js');
+  const send = em.slice(em.indexOf('async function _purSendToOwner'), em.indexOf('async function _purForRow'));
+  ok(/showExpNotif\('Sent to the owner for approval\.', 'success'\);\s*\/\/[^\n]*\n\s*_purLoadReviewFlags\(\);/.test(send), 'Project Control / Expenses re-read after sending');
+  ok(/window\.expPurReloadFlags = _purLoadReviewFlags;/.test(em), 'exposed to the Purchasing tab');
+  const pur = read('js/purchasing-admin-purchases.js');
+  ok(/if \(sentToOwner && root\.expPurReloadFlags\) root\.expPurReloadFlags\(\);/.test(pur), 'a void sent from the purchase');
+  const rec = read('js/purchasing-admin-record.js');
+  const offer = rec.slice(rec.indexOf('function offerOwner'), rec.indexOf('async function renderRecord'));
+  ok(/onDone: \(\) => \{[\s\S]*if \(root\.expPurReloadFlags\) root\.expPurReloadFlags\(\);/.test(offer), 'a correction sent from the form');
+});
+test('follow-up 3: the two versions of a replaced purchase link to each other', () => {
+  const pur = read('js/purchasing-admin-purchases.js');
+  ok(/data-open-purchase="' \+ esc\(doc\.replaced_by\) \+ '">Open the newer version/.test(pur), 'old → new');
+  ok(/from\('purchases'\)\.select\('id'\)\.eq\('replaced_by', doc\.id\)/.test(pur), 'new → old, found by its replaced_by');
+  ok(/data-open-purchase="' \+ esc\(replaces\) \+ '">Open the earlier version/.test(pur), 'the link back');
+  ok(/querySelectorAll\('\[data-open-purchase\]'\)[\s\S]{0,120}PA\.openPurchase\(a\.dataset\.openPurchase\)/.test(pur), 'both open the purchase');
+  ok(!/from\('purchase/.test(read('js/expenses-module.js')), 'still no purchase-table read in Project Control (staff)');
+});
+test('22 Oct: the four changed scripts are re-fetched', () => {
+  const html = read('admin.html');
+  for (const f of ['purchasing-admin-core', 'purchasing-admin-purchases', 'purchasing-admin-record', 'expenses-module']) {
+    ok(busterOf(html, 'js/' + f + '.js') >= '20261022a', f + ' bumped');
+  }
 });
 
 Promise.all(pending).then(() => {

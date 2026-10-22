@@ -2906,6 +2906,8 @@ async function _purSendToOwner(purchaseId, kind, body, reason) {
         p_kind: kind, p_body: body, p_reason: reason });
     if (error) throw error;
     showExpNotif('Sent to the owner for approval.', 'success');
+    // The row's "Waiting for the owner" pill, now — not after a refresh.
+    _purLoadReviewFlags();
     return true;
 }
 
@@ -2963,6 +2965,8 @@ async function _purLoadReviewFlags() {
 }
 window.expPurNeedsReview = id => !!id && _purReviewLines.has(id);
 window.expPurPendingChange = id => (id && _purPending.get(id)) || null;
+// The Purchasing tab sends changes to the owner too; it re-reads the flags.
+window.expPurReloadFlags = _purLoadReviewFlags;
 
 // Q16: a purchase-made row whose purchase has a change this account sent to
 // the owner. Changing it now would make that request out of date, so offer

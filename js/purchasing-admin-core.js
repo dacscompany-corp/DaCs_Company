@@ -195,7 +195,16 @@
         return round2(items + fees - disc);
     }
 
+    // A line with no request needs a reason only on a purchase entered in the
+    // Purchasing tab or on the phone — the server's own rule (pur_store reads
+    // the purchase's source). Project Control purchases have no such field.
+    function unplannedReasonNeeded(source) {
+        return ['purchasing', 'workmate'].indexOf(source || 'purchasing') !== -1;
+    }
+
     // The pur_record / pur_correct / pur_replace body from the form state.
+    // A correction or replacement keeps the purchase's own source (st.source):
+    // where it was entered never changes, and the server's rules follow it.
     function buildBody(st) {
         const lines = (st.lines || []).map(l => {
             const out = {
@@ -229,7 +238,7 @@
             return ch;
         });
         const body = {
-            source: 'purchasing',
+            source: st.source || 'purchasing',
             purchase_date: st.purchaseDate,
             // A correction keeps the stored time of day while the date is unchanged.
             date_time: st.dateTime && String(st.dateTime).slice(0, 10) === st.purchaseDate ? st.dateTime : st.purchaseDate,
@@ -243,6 +252,9 @@
             charges,
         };
         if (st.boughtBy) body.bought_by = st.boughtBy;
+        // A phone purchase's "No receipt" reason rides along: replacing it makes
+        // a new purchase, and the server refuses a phone purchase with neither.
+        if (String(st.noReceiptReason || '').trim()) body.no_receipt_reason = String(st.noReceiptReason).trim();
         return body;
     }
 
@@ -268,7 +280,7 @@
                 // thing in other words or a substitute — the buyer says which.
                 if ((l.match || 'same') === 'same' && l.requestName && norm(l.itemName) !== norm(l.requestName)) out.push({ code: 'NAME_DIFFERS', line });
                 if (l.match === 'substitute' && !String(l.substituteReason || '').trim()) out.push({ code: 'SUBSTITUTE_REASON_REQUIRED', line });
-            } else if (!String(l.unplannedReason || '').trim()) {
+            } else if (unplannedReasonNeeded(st.source) && !String(l.unplannedReason || '').trim()) {
                 out.push({ code: 'UNPLANNED_REASON_REQUIRED', line });
             }
         });
@@ -522,7 +534,7 @@
 
     const pure = { round2, round3, peso, qty, parseMoney, parseQty, sameUnit, portionActions, buyerLabel, filterList,
                    listSummary, coverPreview, pickedStill, lineStill, defaultPicks, countsDirectly, docUploads, storedDocs, prorate, receiptTotal,
-                   buildBody, formProblems, HISTORY_LABEL, REQUEST_STATUS, purchaseFlags, needsOwner, changeRows, ERRORS,
+                   buildBody, formProblems, unplannedReasonNeeded, HISTORY_LABEL, REQUEST_STATUS, purchaseFlags, needsOwner, changeRows, ERRORS,
                    errorMessage, SOURCE_LABEL, sourceLabel, searchPurchases, voidWord, voidConfirmed, placesOf, canRecordAgain,
                    chargesOf, recordAgainState };
 

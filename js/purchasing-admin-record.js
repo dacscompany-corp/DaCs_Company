@@ -5,7 +5,8 @@
 // it, or from a voided purchase to record it again (R7, 2A-3a: a NEW
 // purchase filled in from the old one). Saves through the SAME server
 // operations as everything else:
-//   new            → pur_record   (source 'purchasing')
+//   new            → pur_record   (source 'purchasing'; a correction or
+//                                  replacement keeps the purchase's own source)
 //   same lines     → pur_correct  (reason required)
 //   lines added or removed → pur_replace (reason required)
 // The server decides Spent, the billing periods and what each line covers;
@@ -81,6 +82,9 @@
         (doc.requests || []).forEach(r => { reqs[r.line] = r; });
         return {
             opId: root.DacsReceipts.newId(), editId: doc.id, editLines: (doc.lines || []).length, reason: '',
+            // Where it was entered stays (a replacement too); a phone
+            // purchase's "No receipt" reason goes with it.
+            source: doc.source || 'purchasing', noReceiptReason: doc.no_receipt_reason || '',
             purchaseDate: doc.purchase_date, supplierId: doc.supplier_id || '', supplier: doc.supplier_id ? '' : (doc.supplier || ''),
             paymentMethod: doc.payment_method || '', notes: doc.notes || '', boughtBy: doc.bought_by || '',
             dateTime: doc.date_time || '',
@@ -211,7 +215,8 @@
               '</select></label>' +
             '</div>' +
             (linked ? '' :
-              '<div class="pur-rec-row"><label class="att-label pur-w2">Why was it bought without a request?<input class="att-input" data-f="unplannedReason" data-i="' + i + '" maxlength="300" placeholder="What it was for and why it was not requested" value="' + esc(l.unplannedReason) + '"></label></div>') +
+              '<div class="pur-rec-row"><label class="att-label pur-w2">Why was it bought without a request?' +
+                (PA.unplannedReasonNeeded(st.source) ? '' : ' (optional)') + '<input class="att-input" data-f="unplannedReason" data-i="' + i + '" maxlength="300" placeholder="What it was for and why it was not requested" value="' + esc(l.unplannedReason) + '"></label></div>') +
             '</div></div>';
     }
 
@@ -353,7 +358,12 @@
             onSubmit: async () => {
                 await RA.rpc('pur_request_change', { p_op: root.DacsReceipts.newId(), p_purchase: editId, p_kind: kind, p_body: body, p_reason: reason });
             },
-            onDone: () => { ctx = null; st = null; PA.ui.tab = 'purchases'; PA.openPurchase(editId); },
+            onDone: () => {
+                ctx = null; st = null;
+                // Project Control's "Waiting for the owner" pill, now — not after a refresh.
+                if (root.expPurReloadFlags) root.expPurReloadFlags();
+                PA.ui.tab = 'purchases'; PA.openPurchase(editId);
+            },
         });
     }
 

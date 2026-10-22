@@ -125,12 +125,19 @@
 
     async function renderPurchase(host) {
         host.innerHTML = '<div class="att-stack"><div class="att-empty">Loading…</div></div>';
-        let me, doc;
+        let me, doc, replaces = null;
         try {
             me = await PA.me();
             if (!PA.state.purchaseId) { root.switchView('reqPurchasing'); return; }
             doc = await RA.rpc('pur_purchase', { p_purchase: PA.state.purchaseId });
         } catch (e) { RA.fail(host, e); return; }
+        // The earlier version this purchase replaced, if any (the server keeps
+        // only the forward link). This tab is buyers-only, and buyers may read
+        // purchase rows; for anyone else it finds nothing and nothing is shown.
+        try {
+            const r = await root.sbClient.from('purchases').select('id').eq('replaced_by', doc.id).limit(1);
+            if (!r.error && r.data && r.data.length) replaces = r.data[0].id;
+        } catch (_) { /* only a link */ }
         const open = doc.status === 'recorded';
         const pending = (doc.change_requests || []).find(r => r.status === 'pending');
         const docs = Object.entries(doc.docs || {}).filter(([, v]) => v);
@@ -145,7 +152,10 @@
                 (open && !pending ? '<button type="button" class="att-btn" data-correct>Correct…</button><button type="button" class="att-btn att-btn--warn" data-void>Void…</button>' : '') +
                 (PA.canRecordAgain(doc) ? '<button type="button" class="att-btn" data-again>Record again…</button>' : '')) +
               (doc.status === 'void' ? '<div class="att-info att-info--warn"><i data-lucide="ban"></i><div>Voided — it counts for nothing in Spent or Bought. ' +
-                  (doc.replaced_by ? 'It was replaced by a newer version.' : 'Its receipt and history are kept.') + '</div></div>' : '') +
+                  (doc.replaced_by ? 'It was replaced by a newer version. <a class="att-link" href="#" data-open-purchase="' + esc(doc.replaced_by) + '">Open the newer version</a>'
+                                   : 'Its receipt and history are kept.') + '</div></div>' : '') +
+              (replaces ? '<div class="att-info"><i data-lucide="history"></i><div>This is a newer version: it replaced an earlier purchase. ' +
+                  '<a class="att-link" href="#" data-open-purchase="' + esc(replaces) + '">Open the earlier version</a></div></div>' : '') +
               (pending ? '<div class="att-info"><i data-lucide="hourglass"></i><div>A change is waiting for the owner (' + esc(pending.kind) + ', by ' +
                   esc(pending.requested_by_name) + '): ' + esc(pending.reason) + '</div></div>' : '') +
               (doc.no_receipt_reason ? '<div class="att-info att-info--warn"><i data-lucide="receipt"></i><div>No receipt: ' +
@@ -171,6 +181,10 @@
 
         const reload = () => renderPurchase(host);
         host.querySelector('[data-back]').addEventListener('click', () => { PA.ui.tab = 'purchases'; root.switchView('reqPurchasing'); });
+        host.querySelectorAll('[data-open-purchase]').forEach(a => a.addEventListener('click', (e) => {
+            e.preventDefault();
+            PA.openPurchase(a.dataset.openPurchase);
+        }));
         // Purchase receipts are never given a signed link: window.open (the
         // shim in supabase-config.js §11b) downloads the photo with this
         // account's session — Storage checks the Buyer rule on every
@@ -209,7 +223,12 @@
                 }
             },
             // The modal has closed (and cleared the shared host) by now.
-            onDone: () => { reload(); if (sentToOwner) PA.notice('Only the owner can void this one (completed project). It was sent to the owner for approval.', 'Sent to the owner'); },
+            onDone: () => {
+                reload();
+                // Project Control's "Waiting for the owner" pill, now — not after a refresh.
+                if (sentToOwner && root.expPurReloadFlags) root.expPurReloadFlags();
+                if (sentToOwner) PA.notice('Only the owner can void this one (completed project). It was sent to the owner for approval.', 'Sent to the owner');
+            },
         }));
         host.querySelectorAll('[data-check]').forEach(b => b.addEventListener('click', () => {
             const l = doc.lines.find(x => String(x.line) === b.dataset.check);
