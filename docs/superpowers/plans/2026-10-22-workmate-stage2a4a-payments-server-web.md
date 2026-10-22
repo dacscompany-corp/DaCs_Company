@@ -5849,3 +5849,47 @@ A fresh clone of the real repo at `c12a98e` (`core.autocrlf=false`). Task 1 and 
 - All **26 files** are **byte-identical** to the tested build (raw bytes, line endings included). The README and DATABASE_SCHEMA diffs show only the added lines (36 insertions, 2 deletions).
 - The first rehearsal found that the LF diffs leave LF lines inside the two CRLF files. Step 1's CRLF command was added for that, and the rehearsal was repeated with it.
 - `npm test` on the rehearsed copy: green, all 39 suites. `npm run test:sql` was not repeated there, because the files are byte-identical to those it passed on.
+
+---
+
+## Execution notes (22–23 October 2026)
+
+**Task 1** applied to `main` from this plan's text (13 files byte-identical to scratch `0264374`; `npm test` green, `npm run test:sql` all 18 suites green) and committed by the user as `c30cde8`. **Task 2** applied the same way (15 files byte-identical to scratch `1bc6118`; `npm test` 39 suites green), committed and pushed as `8595ea5`.
+
+**0102 live.** The user ran the file in the SQL editor on 22 Oct ~20:28, before Task 1 was committed (the plan said commit first). Checked through MCP, read-only, the same evening:
+- the nine tables are present, RLS on, 0 policies, no direct select/insert for signed-in users;
+- the 19 earlier purchases read `payments_tracked = false`, and the column defaults to true;
+- **63/63 function bodies match the file** (`md5(replace(prosrc, chr(13), ''))`);
+- internal functions are not callable by `authenticated`, every screen function is, and nothing is granted to `anon`;
+- the `uploads_admin_update` and `receipt_uploads_insert` policies carry `pettyCash` / `petty_cash`.
+
+`2a4_acceptance.sql` (A–H) passed live and rolled back, with 0 ZZ rows left.
+
+**Browser checks:** owner `admin@`, buyer `staff@` (Buyer switch on), project `ZZ 2a4 pilot`, supplier `ZZ Pay Hardware`; run from a local copy against the live database. **All pass:** C1–C14, C7b, C10b and C13b. Notes:
+- C2: ₱500 was typed; a second ₱4,500 entry made ₱5,000, which also proved that entries add up.
+- C6: the suggested split was first saved unchanged (₱500 back into petty cash, R5 working). It was then voided (refund void tested) and resolved again as ₱300 refund + ₱200 credit.
+- Extra passes:
+  - **R8**: voiding a payment a refund relies on is refused with "Void that refund or credit first".
+  - Repaying above what is owed is refused before sending.
+  - **R9**: a rejected own-money payment still pays the supplier — a later ₱100 on that purchase made it Overpaid.
+- C13, the daily report: the 22 Oct closing stayed ₱2,550 after voids made on 23 Oct; the reversals sit on 23 Oct; the 23 Oct closing was ₱970 (R7 as approved).
+- C14: no `client_errors` since the push.
+
+**Findings:**
+
+| # | Finding | Status |
+|---|---|---|
+| F2 | A petty-cash return photo opened as a **signed link** (shareable until it expired) — R13 weakened. `dacsSignedUrl` treated only `purchases/` as download-only | **Fixed** `2949719`: `pettyCash/` downloads too (test in `purchasing-admin.test.js`, failed first) |
+| F1 | An empty warning box showed as a beige strip (`.att-info { display: flex }` overrides `[hidden]`) | **Fixed** `c3f4587`: `.att-info[hidden] { display: none; }` in `purchasing-admin.css` |
+| F4 | Project Control's payment tags were read once per page load — stale after payments in Purchasing or another user's purchase | **Fixed** `c3f4587`: re-read after every Payments-card / Cash-tab action and when the Materials list opens; re-checked live (ZZ brush turned Overpaid with no refresh) |
+| F5 | The daily report said "Petty cash received" but its reversal said "Void: Petty cash given" | **Fixed** `c3f4587` on screen (`reportRows`); a test reads the server's four reversal names and checks that each matches an entry label |
+| F3 | A buyer cannot reopen their own return photo: `pur_cash_detail` does not send `photo_url` (the storage rule allows it) | **Deferred to plan 2A-4b** (the phone's My cash needs the same field; one migration 0103) |
+
+**Clean-up (23 Oct ~01:58):**
+- The user voided the 7 recorded ZZ purchases in Purchasing (list filtered to `ZZ 2a4 pilot`), then ran the guarded `zz-2a4-cleanup.sql` in the SQL editor.
+- It deleted: the folder and its period, the 8 purchases, the supplier, and every 0102 money row (11 payments, 2 refunds, 1 credit, 2 petty-cash entries, 1 return, 1 repayment, 27 history entries — the history guard was switched off inside that transaction only, and checked back on).
+- It also removed the 2 upload records.
+- Verified via MCP: 0 ZZ rows, 0 money rows, history guard on, the 9 real recorded purchases untouched, staff@'s Buyer switch still on.
+- The 2 photo files are deleted by hand in Storage.
+
+**Next:** plan **2A-4b** (the phone), including F3.
