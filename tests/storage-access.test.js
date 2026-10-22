@@ -226,7 +226,7 @@ function uploadFolders() {
     /storage\.ref\(\s*[`'"]([A-Za-z][\w-]*)\//g,          // storage.ref('folder/…')
     /const path\s*=\s*[`'"]([A-Za-z][\w-]*)\//g,           // const path = `folder/…`
     /\b(?:store|contracts):\s*'([A-Za-z][\w-]*)'/g,        // expenses-module agreement config
-    /\b(?:expense|payroll|purchase):\s*'([A-Za-z][\w-]*)'/g, // receipt-storage.js FOLDER map
+    /\b(?:expense|payroll|purchase|petty_cash):\s*'([A-Za-z][\w-]*)'/g, // receipt-storage.js FOLDER map
   ];
   for (const f of files) {
     const src = fs.readFileSync(f, 'utf8');
@@ -246,7 +246,7 @@ test('the scan still finds the known upload sites (guards against a silent regex
   const found = uploadFolders();
   for (const f of ['expenseInbox', 'weeklyBillReceipts', 'procurementReceipts', 'signatures', 'signed-terms',
                    'quotations', 'reimbursementReceipts', 'workerAgreementGlobal', 'workerAgreements',
-                   'expenseReceipts', 'payrollReceipts', 'purchases']) {
+                   'expenseReceipts', 'payrollReceipts', 'purchases', 'pettyCash']) {
     ok(found.has(f), 'scan no longer sees uploads to ' + f);
   }
 });

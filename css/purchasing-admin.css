@@ -114,3 +114,18 @@
     .pur-portion-acts { margin-left: 0; }
     .pur-rec-row .att-label.pur-w2 { grid-column: auto; }
 }
+
+/* ── Payments and petty cash (0102, 2A-4a) — never part of Spent ── */
+.pur-h4 { margin: 14px 0 6px; font-size: 13.5px; font-weight: 700; }
+.pur-pay-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.pur-pay-figs { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 8px 0 12px; font-size: 13px; }
+.pur-pay-figs strong { margin-left: 4px; }
+.pur-pay-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.pur-history li.is-void { color: var(--att-ink-3, #888); text-decoration: line-through; text-decoration-thickness: 1px; }
+.pur-voided { margin-top: 10px; font-size: 13px; }
+.pur-resolve-part { border: 1px solid var(--att-line, #e3e3df); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+.pur-cash-cards { gap: 12px; }
+.pur-cash-cards > span { display: flex; flex-direction: column; min-width: 160px; padding: 10px 14px; border: 1px solid var(--att-line, #e3e3df);
+    border-radius: 12px; background: var(--att-card, #fff); }
+.pur-cash-cards > span strong { margin: 2px 0 0; font-size: 18px; }
+.pur-cash-cards small { color: var(--att-ink-3, #888); font-size: 12px; }

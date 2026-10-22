@@ -2075,6 +2075,8 @@ function renderExpensesTable() {
             ? '<span title="Recorded as a purchase — edit or void it to change it" style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:10.5px;font-weight:700;border:1px solid #c7d2fe;">From purchase</span>'
               + (_purReviewLines.has(e.purchaseLineId) ? '<span title="No billing period for its month — charged to Cover until the office reviews it" style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#fff7ed;color:#c2410c;font-size:10.5px;font-weight:700;border:1px solid #fed7aa;">Office review</span>' : '')
               + (window.expPurPendingChange(e.purchaseLineId || e.purchaseChargeId) ? '<span title="You sent a change of this purchase to the owner — open the row to withdraw it" style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#fefce8;color:#a16207;font-size:10.5px;font-weight:700;border:1px solid #fde68a;">Waiting for the owner</span>' : '')
+              // 2A-4a (0102): how it was paid — owner accounts only; never part of Spent.
+              + ((st => st ? '<span title="How this purchase was paid (Requests → Purchasing). Payments never change Spent." style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:' + (st === 'paid' ? '#f0fdf4;color:#15803d;border:1px solid #bbf7d0' : st === 'partial' ? '#fefce8;color:#a16207;border:1px solid #fde68a' : '#fef2f2;color:#b91c1c;border:1px solid #fecaca') + ';font-size:10.5px;font-weight:700;">' + ({ unpaid: 'Unpaid', partial: 'Partially paid', paid: 'Paid', overpaid: 'Overpaid' })[st] + '</span>' : '')(window.expPurPayBadge && window.expPurPayBadge(e.purchaseLineId || e.purchaseChargeId)))
             : '';
         return `
         <tr class="exp-group-row">
@@ -2947,6 +2949,7 @@ function _expNoPeriodSpent(folderId) {
 // (pur_review_lines, pur_my_pending_changes — no amounts).
 let _purReviewLines = new Set();
 let _purPending = new Map();   // purchase line / charge id → my pending change request
+let _purPayBadges = {};        // 0102: purchase line / charge id → unpaid / partial / paid / overpaid (owner only)
 async function _purLoadReviewFlags() {
     try {
         // Ids only, through the server (0097: purchase tables are buyers-only).
@@ -2961,10 +2964,20 @@ async function _purLoadReviewFlags() {
         (data || []).forEach(r => (r.line_ids || []).concat(r.charge_ids || []).forEach(id => byId.set(id, r)));
         _purPending = byId;
     } catch (err) { console.warn('purchase changes waiting for the owner:', err); }
+    // 2A-4a (0102): Unpaid / Partially paid / Paid — owner accounts only (the
+    // server refuses everyone else). How a purchase was paid never changes Spent.
+    if (window.currentUserRole === 'owner') {
+        try {
+            const { data, error } = await window.sbClient.rpc('pur_payment_badges');
+            if (error) throw error;
+            _purPayBadges = data || {};
+        } catch (err) { _purPayBadges = {}; console.warn('purchase payment badges:', err); }
+    }
     window.dispatchEvent(new Event('dacs:pur-review-flags'));
 }
 window.expPurNeedsReview = id => !!id && _purReviewLines.has(id);
 window.expPurPendingChange = id => (id && _purPending.get(id)) || null;
+window.expPurPayBadge = id => (id && window.currentUserRole === 'owner' && _purPayBadges[id]) || null;
 // The Purchasing tab sends changes to the owner too; it re-reads the flags.
 window.expPurReloadFlags = _purLoadReviewFlags;
 

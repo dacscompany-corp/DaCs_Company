@@ -6,11 +6,13 @@
 // Separate print windows don't run §11b, so their HTML goes through signHtml.
 // Access (migration 0089): owner/staff of the company in path segment 2 only;
 // purchases/ (0097): only those who may buy in that company.
+// pettyCash/ (0102): a petty-cash return photo — the main owner and the buyer who uploaded it.
 // ════════════════════════════════════════════════════════════════════
 (function (root) {
   'use strict';
   // 'purchase' (0097): one receipt for a whole purchase — buyers of the company only.
-  const FOLDER = { expense: 'expenseReceipts', payroll: 'payrollReceipts', purchase: 'purchases' };
+  // 'petty_cash' (0102): a buyer's return photo — never visible to other buyers.
+  const FOLDER = { expense: 'expenseReceipts', payroll: 'payrollReceipts', purchase: 'purchases', petty_cash: 'pettyCash' };
   const PUB_RE = /\/storage\/v1\/object\/public\/uploads\/([^?#"'\s<>)]+)/;
   const PUB_RE_G = /https?:\/\/[^"'\s<>)]*\/storage\/v1\/object\/public\/uploads\/[^"'\s<>)]+/g;
 

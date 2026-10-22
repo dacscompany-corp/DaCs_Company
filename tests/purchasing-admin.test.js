@@ -146,10 +146,19 @@ test('the screens call only purchasing RPCs and write no table directly', () => 
     'pur_purchases', 'pur_purchase', 'pur_check_unit', 'pur_request_change', 'pur_change_requests', 'pur_decide_change',
     'pur_withdraw_change',
     // 2A-3a: the Purchases list's project filter (read-only, office accounts).
-    'pr_office_projects']);
-  for (const f of ['purchasing-admin-core', 'purchasing-admin-list', 'purchasing-admin-record', 'purchasing-admin-purchases']) {
+    'pr_office_projects',
+    // 2A-4a (0102): payments, Overpaid, petty cash, own money — every one checks its caller.
+    'pur_pay', 'pur_void_payment', 'pur_accept_own_money', 'pur_reject_own_money', 'pur_resolve_overpaid', 'pur_void_refund', 'pur_void_credit',
+    'pur_cash_give', 'pur_cash_dispute', 'pur_cash_clear_dispute', 'pur_cash_void_issue', 'pur_cash_report_return',
+    'pur_cash_withdraw_return', 'pur_cash_decide_return', 'pur_cash_void_return', 'pur_cash_count', 'pur_cash_void_count',
+    'pur_set_own_money', 'pur_repay_buyer', 'pur_void_repayment', 'pur_purchase_payments', 'pur_credits', 'pur_my_cash',
+    'pur_cash_tracker', 'pur_cash_buyer', 'pur_overpaid', 'pur_cash_report']);
+  for (const f of ['purchasing-admin-core', 'purchasing-admin-list', 'purchasing-admin-record', 'purchasing-admin-purchases',
+                   'purchasing-admin-pay', 'purchasing-admin-cash']) {
     const src = read('js/' + f + '.js');
     for (const m of src.matchAll(/rpc\('([a-z_]+)'/g)) ok(allowed.has(m[1]), f + ' calls ' + m[1]);
+    // Calls made through a helper (voidModal / noteModal) name the function as a plain string.
+    for (const m of src.matchAll(/'((?:pur|pr)_[a-z_]+)'/g)) ok(allowed.has(m[1]), f + ' names ' + m[1]);
     ok(!/\.(insert|update|upsert|delete)\(/.test(src.replace(/\.update\(\)/g, '')), f + ' writes a table directly');
   }
 });

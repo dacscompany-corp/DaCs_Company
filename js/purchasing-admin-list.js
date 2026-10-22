@@ -2,11 +2,13 @@
 // Requests → Purchasing (0097). Buyers only (the nav hides it otherwise;
 // the server refuses everyone else).
 //
-// One view with three tabs:
+// One view with four tabs:
 //   Shopping list    — this file: every open request line with something
 //                      still to buy, its portions and who is buying each;
 //   Purchases        — js/purchasing-admin-purchases.js;
-//   Owner approvals  — js/purchasing-admin-purchases.js.
+//   Owner approvals  — js/purchasing-admin-purchases.js;
+//   Cash             — js/purchasing-admin-cash.js (0102): the main owner's
+//                      petty-cash tracker, or a buyer's own cash.
 // "Record purchase" (js/purchasing-admin-record.js) opens from the list
 // with the ticked lines.
 //
@@ -27,7 +29,7 @@
     function tabs() {
         const t = (id, label) => '<button type="button" class="att-seg-btn' + (ui.tab === id ? ' is-on' : '') + '" data-tab="' + id + '">' + label + '</button>';
         return '<div class="att-seg" role="tablist" aria-label="Purchasing">' +
-            t('list', 'Shopping list') + t('purchases', 'Purchases') + t('approvals', 'Owner approvals') + '</div>';
+            t('list', 'Shopping list') + t('purchases', 'Purchases') + t('approvals', 'Owner approvals') + t('cash', 'Cash') + '</div>';
     }
 
     // Needed · Bought · Still to buy, as three blocks the eye can compare.
@@ -232,6 +234,7 @@
         if (ui.tab === 'purchases') return PA.renderPurchases(host.querySelector('[data-body]'), me);
         if (ui.tab === 'approvals') return PA.renderApprovals(host.querySelector('[data-body]'), me);
         if (ui.tab === 'record') return PA.renderRecord(host.querySelector('[data-body]'), me);
+        if (ui.tab === 'cash' && PA.renderCash) return PA.renderCash(host.querySelector('[data-body]'), me);
         return renderList(host, me);
     }
 

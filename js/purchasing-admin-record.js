@@ -34,6 +34,7 @@
     }
 
     let ctx = null;   // { requestLines, batchId, purchase, again, onDone }
+    let openCredits = [];   // 0102: the chosen supplier's credits with something left (R10)
     let st = null;    // the form
 
     const DOCS = [['po', 'po_image_url', 'Purchase order'], ['dr', 'delivery_receipt_url', 'Delivery receipt'],
@@ -291,11 +292,24 @@
         }
     }
 
+    // Whose petty cash or own money a "paid now" payment is (0102): a staff
+    // buyer only — the caller, or the buyer the owner picked in "Bought by".
+    function cashHolder(me) {
+        if (!me.isOwner) return me.userId;
+        return st.boughtBy && st.boughtBy !== me.userId ? st.boughtBy : null;
+    }
+
     async function save(host, me) {
         const box = host.querySelector('[data-problems]');
         const fs = formState();
         const problems = PA.formProblems(fs);
         if (st.editId && !String(st.reason || '').trim()) problems.unshift({ code: 'REASON_REQUIRED' });
+        // "Paid now?" (0102, Q3): new purchases only — a correction never carries payments.
+        if (!st.editId) {
+            const credit = openCredits.find(c => c.id === st.paidCredit);
+            PA.paidNowProblems(st, PA.receiptTotal(PA.buildBody(fs).lines, PA.buildBody(fs).charges), cashHolder(me), credit ? credit.left : null)
+              .forEach(code => problems.push({ code }));
+        }
         if (problems.length) {
             box.innerHTML = '<ul>' + problems.map(p => '<li>' + esc((p.line ? 'Line ' + p.line + ': ' : p.charge ? 'Fee/discount ' + p.charge + ': ' : '') +
                 PA.ERRORS[p.code]) + '</li>').join('') + '</ul>';
@@ -311,7 +325,9 @@
             body = PA.buildBody(formState());
             let res;
             if (!st.editId) {
-                res = await RA.rpc('pur_record', { p_op: st.opId, p_body: body });
+                // The purchase and its "paid now" payment are accepted together, or neither is.
+                const pays = PA.paidNowPayments(st, body.receipt_total, cashHolder(me));
+                res = await RA.rpc('pur_record', { p_op: st.opId, p_body: pays.length ? Object.assign({}, body, { payments: pays }) : body });
             } else if (body.lines.length === st.editLines) {
                 res = await RA.rpc('pur_correct', { p_op: st.opId, p_purchase: st.editId, p_body: body, p_reason: st.reason.trim() });
             } else {
@@ -367,17 +383,49 @@
         });
     }
 
+    // Section 5 (0102, Q3): was it paid at the counter? Saved with the
+    // purchase in one go. Later payments: Record payment on the purchase.
+    // A credit with the chosen supplier may pay at the counter too (R10).
+    function paidNowHtml(me) {
+        const holder = cashHolder(me);
+        const from = { company: PA.PAY_SOURCE.company };
+        if (holder) { from.petty_cash = PA.PAY_SOURCE.petty_cash; from.own_money = PA.PAY_SOURCE.own_money; }
+        if (openCredits.length) from.credit = PA.PAY_SOURCE.credit;
+        if (!from[st.paidFrom]) st.paidFrom = holder ? 'petty_cash' : 'company';
+        if (st.paidFrom === 'credit' && !openCredits.some(c => c.id === st.paidCredit)) st.paidCredit = openCredits[0].id;
+        if (!PA.PAY_METHOD[st.paidMethod]) st.paidMethod = PA.methodOf(st.paymentMethod);
+        const sel = (map, v) => Object.keys(map).map(k => '<option value="' + esc(k) + '"' + (k === v ? ' selected' : '') + '>' + esc(map[k]) + '</option>').join('');
+        const now = st.paidNow || 'none';
+        return secHtml('5', 'Paid now?', 'Optional. A payment never changes Spent — it only says how the receipt was paid.') +
+            '<div class="att-card"><div class="att-card-body"><div class="pur-rec-row">' +
+              '<label class="att-label">Paid at the counter<select class="att-input" data-paid="paidNow">' +
+                sel({ none: 'Not paid yet / record later', full: 'Paid in full', part: 'Paid part (deposit)' }, now) + '</select></label>' +
+              (now === 'part' ? '<label class="att-label">Amount paid (₱)<input class="att-input" data-paid="paidAmount" inputmode="decimal" value="' + esc(st.paidAmount || '') + '"></label>' : '') +
+              (now !== 'none' ? '<label class="att-label">Paid from<select class="att-input" data-paid="paidFrom">' + sel(from, st.paidFrom) + '</select></label>' +
+                (st.paidFrom === 'credit'
+                  ? '<label class="att-label">Credit to use<select class="att-input" data-paid="paidCredit">' +
+                      openCredits.map(c => '<option value="' + esc(c.id) + '"' + (c.id === st.paidCredit ? ' selected' : '') + '>' +
+                        esc(PA.peso(c.left) + ' left') + '</option>').join('') + '</select></label>'
+                  : '<label class="att-label">How<select class="att-input" data-paid="paidMethod">' + sel(PA.PAY_METHOD, st.paidMethod) + '</select></label>') : '') +
+            '</div>' +
+            (now !== 'none' && !holder && me.isOwner ? '<p class="req-muted">Petty cash and own money belong to a staff buyer: pick them in "Bought by" to use theirs.</p>' : '') +
+            '</div></div>';
+    }
+
     async function renderRecord(host, me) {
         if (!ctx) { PA.ui.tab = 'list'; return PA.renderPurchasing(host.closest('.content-view') || host.parentNode); }
         let suppliers, buyers, folders;
         try {
-            const [s, b, f] = await Promise.all([
+            const [s, b, f, cr] = await Promise.all([
                 RA.rpc('pur_suppliers'),
                 me.isOwner ? RA.rpc('pur_buyer_options') : Promise.resolve([]),
                 root.sbClient.from('folders').select('id, name, parent_folder_id, completed_at').order('name'),
+                // R10: the chosen supplier's open credits, for "Paid now" (new purchases only).
+                st && !st.editId && st.supplierId ? RA.rpc('pur_credits', { p_supplier: st.supplierId }) : Promise.resolve([]),
             ]);
             if (f.error) throw f.error;
             suppliers = s || []; buyers = b || [];
+            openCredits = (cr || []).filter(c => !c.voided_at && Number(c.left) > 0);
             const all = f.data || [];
             folders = [];
             all.filter(x => !x.parent_folder_id && (me.isOwner || !x.completed_at)).forEach(p => {
@@ -436,6 +484,7 @@
             '<div class="att-card"><div class="att-card-body">' +
               '<p class="req-muted">Kept once for the whole receipt, office buyers only — never shown to clients, partners or workers.</p>' +
               '<div class="pur-rec-row">' + DOCS.map(docHtml).join('') + '</div></div></div>' +
+            (st.editId ? '' : paidNowHtml(me)) +
             (st.editId ? '<label class="att-label">Reason for the change (kept in the history)<input class="att-input" data-h="reason" maxlength="500" value="' + esc(st.reason) + '"></label>' : '') +
             '<div class="att-info att-info--warn" data-problems hidden></div>' +
             '<div class="pur-rec-foot"><span>Receipt total <strong data-total></strong></span>' +
@@ -443,7 +492,17 @@
               '<button type="button" class="att-btn att-btn--primary" data-save>' + (st.editId ? 'Save correction' : 'Save purchase') + '</button></div>';
 
         const rerender = () => renderRecord(host, me);
-        host.querySelectorAll('[data-h]').forEach(el => el.addEventListener('input', () => { st[el.dataset.h] = el.value; if (el.dataset.h === 'supplierId' && el.value) st.supplier = ''; refresh(host); }));
+        host.querySelectorAll('[data-h]').forEach(el => el.addEventListener('input', () => {
+            st[el.dataset.h] = el.value;
+            if (el.dataset.h === 'supplierId' && el.value) st.supplier = '';
+            // Whose petty cash "Paid now" can use follows "Bought by"; which credit, the supplier.
+            if ((el.dataset.h === 'boughtBy' || el.dataset.h === 'supplierId') && st.paidNow && st.paidNow !== 'none') return rerender();
+            refresh(host);
+        }));
+        host.querySelectorAll('[data-paid]').forEach(el => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
+            st[el.dataset.paid] = el.value;
+            if (el.dataset.paid === 'paidNow' || el.dataset.paid === 'paidFrom') rerender();
+        }));
         host.querySelectorAll('[data-f]').forEach(el => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
             const l = st.lines[Number(el.dataset.i)];
             if (el.dataset.f === 'where') {

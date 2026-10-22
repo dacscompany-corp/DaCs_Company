@@ -43,6 +43,8 @@
               '<div class="req-muted">' + esc(p.lines + (p.lines === 1 ? ' line' : ' lines') + (p.linked ? ' · ' + p.linked + ' from requests' : '')) + '</div></td>' +
             '<td>' + esc(PA.sourceLabel(p.source)) + '</td>' +
             '<td><strong>' + esc(PA.peso(p.receipt_total)) + '</strong></td>' +
+            // 0102: how it was paid — never part of Spent.
+            '<td>' + (PA.payPill ? PA.payPill(p.pay) : '') + '</td>' +
             '<td>' + esc(p.bought_by_name) + (p.bought_by_name !== p.recorded_by_name ? '<div class="req-muted">recorded by ' + esc(p.recorded_by_name) + '</div>' : '') + '</td>' +
             '<td>' + PA.purchaseFlags(p).map(f => PA.pill(f.text, f.tone)).join(' ') + '</td>' +
           '</tr>';
@@ -75,7 +77,7 @@
             '<p class="req-muted">Project Control purchases are listed here too — check the Source and the project before you void anything.</p>' +
             (rows.length
               ? '<div class="att-card"><div class="att-card-body" style="padding:0"><div class="req-table-wrap"><table class="att-table req-table">' +
-                  '<thead><tr><th>Date</th><th>Supplier</th><th>For</th><th>Source</th><th>Total</th><th>Bought by</th><th>Status</th></tr></thead><tbody data-rows></tbody>' +
+                  '<thead><tr><th>Date</th><th>Supplier</th><th>For</th><th>Source</th><th>Total</th><th>Payment</th><th>Bought by</th><th>Status</th></tr></thead><tbody data-rows></tbody>' +
                 '</table></div></div></div><div class="att-empty" data-none hidden>Nothing matches the search.</div>'
               : '<div class="att-empty">No purchases in these dates.</div>');
         const reload = () => renderPurchases(body, me);
@@ -170,6 +172,8 @@
               (docs.length ? '<div class="att-card"><div class="att-card-body"><h3 class="pur-h3">Receipt photos</h3><div class="pur-docs">' +
                   docs.map(([k, v]) => '<a class="att-link" href="#" data-doc-url="' + esc(v) + '">' + esc(k.replace(/_url$/, '').replace(/_/g, ' ')) + '</a>').join(' · ') +
                 '</div></div></div>' : '') +
+              // 0102: deposits, the rest, refunds and credit (js/purchasing-admin-pay.js).
+              '<div data-payments></div>' +
               '<div class="att-card"><div class="att-card-body"><h3 class="pur-h3">History</h3><ul class="pur-history">' +
                 (doc.history || []).map(h => '<li>' + esc(RA.formatManila(h.at)) + ' — <strong>' + esc(PA.HISTORY_LABEL[h.kind] || h.kind) + '</strong> by ' +
                   esc(h.actor_name) + (h.reason ? ': ' + esc(h.reason) : '') + '</li>').join('') +
@@ -180,6 +184,7 @@
             '</div>';
 
         const reload = () => renderPurchase(host);
+        if (PA.renderPayments) PA.renderPayments(host.querySelector('[data-payments]'), doc);
         host.querySelector('[data-back]').addEventListener('click', () => { PA.ui.tab = 'purchases'; root.switchView('reqPurchasing'); });
         host.querySelectorAll('[data-open-purchase]').forEach(a => a.addEventListener('click', (e) => {
             e.preventDefault();

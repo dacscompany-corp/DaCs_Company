@@ -462,6 +462,215 @@
         return rows;
     }
 
+    // ── Payments (0102, 2A-4a) ──────────────────────────────────────
+    // Payments never change Spent: they say how a purchase was paid. These
+    // helpers only word the server's answers and check a form before it is
+    // sent — the server decides every balance.
+
+    // A purchase's payment state (pur_pay_state) as a pill: text, tone, detail.
+    const PAY_STATE = {
+        not_tracked: { text: 'Payment not tracked', tone: 'hidden' },
+        unpaid: { text: 'Unpaid', tone: 'abandoned' },
+        partial: { text: 'Partially paid', tone: 'working' },
+        paid: { text: 'Paid', tone: 'done' },
+        overpaid: { text: 'Overpaid', tone: 'abandoned' },
+        void: { text: 'Void', tone: 'hidden' },
+        void_paid: { text: 'Voided — paid, to recover', tone: 'abandoned' },
+    };
+    function payLabel(pay) {
+        if (!pay || !PAY_STATE[pay.state]) return null;
+        const base = PAY_STATE[pay.state];
+        let detail = '';
+        if (pay.state === 'partial') detail = peso(pay.balance) + ' left';
+        else if (pay.state === 'overpaid' || pay.state === 'void_paid') detail = peso(pay.unresolved) + ' to recover';
+        else if (pay.state === 'unpaid') detail = peso(pay.due) + ' due';
+        return { text: base.text, tone: base.tone, detail };
+    }
+
+    const PAY_SOURCE = { petty_cash: 'Petty cash', own_money: 'Own money', company: 'Company (paid directly)', credit: 'Supplier credit' };
+    const PAY_METHOD = { cash: 'Cash', gcash: 'GCash', bank_transfer: 'Bank transfer', check: 'Check', other: 'Other' };
+    // The purchase form's "Paid by" word → a payment method.
+    function methodOf(paymentMethod) {
+        const m = String(paymentMethod || '').toLowerCase().replace(/\s+/g, '_');
+        return PAY_METHOD[m] ? m : 'cash';
+    }
+
+    // "YYYY-MM-DD" today from LOCAL date parts (PH is UTC+8 — never toISOString).
+    function localDay(d) {
+        const x = d || new Date();
+        return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+    }
+
+    // What the server would refuse in a payment form, said before sending.
+    // p: {amount, paidOn, method, source, creditId}; ctx: {today, creditLeft}
+    function paymentProblems(p, ctx) {
+        const out = [];
+        const a = parseMoney(p.amount);
+        if (!(a > 0)) out.push('BAD_AMOUNT');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(p.paidOn || '')) || String(p.paidOn) > String((ctx && ctx.today) || localDay()) ||
+            String(p.paidOn) < '2020-01-01') out.push('BAD_DATE');
+        if (!PAY_SOURCE[p.source]) out.push('BAD_PAY_SOURCE');
+        if (p.source !== 'credit' && !PAY_METHOD[p.method]) out.push('BAD_METHOD');
+        if (p.source === 'credit') {
+            if (!p.creditId) out.push('CREDIT_REQUIRED');
+            else if (a > 0 && ctx && ctx.creditLeft != null && a > Number(ctx.creditLeft)) out.push('OVER_CREDIT');
+        }
+        return out;
+    }
+
+    // The pur_pay / pur_record body of one payment.
+    function paymentBody(p) {
+        const out = { amount: String(round2(parseMoney(p.amount))), paid_on: p.paidOn, source: p.source,
+                      method: p.source === 'credit' ? 'other' : p.method, note: String(p.note || '').trim() };
+        if (p.personId) out.person_id = p.personId;
+        if (p.source === 'credit') out.credit_id = p.creditId;
+        if (p.proofUrl) out.proof_url = p.proofUrl;
+        return out;
+    }
+
+    // Q16: a warning, never a refusal — real cash cannot go below zero, so
+    // paying more than recorded means a handover was not recorded, or own money.
+    function cashWarning(amount, held) {
+        const a = parseMoney(amount);
+        if (held == null || !(a > 0) || a <= Number(held)) return '';
+        return 'You hold ' + peso(Math.max(0, Number(held))) + ' of petty cash on record. This payment is ' + peso(a) +
+            '. It is saved, and the owner sees the difference as a shortfall to check.';
+    }
+
+    // "Paid now?" on the purchase form (Q3): none / full / part. Returns the
+    // payments to send with the purchase (one transaction on the server).
+    // st: {paidNow, paidAmount, paidFrom, paidMethod, paidCredit, purchaseDate};
+    // holder = the staff buyer whose petty cash or own money it is (null: none).
+    // A supplier credit used at the counter (R10) is checked by the server in
+    // the same transaction as the purchase.
+    function paidNowPayments(st, total, holder) {
+        if (!st || !st.paidNow || st.paidNow === 'none') return [];
+        const amount = st.paidNow === 'full' ? total : parseMoney(st.paidAmount);
+        return [paymentBody({ amount, paidOn: st.purchaseDate, method: st.paidMethod || 'cash', source: st.paidFrom || 'company',
+                              personId: (st.paidFrom === 'petty_cash' || st.paidFrom === 'own_money') ? holder : null,
+                              creditId: st.paidFrom === 'credit' ? st.paidCredit : null })];
+    }
+    // creditLeft: what the chosen credit has left (null: unknown).
+    function paidNowProblems(st, total, holder, creditLeft) {
+        if (!st || !st.paidNow || st.paidNow === 'none') return [];
+        const out = [];
+        const amount = st.paidNow === 'full' ? total : parseMoney(st.paidAmount);
+        if (!(amount > 0)) out.push('PAID_AMOUNT');
+        else if (st.paidNow === 'part' && amount >= total) out.push('PART_NOT_LESS');
+        if ((st.paidFrom === 'petty_cash' || st.paidFrom === 'own_money') && !holder) out.push('PERSON_REQUIRED');
+        if (!PAY_SOURCE[st.paidFrom || 'company']) out.push('BAD_PAY_SOURCE');
+        if (st.paidFrom === 'credit') {
+            if (!st.paidCredit) out.push('CREDIT_REQUIRED');
+            else if (amount > 0 && creditLeft != null && amount > Number(creditLeft)) out.push('OVER_CREDIT');
+        }
+        return out;
+    }
+
+    // Q10: a refund goes back to the money that paid. Who may receive each kind.
+    // credit: the supplier paid back in cash what a credit had paid (instead of the
+    // default, back to its credit) — to the company, or into a buyer's hands.
+    const REFUND_ROUTES = { petty_cash: ['petty_cash', 'company'], own_money: ['buyer', 'company'], company: ['company', 'petty_cash'],
+                            credit: ['company', 'petty_cash'] };
+    function routeLabel(fundedBy, receivedBy, name) {
+        const who = name || 'the buyer';
+        if (receivedBy === 'company') return 'To the owner / company — no balance changes';
+        if (fundedBy === 'petty_cash') return 'Back into ' + who + '\'s petty cash (cash held goes up)';
+        if (fundedBy === 'own_money') return 'To ' + who + ', for their own money ("Company owes" goes down)';
+        return 'To ' + who + ' — company cash they now hold';
+    }
+
+    // The Overpaid screen's starting split (server suggestion: the latest
+    // payments are the ones paid too much). Credit-funded excess goes back
+    // to that supplier's credit (Q10 clarified); every other part is a
+    // refund to the money that paid it.
+    function defaultResolution(row, today) {
+        const refunds = [];
+        let credit = 0;
+        (row.suggested || []).forEach(s => {
+            const amount = round2(s.amount);
+            if (!(amount > 0)) return;
+            if (s.source === 'credit') { credit = round2(credit + amount); return; }
+            refunds.push({ amount, fundedBy: s.source, personId: s.person_id || null, personName: s.person_name || '',
+                           receivedBy: s.source === 'own_money' ? 'buyer' : s.source === 'petty_cash' ? 'petty_cash' : 'company',
+                           receivedOn: today || localDay() });
+        });
+        return { refunds, credit };
+    }
+
+    // What the server would refuse in a resolution (OVER_SOURCE, OVER_RESOLVED…).
+    // paidBy: the purchase's [{source, person_id, paid, refunded}]; unresolved: the ₱ still over.
+    function resolutionProblems(refunds, credit, paidBy, unresolved, today) {
+        const out = [];
+        let total = 0;
+        const used = {};
+        (refunds || []).forEach((r, i) => {
+            const a = parseMoney(r.amount);
+            if (!(a > 0)) { out.push({ code: 'BAD_AMOUNT', part: i + 1 }); return; }
+            if (!(REFUND_ROUTES[r.fundedBy] || []).includes(r.receivedBy)) out.push({ code: 'BAD_REFUND_ROUTE', part: i + 1 });
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(String(r.receivedOn || '')) || String(r.receivedOn) > String(today || localDay())) out.push({ code: 'BAD_DATE', part: i + 1 });
+            // Company and credit money is nobody's own: capped by every payment of that kind.
+            const anyone = r.fundedBy === 'company' || r.fundedBy === 'credit';
+            const key = r.fundedBy + ':' + (anyone ? '' : (r.personId || ''));
+            used[key] = round2((used[key] || 0) + a);
+            const src = (paidBy || []).filter(p => p.source === r.fundedBy && (anyone || p.person_id === r.personId));
+            const left = src.reduce((s, p) => s + Number(p.paid) - Number(p.refunded || 0), 0);
+            if (used[key] > round2(left)) out.push({ code: 'OVER_SOURCE', part: i + 1 });
+            total = round2(total + a);
+        });
+        const c = parseMoney(credit);
+        if (String(credit == null ? '' : credit).trim() !== '' && !(c >= 0)) out.push({ code: 'BAD_AMOUNT', part: 'credit' });
+        if (c > 0) total = round2(total + c);
+        if (!(total > 0)) out.push({ code: 'NOTHING_TO_RESOLVE' });
+        else if (total > round2(unresolved)) out.push({ code: 'OVER_RESOLVED' });
+        return out;
+    }
+
+    // A buyer's cash as the tracker shows it: never below ₱0 held (Q16).
+    function cashFigures(s) {
+        const recorded = Number((s && s.recorded) || 0);
+        return { held: Math.max(0, recorded), shortfall: Math.max(0, -recorded), pending: Number((s && s.pending_returns) || 0),
+                 owes: Number((s && s.owes) || 0), toReview: Number((s && s.owes_to_review) || 0) };
+    }
+
+    // The daily report (pur_cash_report) as rows for the table, print and CSV.
+    // Balances below zero read ₱0 with the shortfall beside them. An entry
+    // voided later stays on its own day, marked; its reversal is a row on the
+    // day it was voided (R7), so a past day's closing never changes.
+    function reportRows(rep) {
+        const rows = [];
+        const bal = (v) => Math.max(0, Number(v));
+        const short = (v) => Math.max(0, -Number(v));
+        const voided = (x) => (x.voided_on ? ' (voided on ' + x.voided_on + ')' : '');
+        (rep && rep.days || []).forEach(d => {
+            rows.push({ day: d.day, what: 'Opening', detail: '', amountIn: '', amountOut: '', held: bal(d.opening), shortfall: short(d.opening) });
+            (d.received || []).forEach(x => rows.push({ day: d.day, what: 'Petty cash received', detail: (PAY_METHOD[x.method] || x.method || '') +
+                (x.note ? ' — ' + x.note : '') + (x.disputed ? ' (buyer says not received)' : '') + voided(x), amountIn: Number(x.amount), amountOut: '' }));
+            (d.refunds_in || []).forEach(x => rows.push({ day: d.day, what: 'Refund received', detail: (x.supplier || '') + voided(x),
+                amountIn: Number(x.amount), amountOut: '' }));
+            (d.payments || []).forEach(x => rows.push({ day: d.day, what: 'Paid to supplier', detail: (x.supplier || 'No supplier') + ' — ' +
+                (x.items || []).join(', ') + ' · ' + ((x.projects || []).concat(x.warehouse ? ['Warehouse'] : [])).join(', ') +
+                (x.purchase_status === 'void' ? ' (purchase voided)' : '') + voided(x), amountIn: '', amountOut: Number(x.amount) }));
+            (d.returns || []).forEach(x => rows.push({ day: d.day, what: 'Returned to the owner', detail: 'handed over ' + x.handed_on +
+                (x.handed_to ? ' to ' + x.handed_to : '') + voided(x), amountIn: '', amountOut: Number(x.amount) }));
+            (d.reversals || []).forEach(x => rows.push({ day: d.day, what: 'Void: ' + x.what + ' of ' + x.entry_day, detail: x.reason || '',
+                amountIn: Number(x.effect) > 0 ? Number(x.effect) : '', amountOut: Number(x.effect) < 0 ? -Number(x.effect) : '' }));
+            rows.push({ day: d.day, what: 'Closing', detail: '', amountIn: '', amountOut: '', held: bal(d.closing), shortfall: short(d.closing) });
+        });
+        return rows;
+    }
+    function csvCell(v) {
+        const s = v == null ? '' : String(v);
+        return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+    function reportCsv(rep) {
+        const head = ['Day', 'Entry', 'Detail', 'In (PHP)', 'Out (PHP)', 'Cash held (PHP)', 'Unreconciled shortfall (PHP)'];
+        const lines = [head.map(csvCell).join(',')];
+        reportRows(rep).forEach(r => lines.push([r.day, r.what, r.detail, r.amountIn === '' ? '' : round2(r.amountIn).toFixed(2),
+            r.amountOut === '' ? '' : round2(r.amountOut).toFixed(2), r.held == null ? '' : round2(r.held).toFixed(2),
+            r.shortfall == null ? '' : round2(r.shortfall).toFixed(2)].map(csvCell).join(',')));
+        return lines.join('\r\n') + '\r\n';
+    }
+
     // ── Server error codes → sentences ─────────────────────────────
 
     const ERRORS = {
@@ -519,6 +728,33 @@
         NOT_OFFICE: 'Only office accounts can do this.',
         NOT_ALLOWED: 'This account is not set up for Expenses.',
         PGRST202: 'The server is not updated for the Purchasing tab yet (migration 0097). Nothing was changed.',
+        // 0102 — payments, petty cash, own money.
+        BAD_SOURCE: 'This purchase came from an unknown place. Reload the page.',
+        BAD_PAY: 'Check the payment: at most five with a purchase, and none on a correction (use Record payment).',
+        BAD_PAY_SOURCE: 'Choose where the money came from: petty cash, own money, the company, or a supplier credit.',
+        BAD_METHOD: 'Choose how it was paid (cash, GCash, bank transfer, check or other).',
+        BAD_PERSON: 'Pick whose money it was.',
+        PERSON_REQUIRED: 'Say whose petty cash or own money paid — only a staff buyer holds petty cash.',
+        PERSON_NOT_ALLOWED: 'You can record only your own petty cash or own money. The owner records another buyer\'s.',
+        NOT_A_BUYER: 'Only a staff buyer of this company holds petty cash or can be owed their own money.',
+        CREDIT_REQUIRED: 'Pick the supplier credit to use.',
+        CREDIT_GONE: 'That supplier credit was voided. Reload the purchase.',
+        CREDIT_SUPPLIER: 'A supplier credit pays only that supplier — this purchase needs a supplier from the list, and the same one.',
+        OVER_CREDIT: 'That is more than the credit has left.',
+        CREDIT_USED: 'Part of this credit was already used. Void those payments first.',
+        NOT_YOURS: 'Only the person who recorded this payment, or the owner, can void it.',
+        ALREADY_VOIDED: 'This was already voided. Reload the page.',
+        RESOLVED_FIRST: 'A refund or credit already relies on this payment. Void that refund or credit first.',
+        NOTHING_TO_RESOLVE: 'Enter a refund or a supplier credit.',
+        BAD_RESOLUTION: 'Check the refunds and the credit.',
+        BAD_REFUND_ROUTE: 'That refund cannot go there: petty cash goes back into petty cash or to the owner; own money goes to the buyer or the owner; company money goes to the owner or into a buyer\'s petty cash.',
+        OVER_SOURCE: 'That is more back than that money paid on this purchase.',
+        OVER_RESOLVED: 'Refunds and credit together cannot be more than what is over.',
+        ALREADY_DISPUTED: 'You already said this was not received. The owner will check it.',
+        OVER_OWED: 'That is more than the company owes this buyer.',
+        BAD_RANGE: 'Pick at most 92 days, the start before the end.',
+        PAID_AMOUNT: 'Enter how much was paid now.',
+        PART_NOT_LESS: 'A part payment is less than the receipt total — choose "Paid in full" instead.',
     };
 
     function errorMessage(error) {
@@ -536,7 +772,10 @@
                    listSummary, coverPreview, pickedStill, lineStill, defaultPicks, countsDirectly, docUploads, storedDocs, prorate, receiptTotal,
                    buildBody, formProblems, unplannedReasonNeeded, HISTORY_LABEL, REQUEST_STATUS, purchaseFlags, needsOwner, changeRows, ERRORS,
                    errorMessage, SOURCE_LABEL, sourceLabel, searchPurchases, voidWord, voidConfirmed, placesOf, canRecordAgain,
-                   chargesOf, recordAgainState };
+                   chargesOf, recordAgainState,
+                   PAY_STATE, payLabel, PAY_SOURCE, PAY_METHOD, methodOf, localDay, paymentProblems, paymentBody, cashWarning,
+                   paidNowPayments, paidNowProblems, REFUND_ROUTES, routeLabel, defaultResolution, resolutionProblems,
+                   cashFigures, reportRows, reportCsv };
 
     if (typeof module !== 'undefined' && module.exports) {
         module.exports = pure;
