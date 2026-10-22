@@ -94,7 +94,8 @@
               '</div>' +
             '</div></div>';
 
-        const reload = () => { renderPayments(host, purchase, onChange); if (onChange) onChange(); };
+        // Project Control's Unpaid / Partially paid / Paid tags follow at once (F4).
+        const reload = () => { if (root.expPurReloadFlags) root.expPurReloadFlags(); renderPayments(host, purchase, onChange); if (onChange) onChange(); };
         host.querySelectorAll('[data-proof]').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); root.open(a.dataset.proof, '_blank'); }));
         const rec = host.querySelector('[data-record-pay]');
         if (rec) rec.addEventListener('click', () => openRecordPayment(purchase, data, reload));

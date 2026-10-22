@@ -85,6 +85,7 @@
 .pur-rec-kind.is-open { background: var(--att-gold-tint); color: var(--att-gold); }
 .pur-rec-remove { margin-left: auto; color: var(--att-red); }
 .pur-rec-row[hidden] { display: none; }
+.att-info[hidden] { display: none; }   /* F1: an empty warning box stays hidden (.att-info sets display: flex) */
 .pur-preview { padding: 8px 12px; border-radius: 10px; background: var(--att-field); font-size: 13.5px; color: var(--att-ink-2); }
 .pur-shares { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
 .pur-shares .att-label { flex: 0 1 110px; }

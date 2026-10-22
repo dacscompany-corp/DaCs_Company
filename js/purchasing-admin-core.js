@@ -652,7 +652,8 @@
                 (x.purchase_status === 'void' ? ' (purchase voided)' : '') + voided(x), amountIn: '', amountOut: Number(x.amount) }));
             (d.returns || []).forEach(x => rows.push({ day: d.day, what: 'Returned to the owner', detail: 'handed over ' + x.handed_on +
                 (x.handed_to ? ' to ' + x.handed_to : '') + voided(x), amountIn: '', amountOut: Number(x.amount) }));
-            (d.reversals || []).forEach(x => rows.push({ day: d.day, what: 'Void: ' + x.what + ' of ' + x.entry_day, detail: x.reason || '',
+            // The server calls a voided issue "Petty cash given"; name it as its entry row does.
+            (d.reversals || []).forEach(x => rows.push({ day: d.day, what: 'Void: ' + (x.what === 'Petty cash given' ? 'Petty cash received' : x.what) + ' of ' + x.entry_day, detail: x.reason || '',
                 amountIn: Number(x.effect) > 0 ? Number(x.effect) : '', amountOut: Number(x.effect) < 0 ? -Number(x.effect) : '' }));
             rows.push({ day: d.day, what: 'Closing', detail: '', amountIn: '', amountOut: '', held: bal(d.closing), shortfall: short(d.closing) });
         });

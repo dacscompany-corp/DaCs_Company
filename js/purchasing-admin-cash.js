@@ -54,7 +54,8 @@
             [overpaid, credits] = await Promise.all([RA.rpc('pur_overpaid'), RA.rpc('pur_credits', { p_supplier: null })]);
         } catch (e) { RA.fail(body, e); return; }
         const buyers = t.buyers || [];
-        const reload = () => renderCash(body, me);
+        // Accept / reject / resolve change Project Control's payment tags too (F4).
+        const reload = () => { if (root.expPurReloadFlags) root.expPurReloadFlags(); renderCash(body, me); };
         const openCredits = (credits || []).filter(c => !c.voided_at);
         body.innerHTML =
             '<div class="att-info"><i data-lucide="wallet"></i><div>Petty cash, a buyer\'s own money, refunds and supplier credit say who holds or is owed company money. ' +

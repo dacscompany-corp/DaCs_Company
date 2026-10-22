@@ -156,12 +156,30 @@ test('R7 in the report: an entry voided later stays on its day, marked; the void
   const rows = pa.reportRows(rep);
   ok(/\(voided on 2026-10-22\)/.test(rows[1].detail), 'marked on its day');
   eq(rows.slice(4, 6).map(r => [r.what, r.detail, r.amountIn, r.amountOut]),
-     [['Void: Paid to supplier of 2026-10-20', 'double entry', 300, ''], ['Void: Petty cash given of 2026-10-18', 'given twice', '', 1000]]);
+     [['Void: Paid to supplier of 2026-10-20', 'double entry', 300, ''], ['Void: Petty cash received of 2026-10-18', 'given twice', '', 1000]]);
   for (const d of rep.days) {
     const day = rows.filter(r => r.day === d.day && r.held == null);
     const net = day.reduce((s, r) => s + (r.amountIn === '' ? 0 : r.amountIn) - (r.amountOut === '' ? 0 : r.amountOut), 0);
     // The voided payment still left that day: its row stays an outflow (voided later, not then).
     eq(d.opening + net, d.closing, d.day + ' adds up from its rows');
+  }
+});
+
+test('F5: a reversal is named with the words of the entry it undoes', () => {
+  // The server names its reversals ('what'); the report must use the entry rows' own labels.
+  const sql = read('supabase/migrations/0102_purchase_payments.sql');
+  const fn = sql.slice(sql.lastIndexOf('create or replace function pur_cash_report('));
+  const serverWhats = [...fn.slice(0, fn.indexOf('\n$$;')).matchAll(/jsonb_build_object\('what', '([^']+)'/g)].map(m => m[1]);
+  eq(serverWhats.length, 4, 'the four kinds of reversal were read');
+  const entry = { day: '2026-10-22', opening: 0, closing: 0, reversals: [],
+    received: [{ amount: 1, method: 'cash' }], refunds_in: [{ amount: 1 }], payments: [{ amount: 1, items: [], projects: [] }],
+    returns: [{ amount: 1, handed_on: '2026-10-22' }] };
+  const labels = new Set(pa.reportRows({ days: [entry] }).map(r => r.what));
+  for (const what of serverWhats) {
+    const rows = pa.reportRows({ days: [{ day: '2026-10-23', opening: 0, closing: 0, received: [], refunds_in: [], payments: [], returns: [],
+      reversals: [{ what, entry_day: '2026-10-22', amount: 1, effect: 1, reason: '' }] }] });
+    const label = rows[1].what.replace(/^Void: /, '').replace(/ of 2026-10-22$/, '');
+    ok(labels.has(label), '"' + what + '" reads "' + label + '", not an entry label');
   }
 });
 
@@ -255,6 +273,27 @@ test('R13: a return photo goes to the private pettyCash folder; payment proofs s
   const cash = read('js/purchasing-admin-cash.js');
   ok(/uploadReceipt\('petty_cash'/.test(cash) && !/uploadReceipt\('purchase'/.test(cash), 'the return photo is filed under pettyCash');
   ok(/uploadReceipt\('purchase'/.test(read('js/purchasing-admin-pay.js')), 'a payment proof is a purchase document');
+});
+test('F1: an empty warning box stays hidden (its "hidden" is not overridden by the box style)', () => {
+  const css = read('css/purchasing-admin.css');
+  ok(/\.att-info\[hidden\]\s*\{\s*display:\s*none\s*(!important)?;?\s*\}/.test(css), 'hidden warning boxes are not shown');
+  const m = read('admin.html').match(/css\/purchasing-admin\.css\?v=(\d{8}[a-z])/);
+  ok(m && m[1] >= '20261023a', 'purchasing-admin.css cache-buster bumped');
+});
+test('F4: the owner\'s payment tags are re-read after every payment action and when the Materials list opens', () => {
+  const pay = read('js/purchasing-admin-pay.js');
+  ok(/const reload = \(\) => \{ if \(root\.expPurReloadFlags\) root\.expPurReloadFlags\(\);/.test(pay), 'the Payments card re-reads the tags');
+  const cash = read('js/purchasing-admin-cash.js');
+  ok(/const reload = \(\) => \{ if \(root\.expPurReloadFlags\) root\.expPurReloadFlags\(\); renderCash\(body, me\); \};/.test(cash),
+    'the owner\'s Cash tab re-reads the tags (accept, reject, resolve)');
+  const portal = read('js/portal-app.compiled.js');
+  const eff = portal.slice(portal.indexOf('const [, setReviewTick] = React.useState(0);'), portal.indexOf('const purchaseTags = (m) =>'));
+  ok(/window\.addEventListener\("dacs:pur-review-flags", onFlags\);\s*if \(typeof window\.expPurReloadFlags === "function"\) window\.expPurReloadFlags\(\);/.test(eff),
+    'the Materials list asks for fresh tags when it opens');
+  for (const f of ['purchasing-admin-pay', 'purchasing-admin-cash']) {
+    const m = read('admin.html').match(new RegExp('js/' + f + '\\.js\\?v=(\\d{8}[a-z])'));
+    ok(m && m[1] >= '20261023a', f + '.js cache-buster bumped');
+  }
 });
 test('R4 and R9 on the Payments card: a carried-over payment and a rejected claim say so', () => {
   const pay = read('js/purchasing-admin-pay.js');

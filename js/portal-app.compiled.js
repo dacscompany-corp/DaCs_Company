@@ -3293,6 +3293,7 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
   React.useEffect(() => {
     const onFlags = () => setReviewTick((n) => n + 1);
     window.addEventListener("dacs:pur-review-flags", onFlags);
+    if (typeof window.expPurReloadFlags === "function") window.expPurReloadFlags();
     return () => window.removeEventListener("dacs:pur-review-flags", onFlags);
   }, []);
   const tagStyle = (bg, color, border) => ({ display: "inline-flex", alignItems: "center", padding: "1px 7px", borderRadius: 999, background: bg, color, fontSize: 10.5, fontWeight: 700, border: "1px solid " + border, whiteSpace: "nowrap" });
