@@ -295,6 +295,17 @@ test('F4: the owner\'s payment tags are re-read after every payment action and w
     ok(m && m[1] >= '20261023a', f + '.js cache-buster bumped');
   }
 });
+test('F3 (0103): the buyer\'s own Returns and the owner\'s one-buyer view link the return photo, opened as a download', () => {
+  const cash = read('js/purchasing-admin-cash.js');
+  ok(/const photoLink = \(url\) => \(url \? ' <a class="att-link" href="#" data-photo="' \+ esc\(url\) \+ '">photo<\/a>' : ''\);/.test(cash), 'one photo link');
+  const buyer = cash.slice(cash.indexOf("section('Returns', 'Reported returns wait for the owner.'"), cash.indexOf("section('Repaid to you"));
+  ok(/photoLink\(r\.photo_url\)/.test(buyer), 'the buyer\'s own Returns list');
+  const panel = cash.slice(cash.indexOf('<h4 class="pur-h4">Returns (90 days)</h4>'), cash.indexOf('<h4 class="pur-h4">Cash counts</h4>'));
+  ok(/photoLink\(r\.photo_url\)/.test(panel), 'the owner\'s one-buyer view');
+  const opens = cash.match(/querySelectorAll\('\[data-photo\]'\)\.forEach\(a => a\.addEventListener\('click', \(e\) => \{ e\.preventDefault\(\); root\.open\(a\.dataset\.photo, '_blank'\); \}\)\);/g) || [];
+  eq(opens.length, 3, 'tracker, one-buyer view and the buyer\'s own cash each open it through the shim (pettyCash/ downloads, F2)');
+  ok(!/dacsMaybeSignUrl|createSignedUrl/.test(cash), 'never a signed link');
+});
 test('R4 and R9 on the Payments card: a carried-over payment and a rejected claim say so', () => {
   const pay = read('js/purchasing-admin-pay.js');
   ok(/p\.moved \? ' · carried over from the earlier version of this purchase'/.test(pay), 'carried over');

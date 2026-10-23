@@ -22,6 +22,8 @@
     const PA = root.PurchasingAdmin;
     if (!RA || !PA) return;
     const esc = RA.esc;
+    // A return's photo (pettyCash/, R13): opened through the shim, which downloads it (F2) — never a signed link.
+    const photoLink = (url) => (url ? ' <a class="att-link" href="#" data-photo="' + esc(url) + '">photo</a>' : '');
     const ui = { report: null };
     const peso = (v) => esc(PA.peso(v));
     const newOp = () => root.DacsReceipts.newId();
@@ -90,7 +92,7 @@
             section('Returns waiting for you', 'The buyer says they handed this back. It lowers their cash held only when you confirm it, on the day you confirm.',
               (t.pending_returns || []).map(r => '<li><strong>' + esc(r.name) + '</strong> — ' + peso(r.amount) + ', handed over ' + esc(r.handed_on) +
                 (r.handed_to ? ' to ' + esc(r.handed_to) : '') + (r.note ? ' — ' + esc(r.note) : '') +
-                (r.photo_url ? ' <a class="att-link" href="#" data-photo="' + esc(r.photo_url) + '">photo</a>' : '') +
+                photoLink(r.photo_url) +
                 ' <button type="button" class="att-btn att-btn--sm att-btn--primary" data-confirm="' + esc(r.id) + '">Confirm received</button>' +
                 ' <button type="button" class="att-btn att-btn--sm" data-reject="' + esc(r.id) + '">Reject…</button></li>')) +
             section('"I did not receive this"', 'A buyer says petty cash you recorded never reached them. Their balance is unchanged until you settle it.',
@@ -228,7 +230,8 @@
               '<h4 class="pur-h4">Returns (90 days)</h4><ul class="pur-history">' +
                 ((d.returns || []).map(r => '<li' + (r.voided_at ? ' class="is-void"' : '') + '>' + esc(r.handed_on) + ' — ' + peso(r.amount) + ' — ' +
                   esc({ reported: 'waiting for you', withdrawn: 'withdrawn by the buyer', confirmed: 'confirmed', rejected: 'rejected' }[r.status] || r.status) +
-                  (r.decision_note ? ': ' + esc(r.decision_note) : '') + (r.voided_at ? ' — voided' : r.status === 'confirmed' ? voidBtn('data-void-return', r.id) : '') + '</li>').join('') ||
+                  (r.decision_note ? ': ' + esc(r.decision_note) : '') + photoLink(r.photo_url) +
+                  (r.voided_at ? ' — voided' : r.status === 'confirmed' ? voidBtn('data-void-return', r.id) : '') + '</li>').join('') ||
                   '<li class="req-muted">None.</li>') + '</ul>' +
               '<h4 class="pur-h4">Cash counts</h4><ul class="pur-history">' +
                 ((d.counts || []).map(k => '<li' + (k.voided_at ? ' class="is-void"' : '') + '>' + esc(k.counted_on) + ' — counted ' + peso(k.counted) +
@@ -241,6 +244,7 @@
             '</div></div>';
         const again = () => { reload(); };
         host.querySelector('[data-close-buyer]').addEventListener('click', () => { host.innerHTML = ''; });
+        host.querySelectorAll('[data-photo]').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); root.open(a.dataset.photo, '_blank'); }));
         host.querySelector('[data-count]').addEventListener('click', () => countModal(b, again));
         const rp = host.querySelector('[data-repay]');
         if (rp) rp.addEventListener('click', () => repayModal(b, f.owes, again));
@@ -393,12 +397,13 @@
             section('Returns', 'Reported returns wait for the owner.',
               (d.returns || []).map(r => '<li>' + esc(r.handed_on) + ' — ' + peso(r.amount) + ' — ' +
                 esc({ reported: 'waiting for the owner', withdrawn: 'withdrawn', confirmed: 'confirmed', rejected: 'rejected' }[r.status] || r.status) +
-                (r.decision_note ? ': ' + esc(r.decision_note) : '') + (r.voided_at ? ' — voided by the owner' : '') +
+                (r.decision_note ? ': ' + esc(r.decision_note) : '') + (r.voided_at ? ' — voided by the owner' : '') + photoLink(r.photo_url) +
                 (r.status === 'reported' ? ' <button type="button" class="att-btn att-btn--sm" data-withdraw="' + esc(r.id) + '">Withdraw</button>' : '') + '</li>')) +
             section('Repaid to you (90 days)', 'What the company paid back for your own money.',
               (d.repayments || []).map(x => '<li' + (x.voided_at ? ' class="is-void"' : '') + '>' + esc(x.paid_on) + ' — ' + peso(x.amount) +
                 (x.voided_at ? ' — voided' : '') + '</li>'));
         body.querySelector('[data-return]').addEventListener('click', () => returnModal(f.held, reload));
+        body.querySelectorAll('[data-photo]').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); root.open(a.dataset.photo, '_blank'); }));
         body.querySelectorAll('[data-dispute]').forEach(b => b.addEventListener('click', () => noteModal('I did not receive this',
             'The owner sees your note. Your balance does not change until they settle it.', 'Send', 'pur_cash_dispute', { p_issue: b.dataset.dispute }, 'p_note', reload)));
         body.querySelectorAll('[data-withdraw]').forEach(b => b.addEventListener('click', async () => {

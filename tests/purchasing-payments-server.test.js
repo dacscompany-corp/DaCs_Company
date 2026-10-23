@@ -214,10 +214,42 @@ test('npm run test:sql runs the 2A-4a suites and re-runs 2A-1 / 2A-2 / 2A-3 with
   ok(JSON.parse(read('package.json')).scripts.test.includes('node tests/purchasing-payments-server.test.js'), 'npm test runs this file');
 });
 test('the migrations README and the schema doc know 0102', () => {
-  ok(/0102_purchase_payments\.sql/.test(read('supabase/migrations/README.md')), 'README');
+  ok(/\*\*0102 \(WorkMate Stage 2A-4a/.test(read('supabase/migrations/README.md')), 'README: the 0102 entry');
   const doc = read('docs/DATABASE_SCHEMA.md');
   for (const t of TABLES) ok(doc.includes(t), 'DATABASE_SCHEMA.md: ' + t);
   ok(/payments_tracked/.test(doc), 'DATABASE_SCHEMA.md: purchases.payments_tracked');
+});
+
+console.log('\n0103 (2A-4b): a buyer sees the photo of their own return');
+
+test('0103: pur_cash_detail (+ photo_url) and pur_list_doc (+ supplier_id) are 0102\'s text plus one key, still internal; pur_my_ops_done reads the caller\'s own ids', () => {
+  const M103raw = read('supabase/migrations/0103_buyer_return_photo.sql');
+  const M103 = strip(M103raw);
+  const fns = [...M103.matchAll(/create or replace function (?:public\.)?([a-z_]+)\s*\(/g)].map(m => m[1]);
+  eq(fns, ['pur_cash_detail', 'pur_list_doc', 'pur_my_ops_done'], 'three functions');
+  ok(!/create table|alter table|create policy|drop |insert into|update |delete from/i.test(M103), 'no table, policy, drop or data change');
+  eq([...M103.matchAll(/^grant [^;]*;/gm)].map(m => m[0]), ['grant execute on function pur_my_ops_done(uuid[]) to authenticated;'],
+     'the one grant: pur_my_ops_done (pur_cash_detail and pur_list_doc stay internal)');
+  ok(/revoke all on function pur_my_ops_done\(uuid\[\]\) from public, anon;/.test(M103), 'never for anon');
+  const od = fnBody(M103, 'pur_my_ops_done', '0103');
+  ok(/o\.actor_id = auth\.uid\(\)/.test(od) && /cardinality\(p_ops\), 0\) > 200/.test(od), 'the caller\'s own ids only, 200 at most');
+  ok(!/insert|update|delete/i.test(od), 'a read');
+  ok(/revoke all on function pur_cash_detail\(uuid, uuid\) from public, anon, authenticated;/.test(M103), 'revoked again, explicitly');
+  ok(/revoke all on function pur_list_doc\(uuid\) from public, anon, authenticated;/.test(M103), 'pur_list_doc revoked again, explicitly');
+  const ld = fnBody(M103, 'pur_list_doc', '0103'), ld102 = fnBody(M102, 'pur_list_doc', '0102');
+  eq(removed(ld, ld102), [], 'pur_list_doc keeps every 0102 line');
+  eq(added(ld, ld102), ["'supplier_id', pu.supplier_id,"], '… plus the listed supplier');
+  const now = fnBody(M103, 'pur_cash_detail', '0103'), then = fnBody(M102, 'pur_cash_detail', '0102');
+  eq(removed(now, then), ["'voided_at', r.voided_at) order by r.created_at desc), '[]'::jsonb)"], 'one line replaced');
+  eq(added(now, then), ["'photo_url', r.photo_url, 'voided_at', r.voided_at) order by r.created_at desc), '[]'::jsonb)"], '… by itself plus photo_url');
+  ok(!/expenses|payroll|_projSpent/.test(M103), 'nothing about Spent');
+});
+test('npm run test:sql re-runs the payments suite with 0103; the migrations README and the schema doc know 0103', () => {
+  const pkg = JSON.parse(read('package.json'));
+  ok(/node supabase\/tests\/2a4_payments\.pglite\.mjs && node supabase\/tests\/2a4_payments\.pglite\.mjs --with-0103 &&/.test(pkg.scripts['test:sql']),
+    'test:sql runs 2a4_payments with and without 0103');
+  ok(/0103_buyer_return_photo\.sql/.test(read('supabase/migrations/README.md')) && /\*\*0103 /.test(read('supabase/migrations/README.md')), 'README');
+  ok(/0103/.test(read('docs/DATABASE_SCHEMA.md')) && /photo_url/.test(read('docs/DATABASE_SCHEMA.md')), 'DATABASE_SCHEMA');
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

@@ -23,6 +23,9 @@ const M97 = read(path.join(ROOT, 'supabase/migrations/0097_purchasing_office.sql
 const M101 = read(path.join(ROOT, 'supabase/migrations/0101_purchasing_phone.sql'));
 const M98 = read(path.join(ROOT, 'supabase/migrations/0098_pm_profit_sharing.sql'));
 const M102 = read(path.join(ROOT, 'supabase/migrations/0102_purchase_payments.sql'));
+// --with-0103: re-run every test with 0103 on top (2A-4b: a return's photo reaches its buyer).
+const WITH_0103 = process.argv.includes('--with-0103');
+const M103 = WITH_0103 ? read(path.join(ROOT, 'supabase/migrations/0103_buyer_return_photo.sql')) : '';
 
 // The 2A-1 base schema (same as 2a1_purchase.pglite.mjs), plus the service
 // role the sign-in function runs as.
@@ -110,6 +113,7 @@ async function fresh(opts = {}) {
   if (!opts.without102) {
     await db.exec(fnText(M98, 'pm_main_owner_id'));
     await db.exec(M102);
+    if (WITH_0103) await db.exec(M103);
   }
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
@@ -365,6 +369,7 @@ await test('Q2: a purchase recorded before 0102 reads "Payment not tracked" unti
   await as(db, '');
   await db.exec(fnText(M98, 'pm_main_owner_id'));
   await db.exec(M102);
+  if (WITH_0103) await db.exec(M103);
   eq((await state(db, old)).state, 'not_tracked', 'not "Unpaid"');
   await as(db, BUYER);
   const fresh2 = (await record(db, body([{ folder_id: f, item_name: 'Sand', quantity: 1, amount: 100 }]))).purchase_id;
@@ -1003,6 +1008,48 @@ await test('the history is append-only', async () => {
   assert((await code(db.query(`update pur_money_events set amount = 1`))).includes('HISTORY_IMMUTABLE'));
   assert((await code(db.query(`delete from pur_money_events`))).includes('HISTORY_IMMUTABLE'));
   eq((await all(db, `select kind from pur_money_events`)).map(r => r.kind), ['cash_given']);
+});
+
+if (WITH_0103) await test('0103: the buyer\'s own return photo (F3), the owner in that buyer\'s view, no other buyer; list rows name their supplier; done operations are the caller\'s own (R38)', async () => {
+  const db = await fresh();
+  await give(db, BUYER, 500);
+  const mine = `pettyCash/${OWNER}/2026-10/66666666-6666-6666-6666-666666666666.jpg`;
+  const url = 'https://example.supabase.co/storage/v1/object/public/uploads/' + mine;
+  await db.query(`insert into receipt_uploads (path, owner_id, kind, uploaded_by, state) values ($1, $2, 'petty_cash', $3, 'pending')`, [mine, OWNER, BUYER]);
+  await as(db, BUYER);
+  await db.query(`select pur_cash_report_return($1, '200', $2, 'the owner', $3, '')`, [op(), phDate(), url]);
+  await db.query(`select pur_cash_report_return($1, '50', $2, '', '', 'no photo')`, [op(), phDate()]);
+  const mineNow = (await one(db, `select pur_my_cash() x`)).x;
+  eq(mineNow.returns.map(r => r.photo_url).sort(), ['', url], 'both returns, the photo where there is one');
+  await as(db, OWNER);
+  eq((await one(db, `select pur_cash_buyer($1) x`, [BUYER])).x.returns.map(r => r.photo_url).sort(), ['', url], 'the main owner too');
+  await as(db, BUYER2);
+  const other = (await one(db, `select pur_my_cash() x`)).x;
+  eq(other.returns, [], 'another buyer sees only their own (none)');
+  assert(/OWNER_ONLY|NOT_ALLOWED/.test(await code(db.query(`select pur_cash_buyer($1)`, [BUYER]))), 'and cannot read Juan\'s');
+  await db.exec(`set role authenticated`);
+  assert((await code(db.query(`select pur_cash_detail($1, $2)`, [OWNER, BUYER]))).includes('permission denied'), 'still internal');
+  await db.exec(`reset role`);
+  // A purchases-list row (Purchasing, My purchases) also names its supplier, for paying from its credit offline.
+  const wil = await supplier(db, 'ZZ Wilcon');
+  const { id } = await bought(db, BUYER, 100, { body: { supplier_id: wil } });
+  await as(db, BUYER);
+  const row = (await one(db, `select pur_my_purchases(30) x`)).x.find(r => r.id === id);
+  eq([row.supplier_id, row.pay.state], [wil, 'unpaid'], 'My purchases: the supplier and the payment state');
+  // R38: which of MY operation ids the server already has — never another account's.
+  const mine1 = op(), mine2 = op();
+  await give(db, BUYER, 10);
+  await as(db, BUYER);
+  await db.query(`select pur_cash_report_return($1, '1', $2, '', '', '')`, [mine1, phDate()]);
+  const askBoth = async () => (await one(db, `select pur_my_ops_done($1::uuid[]) x`, [[mine1, mine2]])).x;
+  eq(await askBoth(), [mine1], 'the accepted one only');
+  await as(db, BUYER2);
+  eq(await askBoth(), [], 'another buyer learns nothing of Juan\'s');
+  assert((await code(db.query(`select pur_my_ops_done($1::uuid[])`, [Array.from({ length: 201 }, () => op())]))).includes('BAD_OP'), '200 at most');
+  await as(db, BUYER);
+  // Nothing else in the answer changed: 0102's keys plus photo_url on each return.
+  eq(Object.keys(mineNow.returns[0]).sort(),
+     ['amount', 'decided_at', 'decision_note', 'handed_on', 'handed_to', 'id', 'photo_url', 'status', 'voided_at']);
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
