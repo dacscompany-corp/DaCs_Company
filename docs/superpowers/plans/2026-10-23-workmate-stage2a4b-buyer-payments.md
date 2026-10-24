@@ -5924,3 +5924,37 @@ Fresh clones of the real repos (`core.autocrlf=false`): Dacs Web at `c3f4587`, W
 - WorkMate, Tasks 2 and 3: **17 + 13 blocks** applied → all **30 files byte-identical**.
 - Revisions 2 and 3 were each rehearsed again from scratch on new clones after their review fixes: same result, every file byte-identical.
 - Revision 1's first rehearsal found three new WorkMate files ending in a blank line, which a Create block cannot carry; the files were trimmed (no code change; `flutter test` 893 again, analyze clean) and the rehearsal repeated.
+
+## Execution notes (Task 4, 23–24 October 2026)
+
+- **Commits:** Dacs Web `aba80db` (Task 1; pushed 24 Oct), WorkMate `e8a331e` (Task 2) and `752fa2b` (Task 3), all by the user. Revision 3 of this plan was approved on 23 Oct; R37 (launch on 0.8.0+1009) was approved, then superseded by **R48 of the [0.8.1 plan](2026-10-24-workmate-0.8.1-pilot-fixes.md): launch ships 0.8.1+1010**. 0.8.0 was never published.
+- **Step 1:** the user applied the committed 0103 in the SQL editor, 23 Oct ~12:56.
+- **Step 2:** verified through MCP — the three function bodies match the file (`md5(replace(prosrc, chr(13), ''))`); `pur_cash_detail` and `pur_list_doc` executable by neither `authenticated` nor `anon`; `pur_my_ops_done` by `authenticated` only.
+- **Step 3:** `2a4b_acceptance.sql` passed live; no ZZ row, petty-cash upload or money event left.
+- **Step 4:** the user pushed Dacs Web on 24 Oct (origin/main `aba80db`).
+- **Step 5:** release `dacs-workmate-0.8.0-1009.apk`, 37.7 MB, SHA-256 `18BBB454…A6A05B7`, signed with the same key as 0.7.1; installed over 0.7.1 on the test phone on 24 Oct 11:11. Not published.
+- **Step 6:** project `ZZ 2a4b pilot` (one billing period), supplier `ZZ Pay Hardware 2`, ₱3,000 petty cash to staff@ (note `ZZ 2a4b`); staff@ Buyer ON, own money OFF.
+- **Step 7 (pilot), 24 Oct — all PASS except P12b (skipped):**
+
+| # | Result |
+|---|---|
+| P1 | PASS — card ₱3,000.00; 0.7.1's drafts and saved lists kept by the upgrade |
+| P2 | PASS — ZZ cement ₱1,250 paid in full from petty cash: one purchase with its payment inside (one `pur_record`); card ₱1,750 |
+| P3 | PASS — offline ZZ gravel ₱1,000, paid part ₱300 Company/GCash: waiting, then recorded once with its payment; Partially paid, ₱700 left; card unchanged |
+| P4 | PASS — offline ₱700 petty-cash payment with a camera proof: card ₱1,050 at once; one ₱700 payment on the server with its proof; Paid; the proof opens on Dacs Web as a private download. The row read "₱700.00 waiting to send" (a zero "left" is not shown) |
+| P4b | PASS (outcome B) — the list refreshed while there was signal, so ZZ sand simply showed Paid; one ₱100 payment on the server |
+| P5 | PASS — offline return ₱500 with a photo: cash held unchanged until the owner confirmed, then ₱550 on the phone and the web; the phone shows the photo; staff@'s own Cash tab on the web links it (F3 of 2A-4a) |
+| P6 | PASS — the overspend warning before saving; card ₱0.00 with "Shortfall ₱450.00", the same on the owner's tracker. (The first tries never reached Save; the 12:38 save recorded once.) |
+| P7 | PASS — owner ₱500 Company → Overpaid → resolved as ₱300 refund + ₱200 supplier credit; the phone shows Paid |
+| P8 | PASS — ZZ nails ₱150 paid from the credit ("₱200.00 left" offered) → ₱50 left; a typed supplier hides the credit |
+| P9 | PASS — "I did not receive this" flagged on the tracker; owner cleared it ("ZZ checked"); the phone shows "Owner: ZZ checked"; no balance changed |
+| P10 | PASS — own money not offered while off; switched on → a ₱100 own-money payment, authorized → Company owes ₱100 |
+| P11 | PASS — Void offline: "This needs signal"; online with a reason: struck through, Unpaid, company owes back to ₱0 |
+| P12 | PASS on the second try (ZZ wire ₱20): "Needs attention — That purchase is no longer recorded…" in both languages, Throw away. The first try (ZZ paint, ₱50) reached the server at 13:47:25, before the 13:50 void (the phone was briefly online), and correctly showed "Voided — paid, to recover" |
+| P12b | Skipped — staff@'s only purchase from before 0102 is voided; covered by the R34 tests |
+| P13 | PASS — W-0007 sees the worker app, nothing of payments |
+| P14 | PASS — no `client_errors` |
+
+- **Findings:** **F1** a voided purchase showed "Voided" and a second "Void" tag; **F2** a purchase opened with no signal showed a bare "No signal" page; **F3** a refresh could spin for a minute or more after the signal came back (the user force-closed the app). All three fixed in **0.8.1+1010** — see the [0.8.1 plan](2026-10-24-workmate-0.8.1-pilot-fixes.md). Also found there: a calendar-bound test (R47). Observation: Airplane mode on the test phone (Xiaomi) sometimes let a request through just after it was switched on.
+- **Step 8 (clean-up):** done on 24 Oct after the 0.8.1 re-check — see the 0.8.1 plan's notes.
+- **Step 9:** launch ships 0.8.1+1010 (R48): the real buyer's one buying run on 0.8.1, then publish it.
