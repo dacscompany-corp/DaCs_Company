@@ -153,6 +153,9 @@
 .stk-rec.is-reversed .stk-rec-main { color: var(--att-muted); }
 .stk-rec-acts, .stk-line-acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .stk-line-acts { margin-top: 8px; }
+/* 2C (0105): a record's cost moves, under it. */
+.stk-cost { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 4px; padding-top: 6px; border-top: 1px dashed var(--att-line); }
+.stk-cost-acts { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
 @media (max-width: 640px) {
     .stk-rec { flex-direction: column; }
     .stk-grid2 { grid-template-columns: 1fr; }

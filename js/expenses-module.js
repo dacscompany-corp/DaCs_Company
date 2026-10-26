@@ -2059,7 +2059,7 @@ function renderExpensesTable() {
         let cum = 0;
         sorted.forEach(e => {
             cum += (e.amount || 0);
-            if (e.purchaseLineId || e.purchaseChargeId) return;
+            if (e.purchaseLineId || e.purchaseChargeId || e.stkCostMoveId) return;
             if (e.coverExpense || cum > budget) _coverSet.add(e.id);
         });
     });
@@ -2071,7 +2071,9 @@ function renderExpensesTable() {
         const fundingBadge = (_coverSet.has(e.id) || e.coverExpense) ? _fundingBadgeHTML(null, true) : (srcProj ? _fundingBadgeHTML(srcProj, false) : '');
         const catBadge = showCategoryBadge ? getCategoryPillHTML(e.category) : '';
         const invBadge = e.inInventory ? '<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;border-radius:999px;background:#ecfdf5;color:#15803d;font-size:10.5px;font-weight:700;border:1px solid #a7f3d0;">📦 In Inventory</span>' : '';
-        const purBadge = (e.purchaseLineId || e.purchaseChargeId)
+        const purBadge = e.stkCostMoveId
+            ? '<span title="Moved from stock — the main owner approved where its cost goes. Only the main owner reverses it (Requests → Stock)." style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#f0f9ff;color:#0369a1;font-size:10.5px;font-weight:700;border:1px solid #bae6fd;">Stock cost move</span>'
+            : (e.purchaseLineId || e.purchaseChargeId)
             ? '<span title="Recorded as a purchase — edit or void it to change it" style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:10.5px;font-weight:700;border:1px solid #c7d2fe;">From purchase</span>'
               + (_purReviewLines.has(e.purchaseLineId) ? '<span title="No billing period for its month — charged to Cover until the office reviews it" style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#fff7ed;color:#c2410c;font-size:10.5px;font-weight:700;border:1px solid #fed7aa;">Office review</span>' : '')
               + (window.expPurPendingChange(e.purchaseLineId || e.purchaseChargeId) ? '<span title="You sent a change of this purchase to the owner — open the row to withdraw it" style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#fefce8;color:#a16207;font-size:10.5px;font-weight:700;border:1px solid #fde68a;">Waiting for the owner</span>' : '')
@@ -2836,6 +2838,12 @@ function _purErrorText(err) {
         BAD_PROJECT:           'This project no longer exists or belongs to another account — refresh the page.',
         NOT_FOUND:             'That purchase or project was not found — refresh the page.',
         PURCHASE_ROW:          'This row was made by a purchase — use Edit or Void on it instead.',
+        // Stock (0104) and stock cost moves (0105): a purchase whose goods are stock, or whose cost the owner moved.
+        STOCK_COST_IN_USE:     'The owner approved stock cost moves that rely on this purchase line\'s price and quantity — the main owner reverses them first (Requests → Stock).',
+        STOCK_COST_FUNDING:    'The owner approved stock cost moves that rely on where this purchase\'s cost sits (its billing periods and Cover) — the main owner reverses them first (Requests → Stock).',
+        STOCK_IN_USE:          'This purchase line has stock records — reverse them first (Requests → Stock), or keep its destination, project, unit and enough quantity.',
+        STOCK_COST_ROW:        'This row is a stock cost move the owner approved — only the main owner reverses it (Requests → Stock).',
+        STOCK_LIVE:            'It has stock records or stock cost moves — mark the project completed instead.',
         TOTAL_MISMATCH:        'The items and fees do not add up to the receipt total.',
         BAD_LINES:             'Check the item lines.',
     };
@@ -3123,6 +3131,8 @@ async function deleteExpense(id) {
         try { const snap = await db.collection('expenses').doc(id).get(); if (snap.exists) pe = { id: snap.id, ...snap.data() }; }
         catch (err) { console.error('deleteExpense fetch:', err); }
     }
+    // 2C (0105): a stock cost move's row — the database refuses it too (STOCK_COST_ROW).
+    if (pe && pe.stkCostMoveId) { showExpNotif('This is a stock cost move the main owner approved. It is never edited or deleted here — the main owner reverses it in Requests → Stock.', 'error'); return; }
     if (pe && (pe.purchaseLineId || pe.purchaseChargeId)) {
         if (!await _purOfferWithdraw(pe)) return;
         let pur;
@@ -4427,6 +4437,7 @@ async function openEditExpenseModal(id) {
     // and a reason is required. The billing period is the server's to choose.
     _editingPurchase = null;
     _purEditOpId = null;
+    if (e.stkCostMoveId) { showExpNotif('This is a stock cost move the main owner approved. It is never edited or deleted here — the main owner reverses it in Requests → Stock.', 'error'); return; }
     if (e.purchaseLineId || e.purchaseChargeId) {
         if (!await _purOfferWithdraw(e)) return;
         let pur;

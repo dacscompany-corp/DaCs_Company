@@ -262,6 +262,31 @@ async function test(name, fn) {
       assert.deepEqual(h.calls, ['addExpenseModal', 'addExpenseModal', 'addPayrollModal']);
     } finally { globalThis.db = saved.db; globalThis.firebase = saved.firebase; }
   });
+  // 2C (0105): a stock cost move's rows are the owner's value — staff see the
+  // row and its tag, never its pesos, and their subtotals leave it out.
+  const costIn = { id: 'e2', projectId: 'p1', name: 'From warehouse — Cement', category: 'Electrical', amount: 1234,
+    date: '2026-10-13', quantity: 4, docs: {}, docUrls: {}, receipts: [], stkCostMoveId: 'c1' };
+  const plain = { ...material, id: 'e3', name: 'Tape', amount: 777, docUrls: {}, firstReceipt: '', receipts: [] };
+  for (const role of ['staff', 'owner']) await test(role + ': a stock cost move row in Materials', () => {
+    const h = harness(role);
+    h.window.expIsStockCostRow = (r) => !!(r && (r.stkCostMoveId || (r._parts || []).some(p => p.stkCostMoveId)));
+    const tree = h.render('MaterialDrill', { ...materialProps, materialTx: [plain, costIn] });
+    const out = text(tree);
+    assert(out.includes('From warehouse — Cement') && out.includes('Stock cost move'), 'the row and its tag: ' + out);
+    if (role === 'staff') {
+      assert(!/1,234|1234/.test(JSON.stringify(tree)), 'staff see a cost move\'s pesos: ' + out);
+      assert(out.includes('777'), 'staff still see the amounts they enter');
+      assert(!out.includes('2,011'), 'a staff subtotal leaves the cost move out: ' + out);
+    } else {
+      assert(out.includes('1,234') && out.includes('2,011'), 'the owner sees it, and the subtotal counts it: ' + out);
+    }
+    const modal = h.render('ItemDetailsModal', { item: costIn, billingNum: 1, billingOf: () => 1, onClose() {}, onOpenImage() {}, onPrint() {} });
+    assert(role === 'staff' ? !/1,234|1234/.test(JSON.stringify(modal)) : text(modal).includes('1,234'), role + ' details: ' + text(modal));
+  });
+  await test('a stock cost move is read-only in Project Control: no part-by-part edit, and it maps its link', () => {
+    assert(/stkCostMoveId: d\.stkCostMoveId \|\| null,/.test(source), 'mapExpense keeps the link');
+    assert(/const isOldSplit = \(m\) => [^\n]*window\.expIsStockCostRow\(m\)\);/.test(source), 'never edited part by part');
+  });
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exitCode = 1;
 })();

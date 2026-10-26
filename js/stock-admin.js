@@ -13,8 +13,11 @@
 // Goods are issued oldest RECEIVED first (each delivery is its own layer,
 // dated the day it arrived); one item's screen lists them in that order.
 //
-// QUANTITIES ONLY: no peso amount is read or shown here — the value of
-// stock and every cost move are Stage 2C (main owner). Owner and office
+// QUANTITIES ONLY: no peso amount is read or shown here. Since 2C (0105)
+// each record lists its cost moves — "Cost assignment pending", "Cost
+// transferred"… — as states; their values (owner accounts) and the main
+// owner's Approve / Reject / Reverse cost, and a recorder's Ask again, are
+// js/stock-cost-admin.js (window.StockCostAdmin). Owner and office
 // staff allowed Expenses use it (Buyer staff are office staff); the nav
 // hides it until the main owner switches stock on (launch), and shows the
 // main owner the switch. Every rule is the server's (0104); this file only
@@ -117,6 +120,44 @@
         if (r.status === 'pending') return r.recorded_by === me.userId || me.isMainOwner;
         if (r.kind === 'count' || r.kind === 'opening') return me.isMainOwner && !(r.kind === 'count' && Number(r.quantity) === Number(r.book_quantity));
         return r.recorded_by === me.userId || me.isOwner;
+    }
+
+    // ── Cost moves (0105): states only ──────────────────────────────
+
+    // A cost move's state as a pill: [text, tone].
+    function costState(c) {
+        if (c.status === 'pending') {
+            return [c.kind === 'assign' ? 'Cost assignment pending' : c.kind === 'transfer' ? 'Cost transfer pending'
+                    : 'Back to company stock — pending', 'working'];
+        }
+        if (c.status === 'rejected') return ['Cost move rejected — kept with source', 'abandoned'];
+        if (c.status === 'withdrawn') return ['Cost request withdrawn', 'abandoned'];
+        if (c.reversed) return ['Cost move reversed', 'abandoned'];
+        return [c.kind === 'assign' ? 'Cost assigned' : c.kind === 'transfer' ? 'Cost transferred'
+                : c.kind === 'back' ? 'Cost back in company stock' : 'Company stock loss', 'done'];
+    }
+
+    // "4 bag: Company stock → Barlin" — what moved and whose cost.
+    function costText(c, unit) {
+        const q = c.status === 'approved' ? c.approved_quantity : c.quantity;
+        return qty(q) + (unit ? ' ' + unit : '') + ': ' + (c.from_name || '') + ' → ' + (c.to_name || '');
+    }
+
+    // Ask again: a rejected or reversed one, while nothing else is open for
+    // the same movement (costs = the record's cost moves).
+    function canResubmit(c, costs) {
+        if (!(c.status === 'rejected' || (c.status === 'approved' && c.reversed && c.kind !== 'loss'))) return false;
+        return !(costs || []).some(x => x.id !== c.id && x.move_id === c.move_id
+                                     && (x.status === 'pending' || (x.status === 'approved' && !x.reversed)));
+    }
+
+    // me = { isMainOwner }: decide a pending one; reverse an approved one (a loss goes with its count).
+    function costActions(c, me, costs, canRecord) {
+        const out = [];
+        if (me.isMainOwner && c.status === 'pending') out.push('approve', 'reject');
+        if (me.isMainOwner && c.status === 'approved' && !c.reversed && c.kind !== 'loss') out.push('reverse');
+        if (canRecord && canResubmit(c, costs)) out.push('resubmit');
+        return out;
     }
 
     // Places to pick: the warehouse, then each project (completed ones last,
@@ -229,6 +270,8 @@
         STALE_COUNT: 'The books changed since this count. Reject it, then count again.',
         STOCK_IN_USE: 'This purchase line has stock records. Reverse them first, or keep its destination, project, unit and enough quantity.',
         MOVED_ON: 'Those goods have moved on. Reverse the later records first.',
+        COST_MOVED: 'The main owner approved this movement\'s cost. The main owner reverses that cost move first.',
+        STOCK_COST_IN_USE: 'The owner approved cost moves that rely on this purchase line as it stands. Reverse them first.',
         RETURNS_FIRST: 'Part of this issue came back. Reverse that return first.',
         NOT_YOURS: 'Only the person who recorded this, or an owner, can reverse it.',
         OWN_PURCHASE: 'Another unit is checked by the office — never by whoever recorded or bought the purchase.',
@@ -266,6 +309,7 @@
     }
 
     const pure = { KIND_LABEL, COUNT_REASONS, qty, parseQty, recordState, recordText, requestText, countDifference, canReverse, layerText,
+                   costState, costText, canResubmit, costActions,
                    placeOptions, itemLabel, needsMatch, matchProblems, moveProblems, moveBody, moveKind, countProblems,
                    ERRORS, errorMessage, localDay };
 
@@ -288,7 +332,7 @@
     // Who is looking, from the server (stk_status).
     function me() {
         const s = cache.status || {};
-        return { userId: s.user_id, isOwner: !!s.is_owner, isMainOwner: !!s.is_main_owner };
+        return { userId: s.user_id, isOwner: !!s.is_owner, isMainOwner: !!s.is_main_owner, canRecord: !!s.can_record };
     }
 
     function pill(text, tone) { return '<span class="att-pill att-pill--' + tone + '">' + esc(text) + '</span>'; }
@@ -667,6 +711,7 @@
                 (r.decided_by_name ? ' · ' + esc(r.status === 'rejected' ? 'rejected' : r.status === 'withdrawn' ? 'withdrawn' : 'confirmed') + ' by ' + esc(r.decided_by_name) +
                   (r.decision_note ? ': ' + esc(r.decision_note) : '') : '') +
                 (r.reversed ? ' · reversed by ' + esc(r.reversed_by_name) + ': ' + esc(r.reverse_reason) : '') + '</div>' +
+              (r.costs || []).map(c => costLine(c, r, m)).join('') +
             '</div>' +
             '<div class="stk-rec-acts">' +
               (r.kind === 'issue' && Number(r.returnable) > 0 ? '<button type="button" class="att-btn att-btn--sm" data-rec-act="return">Return…</button>' : '') +
@@ -674,6 +719,23 @@
                 '<button type="button" class="att-btn att-btn--sm" data-rec-act="reject">Reject</button>' : '') +
               (canReverse(r, m) ? '<button type="button" class="att-btn att-btn--sm" data-rec-act="reverse">' + (r.status === 'pending' ? 'Withdraw' : 'Reverse') + '</button>' : '') +
             '</div></div>';
+    }
+
+    // One cost move under its record: its state, and (owner accounts) its
+    // value from js/stock-cost-admin.js; the buttons open that file's forms.
+    function costLine(c, r, m) {
+        const st = costState(c);
+        const SC = root.StockCostAdmin;
+        const v = SC ? SC.valueText(c) : '';
+        const acts = SC ? costActions(c, m, r.costs, m.canRecord) : [];
+        const label = { approve: 'Approve…', reject: 'Reject…', reverse: 'Reverse cost…', resubmit: 'Ask again…' };
+        const why = c.reversed ? c.reverse_reason : c.status === 'pending' ? c.note : c.decision_note;
+        return '<div class="stk-cost" data-cost="' + esc(c.id) + '">' + pill(st[0], st[1]) + ' <span>' + esc(costText(c, r.item_unit)) + '</span>' +
+            (v ? ' <strong>' + esc(v) + '</strong>' : '') +
+            (why ? ' <span class="req-muted">· ' + esc(why) + '</span>' : '') +
+            (acts.length ? '<span class="stk-cost-acts">' + acts.map(a => '<button type="button" class="att-btn att-btn--sm' +
+                (a === 'approve' ? ' att-btn--primary' : '') + '" data-cost-act="' + a + '">' + label[a] + '</button>').join('') + '</span>' : '') +
+            '</div>';
     }
 
     function itemCard(i) {
@@ -738,6 +800,17 @@
             if (act === 'reject') return openDecide(r, false, reload);
             if (act === 'return') return openMove({ itemId: r.item_id, returnsRecord: r.id, returnFrom: r.to_name, quantity: r.returnable }, reload);
         }));
+        scope.querySelectorAll('[data-cost-act]').forEach(b => b.addEventListener('click', () => {
+            const r = records.find(x => x.id === b.closest('[data-record]').dataset.record);
+            const c = r && (r.costs || []).find(x => x.id === b.closest('[data-cost]').dataset.cost);
+            const SC = root.StockCostAdmin;
+            if (!c || !SC) return;
+            const act = b.dataset.costAct;
+            if (act === 'approve') return SC.openDecide(c, true, reload, r.item_unit);
+            if (act === 'reject') return SC.openDecide(c, false, reload, r.item_unit);
+            if (act === 'reverse') return SC.openReverse(c, reload, r.item_unit);
+            if (act === 'resubmit') return SC.openResubmit(c, reload, r.item_unit);
+        }));
     }
 
     async function render(host) {
@@ -750,7 +823,7 @@
         const reload = () => render(host);
         host.innerHTML =
             '<div class="att-stack stk-tab req-detail">' +
-              RA.head('Stock', 'Where goods are, in catalogue units. Quantities only — values come with owner-confirmed cost moves.', tabs()) +
+              RA.head('Stock', 'Where goods are, in catalogue units. When goods reach someone else\'s project, the main owner approves where their cost goes.', tabs()) +
               actions() +
               '<div data-body><div class="att-empty">Loading…</div></div>' +
             '</div>';
@@ -782,9 +855,12 @@
             }));
         } else if (ui.tab === 'pending') {
             body.innerHTML = (ov.pending.length ? '<div class="stk-recs">' + ov.pending.map(r => recordRow(r, m)).join('') + '</div>'
-                : '<div class="att-empty">Nothing is waiting for the owner.</div>') +
-                (m.isMainOwner ? '' : '<p class="req-muted">Only the main owner confirms counts and opening stock.</p>');
+                : '<div class="att-empty">No count or opening stock is waiting for the owner.</div>') +
+                (m.isMainOwner ? '<div data-costs></div>'
+                    : '<p class="req-muted">Only the main owner confirms counts and opening stock, and approves where moved goods\' cost goes.</p>');
             wireRecords(body, ov.pending, reload);
+            // 2C: the main owner's pending cost moves, the same cards as Purchasing → Owner approvals.
+            if (m.isMainOwner && root.StockCostAdmin) root.StockCostAdmin.renderApprovals(body.querySelector('[data-costs]'));
         } else if (ui.tab === 'history') {
             body.innerHTML = ov.recent.length ? '<div class="stk-recs">' + ov.recent.map(r => recordRow(r, m)).join('') + '</div>'
                 : '<div class="att-empty">No stock records yet.</div>';

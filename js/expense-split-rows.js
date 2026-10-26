@@ -66,6 +66,12 @@
         return !!(r && (r.purchaseLineId || r.purchaseChargeId));
     }
 
+    // A stock cost move's rows (0105): read-only, reversed as one by the main
+    // owner (Requests → Stock) — never edited or deleted part by part.
+    function isStockCostRow(r) {
+        return !!(r && (r.stkCostMoveId || (r._parts || []).some(function (p) { return p.stkCostMoveId; })));
+    }
+
     // The billing period column for a (grouped) row: "Billing #1 + Billing #2"
     // for a split. labelOf(periodId) returns a period's label or ''.
     function periodLabel(r, labelOf) {
@@ -77,8 +83,9 @@
 
     root.expGroupSplitRows = groupSplitRows;
     root.expIsPurchaseRow = isPurchaseRow;
+    root.expIsStockCostRow = isStockCostRow;
     root.expSplitPeriodLabel = periodLabel;
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { groupSplitRows: groupSplitRows, isPurchaseRow: isPurchaseRow, periodLabel: periodLabel };
+        module.exports = { groupSplitRows: groupSplitRows, isPurchaseRow: isPurchaseRow, isStockCostRow: isStockCostRow, periodLabel: periodLabel };
     }
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -305,12 +305,16 @@
               (r.status === 'pending' && !me.isOwner && r.requested_by === me.userId ? '<button type="button" class="att-btn att-btn--sm" data-withdraw="' + esc(r.id) + '">Withdraw</button>' : '') +
             '</div></div></div>';
         body.innerHTML =
+            // 2C (0105): stock cost moves waiting for the main owner — js/stock-cost-admin.js (empty for anyone else, or with stock off).
+            (me.isOwner && root.StockCostAdmin ? '<div data-stock-costs></div>' : '') +
             '<p class="req-muted">' + (me.isOwner
                 ? 'Changes your staff asked for that only you can make. Approving applies exactly the "Asked for" column, through the normal correction — and only while the purchase still reads as it did when they asked.'
                 : 'Changes you sent to the owner.') + '</p>' +
             (pending.length ? pending.map(card).join('') : '<div class="att-empty">Nothing is waiting.</div>') +
             (decided.length ? '<h3 class="pur-h3">Decided</h3>' + decided.map(card).join('') : '');
         const reload = () => renderApprovals(body, me);
+        const costs = body.querySelector('[data-stock-costs]');
+        if (costs) root.StockCostAdmin.renderApprovals(costs);
         body.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => PA.openPurchase(b.dataset.open)));
         const approve = async (id) => {
             const res = await RA.rpc('pur_decide_change', { p_op: root.DacsReceipts.newId(), p_request: id, p_approve: true, p_note: null });

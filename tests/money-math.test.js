@@ -550,6 +550,63 @@ console.log('\nP. Purchases are ordinary expense rows');
   });
 }
 
+// == X. STOCK COST MOVES (0105) ARE ORDINARY EXPENSE ROWS ================
+// WorkMate Stage 2C: when the main owner approves a stock cost move, the
+// server writes ordinary `expenses` rows tied to it (stkCostMoveId) — the
+// receiving project funded like a purchase, the giving project NEGATIVE rows
+// on every billing period / Cover group that carried the lot's cost, in
+// proportion. Every Spent / Cover site must read them exactly like any other
+// row: the link may never change a total, a negative row is never dropped,
+// and company stock (no project) is never anyone's Spent. Only staff lose a
+// cost move's amount on screen (_hideStockCost) — never a total that is Spent.
+console.log('\nX. Stock cost moves are ordinary expense rows');
+{
+  const folder = { id: 'f1', totalBudget: 1000000 };
+  const months = [
+    { id: 'm1', monthlyBudget: 7000, fundingType: 'progress' },
+    { id: 'm2', monthlyBudget: 0,    fundingType: 'president' }
+  ];
+  // A ₱1,500 line: ₱1,000 on the period, ₱500 Cover. Half its goods moved to
+  // another project — ₱750 off, in proportion: ₱500 period, ₱250 Cover.
+  const line = [
+    { projectId: 'm1', amount: 1000, docs: {}, purchaseLineId: 'L1' },
+    { projectId: 'm2', amount: 500,  docs: {}, coverExpense: true, purchaseLineId: 'L1' }
+  ];
+  const out = [
+    { projectId: 'm1', amount: -500, docs: {}, stkCostMoveId: 'K1' },
+    { projectId: 'm2', amount: -250, docs: {}, coverExpense: true, stkCostMoveId: 'K1' }
+  ];
+  const giving = portal.buildProject(folder, months, [], line.concat(out), []);
+  test('the giving project: Material and Spent drop by the value moved; Cover stays inside it', () => {
+    eq(giving.material, 750); eq(giving.spent, 750); eq(giving.coverCost, 250);
+  });
+  const unlinked = portal.buildProject(folder, months, [], line.concat(out.map(r => ({ ...r, stkCostMoveId: undefined }))), []);
+  test('the cost-move link changes no total', () => {
+    eq(giving.material, unlinked.material); eq(giving.spent, unlinked.spent); eq(giving.coverCost, unlinked.coverCost);
+  });
+  const receiving = portal.buildProject({ id: 'f2', totalBudget: 1000000 }, [{ id: 'n1', monthlyBudget: 600, fundingType: 'progress' }], [],
+    [{ projectId: 'n1', amount: 600, docs: {}, stkCostMoveId: 'K1' }, { folderId: 'f2', amount: 150, docs: {}, coverExpense: true, stkCostMoveId: 'K1' }], []);
+  test('the receiving project: counted like a purchase, its no-period Cover row inside Cover', () => {
+    eq(receiving.material, 750); eq(receiving.spent, 750); eq(receiving.coverCost, 150);
+  });
+  test('the line still adds up: giving + receiving = what was bought', () => {
+    eq(giving.spent + receiving.spent, 1500);
+  });
+  test('the browser never filters, funds or totals cost moves itself (display only)', () => {
+    const uses = portalSrc.split('\n').filter(l => l.includes('stkCostMoveId'));
+    ok(uses.length === 2, 'portal-app uses stkCostMoveId in ' + uses.length + ' lines');
+    ok(uses.some(l => /^const _hideStockCost = \(m\) => _staff\(\) && /.test(l)), 'the staff-only hiding');
+    ok(uses.some(l => /^\s+stkCostMoveId: d\.stkCostMoveId \|\| null,$/.test(l)), 'the mapped link');
+    for (const name of ['buildProject', '_projSpent', '_projEarned', '_projMargin', '_recognisedProfit']) {
+      const i = portalSrc.indexOf('function ' + name + '(');
+      ok(i !== -1, name + ' not found');
+      ok(!/_shownAmount|_hideStockCost|stkCostMoveId/.test(portalSrc.slice(i, portalSrc.indexOf('\n}\n', i))), name + ' reads a display helper');
+    }
+    const add = expensesSrc.slice(expensesSrc.indexOf('async function handleAddExpense('), expensesSrc.indexOf('\nasync function deleteExpense('));
+    ok(!/stkCostMoveId|stk_cost/.test(add), 'Add expense never writes a cost move');
+  });
+}
+
 // == J. OUT SOURCE IS NOT A FOURTH BUCKET (migration 0057) ==========
 // Project Control Out Source contracts are VENDOR subcontracts living in the
 // SAME `labor_contracts` table as in-house labor, split only by `category`.

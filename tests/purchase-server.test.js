@@ -209,7 +209,9 @@ test('staff never see a budget-based Cover guess (they cannot read budgets; the 
   assert(staff !== -1 && staff < b.indexOf('const folderMonths'), 'staff must return before the budget-based banner');
   const list = between(EXP, 'const _coverSet = new Set();', 'const _renderExpRow');
   assert(/if \(window\.currentUserRole !== 'staff'\)/.test(list), 'the list guess must skip staff');
-  assert(/if \(e\.purchaseLineId \|\| e\.purchaseChargeId\) return;/.test(list), 'purchase rows must keep their real Cover flag');
+  // 2C (0105): a stock cost move's rows carry the server's Cover flag too.
+  assert(/if \(e\.purchaseLineId \|\| e\.purchaseChargeId \|\| e\.stkCostMoveId\) return;/.test(list),
+         'purchase and stock cost-move rows must keep their real Cover flag');
 });
 
 test('purchase-made rows are edited and deleted through their purchase', () => {

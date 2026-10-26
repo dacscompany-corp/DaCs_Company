@@ -688,6 +688,10 @@
         BAD_QUANTITY: 'Enter a quantity above 0 (at most 3 decimals) and no more than what is left.',
         BAD_NOTE: 'Keep the note to 300 characters.',
         LINE_CLOSED: 'This item was cancelled. Reload the list.',
+        // Stock (0104) and stock cost moves (0105): a correction or re-fund the stock in it does not allow.
+        STOCK_IN_USE: 'This purchase line has stock records. Reverse them first (Requests → Stock), or keep its destination, project, unit and enough quantity.',
+        STOCK_COST_IN_USE: 'The owner approved stock cost moves that rely on this purchase line\'s price and quantity. The main owner reverses them first.',
+        STOCK_COST_FUNDING: 'The owner approved stock cost moves that rely on where this purchase\'s cost sits (its billing periods and Cover). The main owner reverses them first.',
         REDUCTION_PENDING: 'A reduction is waiting on this quantity. Resolve it in the request first.',
         BOUGHT: 'Something was already bought for this quantity, so it stays in its weekly batch.',
         BAD_REQUEST_LINK: 'A purchase line must go to the same project and work (Main Contract or Additional Works) as its request.',

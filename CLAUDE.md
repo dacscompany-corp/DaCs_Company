@@ -142,13 +142,27 @@ Profit   = Earned − Spent
   `pm_ca_*` functions (`tests/cash-advance.test.js` fences it). Owner-role only; staff never see it.
   Spec: `docs/superpowers/specs/2026-10-19-worker-cash-advances-design.md`.
 - **Stock (0104, WorkMate 2B-a) is quantities only.** Lots, receipts, issues, returns, leftovers, counts and opening
-  stock never read or write a peso, an `expenses` row or Spent; the value of stock and every cost move are Stage 2C
-  (main owner only). "Bought" in request capacity (`pr_portion_bought`) means **covered** — purchases plus live stock
+  stock never read or write a peso, an `expenses` row or Spent; the value of stock and every cost move are 0105
+  (below). "Bought" in request capacity (`pr_portion_bought`) means **covered** — purchases plus live stock
   records — so Still to buy is never negative; the shopping list's `bought` stays purchases alone. A stock record is
   never edited, only reversed with a reason. Goods are issued **oldest received first** — by delivery, never by
   purchase date. A catalogue item's kind and unit are fixed once a request or stock uses it. Only `js/stock-admin.js`
-  calls the `stk_*` functions. Dormant until the main owner switches it on; then the old "Add to inventory" tick and
-  `inventory` table refuse writes.
+  and `js/stock-cost-admin.js` call the `stk_*` functions. Dormant until the main owner switches it on; then the old
+  "Add to inventory" tick and `inventory` table refuse writes.
+- **Stock cost moves (0105, WorkMate 2C) — only the main owner moves the cost of stock.** Moving goods never moves
+  their cost: the server opens a pending cost move wherever goods arrive in someone else's cost (company → project,
+  project → project, a company lot back to the warehouse), and until the main owner approves, the cost stays where it
+  was — a pending one covers only what is still there. Approval writes **ordinary expense rows**
+  (`expenses.stk_cost_move_id`): the receiving project funded like a purchase (the month it received the goods), the
+  giving project **negative** rows on every billing period / Cover group that carried that lot's cost, in proportion.
+  They count in Material / Spent / Cover like any row — never filter them out. Value is by lot (item amount − discount +
+  delivery fee); the last portion takes what is left, so a line's portions always add up to it. **Company stock is never
+  in a project's Spent and never G&A**; a confirmed loss of company goods goes to company stock loss with no expense row.
+  Cost-move rows are never edited or deleted (`STOCK_COST_ROW`) — the main owner reverses the cost move with a reason; a
+  movement whose cost was approved is not reversed (`COST_MOVED`), a line's price can't change under approved moves
+  (`STOCK_COST_IN_USE`), and neither can where the purchase's cost sits — its billing periods and Cover: a correction,
+  re-fund or approved change request that would move its rows waits until those moves are reversed (`STOCK_COST_FUNDING`). Values are for owner accounts only: staff see the "Stock cost move" row and its state, never its
+  pesos, and it is left out of their subtotals (`_hideStockCost`). Pesos for stock live only in `js/stock-cost-admin.js`.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 

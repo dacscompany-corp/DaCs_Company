@@ -163,7 +163,10 @@ test('the Materials header total and the period totals still add every part', ()
   const raw = [leg(1, 2, 5000, 'b1'), leg(2, 2, 3000, 'b2'), { id: 'x', expenseName: 'Sand', amount: 250 }];
   const sum = rows => rows.reduce((s, r) => s + r.amount, 0);
   eq(sum(S.groupSplitRows(raw)), sum(raw));
-  ok(/total = items\.reduce\(\(s, m\) => s \+ \(Number\(m\.amount\) \|\| 0\), 0\)/.test(body), 'subtotal sums amounts');
+  // 2C (0105): every amount — except, for staff only, a stock cost move's (its value is the owner's).
+  ok(/total = items\.reduce\(\(s, m\) => s \+ _shownAmount\(m\), 0\)/.test(body), 'subtotal sums amounts');
+  ok(/const _shownAmount = \(m\) => _hideStockCost\(m\) \? 0 : Number\(m\.amount\) \|\| 0;/.test(portal), 'an owner\'s subtotal is every amount');
+  ok(/const _hideStockCost = \(m\) => _staff\(\) && /.test(portal), 'only staff lose a cost move\'s amount');
 });
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');

@@ -8,7 +8,9 @@
 //   Purchases        — js/purchasing-admin-purchases.js;
 //   Owner approvals  — js/purchasing-admin-purchases.js;
 //   Cash             — js/purchasing-admin-cash.js (0102): the main owner's
-//                      petty-cash tracker, or a buyer's own cash.
+//                      petty-cash tracker, or a buyer's own cash;
+//   Company stock    — owner accounts, once stock is on (2C, 0105):
+//                      js/stock-cost-admin.js.
 // "Record purchase" (js/purchasing-admin-record.js) opens from the list
 // with the ticked lines.
 // 0104: a line whose catalogue item is in the warehouse says so ("In
@@ -32,7 +34,13 @@
     function tabs() {
         const t = (id, label) => '<button type="button" class="att-seg-btn' + (ui.tab === id ? ' is-on' : '') + '" data-tab="' + id + '">' + label + '</button>';
         return '<div class="att-seg" role="tablist" aria-label="Purchasing">' +
-            t('list', 'Shopping list') + t('purchases', 'Purchases') + t('approvals', 'Owner approvals') + t('cash', 'Cash') + '</div>';
+            t('list', 'Shopping list') + t('purchases', 'Purchases') + t('approvals', 'Owner approvals') + t('cash', 'Cash') +
+            (companyStockTab() ? t('company', 'Company stock') : '') + '</div>';
+    }
+
+    // 2C: the value of company stock — owner accounts, once stock is on.
+    function companyStockTab() {
+        return !!(root.StockCostAdmin && root.currentStockOn && PA.ui.isOwner);
     }
 
     // Needed · Bought · Still to buy, as three blocks the eye can compare.
@@ -232,6 +240,7 @@
         host.innerHTML = '<div class="att-stack pur-tab req-detail"><div class="att-empty">Loading…</div></div>';
         let me;
         try { me = await PA.me(); } catch (e) { RA.fail(host, e); return; }
+        ui.isOwner = !!me.isOwner;
         if (!me.canBuy) {
             host.innerHTML = '<div class="att-stack"><div class="att-info att-info--warn"><i data-lucide="lock"></i><div>' +
                 esc(PA.ERRORS.BUYER_REQUIRED) + '</div></div></div>';
@@ -252,6 +261,7 @@
         if (ui.tab === 'approvals') return PA.renderApprovals(host.querySelector('[data-body]'), me);
         if (ui.tab === 'record') return PA.renderRecord(host.querySelector('[data-body]'), me);
         if (ui.tab === 'cash' && PA.renderCash) return PA.renderCash(host.querySelector('[data-body]'), me);
+        if (ui.tab === 'company' && companyStockTab()) return root.StockCostAdmin.renderCompanyStock(host.querySelector('[data-body]'));
         return renderList(host, me);
     }
 
