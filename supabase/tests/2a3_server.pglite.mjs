@@ -11,7 +11,7 @@ import { PGlite } from '@electric-sql/pglite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { prBase, fnText } from './pr_base.mjs';
+import { prBase, fnText, CATALOG_0085 } from './pr_base.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.DACS_ROOT || path.join(HERE, '..', '..');
@@ -22,7 +22,10 @@ const M96 = read(path.join(ROOT, 'supabase/migrations/0096_purchase_recording.sq
 const M97 = read(path.join(ROOT, 'supabase/migrations/0097_purchasing_office.sql'));
 const M101 = read(path.join(ROOT, 'supabase/migrations/0101_purchasing_phone.sql'));
 // --with-0102: the same tests with 2A-4a's 0102 on top — payments must not change the phone server.
-const WITH_0102 = process.argv.includes('--with-0102');
+// --with-0104: and 2B-a's 0104 (stock) on top, switched ON (launch).
+const WITH_0104 = process.argv.includes('--with-0104');
+const M104 = WITH_0104 ? read(path.join(ROOT, 'supabase/migrations/0104_stock.sql')) : '';
+const WITH_0102 = process.argv.includes('--with-0102') || WITH_0104;
 const M98 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0098_pm_profit_sharing.sql')) : '';
 const M102 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0102_purchase_payments.sql')) : '';
 
@@ -109,6 +112,7 @@ async function fresh() {
   await db.exec(M97);
   await db.exec(M101);
   if (WITH_0102) { await db.exec(fnText(M98, 'pm_main_owner_id')); await db.exec(M102); }
+  if (WITH_0104) { await db.exec(CATALOG_0085); await db.exec(M104); }
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
     ('${STAFF}', 'staff', '${OWNER}', 'active', null, 'staff@dacs.test', null),
@@ -126,6 +130,7 @@ async function fresh() {
   await db.query(`select pur_set_buyer($1, true)`, [BUYER2]);
   await db.query(`select pur_set_buyer($1, true)`, [GONE]);
   await db.query(`update profiles set status = 'inactive' where id = $1`, [GONE]);
+  if (WITH_0104) await db.query(`select stk_set_enabled(true)`);
   return db;
 }
 async function as(db, uid) { await db.exec(`select set_config('test.uid', '${uid}', false)`); }
@@ -165,7 +170,7 @@ async function periodsOf(db, folderId) {
                     from projects p where p.folder_id = $1 order by p.created_at, p.id`, [folderId]);
 }
 
-console.log('\n2A-3a phone purchasing server (0096 + 0097 + 0101' + (WITH_0102 ? ' + 0102' : '') + ' on PGlite)');
+console.log('\n2A-3a phone purchasing server (0096 + 0097 + 0101' + (WITH_0102 ? ' + 0102' : '') + (WITH_0104 ? ' + 0104 (stock on)' : '') + ' on PGlite)');
 
 // ── A. Signing a buyer in (Q1, R1, R3) ──────────────────────────────
 

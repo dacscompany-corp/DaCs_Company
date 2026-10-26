@@ -11,7 +11,7 @@ import { PGlite } from '@electric-sql/pglite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { prBase, fnText } from './pr_base.mjs';
+import { prBase, fnText, CATALOG_0085 } from './pr_base.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.DACS_ROOT || path.join(HERE, '..', '..');
@@ -24,7 +24,11 @@ const M101 = read(path.join(ROOT, 'supabase/migrations/0101_purchasing_phone.sql
 const M98 = read(path.join(ROOT, 'supabase/migrations/0098_pm_profit_sharing.sql'));
 const M102 = read(path.join(ROOT, 'supabase/migrations/0102_purchase_payments.sql'));
 // --with-0103: re-run every test with 0103 on top (2A-4b: a return's photo reaches its buyer).
-const WITH_0103 = process.argv.includes('--with-0103');
+// --with-0104: and 2B-a's 0104 (stock) on top of 0103, switched ON (launch) —
+// stock must not change how purchases are paid.
+const WITH_0104 = process.argv.includes('--with-0104');
+const M104 = WITH_0104 ? read(path.join(ROOT, 'supabase/migrations/0104_stock.sql')) : '';
+const WITH_0103 = process.argv.includes('--with-0103') || WITH_0104;
 const M103 = WITH_0103 ? read(path.join(ROOT, 'supabase/migrations/0103_buyer_return_photo.sql')) : '';
 
 // The 2A-1 base schema (same as 2a1_purchase.pglite.mjs), plus the service
@@ -114,6 +118,7 @@ async function fresh(opts = {}) {
     await db.exec(fnText(M98, 'pm_main_owner_id'));
     await db.exec(M102);
     if (WITH_0103) await db.exec(M103);
+    if (WITH_0104) { await db.exec(CATALOG_0085); await db.exec(M104); }
   }
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
@@ -132,6 +137,7 @@ async function fresh(opts = {}) {
   await db.query(`select pur_set_buyer($1, true)`, [BUYER2]);
   await db.query(`select pur_set_buyer($1, true)`, [GONE]);
   await db.query(`update profiles set status = 'inactive' where id = $1`, [GONE]);
+  if (WITH_0104 && !opts.without102) await db.query(`select stk_set_enabled(true)`);
   return db;
 }
 async function as(db, uid) { await db.exec(`select set_config('test.uid', '${uid}', false)`); }
@@ -207,7 +213,7 @@ async function resolve(db, purchaseId, refunds, credit = null, opId = op()) {
     [opId, purchaseId, JSON.stringify(refunds), credit === null ? null : JSON.stringify(credit)])).r;
 }
 
-console.log('\n2A-4a paying for purchases (0096 + 0097 + 0101 + 0102 on PGlite)');
+console.log('\n2A-4a paying for purchases (0096 + 0097 + 0101 + 0102' + (WITH_0103 ? ' + 0103' : '') + (WITH_0104 ? ' + 0104 (stock on)' : '') + ' on PGlite)');
 
 // ── A. "Paid now": the purchase and its payments together (Q3) ─────────
 

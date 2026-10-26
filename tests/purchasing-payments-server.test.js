@@ -248,7 +248,8 @@ test('npm run test:sql re-runs the payments suite with 0103; the migrations READ
   const pkg = JSON.parse(read('package.json'));
   ok(/node supabase\/tests\/2a4_payments\.pglite\.mjs && node supabase\/tests\/2a4_payments\.pglite\.mjs --with-0103 &&/.test(pkg.scripts['test:sql']),
     'test:sql runs 2a4_payments with and without 0103');
-  ok(/0103_buyer_return_photo\.sql/.test(read('supabase/migrations/README.md')) && /\*\*0103 /.test(read('supabase/migrations/README.md')), 'README');
+  // (0103's file name left the next-number line when 0104 arrived; its paragraph stays.)
+  ok(/\*\*0103 \(WorkMate Stage 2A-4b/.test(read('supabase/migrations/README.md')), 'README');
   ok(/0103/.test(read('docs/DATABASE_SCHEMA.md')) && /photo_url/.test(read('docs/DATABASE_SCHEMA.md')), 'DATABASE_SCHEMA');
 });
 

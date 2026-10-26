@@ -15,6 +15,20 @@ export const fnText = (src, name) => {
   return m[0];
 };
 
+// 0085's (and 0090's aliases / brand) catalogue columns that the minimal
+// pr_catalog_items above leaves out — 0104 (stock, and its copy of 0092's
+// catalogue save and list) reads them. Run after prBase, before 0104.
+export const CATALOG_0085 = `
+alter table pr_catalog_items add column if not exists kind text not null default 'material';
+alter table pr_catalog_items add column if not exists spec text not null default '';
+alter table pr_catalog_items add column if not exists unit text not null default 'bag';
+alter table pr_catalog_items add column if not exists category text not null default '';
+alter table pr_catalog_items add column if not exists active boolean not null default true;
+alter table pr_catalog_items add column if not exists updated_at timestamptz not null default now();
+alter table pr_catalog_items add column if not exists aliases text[] not null default '{}';
+alter table pr_catalog_items add column if not exists brand text not null default '';
+`;
+
 export function prBase(ROOT) {
   const mig = (f) => read(path.join(ROOT, 'supabase/migrations', f));
   const M02 = mig('0002_rls.sql');

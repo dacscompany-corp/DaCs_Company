@@ -141,6 +141,14 @@ Profit   = Earned − Spent
   every write carries an operation id so a retry records once. Only `js/cash-advance.js` calls the
   `pm_ca_*` functions (`tests/cash-advance.test.js` fences it). Owner-role only; staff never see it.
   Spec: `docs/superpowers/specs/2026-10-19-worker-cash-advances-design.md`.
+- **Stock (0104, WorkMate 2B-a) is quantities only.** Lots, receipts, issues, returns, leftovers, counts and opening
+  stock never read or write a peso, an `expenses` row or Spent; the value of stock and every cost move are Stage 2C
+  (main owner only). "Bought" in request capacity (`pr_portion_bought`) means **covered** — purchases plus live stock
+  records — so Still to buy is never negative; the shopping list's `bought` stays purchases alone. A stock record is
+  never edited, only reversed with a reason. Goods are issued **oldest received first** — by delivery, never by
+  purchase date. A catalogue item's kind and unit are fixed once a request or stock uses it. Only `js/stock-admin.js`
+  calls the `stk_*` functions. Dormant until the main owner switches it on; then the old "Add to inventory" tick and
+  `inventory` table refuse writes.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 

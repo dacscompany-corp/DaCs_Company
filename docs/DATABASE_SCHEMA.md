@@ -953,7 +953,7 @@ Every office write is a `SECURITY DEFINER` RPC that refuses non-office callers (
 | `pr_office_move_portion(portion, batch, note)` | Move an **unarranged** portion to another weekly batch (merges with that batch's unarranged portion) |
 | `pr_office_batches()` / `pr_office_set_batch_dates(batch, purchase, delivery)` | Batches from 35 days ago on (this week + next two always exist); only purchase/delivery dates change. **0086 dropped the direct insert/update policies on `pr_batches` and on the four setup tables (teams, members, catalogue, project settings)** |
 | `pr_office_people/teams/save_team/add_member/remove_member/set_leader` | Teams; a leader must hold the teamLeader role and be a current member |
-| `pr_office_catalog/save_item` | Catalogue; the same name + spec + unit is refused (`DUPLICATE_ITEM`). Since `0092`: once any request line uses an item, a Kind or Unit change is refused (`ITEM_IN_USE` — add a new item, deactivate the old); `pr_office_catalog` returns `in_use` |
+| `pr_office_catalog/save_item` | Catalogue; the same name + spec + unit is refused (`DUPLICATE_ITEM`). Since `0092`: once any request line uses an item, a Kind or Unit change is refused (`ITEM_IN_USE` — add a new item, deactivate the old); `pr_office_catalog` returns `in_use`. Since `0104`: stock counts as use too (a match, a lot or a stock record) |
 | `pr_office_projects/set_allow_requests` | Top-level Project Control projects and the *Allow requests* switch |
 | `pr_folder_request_count(folder)` | Requests on a folder or its children — Dacs Web refuses to delete a project / Additional Works that has any |
 
@@ -1127,6 +1127,44 @@ Every table has RLS on, **no policies** and every privilege revoked: the screens
 | Main-owner reads and writes | `pur_cash_give`, `pur_cash_clear_dispute`, `pur_cash_void_issue`, `pur_cash_decide_return`, `pur_cash_void_return`, `pur_cash_count`, `pur_cash_void_count`, `pur_set_own_money`, `pur_accept_own_money`, `pur_repay_buyer`, `pur_void_repayment`, `pur_resolve_overpaid`, `pur_void_refund`, `pur_void_credit`, `pur_cash_tracker`, `pur_cash_buyer(buyer)`, `pur_overpaid` (with a suggested split: the latest payments first), `pur_cash_report(buyer, from, to)` (≤ 92 days; voided entries listed apart) |
 | `pettyCash/<company>/<yyyy-mm>/<id>.jpg` (storage, R13) | A return photo. `uploads_can_read` (0097's, plus this branch first): only the main owner and the buyer who uploaded it (`pur_petty_reader`, by the upload ledger); written by buyers of the company; never overwritten. Ledger kind `petty_cash`. Payment proofs stay in `purchases/` |
 | `pur_payment_badges()` | Owner accounts only: `{line or charge id: state}` for Project Control's Unpaid / Partially paid / Paid / Overpaid badge |
+
+## Stock (0104) — WorkMate Stage 2B-a
+
+Quantities only, in catalogue units — **no peso amount anywhere** (the value of stock and every cost move are Stage 2C, main owner). Private tables (RLS on, no policies): reads and writes only through the `stk_*` functions. Dormant until the main owner switches stock on (`stk_set_enabled`); until then every write is `STOCK_OFF`.
+
+| Table | What it holds |
+|---|---|
+| `stk_settings` | `owner_id` (pk), `enabled`, `updated_by`, `updated_at` — the company's stock switch (main owner only) |
+| `stk_locations` | `id`, `owner_id`, `kind` (`warehouse` \| `site`), `folder_id` (history, not a foreign key), `folder_name` — one warehouse per company, one site per project folder (Main Contract or Additional Works), made on first use |
+| `stk_matches` | (`purchase_id`, `line_no`) pk, `item_id` (catalogue item), `line_unit`, `per`, `covers` (`per` line units = `covers` item units), `auto`, `note`, `matched_by`, `matched_at` — how a purchase line counts as stock. Keyed by line number, which a correction keeps |
+| `stk_lots` | `id`, `item_id`, `purchase_id` + `line_no` (unique; null = untraced), `cost_folder_id` (null = company stock; a project = its leftovers), `untraced`, `since` (purchase date, or the day counted — display only) |
+| `stk_records` | `id`, `kind` (`receive`, `not_delivered`, `leftover`, `issue`, `return`, `move`, `count`, `opening`), `status` (`done`, `pending`, `rejected`, `withdrawn`), `item_id`, `purchase_id` + `line_no`, `from_location`, `to_location`, `quantity` (item units; receive / not delivered in the line's unit; a count = counted), `book_quantity` (a count: the books), `lot_id`, `on_date`, `request_line_id`, `unplanned_reason`, `returns_record` (a return: its issue), `reason`, `note`, recorded / decided / reversed by + at + reason. Live = done and not reversed. Never edited |
+| `stk_moves` | `record_id`, `lot_id`, `layer` (the record that brought these goods into stock — a receipt, leftover, opening or count; its `on_date` is the day received), `from_location` (null = enters stock, and then `layer = record_id`), `to_location` (null = leaves stock, a confirmed loss), `quantity` — append-only |
+| `stk_covers` | `record_id`, `request_line_id`, `portion_id`, `quantity` — what goods entering a project filled on a request ("From stock"); append-only |
+| `stk_events` | switched / matched / unmatched / confirmed / rejected / withdrawn / reversed — append-only |
+
+A lot's balance at a place = live moves in − live moves out, kept per **layer** (one per delivery received — a part delivery is its own — leftover record, confirmed opening stock or goods found by a count); never below zero (checked under the item's lock). A matched warehouse line's receipt enters stock as its own layer: the converted total received (the receipts already in stock plus this one) less the item units already assigned to them — a receipt's quantity never changes afterwards, so the whole line adds up exactly whatever the receipt dates or the order they were entered in (3 boxes = 100 pieces: 33.333 + 33.334 + 33.333; a box reversed and received again brings it back to exactly 100). Receipts made before the match enter at the match, in the order received, each with its own received day. Issues, moves and losses take the **oldest received** layer first (`stk_layers`), never by purchase date, unless a lot is named.
+
+| Function | Who | What |
+|---|---|---|
+| `stk_status()` | signed in | `enabled`, `can_record`, `is_main_owner`, `is_owner`, `user_id` |
+| `stk_set_enabled(on)` | main owner | Switch stock on (launch) or off |
+| `stk_match(op, purchase, line, item, covers, note)` | office | Match a line; another unit needs a note and never the buyer's own check; fixed once any of its goods are stock (reverse those receipts to change it) |
+| `stk_receive(op, purchase, line, qty, on, note)` | office (incl. Buyer staff) | A warehouse line arrived, in parts if need be |
+| `stk_not_delivered(op, purchase, line, qty, reason)` | office | The rest will not come (money: supplier refund / credit, 2A-4) |
+| `stk_leftover(op, purchase, line, qty, where, on, note)` | office | Leftovers of a project line, at its site or in the warehouse; never more than it brought |
+| `stk_move(op, body)` | office | Issue (warehouse → project), return (one issue's lots back), move (between sites / to the warehouse); fills a request line or is unplanned with a reason; oldest lot first unless named |
+| `stk_count(op, body)` | office | A count; a difference waits for the main owner with a reason |
+| `stk_opening(op, body)` | office | Opening stock, traced to a project purchase line or untraced; waits for the main owner |
+| `stk_decide(op, record, approve, note)` | main owner | Confirm (a count only while the books still read what was counted) or reject with a reason |
+| `stk_reverse(op, record, reason)` | recorder or an owner account (a confirmed count / opening: the main owner) | Reverse a record, or withdraw a pending one; refused while its goods have moved on |
+| `stk_overview()`, `stk_item(item)`, `stk_project_lines(folder)`, `stk_choices()`, `stk_request_lines(folder)` | office, stock on | The Stock screens' reads — quantities only |
+| `pr_portion_bought` / `pr_line_bought` (redefined) | internal | COVERED = recorded purchases + live stock records; `*_purchased` and `*_from_stock` are the parts |
+| `pur_shopping_list` (redefined) | buyers | `bought` = purchases, plus `from_stock` and `in_warehouse` (a hint, no reservation) |
+
+Guards: `stk_guard_line` (a purchase line may not undo its stock: destination, project, unit, quantity — `STOCK_IN_USE`), `stk_guard_void` (no void or replacement with stock records), `stk_inventory_frozen` (once stock is on, the old `inventory` table refuses writes — `STOCK_TICK_RETIRED`), `stk_item_fixed` (a catalogue item's kind and unit never change once a request line **or stock** uses it — `ITEM_IN_USE`).
+
+Catalogue (0092 extended): `pr_item_in_use(item)` = a request line, a stock match, a lot or any stock record uses it. `pr_office_save_item` refuses a Kind or Unit change of such an item (`ITEM_IN_USE`), and `pr_office_catalog`'s `in_use` counts stock too, so the Catalogue form locks the two fields.
 
 ## PM profit sharing (0098)
 
