@@ -12,7 +12,7 @@
 
 **Repo:** **Dacs Web** only (base `be1add8`). Plans 2C and 2B-b follow; one joint pilot, then launch (Q1, Q30).
 
-**Status:** Revision 3, 26 October 2026, **for the user's review**. Revision 3 fixes the rounding finding of the user's review of revision 2 (which accepted R70, R71 and the changed R55): three boxes entered separately could total **99.999** pieces instead of 100 when their receipt dates were entered out of order — revision 2 gave each new receipt the converted total of the receipts dated *before it* less theirs. Now each new receipt gets the **converted total received less the quantities already assigned**, and no existing receipt's quantity ever changes (R56); a regression test covers dates out of order, backdated receipts, a reversal and a receipt again. Earlier: revision 2, 25 October 2026. Revision 2 fixes the two findings of the user's review of revision 1: **(1)** a catalogue item's kind and unit are now fixed once **stock** uses it — a match, a lot or any stock record — even with no request (R70); **(2)** stock is issued **oldest received first, by delivery** — each delivery, including each part of a partial delivery, is its own layer dated the day it arrived; revision 1 ordered by purchase date per purchase line (R65 rewritten, R71). Stock stays **switched off**. Nothing is applied live and nothing is in the repo yet. The code below was built and tested first in a scratch clone (one commit per task, every suite green after each), then re-applied to a fresh clone from this plan's text and compared byte for byte (see *Rehearsal*).
+**Status:** Revision 4, 26 October 2026. **Task 1 is committed as `1d808df`** (revision 3's Task 1, unchanged). Revision 4 changes **Task 2 only**, at the user's request: a **Stock access exception** for accounts the server lets record stock whose allowed modules lack Requests — the menu and the view guard, like Purchasing's (R72). Revision 3, 26 October 2026: Revision 3 fixes the rounding finding of the user's review of revision 2 (which accepted R70, R71 and the changed R55): three boxes entered separately could total **99.999** pieces instead of 100 when their receipt dates were entered out of order — revision 2 gave each new receipt the converted total of the receipts dated *before it* less theirs. Now each new receipt gets the **converted total received less the quantities already assigned**, and no existing receipt's quantity ever changes (R56); a regression test covers dates out of order, backdated receipts, a reversal and a receipt again. Earlier: revision 2, 25 October 2026. Revision 2 fixes the two findings of the user's review of revision 1: **(1)** a catalogue item's kind and unit are now fixed once **stock** uses it — a match, a lot or any stock record — even with no request (R70); **(2)** stock is issued **oldest received first, by delivery** — each delivery, including each part of a partial delivery, is its own layer dated the day it arrived; revision 1 ordered by purchase date per purchase line (R65 rewritten, R71). Stock stays **switched off**. Nothing is applied live and nothing is in the repo yet. The code below was built and tested first in a scratch clone (one commit per task, every suite green after each), then re-applied to a fresh clone from this plan's text and compared byte for byte (see *Rehearsal*).
 
 ## Global Constraints
 
@@ -51,6 +51,7 @@ R1–R51 stand (plans 2A-2 … 0.8.1). New, found while building and testing thi
 | R68 | **Two old test fences rewritten, same guarantee:** `tests/purchasing-admin.test.js` read the Purchasing nav gate in its old shape (one `if` for Purchasing) — now one `if` hides Purchasing and Stock; `tests/purchasing-payments-server.test.js` looked for 0103's file name, which leaves the README's next-number line when 0104 arrives — now its paragraph. |
 | R69 | **Item history** is untouched (its switch stays off); linking stock to item history waits until 2A's first real use is assessed. |
 | R70 | **A catalogue item's kind and unit are fixed once stock uses it (rev 2)** — a match, a lot, or any stock record (live, waiting or reversed: history) — even if no request ever used it. 0092 fixed them for request lines and said to extend the test when Stage 2 adds stock tables: `pr_item_in_use` now counts both, 0092's `pr_office_save_item` refuses `ITEM_IN_USE` through it, `pr_office_catalog`'s `in_use` locks the two fields on the Catalogue form, and a trigger on `pr_catalog_items` refuses any other path. Name, spec, category, brand, other names and Active stay editable. Every stock write holds the item's row while it runs (`FOR SHARE`), so a unit change and a first match at the same moment can never both succeed (race 8). |
+| R72 | **Stock for focused accounts (rev 4, the user's request).** An account narrowed by `allowed_modules` without Requests (e.g. Expenses-only staff) that the server lets record stock — owner or staff allowed Expenses (`stk_status`), Buyer switch or not — gets a Requests tab holding **Stock**, once stock is on; the main owner also before, to reach the switch. Both the menu (`_visibleNav`) and the view guard (`focusAllowedViews`) let it in — never the rest of Requests. With the Buyer switch it sits beside Purchasing ("Purchasing & Stock", landing on Purchasing). Unchanged: workers and team leaders never get Requests; a PM-only account (the server says it may not record) gets nothing; an account focused on Requests keeps all of it; the Stock screen asks the server again on every call. |
 | R71 | **A delivery is reversed only while its own goods are there (rev 2).** Reversing a receipt, leftover, opening or count checks that record's own layers — not the lot as a whole — so a delivery whose goods were issued cannot be reversed just because a later delivery of the same purchase is still in the warehouse. |
 
 ## File structure
@@ -67,9 +68,9 @@ R1–R51 stand (plans 2A-2 … 0.8.1). New, found while building and testing thi
 | `package.json` | 1, 2 | test:sql (Task 1); `stock-admin.test.js` in `npm test` (Task 2) |
 | `supabase/migrations/README.md`, `docs/DATABASE_SCHEMA.md`, `CLAUDE.md` | 1 | Docs (the first two CRLF) |
 | `js/stock-admin.js` | 2 | **New.** Requests → Stock and its forms; `StockAdmin.openIssue`; each delivery listed with its received day |
-| `tests/stock-admin.test.js` | 2 | **New.** 16 tests: words agree with 0104, quantities only, wiring, the item lock's sentence, layers |
+| `tests/stock-admin.test.js` | 2 | **New.** 17 tests: words agree with 0104, quantities only, wiring, the item lock's sentence, layers, and Stock for focused accounts (rev 4) |
 | `js/requests-admin-core.js` | 2 | The Catalogue's `ITEM_IN_USE` sentence names stock (R70) |
-| `js/admin.js`, `admin.html` | 2 | Nav entry, stock status, view, script; old Inventory hidden once on |
+| `js/admin.js`, `admin.html` | 2 | Nav entry, stock status, view, script; old Inventory hidden once on; Stock for focused accounts — menu and view guard (`_stockOnly`, R72) |
 | `js/purchasing-admin-list.js` | 2 | In warehouse hint, Issue from stock, From stock per portion |
 | `js/expenses-module.js` | 2 | The old tick hidden and never sent once stock is on |
 | `css/purchasing-admin.css` | 2 | `stk-*` styles |
@@ -4311,6 +4312,59 @@ test('Requests → Stock: in the nav, the view list and the page; hidden until s
   ok(/form\.word\.value\.trim\(\) !== 'STOCK'/.test(BROWSER), 'the switch needs STOCK typed');
 });
 
+test('a focused account the server lets record stock gets Requests → Stock, menu and view guard — and nothing else of Requests', () => {
+  const vm = require('vm');
+  const src = read('js/admin.js');
+  const slice = src.slice(src.indexOf('const PRIMARY_NAV = ['), src.indexOf('function findPrimaryForView('));
+  // As admin.js sets them at sign-in: currentCanBuy from pur_me, currentStockOn /
+  // currentStockMainOwner from stk_status (enabled = may record AND switched on).
+  const run = ({ role = 'staff', modules = ['expenses'], buyer = false, on = false, mainOwner = false }) => {
+    const sb = { window: { currentCanBuy: buyer, currentStockOn: on, currentStockMainOwner: mainOwner },
+                 currentUserRole: role, currentAllowedModules: modules };
+    vm.createContext(sb);
+    vm.runInContext(slice + '\nthis.__nav = _visibleNav(); this.__views = window.focusAllowedViews();', sb);
+    const req = sb.__nav.find(p => p.id === 'requests');
+    return { req: req ? { sub: req.sub, def: req.defaultView, views: req.modules.map(m => m.view) } : null,
+             views: sb.__views, ids: sb.__nav.map(p => p.id) };
+  };
+  const NOT_REQUESTS = ['reqQueue', 'reqDetail', 'reqBatches', 'reqTeams', 'reqCatalog', 'reqHistory', 'reqProjects'];
+  const noneOf = (views, list) => list.every(v => !views.includes(v));
+
+  // Expenses-only staff, no Buyer switch.
+  let r = run({ buyer: false, on: false });
+  eq(r.req, null, 'stock off, not a buyer: no Requests tab');
+  ok(!r.views.includes('reqStock') && !r.views.includes('reqPurchasing'), 'and the view guard keeps them out');
+  r = run({ buyer: false, on: true });
+  eq(r.req, { sub: 'Stock', def: 'reqStock', views: ['reqStock'] }, 'stock on: Requests holding Stock alone');
+  ok(r.views.includes('reqStock') && noneOf(r.views, NOT_REQUESTS.concat(['reqPurchasing', 'reqPurchase'])), 'the guard lets Stock in, nothing else of Requests');
+  ok(r.ids.includes('expenses'), 'their own section stays');
+
+  // Expenses-only staff WITH the Buyer switch.
+  r = run({ buyer: true, on: false });
+  eq(r.req, { sub: 'Purchasing', def: 'reqPurchasing', views: ['reqPurchasing', 'reqPurchase'] }, 'stock off: Purchasing only, as before');
+  ok(!r.views.includes('reqStock'), 'no Stock while it is off');
+  r = run({ buyer: true, on: true });
+  eq(r.req, { sub: 'Purchasing & Stock', def: 'reqPurchasing', views: ['reqPurchasing', 'reqStock', 'reqPurchase'] }, 'stock on: Purchasing and Stock');
+  ok(r.views.includes('reqStock') && r.views.includes('reqPurchasing') && noneOf(r.views, NOT_REQUESTS), 'the guard: both, nothing else');
+
+  // Existing restrictions stay.
+  eq(run({ modules: ['pm'], on: false }).req, null, 'a PM-only account (the server says it may not record): no Requests');
+  eq(run({ role: 'worker', modules: ['construction'], on: true }).req, null, 'a worker never gets Requests, even if a flag were wrong');
+  eq(run({ role: 'teamLeader', modules: ['construction'], on: true, buyer: true }).req, null, 'nor a team leader');
+  const focusedReq = run({ modules: ['requests'], on: false }).req;
+  ok(focusedReq && focusedReq.views.includes('reqQueue') && !focusedReq.views.includes('reqStock'), 'focused on Requests: all of it, Stock only once on');
+  const onReq = run({ modules: ['requests'], on: true, buyer: true }).req;
+  ok(onReq.views.includes('reqStock') && onReq.views.includes('reqQueue') && onReq.views.includes('reqPurchasing')
+     && onReq.sub === 'Materials & Tools' && onReq.def === 'reqQueue', '…and Stock once on, with all the rest — never narrowed to Stock');
+  const full = run({ modules: null, on: false }).req;
+  ok(full.views.includes('reqQueue') && !full.views.includes('reqStock'), 'unfocused staff: Requests as before, no Stock while off');
+  eq(run({ modules: null, on: false }).views, [], 'an unfocused account has no view guard list (all views)');
+  // The main owner, focused on Expenses, before launch: Stock with the switch.
+  eq(run({ role: 'owner', modules: ['expenses'], mainOwner: true, on: false }).req, { sub: 'Stock', def: 'reqStock', views: ['reqStock'] }, 'the main owner can reach the switch');
+  // The Stock view itself asks the server again (stk_status / stk_reader): staff without Expenses are refused there.
+  ok(/if \(!status \|\| !status\.enabled\) return renderOff\(host, status\);/.test(JS), 'the view re-checks with the server');
+});
+
 test('one stock path (Q29): once stock is on, the old tick is hidden and never sent, and the old Inventory screen goes', () => {
   const exp = read('js/expenses-module.js');
   ok(/const toInventory = !window\.currentStockOn && !!document\.getElementById\('expToInventory'\)\?\.checked;/.test(exp), 'never sent');
@@ -4440,14 +4494,14 @@ index f75f5aa..d29fa71 100644
 
 ```diff
 diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
-index c8d1375..221c228 100644
+index c8d1375..5303eb0 100644
 --- a/docs/ARCHITECTURE.md
 +++ b/docs/ARCHITECTURE.md
 @@ -133,6 +133,7 @@ Also note: **`projects` means billing period**, not project. Read it that way ev
  | Attendance | `attendance-admin.js` | Construction worker Time In / Time Out (`0050`). **The worker client is a separate native Android app** (Kotlin + Compose, repo `Documents/Dacs Attendance`), **not** the Bubblewrap TWA in `android/` — that one wraps the *client portal* and is untouched. This module is the admin half only. Today's attendance (a LEFT JOIN against active workers, so a worker with no row shows as `No record` rather than vanishing), worker detail with both photos, **worker management** (`attWorkers` — the roster including **deactivated** workers, which Today deliberately hides; deactivating blocks sign-in via `attendance-signin` and is the only route back, so that screen must never filter them out. Shows `email`, which Today does not select, because two workers can share a display name and the email is the only thing that tells them apart), **creating a worker** (the `attOpenNewWorker` modal on that same screen — mints the auth account through the shared `adminCreateUser` helper and the `admin-create-user` Edge Function, never from the browser; `kind` is always `admin` and the role list is **worker / teamLeader only**, because staff, engineer and owner accounts belong to Users → Navigator and a second, less-guarded route to a privileged account is exactly what this must not become. `worker_no` is left out of the payload on purpose — `profiles_worker_no_trg` (0050) assigns it from `worker_no_seq`; `position` is written by a follow-up update because the Edge Function builds its profile row from a fixed whitelist. Terms are **not** pre-signed here: the worker accepts them in the Android app), the projects picker list (**deactivate, never delete** — records reference the project id), and reports with CSV export. The report roll-up and CSV escaping are pure functions guarded by `tests/attendance.test.js`, which extracts them from the live source. **Hours here are never a pay figure** and no rate column exists — do not add one. **Deliberately isolated** like Reimbursement, Warranty Fund and Quotations: no invoice, payment, expense, payroll or journal side effects, and no money math reads it. Attendance hours are **not** the basis of pay — labour is pakyaw, capped by `labor_contracts.agreed_amount`. **One peso column exists** since 0066 — `attendance_weekly_rewards.amount`, a reported figure that creates no accounting entry and must never be made to; this line previously said there was none, and that the staff amount-hiding rule therefore did not apply. Whether staff should see that amount is undecided; it is currently visible to them, and the payroll CSV they work from depends on it. Workers write only through the `attendance_time_in` / `attendance_time_out` RPCs; they hold no insert or update policy. **Closing a forgotten Time Out** (`0061`) is the one admin write: `attendance_abandon()` sets status `abandoned` plus a `abandoned_by`/`abandoned_at`/`abandoned_note` trail, and **invents no hours** — `timeout_at` and `total_minutes` stay null, so the day still reports `—`. It goes through an RPC even though owner/staff already hold an update policy, because `abandoned_at` must be the server's `now()` and `abandoned_by` must be `auth.uid()`; a browser-supplied trail is one the caller chose. Guarded against closing a `complete` record, closing twice, and closing **today's** date (that worker is probably on site, and `attendance_time_out` only closes rows on `working`). Surfaced in A2 and in A6's **open-records panel** — the only place a record stuck since August becomes visible, because A1 shows one day at a time |
  | Requests | `requests-admin-core.js`, `requests-admin-queue.js`, `requests-admin-detail.js`, `requests-admin-setup.js`, `requests-admin-history.js`, `requests-admin-gallery.js` | The office half of **DAC'S WorkMate Requests** (`0085` tables, `0086` office RPCs). Workers and team leaders request materials and tools in the phone app; owner and staff process them here: the **queue** (urgent first, then by weekly batch — Saturday 12:00 noon Manila cutoff), one request's **detail** (mark portions arranged, move an unarranged portion to another batch, resolve a worker's reduction of arranged quantity as *order reduced* or *kept as surplus*, change or cancel an item with a reason, resolve an offline-edit conflict, match an unlisted item to the catalogue, private photos via signed URLs, full history), **weekly batches** (only purchasing/delivery dates change), **teams** (a leader needs the Team Leader role *and* the assignment), the **catalogue** (deactivate, never delete; since `0092` an item used in any request keeps its **kind and unit** — the form locks both and the server refuses `ITEM_IN_USE`) and **projects** (*Allow requests*). Since `0090` (Stage 1b, Find Previous Item): catalogue **aliases** and **brand** (search aids, not identity), a per-project **Item history** switch (separate from *Allow requests*, survives completion), and the **Item history** view — search items with their dated history, add or retire a **historical reference** (creates no expense, stock or purchase), and manage reviewed **product photos** in the private `item-gallery` bucket (`<company>/<item>/<uuid>.jpg`, re-encoded in the browser, three-tick checklist, cover, retire — never deleted); **Photos to review** publishes a COPY of a worker's private request photo or keeps it private. A request line shows the Request Again source (`ref_label`). **Every write is an RPC** — the browser holds no write policy. **No money anywhere**: quantities only, so staff see all of it. A project or Additional Works job with requests **cannot be deleted** (`deleteFolder` / `deleteChild` ask `pr_folder_request_count` first) — complete it instead. Pure helpers are guarded by `tests/requests-admin.test.js`; the migration by `tests/workmate-requests-office.test.js`. Workers and team leaders can no longer sign in to this portal (`ADMIN_ROLES`) |
  | Purchasing | `purchasing-admin-core.js`, `purchasing-admin-list.js`, `purchasing-admin-record.js`, `purchasing-admin-purchases.js`, `css/purchasing-admin.css` | WorkMate Stage 2A-2 (`0097`): **Requests → Purchasing**, for accounts the server lets buy (owner, admin accounts allowed Expenses, staff with the **Buyer** switch — set by the owner in Users → Navigator). An account focused on Expenses but not Requests still gets a Requests tab holding Purchasing alone (`_purchasingOnly` in `admin.js`). The **shopping list** (Needed · Bought · Still to buy per weekly-batch portion, who is buying each — "I'll buy this", assign, release, mark arranged), **Record purchase** (one receipt, many lines and projects, linked to their request portions — optionally picked per weekly portion, and then only those are covered — extras with a reason, substitutes with a reason and an office check, Unplanned lines, delivery fees / discounts, receipt photos in the buyer-only `purchases/` folder, kept in the form state so a redraw keeps them and a replacement is uploaded), **Purchases** (one purchase: covers, unit / substitute check, correct, void, history; receipts open through an authenticated download, never a signed link) and **Owner approvals** (staff changes only the owner may make, shown field by field — as asked vs asked for — and not approvable once the purchase changed). Shows prices — the one Requests screen that does. Every write is a `pur_*` RPC through the same recording operation as Expenses / Project Control (0096). Project Control's edit and void send owner-only staff changes for approval, and read the purchase behind a row through `pur_entry_row` (`expenses-module.js`) — purchase tables are buyers-only. Pure helpers: `tests/purchasing-admin.test.js`; migration: `tests/purchasing-server.test.js` + `npm run test:sql` |
-+| Stock | `stock-admin.js`, `css/purchasing-admin.css` (`stk-*`) | WorkMate Stage 2B-a (`0104`): **Requests → Stock**, quantities only, for owner and office staff allowed Expenses (Buyer staff included). Hidden until the main owner switches stock on (`stk_status`; the main owner sees the switch). Tabs: **Stock** (items by place; one item's lots, each delivery with the day it was received — the issuing order, oldest received first — and history), **Receiving** (warehouse purchases awaiting delivery or a catalogue match), **Waiting for owner** (counts and opening stock the main owner confirms), **History** (reverse / withdraw). Forms: Issue / move, Record leftovers, Count, Opening stock, Match, Received, Not delivered — each sends one operation id. The shopping list shows "In warehouse" and, once stock is on, "Issue from stock" (`StockAdmin.openIssue`). Once stock is on, the old "Add to inventory" tick (Add Expense) and the old Inventory screen are hidden — the server refuses both. Pure helpers: `tests/stock-admin.test.js`; migration: `npm run test:sql` (`2b_stock`, `2b_concurrency`) |
++| Stock | `stock-admin.js`, `css/purchasing-admin.css` (`stk-*`) | WorkMate Stage 2B-a (`0104`): **Requests → Stock**, quantities only, for owner and office staff allowed Expenses (Buyer staff included). Hidden until the main owner switches stock on (`stk_status`; the main owner sees the switch). An account focused on other sections (`allowed_modules` without Requests) that the server lets record stock still gets a Requests tab holding Stock (`_stockOnly` in `admin.js`, menu and view guard — beside Purchasing for a buyer). Tabs: **Stock** (items by place; one item's lots, each delivery with the day it was received — the issuing order, oldest received first — and history), **Receiving** (warehouse purchases awaiting delivery or a catalogue match), **Waiting for owner** (counts and opening stock the main owner confirms), **History** (reverse / withdraw). Forms: Issue / move, Record leftovers, Count, Opening stock, Match, Received, Not delivered — each sends one operation id. The shopping list shows "In warehouse" and, once stock is on, "Issue from stock" (`StockAdmin.openIssue`). Once stock is on, the old "Add to inventory" tick (Add Expense) and the old Inventory screen are hidden — the server refuses both. Pure helpers: `tests/stock-admin.test.js`; migration: `npm run test:sql` (`2b_stock`, `2b_concurrency`) |
  | Work Plan | `workplan-admin-core.js`, `workplan-admin-form.js`, `workplan-admin-board.js`, `workplan-admin-task.js`, `workplan-admin-meetings.js` | The office half of **DAC'S WorkMate My Work** (`0093`, `0094`; plan `docs/superpowers/plans/2026-10-13-workmate-stage1c2-work-plan-office.md`). Owner and staff turn **meeting notes** into tasks — **AI drafts** through the `dacs-ai` worker (gated by `ai_authorize`, `0095`) or by hand — and review each in the **task form**: an AI name is filled in only on one exact match, otherwise the field reads *Needs your choice* and Save refuses. **Publish** sends tasks and shared notes to chosen people (default: everyone assigned in that meeting). The **Board** groups tasks under the office lists (check, blocked, not acknowledged 24 h, overdue, live, drafts/proposals, completed). One **task** shows who read which version, problems (cleared by the office with a note), photos (private `task-photos`), history, and approve / send back / reopen / cancel-decline. On a published task the **server raises the version** for any people, team or date change, and for wording unless marked a minor spelling correction (`0094`). Edits keep links and helpers the office did not remove, including links to tasks completed long ago. Unsaved meeting notes, shared notes and recipients survive redraws. **No money** — staff see all of it. Tests: `tests/workplan-admin.test.js`, `tests/workmate-office-server.test.js`, `tests/ai-worker.test.js`; live: `supabase/tests/1c2_acceptance.sql`, `1c2_ai_gate.sql` |
  
  **Project Control is compiled React.** See the build trap in §8.
@@ -4457,7 +4511,7 @@ index c8d1375..221c228 100644
 
 ```diff
 diff --git a/js/admin.js b/js/admin.js
-index ba6da6f..80588eb 100644
+index ba6da6f..b251500 100644
 --- a/js/admin.js
 +++ b/js/admin.js
 @@ -87,6 +87,17 @@ function checkAuthState() {
@@ -4492,7 +4546,31 @@ index ba6da6f..80588eb 100644
          { view: 'reqBatches',  label: 'Weekly batches', icon: 'calendar-days' },
          { view: 'reqTeams',    label: 'Teams',          icon: 'users' },
          { view: 'reqCatalog',  label: 'Catalogue',      icon: 'package-search' },
-@@ -2427,12 +2441,21 @@ function _visibleNav() {
+@@ -2375,6 +2389,15 @@ function _purchasingOnly() {
+     const focus = _activeFocus();
+     return !!(window.currentCanBuy && focus && !focus.includes('requests'));
+ }
++// Stock (0104), the same exception: an account the server lets record stock
++// (owner / staff allowed Expenses — stk_status, Buyer switch or not) whose
++// focus lacks Requests gets Requests → Stock, once stock is on — the main
++// owner also before, to switch it on. The server checks every call.
++const _STOCK_VIEWS = ['reqStock'];
++function _stockOnly() {
++    const focus = _activeFocus();
++    return !!((window.currentStockOn || window.currentStockMainOwner) && focus && !focus.includes('requests'));
++}
+ // All views reachable inside the focused module(s) — used by the switchView guard.
+ window.focusAllowedViews = function () {
+     if (!Array.isArray(currentAllowedModules) || !currentAllowedModules.length) return [];
+@@ -2385,6 +2408,7 @@ window.focusAllowedViews = function () {
+         (_FOCUS_SUBVIEWS[p.id] || []).forEach(v => views.push(v));
+     });
+     if (_purchasingOnly()) _PURCHASING_VIEWS.forEach(v => views.push(v));
++    if (_stockOnly()) _STOCK_VIEWS.forEach(v => views.push(v));
+     return views;
+ };
+ // Landing view for the first focused module (e.g. 'pm' → 'pmProjects').
+@@ -2427,12 +2451,21 @@ function _visibleNav() {
                  // older phone. The RPCs refuse staff too; this hides the tab.
                  return { ...p, modules: p.modules.filter(m => m.view !== 'attAppUpdates') };
              }
@@ -4517,6 +4595,32 @@ index ba6da6f..80588eb 100644
              }
              if (role === 'staff' && p.id === 'pm') {
                  // Warranty Fund is peso amounts end to end and owner-only by
+@@ -2448,15 +2481,20 @@ function _visibleNav() {
+     // sections, on every screen size. Falls back to the full nav if the focus
+     // list matches nothing (avoids an empty menu).
+     // An account allowed to buy whose focus lacks Requests keeps a Requests
+-    // tab holding Purchasing only (Q3 = B; the server checks every call).
++    // tab holding Purchasing only (Q3 = B; the server checks every call), and
++    // one allowed to record stock keeps Stock in it (0104) — never the rest
++    // of Requests.
+     const focus = _activeFocus();
+     if (focus) {
+         const buyOnly = _purchasingOnly();
++        const stockOnly = _stockOnly();
++        const extra = (buyOnly ? _PURCHASING_VIEWS : []).concat(stockOnly ? _STOCK_VIEWS : []);
+         const narrowed = nav
+-            .filter(p => focus.includes(p.id) || (buyOnly && p.id === 'requests'))
+-            .map(p => (buyOnly && p.id === 'requests')
+-                ? { ...p, sub: 'Purchasing', defaultView: 'reqPurchasing',
+-                    modules: p.modules.filter(m => _PURCHASING_VIEWS.includes(m.view)) }
++            .filter(p => focus.includes(p.id) || (extra.length && p.id === 'requests'))
++            .map(p => (extra.length && p.id === 'requests')
++                ? { ...p, sub: buyOnly && stockOnly ? 'Purchasing & Stock' : (buyOnly ? 'Purchasing' : 'Stock'),
++                    defaultView: buyOnly ? 'reqPurchasing' : 'reqStock',
++                    modules: p.modules.filter(m => extra.includes(m.view)) }
+                 : p);
+         if (narrowed.length) nav = narrowed;
+     }
 ```
 
 **Modify:** `js/expenses-module.js` — apply with `git apply --ignore-whitespace`
@@ -5489,7 +5593,7 @@ index 4788c99..a9630f6 100644
 
 
 - [ ] **Step 1: Apply the files above** (Modify blocks with `git apply --ignore-whitespace`; `admin.html` keeps the user's own uncommitted edit).
-- [ ] **Step 2: Tests.** `npm test` → every suite passes (**40**), including the new `stock-admin.test.js` (**16**), `purchasing-admin.test.js` (51) and `requests-admin.test.js`. `node --check` on every `js/*.js` and `tests/*.js`. `npm run test:sql` is unchanged from Task 1 (Task 2 touches no SQL).
+- [ ] **Step 2: Tests.** `npm test` → every suite passes (**40**), including the new `stock-admin.test.js` (**17**), `purchasing-admin.test.js` (51) and `requests-admin.test.js`. `node --check` on every `js/*.js` and `tests/*.js`. `npm run test:sql` is unchanged from Task 1 (Task 2 touches no SQL).
 - [ ] **Step 3: Stop for the user** to review and commit.
 
 ### Task 3: Live — 0104 applied with stock off, verified, the web pushed
@@ -5514,7 +5618,7 @@ index 4788c99..a9630f6 100644
 | Q6, Q7 (receive in parts; not delivered; who) | `stk_receive`, `stk_not_delivered` (R56); tests "a warehouse line waits…", "not delivered…", "receiving and closing…" |
 | Q8, Q9 (issue fills a request or is unplanned; no reservations) | `stk_move` + `stk_cover`, `pr_portion_bought` (R58, R59); the shopping list's hint; tests "an issue fills a request…", "…names a request line or an unplanned reason", "picked portions…"; race 5 |
 | Q10 (returns) | `returns_record`: the issue's own lots back (R57); test "several issues… and a return…"; cost: 2C |
-| Q11 (who records) | `stk_actor` (R52); test "who records…" |
+| Q11 (who records) | `stk_actor` (R52); Stock reachable for focused accounts the server lets record (R72); tests "who records…", "a focused account the server lets record stock gets Requests → Stock…" |
 | Q12 (by lot, oldest received first, fixed when moved) | Layers by received day; `stk_take` takes the oldest received layer, or within the named lot (R65, R71); tests "oldest RECEIVED first, by delivery…", "a delivery is reversed only while its own goods are still there…", "lots: oldest received first…"; values: 2C |
 | Q13 (opening, traced or untraced) | `stk_opening` + `stk_decide` (R61); test "opening stock…" |
 | Q14–Q20, Q24, Q25 (the money of moves, approvals) | **2C** — nothing here writes a peso; test "no stock action writes a peso…" |
@@ -5531,21 +5635,22 @@ No placeholders. Every task ends with its whole suite green on its own.
 
 ## Proof
 
-Built in a scratch clone of Dacs Web on `be1add8`: Task 1 = `d4714b0`, Task 2 = `aba54da` (revision 2 was `5359f28` / `daf6db4`, revision 1 `f2d054e` / `7b86493`).
+Built in a scratch clone of Dacs Web on `be1add8`: Task 1 = `d4714b0`, Task 2 = `ed1d976` (revision 2 was `5359f28` / `daf6db4`, revision 1 `f2d054e` / `7b86493`).
 
+- **Revision 4 (the user's request, Task 2 only):** the new test "a focused account the server lets record stock gets Requests → Stock, menu and view guard — and nothing else of Requests" runs the real `_visibleNav` and `focusAllowedViews` for Expenses-only staff without and with the Buyer switch, stock off and on (no tab / Stock alone / Purchasing alone / Purchasing & Stock), and the restrictions that stay (PM-only, workers, team leaders, a Requests-focused account keeping all of Requests, unfocused accounts, the main owner reaching the switch). Five new breaks of the exception are all caught; the first run missed one (an account focused on Requests narrowed to Stock once stock is on) — a test gap, closed, then caught. Task 2 = `ed1d976`, `npm test` 40 suites, 1,301 checks.
 - **Revision 3 (review finding, rounding):** the new test "three boxes entered separately total exactly 100 pieces — even with their receipt dates out of order, backdated, reversed and received again" **fails on revision 2** (the second box, dated before the first, got 33.333 — on the way to 99.999) and passes now: box 1 (yesterday) 33.333, box 2 (the day before) 33.334, box 3 (earlier still) 33.333 = 100; each existing box keeps its quantity at every step; box 2 reversed → 66.666; a box received again dated ten days back → 33.334, exactly 100; three boxes received before the match, dates out of order, total exactly 100 at the match. Three new breaks — revision 2's date-order rule restored, each box converted alone, what is in stock not counted as assigned — are all caught.
 
 - **Revision 2 (review findings):** each fix has tests that fail without it. *(1) Kind and unit:* "a catalogue item's kind and unit are fixed once stock uses it — a match is enough, no request needed" (a matched warehouse line; a project line only matched — no lot, no record; a waiting opening count; through the Catalogue save, a direct table update, and the catalogue list's `in_use`), and race 8 "a unit change while stock is first matched to the item, at once: one wins" (15 rounds — fails without the row lock). *(2) Oldest received first:* "oldest RECEIVED first, by delivery…" (an old purchase delivered in two parts, a newer purchase delivered in between and received before it was matched, a return, a loss from a count, a delivery entered late but received earliest, a named lot, the item screen's list), "a delivery is reversed only while its own goods are still there…", the three-box line received one box at a time (exactly 100), and every lot's layers add up to its balance with none below zero. Revision 1's rule "a match can change until the goods move" became "until any of its goods are stock" — its test was rewritten (R55).
 - **Task 1:** `npm test` green (39 suites, 1,284 checks). `npm run test:sql` green (**25 suites, 755 checks**): `2b_stock` 38, `2b_concurrency` 8 × 15 rounds with no deadlock, and the 2A suites with 0104 on top — 2A-1 with stock **off** (the old tick's own tests still pass: nothing changes before launch), 2A-2 / 2A-3 / 2A-4 with stock **on** (purchasing, unit checks, change requests, phone purchases and payments behave exactly as before).
-- **Task 2:** `npm test` green (40 suites, 1,300 checks); every JS file passes `node --check`.
+- **Task 2:** `npm test` green (40 suites, 1,301 checks); every JS file passes `node --check`.
 - **Acceptance:** `2b_acceptance.sql` run as written on a throwaway PostgreSQL with Supabase-style JWT claims (`_dry2b` harness): `2b acceptance: all checks passed`, **0 rows left**. It now also checks, live, that the ZZ item's unit cannot change once matched (B6, B7) and that a delivery received yesterday is issued before today's (C6, C7). Its first runs caught two script bugs — a Purchasing-tab line needs an unplanned reason (rev 1); and staff cannot read the stock tables directly, so C7 reads through the Stock screen's own read (rev 2) — both fixed.
 - **Live, read-only (25 Oct):** the four functions 0104 redefines and the 14 helpers it relies on match their migration files exactly (`md5(replace(prosrc, chr(13), ''))`, 18/18); no `stk_*` table or function exists; `inventory` has 0 rows, there are 0 warehouse purchase lines, and one old purchase line still carries the tick (after launch, replacing that purchase with the tick still on can be refused `STOCK_TICK_RETIRED` — untick it then; a correction is unaffected). Revision 2 also redefines 0092's `pr_office_save_item` / `pr_office_catalog`: their only change is the in-use test (now `pr_item_in_use`); Task 3 Step 2 checks the Catalogue still saves an unused item.
-- **Breakage run: 71 / 71 caught** — each rule broken on purpose, one at a time, and a suite must fail: the switch (writes or reads while off, anyone switching it on, readers without Expenses); balances and layers (never short, the unit ratio upside down, issued by purchase date, newest received first, the received day ignored, receipts before the match lost, a receipt after the match not stock, receipts converted one by one, receipts assigned in date order (revision 2's rounding bug), what is in stock not counted as assigned, a layer borrowed from a later delivery, a return to another layer, the item lock gone — caught by the race test); receiving and matching (past what is awaited, not delivered without a reason, the buyer checking their own unit, a re-match after receiving, a same-unit match at another ratio, an automatic match ignoring the unit); the item lock (a match, or a waiting record, not fixing the item; the unit changed around the save; the save ignoring stock; the catalogue form unlocked; the item row not held — caught by race 8); leftovers and opening stock (past the line, leftovers turned company stock, pending openings not counted, opening from a warehouse line); moves and requests (unplanned without a reason, a request for the warehouse or for another project, past its need, another unit, a cancelled line, returned twice, stock not counted as covered, Bought including stock, no warehouse hint); counts (two open counts, a stale count confirmed, a loss not taken off, a difference without a reason); reversals (an issue under its return, after the goods moved on, anyone reversing, staff reversing a confirmed count); purchases (a correction below what was received, another unit, a leftover line moved to another project, a void with stock, the old tick still writing); history and access (history editable, a helper callable, a table readable, a retry recorded twice, a read naming the supplier); the screens (no unplanned reason asked, a new operation id per press, the count reason unchecked, a peso shown, the Stock tab always shown, the old Inventory screen kept, the tick still sent, Issue from stock while off, the in-use sentence omitting stock, layers out of order). Revision 3's run: 71/71 (the three new breaks included). Revision 1's run: 56/56 after one gap (an automatic match ignoring the unit) was closed. Revision 2's first run missed three — the three-box test happened to round cleanly (now one box at a time), the match-only case also had a lot (now a project line matched and nothing more), and the Catalogue save's own check is backed by the trigger, so only a source check can tell (added) — each closed, then caught.
+- **Breakage run: 76 / 76 caught** — each rule broken on purpose, one at a time, and a suite must fail: the switch (writes or reads while off, anyone switching it on, readers without Expenses); balances and layers (never short, the unit ratio upside down, issued by purchase date, newest received first, the received day ignored, receipts before the match lost, a receipt after the match not stock, receipts converted one by one, receipts assigned in date order (revision 2's rounding bug), what is in stock not counted as assigned, a layer borrowed from a later delivery, a return to another layer, the item lock gone — caught by the race test); receiving and matching (past what is awaited, not delivered without a reason, the buyer checking their own unit, a re-match after receiving, a same-unit match at another ratio, an automatic match ignoring the unit); the item lock (a match, or a waiting record, not fixing the item; the unit changed around the save; the save ignoring stock; the catalogue form unlocked; the item row not held — caught by race 8); leftovers and opening stock (past the line, leftovers turned company stock, pending openings not counted, opening from a warehouse line); moves and requests (unplanned without a reason, a request for the warehouse or for another project, past its need, another unit, a cancelled line, returned twice, stock not counted as covered, Bought including stock, no warehouse hint); counts (two open counts, a stale count confirmed, a loss not taken off, a difference without a reason); reversals (an issue under its return, after the goods moved on, anyone reversing, staff reversing a confirmed count); purchases (a correction below what was received, another unit, a leftover line moved to another project, a void with stock, the old tick still writing); history and access (history editable, a helper callable, a table readable, a retry recorded twice, a read naming the supplier); the screens (no unplanned reason asked, a new operation id per press, the count reason unchecked, a peso shown, the Stock tab always shown, the old Inventory screen kept, the tick still sent, Issue from stock while off, the in-use sentence omitting stock, layers out of order; and for focused accounts — Stock blocked by the view guard, no tab, the exception while stock is off, a Requests-focused account narrowed to Stock, the exception opening all of Requests). Revision 4: the five new breaks caught (the server and the rest unchanged since revision 3's run, 71/71). Revision 1's run: 56/56 after one gap (an automatic match ignoring the unit) was closed. Revision 2's first run missed three — the three-box test happened to round cleanly (now one box at a time), the match-only case also had a lot (now a project line matched and nothing more), and the Catalogue save's own check is backed by the trigger, so only a source check can tell (added) — each closed, then caught.
 - Every file was restored and compared byte for byte after each breakage run.
 
 ## Rehearsal
 
-Two fresh clones of the real repo at `be1add8` (`core.autocrlf=false`, set before applying — otherwise `git apply` writes CRLF). Both tasks were applied **from this plan's text only** — Create blocks written as given, Modify blocks with `git apply --ignore-whitespace` after `--check` — plus Task 1's CRLF command. Done again from scratch for revisions 2 and 3.
+Two fresh clones of the real repo at `be1add8` (`core.autocrlf=false`, set before applying — otherwise `git apply` writes CRLF). Both tasks were applied **from this plan's text only** — Create blocks written as given, Modify blocks with `git apply --ignore-whitespace` after `--check` — plus Task 1's CRLF command. Done again from scratch for revisions 2, 3 and 4.
 
-- Clean clone: **25 blocks** (`package.json` has one per task) → all **24 files byte-identical** to the tested build (raw bytes, line endings included); no other file touched. `npm test` on the result: 40 suites green; `2b_stock.pglite.mjs`: 38 passed.
+- Clean clone: **25 blocks** (`package.json` has one per task) → all **24 files byte-identical** to the tested build (raw bytes, line endings included); no other file touched. `npm test` on the result: 40 suites green (1,301 checks); `2b_stock.pglite.mjs`: 38 passed.
 - Clone carrying the user's own uncommitted one-space edit in `admin.html` (as in the real repo today): the same 25 blocks apply, the 24 files match, and the edit is still there, unchanged.

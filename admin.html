@@ -22,7 +22,7 @@
     <link rel="stylesheet" href="css/reimbursement-module.css">
     <link rel="stylesheet" href="css/attendance-admin.css">
     <link rel="stylesheet" href="css/requests-admin.css?v=20261012a">
-    <link rel="stylesheet" href="css/purchasing-admin.css?v=20261023a">
+    <link rel="stylesheet" href="css/purchasing-admin.css?v=20261025a">
     <link rel="stylesheet" href="css/workplan-admin.css?v=20261014a">
     <!-- Warranty Retention Register + Fund Styles -->
     <link rel="stylesheet" href="css/warranty-fund.css?v=20260803f">
@@ -2656,6 +2656,9 @@
              Buyers only; reqPurchase is one purchase, opened from Purchasing. -->
         <div id="reqPurchasingView" class="content-view" style="display: none;"></div>
         <div id="reqPurchaseView"   class="content-view" style="display: none;"></div>
+        <!-- Stock (WorkMate Stage 2B-a, 0104) — js/stock-admin.js. Quantities only;
+             hidden until the main owner switches stock on. -->
+        <div id="reqStockView"      class="content-view" style="display: none;"></div>
         <!-- Work Plan (WorkMate My Work, 0093/0094) — rendered by js/workplan-admin-*.js.
              wpMeeting and wpTask are drill-downs from the Board and Meetings. -->
         <div id="wpBoardView" class="content-view" style="display: none;"></div>
@@ -5428,11 +5431,12 @@
 <script src="js/requests-admin-history.js?v=20261012a"></script>
 <script src="js/requests-admin-gallery.js?v=20261012a"></script>
 <script src="js/purchasing-admin-core.js?v=20261023a"></script>
-<script src="js/purchasing-admin-list.js?v=20261022b"></script>
+<script src="js/purchasing-admin-list.js?v=20261025a"></script>
 <script src="js/purchasing-admin-record.js?v=20261022b"></script>
 <script src="js/purchasing-admin-purchases.js?v=20261022b"></script>
 <script src="js/purchasing-admin-pay.js?v=20261023a"></script>
 <script src="js/purchasing-admin-cash.js?v=20261023b"></script>
+<script src="js/stock-admin.js?v=20261025a"></script>
 <script src="js/workplan-admin-core.js?v=20261013a"></script>
 <script src="js/workplan-admin-form.js?v=20261014a"></script>
 <script src="js/workplan-admin-board.js?v=20261014a"></script>
@@ -6305,7 +6309,7 @@
     const PM_VIEWS   = ['pmProjects','pmWorkspace'];
     const QUOTE_VIEWS = ['quoteList','quoteEditor','quoteRevision'];
     const ATT_VIEWS   = ['attToday','attWorkers','attWorker','attProjects','attReports','attRewards'];
-    const REQ_VIEWS   = ['reqQueue','reqDetail','reqBatches','reqTeams','reqCatalog','reqHistory','reqProjects','reqPurchasing','reqPurchase'];
+    const REQ_VIEWS   = ['reqQueue','reqDetail','reqBatches','reqTeams','reqCatalog','reqHistory','reqProjects','reqPurchasing','reqPurchase','reqStock'];
     const WP_VIEWS    = ['wpBoard','wpMeetings','wpMeeting','wpTask'];
     const TITLES = {
         dashboard:        'Dashboard',
@@ -6353,6 +6357,7 @@
         reqProjects:      'Projects open to requests',
         reqPurchasing:    'Purchasing',
         reqPurchase:      'Purchase',
+        reqStock:         'Stock',
         wpBoard:          'Work Plan',
         wpMeetings:       'Meetings',
         wpMeeting:        'Meeting',

@@ -123,7 +123,7 @@ test('the nav has Purchasing and its drill-down, hidden unless the server says t
   const src = read('js/admin.js');
   ok(/view: 'reqPurchasing'/.test(src) && /view: 'reqPurchase',[^}]*hidden: true/.test(src), 'modules');
   ok(/requests: \['reqDetail', 'reqPurchase'\]/.test(src), '_FOCUS_SUBVIEWS');
-  ok(/p\.id === 'requests' && !window\.currentCanBuy[\s\S]{0,400}'reqPurchasing', 'reqPurchase'/.test(src), '_visibleNav gate');
+  ok(/p\.id === 'requests'\) \{[\s\S]{0,400}const hidden = window\.currentCanBuy \? \[\] : \['reqPurchasing', 'reqPurchase'\];/.test(src), '_visibleNav gate');
   ok(/rpc\('pur_me'\)[\s\S]{0,120}currentCanBuy = !!\(purMe && purMe\.can_buy\)/.test(src), 'loaded from the server at sign-in');
 });
 test('admin.html loads the purchasing files after Requests, with their views', () => {
@@ -132,7 +132,7 @@ test('admin.html loads the purchasing files after Requests, with their views', (
     ok(html.indexOf('js/' + f + '.js') > html.indexOf('js/requests-admin-core.js'), f);
   }
   ok(/id="reqPurchasingView"/.test(html) && /id="reqPurchaseView"/.test(html), 'views');
-  ok(/REQ_VIEWS\s*=\s*\[[^\]]*'reqPurchasing','reqPurchase'\]/.test(html), 'REQ_VIEWS');
+  ok(/REQ_VIEWS\s*=\s*\[[^\]]*'reqPurchasing','reqPurchase'[,\]]/.test(html), 'REQ_VIEWS');
   ok(html.indexOf('css/purchasing-admin.css') > 0, 'styles');
   // Files this stage changes must reach an already-open browser (a stale admin.js hides the tab).
   for (const f of ['supabase-config', 'admin', 'receipt-storage', 'expenses-module', 'user-navigator']) {

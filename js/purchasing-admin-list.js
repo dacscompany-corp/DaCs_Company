@@ -11,6 +11,9 @@
 //                      petty-cash tracker, or a buyer's own cash.
 // "Record purchase" (js/purchasing-admin-record.js) opens from the list
 // with the ticked lines.
+// 0104: a line whose catalogue item is in the warehouse says so ("In
+// warehouse: 12", a hint — no reservation) and, once stock is on, offers
+// "Issue from stock" (js/stock-admin.js). "From stock" counts only issues.
 //
 // Wording (spec): Needed · Bought · Still to buy; "Unassigned / You /
 // <name>"; assigning is NOT "arranged" — that stays its own button.
@@ -55,6 +58,7 @@
               '<span class="pur-portion-batch">' + esc('Cutoff ' + RA.cutoffLabel(p.cutoff_at)) + '</span></div>' +
             '<div class="pur-pcell"><span class="pur-plabel">To buy</span>' +
               '<span class="pur-portion-qty">' + esc(PA.qty(p.quantity - p.pending_reduction)) + ' needed · ' +
+              (Number(p.from_stock) > 0 ? esc(PA.qty(p.from_stock)) + ' from stock · ' : '') +
               esc(PA.qty(p.bought)) + ' bought · <strong>' + esc(PA.qty(p.still_to_buy)) + ' still to buy</strong></span></div>' +
             '<div class="pur-pcell"><span class="pur-plabel">Buyer</span>' +
               '<span class="pur-portion-who' + (p.buyer_id ? '' : ' is-open') + '">' + esc(who) + '</span></div>' +
@@ -83,6 +87,15 @@
                     (l.catalog_name ? ' <span class="req-muted">· ' + esc(l.catalog_name) + '</span>' : '') + ' ' + urgent +
                     (Number(l.unit_checks) > 0 ? ' ' + PA.pill('Office check waiting', 'abandoned') : '') + '</div>' +
                   '<div class="req-muted">' + esc(l.project_name) + ' · ' + esc(l.work_name) + ' · requested by ' + esc(l.requester_name) + '</div>' +
+                  // 0104: warehouse stock of this catalogue item — a hint to check
+                  // before buying (no reservation, Q9); issuing is what counts.
+                  (canBuy && Number(l.in_warehouse) > 0
+                    ? '<div class="pur-instock"><i data-lucide="warehouse"></i> In warehouse: <strong>' + esc(PA.qty(l.in_warehouse)) + ' ' +
+                      esc(l.in_warehouse_unit || l.unit) + '</strong> — check before buying' +
+                      (root.StockAdmin && root.currentStockOn
+                        ? ' <button type="button" class="att-btn att-btn--sm" data-issue="' + esc(l.line_id) + '">Issue from stock…</button>' : '') +
+                      '</div>'
+                    : '') +
                 '</div>' +
                 figures(l) +
               '</div>' +
@@ -170,6 +183,10 @@
         if (clr) clr.addEventListener('click', () => { ui.picked = {}; reload(); });
         body.querySelector('[data-unplanned]').addEventListener('click', () => PA.openRecord({ requestLines: [] }));
         body.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => act(b.dataset.act, b.dataset.portion, lines, me, reload)));
+        body.querySelectorAll('[data-issue]').forEach(b => b.addEventListener('click', () => {
+            const line = lines.find(l => l.line_id === b.dataset.issue);
+            if (line && root.StockAdmin) root.StockAdmin.openIssue(line, reload);
+        }));
         RA.icons();
     }
 

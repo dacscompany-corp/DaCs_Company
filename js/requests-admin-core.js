@@ -245,7 +245,7 @@
         NOT_A_TEAM_LEADER: 'Only an account with the Team Leader role can lead a team.',
         NOT_IN_TEAM: 'Add this person to the team first.',
         DUPLICATE_ITEM: 'This item (same name, size/spec and unit) is already in the catalogue.',
-        ITEM_IN_USE: 'This item is already used in requests, so its kind and unit cannot change. Add a new item with the right kind or unit, then deactivate this one.',
+        ITEM_IN_USE: 'This item is already used in requests or stock, so its kind and unit cannot change. Add a new item with the right kind or unit, then deactivate this one.',
         DUPLICATE_TEAM: 'An active team already has this name.',
         BAD_ITEM: 'Fill in the item name and unit, choose Material or Tool, and keep other names to 20 or fewer, each up to 60 characters.',
         BAD_OUTCOME: 'Choose what happened to the order.',

@@ -3038,7 +3038,9 @@ async function handleAddExpense(e) {
     const notes      = document.getElementById('expNotes').value.trim();
     const paymentMethod = (document.getElementById('expPaymentMethod')?.value || '').trim();
     // Inventory toggle — when on, this material is also tracked as a stock item.
-    const toInventory = !!document.getElementById('expToInventory')?.checked;
+    // Once Stock is on (0104, Q29) the old tick is retired: the server refuses it,
+    // and the form hides it (openExpModal). Stock lives in Requests → Stock.
+    const toInventory = !window.currentStockOn && !!document.getElementById('expToInventory')?.checked;
     const invUnit     = document.getElementById('expInvUnit')?.value || 'pcs';
     const invMinStock = Math.round(Math.max(0, parseFloat(document.getElementById('expInvMinStock')?.value) || 0) * 1000) / 1000;
     // The ACTUAL purchase date decides the billing month (spec §3.3).
@@ -4813,6 +4815,11 @@ function openExpModal(id)  {
             d.value = n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0');
         }
         if (typeof window.expSetMoreDetails === 'function') window.expSetMoreDetails(false);
+        // One stock path (0104, Q29): no "Add to inventory" once Stock is on.
+        const inv = document.getElementById('expToInventory');
+        const box = inv && inv.closest('.aer-inv');
+        if (box) box.style.display = window.currentStockOn ? 'none' : '';
+        if (inv && window.currentStockOn) { inv.checked = false; window.expToggleInventoryFields(); }
     }
     if (id === 'addPayrollModal' && typeof payToggleMode === 'function') payToggleMode(); // sync Daily/Lamsam UI
     if (id === 'addPayrollModal' && typeof lcPopulatePayrollPicker === 'function') {
