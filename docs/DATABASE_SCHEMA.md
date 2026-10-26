@@ -196,6 +196,7 @@ no envelope.
 | `splitGroup?` `splitIndex?` `splitTotal?` | — | multi-source split metadata |
 | `clientSubmissionId?` | uuid | `client_submission_id` — one id per Save press; unique with `split_index` (0089), so a retry cannot duplicate |
 | `purchaseLineId?` `purchaseChargeId?` | uuid | `purchase_line_id` / `purchase_charge_id` (0096): the row was written by a **purchase** (`pur_record`). It changes only through `pur_correct` / `pur_refund` / `pur_void` — the `expenses_purchase_guard` trigger refuses any other insert, update or delete |
+| `stkCostMoveId?` | uuid | `stk_cost_move_id` (0105): the row was written by a stock cost move the main owner approved (`stk_cost_decide`); negative on the giving project. It leaves only through `stk_cost_reverse` — the same trigger refuses anything else (`STOCK_COST_ROW`). See *Stock cost moves (0105)* |
 | `folderId?` | uuid | `folder_id` (0096): set ONLY on a purchase row for a project with **no billing period** for the purchase month and no Cover period (`projectId` null). It is that project's Cover Material — counted once in Material, Spent and Cover, in no period's envelope, shown as "No billing period" — until a re-fund moves it onto a period |
 | `createdAt` | ts | |
 
@@ -1130,7 +1131,7 @@ Every table has RLS on, **no policies** and every privilege revoked: the screens
 
 ## Stock (0104) — WorkMate Stage 2B-a
 
-Quantities only, in catalogue units — **no peso amount anywhere** (the value of stock and every cost move are Stage 2C, main owner). Private tables (RLS on, no policies): reads and writes only through the `stk_*` functions. Dormant until the main owner switches stock on (`stk_set_enabled`); until then every write is `STOCK_OFF`.
+Quantities only, in catalogue units — **no peso amount anywhere** (the value of stock and every cost move are 0105, below — main owner). Private tables (RLS on, no policies): reads and writes only through the `stk_*` functions. Dormant until the main owner switches stock on (`stk_set_enabled`); until then every write is `STOCK_OFF`.
 
 | Table | What it holds |
 |---|---|
@@ -1165,6 +1166,33 @@ A lot's balance at a place = live moves in − live moves out, kept per **layer*
 Guards: `stk_guard_line` (a purchase line may not undo its stock: destination, project, unit, quantity — `STOCK_IN_USE`), `stk_guard_void` (no void or replacement with stock records), `stk_inventory_frozen` (once stock is on, the old `inventory` table refuses writes — `STOCK_TICK_RETIRED`), `stk_item_fixed` (a catalogue item's kind and unit never change once a request line **or stock** uses it — `ITEM_IN_USE`).
 
 Catalogue (0092 extended): `pr_item_in_use(item)` = a request line, a stock match, a lot or any stock record uses it. `pr_office_save_item` refuses a Kind or Unit change of such an item (`ITEM_IN_USE`), and `pr_office_catalog`'s `in_use` counts stock too, so the Catalogue form locks the two fields.
+
+## Stock cost moves (0105) — WorkMate Stage 2C
+
+Where the **cost** of stock sits, decided by the **main owner**. Moving goods never moves their cost by itself: every stock move row carries its `holder` (a project folder, or null = the company), and when goods arrive where someone else holds their cost the server opens a pending cost move. Approval writes **ordinary `expenses` rows** tied to the cost move (`stk_cost_move_id`) — so every Spent / Cover / report site reads them like any other row. Company stock is never in a project's Spent, nor in company overhead (G&A). Client billing is never changed.
+
+| Table / column | What it holds |
+|---|---|
+| `stk_moves.holder` | Whose cost the moved goods are. Goods entering stock take their lot's `cost_folder_id` (trigger `stk_moves_holder`): a warehouse purchase = the company; leftovers / traced opening stock = their project, even in the warehouse |
+| `stk_cost_moves` | `id`, `kind` (`assign` company → project, `transfer` project → project, `back` project → company, `loss` company stock → company stock loss), `status` (`pending`, `approved`, `rejected`, `withdrawn`), `record_id` + `move_id` (the physical record and move row), `lot_id`, `layer`, `location` (null for a loss), `from_folder` / `to_folder` (null = company), `quantity` (asked), `approved_quantity`, `value` (pesos), `basis_value` / `basis_quantity` (the lot's price and quantity it was valued at), `basis_alloc` (where its purchase's cost sat when approved — `stk_purchase_alloc`: its rows summed by billing period, project and Cover), `received_on` (the day the project received the goods — funding month), `resubmits` (the rejected / reversed one it asks again for), `note`, `requested_*`, `decided_*` + `decision_note`, `reversed_*` + `reverse_reason`. RLS on, no policies |
+| `expenses.stk_cost_move_id` | The approved cost move that wrote the row (both sides). Changed only by the stock functions — `pur_guard_expense_row` refuses anything else (`STOCK_COST_ROW`) |
+| `stk_events.cost_move_id` | `cost_requested`, `cost_approved`, `cost_rejected`, `cost_resubmitted`, `cost_withdrawn`, `cost_reversed` |
+
+When a cost move is opened (`stk_cost_requests`, after every physical move, untraced lots never): goods arriving at a project site whose holder is not that project → `assign` (from the company) or `transfer` (from another project); a **company** lot's goods brought to the warehouse while a project holds them → `back`. A project's own leftovers keep their cost in the warehouse. A confirmed loss (`stk_decide` on a count) of company-held goods → an approved `loss` with the count (`stk_cost_losses`): value to company stock loss, **no expense row**; reversing the count reverses it.
+
+Value (`stk_lot_basis`, `stk_held`, `stk_cost_value`): a lot is worth its purchase line's item amount − discount shares + delivery-fee shares, for the line's quantity in item units; its own holder starts with all of it. Each approved move takes the line's cost × quantity / the line's quantity, to the centavo; the **last** portion out of a holder takes what it holds, so the portions of a line always add up to it exactly (₱100 for 3 pieces → ₱33.33 + ₱33.33 + ₱33.34). A pending move covers only what the holder still has there after earlier pending requests (`stk_cost_effective`) — goods that left before approval are not charged; approval is whole, for that.
+
+Rows (`stk_cost_rows`): the receiving project is funded like a purchase (`pur_fund`: its periods for the month in `received_on`, earliest billing number first, the rest Cover; Additional Works its own period) — "From warehouse — item" / "Moved from A — item"; the giving project gets negative rows on every (billing period, Cover) group that carried the lot's cost for it (its purchase line rows, its share of the delivery-fee rows, earlier cost-move rows — `stk_cost_carriers`), in proportion with `pur_prorate` — "Moved to B — item" / "Back to company stock — item". A split is one `split_group` (`stkcost:<id>:in|out`).
+
+| Function | Who | What |
+|---|---|---|
+| `stk_cost_decide(op, cost, approve, note)` | main owner | Approve (refused `COMPLETED_PROJECT` into or out of a completed project or a job under one; `NOTHING_LEFT` when the goods are gone) or reject with a reason (the goods stay recorded, the cost stays) |
+| `stk_cost_reverse(op, cost, reason)` | main owner | Its rows leave Spent; the record stays. Refused `LATER_MOVES_FIRST` while later movements or cost moves rely on it. A loss goes with its count instead |
+| `stk_cost_resubmit(op, cost, note)` | stock recorders | Ask again for the same movement after a rejection or a reversal — no second physical record |
+| `stk_cost_pending()` | main owner | The Owner approvals cards: what is still there, the estimate, the giving project's groups, the record and its evidence. Stock off: `[]` |
+| `stk_company_stock()` | owner accounts | By item: in the warehouse, issued with the assignment pending, awaiting delivery, company stock loss — quantity and value |
+
+Redefined: from 0104 `stk_take` (returns the holder; within a delivery, goods not yet the place's own leave first), `stk_check_record`, `stk_move` (holder on every row; a return takes the issue's goods as their cost now stands; then `stk_cost_requests`; answer + `cost_moves`), `stk_decide` (+ `stk_cost_losses`), `stk_reverse` (`COST_MOVED` while an approved cost move rides on the record; pending ones withdrawn), `stk_record_json` (`costs` — states for everyone who reads stock, `value` / `estimate` keys for owner accounts only); from 0096 `pur_guard_expense_row` and `pur_guard_delete` (a project with live stock records or open cost moves, or a billing period carrying cost-move rows: `STOCK_LIVE`). Guard `stk_guard_cost_basis` (after insert on `purchase_history`, kinds corrected / unit_checked / refunded — every 2A path that stores a purchase again, an approved change request included): a purchase line's price or quantity cannot change while approved cost moves value its lot (`STOCK_COST_IN_USE`), and neither can where the purchase's cost sits — its rows' billing periods and Cover (`STOCK_COST_FUNDING`; reverse those moves first). Locks: the lot's purchase first (as every purchase write), then the item and the projects charged in one sorted pass; a count's loss and a purchase correction meet on the lot row.
 
 ## PM profit sharing (0098)
 

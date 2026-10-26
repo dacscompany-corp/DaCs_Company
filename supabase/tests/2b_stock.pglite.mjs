@@ -27,6 +27,9 @@ const M102 = mig('0102_purchase_payments.sql');
 const M103 = mig('0103_buyer_return_photo.sql');
 const M90 = mig('0090_workmate_item_history.sql');
 const M104 = mig('0104_stock.sql');
+// --with-0105: and 2C's 0105 (cost moves) on top — every 2B-a behaviour holds.
+const WITH_0105 = process.argv.includes('--with-0105');
+const M105 = WITH_0105 ? mig('0105_stock_cost_moves.sql') : '';
 
 const BASE = `
 create role anon; create role authenticated; create role service_role;
@@ -106,6 +109,7 @@ async function fresh(opts = {}) {
   await db.exec(M102);
   await db.exec(M103);
   await db.exec(M104);
+  if (WITH_0105) await db.exec(M105);
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
     ('${STAFF}', 'staff', '${OWNER}', 'active', null, 'staff@dacs.test', 'Ana'),
@@ -231,7 +235,7 @@ async function layersOf(db, takes) {
   return out;
 }
 
-console.log('\n2B-a stock (0096 + 0097 + 0101 + 0102 + 0103 + 0104 on PGlite)');
+console.log('\n2B-a stock (0096 + 0097 + 0101 + 0102 + 0103 + 0104' + (WITH_0105 ? ' + 0105' : '') + ' on PGlite)');
 
 // ── A. The switch, and who ────────────────────────────────────────────
 
@@ -1029,7 +1033,7 @@ await test('no read carries a peso amount (staff see quantities only)', async ()
   const walk = (v) => { if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object') Object.entries(v).forEach(([k, x]) => { keys.add(k); walk(x); }); };
   docs.forEach(walk);
   const money = [...keys].filter(k => /amount|price|cost(?!_folder)|peso|total_amount|gross|value|supplier/.test(k));
-  eq(money, [], 'no money keys');
+  eq(money, WITH_0105 ? ['costs'] : [], 'no money keys (2C: a record\'s cost-move states, no values)');
   const text = JSON.stringify(docs);
   assert(!text.includes('Wilcon'), 'no supplier');
 });
@@ -1040,7 +1044,9 @@ await test('permissions: authenticated may call the operations and readers only;
     'stk_receive(uuid,uuid,integer,text,text,text)', 'stk_not_delivered(uuid,uuid,integer,text,text)',
     'stk_leftover(uuid,uuid,integer,text,text,text,text)', 'stk_move(uuid,jsonb)', 'stk_count(uuid,jsonb)', 'stk_opening(uuid,jsonb)',
     'stk_decide(uuid,uuid,boolean,text)', 'stk_reverse(uuid,uuid,text)', 'stk_overview()', 'stk_item(uuid)',
-    'stk_project_lines(uuid)', 'stk_choices()', 'stk_request_lines(uuid)', 'pur_shopping_list(uuid,uuid,text)'];
+    'stk_project_lines(uuid)', 'stk_choices()', 'stk_request_lines(uuid)', 'pur_shopping_list(uuid,uuid,text)',
+    ...(WITH_0105 ? ['stk_cost_decide(uuid,uuid,boolean,text)', 'stk_cost_reverse(uuid,uuid,text)',
+                     'stk_cost_resubmit(uuid,uuid,text)', 'stk_cost_pending()', 'stk_company_stock()'] : [])];
   for (const f of callable) {
     eq([f, (await one(db, `select has_function_privilege('authenticated', $1, 'execute') x`, [f])).x,
         (await one(db, `select has_function_privilege('anon', $1, 'execute') x`, [f])).x], [f, true, false]);

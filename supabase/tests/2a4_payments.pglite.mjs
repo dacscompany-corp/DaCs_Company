@@ -26,8 +26,11 @@ const M102 = read(path.join(ROOT, 'supabase/migrations/0102_purchase_payments.sq
 // --with-0103: re-run every test with 0103 on top (2A-4b: a return's photo reaches its buyer).
 // --with-0104: and 2B-a's 0104 (stock) on top of 0103, switched ON (launch) —
 // stock must not change how purchases are paid.
-const WITH_0104 = process.argv.includes('--with-0104');
+// --with-0105: and 2C's 0105 (cost moves) on top of 0104 — it redefines 0096's two guards.
+const WITH_0105 = process.argv.includes('--with-0105');
+const WITH_0104 = process.argv.includes('--with-0104') || WITH_0105;
 const M104 = WITH_0104 ? read(path.join(ROOT, 'supabase/migrations/0104_stock.sql')) : '';
+const M105 = WITH_0105 ? read(path.join(ROOT, 'supabase/migrations/0105_stock_cost_moves.sql')) : '';
 const WITH_0103 = process.argv.includes('--with-0103') || WITH_0104;
 const M103 = WITH_0103 ? read(path.join(ROOT, 'supabase/migrations/0103_buyer_return_photo.sql')) : '';
 
@@ -118,7 +121,7 @@ async function fresh(opts = {}) {
     await db.exec(fnText(M98, 'pm_main_owner_id'));
     await db.exec(M102);
     if (WITH_0103) await db.exec(M103);
-    if (WITH_0104) { await db.exec(CATALOG_0085); await db.exec(M104); }
+    if (WITH_0104) { await db.exec(CATALOG_0085); await db.exec(M104); if (WITH_0105) await db.exec(M105); }
   }
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
@@ -213,7 +216,7 @@ async function resolve(db, purchaseId, refunds, credit = null, opId = op()) {
     [opId, purchaseId, JSON.stringify(refunds), credit === null ? null : JSON.stringify(credit)])).r;
 }
 
-console.log('\n2A-4a paying for purchases (0096 + 0097 + 0101 + 0102' + (WITH_0103 ? ' + 0103' : '') + (WITH_0104 ? ' + 0104 (stock on)' : '') + ' on PGlite)');
+console.log('\n2A-4a paying for purchases (0096 + 0097 + 0101 + 0102' + (WITH_0103 ? ' + 0103' : '') + (WITH_0104 ? ' + 0104 (stock on)' : '') + (WITH_0105 ? ' + 0105' : '') + ' on PGlite)');
 
 // ── A. "Paid now": the purchase and its payments together (Q3) ─────────
 

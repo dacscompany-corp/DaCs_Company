@@ -25,8 +25,11 @@ const M97 = read(path.join(ROOT, 'supabase/migrations/0097_purchasing_office.sql
 // --with-0102: and 2A-4a's 0102 on top of 0101.
 // --with-0104: and 2B-a's 0104 (stock) on top, switched ON (launch) — stock
 // must not change how the Purchasing tab buys, covers, corrects or approves.
-const WITH_0104 = process.argv.includes('--with-0104');
+// --with-0105: and 2C's 0105 (cost moves) on top of 0104 — it redefines 0096's two guards.
+const WITH_0105 = process.argv.includes('--with-0105');
+const WITH_0104 = process.argv.includes('--with-0104') || WITH_0105;
 const M104 = WITH_0104 ? read(path.join(ROOT, 'supabase/migrations/0104_stock.sql')) : '';
+const M105 = WITH_0105 ? read(path.join(ROOT, 'supabase/migrations/0105_stock_cost_moves.sql')) : '';
 const WITH_0102 = process.argv.includes('--with-0102') || WITH_0104;
 const M98 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0098_pm_profit_sharing.sql')) : '';
 const M102 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0102_purchase_payments.sql')) : '';
@@ -101,7 +104,7 @@ async function fresh() {
   await db.exec(M97);
   if (WITH_0101) { await db.exec(`create role service_role`); await db.exec(M101); }
   if (WITH_0102) { await db.exec(fnText(M98, 'pm_main_owner_id')); await db.exec(M102); }
-  if (WITH_0104) { await db.exec(CATALOG_0085); await db.exec(M104); }
+  if (WITH_0104) { await db.exec(CATALOG_0085); await db.exec(M104); if (WITH_0105) await db.exec(M105); }
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
     ('${STAFF}', 'staff', '${OWNER}', 'active', null, 'staff@dacs.test', null),
@@ -169,7 +172,7 @@ async function spent(db, folderId) {
   return num((await one(db, `select coalesce(sum(e.amount), 0) s from expenses e join projects p on p.id = e.project_id where p.folder_id = $1`, [folderId])).s);
 }
 
-console.log('\n2A-2 purchasing tab + Buyer switch (0096 + 0097' + (WITH_0101 ? ' + 0101' : '') + (WITH_0102 ? ' + 0102' : '') + (WITH_0104 ? ' + 0104 (stock on)' : '') + ' on PGlite)');
+console.log('\n2A-2 purchasing tab + Buyer switch (0096 + 0097' + (WITH_0101 ? ' + 0101' : '') + (WITH_0102 ? ' + 0102' : '') + (WITH_0104 ? ' + 0104 (stock on)' : '') + (WITH_0105 ? ' + 0105' : '') + ' on PGlite)');
 
 // ── A. The Buyer switch ──────────────────────────────────────────────
 
