@@ -24,7 +24,11 @@ const M101 = read(path.join(ROOT, 'supabase/migrations/0101_purchasing_phone.sql
 // --with-0102: the same tests with 2A-4a's 0102 on top — payments must not change the phone server.
 // --with-0104: and 2B-a's 0104 (stock) on top, switched ON (launch).
 // --with-0105: and 2C's 0105 (cost moves) on top of 0104 — it redefines 0096's two guards.
-const WITH_0105 = process.argv.includes('--with-0105');
+// --with-0107: and 3a's 0107 (tools) on top of 0105, switched ON — tools must not change
+// how a purchase is recorded, corrected or voided.
+const WITH_0107 = process.argv.includes('--with-0107');
+const M107 = WITH_0107 ? read(path.join(ROOT, 'supabase/migrations/0107_tools.sql')) : '';
+const WITH_0105 = process.argv.includes('--with-0105') || WITH_0107;
 const WITH_0104 = process.argv.includes('--with-0104') || WITH_0105;
 const M104 = WITH_0104 ? read(path.join(ROOT, 'supabase/migrations/0104_stock.sql')) : '';
 const M105 = WITH_0105 ? read(path.join(ROOT, 'supabase/migrations/0105_stock_cost_moves.sql')) : '';
@@ -115,7 +119,7 @@ async function fresh() {
   await db.exec(M97);
   await db.exec(M101);
   if (WITH_0102) { await db.exec(fnText(M98, 'pm_main_owner_id')); await db.exec(M102); }
-  if (WITH_0104) { await db.exec(CATALOG_0085); await db.exec(M104); if (WITH_0105) await db.exec(M105); }
+  if (WITH_0104) { await db.exec(CATALOG_0085); await db.exec(M104); if (WITH_0105) await db.exec(M105); if (WITH_0107) await db.exec(M107); }
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
     ('${STAFF}', 'staff', '${OWNER}', 'active', null, 'staff@dacs.test', null),
@@ -134,6 +138,7 @@ async function fresh() {
   await db.query(`select pur_set_buyer($1, true)`, [GONE]);
   await db.query(`update profiles set status = 'inactive' where id = $1`, [GONE]);
   if (WITH_0104) await db.query(`select stk_set_enabled(true)`);
+  if (WITH_0107) await db.query(`select tl_set_enabled(true)`);
   return db;
 }
 async function as(db, uid) { await db.exec(`select set_config('test.uid', '${uid}', false)`); }

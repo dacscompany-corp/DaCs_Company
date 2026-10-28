@@ -30,6 +30,9 @@ const M103 = mig('0103_buyer_return_photo.sql');
 const M90 = mig('0090_workmate_item_history.sql');
 const M104 = mig('0104_stock.sql');
 const M105 = mig('0105_stock_cost_moves.sql');
+// --with-0107: and 3a's 0107 (tools) on top, switched ON — every behaviour here holds.
+const WITH_0107 = process.argv.includes('--with-0107');
+const M107 = WITH_0107 ? mig('0107_tools.sql') : '';
 const M106 = mig('0106_workmate_phone_stock.sql');
 const M85 = mig('0085_workmate_requests.sql');
 const M51 = mig('0051_attendance_worker_owner.sql');
@@ -130,6 +133,7 @@ async function fresh(opts = {}) {
   await db.exec(M105);
   await db.exec(REQUESTS_0085);
   await db.exec(M106);
+  if (WITH_0107) await db.exec(M107);
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
     ('${STAFF}', 'staff', '${OWNER}', 'active', null, 'staff@dacs.test', 'Ana'),

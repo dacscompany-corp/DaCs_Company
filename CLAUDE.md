@@ -163,6 +163,17 @@ Profit   = Earned − Spent
   (`STOCK_COST_IN_USE`), and neither can where the purchase's cost sits — its billing periods and Cover: a correction,
   re-fund or approved change request that would move its rows waits until those moves are reversed (`STOCK_COST_FUNDING`). Values are for owner accounts only: staff see the "Stock cost move" row and its state, never its
   pesos, and it is left out of their subtotals (`_hideStockCost`). Pesos for stock live only in `js/stock-cost-admin.js`.
+- **Tools (0107, WorkMate 3a) are custody only — no money.** A catalogue item of kind `tool` is tracked as numbered tools
+  (TOOL-0001…, never reused), never as quantity stock (`TOOL_ITEM` / `TOOL_LINE`). A tool's cost stays where its purchase
+  put it — no value per tool, no depreciation, no charge for using one, no cost move. Nothing in tools reads or writes a
+  peso, an `expenses` row or Spent. **A tool at a project always has a named responsible person** (anyone active in the
+  company); one there that needs repair or is missing parts stays with that person but is not handed over until Repaired.
+  Lost and Retire wait for
+  the main owner, and a rejection puts the tool back where it was (Retire: Under repair). In request figures a tool counts
+  **once**: covered = purchases + stock + tools issued for the line that were **not** bought for it (`pr_line_bought`); a
+  return or handover keeps it filled, reversing an issue reopens it only if that issue counted on its own. Records are never
+  edited — reversed with a reason while they are the tool's latest. Only `js/tools-admin.js` calls the `tl_*` operations.
+  Dormant until the main owner switches tools on.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 

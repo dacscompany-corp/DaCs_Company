@@ -24,7 +24,11 @@ const read = (p) => fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
 // --with-0104: and 2B-a's 0104 (stock) on top, switched OFF as before launch —
 // the old tickbox and every purchase rule unchanged.
 // --with-0105: and 2C's 0105 (cost moves) on top of 0104 — it redefines 0096's two guards.
-const WITH_0105 = process.argv.includes('--with-0105');
+// --with-0107: and 3a's 0107 (tools) on top of 0105, switched OFF — tools must not change
+// how a purchase is recorded, corrected or voided.
+const WITH_0107 = process.argv.includes('--with-0107');
+const M107 = WITH_0107 ? read(path.join(ROOT, 'supabase/migrations/0107_tools.sql')) : '';
+const WITH_0105 = process.argv.includes('--with-0105') || WITH_0107;
 const WITH_0104 = process.argv.includes('--with-0104') || WITH_0105;
 const WITH_0102 = process.argv.includes('--with-0102') || WITH_0104;
 const M98 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0098_pm_profit_sharing.sql')) : '';
@@ -110,7 +114,7 @@ async function fresh() {
   if (WITH_0097) { await db.exec(PR_BASE); await db.exec(M97); }
   if (WITH_0101) { await db.exec(`create role service_role`); await db.exec(M101); }
   if (WITH_0102) { await db.exec(fnText(M98, 'pm_main_owner_id')); await db.exec(M102); }
-  if (WITH_0104) { await db.exec(PR_MOD.CATALOG_0085); await db.exec(M104); if (WITH_0105) await db.exec(M105); }
+  if (WITH_0104) { await db.exec(PR_MOD.CATALOG_0085); await db.exec(M104); if (WITH_0105) await db.exec(M105); if (WITH_0107) await db.exec(M107); }
   await db.exec(`insert into profiles values
     ('${OWNER}', 'owner', null, 'active', null), ('${STAFF}', 'staff', '${OWNER}', 'active', null),
     ('${WORKER}', 'worker', '${OWNER}', 'active', null), ('${OTHER}', 'owner', null, 'active', null),

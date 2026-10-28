@@ -28,7 +28,10 @@ const M103 = mig('0103_buyer_return_photo.sql');
 const M90 = mig('0090_workmate_item_history.sql');
 const M104 = mig('0104_stock.sql');
 // --with-0105: and 2C's 0105 (cost moves) on top — every 2B-a behaviour holds.
-const WITH_0105 = process.argv.includes('--with-0105');
+// --with-0107: and 3a's 0107 (tools) on top of 0105, switched ON — every 2B-a behaviour holds for materials.
+const WITH_0107 = process.argv.includes('--with-0107');
+const M107 = WITH_0107 ? mig('0107_tools.sql') : '';
+const WITH_0105 = process.argv.includes('--with-0105') || WITH_0107;
 const M105 = WITH_0105 ? mig('0105_stock_cost_moves.sql') : '';
 
 const BASE = `
@@ -110,6 +113,7 @@ async function fresh(opts = {}) {
   await db.exec(M103);
   await db.exec(M104);
   if (WITH_0105) await db.exec(M105);
+  if (WITH_0107) await db.exec(M107);
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
     ('${STAFF}', 'staff', '${OWNER}', 'active', null, 'staff@dacs.test', 'Ana'),
@@ -125,6 +129,7 @@ async function fresh(opts = {}) {
   await db.query(`select pur_set_buyer($1, true)`, [BUYER]);
   await db.query(`select pur_set_buyer($1, true)`, [BUYER2]);
   if (opts.on !== false) await db.query(`select stk_set_enabled(true)`);
+  if (WITH_0107) await db.query(`select tl_set_enabled(true)`);
   return db;
 }
 async function as(db, uid) { await db.exec(`select set_config('test.uid', '${uid}', false)`); }
@@ -235,7 +240,7 @@ async function layersOf(db, takes) {
   return out;
 }
 
-console.log('\n2B-a stock (0096 + 0097 + 0101 + 0102 + 0103 + 0104' + (WITH_0105 ? ' + 0105' : '') + ' on PGlite)');
+console.log('\n2B-a stock (0096 + 0097 + 0101 + 0102 + 0103 + 0104' + (WITH_0105 ? ' + 0105' : '') + (WITH_0107 ? ' + 0107' : '') + ' on PGlite)');
 
 // ── A. The switch, and who ────────────────────────────────────────────
 

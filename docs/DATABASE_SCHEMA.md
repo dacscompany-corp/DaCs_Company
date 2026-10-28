@@ -1196,6 +1196,33 @@ Rows (`stk_cost_rows`): the receiving project is funded like a purchase (`pur_fu
 
 Redefined: from 0104 `stk_take` (returns the holder; within a delivery, goods not yet the place's own leave first), `stk_check_record`, `stk_move` (holder on every row; a return takes the issue's goods as their cost now stands; then `stk_cost_requests`; answer + `cost_moves`), `stk_decide` (+ `stk_cost_losses`), `stk_reverse` (`COST_MOVED` while an approved cost move rides on the record; pending ones withdrawn), `stk_record_json` (`costs` — states for everyone who reads stock, `value` / `estimate` keys for owner accounts only); from 0096 `pur_guard_expense_row` and `pur_guard_delete` (a project with live stock records or open cost moves, or a billing period carrying cost-move rows: `STOCK_LIVE`). Guard `stk_guard_cost_basis` (after insert on `purchase_history`, kinds corrected / unit_checked / refunded — every 2A path that stores a purchase again, an approved change request included): a purchase line's price or quantity cannot change while approved cost moves value its lot (`STOCK_COST_IN_USE`), and neither can where the purchase's cost sits — its rows' billing periods and Cover (`STOCK_COST_FUNDING`; reverse those moves first). Locks: the lot's purchase first (as every purchase write), then the item and the projects charged in one sorted pass; a count's loss and a purchase correction meet on the lot row.
 
+## Tools (0107) — WorkMate Stage 3a
+
+Every real tool, numbered, and who answers for it — **no money**: a tool's cost stays where its purchase put it (a project's Spent, or company stock cost). A catalogue item of kind `tool` is tracked only here, never as quantity stock. Dormant until the main owner switches tools on (`tl_set_enabled`). Answers: `docs/superpowers/specs/2026-10-28-workmate-stage3-tools-questions.md` (all A).
+
+| Table | What it holds |
+|---|---|
+| `tl_settings` | `owner_id`, `enabled` — the company's tools switch (main owner only) |
+| `tl_tools` | `number` (TOOL-0001…, per company, never reused), `item_id` (kind `tool`), `purchase_id` + `line_no` (the purchase line it came from, or none — the opening register), `details` (brand / model / serial), `photo_path` (`tools/<company>/<yyyy-mm>/<uuid>.jpg` in `uploads`), `state` (`available`, `issued`, `repair`, `lost_pending`, `lost`, `retire_pending`, `retired`, `cancelled`), `condition` (`good`, `needs_repair`, `missing_parts`, `damaged`), `holder_id` + `folder_id` (who has it and on which project — an issued tool always has both; while lost, who had it last), `since` (when the current state began). Never deleted |
+| `tl_records` | One action on one tool: `kind` (`register`, `issue`, `handover`, `return`, `repaired`, `lost`, `found`, `retire`), `status` (`done`; Lost / Retire also `pending`, `rejected`, `withdrawn`), `before` / `after` (the tool's custody around it), `holder_id` / `folder_id` (the custody it gave or ended), `request_line_id`, `condition`, `photo_path`, `note`, the decision and the reversal with their reasons. Never deleted |
+| `tl_covers` | What an issue filled on a tool request line when the tool was **not** bought for it (`request_line_id`, `portion_id`, `quantity`); counts while its issue stands. Never changed |
+| `tl_events` | Append-only: the switch, confirmations, rejections, withdrawals, reversals |
+
+| Function | Who | What |
+|---|---|---|
+| `tl_register(op, body)` | office | 1–50 tools of one tool item, at the warehouse or with a **named person** on a project (`PERSON_REQUIRED`); from a purchase line never more than it bought (`MORE_THAN_BOUGHT`), never a line already received as stock (`LINE_IS_STOCK`) |
+| `tl_issue(op, body)` | office | An `available` tool to a person on a project that is not completed; optionally for a tool request line — it fills the line only if the tool was not bought for it (`tl_bought_for`) |
+| `tl_handover(op, body)` | office | Person to person (and project to project), never through the warehouse — only a tool in good condition (`NEEDS_REPAIR`) |
+| `tl_return(op, body)` | office | With its condition: good → available; needs repair / missing parts → repair; damaged → repair + a pending Retire |
+| `tl_repaired`, `tl_found` | office | Repaired: under repair → available, or an issued tool not in good condition → good, with the same person, project and days out; Found: lost → available or repair |
+| `tl_report_lost`, `tl_request_retire` | office | Wait for the main owner; the tool cannot be issued, handed over or returned meanwhile |
+| `tl_decide(op, record, approve, note)` | main owner | Confirm → lost / retired; reject (reason) → exactly where it was before (Retire: Under repair) |
+| `tl_reverse(op, record, reason)` | recorder or owner | Withdraw a pending one, or reverse the tool's latest record (`LATER_RECORDS` otherwise); reversing a registration cancels the tool |
+| `tl_overview`, `tl_tool`, `tl_choices`, `tl_request_lines` | office | The Tools screens |
+| `tl_project_out(folder)`, `tl_line_tools(lines)` | owner / office / buyers | Tools still out on a project and its jobs (Mark as Complete); tools issued for request lines (the shopping list). Empty while off |
+
+Covered (every Still to buy): `pr_line_bought` = purchases + stock + tools. A return or a handover keeps a line filled; reversing an issue reopens it only if that issue counted on its own.
+
 ## PM profit sharing (0098)
 
 An internal owner/partner allocation per PM project - **outside the money model** (never a payout, invoice or accounting entry). Spec `docs/superpowers/specs/2026-10-18-pm-profit-sharing-mvp-terms.md`; plan `docs/superpowers/plans/2026-10-18-pm-profit-sharing.md`. `project_id` is a `construction_projects.id` (never a `folders.id`). The three tables have **RLS on, no policies, and all privileges revoked** from `anon`/`authenticated`: nothing reads or writes them directly. Read through `pm_sharing_read` (owner-role accounts of the company); write through `pm_set_sharing` (main owner only).
