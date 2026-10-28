@@ -285,6 +285,36 @@ test('the shopping list: "In warehouse" as a hint, "Issue from stock" only once 
   ok(/'bought', pr_line_purchased\(l\.id\),\s+'from_stock', pr_line_from_stock\(l\.id\),/.test(SQL), 'Bought = purchases; From stock beside it');
 });
 
+test('a project purchase line can be matched on the web (F1, found in the 2B-b pilot)', () => {
+  // The server allows it: stk_match takes any purchase line of the company
+  // (only warehouse lines make a lot on matching), and stk_project_lines
+  // sends each line with everything the match form reads.
+  const match = SQL.slice(SQL.indexOf('create or replace function stk_match('), SQL.indexOf('$$;', SQL.indexOf('create or replace function stk_match(')));
+  ok(!/NOT_WAREHOUSE|destination <> 'warehouse'|destination != 'warehouse'/.test(match), 'stk_match does not refuse a project line');
+  ok(/elsif v_line\.destination = 'warehouse' then\s+perform stk_lot_for_line/.test(match), 'only a warehouse line gets its lot on matching');
+  ok(/function stk_project_lines[\s\S]{0,400}stk_line_json\(l\)[\s\S]{0,300}l\.destination = 'project'/.test(SQL), 'project lines as stk_line_json');
+  const lineJson = SQL.slice(SQL.indexOf('function stk_line_json'), SQL.indexOf('function stk_overview'));
+  for (const k of ['item_name', 'unit', 'quantity', 'purchase_date', 'bought_by_name', 'match', 'auto_item_id', 'suggested_item_id', 'can_check'])
+    ok(lineJson.includes("'" + k + "'"), 'the match form reads ' + k);
+  // Record leftovers: an unmatched line offers Match…, then comes back to the same project and line.
+  const left = BROWSER.slice(BROWSER.indexOf('async function openLeftover'), BROWSER.indexOf('async function openCount'));
+  ok(/async function openLeftover\(onDone, preset\)/.test(left), 'takes a preset');
+  ok(/if \(!needsMatch\(l\)\) \{/.test(left), 'the same "needs a match" rule as Receiving');
+  ok(/data-match-line>Match…<\/button>/.test(left), 'a Match… button on an unmatched line');
+  ok(/openMatch\(l, \(\) => openLeftover\(onDone, \{ folder: form\.folder\.value, line: l\.purchase_id \+ ':' \+ l\.line_no \}\)\)/.test(left),
+     'the match form, then back to this project and line');
+  ok(/form\.folder\.value = preset\.folder;\s+await loadLines\(\);/.test(left), 'reloads the lines (fresh match and stock)');
+  ok(!/ask the office to match it \(Receiving tab\)/.test(JS), 'no longer sends people to a tab that cannot show the line');
+  // Receiving: where the phone sends the office (Dacs Web → Stock → Receiving).
+  ok(/data-project-match>Match a project purchase line…<\/button>/.test(BROWSER), 'Receiving has the button');
+  ok(/\[data-project-match\]'\)\.addEventListener\('click', \(\) => openProjectMatch\(reload\)\)/.test(BROWSER), 'wired');
+  const pm = BROWSER.slice(BROWSER.indexOf('async function openProjectMatch'), BROWSER.indexOf('function openReceive'));
+  ok(/RA\.rpc\('stk_project_lines', \{ p_folder: form\.folder\.value \}\)/.test(pm), 'lists the project\'s lines');
+  ok(/onDone: \(\) => openMatch\(picked, onDone\)/.test(pm), 'then the one match form');
+  ok(!/RA\.rpc\('stk_match'/.test(pm) && !/RA\.rpc\('stk_match'/.test(left), 'stk_match stays in openMatch alone (one operation id per form)');
+  ok(/Receiving tab — a project's line: "Match a project purchase line…"/.test(sa.ERRORS.TO_MATCH), 'the refusal says where');
+});
+
 test('the pilot\'s way back (2B-b): the main owner alone may switch stock off again, typed, and nothing is undone', () => {
   ok(/\(status\.is_main_owner \? '<div class="stk-switch-off"><button[^']*data-switch-off>Switch stock off…<\/button><\/div>' : ''\)/.test(BROWSER),
      'the button is the main owner\'s only');

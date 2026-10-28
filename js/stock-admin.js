@@ -4,7 +4,8 @@
 // Where goods are, in catalogue units: the company warehouse and each
 // project's site. Four tabs:
 //   Stock            — every item by place; open one for its lots and history;
-//   Receiving        — warehouse purchases awaiting delivery or a match;
+//   Receiving        — warehouse purchases awaiting delivery or a match,
+//                      and "Match a project purchase line…" (F1);
 //   Waiting for owner — counts and opening stock the main owner confirms;
 //   History          — the latest records, each reversible (never edited).
 // Actions: Issue / move, Record leftovers, Count, Opening stock. The
@@ -247,7 +248,7 @@
 
     const ERRORS = {
         STOCK_OFF: 'Stock is not switched on yet. The main owner switches it on at launch.',
-        TO_MATCH: 'Match this purchase line to a catalogue item first (Receiving tab).',
+        TO_MATCH: 'Match this purchase line to a catalogue item first (Receiving tab — a project\'s line: "Match a project purchase line…").',
         NOT_WAREHOUSE: 'That purchase line is for a project, not the warehouse. Record its leftovers instead.',
         NOT_PROJECT: 'That purchase line is for the warehouse — it becomes stock by being received.',
         MORE_THAN_AWAITED: 'That is more than is still awaited on this line.',
@@ -434,7 +435,9 @@
         });
     }
 
-    async function openLeftover(onDone) {
+    // preset: { folder, line: 'purchase_id:line_no' } — back from Match… on
+    // the same project and line.
+    async function openLeftover(onDone, preset) {
         let ch;
         try { ch = await choices(); } catch (e) { return notice(e); }
         const send = sendOnce((opId, a) => RA.rpc('stk_leftover', Object.assign({ p_op: opId }, a)));
@@ -456,22 +459,37 @@
                 '<label class="att-label">Note (optional)<input class="att-input" name="note" maxlength="300"></label></div>',
             submitLabel: 'Save',
             errorMessage,
-            onOpen: (form) => {
+            onOpen: async (form) => {
                 const note = form.querySelector('[data-line-note]');
-                form.folder.addEventListener('change', async () => {
+                const loadLines = async () => {
                     lines = [];
+                    note.textContent = '';
                     try { lines = await RA.rpc('stk_project_lines', { p_folder: form.folder.value }); } catch (e) { note.textContent = errorMessage(e); }
                     form.line.innerHTML = '<option value="">Pick a purchase line…</option>' + lines.map((l, i) =>
                         '<option value="' + i + '">' + esc(RA.formatDay(l.purchase_date) + ' · ' + l.item_name + ' · ' + qty(l.quantity) + ' ' + l.unit) + '</option>').join('');
-                });
-                form.line.addEventListener('change', () => {
+                };
+                const showLine = () => {
                     const l = lines[Number(form.line.value)];
                     if (!l) { note.textContent = ''; return; }
-                    note.textContent = l.match || l.auto_item_id
-                        ? (l.match ? 'Counts as ' + l.match.item_name + ' (' + l.match.item_unit + '). ' : '') +
-                          'Already recorded as stock: ' + qty(l.entered) + '.'
-                        : 'Not matched to a catalogue item yet — ask the office to match it (Receiving tab) first.';
-                });
+                    if (!needsMatch(l)) {
+                        note.textContent = (l.match ? 'Counts as ' + l.match.item_name + ' (' + l.match.item_unit + '). ' : '') +
+                            'Already recorded as stock: ' + qty(l.entered) + '.';
+                        return;
+                    }
+                    // F1: a project line is matched here — Receiving lists warehouse lines only.
+                    note.innerHTML = esc('Not matched to a catalogue item yet — match it first. ') +
+                        '<button type="button" class="att-btn att-btn--sm" data-match-line>Match…</button>';
+                    note.querySelector('[data-match-line]').addEventListener('click', () =>
+                        openMatch(l, () => openLeftover(onDone, { folder: form.folder.value, line: l.purchase_id + ':' + l.line_no })));
+                };
+                form.folder.addEventListener('change', loadLines);
+                form.line.addEventListener('change', showLine);
+                if (preset && preset.folder) {
+                    form.folder.value = preset.folder;
+                    await loadLines();
+                    const i = lines.findIndex(l => l.purchase_id + ':' + l.line_no === preset.line);
+                    if (i >= 0) { form.line.value = String(i); showLine(); }
+                }
             },
             onSubmit: async (form) => {
                 const l = lines[Number(form.line.value)];
@@ -601,6 +619,48 @@
                              p_covers: String(parseQty(form.covers.value)), p_note: form.note.value.trim() || null });
             },
             onDone,
+        });
+    }
+
+    // F1: a project's purchase line, to match — Receiving lists warehouse
+    // lines only, and the phone sends the office here (Dacs Web → Stock →
+    // Receiving). Pick the project and the line, then the same match form.
+    async function openProjectMatch(onDone) {
+        let ch;
+        try { ch = await choices(); } catch (e) { return notice(e); }
+        let lines = [];
+        let picked = null;
+        RA.modal({
+            title: 'Match a project purchase line',
+            sub: 'A purchase bought for a project, to count as a catalogue item — needed before its leftovers can be recorded.',
+            body: '<div class="stk-form">' +
+                '<label class="att-label">Project<select class="att-input" name="folder"><option value="">Pick a project…</option>' +
+                  options(placeOptions(ch).filter(o => o.value !== 'warehouse'), null) + '</select></label>' +
+                '<label class="att-label">Purchase line<select class="att-input" name="line"><option value="">Pick the project first</option></select></label>' +
+                '<p class="req-muted" data-line-note></p></div>',
+            submitLabel: 'Next',
+            errorMessage,
+            onOpen: (form) => {
+                const note = form.querySelector('[data-line-note]');
+                form.folder.addEventListener('change', async () => {
+                    lines = [];
+                    note.textContent = '';
+                    try { lines = await RA.rpc('stk_project_lines', { p_folder: form.folder.value }); } catch (e) { note.textContent = errorMessage(e); }
+                    form.line.innerHTML = (lines.length ? '<option value="">Pick a purchase line…</option>' : '<option value="">No purchases for this project</option>') +
+                        lines.map((l, i) => '<option value="' + i + '">' + esc(RA.formatDay(l.purchase_date) + ' · ' + l.item_name + ' · ' + qty(l.quantity) + ' ' + l.unit +
+                            (needsMatch(l) ? ' · not matched yet' : '')) + '</option>').join('');
+                });
+                form.line.addEventListener('change', () => {
+                    const l = lines[Number(form.line.value)];
+                    note.textContent = !l ? '' : l.match ? 'Counts as ' + l.match.item_name + ' (' + l.match.item_unit + ') — you can change it while none of it is stock.'
+                        : l.auto_item_id ? 'Already counts as its request\'s catalogue item.' : '';
+                });
+            },
+            onSubmit: async (form) => {
+                picked = lines[Number(form.line.value)] || null;
+                if (!picked) throw new Error('NOT_FOUND');
+            },
+            onDone: () => openMatch(picked, onDone),
         });
     }
 
@@ -847,8 +907,10 @@
         try { ov = await RA.rpc('stk_overview'); } catch (e) { RA.fail(body, e); return; }
         const m = me();
         if (ui.tab === 'receiving') {
-            body.innerHTML = ov.awaiting.length ? ov.awaiting.map(lineCard).join('')
-                : '<div class="att-empty">Nothing awaiting delivery or a match.</div>';
+            body.innerHTML = '<div class="stk-actions"><button type="button" class="att-btn att-btn--sm" data-project-match>Match a project purchase line…</button></div>' +
+                (ov.awaiting.length ? ov.awaiting.map(lineCard).join('')
+                : '<div class="att-empty">No warehouse purchase is awaiting delivery or a match.</div>');
+            body.querySelector('[data-project-match]').addEventListener('click', () => openProjectMatch(reload));
             body.querySelectorAll('[data-line-act]').forEach(b => b.addEventListener('click', () => {
                 const key = b.closest('[data-line]').dataset.line;
                 const l = ov.awaiting.find(x => x.purchase_id + ':' + x.line_no === key);
