@@ -386,6 +386,7 @@ These do not reopen settled business choices. Record outcomes in the source MVP 
 | Before external tool lending | Explicit scope decision; material release does not authorize external tool custody. |
 | Before the joint 2B stock / 2C cost-move launch | Verified portion valuation; PC-to-PC source rows and actual receiving month confirmed (Q25). Still define split-row/client/Cover treatment, eligible same-month ordering/missing periods, warehouse assignment funding, source history, transferable quantities, partial issues/returns, pending/rejected decisions, retries and report effects. |
 | Before Stage 4 | External cost handling and broader reconciliation/reporting, source funding and financial report effects. |
+| **Deferred scope (28 Oct 2026)** | **Outside-job release** of materials (and with it its returns and external cost handling) was not built in Stage 2 and is deferred: the company does not give or lend materials to outside jobs. Revisit only if that changes. |
 
 ## 19. Handoff brief for Claude Code
 
