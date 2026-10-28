@@ -6718,3 +6718,35 @@ The plan's own text was applied to fresh clones of both real repos — Dacs Web 
 - **With the user's own uncommitted one-space `admin.html` edit made first:** the same — `admin.html` = the tested file plus that edit.
 - **Task 1 alone** (a third clone): its 12 files identical to `6e23d32` (and the user's commit `19b9b5c` holds exactly those files).
 - **The rehearsed WorkMate copy:** `flutter test` → 1,013 pass.
+
+## Execution notes (28 October 2026)
+
+- **Reviews:** revision 3 and R89 approved by the user on 28 Oct; Task 2's review → **revision 4** (R104, unreadable saved stock data kept and blocking), approved; committed with this plan as `1e66cbb`.
+- **Task 1:** committed by the user as **`19b9b5c`** (12 files identical to the tested build `6e23d32`) and pushed.
+- **Tasks 2–3 (WorkMate):** committed by the user as **`d2229ef`** and **`7c8d86e`** (27 files identical by blob to `b20f74f` / `840e0bc`); not pushed (the user's call).
+- **Steps 1–4:** the user applied the committed 0106 on 28 Oct. Verified through MCP, read-only: the four function bodies match the file; `pr_my_requests`, `pur_op_cancel` and `pur_op_state` executable by `authenticated` only, `pur_op_begin` by nobody; `2bb_acceptance.sql` passed live (every active worker's and team leader's list carries `from_stock`; C1–C5, D1–D5) and rolled itself back — no `cancelled` mark left. Six real admin@ web purchases (10:42–10:47) went through 0106's `pur_op_begin` normally.
+- **Step 6:** release APK `dacs-workmate-0.9.0-1011.apk`, 38.3 MB, SHA-256 `b06d9b8b…a1dc7556`, versionCode 1011, same signing certificate as 0.8.1; installed on the test phone at 11:18.
+- **Step 7 (stock off):** S1–S4 **pass** — staff@ sees Shopping list · My purchases · Profile with no Stock tab or stock hints; Record purchase / My purchases / My cash as in 0.8.1; W-0007's worker app and request with no From stock line; no new `client_errors`.
+
+### Task 5 — the joint ZZ pilot (28 Oct 11:22–13:05)
+
+- **Step 1 (before):** expenses 582 / ₱3,047,709.74; purchases 29 / 29 lines; supplier payments 0; `pur_ops` 168; requests 17 / 20 lines; catalogue items 6; folders 15; billing periods 61; every `stk_*` table empty; no `ZZ 2bc…` rows.
+- **Step 2:** the user switched stock on at **11:22:54** (admin@).
+- **Step 3:** set up as written, except **no supplier row** — the company has no supplier records, so the phone typed `ZZ 2bc hardware` as free text. W-0007's request: ZZ 2bc pilot A, ZZ 2bc cement 6 bag.
+- **Step 4 — every check passed, with these differences from the table:**
+  - **P1–P8** as written: warehouse purchase 10 bag ₱1,000 + ₱50 fee, no expense row; received 6, matched 1 bag = 1 bag on the web, received 4; Issue from stock 4 → From stock 4, Still to buy 2; approved **₱420** to A ("From warehouse — ZZ 2bc cement"); return 1 → back card **₱105** approved (A = ₱315); W-0007 "From stock: 4 bag · Galing sa stock", no ₱.
+  - **P9 found F1:** the wire purchase on B (2 box ₱300 → ₱200 on the period + ₱100 Cover, no payment) could not be matched — Receiving lists **warehouse** lines only, although `stk_match` always accepted a project line. The user chose to continue (A), so **P10–P11 used cement** (A → B, 1 bag): no reason → refused in both languages; then recorded; owner **Reject** "wrong project", staff **Ask again** "see photo", owner **Approve** → A ₱210, B +₱105. **P12** was covered by that move.
+  - **P13–P13d** as written: a lost answer locked the form and survived swiping the app away; Check → "Not recorded yet…"; Send again → **one** issue of 1 bag (12:22:11). A 2-bag send lost → **Cancel it and change** → "This record was cancelled…" → changed to 3 → **one** issue of 3 (12:25:03), none of 2; one `cancelled` mark. The 3-bag issue opened two assignment cards (2 bag and 1 bag) — one per delivery it drew from.
+  - **P14:** the 1-bag issue reversed on the web ("mistake"); its pending cost card withdrawn.
+  - **P15** with the pilot's real numbers: both assignment cards approved (₱210 + ₱105 to B); count 3, books **4**, reason damaged (no reason was refused first) → confirmed → **company stock loss 1 bag, ₱105, no expense row**. Stock: warehouse 3, A 2, B 4.
+  - **P16** as written (sand 3 at the extra room job, confirmed).
+  - **P17** on the **cement** purchase (the wire had no approved cost moves): price correction refused (`STOCK_COST_IN_USE`), void refused (`STOCK_IN_USE`); the purchase unchanged at ₱1,050.
+  - **P18:** staff@ sees quantities only; in Project Control the three stock-cost rows show "—" and the Materials subtotal (₱300) leaves them out.
+  - **P19:** W-0007 — no Stock tab, "From stock: 4 bag", no ₱ (a return keeps From stock, R95).
+  - **P20:** no `client_errors` since 11:22.
+  - **Money check:** 8 pilot expense rows, **₱930** — exactly the wire ₱300 plus the cost moves (+420 −105 −105 +105 +210 +105).
+- **F1 fixed (web only, no APK change):** `js/stock-admin.js` — **Match…** inside Record leftovers on an unmatched project line (the form comes back on the same project and line), and **Match a project purchase line…** on the Receiving tab (where the phone's `TO_MATCH` message sends the office); `tests/stock-admin.test.js` (+1 test; 4 / 4 deliberate breaks caught); `npm test` 41 suites / 1,322 checks. Committed and pushed by the user as **`e5e6f3d`**. **Re-checked live:** Save before matching refused with the new words; Match… → 2 box = 100 piece ("2 boxes = 100 pcs") → back on B and the wire → leftovers **30 piece** at B, no cost card, no expense; then staff@ on the phone moved **10 piece B → A** → owner approved **₱30**: A **+₱30**, B **−₱20 on its billing period and −₱10 on Cover** — the giving project's rows in proportion to the purchase's funding, as designed.
+- **F2 (not fixed — older than 2B-b, the 15 Oct split rows `9a68422`):** a split purchase row reads "Charged to · Billing #1 ₱200 · Billing #1 ₱100" — the Cover part is labelled like the billing period, and for staff the parts hint at the budget left. Waiting for the user.
+- **Step 5:** dry run **OK** (8 expense rows, 17 stock events, 8 cost moves, 1 request cover, 10 moves, 9 records, 2 lots, 1 match, 3 sites, 2 purchases, 1 request, 3 items, 3 projects with 2 billing periods; real data unchanged), then the user ran it with `v_dry := false` at 13:01 — success.
+- **Step 6:** back to Step 1 exactly — expenses 582 / ₱3,047,709.74, purchases 29 / 29, payments 0, requests 17 / 20, items 6, folders 15, periods 61, no `ZZ 2bc…` rows, every `stk_*` table empty but the "switched" event and the warehouse place (kept by design); the three history guards on. `pur_ops` 195 (operation ids are kept by design). Two older test items, "ZZ pilot drill" and "ZZ test pipe" (5 and 7 Oct), were in the before-count and stay.
+- **Step 7 — launched.** Stock stays **on**. The user published **WorkMate 0.9.0 (1011)** in Attendance → App updates at **13:04:59** (`app_releases`: SHA-256 and size match the APK).
