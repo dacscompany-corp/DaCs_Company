@@ -285,5 +285,18 @@ test('the shopping list: "In warehouse" as a hint, "Issue from stock" only once 
   ok(/'bought', pr_line_purchased\(l\.id\),\s+'from_stock', pr_line_from_stock\(l\.id\),/.test(SQL), 'Bought = purchases; From stock beside it');
 });
 
+test('the pilot\'s way back (2B-b): the main owner alone may switch stock off again, typed, and nothing is undone', () => {
+  ok(/\(status\.is_main_owner \? '<div class="stk-switch-off"><button[^']*data-switch-off>Switch stock off…<\/button><\/div>' : ''\)/.test(BROWSER),
+     'the button is the main owner\'s only');
+  const fn = BROWSER.slice(BROWSER.indexOf('function openSwitchOff'), BROWSER.indexOf('function renderOff'));
+  ok(/if \(form\.word\.value\.trim\(\) !== 'OFF'\) throw/.test(fn), 'typed OFF first');
+  ok(/RA\.rpc\('stk_set_enabled', \{ p_on: false \}\)/.test(fn), 'the server\'s own switch');
+  ok(/root\.currentStockOn = false;/.test(fn), 'the old tick comes back at once');
+  ok(/nothing is undone or deleted/.test(fn), 'says records stay');
+  eq((BROWSER.match(/RA\.rpc\('stk_set_enabled'/g) || []).length, 2, 'on and off, nowhere else');
+  const server = SQL.slice(SQL.indexOf('function stk_set_enabled'));
+  ok(/v_owner uuid := pur_main_owner\(\);/.test(server.slice(0, 300)), 'the server checks it is the main owner');
+});
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) { console.log('\nFAILURES:\n  ' + failures.join('\n  ')); process.exit(1); }

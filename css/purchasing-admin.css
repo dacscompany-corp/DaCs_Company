@@ -139,6 +139,7 @@
 .stk-form { display: grid; gap: 12px; }
 .stk-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .stk-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.stk-switch-off { margin-top: 18px; display: flex; justify-content: flex-end; }
 .stk-item { cursor: pointer; }
 .stk-item:hover { border-color: var(--att-green); }
 .stk-item-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }

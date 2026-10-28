@@ -826,6 +826,8 @@
               RA.head('Stock', 'Where goods are, in catalogue units. When goods reach someone else\'s project, the main owner approves where their cost goes.', tabs()) +
               actions() +
               '<div data-body><div class="att-empty">Loading…</div></div>' +
+              // 2B-b: the pilot's way back (Q30) — the main owner only, typed.
+              (status.is_main_owner ? '<div class="stk-switch-off"><button type="button" class="att-btn att-btn--sm att-btn--ghost" data-switch-off>Switch stock off…</button></div>' : '') +
             '</div>';
         host.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => {
             if (ui.tab === b.dataset.tab) return;
@@ -836,6 +838,8 @@
         host.querySelector('[data-action="leftover"]').addEventListener('click', () => openLeftover(reload));
         host.querySelector('[data-action="count"]').addEventListener('click', () => openCount({}, reload));
         host.querySelector('[data-action="opening"]').addEventListener('click', () => openOpening(reload));
+        const off = host.querySelector('[data-switch-off]');
+        if (off) off.addEventListener('click', () => openSwitchOff());
         const body = host.querySelector('[data-body]');
         cache.choices = null;
         if (ui.tab === 'stock' && ui.itemId) return renderItem(body, ui.itemId, reload);
@@ -872,6 +876,28 @@
             body.querySelectorAll('[data-item]').forEach(c => c.addEventListener('click', () => { ui.itemId = c.dataset.item; render(host); }));
         }
         RA.icons();
+    }
+
+    // Switch stock off again (2B-b): for a pilot that failed before launch.
+    // Records already made stay as they are; nothing is undone or deleted.
+    function openSwitchOff() {
+        return RA.modal({
+            title: 'Switch stock off',
+            sub: 'Type OFF to confirm. Only if the pilot failed — stock is not launched yet.',
+            warn: true,
+            body: '<div class="att-info att-info--warn"><i data-lucide="alert-triangle"></i><div>' +
+                'Every stock record stays as it is — nothing is undone or deleted. Recording stops (web and phone), the Stock tab goes ' +
+                'for everyone but you, and the old "Add to inventory" tick works again.</div></div>' +
+                '<div class="stk-form"><label class="att-label">Type OFF<input class="att-input" name="word" autocomplete="off"></label></div>',
+            submitLabel: 'Switch off',
+            errorMessage,
+            onSubmit: async (form) => {
+                if (form.word.value.trim() !== 'OFF') throw new Error('Type OFF to confirm.');
+                await RA.rpc('stk_set_enabled', { p_on: false });
+                root.currentStockOn = false;
+            },
+            onDone: () => root.location.reload(),
+        });
     }
 
     // Before launch: nobody sees the tab except the main owner, who sees the switch.
