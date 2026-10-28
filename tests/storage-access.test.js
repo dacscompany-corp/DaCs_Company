@@ -76,6 +76,8 @@ const FOLDERS = {
   purchases: 'buyer',
   // 0102 (R13): a petty-cash return photo — the main owner and the buyer who uploaded it.
   pettyCash: 'pettyCash',
+  // 0107 (3a): tool photos — the office only (owner / staff), the generic rule.
+  tools: 'admin',
 };
 const OWNER_ONLY_SQL = "('quotations', 'reimbursementReceipts')";
 const CLIENT_PROJECT_SQL = "('weeklyBillReceipts', 'procurementReceipts', 'accomplishmentReports', 'projectTerms')";

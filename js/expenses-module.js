@@ -7535,11 +7535,27 @@ function _folderName(id) {
     const f = expFolders.find(x => x.id === id);
     return (f && f.name) || 'this project';
 }
+// Tools (0107, Q20): completing is never blocked, but the confirm names the
+// tools still out on the project and its Additional Works jobs — they stay
+// in Requests → Tools → Out until returned or handed over.
+async function _toolsOutNote(id) {
+    if (!window.currentToolsOn) return '';
+    let out = [];
+    try {
+        const { data, error } = await window.sbClient.rpc('tl_project_out', { p_folder: id });
+        if (!error && Array.isArray(data)) out = data;
+    } catch (_) { out = []; }
+    if (!out.length) return '';
+    return '\n\n' + out.length + (out.length === 1 ? ' tool is' : ' tools are') + ' still out on this project: '
+        + out.map(t => t.label + ' (' + t.holder_name + ')').join(', ')
+        + '. They stay in Requests → Tools → Out until returned or handed over.';
+}
 async function markFolderComplete(id) {
     if (window.currentUserRole === 'staff') return;
     const ok = await showConfirm(
         'Mark "' + _folderName(id) + '" as complete? It leaves the project selector and moves into the '
-        + 'Completed section. Nothing is deleted, its costs still count, and you can re-open it any time.',
+        + 'Completed section. Nothing is deleted, its costs still count, and you can re-open it any time.'
+        + await _toolsOutNote(id),
         { title: 'Mark as Complete', confirm: 'Mark Complete', tone: 'ok' });
     if (!ok) return;
     try {

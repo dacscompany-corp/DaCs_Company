@@ -50,6 +50,7 @@
         return '<div class="pur-stats">' +
             stat('Needed', l.needed) +
             (Number(l.from_stock) > 0 ? stat('From stock', l.from_stock) : '') +
+            (l._tools && Number(l._tools.filled) > 0 ? stat('Tools issued', l._tools.filled) : '') +
             stat('Bought', l.bought) +
             stat('Still to buy', l.still_to_buy, 'is-key') +
             (Number(l.extra) > 0 ? stat('Extra', l.extra) : '') +
@@ -67,6 +68,7 @@
             '<div class="pur-pcell"><span class="pur-plabel">To buy</span>' +
               '<span class="pur-portion-qty">' + esc(PA.qty(p.quantity - p.pending_reduction)) + ' needed · ' +
               (Number(p.from_stock) > 0 ? esc(PA.qty(p.from_stock)) + ' from stock · ' : '') +
+              (Number(p._tools) > 0 ? esc(PA.qty(p._tools)) + ' tools issued · ' : '') +
               esc(PA.qty(p.bought)) + ' bought · <strong>' + esc(PA.qty(p.still_to_buy)) + ' still to buy</strong></span></div>' +
             '<div class="pur-pcell"><span class="pur-plabel">Buyer</span>' +
               '<span class="pur-portion-who' + (p.buyer_id ? '' : ' is-open') + '">' + esc(who) + '</span></div>' +
@@ -104,6 +106,12 @@
                         ? ' <button type="button" class="att-btn att-btn--sm" data-issue="' + esc(l.line_id) + '">Issue from stock…</button>' : '') +
                       '</div>'
                     : '') +
+                  // 0107 (Q14): each tool issued for this line — one bought for it
+                  // counts through its purchase, once.
+                  (l._tools && l._tools.tools.length
+                    ? '<div class="pur-instock"><i data-lucide="wrench"></i> Issued: ' + l._tools.tools.map(t => '<strong>' + esc(t.label) + '</strong> (' +
+                      esc(t.holder_name) + (t.counted ? '' : ', bought for this') + ')').join(', ') + '</div>'
+                    : '') +
                 '</div>' +
                 figures(l) +
               '</div>' +
@@ -134,6 +142,15 @@
             lines = await RA.rpc('pur_shopping_list', { p_batch: ui.batchId || null, p_folder: ui.folderId || null, p_scope: 'open' });
         } catch (e) { RA.fail(host, e); return; }
         lines = lines || [];
+        // 0107 (Q14): the tools issued for these lines, while tools are on.
+        let tools = {};
+        if (root.currentToolsOn && lines.length) {
+            try { tools = (await RA.rpc('tl_line_tools', { p_lines: lines.map(l => l.line_id) })) || {}; } catch (_) { tools = {}; }
+        }
+        lines.forEach(l => {
+            l._tools = tools[l.line_id] || null;
+            (l.portions || []).forEach(p => { p._tools = l._tools && l._tools.portions ? Number(l._tools.portions[p.id] || 0) : 0; });
+        });
         const projects = [];
         lines.forEach(l => { if (!projects.some(p => p.id === l.project_id)) projects.push({ id: l.project_id, name: l.project_name }); });
         const shown = PA.filterList(lines, { text: ui.text, mineOnly: ui.mine, unassignedOnly: ui.unassigned, urgentOnly: ui.urgent, userId: me.userId });

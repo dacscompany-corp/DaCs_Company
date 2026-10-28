@@ -152,7 +152,9 @@ test('the screens call only purchasing RPCs and write no table directly', () => 
     'pur_cash_give', 'pur_cash_dispute', 'pur_cash_clear_dispute', 'pur_cash_void_issue', 'pur_cash_report_return',
     'pur_cash_withdraw_return', 'pur_cash_decide_return', 'pur_cash_void_return', 'pur_cash_count', 'pur_cash_void_count',
     'pur_set_own_money', 'pur_repay_buyer', 'pur_void_repayment', 'pur_purchase_payments', 'pur_credits', 'pur_my_cash',
-    'pur_cash_tracker', 'pur_cash_buyer', 'pur_overpaid', 'pur_cash_report']);
+    'pur_cash_tracker', 'pur_cash_buyer', 'pur_overpaid', 'pur_cash_report',
+    // 3a (0107): the tools issued for shopping-list lines — names and numbers, no money; empty while tools are off.
+    'tl_line_tools']);
   for (const f of ['purchasing-admin-core', 'purchasing-admin-list', 'purchasing-admin-record', 'purchasing-admin-purchases',
                    'purchasing-admin-pay', 'purchasing-admin-cash']) {
     const src = read('js/' + f + '.js');

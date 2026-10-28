@@ -154,6 +154,11 @@
 .stk-rec.is-reversed .stk-rec-main { color: var(--att-muted); }
 .stk-rec-acts, .stk-line-acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .stk-line-acts { margin-top: 8px; }
+/* ── Tools (0107, 3a) — js/tools-admin.js. No money ── */
+.tl-state { margin-left: auto; }
+.tl-photo { display: block; max-width: 160px; max-height: 120px; margin: 6px 0; border-radius: 10px;
+  border: 1px solid var(--att-line); object-fit: cover; cursor: zoom-in; }
+.tl-photo--lg { max-width: 260px; max-height: 200px; margin: 10px 0; }
 /* 2C (0105): a record's cost moves, under it. */
 .stk-cost { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 4px; padding-top: 6px; border-top: 1px dashed var(--att-line); }
 .stk-cost-acts { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }

@@ -202,7 +202,7 @@ test('Requests → Stock: in the nav, the view list and the page; hidden until s
   ok(/if \(!window\.currentStockOn && !window\.currentStockMainOwner\) hidden\.push\('reqStock'\);/.test(admin), 'hidden until on');
   ok(/const \{ data: stk \} = await window\.sbClient\.rpc\('stk_status'\);/.test(admin), 'the server says (before 0104: hidden)');
   ok(/window\.currentStockOn = !!\(stk && stk\.enabled\);/.test(admin) && /window\.currentStockMainOwner = !!\(stk && stk\.is_main_owner\);/.test(admin));
-  ok(/const REQ_VIEWS\s+= \[[^\]]*'reqStock'\]/.test(html), 'REQ_VIEWS');
+  ok(/const REQ_VIEWS\s+= \[[^\]]*'reqStock'[^\]]*\]/.test(html), 'REQ_VIEWS');
   ok(/<div id="reqStockView"\s+class="content-view" style="display: none;"><\/div>/.test(html), 'the page');
   ok(/reqStock:\s+'Stock',/.test(html), 'the title');
   const core = html.indexOf('js/requests-admin-core.js'), stock = html.indexOf('<script src="js/stock-admin.js?v=');

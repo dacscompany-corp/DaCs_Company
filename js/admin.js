@@ -98,6 +98,17 @@ function checkAuthState() {
                     window.currentStockOn = !!(stk && stk.enabled);
                     window.currentStockMainOwner = !!(stk && stk.is_main_owner);
                 } catch (_) { /* tab stays hidden */ }
+
+                // Tools (0107): the same rule — on once the main owner switches
+                // them on (the ZZ pilot, then launch); until then only the main
+                // owner sees the tab, with the switch. Before 0107: hidden.
+                window.currentToolsOn = false;
+                window.currentToolsMainOwner = false;
+                try {
+                    const { data: tl } = await window.sbClient.rpc('tl_status');
+                    window.currentToolsOn = !!(tl && tl.enabled);
+                    window.currentToolsMainOwner = !!(tl && tl.is_main_owner);
+                } catch (_) { /* tab stays hidden */ }
             } catch (e) {
                 console.warn('Could not fetch user role:', e);
                 await auth.signOut();
@@ -2291,12 +2302,14 @@ const PRIMARY_NAV = [
     // Owner + staff. Quantities only — no price, amount or cost anywhere —
     // EXCEPT Purchasing (0097): buyers only (window.currentCanBuy), with prices.
     // Stock (0104) is quantities only, for owner + office staff allowed
-    // Expenses, once switched on (window.currentStockOn).
+    // Expenses, once switched on (window.currentStockOn). Tools (0107): the
+    // same accounts, no money at all, once switched on (window.currentToolsOn).
     { id: 'requests', label: 'Requests', sub: 'Materials & Tools', defaultView: 'reqQueue',
       modules: [
         { view: 'reqQueue',    label: 'Queue',          icon: 'inbox' },
         { view: 'reqPurchasing', label: 'Purchasing',   icon: 'shopping-cart' },
         { view: 'reqStock',    label: 'Stock',          icon: 'warehouse' },
+        { view: 'reqTools',    label: 'Tools',          icon: 'wrench' },
         { view: 'reqBatches',  label: 'Weekly batches', icon: 'calendar-days' },
         { view: 'reqTeams',    label: 'Teams',          icon: 'users' },
         { view: 'reqCatalog',  label: 'Catalogue',      icon: 'package-search' },
@@ -2398,6 +2411,12 @@ function _stockOnly() {
     const focus = _activeFocus();
     return !!((window.currentStockOn || window.currentStockMainOwner) && focus && !focus.includes('requests'));
 }
+// Tools (0107), the same exception and the same accounts (tl_status).
+const _TOOLS_VIEWS = ['reqTools'];
+function _toolsOnly() {
+    const focus = _activeFocus();
+    return !!((window.currentToolsOn || window.currentToolsMainOwner) && focus && !focus.includes('requests'));
+}
 // All views reachable inside the focused module(s) — used by the switchView guard.
 window.focusAllowedViews = function () {
     if (!Array.isArray(currentAllowedModules) || !currentAllowedModules.length) return [];
@@ -2409,6 +2428,7 @@ window.focusAllowedViews = function () {
     });
     if (_purchasingOnly()) _PURCHASING_VIEWS.forEach(v => views.push(v));
     if (_stockOnly()) _STOCK_VIEWS.forEach(v => views.push(v));
+    if (_toolsOnly()) _TOOLS_VIEWS.forEach(v => views.push(v));
     return views;
 };
 // Landing view for the first focused module (e.g. 'pm' → 'pmProjects').
@@ -2460,6 +2480,8 @@ function _visibleNav() {
                 // main owner, who switches it on there. The server refuses
                 // accounts without Expenses.
                 if (!window.currentStockOn && !window.currentStockMainOwner) hidden.push('reqStock');
+                // Tools (0107): the same, with the tools switch.
+                if (!window.currentToolsOn && !window.currentToolsMainOwner) hidden.push('reqTools');
                 if (hidden.length) return { ...p, modules: p.modules.filter(m => !hidden.includes(m.view)) };
             }
             if (p.id === 'construction' && window.currentStockOn) {
@@ -2482,18 +2504,19 @@ function _visibleNav() {
     // list matches nothing (avoids an empty menu).
     // An account allowed to buy whose focus lacks Requests keeps a Requests
     // tab holding Purchasing only (Q3 = B; the server checks every call), and
-    // one allowed to record stock keeps Stock in it (0104) — never the rest
-    // of Requests.
+    // one allowed to record stock keeps Stock in it (0104), and Tools (0107)
+    // — never the rest of Requests.
     const focus = _activeFocus();
     if (focus) {
         const buyOnly = _purchasingOnly();
         const stockOnly = _stockOnly();
-        const extra = (buyOnly ? _PURCHASING_VIEWS : []).concat(stockOnly ? _STOCK_VIEWS : []);
+        const toolsOnly = _toolsOnly();
+        const extra = (buyOnly ? _PURCHASING_VIEWS : []).concat(stockOnly ? _STOCK_VIEWS : [], toolsOnly ? _TOOLS_VIEWS : []);
         const narrowed = nav
             .filter(p => focus.includes(p.id) || (extra.length && p.id === 'requests'))
             .map(p => (extra.length && p.id === 'requests')
-                ? { ...p, sub: buyOnly && stockOnly ? 'Purchasing & Stock' : (buyOnly ? 'Purchasing' : 'Stock'),
-                    defaultView: buyOnly ? 'reqPurchasing' : 'reqStock',
+                ? { ...p, sub: [buyOnly && 'Purchasing', stockOnly && 'Stock', toolsOnly && 'Tools'].filter(Boolean).join(' & '),
+                    defaultView: buyOnly ? 'reqPurchasing' : (stockOnly ? 'reqStock' : 'reqTools'),
                     modules: p.modules.filter(m => extra.includes(m.view)) }
                 : p);
         if (narrowed.length) nav = narrowed;
