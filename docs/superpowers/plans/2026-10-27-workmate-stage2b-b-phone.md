@@ -12,7 +12,7 @@
 
 **Repos:** **Dacs Web** (base `db54690`, Task 1) and **WorkMate** (base `7996311` = the published 0.8.1+1010, Tasks 2–3). Task 4 puts 0106 live with stock off and the new app on the test phone; Task 5 is the joint pilot and the launch decision.
 
-**Status:** Revision 3, 28 October 2026, **for the user's review**. Revision 3 follows the user's review of revision 2, which accepted R101 and R103 and replaced R102's timed guess: before the phone lets a person change or drop a submission whose answer was lost, the **server** now settles its id — atomically, under the same operation lock recording takes, it either confirms the operation was recorded or cancels the id for good, and a request that arrives later with a cancelled id is refused (`OP_CANCELLED`). No clock decides anything. New in 0106: `pur_op_cancel`, `pur_op_state`, and 0096's `pur_op_begin` refusing a cancelled id; a test has the original request arrive after the cancel and after a new submission — only the new submission records — on PGlite, and on real PostgreSQL with two sessions (a cancel during a recording waits and reports it; a recording during a cancel waits and is refused). Revision 2 fixed the user's review finding on lost answers: revision 1 kept a form's operation id across Sends but rebuilt the payload each time, and kept nothing once the form closed — so after a timeout a changed quantity could go out under the old id (the server answers a repeated id with its **first** answer, whatever the payload — so the change would be silently lost), and closing the form or restarting the app forgot the uncertain one, letting a second record go out. Now each submission's id and exact payload are saved together before it is sent (R101); after a lost answer the form locks — Send again (unchanged) or Check — and nothing is edited and no new stock submission starts until it is resolved; submissions survive closing and restarting, are never sent by itself, and belong to their account only (R103). Tests cover a changed quantity after a timeout, reopening and a restart. Nothing is applied live and nothing is in either repo yet. The code below was built and tested first in scratch clones (one commit per task, every suite green after each), every important rule was broken on purpose to prove a test catches it (see *Proof*), and the plan was then re-applied to fresh clones of both repos from its own text and compared byte for byte (see *Rehearsal*). **One ruling needs the user's decision: R89** (who uses stock on the phone — see the note under the table).
+**Status:** Revision 4, 28 October 2026. Revision 3 and R89 were approved on 28 Oct; Task 1 is committed (`19b9b5c`). Revision 4 follows the user's review of Task 2 (applied, not committed): a saved stock submission the phone can no longer read was **skipped** — treated as gone, so it no longer held back new sends and the next save erased it. Now (R104) unreadable saved data is **kept exactly as stored** and **blocks new stock sends** until it is settled: if its account and operation id still read, the server settles it by **Check** or **Cancel** without its payload ever being rebuilt; otherwise the phone shows a **recovery error**. Unreadable storage is never treated as empty and never overwritten, and the in-memory store exists only in the tests. Task 1 and 0106 are unchanged. Revision 3 followed the user's review of revision 2, which accepted R101 and R103 and replaced R102's timed guess: before the phone lets a person change or drop a submission whose answer was lost, the **server** now settles its id — atomically, under the same operation lock recording takes, it either confirms the operation was recorded or cancels the id for good, and a request that arrives later with a cancelled id is refused (`OP_CANCELLED`). No clock decides anything. New in 0106: `pur_op_cancel`, `pur_op_state`, and 0096's `pur_op_begin` refusing a cancelled id; a test has the original request arrive after the cancel and after a new submission — only the new submission records — on PGlite, and on real PostgreSQL with two sessions (a cancel during a recording waits and reports it; a recording during a cancel waits and is refused). Revision 2 fixed the user's review finding on lost answers: revision 1 kept a form's operation id across Sends but rebuilt the payload each time, and kept nothing once the form closed — so after a timeout a changed quantity could go out under the old id (the server answers a repeated id with its **first** answer, whatever the payload — so the change would be silently lost), and closing the form or restarting the app forgot the uncertain one, letting a second record go out. Now each submission's id and exact payload are saved together before it is sent (R101); after a lost answer the form locks — Send again (unchanged) or Check — and nothing is edited and no new stock submission starts until it is resolved; submissions survive closing and restarting, are never sent by itself, and belong to their account only (R103). Tests cover a changed quantity after a timeout, reopening and a restart. Nothing is applied live and nothing is in either repo yet. The code below was built and tested first in scratch clones (one commit per task, every suite green after each), every important rule was broken on purpose to prove a test catches it (see *Proof*), and the plan was then re-applied to fresh clones of both repos from its own text and compared byte for byte (see *Rehearsal*). **One ruling needs the user's decision: R89** (who uses stock on the phone — see the note under the table).
 
 ## Global Constraints
 
@@ -48,6 +48,7 @@ R1–R88 stand (plans 2A-2 … 2C). New, found while building and testing this p
 | R99 | **The clean-up (Q30).** `supabase/tests/2bc_pilot_cleanup.sql`, run by the user in the SQL editor — dry run first (deletes, reports, undoes), then for real. It removes exactly the ZZ rows (projects named `ZZ 2bc pilot…` and their periods, budgets and settings; items, purchases, suppliers named `ZZ 2bc…`; their stock records, moves, covers, lots, matches, events, cost moves and cost-move expense rows; the ZZ sites; the ZZ requests) and **refuses with nothing changed** if real data is mixed in: a real line on a ZZ purchase, a payment on one, a ZZ item on a real request, a real purchase covering a ZZ request, a Work Plan blocker or task, payroll, overhead, a contract, a reimbursement or a construction project on a ZZ project, a hand-entered expense there, real goods at a ZZ site or ZZ goods at a real one, a ZZ cost move writing on a real project, a ZZ lot matched to a real item, a gallery photo. The history guards are off for its own transaction only and checked back on; the real expenses' count and sum, real purchases, stock records, moves, cost moves and requests are checked unchanged. It never touches the stock switch, the warehouse place, operation ids or photo files. |
 | R101 | **A submission keeps its id and exact payload together (rev 2, the user's review).** When Send passes the phone's own checks, the phone makes the operation id, builds the server parameters once (`p_op` inside them) and **saves both together before sending** — so even a crash mid-send leaves it on the phone. If the answer is lost (no signal, a time-out, or any unknown error) the submission stays saved, unchanged, and the form **locks**: its fields cannot change, its Send is gone, and it offers only **Send again** — the saved parameters, byte for byte, under the same id — **Check** or **Cancel it and change**. Closing the form keeps it: the Stock tab shows it at the top ("Not sure this was recorded", what it was, when it was last sent) with Send again, Check and **Cancel it**, and **no new stock submission** starts for that account until it is resolved (the Stock tab's Issue / move, Record leftovers, Received… and Return… go; the shopping list's Issue from stock goes; the Stock tab stays even if stock is switched off meanwhile). Resolved means (R102): the server answered (recorded — or its first answer replayed); the server refused its first Send; or the server confirmed its id recorded (it goes as recorded — nothing to change) or cancelled for good (then, in its form, the fields unlock and the next Send is a **new** operation; on the Stock tab it simply goes). |
 | R102 | **The server settles it — never a clock (rev 3, the user's review).** Every stock write takes its operation's lock first (`pur_op_begin`: per account and operation id, held until its transaction ends) and records only after it. **Cancel it** (`pur_op_cancel`) takes that **same** lock: if the operation was recorded it answers `recorded` and changes nothing (the phone closes it as recorded); otherwise it writes a `cancelled` mark for that account and id and answers `cancelled`. A recording already running holds the lock, so the cancel waits and then sees it; a request that arrives after the cancel — however late, the person's own first Send included — finds the mark at the lock and is **refused (`OP_CANCELLED`)**, recording nothing. Only after `cancelled` may the person change it (a **new** submission, a new id) or drop it. **Check** (`pur_op_state`) is read only: `recorded` (it goes), `cancelled` (it goes — nothing was recorded), or `none` ("Not recorded yet — it may still arrive. Send it again, or cancel it."), which never unlocks anything. A refusal of a Send again does not settle it (the first Send might still arrive); `OP_CANCELLED` does. No signal: nothing known, nothing changes. A stock write checks who may record and that stock is on before the lock, so a late request may be refused even earlier (e.g. `STOCK_OFF`) — still never recorded. Only the phone's stock submissions are ever cancelled; a cancel mark is a `pur_ops` row of kind `cancelled`. |
+| R104 | **Saved data the phone cannot read is kept, and blocks (rev 4, the user's review).** The phone's settings file is read entry by entry. An entry that does not read in full (garbled payload, missing or bad fields) is **kept exactly as stored**: every later save writes it back, and nothing removes it except the server settling its id. If its account and operation id still read (well-formed ids) it is that account's: it **blocks** that account's new stock sends, shows on the Stock tab ("A saved stock record on this phone is damaged…") with **Check** and **Cancel it** — by its id alone; its payload is never rebuilt, so there is no Send again — and goes only when the server answers `recorded` or `cancelled`. An entry whose account does not read could be anyone's: it blocks **every** account on the phone; an entry of this account whose operation id does not read cannot be settled: it blocks this account. Both, and a stored text that is not a list at all, show a **recovery error** ("Saved stock records on this phone can't be read. New stock records are paused on this phone — nothing was deleted. Ask the office for help before recording stock here."). Damaged stored text is never read as empty and never overwritten: every save refuses (`STOCK_STORE_DAMAGED`). If a save fails while the phone is open, a new submission is not sent (nothing left the phone — its form stays editable) and no new stock send goes until the store is fixed. The app always uses the phone's settings file: with no store there is no Stock tab; the in-memory store is a test helper only. |
 | R103 | **Kept across restarts, never sent by itself, one account's own.** Unresolved submissions live in the phone's settings file (quantities and ids only, no peso) and come back after closing or restarting the app. On opening and on coming back to the app the phone **checks** them (read only) — one the server settled (recorded, or cancelled) simply goes — but it **never sends or cancels** one by itself, with or without signal. Each belongs to the account that sent it: another account signing in on the same phone neither sees, sends, checks nor cancels it (the server's check and cancel answer per account), and is not held back by it; it waits for its owner. |
 | R100 | **Version 0.9.0+1011**, built in the real WorkMate repo; on the test phone for Task 4 and the pilot; **published only at launch** (Task 5, the user's decision). Workers stay on what they have (the 0E switch-over is still deferred). |
 
@@ -65,14 +66,14 @@ R1–R88 stand (plans 2A-2 … 2C). New, found while building and testing this p
 | `supabase/migrations/README.md`, `docs/DATABASE_SCHEMA.md` | 1 | Docs (CRLF) |
 | `lib/stock/domain/stock_models.dart`, `stock_failure.dart`, `stock_forms.dart` | 2 | **New.** What the server sends (no peso), every refusal in both languages, the forms' own checks and bodies |
 | `lib/stock/data/stock_remote.dart` | 2 | **New.** The `stk_*` calls, Check (`pur_op_state`) and Cancel (`pur_op_cancel`); the signed-in user checked before a write, a check or a cancel |
-| `lib/stock/domain/stock_submission.dart`, `lib/stock/data/stock_pending_store.dart`, `lib/stock/data/stock_submitter.dart` | 2 | **New.** A submission (id + exact payload); where unresolved ones wait (the settings file); the one place stock is sent, retried, checked and cleared (R101–R103) |
+| `lib/stock/domain/stock_submission.dart`, `lib/stock/data/stock_pending_store.dart`, `lib/stock/data/stock_submitter.dart` | 2 | **New.** A submission (id + exact payload); where unresolved ones wait (the settings file); the one place stock is sent, retried, checked and cancelled; unreadable saved data kept, blocking, settled by id (R101–R104) |
 | `lib/purchasing/domain/pur_models.dart`, `lib/requests/domain/remote_request.dart` | 2 | `from_stock`, `in_warehouse`, `catalog_item_id` read (and kept in the saved shopping list) |
-| `test/stock/stock_fakes.dart`, `test/stock/stock_domain_test.dart`, `test/stock/stock_submitter_test.dart` | 2 | **New.** A fake stock server that answers a repeated id like `pur_ops` and refuses a cancelled one like 0106; 17 + 18 tests |
+| `test/stock/stock_fakes.dart`, `test/stock/stock_domain_test.dart`, `test/stock/stock_submitter_test.dart` | 2 | **New.** A fake stock server that answers a repeated id like `pur_ops` and refuses a cancelled one like 0106, and the in-memory store (tests only); 17 + 25 tests |
 | `lib/stock/ui/*.dart` | 3 | **New.** Controller, Stock screen, issue / move / return form, Received sheet, leftovers form, shared form parts (the locking Send, the unresolved box), words |
 | `lib/purchasing/ui/buyer_shell.dart`, `lib/purchasing/list/shopping_list_screen.dart`, `lib/purchasing/purchasing_services.dart`, `lib/main.dart` | 3 | The Stock tab, Issue from stock, the stock client and the settings-file store wired in |
 | `lib/requests/detail/request_detail_screen.dart` | 3 | "From stock" on a worker's request line |
 | `pubspec.yaml` | 3 | `0.9.0+1011` |
-| `test/stock/stock_screens_test.dart`, `test/requests/detail/request_screens_test.dart` | 3 | **New** / one more test: 32 tests (a changed quantity after a time-out, reopening and a restart among them) |
+| `test/stock/stock_screens_test.dart`, `test/requests/detail/request_screens_test.dart` | 3 | **New** / one more test: 36 tests (a changed quantity after a time-out, reopening, a restart, damaged saved records and a recovery error among them) |
 
 ---
 
@@ -1845,7 +1846,7 @@ node -e "const fs=require('fs');for(const f of ['supabase/migrations/README.md',
 
 ### Task 2: WorkMate — stock models, refusals, forms and the server client
 
-**Interfaces produced:** `StockRemote` (`status()`, `overview()`, `choices()`, `requestLines(folderId)`, `projectLines(folderId)`, `write(StockWrite, params, userId:)`, `opState(opId, userId:)`, `cancelOp(opId, userId:)`), `SupabaseStockRemote(client)`, `newStockOpId()`; `StockWrite` (`move`, `receive`, `leftover`), `StockSubmission` (`opId`, `userId`, `write`, `payload`, `params`, `summary`, `lastSentAt`, `sends`); `StockPendingStore` (`load()`, `save(all)`), `PrefsStockPendingStore(prefs)`, `MemoryStockPendingStore()`; `StockSubmitter(remote:, store:, now:)` (`load(userId)`, `unresolved`, `blocked`, `byOp(id)`, `isBusy(id)`, `submit(write:, params:, summary:)`, `retry(id)`, `check(id)`, `cancel(id)`, `checkAll()`) → `StockSendOutcome` (`result`: recorded / refused / unsure / blocked, `opId`, `failure`, `answer`) and `StockSettleOutcome` (`result`: recorded / cancelled / pending / unknown, `failure`); `StockStatus`, `StockOverview`, `StockItem`, `StockPlace`, `StockLine`, `StockMatch`, `StockRecord`, `StockCostState`, `StockChoices`, `StockItemChoice`, `StockProject`, `StockRequestLine` (`fits(item)`), `warehousePlace`; `StockFailure` (`of(error)`, `retryable`, `uncertain`), `stockFailureCopy(f)`; `MoveForm`, `ReceiveForm`, `LeftoverForm` (`problems(today:)`, `body()` / `params(opId)`), `parseStockQty`, `qtyText`. `ShoppingLine.catalogItemId / fromStock / inWarehouse / inWarehouseUnit`; `RemoteLine.fromStock`, `Portion.fromStock`.
+**Interfaces produced:** `StockRemote` (`status()`, `overview()`, `choices()`, `requestLines(folderId)`, `projectLines(folderId)`, `write(StockWrite, params, userId:)`, `opState(opId, userId:)`, `cancelOp(opId, userId:)`), `SupabaseStockRemote(client)`, `newStockOpId()`; `StockWrite` (`move`, `receive`, `leftover`), `StockSubmission` (`opId`, `userId`, `write`, `payload`, `params`, `summary`, `lastSentAt`, `sends`); `StockPendingStore` (`load()` → `StockPendingLoad` (`readable`, `unreadable`, `damaged`), `save(readable)` — keeps every unreadable entry, refuses damaged storage — and `dropUnreadable(userId, opId)`), `UnreadableSubmission` (`raw`, `opId`, `userId`, `settleable`), `PrefsStockPendingStore(prefs)`; `StockSubmitter(remote:, store:, now:)` (`load(userId)`, `unresolved`, `unreadable`, `recoveryNeeded`, `blocked`, `byOp(id)`, `isBusy(id)`, `submit(write:, params:, summary:)`, `retry(id)`, `check(id)`, `cancel(id)`, `checkAll()`) → `StockSendOutcome` (`result`: recorded / refused / unsure / blocked, `opId`, `failure`, `answer`) and `StockSettleOutcome` (`result`: recorded / cancelled / pending / unknown, `failure`); `StockStatus`, `StockOverview`, `StockItem`, `StockPlace`, `StockLine`, `StockMatch`, `StockRecord`, `StockCostState`, `StockChoices`, `StockItemChoice`, `StockProject`, `StockRequestLine` (`fits(item)`), `warehousePlace`; `StockFailure` (`of(error)`, `retryable`, `uncertain`), `stockFailureCopy(f)`; `MoveForm`, `ReceiveForm`, `LeftoverForm` (`problems(today:)`, `body()` / `params(opId)`), `parseStockQty`, `qtyText`. `ShoppingLine.catalogItemId / fromStock / inWarehouse / inWarehouseUnit`; `RemoteLine.fromStock`, `Portion.fromStock`.
 
 <!-- Tests -->
 
@@ -2042,6 +2043,7 @@ void main() {
 import 'dart:convert';
 
 import 'package:supabase_flutter/supabase_flutter.dart' show PostgrestException;
+import 'package:workmate/stock/data/stock_pending_store.dart';
 import 'package:workmate/stock/data/stock_remote.dart';
 import 'package:workmate/stock/domain/stock_models.dart';
 import 'package:workmate/stock/domain/stock_submission.dart';
@@ -2167,6 +2169,21 @@ class FakeStockRemote implements StockRemote {
   Future<List<StockLine>> projectLines(String folderId) => _read(projectLinesAnswer[folderId] ?? const []);
 }
 
+/// Tests only (R104): stock submissions kept in memory. The app always keeps
+/// them in the phone's settings file (PrefsStockPendingStore).
+class MemoryStockPendingStore implements StockPendingStore {
+  List<StockSubmission> _all = [];
+
+  @override
+  Future<StockPendingLoad> load() async => StockPendingLoad(readable: List.of(_all));
+
+  @override
+  Future<void> save(List<StockSubmission> readable) async => _all = List.of(readable);
+
+  @override
+  Future<void> dropUnreadable(String userId, String opId) async {}
+}
+
 // ── sample answers, as 0104/0105 send them ──
 
 const cement = StockItemChoice(itemId: 'item-cement', name: 'Cement', spec: 'Portland', unit: 'bag');
@@ -2227,6 +2244,7 @@ StockOverview sampleOverview() => StockOverview.fromJson({
 
 ```dart
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -2268,13 +2286,13 @@ void main() {
     expect(o.result, StockSendResult.recorded);
     expect(remote.writes, hasLength(1));
     expect(s.unresolved, isEmpty);
-    expect(await store.load(), isEmpty);
+    expect((await store.load()).readable, isEmpty);
   });
 
   test('saved BEFORE it leaves the phone — a restart mid-send still finds it', () async {
     final seen = <int>[];
     final gate = Completer<void>();
-    final slow = _SlowRemote(remote, () async => seen.add((await store.load()).length), gate.future);
+    final slow = _SlowRemote(remote, () async => seen.add((await store.load()).readable.length), gate.future);
     final t = StockSubmitter(remote: slow, store: store, now: () => clock);
     await t.load('u1');
     final pending = t.submit(write: StockWrite.move, params: (op) => issue(op), summary: 'x');
@@ -2291,7 +2309,7 @@ void main() {
     expect(o.failure, StockFailure.noConnection);
     final kept = s.unresolved.single;
     expect(kept.params, issue(kept.opId));
-    expect((await store.load()).single.payload, kept.payload);
+    expect((await store.load()).readable.single.payload, kept.payload);
     expect((await send(qty: '6')).result, StockSendResult.blocked, reason: 'no new submission until it is resolved');
     expect(remote.attempts, hasLength(1));
   });
@@ -2426,7 +2444,7 @@ void main() {
     await s.load('u2');
     expect(s.unresolved, isEmpty);
     expect(s.blocked, isFalse);
-    expect((await store.load()), hasLength(1), reason: 'kept for its own account');
+    expect((await store.load()).readable, hasLength(1), reason: 'kept for its own account');
     await s.load('u1');
     expect(s.unresolved, hasLength(1));
   });
@@ -2459,14 +2477,108 @@ void main() {
     expect(remote.attempts[1], remote.attempts[0]);
   });
 
-  test('an unreadable entry (missing fields, garbled payload, bad date) is skipped, the rest kept', () async {
-    SharedPreferences.setMockInitialValues({
-      PrefsStockPendingStore.key: '[{"op_id":"x"},{"op_id":"y","user_id":"u1","fn":"stk_move","payload":"not json","created_at":"2026-10-27T02:00:00Z"},'
-          '{"op_id":"z","user_id":"u1","fn":"stk_move","payload":"{\\"p_op\\":\\"z\\"}","created_at":"not a date"},{"op_id":"o1","user_id":"u1","fn":"stk_move","payload":"{\\"p_op\\":\\"o1\\"}",'
-          '"summary":"s","created_at":"2026-10-27T02:00:00.000Z","last_sent_at":"2026-10-27T02:00:00.000Z","sends":1}]',
+  group('saved data the phone cannot read (R104)', () {
+    const a = 'aaaaaaaa-0000-4000-8000-000000000001';
+    const b = 'bbbbbbbb-0000-4000-8000-000000000002';
+    const op1 = '11111111-0000-4000-8000-000000000001';
+    const op2 = '22222222-0000-4000-8000-000000000002';
+    String bad(String op, String user) =>
+        '{"op_id":"$op","user_id":"$user","fn":"stk_move","payload":"not json","created_at":"2026-10-27T02:00:00Z"}';
+    late SharedPreferences prefs;
+
+    Future<StockSubmitter> stored(String raw, String user) async {
+      // ignore: invalid_use_of_visible_for_testing_member
+      SharedPreferences.resetStatic();
+      SharedPreferences.setMockInitialValues({PrefsStockPendingStore.key: raw});
+      prefs = await SharedPreferences.getInstance();
+      final t = StockSubmitter(remote: remote, store: PrefsStockPendingStore(prefs), now: () => clock);
+      await t.load(user);
+      return t;
+    }
+
+    List<dynamic> entries() => jsonDecode(prefs.getString(PrefsStockPendingStore.key)!) as List<dynamic>;
+    Future<StockSendOutcome> sendWith(StockSubmitter t, {String qty = '4'}) =>
+        t.submit(write: StockWrite.move, params: (op) => issue(op, qty: qty), summary: 'Issued $qty bag Cement');
+
+    test('a damaged entry of this account blocks new sends; Check and Cancel settle it by its id, never its payload', () async {
+      final t = await stored('[${bad(op1, a)}]', a);
+      expect([t.unresolved.length, t.unreadable.single.opId, t.blocked, t.recoveryNeeded], [0, op1, true, false]);
+      expect((await sendWith(t)).result, StockSendResult.blocked, reason: 'malformed data never unblocks a new send');
+      expect((await t.check(op1)).result, StockSettleResult.pending);
+      expect([t.blocked, entries().length], [true, 1], reason: 'not settled: still there, still blocking');
+      expect((await t.cancel(op1)).result, StockSettleResult.cancelled);
+      expect(remote.cancelled, {'$a:$op1'});
+      expect([t.blocked, entries()], [false, isEmpty], reason: 'settled by the server: only now it goes');
+      expect(remote.attempts, isEmpty, reason: 'its payload was never rebuilt or sent');
+      expect((await sendWith(t)).result, StockSendResult.recorded);
     });
-    final p = PrefsStockPendingStore(await SharedPreferences.getInstance());
-    expect((await p.load()).map((x) => x.opId), ['o1']);
+
+    test('a damaged entry the server had recorded: Check finds it — it goes, nothing sent', () async {
+      await remote.write(StockWrite.move, {'p_op': op2, 'p_body': <String, dynamic>{}}, userId: a);
+      final t = await stored('[${bad(op2, a)}]', a);
+      expect((await t.check(op2)).result, StockSettleResult.recorded);
+      expect([remote.attempts.length, entries().length, t.blocked], [1, 0, false]);
+    });
+
+    test('a damaged entry survives every later save, word for word — and belongs to its own account', () async {
+      final t = await stored('[${bad(op1, b)}]', a);
+      final before = jsonDecode(bad(op1, b));
+      expect(t.blocked, isFalse, reason: 'another account\'s entry does not hold this one back');
+      remote.failNextWrite = TimeoutException('lost');
+      await sendWith(t);
+      expect(entries().first, before, reason: 'kept on the save of a new submission');
+      await t.retry(t.unresolved.single.opId);
+      expect(entries(), [before], reason: 'kept on the save that settles the other one');
+      await t.load(b);
+      expect([t.blocked, t.unreadable.single.opId], [true, op1], reason: 'it waits for its own account');
+    });
+
+    test('an entry with no readable account blocks every account, needs recovery, and is never overwritten', () async {
+      final t = await stored('[{"payload":"x"}]', a);
+      expect([t.blocked, t.recoveryNeeded, t.unreadable], [true, true, isEmpty], reason: 'cannot be settled by id');
+      expect((await sendWith(t)).result, StockSendResult.blocked);
+      await t.load(b);
+      expect([t.blocked, t.recoveryNeeded], [true, true], reason: 'it could be anyone\'s');
+      await PrefsStockPendingStore(prefs).save(const []);
+      expect(entries(), [{'payload': 'x'}], reason: 'a save keeps it');
+    });
+
+    test('an entry of this account with no readable operation id needs recovery; another account is not held back', () async {
+      final t = await stored('[{"op_id":"not-an-id","user_id":"$a","payload":"x"}]', a);
+      expect([t.blocked, t.recoveryNeeded], [true, true]);
+      await t.load(b);
+      expect([t.blocked, t.recoveryNeeded], [false, false]);
+    });
+
+    test('storage that is not a list at all: everything blocked, and nothing ever overwrites it', () async {
+      for (final raw in ['not json', '{"a":1}']) {
+        final t = await stored(raw, a);
+        expect([t.blocked, t.recoveryNeeded, t.unresolved, t.unreadable], [true, true, isEmpty, isEmpty], reason: raw);
+        expect((await sendWith(t)).result, StockSendResult.blocked, reason: raw);
+        await expectLater(PrefsStockPendingStore(prefs).save(const []), throwsStateError, reason: raw);
+        await expectLater(PrefsStockPendingStore(prefs).dropUnreadable(a, op1), throwsStateError, reason: raw);
+        expect(prefs.getString(PrefsStockPendingStore.key), raw, reason: 'untouched');
+      }
+      expect(remote.attempts, isEmpty);
+    });
+
+    test('storage turning unreadable while open: a new submission is not sent, the form stays editable, nothing new goes after', () async {
+      final t = await stored('[]', a);
+      await prefs.setString(PrefsStockPendingStore.key, 'garbage');
+      final o = await sendWith(t);
+      expect([o.result, o.failure], [StockSendResult.refused, StockFailure.unexpected], reason: 'not saved, so not sent');
+      expect([remote.attempts, t.blocked, t.recoveryNeeded], [isEmpty, true, true]);
+      expect((await sendWith(t)).result, StockSendResult.blocked);
+      expect(prefs.getString(PrefsStockPendingStore.key), 'garbage');
+    });
+
+    test('readable entries beside damaged ones still read; each damaged one is kept apart', () async {
+      final good = StockSubmission.create(opId: op2, userId: a, write: StockWrite.move, params: issue(op2), summary: 's', now: clock).sentAt(clock);
+      final t = await stored('[${bad(op1, a)},${jsonEncode(good.toJson())},{"op_id":"$op1","user_id":"$a","fn":"stk_move","payload":"{}","created_at":"not a date"}]', a);
+      expect(t.unresolved.single.opId, op2);
+      expect(t.unreadable.map((u) => u.opId), [op1, op1]);
+      expect(t.blocked, isTrue);
+    });
   });
 
   test('a payload never travels without its own operation id', () {
@@ -2623,67 +2735,134 @@ index c2ea79a..bb6a48e 100644
 ```dart
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../domain/stock_submission.dart';
 
-/// Where unresolved stock submissions wait on the phone (R101): they survive
-/// closing a form, closing the app and a restart. Nothing here ever sends.
-abstract class StockPendingStore {
-  Future<List<StockSubmission>> load();
-  Future<void> save(List<StockSubmission> all);
+/// A saved stock submission the phone can no longer read in full (R104):
+/// kept exactly as stored, never dropped by a save. If its account and
+/// operation id can still be read, the server can settle it by Check or
+/// Cancel — its payload is never rebuilt. Otherwise it needs recovery.
+class UnreadableSubmission {
+  const UnreadableSubmission({required this.raw, this.opId, this.userId});
+
+  /// The stored entry as it is (JSON text).
+  final String raw;
+
+  /// Read only if it is a well-formed id.
+  final String? opId;
+  final String? userId;
+
+  /// Check and Cancel need only these two.
+  bool get settleable => opId != null && userId != null;
+
+  static final _uuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$');
+
+  static UnreadableSubmission of(Object? entry) {
+    String? id(Object? v) => v is String && _uuid.hasMatch(v) ? v : null;
+    final m = entry is Map ? entry : const {};
+    return UnreadableSubmission(raw: jsonEncode(entry), opId: id(m['op_id']), userId: id(m['user_id']));
+  }
 }
 
-/// The phone's own settings file; every account's unresolved submissions in
-/// one list (each carries its account, R103). Quantities and ids only — no peso.
+/// What is stored on the phone: the submissions that read in full, the ones
+/// that do not, and whether the stored text as a whole cannot be read.
+class StockPendingLoad {
+  const StockPendingLoad({this.readable = const [], this.unreadable = const [], this.damaged = false});
+  final List<StockSubmission> readable;
+  final List<UnreadableSubmission> unreadable;
+
+  /// The stored text is not a list at all: nothing can be read or saved.
+  final bool damaged;
+}
+
+/// Where unresolved stock submissions wait on the phone (R101, R104): they
+/// survive closing a form, closing the app and a restart. Nothing here ever
+/// sends. Unreadable data is never treated as empty and never overwritten.
+abstract class StockPendingStore {
+  Future<StockPendingLoad> load();
+
+  /// Stores [readable] (every account's) — keeping every unreadable entry as
+  /// it is now stored. Refuses (STOCK_STORE_DAMAGED) if the stored text
+  /// cannot be read at all: it is never overwritten.
+  Future<void> save(List<StockSubmission> readable);
+
+  /// Removes the unreadable entries of this account and operation id — only
+  /// after the server settled that id (recorded, or cancelled for good).
+  Future<void> dropUnreadable(String userId, String opId);
+}
+
+/// The phone's settings file; every account's unresolved submissions in one
+/// list (each carries its account, R103). Quantities and ids only — no peso.
 class PrefsStockPendingStore implements StockPendingStore {
   PrefsStockPendingStore(this._prefs);
 
   static const key = 'stock.unresolved.v1';
   final SharedPreferences _prefs;
 
-  @override
-  Future<List<StockSubmission>> load() async {
+  /// The stored list, entry by entry (null: nothing stored; throws if damaged).
+  List<Object?>? _entries() {
     final raw = _prefs.getString(key);
-    if (raw == null) return [];
+    if (raw == null) return null;
+    final Object? list;
     try {
-      final list = jsonDecode(raw);
-      if (list is! List) return [];
-      return [
-        for (final j in list)
-          if (j is Map) ?_read(Map<String, dynamic>.from(j)),
-      ];
-    } catch (e) {
-      debugPrint('Stock submissions unreadable: $e');
-      return [];
+      list = jsonDecode(raw);
+    } on FormatException {
+      throw StateError('STOCK_STORE_DAMAGED');
     }
+    if (list is! List) throw StateError('STOCK_STORE_DAMAGED');
+    return list;
   }
 
-  static StockSubmission? _read(Map<String, dynamic> j) {
+  static StockSubmission? _read(Object? entry) {
+    if (entry is! Map) return null;
     try {
-      return StockSubmission.fromJson(j);
+      return StockSubmission.fromJson(Map<String, dynamic>.from(entry));
     } catch (_) {
       return null;
     }
   }
 
   @override
-  Future<void> save(List<StockSubmission> all) async {
-    final ok = await _prefs.setString(key, jsonEncode([for (final s in all) s.toJson()]));
+  Future<StockPendingLoad> load() async {
+    final List<Object?>? entries;
+    try {
+      entries = _entries();
+    } on StateError {
+      return const StockPendingLoad(damaged: true);
+    }
+    final readable = <StockSubmission>[];
+    final unreadable = <UnreadableSubmission>[];
+    for (final e in entries ?? const []) {
+      final s = _read(e);
+      if (s != null) {
+        readable.add(s);
+      } else {
+        unreadable.add(UnreadableSubmission.of(e));
+      }
+    }
+    return StockPendingLoad(readable: readable, unreadable: unreadable);
+  }
+
+  @override
+  Future<void> save(List<StockSubmission> readable) async {
+    final kept = [for (final e in _entries() ?? const []) if (_read(e) == null) e];
+    await _write([...kept, for (final s in readable) s.toJson()]);
+  }
+
+  @override
+  Future<void> dropUnreadable(String userId, String opId) async {
+    final entries = _entries() ?? const [];
+    await _write([
+      for (final e in entries)
+        if (_read(e) != null || !(UnreadableSubmission.of(e).opId == opId && UnreadableSubmission.of(e).userId == userId)) e,
+    ]);
+  }
+
+  Future<void> _write(List<Object?> entries) async {
+    final ok = await _prefs.setString(key, jsonEncode(entries));
     if (!ok) throw StateError('STOCK_SAVE_FAILED');
   }
-}
-
-/// In memory (no settings file): for a phone whose settings cannot open.
-class MemoryStockPendingStore implements StockPendingStore {
-  List<StockSubmission> _all = [];
-
-  @override
-  Future<List<StockSubmission>> load() async => List.of(_all);
-
-  @override
-  Future<void> save(List<StockSubmission> all) async => _all = List.of(all);
 }
 ```
 
@@ -2851,7 +3030,9 @@ class StockSettleOutcome {
 /// a reply, a refusal of its first Send, or — asked by Check (read only,
 /// `pur_op_state`) or Cancel (`pur_op_cancel`, under the same lock recording
 /// takes) — the id recorded or cancelled for good. Until then: no edit, no new
-/// stock submission for that account, nothing sent by itself.
+/// stock submission for that account, nothing sent by itself. A saved entry
+/// the phone can no longer read is kept and blocks new sends too (R104): by
+/// its id it can still be checked or cancelled; without one it needs recovery.
 class StockSubmitter extends ChangeNotifier {
   StockSubmitter({required this.remote, required this.store, DateTime Function()? now}) : _now = now ?? DateTime.now;
 
@@ -2860,6 +3041,8 @@ class StockSubmitter extends ChangeNotifier {
   final DateTime Function() _now;
 
   List<StockSubmission> _all = const [];
+  List<UnreadableSubmission> _unreadable = const [];
+  bool _damaged = false;
   String? _userId;
   final _busy = <String>{};
   bool _disposed = false;
@@ -2870,15 +3053,36 @@ class StockSubmitter extends ChangeNotifier {
           if (s.userId == _userId) s,
       ];
 
-  bool get blocked => unresolved.isNotEmpty;
+  /// This account's saved entries that no longer read in full but whose id
+  /// does: the server can settle each by Check or Cancel (R104).
+  List<UnreadableSubmission> get unreadable => [
+        for (final u in _unreadable)
+          if (u.settleable && u.userId == _userId) u,
+      ];
+
+  /// Saved stock data the phone cannot read and cannot settle by id — the
+  /// whole store, an entry with no readable account (it could be anyone's),
+  /// or one of this account's with no readable operation id (R104).
+  bool get recoveryNeeded =>
+      _damaged || _unreadable.any((u) => u.userId == null || (u.userId == _userId && u.opId == null));
+
+  /// No new stock submission until every one of these is settled.
+  bool get blocked => unresolved.isNotEmpty || unreadable.isNotEmpty || recoveryNeeded;
   bool isBusy(String opId) => _busy.contains(opId);
   StockSubmission? byOp(String opId) => unresolved.where((s) => s.opId == opId).firstOrNull;
 
   /// Reads what is waiting on the phone for [userId]; never sends.
   Future<void> load(String userId) async {
     _userId = userId;
-    _all = await store.load();
+    await _reload();
     _notify();
+  }
+
+  Future<void> _reload() async {
+    final l = await store.load();
+    _all = l.readable;
+    _unreadable = l.unreadable;
+    _damaged = l.damaged;
   }
 
   /// A new stock record. Refused while this account has one unresolved.
@@ -2912,8 +3116,14 @@ class StockSubmitter extends ChangeNotifier {
       try {
         await _put(sent);
       } catch (_) {
-        // Not saved, not sent: a restart could not have found it.
-        if (!sentBefore) _all = [..._all.where((x) => x.opId != s.opId)];
+        // Not saved, so not sent. The phone cannot keep stock records safely:
+        // nothing new is sent until that is fixed (R104).
+        _damaged = true;
+        if (!sentBefore) {
+          // A new one: nothing left the phone — refused, the form stays editable.
+          _all = [..._all.where((x) => x.opId != s.opId)];
+          return StockSendOutcome(StockSendResult.refused, opId: s.opId, failure: StockFailure.unexpected);
+        }
         return StockSendOutcome(StockSendResult.unsure, opId: s.opId, failure: StockFailure.unexpected);
       }
       try {
@@ -2946,15 +3156,36 @@ class StockSubmitter extends ChangeNotifier {
 
   Future<StockSettleOutcome> _settle(String opId, {required bool cancel}) async {
     final s = byOp(opId);
-    if (s == null) return const StockSettleOutcome(StockSettleResult.recorded);
+    // An unreadable entry is settled by its id alone — its payload is never rebuilt (R104).
+    final u = s == null ? unreadable.where((x) => x.opId == opId).firstOrNull : null;
+    final userId = s?.userId ?? u?.userId;
+    if (userId == null) return const StockSettleOutcome(StockSettleResult.recorded);
     if (!_busy.add(opId)) return const StockSettleOutcome(StockSettleResult.unknown);
     _notify();
     try {
       final String state;
       try {
-        state = cancel ? await remote.cancelOp(opId, userId: s.userId) : await remote.opState(opId, userId: s.userId);
+        state = cancel ? await remote.cancelOp(opId, userId: userId) : await remote.opState(opId, userId: userId);
       } catch (e) {
         return StockSettleOutcome(StockSettleResult.unknown, failure: StockFailure.of(e));
+      }
+      if (u != null) {
+        final result = switch (state) {
+          'recorded' => StockSettleResult.recorded,
+          'cancelled' => StockSettleResult.cancelled,
+          'none' when !cancel => StockSettleResult.pending,
+          _ => StockSettleResult.unknown,
+        };
+        if (result == StockSettleResult.recorded || result == StockSettleResult.cancelled) {
+          try {
+            await store.dropUnreadable(userId, opId);
+            await _reload();
+          } catch (_) {
+            // Not removed from the phone: it stays (and blocks) until it can be.
+            return const StockSettleOutcome(StockSettleResult.unknown, failure: StockFailure.unexpected);
+          }
+        }
+        return StockSettleOutcome(result, failure: result == StockSettleResult.unknown ? StockFailure.unexpected : null);
       }
       final result = switch (state) {
         'recorded' => StockSettleResult.recorded,
@@ -2976,6 +3207,9 @@ class StockSubmitter extends ChangeNotifier {
     for (final s in unresolved) {
       if (!isBusy(s.opId)) await check(s.opId);
     }
+    for (final u in unreadable) {
+      if (!isBusy(u.opId!)) await check(u.opId!);
+    }
   }
 
   Future<void> _put(StockSubmission s) async {
@@ -2987,8 +3221,14 @@ class StockSubmitter extends ChangeNotifier {
 
   Future<void> _drop(String opId) async {
     final next = [..._all.where((x) => x.opId != opId)];
-    await store.save(next);
-    _all = next;
+    try {
+      await store.save(next);
+      _all = next;
+    } catch (_) {
+      // Could not be removed from the phone: it stays unresolved (a Check
+      // settles it again later) and nothing new is sent meanwhile.
+      _damaged = true;
+    }
   }
 
   void _notify() {
@@ -3838,12 +4078,12 @@ class StockSubmission {
 
 
 - [ ] **Step 1: Apply the files above** in WorkMate (Create blocks as given; Modify blocks with `git apply --ignore-whitespace`).
-- [ ] **Step 2: Tests.** `flutter analyze` → no issues. `flutter test` → **970** pass (935 before, plus `stock_domain_test.dart`'s 17 and `stock_submitter_test.dart`'s 18).
+- [ ] **Step 2: Tests.** `flutter analyze` → no issues. `flutter test` → **977** pass (935 before, plus `stock_domain_test.dart`'s 17 and `stock_submitter_test.dart`'s 25).
 - [ ] **Step 3: Stop for the user** to review and commit.
 
 ### Task 3: WorkMate — the Stock tab, the forms, the shopping list, "From stock"; 0.9.0+1011
 
-**Interfaces consumed:** Task 2's. **Produced:** `StockController(remote:)` (`status`, `overview`, `loading`, `loaded`, `failure`, `enabled`, `refresh()`), `StockScreen(controller:, submitter:, onRecorded:)`, `MoveScreen(remote:, submitter:, preset: MovePreset(...))`, `openMove(context, controller, submitter, preset)`, `ReceiveSheet(submitter:, line:)`, `LeftoverScreen(remote:, submitter:)`, `StockSending` (the locking Send), `UnresolvedBox`; `PurchasingServices.stock`, `PurchasingServices.stockStore`; `ShoppingListScreen.onIssueFromStock`.
+**Interfaces consumed:** Task 2's. **Produced:** `StockController(remote:)` (`status`, `overview`, `loading`, `loaded`, `failure`, `enabled`, `refresh()`), `StockScreen(controller:, submitter:, onRecorded:)`, `MoveScreen(remote:, submitter:, preset: MovePreset(...))`, `openMove(context, controller, submitter, preset)`, `ReceiveSheet(submitter:, line:)`, `LeftoverScreen(remote:, submitter:)`, `StockSending` (the locking Send), `UnresolvedBox`, `UnreadableBox`; `PurchasingServices.stock`, `PurchasingServices.stockStore`; `ShoppingListScreen.onIssueFromStock`.
 
 <!-- Tests -->
 
@@ -3975,7 +4215,7 @@ void main() {
       versionName: '0.9.0',
       onSignOut: () async {},
       account: account,
-      purchasing: PurchasingServices(api: api, stock: stock),
+      purchasing: PurchasingServices(api: api, stock: stock, stockStore: MemoryStockPendingStore()),
     )));
     await tester.pumpAndSettle();
   }
@@ -4466,6 +4706,85 @@ void main() {
       expect(stock.writes, isEmpty, reason: 'the late original records nothing');
     });
 
+    testWidgets('a damaged saved record: the Stock tab offers Check and Cancel (no Send again); nothing new starts; Cancel settles it', (tester) async {
+      const me = WorkerProfile(id: 'aaaaaaaa-0000-4000-8000-0000000000a1', email: 'staff@dacsbuilding.com', displayName: 'Ana Reyes', role: 'staff', status: 'active');
+      const op = '11111111-0000-4000-8000-0000000000a1';
+      const raw = '[{"op_id":"$op","user_id":"${'aaaaaaaa-0000-4000-8000-0000000000a1'}","fn":"stk_move","payload":"not json"}]';
+      // ignore: invalid_use_of_visible_for_testing_member
+      SharedPreferences.resetStatic();
+      SharedPreferences.setMockInitialValues({PrefsStockPendingStore.key: raw});
+      final prefs = await SharedPreferences.getInstance();
+      await openWith(tester, PrefsStockPendingStore(prefs), buyer: me);
+      expect(find.byKey(const Key('issue-stock-p1')), findsNothing, reason: 'malformed data never unblocks a new send');
+      await tester.tap(find.byKey(const Key('tab-stock')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('unreadable-$op')), findsOneWidget);
+      expect(find.text(unreadableLabel.english), findsOneWidget);
+      expect(find.byKey(const Key('unsure-send-again')), findsNothing, reason: 'its payload is never rebuilt');
+      expect(find.byKey(const Key('stock-issue')), findsNothing);
+      expect(prefs.getString(PrefsStockPendingStore.key), raw, reason: 'opening and checking keep it');
+      await press(tester, 'unreadable-cancel');
+      expect(stock.cancelled, {'${me.id}:$op'});
+      expect(find.byKey(const Key('unreadable-$op')), findsNothing);
+      expect(prefs.getString(PrefsStockPendingStore.key), '[]');
+      expect(find.byKey(const Key('stock-issue')), findsOneWidget, reason: 'settled by the server: stock records start again');
+      expect(stock.attempts, isEmpty);
+    });
+
+    testWidgets('a damaged saved record with no signal: Cancel changes nothing — it stays, still blocking', (tester) async {
+      const me = WorkerProfile(id: 'aaaaaaaa-0000-4000-8000-0000000000a2', email: 'staff@dacsbuilding.com', displayName: 'Ana Reyes', role: 'staff', status: 'active');
+      const op = '11111111-0000-4000-8000-0000000000a2';
+      const raw = '[{"op_id":"$op","user_id":"aaaaaaaa-0000-4000-8000-0000000000a2","fn":"stk_move","payload":"not json"}]';
+      // ignore: invalid_use_of_visible_for_testing_member
+      SharedPreferences.resetStatic();
+      SharedPreferences.setMockInitialValues({PrefsStockPendingStore.key: raw});
+      final prefs = await SharedPreferences.getInstance();
+      await openWith(tester, PrefsStockPendingStore(prefs), buyer: me);
+      await tester.tap(find.byKey(const Key('tab-stock')));
+      await tester.pumpAndSettle();
+      stock.failReads = const SocketException('offline');
+      await press(tester, 'unreadable-cancel');
+      expect(find.byKey(const Key('unreadable-$op')), findsOneWidget, reason: 'no answer from the server: it stays');
+      expect(find.text(stockFailureCopy(StockFailure.noConnection).english), findsOneWidget);
+      expect(find.byKey(const Key('stock-refused')), findsNothing, reason: 'never reported as cancelled');
+      expect([stock.cancelled, prefs.getString(PrefsStockPendingStore.key)], [isEmpty, raw]);
+      expect(find.byKey(const Key('stock-issue')), findsNothing, reason: 'still blocking');
+    });
+
+    testWidgets('damaged storage: a recovery error, nothing can start, and the stored text is never touched', (tester) async {
+      // ignore: invalid_use_of_visible_for_testing_member
+      SharedPreferences.resetStatic();
+      SharedPreferences.setMockInitialValues({PrefsStockPendingStore.key: 'not json'});
+      final prefs = await SharedPreferences.getInstance();
+      await openWith(tester, PrefsStockPendingStore(prefs));
+      expect(find.byKey(const Key('issue-stock-p1')), findsNothing);
+      await tester.tap(find.byKey(const Key('tab-stock')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('stock-recovery')), findsOneWidget);
+      expect(find.text(recoveryLabel.english), findsOneWidget);
+      expect(find.byKey(const Key('stock-issue')), findsNothing);
+      expect(find.byKey(const Key('stock-leftovers')), findsNothing);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(prefs.getString(PrefsStockPendingStore.key), 'not json');
+      expect(stock.attempts, isEmpty);
+    });
+
+    testWidgets('a stock server with no store on the phone: no Stock tab at all (never kept in memory alone)', (tester) async {
+      useTallPhone(tester);
+      await tester.pumpWidget(wrap(BuyerShell(
+        buyer: staff,
+        versionName: '0.9.0',
+        onSignOut: () async {},
+        account: account,
+        purchasing: PurchasingServices(api: api, stock: stock),
+      )));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('tab-stock')), findsNothing);
+      expect(find.byKey(const Key('issue-stock-p1')), findsNothing);
+    });
+
     testWidgets('after a restart, another account on the same phone neither sees nor sends it', (tester) async {
       await lostThenClosed(tester);
       await openWith(tester, PrefsStockPendingStore(await SharedPreferences.getInstance()),
@@ -4651,7 +4970,7 @@ index 2e1d2f4..ea86d90 100644
 
 ```diff
 diff --git a/lib/purchasing/purchasing_services.dart b/lib/purchasing/purchasing_services.dart
-index 1c96a04..477ac2f 100644
+index 1c96a04..9ed7182 100644
 --- a/lib/purchasing/purchasing_services.dart
 +++ b/lib/purchasing/purchasing_services.dart
 @@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
@@ -4680,8 +4999,8 @@ index 1c96a04..477ac2f 100644
 +  /// 2B-b: the stock server; null leaves the phone as it was before stock.
 +  final StockRemote? stock;
 +
-+  /// Where stock records whose answer was lost wait across restarts (R101);
-+  /// null keeps them in memory only.
++  /// Where stock records wait on the phone until the server settles them
++  /// (R101, R104): the phone's settings file. Stock is offered only with both.
 +  final StockPendingStore? stockStore;
  }
 ```
@@ -4690,14 +5009,13 @@ index 1c96a04..477ac2f 100644
 
 ```diff
 diff --git a/lib/purchasing/ui/buyer_shell.dart b/lib/purchasing/ui/buyer_shell.dart
-index 646b249..6ad4b1c 100644
+index 646b249..73123d8 100644
 --- a/lib/purchasing/ui/buyer_shell.dart
 +++ b/lib/purchasing/ui/buyer_shell.dart
-@@ -5,6 +5,11 @@ import 'package:flutter/material.dart';
+@@ -5,6 +5,10 @@ import 'package:flutter/material.dart';
  import '../../auth/worker_profile.dart';
  import '../../profile/account_services.dart';
  import '../../profile/profile_screen.dart';
-+import '../../stock/data/stock_pending_store.dart';
 +import '../../stock/data/stock_submitter.dart';
 +import '../../stock/ui/move_screen.dart';
 +import '../../stock/ui/stock_controller.dart';
@@ -4705,7 +5023,7 @@ index 646b249..6ad4b1c 100644
  import '../domain/pur_models.dart';
  import '../domain/purchase_draft.dart';
  import '../list/shopping_controller.dart';
-@@ -15,10 +20,11 @@ import '../mine/purchase_detail_screen.dart';
+@@ -15,10 +19,11 @@ import '../mine/purchase_detail_screen.dart';
  import '../purchasing_services.dart';
  import '../record/record_screen.dart';
  
@@ -4719,7 +5037,7 @@ index 646b249..6ad4b1c 100644
  class BuyerShell extends StatefulWidget {
    const BuyerShell({
      super.key,
-@@ -45,8 +51,22 @@ class _BuyerShellState extends State<BuyerShell> with WidgetsBindingObserver {
+@@ -45,8 +50,22 @@ class _BuyerShellState extends State<BuyerShell> with WidgetsBindingObserver {
    _Tab _tab = _Tab.shopping;
    ShoppingController? _shopping;
    MyPurchasesController? _mine;
@@ -4743,25 +5061,27 @@ index 646b249..6ad4b1c 100644
  
    @override
    void initState() {
-@@ -55,6 +75,17 @@ class _BuyerShellState extends State<BuyerShell> with WidgetsBindingObserver {
+@@ -55,6 +74,19 @@ class _BuyerShellState extends State<BuyerShell> with WidgetsBindingObserver {
      if (p != null) {
        _shopping = ShoppingController(api: p.api)..refresh();
        _mine = MyPurchasesController(api: p.api)..refresh();
 +      final stock = p.stock;
-+      if (stock != null) {
++      final store = p.stockStore;
++      // Stock only with the phone's own store: never kept in memory alone (R104).
++      if (stock != null && store != null) {
 +        // Listen after the first refresh starts: its first notice is synchronous.
 +        _stock = StockController(remote: stock)..refresh();
 +        _stock!.addListener(_stockChanged);
 +        // What is waiting on this phone for this account; checked (read
 +        // only), never sent by itself.
-+        final submitter = _submitter = StockSubmitter(remote: stock, store: p.stockStore ?? MemoryStockPendingStore())
++        final submitter = _submitter = StockSubmitter(remote: stock, store: store)
 +          ..addListener(_stockChanged);
 +        unawaited(submitter.load(widget.buyer.id).then((_) => submitter.checkAll()));
 +      }
        _keepChoices();
        p.changed?.addListener(_refresh);
      } else {
-@@ -69,15 +100,32 @@ class _BuyerShellState extends State<BuyerShell> with WidgetsBindingObserver {
+@@ -69,15 +101,32 @@ class _BuyerShellState extends State<BuyerShell> with WidgetsBindingObserver {
      WidgetsBinding.instance.removeObserver(this);
      _shopping?.dispose();
      _mine?.dispose();
@@ -4794,7 +5114,7 @@ index 646b249..6ad4b1c 100644
    /// Reads the projects, jobs and suppliers while there is signal, so Record
    /// purchase has them later with none (the read keeps a saved copy).
    void _keepChoices() {
-@@ -89,6 +137,7 @@ class _BuyerShellState extends State<BuyerShell> with WidgetsBindingObserver {
+@@ -89,6 +138,7 @@ class _BuyerShellState extends State<BuyerShell> with WidgetsBindingObserver {
    void didChangeAppLifecycleState(AppLifecycleState state) {
      if (state == AppLifecycleState.resumed) {
        _refresh();
@@ -4802,7 +5122,7 @@ index 646b249..6ad4b1c 100644
        _keepChoices();
      }
    }
-@@ -97,6 +146,31 @@ class _BuyerShellState extends State<BuyerShell> with WidgetsBindingObserver {
+@@ -97,6 +147,31 @@ class _BuyerShellState extends State<BuyerShell> with WidgetsBindingObserver {
      setState(() => _tab = t);
      if (t == _Tab.shopping) _shopping?.refresh();
      if (t == _Tab.mine) _mine?.refresh();
@@ -4834,7 +5154,7 @@ index 646b249..6ad4b1c 100644
    }
  
    /// Record purchase (Q7): picked lines, a saved draft, or blank (unplanned).
-@@ -141,13 +215,18 @@ class _BuyerShellState extends State<BuyerShell> with WidgetsBindingObserver {
+@@ -141,13 +216,18 @@ class _BuyerShellState extends State<BuyerShell> with WidgetsBindingObserver {
      final tabs = _tabs;
      if (tabs.length < 2) return Scaffold(body: SafeArea(child: profile));
      final body = switch (_tab) {
@@ -4855,7 +5175,7 @@ index 646b249..6ad4b1c 100644
            ? null
            // Hidden while items are ticked: their own Record purchase button
            // sits where this one would.
-@@ -170,6 +249,7 @@ class _BuyerShellState extends State<BuyerShell> with WidgetsBindingObserver {
+@@ -170,6 +250,7 @@ class _BuyerShellState extends State<BuyerShell> with WidgetsBindingObserver {
              switch (t) {
                _Tab.shopping => const NavigationDestination(icon: Icon(Icons.shopping_cart_outlined), label: 'Shopping list'),
                _Tab.mine => NavigationDestination(icon: _MineIcon(controller: _mine!), label: 'My purchases'),
@@ -5579,6 +5899,16 @@ const notYetCopy = Bilingual('Not recorded yet — it may still arrive. Send it 
 const finishFirst = Bilingual('First finish the stock record that is not sure (top of the Stock tab).',
     'Tapusin muna ang stock record na hindi sigurado (sa itaas ng Stock tab).');
 
+// R104: saved stock data the phone can no longer read.
+const unreadableLabel = Bilingual(
+    "A saved stock record on this phone is damaged — its details can't be read. Check whether it was recorded, or cancel it so it never records.",
+    'May sirang stock record na naka-save sa phone na ito — hindi mabasa ang detalye. I-check kung naitala, o kanselahin para hindi na maitala.');
+const unreadablePendingCopy = Bilingual('Not recorded yet — it may still arrive. Cancel it to settle it.',
+    'Hindi pa naitatala — baka dumating pa. Kanselahin para matapos ito.');
+const recoveryLabel = Bilingual(
+    "Saved stock records on this phone can't be read. New stock records are paused on this phone — nothing was deleted. Ask the office for help before recording stock here.",
+    'Hindi mabasa ang mga stock record na naka-save sa phone na ito. Nakahinto ang bagong stock record sa phone na ito — walang binura. Humingi ng tulong sa opisina bago magtala ng stock dito.');
+
 /// A Send again refused while the first Send might still arrive.
 Bilingual retryRefusedCopy(Bilingual refusal) => Bilingual('${refusal.english} The first Send may still arrive — check, or cancel it.',
     '${refusal.tagalog} Baka dumating pa ang unang pinadala — i-check, o kanselahin.');
@@ -5776,7 +6106,17 @@ class _StockScreenState extends State<StockScreen> {
                   padding: const EdgeInsets.only(top: 10),
                   child: UnresolvedBox(submitter: _s, opId: u.opId, onRecorded: _recorded, onSettledNotRecorded: _refused),
                 ),
-              if (_s.blocked && _c.status.canRecord) ...[
+              for (final u in _s.unreadable)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: UnreadableBox(submitter: _s, opId: u.opId!, onRecorded: _recorded, onSettledNotRecorded: _refused),
+                ),
+              if (_s.recoveryNeeded)
+                Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: FailureNotice(key: const Key('stock-recovery'), english: recoveryLabel.english, tagalog: recoveryLabel.tagalog),
+                ),
+              if (_s.blocked && _c.status.canRecord && !_s.recoveryNeeded) ...[
                 const SizedBox(height: 8),
                 const BilingualText(finishFirst, key: Key('stock-finish-first'), style: TextStyle(fontSize: 13, color: WmColors.textMuted)),
               ],
@@ -6141,6 +6481,72 @@ class _UnresolvedBoxState extends State<UnresolvedBox> {
       );
 }
 
+/// A saved stock record the phone can no longer read, of this account (R104):
+/// Check or Cancel it by its operation id — its payload is never rebuilt, so
+/// there is no Send again. Never sends by itself.
+class UnreadableBox extends StatefulWidget {
+  const UnreadableBox({super.key, required this.submitter, required this.opId, required this.onRecorded, required this.onSettledNotRecorded});
+
+  final StockSubmitter submitter;
+  final String opId;
+  final VoidCallback onRecorded;
+  final ValueChanged<StockFailure> onSettledNotRecorded;
+
+  @override
+  State<UnreadableBox> createState() => _UnreadableBoxState();
+}
+
+class _UnreadableBoxState extends State<UnreadableBox> {
+  Bilingual? _note;
+
+  Future<void> _settle({required bool cancel}) async {
+    final s = widget.submitter;
+    final o = cancel ? await s.cancel(widget.opId) : await s.check(widget.opId);
+    if (!mounted) return;
+    switch (o.result) {
+      case StockSettleResult.recorded:
+        widget.onRecorded();
+      case StockSettleResult.cancelled:
+        widget.onSettledNotRecorded(StockFailure.opCancelled);
+      case StockSettleResult.pending:
+        setState(() => _note = unreadablePendingCopy);
+      case StockSettleResult.unknown:
+        setState(() => _note = stockFailureCopy(o.failure ?? StockFailure.noConnection));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+        listenable: widget.submitter,
+        builder: (context, _) {
+          final s = widget.submitter;
+          if (!s.unreadable.any((u) => u.opId == widget.opId)) return const SizedBox.shrink();
+          final note = _note;
+          return Container(
+            key: Key('unreadable-${widget.opId}'),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: WmColors.dangerTint, borderRadius: BorderRadius.circular(14)),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const BilingualText(unreadableLabel, style: TextStyle(fontWeight: FontWeight.w700, color: WmColors.danger)),
+              if (note != null) ...[
+                const SizedBox(height: 6),
+                BilingualText(note, style: const TextStyle(fontSize: 13, color: WmColors.danger)),
+              ],
+              const SizedBox(height: 10),
+              if (s.isBusy(widget.opId))
+                const LinearProgressIndicator()
+              else
+                Row(children: [
+                  Expanded(child: bilingualButton(checkLabel, () => _settle(cancel: false), key: const Key('unreadable-check'))),
+                  const SizedBox(width: 8),
+                  Expanded(child: bilingualButton(cancelLabel, () => _settle(cancel: true), filled: true, key: const Key('unreadable-cancel'))),
+                ]),
+            ]),
+          );
+        },
+      );
+}
+
 /// The day the goods moved: today unless picked earlier (never later).
 class StockDayField extends StatelessWidget {
   const StockDayField({super.key, required this.value, required this.today, required this.onChanged});
@@ -6206,7 +6612,7 @@ index 49b27c7..f63013d 100644
 
 
 - [ ] **Step 1: Apply the files above** in WorkMate.
-- [ ] **Step 2: Tests.** `flutter analyze` → no issues. `flutter test` → **1,002** pass (32 more: `stock_screens_test.dart` 31, `request_screens_test.dart` 1). `pubspec.yaml` says `version: 0.9.0+1011`.
+- [ ] **Step 2: Tests.** `flutter analyze` → no issues. `flutter test` → **1,013** pass (36 more: `stock_screens_test.dart` 35, `request_screens_test.dart` 1). `pubspec.yaml` says `version: 0.9.0+1011`.
 - [ ] **Step 3: Stop for the user** to review and commit.
 
 ### Task 4: Live — 0106 with stock off, the web pushed, 0.9.0 on the test phone
@@ -6277,6 +6683,7 @@ Only when the user says to start. Allow about two hours; no real buyer should re
 | Answer | Where |
 |---|---|
 | Q26 (the phone: receipt, issue, leftovers, returns, moves; online only; workers see From stock) | R89–R91, R95; Tasks 2–3 (`MoveScreen`, `ReceiveSheet`, `LeftoverScreen`, `StockSending`); 0106 + `request_detail_screen.dart`; tests "Received: part of a line…", "an unmatched line can still be received…", "Recent: … Return brings the issue back", "unplanned issue needs a reason…", "leftovers: a project purchase…", "2B-b: what the office sent from stock shows on the line…"; PGlite "a worker sees From stock…", "a team leader sees…"; pilot P2–P14, P19. **R89 asks the user about "office staff".** |
+| The user's review of Task 2 (rev 4: unreadable saved data) | R104; `PrefsStockPendingStore` (`StockPendingLoad`, `UnreadableSubmission`, `dropUnreadable`), `StockSubmitter.unreadable` / `recoveryNeeded` / `blocked`, `UnreadableBox`, the recovery error; `MemoryStockPendingStore` moved to `test/stock/stock_fakes.dart`; tests — **malformed data cannot unblock a new send**: "a damaged entry of this account blocks new sends; Check and Cancel settle it by its id, never its payload", "an entry with no readable account blocks every account…", "an entry of this account with no readable operation id needs recovery…", "storage that is not a list at all: everything blocked…", "a damaged saved record: the Stock tab offers Check and Cancel…", "damaged storage: a recovery error, nothing can start…"; **nor disappear on the next save**: "a damaged entry survives every later save, word for word…", "…is never overwritten", "storage that is not a list at all: … nothing ever overwrites it", "…the stored text is never touched"; also "a damaged entry the server had recorded…", "storage turning unreadable while open…", "readable entries beside damaged ones still read…", "a stock server with no store on the phone: no Stock tab at all" |
 | The user's review of rev 2 (R102: the server settles, not a clock) | R102; 0106's `pur_op_cancel`, `pur_op_state`, `pur_op_begin`; `StockSubmitter.check` / `cancel`; PGlite "Cancel it: under the operation lock…", "**the original request arriving after cancellation and a new submission: only the new submission records**", "0106's pur_op_begin is 0096's, unchanged but for…"; two sessions 1–3 (`2bb_concurrency.mjs`); acceptance C3–C5, D1–D5; phone "Check is read only…", "Cancel: the server settles it…", "the original arriving after the cancel and a new submission is refused…", "a cancel whose answer was lost…", "Send again of a cancelled id is refused…", "a changed quantity after a timeout: only once the server cancels the id…", "Cancel it and change, when the server finds it was recorded…", "Cancel with no signal…", "after a restart, Cancel it on the Stock tab…"; pilot P13d |
 | The user's review of rev 1 (lost answers) | R101–R103; `StockSubmission`, `StockSubmitter`, `PrefsStockPendingStore`, `StockSending`, `UnresolvedBox`; tests — **changed quantity after a time-out**: "a lost answer locks the form…", "a changed quantity after a timeout: only once the server cancels the id…", "Send again sends the saved payload byte for byte…", "a payload never travels without its own operation id"; **reopening**: "closing the form keeps it…", "closed, then opened again: the shell keeps the Stock tab…"; **restart**: "after a restart with no signal: it is still there and nothing is sent by itself", "after a restart with signal: a check (read only) finds it was recorded…", "the settings file keeps it word for word across a fresh read…", "after a restart, another account on the same phone neither sees nor sends it"; also "a lost answer that was in fact recorded…", "an unknown error … is unsure too", "a refusal on the first Send settles it; on a Send again it does not…", "nothing is sent or cancelled by itself…"; PGlite "a repeated operation id gets the first answer…"; pilot P13–P13d |
 | Q28 (who sees values) | R92; no value field in `stock_models.dart`; tests "stock on: the tab shows quantities per place, and never a peso", "Recent: cost states without values…"; 0106 test "0106 changes nothing else…" (no money key for workers); pilot P7, P18–P19 |
@@ -6291,14 +6698,15 @@ No placeholders. Every task ends with its whole suite green on its own.
 
 ## Proof
 
-Built in scratch clones: Dacs Web on `db54690` — Task 1 = `6e23d32`; WorkMate on `7996311` — Task 2 = `9e71fb4`, Task 3 = `a7b06ad` (revision 2 was `3dedc50`; `253cdce` / `3ec1d19`; revision 1 `7e93f40`; `88f3dea` / `c294da4`).
+Built in scratch clones: Dacs Web on `db54690` — Task 1 = `6e23d32` (committed by the user as `19b9b5c`, every file identical); WorkMate on `7996311` — Task 2 = `b20f74f`, Task 3 = `840e0bc` (revision 3 was `9e71fb4` / `a7b06ad`; revision 2 `3dedc50`; `253cdce` / `3ec1d19`; revision 1 `7e93f40`; `88f3dea` / `c294da4`).
 
+- **Revision 4 (the user's review of Task 2: unreadable saved data).** Revision 3 skipped a saved entry it could not read — so it no longer blocked new sends and the next save erased it. Now the store reads entry by entry and keeps an unreadable one exactly as stored (`StockPendingLoad`: readable, unreadable, damaged), every save writes it back, a damaged stored text refuses every save, and only the server settling an id removes an entry (`dropUnreadable`). Tests on the real settings-file store: **malformed data cannot unblock a new send** — a damaged entry of this account blocks (Check `none` keeps it; Cancel → the server's `cancelled` → only then it goes and a send is allowed; its payload never sent), an entry with no readable account blocks every account, one with no readable operation id blocks its account, a text that is not a list blocks everything; **nor disappear on the next save** — another account's damaged entry stays word for word across a new submission's save and the save that settles it, a no-account entry survives a direct save, a damaged text is left untouched by save and drop; plus a damaged entry the server had recorded (Check, it goes, nothing sent), storage turning unreadable while open (the new submission is not sent, the form stays editable, nothing new goes after), and readable entries beside damaged ones. Screen tests: the Stock tab shows a damaged record with Check and Cancel and no Send again, holds back new stock records, and settles it on Cancel; with no signal Cancel changes nothing; damaged storage shows the recovery error and its text is never touched; with no store on the phone there is no Stock tab. The in-memory store moved to `test/stock/stock_fakes.dart`. Writing it found a gap from revision 2: a save failing before a new submission's first send locked its form on a submission no longer kept (no buttons) — now that submission is refused (nothing left the phone) and new sends stop. 0106 and Task 1 are unchanged.
 - **Revision 3 (the user's review: the server settles, not a clock).** 0106 now holds the settling on the server: `pur_op_cancel` takes the very lock every write takes first (`pur_op_begin`'s, per account and id) and either reports `recorded` or writes a `cancelled` mark; `pur_op_begin` — 0096's, byte for byte but for the new refusal (a test reverses the change and compares) — refuses a cancelled id `OP_CANCELLED`; `pur_op_state` reads. **The test the review asked for**, on PGlite: the original request (4) is cancelled before it arrives, a new submission (6) records, then the original arrives and is refused — one issue of 6, 4 left in the warehouse, the original's id `cancelled`, the new one `recorded`. On **real PostgreSQL, two sessions** (`2bb_concurrency.mjs`, 15 rounds each): a cancel started while a recording holds the lock **waits** and then reports `recorded` (the record stands); a recording started while a cancel holds the lock **waits** and then is refused `OP_CANCELLED` (nothing recorded); both released together (the cancel 0–40 ms late) — 11 recorded-and-reported, 4 cancelled-and-refused, never both, no deadlock. Also: a cancel of a recorded id changes nothing; cancelling twice gives the same answer; ids are each account's own (a buyer cancelling the id staff@ recorded cancels only the buyer's own, and staff@'s record stands); a cancelled id is refused by issue, receipt and leftovers alike; signed-in only. The live acceptance script gains C3–C5 (grants) and D1–D5 (a fresh id reads `none`, cancels to `cancelled`, then the lock refuses it — all rolled back), and fails as it should on a database whose `pur_op_begin` is 0096's or whose cancel is open to anon. Writing D5 found that a stock write checks "stock on / may record" **before** the lock — so while stock is off a late request stops at `STOCK_OFF`; still never recorded, and D5 calls the lock itself. On the phone the two-minute rule is gone: Check never unlocks anything ("Not recorded yet — it may still arrive. Send it again, or cancel it."), Cancel unlocks the form only on the server's `cancelled`, closes it as recorded on `recorded`, and changes nothing without an answer; a Send again refused for another reason does not settle it, `OP_CANCELLED` does; a cancel whose answer was lost is settled by a later Check; checking on open never sends or cancels.
 - **Revision 2 (lost answers)** still stands: id and payload saved together before sending; a lost answer locks the form; Send again sends the saved payload byte for byte; nothing new until settled; kept across closing and restarting; never sent by itself; one account's own — with its tests for a changed quantity after a time-out, reopening (the Stock tab keeps it, even switched off) and a restart (the settings file written, the app torn down, read afresh: no signal — still there, nothing sent; signal — a recorded one found by Check and dropped; another account neither sees nor sends it).
 - **Task 1:** `npm test` green (41 suites, 1,319 checks); `npm run test:sql` green (**34 suites, 1,010 checks**): `2bb_phone`'s 16 — From stock for workers and leaders (line and each weekly portion), a return keeping it and a reversal taking it back, 0106's answer equal to 0085's key for key apart from `from_stock`, the grant; the settling tests above and the first-answer replay; the acceptance script passing as written **and failing** when it should; the **whole pilot simulated** beside real data and cleaned (dry run changes nothing; only real rows left; history guards back on); every clean-up refusal (5 + 9 spoiled pilots) and its after-checks stopping four broken copies — and `2bb_concurrency`'s 3. Every earlier suite unchanged (the simulated pilot runs purchases, matches, receipts, issues, returns, moves, cost moves, counts and opening stock through 0106's `pur_op_begin`).
-- **Tasks 2–3:** `flutter analyze` clean; `flutter test` **970** after Task 2 and **1,002** after Task 3 (Task 2 stands green on its own). The fake stock server answers a repeated id like `pur_ops` and refuses a cancelled one like 0106; the screen tests run the real buyer shell over it.
+- **Tasks 2–3:** `flutter analyze` clean; `flutter test` **977** after Task 2 and **1,013** after Task 3 (Task 2 stands green on its own). The fake stock server answers a repeated id like `pur_ops` and refuses a cancelled one like 0106; the screen tests run the real buyer shell over it.
 - **Found while building:** the request line chooser kept its choice when the item or destination changed — now it starts afresh; the shell's first stock refresh notified during start-up — the listener is added after it; the leftover list used Flutter's deprecated radio API — now `RadioGroup`; the shell had no way back for a failed pilot — **Switch stock off…** (R97); a settled refusal of a Send again reopens the form with the reason (nothing was recorded) instead of closing it.
-- **Breakage run: 107 / 107 caught** — each rule broken on purpose, one at a time, and a suite must fail. For revision 3, 18 new breaks: on the server — the lock ignoring a cancelled id, the cancel taking another lock or no lock, a recorded operation reported cancelled, a cancel that leaves the id usable, Check reading a cancel as recorded, anon allowed to cancel, another account's id looked at, the acceptance script not checking the lock's refusal; on the phone — a refusal of a Send again taken as final, `OP_CANCELLED` on a Send again left unsure, a Check's `none` taken as settled, dropping without the server's word, a Check that cancels, checking all that cancels, unlocking with no answer, a `recorded` answer to Cancel taken as cancelled, `OP_CANCELLED` read as an unknown error. The first run missed one — another account's id looked at by the cancel; the test had checked per-account *state* but not per-account *cancel* — closed (a buyer cancelling the id staff@ recorded), then caught. Revision 2's five timer breaks were removed with the timer; the rest (revisions 1–2: 0106, the acceptance script, the clean-up and each of its 14 refusals, Switch stock off, the phone's screens, forms, models and lost-answer handling) are all caught. Earlier runs: revision 2 94 / 94 (one gap closed), revision 1 75 / 75 (five gaps and one mis-written break closed).
+- **Breakage run: 119 / 119 caught** — each rule broken on purpose, one at a time, and a suite must fail. For revision 4, 13 new breaks: damaged storage read as empty, an unreadable entry skipped on load, a save dropping unreadable entries, a save overwriting damaged storage, any text taken as an id, unreadable entries not blocking, an entry of no known account not blocking, an unreadable entry dropped without the server's word, a damaged entry's Check `none` taken as settled, a damaged entry cleared with no answer, storage failing mid-way not stopping new sends, no recovery error, the damaged entry not shown — the first run missed one (the damaged record's box with no signal), closed with a test, then caught; four older breaks were re-aimed where revision 4 repeated their code (each twin now broken on its own) and one, for the skipping it replaced, was dropped. For revision 3, 18 new breaks: on the server — the lock ignoring a cancelled id, the cancel taking another lock or no lock, a recorded operation reported cancelled, a cancel that leaves the id usable, Check reading a cancel as recorded, anon allowed to cancel, another account's id looked at, the acceptance script not checking the lock's refusal; on the phone — a refusal of a Send again taken as final, `OP_CANCELLED` on a Send again left unsure, a Check's `none` taken as settled, dropping without the server's word, a Check that cancels, checking all that cancels, unlocking with no answer, a `recorded` answer to Cancel taken as cancelled, `OP_CANCELLED` read as an unknown error. The first run missed one — another account's id looked at by the cancel; the test had checked per-account *state* but not per-account *cancel* — closed (a buyer cancelling the id staff@ recorded), then caught. Revision 2's five timer breaks were removed with the timer; the rest (revisions 1–2: 0106, the acceptance script, the clean-up and each of its 14 refusals, Switch stock off, the phone's screens, forms, models and lost-answer handling) are all caught. Earlier runs: revision 2 94 / 94 (one gap closed), revision 1 75 / 75 (five gaps and one mis-written break closed).
 - Every file was restored and compared byte for byte after each breakage run.
 - **Not tested here:** `main.dart`'s lines wiring the real stock client and the settings-file store (Task 4's S1 and Task 5's P1, P13b and P13d check them on the phone), and `SupabaseStockRemote` against the live server (the acceptance script checks the server side live; the pilot the phone). The live database was not changed; one read-only query on 27 Oct (role settings).
 
@@ -6306,7 +6714,7 @@ Built in scratch clones: Dacs Web on `db54690` — Task 1 = `6e23d32`; WorkMate 
 
 The plan's own text was applied to fresh clones of both real repos — Dacs Web at `db54690`, WorkMate at `7996311` (cloned with `core.autocrlf=false` and `core.longpaths=true`; no signing key in either) — every Create block written as given, every Modify block through `git apply --ignore-whitespace` (after `--check`), then Task 1's CRLF command:
 
-- **Clean clones:** Dacs Web 12 blocks, **all 12 files byte-identical** to the tested build (`6e23d32`); WorkMate 27 blocks, **all 27 files byte-identical** (`a7b06ad`); no other file touched in either.
+- **Clean clones:** Dacs Web 12 blocks, **all 12 files byte-identical** to the tested build (`6e23d32`); WorkMate 27 blocks, **all 27 files byte-identical** (`840e0bc`); no other file touched in either.
 - **With the user's own uncommitted one-space `admin.html` edit made first:** the same — `admin.html` = the tested file plus that edit.
-- **Task 1 alone** (a third clone): its 12 files identical to `6e23d32`; there `npm test` passes (41 suites, 1,319 checks), `2bb_phone.pglite.mjs` 16 / 16 and `2bb_concurrency.mjs` 3 / 3 (real PostgreSQL).
-- **The rehearsed WorkMate copy:** `flutter test` → 1,002 pass.
+- **Task 1 alone** (a third clone): its 12 files identical to `6e23d32` (and the user's commit `19b9b5c` holds exactly those files).
+- **The rehearsed WorkMate copy:** `flutter test` → 1,013 pass.
