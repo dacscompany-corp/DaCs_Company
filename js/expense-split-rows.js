@@ -73,11 +73,13 @@
     }
 
     // The billing period column for a (grouped) row: "Billing #1 + Billing #2"
-    // for a split. labelOf(periodId) returns a period's label or ''.
+    // for a split; a part on Cover reads "Billing #1 (Cover)". Owner screens
+    // only (reports, CSV, print). labelOf(periodId) returns a period's label or ''.
     function periodLabel(r, labelOf) {
         if (!r._parts) return labelOf(r.projectId) || '';
         return r._parts.map(function (p) {
-            return labelOf(p.projectId) || (p.projectId ? '' : 'No billing period');
+            var label = labelOf(p.projectId) || (p.projectId ? '' : 'No billing period');
+            return label && p.coverExpense ? label + ' (Cover)' : label;
         }).filter(Boolean).join(' + ');
     }
 

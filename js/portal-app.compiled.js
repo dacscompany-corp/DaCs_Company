@@ -3280,15 +3280,17 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
     sorted.forEach((m, i) => map.set(m.id, m.fundingType === "president" ? i + 1 + " (Cover)" : i + 1));
     return map;
   }, [childMonths]);
-  // "Billing #1 ₱5,000 · Billing #2 ₱3,000" for a split expense. Staff see the
-  // periods without pesos.
+  // "Billing #1 ₱5,000 · Billing #1 (Cover) ₱3,000" for a split expense. Staff
+  // see each billing period once — no pesos per part and no Cover: the parts
+  // would show how much budget was left.
   const splitChargedTo = (m) => {
     const label = (p) => {
       if (!p.projectId) return "No billing period";
       const n = billingByProjectId.get(p.projectId);
       return n ? "Billing #" + n : "Billing period";
     };
-    const parts = m._parts.map((p, i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: p.id || i }, i > 0 && " \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)", fontWeight: 600 } }, label(p)), _hideStockCost(m) ? "" : " ₱" + peso(p.amount)));
+    const shown = _staff() ? m._parts.filter((p, i, all) => all.findIndex((q) => label(q) === label(p)) === i) : m._parts;
+    const parts = shown.map((p, i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: p.id || i }, i > 0 && " \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)", fontWeight: 600 } }, label(p) + (!_staff() && p.coverExpense ? " (Cover)" : "")), _staff() ? "" : " ₱" + peso(p.amount)));
     return /* @__PURE__ */ React.createElement(React.Fragment, null, parts, m._partial && " \xB7 part of a larger expense");
   };
   // A purchase (0096) is edited / voided as a whole. An older split is changed
@@ -3483,11 +3485,12 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
 function ItemDetailsModal({ item, billingNum, billingOf, onClose, onOpenImage, onPrint }) {
   // A split expense: one line per part. An older split is edited / deleted
   // part by part here; a purchase (0096) is edited / voided as a whole.
+  // Staff see the parts without pesos or Cover (the row's total stays).
   const oldSplit = !!item._parts && !(window.expIsPurchaseRow && window.expIsPurchaseRow(item));
   const partsList = item._parts ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, item._parts.map((p, i) => {
     const n = p.projectId && billingOf ? billingOf(p.projectId) : null;
     const btn = { padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid #e5e7eb", background: "#fff", color: "#374151" };
-    return /* @__PURE__ */ React.createElement("div", { key: p.id || i, style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("b", null, !p.projectId ? "No billing period" : n ? "Billing #" + n : "Billing period"), /* @__PURE__ */ React.createElement("span", null, _hideStockCost(m) ? "" : ["\u20B1 ", peso(p.amount)]), p.coverExpense && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "#b45309", fontWeight: 600 } }, "Cover"), oldSplit && /* @__PURE__ */ React.createElement("button", { type: "button", style: btn, onClick: () => {
+    return /* @__PURE__ */ React.createElement("div", { key: p.id || i, style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("b", null, !p.projectId ? "No billing period" : n ? "Billing #" + n : "Billing period"), /* @__PURE__ */ React.createElement("span", null, _staff() ? "" : ["\u20B1 ", peso(p.amount)]), !_staff() && p.coverExpense && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "#b45309", fontWeight: 600 } }, "Cover"), oldSplit && /* @__PURE__ */ React.createElement("button", { type: "button", style: btn, onClick: () => {
       onClose();
       window.openEditExpenseModal && window.openEditExpenseModal(p.id);
     } }, "Edit"), oldSplit && /* @__PURE__ */ React.createElement("button", { type: "button", style: { ...btn, color: "#b91c1c", borderColor: "#fecaca" }, onClick: () => {

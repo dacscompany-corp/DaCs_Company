@@ -90,6 +90,11 @@ test('period label joins the parts; a part with no period says so', () => {
   eq(S.periodLabel(g, id => labels[id] || ''), 'Billing #1 + Billing #2 + No billing period');
   eq(S.periodLabel({ projectId: 'b2' }, id => labels[id] || ''), 'Billing #2');
 });
+test('a part on Cover says so — not the billing period twice (F2, 2B-b pilot)', () => {
+  const labels = { b1: 'Billing #1' };
+  const g = S.groupSplitRows([leg(1, 2, 200, 'b1'), leg(2, 2, 100, 'b1', { coverExpense: true })])[0];
+  eq(S.periodLabel(g, id => labels[id] || ''), 'Billing #1 + Billing #1 (Cover)');
+});
 test('purchase rows are told apart from older splits', () => {
   ok(S.isPurchaseRow({ purchaseLineId: 'L' }), 'line');
   ok(S.isPurchaseRow({ purchaseChargeId: 'C' }), 'charge');

@@ -283,6 +283,32 @@ async function test(name, fn) {
     const modal = h.render('ItemDetailsModal', { item: costIn, billingNum: 1, billingOf: () => 1, onClose() {}, onOpenImage() {}, onPrint() {} });
     assert(role === 'staff' ? !/1,234|1234/.test(JSON.stringify(modal)) : text(modal).includes('1,234'), role + ' details: ' + text(modal));
   });
+  // F2 (2B-b pilot): a purchase split ₱200 on the billing period + ₱100 on
+  // Cover. The owner sees each part and which is Cover; staff see the total
+  // they entered and the period once — no per-part pesos (they would show the
+  // budget left) and never Cover. The details window opens for a split row.
+  const part = (i, amount, extra) => ({ ...material, id: 'w' + i, name: 'Wire (' + i + '/2)', amount, projectId: 'p1',
+    splitGroup: 'purchase:P9:1', splitIndex: i, splitTotal: 2, docUrls: {}, firstReceipt: '', receipts: [], ...extra });
+  const wireParts = [part(1, 200, { purchaseLineId: 'L9' }), part(2, 100, { purchaseLineId: 'L9', coverExpense: true })];
+  for (const role of ['staff', 'owner']) await test(role + ': a split purchase on its billing period and Cover', () => {
+    const h = harness(role);
+    h.window.expGroupSplitRows = require('../js/expense-split-rows.js').groupSplitRows;
+    h.window.expIsPurchaseRow = require('../js/expense-split-rows.js').isPurchaseRow;
+    const tree = h.render('MaterialDrill', { ...materialProps, materialTx: wireParts });
+    const out = text(tree).replace(/\s+/g, ' ');
+    assert(out.includes('300'), 'the row\'s total: ' + out);
+    if (role === 'staff') {
+      assert(!/₱200|₱100|\b200\.00\b|\b100\.00\b/.test(out) && !/Cover/.test(out), 'staff see a part\'s pesos or Cover: ' + out);
+      assert.equal((out.match(/Billing #1/g) || []).length, 1, 'the period once: ' + out);
+    } else {
+      assert(/Billing #1 ₱200(\.00)? · Billing #1 \(Cover\) ₱100/.test(out), 'the owner sees each part and the Cover one: ' + out);
+    }
+    const row = h.window.expGroupSplitRows(wireParts, 'name')[0];
+    const modal = h.render('ItemDetailsModal', { item: row, billingNum: 1, billingOf: () => 1, onClose() {}, onOpenImage() {}, onPrint() {} });
+    const m = text(modal).replace(/\s+/g, ' ');
+    if (role === 'staff') assert(!/₱ 200|₱ 100/.test(m) && !/Cover/.test(m), 'staff details show a part\'s pesos or Cover: ' + m);
+    else assert(/₱ 200/.test(m) && /₱ 100/.test(m) && /Cover/.test(m), 'owner details: ' + m);
+  });
   await test('a stock cost move is read-only in Project Control: no part-by-part edit, and it maps its link', () => {
     assert(/stkCostMoveId: d\.stkCostMoveId \|\| null,/.test(source), 'mapExpense keeps the link');
     assert(/const isOldSplit = \(m\) => [^\n]*window\.expIsStockCostRow\(m\)\);/.test(source), 'never edited part by part');
