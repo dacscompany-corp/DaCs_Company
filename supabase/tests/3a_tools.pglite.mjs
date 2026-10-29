@@ -6,6 +6,8 @@
 // memory) over the 2B-b suite's tables. Nothing here talks to the live
 // database; supabase/tests/3a_acceptance.sql repeats the key cases there,
 // rolled back.
+// --with-0108: and 0108 (crew names with their worker numbers, TF1) on top —
+// every test here holds, and section L checks the names.
 // ════════════════════════════════════════════════════════════════════
 import { PGlite } from '@electric-sql/pglite';
 import fs from 'node:fs';
@@ -30,6 +32,8 @@ const M104 = mig('0104_stock.sql');
 const M105 = mig('0105_stock_cost_moves.sql');
 const M106 = mig('0106_workmate_phone_stock.sql');
 const M107 = mig('0107_tools.sql');
+const WITH_0108 = process.argv.includes('--with-0108');
+const M108 = WITH_0108 ? mig('0108_tools_crew_numbers.sql') : '';
 const M85 = mig('0085_workmate_requests.sql');
 const M51 = mig('0051_attendance_worker_owner.sql');
 const REQUESTS_0085 = `
@@ -127,6 +131,7 @@ async function fresh(opts = {}) {
   await db.exec(REQUESTS_0085);
   await db.exec(M106);
   await db.exec(M107);
+  if (M108) await db.exec(M108);
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
     ('${STAFF}', 'staff', '${OWNER}', 'active', null, 'staff@dacs.test', 'Ana'),
@@ -1067,6 +1072,58 @@ await test('the clean-up stops (and changes nothing) when ZZ and real tools are 
     eq(await snapshot(p.db), before, why + ': nothing changed');
   }
 });
+
+// ── L. 0108 (TF1): the crew by name and worker number, everywhere Tools names a person ──
+if (WITH_0108) {
+  const numbered = async () => {
+    const db = await fresh();
+    await db.exec(`update profiles set worker_no = 7 where id = '${WORKER}';
+                   update profiles set worker_no = 21 where id = '${LEADER}';
+                   update profiles set worker_no = 5 where id = '${OWNER}';
+                   insert into profiles (id, role, owner_id, status, display_name, worker_no)
+                     values ('00000000-0000-0000-0000-0000000000d9', 'worker', '${OWNER}', 'active', '  ', 9);`);
+    return db;
+  };
+  await test('0108: a named worker or team leader reads "Name (W-0007)"; one with no name stays "W-0009"; office and owner unchanged', async () => {
+    const db = await numbered();
+    const ch = await rpc(db, STAFF, 'tl_choices', []);
+    eq(ch.people.map(p => p.name), ['admin', 'admin-exp', 'Ana', 'Juan', 'Lito (W-0021)', 'Mark (W-0007)', 'Pia', 'Rey', 'W-0009'],
+       'a number on an owner account is not shown; a worker with no number keeps the name alone');
+  });
+  await test('0108: the numbered name is on the tool, its records, the Out list, Mark as Complete and the shopping list', async () => {
+    const db = await numbered();
+    const g = await item(db, 'Grinder');
+    const f = await folder(db, 'House');
+    const rq = await request(db, f, { item: g, quantity: 1, description: 'Grinder' });
+    const t = await one1(db, STAFF, { item_id: g });
+    await issue(db, STAFF, { tool_id: t, holder_id: WORKER, folder_id: f, request_line_id: rq.line });
+    await handover(db, STAFF, { tool_id: t, holder_id: LEADER, folder_id: f });
+    const one_ = await rpc(db, STAFF, 'tl_tool', [t]);
+    eq(one_.holder_name, 'Lito (W-0021)');
+    eq(one_.records.filter(r => r.kind !== 'register').map(r => [r.kind, r.holder_name, r.from_holder_name]),
+       [['handover', 'Lito (W-0021)', 'Mark (W-0007)'], ['issue', 'Mark (W-0007)', null]]);
+    eq((await rpc(db, STAFF, 'tl_overview', [])).out.map(x => x.holder_name), ['Lito (W-0021)']);
+    eq((await rpc(db, OWNER, 'tl_project_out', [f])).map(x => x.holder_name), ['Lito (W-0021)']);
+    eq((await rpc(db, BUYER, 'tl_line_tools', [`{${rq.line}}`]))[rq.line].tools.map(x => x.holder_name), ['Mark (W-0007)'],
+       'the shopping list names whom it was issued to for the line');
+  });
+  await test('0108 changes tl_person_name alone, and only for the crew; nobody may call it', async () => {
+    const mine = fnText(M108, 'tl_person_name');
+    const theirs = fnText(M107, 'tl_person_name');
+    eq(mine.replace(`
+                   || case when nullif(btrim(p.display_name), '') is not null and p.worker_no is not null
+                           then ' (W-' || lpad(p.worker_no::text, 4, '0') || ')' else '' end`, '')
+           .replace(`case when p.role in ('worker', 'teamLeader')
+              then pr_person_name(p.id)
+              else`, `case when p.role in ('worker', 'teamLeader') then pr_person_name(p.id) else`),
+       theirs);
+    eq((M108.match(/create or replace function/g) || []).length, 1, 'one function');
+    const db = await fresh();
+    for (const role of ['authenticated', 'anon']) {
+      eq((await one(db, `select has_function_privilege($1, 'tl_person_name(uuid)', 'execute') x`, [role])).x, false, role);
+    }
+  });
+}
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) { console.log('\nFAILURES:\n  ' + failures.join('\n  ')); process.exit(1); }
