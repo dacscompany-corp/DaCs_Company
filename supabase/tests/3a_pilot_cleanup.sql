@@ -15,7 +15,9 @@
 --               billing periods, budgets and settings: the folder cascade);
 --   items     — every catalogue item whose name starts "ZZ 3a";
 --   tools     — every tool of a ZZ item or from a ZZ purchase, with its
---               records, request fills and history;
+--               records, request fills and history — and every tool of an
+--               older "ZZ …" item (the pilot's TOOL-0007 was registered on
+--               "ZZ pilot drill"); that older item itself is kept;
 --   purchases — every purchase with a line on a ZZ project, or a warehouse
 --               line whose item name starts "ZZ 3a" (all of its lines must be ZZ);
 --   stock     — every stock record of a ZZ item or of a ZZ purchase (the
@@ -35,7 +37,7 @@ do $$
 declare
   v_dry boolean := true;
   zf uuid[]; zi uuid[]; zp uuid[]; zl uuid[]; zc uuid[]; zloc uuid[]; zlot uuid[]; zr uuid[]; zcm uuid[];
-  zreq uuid[]; zrl uuid[]; zpor uuid[]; zper uuid[]; zt uuid[]; ztr uuid[];
+  zreq uuid[]; zrl uuid[]; zpor uuid[]; zper uuid[]; zt uuid[]; ztr uuid[]; zany uuid[];
   real_tools bigint; real_tl_rec bigint;
   real_exp_n bigint; real_exp_sum numeric; real_pur bigint; real_rec bigint; real_mov bigint; real_cm bigint; real_req bigint;
   n int; real_rec_tmp int; msg text := '';
@@ -118,10 +120,12 @@ begin
     raise exception 'GUARD: a cost move links a ZZ project and real stock (or the other way)';
   end if;
 
-  -- Tools: ZZ items and ZZ purchases only, on ZZ projects or the warehouse only.
-  select coalesce(array_agg(id), '{}') into zt from tl_tools where item_id = any(zi) or purchase_id = any(zp);
+  -- Tools: ZZ items (any "ZZ …" item — no tool existed before this pilot)
+  -- and ZZ purchases only, on ZZ projects or the warehouse only.
+  select coalesce(array_agg(id), '{}') into zany from pr_catalog_items where name like 'ZZ %';
+  select coalesce(array_agg(id), '{}') into zt from tl_tools where item_id = any(zany) or purchase_id = any(zp);
   select coalesce(array_agg(id), '{}') into ztr from tl_records where tool_id = any(zt);
-  if exists (select 1 from tl_tools where id = any(zt) and not item_id = any(zi)) then
+  if exists (select 1 from tl_tools where id = any(zt) and not item_id = any(zany)) then
     raise exception 'GUARD: a tool from a ZZ purchase was registered as a real catalogue item';
   end if;
   if exists (select 1 from tl_records where id = any(ztr) and folder_id is not null and not folder_id = any(zf))
@@ -262,7 +266,7 @@ begin
   if exists (select 1 from folders where name like 'ZZ 3a pilot%')
      or exists (select 1 from pr_catalog_items where name like 'ZZ 3a%')
      or exists (select 1 from purchase_lines where item_name like 'ZZ 3a%')
-     or exists (select 1 from tl_tools t join pr_catalog_items c on c.id = t.item_id where c.name like 'ZZ 3a%') then
+     or exists (select 1 from tl_tools t join pr_catalog_items c on c.id = t.item_id where c.name like 'ZZ %') then
     raise exception 'GUARD: a ZZ row is still there';
   end if;
   if (select count(*) from expenses) <> real_exp_n or (select coalesce(sum(amount), 0) from expenses) <> real_exp_sum then

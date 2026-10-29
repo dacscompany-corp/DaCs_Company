@@ -1018,6 +1018,9 @@ async function pilot() {
   await decide(db, OWNER, (await lost(db, STAFF, t2)).record_id, false, 'on site');
   const t3 = await one1(db, STAFF, { item_id: g, at: A, holder_id: WORKER, condition: 'missing_parts' });
   await issue(db, STAFF, { tool_id: await one1(db, STAFF, { item_id: g }), holder_id: WORKER, folder_id: A, request_line_id: req.line });
+  // The live pilot's slip: a tool registered on an older pilot's "ZZ pilot drill" (the item stays, its tools go).
+  const old = await item(db, 'ZZ pilot drill');
+  await one1(db, STAFF, { item_id: old, condition: 'damaged' });
   await as(db, '');
   return { db, real, A, B, job, g, drill, req, realReq, realTool, real2, t1, t2, t3, pur };
 }
@@ -1032,6 +1035,7 @@ await test('the pilot clean-up: the dry run changes nothing; the real run remove
   await cleanup(db, true);
   eq(num((await one(db, `select count(*) n from folders where name like 'ZZ 3a%'`)).n), 0);
   eq(num((await one(db, `select count(*) n from pr_catalog_items where name like 'ZZ 3a%'`)).n), 0);
+  eq(num((await one(db, `select count(*) n from pr_catalog_items where name = 'ZZ pilot drill'`)).n), 1, 'the older pilot item kept');
   eq(await all(db, `select id, number, state, holder_id from tl_tools order by number`), realBefore, 'the real tools, numbers and holders kept');
   eq(num((await one(db, `select count(*) n from tl_records`)).n), 3, 'their 3 records');
   eq(await still(db, p.realReq.line), stillReal, 'the real request as it was');
