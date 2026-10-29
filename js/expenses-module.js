@@ -7547,7 +7547,7 @@ async function _toolsOutNote(id) {
     } catch (_) { out = []; }
     if (!out.length) return '';
     return '\n\n' + out.length + (out.length === 1 ? ' tool is' : ' tools are') + ' still out on this project: '
-        + out.map(t => t.label + ' (' + t.holder_name + ')').join(', ')
+        + out.map(t => t.label + ' with ' + t.holder_name).join(', ')
         + '. They stay in Requests → Tools → Out until returned or handed over.';
 }
 async function markFolderComplete(id) {

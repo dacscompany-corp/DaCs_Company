@@ -149,11 +149,13 @@ test('pickers: completed projects only where the tool already is; requests of th
                  { line_id: 'l3', description: 'Any grinder', catalog_item_id: null, still_to_buy: 2, unit: 'pc', requester_name: 'Rey' },
                  { line_id: 'l4', description: 'Grinder', catalog_item_id: 'g', still_to_buy: 0, unit: 'pc', requester_name: 'Rey' }];
   eq(ta.requestOptions(lines, 'g').map(o => o.value), ['l1', 'l3'], 'its item or none, with something still to fill');
-  eq(ta.personLabel({ name: 'Lito', role: 'teamLeader', teams: ['Masons'] }), 'Lito (Masons)');
-  eq(ta.personLabel({ name: 'Ben', role: 'teamLeader', teams: [] }), 'Ben (team leader)');
-  eq(ta.personLabel({ name: 'Ana', role: 'staff', teams: [] }), 'Ana (office)', 'office staff may hold a tool (T1 = C)');
-  eq(ta.personLabel({ name: 'admin', role: 'owner' }), 'admin (owner)');
+  eq(ta.personLabel({ name: 'Lito', role: 'teamLeader', teams: ['Masons'] }), 'Lito · Masons');
+  eq(ta.personLabel({ name: 'Ben', role: 'teamLeader', teams: [] }), 'Ben · team leader');
+  eq(ta.personLabel({ name: 'Ana', role: 'staff', teams: [] }), 'Ana · office', 'office staff may hold a tool (T1 = C)');
+  eq(ta.personLabel({ name: 'admin', role: 'owner' }), 'admin · owner');
   eq(ta.personLabel({ name: 'Mark', role: 'worker', teams: [] }), 'Mark');
+  eq(ta.personLabel({ name: 'John Tapales (W-0007)', role: 'worker', teams: ['Team test'] }), 'John Tapales (W-0007) · Team test',
+     'two crew with one name told apart by the number the server adds (0108, TF1) — no brackets inside brackets');
 });
 
 test('records and places in words', () => {
@@ -163,6 +165,11 @@ test('records and places in words', () => {
   eq(ta.recordText({ kind: 'register', condition: 'good' }), 'Registered at the warehouse');
   eq(ta.whereText({ state: 'issued', holder_name: 'Mark', folder_name: 'House', days: 9 }), 'Mark · House · 9 days');
   eq(ta.whereText({ state: 'repair', condition: 'needs_repair' }), 'Warehouse · Needs repair');
+  eq(ta.whereText({ state: 'retire_pending', condition: 'damaged' }), 'Warehouse · Damaged beyond repair', 'waiting for a Retire: its place and condition (TF2)');
+  eq(ta.whereText({ state: 'lost_pending', condition: 'good' }), 'Last at the warehouse', 'reported lost from the warehouse');
+  eq(ta.whereText({ state: 'lost', condition: 'missing_parts' }), 'Last at the warehouse');
+  eq(ta.whereText({ state: 'lost', holder_name: 'Rey', folder_name: 'House' }), 'Last with Rey · House');
+  eq([ta.whereText({ state: 'retired' }), ta.whereText({ state: 'cancelled' })], ['', ''], 'nothing to say once retired or cancelled');
   eq(ta.whereText({ state: 'issued', holder_name: 'Mark', folder_name: 'House', days: 2, condition: 'missing_parts' }),
      'Mark · House · 2 days · Missing parts — not usable until repaired');
   eq(ta.recordText({ kind: 'repaired', holder_name: 'Mark', folder_name: 'House' }), 'Repaired — still with Mark · House');
@@ -254,6 +261,7 @@ test('Mark as Complete names the tools still out — never blocks (Q20)', () => 
   ok(/if \(!window\.currentToolsOn\) return '';/.test(note), 'nothing while tools are off');
   ok(/rpc\('tl_project_out', \{ p_folder: id \}\)/.test(note), 'the server lists them (the project and its jobs)');
   ok(/catch \(_\) \{ out = \[\]; \}/.test(note), 'a failed read never blocks completing');
+  ok(/out\.map\(t => t\.label \+ ' with ' \+ t\.holder_name\)\.join\(', '\)/.test(note), '"TOOL-0004 with John Tapales (W-0007)" — no brackets inside brackets');
   ok(!/return;|throw/.test(note.replace(/return '';/g, '').replace(/return '\\n\\n'/, '')), 'no way to stop the completion');
   ok(/document\.getElementById\('deleteConfirmMsg'\)\.textContent = message;/.test(exp), 'shown as text (names cannot inject markup)');
   ok(/t\.folder_id in \(select f\.id from folders f where f\.owner_id = v_owner\s+and \(f\.id = p_folder or f\.parent_folder_id = p_folder\)\)/.test(SQL), 'server: the project and its Additional Works');
@@ -267,6 +275,8 @@ test('the shopping list shows tools issued for a line (bought for it, or counted
   ok(/' tools issued · '/.test(list), 'each weekly portion\'s');
   ok(/\(t\.counted \? '' : ', bought for this'\)/.test(list), 'a tool bought for the line says so (counted through its purchase)');
   ok(/esc\(t\.label\)/.test(list) && /esc\(t\.holder_name\)/.test(list), 'escaped');
+  ok(/'<\/strong> with ' \+\s+esc\(t\.holder_name\) \+ \(t\.counted \? '' : ', bought for this'\)\)\.join\('; '\)/.test(list),
+     '"TOOL-0004 with John Tapales (W-0007), bought for this" — tools set apart by semicolons');
 });
 
 test('tool photos: their own folder, office only, in the storage map', () => {

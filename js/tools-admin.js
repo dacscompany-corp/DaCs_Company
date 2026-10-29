@@ -68,8 +68,10 @@
         if (t.state === 'issued') return t.holder_name + ' · ' + t.folder_name + ' · ' + daysText(t.days) +
             (t.condition && t.condition !== 'good' ? ' · ' + conditionLabel(t.condition) + ' — not usable until repaired' : '');
         if ((t.state === 'lost' || t.state === 'lost_pending') && t.holder_name) return 'Last with ' + t.holder_name + (t.folder_name ? ' · ' + t.folder_name : '');
+        if (t.state === 'lost' || t.state === 'lost_pending') return 'Last at the warehouse';
         if (t.state === 'available') return 'Warehouse';
-        if (t.state === 'repair') return 'Warehouse · ' + conditionLabel(t.condition);
+        // A Retire waits on a tool Under repair — still at the warehouse, in its condition (TF2).
+        if (t.state === 'repair' || t.state === 'retire_pending') return 'Warehouse · ' + conditionLabel(t.condition);
         return '';
     }
 
@@ -147,10 +149,11 @@
         return out;
     }
 
-    // People as options: "Mark (Masons)", "Ana (office)". Anyone active in the company may hold a tool (T1 = C).
+    // People as options: "Mark (W-0007) · Masons", "Ana · office" — the crew's worker number comes with
+    // the name (0108, TF1). Anyone active in the company may hold a tool (T1 = C).
     const ROLE_LABEL = { teamLeader: 'team leader', staff: 'office', owner: 'owner' };
     function personLabel(p) {
-        return p.name + (p.teams && p.teams.length ? ' (' + p.teams.join(', ') + ')' : ROLE_LABEL[p.role] ? ' (' + ROLE_LABEL[p.role] + ')' : '');
+        return p.name + (p.teams && p.teams.length ? ' · ' + p.teams.join(', ') : ROLE_LABEL[p.role] ? ' · ' + ROLE_LABEL[p.role] : '');
     }
 
     // Projects to pick: not completed — and the tool's own project, kept even if completed.

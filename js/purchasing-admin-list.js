@@ -109,8 +109,8 @@
                   // 0107 (Q14): each tool issued for this line — one bought for it
                   // counts through its purchase, once.
                   (l._tools && l._tools.tools.length
-                    ? '<div class="pur-instock"><i data-lucide="wrench"></i> Issued: ' + l._tools.tools.map(t => '<strong>' + esc(t.label) + '</strong> (' +
-                      esc(t.holder_name) + (t.counted ? '' : ', bought for this') + ')').join(', ') + '</div>'
+                    ? '<div class="pur-instock"><i data-lucide="wrench"></i> Issued: ' + l._tools.tools.map(t => '<strong>' + esc(t.label) + '</strong> with ' +
+                      esc(t.holder_name) + (t.counted ? '' : ', bought for this')).join('; ') + '</div>'
                     : '') +
                 '</div>' +
                 figures(l) +
