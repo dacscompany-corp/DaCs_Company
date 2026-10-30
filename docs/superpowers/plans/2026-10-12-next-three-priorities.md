@@ -10,6 +10,8 @@ Why this order:
 
 Still waiting outside this list (not forgotten): **publish-day to-dos** for 1b-3 — deactivate ZZ pilot drill / ZZ test pipe (and RAM if it was a test), switch **Item history ON for the 10 open sites**, phone check.
 
+> **Correction (29 Oct 2026):** Item history was already **on** for all 10 open sites — Barlin since 12 Oct 10:40, the other nine since 12 Oct 12:48 (admin@). What remained is the clean-up and readiness in [2026-10-29-item-history-readiness.md](2026-10-29-item-history-readiness.md).
+
 ---
 
 ## 1. Fix the staff peso-amount leak in Project Control

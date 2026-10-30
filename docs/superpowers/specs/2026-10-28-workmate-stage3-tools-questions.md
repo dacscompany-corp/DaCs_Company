@@ -36,6 +36,8 @@ What does **not** exist yet:
 - **Outside jobs.** The company does not give or lend materials **or tools** to outside jobs. Outside-job material release was deferred on 28 Oct; tool lending to outside jobs (Q15 of 12 Oct) is deferred with it.
 - **Separate follow-ups, not part of this sheet:** turning on the Item history switch now that the app is published; letting office staff without the Buyer switch record stock on the phone.
 
+> **Correction (29 Oct 2026):** Item history was already **on** for all 10 open sites — Barlin since 12 Oct 10:40, the other nine since 12 Oct 12:48 (admin@). What remained is the clean-up and readiness in [2026-10-29-item-history-readiness.md](../plans/2026-10-29-item-history-readiness.md).
+
 ---
 
 ## A. Scope, plans and the phone
