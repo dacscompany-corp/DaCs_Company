@@ -57,7 +57,7 @@
 
 **Catalogue:** 6 items, all active — test: **ZZ test pipe** (5 Oct, brand ZZBrand, aliases "plug", "saksakan"), **ZZ pilot drill** (tool, 7 Oct, the 1a pilot's tool item), **RAM** (9 Oct, spec "1/2", used only by the 12 Oct pilot line); real: the three PVC items (12 Oct, the 1b-3 seeding).
 
-**The phone's saved copy** (WorkMate `lib/history/`): an item is saved only when a worker **opens its page** online (not from a search list); saved items show offline for 14 days. Each time **Find Previous Item opens**, the app asks the server which saved items are still visible (`pr_history_visible`) and forgets the rest — silently: with no signal it skips; on an error it only writes a debug line. Opening a no-longer-visible item's page online also forgets it, and **signing out wipes the phone's whole saved copy** (spec 1b §4.4).
+**The phone's saved copy** (WorkMate `lib/history/`): an item is saved only when a worker **opens its page** online (not from a search list); saved items show offline for 14 days. Each time **Find Previous Item opens**, the app asks the server which saved items are still visible (`pr_history_visible`) and forgets the rest — silently: with no signal it skips; on an error it only writes a debug line. Opening a no-longer-visible item's page online also forgets it, and **signing out wipes the phone's whole saved copy** (spec 1b §4.4). The **Add item list** (the catalogue a new request picks from) is kept on the phone too: it is replaced whenever *New request* opens with signal (`pr_catalog`, active items only), and offline the last saved list is shown — so after the clean-up a phone still offers the test items offline until it next opens *New request* online (found during the seed, 30 Oct; P4b).
 
 ## Rulings (review these)
 
@@ -969,7 +969,8 @@ index c1c36e0..a9a2550 100644
 | P1b | *(Claude)* Read the API log for the phone's `POST /rest/v1/rpc/pr_history_visible` after Task 2 Step 3's time | **Status 200** — the clean-up ran and got the server's answer, which the script proved is empty for W-0007 |
 | P2 | **Airplane mode on** → open Find Previous Item; search "pipe", "plug", "RAM" | **No test item** — the saved ZZ test pipe is gone. Airplane **off** |
 | P3 | **My requests** | W-0007's pilot requests still there, all **Cancelled**, with their own words (R7) |
-| P4 | **New request** on Barlin → pick an item | No ZZ test pipe, ZZ pilot drill or RAM; the three PVC items offered. **Back out without sending** |
+| P4 | **New request** on Barlin → pick an item | No ZZ test pipe, ZZ pilot drill or RAM; the three PVC items offered. **Back out without sending** (opening it with signal also replaces the phone's saved Add item list) |
+| P4b | Then **airplane mode on** → **New request** on Barlin → pick an item | The phone's saved Add item list shows **no ZZ test pipe, ZZ pilot drill or RAM**; the three PVC items still there. **Back out without sending**; airplane **off**. *If a test item still shows: with signal, open New request once more (that replaces the saved list), then repeat P4b; still there → record it as an app finding in the notes — online the server offers active items only* |
 | P5 | Only if Task 4 added a reference: search "sanitary" | The item with its photo and a *Historical reference* entry |
 
 *If the clean-up fails* — P1b shows no `pr_history_visible` call after the script, or not 200, or P2 still lists a test item:
@@ -1001,7 +1002,7 @@ index c1c36e0..a9a2550 100644
 | **Test that changed data is refused without changes** | `ih_pilot_close.pglite.mjs`: 18 changed-data cases, each run as dry run and as real run — refused with a `GUARD` before any change, naming what differs, and the database's fingerprint identical before and after |
 | Preserve real requests and all request history | None real exists (guarded); nothing deleted by hand; every change an office operation in the history; the 28 new events checked exactly (R1–R5) |
 | Explain how test items are hidden from search | R1 (no matched line, references already retired → nothing to show; `pr_history_visible` forgets them on phones), R2 (inactive → not offered for new use); checked for every crew member |
-| **The offline check proves the saved copy was cleaned; what to do if that fails** | R9; Task 3 S1–S2 (seed, proved offline), P1–P2 (clean-up run, confirmed in the API log, then offline), F1–F4 |
+| **The offline check proves the saved copy was cleaned; what to do if that fails** | R9; Task 3 S1–S2 (seed, proved offline), P1–P2 (clean-up run, confirmed in the API log, then offline), F1–F4; P4–P4b (the phone's saved Add item list refreshed online, then checked offline) |
 | Only verified references | R6, Task 4 — none from the system; only the user's evidence |
 | Correct the outdated notes | R8, Task 1 Steps 1 and 3 |
 | Switches unchanged | Global constraints; the script checks the 10 project rows are as before |
