@@ -1225,6 +1225,30 @@ Covered (every Still to buy): `pr_line_bought` = purchases + stock + tools. A re
 
 Names: every person on these screens comes from `tl_person_name` — since **0108** the crew as "Name (W-0007)" (two crew members may share a name), or "W-0007" with no name; office and owner accounts by their name or e-mail.
 
+## Reconciliation (0109) — WorkMate Stage 4
+
+The owner's checks — **outside the money model**: nothing here writes an expense row, a payment, a billing period or a client bill, or feeds Spent / Earned / Profit. Owner accounts allowed Expenses (`rec_owner`; staff never); petty cash, own money, returns, disputes and Overpaid reach the **main owner** only (the keys are left out for anyone else). Answers: `docs/superpowers/specs/2026-10-30-workmate-stage4-reconciliation-questions.md`.
+
+| Table | What it holds |
+|---|---|
+| `rec_cover_marks` | "Cover is right": `purchase_id` + `line_no` (lines are re-created by a correction), `seq` (only a line's newest mark applies), the line as marked (`item_name`, `folder_name`, `amount`, `purchase_date`, `line_key` — a fingerprint of its project, amount, date and rows), `reason`, `marked_by` / `marked_at`, `withdrawn_by` / `withdrawn_at` / `withdraw_reason`. Never deleted; changed only by its withdrawal (`HISTORY_LOCKED`) |
+| `rec_cost_row_log` | Every cost-move expense row as it is `added` or `removed` (triggers `rec_log_cost_rows_*` on `expenses`): `cost_move_id`, `expense_id`, `folder_id`, `project_id` (the billing period), `cover`, `amount`, `xact` (the transaction), `at`. An item = (cost move, `xact`, `change`): an approval or a reversal. Back-filled from the rows already there (`xact` 0). Append-only |
+| `rec_bill_checks` | "Bill checked" per item: `cost_move_id`, `xact`, `change`, `checked` (a tick or an un-tick), `note`, `checked_by` / `checked_at`. Append-only; the latest counts |
+| `pur_op_reservations` | Add Expense's saves (R120): `actor_id` + `op_id` (the primary key), `owner_id`, `reserved_at` — every operation id Project Control's Add Expense registers **before** it sends `pur_record`. Settled ids are the ones `pur_ops` holds (recorded or cancelled). Written only by `pur_op_reserve`, read only by `pur_op_recover` |
+
+| Function | Who | What |
+|---|---|---|
+| `rec_purchase_places(from, to)` | owner accounts | Each recorded purchase made between the two days: `recorded` (its receipt total) = `own` (its own rows + cost-move rows on the project that bought the lot) + `other` (cost-move rows on any other project) + `company` (what the company still holds: `stk_held`, or a warehouse line not yet in stock at its value) + `loss` (company stock loss) — `difference` must be ₱0; the two sides come from different records. Voided purchases apart. At most 3,700 days |
+| `rec_waiting()` | owner accounts (cash counts: main owner) | Counts only: cost moves, change requests, stock and tools waiting for the owner, lines waiting for a billing period, Unpaid / Partly paid purchases, bills to check; own money, returns, disputes, Overpaid |
+| `rec_review_lines()` | owner accounts | The lines waiting for a billing period (with their rows and whether a period exists now) and the "Cover is right" marks (each with `current`) |
+| `rec_accept_cover(op, purchase, line_no, reason)` | owner accounts | Clears the line's flag; the rows stay. Refused `NOT_WAITING`, `NOT_COVER`, `BAD_STATE` (voided), `REASON_REQUIRED` |
+| `rec_withdraw_cover(op, mark, reason)` | owner accounts | Puts the flag back — only while the mark applies (`CHANGED_SINCE` otherwise) |
+| `rec_bills()` | owner accounts | Every approval and reversal of a cost move: the item, quantity, value, from → to, the months it changed on each side (`sides`), the latest tick; its `group` key names it |
+| `rec_bill_check(op, cost_move, group, checked, note)` | owner accounts | Tick or un-tick one item. Never changes a bill |
+| `rec_money_out()` | owner accounts (cash: main owner) | Unpaid and Partly paid balances by supplier ("No supplier recorded"), payment not tracked (never owed), supplier credit left; Overpaid and each buyer's petty cash held, shortfall, owed and own money to review |
+| `pur_op_reserve(op)` | accounts that may use Add Expense (`pur_actor_owner('expenses_form')`) | Registers a save's id before it is sent; again is harmless |
+| `pur_op_recover()` | the same | For the **calling** account: every registered save the server has no answer for is cancelled for good (`pur_op_cancel`, under the lock recording takes — its first request arriving later is refused, `OP_CANCELLED`) or found recorded; returns `{cancelled, recorded}`. Used only when the browser cannot read a save's id (damaged storage) — an absent row in a list proves nothing |
+
 ## PM profit sharing (0098)
 
 An internal owner/partner allocation per PM project - **outside the money model** (never a payout, invoice or accounting entry). Spec `docs/superpowers/specs/2026-10-18-pm-profit-sharing-mvp-terms.md`; plan `docs/superpowers/plans/2026-10-18-pm-profit-sharing.md`. `project_id` is a `construction_projects.id` (never a `folders.id`). The three tables have **RLS on, no policies, and all privileges revoked** from `anon`/`authenticated`: nothing reads or writes them directly. Read through `pm_sharing_read` (owner-role accounts of the company); write through `pm_set_sharing` (main owner only).
