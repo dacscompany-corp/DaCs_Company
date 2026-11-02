@@ -13,6 +13,12 @@
      Partner amount  = balance × partner% (centavos, half away from 0)
      Owner amount    = balance − partner amount
 
+     Personal items (0110): an item bought for ONE person comes off only
+       that person's amount, after the split — the balance, the reserve and
+       the split itself never change:
+         Owner after items   = owner amount   − owner's active items
+         Partner after items = partner amount − partner's active items
+
    Pure functions + thin RPC wrappers. Overview, Reports and the Profit
    Sharing dashboard only FORMAT what this returns.
    ══════════════════════════════════════════════════════════ */
@@ -94,6 +100,17 @@
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
+  // Personal items (0110): active items only, per side, in centavos.
+  function itemTotals(items) {
+    const t = { ownerCents: 0, partnerCents: 0, ownerCount: 0, partnerCount: 0 };
+    (items || []).forEach(i => {
+      if (!i || i.status !== 'active') return;
+      if (i.charged_to === 'owner') { t.ownerCents += toCents(i.amount); t.ownerCount++; }
+      else if (i.charged_to === 'partner') { t.partnerCents += toCents(i.amount); t.partnerCount++; }
+    });
+    return t;
+  }
+
   function project(input) {
     const reqs = input.reqs || [], bills = input.bills || [];
     const paidCents = toCents(paid(reqs));
@@ -109,6 +126,10 @@
     if (outstandingCents > 0) flags.push('unpaid_balance');
     if (balanceCents < 0) flags.push('shortfall');
     if (reserve.changedSinceCloseout) flags.push('changed_since_closeout');
+    const it = itemTotals(input.items);
+    const ownerAfterCents = s.ownerCents - it.ownerCents;
+    const partnerAfterCents = s.partnerCents - it.partnerCents;
+    if ((it.ownerCount && ownerAfterCents < 0) || (it.partnerCount && partnerAfterCents < 0)) flags.push('items_exceed_share');
     return {
       id: input.id, name: input.name || '', address: String(input.address || '').trim(),
       clientName: input.clientName || '',
@@ -117,6 +138,7 @@
       paidCents, costCents, outstandingCents, remainingCents, reserve, balanceCents,
       partnerPct, ownerPct: round2(100 - partnerPct),
       partnerCents: s.partnerCents, ownerCents: s.ownerCents,
+      ownerItemsCents: it.ownerCents, partnerItemsCents: it.partnerCents, ownerAfterCents, partnerAfterCents,
       flags, confirmed: !reserve.needsReview,
     };
   }
@@ -128,11 +150,14 @@
                 estimateCount: confirmed.filter(r => r.reserve.kind === 'estimate').length,
                 paidCents: 0, costCents: 0, reserveCents: 0, availableCents: 0, shortfallCents: 0,
                 netCents: 0, ownerCents: 0, partnerCents: 0, ownerShortfallCents: 0,
-                partnerShortfallCents: 0, outstandingCents: 0 };
+                partnerShortfallCents: 0, outstandingCents: 0,
+                ownerItemsCents: 0, partnerItemsCents: 0, ownerAfterCents: 0, partnerAfterCents: 0 };
     confirmed.forEach(r => {
       t.paidCents += r.paidCents; t.costCents += r.costCents; t.reserveCents += r.reserve.cents;
       t.outstandingCents += r.outstandingCents; t.netCents += r.balanceCents;
       t.ownerCents += r.ownerCents; t.partnerCents += r.partnerCents;
+      t.ownerItemsCents += r.ownerItemsCents; t.partnerItemsCents += r.partnerItemsCents;
+      t.ownerAfterCents += r.ownerAfterCents; t.partnerAfterCents += r.partnerAfterCents;
       if (r.balanceCents >= 0) t.availableCents += r.balanceCents;
       else { t.shortfallCents += r.balanceCents; t.ownerShortfallCents += r.ownerCents; t.partnerShortfallCents += r.partnerCents; }
     });
@@ -205,7 +230,7 @@
   }
 
   const api = { WARRANTY_PCT, DEFAULT_PARTNER_PCT, toCents, roundDiv, paid, outstanding, directCost,
-                split, reserveFor, project, combine, dateKey, fmtPct, pesos };
+                split, itemTotals, reserveFor, project, combine, dateKey, fmtPct, pesos };
   Object.assign(api, { load, save, parsePct, errorText, acceptanceFacts });
   root.PMShare = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

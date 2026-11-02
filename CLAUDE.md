@@ -131,6 +131,12 @@ Profit   = Earned − Spent
   (role owner, `owner_id` null, active; **never** `allowed_modules`). History is append-only. Only
   `js/pm-sharing.js` computes it; warranty data reaches it only through `WF.reserveFor`. Owner-role
   only; staff never see it. Spec: `docs/superpowers/specs/2026-10-18-pm-profit-sharing-mvp-terms.md`.
+- **PM sharing personal items (0110) come off one person's share, after the split.** An item the owner or
+  partner bought for themselves: `ownerAfterCents = ownerCents − owner items`, same for the partner. It never
+  changes the sharing balance, the reserve or the split, and is **never** a bill, expense, Spent, Profit, payout
+  or amount owed. Main owner writes (`pm_si_*`, only from `js/pm-sharing-items.js`); owner-role reads; staff
+  nothing. Corrected or voided with a reason, never deleted. Receipts in owner-only `pmSharing/`.
+  Spec: `docs/superpowers/specs/2026-10-31-pm-sharing-personal-items-design.md`.
 - **Worker cash advances (0100) are a tracking ledger outside the money model.** Money advanced to a
   worker on a PM project and the repayments the owner records by hand. Balance = advance −
   non-voided repayments; a repayment can never exceed it, and the server locks the advance row for

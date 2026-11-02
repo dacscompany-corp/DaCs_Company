@@ -3820,6 +3820,65 @@
     </div>
 </div>
 
+<!-- PM → Profit Sharing → Personal items (0110). Owner-role only; js/pm-sharing-items.js drives it. -->
+<div id="pmSiModal" class="pm-modal-overlay" style="display:none;" onclick="if(event.target===this)PMShareItems.closeForm()">
+    <div class="pm-modal-box">
+        <div class="pm-modal-header">
+            <div class="pm-modal-htitle">
+                <span class="pm-modal-hicon"><i data-lucide="shopping-bag" style="width:16px;height:16px;"></i></span>
+                <span id="pmSiTitle">Add personal item</span>
+            </div>
+            <button class="pm-modal-close" aria-label="Close" onclick="PMShareItems.closeForm()"><i data-lucide="x"></i></button>
+        </div>
+        <div class="pm-modal-body">
+            <p class="pm-modal-intro">Something you or the partner bought for yourselves from this project's money. It comes off only that person's share — it is not a project cost.</p>
+            <div class="pm-form-group">
+                <label class="pm-field-label" for="pmSiChargedTo">Charged to</label>
+                <select id="pmSiChargedTo" class="pm-input">
+                    <option value="">Choose…</option>
+                    <option value="owner">You (owner)</option>
+                    <option value="partner">Partner</option>
+                </select>
+                <div class="pm-field-err" id="err-pmSiChargedTo"></div>
+            </div>
+            <div class="pm-form-group">
+                <label class="pm-field-label" for="pmSiName">Item</label>
+                <input type="text" id="pmSiName" class="pm-input" maxlength="120">
+                <div class="pm-field-err" id="err-pmSiName"></div>
+            </div>
+            <div class="pm-form-group">
+                <label class="pm-field-label" for="pmSiAmount">Amount (₱)</label>
+                <input type="text" inputmode="decimal" id="pmSiAmount" class="pm-input">
+                <div class="pm-field-err" id="err-pmSiAmount"></div>
+            </div>
+            <div class="pm-form-group">
+                <label class="pm-field-label" for="pmSiDate">Date bought</label>
+                <input type="date" id="pmSiDate" class="pm-input">
+                <div class="pm-field-err" id="err-pmSiDate"></div>
+            </div>
+            <div class="pm-form-group">
+                <label class="pm-field-label" for="pmSiNote">Note (optional)</label>
+                <input type="text" id="pmSiNote" class="pm-input" maxlength="500">
+                <div class="pm-field-err" id="err-pmSiNote"></div>
+            </div>
+            <div class="pm-form-group">
+                <label class="pm-field-label" for="pmSiReceipt">Receipt photo (optional)</label>
+                <input type="file" id="pmSiReceipt" accept="image/*" class="pm-input" onchange="PMShareItems.onReceiptChange()">
+            </div>
+            <div class="pm-form-group" id="pmSiReasonRow" style="display:none;">
+                <label class="pm-field-label" for="pmSiReason">Reason for the correction</label>
+                <input type="text" id="pmSiReason" class="pm-input" maxlength="500">
+                <div class="pm-field-err" id="err-pmSiReason"></div>
+            </div>
+            <div class="pm-field-err" id="pmSiErr"></div>
+        </div>
+        <div class="pm-modal-footer">
+            <button id="pmSiCancelBtn" class="pm-btn pm-btn-secondary" onclick="PMShareItems.closeForm()">Cancel</button>
+            <button id="pmSiSaveBtn" class="pm-btn pm-btn-primary" onclick="PMShareItems.submit()">Save</button>
+        </div>
+    </div>
+</div>
+
 <!-- ══════════ ORIGINAL: Appointment Modal ══════════ -->
 <div id="appointmentModal" class="modal">
     <div class="modal-content">
@@ -5417,7 +5476,7 @@
      admin.js carries PRIMARY_NAV, so a stale copy silently hides new tabs. -->
 <script src="js/admin.js?v=20261018a"></script>
 <script src="js/print-utils.js"></script>
-<script src="js/receipt-storage.js?v=20261016a"></script>
+<script src="js/receipt-storage.js?v=20261031a"></script>
 <script src="js/expense-split-rows.js?v=20261028a"></script>
 <script src="js/expenses-module.js?v=20261029a"></script>
 <script src="js/overhead-module.js"></script>
@@ -5453,8 +5512,8 @@
 <script src="js/payment-requests.js"></script>
 <script src="js/invoice-module.js"></script>
 <script src="js/labor-invoice-module.js"></script>
-<script src="js/pm-sharing.js?v=20261018a"></script>
-<script src="js/pm-admin.js?v=20261019a"></script>
+<script src="js/pm-sharing.js?v=20261031a"></script>
+<script src="js/pm-admin.js?v=20261031a"></script>
 <script src="js/pm-report-print.js?v=20260915a"></script>
 <script src="js/expense-inbox.js"></script>
 <script src="js/push-notify.js"></script>
@@ -5464,7 +5523,9 @@
      the closeout still works if this file is missing. -->
 <script src="js/warranty-fund.js?v=20261018a"></script>
 <script src="js/termination-requests.js?v=20260803f"></script>
-<script src="js/pm-sharing-dashboard.js?v=20261019f"></script>
+<script src="js/pm-sharing-dashboard.js?v=20261031a"></script>
+<!-- PM sharing personal items (0110). After pm-sharing.js and receipt-storage.js. -->
+<script src="js/pm-sharing-items.js?v=20261031a"></script>
 <!-- Worker Cash Advances (0100). After pm-admin.js: the screen borrows its
      _pmNamesSimilar / _pmLaborNameGroups name helpers. -->
 <script src="js/cash-advance.js?v=20261020a"></script>

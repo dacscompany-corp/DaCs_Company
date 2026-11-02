@@ -7,12 +7,16 @@
 // Access (migration 0089): owner/staff of the company in path segment 2 only;
 // purchases/ (0097): only those who may buy in that company.
 // pettyCash/ (0102): a petty-cash return photo — the main owner and the buyer who uploaded it.
+// pmSharing/ (0110): PM sharing personal-item receipts — the main owner writes, owner-role accounts of that company read.
 // ════════════════════════════════════════════════════════════════════
 (function (root) {
   'use strict';
   // 'purchase' (0097): one receipt for a whole purchase — buyers of the company only.
   // 'petty_cash' (0102): a buyer's return photo — never visible to other buyers.
-  const FOLDER = { expense: 'expenseReceipts', payroll: 'payrollReceipts', purchase: 'purchases', petty_cash: 'pettyCash' };
+  // 'pm_sharing' (0110): a PM sharing personal-item receipt — path only; js/pm-sharing-items.js
+  //   uploads it itself (no receipt_uploads ledger row: the item row holds the path).
+  const FOLDER = { expense: 'expenseReceipts', payroll: 'payrollReceipts', purchase: 'purchases', petty_cash: 'pettyCash',
+                   pm_sharing: 'pmSharing' };
   const PUB_RE = /\/storage\/v1\/object\/public\/uploads\/([^?#"'\s<>)]+)/;
   const PUB_RE_G = /https?:\/\/[^"'\s<>)]*\/storage\/v1\/object\/public\/uploads\/[^"'\s<>)]+/g;
 

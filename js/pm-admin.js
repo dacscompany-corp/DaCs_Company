@@ -219,7 +219,8 @@ async function _pmLoadShareFor(projectId) {
         if (!row) return { error: 'PROJECT_UNMAPPED' };
         return { partnerPct: Number(row.partner_pct), isDefault: !!row.is_default, version: row.version,
                  canEdit: !!read.can_edit, reserveRow: reserves[projectId] || null,
-                 history: (read.history || []).filter(h => h.project_id === projectId) };
+                 history: (read.history || []).filter(h => h.project_id === projectId),
+                 items: (read.items || []).filter(i => i.project_id === projectId) };
     } catch (e) {
         console.warn('PM: sharing read failed', e.message);
         return { error: e.message || 'failed' };
@@ -233,6 +234,7 @@ function _pmShareModel(p, bills, reqs, share) {
         id: p.id, name: p.projectName, clientName: p.clientName, partnerEmail: p.partnerEmail,
         status: p.status, terminatedAt: p.terminatedAt, bills, reqs,
         reserveRow: share.reserveRow, partnerPct: share.partnerPct,
+        items: share.items || [],
     });
 }
 
@@ -241,7 +243,7 @@ function _pmShareTexts(m, share) {
     if (!m) {
         const why = _esc(share && share.error ? window.PMShare.errorText(share.error) : 'Could not load sharing data');
         return { unavailable: true, reserveValue: 'Unavailable', reserveSub: why, balanceLabel: 'Sharing balance',
-                 balanceValue: 'Unavailable', balanceColor: '#8f352c', splitLine: why, caption: '', floorNote: '' };
+                 balanceValue: 'Unavailable', balanceColor: '#8f352c', splitLine: why, caption: '', floorNote: '', itemsNote: '' };
     }
     const P = window.PMShare;
     const kind = m.reserve.kind;
@@ -257,8 +259,11 @@ function _pmShareTexts(m, share) {
         balanceLabel: shortfall ? 'Loss to split' : 'Sharing balance',
         balanceValue: P.pesos(m.balanceCents),
         balanceColor: shortfall ? '#8f352c' : '#0f6342',
-        splitLine: 'You ' + P.pesos(m.ownerCents) + ' (' + P.fmtPct(m.ownerPct) + '%) · Partner '
-                 + P.pesos(m.partnerCents) + ' (' + P.fmtPct(m.partnerPct) + '%)',
+        splitLine: 'You ' + P.pesos(m.ownerAfterCents) + ' (' + P.fmtPct(m.ownerPct) + '%'
+                 + (m.ownerItemsCents ? ', after ' + P.pesos(m.ownerItemsCents) + ' items' : '') + ') · Partner '
+                 + P.pesos(m.partnerAfterCents) + ' (' + P.fmtPct(m.partnerPct) + '%'
+                 + (m.partnerItemsCents ? ', after ' + P.pesos(m.partnerItemsCents) + ' items' : '') + ')',
+        itemsNote: m.flags.includes('items_exceed_share') ? 'Items exceed share' : '',
         caption: 'Internal allocation — not a payout.',
         floorNote: m.reserve.floored ? 'Retention is floored at ₱0 when costs exceed collections.' : '',
     };
@@ -636,7 +641,7 @@ function _pmOvHtml(p, ms, bills, reqs) {
         ${card(_ico.indirect, 'Indirect cost', '#7a5a48', _fmt(bd.overhead), 'pm-ov-kpi-indirect', barFooter('pm-ov-bar-indirect', 'pm-ov-kpi-indirect-pct', bd.overhead, '#7a5a48'), '#f7f1ed', '#e6d7cd')}
         ${card(_ico.cash, 'Remaining cash receipt', netColor, (netCash < 0 ? '−' : '+') + _fmt(Math.abs(netCash)), 'pm-ov-kpi-net', barFooter('pm-ov-bar-net', 'pm-ov-kpi-net-pct', netCash, netColor), '#fbf3e2', '#f0e2c5')}
         ${showShare ? card(_ico.shield, 'Warranty reserve', shareTx.unavailable ? '#8f352c' : '#9a6c12', shareTx.reserveValue, 'pm-ov-kpi-retention', subFooter(shareTx.reserveSub), '#fbf2dc', '#ecd8a6') : ''}
-        ${showShare ? card(_ico.trend, shareTx.balanceLabel, shareTx.balanceColor, shareTx.balanceValue, 'pm-ov-kpi-sharing', subFooter([shareTx.splitLine, shareTx.caption, shareTx.floorNote].filter(Boolean).join('<br>')), '#eaf4ef', '#c6e6d5') : ''}
+        ${showShare ? card(_ico.trend, shareTx.balanceLabel, shareTx.balanceColor, shareTx.balanceValue, 'pm-ov-kpi-sharing', subFooter([shareTx.splitLine, shareTx.itemsNote ? '<span style="color:#8f352c;font-weight:700;">' + shareTx.itemsNote + '</span>' : '', shareTx.caption, shareTx.floorNote].filter(Boolean).join('<br>')), '#eaf4ef', '#c6e6d5') : ''}
       </div>
     </div>`;
 
@@ -1193,8 +1198,13 @@ window.pmOvPrintReport = function() {
     ${kpi('Indirect Cost', round(bd.overhead || 0), '#f7f1ed', '#e6d7cd', '#7a5a48', 'Site running &amp; support costs')}
     ${kpi('Remaining Cash Receipt', (leftPos ? '' : '&minus;') + round(Math.abs(netCash)), '#fbf3e2', '#f0e2c5', leftCol, pctText(netCash))}
     ${showShare ? kpi('Warranty Reserve', shareTx.reserveValue, '#fbf2dc', '#ecd8a6', '#9a6c12', shareTx.reserveSub, true) : ''}
-    ${showShare ? kpi(shareTx.balanceLabel, shareTx.balanceValue, '#eaf4ef', '#c6e6d5', shareTx.balanceColor, [shareTx.splitLine, shareTx.caption].filter(Boolean).join(' · '), true) : ''}
+    ${showShare ? kpi(shareTx.balanceLabel, shareTx.balanceValue, '#eaf4ef', '#c6e6d5', shareTx.balanceColor, [shareTx.splitLine, shareTx.itemsNote, shareTx.caption].filter(Boolean).join(' · '), true) : ''}
   </div>
+  ${showShare && _pmOvShare && !_pmOvShare.error && (_pmOvShare.items || []).length ? `
+  <div style="margin-top:14px;">
+    <div style="font:700 12px 'IBM Plex Sans';color:#1f2420;margin-bottom:4px;">Personal items (come off one person's share only)</div>
+    ${window.PMShareItems ? window.PMShareItems.panelHtml(_pmOvShare.items, false, { print: true }) : ''}
+  </div>` : ''}
 
   ${contractValue > 0 ? `
   <div style="display:flex;align-items:center;gap:14px;margin-top:16px;">
@@ -9351,6 +9361,7 @@ function _pmRptCashReceipt() {
         status: p.status, terminatedAt: p.terminatedAt,
         bills: bills.filter(b => b.projectId === p.id), reqs: reqs.filter(r => r.projectId === p.id),
         reserveRow: (sh.reserves || {})[p.id] || null, partnerPct: Number(rows[p.id].partner_pct),
+        items: (sh.read.items || []).filter(i => i.project_id === p.id),
     }));
     const c = P.combine(results);
     out.share = { results, totals: c.totals, review: c.review, unmapped: scope.length - results.length };
@@ -9370,7 +9381,8 @@ function _pmRptShareCards(cr) {
         reserveSub: 'Recorded at closeout for completed projects; 5% estimate otherwise',
         balanceLabel: t.netCents < 0 ? 'Loss to split' : 'Sharing Balance',
         balanceValue: P.pesos(t.netCents),
-        splitLine: 'You ' + P.pesos(t.ownerCents) + ' · Partner ' + P.pesos(t.partnerCents),
+        splitLine: 'You ' + P.pesos(t.ownerAfterCents) + (t.ownerItemsCents ? ' (after ' + P.pesos(t.ownerItemsCents) + ' items)' : '')
+                 + ' · Partner ' + P.pesos(t.partnerAfterCents) + (t.partnerItemsCents ? ' (after ' + P.pesos(t.partnerItemsCents) + ' items)' : ''),
         caption: 'Internal allocation — not a payout.',
         notes,
     };

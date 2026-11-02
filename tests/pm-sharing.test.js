@@ -701,7 +701,7 @@ test("G7 negative project: Loss in CSV and print, Cash shortfall line", async ()
   ok(csv.split("\r\n").includes("Cash shortfall,-100000"), "Cash shortfall line");
   D.print();
   const h = sb.printed.join("");
-  ok(h.includes("−₱100,000.00"), "negative peso in print");
+  ok(h.includes("<span class=\"n\">−100,000.00</span>"), "negative amount in print (table figures carry no peso sign)");
   ok(h.includes(">Loss<"), "Loss in print");
 });
 test("G8 file format: CRLF lines, BOM on downloaded file", async () => {
@@ -875,7 +875,8 @@ test('R9 header: title, updated time, Print / CSV / Refresh with constant handle
   const sb = await loadedDash(dashData());
   const root = sb.ctx.document.getElementById('pmSharingRoot').innerHTML;
   for (const s of ['<h1 class="pms-title">Profit Sharing</h1>', 'Completed projects · Updated ', 'onclick="PMShareDash.print()"',
-                   'Print / PDF', 'onclick="PMShareDash.downloadCsv()"', 'onclick="PMShareDash.load()"', 'title="Refresh"']) {
+                   '>Print</button>', 'onclick="PMShareDash.downloadPdf()"', '>PDF</button>',
+                   'onclick="PMShareDash.downloadCsv()"', 'onclick="PMShareDash.load()"', 'title="Refresh"']) {
     ok(root.includes(s), 'header missing: ' + s);
   }
   ok(root.includes('id="pmSharingSummary"') && root.indexOf('id="pmSharingSummary"') < root.indexOf('Search project or client')
@@ -942,93 +943,104 @@ test('R12 date popover closes on Escape and outside click; one listener pair, re
 
 // ══ P. Printed statement v2 ═══════════════════════════════════════════
 const printOf = async (data) => { const sb = await loadedDash(data); sb.ctx.PMShareDash.print(); return sb.printed.join(''); };
-test('P1 header, summary values and the "how it is worked out" box', async () => {
+test('P1 side panel: brand, split, the worked-out lines, net share and filters', async () => {
   const h = await printOf(dashData());
-  for (const s of ["Completed projects · DAC's Building Design Services", '/assets/images/DACS-TRANSPARENT.png', '<div class="t">Profit Sharing</div>',
-                   '<span class="k">As of</span>', '<span class="k">Completed</span><span class="v">All dates</span>', '<span class="k">Partners</span><span class="v">All partners</span>',
-                   'Your share · 56.15%', '₱693,500.00', "Partners' share · 43.85%", '₱541,500.00',
-                   'How the amount to share is worked out', '− Project costs (labor, materials, site overhead)', '− Warranty reserve (set aside at closeout)',
-                   '= Left to share · 2 projects', '₱1,235,000.00', "Split project by project, using each project&#39;s agreed percentage.",
-                   'Basis: left to share = client paid',
+  for (const s of ["<div class=\"eyebrow\">DAC's Building Design Services</div><div class=\"t\">Profit Sharing</div>", '/assets/images/DACS-TRANSPARENT.png',
+                   '<span>As of</span><b>', '<span>Completed</span><b>All dates</b>', '<span>Partners</span><b>All partners</b>',
+                   '<span class="k">Dacs · 56.15%</span><span class="v green">₱693,500.00</span>', '<span class="k">Partners · 43.85%</span><span class="v">₱541,500.00</span>',
+                   '<span>Client paid</span><span class="n">₱1,300,000.00</span>', '<span>− Project costs</span><span class="n">0.00</span>',
+                   '<span>− Warranty reserve</span><span class="n">65,000.00</span>', '<div class="ln tot"><span>= Net share</span><span class="n">₱1,235,000.00</span>',
+                   '<div class="big">₱1,235,000.00</div>', '95.0% of client payments · 2 projects',
+                   '<b>Basis</b><span>Net share = client paid − project costs − warranty reserve recorded at closeout',
                    'fonts.googleapis.com/css2?family=Barlow']) ok(h.includes(s), 'print missing: ' + s);
-  ok(!h.includes('Includes a ') , 'no loss sentence when nothing is short');
+  ok(!h.includes('Includes a '), 'no loss sentence when nothing is short');
+  ok(!h.includes('<span>Search</span>'), 'no search line without a search');
 });
 test('P2 by-partner lines: fixture partner sum, unassigned confirmed rows', async () => {
   const h = await printOf(dashData());
-  ok(h.includes('<span>p@x.test · 1 project</span><span class="n b right">₱304,000.00</span>'), 'partner A sum is its partnerCents');
-  ok(h.includes('<span>No partner assigned · 1 project</span>'), 'unassigned confirmed row');
+  ok(h.includes('<span>p@x.test · 1 project</span><span class="n">₱304,000.00</span>'), 'partner A sum is its partnerCents');
+  ok(h.includes('<span>No partner assigned · 1 project</span><span class="n">₱237,500.00</span>'), 'unassigned confirmed row');
 });
-test('P3 loss fixture: Loss to split in red, loss sentence, partner "includes a loss"', async () => {
+test('P3 loss fixture: Net loss cell in red, loss sentence, partner "includes a loss"', async () => {
   const d = lossData();
   d.projects.find(x => x.id === 'L').partnerEmail = 'q@x.test';
   const h = await printOf(d);
-  ok(h.includes('<td class="r b negc">−₱100,000.00</td>'), 'red left-to-share cell');
-  ok(h.includes('class="r negc">−₱50,000.00<div class="grey pct">50%</div>'), 'red share cells with pct');
-  ok(h.includes('<span>q@x.test · 1 project, includes a loss</span><span class="n b right negc">−₱50,000.00</span>'), 'partner line red + loss mark');
+  ok(h.includes('<div class="c hl negc"><span class="k">Net loss</span><span class="n">−100,000.00</span>'), 'red net-loss cell, no peso sign');
+  ok(h.includes('<div class="c r negc"><span class="k">Partner 50%</span><span class="n">−50,000.00</span>'), 'red share cell with pct');
+  ok(h.includes('<span>q@x.test · 1 project, includes a loss</span><span class="n negc">−₱50,000.00</span>'), 'partner line red + loss mark');
   ok(h.includes('Includes a ₱100,000.00 loss on 1 project.'), 'loss sentence');
   ok(h.includes('<span class="pill" style="background:#F8E7E4;color:#8F352C">Loss</span>'), 'Loss pill');
-  ok(h.includes('<div class="grey">Loss to split') === false, 'sanity');
 });
-test('P3b a net loss prints "= Loss to split" in red', async () => {
+test('P3b a net loss prints "Net loss" in the panel and the totals row', async () => {
   const d = { ...dashData() };
   d.reserves = { A: rec(0, 0, 0), B: rec(0, 0, 0) };
   d.perProject = { A: { bills: [bill(900000)], reqs: [verified(800000)] }, B: { bills: [bill(900000)], reqs: [verified(500000)] }, C: d.perProject.C };
   const h = await printOf(d);
-  ok(h.includes('<div class="ln tot neg"><span>= Loss to split · 2 projects</span>'), 'net loss label in red');
+  ok(h.includes('<div class="ln tot"><span>= Net loss</span>') && h.includes('<div class="eyebrow">Net loss</div>'), 'net loss label in the panel');
+  ok(h.includes('<div class="c solid"><span class="k">Net loss</span>'), 'net loss label in the totals row');
+  ok(!h.includes('= Net share') && !h.includes('<div class="eyebrow">Net share</div>'), 'never called a share');
 });
 test('P4 review row: own section, estimated, excluded from totals and by-partner sums', async () => {
   const h = await printOf(dashData());
-  ok(h.includes('<h2 class="tight">Not counted yet</h2>') && h.includes('estimated</span>'), 'review card');
+  ok(h.includes('<h3>Not counted yet</h3>') && h.includes('estimated</span>'), 'review card');
   ok(h.includes('− estimated reserve') && h.includes('No warranty reserve was recorded at closeout, so this project is left out of the totals until it is.'), 'copy');
-  const counted = h.slice(h.indexOf('<h2>Counted projects</h2>'), h.indexOf('<h2 class="tight">Not counted yet</h2>'));
-  ok(!counted.includes('Beta') || counted.split('Beta').length - 1 === 1, 'review project is not a counted row (only confirmed Beta B)');
-  ok(counted.includes('Total · 2 projects'), 'count excludes review');
+  const counted = h.slice(h.indexOf('<span class="h">Results by project</span>'), h.indexOf('<h3>Not counted yet</h3>'));
+  ok(counted.includes('<div class="nm">Beta · B</div>') && !counted.includes('Beta · C'), 'review project is not a counted block');
+  ok(counted.includes('<span class="k">Total paid</span><span class="n">1,300,000.00</span>'), 'totals exclude review');
+  ok(h.includes('of client payments · 2 projects'), 'count excludes review');
   ok(h.includes('<span>No partner assigned · 1 project</span>'), 'by-partner counts confirmed only');
-  ok(h.includes('Not counted yet'), 'status');
 });
-test('P5 per-page footer, spacer, landscape page, empty state', async () => {
+test('P5 per-page footer, landscape page, empty state keeps brand and filters', async () => {
   const h = await printOf(dashData());
-  ok(h.includes('</tbody><tfoot><tr><td><div class="foot-space"></div></td></tr></tfoot></table>') && h.includes('<table class="sheet"><thead>'), 'tfoot spacer wraps the statement');
-  ok(h.includes('.foot-space{height:0.55in}') && h.includes('position:fixed') && h.includes('print-color-adjust:exact'), 'print css');
+  ok(h.includes('position:fixed') && h.includes('print-color-adjust:exact'), 'print css');
+  ok(h.includes('</tbody><tfoot><tr><td><div class="foot-space"></div></td></tr></tfoot></table>') && h.includes('.foot-space{height:0.6in}'), 'a repeating spacer keeps the footer off the content');
   ok(h.includes("Profit Sharing · DAC's Building Design Services · As of ") && h.includes('Internal allocation — not a payout or amount owed.'), 'footer');
   const sb = await loadedDash(dashData());
   sb.ctx.PMShareDash._state.filters.q = 'zzzz-no-match';
   sb.ctx.PMShareDash.print();
   const e = sb.printed.join('');
   ok(e.includes('No completed projects match these filters.') && e.includes('Profit Sharing') && e.includes('Internal allocation'), 'empty state');
-  ok(!e.includes('Counted projects'), 'no table when empty');
+  ok(e.includes('<span>Search</span><b>zzzz-no-match</b>') && e.includes('<span>As of</span>'), 'filters still printed');
+  ok(!e.includes('Results by project') && !e.includes('class="split"'), 'no figures when empty');
 });
-test('V1 landscape page and the Counted projects table with its total row', async () => {
+test('V1 landscape page, project blocks and the totals row', async () => {
   const h = await printOf(dashData());
-  ok(h.includes('@page{size:letter landscape;margin:0.5in}'), 'landscape @page');
+  ok(h.includes('@page{margin:10mm 10mm 14mm}') && !h.includes('size:landscape'), 'any paper and orientation: no forced @page size');
+  ok(h.includes('.page{container:page/inline-size}') && h.includes('@container page (max-width:9in)') && h.includes('grid-template-columns:subgrid'),
+     'layout follows the printable width');
   ok(h.includes('@media screen{') && h.includes('max-width:11in') && h.includes('min-height:8.5in'), 'screen landscape sheet');
-  for (const s of ['<h2>Counted projects</h2>', '<table class="grid"><thead>', '>Client paid</th>', '>Left to share</th>', '>Your share</th>', '>Partner share</th>', '>Status</th>',
-                   '<tr class="total"><td>Total · 2 projects</td>', 'class="r green">₱693,500.00', '<td class="r">₱541,500.00</td>']) ok(h.includes(s), 'missing: ' + s);
-  ok(h.includes('<b>Alpha</b>') && h.includes('Ana · Aug 2, 2026 · p@x.test'), 'row label + subline');
+  for (const s of ['<span class="h">Results by project</span>', '<span class="k">Client paid</span><span class="n">800,000.00</span>',
+                   '<div class="c hl"><span class="k">Net share</span><span class="n">760,000.00</span>',
+                   '<span class="k">Dacs 60%</span><span class="n">456,000.00</span>', '<span class="k">Partner 40%</span><span class="n">304,000.00</span>',
+                   '<div class="c solid"><span class="k">Net share</span><span class="n">1,235,000.00</span>',
+                   '<div class="c r green"><span class="k">Dacs</span><span class="n">693,500.00</span>',
+                   '<span class="k">Partners</span><span class="n">541,500.00</span>']) ok(h.includes(s), 'missing: ' + s);
+  ok(h.includes('<div class="nm">Alpha</div>') && h.includes('Ana · Completed Aug 2, 2026 · p@x.test'), 'block label + subline');
+  ok(h.includes('Ben · No completion date · No partner assigned') && !h.includes('Completed No completion'), 'undated subline');
 });
 test('V2 the Not counted yet section is omitted when there are no review rows', async () => {
   const d = dashData();
   d.reserves.C = rec(25000, 1000, 0);
   const h = await printOf(d);
   ok(!h.includes('Not counted yet'), 'no review section');
-  ok(h.includes('What the statuses mean') && h.includes('grid-template-columns:1fr"'), 'legend takes the space');
+  ok(h.includes('<div class="legend avoid">') && h.includes('<b>Basis</b>'), 'legend still printed');
 });
 test('V3 legend lists only present statuses plus Ready, with the unpaid amount', async () => {
   const d = dashData();
   d.perProject.A.reqs.push({ status: 'unpaid', totalAmount: 1000, amountPaid: 0 });
   const h = await printOf(d);
-  const lg = h.slice(h.indexOf('What the statuses mean'));
+  const lg = h.slice(h.indexOf('<div class="legend avoid">'));
   ok(lg.includes('>Ready</b>') && lg.includes('Payments, costs and reserve are final.'), 'Ready');
   ok(lg.includes('>Client still owes</b>') && lg.includes('Counted with what has been paid so far. Alpha: ₱1,000.00 unpaid.'), 'unpaid line');
   ok(lg.includes('>Not counted yet</b>') && lg.includes('left out of the totals.'), 'review status present');
   ok(!lg.includes('>Loss</b>') && !lg.includes('>Edited after closeout</b>'), 'absent statuses omitted');
 });
-test('P6 card title: name (+ short id only when duplicated), date once in the subline', async () => {
+test('P6 block title: name (+ short id only when duplicated), date once in the subline', async () => {
   const d = dashData();
   d.projects[2] = { ...d.projects[2], projectName: 'Alpha' };   // C duplicates A's name
   const h = await printOf(d);
-  ok(h.includes('<b>Beta</b>') && h.includes('<b>Alpha · A</b>') && h.includes('<b>Alpha · C</b>'), 'plain name and name + short id');
-  ok(!h.includes('<b>Alpha · Aug') && !h.includes('undated'), 'no date in the title');
+  ok(h.includes('<div class="nm">Beta</div>') && h.includes('<div class="nm">Alpha · A</div>') && h.includes('<b>Alpha · C</b>'), 'plain name and name + short id');
+  ok(!h.includes('Alpha · Aug') && !h.includes('undated'), 'no date in the title');
 });
 test('P7 hostile name, client and partner are escaped exactly once in print', async () => {
   const d = dashData();
@@ -1075,8 +1087,308 @@ test('P10 duplicated names use name + short id everywhere in print, never the da
   d.read.projects.push({ project_id: 'M', partner_pct: 50, is_default: true, version: 0 });
   d.perProject.M = { bills: [bill(100000)], reqs: [] }; d.reserves.M = rec(0, 0, 100000);
   const h = await printOf(d);
-  ok(h.includes('<b>Loss · L</b>') && h.includes('<b>Loss · M</b>'), 'titles with short ids');
+  ok(h.includes('<div class="nm">Loss · L</div>') && h.includes('<div class="nm">Loss · M</div>'), 'titles with short ids');
   ok(!h.includes('Loss · Sep') && !h.includes('Loss · undated'), 'no date in any title');
+});
+
+// ══ H. Personal items (0110) — come off one person's share, after the split ══
+const item = (who, amount, status = 'active') => ({ charged_to: who, amount, status });
+test('H1 worked example: ₱100,000 balance, 50/50, ₱10,000 owner item → owner ₱40,000 / partner ₱50,000', () => {
+  const r = P.project({ id: 'H', status: 'completed', bills: [], reqs: [verified(100000)], reserveRow: rec(0, 100000, 0),
+                        partnerPct: 50, items: [item('owner', 10000)] });
+  eq([r.balanceCents, r.ownerCents, r.partnerCents], [10000000, 5000000, 5000000], 'split unchanged');
+  eq([r.ownerItemsCents, r.ownerAfterCents, r.partnerItemsCents, r.partnerAfterCents], [1000000, 4000000, 0, 5000000]);
+});
+test('H2 an owner item never moves the partner figure, and the other way round', () => {
+  const none = P.project({ ...inA, items: [] });
+  const own = P.project({ ...inA, items: [item('owner', 5000)] });
+  const par = P.project({ ...inA, items: [item('partner', 7000)] });
+  eq(own.partnerAfterCents, none.partnerCents, 'owner item');
+  eq(par.ownerAfterCents, none.ownerCents, 'partner item');
+  eq([own.ownerAfterCents, par.partnerAfterCents], [none.ownerCents - 500000, none.partnerCents - 700000]);
+});
+test('H3 voided items count ₱0; centavos are exact', () => {
+  const r = P.project({ ...inA, items: [item('owner', 0.01), item('owner', 0.02), item('owner', 999, 'voided'),
+                                         ...Array.from({ length: 10 }, () => item('partner', 0.1))] });
+  eq([r.ownerItemsCents, r.partnerItemsCents], [3, 100]);
+  eq(P.itemTotals([item('owner', '12.34'), item('partner', 1.005), item('owner', 5, 'voided'), null, item('both', 9)]),
+     { ownerCents: 1234, partnerCents: 101, ownerCount: 1, partnerCount: 1 });
+});
+test('H4 items bigger than the share → negative after-items figure + items_exceed_share', () => {
+  const r = P.project({ ...inA, items: [item('partner', 400000)] });     // partner share ₱304,000
+  eq(r.partnerAfterCents, 30400000 - 40000000);
+  ok(r.flags.includes('items_exceed_share'), 'flag');
+  ok(r.confirmed, 'the flag does not move a project out of the counted group');
+  ok(!P.project({ ...inA, items: [item('partner', 1)] }).flags.includes('items_exceed_share'), 'no flag when the share covers it');
+  const loss = P.project({ id: 'L', status: 'active', bills: [bill(100000)], reqs: [], reserveRow: null, partnerPct: 50 });
+  ok(!loss.flags.includes('items_exceed_share'), 'a loss alone is not this flag');
+});
+test('H5 balance, reserve, paid, cost and pre-item shares are identical with and without items', () => {
+  const a = P.project({ ...inA }), b = P.project({ ...inA, items: [item('owner', 123), item('partner', 456)] });
+  for (const k of ['paidCents', 'costCents', 'remainingCents', 'balanceCents', 'ownerCents', 'partnerCents', 'partnerPct'])
+    eq(b[k], a[k], k);
+  eq(b.reserve, a.reserve, 'reserve');
+});
+test('H6 no items → after figures equal the shares, item sums 0, no new flag', () => {
+  const r = P.project({ ...inA });
+  eq([r.ownerItemsCents, r.partnerItemsCents, r.ownerAfterCents, r.partnerAfterCents], [0, 0, r.ownerCents, r.partnerCents]);
+  ok(!r.flags.includes('items_exceed_share'), 'no flag');
+});
+test('H7 combine totals the after-items figures over counted projects only', () => {
+  const a = P.project({ ...inA, items: [item('owner', 1000)] });
+  const b = P.project({ ...inB, items: [item('partner', 2000)] });
+  const review = P.project({ ...inB, id: 'R', reserveRow: null, items: [item('owner', 99999)] });   // not counted
+  const t = P.combine([a, b, review]).totals;
+  eq([t.ownerItemsCents, t.partnerItemsCents], [100000, 200000]);
+  eq([t.ownerAfterCents, t.partnerAfterCents], [t.ownerCents - 100000, t.partnerCents - 200000]);
+});
+test('H8 pm-sharing.js never names a project-cost or money-model symbol for items', () => {
+  const src = read('js/pm-sharing.js');
+  const body = src.slice(src.indexOf('function itemTotals('), src.indexOf('function project('));
+  ok(body.length > 0, 'SLICE NOT FOUND: itemTotals');
+  ok(!/directCost|bills|expenses|Spent|reserve/i.test(body), 'itemTotals must only read items');
+});
+
+// ══ I. Personal items on the Overview, its print and Reports (real pm-admin.js) ══
+const itemRow = (who, amount, o = {}) => ({ id: 'x' + amount, project_id: 'A', charged_to: who, item_name: 'Thing', amount,
+  bought_on: '2026-10-01', status: 'active', version: 1, events: [], ...o });
+const shareWith = (pct, row, items) => ({ ...shareOf(pct, row), items });
+test('I1 Overview card: split line uses the after-items figures and names the items', () => {
+  const { html } = overview('owner', projA, [], [verified(800000)], shareWith(40, rec(40000, 800000, 0), [itemRow('owner', 6000)]));
+  for (const s of ['₱760,000.00', 'You ₱450,000.00 (60%, after ₱6,000.00 items)', 'Partner ₱304,000.00 (40%)'])
+    ok(html.includes(s), 'missing: ' + s);
+});
+test('I2 Overview card: items bigger than a share → red "Items exceed share"', () => {
+  const { html } = overview('owner', projA, [], [verified(800000)], shareWith(40, rec(40000, 800000, 0), [itemRow('partner', 400000)]));
+  ok(html.includes('Partner −₱96,000.00 (40%, after ₱400,000.00 items)'), 'negative partner');
+  ok(html.includes('Items exceed share'), 'warning');
+});
+test('I3 Overview never draws the items panel (owner or staff); the split line still shows items', () => {
+  ok(!overview('owner', projA, [], [verified(800000)], shareWith(40, rec(40000, 800000, 0), [])).html.includes('pmSiPanel'), 'owner');
+  ok(!overview('staff', projA, [], [verified(800000)], shareWith(40, rec(40000, 800000, 0), [])).html.includes('pmSiPanel'), 'staff');
+  ok(overview('owner', projA, [], [verified(800000)], shareWith(40, rec(40000, 800000, 0), [itemRow('owner', 6000)])).html.includes('after ₱6,000.00 items'), 'split line');
+});
+test('I4 Overview print: same split line plus the item list (voided marked)', () => {
+  const { sb } = overview('owner', projA, [], [verified(800000)],
+    shareWith(40, rec(40000, 800000, 0), [itemRow('owner', 6000, { item_name: 'Drill' }), itemRow('partner', 50, { item_name: 'Old', status: 'voided', void_reason: 'dup' })]));
+  sb.ctx.pmOvPrintReport();
+  const h = sb.printed.join('');
+  for (const s of ['You ₱450,000.00 (60%, after ₱6,000.00 items)', 'Personal items', 'Drill', '₱6,000.00', 'Old', 'Voided — dup'])
+    ok(h.includes(s), 'print missing: ' + s);
+});
+test('I5 _pmLoadShareFor keeps only this project\'s items', async () => {
+  const sb = loadPmAdmin({ role: 'owner' });
+  sb.ctx.PMShare.load = async () => ({ can_edit: true, history: [], partners: [],
+    projects: [{ project_id: 'A', partner_pct: 40, is_default: false, version: 1 }],
+    items: [itemRow('owner', 1), { ...itemRow('owner', 2), project_id: 'B' }] });
+  sb.ctx.WF = { reserveFor: async () => ({}) };
+  const s = await sb.ctx._pmLoadShareFor('A');
+  eq(s.items.map(i => i.amount), [1]);
+});
+test('I6 Reports: combined split line uses after-items totals', () => {
+  const share = { ...rptShare, read: { ...rptShare.read, items: [{ ...itemRow('owner', 3500), project_id: 'A' }, { ...itemRow('partner', 1500), project_id: 'B' }] } };
+  const sb = reports('owner', share);
+  sb.ctx._pmRptRenderKPIs([]);
+  const h = sb.ctx.document.getElementById('pmRptKpiRow').innerHTML;
+  ok(h.includes('You ₱690,000.00 (after ₱3,500.00 items) · Partner ₱540,000.00 (after ₱1,500.00 items)'), h.slice(0, 400));
+});
+test('I7 no items anywhere → every Release 1 line is unchanged', () => {
+  const { html } = overview('owner', projA, [], [verified(800000)], shareWith(40, rec(40000, 800000, 0), []));
+  ok(html.includes('You ₱456,000.00 (60%) · Partner ₱304,000.00 (40%)'), 'unchanged line');
+  ok(!html.includes('after ') && !html.includes('Items exceed share'), 'no item wording');
+});
+
+// ══ J. Personal items on the dashboard (real pm-sharing-dashboard.js) ══
+const dashWithItems = () => {
+  const d = dashData();
+  d.read.items = [{ ...itemRow('owner', 6000), project_id: 'A', item_name: 'Drill' },
+                  { ...itemRow('partner', 400000), project_id: 'B', item_name: 'Car' }];   // B partner share ₱237,500
+  return d;
+};
+test('J1 hero + table + totals use after-items figures, with the items under them', async () => {
+  const sb = loadDash('owner');
+  sb.ctx.PMShareDash._setFetch(async () => dashWithItems());
+  await sb.ctx.PMShareDash.load();
+  const h = pageHtml(sb);
+  for (const s of ['₱687,500.00', '₱141,500.00', '₱450,000.00', 'after ₱6,000.00 items', '−₱162,500.00', 'after ₱400,000.00 items',
+                   'Items exceed share']) ok(h.includes(s), 'missing: ' + s);
+  ok(h.includes('₱1,235,000.00'), 'left to share unchanged');
+});
+test('J2 detail page: step 5 Personal items with the full panel (owner can edit) or list only', async () => {
+  const sb = loadDash('owner');
+  const D = sb.ctx.PMShareDash;
+  const d = dashWithItems();
+  D._setFetch(async () => d);
+  await D.load();
+  D.open('A');
+  const h = sb.ctx.document.getElementById('pmSharingDetail').innerHTML;
+  ok(/<div class="pms-step-n">5<\/div><div class="pms-step-t">Personal items<\/div>/.test(h), 'step 5 header');
+  ok(h.includes('id="pmSharingItems"'), 'holder');
+  ok(h.includes('₱450,000.00'), 'after-items part');
+  ok(!h.includes("Add or correct items on this project's Overview."), 'old pointer text gone');
+  const panel = sb.ctx.document.getElementById('pmSharingItems').innerHTML;
+  for (const s of ['Drill', 'Add item', "PMShareItems.openCorrect('x6000')"]) ok(panel.includes(s), 'panel missing: ' + s);
+  d.read.can_edit = false;
+  D.open('A');
+  const ro = sb.ctx.document.getElementById('pmSharingItems').innerHTML;
+  ok(ro.includes('Drill'), 'item listed');
+  ok(!ro.includes('Add item') && !ro.includes('openCorrect') && !ro.includes('voidItem'), 'read-only');
+});
+test('J3 CSV: four item columns per row and in the totals', async () => {
+  const sb = loadDash('owner');
+  const D = sb.ctx.PMShareDash;
+  D._setFetch(async () => dashWithItems());
+  await D.load();
+  const csv = D.toCsv(D.buildModel(D._state.results, D._state.filters), D.metaLines());
+  ok(csv.includes('Your items,Your amount after items,Partner items,Partner amount after items'), 'headers');
+  ok(/Alpha,.*,456000,40,304000,6000,450000,0,304000,/.test(csv), 'A row');
+  ok(/Totals \(confirmed\),.*,693500,,541500,6000,687500,400000,141500,/.test(csv), 'totals row');
+});
+test('J4 print: shares after items, by-partner after items', async () => {
+  const sb = loadDash('owner');
+  const D = sb.ctx.PMShareDash;
+  D._setFetch(async () => dashWithItems());
+  await D.load();
+  D.print();
+  const h = sb.printed.join('');
+  for (const s of ['₱687,500.00', '₱693,500.00 less ₱6,000.00 personal items', '<span>− Partner expenses</span><span class="n">(₱400,000.00)</span>',
+                   'Net to partners</span><span class="v">₱141,500.00</span>', '<span>− Expenses</span><span class="n">(6,000.00)</span>',
+                   '<span>Net</span><span class="n">450,000.00</span>', '<div class="ln netln negc"><span>Net</span><span class="n">−162,500.00</span>',
+                   'Partners, net of expenses', 'Items exceed share']) ok(h.includes(s), 'print missing: ' + s);
+});
+test('J5 no items → dashboard figures and CSV numbers unchanged', async () => {
+  const sb = loadDash('owner');
+  const D = sb.ctx.PMShareDash;
+  D._setFetch(async () => dashData());
+  await D.load();
+  const h = pageHtml(sb);
+  ok(h.includes('₱693,500.00') && h.includes('₱541,500.00') && !h.includes('after ₱'), 'unchanged');
+});
+
+test('J6 mount gets onChange = dashboard reload; page stays on the same project', async () => {
+  const sb = loadDash('owner');
+  const D = sb.ctx.PMShareDash;
+  let fetches = 0, opts = null;
+  D._setFetch(async () => { fetches++; return dashWithItems(); });
+  sb.ctx.PMShareItems.mount = (el, o) => { opts = o; };
+  await D.load();
+  D.open('A');
+  ok(opts && opts.projectId === 'A' && opts.canEdit === true && Array.isArray(opts.items) && opts.items.length === 1, 'mount opts');
+  const before = fetches;
+  await opts.onChange();
+  ok(fetches === before + 1, 'refetched');
+  eq(D._state.openId, 'A');
+});
+
+// ══ K. Download PDF (a real file, drawn with jsPDF) ══════════════════
+// A recording stand-in for jsPDF: keeps every text drawn, the pages, the fonts and the saved name.
+function fakePdf(sb, { fontOk = true } = {}) {
+  const rec = { texts: [], saved: null, opts: null, fonts: [], pages: 1, fetched: [] };
+  class Doc {
+    constructor(o) { rec.opts = o; this.size = 10; }
+    setFont(f) { this.font = f; } setFontSize(s) { this.size = s; } setTextColor() {} setFillColor() {} setDrawColor() {} setLineWidth() {}
+    getTextWidth(s) { return String(s).length * this.size * 0.18; }
+    splitTextToSize(s) { return [String(s)]; }
+    text(s, x, y) { rec.texts.push({ s: [].concat(s).join(' '), font: this.font, page: this.page || 1 }); }
+    rect() {} roundedRect() {} line() {} addImage() {}
+    addPage() { rec.pages++; this.page = rec.pages; } getNumberOfPages() { return rec.pages; } setPage(i) { this.page = i; }
+    addFileToVFS(n) { rec.fonts.push(n); } addFont() {}
+    save(name) { rec.saved = name; }
+  }
+  sb.ctx.jspdf = { jsPDF: Doc };
+  sb.ctx.fetch = async (url) => { rec.fetched.push(url); if (!fontOk) throw new Error('offline'); return { ok: true, arrayBuffer: async () => new Uint8Array([65, 66]).buffer }; };
+  sb.ctx.btoa = (s) => Buffer.from(s, 'binary').toString('base64');
+  sb.ctx.Image = function () { const img = this; Object.defineProperty(img, 'src', { set() { setTimeout(() => img.onerror && img.onerror()); } }); };
+  rec.all = () => rec.texts.map(x => x.s).join('\n');
+  return rec;
+}
+const MM = 72 / 25.4;   // jsPDF points per mm; the PDF's unit is MM × its scale
+test('K1 the PDF is Legal (8.5 × 14) landscape, saved as profit-sharing-<date>.pdf, with the same figures as the print', async () => {
+  const sb = await loadedDash(dashData());
+  const rec = fakePdf(sb);
+  await sb.ctx.PMShareDash.downloadPdf();
+  eq([rec.opts.orientation, rec.opts.format], ['landscape', 'legal']);
+  ok(rec.opts.unit > MM * 1.05 && rec.opts.unit <= MM * 1.5 + 1e-9, 'a short sheet is scaled up to fill the page: ' + (rec.opts.unit / MM).toFixed(3));
+  ok(/^profit-sharing-\d{4}-\d{2}-\d{2}\.pdf$/.test(rec.saved), 'file name: ' + rec.saved);
+  eq(rec.fonts, ['Roboto-Regular.ttf', 'Roboto-Bold.ttf', 'Roboto-Regular.ttf', 'Roboto-Bold.ttf'],
+     'Roboto embedded so ₱ prints (in the measuring copy too, so widths match)');
+  const all = rec.all();
+  for (const s of ['Profit Sharing', 'Dacs · 56.15%', '₱693,500.00', 'Partners · 43.85%', '₱541,500.00', '= Net share', '₱1,235,000.00',
+                   '95.0% of client payments · 2 projects', 'p@x.test · 1 project', 'Results by project', 'Alpha', 'Ana · Completed Aug 2, 2026 · p@x.test',
+                   '760,000.00', 'Dacs 60%', '456,000.00', 'Partner 40%', '304,000.00', 'Total paid', '1,300,000.00',
+                   'Not counted yet', 'Beta · C', '₱950.00 estimated', 'Basis', INTERNAL_TEXT]) ok(all.includes(s), 'pdf missing: ' + s);
+  ok(!all.includes('Beta · C\n760') && rec.texts.filter(x => x.s === 'Beta · C').length === 1, 'review project only in its own card');
+  eq(sb.toasts, [], 'no error');
+});
+const INTERNAL_TEXT = 'Internal allocation — not a payout or amount owed.';
+test('K2 personal items and losses reach the PDF the way they reach the print', async () => {
+  const sb = await loadedDash(dashWithItems());
+  const rec = fakePdf(sb);
+  await sb.ctx.PMShareDash.downloadPdf();
+  const all = rec.all();
+  for (const s of ['₱687,500.00', '₱693,500.00 less ₱6,000.00 personal items', '− Partner expenses', '(₱400,000.00)', 'Net to partners', '₱141,500.00',
+                   '− Expenses', '(6,000.00)', '450,000.00', '−162,500.00', 'Partners, net of expenses', 'Items exceed share']) ok(all.includes(s), 'pdf missing: ' + s);
+  const sb2 = await loadedDash(lossData());
+  const rec2 = fakePdf(sb2);
+  await sb2.ctx.PMShareDash.downloadPdf();
+  const all2 = rec2.all();
+  ok(all2.includes('Net loss') && all2.includes('−100,000.00') && all2.includes('Includes a ₱100,000.00 loss on 1 project.') && all2.includes('Loss'), 'loss shown');
+});
+test('K3 no font (offline CDN): the file still downloads, spelling PHP and a plain hyphen', async () => {
+  const sb = await loadedDash(lossData());
+  const rec = fakePdf(sb, { fontOk: false });
+  await sb.ctx.PMShareDash.downloadPdf();
+  ok(rec.saved, 'saved anyway');
+  eq(rec.fonts, [], 'nothing embedded');
+  const all = rec.all();
+  ok(!all.includes('₱') && !all.includes('−'), 'no glyphs the built-in font lacks');
+  ok(all.includes('PHP 1,300,000.00') && all.includes('-100,000.00'), 'PHP and hyphen instead');
+  ok(rec.texts.every(x => x.font === 'helvetica' || x.font === 'times'), 'built-in faces only');
+});
+test('K4 many projects: blocks move to a new page whole, footer and page numbers on every page', async () => {
+  const d = dashData();
+  for (let i = 0; i < 12; i++) {
+    const id = 'X' + i; d.projects.push({ ...projA, id, projectName: 'Extra ' + i });
+    d.read.projects.push({ project_id: id, partner_pct: 50, is_default: true, version: 0 });
+    d.perProject[id] = { bills: [bill(300000)], reqs: [verified(900000)] }; d.reserves[id] = rec(30000, 900000, 300000);
+  }
+  const sb = await loadedDash(d);
+  const r = fakePdf(sb);
+  await sb.ctx.PMShareDash.downloadPdf();
+  ok(r.pages >= 2, 'more than one page: ' + r.pages);
+  ok(Math.abs(r.opts.unit - MM * 1.1) < 1e-9, 'a sheet that cannot fit one page uses the standard 1.1 scale');
+  for (let i = 1; i <= r.pages; i++) {
+    ok(r.texts.some(x => x.page === i && x.s.includes('Page ' + i + ' of ' + r.pages)), 'page number on page ' + i);
+    ok(r.texts.some(x => x.page === i && x.s.startsWith("Profit Sharing · DAC's Building Design Services · As of ")), 'footer on page ' + i);
+  }
+  for (let i = 0; i < 12; i++) {                                    // a block's name, subline and figures share one page
+    const parts = r.texts.filter(x => x.s === 'Extra ' + i);
+    eq(parts.length, 1, 'Extra ' + i + ' drawn once');
+  }
+});
+test('K5 staff: downloadPdf loads nothing and saves nothing', async () => {
+  const sb = loadDash('staff');
+  const r = fakePdf(sb);
+  await sb.ctx.PMShareDash.downloadPdf();
+  eq([r.saved, r.opts, r.fetched.length], [null, null, 0]);
+});
+test('K6 a failure becomes a toast, and the button works again afterwards', async () => {
+  const sb = await loadedDash(dashData());
+  const r = fakePdf(sb);
+  const Real = sb.ctx.jspdf.jsPDF;
+  sb.ctx.jspdf.jsPDF = function () { throw new Error('boom'); };
+  await sb.ctx.PMShareDash.downloadPdf();
+  eq(sb.toasts.pop(), ['Could not make the PDF: boom', true]);
+  sb.ctx.jspdf.jsPDF = Real;
+  await sb.ctx.PMShareDash.downloadPdf();
+  ok(r.saved, 'second try saves');
+});
+test('K7 print and PDF read one model (sheetModel), never their own copies', () => {
+  const src = read('js/pm-sharing-dashboard.js');
+  eq(src.split('function sheetModel()').length - 1, 1, 'defined once');
+  eq(src.split('} = sheetModel();').length - 1, 1, 'print reads it');
+  eq(src.split('const model = sheetModel();').length - 1, 1, 'the PDF reads it');
+  ok(src.includes('drawSheet(doc, model,') && src.includes('drawSheet(probe, model,'), 'measured and drawn from that one model');
 });
 
 // ── runner ───────────────────────────────────────────────────────────

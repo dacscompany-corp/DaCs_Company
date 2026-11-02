@@ -57,6 +57,7 @@
             status: p.status, terminatedAt: p.terminatedAt,
             bills: (d.perProject[p.id] || {}).bills || [], reqs: (d.perProject[p.id] || {}).reqs || [],
             reserveRow: d.reserves[p.id] || null, partnerPct: Number(rows[p.id].partner_pct),
+            items: (d.read.items || []).filter(i => i.project_id === p.id),
         }));
     }
 
@@ -99,11 +100,12 @@
         return dup ? base + ' · ' + (r.completionKey || 'undated') + ' · ' + String(r.id).slice(0, 6) : base;
     }
     // Status words (owner decision D-A, 2026-10-19). PRIORITY picks the ONE main pill (D-B).
-    const PRIORITY = ['reserve_review', 'shortfall', 'unpaid_balance', 'changed_since_closeout'];
+    const PRIORITY = ['reserve_review', 'shortfall', 'unpaid_balance', 'changed_since_closeout', 'items_exceed_share'];
     const CHIP = { reserve_review: 'Not counted yet', shortfall: 'Loss',
-                   unpaid_balance: 'Client still owes', changed_since_closeout: 'Edited after closeout' };
+                   unpaid_balance: 'Client still owes', changed_since_closeout: 'Edited after closeout',
+                   items_exceed_share: 'Items exceed share' };
     const TONE = { ready: 'ready', reserve_review: 'review', shortfall: 'loss',
-                   unpaid_balance: 'unpaid', changed_since_closeout: 'changed' };
+                   unpaid_balance: 'unpaid', changed_since_closeout: 'changed', items_exceed_share: 'loss' };
     const flagsOf = (r) => PRIORITY.filter(f => (r.flags || []).indexOf(f) !== -1);
     function mainStatus(r) { return flagsOf(r)[0] || 'ready'; }
     function chipsFor(r) {
@@ -120,6 +122,8 @@
     // ── small view helpers ─────────────────────────────────────────────
     const P = () => window.PMShare;
     const peso = (c) => esc(P().pesos(c));
+    // "after ₱X items" under a share, only when that person has items.
+    const itemsSub = (cents) => cents ? '<div class="pms-sub">after ' + peso(cents) + ' items</div>' : '';
     const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
     const clampPct = (n) => (Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0);
     // 'YYYY-MM-DD' → "Aug 2, 2026", built from local parts (never toISOString).
@@ -140,6 +144,7 @@
     const ICON = {
         printer: '<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/>',
         download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/>',
+        file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/>',
         refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
         search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
         down: '<path d="m6 9 6 6 6-6"/>', right: '<path d="m9 18 6-6-6-6"/>', left: '<path d="m15 18-6-6 6-6"/>',
@@ -160,6 +165,7 @@
             case 'shortfall': return 'Lost ' + P().pesos(-r.balanceCents) + ' after costs and reserve. The loss lowers both shares.';
             case 'unpaid_balance': return 'Client still owes ' + P().pesos(r.outstandingCents) + '. Counted with what has been paid so far.';
             case 'changed_since_closeout': return 'Payments or costs changed after closeout. Check the change is correct.';
+            case 'items_exceed_share': return "Personal items are more than one person's share.";
             default: return '';
         }
     }
@@ -169,6 +175,7 @@
         shortfall: ['This project lost money', 'Costs plus the warranty reserve are more than the client paid. The loss is split with the same percentages and lowers both shares.'],
         unpaid_balance: ['Client still owes money', 'Counted using only what the client has paid so far. The amount to share grows once the remaining balance is collected.'],
         changed_since_closeout: ['Edited after closeout', 'Payments or costs changed after the project was closed out. Still counted, but check that the change is correct.'],
+        items_exceed_share: ['Items exceed a share', "One person's personal items are more than their share of this project. Their figure shows as a minus; the other person's share is not touched."],
     };
     const INTERNAL = 'Internal allocation — not a payout or amount owed.';
 
@@ -188,7 +195,8 @@
         return '<div class="pms-head"><div class="pms-head-l"><h1 class="pms-title">Profit Sharing</h1>'
             + '<div class="pms-head-sub">Completed projects · Updated ' + esc(when) + '</div></div>'
             + '<div class="pms-actions">'
-            + '<button type="button" class="pms-btn" onclick="PMShareDash.print()">' + icon('printer') + 'Print / PDF</button>'
+            + '<button type="button" class="pms-btn" onclick="PMShareDash.print()">' + icon('printer') + 'Print</button>'
+            + '<button type="button" class="pms-btn" onclick="PMShareDash.downloadPdf()" title="Download a PDF file">' + icon('file') + 'PDF</button>'
             + '<button type="button" class="pms-btn" onclick="PMShareDash.downloadCsv()">' + icon('download') + 'CSV</button>'
             + '<button type="button" class="pms-btn pms-btn--icon" onclick="PMShareDash.load()" title="Refresh" aria-label="Refresh">' + icon('refresh') + '</button>'
             + '</div></div>';
@@ -240,11 +248,11 @@
         return '<div class="pms-hero">'
             + '<div class="pms-hero-split">'
             +   '<div class="pms-hero-side"><div class="pms-hero-k"><span class="pms-key pms-key--own"></span>Your share</div>'
-            +     '<div class="pms-hero-v pms-hero-v--own' + (t.ownerCents < 0 ? ' pms-neg' : '') + '">' + peso(t.ownerCents) + '</div>'
-            +     '<div class="pms-hero-s">' + (share ? esc(p.fmtPct(ownPct)) + '% of the amount left to share' : 'Your part of the amount left to share') + '</div></div>'
+            +     '<div class="pms-hero-v pms-hero-v--own' + (t.ownerAfterCents < 0 ? ' pms-neg' : '') + '">' + peso(t.ownerAfterCents) + '</div>'
+            +     '<div class="pms-hero-s">' + (share ? esc(p.fmtPct(ownPct)) + '% of the amount left to share' : 'Your part of the amount left to share') + '</div>' + itemsSub(t.ownerItemsCents) + '</div>'
             +   '<div class="pms-hero-side pms-hero-side--par"><div class="pms-hero-k">Partners\' share<span class="pms-key pms-key--par"></span></div>'
-            +     '<div class="pms-hero-v' + (t.partnerCents < 0 ? ' pms-neg' : '') + '">' + peso(t.partnerCents) + '</div>'
-            +     '<div class="pms-hero-s">' + (share ? esc(p.fmtPct(parPct)) + '% · ' : '') + esc(plural(partners, 'partner', 'partners')) + '</div></div>'
+            +     '<div class="pms-hero-v' + (t.partnerAfterCents < 0 ? ' pms-neg' : '') + '">' + peso(t.partnerAfterCents) + '</div>'
+            +     '<div class="pms-hero-s">' + (share ? esc(p.fmtPct(parPct)) + '% · ' : '') + esc(plural(partners, 'partner', 'partners')) + '</div>' + itemsSub(t.partnerItemsCents) + '</div>'
             + '</div>'
             + (share
                 ? '<div class="pms-hero-bar" role="img" aria-label="Your share ' + esc(p.fmtPct(ownPct)) + '%, partners ' + esc(p.fmtPct(parPct)) + '%">'
@@ -301,8 +309,8 @@
             + '<div class="pms-c-partner' + (r.partnerEmail ? '' : ' pms-none') + '">' + esc(r.partnerEmail || 'No partner assigned') + '</div>'
             + '<div class="pms-c-bal pms-n' + neg + '">' + peso(r.balanceCents)
             +   (provisional ? '<div class="pms-prov">Provisional</div>' : '') + '</div>'
-            + '<div class="pms-c-own pms-n' + neg + '"><span class="pms-m-only">You </span>' + peso(r.ownerCents) + '</div>'
-            + '<div class="pms-c-par pms-n' + neg + '"><span class="pms-m-only">· Partner </span>' + peso(r.partnerCents) + '</div>'
+            + '<div class="pms-c-own pms-n' + (r.ownerAfterCents < 0 ? ' pms-neg' : '') + '"><span class="pms-m-only">You </span>' + peso(r.ownerAfterCents) + itemsSub(r.ownerItemsCents) + '</div>'
+            + '<div class="pms-c-par pms-n' + (r.partnerAfterCents < 0 ? ' pms-neg' : '') + '"><span class="pms-m-only">· Partner </span>' + peso(r.partnerAfterCents) + itemsSub(r.partnerItemsCents) + '</div>'
             + '<div class="pms-c-split"><div class="pms-bar"><div class="pms-bar-own" style="width:' + w + '%"></div></div>'
             +   '<div class="pms-split-t">' + esc(p.fmtPct(r.ownerPct)) + ' / ' + esc(p.fmtPct(r.partnerPct)) + '</div></div>'
             + '<div class="pms-c-status"><div class="pms-pills">' + pillsFor(r) + '</div></div>'
@@ -320,8 +328,8 @@
             + (empty ? '' : '<div class="pms-trow pms-total">'
                 + '<div class="pms-c-proj">Total · ' + esc(t.count) + ' counted</div><div class="pms-c-partner"></div>'
                 + '<div class="pms-c-bal pms-n' + (t.netCents < 0 ? ' pms-neg' : '') + '">' + peso(t.netCents) + '</div>'
-                + '<div class="pms-c-own pms-n pms-own-t' + (t.ownerCents < 0 ? ' pms-neg' : '') + '"><span class="pms-m-only">You </span>' + peso(t.ownerCents) + '</div>'
-                + '<div class="pms-c-par pms-n' + (t.partnerCents < 0 ? ' pms-neg' : '') + '"><span class="pms-m-only">· Partner </span>' + peso(t.partnerCents) + '</div>'
+                + '<div class="pms-c-own pms-n pms-own-t' + (t.ownerAfterCents < 0 ? ' pms-neg' : '') + '"><span class="pms-m-only">You </span>' + peso(t.ownerAfterCents) + itemsSub(t.ownerItemsCents) + '</div>'
+                + '<div class="pms-c-par pms-n' + (t.partnerAfterCents < 0 ? ' pms-neg' : '') + '"><span class="pms-m-only">· Partner </span>' + peso(t.partnerAfterCents) + itemsSub(t.partnerItemsCents) + '</div>'
                 + '<div class="pms-total-note">“Not counted yet” is left out</div></div>')
             + '</div>';
     }
@@ -440,6 +448,7 @@
                  : { labor: 0, materials: 0, combined: 0, overhead: 0 };
         const rec = S.data.reserves[r.id];
         const hist = (S.data.read.history || []).filter(h => h.project_id === r.id);
+        const its = (S.data.read.items || []).filter(i => i.project_id === r.id);
         const facts = p.acceptanceFacts(r.partnerEmail, S.data.read.partners, hist.length ? hist[0].changed_at : null);
         const main = mainStatus(r), loss = r.balanceCents < 0;
         const line = (k, cents) => '<div class="pms-line"><span>' + esc(k) + '</span><span class="pms-n">' + peso(cents) + '</span></div>';
@@ -477,10 +486,11 @@
             +       '<div class="pms-step-v pms-n">' + peso(r.balanceCents) + '</div></div>'
             +     '<div class="pms-bar pms-bar--lg"><div class="pms-bar-own" style="width:' + clampPct(r.ownerPct) + '%"></div></div>'
             +     '<div class="pms-parts"><div class="pms-part pms-part--own"><div class="pms-part-k">You · ' + esc(p.fmtPct(r.ownerPct)) + '%</div>'
-            +       '<div class="pms-part-v' + (r.ownerCents < 0 ? ' pms-neg' : '') + '">' + peso(r.ownerCents) + '</div></div>'
+            +       '<div class="pms-part-v' + (r.ownerAfterCents < 0 ? ' pms-neg' : '') + '">' + peso(r.ownerAfterCents) + itemsSub(r.ownerItemsCents) + '</div></div>'
             +     '<div class="pms-part"><div class="pms-part-k">Partner · ' + esc(p.fmtPct(r.partnerPct)) + '%</div>'
-            +       '<div class="pms-part-v' + (r.partnerCents < 0 ? ' pms-neg' : '') + '">' + peso(r.partnerCents) + '</div></div></div>'
+            +       '<div class="pms-part-v' + (r.partnerAfterCents < 0 ? ' pms-neg' : '') + '">' + peso(r.partnerAfterCents) + itemsSub(r.partnerItemsCents) + '</div></div></div>'
             +   '</div>'
+            +   step(5, 'Personal items', '', '<div id="pmSharingItems"></div>')
             + '</section>'
             + '<aside class="pms-side">'
             +   '<div class="pms-status pms-status--' + TONE[main] + '"><div class="pms-status-t">' + esc(box[0]) + '</div><div class="pms-status-x">' + esc(box[1]) + '</div>'
@@ -500,6 +510,13 @@
             +     facts.map(f => '<div class="pms-fact">' + esc(f) + '</div>').join('') + '</div>'
             +   '<div class="pms-foot">' + esc(INTERNAL) + '</div>'
             + '</aside></div>';
+        // Personal items (0110): owner-role only (mount renders nothing otherwise); a save re-runs load(),
+        // and render() keeps S.openId, so the page reopens on this project with the new figures.
+        if (window.PMShareItems) {
+            window.PMShareItems.mount(document.getElementById('pmSharingItems'), {
+                projectId: r.id, items: its, canEdit: !!S.data.read.can_edit,
+                companyId: window.currentDataUserId, onChange: load });
+        }
     }
 
     // ── print + CSV: built from the SAME model as the screen ───────────
@@ -522,11 +539,13 @@
     function toCsv(m, meta) {
         const peso = (c) => c / 100;
         const cols = ['Project', 'Client', 'Partner', 'Completed', 'Collected', 'Costs', 'Remaining cash', 'Warranty reserve',
-                      'Reserve basis', 'Sharing balance', 'Your %', 'Your amount', 'Partner %', 'Partner amount', 'Client balance', 'Review'];
+                      'Reserve basis', 'Sharing balance', 'Your %', 'Your amount', 'Partner %', 'Partner amount',
+                      'Your items', 'Your amount after items', 'Partner items', 'Partner amount after items', 'Client balance', 'Review'];
         const row = (r, provisional) => [labelFor(r, m.all), r.clientName, r.partnerEmail || 'Partner unassigned',
             r.completionKey || 'Undated', peso(r.paidCents), peso(r.costCents), peso(r.remainingCents), peso(r.reserve.cents),
             provisional ? 'Provisional — not counted yet' : (r.reserve.kind === 'recorded' ? 'Recorded at closeout' : 'Estimate'),
             peso(r.balanceCents), r.ownerPct, peso(r.ownerCents), r.partnerPct, peso(r.partnerCents),
+            peso(r.ownerItemsCents), peso(r.ownerAfterCents), peso(r.partnerItemsCents), peso(r.partnerAfterCents),
             peso(r.outstandingCents), chipsFor(r).join(' · ')];
         const t = m.totals;
         const lines = meta.map(l => l.split(',').length > 1
@@ -538,6 +557,7 @@
         m.review.forEach(r => lines.push(row(r, true).map(csvCell).join(',')));
         lines.push(['Totals (confirmed)', '', '', '', peso(t.paidCents), peso(t.costCents), peso(t.paidCents - t.costCents),
                     peso(t.reserveCents), '', peso(t.netCents), '', peso(t.ownerCents), '', peso(t.partnerCents),
+                    peso(t.ownerItemsCents), peso(t.ownerAfterCents), peso(t.partnerItemsCents), peso(t.partnerAfterCents),
                     peso(t.outstandingCents), t.reviewCount + ' not counted yet (not in totals)'].map(csvCell).join(','));
         return lines.join('\r\n');
     }
@@ -546,127 +566,190 @@
         const csv = toCsv(buildModel(S.results, S.filters), metaLines());
         const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
         const a = document.createElement('a');
-        const d = new Date();
         a.href = URL.createObjectURL(blob);
-        a.download = 'profit-sharing-' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + '.csv';
+        a.download = 'profit-sharing-' + fileDate() + '.csv';
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     }
     // Printed project name: the name, plus a short id only when the name is duplicated (the date lives in the subline).
     const printTitle = (r, all) => baseLabel(r) + (all.filter(x => baseLabel(x) === baseLabel(r)).length > 1 ? ' · ' + String(r.id).slice(0, 6) : '');
-    function print() {
-        if (!canSee() || !S.data) return;
+    // Status pill colours [background, text] and legend wording, shared by the printed sheet and the PDF file.
+    const TONES = { ready: ['#EAF2EC', '#1A5C3A'], reserve_review: ['#FBF2DC', '#8A5F0C'], unpaid_balance: ['#FBF2DC', '#8A5F0C'],
+                    shortfall: ['#F8E7E4', '#8F352C'], changed_since_closeout: ['#EEF2F6', '#44525F'],
+                    items_exceed_share: ['#F8E7E4', '#8F352C'] };
+    const MEAN = { unpaid_balance: 'Counted with what has been paid so far.', shortfall: 'Costs and reserve exceed what was paid. The loss lowers both shares.',
+                   changed_since_closeout: 'Payments or costs changed after closeout. Check the change.',
+                   items_exceed_share: "Personal items are more than one person's share; that figure is a minus.", reserve_review: 'No warranty reserve recorded at closeout; left out of the totals.' };
+    const BASIS = 'Net share = client paid − project costs − warranty reserve recorded at closeout, split per project at its agreed percentage. Amounts in PHP.';
+    const REVIEW_NOTE = '. No warranty reserve was recorded at closeout, so this project is left out of the totals until it is.';
+    // ONE model for the printed sheet AND the downloaded PDF, so the two can never show different figures.
+    function sheetModel() {
         const m = buildModel(S.results, S.filters), t = m.totals, p = P(), f = S.filters;
         const when = S.asOf ? fmtWhen(S.asOf) : '';
         const dateText = f.undatedOnly ? 'Undated only'
             : (f.from && f.to) ? fmtKey(f.from) + ' – ' + fmtKey(f.to) : f.from ? 'From ' + fmtKey(f.from) : f.to ? 'Until ' + fmtKey(f.to) : 'All dates';
         const partnerText = f.partner === 'all' ? 'All partners' : f.partner === 'unassigned' ? 'No partner' : f.partner;
-        const TONES = { ready: ['#EAF2EC', '#1A5C3A'], reserve_review: ['#FBF2DC', '#8A5F0C'], unpaid_balance: ['#FBF2DC', '#8A5F0C'],
-                        shortfall: ['#F8E7E4', '#8F352C'], changed_since_closeout: ['#EEF2F6', '#44525F'] };
-        const ppill = (fl) => '<span class="pill" style="background:' + TONES[fl][0] + ';color:' + TONES[fl][1] + '">' + esc(fl === 'ready' ? 'Ready' : CHIP[fl]) + '</span>';
-        const money = (c, cls) => '<span class="n' + (cls ? ' ' + cls : '') + '">' + esc(p.pesos(c)) + '</span>';
-        const line = (l, c, cls) => '<div class="ln' + (cls ? ' ' + cls : '') + '"><span>' + esc(l) + '</span>' + money(c) + '</div>';
-        const sub = (r) => esc(r.clientName || '') + ' · ' + esc(completedText(r)) + ' · ' + esc(r.partnerEmail || 'No partner assigned');
         const { share, ownPct, parPct } = shareSplit(t);   // same rule as the screen hero
-        const hasRows = m.rows.length + m.review.length > 0;
-        // by-partner (confirmed rows only)
+        const netLabel = t.netCents < 0 ? 'Net loss' : 'Net share';
+        const lossRows = m.rows.filter(r => r.balanceCents < 0).length;
+        // by partner (confirmed rows only)
         const byPartner = new Map();
         m.rows.forEach(r => {
             const k = r.partnerEmail || '';
             const g = byPartner.get(k) || { n: 0, cents: 0, loss: false };
-            g.n++; g.cents += r.partnerCents; if (r.balanceCents < 0) g.loss = true;
+            g.n++; g.cents += r.partnerAfterCents; if (r.balanceCents < 0) g.loss = true;
             byPartner.set(k, g);
         });
         const partnerKeys = Array.from(byPartner.keys()).sort((a, b) => (a === '') - (b === '') || (a < b ? -1 : a > b ? 1 : 0));
-        const partnerHtml = partnerKeys.map(k => {
+        const partnerLines = partnerKeys.length > 1 ? partnerKeys.map(k => {
             const g = byPartner.get(k);
-            return '<span>' + esc((k || 'No partner assigned') + ' · ' + plural(g.n, 'project', 'projects') + (g.loss ? ', includes a loss' : '')) + '</span>'
-                + '<span class="n b right' + (g.cents < 0 ? ' negc' : '') + '">' + esc(p.pesos(g.cents)) + '</span>';
-        }).join('');
-        const lossRows = m.rows.filter(r => r.balanceCents < 0).length;
-        const net = t.netCents < 0;
-        // counted table
-        const th = (l, left) => '<th class="' + (left ? 'l' : 'r') + (l === 'Project' ? ' pc' : '') + '">' + l + '</th>';
-        const shareCell = (c, pct) => '<td class="r' + (c < 0 ? ' negc' : '') + '">' + esc(p.pesos(c)) + '<div class="grey pct">' + esc(p.fmtPct(pct)) + '%</div></td>';
-        const rowHtml = (r) => {
-            const fl = flagsOf(r);
-            return '<tr><td class="pc"><div class="nm"><b>' + esc(printTitle(r, m.all)) + '</b></div><div class="grey sb">' + sub(r) + '</div></td>'
-                + '<td class="r">' + esc(p.pesos(r.paidCents)) + '</td><td class="r">' + esc(p.pesos(r.costCents)) + '</td><td class="r">' + esc(p.pesos(r.reserve.cents)) + '</td>'
-                + '<td class="r b' + (r.balanceCents < 0 ? ' negc' : '') + '">' + esc(p.pesos(r.balanceCents)) + '</td>'
-                + shareCell(r.ownerCents, r.ownerPct) + shareCell(r.partnerCents, r.partnerPct)
-                + '<td>' + (fl.length ? fl.map(ppill).join(' ') : ppill('ready')) + '</td></tr>';
-        };
-        const counted = '<h2>Counted projects</h2><table class="grid"><thead><tr>' + th('Project', true) + th('Client paid') + th('Costs') + th('Reserve') + th('Left to share')
-            + th('Your share') + th('Partner share') + th('Status', true) + '</tr></thead><tbody>'
-            + (m.rows.length ? m.rows.map(rowHtml).join('') : '<tr><td colspan="8">No counted projects.</td></tr>')
-            + '<tr class="total"><td>' + esc('Total · ' + plural(t.count, 'project', 'projects')) + '</td><td class="r">' + esc(p.pesos(t.paidCents)) + '</td><td class="r">' + esc(p.pesos(t.costCents))
-            + '</td><td class="r">' + esc(p.pesos(t.reserveCents)) + '</td><td class="r' + (net ? ' negc' : '') + '">' + esc(p.pesos(t.netCents)) + '</td><td class="r green">' + esc(p.pesos(t.ownerCents))
-            + '</td><td class="r">' + esc(p.pesos(t.partnerCents)) + '</td><td></td></tr></tbody></table>';
-        // not counted yet
-        const reviewHtml = m.review.length ? '<div class="avoid"><h2 class="tight">Not counted yet</h2>' + m.review.map(r =>
-            '<div class="rcard"><div class="ln"><b>' + esc(printTitle(r, m.all)) + '</b><span class="n">' + esc(p.pesos(r.balanceCents)) + ' estimated</span></div>'
-            + '<div class="grey">' + sub(r) + '</div>'
-            + '<div class="grey">' + esc('Paid ' + p.pesos(r.paidCents) + ' − costs ' + p.pesos(r.costCents) + ' − estimated reserve ' + p.pesos(r.reserve.cents)
-              + '. No warranty reserve was recorded at closeout, so this project is left out of the totals until it is.') + '</div></div>').join('') + '</div>' : '';
+            return { label: (k || 'No partner assigned') + ' · ' + plural(g.n, 'project', 'projects') + (g.loss ? ', includes a loss' : ''), cents: g.cents };
+        }) : [];
+        const subline = (r) => (r.clientName || '') + ' · ' + (r.completionKey ? 'Completed ' : '') + completedText(r)
+            + (byPartner.size > 1 || !r.partnerEmail ? ' · ' + (r.partnerEmail || 'No partner assigned') : '');
         // legend: Ready + statuses present
         const all = m.rows.concat(m.review);
         const present = (fl) => all.some(r => flagsOf(r).indexOf(fl) !== -1);
-        const MEAN = { unpaid_balance: 'Counted with what has been paid so far.', shortfall: 'Costs and reserve exceed what was paid. The loss lowers both shares.',
-                       changed_since_closeout: 'Payments or costs changed after closeout. Check the change.', reserve_review: 'No warranty reserve recorded at closeout; left out of the totals.' };
-        const legendRows = [['ready', 'Payments, costs and reserve are final.']].concat(['unpaid_balance', 'shortfall', 'changed_since_closeout', 'reserve_review']
+        const legendRows = [['ready', 'Payments, costs and reserve are final.']].concat(['unpaid_balance', 'shortfall', 'changed_since_closeout', 'reserve_review', 'items_exceed_share']
             .filter(present).map(fl => [fl, MEAN[fl] + (fl === 'unpaid_balance' ? all.filter(r => flagsOf(r).indexOf(fl) !== -1)
                 .map(r => ' ' + printTitle(r, m.all) + ': ' + p.pesos(r.outstandingCents) + ' unpaid.').join('') : '')]));
-        const legend = '<div class="avoid"><h2 class="tight">What the statuses mean</h2><div class="legend">' + legendRows.map(x =>
-            '<b style="color:' + TONES[x[0]][1] + '">' + esc(x[0] === 'ready' ? 'Ready' : CHIP[x[0]]) + '</b><span>' + esc(x[1]) + '</span>').join('') + '</div></div>';
-        const css = '@page{size:letter landscape;margin:0.5in}*{box-sizing:border-box}'
-            + 'body{margin:0;font-family:Barlow,Helvetica,Arial,sans-serif;font-size:12pt;color:#1C1C1E;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
-            + 'h2{font-family:"Playfair Display",Georgia,serif;font-size:16pt;font-weight:600;margin:18px 0 6px}h2.tight{margin-top:0}'
-            + '.head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;padding-bottom:10px;border-bottom:2px solid #1A5C3A}'
-            + '.brand{display:flex;align-items:center;gap:12px;line-height:1.15}.brand .t{font-family:"Playfair Display",Georgia,serif;font-size:24pt;font-weight:600}'
-            + '.logo{width:44px;height:44px;border-radius:10px;border:1px solid #e7e6e2;display:grid;place-items:center}.logo img{width:34px;height:34px;object-fit:contain}'
-            + '.meta{display:grid;grid-template-columns:auto auto;gap:2px 12px;text-align:right}.meta .k{color:#6C6C70}.meta .v{font-weight:600}'
-            + '.grey{color:#3A3A3C}.green{color:#1A5C3A}.negc,.neg{color:#8F352C}.b{font-weight:700}.right,.r{text-align:right}.l{text-align:left}'
-            + '.top{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:12px;break-inside:avoid}.left{display:flex;flex-direction:column;gap:8px}'
-            + '.sh{display:flex;justify-content:space-between;align-items:flex-end}.sh .k{font-weight:600;color:#3A3A3C;display:flex;align-items:center;gap:6px}.sh .v{font-size:26pt;font-weight:700;font-variant-numeric:tabular-nums}'
-            + '.sh .r .k{justify-content:flex-end}.dot{width:10px;height:10px;border-radius:3px;display:inline-block}'
-            + '.bar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:#9DC9B4}.bar div{background:#1A5C3A}.bar.empty{background:#E5E5E5}'
-            + '.plist{display:grid;grid-template-columns:1fr auto;gap:4px 12px}'
-            + '.box{background:#F5F5F5;border-radius:12px;padding:10px 16px;display:flex;flex-direction:column;gap:4px}'
-            + '.ln{display:flex;justify-content:space-between;gap:8px}.n{font-variant-numeric:tabular-nums;white-space:nowrap}.box .tot{border-top:1px solid #D6D6D2;padding-top:6px;font-weight:700}'
-            + 'table.grid{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:11pt}th.pc{width:30%}table.grid td.r,table.grid th.r{white-space:nowrap}.nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:3.2in}.sb,.pct{font-size:10.5pt}.pct{white-space:nowrap}'
-            + 'table.grid thead{display:table-header-group}'
-            + 'table.grid th{padding:6px 7px;border-bottom:1px solid #D6D6D2;font-weight:600;background:#FAFAF8}table.grid td{padding:6px 7px;border-bottom:1px solid #EEEEEE;vertical-align:top}'
-            + 'table.grid tr{break-inside:avoid}table.grid tr.total td{background:#FAFAF8;font-weight:700;border-top:1px solid #D6D6D2}'
-            + '.pill{font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap;display:inline-block}'
-            + '.two{display:grid;gap:24px;margin-top:14px}.avoid{break-inside:avoid}'
-            + '.rcard{border:1px solid #E5E5E5;border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:4px;margin-bottom:8px}'
-            + '.legend{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;align-items:baseline}.basis{margin-top:12px;color:#3A3A3C;break-inside:avoid}'
-            + '.sheet{width:100%;border-collapse:collapse}.sheet>thead>tr>td,.sheet>tbody>tr>td,.sheet>tfoot>tr>td{display:block;padding:0}.foot-space{height:0.55in}'
-            + '.foot{display:flex;justify-content:space-between;gap:12px;color:#6C6C70;padding-top:8px;border-top:1px solid #E5E5E5;margin-top:24px;background:#fff}.foot-space{display:block}'
-            + '@media screen{body{background:#E9E9E6;padding:24px 0}.page{max-width:11in;min-height:8.5in;margin:0 auto;padding:0.5in;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.12)}}'
-            + '@media print{.foot{position:fixed;bottom:0;left:0;right:0;margin-top:0;height:0.45in;overflow:hidden}.sheet{display:table}.sheet>thead{display:table-header-group}.sheet>tfoot{display:table-footer-group}.sheet>thead>tr>td,.sheet>tbody>tr>td,.sheet>tfoot>tr>td{display:table-cell}}';
+        return { m, t, p, f, when, dateText, partnerText, share, ownPct, parPct, netLabel, lossRows, partnerLines, subline, legendRows,
+                 hasRows: m.rows.length + m.review.length > 0,
+                 paidPct: t.paidCents ? (t.netCents / t.paidCents * 100).toFixed(1) + '%' : '—',
+                 title: (r) => printTitle(r, m.all) };
+    }
+    const statusWord = (fl) => fl === 'ready' ? 'Ready' : CHIP[fl];
+    // Layout 2a (side panel): green summary panel on the left, one block per project on the right.
+    function print() {
+        if (!canSee() || !S.data) return;
+        const { m, t, p, f, when, dateText, partnerText, share, ownPct, parPct, netLabel, lossRows, partnerLines, subline, legendRows, hasRows, paidPct } = sheetModel();
+        const ppill = (fl) => '<span class="pill" style="background:' + TONES[fl][0] + ';color:' + TONES[fl][1] + '">' + esc(statusWord(fl)) + '</span>';
+        const amt = (c) => esc(p.pesos(c)).replace('₱', '');                  // table figures: no peso sign (also after a minus)
+        const partnerList = partnerLines.length ? '<div class="plist">' + partnerLines.map(l =>
+            '<span>' + esc(l.label) + '</span><span class="n' + (l.cents < 0 ? ' negc' : '') + '">' + esc(p.pesos(l.cents)) + '</span>').join('') + '</div>' : '';
+
+        // ── left panel ──
         const logo = window.location.origin + '/assets/images/DACS-TRANSPARENT.png';
-        const header = '<div class="head"><div class="brand"><div class="logo"><img id="pmsLogo" src="' + esc(logo) + '" alt="DAC\'s"></div>'
-            + '<div><div class="t">Profit Sharing</div><div class="grey">Completed projects · DAC\'s Building Design Services</div></div></div>'
-            + '<div class="meta"><span class="k">As of</span><span class="v">' + esc(when) + '</span><span class="k">Completed</span><span class="v">' + esc(dateText) + '</span>'
-            + '<span class="k">Partners</span><span class="v">' + esc(partnerText) + '</span>'
-            + (f.q ? '<span class="k">Search</span><span class="v">' + esc(f.q) + '</span>' : '') + '</div></div>';
-        const top = '<div class="top"><div class="left"><div class="sh">'
-            + '<div><div class="k"><span class="dot" style="background:#1A5C3A"></span>Your share' + (share ? ' · ' + esc(p.fmtPct(ownPct)) + '%' : '') + '</div><div class="v green">' + esc(p.pesos(t.ownerCents)) + '</div></div>'
-            + '<div class="r"><div class="k">Partners\' share' + (share ? ' · ' + esc(p.fmtPct(parPct)) + '%' : '') + '<span class="dot" style="background:#9DC9B4"></span></div><div class="v">' + esc(p.pesos(t.partnerCents)) + '</div></div></div>'
-            + '<div class="bar' + (share ? '' : ' empty') + '">' + (share ? '<div style="width:' + clampPct(ownPct) + '%"></div>' : '') + '</div>'
-            + '<div class="plist">' + partnerHtml + '</div></div>'
-            + '<div class="box"><b>How the amount to share is worked out</b>' + line('Client paid', t.paidCents) + line('− Project costs (labor, materials, site overhead)', t.costCents)
-            + line('− Warranty reserve (set aside at closeout)', t.reserveCents)
-            + '<div class="ln tot ' + (net ? 'neg' : 'green') + '"><span>' + esc((net ? '= Loss to split · ' : '= Left to share · ') + plural(t.count, 'project', 'projects')) + '</span>' + money(t.netCents) + '</div>'
-            + '<div class="grey">' + esc("Split project by project, using each project's agreed percentage."
-              + (t.shortfallCents < 0 ? ' Includes a ' + p.pesos(-t.shortfallCents) + ' loss on ' + plural(lossRows, 'project', 'projects') + '.' : '')) + '</div></div></div>';
-        const content = !hasRows ? '<p>No completed projects match these filters.</p>'
-            : top + counted + '<div class="two" style="grid-template-columns:' + (m.review.length ? '1fr 1fr' : '1fr') + '">' + reviewHtml + legend + '</div>'
-              + '<div class="basis">Basis: left to share = client paid − project costs − warranty reserve recorded at closeout. Each project is split with its own percentage, then the results are added up. These are internal figures, not payouts or amounts owed.</div>';
-        const body = '<div class="page"><table class="sheet"><thead><tr><td></td></tr></thead><tbody><tr><td>' + header + content
-            + '</td></tr></tbody><tfoot><tr><td><div class="foot-space"></div></td></tr></tfoot></table>'
-            + '<div class="foot"><span>Profit Sharing · DAC\'s Building Design Services · As of ' + esc(when) + '</span><span>' + esc(INTERNAL) + '</span></div></div>';
+        const meta = '<div class="pmeta"><span>As of</span><b>' + esc(when) + '</b><span>Completed</span><b>' + esc(dateText) + '</b>'
+            + '<span>Partners</span><b>' + esc(partnerText) + '</b>' + (f.q ? '<span>Search</span><b>' + esc(f.q) + '</b>' : '') + '</div>';
+        const brand = '<div class="brand"><div class="logo"><img id="pmsLogo" src="' + esc(logo) + '" alt="DAC\'s"></div>'
+            + '<div><div class="eyebrow">DAC\'s Building Design Services</div><div class="t">Profit Sharing</div></div></div>';
+        const panel = '<aside class="panel">' + brand
+            + '<div class="split"><div class="bar' + (share ? '' : ' empty') + '">' + (share ? '<div style="width:' + clampPct(ownPct) + '%"></div>' : '') + '</div>'
+            + '<div class="ln"><span class="k">Dacs' + (share ? ' · ' + esc(p.fmtPct(ownPct)) + '%' : '') + '</span><span class="v green' + (t.ownerAfterCents < 0 ? ' negc' : '') + '">' + esc(p.pesos(t.ownerAfterCents)) + '</span></div>'
+            + (t.ownerItemsCents ? '<div class="note">' + esc(p.pesos(t.ownerAfterCents + t.ownerItemsCents) + ' less ' + p.pesos(t.ownerItemsCents) + ' personal items') + '</div>' : '')
+            + '<div class="sep">' + (t.partnerItemsCents
+                ? '<span class="k">Partners' + (share ? ' · ' + esc(p.fmtPct(parPct)) + '%' : '') + '</span>'
+                  + '<div class="ln sm"><span class="grey">Share</span><span class="n">' + esc(p.pesos(t.partnerAfterCents + t.partnerItemsCents)) + '</span></div>'
+                  + '<div class="ln sm ded"><span>− Partner expenses</span><span class="n">(' + esc(p.pesos(t.partnerItemsCents)) + ')</span></div>'
+                  + '<div class="ln netln"><span class="k b">Net to partners</span><span class="v' + (t.partnerAfterCents < 0 ? ' negc' : '') + '">' + esc(p.pesos(t.partnerAfterCents)) + '</span></div>'
+                : '<div class="ln"><span class="k">Partners' + (share ? ' · ' + esc(p.fmtPct(parPct)) + '%' : '') + '</span><span class="v' + (t.partnerAfterCents < 0 ? ' negc' : '') + '">' + esc(p.pesos(t.partnerAfterCents)) + '</span></div>')
+            + partnerList + '</div></div>'
+            + '<div class="calc"><div class="ln"><span>Client paid</span><span class="n">' + esc(p.pesos(t.paidCents)) + '</span></div>'
+            + '<div class="ln"><span>− Project costs</span><span class="n">' + amt(t.costCents) + '</span></div>'
+            + '<div class="ln"><span>− Warranty reserve</span><span class="n">' + amt(t.reserveCents) + '</span></div>'
+            + '<div class="ln tot"><span>= ' + netLabel + '</span><span class="n">' + esc(p.pesos(t.netCents)) + '</span></div></div>'
+            + '<div class="hero"><div class="eyebrow">' + netLabel + '</div><div class="big">' + esc(p.pesos(t.netCents)) + '</div>'
+            + '<div class="soft">' + esc(paidPct + ' of client payments · ' + plural(t.count, 'project', 'projects')) + '</div>'
+            + (t.shortfallCents < 0 ? '<div class="soft">' + esc('Includes a ' + p.pesos(-t.shortfallCents) + ' loss on ' + plural(lossRows, 'project', 'projects') + '.') + '</div>' : '')
+            + '</div>' + meta + '</aside>';
+
+        // ── project blocks ──
+        const cell = (k, v, cls, extra) => '<div class="c' + (cls ? ' ' + cls : '') + '"><span class="k">' + k + '</span><span class="n">' + v + '</span>' + (extra || '') + '</div>';
+        const shareCell = (label, after, items) => !items
+            ? cell(label, amt(after), 'r' + (after < 0 ? ' negc' : ''))
+            : '<div class="c brk"><span class="k r">' + label + '</span>'
+              + '<div class="ln"><span class="grey">Share</span><span class="n">' + amt(after + items) + '</span></div>'
+              + '<div class="ln ded"><span>− Expenses</span><span class="n">(' + amt(items) + ')</span></div>'
+              + '<div class="ln netln' + (after < 0 ? ' negc' : '') + '"><span>Net</span><span class="n">' + amt(after) + '</span></div></div>';
+        const projHtml = (r) => {
+            const fl = flagsOf(r);
+            const neg = r.balanceCents < 0;
+            return '<div class="proj"><div class="ph"><div><div class="nm">' + esc(printTitle(r, m.all)) + '</div>'
+                + '<div class="sb">' + esc(subline(r)) + '</div></div>'
+                + '<div class="pills">' + (fl.length ? fl.map(ppill).join(' ') : ppill('ready')) + '</div></div>'
+                + '<div class="row">' + cell('Client paid', amt(r.paidCents)) + cell('Costs', amt(r.costCents)) + cell('Reserve', amt(r.reserve.cents))
+                + cell(neg ? 'Net loss' : 'Net share', amt(r.balanceCents), 'hl' + (neg ? ' negc' : ''))
+                + shareCell('Dacs ' + esc(p.fmtPct(r.ownerPct)) + '%', r.ownerAfterCents, r.ownerItemsCents)
+                + shareCell('Partner ' + esc(p.fmtPct(r.partnerPct)) + '%', r.partnerAfterCents, r.partnerItemsCents)
+                + '</div></div>';
+        };
+        const totals = '<div class="row totrow">' + cell('Total paid', amt(t.paidCents)) + cell('Total costs', amt(t.costCents)) + cell('Total reserve', amt(t.reserveCents))
+            + cell(netLabel, amt(t.netCents), 'solid') + cell('Dacs', amt(t.ownerAfterCents), 'r green') + cell('Partners' + (t.partnerItemsCents ? ', net of expenses' : ''), amt(t.partnerAfterCents), 'r') + '</div>';
+
+        const reviewHtml = m.review.length ? '<div class="avoid"><h3>Not counted yet</h3>' + m.review.map(r =>
+            '<div class="rcard"><div class="ln"><b>' + esc(printTitle(r, m.all)) + '</b><span class="n">' + esc(p.pesos(r.balanceCents)) + ' estimated</span></div>'
+            + '<div class="grey">' + esc('Paid ' + p.pesos(r.paidCents) + ' − costs ' + p.pesos(r.costCents) + ' − estimated reserve ' + p.pesos(r.reserve.cents)
+              + REVIEW_NOTE) + '</div></div>').join('') + '</div>' : '';
+
+        const legend = '<div class="legend avoid">' + legendRows.map(x =>
+            '<b style="color:' + TONES[x[0]][1] + '">' + esc(statusWord(x[0])) + '</b><span>' + esc(x[1]) + '</span>').join('')
+            + '<b>Basis</b><span>' + esc(BASIS) + '</span></div>';
+
+        const main = '<main class="main"><div class="mh"><span class="h">Results by project</span><span class="grey">Amounts in PHP</span></div>'
+            + (m.rows.length ? m.rows.map(projHtml).join('') + totals : '<p class="grey">No counted projects.</p>')
+            + reviewHtml + legend + '</main>';
+
+        // Any paper, either orientation: no forced @page size. The layout follows the printable width
+        // through container queries (print media-width queries missed Letter portrait):
+        //   wide   (≥ 9in, landscape)  green panel on the left, projects on the right
+        //   medium (portrait)          panel becomes a two-column band across the top
+        //   narrow (< 5.6in, A5 etc.)  panel stacks
+        // Every project row is a subgrid of .main, so all rows share ONE set of columns that grow to the
+        // widest figure (a long "− Expenses (400,000.00)" never spills). Below 7in of room the shares
+        // drop to a second line (4 columns).
+        const FOUR = '.main{grid-template-columns:repeat(4,minmax(min-content,1fr))}'
+            + '.row{grid-template-columns:repeat(4,minmax(0,1fr));grid-template-columns:subgrid}.row>.c:nth-child(n+5){grid-column:span 2}';
+        const css = '@page{margin:10mm 10mm 14mm}*{box-sizing:border-box}'
+            + 'body{margin:0;font-family:Barlow,Helvetica,Arial,sans-serif;font-size:10pt;color:#1C1C1E;font-variant-numeric:tabular-nums;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+            + '.n{white-space:nowrap}.grey{color:#6C6C70}.green{color:#1A5C3A}.negc{color:#8F352C!important}.avoid{break-inside:avoid}'
+            + '.layout{display:grid;grid-template-columns:minmax(2.6in,30%) minmax(0,1fr);gap:0.3in;align-items:start}'
+            + '.panel{background:#1A5C3A;color:#fff;border-radius:6px;padding:0.32in 0.26in;display:flex;flex-direction:column;gap:18px;break-inside:avoid;container:panel/inline-size}'
+            + '.panel .eyebrow{font-size:7.5pt;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:#CFE3D7}'
+            + '.brand{display:flex;align-items:center;gap:10px}.brand .t{font-family:"Playfair Display",Georgia,serif;font-size:17pt;font-weight:600;line-height:1.1}'
+            + '.logo{width:40px;height:40px;background:#fff;border-radius:7px;display:grid;place-items:center;flex:none}.logo img{width:31px;height:31px;object-fit:contain}'
+            + '.hero{display:flex;flex-direction:column;gap:2px}.hero .big{font-size:min(27pt,10.5cqi);white-space:nowrap;font-weight:700;line-height:1.1}.soft{font-size:9.5pt;color:#CFE3D7}'
+            + '.ln{display:flex;justify-content:space-between;gap:10px;align-items:baseline}'
+            + '.calc{border-top:1px solid rgba(255,255,255,.3)}.calc .ln{padding:5px 0;border-top:1px solid rgba(255,255,255,.14)}.calc .ln:first-child{border-top:none}'
+            + '.calc .tot{border-top:1.5px solid #fff;font-weight:700}'
+            + '.split{background:#fff;color:#1C1C1E;border-radius:6px;padding:10px 12px;display:flex;flex-direction:column;gap:6px}'
+            + '.split .k{font-weight:600;color:#3A3A3C;white-space:nowrap}.split .v{font-size:min(13pt,6cqi);font-weight:700;white-space:nowrap}.split .note{font-size:8.5pt;color:#6C6C70}'
+            + '.split .sep{border-top:1px solid #EEEEEE;padding-top:6px;display:flex;flex-direction:column;gap:2px}'
+            + '.bar{display:flex;height:6px;background:#9DC9B4}.bar div{background:#1A5C3A}.bar.empty{background:#E5E5E5}'
+            + '.plist{display:grid;grid-template-columns:1fr auto;gap:2px 10px;font-size:8.5pt;margin-top:4px}'
+            + '.pmeta{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:8.5pt;color:#CFE3D7}.pmeta b{color:#fff;font-weight:600}'
+            + '.main{min-width:0;display:grid;grid-template-columns:repeat(3,minmax(min-content,1fr)) minmax(min-content,1.15fr) minmax(min-content,0.9fr) minmax(min-content,1.3fr);column-gap:10px;align-content:start}.main>*{grid-column:1/-1}'
+            + '.mh{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:6px;border-bottom:2px solid #1C1C1E;break-after:avoid}'
+            + '.mh .h{font-family:"Playfair Display",Georgia,serif;font-size:15pt;font-weight:600}.mh .grey{font-size:8.5pt}'
+            + '.proj{padding:10px 0;border-bottom:1px solid #E5E5E5;display:grid;grid-template-columns:minmax(0,1fr);grid-template-columns:subgrid;row-gap:6px;break-inside:avoid}.ph{grid-column:1/-1}'
+            + '.ph{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.nm{font-size:10.5pt;font-weight:700}.sb{font-size:8.5pt;color:#6C6C70}'
+            + '.pills{display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end}.pill{font-size:8.5pt;font-weight:700;padding:1px 8px;border-radius:99px;white-space:nowrap}'
+            + '.row{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,1.15fr) minmax(0,0.9fr) minmax(0,1.3fr);grid-template-columns:subgrid;row-gap:6px;font-size:9.5pt}'
+            + '.c{display:flex;flex-direction:column}.c .k{font-size:7.5pt;color:#6C6C70}.c.r{text-align:right}.c .note{font-size:7.5pt;color:#6C6C70}'
+            + '.c.hl{background:#EAF2EC;padding:2px 7px;margin:-2px 0;font-weight:700;color:#1A5C3A}.c.hl .k{color:#1A5C3A;font-weight:700}'
+            + '.c.brk{font-size:9pt;gap:1px}.c.brk .k.r{text-align:right}.c.brk .ln>span:first-child{white-space:nowrap}.ded{color:#8F352C}.netln{border-top:1px solid #1C1C1E;padding-top:1px;font-weight:700}.ln.sm{font-size:9pt}.b{font-weight:700}'
+            + '.totrow{font-weight:700;padding:8px 0;border-bottom:3px double #1C1C1E;break-inside:avoid}'
+            + '.c.solid{background:#1A5C3A;color:#fff;padding:2px 7px;margin:-2px 0}.c.solid .k{color:#fff}'
+            + 'h3{font-family:"Playfair Display",Georgia,serif;font-size:12pt;font-weight:600;margin:14px 0 6px}'
+            + '.rcard{border:1px solid #E5E5E5;border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;margin-bottom:6px;font-size:9pt}'
+            + '.legend{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin-top:12px;font-size:8.5pt;color:#3A3A3C;line-height:1.4}'
+            + '.foot{display:flex;justify-content:space-between;gap:12px;font-size:8pt;color:#6C6C70;padding-top:6px;border-top:1px solid #E5E5E5;margin-top:18px}'
+            + '.sheet{width:100%;border-collapse:collapse;table-layout:fixed}.sheet>thead>tr>td,.sheet>tbody>tr>td,.sheet>tfoot>tr>td{display:block;padding:0}.foot-space{height:0.6in}'
+            + '@media screen{body{background:#E9E9E6;padding:24px 0}.page{max-width:11in;min-height:8.5in;margin:0 auto;padding:0.4in;background:#fff;box-shadow:0 2px 12px rgba(0,0,0,.12)}}'
+            + '@media print{.foot{position:fixed;bottom:4mm;left:0;right:0;margin:0;background:#fff}.sheet{display:table}.sheet>thead{display:table-header-group}'
+            +   '.sheet>tfoot{display:table-footer-group}.sheet>thead>tr>td,.sheet>tbody>tr>td,.sheet>tfoot>tr>td{display:table-cell}}@media screen{.foot-space{display:none}}'
+            + '.page{container:page/inline-size}'
+            + '@container page (max-width:9in){.layout{grid-template-columns:minmax(0,1fr);gap:0.22in}'
+            +   '.panel{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-areas:"brand split" "hero split" "meta calc";gap:14px 0.3in;align-items:start;padding:0.24in 0.26in}'
+            +   '.brand{grid-area:brand}.split{grid-area:split}.calc{grid-area:calc}.hero{grid-area:hero}.pmeta{grid-area:meta}.panel.bare{display:flex}}'
+            + '@container page (max-width:5.6in){.panel{display:flex;align-items:stretch}}'
+            + '@container page (max-width:7in){' + FOUR + '}@container page (min-width:9in) and (max-width:10in){' + FOUR + '}';
+
+        // Empty state keeps the brand and the filters, so the page still says what was asked for.
+        const content = '<div class="layout">' + (hasRows ? panel + main
+            : '<aside class="panel bare">' + brand + meta + '</aside><main class="main"><p>No completed projects match these filters.</p></main>') + '</div>';
+        const body = '<div class="page"><table class="sheet"><thead><tr><td></td></tr></thead><tbody><tr><td>' + content
+            + '</td></tr></tbody><tfoot><tr><td><div class="foot-space"></div></td></tr></tfoot></table><div class="foot"><span>Profit Sharing · DAC\'s Building Design Services · As of ' + esc(when) + '</span><span>' + esc(INTERNAL) + '</span></div></div>';
         const w = window.open('', '_blank', 'width=1100,height=800');
         if (!w) return;
         w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>Profit Sharing</title>'
@@ -705,6 +788,364 @@
         setTimeout(go, 1500);
     }
 
+    // ── Download PDF: a real file, layout 2a on Legal (8.5 × 14) landscape, scaled to fill it ──
+    // Print / PDF goes through the browser's dialog; this saves the file straight away, the way the
+    // invoice and PM report downloads do. Drawn from sheetModel(), so every figure matches the print.
+    // jsPDF and the Roboto faces (jsPDF's own fonts have no ₱) load on first use only. If the font
+    // cannot be fetched the file still downloads, spelling "PHP" and a plain hyphen instead.
+    const PDF_FONT_BASE = 'https://cdn.jsdelivr.net/npm/@expo-google-fonts/roboto@0.2.3/';
+    let pdfFont = null;                     // null = untried, false = tried and failed
+    let pdfBusy = false;
+    const toast = (msg, isErr) => { if (typeof window._pmToast === 'function') window._pmToast(msg, !!isErr); };
+    function loadScript(src) {
+        return new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = () => reject(new Error('failed to load ' + src));
+            document.head.appendChild(s);
+        });
+    }
+    function ensureJsPdf() {
+        if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve(window.jspdf.jsPDF);
+        return loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js').then(() => window.jspdf.jsPDF);
+    }
+    function fetchB64(url) {
+        return fetch(url)
+            .then(r => { if (!r.ok) throw new Error(url + ' -> HTTP ' + r.status); return r.arrayBuffer(); })
+            .then(buf => {
+                const bytes = new Uint8Array(buf);
+                let s = '';
+                for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+                return btoa(s);
+            });
+    }
+    async function ensurePdfFont() {
+        if (pdfFont !== null) return pdfFont;
+        try {
+            const [regular, bold] = await Promise.all([fetchB64(PDF_FONT_BASE + 'Roboto_400Regular.ttf'), fetchB64(PDF_FONT_BASE + 'Roboto_700Bold.ttf')]);
+            pdfFont = { regular, bold };
+        } catch (e) { pdfFont = false; }
+        return pdfFont;
+    }
+    // The logo through a canvas, so jsPDF gets pixel data. null on ANY failure — never blocks the file.
+    function pdfImg(src) {
+        return new Promise(resolve => {
+            const img = new Image();
+            img.onload = () => {
+                try {
+                    const c = document.createElement('canvas');
+                    c.width = img.naturalWidth; c.height = img.naturalHeight;
+                    c.getContext('2d').drawImage(img, 0, 0);
+                    resolve({ url: c.toDataURL('image/png'), w: img.naturalWidth, h: img.naturalHeight });
+                } catch (e) { resolve(null); }
+            };
+            img.onerror = () => resolve(null);
+            img.src = src;
+        });
+    }
+    const fileDate = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+
+    async function downloadPdf() {
+        if (!canSee() || !S.data || pdfBusy) return;
+        pdfBusy = true;
+        try {
+            let jsPDF;
+            try { jsPDF = await ensureJsPdf(); }
+            catch (e) { toast('Could not load the PDF generator. Check your internet connection and try again.', true); return; }
+            const [font, logo] = await Promise.all([ensurePdfFont(), pdfImg(window.location.origin + '/assets/images/DACS-TRANSPARENT.png')]);
+            const model = sheetModel();
+            // Legal (8.5 × 14 in) landscape, filled: the sheet is laid out in "virtual mm" and the
+            // unit is scaled so the content grows to the paper. The largest scale that still fits ONE
+            // page wins; when it cannot fit one page even at 1×, a standard scale runs onto more pages.
+            const probe = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'legal' });
+            registerPdfFonts(probe, font);
+            const fitsOnePage = (s) => drawSheet(probe, model, font, null, { s: 1, pw: LEGAL_W / s, ph: LEGAL_H / s, measureOnly: true }).onePage;
+            let s = PDF_SCALE_MULTI;
+            for (let c = PDF_SCALE_MAX; c >= 1 - 1e-9; c -= 0.025) if (fitsOnePage(c)) { s = c; break; }
+            const doc = new jsPDF({ orientation: 'landscape', unit: 72 / 25.4 * s, format: 'legal' });
+            registerPdfFonts(doc, font);
+            drawSheet(doc, model, font, logo, { s, pw: LEGAL_W / s, ph: LEGAL_H / s });
+            doc.save('profit-sharing-' + fileDate() + '.pdf');
+        } catch (e) {
+            toast('Could not make the PDF: ' + (e && e.message || e), true);
+        } finally { pdfBusy = false; }
+    }
+
+    const LEGAL_W = 355.6, LEGAL_H = 215.9;      // 14 × 8.5 in, landscape, in mm
+    const PDF_SCALE_MAX = 1.5;                   // never larger than this, however short the sheet
+    const PDF_SCALE_MULTI = 1.1;                 // the scale used when the sheet needs more than one page
+    function registerPdfFonts(doc, font) {
+        if (!font) return;
+        doc.addFileToVFS('Roboto-Regular.ttf', font.regular); doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+        doc.addFileToVFS('Roboto-Bold.ttf', font.bold); doc.addFont('Roboto-Bold.ttf', 'Roboto', 'bold');
+    }
+    // Draws the sheet in "virtual mm" on a pw × ph page; the doc's unit carries the scale (o.s), and font
+    // sizes (points) are multiplied by it so text grows with everything else. Every block is measured
+    // first (a "dry" pass that only advances y), so a background can go under its content and a project
+    // block never splits across two pages. measureOnly draws nothing and reports whether it fits one page.
+    function drawSheet(doc, d, font, logo, o) {
+        const { m, t, p } = d;
+        const F = font ? 'Roboto' : 'helvetica';
+        const GREEN = '#1A5C3A', INK = '#1C1C1E', GREY = '#6C6C70', SOFT = '#CFE3D7', RED = '#8F352C', WHITE = '#FFFFFF';
+        const PW = o.pw, PH = o.ph, ML = 10, MR = 10, TOP = 10, BOTTOM = PH - 17;   // the footer sits below BOTTOM
+        const PX = ML, PWID = Math.round((PW - ML - MR) * 0.3), MX = PX + PWID + 8, MW = PW - MR - MX;
+        // jsPDF's built-in faces are WinAnsi: no ₱ and no − (U+2212).
+        const tx = (s) => font ? String(s) : String(s).replace(/₱/g, 'PHP ').replace(/−/g, '-');
+        const peso = (c) => p.pesos(c);
+        const amt = (c) => p.pesos(c).replace('₱', '');                        // table figures: no peso sign
+        const lh = (size) => size * 0.3528 * 1.3;                               // line height in mm
+        let dry = !!o.measureOnly;
+        const set = (size, style, color, fam) => { doc.setFont(fam || F, style || 'normal'); doc.setFontSize(size * o.s); doc.setTextColor(color || INK); };
+        const W = (s) => doc.getTextWidth(tx(s));
+        const wrap = (s, w) => doc.splitTextToSize(tx(s), w);
+        const text = (s, x, y, o) => { if (!dry) doc.text(Array.isArray(s) ? s : tx(s), x, y, o || {}); };
+        const right = (s, x, y) => text(s, x, y, { align: 'right' });
+        const fill = (hex, x, y, w, h, r) => {
+            if (dry) return;
+            doc.setFillColor(hex);
+            if (r) doc.roundedRect(x, y, w, h, r, r, 'F'); else doc.rect(x, y, w, h, 'F');
+        };
+        const rule = (hex, x1, y, x2, lw) => { if (dry) return; doc.setDrawColor(hex); doc.setLineWidth(lw || 0.2); doc.line(x1, y, x2, y); };
+        const measure = (fn, y) => { const was = dry; dry = true; const end = fn(y); dry = was; return end - y; };
+        const memo = {};                                                        // heights found by the dry pass
+
+        // ── left panel (page 1) ──
+        function meta(x, y, w) {
+            const rows = [['As of', d.when], ['Completed', d.dateText], ['Partners', d.partnerText]].concat(d.f.q ? [['Search', d.f.q]] : []);
+            rows.forEach(([k, v]) => {
+                set(7, 'bold', WHITE);
+                const lines = wrap(v, w - 18);
+                text(lines, x + 18, y);
+                set(7, 'normal', SOFT); text(k, x, y);
+                y += lines.length * lh(7) + 0.6;
+            });
+            return y;
+        }
+        function panel(y0) {
+            const x = PX + 7, w = PWID - 14;
+            let y = y0 + 8;
+            fill(WHITE, x, y, 11, 11, 1.8);
+            if (logo && !dry) {
+                const k = Math.min(8.5 / logo.w, 8.5 / logo.h);
+                doc.addImage(logo.url, 'PNG', x + 5.5 - logo.w * k / 2, y + 5.5 - logo.h * k / 2, logo.w * k, logo.h * k);
+            }
+            set(5.8, 'bold', SOFT); text("DAC'S BUILDING DESIGN SERVICES", x + 14, y + 3.8, { charSpace: 0.25 });
+            set(15, 'bold', WHITE, 'times'); text('Profit Sharing', x + 14, y + 9.8);
+            y += 17;
+            if (!d.hasRows) return meta(x, y + 2, w) + 5;
+
+            // split card (white)
+            const cx = x + 3.5, cw = w - 7, cy = y;
+            if (memo.card) fill(WHITE, x, cy, w, memo.card, 1.8);
+            let yy = cy + 3.5;
+            fill(d.share ? '#9DC9B4' : '#E5E5E5', cx, yy, cw, 1.6);
+            if (d.share) fill(GREEN, cx, yy, cw * clampPct(d.ownPct) / 100, 1.6);
+            yy += 6.5;
+            set(8.5, 'bold', '#3A3A3C'); text('Dacs' + (d.share ? ' · ' + p.fmtPct(d.ownPct) + '%' : ''), cx, yy);
+            set(11, 'bold', t.ownerAfterCents < 0 ? RED : GREEN); right(peso(t.ownerAfterCents), cx + cw, yy);
+            if (t.ownerItemsCents) {
+                yy += 4; set(7, 'normal', GREY);
+                text(peso(t.ownerAfterCents + t.ownerItemsCents) + ' less ' + peso(t.ownerItemsCents) + ' personal items', cx, yy);
+            }
+            yy += 2.5; rule('#EEEEEE', cx, yy, cx + cw); yy += 4.5;
+            const parLabel = 'Partners' + (d.share ? ' · ' + p.fmtPct(d.parPct) + '%' : '');
+            if (t.partnerItemsCents) {
+                set(8.5, 'bold', '#3A3A3C'); text(parLabel, cx, yy); yy += 4;
+                set(7.5, 'normal', GREY); text('Share', cx, yy); set(7.5, 'normal', INK); right(peso(t.partnerAfterCents + t.partnerItemsCents), cx + cw, yy); yy += 3.6;
+                set(7.5, 'normal', RED); text('− Partner expenses', cx, yy); right('(' + peso(t.partnerItemsCents) + ')', cx + cw, yy);
+                yy += 1.4; rule(INK, cx, yy, cx + cw, 0.3); yy += 4.4;
+                set(8.5, 'bold', '#3A3A3C'); text('Net to partners', cx, yy);
+            } else {
+                set(8.5, 'bold', '#3A3A3C'); text(parLabel, cx, yy);
+            }
+            set(11, 'bold', t.partnerAfterCents < 0 ? RED : INK); right(peso(t.partnerAfterCents), cx + cw, yy);
+            if (d.partnerLines.length) {
+                yy += 1.5;
+                d.partnerLines.forEach(l => {
+                    set(7, 'normal', INK);
+                    const v = peso(l.cents), lines = wrap(l.label, cw - W(v) - 3);
+                    yy += lh(7);
+                    text(lines, cx, yy);
+                    set(7, 'normal', l.cents < 0 ? RED : INK); right(v, cx + cw, yy);
+                    yy += (lines.length - 1) * lh(7);
+                });
+            }
+            yy += 3;
+            if (dry) memo.card = yy - cy;
+            y = yy + 5;
+
+            // the worked-out lines
+            rule('#5F8C73', x, y, x + w, 0.2);
+            [['Client paid', peso(t.paidCents)], ['− Project costs', amt(t.costCents)], ['− Warranty reserve', amt(t.reserveCents)]].forEach(([k, v], i) => {
+                if (i) rule('#3C7455', x, y, x + w, 0.2);
+                set(8.5, 'normal', WHITE); text(k, x, y + 4.6); right(v, x + w, y + 4.6);
+                y += 6.6;
+            });
+            rule(WHITE, x, y, x + w, 0.4);
+            set(8.5, 'bold', WHITE); text('= ' + d.netLabel, x, y + 4.6); right(peso(t.netCents), x + w, y + 4.6);
+            y += 11;
+
+            // hero
+            set(6, 'bold', SOFT); text(d.netLabel.toUpperCase(), x, y, { charSpace: 0.3 });
+            let size = 24;
+            set(size, 'bold', WHITE);
+            while (W(peso(t.netCents)) > w && size > 12) set(--size, 'bold', WHITE);
+            y += lh(size) * 0.95; text(peso(t.netCents), x, y);
+            y += 5; set(8, 'normal', SOFT); text(d.paidPct + ' of client payments · ' + plural(t.count, 'project', 'projects'), x, y);
+            if (t.shortfallCents < 0) { y += 4; text('Includes a ' + peso(-t.shortfallCents) + ' loss on ' + plural(d.lossRows, 'project', 'projects') + '.', x, y); }
+            y += 8;
+            return meta(x, y, w) + 5;
+        }
+
+        // ── project blocks: one set of columns for every row, as wide as the widest figure ──
+        const FR = [1, 1, 1, 1.15, 0.9, 1.3], CG = 3.5;
+        const shareCell = (k, after, items) => items
+            ? { k, right: true, brk: { share: amt(after + items), items: '(' + amt(items) + ')', net: amt(after) }, neg: after < 0 }
+            : { k, right: true, v: amt(after), neg: after < 0 };
+        const rowCells = (r) => [{ k: 'Client paid', v: amt(r.paidCents) }, { k: 'Costs', v: amt(r.costCents) }, { k: 'Reserve', v: amt(r.reserve.cents) },
+            { k: r.balanceCents < 0 ? 'Net loss' : 'Net share', v: amt(r.balanceCents), hl: true, neg: r.balanceCents < 0 },
+            shareCell('Dacs ' + p.fmtPct(r.ownerPct) + '%', r.ownerAfterCents, r.ownerItemsCents),
+            shareCell('Partner ' + p.fmtPct(r.partnerPct) + '%', r.partnerAfterCents, r.partnerItemsCents)];
+        const totalCells = [{ k: 'Total paid', v: amt(t.paidCents) }, { k: 'Total costs', v: amt(t.costCents) }, { k: 'Total reserve', v: amt(t.reserveCents) },
+            { k: d.netLabel, v: amt(t.netCents), solid: true }, { k: 'Dacs', v: amt(t.ownerAfterCents), right: true, green: true },
+            { k: 'Partners' + (t.partnerItemsCents ? ', net of expenses' : ''), v: amt(t.partnerAfterCents), right: true }];
+        const cellWidth = (c, bold) => {
+            set(6.5, bold ? 'bold' : 'normal'); let w = W(c.k);
+            if (c.brk) {
+                set(8); w = Math.max(w, W('Share') + 3 + W(c.brk.share), W('− Expenses') + 3 + W(c.brk.items));
+                set(8, 'bold'); w = Math.max(w, W('Net') + 3 + W(c.brk.net));
+            } else { set(8.5, bold || c.hl ? 'bold' : 'normal'); w = Math.max(w, W(c.v)); }
+            return w + (c.hl || c.solid ? 4 : 0) + 0.5;
+        };
+        const allRows = m.rows.map(rowCells).concat(m.rows.length ? [totalCells] : []);
+        const needW = FR.map((_, i) => Math.max(0, ...allRows.map((cells, ri) => cellWidth(cells[i], cells === totalCells))));
+        let unit = (MW - CG * 5) / FR.reduce((a, b) => a + b, 0);
+        for (let pass = 0; pass < 6; pass++) {                                  // columns that need more than their share keep what they need
+            const fixed = FR.map((fr, i) => needW[i] > fr * unit);
+            const freeFr = FR.reduce((a, fr, i) => a + (fixed[i] ? 0 : fr), 0);
+            const fixedW = needW.reduce((a, w, i) => a + (fixed[i] ? w : 0), 0);
+            if (!freeFr) break;
+            unit = Math.max(0, (MW - CG * 5 - fixedW) / freeFr);
+        }
+        const colW = FR.map((fr, i) => Math.max(needW[i], fr * unit));
+        const colX = colW.map((_, i) => MX + colW.slice(0, i).reduce((a, b) => a + b, 0) + CG * i);
+
+        function cellsRow(cells, top, bold) {
+            const h = cells.some(c => c.brk) ? 15 : 7.8;
+            cells.forEach((c, i) => {
+                const x = colX[i], w = colW[i], pad = c.hl || c.solid ? 2 : 0;
+                if (c.hl) fill('#EAF2EC', x, top - 0.8, w, h + 0.4);
+                if (c.solid) fill(GREEN, x, top - 0.8, w, h + 0.4);
+                const tx0 = x + pad, tx1 = x + w - pad;
+                const put = (s, yy) => c.right ? right(s, tx1, yy) : text(s, tx0, yy);
+                set(6.5, bold || c.hl ? 'bold' : 'normal', c.solid ? WHITE : c.hl ? GREEN : GREY); put(c.k, top + 2.4);
+                if (c.brk) {
+                    set(8, 'normal', GREY); text('Share', tx0, top + 6.2); set(8, 'normal', INK); right(c.brk.share, tx1, top + 6.2);
+                    set(8, 'normal', RED); text('− Expenses', tx0, top + 9.6); right(c.brk.items, tx1, top + 9.6);
+                    rule(INK, tx0, top + 10.7, tx1, 0.25);
+                    set(8, 'bold', c.neg ? RED : INK); text('Net', tx0, top + 13.8); right(c.brk.net, tx1, top + 13.8);
+                } else {
+                    const color = c.neg ? RED : c.solid ? WHITE : c.hl || c.green ? GREEN : INK;
+                    set(8.5, bold || c.hl ? 'bold' : 'normal', color); put(c.v, top + 6.2);
+                }
+            });
+            return top + h;
+        }
+        function heading(y) {
+            set(14, 'bold', INK, 'times'); text('Results by project', MX, y + 5.5);
+            set(7, 'normal', GREY); right('Amounts in PHP', MX + MW, y + 5.5);
+            y += 7.5; rule(INK, MX, y, MX + MW, 0.6);
+            return y;
+        }
+        function projBlock(r, y) {
+            const flags = flagsOf(r).length ? flagsOf(r) : ['ready'];
+            set(7, 'bold');
+            const pills = flags.map(fl => ({ fl, word: statusWord(fl), w: W(statusWord(fl)) + 4 }));
+            const pillsW = pills.reduce((a, q) => a + q.w + 1.5, 0);
+            y += 5.2;
+            let xr = MX + MW;
+            pills.slice().reverse().forEach(q => {
+                fill(TONES[q.fl][0], xr - q.w, y - 3.4, q.w, 4.3, 2.1);
+                set(7, 'bold', TONES[q.fl][1]); text(q.word, xr - q.w + 2, y - 0.3);
+                xr -= q.w + 1.5;
+            });
+            set(9.5, 'bold', INK);
+            const name = wrap(d.title(r), MW - pillsW - 3);
+            text(name, MX, y); y += (name.length - 1) * lh(9.5) + 3.6;
+            set(7, 'normal', GREY);
+            const sub = wrap(d.subline(r), MW - pillsW - 3);
+            text(sub, MX, y); y += (sub.length - 1) * lh(7) + 2.6;
+            y = cellsRow(rowCells(r), y) + 2.6;
+            rule('#E5E5E5', MX, y, MX + MW, 0.25);
+            return y;
+        }
+        function totalsBlock(y) {
+            y = cellsRow(totalCells, y + 2.6, true) + 2.2;
+            rule(INK, MX, y, MX + MW, 0.35); rule(INK, MX, y + 0.8, MX + MW, 0.35);
+            return y + 0.8;
+        }
+        function reviewCard(r, y) {
+            set(7.5, 'normal', GREY);
+            const lines = wrap('Paid ' + peso(r.paidCents) + ' − costs ' + peso(r.costCents) + ' − estimated reserve ' + peso(r.reserve.cents) + REVIEW_NOTE, MW - 7);
+            const h = 7.4 + lines.length * lh(7.5) + 1.6;
+            if (!dry) { doc.setDrawColor('#E5E5E5'); doc.setLineWidth(0.25); doc.roundedRect(MX, y, MW, h, 1.6, 1.6, 'S'); }
+            set(8.5, 'bold', INK); text(d.title(r), MX + 3.5, y + 4.6);
+            set(8.5, 'normal', INK); right(peso(r.balanceCents) + ' estimated', MX + MW - 3.5, y + 4.6);
+            set(7.5, 'normal', GREY); text(lines, MX + 3.5, y + 8.4);
+            return y + h + 2;
+        }
+        function legendBlock(y) {
+            set(7.5, 'bold');
+            const rows = d.legendRows.map(([fl, s]) => [statusWord(fl), s, TONES[fl][1]]).concat([['Basis', BASIS, INK]]);
+            const lw = Math.max(...rows.map(x => W(x[0]))) + 4;
+            y += 4;
+            rows.forEach(([k, s, color]) => {
+                set(7.5, 'normal', '#3A3A3C');
+                const lines = wrap(s, MW - lw);
+                y += lh(7.5);
+                text(lines, MX + lw, y);
+                set(7.5, 'bold', color); text(k, MX, y);
+                y += (lines.length - 1) * lh(7.5) + 0.6;
+            });
+            return y;
+        }
+
+        // ── page flow ──
+        const panelH = measure(panel, TOP);                                    // the dry pass also records memo.card
+        fill(GREEN, PX, TOP, PWID, panelH, 2.2);
+        panel(TOP);
+        let y = TOP, pages = 1;
+        const fit = (h) => { if (y + h > BOTTOM) { pages++; if (!o.measureOnly) doc.addPage(); y = TOP; } };
+        if (!d.hasRows) {
+            set(10, 'normal', INK); text('No completed projects match these filters.', MX, y + 6);
+        } else {
+            y = heading(y);
+            if (!m.rows.length) { set(9, 'normal', GREY); text('No counted projects.', MX, y + 6); y += 9; }
+            m.rows.forEach(r => { fit(measure(yy => projBlock(r, yy), y)); y = projBlock(r, y); });
+            if (m.rows.length) { fit(measure(totalsBlock, y)); y = totalsBlock(y); }
+            if (m.review.length) {
+                const head = (yy) => { set(11.5, 'bold', INK, 'times'); text('Not counted yet', MX, yy + 8); return yy + 11; };
+                fit(measure(head, y) + measure(yy => reviewCard(m.review[0], yy), y));
+                y = head(y);
+                m.review.forEach(r => { fit(measure(yy => reviewCard(r, yy), y)); y = reviewCard(r, y); });
+            }
+            fit(measure(legendBlock, y)); y = legendBlock(y);
+        }
+
+        if (o.measureOnly) return { onePage: pages === 1 && TOP + panelH <= BOTTOM };
+
+        // ── footer on every page ──
+        for (let i = 1; i <= pages; i++) {
+            doc.setPage(i);
+            rule('#E5E5E5', ML, PH - 12, PW - MR, 0.2);
+            set(6.5, 'normal', GREY);
+            text("Profit Sharing · DAC's Building Design Services · As of " + d.when, ML, PH - 8);
+            right(INTERNAL + (pages > 1 ? '   ·   Page ' + i + ' of ' + pages : ''), PW - MR, PH - 8);
+        }
+        return { onePage: pages === 1 };
+    }
+
     async function init() {
         const root = document.getElementById('pmSharingRoot');
         if (!canSee()) { if (root) root.innerHTML = ''; return; }
@@ -713,6 +1154,6 @@
 
     window.PMShareDash = { init, load, render, applyFilters, buildModel, labelFor, chipsFor, mainStatus, setFilter,
                            toggleDates, clearDates, _state: S, _setFetch: (fn) => { fetchFn = fn || defaultFetch; } };
-    Object.assign(window.PMShareDash, { open, close, renderDetail, csvCell, toCsv, metaLines, print, downloadCsv });
+    Object.assign(window.PMShareDash, { open, close, renderDetail, csvCell, toCsv, metaLines, print, downloadCsv, downloadPdf });
     window.initPMSharingDashboard = init;
 })();
