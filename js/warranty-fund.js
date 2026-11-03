@@ -308,7 +308,7 @@
     }
 
     // Human-readable reference: WR-2026-0001 / WF-2026-0001. Derived from the
-    // rows already loaded, so it is a DISPLAY label — never a key, and two
+    // rows it is given, so it is a DISPLAY label — never a key, and two
     // records created in the same second on two devices could collide.
     // `id` stays the identity.
     //
@@ -332,6 +332,22 @@
         const next = prefix + '-' + year + '-' + String(max + 1).padStart(4, '0');
         if (reserve) _wfIssuedRefs.add(next);
         return next;
+    }
+
+    // The number for a NEW record comes from the database as it is now, deleted
+    // rows included so a number is never used twice. The loaded rows can be
+    // empty: a project can close without the Warranty Fund screen ever opening
+    // this session, which is how two projects both became WR-2026-0001. If the
+    // read fails, number from what is on hand — a label must not stop a closeout.
+    async function _wfFreshRefNo(prefix, collection, loaded) {
+        let rows = loaded;
+        try {
+            const snap = await db.collection(collection).where('userId', '==', _wfUid()).get();
+            rows = snap.docs.map(d => d.data());
+        } catch (e) {
+            console.warn('_wfFreshRefNo:', e);
+        }
+        return _wfNextRefNo(prefix, rows, true);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -438,7 +454,7 @@
             return existing.id;
         }
 
-        const refNo = _wfNextRefNo('WR', _wfRet, true);
+        const refNo = await _wfFreshRefNo('WR', 'warrantyRetentions', _wfRet);
         const ref = await db.collection('warrantyRetentions').add({
             ...payload,
             refNo,
@@ -1157,7 +1173,7 @@
                 await db.collection('warrantyFundExpenses').doc(_wfExpTarget).update({ ...payload, history });
                 _wfToast('Draw updated.');
             } else {
-                const refNo = _wfNextRefNo('WF', _wfExp, true);
+                const refNo = await _wfFreshRefNo('WF', 'warrantyFundExpenses', _wfExp);
                 await db.collection('warrantyFundExpenses').add({
                     ...payload,
                     refNo,
