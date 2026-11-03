@@ -180,6 +180,24 @@ Profit   = Earned − Spent
   return or handover keeps it filled, reversing an issue reopens it only if that issue counted on its own. Records are never
   edited — reversed with a reason while they are the tool's latest. Only `js/tools-admin.js` calls the `tl_*` operations.
   Dormant until the main owner switches tools on.
+- **Reconciliation (0109, WorkMate Stage 4) reads and points — it moves no money.** The owner's **Reconciliation** tab
+  (Requests → Purchasing, owner accounts; petty cash, own money, returns, disputes and Overpaid for the main owner only)
+  shows where every peso of each purchase sits — its own project, other projects, company stock, company stock loss — and
+  the difference, which must be **₱0**: a difference is a bug to report, never a business event. **"Cover is right"** only
+  clears a line's Office review flag, with a reason; its rows stay on Cover and in Spent, and a correction re-checks the
+  line (only a line's newest mark applies). **Bills to check** never changes a bill (Q25). Nothing in `rec_*` or
+  `js/reconciliation-admin.js` writes an expense row, payment, billing period or bill, or feeds `_projSpent` /
+  `_projEarned` / `_projMargin` / `_recognisedProfit` (§Y of `money-math.test.js`). **A payment is recorded only from the
+  person's own choice** — Project Control's "Paid now?" (owner accounts and Buyer staff; default Not paid yet) or
+  Purchasing's Record payment — never from "Paid with", a receipt photo or anything else on record
+  (`supabase/tests/4_confirmed_payments.sql` stays empty: not needed, the payments were entered by hand).
+  **Add Expense records a save once** (`js/expense-pending-save.js`): its id and body are kept in the browser until
+  the server answers, one save at a time per account across tabs, and the id is registered (`pur_op_reserve`) before it is
+  sent — a save whose id the browser cannot read is settled only by `pur_op_recover`, never cleared by hand. Every request
+  of a save carries the sign-in of the account that pressed Save (`_expBoundCalls`) — never the shared `sbClient`, whose
+  session follows whoever signed in last in any tab; a sign-in change stops the save and keeps it for that account.
+  Only `js/reconciliation-admin.js` calls the `rec_*` functions. Spec:
+  `docs/superpowers/specs/2026-10-30-workmate-stage4-reconciliation-questions.md`.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 

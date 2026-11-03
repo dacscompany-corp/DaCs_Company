@@ -4454,6 +4454,18 @@
 
             <!-- body -->
             <div class="aer-body">
+                <!-- A save that may already be on the server (js/expense-pending-save.js): shown — and
+                     the form locked — until it is sent again exactly or cancelled; also while this
+                     browser's storage is blocked or damaged (nothing new is sent then). A damaged save
+                     whose ID cannot be read is settled only by the server (pur_op_recover). -->
+                <div id="expPendingBox" role="alert" style="display:none;margin-bottom:16px;padding:12px 14px;border-radius:12px;background:#fff7ed;border:1px solid #fed7aa;color:#7c2d12;font-size:13px;">
+                    <div id="expPendingText" style="margin-bottom:10px;"></div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button type="button" class="aer-catadd" id="expPendingResend" onclick="expResendPending()">Send it again (exactly as first entered)</button>
+                        <button type="button" class="aer-catadd" id="expPendingCancel" onclick="expCancelPending()">Cancel it</button>
+                        <button type="button" class="aer-catadd" id="expPendingRecover" style="display:none;" onclick="expRecoverPending()">Check with the server</button>
+                    </div>
+                </div>
                 <div id="expBudgetBanner" style="display:none;"></div>
 
                 <!-- Funding source is auto-selected at save time (handleAddExpense);
@@ -4540,7 +4552,7 @@
                         <div>
                             <label class="aer-lbl" for="expPaymentMethod">Paid with</label>
                             <div class="aer-selwrap">
-                                <select id="expPaymentMethod">
+                                <select id="expPaymentMethod" onchange="expTogglePaidNow()">
                                     <option value="">Not sure yet</option>
                                     <option value="Cash">Cash</option>
                                     <option value="GCash">GCash</option>
@@ -4564,6 +4576,50 @@
                                 <input class="aer-in" type="time" id="expTime" aria-label="Time (optional)" style="flex:1;min-width:0;">
                             </div>
                         </div>
+                    </div>
+                    <!-- "Paid now?" + supplier (WorkMate Stage 4, Q7): owner accounts and Buyer staff
+                         only — expenses-module.js shows it (_expSetupPaidNow). Staff without the
+                         Buyer switch never see it. -->
+                    <div id="expPaidNowWrap" style="display:none;">
+                        <div class="aer-row" style="margin-bottom:14px;">
+                            <div>
+                                <label class="aer-lbl" for="expPaidNow">Paid now?</label>
+                                <div class="aer-selwrap">
+                                    <select id="expPaidNow" onchange="expTogglePaidNow()">
+                                        <option value="none">Not paid yet / record later</option>
+                                        <option value="full">Paid in full</option>
+                                        <option value="part">Paid part (deposit)</option>
+                                    </select>
+                                    <svg class="aer-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                                </div>
+                            </div>
+                            <div id="expPaidAmountWrap" style="display:none;"><label class="aer-lbl" for="expPaidAmount">Amount paid (₱)</label><input class="aer-in" type="text" inputmode="decimal" id="expPaidAmount" placeholder="0.00"></div>
+                        </div>
+                        <div class="aer-row" id="expPaidFromRow" style="display:none;margin-bottom:14px;">
+                            <div>
+                                <label class="aer-lbl" for="expPaidFrom">Paid from</label>
+                                <div class="aer-selwrap"><select id="expPaidFrom"></select><svg class="aer-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></div>
+                            </div>
+                            <div>
+                                <label class="aer-lbl" for="expPaidHow">How</label>
+                                <div class="aer-selwrap">
+                                    <select id="expPaidHow" onchange="this.dataset.touched = '1'">
+                                        <option value="cash">Cash</option>
+                                        <option value="gcash">GCash</option>
+                                        <option value="bank_transfer">Bank transfer</option>
+                                        <option value="check">Check</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                    <svg class="aer-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="aer-fg">
+                            <label class="aer-lbl" for="expSupplier">Supplier <small>— optional</small></label>
+                            <input class="aer-in" type="text" id="expSupplier" list="expSupplierList" maxlength="200" placeholder="e.g. Wilcon Depot" autocomplete="off">
+                            <datalist id="expSupplierList"></datalist>
+                        </div>
+                        <p style="font-size:12px;color:#8A8A8E;margin:-6px 2px 14px;">"Paid with" alone never marks it paid — choose <b>Paid in full</b> or <b>Paid part</b> to record the payment. A payment never changes Spent.</p>
                     </div>
                     <div class="aer-fg">
                         <label class="aer-lbl" for="expNotes">Notes <small>— optional</small></label>
@@ -5478,7 +5534,8 @@
 <script src="js/print-utils.js"></script>
 <script src="js/receipt-storage.js?v=20261031a"></script>
 <script src="js/expense-split-rows.js?v=20261028a"></script>
-<script src="js/expenses-module.js?v=20261029a"></script>
+<script src="js/expense-pending-save.js?v=20261031a"></script>
+<script src="js/expenses-module.js?v=20261031a"></script>
 <script src="js/overhead-module.js"></script>
 <script src="js/reimbursement-module.js"></script>
 <script src="js/construction-module.js"></script>
@@ -5493,13 +5550,14 @@
 <script src="js/requests-admin-history.js?v=20261012a"></script>
 <script src="js/requests-admin-gallery.js?v=20261012a"></script>
 <script src="js/purchasing-admin-core.js?v=20261026a"></script>
-<script src="js/purchasing-admin-list.js?v=20261029a"></script>
+<script src="js/purchasing-admin-list.js?v=20261030a"></script>
 <script src="js/purchasing-admin-record.js?v=20261022b"></script>
 <script src="js/purchasing-admin-purchases.js?v=20261026a"></script>
 <script src="js/purchasing-admin-pay.js?v=20261023a"></script>
 <script src="js/purchasing-admin-cash.js?v=20261023b"></script>
 <script src="js/stock-admin.js?v=20261028a"></script>
 <script src="js/stock-cost-admin.js?v=20261026a"></script>
+<script src="js/reconciliation-admin.js?v=20261103b"></script>
 <script src="js/tools-admin.js?v=20261029a"></script>
 <script src="js/workplan-admin-core.js?v=20261013a"></script>
 <script src="js/workplan-admin-form.js?v=20261014a"></script>

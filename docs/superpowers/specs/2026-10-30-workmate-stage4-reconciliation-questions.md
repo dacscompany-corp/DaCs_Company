@@ -2,6 +2,8 @@
 
 Date: 30 October 2026
 
+**Update, 3 November 2026 (the user): Task 5 is closed — script not needed, payments entered manually (in the app, 31 Oct). This does not confirm that the recorded payment dates or sources are correct; that verification stays pending, and no payment changes without the user's specific instruction. Both Eagle Residence Cover decisions stay pending.**
+
 Status: **Answered by the user, 30 October 2026: questions 1–7 and 9–15 = A.** **Question 8 = A as an approach only** (each payment reviewed one by one): **no purchase has been confirmed paid**, and all 18 stay Unpaid until the user confirms each one in the table under question 8. **Question 6 = A approves the "Cover is right" feature only**: it does **not** confirm that Cover is correct for the two Eagle Residence purchases, which each still need their own decision. Revision 3, 30 October 2026: the answers, plus a reference code for each purchase in questions 6 and 8 and a blank confirmation table. (Revision 2 listed the exact purchases and made explicit that **a payment method chosen on the form never marks a purchase paid or clears an "Office review" mark**.) **Confirmed by the user, 30 Oct: the 19 purchases in questions 6 and 8 are legitimate real purchases, not test data — preserve all of them.** That confirms only that they are real; their **payment dates, amounts paid and where the money came from**, and **whether Cover is correct** for the two Eagle Residence purchases, are still **pending**. No plan, code or database change; **no live record changed**.
 
 Related: [WorkMate guide](2026-09-29-workmate-prototype-and-workflow-guide.md) §4 (main-owner screens), §14 *Cost flow*, §16 (Stage 4), §17, §18 · [MVP design](2026-09-29-unified-worker-app-design.md) §6 (Stage 4 "Expense integration") · [Stage 2 questions](2026-10-12-workmate-stage2-questions.md) (Q11–Q15, Q23–Q25, Q28) · [2A-4 questions](2026-10-22-workmate-stage2a4-questions.md) (Q2, Q3) · [2B+2C questions](2026-10-24-workmate-stage2bc-questions.md) (Q10–Q28) · [2C plan](../plans/2026-10-26-workmate-stage2c-cost-moves.md) (R73–R88)
@@ -219,6 +221,8 @@ All 18 were entered by the owner in Project Control. The last two columns show w
 | 18 | `c04e7d83` | ₱7,023.00 | | | | |
 
 Answer: A — as an approach only (30 Oct): each payment is reviewed one by one. **No purchase has been confirmed paid**; all 18 stay Unpaid until the confirmations table above is filled in.
+
+Update, 3 Nov (the user): **closed — script not needed, payments entered manually.** All 34 recorded purchases were entered as paid in the app on 31 Oct, so the table above stays blank. **The recorded dates and sources are not confirmed by this; that verification is pending.**
 
 **9. Money still out**
 - **A (R):** One box on the Reconciliation tab showing:

@@ -545,7 +545,11 @@ console.log('\nP. Purchases are ordinary expense rows');
   });
   test('Add expense decides no funding in the browser (pur_record does)', () => {
     const add = expensesSrc.slice(expensesSrc.indexOf('async function handleAddExpense('), expensesSrc.indexOf('\nasync function deleteExpense('));
-    ok(add.includes("rpc('pur_record'"), 'Add expense must record through pur_record');
+    // Stage 4 (R121): the request goes through the client bound to the account
+    // that pressed Save — calls.record, which is pur_record.
+    const at = expensesSrc.indexOf('async function _expBoundCalls(');
+    const bound = at === -1 ? '' : expensesSrc.slice(at, expensesSrc.indexOf('\n}\n', at));
+    ok(/record: calls\.record/.test(add) && bound.includes("record: (args) => c.rpc('pur_record', args)"), 'Add expense must record through pur_record');
     ok(!/sortedSources|\.remain\b|coverExpense/.test(add), 'Add expense still splits or picks Cover itself');
   });
 }
@@ -2562,6 +2566,39 @@ console.log('\nW. An indirect worker\'s burden never draws down a pakyaw contrac
     ok(edit.indexOf('lcIsOverheadPay(laborType, liabilityFor)') !== -1, 'edit path: ' + edit);
     const picker = slice(expensesSrc, 'window.payToggleContractForType = function(which) {', '\n};\n', 'js/expenses-module.js');
     ok(picker.indexOf('lcIsOverheadPay(') !== -1, 'picker does not use the shared predicate');
+  });
+}
+
+// == Y. RECONCILIATION (0109, STAGE 4) READS AND POINTS =================
+// The owner's Reconciliation tab, "Cover is right", "Bill checked", Project
+// Control's "Paid now?" and the Reports note for months changed later never
+// feed a money figure: no Spent / Earned / Profit function reads them, the
+// tab writes no expense row, and a payment is never taken from "Paid with".
+console.log('\nY. Reconciliation reads and points; a payment only from the person\'s choice');
+{
+  const recSrc = read('js/reconciliation-admin.js');
+  const body = (src, name) => { const i = src.indexOf('function ' + name + '('); ok(i !== -1, name + ' not found'); return src.slice(i, src.indexOf('\n}\n', i) + 3); };
+  test('no money function reads a Stage 4 helper', () => {
+    for (const name of ['buildProject', '_projSpent', '_projEarned', '_projMargin', '_recognisedProfit', '_companyOverhead']) {
+      ok(!/rec_|Reconciliation|_pcLateCostMove|_expPaidNow|_expSupplier/.test(body(portalSrc, name)), name + ' reads a Stage 4 helper');
+    }
+    ok(!/rec_|_pcLateCostMove|_expPaidNow/.test(body(expensesSrc, '_pcReportModel')), 'the report totals read a Stage 4 helper');
+    ok(!/['"]rec_[a-z_]+['"]/.test(portalSrc) && !/['"]rec_[a-z_]+['"]/.test(expensesSrc), 'Project Control never calls a rec_ function');
+  });
+  test('the Reconciliation tab writes no expense row, payment, billing period or bill', () => {
+    const browser = recSrc.slice(recSrc.indexOf('// ── Browser'));
+    ok(!/\.from\(|\.collection\(|sbClient/.test(browser), 'direct table access');
+    const writes = [...new Set([...browser.matchAll(/RA\.rpc\('([a-z_]+)'/g)].map(m => m[1])
+      .filter(f => !/^rec_(purchase_places|waiting|review_lines|bills|money_out)$/.test(f)))].sort();
+    eq(JSON.stringify(writes), JSON.stringify(['rec_accept_cover', 'rec_bill_check', 'rec_withdraw_cover']));
+  });
+  test('"Paid with" never becomes a payment: Not paid yet sends none, whatever "Paid with" says', () => {
+    const f = evalWith(body(expensesSrc, '_expPayHowOf') + body(expensesSrc, '_expPaidNowPayments'),
+      { _EXP_PAY_HOW: { cash: 1, gcash: 1, bank_transfer: 1, check: 1, other: 1 } }, ['_expPayHowOf', '_expPaidNowPayments']);
+    for (const paidWith of ['', 'Cash', 'GCash', 'Maya', 'Lalamove', 'Bank Transfer', 'BDO', 'BPI', 'Metrobank', 'Cheque', 'Credit Card', 'Other']) {
+      eq(f._expPaidNowPayments('none', 1000, '', 'company', f._expPayHowOf(paidWith), '2026-10-24').length, 0, paidWith);
+    }
+    eq(f._expPaidNowPayments('full', 1000, '', 'company', 'gcash', '2026-10-24')[0].amount, '1000', 'Paid in full: the total');
   });
 }
 

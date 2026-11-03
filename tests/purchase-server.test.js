@@ -193,7 +193,9 @@ console.log('\nDacs Web around it');
 
 test('Add expense records through pur_record and decides no funding, Cover or stock itself', () => {
   const add = between(EXP, 'async function handleAddExpense(', '\nasync function deleteExpense(');
-  assert(add.includes("rpc('pur_record'"), 'Add expense must call pur_record');
+  // Stage 4 (R121): through the client bound to the account that pressed Save — calls.record is pur_record.
+  assert(add.includes('record: calls.record') && between(EXP, 'async function _expBoundCalls(', '\n}\n').includes("rpc('pur_record'"),
+         'Add expense must call pur_record');
   assert(!/sortedSources|\.remain\b|coverExpense/.test(add), 'Add expense still decides funding or Cover itself');
   assert(!add.includes('_addExpenseToInventory('), 'the stock update must be the server\'s (once per line), never the browser\'s');
   assert(/data && data\.replayed/.test(add), 'handleAddExpense must read replayed and warn that later form edits were not applied');

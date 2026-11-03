@@ -2789,9 +2789,176 @@ async function _uploadReceiptFile(kind, file) {
 }
 
 // One id per Save press, kept until the save succeeds, so a retry after a
-// lost response can never create a second copy (0089 unique index).
-let _expSubmissionId = null;
+// lost response can never create a second copy (0089 unique index). Add
+// Expense keeps its id AND body in js/expense-pending-save.js instead — across
+// closing the form and reloading — until the server answers (Stage 4 review).
 let _paySubmissionId = null;
+
+// ── A save that may already be on the server (js/expense-pending-save.js) ──
+function _expPendingStore() { try { return window.localStorage; } catch (e) { return null; } }
+// One save at a time per account across tabs and windows (Web Locks).
+function _expLocks() { try { return navigator.locks || null; } catch (e) { return null; } }
+// The account that pressed Save (pur_ops is per account), never the data owner.
+function _expActor() { return (typeof currentUser !== 'undefined' && currentUser && currentUser.uid) || null; }
+// Every request of one save carries the sign-in of the account that pressed
+// Save (R121): a client bound to that account's token — never the shared
+// client, whose session follows whoever signed in last, in any tab. null:
+// someone else is signed in now, so nothing is sent.
+let _expBound = null;   // {token, calls} — reused while the token is the same
+async function _expBoundCalls(actor) {
+    let token = null;
+    try {
+        const { data } = await window.sbClient.auth.getSession();
+        const s = data && data.session;
+        if (actor && s && s.user && s.user.id === actor) token = s.access_token;
+    } catch (e) { token = null; }
+    if (!token) return null;
+    if (_expBound && _expBound.token === token) return _expBound.calls;
+    const c = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: 'Bearer ' + token } },
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'dacs.addExpense.bound' },
+    });
+    const calls = { reserve: (args) => c.rpc('pur_op_reserve', args), record: (args) => c.rpc('pur_record', args),
+                    cancelOp: (args) => c.rpc('pur_op_cancel', args), stateOp: (args) => c.rpc('pur_op_state', args),
+                    recoverOps: () => c.rpc('pur_op_recover') };
+    _expBound = { token, calls };
+    return calls;
+}
+// Who is signed in now — asked before every request of a save.
+async function _expAccountNow() {
+    try {
+        const { data } = await window.sbClient.auth.getSession();
+        return (data && data.session && data.session.user && data.session.user.id) || null;
+    } catch (e) { return null; }
+}
+function _expPendingState() { return DacsPendingSave.inspect(_expPendingStore(), _expActor()); }
+// What the box says for each state of DacsPendingSave.inspect().
+function _expPendingText(s) {
+    if (s.status === 'pending') {
+        const p = s.pending, when = new Date(p.at);
+        return 'A save from ' + (isNaN(when) ? 'earlier' : when.toLocaleString('en-PH',
+            { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) + (p.label ? ' — ' + p.label : '') +
+            ' — may already be on the server: there was no answer. Settle it first; nothing in this form changes until then.';
+    }
+    if (s.status === 'damaged' && s.op) return 'A save kept in this browser can no longer be read whole, so it cannot be sent again. ' +
+        'Cancel it: the server says whether it had been saved, or makes sure it never will be. Nothing new is sent until then.';
+    if (s.status === 'damaged') return 'A save kept in this browser is damaged and its ID cannot be read — and a missing row in the list ' +
+        'does not prove it will not still arrive. Check with the server: every Add Expense save of your account that has not reached it ' +
+        'is cancelled for good; anything that did is in the list once. Nothing new is sent until then.';
+    if (s.status === 'no_account') return 'Sign in again to add an expense.';
+    return 'This browser is not letting Project Control keep a save (site storage is blocked, full, or in a private window), so nothing ' +
+        'is sent: a save it cannot keep could be recorded twice. Allow site storage, then open this form again.';
+}
+// Why a press sent nothing (DacsPendingSave's 'blocked' codes).
+function _expNotSentText(code) {
+    if (code === 'SAVE_IN_PROGRESS') return 'Another tab or window is saving an expense for this account — wait for it to finish, then try again.';
+    if (code === 'LOCKS_UNAVAILABLE') return 'This browser cannot keep two tabs from saving the same expense (it needs updating), so nothing is sent.';
+    if (code === 'ACCOUNT_CHANGED') return 'The signed-in account changed (in another tab or window), so nothing more is sent. The save stays with ' +
+        'the account that pressed Save — sign in as that account again to settle it.';
+    const now = _expPendingState();
+    return _expPendingText(now.status === 'none' ? { status: 'blocked' } : now);
+}
+// Locks the form while a save may be on the server — or while this browser
+// cannot keep one (blocked or damaged storage): nothing can be edited and no
+// new entry starts; only the box's choices (and closing).
+function _expShowPending(s) {
+    const box = document.getElementById('expPendingBox');
+    if (!box || !s || s.status === 'none') return;
+    document.getElementById('expPendingText').textContent = _expPendingText(s);
+    const choice = (id, on) => { const b = document.getElementById(id); if (b) b.style.display = on ? '' : 'none'; };
+    choice('expPendingResend', s.status === 'pending');
+    choice('expPendingCancel', s.status === 'pending' || (s.status === 'damaged' && !!s.op));
+    choice('expPendingRecover', s.status === 'damaged' && !s.op);
+    box.style.display = '';
+    document.querySelectorAll('#addExpenseForm .aer-body input, #addExpenseForm .aer-body select, #addExpenseForm .aer-body textarea, ' +
+        '#addExpenseForm .aer-body button, #addExpenseBtn').forEach(el => {
+        if (el.closest('#expPendingBox') || el.disabled) return;
+        el.disabled = true;
+        el.dataset.pendingLock = '1';
+    });
+}
+function _expHidePending() {
+    const box = document.getElementById('expPendingBox');
+    if (box) box.style.display = 'none';
+    document.querySelectorAll('[data-pending-lock]').forEach(el => { el.disabled = false; delete el.dataset.pendingLock; });
+}
+// Shows what this browser holds now (unlocked only when nothing is waiting).
+function _expRefreshPending() { _expHidePending(); _expShowPending(_expPendingState()); }
+// "Send it again" or "Cancel it" in a window whose save another tab of this
+// account already settled: nothing to send — the form's values may already
+// be in the list, so the form is cleared, never saved as a new entry.
+function _expSettledElsewhere() {
+    _expHidePending();
+    showExpNotif('That save was already settled in another tab or window — check the list before entering it again.', 'error');
+    document.getElementById('addExpenseForm').reset();
+    closeExpModal('addExpenseModal');
+    refreshOvAllData();
+}
+// When Add Expense opens: a save from before (this page or an earlier one)?
+// Ask the server whether it was recorded meanwhile; otherwise keep it locked.
+async function _expCheckPending() {
+    const store = _expPendingStore(), uid = _expActor();
+    const s = DacsPendingSave.inspect(store, uid);
+    _expHidePending();
+    if (s.status === 'none') return;
+    _expShowPending(s);
+    const calls = await _expBoundCalls(uid);
+    if (!calls) return;                       // someone else is signed in now: shown, not asked
+    const r = await DacsPendingSave.check({ store, uid, locks: _expLocks(), account: _expAccountNow, stateOp: calls.stateOp });
+    if (r.state === 'recorded') {
+        showExpNotif('Your earlier save had reached the server — it is in the list, once.', 'success');
+        refreshOvAllData();
+    } else if (r.state === 'cancelled') {
+        showExpNotif('Your earlier save was cancelled — it was never recorded, and never will be. Enter it again if it is still needed.', 'success');
+    }
+    if (r.state === 'recorded' || r.state === 'cancelled') _expRefreshPending();
+}
+window.expResendPending = function () { return handleAddExpense(null, { resend: true }); };
+window.expCancelPending = async function () {
+    const uid = _expActor(), calls = await _expBoundCalls(uid);
+    if (!calls) { showExpNotif('Nothing changed — ' + _expNotSentText('ACCOUNT_CHANGED'), 'error'); return; }
+    const r = await DacsPendingSave.cancel({ store: _expPendingStore(), uid, locks: _expLocks(), account: _expAccountNow,
+                                             cancelOp: calls.cancelOp });
+    if (r.state === 'none') { _expSettledElsewhere(); return; }
+    if (r.state !== 'recorded' && r.state !== 'cancelled') {
+        showExpNotif(r.state === 'unknown' ? 'Still no answer from the server — nothing changed. Try again when the connection is back.'
+                                           : 'Nothing changed — ' + _expNotSentText(r.code), 'error');
+        _expRefreshPending();
+        return;
+    }
+    _expRefreshPending();
+    if (r.state === 'recorded') {
+        showExpNotif('It had been saved — it is in the list once, exactly as first entered.', 'success');
+        document.getElementById('addExpenseForm').reset();
+        closeExpModal('addExpenseModal');
+    } else {
+        showExpNotif('Cancelled — the server will never record it. Enter it again if it is still needed.', 'success');
+    }
+    refreshOvAllData();
+};
+// A damaged save with no readable id: the server settles every Add Expense
+// save of this account it has no answer for (pur_op_recover) — cancelled for
+// good, or found recorded — and only then does the form unlock (R120).
+window.expRecoverPending = async function () {
+    const yes = await showConfirm('Check with the server? Every Add Expense save of your account that has not reached the server — in this ' +
+        'browser or another — is cancelled for good, so it can never be recorded later. Anything that did reach it stays in the list, once.',
+        { title: 'Check with the server', confirm: 'Check with the server', tone: 'ok' });
+    if (!yes) return;
+    const uid = _expActor(), calls = await _expBoundCalls(uid);
+    if (!calls) { showExpNotif('Nothing changed — ' + _expNotSentText('ACCOUNT_CHANGED'), 'error'); return; }
+    const r = await DacsPendingSave.recover({ store: _expPendingStore(), uid, locks: _expLocks(), account: _expAccountNow,
+                                              recoverOps: calls.recoverOps });
+    _expRefreshPending();
+    if (r.state === 'settled') {
+        showExpNotif('Settled with the server: ' + r.cancelled + ' save(s) that had not reached it are cancelled for good — they can never be ' +
+            'recorded. Anything that did reach it is in the list once; enter again only what is missing.', 'success');
+        refreshOvAllData();
+    } else if (r.state === 'unknown') {
+        showExpNotif('No answer from the server — nothing changed; the form stays locked. Try again when the connection is back.', 'error');
+    } else if (r.state !== 'refused') {
+        showExpNotif('Nothing changed — ' + _expNotSentText(r.code), 'error');
+    }
+};
 
 // ════════════════════════════════════════════════════════════
 // PURCHASES (migration 0096) — one server operation records them
@@ -2823,6 +2990,14 @@ function _purErrorText(err) {
         NOT_OFFICE:            'Only office accounts can record expenses.',
         NOT_ALLOWED:           'This account is not set up for Expenses.',
         BUYER_REQUIRED:        'This needs an account that may buy (the owner, or staff with the Buyer switch).',
+        // "Paid now?" (0102): the payment is saved with the purchase — both or neither.
+        BAD_PAY_SOURCE:        'Choose where the money came from.',
+        PERSON_REQUIRED:       'Petty cash and own money belong to a staff buyer — choose "Company (paid directly)", or record it in Requests → Purchasing.',
+        NOT_A_BUYER:           'Only a staff buyer holds petty cash or own money.',
+        BAD_METHOD:            'Choose how it was paid.',
+        BAD_SUPPLIER:          'That supplier is no longer on the list — type the name again.',
+        BAD_PAY:               'Check the payment: more than zero, and not more than the total.',
+        OP_CANCELLED:          'That earlier save was cancelled, so it was never recorded — enter it again.',
         BAD_DOCS:              'A receipt photo link is not valid — attach the photo again.',
         EXTRA_REASON_REQUIRED: 'This purchase covers a request and would now be more than the request needs — correct it in Requests → Purchasing, where you can give the reason.',
         BAD_REQUEST_LINK:      'This purchase is linked to a request for another project — correct it in Requests → Purchasing.',
@@ -2984,6 +3159,13 @@ async function _purLoadReviewFlags() {
     window.dispatchEvent(new Event('dacs:pur-review-flags'));
 }
 window.expPurNeedsReview = id => !!id && _purReviewLines.has(id);
+// The words for Cover material with no billing period (0096): "office review"
+// only while one of its lines still waits — "Cover is right" (Stage 4, Q6)
+// clears it like every other Office review mark. Words only; no total reads it.
+function _pcNoPeriodStatus(rows) {
+    return (rows || []).some(e => !e.projectId && e.purchaseLineId && _purReviewLines.has(e.purchaseLineId))
+        ? 'No billing period — office review' : 'No billing period — Cover';
+}
 window.expPurPendingChange = id => (id && _purPending.get(id)) || null;
 window.expPurPayBadge = id => (id && window.currentUserRole === 'owner' && _purPayBadges[id]) || null;
 // The Purchasing tab sends changes to the owner too; it re-reads the flags.
@@ -3030,65 +3212,119 @@ async function _saveRowsOnce(collection, rows, submissionId) {
     }
 }
 
-async function handleAddExpense(e) {
-    e.preventDefault();
+async function handleAddExpense(e, opts = {}) {
+    if (e && e.preventDefault) e.preventDefault();
 
-    // The project this expense belongs to. The SERVER picks its billing
-    // periods (see "PURCHASES (migration 0096)" above); nothing is split here.
-    const folderId = expCurrentProject ? (expCurrentProject.folderId || null) : (expCurrentFolder ? expCurrentFolder.id : null);
-    if (!folderId) { showExpNotif('Open a project first — this expense needs one.', 'error'); return; }
+    // A save that may already be on the server is settled first (Stage 4
+    // review): Save only shows it; "Send it again" resends it EXACTLY — the
+    // same operation id and body, never the form's fields. Storage that is
+    // blocked or damaged sends nothing new (R119).
+    const pendingStore = _expPendingStore(), actor = _expActor();
+    const state = DacsPendingSave.inspect(pendingStore, actor);
+    const pending = state.status === 'pending' ? state.pending : null;
+    if (opts.resend && state.status === 'none') { _expSettledElsewhere(); return; }
+    if (state.status !== 'none' && !(pending && opts.resend)) { _expShowPending(state); return; }
+    let build = null, label = '';
+    if (!pending) {
+        // The project this expense belongs to. The SERVER picks its billing
+        // periods (see "PURCHASES (migration 0096)" above); nothing is split here.
+        const folderId = expCurrentProject ? (expCurrentProject.folderId || null) : (expCurrentFolder ? expCurrentFolder.id : null);
+        if (!folderId) { showExpNotif('Open a project first — this expense needs one.', 'error'); return; }
 
-    const totalAmt   = Math.round((parseFloat((document.getElementById('expAmount').value || '').replace(/,/g, '')) || 0) * 100) / 100;
-    const expName    = document.getElementById('expName').value.trim();
-    const category   = document.getElementById('expCategory').value;
-    const qty        = Math.round((parseFloat(document.getElementById('expQty').value) || 1) * 1000) / 1000 || 1;
-    const dateTime   = _buildDateTime('expDate', 'expTime');
-    const notes      = document.getElementById('expNotes').value.trim();
-    const paymentMethod = (document.getElementById('expPaymentMethod')?.value || '').trim();
-    // Inventory toggle — when on, this material is also tracked as a stock item.
-    // Once Stock is on (0104, Q29) the old tick is retired: the server refuses it,
-    // and the form hides it (openExpModal). Stock lives in Requests → Stock.
-    const toInventory = !window.currentStockOn && !!document.getElementById('expToInventory')?.checked;
-    const invUnit     = document.getElementById('expInvUnit')?.value || 'pcs';
-    const invMinStock = Math.round(Math.max(0, parseFloat(document.getElementById('expInvMinStock')?.value) || 0) * 1000) / 1000;
-    // The ACTUAL purchase date decides the billing month (spec §3.3).
-    const purchaseDate = dateTime ? dateTime.slice(0, 10) : _purLocalDateKey(new Date());
+        const totalAmt   = Math.round((parseFloat((document.getElementById('expAmount').value || '').replace(/,/g, '')) || 0) * 100) / 100;
+        const expName    = document.getElementById('expName').value.trim();
+        const category   = document.getElementById('expCategory').value;
+        const qty        = Math.round((parseFloat(document.getElementById('expQty').value) || 1) * 1000) / 1000 || 1;
+        const dateTime   = _buildDateTime('expDate', 'expTime');
+        const notes      = document.getElementById('expNotes').value.trim();
+        const paymentMethod = (document.getElementById('expPaymentMethod')?.value || '').trim();
+        // "Paid now?" (Stage 4, Q7): accounts that may record payments, and only what the person chose.
+        const paidNow  = window.currentCanBuy ? (document.getElementById('expPaidNow')?.value || 'none') : 'none';
+        const paidPart = document.getElementById('expPaidAmount')?.value || '';
+        // Inventory toggle — when on, this material is also tracked as a stock item.
+        // Once Stock is on (0104, Q29) the old tick is retired: the server refuses it,
+        // and the form hides it (openExpModal). Stock lives in Requests → Stock.
+        const toInventory = !window.currentStockOn && !!document.getElementById('expToInventory')?.checked;
+        const invUnit     = document.getElementById('expInvUnit')?.value || 'pcs';
+        const invMinStock = Math.round(Math.max(0, parseFloat(document.getElementById('expInvMinStock')?.value) || 0) * 1000) / 1000;
+        // The ACTUAL purchase date decides the billing month (spec §3.3).
+        const purchaseDate = dateTime ? dateTime.slice(0, 10) : _purLocalDateKey(new Date());
+        const paidProblem = _expPaidNowProblem(paidNow, totalAmt, paidPart);
+        if (paidProblem) { showExpNotif(paidProblem, 'error'); return; }
+        label = (expName || 'Expense') + ' · ₱' + formatNum(totalAmt) + (paidNow !== 'none' ? ' (paid now)' : '');
+
+        // The body is built ONCE (uploads included) and kept with its operation id
+        // until the server answers.
+        build = async () => {
+            // Supporting docs (PO/DR/SI/PR): uploaded as files first — a failure
+            // stops here with nothing saved and the form untouched.
+            const _docMap = { po: 'expDocPO', dr: 'expDocDR', si: 'expDocSI', pay: 'expDocPR' };
+            const docUrls = {};
+            for (const [key, inputId] of Object.entries(_docMap)) {
+                const file = document.getElementById(inputId)?.files?.[0];
+                if (file) docUrls[key] = await _uploadReceiptFile('expense', file);
+            }
+
+            const body = {
+                source: 'expenses_form',
+                purchase_date: purchaseDate,
+                date_time: dateTime || purchaseDate,
+                receipt_total: totalAmt,
+                notes,
+                payment_method: paymentMethod,
+                ...(window.currentCanBuy ? _expSupplierBody(document.getElementById('expSupplier')?.value, _expSuppliers) : {}),
+                docs: {
+                    ...(docUrls.po  ? { po_image_url:         docUrls.po  } : {}),
+                    ...(docUrls.dr  ? { delivery_receipt_url: docUrls.dr  } : {}),
+                    ...(docUrls.si  ? { supplier_invoice_url: docUrls.si  } : {}),
+                    ...(docUrls.pay ? { payment_receipt_url:  docUrls.pay } : {}),
+                },
+                lines: [{ destination: 'project', folder_id: folderId, item_name: expName, category,
+                          quantity: qty, unit: toInventory ? invUnit : '', amount: totalAmt,
+                          in_inventory: toInventory, min_stock: toInventory ? invMinStock : 0 }],
+                charges: [],
+            };
+            const payments = _expPaidNowPayments(paidNow, totalAmt, paidPart, document.getElementById('expPaidFrom')?.value,
+                                                 document.getElementById('expPaidHow')?.value, purchaseDate);
+            if (payments.length) body.payments = payments;
+            return body;
+        };
+    }
 
     try {
         showExpLoading('addExpenseBtn', true);
-
-        // Supporting docs (PO/DR/SI/PR): uploaded as files first — a failure
-        // stops here with nothing saved and the form untouched.
-        const _docMap = { po: 'expDocPO', dr: 'expDocDR', si: 'expDocSI', pay: 'expDocPR' };
-        const docUrls = {};
-        for (const [key, inputId] of Object.entries(_docMap)) {
-            const file = document.getElementById(inputId)?.files?.[0];
-            if (file) docUrls[key] = await _uploadReceiptFile('expense', file);
+        // One operation id and one body per save (pur_ops records an id once),
+        // kept until the server answers — js/expense-pending-save.js — and bound
+        // to the account that pressed Save through every request (R121).
+        const calls = await _expBoundCalls(actor);
+        if (!calls) { showExpNotif('Not sent — ' + _expNotSentText('ACCOUNT_CHANGED'), 'error'); return; }
+        const res = await DacsPendingSave.submit({ store: pendingStore, uid: actor, locks: _expLocks(), account: _expAccountNow,
+                                                   resend: !!opts.resend, newId: () => DacsReceipts.newId(), build, label,
+                                                   reserve: calls.reserve, record: calls.record });
+        if (res.outcome === 'blocked') {
+            // Nothing was sent or uploaded: this browser cannot keep the save, or one still waits.
+            if (res.error.message === 'NOTHING_PENDING') { _expSettledElsewhere(); return; }
+            showExpNotif('Not sent — ' + _expNotSentText(res.error.message), 'error');
+            return;
         }
-
-        // One id per Save press: a resent request is recorded once (pur_ops).
-        if (!_expSubmissionId) _expSubmissionId = DacsReceipts.newId();
-        const body = {
-            source: 'expenses_form',
-            purchase_date: purchaseDate,
-            date_time: dateTime || purchaseDate,
-            receipt_total: totalAmt,
-            notes,
-            payment_method: paymentMethod,
-            docs: {
-                ...(docUrls.po  ? { po_image_url:         docUrls.po  } : {}),
-                ...(docUrls.dr  ? { delivery_receipt_url: docUrls.dr  } : {}),
-                ...(docUrls.si  ? { supplier_invoice_url: docUrls.si  } : {}),
-                ...(docUrls.pay ? { payment_receipt_url:  docUrls.pay } : {}),
-            },
-            lines: [{ destination: 'project', folder_id: folderId, item_name: expName, category,
-                      quantity: qty, unit: toInventory ? invUnit : '', amount: totalAmt,
-                      in_inventory: toInventory, min_stock: toInventory ? invMinStock : 0 }],
-            charges: [],
-        };
-        const { data, error } = await window.sbClient.rpc('pur_record', { p_op: _expSubmissionId, p_body: body });
-        if (error) throw error;
-        _expSubmissionId = null;
+        if (res.outcome === 'unknown') {
+            _expShowPending({ status: 'pending', pending: res.pending });
+            showExpNotif('No answer from the server — this expense may already be saved. Send it again or cancel it; the form is locked until then.', 'error');
+            return;
+        }
+        if (res.outcome === 'refused' && res.kept) {
+            // A later attempt refused for another reason: the first request may have
+            // been recorded, so the save stays until "Cancel it" settles it.
+            _expShowPending({ status: 'pending', pending: res.pending });
+            showExpNotif('The server refused this attempt (' + _purErrorText(res.error) + '). Your earlier save may already be on the ' +
+                         'server — Cancel it to settle it; the form stays locked until then.', 'error');
+            return;
+        }
+        // The server answered — saved, or refused (nothing saved) — so the save is
+        // settled and forgotten: the form unlocks either way.
+        _expRefreshPending();
+        if (res.error) throw res.error;
+        const data = res.data;
 
         // The stock update ("track in inventory") happens on the SERVER, inside
         // the same transaction and once per purchase line — never here, so a
@@ -3098,7 +3334,10 @@ async function handleAddExpense(e) {
         const noPeriod = rows.some(r => !r.period_id);
         // A replayed answer (a retry of a press that had already saved) is the
         // FIRST press's result: edits made to the form since were not applied.
-        const msg = (data && data.replayed)
+        const msg = res.resent
+            ? (data && data.replayed ? 'Your earlier save had reached the server — it is recorded once, exactly as first entered.'
+                                     : 'Your earlier save is recorded now — once, exactly as first entered.')
+            : (data && data.replayed)
             ? 'An earlier attempt of this expense was already saved — check the list; changes made since were not applied.'
             : noPeriod
             ? 'Saved ✓ — this project has no billing period for that month yet, so it was charged to Cover for office review'
@@ -3107,7 +3346,8 @@ async function handleAddExpense(e) {
                 : (data && data.stock_moves)
                     ? 'Expense added & sent to inventory ✓'
                     : (rows.length > 1 ? `Split into ${rows.length} records across funding sources ✓` : 'Expense added! ✓');
-        showExpNotif(msg, 'success');
+        showExpNotif(msg + (data && data.pay ? ' · payment recorded (' + ({ paid: 'Paid', partial: 'Partly paid' }[data.pay.state] || data.pay.state) + ')' : ''),
+                     'success');
         refreshOvAllData();
         if (review.length) _purLoadReviewFlags().then(refreshOvAllData);
 
@@ -3120,6 +3360,8 @@ async function handleAddExpense(e) {
         console.error(err);
     } finally {
         showExpLoading('addExpenseBtn', false);
+        const still = DacsPendingSave.inspect(pendingStore, actor);
+        if (still.status !== 'none') _expShowPending(still);
     }
 }
 
@@ -3182,6 +3424,85 @@ window.expSetMoreDetails = function (open) {
     if (label) label.textContent = open ? 'Fewer details' : 'More details — payment, date, notes';
 };
 window.expToggleMoreDetails = function () { window.expSetMoreDetails(); };
+
+// ════════════════════════════════════════════════════════════
+// "PAID NOW?" AND SUPPLIER ON ADD EXPENSE (WorkMate Stage 4, Q7)
+// For accounts that may record payments — owner accounts and Buyer staff
+// (window.currentCanBuy) — the payment goes WITH the purchase and the server
+// saves both or neither (pur_record, 2A-4 Q3). "Paid with" alone never marks
+// anything paid: only "Paid in full" / "Paid part", chosen by the person. A
+// payment never changes Spent. Staff without the Buyer switch see none of
+// this and record as before (Unpaid until a payment is recorded).
+// ════════════════════════════════════════════════════════════
+const _EXP_PAY_HOW = { cash: 'Cash', gcash: 'GCash', bank_transfer: 'Bank transfer', check: 'Check', other: 'Other' };
+// "Paid with" → how the payment was made: a starting value for "How" only.
+function _expPayHowOf(paidWith) {
+    const m = String(paidWith || '').trim().toLowerCase();
+    if (m === 'cash' || m === 'gcash') return m;
+    if (m === 'cheque' || m === 'check') return 'check';
+    if (['bank transfer', 'bdo', 'bpi', 'metrobank'].includes(m)) return 'bank_transfer';
+    return 'other';
+}
+// The payments to send with the purchase: none unless the person chose
+// "Paid in full" or "Paid part".
+function _expPaidNowPayments(choice, total, partAmount, source, how, paidOn) {
+    if (choice !== 'full' && choice !== 'part') return [];
+    const amount = choice === 'full' ? total : Math.round((parseFloat(String(partAmount || '').replace(/,/g, '')) || 0) * 100) / 100;
+    return [{ amount: String(amount), paid_on: paidOn, method: _EXP_PAY_HOW[how] ? how : 'other',
+              source: ['company', 'petty_cash', 'own_money'].includes(source) ? source : 'company', note: '' }];
+}
+// What the form refuses before sending (the server checks again).
+function _expPaidNowProblem(choice, total, partAmount) {
+    if (choice !== 'full' && choice !== 'part') return '';
+    if (!(total > 0)) return 'Enter the total first.';
+    if (choice === 'part') {
+        const a = parseFloat(String(partAmount || '').replace(/,/g, '')) || 0;
+        if (!(a > 0)) return 'Enter the amount paid.';
+        if (a >= total) return 'A part payment is less than the total — choose "Paid in full".';
+    }
+    return '';
+}
+let _expSuppliers = [];
+function _expSupplierLabel(s) { return s.name + (s.branch ? ' · ' + s.branch : ''); }
+// The supplier part of the purchase: one from the list by its id, else the typed name.
+function _expSupplierBody(typed, suppliers) {
+    const text = String(typed || '').trim();
+    const hit = text && (suppliers || []).find(s => _expSupplierLabel(s).toLowerCase() === text.toLowerCase());
+    return hit ? { supplier: '', supplier_id: hit.id } : { supplier: text.slice(0, 200) };
+}
+window.expTogglePaidNow = function () {
+    const choice = document.getElementById('expPaidNow')?.value || 'none';
+    const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+    show('expPaidAmountWrap', choice === 'part');
+    show('expPaidFromRow', choice === 'full' || choice === 'part');
+    const how = document.getElementById('expPaidHow');
+    if (how && !how.dataset.touched) how.value = _expPayHowOf(document.getElementById('expPaymentMethod')?.value);
+};
+// Each time Add Expense opens: shown only to accounts that may record payments, set back to "Not paid yet".
+async function _expSetupPaidNow() {
+    const wrap = document.getElementById('expPaidNowWrap');
+    if (!wrap) return;
+    const can = !!window.currentCanBuy;
+    wrap.style.display = can ? '' : 'none';
+    const choice = document.getElementById('expPaidNow'); if (choice) choice.value = 'none';
+    const part = document.getElementById('expPaidAmount'); if (part) part.value = '';
+    const how = document.getElementById('expPaidHow'); if (how) delete how.dataset.touched;
+    const from = document.getElementById('expPaidFrom');
+    // A staff buyer may pay from their own petty cash or own money (the server fills in who);
+    // an owner account pays as the company.
+    if (from) from.innerHTML = '<option value="company">Company (paid directly)</option>' + (window.currentUserRole === 'staff'
+        ? '<option value="petty_cash">My petty cash</option><option value="own_money">My own money</option>' : '');
+    const sup = document.getElementById('expSupplier'); if (sup) sup.value = '';
+    window.expTogglePaidNow();
+    if (!can) return;
+    try {
+        const { data, error } = await window.sbClient.rpc('pur_suppliers');
+        if (error) throw error;
+        _expSuppliers = (data || []).filter(s => s.active);
+        const list = document.getElementById('expSupplierList');
+        if (list) list.innerHTML = _expSuppliers.map(s => '<option value="' + _mvpEsc(_expSupplierLabel(s)) + '"></option>').join('');
+    } catch (err) { _expSuppliers = []; console.warn('suppliers:', err); }
+}
 
 // ════════════════════════════════════════════════════════════
 // PAYROLL FORM
@@ -4831,6 +5152,8 @@ function openExpModal(id)  {
         const box = inv && inv.closest('.aer-inv');
         if (box) box.style.display = window.currentStockOn ? 'none' : '';
         if (inv && window.currentStockOn) { inv.checked = false; window.expToggleInventoryFields(); }
+        _expSetupPaidNow();
+        _expCheckPending();
     }
     if (id === 'addPayrollModal' && typeof payToggleMode === 'function') payToggleMode(); // sync Daily/Lamsam UI
     if (id === 'addPayrollModal' && typeof lcPopulatePayrollPicker === 'function') {
@@ -4845,7 +5168,8 @@ function closeExpModal(id) {
     // A submission id belongs to ONE open form (spec 2026-10-08 §4.3): closing
     // the form forgets it, so a later, different entry can never be mistaken
     // for an earlier save whose response was lost.
-    if (id === 'addExpenseModal') _expSubmissionId = null;
+    // Add Expense: a save that may be on the server is NOT forgotten on close
+    // (js/expense-pending-save.js keeps it until the server answers).
     if (id === 'addPayrollModal') _paySubmissionId = null;
     const m = document.getElementById(id);
     if (m) m.classList.remove('active');
@@ -5189,6 +5513,9 @@ function _rptUpdateAxisHint(period) {
 
 function loadRptData() {
     if (!currentUser) return;
+    // The cost-move history for the "changed after the month ended" note: fresh on each visit.
+    _pcCostChanges = null;
+    _pcCostChangesPromise = null;
     _rptState.loading = true;
     _rptShowLoading();
 
@@ -5521,7 +5848,7 @@ function _pcAllocationReportHtml(model) {
         remaining:-model.totals.unallocatedIndirect, allocation:null, status:'Unallocated Indirect' }));
     if (model.totals.noPeriodMaterial) rows.push(_pcReportCells({ label:'No billing period (Cover)',
         mats:model.totals.noPeriodMaterial, totalSpent:model.totals.noPeriodMaterial,
-        remaining:-model.totals.noPeriodMaterial, allocation:null, status:'No billing period — office review' }));
+        remaining:-model.totals.noPeriodMaterial, allocation:null, status:_pcNoPeriodStatus(model.expenses) }));
     rows.push(_pcReportCells({ ...model.totals, allocation:totalAllocation, status:model.allocation.legacyCount ? 'Allocation not configured: ' + model.allocation.legacyCount : '' }));
     return _pcReportTable(_PC_REPORT_HEADERS, rows, 'Billing Allocation Performance')
         + '<p class="pc-report-note">Target Margin Reserve: planning only. Variance = planned minus actual. Cover Expenses are included above.</p>';
@@ -5536,13 +5863,69 @@ function _pcPeriodAllocationHtml(row) {
         ['Target Margin Reserve',a.targetMarginReserve,null,null]], 'Billing Allocation');
 }
 
+// A billing period changed by a stock cost move AFTER its month ended
+// (WorkMate Stage 4, Q11) — approvals AND reversals. They come from the
+// server's lasting log of cost-move rows (0109's rec_cost_row_log, through
+// rec_bills in js/reconciliation-admin.js): a reversal deletes its expense
+// rows, so the rows alone could never say that a month changed again. The
+// figures stay today's; the note says what changed later and when, so an
+// older printout can be matched. Display only: no total reads it.
+let _pcCostChanges = null;          // null until loaded for this Reports visit
+let _pcCostChangesPromise = null;
+function _pcEnsureCostChanges(onReady) {
+    if (!_pcIsOwner() || _pcCostChanges !== null || !window.ReconciliationAdmin || !window.ReconciliationAdmin.costChanges) return false;
+    if (!_pcCostChangesPromise) {
+        _pcCostChangesPromise = window.ReconciliationAdmin.costChanges().then(list => { _pcCostChanges = list || []; }).catch(err => {
+            console.warn('Report cost-move history:', err);
+            _pcCostChanges = [];
+            showExpNotif('Could not load the stock cost-move history for the Reports notes.', 'error');
+        });
+    }
+    _pcCostChangesPromise.then(onReady);
+    return true;
+}
+// changes: rec_bills' items ({cost_move_id, change, at, item, from, to,
+// sides: [{period_id, amount}]}); periods: the report's billing periods.
+function _pcLateCostMoveNotes(changes, periods) {
+    const byId = new Map((periods || []).map(p => [p.id, p]));
+    const out = new Map();
+    (changes || []).forEach(b => (b.sides || []).forEach(s => {
+        const p = byId.get(s.period_id);
+        const m = p ? _MONTHS.indexOf(p.month) : -1;
+        if (m < 0 || !Number(p.year) || !b.at) return;
+        const at = new Date(b.at);
+        if (isNaN(at) || at < new Date(Number(p.year), m + 1, 1)) return;
+        // Local parts — PH is UTC+8.
+        const day = at.getFullYear() + '-' + String(at.getMonth() + 1).padStart(2, '0') + '-' + String(at.getDate()).padStart(2, '0');
+        const key = p.id + '|' + b.cost_move_id + '|' + b.change + '|' + day;
+        const n = out.get(key) || { period: p.name || [p.month, p.year].filter(Boolean).join(' '), day, at, change: b.change, amount: 0,
+                                    what: [b.item, (b.from || '') + ' → ' + (b.to || '')].filter(Boolean).join(': ') };
+        n.amount = Math.round((n.amount + (Number(s.amount) || 0)) * 100) / 100;
+        out.set(key, n);
+    }));
+    return [...out.values()].sort((a, b) => a.at - b.at);
+}
+function _pcLateCostMoveHtml(folderId) {
+    if (!_pcIsOwner()) return '';
+    const folders = _pcReportFolderIds(folderId);
+    const notes = _pcLateCostMoveNotes(_pcCostChanges, expProjects.filter(p => folders.has(p.folderId)));
+    if (!notes.length) return '';
+    return '<div class="pc-report-note"><strong>Changed after the month ended</strong> — the figures above are today\'s.'
+        + notes.map(n => '<div>' + _mvpEsc(n.period) + ': changed ' + (n.change === 'reversed' ? 'again ' : '')
+            + _mvpEsc(n.at.toLocaleDateString('en-PH', { year:'numeric', month:'short', day:'numeric' }))
+            + (n.change === 'reversed' ? ' — a stock cost move was reversed: ' : ' by a stock cost move: ')
+            + _mvpEsc((n.amount < 0 ? '−' : '+') + '₱' + formatNum(Math.abs(n.amount))) + (n.what ? ' (' + _mvpEsc(n.what) + ')' : '')
+            + '</div>').join('') + '</div>';
+}
+
 function renderReportsDashboard() {
     if (_pcEnsureReportOverhead(renderReportsDashboard)) return;
+    if (_pcEnsureCostChanges(renderReportsDashboard)) return;
     const report = _pcDashboardReport();
     _rptRenderKPIs(report.model);
     _rptRenderTable(report.groups, report.model);
     const allocation = document.getElementById('rptAllocationReport');
-    if (allocation) allocation.innerHTML = _pcAllocationReportHtml(report.model);
+    if (allocation) allocation.innerHTML = _pcAllocationReportHtml(report.model) + _pcLateCostMoveHtml(_rptState.folderId);
     const owner = _pcIsOwner();
     ['rptTrendChart', 'rptBudgetVsActualChart', 'expCategoryChart'].forEach(id => {
         const canvas = document.getElementById(id);
@@ -5937,7 +6320,7 @@ function exportRptTable() {
             remaining:-model.totals.unallocatedIndirect,status:'Unallocated Indirect' }));
         if (model.totals.noPeriodMaterial) rows.push(_pcReportCells({ label:'No billing period (Cover)',
             mats:model.totals.noPeriodMaterial,totalSpent:model.totals.noPeriodMaterial,
-            remaining:-model.totals.noPeriodMaterial,status:'No billing period — office review' }));
+            remaining:-model.totals.noPeriodMaterial,status:_pcNoPeriodStatus(model.expenses) }));
         const a = model.allocation;
         rows.push(_pcReportCells({ ...model.totals, allocation:a.configuredCount ? { ...a,
             directRemaining:a.directBudget-a.directActual, indirectRemaining:a.indirectBudget-a.indirectActual } : null }));
@@ -6191,7 +6574,8 @@ function _pcPrintFundingSummary(model) {
     }
     if (model.totals.noPeriodMaterial) {
         const amount = model.totals.noPeriodMaterial;
-        html += _pcReportTable(headers, [['','No billing period (Cover) — office review','','','',0,amount,0,0,amount,-amount]], 'No billing period');
+        const words = _pcNoPeriodStatus(model.expenses) === 'No billing period — office review' ? ' — office review' : '';
+        html += _pcReportTable(headers, [['','No billing period (Cover)' + words,'','','',0,amount,0,0,amount,-amount]], 'No billing period');
     }
     return html + _pcReportTable(['Materials','Labor','Overhead','Grand Total Balance'],
         [[model.totals.mats,model.totals.labor,model.totals.overhead,model.totals.remaining]], 'Grand Total Balance');
@@ -6239,6 +6623,7 @@ function _pcPrintReport(title, model, groups, options = {}) {
                 .concat([['TOTAL',t.totalSpent,t.totalSpent ? '100.0%' : '0.0%']]), 'Category Breakdown');
         }
         body += _pcAllocationReportHtml(model);
+        if (options.kind === 'dashboard') body += _pcLateCostMoveHtml(options.folderId);
         if (options.kind !== 'dashboard' || options.folderId) body += _pcReportDetails(model);
     } else body = _pcReportTable(['Billing Period','Status'], model.rows.map(r => [r.label,r.status]), 'Billing Summary');
     const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>' + _mvpEsc(title + (receiptNo ? ' - ' + receiptNo : ''))
@@ -6305,6 +6690,7 @@ function _rptRenderDetailTables(model) {
 // ════════════════════════════════════════════════════════════
 function printReportsDashboard() {
     if (_pcEnsureReportOverhead(printReportsDashboard)) return;
+    if (_pcEnsureCostChanges(printReportsDashboard)) return;
     const report = _pcDashboardReport();
     _pcPrintReport((expFolders.find(f => f.id === _rptState.folderId)?.name || 'Company-Wide Report')
         + ' · ' + report.label, report.model, report.groups, {kind:'dashboard',folderId:_rptState.folderId,dateLabel:report.label,

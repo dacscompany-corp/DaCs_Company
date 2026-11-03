@@ -1694,6 +1694,9 @@ function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, ov
   // A purchase on a project with NO billing period (0096) belongs to no card,
   // but it is spent: it counts in Total Spent and is named below the cards.
   const noPeriodSpent = expensesRaw.filter(e => !e.projectId && e.folderId === project.id).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  // "office review" only while one of those lines still waits — "Cover is right" (Stage 4, Q6) clears it. Words only.
+  const noPeriodReview = typeof window.expPurNeedsReview === "function"
+    && expensesRaw.some(e => !e.projectId && e.folderId === project.id && window.expPurNeedsReview(e.purchaseLineId));
   const totalSpent = cards.reduce((sum, c) => sum + c.totalCost, 0) + noPeriodSpent;
   const historyPeriod = owner && cards.find(c => c.id === historyId && !c.cover);
   // Two DIFFERENT styles: .drill-stat is the big header block, .pc-period-stat the
@@ -1720,8 +1723,8 @@ function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, ov
       headStat("Total Spent", totalSpent),
       headStat("Remaining", totalAllocated - totalSpent, totalAllocated - totalSpent >= 0 ? "accent" : "")),
     noPeriodSpent > 0 && h("div", { className: "pc-feed-empty", role: "note" }, owner
-      ? ["₱ ", peso(noPeriodSpent), " of Cover material has no billing period yet — it counts in Total Spent; office review needed."]
-      : "Some Cover material has no billing period yet — office review needed."),
+      ? ["₱ ", peso(noPeriodSpent), " of Cover material has no billing period yet — it counts in Total Spent", noPeriodReview ? "; office review needed." : "."]
+      : "Some Cover material has no billing period yet" + (noPeriodReview ? " — office review needed." : ".")),
     !cards.length ? h("div", { className: "pc-feed-empty" }, "No billing periods yet.")
       : h("div", { className: "pc-period-grid" }, cards.map(c => h("div", { key: c.id, className: "pc-period-card" },
         h("div", { className: "pc-period-head" },

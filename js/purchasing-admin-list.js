@@ -11,6 +11,9 @@
 //                      petty-cash tracker, or a buyer's own cash;
 //   Company stock    — owner accounts, once stock is on (2C, 0105):
 //                      js/stock-cost-admin.js.
+//   Reconciliation   — owner accounts (Stage 4, 0109): where every purchase
+//                      peso is, what is waiting, "Cover is right", money
+//                      still out, bills to check — js/reconciliation-admin.js.
 // "Record purchase" (js/purchasing-admin-record.js) opens from the list
 // with the ticked lines.
 // 0104: a line whose catalogue item is in the warehouse says so ("In
@@ -35,7 +38,13 @@
         const t = (id, label) => '<button type="button" class="att-seg-btn' + (ui.tab === id ? ' is-on' : '') + '" data-tab="' + id + '">' + label + '</button>';
         return '<div class="att-seg" role="tablist" aria-label="Purchasing">' +
             t('list', 'Shopping list') + t('purchases', 'Purchases') + t('approvals', 'Owner approvals') + t('cash', 'Cash') +
-            (companyStockTab() ? t('company', 'Company stock') : '') + '</div>';
+            (companyStockTab() ? t('company', 'Company stock') : '') +
+            (reconcileTab() ? t('reconcile', 'Reconciliation') : '') + '</div>';
+    }
+
+    // Stage 4: the owner's checks — owner accounts (the server refuses anyone else).
+    function reconcileTab() {
+        return !!(root.ReconciliationAdmin && PA.ui.isOwner);
     }
 
     // 2C: the value of company stock — owner accounts, once stock is on.
@@ -279,6 +288,7 @@
         if (ui.tab === 'record') return PA.renderRecord(host.querySelector('[data-body]'), me);
         if (ui.tab === 'cash' && PA.renderCash) return PA.renderCash(host.querySelector('[data-body]'), me);
         if (ui.tab === 'company' && companyStockTab()) return root.StockCostAdmin.renderCompanyStock(host.querySelector('[data-body]'));
+        if (ui.tab === 'reconcile' && reconcileTab()) return root.ReconciliationAdmin.render(host.querySelector('[data-body]'));
         return renderList(host, me);
     }
 
