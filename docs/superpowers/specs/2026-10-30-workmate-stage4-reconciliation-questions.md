@@ -2,7 +2,9 @@
 
 Date: 30 October 2026
 
-**Update, 3 November 2026 (the user): Task 5 is closed — script not needed, payments entered manually (in the app, 31 Oct). This does not confirm that the recorded payment dates or sources are correct; that verification stays pending, and no payment changes without the user's specific instruction. Both Eagle Residence Cover decisions stay pending.**
+**Update, 3 November 2026 (the user): Task 5 is closed — script not needed, payments entered manually (in the app, 31 Oct). This does not confirm that the recorded payment dates or sources are correct; that verification stays pending, and no payment changes without the user's specific instruction.**
+
+**Update, 3 November 2026, 12:31 (the user): both Eagle Residence lines were paid with the company's own money, so Cover is right. The user marked both "Cover is right" on the live site; question 6 is decided for these two lines.**
 
 Status: **Answered by the user, 30 October 2026: questions 1–7 and 9–15 = A.** **Question 8 = A as an approach only** (each payment reviewed one by one): **no purchase has been confirmed paid**, and all 18 stay Unpaid until the user confirms each one in the table under question 8. **Question 6 = A approves the "Cover is right" feature only**: it does **not** confirm that Cover is correct for the two Eagle Residence purchases, which each still need their own decision. Revision 3, 30 October 2026: the answers, plus a reference code for each purchase in questions 6 and 8 and a blank confirmation table. (Revision 2 listed the exact purchases and made explicit that **a payment method chosen on the form never marks a purchase paid or clears an "Office review" mark**.) **Confirmed by the user, 30 Oct: the 19 purchases in questions 6 and 8 are legitimate real purchases, not test data — preserve all of them.** That confirms only that they are real; their **payment dates, amounts paid and where the money came from**, and **whether Cover is correct** for the two Eagle Residence purchases, are still **pending**. No plan, code or database change; **no live record changed**.
 
