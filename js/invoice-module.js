@@ -2140,16 +2140,44 @@ ${previewOnly ? '' : '<script>window.onload=function(){window.print();};<\\/scri
     // ACKNOWLEDGE INVOICE — Single payroll entry
     // ══════════════════════════════════════════════════════
 
+    // A statement or receipt reads payroll just before printing, because Project
+    // Control's list above its button is live and the two must agree. The window
+    // opens first, on the click itself: opened after a wait it can be blocked.
+    // If it cannot be printed from current figures, the window closes and nothing
+    // is printed, never the page's older copy.
+    function _openPrintWindow(features, blockedMessage) {
+        const w = window.open('', '_blank', features);
+        if (!w) { alert(blockedMessage); return null; }
+        w.document.write('<p style="font:14px Arial,sans-serif;padding:24px;color:#555">Preparing…</p>');
+        return w;
+    }
+    function _stopPrint(w, message) {
+        w.close();
+        alert(message);
+    }
+    const _PRINT_READ_FAILED = 'Could not load the latest payroll, so nothing was printed. Check your connection and try again.';
+
     window.printSinglePayrollInvoice = async function (payrollId) {
+        const w = _openPrintWindow('width=720,height=960', 'Please allow pop-ups to print the invoice.');
+        if (!w) return;
+        try {
+            await _writeSinglePayrollInvoice(w, payrollId);
+        } catch (err) {
+            console.error('printSinglePayrollInvoice:', err);
+            _stopPrint(w, _PRINT_READ_FAILED);
+        }
+    };
+
+    async function _writeSinglePayrollInvoice(w, payrollId) {
         if (!_ownerUid) await _resolveOwnerUid();
         if (!_defaults || !Object.keys(_defaults).length) await _loadDefaults();
 
-        const _allPay = (typeof _ovAllPayroll !== 'undefined' && _ovAllPayroll.length)
-                        ? _ovAllPayroll
-                        : (typeof expPayroll !== 'undefined' ? expPayroll : []);
-
-        const p = _allPay.find(e => e.id === payrollId);
-        if (!p) { alert('Payroll entry not found.'); return; }
+        const snap = await db.collection('payroll').doc(payrollId).get();
+        if (!snap.exists) {
+            _stopPrint(w, 'This payroll entry no longer exists, so nothing was printed. It may have been deleted from another tab or account.');
+            return;
+        }
+        const p = { id: snap.id, ...snap.data() };
 
         const _projs   = (typeof expProjects !== 'undefined' ? expProjects : []);
         const _folders = (typeof expFolders  !== 'undefined' ? expFolders  : []);
@@ -2179,9 +2207,7 @@ ${previewOnly ? '' : '<script>window.onload=function(){window.print();};<\\/scri
             k === _method ? '<strong class="on">' + lbl + '</strong>' : lbl
         ).join(' <span class="sep">/</span> ') + '</div>';
 
-        const w = window.open('','_blank','width=720,height=960');
-        if (!w) { alert('Please allow pop-ups to print the invoice.'); return; }
-
+        w.document.open();
         w.document.write(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2272,7 +2298,7 @@ ${window.dacsStatementPrintScript()}
 </body>
 </html>`);
         w.document.close();
-    };
+    }
 
     // ══════════════════════════════════════════════════════
     // WORKER STATEMENT OF ACCOUNT — all of ONE worker's labor
@@ -2283,15 +2309,24 @@ ${window.dacsStatementPrintScript()}
     // 'labor' (default) = in-house worker; 'outsource' = outside vendor. Without
     // it a vendor sharing a worker's name would pull both kinds into one document.
     window.printWorkerLaborSOA = async function (workerName, folderId, category) {
+        const w = _openPrintWindow('width=870,height=1100', 'Please allow pop-ups to print the statement.');
+        if (!w) return;
+        try {
+            await _writeWorkerLaborSOA(w, workerName, folderId, category);
+        } catch (err) {
+            console.error('printWorkerLaborSOA:', err);
+            _stopPrint(w, _PRINT_READ_FAILED);
+        }
+    };
+
+    async function _writeWorkerLaborSOA(w, workerName, folderId, category) {
         const _soaCat    = category === 'outsource' ? 'outsource' : 'labor';
         const _soaIsVend = _soaCat === 'outsource';
         const _catOf     = c => (c && c.category === 'outsource') ? 'outsource' : 'labor';
         if (!_ownerUid) await _resolveOwnerUid();
         if (!_defaults || !Object.keys(_defaults).length) await _loadDefaults();
 
-        const _allPay  = (typeof _ovAllPayroll !== 'undefined' && _ovAllPayroll.length)
-                         ? _ovAllPayroll
-                         : (typeof expPayroll !== 'undefined' ? expPayroll : []);
+        const _allPay  = await _ovReadPayroll();
         const _projs   = (typeof expProjects !== 'undefined' ? expProjects : []);
         const _folders = (typeof expFolders  !== 'undefined' ? expFolders  : []);
 
@@ -2311,7 +2346,7 @@ ${window.dacsStatementPrintScript()}
             .filter(p => periodIds.has(p.projectId) &&
                 ((p.workerName || '') === workerName || (p.contractId && _wcIds.has(p.contractId))))
             .sort((a, b) => new Date(a.paymentDate || 0) - new Date(b.paymentDate || 0));
-        if (!entries.length) { alert('No labor entries found for ' + workerName + ' in this project.'); return; }
+        if (!entries.length) { _stopPrint(w, 'No labor entries found for ' + workerName + ' in this project.'); return; }
 
         const role    = (entries.find(e => e.role) || {}).role || '—';
         // Blank, not '—': the letterhead omits an address/TIN line it doesn't have.
@@ -2401,9 +2436,7 @@ ${window.dacsStatementPrintScript()}
             _contractType = [..._types].join(' & ');
         }
 
-        const w = window.open('','_blank','width=870,height=1100');
-        if (!w) { alert('Please allow pop-ups to print the statement.'); return; }
-
+        w.document.open();
         w.document.write(`<!DOCTYPE html>
 <html lang="en">
 <head>

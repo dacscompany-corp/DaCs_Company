@@ -371,7 +371,7 @@ async function testOverheadAttribution() {
   eq(a.writes.at(-1).billingPeriodId, null, 'save must revalidate a period moved after the form opened');
 
   const b = overheadHarness();
-  vm.runInContext(`_ovhdExpenses = [
+  vm.runInContext(`_ovhdCostsRead = true; _ovhdExpenses = [
     { folderId:'f1', billingPeriodId:'p1', amount:100, date:'2026-09-01' },
     { folderId:'f1', billingPeriodId:null, amount:200, date:'2026-09-01' },
     { folderId:'f1', billingPeriodId:'p3', amount:300, date:'2026-09-01' }];
@@ -563,7 +563,7 @@ function testOverheadCsvFormulas() {
   const h = overheadHarness();
   h.context.expFolders[0].name = '@job';
   h.context.expProjects[0].name = '=SUM("1","2")';
-  vm.runInContext(`_ovhdExpenses = [{ folderId:'f1', billingPeriodId:'p1', amount:-123.45,
+  vm.runInContext(`_ovhdCostsRead = true; _ovhdExpenses = [{ folderId:'f1', billingPeriodId:'p1', amount:-123.45,
     date:'2026-09-01', category:'+category', expenseName:'-expense', status:'=status' }];`, h.context);
   h.context.exportOverheadCsv();
   eq(h.reports().csv.split('\n')[1], `"2026-09-01","Project","'@job","'=SUM(""1"",""2"")","'+category","'-expense","-123.45","'=status","Overhead Expense"`,
@@ -1416,28 +1416,30 @@ async function testReportsReadOnlyWhenAsked() {
   eq(reportReads(), 2, 'one open is one read of each table');
   c._pcRefreshReportViews();
   c._renderAllPanels();
-  c.subscribeOvAllData();
   await tick();
   eq(reportReads(), 2, 'a redraw reads nothing: drawing must never start another read');
+  c.subscribeOvAllData();
+  await tick();
+  eq(reportReads(), 4, 'the shared copy reads its own two tables, and starts no Reports read');
   assert.match(h.el('rptSummaryTbody').innerHTML, /251\.00/, 'and keeps the figures just read');
   c.setRptPeriod('quarterly');
   await tick();
-  eq(reportReads(), 2, 'a period tab only regroups the same rows');
+  eq(reportReads(), 4, 'a period tab only regroups the same rows');
   c.onRptFolderChange();
   await tick();
-  eq(reportReads(), 4, 'choosing a folder reads again');
+  eq(reportReads(), 6, 'choosing a folder reads again');
   c.onRptYearChange();
   await tick();
-  eq(reportReads(), 6, 'choosing a year reads again');
+  eq(reportReads(), 8, 'choosing a year reads again');
   server.expenses = server.expenses.filter(e => e.id !== 'e1');
   c.refreshOvAllData();
   await tick();
-  eq(reportReads(), 8, 'a save while Reports is on screen reads again');
+  eq(reportReads(), 12, 'a save while Reports is on screen reads again: the shared copy\'s two tables and Reports\' two');
   assert.match(h.el('rptSummaryTbody').innerHTML, /151\.00/, 'and shows on it');
   h.el('expReportsView').style.display = 'none';
   c.refreshOvAllData();
   await tick();
-  eq(reportReads(), 8, 'not when Reports is not on screen: the next opening reads');
+  eq(reportReads(), 14, 'not when Reports is not on screen: only the shared copy\'s two, the next opening reads');
 }
 
 async function testReportNoteIsReadWithTheFigures() {

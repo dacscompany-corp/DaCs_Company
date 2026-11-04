@@ -33,7 +33,7 @@ function harness({ rpc, collections }) {
   const notes = [], dbCalls = [];
   const snap = (rows) => ({ docs: rows.map(r => ({ id: r.id, data: () => ({ ...r }), ref: { delete: async () => {} } })), size: rows.length, empty: !rows.length });
   const query = (name) => {
-    const q = { where: () => q, limit: () => q, get: async () => { dbCalls.push(name); return snap((collections || {})[name] || []); },
+    const q = { where: () => q, limit: () => q, omit: () => q, get: async () => { dbCalls.push(name); return snap((collections || {})[name] || []); },
                 onSnapshot: (next) => { next(snap((collections || {})[name] || [])); return () => {}; } };
     return q;
   };

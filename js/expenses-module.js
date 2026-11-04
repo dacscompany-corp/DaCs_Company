@@ -390,6 +390,12 @@ function fmtBudgetInput(el) {
 // ── Overview: global all-expenses/payroll cache (keeps folder grid live) ──
 let _ovAllExpenses  = [];
 let _ovAllPayroll   = [];
+// The shared copy never holds photos: nothing that reads it shows one (the worker
+// receipt summary fetches a row's photos itself, _fillLazyPayroll), and they are
+// 14.5 MB of the two tables' 15 MB. It can also be old: see _ovReadPayroll.
+const _EXP_PHOTO_FIELDS = ['poImageUrl', 'deliveryReceiptUrl', 'supplierInvoiceUrl', 'paymentReceiptUrl'];
+let _ovExpRead = 0, _ovPayRead = 0;   // only the newest read of a table may replace the copy
+let _ovPayLatest = null;
 let _ovExpUnsub     = null;
 let _ovPayUnsub     = null;
 
@@ -757,23 +763,39 @@ function subscribeOvAllData() {
     }
 
     // Single fetch — no live listener
+    var expRead = ++_ovExpRead;
     db.collection('expenses')
         .where('userId', '==', _uid())
+        .omit(_EXP_PHOTO_FIELDS)
         .get()
         .then(function(snap) {
+            if (expRead !== _ovExpRead) return;
             _ovAllExpenses = snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
             _updateSpent();
         })
         .catch(function(err) { console.error('ov expenses fetch:', err); });
 
-    db.collection('payroll')
-        .where('userId', '==', _uid())
-        .get()
-        .then(function(snap) {
-            _ovAllPayroll = snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
-            _updateSpent();
-        })
+    _ovReadPayroll()
+        .then(function() { _updateSpent(); })
         .catch(function(err) { console.error('ov payroll fetch:', err); });
+}
+
+// Read payroll now, for whoever must not use an old copy: other accounts, tabs and
+// devices change it without telling this page. Resolves with the rows, which become
+// the shared copy; rejects if the read fails, so the caller stops instead of falling
+// back. A read overtaken by a newer one waits for it and hands over the newer rows.
+function _ovReadPayroll() {
+    const run = ++_ovPayRead;
+    _ovPayLatest = db.collection('payroll')
+        .where('userId', '==', _uid())
+        .omit('receiptImages')
+        .get()
+        .then(snap => {
+            if (run !== _ovPayRead) return _ovPayLatest;
+            _ovAllPayroll = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            return _ovAllPayroll;
+        });
+    return _ovPayLatest;
 }
 
 // Call this after any expense/payroll write to keep folder grid totals fresh.
@@ -5519,10 +5541,8 @@ function _rptUpdateAxisHint(period) {
 // Reports reads expenses and payroll itself when it is opened or its folder or
 // year changes. _ovAllExpenses is a copy from page load that Stock, Purchasing,
 // the phone and other accounts never refresh, so it can still hold a row that is
-// gone. Only the figures are read: photos are 14.5 MB of the two tables' 15 MB
-// and nothing in Reports shows one. The cost-move note ("changed after the month
-// ended") is read with them, so it can't be newer than the figures above it.
-const _RPT_PHOTO_FIELDS = ['poImageUrl', 'deliveryReceiptUrl', 'supplierInvoiceUrl', 'paymentReceiptUrl'];
+// gone. The cost-move note ("changed after the month ended") is read with the
+// figures, so it can't be newer than they are.
 let _rptFresh = null;     // { expenses, payroll } from the latest read
 let _rptFreshRun = 0;     // only the newest read may land
 function _rptLoadFresh() {
@@ -5535,7 +5555,7 @@ function _rptLoadFresh() {
     _rptShowLoading();
     const rowsOf = snap => snap.docs.map(d => ({ id: d.id, ...d.data() }));
     Promise.all([
-        db.collection('expenses').where('userId', '==', _uid()).omit(_RPT_PHOTO_FIELDS).get(),
+        db.collection('expenses').where('userId', '==', _uid()).omit(_EXP_PHOTO_FIELDS).get(),
         db.collection('payroll').where('userId', '==', _uid()).omit('receiptImages').get()
     ]).then(([expenses, payroll]) => {
         if (run !== _rptFreshRun) return;

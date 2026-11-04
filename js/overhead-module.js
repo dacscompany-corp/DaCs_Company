@@ -14,6 +14,8 @@ let _ovhdExpenses    = [];      // all non-deleted docs for this account
 let _ovhdUnsub       = null;
 let _ovhdMonth       = '';       // 'YYYY-MM'
 let _ovhdInitialized = false;
+let _ovhdCostsRead   = false;  // the operating costs have landed at least once
+let _ovhdCostsFailed = false;  // and if they have not, whether their read failed
 let _ovhdScope       = 'all';    // 'all' | 'company' | 'project'
 let _ovhdProjectId   = '';       // folderId filter
 let _ovhdCategory    = '';
@@ -146,10 +148,12 @@ function _ovhdIndirectRows() {
         status: 'paid'   // payroll rows are money already released
     }));
 }
+// 'loading' or 'failed': payroll isn't current, so nothing built on it may show.
+let _ovhdPayState = null;
 // Every card, chart, table and report reads THIS — never _ovhdExpenses directly —
 // so the operating costs and the indirect-labor payroll always agree.
 function _ovhdRows() {
-    return _ovhdExpenses.concat(_ovhdIndirectRows());
+    return _ovhdPayState ? _ovhdExpenses.slice() : _ovhdExpenses.concat(_ovhdIndirectRows());
 }
 
 // ── Init ─────────────────────────────────────────────────────
@@ -163,15 +167,73 @@ function initOverheadModule() {
     const picker = document.getElementById('ovhdMonthPicker');
     if (picker) picker.value = _ovhdMonth;
 
+    // Before anything draws: the page's older copy of payroll must not show, even for a moment.
+    _ovhdRefreshPayroll();
+
     _ovhdPopulateProjectSelects();
     _ovhdPopulateCategorySelect();
 
-    if (!_ovhdInitialized) {
+    // Costs that never loaded are read again, so opening the tab is the retry.
+    if (!_ovhdInitialized || !_ovhdCostsRead) {
         _ovhdInitialized = true;
         _ovhdSubscribe();
-    } else {
-        _ovhdRender();
     }
+    _ovhdRender();
+}
+
+// Indirect labor comes from payroll, which other accounts, tabs and devices change
+// without telling this page, so it is read each time this tab opens. Until that has
+// landed, or if it fails, the operating costs stay on screen and everything built on
+// payroll is hidden: indirect labor, the Project and Overall totals, the charts.
+// Reports and CSV refuse. Old figures are never shown as if they were current.
+let _ovhdPayRun = 0;        // only the newest read may land
+function _ovhdRefreshPayroll() {
+    const run = ++_ovhdPayRun;
+    _ovhdPayState = 'loading';
+    _ovhdShowPayNote();
+    return _ovReadPayroll().then(() => {
+        _ovhdPayState = null;
+        _ovhdShowPayNote();
+        _ovhdPopulateCategorySelect();
+        _ovhdRender();
+    }).catch(err => {
+        if (run !== _ovhdPayRun) return;
+        console.error('Overhead payroll read:', err);
+        _ovhdPayState = 'failed';
+        _ovhdShowPayNote();
+        _ovhdRender();
+    });
+}
+function _ovhdPayWord() {
+    return _ovhdPayState === 'failed' || _ovhdCostsFailed ? 'Unavailable' : 'Loading…';
+}
+function _ovhdShowPayNote() {
+    const block = document.getElementById('ovhdChartsBlock');
+    if (block) block.style.display = _ovhdPayState || !_ovhdCostsRead ? 'none' : '';
+    const note = document.getElementById('ovhdPayrollNote');
+    if (!note) return;
+    const retry = ' Check your connection, then open Overhead again.';
+    let text = '';
+    if (_ovhdPayState === 'failed') {
+        text = _ovhdCostsRead
+            ? 'Payroll is unavailable, so indirect labor, the Project and Overall totals and the charts are hidden. Company overhead and the operating costs below still show.' + retry
+            : 'Payroll and operating costs are unavailable.' + retry;
+    } else if (_ovhdCostsFailed) {
+        text = 'Operating costs are unavailable.' + retry;
+    } else if (_ovhdPayState === 'loading') {
+        text = 'Loading the latest payroll. Indirect labor, the Project and Overall totals and the charts will appear when it arrives.';
+    }
+    note.style.display = text ? '' : 'none';
+    note.textContent = text;
+}
+function _ovhdFiguresReady() {
+    if (!_ovhdPayState && _ovhdCostsRead) return true;
+    _ovhdToast(_ovhdPayState === 'loading'
+        ? 'Payroll is still loading. Try again in a moment.'
+        : _ovhdPayState === 'failed'
+            ? 'Payroll is unavailable, so this cannot be complete. Open Overhead again first.'
+            : 'Operating costs are unavailable. Open Overhead again first.', 'error');
+    return false;
 }
 
 function _ovhdPopulateProjectSelects() {
@@ -190,7 +252,8 @@ function _ovhdPopulateCategorySelect() {
     const sel = document.getElementById('ovhdCategorySel');
     if (!sel) return;
     const cur = sel.value;
-    const cats = Array.from(new Set(_ovhdRows().map(e => e.category).filter(Boolean))).sort();
+    // The chosen filter stays offered even while its rows are hidden.
+    const cats = Array.from(new Set(_ovhdRows().map(e => e.category).concat(_ovhdCategory).filter(Boolean))).sort();
     sel.innerHTML = '<option value="">All Categories</option>' + cats.map(c => `<option value="${_esc(c)}">${_esc(c)}</option>`).join('');
     if (cur && cats.includes(cur)) sel.value = cur;
     _ovhdFillCategoryDatalist();
@@ -231,28 +294,35 @@ function onOverheadSearchChange(val) { _ovhdSearch = String(val || '').trim().to
 function onOverheadMonthChange(val) { _ovhdMonth = val; _ovhdRender(); }
 
 // ── Firestore subscription ────────────────────────────────────
+function _ovhdCostsLanded(snap) {
+    _ovhdExpenses = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => !e.deletedAt);
+    _ovhdCostsRead = true;
+    _ovhdCostsFailed = false;
+    _ovhdShowPayNote();
+    _ovhdPopulateCategorySelect();
+    _ovhdRender();
+}
 function _ovhdSubscribe() {
     if (!currentUser) return;
     if (_ovhdUnsub) { _ovhdUnsub(); _ovhdUnsub = null; }
+    _ovhdCostsFailed = false;
 
     try {
         _ovhdUnsub = db.collection('overheadExpenses')
             .where('userId', '==', _ovhdUid())
-            .onSnapshot(snap => {
-                _ovhdExpenses = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => !e.deletedAt);
-                _ovhdPopulateCategorySelect();
-                _ovhdRender();
-            }, err => {
+            .onSnapshot(_ovhdCostsLanded, err => {
                 console.warn('Overhead onSnapshot error, falling back to .get():', err);
                 db.collection('overheadExpenses')
                     .where('userId', '==', _ovhdUid())
                     .get()
-                    .then(snap => {
-                        _ovhdExpenses = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(e => !e.deletedAt);
-                        _ovhdPopulateCategorySelect();
+                    .then(_ovhdCostsLanded)
+                    .catch(e => {
+                        console.error('Overhead fallback .get() error:', e);
+                        if (_ovhdCostsRead) return;
+                        _ovhdCostsFailed = true;
+                        _ovhdShowPayNote();
                         _ovhdRender();
-                    })
-                    .catch(e => console.error('Overhead fallback .get() error:', e));
+                    });
             });
     } catch(e) {
         console.error('_ovhdSubscribe error:', e);
@@ -278,6 +348,19 @@ function _ovhdFilteredForMonth() {
 
 // ── Render ────────────────────────────────────────────────────
 function _ovhdRender() {
+    // The costs have not landed: nothing is known, so nothing is drawn as if it were
+    // (a false ₱0.00, or "no expenses" for a list that never loaded).
+    if (!_ovhdCostsRead) {
+        const word = _ovhdPayWord();
+        ['ovhdCompanyAmount', 'ovhdProjectAmount', 'ovhdOverallAmount'].forEach(id => _ovhdSet(id, word));
+        ['ovhdCompanyTrend', 'ovhdProjectTrend', 'ovhdBreakdownList', 'ovhdTableBody'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '';
+        });
+        _ovhdRenderLargeExpenseBadge([]);
+        return;
+    }
+
     const filtered = _ovhdFilteredForMonth();
 
     // Company vs Project vs Overall — computed from the SAME filtered set
@@ -307,10 +390,20 @@ function _ovhdRender() {
     });
 
     _ovhdSet('ovhdCompanyAmount', _fmtAmt(companyTotal));
-    _ovhdSet('ovhdProjectAmount', _fmtAmt(projectTotal));
-    _ovhdSet('ovhdOverallAmount', _fmtAmt(overallTotal));
     _ovhdSetKpiTrend('ovhdCompanyTrend', companyTotal, prevCompany);
-    _ovhdSetKpiTrend('ovhdProjectTrend', projectTotal, prevProject);
+    if (_ovhdPayState) {
+        // Project and Overall include payroll. Project's operating costs still show,
+        // labelled, so they are never read as Project Overhead.
+        const word = _ovhdPayWord();
+        _ovhdSet('ovhdProjectAmount', word);
+        _ovhdSet('ovhdOverallAmount', word);
+        const trend = document.getElementById('ovhdProjectTrend');
+        if (trend) trend.innerHTML = `<div class="card-subtitle" style="margin-top:2px;">Operating costs only: ${_fmtAmt(projectTotal)}</div>`;
+    } else {
+        _ovhdSet('ovhdProjectAmount', _fmtAmt(projectTotal));
+        _ovhdSet('ovhdOverallAmount', _fmtAmt(overallTotal));
+        _ovhdSetKpiTrend('ovhdProjectTrend', projectTotal, prevProject);
+    }
 
     // Totals by category — for the By-Category panel
     const totals = {};
@@ -321,9 +414,11 @@ function _ovhdRender() {
 
     _ovhdRenderBreakdown(totals, overallTotal);
     _ovhdRenderTable(filtered);
-    _ovhdRenderScopeChart(companyTotal, projectTotal);
-    _ovhdRenderMonthlyChart();
-    _ovhdRenderTrendChart();
+    if (!_ovhdPayState) {
+        _ovhdRenderScopeChart(companyTotal, projectTotal);
+        _ovhdRenderMonthlyChart();
+        _ovhdRenderTrendChart();
+    }
     _ovhdRenderLargeExpenseBadge(filtered);
 }
 function _ovhdSet(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
@@ -394,7 +489,7 @@ function _ovhdRenderBreakdown(totals, grandTotal) {
                 <span class="ovhd-bd-amt">${_fmtAmt(amt)}</span>
             </div>
             <div class="ovhd-bd-track"><div class="ovhd-bd-fill" style="width:${pctStr}%;background:${color}"></div></div>
-            <div class="ovhd-bd-pct">${pctStr}% of total</div>
+            <div class="ovhd-bd-pct">${pctStr}% of ${_ovhdPayState ? 'operating costs' : 'total'}</div>
         </div>`;
     }).join('')}</div>`;
 }
@@ -868,6 +963,7 @@ async function deleteOverheadExpense(id) {
 
 // ── CSV export (Excel-compatible) ────────────────────────────────
 function exportOverheadCsv() {
+    if (!_ovhdFiguresReady()) return;
     const filtered = _ovhdFilteredForMonth();
     const headers = ['Date', 'Scope', 'Project', 'Billing Period', 'Category', 'Description', 'Amount', 'Status', 'Source'];
     const csvEsc = v => {
@@ -914,6 +1010,7 @@ function toggleOverheadReportMenu() {
 function printOverheadReport(kind) {
     const menu = document.getElementById('ovhdReportMenu');
     if (menu) menu.style.display = 'none';
+    if (!_ovhdFiguresReady()) return;
 
     const [cy, cm] = _ovhdMonth.split('-').map(Number);
     let rangeStart, rangeEnd, rangeLabel, scopeFilter = null;

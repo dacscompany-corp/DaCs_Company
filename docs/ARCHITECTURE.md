@@ -75,6 +75,13 @@ db.collection('payroll').where('userId', '==', uid).onSnapshot(...)
 3. **Never save a `_lazy` doc.** Project Control's payroll list reaches `expenses-module.js`
    through `lcSyncFromPortal`, so `expPayroll` can hold partial copies — anything there that
    reads or writes `receiptImages` must refetch first (see `openEditPayrollModal`).
+4. **`_ovAllExpenses` / `_ovAllPayroll` hold no photos and can be old.** They are read when the
+   page loads and after a save in that tab; other accounts, tabs and devices change those rows
+   without telling the page. Anything that prints or totals money reads fresh first
+   (`_ovReadPayroll`, as the worker statement and the Overhead tab do) and never falls back to
+   the copy if that read fails: a statement or receipt prints nothing, and Overhead keeps its
+   operating costs but hides everything built on payroll. `tests/payroll-fresh-read.test.js`
+   lists every reader.
 
 ---
 
