@@ -1,11 +1,13 @@
 // ════════════════════════════════════════════════════════════════════
 // Requests → Tools (WorkMate Stage 3a, migration 0107).
 //
-// Every real tool, numbered TOOL-0001…, and who has it. Four tabs:
+// Every real tool, numbered TOOL-0001…, and who has it. Five tabs:
 //   Tools             — every tool and its state; open one for its history;
 //   Out               — tools issued, longest out first, with days held;
 //   To register       — purchase lines of tools not registered yet;
-//   Waiting for owner — Lost reports and Retire requests the main owner decides.
+//   Waiting for owner — Lost reports and Retire requests the main owner decides;
+//   Problems          — what the person holding a tool reported from the phone (0111),
+//                       closed with a note. A report changes no tool.
 // Actions: Register tools, and per tool Issue, Hand over, Return (with its
 // condition), Repaired, Ask to retire, Report lost, Found. A tool at a
 // project always has a named responsible person. Mistakes are reversed
@@ -47,6 +49,12 @@
         found: 'Found',
         retire: 'Retire request',
     };
+
+    const PROBLEM_LABEL = { dont_have: "I don't have this", broken: "It's broken" };
+    function problemLabel(kind) { return PROBLEM_LABEL[kind] || 'Problem'; }
+    function problemText(p) {
+        return [p.reported_by_name, p.folder_name, p.note].filter(Boolean).join(' · ');
+    }
 
     // The server's conditions (tl_condition). Damaged only on a return or when found.
     const CONDITIONS = [
@@ -209,6 +217,7 @@
         NOT_ALLOWED: 'Only the main owner can do that.',
         NOT_OFFICE: 'Only owner and office accounts can record tools.',
         BAD_STATE: 'This was already decided, withdrawn or reversed. Reload the page.',
+        ALREADY_CLOSED: 'This problem was already closed. Reload the page.',
         REASON_REQUIRED: 'Please give a reason.',
         BAD_NOTE: 'That note is too long.',
         NOT_FOUND: 'That was not found. Reload the page.',
@@ -231,7 +240,7 @@
         return 'Something went wrong: ' + (text || 'unknown error');
     }
 
-    const pure = { STATE_LABEL, KIND_LABEL, CONDITIONS, conditionLabel, daysText, whereText, recordText, actionsFor, canReverse,
+    const pure = { STATE_LABEL, KIND_LABEL, PROBLEM_LABEL, problemLabel, problemText, CONDITIONS, conditionLabel, daysText, whereText, recordText, actionsFor, canReverse,
                    photoPath, registerProblems, issueProblems, personLabel, projectOptions, requestOptions, ERRORS, errorMessage };
 
     if (typeof module !== 'undefined' && module.exports) {
@@ -244,7 +253,7 @@
     const RA = root.RequestsAdmin;
     if (!RA) return;
     const esc = RA.esc;
-    const ui = { tab: 'tools', toolId: null };
+    const ui = { tab: 'tools', toolId: null, showClosed: false };
     let cache = { choices: null, status: null };
 
     const newOp = () => (root.crypto && root.crypto.randomUUID) ? root.crypto.randomUUID()
@@ -541,12 +550,43 @@
 
     // ── Screens ─────────────────────────────────────────────────────
 
-    function tabs(ov) {
+    function problemRow(p) {
+        return '<div class="stk-rec' + (p.closed_at ? ' is-reversed' : '') + '" data-problem="' + esc(p.id) + '">' +
+            '<div class="stk-rec-main"><strong>' + esc(p.label) + ' · ' + esc(p.item_name) + '</strong> ' +
+              pill(problemLabel(p.kind), p.closed_at ? 'cancelled' : 'abandoned') +
+              '<div>' + esc(problemText(p)) + '</div>' +
+              '<div class="req-muted">Reported ' + esc(RA.cutoffLabel(p.reported_at)) +
+                (p.holder_name ? ' · now with ' + esc(p.holder_name) : '') + '</div>' +
+              (p.closed_at ? '<div class="req-muted">Closed by ' + esc(p.closed_by_name) + ': ' + esc(p.close_note) + '</div>' : '') +
+            '</div>' +
+            '<div class="stk-rec-acts">' +
+              '<button type="button" class="att-btn att-btn--sm" data-problem-tool>Open tool</button>' +
+              (p.closed_at ? '' : '<button type="button" class="att-btn att-btn--sm att-btn--primary" data-problem-close>Close</button>') +
+            '</div></div>';
+    }
+
+    function openCloseProblem(p, onDone) {
+        const send = sendOnce((opId, note) => RA.rpc('tl_close_problem', { p_op: opId, p_problem: p.id, p_note: note }));
+        RA.modal({
+            title: 'Close problem — ' + p.label,
+            sub: problemLabel(p.kind) + '. Closing it changes no tool: fix the tool with its own actions.',
+            body: '<div class="stk-form"><label class="att-label">What was done<textarea class="att-input" name="note" rows="2" maxlength="500"></textarea></label></div>',
+            submitLabel: 'Close problem',
+            errorMessage,
+            onSubmit: async (form) => {
+                if (!form.note.value.trim()) throw new Error('REASON_REQUIRED');
+                await send(form.note.value.trim());
+            },
+            onDone,
+        });
+    }
+
+    function tabs(ov, problems) {
         const n = (x) => x && x.length ? ' (' + x.length + ')' : '';
         const t = (id, label) => '<button type="button" class="att-seg-btn' + (ui.tab === id ? ' is-on' : '') + '" data-tab="' + id + '">' + label + '</button>';
         return '<div class="att-seg" role="tablist" aria-label="Tools">' +
             t('tools', 'Tools') + t('out', 'Out' + n(ov && ov.out)) + t('register', 'To register' + n(ov && ov.to_register)) +
-            t('pending', 'Waiting for owner' + n(ov && ov.pending)) + '</div>';
+            t('pending', 'Waiting for owner' + n(ov && ov.pending)) + t('problems', 'Problems' + n(problems)) + '</div>';
     }
 
     function toolCard(t) {
@@ -656,9 +696,15 @@
         if (!(ui.tab === 'tools' && ui.toolId)) {
             try { ov = await RA.rpc('tl_overview'); } catch (e) { RA.fail(host, e); return; }
         }
+        // A failed read costs only this tab: the rest of the screen stays usable.
+        let problems = [];
+        let problemsError = null;
+        if (ov) {
+            try { problems = (await RA.rpc('tl_problems', { p_open_only: !ui.showClosed })) || []; } catch (e) { problemsError = e; }
+        }
         host.innerHTML =
             '<div class="att-stack stk-tab req-detail">' +
-              RA.head('Tools', 'Every tool by number, and who answers for it. No prices here — a tool\'s cost stays with its purchase.', tabs(ov)) +
+              RA.head('Tools', 'Every tool by number, and who answers for it. No prices here — a tool\'s cost stays with its purchase.', tabs(ov, problems.filter(p => !p.closed_at))) +
               '<div class="stk-actions"><button type="button" class="att-btn att-btn--primary" data-register><i data-lucide="plus"></i> Register tools</button></div>' +
               '<div data-body></div>' +
               (status.is_main_owner ? '<div class="stk-switch-off"><button type="button" class="att-btn att-btn--sm att-btn--ghost" data-switch-off>Switch tools off…</button></div>' : '') +
@@ -690,6 +736,19 @@
                 const l = ov.to_register.find(x => x.purchase_id + ':' + x.line_no === key);
                 if (l) openRegister({ line: l }, reload);
             }));
+        } else if (ui.tab === 'problems') {
+            body.innerHTML = (problemsError ? '<div class="att-empty">' + esc(errorMessage(problemsError)) + '</div>'
+                : problems.length ? '<div class="stk-recs">' + problems.map(problemRow).join('') + '</div>'
+                : '<div class="att-empty">' + (ui.showClosed ? 'No problem has been reported.' : 'No open problems.') + '</div>') +
+                '<label class="req-toggle"><input type="checkbox" data-problems-closed' + (ui.showClosed ? ' checked' : '') + '> Show closed</label>';
+            body.querySelector('[data-problems-closed]').addEventListener('change', (e) => { ui.showClosed = e.target.checked; render(host); });
+            body.querySelectorAll('[data-problem]').forEach(row => {
+                const p = problems.find(x => x.id === row.dataset.problem);
+                if (!p) return;
+                row.querySelector('[data-problem-tool]').addEventListener('click', () => openTool(p.tool_id));
+                const closeBtn = row.querySelector('[data-problem-close]');
+                if (closeBtn) closeBtn.addEventListener('click', () => openCloseProblem(p, reload));
+            });
         } else if (ui.tab === 'pending') {
             body.innerHTML = (ov.pending.length ? '<div class="stk-recs">' + ov.pending.map(r => recordRow(r, m)).join('') + '</div>'
                 : '<div class="att-empty">Nothing is waiting for the owner.</div>') +

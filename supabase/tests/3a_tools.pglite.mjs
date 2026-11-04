@@ -6,6 +6,8 @@
 // memory) over the 2B-b suite's tables. Nothing here talks to the live
 // database; supabase/tests/3a_acceptance.sql repeats the key cases there,
 // rolled back.
+// --with-0111: and 0111 (tools on the phone, 3b-a) on top of 0108 — it redefines
+// tl_actor, and every office rule here must hold unchanged.
 // --with-0108: and 0108 (crew names with their worker numbers, TF1) on top —
 // every test here holds, and section L checks the names.
 // ════════════════════════════════════════════════════════════════════
@@ -34,6 +36,7 @@ const M106 = mig('0106_workmate_phone_stock.sql');
 const M107 = mig('0107_tools.sql');
 const WITH_0108 = process.argv.includes('--with-0108');
 const M108 = WITH_0108 ? mig('0108_tools_crew_numbers.sql') : '';
+const M111 = process.argv.includes('--with-0111') ? mig('0111_workmate_tools_phone.sql') : '';
 const M85 = mig('0085_workmate_requests.sql');
 const M51 = mig('0051_attendance_worker_owner.sql');
 const REQUESTS_0085 = `
@@ -132,6 +135,7 @@ async function fresh(opts = {}) {
   await db.exec(M106);
   await db.exec(M107);
   if (M108) await db.exec(M108);
+  if (M111) await db.exec(M111);
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
     ('${STAFF}', 'staff', '${OWNER}', 'active', null, 'staff@dacs.test', 'Ana'),
@@ -895,7 +899,11 @@ await test('grants: every tl_ operation and reader is for signed-in users only; 
   const open = ['tl_status()', 'tl_set_enabled(boolean)', 'tl_register(uuid,jsonb)', 'tl_issue(uuid,jsonb)', 'tl_handover(uuid,jsonb)',
                 'tl_return(uuid,jsonb)', 'tl_repaired(uuid,uuid,text)', 'tl_report_lost(uuid,uuid,text)', 'tl_request_retire(uuid,uuid,text)',
                 'tl_found(uuid,jsonb)', 'tl_decide(uuid,uuid,boolean,text)', 'tl_reverse(uuid,uuid,text)', 'tl_overview()', 'tl_tool(uuid)',
-                'tl_choices()', 'tl_request_lines(uuid)', 'tl_project_out(uuid)', 'tl_line_tools(uuid[])', 'stk_overview()'];
+                'tl_choices()', 'tl_request_lines(uuid)', 'tl_project_out(uuid)', 'tl_line_tools(uuid[])', 'stk_overview()',
+                ...(M111 ? ['tl_my_tools()', 'tl_my_tool(uuid)', 'tl_team_tools()', 'tl_team_tool(uuid)', 'tl_team_find(text)', 'tl_team_choices()',
+                            'tl_team_request_lines(uuid,uuid)', 'tl_team_my_records(integer)', 'tl_team_issue(uuid,jsonb)', 'tl_team_handover(uuid,jsonb)',
+                            'tl_team_return(uuid,jsonb)', 'tl_team_reverse(uuid,uuid,text)', 'tl_report_problem(uuid,uuid,text,text)',
+                            'tl_problems(boolean)', 'tl_close_problem(uuid,uuid,text)'] : [])];
   for (const fn of open) {
     eq([await can('authenticated', fn), await can('anon', fn)], [true, false], fn);
   }

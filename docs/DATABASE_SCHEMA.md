@@ -1225,6 +1225,34 @@ Covered (every Still to buy): `pr_line_bought` = purchases + stock + tools. A re
 
 Names: every person on these screens comes from `tl_person_name` — since **0108** the crew as "Name (W-0007)" (two crew members may share a name), or "W-0007" with no name; office and owner accounts by their name or e-mail.
 
+## Tools on the phone, the Team Leader switch, temporary passwords (0111) — WorkMate Stage 3b-a
+
+No money: nothing here reads or writes a peso, an expense or payroll. Every read and write goes through the functions: the tables have row security on and no policy.
+
+| Table | What it holds |
+|---|---|
+| `tl_problems` | `tool_id`, `kind` (`dont_have` / `broken`), `note`, `reported_by`, `reported_at`, `closed_by`, `closed_at`, `close_note`. One open report per person, tool and kind. Never edited or deleted: closed once (`tl_problems_guard`). A report changes no tool |
+| `wk_role_events` | Who changed whom, when, and from what to what. Append-only |
+| `wk_password_events` | `worker_id`, `kind` (`requested` / `temporary_set` / `failed` / `changed`), `actor_id`, `at`. Append-only. **Never a password** |
+
+| Function | Who | What |
+|---|---|---|
+| `tl_my_tools()`, `tl_my_tool(tool)` | a worker or team leader | Their own tools, and a tool's records while they had it. Who has it now only if that is still them |
+| `tl_team_tools()`, `tl_team_tool(tool)` | the leader, now | The tools of the current members of the teams they lead |
+| `tl_team_find(number)` | the leader, now | An Available tool of this company, by `7` or `TOOL-0007`. One refusal for everything else: `TOOL_NOT_AVAILABLE` |
+| `tl_team_choices()`, `tl_team_request_lines(tool, folder)`, `tl_team_my_records(limit)` | the leader, now | Who they may record for and the open projects; the lines this tool can fill that they can see; their own recent records and which can be reversed |
+| `tl_team_issue`, `tl_team_handover`, `tl_team_return`, `tl_team_reverse` | the leader, now | The team check, then 0107's own function under the same operation id. `NOT_YOUR_TEAM`, `REQUEST_NEEDS_OFFICE`. A retry answers first, with their own earlier answer |
+| `tl_report_problem(op, tool, kind, note)` | the person holding it | `NOT_YOUR_TOOL`, `BAD_KIND`, `ALREADY_REPORTED` |
+| `tl_problems(open_only)`, `tl_close_problem(op, problem, note)` | office with Tools | The Tools tab's Problems. `ALREADY_CLOSED`, `REASON_REQUIRED` |
+| `wk_me()` | signed in | `is_main_owner`, to show the buttons. The server still decides |
+| `wk_set_team_leader(worker, on)` | **main owner** | `LEADS_A_TEAM` (team names in `detail`), `NOT_A_WORKER`, `ACCOUNT_INACTIVE`. Clears that person's marks on turned-off teams |
+| `wk_worker_log(worker)` | **main owner** | One worker's role and password events |
+| `wk_password_state()`, `wk_password_changed()` | the worker | "Must change", and clearing it |
+
+Redefined: `tl_actor` (0107), which answers for a leader's company only inside `tl_as_leader`; `profiles_guard` (0019), which opens only for `wk_set_team_leader`'s own change; `pr_office_teams` (0086), which adds `leader_problem` (`no_role` / `inactive`); `pr_office_set_leader` (0086), which can clear a mark on a turned-off team and reads the role under a lock.
+
+Edge Function `admin-set-worker-password`: main owner only, active crew of their company only. It records `requested`, changes the password, then records `temporary_set` or `failed`, and returns the password once. No new column on `profiles`, and `attendance-signin` is unchanged.
+
 ## Reconciliation (0109) — WorkMate Stage 4
 
 The owner's checks — **outside the money model**: nothing here writes an expense row, a payment, a billing period or a client bill, or feeds Spent / Earned / Profit. Owner accounts allowed Expenses (`rec_owner`; staff never); petty cash, own money, returns, disputes and Overpaid reach the **main owner** only (the keys are left out for anyone else). Answers: `docs/superpowers/specs/2026-10-30-workmate-stage4-reconciliation-questions.md`.

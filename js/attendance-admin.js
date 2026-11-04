@@ -564,6 +564,39 @@
         return out.sort();
     }
 
+    // The Team Leader role only makes someone eligible; being named leader of a
+    // team gives the powers (0085, 0111).
+    function attLeaderButtonLabel(worker) {
+        return worker.role === 'teamLeader' ? 'Remove Team Leader' : 'Make Team Leader';
+    }
+    function attLeaderNote(worker) {
+        return worker.role === 'teamLeader' ? 'Can lead a team' : '';
+    }
+
+    // A reset is confirmed by the worker number: W-0007, 0007 or 7.
+    function attTempPasswordConfirmed(typed, workerNo) {
+        if (workerNo === null || workerNo === undefined) return false;
+        const m = String(typed === null || typed === undefined ? '' : typed).trim().match(/^(?:w-)?0*([0-9]+)$/i);
+        return !!m && Number(m[1]) === Number(workerNo);
+    }
+
+    function attWorkerAdminMessage(code, detail) {
+        const words = {
+            OWNER_ONLY: 'Only the main owner can do that.',
+            AUTH_REQUIRED: 'Your sign-in has ended. Sign in again and retry.',
+            NOT_A_WORKER: 'That account is not a worker of this company.',
+            ACCOUNT_INACTIVE: 'That worker is switched off. Switch them back on first.',
+            BAD_SWITCH: 'Something went wrong. Reload the page.',
+            BAD_REQUEST: 'Something went wrong. Reload the page.',
+            RESET_FAILED: 'The password was not changed. Try again in a moment.',
+            SERVER_ERROR: 'The server could not do that just now. Nothing was reported as changed. Try again in a moment.',
+        };
+        if (code === 'LEADS_A_TEAM') {
+            return 'This person still leads ' + (detail || 'a team') + '. Pick another leader on Requests → Teams first.';
+        }
+        return words[code] || 'That could not be done. Try again in a moment.';
+    }
+
     // ==== ATT REPORT ENGINE END ====
 
     const PHOTO_BUCKET = 'attendance';
@@ -2387,6 +2420,13 @@
             return;
         }
 
+        // The main owner's two buttons (0111). The server decides; this only shows them.
+        let isMainOwner = false;
+        try {
+            const { data: me } = await window.sbClient.rpc('wk_me');
+            isMainOwner = !!(me && me.is_main_owner);
+        } catch (e) { /* no buttons */ }
+
         const active = rows.filter(w => w._active).length;
         const off = rows.length - active;
         container.querySelector('#attWorkersCount').textContent =
@@ -2410,8 +2450,8 @@
                       <td>${attEsc(w.email || '—')}</td>
                       <td>
                         <div>${attEsc(w.position || '—')}</div>
-                        ${w.role === 'teamLeader'
-                          ? '<div class="att-meta">Leads a team on site</div>' : ''}
+                        ${attLeaderNote(w)
+                          ? '<div class="att-meta">' + attEsc(attLeaderNote(w)) + '</div>' : ''}
                       </td>
                       <td>
                         ${w._active
@@ -2430,6 +2470,14 @@
                                   data-active="${w._active ? '1' : '0'}">
                             ${w._active ? 'Switch off app access' : 'Switch back on'}
                           </button>
+                          ${isMainOwner && (w._active || w.role === 'teamLeader') ? `
+                          <button class="att-link" type="button" data-leader="${attEsc(w.id)}">
+                            ${attEsc(attLeaderButtonLabel(w))}
+                          </button>` : ''}
+                          ${isMainOwner && w._active ? `
+                          <button class="att-link" type="button" data-temp-password="${attEsc(w.id)}">
+                            Set temporary password
+                          </button>` : ''}
                         </div>
                       </td>
                     </tr>`).join('')}
@@ -2449,6 +2497,22 @@
                 if (!w) return;
                 attOpenEditWorker(container.querySelector('#attWorkerModalHost'), w,
                                   () => attRenderWorkers(container));
+            });
+        });
+
+        body.querySelectorAll('button[data-leader]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const w = rows.find(x => x.id === btn.getAttribute('data-leader'));
+                if (w) attOpenLeaderSwitch(container.querySelector('#attWorkerModalHost'), w,
+                                           () => attRenderWorkers(container));
+            });
+        });
+
+        body.querySelectorAll('button[data-temp-password]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const w = rows.find(x => x.id === btn.getAttribute('data-temp-password'));
+                if (w) attOpenTempPassword(container.querySelector('#attWorkerModalHost'), w,
+                                           () => attRenderWorkers(container));
             });
         });
 
@@ -2678,6 +2742,151 @@
     // staff update other people's rows. See attValidateEditWorker for why
     // role, email and password are absent.
 
+    // Team Leader on or off: main owner only, logged by the server (0111). It joins,
+    // removes and names nobody, and a labor contract has nothing to do with it.
+    function attOpenLeaderSwitch(host, worker, onSaved) {
+        const turnOn = worker.role !== 'teamLeader';
+        const name = attWorkerName(worker);
+        host.innerHTML = `
+            <div class="att-modal">
+              <div class="att-modal-box" role="dialog" aria-modal="true" aria-labelledby="attLsTitle">
+                <div class="att-modal-head">
+                  <div>
+                    <h3 class="att-modal-title" id="attLsTitle">${attEsc(attLeaderButtonLabel(worker))}</h3>
+                    <p class="att-modal-sub">${attEsc(name)} · ${attWorkerNo(worker.worker_no)}</p>
+                  </div>
+                  <button class="att-modal-x" type="button" id="attLsX" aria-label="Close">&times;</button>
+                </div>
+                <form class="att-modal-form" id="attLsForm" autocomplete="off">
+                  <div class="att-modal-body">
+                    <div class="att-info att-span">
+                      <i data-lucide="info"></i>
+                      <div>${turnOn
+                        ? '<strong>This only makes them eligible.</strong> They get a leader&rsquo;s powers when the office names them leader of a team on Requests → Teams.'
+                        : '<strong>They stop being able to lead.</strong> This is refused while they lead an active team. Any old leader mark on a turned-off team is cleared.'}
+                        Their teams, attendance, rewards and own requests do not change.</div>
+                    </div>
+                    <div class="att-err att-err--general att-span" id="attLsGeneral"></div>
+                  </div>
+                  <div class="att-modal-foot">
+                    <button class="att-btn" type="button" id="attLsCancel">Cancel</button>
+                    <button class="att-btn att-btn--primary" type="submit" id="attLsSubmit">${attEsc(attLeaderButtonLabel(worker))}</button>
+                  </div>
+                </form>
+              </div>
+            </div>`;
+        attIcons();
+        const close = () => { host.innerHTML = ''; };
+        host.querySelector('#attLsX').addEventListener('click', close);
+        host.querySelector('#attLsCancel').addEventListener('click', close);
+        host.querySelector('#attLsForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submit = host.querySelector('#attLsSubmit');
+            const general = host.querySelector('#attLsGeneral');
+            general.style.display = 'none';
+            submit.disabled = true;
+            try {
+                const { error } = await window.sbClient.rpc('wk_set_team_leader', { p_worker: worker.id, p_on: turnOn });
+                if (error) {
+                    general.textContent = attWorkerAdminMessage(error.message, error.details);
+                    general.style.display = 'block';
+                    submit.disabled = false;
+                    return;
+                }
+                close();
+                onSaved();
+            } catch (err) {
+                general.textContent = attWorkerAdminMessage('SERVER_ERROR');
+                general.style.display = 'block';
+                submit.disabled = false;
+            }
+        });
+    }
+
+    // A temporary password for one worker: main owner only. The owner confirms by the
+    // worker number; the password is shown once here and kept nowhere.
+    function attOpenTempPassword(host, worker, onSaved) {
+        const name = attWorkerName(worker);
+        host.innerHTML = `
+            <div class="att-modal">
+              <div class="att-modal-box" role="dialog" aria-modal="true" aria-labelledby="attTpTitle">
+                <div class="att-modal-head">
+                  <div>
+                    <h3 class="att-modal-title" id="attTpTitle">Set temporary password</h3>
+                    <p class="att-modal-sub">${attEsc(name)} · ${attWorkerNo(worker.worker_no)}</p>
+                  </div>
+                  <button class="att-modal-x" type="button" id="attTpX" aria-label="Close">&times;</button>
+                </div>
+                <form class="att-modal-form" id="attTpForm" autocomplete="off">
+                  <div class="att-modal-body">
+                    <div class="att-info att-info--warn att-span">
+                      <i data-lucide="alert-triangle"></i>
+                      <div><strong>This signs them out on every phone.</strong> Their old password stops working.
+                        First check &ldquo;Not sent yet&rdquo; in the old app on their phone: attendance waiting
+                        there stays on the phone, and sends only after they sign in again.</div>
+                    </div>
+                    <div class="att-field att-span">
+                      <label for="attTpNumber">Type the worker number to confirm <span class="att-req">*</span></label>
+                      <input class="att-input" id="attTpNumber" type="text" autocomplete="off" placeholder="${attWorkerNo(worker.worker_no)}">
+                    </div>
+                    <div class="att-err att-err--general att-span" id="attTpGeneral"></div>
+                  </div>
+                  <div class="att-modal-foot">
+                    <button class="att-btn" type="button" id="attTpCancel">Cancel</button>
+                    <button class="att-btn att-btn--primary" type="submit" id="attTpSubmit">Set temporary password</button>
+                  </div>
+                </form>
+              </div>
+            </div>`;
+        attIcons();
+        const close = () => { host.innerHTML = ''; };
+        host.querySelector('#attTpX').addEventListener('click', close);
+        host.querySelector('#attTpCancel').addEventListener('click', close);
+        host.querySelector('#attTpForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submit = host.querySelector('#attTpSubmit');
+            const general = host.querySelector('#attTpGeneral');
+            general.style.display = 'none';
+            if (!attTempPasswordConfirmed(host.querySelector('#attTpNumber').value, worker.worker_no)) {
+                general.textContent = 'That is not this worker\'s number. Nothing was changed.';
+                general.style.display = 'block';
+                return;
+            }
+            submit.disabled = true;
+            let out;
+            try {
+                out = await window.adminSetWorkerPassword(worker.id);
+            } catch (err) {
+                general.textContent = attWorkerAdminMessage(err && err.message);
+                general.style.display = 'block';
+                submit.disabled = false;
+                return;
+            }
+            const box = host.querySelector('.att-modal-box');
+            box.innerHTML = `
+                <div class="att-modal-head">
+                  <div>
+                    <h3 class="att-modal-title">Temporary password set</h3>
+                    <p class="att-modal-sub">${attEsc(name)} · ${attWorkerNo(worker.worker_no)}</p>
+                  </div>
+                </div>
+                <div class="att-modal-body">
+                  <div class="att-info att-span">
+                    <i data-lucide="key-round"></i>
+                    <div><strong>Shown once.</strong> Tell it to the worker directly. WorkMate asks them to change it when they sign in.</div>
+                  </div>
+                  <div class="att-field att-span"><div class="att-mono" id="attTpShown" style="font-size:20px"></div></div>
+                  ${out.marked === false ? '<div class="att-info att-info--warn att-span"><i data-lucide="alert-triangle"></i><div>The password is set, but WorkMate may not ask them to change it. Ask them to change it in Profile.</div></div>' : ''}
+                </div>
+                <div class="att-modal-foot">
+                  <button class="att-btn att-btn--primary" type="button" id="attTpDone">Done</button>
+                </div>`;
+            box.querySelector('#attTpShown').textContent = out.temporary_password;
+            attIcons();
+            box.querySelector('#attTpDone').addEventListener('click', () => { close(); onSaved(); });
+        });
+    }
+
     function attOpenEditWorker(host, worker, onSaved) {
         const nm = attSplitName(worker);
         const active = (worker.status || 'active') === 'active';
@@ -2733,10 +2942,9 @@
                     </div>
                     <div class="att-info att-span">
                       <i data-lucide="lock"></i>
-                      <div><strong>Role, email and password are not editable here.</strong>
-                        Role is locked by a database guard that only permits
-                        client&nbsp;↔&nbsp;partner changes; email and password live on the
-                        login account and need the server-side admin key.</div>
+                      <div><strong>Email is not editable here.</strong> It lives on the login
+                        account. Role and temporary password have their own buttons on the
+                        Workers list, for the main owner.</div>
                     </div>
                     <div class="att-err att-err--general att-span" id="attEwGeneral"></div>
                   </div>

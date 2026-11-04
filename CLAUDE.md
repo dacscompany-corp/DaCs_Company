@@ -180,6 +180,24 @@ Profit   = Earned − Spent
   return or handover keeps it filled, reversing an issue reopens it only if that issue counted on its own. Records are never
   edited — reversed with a reason while they are the tool's latest. Only `js/tools-admin.js` calls the `tl_*` operations.
   Dormant until the main owner switches tools on.
+- **Tools on the phone (0111, WorkMate 3b-a) — still no money.** A worker sees their own tools and can report a problem,
+  which changes no tool, holder or record. A team leader acts only for the current members of the teams they lead now,
+  checked on every call by `tl_i_lead`, never by the role alone. `tl_team_*` check that and then call 0107's own functions, so
+  every tool rule holds; `tl_actor` is the only 0107 function redefined. A leader finds a tool to issue by typing its number:
+  `tl_team_find` answers only for an Available tool of this company, and gives one refusal for everything else, so it reveals
+  no custody or history. A request link uses 0107's fill-once rules, limited to lines the leader can already see; any other
+  line is `REQUEST_NEEDS_OFFICE`. No photos on the phone: the `tools/` folder stays office-only. No phone reader returns a
+  purchase link, an office note or a photo.
+- **The Team Leader role (0111) changes only through `wk_set_team_leader`:** main owner only (owner role, `owner_id` null,
+  active; **never** `allowed_modules`), logged append-only, refused while the person leads an active team. It joins, removes and
+  names nobody. The role alone gives no powers: being named leader of a team does. A labor contract, a pay type or payroll's
+  typed "Team Lead" **never** gives the role. A named leader without the role or with a switched-off account counts as no leader
+  (`leader_problem` in `pr_office_teams`); read the mark through that, not `is_leader` alone.
+- **A temporary password (0111) is set only by the `admin-set-worker-password` Edge Function:** main owner only, one active
+  worker or team leader of this company at a time, and each needs the owner's approval. It is shown once and never stored or
+  logged. **It signs that worker out on every phone** (GoTrue's admin password change), and unsent attendance waits on the phone
+  until they sign in again, so check the old app's "Not sent yet" first. `attendance-signin` and the `profiles` columns stay
+  untouched: the old Attendance app reads both and cannot be updated.
 - **Reconciliation (0109, WorkMate Stage 4) reads and points — it moves no money.** The owner's **Reconciliation** tab
   (Requests → Purchasing, owner accounts; petty cash, own money, returns, disputes and Overpaid for the main owner only)
   shows where every peso of each purchase sits — its own project, other projects, company stock, company stock loss — and

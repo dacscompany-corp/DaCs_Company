@@ -179,13 +179,13 @@ test('records and places in words', () => {
 
 console.log('\ntools: no money');
 
-test('the Tools screens read no table, call only 0107\'s functions, and show no peso amount', () => {
+test('the Tools screens read no table, call only 0107\'s and 0111\'s functions, and show no peso amount', () => {
   ok(!/\.from\((?!'uploads'\))/.test(JS), 'no direct table read (only the uploads bucket for photos)');
   ok(!/₱|peso|amount|price|toFixed\(2\)/i.test(JS.replace(/\/\/[^\n]*/g, '').replace(/No prices here/, '')), 'no money on screen');
   const called = [...new Set([...BROWSER.matchAll(/RA\.rpc\('([a-z_]+)'/g)].map(m => m[1]))].sort();
-  const granted = [...SQL.matchAll(/grant execute on function ([a-z_]+)\(/g)].map(m => m[1]);
-  for (const f of called) ok(granted.includes(f), f + ' is not a granted 0107 function');
-  eq(called, ['tl_choices', 'tl_decide', 'tl_found', 'tl_handover', 'tl_issue', 'tl_overview', 'tl_register', 'tl_repaired',
+  const granted = [...(SQL + read('supabase/migrations/0111_workmate_tools_phone.sql')).matchAll(/grant execute on function ([a-z_]+)\(/g)].map(m => m[1]);
+  for (const f of called) ok(granted.includes(f), f + ' is not a granted function');
+  eq(called, ['tl_choices', 'tl_close_problem', 'tl_decide', 'tl_found', 'tl_handover', 'tl_issue', 'tl_overview', 'tl_problems', 'tl_register', 'tl_repaired',
               'tl_report_lost', 'tl_request_lines', 'tl_request_retire', 'tl_return', 'tl_reverse', 'tl_set_enabled', 'tl_status', 'tl_tool']);
   ok(!/amount|price|gross|cost_/.test(SQL.slice(SQL.indexOf('-- ════ 7. Reading'), SQL.indexOf('-- 0104\'s Stock screen'))), 'the readers send no money');
 });

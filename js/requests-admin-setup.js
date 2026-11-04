@@ -236,6 +236,13 @@
 
     const teamUi = { text: '', showInactive: false };
     const NO_LEADER_NOTE = 'Requests still reach the office, but no leader sees them or checks the team\'s work.';
+    // A named leader without the role, or with a switched-off account, has no powers
+    // (pr_is_current_leader), so the office must not read them as the leader (0111).
+    const validLeader = (m) => m.is_leader && !m.leader_problem;
+    const LEADER_PROBLEM = {
+        no_role: 'no longer has the Team Leader role.',
+        inactive: 'has a switched-off account.',
+    };
 
     function initials(name) {
         const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
@@ -286,38 +293,44 @@
         // pr_office_teams sends names only; the roster number comes from the
         // people list (active workers). A deactivated member shows no number.
         const numberOf = (id) => { const p = people.find(x => x.id === id); return p ? RA.workerNo(p.worker_no) : ''; };
-        const leader = t.members.find(m => m.is_leader) || null;
+        const leader = t.members.find(validLeader) || null;
+        const badMark = t.members.find(m => m.is_leader && m.leader_problem) || null;
+        const anyMark = t.members.some(m => m.is_leader);
         const canLead = t.members.filter(m => m.role === 'teamLeader' && !m.is_leader);
         const n = t.members.length;
         const search = (t.name + ' ' + t.members.map(m => m.name + ' ' + numberOf(m.worker_id)).join(' ')).toLowerCase();
 
         // Leader first; then team leaders; then workers, A–Z.
-        const rank = (m) => (m.is_leader ? 0 : m.role === 'teamLeader' ? 1 : 2);
+        const rank = (m) => (validLeader(m) ? 0 : m.role === 'teamLeader' ? 1 : 2);
         const members = t.members.slice().sort((a, b) => rank(a) - rank(b) || String(a.name).localeCompare(String(b.name)));
 
         let leaderLine;
         if (!t.active) {
             leaderLine = '<div class="req-team-lead req-team-lead--off"><i data-lucide="pause-circle"></i>' +
-                '<span>Inactive — this team can\'t send requests.</span></div>';
+                '<span>Inactive — this team can\'t send requests.</span>' +
+                (anyMark ? '<button class="req-link" type="button" data-act="clear-mark">Clear old leader mark</button>' : '') + '</div>';
         } else if (leader) {
             leaderLine = '<div class="req-team-lead"><i data-lucide="badge-check"></i>' +
                 '<span>Led by <strong>' + esc(leader.name) + '</strong></span>' +
                 '<button class="req-link" type="button" data-act="unlead">Remove as leader</button></div>';
         } else {
             leaderLine = '<div class="req-team-lead req-team-lead--warn"><i data-lucide="alert-triangle"></i>' +
-                '<span><strong>No leader.</strong> ' + NO_LEADER_NOTE +
-                (canLead.length ? ' Pick one below.' : ' Add someone with the Team Leader role.') + '</span></div>';
+                '<span><strong>' + (badMark ? 'No valid leader.' : 'No leader.') + '</strong> ' +
+                (badMark ? esc(badMark.name) + ' ' + LEADER_PROBLEM[badMark.leader_problem] + ' ' : '') + NO_LEADER_NOTE +
+                (canLead.length ? ' Pick one below.' : ' Add someone with the Team Leader role.') + '</span>' +
+                (badMark ? '<button class="req-link" type="button" data-act="clear-mark">Clear leader mark</button>' : '') + '</div>';
         }
 
         const rows = members.map(m => {
             const no = numberOf(m.worker_id);
-            return '<li class="req-member' + (m.is_leader ? ' is-leader' : '') + '">' +
+            return '<li class="req-member' + (validLeader(m) ? ' is-leader' : '') + '">' +
                 '<span class="req-avatar" aria-hidden="true">' + esc(initials(m.name)) + '</span>' +
                 '<span class="req-member-name"><strong>' + esc(m.name) + '</strong>' +
                   '<span class="req-member-meta">' + (no ? '<span class="att-mono">' + esc(no) + '</span> · ' : '') +
                   (m.role === 'teamLeader' ? 'Team Leader role' : 'Worker') + '</span></span>' +
                 '<span class="req-member-tools">' +
-                  (m.is_leader ? '<span class="att-pill att-pill--done">Leader</span>' : '') +
+                  (validLeader(m) ? '<span class="att-pill att-pill--done">Leader</span>'
+                    : m.is_leader ? '<span class="att-pill att-pill--none">Can\'t lead</span>' : '') +
                   (t.active && m.role === 'teamLeader' && !m.is_leader
                     ? '<button class="att-btn req-btn-sm" type="button" data-act="lead" data-worker="' + esc(m.worker_id) + '">Make leader</button>' : '') +
                   '<button class="req-icon-btn" type="button" data-act="remove" data-worker="' + esc(m.worker_id) + '"' +
@@ -405,8 +418,8 @@
         const active = teams.filter(t => t.active);
         const inactive = teams.filter(t => !t.active).sort(byName);
         // Leaderless teams first: they are the ones that need the office.
-        active.sort((a, b) => (a.members.some(m => m.is_leader) - b.members.some(m => m.is_leader)) || byName(a, b));
-        const leaderless = active.filter(t => !t.members.some(m => m.is_leader)).length;
+        active.sort((a, b) => (a.members.some(validLeader) - b.members.some(validLeader)) || byName(a, b));
+        const leaderless = active.filter(t => !t.members.some(validLeader)).length;
         const inTeam = new Set();
         active.forEach(t => t.members.forEach(m => inTeam.add(m.worker_id)));
         const unassigned = people.filter(p => !inTeam.has(p.id)).length;
@@ -490,6 +503,8 @@
                 call = ['pr_office_set_leader', { p_team: team.id, p_worker: b.dataset.worker }];
             } else if (act === 'unlead') {
                 if (!confirm(team.name + ' will have no leader until you pick one. ' + NO_LEADER_NOTE + ' Continue?')) return;
+                call = ['pr_office_set_leader', { p_team: team.id, p_worker: null }];
+            } else if (act === 'clear-mark') {
                 call = ['pr_office_set_leader', { p_team: team.id, p_worker: null }];
             }
             if (!call) return;

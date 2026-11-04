@@ -339,6 +339,12 @@
         const posEl  = document.getElementById('un-edit-position');
         if (dnEl)   dnEl.value   = user.name || '';
         if (roleEl) roleEl.value = user.role || '';
+        // A worker's role cannot save here (profiles_guard); the main owner changes it
+        // on Attendance → Workers (0111).
+        const crew = user.role === 'worker' || user.role === 'teamLeader';
+        if (roleEl) roleEl.disabled = crew;
+        const roleNote = document.getElementById('un-edit-role-note');
+        if (roleNote) roleNote.style.display = crew ? 'block' : 'none';
         if (posEl)  posEl.value  = user.position || '';
 
         modal.style.display = 'flex';
@@ -374,7 +380,8 @@
 
         const position    = (document.getElementById('un-edit-position')?.value || '').trim();
 
-        const updates = { displayName, role, position };
+        const roleLocked = !!document.getElementById('un-edit-role')?.disabled;
+        const updates = roleLocked ? { displayName, position } : { displayName, role, position };
         const newName = displayName;
 
         const btn = document.getElementById('un-edit-submit-btn');
