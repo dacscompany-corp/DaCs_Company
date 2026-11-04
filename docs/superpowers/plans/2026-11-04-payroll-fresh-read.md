@@ -12,7 +12,7 @@
 
 **Repo:** **Dacs Web** only. The base is `main` at `1812be0` plus the Reports fix that is still uncommitted in the real tree.
 
-**Status (4 Nov 2026):** Revision 2, **approved by the user for this patch only; Task 1 applied to the working tree, not committed or pushed.** Tasks 2 to 4 are open, and the live ZZ check has not started.
+**Status (4 Nov 2026):** Revision 2, **done.** Committed by the user as `b38bf6a` and pushed with `23fe037` and `5335b68`; CI passed; the live site serves the commit. The live ZZ check ended early by the user's decision and was accepted as working, with no failure found. See *Execution notes* for what ran on a real sign-in and what did not.
 
 **What changed from revision 1:** Overhead no longer shows possibly old figures under a warning. R128 and R129 are rewritten, and R132 and R133 are new. The statement, receipt and shared-copy parts are unchanged.
 
@@ -149,9 +149,9 @@ Expected: 48 suites pass, exit 0. `tests/payroll-fresh-read.test.js` reports `43
 
 ## Task 2: Commit and push (yours)
 
-- [ ] **Step 1:** Do your browser check of the Reports fix, and commit it first if it is still uncommitted.
-- [ ] **Step 2:** Commit this patch. In `admin.html`, stage the note, the chart block and the version lines and **leave out your one-space edit** (from a copy with that line restored, as last time).
-- [ ] **Step 3:** Push. I check that the live site serves the changed files byte-identical. Rollback is a `git revert`: there is no database change.
+- [x] **Step 1:** Do your browser check of the Reports fix, and commit it first if it is still uncommitted.
+- [x] **Step 2:** Commit this patch. In `admin.html`, stage the note, the chart block and the version lines and **leave out your one-space edit** (from a copy with that line restored, as last time).
+- [x] **Step 3:** Push. I check that the live site serves the changed files byte-identical. Rollback is a `git revert`: there is no database change.
 
 ## Task 3: Live checks with a ZZ project (yours, after the push)
 
@@ -179,7 +179,7 @@ Real records are not touched: every test row is under a ZZ project and you remov
 
 ## Task 4: Notes
 
-- [ ] Record the pilot's results in this plan's execution notes, and mark Stage 4's finding as closed.
+- [x] Record the pilot's results in this plan's execution notes, and mark Stage 4's finding as closed.
 
 ---
 
@@ -209,6 +209,14 @@ Real records are not touched: every test row is under a ZZ project and you remov
 - **The Reports check passed:** see the 4 Nov notes in `2026-10-30-workmate-stage4-reconciliation.md`.
 - **Task 1, 4 Nov 13:06:** the patch applied clean. The changed scripts and tests are byte-identical to the tested build, the user's one-space `admin.html` edit is intact, all 48 suites pass (this suite 43 of 43, money suite 257 of 257).
 - **A separate small change, after this patch:** the user asked for the Reports scope label to name the chosen folder during a read and after a failed one. It is not part of Appendix A. `_rptScopePeriods()` and `_rptShowScope()` in `js/expenses-module.js`, `testReportLabelNamesTheChosenFolder` in `tests/billing-allocation.test.js`, `expenses-module.js?v=20261104c`. The test was written first and failed on the bug; all 8 deliberate breaks of the fix are caught.
+- **Task 2, 4 Nov:** committed by the user as `23fe037` (Reports fresh read), `b38bf6a` (this patch) and `5335b68` (the label), each identical to the rehearsed commit and passing `npm test` alone; the user's one-space `admin.html` edit stayed out. Pushed 13:21. CI on `5335b68` passed at 13:50, on Node 20, with the SQL suites. `admin.html` and the three scripts on the live site are byte-identical to the commit.
+- **Task 3, the live ZZ check, 4 Nov 13:46 to 15:04, ended early by the user, who accepted the change as working. No check that ran failed.** It ran on the user's Live Server (127.0.0.1:5501), which serves the same scripts as the commit, against the live database.
+  - **Passed on a real sign-in, screenshots checked:** P0, P2 to P6 (statement after payroll added, edited and deleted from another tab; printing right after a save), and the receipts for an edited row (₱160) and a row added elsewhere (₱300), neither saying "Payroll entry not found".
+  - **Passed, from the server logs:** P1, photo-free reads at page load and no full-table read.
+  - **Reported working by the user, no screenshot:** P8 and the edit in P9. The server held the ₱95 indirect row and logged Overhead reading payroll after it.
+  - **Not run on a real sign-in:** the delete in P9 and P10 (the server shows neither), and P7, P11 to P13 (offline) and P14 (staff), by the user's choice. They rest on `tests/payroll-fresh-read.test.js`; P7 and the Overhead failure screens also passed in real Chrome against a fake server.
+  - **P15:** the user deleted the ZZ project through the screen.
+  - **P16, 15:04:** every total equals the 13:46 figures: 15 folders, 61 periods, 57 period budgets (₱8,838,230.00), 14 folder budgets (₱12,407,474.20), 274 payroll rows (₱2,915,123.51), 601 expenses (₱3,178,554.74), 199 overhead rows (₱397,901.24), 9 invoices, 32 labor contracts, 12 allocations, 8 adjustments. No ZZ row is left in any of the 55 tables with a project, period or contract column. No real payroll, expense or overhead row changed during the check, and `client_errors` is empty for the afternoon.
 - **Left out on purpose:** staff access to indirect-pay rows and any override of the 15 Oct decision await the user's explicit decision. Invoice numbering awaits the accountant's requirements, and issued invoices are not renumbered. Budget Overview and the 1,000-row question are untouched.
 
 ## Self-review against your conditions
