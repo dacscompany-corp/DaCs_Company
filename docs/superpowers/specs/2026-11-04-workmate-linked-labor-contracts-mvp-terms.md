@@ -4,7 +4,7 @@ Date: 4 November 2026
 
 Written for: the owner, the designer/implementer and the reviewer.
 
-Status: **Approved by the owner on 4 November 2026,** including section 8's editing rules, the Project Control-only MVP boundary and owner-controlled linking. **Still open:** Additional Works progress and sensitive offline-cache behaviour need concrete proposals in the implementation plan (section 11). Linked Labor stays a separate stage from WorkMate 3b/0E, and its release timing is not chosen. Approving these terms does not approve a build, alter an existing implementation plan, authorize data linking, reset accounts, commit files or change the live system. No individual worker/contract progress feature is requested.
+Status: **Approved by the owner on 4 November 2026,** including section 8's editing rules, the Project Control-only MVP boundary and main-owner-only account linking. **Still open:** Additional Works progress and sensitive offline-cache behaviour need concrete proposals in the implementation plan (section 11). Linked Labor stays a separate stage from WorkMate 3b/0E, and its release timing is not chosen. Approving these terms does not approve a build, alter an existing implementation plan, authorize data linking, reset accounts, commit files or change the live system. No individual worker/contract progress feature is requested.
 
 ## 1. Purpose
 
@@ -59,17 +59,17 @@ The linked account represents the agreement holder/responsible leader, not every
 ### Create
 
 - Keep manual name entry, scope, trade, notes, agreement documents and existing payment/contract options.
-- Optionally select an existing worker account using name and worker number. Show which account will receive phone access before saving.
+- Optionally, the main owner selects an existing worker account using name and worker number. Show which account will receive phone access before saving. Staff keep entering the typed name.
 - Selection may prefill the name and main trade as defaults. The office can edit the **contract's** job/trade and scope without writing to `profiles.position`.
 - Do not infer a Team Leader role from the contract's job title, pay type, scope or the fact that the person distributes money to helpers.
 - Do not require a team, a helper list or a project assignment record to save the contract.
 
 ### Link an existing manual-name agreement
 
-- An authorized office user explicitly selects the account and confirms the agreement, project and worker number. **Approved authority: owner accounts grant or change this financial access**, while existing staff contract-entry rights are preserved.
+- The main owner explicitly selects the account and confirms the agreement, project and worker number. **Approved authority: only the main owner grants or changes this financial access**, while existing staff contract-entry rights are preserved.
 - Check active eligible worker/team-leader account, company ownership and agreement ownership on the server. Do not accept an account from another company, or a client/partner account.
 - Keep the same contract ID, category, agreed amount, payment basis, payments, funding allocations and signed documents. Preserve the original recorded name and an audit of the link.
-- A suggested name match is never an approved link. “Danilo”, “Danilo Tapales” and duplicate names require office confirmation.
+- A suggested name match is never an approved link. “Danilo”, “Danilo Tapales” and duplicate names require the main owner's confirmation.
 - Choosing an account does not merge other name-matched contracts, rename old payroll or grant access to all contracts bearing that name.
 - No mass linking or backfill without a separately reviewed list approved by the owner. Unlinked records continue working in the office.
 
@@ -114,7 +114,7 @@ Cached and offline data must be per account, cleared on sign-out as appropriate 
 | Separate job/agreement | Another contract for the same account is allowed, including on the same project. |
 | Price change | Preserve old and new agreed amounts, reason and time; no payment or expense is created by the amendment. Existing cap/overpayment rules still apply. |
 | Daily/fixed or individual/crew identity change | Do not silently convert an established agreement. Specify a reviewed correction process before enabling such changes. |
-| Replace or unlink the account | Treat as a financial-access correction with explicit authority, audit and confirmation. Revoke the old account's access and handle its cached copy; never move money or silently reassign the contracting party. |
+| Replace or unlink the account | Treat as a financial-access correction by the main owner, with audit and confirmation. Revoke the old account's access and handle its cached copy; never move money or silently reassign the contracting party. |
 | Main trade/name changes | Do not rewrite historical contract terms, payroll labels, attendance snapshots or signed documents. Current identity may be shown alongside the recorded historical name. |
 | End an agreement or deactivate a worker | Preserve the relationship and history; deny new actions as appropriate without deleting records or preventing office settlement. |
 
@@ -156,7 +156,7 @@ Not included: helper wage distribution, compulsory crew rosters, site scheduling
 **Approved by the owner on 4 November 2026:**
 
 - Section 8's editing/history rules.
-- The Project Control-only MVP boundary and owner-controlled financial linking.
+- The Project Control-only MVP boundary and main-owner-only financial linking.
 
 **Still open:** the implementation plan must make concrete proposals for these two items, and the owner must approve them before that plan is treated as final:
 
