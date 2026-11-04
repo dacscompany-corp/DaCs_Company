@@ -627,6 +627,7 @@ function loadProjects() {
     _pcReportOverheadGeneration++;
     _pcReportOverheadPromise = null;
     _rptOvhdRows = null;
+    _rptForgetFresh();
     _pcPolicyMap = {};
     _pcAllocationMap = {};
     _pcAdjustmentRows = [];
@@ -778,6 +779,9 @@ function subscribeOvAllData() {
 // Call this after any expense/payroll write to keep folder grid totals fresh.
 function refreshOvAllData() {
     subscribeOvAllData();
+    // Reports reads its own copy (_rptLoadFresh), so a save lands there by reading again.
+    const reports = document.getElementById('expReportsView');
+    if (reports && reports.style.display !== 'none') _rptLoadFresh();
 }
 
 function _renderAllPanels() {
@@ -5436,7 +5440,8 @@ let _rptState = {
     projects:    [],
     allExpenses: [],
     allPayroll:  [],
-    loading:     false
+    loading:     false,
+    noFigures:   null     // 'loading' or 'failed': nothing current to show, print or export
 };
 let _rptCharts = {};
 
@@ -5476,17 +5481,17 @@ function initReportsDashboard() {
     );
     if (typeof lucide !== 'undefined') lucide.createIcons();
     _rptUpdateAxisHint(_rptState.period);
-    loadRptData();
+    _rptLoadFresh();
 }
 
 function onRptYearChange() {
     _rptState.year = parseInt(document.getElementById('rptYearSel')?.value) || new Date().getFullYear();
-    loadRptData();
+    _rptLoadFresh();
 }
 
 function onRptFolderChange() {
     _rptState.folderId = document.getElementById('rptFolderSel')?.value || '';
-    loadRptData();
+    _rptLoadFresh();
 }
 
 function setRptPeriod(period) {
@@ -5511,11 +5516,58 @@ function _rptUpdateAxisHint(period) {
     el.innerHTML = hints[period] || '';
 }
 
-function loadRptData() {
+// Reports reads expenses and payroll itself when it is opened or its folder or
+// year changes. _ovAllExpenses is a copy from page load that Stock, Purchasing,
+// the phone and other accounts never refresh, so it can still hold a row that is
+// gone. Only the figures are read: photos are 14.5 MB of the two tables' 15 MB
+// and nothing in Reports shows one. The cost-move note ("changed after the month
+// ended") is read with them, so it can't be newer than the figures above it.
+const _RPT_PHOTO_FIELDS = ['poImageUrl', 'deliveryReceiptUrl', 'supplierInvoiceUrl', 'paymentReceiptUrl'];
+let _rptFresh = null;     // { expenses, payroll } from the latest read
+let _rptFreshRun = 0;     // only the newest read may land
+function _rptLoadFresh() {
     if (!currentUser) return;
-    // The cost-move history for the "changed after the month ended" note: fresh on each visit.
+    const run = ++_rptFreshRun;
+    _rptState.noFigures = 'loading';
     _pcCostChanges = null;
     _pcCostChangesPromise = null;
+    _rptClearFigures('Loading report data…');
+    _rptShowLoading();
+    const rowsOf = snap => snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    Promise.all([
+        db.collection('expenses').where('userId', '==', _uid()).omit(_RPT_PHOTO_FIELDS).get(),
+        db.collection('payroll').where('userId', '==', _uid()).omit('receiptImages').get()
+    ]).then(([expenses, payroll]) => {
+        if (run !== _rptFreshRun) return;
+        _rptFresh = { expenses: rowsOf(expenses), payroll: rowsOf(payroll) };
+        _rptState.noFigures = null;
+        loadRptData();
+    }).catch(err => {
+        if (run !== _rptFreshRun) return;
+        console.error('Reports fetch error:', err);
+        _rptState.noFigures = 'failed';
+        _rptClearFigures('Could not load the latest figures. Check your connection, then open Reports again.');
+    });
+}
+
+function _rptForgetFresh() {
+    _rptFreshRun++;
+    _rptFresh = null;
+    _rptState.noFigures = null;
+}
+
+// Print and CSV never run from figures that aren't on screen.
+function _rptFiguresReady() {
+    if (!_rptState.noFigures) return true;
+    showExpNotif(_rptState.noFigures === 'loading'
+        ? 'The latest figures are still loading. Try again in a moment.'
+        : 'The latest figures did not load. Open Reports again first.', 'error');
+    return false;
+}
+
+function loadRptData() {
+    if (!currentUser) return;
+    if (_rptState.noFigures) return;
     _rptState.loading = true;
     _rptShowLoading();
 
@@ -5546,15 +5598,15 @@ function loadRptData() {
 
     _rptState.projects = folderProjects;
 
-    // Use global cache if populated; otherwise fetch from Firestore.
+    // Use Reports' own read (_rptLoadFresh); before one, the global cache or a fetch.
     // For specific folder: filter by projectId only.
     // For All Folders: same — no year filtering on expenses (all-time totals).
     const scopeFolders = _rptState.folderId ? _pcReportFolderIds(_rptState.folderId) : null;
     const inScope = e => idSet.has(e.projectId) || (!e.projectId && !!e.folderId && (!scopeFolders || scopeFolders.has(e.folderId)));
-    const cachedExp = _ovAllExpenses.filter(inScope);
-    const cachedPay = _ovAllPayroll.filter(p => idSet.has(p.projectId));
+    const cachedExp = (_rptFresh ? _rptFresh.expenses : _ovAllExpenses).filter(inScope);
+    const cachedPay = (_rptFresh ? _rptFresh.payroll : _ovAllPayroll).filter(p => idSet.has(p.projectId));
 
-    if (cachedExp.length || cachedPay.length) {
+    if (_rptFresh || cachedExp.length || cachedPay.length) {
         _rptState.allExpenses = cachedExp;
         _rptState.allPayroll  = cachedPay;
         _rptState.loading = false;
@@ -5631,6 +5683,16 @@ function _rptShowEmpty(msg) {
     if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="exp-empty-row">${msg}</td></tr>`;
     Object.values(_rptCharts).forEach(c => { try { c.destroy(); } catch(e){} }); _rptCharts = {};
     if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// Everything the last visit drew: old figures must not sit under a loading or error message.
+function _rptClearFigures(msg) {
+    _rptShowEmpty(msg);
+    ['rptAllocationReport', 'rptExpDetailTbody', 'rptPayDetailTbody'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '';
+    });
+    if (expCharts.pie) { expCharts.pie.destroy(); delete expCharts.pie; }
 }
 
 function _rptAllTimeGroups() {
@@ -5921,6 +5983,7 @@ function _pcLateCostMoveHtml(folderId) {
 function renderReportsDashboard() {
     if (_pcEnsureReportOverhead(renderReportsDashboard)) return;
     if (_pcEnsureCostChanges(renderReportsDashboard)) return;
+    if (_rptState.noFigures) return;
     const report = _pcDashboardReport();
     _rptRenderKPIs(report.model);
     _rptRenderTable(report.groups, report.model);
@@ -6300,6 +6363,7 @@ function _expPeriodCell(r, labelOf) {
 }
 
 function exportRptTable() {
+    if (!_rptFiguresReady()) return;
     if (_pcEnsureReportOverhead(exportRptTable)) return;
     const report = _pcDashboardReport();
     const model = report.model;
@@ -6689,6 +6753,7 @@ function _rptRenderDetailTables(model) {
 // PRINT REPORTS DASHBOARD
 // ════════════════════════════════════════════════════════════
 function printReportsDashboard() {
+    if (!_rptFiguresReady()) return;
     if (_pcEnsureReportOverhead(printReportsDashboard)) return;
     if (_pcEnsureCostChanges(printReportsDashboard)) return;
     const report = _pcDashboardReport();

@@ -305,7 +305,7 @@ test('the note reads the lasting log through the tab module, fresh each Reports 
   ok(/function renderReportsDashboard\(\) \{\n    if \(_pcEnsureReportOverhead\(renderReportsDashboard\)\) return;\n    if \(_pcEnsureCostChanges\(renderReportsDashboard\)\) return;/.test(EXP)
      && /if \(_pcEnsureCostChanges\(printReportsDashboard\)\) return;/.test(EXP), 'loaded before the screen and the print');
   ok(/window\.ReconciliationAdmin\.costChanges\(\)/.test(lift('_pcEnsureCostChanges')) && /function costChanges\(\) \{ return RA\.rpc\('rec_bills'\); \}/.test(BROWSER), 'rec_bills, through the tab module');
-  ok(/_pcCostChanges = null;\n    _pcCostChangesPromise = null;/.test(lift('loadRptData')), 'fresh on each visit');
+  ok(/_pcCostChanges = null;\n    _pcCostChangesPromise = null;/.test(lift('_rptLoadFresh')), 'read with the figures, fresh on each visit');
   const notes = lift('_pcLateCostMoveNotes');
   ok(!/stkCostMoveId|createdAt|\.expenses/.test(notes), 'never from the expense rows (a reversal deletes them)');
   ok(!/_pcLateCostMove|_pcCostChanges/.test(lift('_pcReportModel')), 'the totals never read the note');

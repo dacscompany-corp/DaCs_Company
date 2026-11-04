@@ -945,7 +945,7 @@ function expenseReportHarness() {
   const charts = {};
   const el = id => elements[id] || (elements[id] = { innerHTML:'', textContent:'', value:'', style:{},
     classList:{ add(){}, remove(){}, toggle(){} }, setAttribute(){}, getContext(){ return this; },
-    querySelector(){ return null; }, querySelectorAll(){ return []; }, closest(){ return null; }, dataset:{} });
+    querySelector(){ return null; }, querySelectorAll(){ return []; }, closest(){ return null; }, appendChild(){}, dataset:{} });
   let printed = '', csv = '';
   const context = vm.createContext({ console:{ log(){}, error:console.error }, ...A,
     window:{ currentUserRole:'owner', location:{ href:'https://example.test/admin.html', origin:'https://example.test' },
@@ -1276,7 +1276,238 @@ function testPrintMetadataAndTotals() {
   assert.match(dashboard, /Payroll Detail - 4 entries/);
 }
 
-Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas), Promise.resolve().then(testAllocationDashboard), Promise.resolve().then(testProjectLedger), Promise.resolve().then(testAllocationPrint), Promise.resolve().then(testAllocationRootDateScope), Promise.resolve().then(testExpenseReportModel), Promise.resolve().then(testExpenseReportOutputs), testExpenseReportLoading(), ...[testReportChartCategoryCollisions, testStaffReportDateScope, testFolderlessPeriodPrintScope, testDeletedPeriodDetailTeardown, testPublicPrintContracts, testPrintMetadataAndTotals].map(test => Promise.resolve().then(test))])
+// Reports reads the server when it is opened (Stage 4 pilot, 3 Nov): the page-load
+// copy goes stale when Stock, Purchasing, the phone or another account change a
+// row. The server below has moved on: e4 (40) was reversed, so Spent is 251, not 291.
+function reportServerHarness() {
+  const h = expenseReportHarness(), c = h.context;
+  c.currentUser = { uid:'owner' };
+  h.el('rptYearSel').value = '2026';
+  h.el('rptFolderSel').value = 'f';
+  const rows = name => JSON.parse(vm.runInContext('JSON.stringify(' + name + ')', c));
+  const server = { expenses:rows('_ovAllExpenses').filter(e => e.id !== 'e4'), payroll:rows('_ovAllPayroll'),
+    hold:null, fail:false, reads:[] };
+  c.db = { collection(name) {
+    const q = { where:() => q, orderBy:() => q, omit(...fields) { q.omitted = fields.flat(); return q; },
+      onSnapshot:() => () => {}, doc:() => ({ get:async () => ({ exists:false }) }),
+      async get() {
+        const rowsNow = server[name] || [], hold = server.hold, fail = server.fail;
+        server.reads.push({ name, omitted:q.omitted || [] });
+        if (hold) await hold;
+        if (fail) throw new Error('offline');
+        return { docs:rowsNow.map(r => ({ id:r.id, data:() => ({ ...r }) })) };
+      } };
+    return q;
+  } };
+  c.console = { log(){}, warn(){}, error(){} };
+  vm.runInContext('__notes = []; showExpNotif = m => __notes.push(m);', c);
+  const reportReads = () => server.reads.filter(r => r.omitted.length).length;
+  const tick = async () => { for (let i = 0; i < 4; i++) await new Promise(resolve => setImmediate(resolve)); };
+  const gate = () => { let open; const hold = new Promise(resolve => { open = resolve; }); return { hold, open }; };
+  const figures = () => ['rptKpiRow','rptSummaryTbody','rptAllocationReport','rptExpDetailTbody','rptPayDetailTbody']
+    .map(id => h.el(id).innerHTML).join('\n');
+  return { h, c, server, reportReads, tick, gate, figures, notes:() => vm.runInContext('__notes', c) };
+}
+
+async function testReportsShowTheServersFigures() {
+  const { h, c, server, tick, figures } = reportServerHarness();
+  c.initReportsDashboard();
+  await tick();
+  assert.match(h.el('rptSummaryTbody').innerHTML, /251\.00/, 'opening Reports must show what the server holds now');
+  assert.doesNotMatch(figures(), /291\.00/, 'never the page-load copy');
+  c.printReportsDashboard();
+  assert.ok(h.output().printed.includes('251.00'), 'the print matches the screen');
+  c.exportRptTable();
+  assert.match(h.output().csv, /"251\.00"/, 'the CSV matches the screen');
+  for (const [name, omitted] of [['expenses',['poImageUrl','deliveryReceiptUrl','supplierInvoiceUrl','paymentReceiptUrl']], ['payroll',['receiptImages']]]) {
+    eq(server.reads.filter(r => r.name === name).map(r => r.omitted), [omitted], name + ' read once, with no photos (15 MB against 0.6 MB)');
+  }
+  eq(vm.runInContext('_ovAllExpenses.length', c), 5, 'the full copy other screens read for photos is left alone');
+  server.payroll = server.payroll.filter(p => p.id !== 'd');
+  c.onRptFolderChange();
+  await tick();
+  assert.match(h.el('rptSummaryTbody').innerHTML, /201\.00/, 'payroll comes from the server too');
+}
+
+async function testReportsNeverShowOldFiguresWhileReading() {
+  const { h, c, server, tick, gate, figures, notes } = reportServerHarness();
+  c.loadRptData();
+  assert.match(figures(), /291\.00/, 'a visit that drew the old figures');
+  const g = gate();
+  server.hold = g.hold;
+  c.initReportsDashboard();
+  await tick();
+  assert.doesNotMatch(figures(), /291\.00|₱/, 'no old figure on screen while the read is on its way');
+  c.setRptPeriod('quarterly');
+  c._pcRefreshReportViews();
+  await tick();
+  assert.doesNotMatch(figures(), /291\.00|₱/, 'a period tab or a listener must not bring them back');
+  c.printReportsDashboard();
+  eq(h.output().printed, '', 'no printing old figures');
+  c.exportRptTable();
+  eq(h.output().csv, '', 'no exporting old figures');
+  eq(notes().length, 2, 'each refusal says why');
+  g.open();
+  await tick();
+  assert.match(h.el('rptSummaryTbody').innerHTML, /251\.00/);
+  assert.match(h.el('rptSummaryTbody').innerHTML, /Q3 2026/, 'the tab pressed while reading applies');
+}
+
+async function testReportsSayWhenTheReadFails() {
+  const { h, c, server, tick, figures, notes } = reportServerHarness();
+  c.loadRptData();
+  server.fail = true;
+  c.initReportsDashboard();
+  await tick();
+  assert.match(h.el('rptSummaryTbody').innerHTML, /Could not load/, 'says so, in words');
+  assert.doesNotMatch(figures(), /291\.00|₱/, 'old figures are not passed off as current');
+  c._pcRefreshReportViews();
+  c.setRptPeriod('quarterly');
+  await tick();
+  assert.doesNotMatch(figures(), /291\.00|₱/, 'a listener or a tab must not bring them back');
+  assert.match(h.el('rptKpiRow').innerHTML, /Could not load/, 'nor turn the message back into a spinner');
+  c.printReportsDashboard();
+  c.exportRptTable();
+  eq(h.output().printed, '', 'no printing after a failed read');
+  eq(h.output().csv, '', 'no exporting after a failed read');
+  eq(notes().length, 2);
+  server.fail = false;
+  h.el('rptFolderSel').value = 'f';
+  c.onRptFolderChange();
+  await tick();
+  assert.match(h.el('rptSummaryTbody').innerHTML, /251\.00/, 'choosing a folder tries again');
+}
+
+async function testReportsNewestReadWins() {
+  const { h, c, server, tick, gate } = reportServerHarness();
+  const slow = gate();
+  server.hold = slow.hold;
+  c.initReportsDashboard();
+  await tick();
+  server.hold = null;
+  const older = server.expenses;
+  server.expenses = older.filter(e => e.id !== 'e1');
+  c.onRptFolderChange();
+  await tick();
+  assert.match(h.el('rptSummaryTbody').innerHTML, /151\.00/, 'the later read');
+  slow.open();
+  await tick();
+  assert.match(h.el('rptSummaryTbody').innerHTML, /151\.00/, 'an older answer arriving late must not replace it');
+  assert.doesNotMatch(h.el('rptSummaryTbody').innerHTML, /251\.00/);
+  const failing = gate();
+  server.hold = failing.hold;
+  server.fail = true;
+  c.onRptFolderChange();
+  await tick();
+  server.hold = null;
+  server.fail = false;
+  c.onRptFolderChange();
+  await tick();
+  failing.open();
+  await tick();
+  assert.match(h.el('rptSummaryTbody').innerHTML, /151\.00/, 'nor may an older failure arriving late');
+  assert.doesNotMatch(h.el('rptSummaryTbody').innerHTML, /Could not load/);
+}
+
+async function testReportsReadOnlyWhenAsked() {
+  const { h, c, server, reportReads, tick } = reportServerHarness();
+  c.initReportsDashboard();
+  await tick();
+  eq(reportReads(), 2, 'one open is one read of each table');
+  c._pcRefreshReportViews();
+  c._renderAllPanels();
+  c.subscribeOvAllData();
+  await tick();
+  eq(reportReads(), 2, 'a redraw reads nothing: drawing must never start another read');
+  assert.match(h.el('rptSummaryTbody').innerHTML, /251\.00/, 'and keeps the figures just read');
+  c.setRptPeriod('quarterly');
+  await tick();
+  eq(reportReads(), 2, 'a period tab only regroups the same rows');
+  c.onRptFolderChange();
+  await tick();
+  eq(reportReads(), 4, 'choosing a folder reads again');
+  c.onRptYearChange();
+  await tick();
+  eq(reportReads(), 6, 'choosing a year reads again');
+  server.expenses = server.expenses.filter(e => e.id !== 'e1');
+  c.refreshOvAllData();
+  await tick();
+  eq(reportReads(), 8, 'a save while Reports is on screen reads again');
+  assert.match(h.el('rptSummaryTbody').innerHTML, /151\.00/, 'and shows on it');
+  h.el('expReportsView').style.display = 'none';
+  c.refreshOvAllData();
+  await tick();
+  eq(reportReads(), 8, 'not when Reports is not on screen: the next opening reads');
+}
+
+async function testReportNoteIsReadWithTheFigures() {
+  const { c, tick } = reportServerHarness();
+  let reads = 0;
+  c.window.ReconciliationAdmin = { costChanges:async () => { reads++; return []; } };
+  c.initReportsDashboard();
+  await tick();
+  eq(reads, 1, 'the cost-move note is read with the figures');
+  c._pcRefreshReportViews();
+  await tick();
+  eq(reads, 1, 'a redraw must not make the note newer than the figures above it');
+  c.onRptFolderChange();
+  await tick();
+  eq(reads, 2, 'a new read of the figures reads the note too');
+}
+
+async function testReportsFreshForStaffShowsNoMoney() {
+  const { h, c, tick, gate, server } = reportServerHarness();
+  c.window.currentUserRole = 'staff';
+  const g = gate();
+  server.hold = g.hold;
+  c.initReportsDashboard();
+  await tick();
+  const clean = /Target Margin Reserve|251\.00|291\.00|₱|&#8369;/;
+  for (const id of ['rptKpiRow','rptSummaryTbody','rptAllocationReport']) assert.doesNotMatch(h.el(id).innerHTML, clean, id + ' while reading');
+  g.open();
+  await tick();
+  for (const id of ['rptKpiRow','rptSummaryTbody','rptAllocationReport','rptExpDetailTbody','rptPayDetailTbody']) {
+    assert.doesNotMatch(h.el(id).innerHTML, clean, id + ' leaks staff money');
+  }
+}
+
+async function testReportsForgetTheCopyOnSignIn() {
+  // The new account's data is empty, so e1 ('=1+1') can only be the last account's.
+  const signIn = async ({ c, server, tick }) => {
+    server.hold = null;
+    server.expenses = []; server.payroll = [];
+    vm.runInContext('_ovAllExpenses = []; _ovAllPayroll = [];', c);
+    c.Event = class {};
+    c.window.dispatchEvent = () => {};
+    c.loadProjects();
+    await tick();
+  };
+  const redraw = async ({ c, tick }) => {
+    vm.runInContext('_rptOvhdRows = [];', c);
+    c.loadRptData();
+    await tick();
+  };
+  const landed = reportServerHarness();
+  landed.c.initReportsDashboard();
+  await landed.tick();
+  assert.match(landed.h.el('rptExpDetailTbody').innerHTML, /=1\+1/, 'the first account sees its row');
+  await signIn(landed);
+  await redraw(landed);
+  assert.doesNotMatch(landed.h.el('rptExpDetailTbody').innerHTML, /=1\+1/, 'the last account\'s rows must not outlive its sign-in');
+
+  const inFlight = reportServerHarness();
+  const g = inFlight.gate();
+  inFlight.server.hold = g.hold;
+  inFlight.c.initReportsDashboard();
+  await inFlight.tick();
+  await signIn(inFlight);
+  g.open();
+  await inFlight.tick();
+  await redraw(inFlight);
+  assert.doesNotMatch(inFlight.h.el('rptExpDetailTbody').innerHTML, /=1\+1/, 'nor may its read still on the way land after it');
+}
+
+Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas), Promise.resolve().then(testAllocationDashboard), Promise.resolve().then(testProjectLedger), Promise.resolve().then(testAllocationPrint), Promise.resolve().then(testAllocationRootDateScope), Promise.resolve().then(testExpenseReportModel), Promise.resolve().then(testExpenseReportOutputs), testExpenseReportLoading(), testReportsShowTheServersFigures(), testReportsNeverShowOldFiguresWhileReading(), testReportsSayWhenTheReadFails(), testReportsNewestReadWins(), testReportsReadOnlyWhenAsked(), testReportNoteIsReadWithTheFigures(), testReportsFreshForStaffShowsNoMoney(), testReportsForgetTheCopyOnSignIn(), ...[testReportChartCategoryCollisions, testStaffReportDateScope, testFolderlessPeriodPrintScope, testDeletedPeriodDetailTeardown, testPublicPrintContracts, testPrintMetadataAndTotals].map(test => Promise.resolve().then(test))])
   .then(results => {
     const failures = results.filter(result => result.status === 'rejected');
     if (failures.length) { failures.forEach(result => console.error(result.reason)); process.exitCode = 1; }
