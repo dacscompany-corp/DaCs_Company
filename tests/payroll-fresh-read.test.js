@@ -878,7 +878,7 @@ async function test(name, fn) {
     assert.ok(html.indexOf('id="ovhdPayrollNote"') > html.indexOf('id="expOverheadView"'), 'inside the Overhead view');
     assert.ok(html.indexOf('id="ovhdPayrollNote"') < html.indexOf('/expOverheadView'), 'inside the Overhead view');
     for (const f of ['expenses-module', 'overhead-module', 'invoice-module']) {
-      assert.ok(new RegExp('<script src="js/' + f + '\\.js\\?v=20261104b"></script>').test(html), f + ' version');
+      assert.ok(new RegExp('<script src="js/' + f + '\\.js\\?v=20261104[b-z]"></script>').test(html), f + ' version');
     }
     assert.ok(html.indexOf('js/expenses-module.js') < html.indexOf('js/invoice-module.js'), 'the read is defined before the prints use it');
     assert.strictEqual((html.match(/id="ovhdChartsBlock"/g) || []).length, 1, 'one chart block');

@@ -5547,6 +5547,7 @@ let _rptFresh = null;     // { expenses, payroll } from the latest read
 let _rptFreshRun = 0;     // only the newest read may land
 function _rptLoadFresh() {
     if (!currentUser) return;
+    _rptShowScope(_rptScopePeriods());
     const run = ++_rptFreshRun;
     _rptState.noFigures = 'loading';
     _pcCostChanges = null;
@@ -5585,26 +5586,17 @@ function _rptFiguresReady() {
     return false;
 }
 
-function loadRptData() {
-    if (!currentUser) return;
-    if (_rptState.noFigures) return;
-    _rptState.loading = true;
-    _rptShowLoading();
-
+function _rptScopePeriods() {
     // Specific folder → ALL billing periods for that folder (any year).
     // All Folders → ALL billing periods across all years; year dropdown only affects chart labels.
-    let folderProjects;
-    if (_rptState.folderId) {
-        const folderIds = _pcReportFolderIds(_rptState.folderId);
-        folderProjects = expProjects.filter(p => folderIds.has(p.folderId));
-    } else {
-        folderProjects = expProjects; // all billing periods, all years
-    }
+    if (!_rptState.folderId) return expProjects; // all billing periods, all years
+    const folderIds = _pcReportFolderIds(_rptState.folderId);
+    return expProjects.filter(p => folderIds.has(p.folderId));
+}
 
-    const idSet = new Set(folderProjects.map(p => p.id));
-    const ids   = Array.from(idSet);
-
-    // Update subtitle
+// Names what was chosen, whether or not its figures have arrived: a failed read
+// must not sit beside the last folder's name.
+function _rptShowScope(folderProjects) {
     const folderCount = _rptState.folderId ? 1 : new Set(folderProjects.map(p => p.folderId).filter(Boolean)).size;
     const projCount   = folderProjects.length;
     const folderLabel = _rptState.folderId
@@ -5615,6 +5607,19 @@ function loadRptData() {
     setText('rptScopeChip', folderLabel.toUpperCase());
     setText('rptCompanySub',
         `${projCount} project period${projCount!==1?'s':''} · ${folderCount} folder${folderCount!==1?'s':''}`);
+}
+
+function loadRptData() {
+    if (!currentUser) return;
+    if (_rptState.noFigures) return;
+    _rptState.loading = true;
+    _rptShowLoading();
+
+    const folderProjects = _rptScopePeriods();
+    const idSet = new Set(folderProjects.map(p => p.id));
+    const ids   = Array.from(idSet);
+
+    _rptShowScope(folderProjects);
 
     _rptState.projects = folderProjects;
 

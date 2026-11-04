@@ -1473,6 +1473,68 @@ async function testReportsFreshForStaffShowsNoMoney() {
   }
 }
 
+async function testReportLabelNamesTheChosenFolder() {
+  // Found in the browser check on 4 Nov: with the read failed, the label still
+  // named the last folder (J. Apo) beside an error about the one chosen (Sulit).
+  const { h, c, server, tick, gate } = reportServerHarness();
+  const chip = () => h.el('rptScopeChip').textContent;
+  const sub = () => h.el('rptCompanySub').textContent;
+  const JOB = '=JOB <SCRIPT>ALERT(1)</SCRIPT>';
+
+  // Opening, while the read is on its way.
+  const opening = gate();
+  server.hold = opening.hold;
+  c.initReportsDashboard();
+  eq(chip(), JOB, 'opening: the label names the chosen folder before its figures arrive');
+  eq(sub(), '5 project periods · 1 folder', 'with its own counts');
+  server.hold = null;
+  opening.open();
+  await tick();
+  eq(chip(), JOB, 'and still does when they land');
+
+  // Choosing a folder, while the read is on its way.
+  const choosing = gate();
+  server.hold = choosing.hold;
+  h.el('rptFolderSel').value = 'other';
+  c.onRptFolderChange();
+  eq(chip(), 'OTHER', 'loading: the label names the folder just chosen, not the last one');
+  eq(sub(), '1 project period · 1 folder');
+  assert.match(h.el('rptKpiRow').innerHTML, /Loading report data/);
+  server.hold = null;
+  choosing.open();
+  await tick();
+  eq(chip(), 'OTHER');
+
+  // A failed read, for a folder and then for All Folders.
+  server.fail = true;
+  h.el('rptFolderSel').value = 'f';
+  c.onRptFolderChange();
+  await tick();
+  assert.match(h.el('rptSummaryTbody').innerHTML, /Could not load/);
+  eq(chip(), JOB, 'failed: the label names the folder chosen, beside the error about it');
+  eq(sub(), '5 project periods · 1 folder');
+  h.el('rptFolderSel').value = '';
+  c.onRptFolderChange();
+  await tick();
+  assert.match(h.el('rptSummaryTbody').innerHTML, /Could not load/);
+  eq(chip(), 'COMPANY-WIDE', 'failed: All Folders too');
+  eq(sub(), '6 project periods · 3 folders');
+
+  // Coming back.
+  server.fail = false;
+  h.el('rptFolderSel').value = 'other';
+  c.onRptFolderChange();
+  await tick();
+  eq(chip(), 'OTHER', 'recovered');
+  assert.doesNotMatch(h.el('rptSummaryTbody').innerHTML, /Could not load/);
+
+  // A redraw with no new read still keeps it current.
+  vm.runInContext("expFolders.find(f => f.id === 'other').name = 'Renamed';", c);
+  c._pcRefreshReportViews();
+  eq(chip(), 'RENAMED', 'a redraw refreshes the label too');
+  await tick();
+}
+
 async function testReportsForgetTheCopyOnSignIn() {
   // The new account's data is empty, so e1 ('=1+1') can only be the last account's.
   const signIn = async ({ c, server, tick }) => {
@@ -1509,7 +1571,7 @@ async function testReportsForgetTheCopyOnSignIn() {
   assert.doesNotMatch(inFlight.h.el('rptExpDetailTbody').innerHTML, /=1\+1/, 'nor may its read still on the way land after it');
 }
 
-Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas), Promise.resolve().then(testAllocationDashboard), Promise.resolve().then(testProjectLedger), Promise.resolve().then(testAllocationPrint), Promise.resolve().then(testAllocationRootDateScope), Promise.resolve().then(testExpenseReportModel), Promise.resolve().then(testExpenseReportOutputs), testExpenseReportLoading(), testReportsShowTheServersFigures(), testReportsNeverShowOldFiguresWhileReading(), testReportsSayWhenTheReadFails(), testReportsNewestReadWins(), testReportsReadOnlyWhenAsked(), testReportNoteIsReadWithTheFigures(), testReportsFreshForStaffShowsNoMoney(), testReportsForgetTheCopyOnSignIn(), ...[testReportChartCategoryCollisions, testStaffReportDateScope, testFolderlessPeriodPrintScope, testDeletedPeriodDetailTeardown, testPublicPrintContracts, testPrintMetadataAndTotals].map(test => Promise.resolve().then(test))])
+Promise.allSettled([testOverheadAttribution(), testOverheadUploadFreshness(), Promise.resolve().then(testOverheadCsvFormulas), Promise.resolve().then(testAllocationDashboard), Promise.resolve().then(testProjectLedger), Promise.resolve().then(testAllocationPrint), Promise.resolve().then(testAllocationRootDateScope), Promise.resolve().then(testExpenseReportModel), Promise.resolve().then(testExpenseReportOutputs), testExpenseReportLoading(), testReportsShowTheServersFigures(), testReportsNeverShowOldFiguresWhileReading(), testReportsSayWhenTheReadFails(), testReportsNewestReadWins(), testReportsReadOnlyWhenAsked(), testReportNoteIsReadWithTheFigures(), testReportsFreshForStaffShowsNoMoney(), testReportsForgetTheCopyOnSignIn(), testReportLabelNamesTheChosenFolder(), ...[testReportChartCategoryCollisions, testStaffReportDateScope, testFolderlessPeriodPrintScope, testDeletedPeriodDetailTeardown, testPublicPrintContracts, testPrintMetadataAndTotals].map(test => Promise.resolve().then(test))])
   .then(results => {
     const failures = results.filter(result => result.status === 'rejected');
     if (failures.length) { failures.forEach(result => console.error(result.reason)); process.exitCode = 1; }
