@@ -369,6 +369,31 @@ test('0092: an item already used in requests opens with kind and unit locked, an
   ok(ra.ERRORS.ITEM_IN_USE.includes('new item') && ra.ERRORS.ITEM_IN_USE.includes('deactivate'), 'the refusal tells the office what to do');
 });
 
+console.log('\nrequests-admin: what the Teams screen says about a team with no leader');
+
+test('a team with no leader is not described as unable to send', () => {
+  const s = src('js/requests-admin-setup.js');
+  ok(!/once it has a leader/.test(s), 'the page intro');
+  ok(!/this team can\\'t send requests' \+/.test(s), 'the card warning');
+  ok(!/no leader and can\\'t send requests/.test(s), 'the two confirm messages');
+  ok(!/without one cannot send/.test(s), 'the comment above the cards');
+  const note = "const NO_LEADER_NOTE = 'Requests still reach the office, but no leader sees them or checks the team\\'s work.';";
+  ok(s.includes(note), 'one sentence says what really happens');
+  ok(s.split('NO_LEADER_NOTE').length - 1 === 4, 'card and both confirm messages use it');
+});
+
+test('the screen matches the server: membership sends, a turned-off team is refused', () => {
+  const m90 = src('supabase/migrations/0090_workmate_item_history.sql').replace(/\r/g, '');
+  const submit = m90.slice(m90.indexOf('create or replace function pr_submit_request'));
+  const teamCheck = submit.slice(submit.indexOf("v_team := nullif(p_request ->> 'team_id', '')"), submit.indexOf("raise exception 'NO_LINES'"));
+  ok(teamCheck.includes('pr_is_current_member(v_team, v_uid)'), 'a team request needs current membership');
+  ok(!/leader/i.test(teamCheck), 'if sending ever needs a leader, change NO_LEADER_NOTE too');
+  const m85 = src('supabase/migrations/0085_workmate_requests.sql').replace(/\r/g, '');
+  const member = m85.slice(m85.indexOf('create or replace function pr_is_current_member'), m85.indexOf('create or replace function pr_is_current_leader'));
+  ok(/m\.removed_at is null and t\.active/.test(member), 'a turned-off team has no current members');
+  ok(src('js/requests-admin-setup.js').includes("Inactive — this team can\\'t send requests."), 'and the screen says so');
+});
+
 // ── SUMMARY (keep last) ──
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) { console.log('\nFAILURES:\n  ' + failures.join('\n  ')); process.exit(1); }

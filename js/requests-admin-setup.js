@@ -229,11 +229,13 @@
     //
     // Layout: a summary strip (teams / need a leader / not in a team), a
     // search box, then the teams as a grid of compact cards. Each card
-    // puts the leader first because a team without one cannot send
-    // requests -- that is the thing the office has to notice. Inactive
-    // teams sit at the bottom, dimmed. All actions are the same RPCs.
+    // puts the leader first because a team without one still sends requests
+    // with no leader to see them -- that is the thing the office has to
+    // notice. Inactive teams sit at the bottom, dimmed. All actions are the
+    // same RPCs.
 
     const teamUi = { text: '', showInactive: false };
+    const NO_LEADER_NOTE = 'Requests still reach the office, but no leader sees them or checks the team\'s work.';
 
     function initials(name) {
         const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
@@ -303,8 +305,8 @@
                 '<button class="req-link" type="button" data-act="unlead">Remove as leader</button></div>';
         } else {
             leaderLine = '<div class="req-team-lead req-team-lead--warn"><i data-lucide="alert-triangle"></i>' +
-                '<span><strong>No leader</strong> — this team can\'t send requests' +
-                (canLead.length ? '. Pick one below.' : '. Add someone with the Team Leader role.') + '</span></div>';
+                '<span><strong>No leader.</strong> ' + NO_LEADER_NOTE +
+                (canLead.length ? ' Pick one below.' : ' Add someone with the Team Leader role.') + '</span></div>';
         }
 
         const rows = members.map(m => {
@@ -416,7 +418,7 @@
 
         host.innerHTML =
             '<div class="att-stack req-teams">' +
-              head('Teams', 'A team can send requests once it has a leader. Only people with the Team Leader role can be made leader.',
+              head('Teams', 'Members can send requests for their team. A leader also sees them and checks the team\'s work. Only people with the Team Leader role can be made leader.',
                    '<button class="att-btn att-btn--primary" type="button" data-new-team><i data-lucide="plus"></i> New team</button>') +
               (teams.length
                 ? '<div class="req-team-stats">' +
@@ -482,12 +484,12 @@
             if (act === 'remove') {
                 const m = team.members.find(x => x.worker_id === b.dataset.worker);
                 if (!confirm('Remove ' + (m ? m.name : 'this person') + ' from ' + team.name + '?' +
-                    (m && m.is_leader ? ' The team will have no leader and can\'t send requests until you pick one.' : ''))) return;
+                    (m && m.is_leader ? ' The team will have no leader until you pick one. ' + NO_LEADER_NOTE : ''))) return;
                 call = ['pr_office_remove_member', { p_team: team.id, p_worker: b.dataset.worker }];
             } else if (act === 'lead') {
                 call = ['pr_office_set_leader', { p_team: team.id, p_worker: b.dataset.worker }];
             } else if (act === 'unlead') {
-                if (!confirm(team.name + ' will have no leader and can\'t send requests until you pick one. Continue?')) return;
+                if (!confirm(team.name + ' will have no leader until you pick one. ' + NO_LEADER_NOTE + ' Continue?')) return;
                 call = ['pr_office_set_leader', { p_team: team.id, p_worker: null }];
             }
             if (!call) return;
