@@ -14,6 +14,8 @@
 --      hands back and reverses; refused for anyone outside the team.
 --   D. W-0007 as worker: sees their own tool with no money, reports a problem;
 --      the office sees it and closes it with a note; no tool or record changes.
+--      The password state follows the records: W-0005 was never reset, and
+--      W-0007 is read as it stands (reset on 5 Nov by step T0).
 --   E. the switch refuses to remove a leader of an active team; an invalid leader
 --      reads as such; a mark on a turned-off team can be cleared.
 --   F. no expense, payroll or attendance row changed.
@@ -37,6 +39,7 @@ declare
   v_number int;
   v_rec uuid;
   v_problem uuid;
+  v_must boolean;
   r jsonb;
   v_err text;
   fn text;
@@ -125,8 +128,14 @@ begin
   exception when others then
     assert sqlerrm = 'NOT_LEADER', 'D4 got ' || sqlerrm;
   end;
-  assert not (wk_password_state() ->> 'must_change')::boolean, 'D5 no reset';
-  assert not (wk_password_changed() ->> 'recorded')::boolean, 'D6 nothing to record';
+  v_must := coalesce((select e.kind = 'temporary_set' from wk_password_events e
+                       where e.worker_id = v_w7 and e.kind in ('temporary_set', 'changed') order by e.id desc limit 1), false);
+  assert (wk_password_state() ->> 'must_change')::boolean = v_must, 'D5 the state follows the records';
+  assert (wk_password_changed() ->> 'recorded')::boolean = v_must, 'D6 recorded only if a change was owed';
+  assert not (wk_password_state() ->> 'must_change')::boolean, 'D6b nothing owed afterwards';
+  perform set_config('request.jwt.claims', json_build_object('sub', v_w5, 'role', 'authenticated')::text, true);
+  assert not (wk_password_state() ->> 'must_change')::boolean, 'D6c never reset';
+  assert not (wk_password_changed() ->> 'recorded')::boolean, 'D6d nothing to record';
 
   perform set_config('request.jwt.claims', json_build_object('sub', v_owner, 'role', 'authenticated')::text, true);
   assert (select count(*) from jsonb_array_elements(tl_problems(true)) p where (p ->> 'id')::uuid = v_problem) = 1, 'D7 the office sees it';
