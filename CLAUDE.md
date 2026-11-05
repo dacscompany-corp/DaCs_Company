@@ -195,8 +195,8 @@ Profit   = Earned − Spent
   (`leader_problem` in `pr_office_teams`); read the mark through that, not `is_leader` alone.
 - **A temporary password (0111) is set only by the `admin-set-worker-password` Edge Function:** main owner only, one active
   worker or team leader of this company at a time, and each needs the owner's approval. It is shown once and never stored or
-  logged. **It signs that worker out on every phone** (GoTrue's admin password change), so check the old app's "Not sent yet"
-  first. Attendance waiting to send stays on the phone. It can sync before the worker signs in again if the phone's current
+  logged. **A reset invalidates the worker's sessions. Phones can continue using their current access until it expires, then
+  the worker needs to sign in again.** (GoTrue's admin password change.) Check the old app's "Not sent yet" first. Attendance waiting to send stays on the phone. It can sync before the worker signs in again if the phone's current
   access is still valid. Otherwise, the same worker needs to sign in again. `attendance-signin` and the `profiles` columns stay
   untouched: the old Attendance app reads both and cannot be updated.
 - **Reconciliation (0109, WorkMate Stage 4) reads and points — it moves no money.** The owner's **Reconciliation** tab

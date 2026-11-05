@@ -115,6 +115,8 @@ test('the reset warning says what the phone test showed, in the owner\'s words',
   const notes = plain(read('CLAUDE.md'));
   ok(notes.includes(WORDS), 'the project notes say the same');
   ok(!/waits on the phone until they sign in again/.test(notes), 'and the old claim is gone from them');
+  ok(notes.replace(/\*\*/g, '').includes('A reset invalidates the worker\u2019s sessions. Phones can continue using their current access until it expires, then the worker needs to sign in again.'), 'the notes say what a reset really does');
+  ok(!/signs that worker out on every phone/.test(notes), 'and no longer that it signs them out on every phone');
 });
 
 test('the edit form no longer says role and password cannot be changed anywhere', () => {
