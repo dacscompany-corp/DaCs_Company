@@ -98,7 +98,23 @@ test('a temporary password is shown once and never kept', () => {
   ok(/Shown once/.test(body), 'the screen says so');
   ok(/out\.marked === false/.test(body), 'an unrecorded "must change" is said aloud');
   ok(/Not sent yet/.test(body), 'it warns about unsent attendance first');
-  ok(/signs them out/i.test(body), 'and about being signed out');
+  ok(/Their old password stops working/.test(body), 'and that their old password stops working');
+});
+
+test('the reset warning says what the phone test showed, in the owner\'s words', () => {
+  const plain = (t) => t.replace(/<\/?strong>/g, '').replace(/&rsquo;/g, '\u2019').replace(/&ldquo;/g, '\u201c').replace(/&rdquo;/g, '\u201d')
+    .replace(/'/g, '\u2019').replace(/\s+/g, ' ');
+  const OPENING = 'Their old password stops working. They\u2019ll need to sign in again when their phone\u2019s current access expires.';
+  const CHECK = 'First check \u201cNot sent yet\u201d in the old app on their phone.';
+  const WORDS = 'Attendance waiting to send stays on the phone. It can sync before the worker signs in again '
+    + 'if the phone\u2019s current access is still valid. Otherwise, the same worker needs to sign in again.';
+  const body = plain(ATT.slice(ATT.indexOf('function attOpenTempPassword('), ATT.indexOf('function attOpenEditWorker(')));
+  ok(body.includes(OPENING + ' ' + CHECK + ' ' + WORDS), 'the dialog carries the exact words, in order');
+  ok(!/signs them out/i.test(body), 'the old opening is gone from the dialog');
+  ok(!/sends only after/.test(body), 'the old claim is gone from the dialog');
+  const notes = plain(read('CLAUDE.md'));
+  ok(notes.includes(WORDS), 'the project notes say the same');
+  ok(!/waits on the phone until they sign in again/.test(notes), 'and the old claim is gone from them');
 });
 
 test('the edit form no longer says role and password cannot be changed anywhere', () => {

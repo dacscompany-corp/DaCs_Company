@@ -2821,9 +2821,11 @@
                   <div class="att-modal-body">
                     <div class="att-info att-info--warn att-span">
                       <i data-lucide="alert-triangle"></i>
-                      <div><strong>This signs them out on every phone.</strong> Their old password stops working.
-                        First check &ldquo;Not sent yet&rdquo; in the old app on their phone: attendance waiting
-                        there stays on the phone, and sends only after they sign in again.</div>
+                      <div><strong>Their old password stops working.</strong> They&rsquo;ll need to sign in again when their
+                        phone&rsquo;s current access expires.
+                        First check &ldquo;Not sent yet&rdquo; in the old app on their phone. Attendance waiting to send
+                        stays on the phone. It can sync before the worker signs in again if the phone&rsquo;s current
+                        access is still valid. Otherwise, the same worker needs to sign in again.</div>
                     </div>
                     <div class="att-field att-span">
                       <label for="attTpNumber">Type the worker number to confirm <span class="att-req">*</span></label>

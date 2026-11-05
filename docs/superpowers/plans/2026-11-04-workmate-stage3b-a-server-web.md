@@ -244,7 +244,7 @@ The normal app shows the submission ID nowhere, and Android won't let anyone rea
 ## Found and not changed
 - **The same Role dropdown fails for staff and engineer accounts** on Users → Edit. You approved the change for worker accounts only.
 - **The Buyer switch's server check** is recorded as its own finding.
-- **Three places say unsent attendance waits for a new sign-in:** the Set temporary password dialog, `CLAUDE.md` and the function's comment. T0 showed it can send sooner, on the phone's remaining access. A wording fix awaits the owner's go-ahead.
+- **The password function's comment still says unsent attendance waits for a new sign-in.** T0 showed it can send sooner, on the phone's remaining access. The dialog and `CLAUDE.md` now use the owner's wording. **The comment changes with the function's next deployment,** so the deployed file and the repo stay identical until then.
 - **A refused submission leaves its photo in Storage,** because the phone uploads the photo before the server answers. Nothing points to it, and nothing cleans it up.
 - **A worker can ignore "must change" in the old app,** which can't be updated. Only WorkMate will ask.
 - **A leader's request links stop at what they can see.** A member's "Just me" request is private from their leader today, so the phone can't link it, and the office issues that tool on the web.
