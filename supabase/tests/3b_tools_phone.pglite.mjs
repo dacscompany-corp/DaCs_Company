@@ -4,6 +4,8 @@
 //
 // Runs migrations 0096 … 0108 and 0111 VERBATIM on PGlite over the 3a suite's
 // tables. Nothing here talks to the live database or a real account.
+// --with-0112: and 0112 on top (3b-b: a password change confirms the reset it
+// answers) — every test again, plus section O.
 // supabase/tests/3b_acceptance.sql repeats the key cases on live, rolled back.
 // ═══════════════════════════════════════
 import { PGlite } from '@electric-sql/pglite';
@@ -36,6 +38,8 @@ const M106 = mig('0106_workmate_phone_stock.sql');
 const M107 = mig('0107_tools.sql');
 const M108 = mig('0108_tools_crew_numbers.sql');
 const M111 = mig('0111_workmate_tools_phone.sql');
+const WITH_0112 = process.argv.includes('--with-0112');
+const M112 = WITH_0112 ? mig('0112_password_change_per_reset.sql') : '';
 
 // These two end "end $$;" rather than a line of their own.
 const fnEnd = (src, name) => {
@@ -161,6 +165,7 @@ async function fresh(opts = {}) {
   await db.exec(fnText(M86, 'pr_office_remove_member'));
   await db.exec(fnText(M86, 'pr_office_save_team'));
   await db.exec(M111);
+  if (M112) await db.exec(M112);
   await as(db, '');
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name, worker_no) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null, null),
@@ -229,7 +234,7 @@ const keysOf = (o, out = new Set()) => {
 };
 const noForbidden = (o, m) => { for (const k of keysOf(o)) assert(!FORBIDDEN.test(k), (m || '') + ' exposes ' + k); };
 
-console.log('\n3b-a tools on the phone (0096 … 0108 + 0111 on PGlite)');
+console.log('\n3b-a tools on the phone (0096 … 0108 + 0111' + (WITH_0112 ? ' + 0112' : '') + ' on PGlite)');
 
 // ── A. A worker's own tools ─────────────────────────────────
 await test('My tools: only their own, with no money, purchase, note, photo or other people', async () => {
@@ -811,7 +816,7 @@ await test('must change: only after a temporary password was really set, until t
 await test('the password log holds no password, cannot be rewritten, and only the main owner reads it', async () => {
   const db = await fresh();
   const cols = (await db.query(`select column_name from information_schema.columns where table_name = 'wk_password_events'`)).rows.map((r) => r.column_name);
-  eq(cols.sort(), ['actor_id', 'at', 'id', 'kind', 'owner_id', 'worker_id'].sort());
+  eq(cols.sort(), ['actor_id', 'at', 'id', 'kind', 'owner_id', 'worker_id', ...(WITH_0112 ? ['reset_id'] : [])].sort());
   await as(db, '');
   await event(db, AMY, 'temporary_set');
   await refused(db.query(`delete from wk_password_events`), 'HISTORY_IMMUTABLE');
@@ -929,6 +934,119 @@ await test('the acceptance script fails when it should', async () => {
     assert(got.includes(want), why + ': expected ' + want + ', got ' + got);
   }
 });
+
+
+// ── O. 0112: a password change confirms the reset it answers ──
+if (WITH_0112) {
+  const state = async (db, who) => {
+    const s = await rpc(db, who, 'wk_password_state');
+    return [s.must_change, s.reset_id == null ? null : num(s.reset_id)];
+  };
+  const confirm = async (db, who, reset) => (await rpc(db, who, 'wk_password_changed_for', [reset == null ? null : String(reset)])).recorded;
+  // A reset as the Edge Function writes it: requested, then temporary_set.
+  const reset = async (db, who) => {
+    await as(db, '');
+    await event(db, who, 'requested');
+    return num((await one(db, `insert into wk_password_events (owner_id, worker_id, kind, actor_id) values ($1, $2, 'temporary_set', $1) returning id`, [OWNER, who])).id);
+  };
+  const changes = async (db, who) => num((await one(db, `select count(*) n from wk_password_events where worker_id = $1 and kind = 'changed'`, [who])).n);
+
+  await test('0112: the state names the open reset, and only while it is open', async () => {
+    const db = await fresh();
+    eq(await state(db, AMY), [false, null]);
+    const r1 = await reset(db, AMY);
+    eq(await state(db, AMY), [true, r1]);
+    eq(await state(db, BEN), [false, null], 'only that worker');
+    await as(db, '');
+    await event(db, AMY, 'failed');
+    eq(await state(db, AMY), [true, r1], 'a failed reset opens nothing');
+  });
+
+  await test('0112: a change confirms its own reset, once; the same confirmation again records nothing', async () => {
+    const db = await fresh();
+    const r1 = await reset(db, AMY);
+    eq(await confirm(db, AMY, r1), true);
+    eq(await state(db, AMY), [false, null]);
+    eq(await confirm(db, AMY, r1), false, 'a lost answer sent again');
+    eq(await changes(db, AMY), 1);
+    eq(num((await one(db, `select reset_id from wk_password_events where worker_id = $1 and kind = 'changed'`, [AMY])).reset_id), r1, 'the row names its reset');
+  });
+
+  await test('0112: a lost confirmation sent after a second reset records nothing — the second reset stays owed', async () => {
+    const db = await fresh();
+    const r1 = await reset(db, AMY);
+    const r2 = await reset(db, AMY);
+    eq(await confirm(db, AMY, r1), false);
+    eq(await state(db, AMY), [true, r2]);
+    eq(await changes(db, AMY), 0);
+    eq(await confirm(db, AMY, r2), true, 'closed by its own change');
+    eq(await state(db, AMY), [false, null]);
+  });
+
+  await test('0112: a change of one reset never closes a later one, whichever row came first', async () => {
+    const db = await fresh();
+    const r1 = await reset(db, AMY);
+    const r2 = await reset(db, AMY);
+    await as(db, '');
+    await db.query(`insert into wk_password_events (owner_id, worker_id, kind, actor_id, reset_id) values ($1, $2, 'changed', $2, $3)`, [OWNER, AMY, String(r1)]);
+    eq(await state(db, AMY), [true, r2], 'a row after r2 that names r1');
+  });
+
+  await test('0112: a confirmation closes only the caller\'s own reset; none without a reset or a sign-in', async () => {
+    const db = await fresh();
+    const rAmy = await reset(db, AMY);
+    eq(await confirm(db, BEN, rAmy), false, 'another worker\'s reset');
+    await reset(db, BEN);
+    eq(await confirm(db, BEN, rAmy), false, 'even while their own is open');
+    eq(await confirm(db, AMY, null), false, 'no reset named');
+    await refused(confirm(db, '', rAmy), 'AUTH_REQUIRED', 'signed out');
+    eq([await changes(db, AMY), await changes(db, BEN), (await state(db, AMY))[0]], [0, 0, true]);
+  });
+
+  await test('0112: a change recorded the 0111 way still closes the resets before it; a later reset is owed again', async () => {
+    const db = await fresh();
+    await reset(db, AMY);
+    eq((await rpc(db, AMY, 'wk_password_changed')).recorded, true, '0111\'s action, unchanged');
+    eq(await state(db, AMY), [false, null]);
+    const r2 = await reset(db, AMY);
+    eq(await state(db, AMY), [true, r2]);
+    eq((await rpc(db, AMY, 'wk_password_changed')).recorded, true);
+    eq(await state(db, AMY), [false, null]);
+  });
+
+  await test('0112: only a "changed" row names a reset, and only a real one; the log still holds no password', async () => {
+    const db = await fresh();
+    const r1 = await reset(db, AMY);
+    await as(db, '');
+    await refused(db.query(`insert into wk_password_events (owner_id, worker_id, kind, actor_id, reset_id) values ($1, $2, 'temporary_set', $1, $3)`, [OWNER, AMY, String(r1)]), 'wk_password_events_reset_kind');
+    await refused(db.query(`insert into wk_password_events (owner_id, worker_id, kind, actor_id, reset_id) values ($1, $2, 'changed', $2, 999999)`, [OWNER, AMY]), 'foreign key');
+    await refused(db.query(`update wk_password_events set reset_id = null`), 'HISTORY_IMMUTABLE');
+  });
+
+  await test('0112: who may call what — the reader and the action for signed-in accounts; the helper for nobody', async () => {
+    const db = await fresh();
+    const can = async (role, fn) => (await one(db, `select has_function_privilege($1, $2, 'execute') x`, [role, fn])).x;
+    for (const fn of ['wk_password_state()', 'wk_password_changed_for(bigint)']) eq([await can('authenticated', fn), await can('anon', fn)], [true, false], fn);
+    eq([await can('authenticated', 'wk_password_open_reset(uuid)'), await can('anon', 'wk_password_open_reset(uuid)')], [false, false]);
+    const defined = [...M112.matchAll(/create or replace function (?:public\.)?([a-z_]+)\(/g)].map((m) => m[1]);
+    eq(defined.sort(), ['wk_password_changed_for', 'wk_password_open_reset', 'wk_password_state']);
+    assert(!/\b(drop table|drop column|delete|truncate|policy)\b/i.test(M112.replace(/--.*$/gm, '')), 'additive only');
+  });
+
+  const ROLLBACK_B = read(path.join(ROOT, 'supabase/tests/3b_b_rollback.sql'));
+  await test('0112 rollback: 0111\'s state exactly, deleting nothing; a recorded change stays recorded', async () => {
+    assert(ROLLBACK_B.includes(fnText(M111, 'wk_password_state')), 'the 0111 text');
+    assert(!/\b(drop|delete|truncate|alter)\b/i.test(ROLLBACK_B.replace(/--.*$/gm, '')), 'it removes nothing');
+    const db = await fresh();
+    const r1 = await reset(db, AMY);
+    await confirm(db, AMY, r1);
+    await as(db, '');
+    await db.exec(ROLLBACK_B);
+    eq(await rpc(db, AMY, 'wk_password_state'), { must_change: false }, 'the 0111 answer: still closed');
+    await reset(db, AMY);
+    eq(await rpc(db, AMY, 'wk_password_state'), { must_change: true });
+  });
+}
 
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) { console.log('\nFAILURES:\n  ' + failures.join('\n  ')); process.exit(1); }

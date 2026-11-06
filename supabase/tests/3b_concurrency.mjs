@@ -17,6 +17,8 @@
 //   8. the switch pressed twice at once → one change, one log row
 //   9. "password changed" recorded twice at once → one row
 //  10. a damaged return on the real clock, no test clock → no ties observed in 200 runs
+//  11. one reset confirmed twice at once (0112) → one row
+//  12. a confirmation of one reset racing a second reset (0112) → the second stays owed
 // ═══════════════════════════════════════
 import EmbeddedPostgres from 'embedded-postgres';
 import pg from 'pg';
@@ -111,6 +113,7 @@ ${fnText(M51, 'attendance_data_owner')}`);
   await admin.query(mig('0107_tools.sql'));
   await admin.query(mig('0108_tools_crew_numbers.sql'));
   await admin.query(mig('0111_workmate_tools_phone.sql'));
+  await admin.query(mig('0112_password_change_per_reset.sql'));
   await admin.query(`insert into profiles (id, role, owner_id, status, display_name) values
     ('${OWNER}', 'owner', null, 'active', 'Owner'), ('${STAFF}', 'staff', '${OWNER}', 'active', 'Ana'),
     ('${BUYER}', 'staff', '${OWNER}', 'active', 'Juan'), ('${WORKER}', 'worker', '${OWNER}', 'active', 'Mark'),
@@ -339,6 +342,46 @@ ${fnText(M51, 'attendance_data_owner')}`);
       if (!undo.includes('LATER_RECORDS')) wrong++;
     }
     check(`10. a damaged return on the real clock, no test clock: no ties observed in ${RUNS} runs, and reversing the return was refused each time`, ties === 0 && wrong === 0, `ties ${ties}, wrong outcome ${wrong}`);
+  }
+
+  const RESET = `insert into wk_password_events (owner_id, worker_id, kind, actor_id) values ('${OWNER}', $1, 'temporary_set', '${OWNER}') returning id as r`;
+  const CONFIRM = `select wk_password_changed_for($1) r`;
+  const openReset = async () => {
+    await as(WORKER);
+    const s = (await one(`select wk_password_state() r`)).r;
+    return s.must_change ? String(s.reset_id) : null;
+  };
+
+  // 11
+  {
+    let bad = 0, dead = 0;
+    for (let i = 0; i < ROUNDS; i++) {
+      await as('');
+      const r = (await one(RESET, [WORKER])).r;
+      const before = Number((await one(`select count(*) n from wk_password_events where worker_id = $1 and kind = 'changed'`, [WORKER])).n);
+      const out = await pair(WORKER, CONFIRM, [r], WORKER, CONFIRM, [r]);
+      if (deadlock(out)) dead++;
+      const after = Number((await one(`select count(*) n from wk_password_events where worker_id = $1 and kind = 'changed'`, [WORKER])).n);
+      if (!out.every(o => o.ok) || after !== before + 1 || out.filter(o => o.r && o.r.recorded).length !== 1 || (await openReset()) !== null) bad++;
+    }
+    check('11. one reset confirmed twice at once: one row', bad === 0 && dead === 0, `wrong outcome ${bad}, deadlocks ${dead}`);
+  }
+
+  // 12
+  {
+    let bad = 0, dead = 0;
+    for (let i = 0; i < ROUNDS; i++) {
+      await as('');
+      const r1 = (await one(RESET, [WORKER])).r;
+      const out = await pair(WORKER, CONFIRM, [r1], '', RESET, [WORKER]);
+      if (deadlock(out)) dead++;
+      const r2 = out[1].ok ? String(out[1].r) : null;
+      if (!out.every(o => o.ok) || (await openReset()) !== r2) bad++;
+      // close it before the next round, by its own change
+      await as(WORKER);
+      await one(CONFIRM, [r2]);
+    }
+    check('12. a confirmation of one reset racing a second reset: the second stays owed', bad === 0 && dead === 0, `wrong outcome ${bad}, deadlocks ${dead}`);
   }
 } finally {
   await admin.end();

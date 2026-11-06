@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0112** — highest on disk is
-  `0111_workmate_tools_phone.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0113** — highest on disk is
+  `0112_password_change_per_reset.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble. **0109** (WorkMate Stage 4) was reserved before 0110 and is applied live after it.
 - **`0075` and `0076` are TAKEN but not on `main`.** They belong to the abandoned
   project cost-plan branch (`project_cost_plans`, then its `%` columns) and **both
@@ -207,6 +207,8 @@ file creates the policy only when it is missing, so applying it live changes not
 **0110 (PM profit sharing — personal items; OUTSIDE the money model)** adds three private tables (RLS on, no policies — reads and writes only through its functions): `pm_sharing_items` (something the owner or the partner bought for themselves on one PM project: `charged_to` owner/partner, name, amount, date, optional note and receipt, `status` active/voided, `version`), the append-only `pm_sharing_item_events` (recorded / corrected / voided with old and new values and a reason; UPDATE/DELETE refused by `pm_si_events_immutable_trg`) and `pm_sharing_item_ops` (one row per operation id, so a retry records once). An item comes off only that person's share in PM profit sharing — never a project cost, payment, expense or Spent / Earned / Profit. Callable: `pm_si_record`, `pm_si_correct`, `pm_si_void` (**main owner only**; correct and void need the current version and void needs a reason), plus `pm_sharing_read` now returning the items (owner-role accounts of the company read; staff never). It also **restates 0102's `uploads_can_read`, `uploads_can_write` and the policy `uploads_admin_update` wholesale** with one added `pmSharing/<company>/<yyyy-mm>/<uuid>.jpg` branch (`pm_si_file_ok`) for item receipts — so check live has not drifted from 0102 before applying (`supabase/tests/pm_sharing_items_preapply.sql` / `.mjs`). Requires 0098 and 0102. Prove with `node supabase/tests/pm_sharing_items.pglite.mjs`; live: `supabase/tests/pm_sharing_items_acceptance.sql` (read-only). **Not yet applied as of 2026-10-31.**
 
 **0111 (WorkMate Stage 3b-a — tools on the phone, the Team Leader switch, password records)** adds `tl_problems`, `wk_role_events` and `wk_password_events` (row security on, no policies; the last two append-only), the `tl_my_*`, `tl_team_*` and `wk_*` functions, and redefines `tl_actor`, `profiles_guard`, `pr_office_teams` and `pr_office_set_leader`. No money, no new column on `profiles`. It needs 0107 and 0108 first. The Edge Function `admin-set-worker-password` needs this migration first.
+
+**0112 (WorkMate Stage 3b-b — a password change confirms the reset it answers)** adds a nullable `reset_id` to `wk_password_events` (a "changed" row names its reset; only "changed" rows carry one), the internal `wk_password_open_reset(uuid)`, rewrites `wk_password_state()` (the same `must_change`, plus `reset_id`) and adds `wk_password_changed_for(bigint)`, which records a change only for the caller's open reset. 0111's `wk_password_changed()` is unchanged. No money, no policy. It needs 0111 first; WorkMate 1012 needs it. The way back: `supabase/tests/3b_b_rollback.sql`.
 
 Get the truth before relying on this line:
 

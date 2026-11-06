@@ -1233,7 +1233,7 @@ No money: nothing here reads or writes a peso, an expense or payroll. Every read
 |---|---|
 | `tl_problems` | `tool_id`, `kind` (`dont_have` / `broken`), `note`, `reported_by`, `reported_at`, `closed_by`, `closed_at`, `close_note`. One open report per person, tool and kind. Never edited or deleted: closed once (`tl_problems_guard`). A report changes no tool |
 | `wk_role_events` | Who changed whom, when, and from what to what. Append-only |
-| `wk_password_events` | `worker_id`, `kind` (`requested` / `temporary_set` / `failed` / `changed`), `actor_id`, `at`. Append-only. **Never a password** |
+| `wk_password_events` | `worker_id`, `kind` (`requested` / `temporary_set` / `failed` / `changed`), `actor_id`, `at`, `reset_id` (0112: the reset a "changed" row answers; null on every other row and on changes recorded before 0112). Append-only. **Never a password** |
 
 | Function | Who | What |
 |---|---|---|
@@ -1247,7 +1247,8 @@ No money: nothing here reads or writes a peso, an expense or payroll. Every read
 | `wk_me()` | signed in | `is_main_owner`, to show the buttons. The server still decides |
 | `wk_set_team_leader(worker, on)` | **main owner** | `LEADS_A_TEAM` (team names in `detail`), `NOT_A_WORKER`, `ACCOUNT_INACTIVE`. Clears that person's marks on turned-off teams |
 | `wk_worker_log(worker)` | **main owner** | One worker's role and password events |
-| `wk_password_state()`, `wk_password_changed()` | the worker | "Must change", and clearing it |
+| `wk_password_state()`, `wk_password_changed()` | the worker | "Must change", and clearing it. Since 0112 the state also names the open reset (`reset_id`) |
+| `wk_password_changed_for(bigint)` (0112) | the worker | Records the change of that reset only, while it is their open one; anything else records nothing. WorkMate 1012 uses this, never `wk_password_changed()` |
 
 Redefined: `tl_actor` (0107), which answers for a leader's company only inside `tl_as_leader`; `profiles_guard` (0019), which opens only for `wk_set_team_leader`'s own change; `pr_office_teams` (0086), which adds `leader_problem` (`no_role` / `inactive`); `pr_office_set_leader` (0086), which can clear a mark on a turned-off team and reads the role under a lock.
 
