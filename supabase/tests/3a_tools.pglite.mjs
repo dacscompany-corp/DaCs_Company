@@ -15,7 +15,7 @@ import { PGlite } from '@electric-sql/pglite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { prBase, fnText, CATALOG_0085 } from './pr_base.mjs';
+import { prBase, fnText, CATALOG_0085, TOOL_RECORD_CLOCK } from './pr_base.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.DACS_ROOT || path.join(HERE, '..', '..');
@@ -134,6 +134,7 @@ async function fresh(opts = {}) {
   await db.exec(REQUESTS_0085);
   await db.exec(M106);
   await db.exec(M107);
+  await db.exec(TOOL_RECORD_CLOCK);
   if (M108) await db.exec(M108);
   if (M111) await db.exec(M111);
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values

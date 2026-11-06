@@ -16,6 +16,7 @@
 //      leader without the role
 //   8. the switch pressed twice at once → one change, one log row
 //   9. "password changed" recorded twice at once → one row
+//  10. a damaged return on the real clock, no test clock → no ties observed in 200 runs
 // ═══════════════════════════════════════
 import EmbeddedPostgres from 'embedded-postgres';
 import pg from 'pg';
@@ -320,6 +321,24 @@ ${fnText(M51, 'attendance_data_owner')}`);
       if (!out.every(o => o.ok) || after !== before + 1) bad++;
     }
     check('9. "password changed" twice at once: one row', bad === 0 && dead === 0, `wrong outcome ${bad}, deadlocks ${dead}`);
+  }
+
+  // 10
+  {
+    let ties = 0, wrong = 0;
+    const RUNS = 200;
+    const RETURN = `select tl_team_return(gen_random_uuid(), $1::jsonb) r`;
+    const it = await item('Mixer');
+    for (let i = 0; i < RUNS; i++) {
+      const t = await oneTool(it);
+      await call(STAFF, OFFICE_ISSUE, [JSON.stringify({ tool_id: t, holder_id: WORKER, folder_id: f })]);
+      const back = await call(LEADER, RETURN, [JSON.stringify({ tool_id: t, condition: 'damaged' })]);
+      const at = await one(`select (select recorded_at from tl_records where id = $1) = (select recorded_at from tl_records where id = $2) as same`, [back.record_id, back.retire_record_id]);
+      if (at.same) ties++;
+      const undo = await call(LEADER, `select tl_team_reverse(gen_random_uuid(), $1, 'mistake') r`, [back.record_id]).then(() => 'accepted', (e) => e.message);
+      if (!undo.includes('LATER_RECORDS')) wrong++;
+    }
+    check(`10. a damaged return on the real clock, no test clock: no ties observed in ${RUNS} runs, and reversing the return was refused each time`, ties === 0 && wrong === 0, `ties ${ties}, wrong outcome ${wrong}`);
   }
 } finally {
   await admin.end();

@@ -10,7 +10,7 @@ import { PGlite } from '@electric-sql/pglite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { prBase, fnText, CATALOG_0085 } from './pr_base.mjs';
+import { prBase, fnText, CATALOG_0085, TOOL_RECORD_CLOCK } from './pr_base.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.DACS_ROOT || path.join(HERE, '..', '..');
@@ -150,6 +150,7 @@ async function fresh(opts = {}) {
   await db.exec(REQUESTS_0085);
   await db.exec(M106);
   await db.exec(M107);
+  await db.exec(TOOL_RECORD_CLOCK);
   await db.exec(M108);
   await db.exec(fnEnd(M19, 'profiles_guard'));
   await db.exec(`create trigger profiles_guard_trg before update on profiles for each row execute function profiles_guard();`);
@@ -516,6 +517,15 @@ await test('reverse: only their own latest record, with a reason; the office can
   const back = await ret(db, CAL, { tool_id: d, condition: 'damaged' });
   await refused(reverse(db, CAL, back.record_id), 'LATER_RECORDS', 'the Retire request came after');
   await refused(reverse(db, CAL, back.retire_record_id), 'BAD_STATE', 'a leader never withdraws what waits for the owner');
+});
+await test('a damaged return: its Retire request is always the later record, every time', async () => {
+  const db = await fresh();
+  for (let i = 1; i <= 30; i++) {
+    const t = await newTool(db);
+    await officeIssue(db, t, AMY);
+    const back = await ret(db, CAL, { tool_id: t, condition: 'damaged' });
+    await refused(reverse(db, CAL, back.record_id), 'LATER_RECORDS', 'round ' + i + ': the Retire request came after');
+  }
 });
 await test('my records: their own recent records, which ones they can still reverse, no notes', async () => {
   const db = await fresh();

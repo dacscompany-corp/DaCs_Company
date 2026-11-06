@@ -15,6 +15,18 @@ export const fnText = (src, name) => {
   return m[0];
 };
 
+// PGlite's clock counts whole milliseconds, so the two records one call writes (a damaged return
+// and its Retire request) can share a recorded_at; tl_latest (0107) then picks between them by their
+// random ids, and a check expecting the Retire request to be the latest passes or fails at random.
+// This gives each tool record a strictly later time, on PGlite only. Run right after 0107.
+// On real PostgreSQL, with no test clock, 3b_concurrency.mjs check 10 runs the same case: no ties
+// observed in 200 runs. Live ordering still rests on recorded_at with a random-id tie-break; that is
+// a separate ordering issue, not changed here.
+export const TOOL_RECORD_CLOCK = `
+create sequence test_tool_record_tick;
+alter table tl_records alter column recorded_at
+  set default clock_timestamp() + nextval('test_tool_record_tick') * interval '1 microsecond';`;
+
 // 0085's (and 0090's aliases / brand) catalogue columns that the minimal
 // pr_catalog_items above leaves out — 0104 (stock, and its copy of 0092's
 // catalogue save and list) reads them. Run after prBase, before 0104.
