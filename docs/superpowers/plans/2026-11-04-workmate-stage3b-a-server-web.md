@@ -1,6 +1,6 @@
 # WorkMate Stage 3b-a: tools on the phone (server side), the Team Leader switch, temporary passwords — tested plan
 
-**Status (5 Nov 2026):** Revision 4. **Tasks 1 to 3 are done, and T0 has run as a refusal-path test.** The test's checks passed, but **its clean-up deleted W-0007's whole photo folder**: see the incident under Task T0. No attendance record and no other worker's photo was affected. No role has changed. Task 5 hasn't been proposed.
+**Status (6 Nov 2026):** Revision 5, the closeout. **Tasks 1 to 6 are done.** T0 ran as a refusal-path test, and live acceptance passed on 5 Nov. **T0's clean-up deleted W-0007's whole photo folder**: see the incident under Task T0. No attendance record and no other worker's photo was affected, and no role has changed. A CI failure on `7d3b23a` came from a timing tie in the test database; its fix changes tests only. **Still pending:** the valid-record test on a genuine working day, the old app's own unsent test, and the sign-in-then-send route on a real phone.
 
 **Goal:** the server and Dacs Web work behind tools on the phone, plus the Team Leader switch and the temporary password. **It doesn't reach the crew.** The phone screens are 3b-b. Messenger stays official until the owner approves the switch-over date.
 
@@ -218,6 +218,52 @@ The normal app shows the submission ID nowhere, and Android won't let anyone rea
 
 ---
 
+## Task 5: live acceptance, 5 November
+
+**The owner approved one run of the corrected script, after CI passed.** As first committed, the script would have failed at D5: it expected W-0007 never to have been reset, and T0 had reset that account. **The corrected script, committed as `9f275a0`, reads W-0007's password state from the records,** so it holds whether or not that account has been reset. W-0005, never reset, carries the never-reset checks D6c and D6d.
+
+**It ran once, at about 16:07: "3b-a acceptance: all checks passed".** It runs inside `begin` and ends in `rollback`, so W-0005's role and every ZZ row vanished when it finished.
+
+**Live before and after the run was identical,** in count and fingerprint:
+
+| What | Count |
+|---|---|
+| Functions, columns, policies | 512, 1,708, 194 |
+| Attendance records, rewards, photos | 68, 106, 86 |
+| Accounts, folders, catalogue items | 23, 15, 6 |
+| Teams, team members | 2, 4 |
+| Tools, tool records, problem reports, role changes | 0, 0, 0, 0 |
+| Password events | 2 |
+| Expenses, payroll | 601, 274 |
+
+No ZZ check through the screens was run: it wasn't part of the approval.
+
+---
+
+## The CI failure on `7d3b23a`, and the test fix
+
+**CI's first run on `7d3b23a` failed in the database suites, and a re-run passed.** The failing check was *"reverse: only their own latest record … the Retire request came after: expected LATER_RECORDS, got no error"*.
+
+**Why:** the test database, PGlite, counts time in whole milliseconds. A damaged return writes two records in one call: the return, then a Retire request. When the two got the same time, `tl_latest` picked between them by their random ids, so the check passed or failed by chance. The code under test wasn't at fault.
+
+**The fix changes four test files and nothing else:**
+- `pr_base.mjs` gains `TOOL_RECORD_CLOCK`, a record clock that always moves forward, for PGlite only. `3a_tools` and `3b_tools_phone` run it right after `0107`.
+- `3b_tools_phone` gains a check that repeats the damaged return 30 times and expects `LATER_RECORDS` every time.
+- `3b_concurrency` gains check 10: the same case on real PostgreSQL, with no test clock. **No ties observed in 200 runs,** and reversing the return was refused each time.
+
+| Check | Result |
+|---|---|
+| The new check, before the fix | **Failed 3 of 3 runs**, with CI's message |
+| `3b_tools_phone`, after the fix | **Passed 13 of 13 runs**, in scratch and on the real tree |
+| `3a_tools`, after the fix | **Passed 7 of 7 runs** in each of its three variants |
+| The test clock taken out again | The new check **failed again, 3 of 3** |
+| Real PostgreSQL forced onto a coarse clock | Check 10 **failed, as it should**: 198 to 200 ties |
+| The real tree, 6 Nov | `npm run test:sql` in UTC, as CI runs it: **53 suites, 1,577 checks**. `npm test`: **1,547 checks**. All pass, and only the four test files changed |
+
+The live ordering behind this is a separate issue, recorded under *Found and not changed*.
+
+---
+
 ## Tasks
 
 **Task 1: apply to the real tree. Done 5 Nov,** committed as `c4c7d0a`, with the owner's one-space `admin.html` edit kept out.
@@ -231,11 +277,9 @@ The normal app shows the submission ID nowhere, and Android won't let anyone rea
 
 **Task 4: T0. Run on 5 Nov as a refusal-path test,** with the results and the incident above.
 
-**Task 5: propose live acceptance (a separate approval).** After T0 passes I'd propose:
-- Running `3b_acceptance.sql` on live. It's wrapped in `begin` and `rollback`, so W-0005's role and every ZZ row vanish when it ends.
-- A short ZZ check through the screens if you want one, with any real role change on W-0005 needing your approval then.
+**Task 5: live acceptance. Done 5 Nov:** one run of the corrected script, and all checks passed, with the results above.
 
-**Task 6: notes.** Execution notes in this plan and the 3b/0E plan.
+**Task 6: notes. Done 6 Nov:** this closeout, and revision 12 of the 3b/0E plan. The test fix and these notes are separate commits, with the owner's `admin.html` edit kept out of both.
 
 **If something goes wrong:** run `supabase/tests/3b_rollback.sql`. It restores the four redefined functions exactly as they were, and deletes nothing. Any role already changed stays changed, and any password already set stays set. Revert the web commit.
 
@@ -248,6 +292,12 @@ The normal app shows the submission ID nowhere, and Android won't let anyone rea
 - **A refused submission leaves its photo in Storage,** because the phone uploads the photo before the server answers. Nothing points to it, and nothing cleans it up.
 - **A worker can ignore "must change" in the old app,** which can't be updated. Only WorkMate will ask.
 - **A leader's request links stop at what they can see.** A member's "Just me" request is private from their leader today, so the phone can't link it, and the office issues that tool on the web.
+- **Live tool records are ordered by time, with a random id breaking a tie. This is a separate ordering issue from the CI test fix.**
+    - `tl_records.recorded_at` defaults to `clock_timestamp()`, and `tl_latest` orders by `recorded_at desc, id desc`, where `id` is random. If two records of one tool ever share a time, a random id decides which is "latest".
+    - Two calls write two records for one tool at once: registering a tool as damaged, and returning one as damaged. Each also writes a Retire request.
+    - `tl_latest` decides the reverse guard (`LATER_RECORDS`), a record's "latest" mark and a leader's "can reverse". So with a tie, the return could be reversed while its Retire request waits, and lists could show the pair either way round.
+    - On real PostgreSQL, check 10 found **no ties observed in 200 runs.** The live database hasn't been measured.
+    - **Not changed.** A change needs the owner's decision and a new migration.
 
 ---
 
@@ -270,3 +320,7 @@ The normal app shows the submission ID nowhere, and Android won't let anyone rea
 | Explicit refusal, no attendance row, marked refused and not waiting | T0.7 and T0.8 |
 | Identify the test photo for guarded clean-up | T0.7 and T0.13 |
 | Stop if the result differs | Task T0 |
+| The test fix: confirm the failing check first, keep it to tests, reproduce the failure, then send it for review | *The CI failure on `7d3b23a`*: the new check failed 3 of 3 before the fix |
+| Describe the PostgreSQL result as "no ties observed in 200 runs" | Check 10's name, the test-clock comment in `pr_base.mjs`, and this plan |
+| Record the timestamp tie as a separate ordering issue | *Found and not changed* |
+| Keep the `admin.html` edit out of both commits | Task 6 |
