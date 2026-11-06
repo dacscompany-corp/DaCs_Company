@@ -11,6 +11,8 @@
 //   3. a purchase against an office reduction     → no deadlock, never over-covered
 //   4. purchase A+B against purchase B+A          → no deadlock
 //   5. an assignment against a purchase           → no deadlock, one buyer holds it
+//   6. a part split off another, on the real clock → no ties observed in 200 runs
+//      (2a2_purchasing.pglite.mjs uses a test clock for this)
 // ════════════════════════════════════════════════════════════════════
 import EmbeddedPostgres from 'embedded-postgres';
 import pg from 'pg';
@@ -208,6 +210,23 @@ ${fnText(M94, 'pr_is_office')}`);
     }
     check('5. an assignment against a purchase on the same portion: no deadlock, someone holds it', dead === 0 && bad === 0,
       `deadlocks ${dead}, bad ${bad}`);
+  }
+
+  // 6
+  {
+    const RUNS = 200;
+    let ties = 0, wrong = 0;
+    const f = await mkFolder('split');
+    for (let i = 0; i < RUNS; i++) {
+      const t = await mkLine(f, 10);
+      await admin.query(`select pur_assign_portion($1, $2, 4, null)`, [t.portion, BUYER]);
+      // Compared in the database: a JavaScript date keeps whole milliseconds only.
+      const rows = (await admin.query(`select quantity::int q, count(*) over (partition by created_at) same from pr_line_portions where line_id = $1 order by created_at, id`, [t.line])).rows;
+      if (rows.length !== 2 || rows.some(r => Number(r.same) > 1)) ties++;
+      if (rows.map(r => r.q).join(',') !== '6,4') wrong++;
+    }
+    check(`6. a part split off another, on the real clock (no test clock): no ties observed in ${RUNS} runs, and listed after it each time`,
+      ties === 0 && wrong === 0, `ties ${ties}, wrong order ${wrong}`);
   }
 } finally {
   await admin.end();

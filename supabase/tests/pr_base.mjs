@@ -27,6 +27,16 @@ create sequence test_tool_record_tick;
 alter table tl_records alter column recorded_at
   set default clock_timestamp() + nextval('test_tool_record_tick') * interval '1 microsecond';`;
 
+// The same for request parts. pr_line_portions.created_at is the time of the step that made the part
+// (now()), and a part split off another (pr_split_portion) can be made in the same millisecond as it, so
+// a list "order by created_at, id" puts the two either way round. This gives each part a strictly later
+// time, on PGlite only; run it before any part is made. On real PostgreSQL, with no test clock,
+// 2a2_concurrency.mjs check 6 splits a part off another: no ties observed in 200 runs.
+export const PORTION_CLOCK = `
+create sequence test_portion_tick;
+alter table pr_line_portions alter column created_at
+  set default now() + nextval('test_portion_tick') * interval '1 microsecond';`;
+
 // 0085's (and 0090's aliases / brand) catalogue columns that the minimal
 // pr_catalog_items above leaves out — 0104 (stock, and its copy of 0092's
 // catalogue save and list) reads them. Run after prBase, before 0104.

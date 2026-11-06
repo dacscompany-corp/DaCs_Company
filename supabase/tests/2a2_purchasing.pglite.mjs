@@ -11,7 +11,7 @@ import { PGlite } from '@electric-sql/pglite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { prBase, fnText, CATALOG_0085 } from './pr_base.mjs';
+import { prBase, fnText, CATALOG_0085, PORTION_CLOCK } from './pr_base.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.DACS_ROOT || path.join(HERE, '..', '..');
@@ -109,6 +109,7 @@ async function fresh() {
   if (WITH_0101) { await db.exec(`create role service_role`); await db.exec(M101); }
   if (WITH_0102) { await db.exec(fnText(M98, 'pm_main_owner_id')); await db.exec(M102); }
   if (WITH_0104) { await db.exec(CATALOG_0085); await db.exec(M104); if (WITH_0105) await db.exec(M105); if (WITH_0107) await db.exec(M107); }
+  await db.exec(PORTION_CLOCK);
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
     ('${STAFF}', 'staff', '${OWNER}', 'active', null, 'staff@dacs.test', null),
