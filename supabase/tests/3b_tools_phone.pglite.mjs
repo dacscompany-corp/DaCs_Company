@@ -1048,5 +1048,200 @@ if (WITH_0112) {
   });
 }
 
+// ── P. The 3b-b pilot's guarded clean-up (3b_pilot_cleanup.sql) ─────
+// As on live: W-0005 (Ben) is switched to Team Leader and leads the ZZ team; W-0007 (Amy) is in
+// it and also in a real team (Led, which Cal leads). A real tool is out on a real project throughout.
+const CLEAN = read(path.join(ROOT, 'supabase/tests/3b_pilot_cleanup.sql'));
+const cleanup = (db, real = false) => {
+  if (!real) return db.exec(CLEAN);
+  const run = CLEAN.replace(/^  v_dry boolean := true;$/m, '  v_dry boolean := false;');
+  assert(run !== CLEAN, 'the setting line is in the file');
+  return db.exec(run);
+};
+async function pilotBase() {
+  const db = await fresh();
+  await as(db, '');
+  await db.exec(`
+    update profiles set worker_no = 50 where id = '${EVE}';
+    update profiles set worker_no = 70 where id = '${GONE}';
+    update profiles set worker_no = 5 where id = '${BEN}';
+    update profiles set worker_no = 7 where id = '${AMY}';
+    create table if not exists construction_projects (id uuid primary key default gen_random_uuid(), folder_id uuid references folders(id) on delete set null);
+    create table if not exists wp_tasks (id uuid primary key default gen_random_uuid(), folder_id uuid references folders(id),
+      work_folder_id uuid references folders(id), team_id uuid references pr_teams(id));
+    create table if not exists overhead_expenses (id uuid primary key default gen_random_uuid(), folder_id uuid references folders(id) on delete cascade,
+      billing_period_id uuid references projects(id) on delete set null, amount numeric);
+    create table if not exists reimbursements (id uuid primary key default gen_random_uuid(), folder_id uuid references folders(id) on delete cascade);
+    create table if not exists labor_contracts (id uuid primary key default gen_random_uuid(), folder_id uuid references folders(id) on delete cascade);
+    create table if not exists pr_item_refs (id uuid primary key default gen_random_uuid(), catalog_item_id uuid references pr_catalog_items(id),
+      folder_id uuid references folders(id) on delete cascade, work_folder_id uuid references folders(id) on delete cascade);
+    create table if not exists pr_gallery_photos (id uuid primary key default gen_random_uuid(), catalog_item_id uuid references pr_catalog_items(id));
+    create table if not exists attendance_records (id uuid primary key default gen_random_uuid(), worker_id uuid);
+    insert into attendance_records (worker_id) values ('${AMY}'), ('${BEN}');`);
+  return db;
+}
+// The office's set-up: W-0005 switched on, the ZZ project (one billing period), item and team.
+async function pilotSetUp(db) {
+  await rpc(db, OWNER, 'wk_set_team_leader', [BEN, true]);
+  const zf = (await one(db, `insert into folders (owner_id, name) values ($1, 'ZZ 3b pilot') returning id`, [OWNER])).id;
+  const period = (await one(db, `insert into projects (owner_id, folder_id, month, year, funding_type, billing_number)
+                                 values ($1, $2, 'November', 2026, 'progress', 1) returning id`, [OWNER, zf])).id;
+  await db.query(`insert into project_budgets values ($1, $2, 0)`, [period, OWNER]);
+  const zi = (await one(db, `insert into pr_catalog_items (owner_id, name, unit, kind) values ($1, 'ZZ 3b pilot hammer', 'pc', 'tool') returning id`, [OWNER])).id;
+  const zteam = (await rpc(db, OWNER, 'pr_office_save_team', [null, 'ZZ 3b pilot team', true])).id;
+  await rpc(db, OWNER, 'pr_office_add_member', [zteam, BEN]);
+  await rpc(db, OWNER, 'pr_office_add_member', [zteam, AMY]);
+  await rpc(db, OWNER, 'pr_office_set_leader', [zteam, BEN]);
+  await as(db, '');
+  return { zf, period, zi, zteam };
+}
+// The whole pilot: both test accounts' passwords, then every tool flow on the plan's list.
+async function pilotDb() {
+  const db = await pilotBase();
+  const realTool = await newTool(db);
+  await officeIssue(db, realTool, FAR);
+  for (const w of [AMY, BEN]) {
+    await as(db, '');
+    await event(db, w, 'requested');
+    await event(db, w, 'temporary_set');
+    await rpc(db, w, 'wk_password_changed');
+  }
+  const s = await pilotSetUp(db);
+  const photo = photoOf();
+  const zt = (await rpc(db, OWNER, 'tl_register', [op(), j({ item_id: s.zi, condition: 'good', at: 'warehouse', photo_path: photo })])).tools[0].tool_id;
+  await issue(db, BEN, { tool_id: zt, holder_id: AMY, folder_id: s.zf });
+  const prob = await rpc(db, AMY, 'tl_report_problem', [op(), zt, 'broken', 'ZZ pilot']);
+  await rpc(db, OWNER, 'tl_close_problem', [op(), prob.problem_id, 'ZZ pilot']);
+  await rpc(db, AMY, 'tl_report_problem', [op(), zt, 'dont_have', '']);
+  await handover(db, BEN, { tool_id: zt, holder_id: BEN });
+  await ret(db, BEN, { tool_id: zt, condition: 'needs_repair' });
+  await rpc(db, OWNER, 'tl_repaired', [op(), zt, 'ZZ pilot']);
+  const again = await issue(db, BEN, { tool_id: zt, holder_id: AMY, folder_id: s.zf });
+  await reverse(db, BEN, again.record_id, 'ZZ pilot');
+  await issue(db, BEN, { tool_id: zt, holder_id: AMY, folder_id: s.zf });
+  const back = await ret(db, BEN, { tool_id: zt, condition: 'damaged' });
+  await rpc(db, OWNER, 'tl_decide', [op(), back.retire_record_id, false, 'ZZ pilot']);
+  await as(db, '');
+  return { db, ...s, zt, realTool, photo };
+}
+const pilotSnap = (db) => one(db, `select (select count(*) from tl_tools) tools, (select count(*) from tl_records) recs,
+  (select count(*) from tl_problems) probs, (select count(*) from tl_events) events, (select count(*) from pr_teams) teams,
+  (select count(*) from pr_team_members) members, (select count(*) from pr_team_members where removed_at is null) current_members,
+  (select count(*) from pr_team_members where is_leader) leader_marks, (select count(*) from folders) folders,
+  (select count(*) from projects) periods, (select count(*) from pr_catalog_items) items, (select count(*) from expenses) expenses,
+  (select count(*) from pr_requests) requests, (select count(*) from wk_password_events) pw, (select count(*) from wk_role_events) roles,
+  (select string_agg(role, ',' order by worker_no) from profiles where worker_no in (5, 7)) roles_5_7,
+  (select count(*) from attendance_records) attendance`);
+const leadsActive = async (db, w) => num((await one(db, `select count(*) n from pr_team_members m join pr_teams t on t.id = m.team_id
+                                                           where m.worker_id = $1 and m.is_leader and m.removed_at is null and t.active`, [w])).n);
+const roleOf = async (db, w) => (await one(db, `select role from profiles where id = $1`, [w])).role;
+
+await test('pilot clean-up: the dry run changes nothing; the real run removes only ZZ 3b and keeps both logs; then the switch can go off', async () => {
+  const p = await pilotDb();
+  const db = p.db;
+  const before = await pilotSnap(db);
+  const realTool = () => one(db, `select id, number, state, holder_id, folder_id, condition from tl_tools where id = $1`, [p.realTool]);
+  const realToolBefore = await realTool();
+  const realRecs = () => db.query(`select * from tl_records where tool_id = $1 order by recorded_at, id`, [p.realTool]);
+  const realRecsBefore = (await realRecs()).rows;
+  const others = () => db.query(`select * from pr_team_members where team_id <> $1 order by id`, [p.zteam]);
+  const othersBefore = (await others()).rows;
+  const logs = async () => [(await db.query(`select * from wk_password_events order by id`)).rows, (await db.query(`select * from wk_role_events order by id`)).rows];
+  const logsBefore = await logs();
+  eq([logsBefore[0].length, logsBefore[1].length], [6, 1], 'the pilot wrote 6 password rows and 1 role row');
+  eq(await code(rpc(db, OWNER, 'wk_set_team_leader', [BEN, false])), 'LEADS_A_TEAM', 'the switch cannot go off first');
+  await as(db, '');
+  const dry = await code(cleanup(db));
+  assert(dry.startsWith('DRY RUN OK'), dry);
+  for (const part of ['tools 1', 'problem reports 2', 'team memberships ended 2', 'membership rows removed 2', 'teams removed 1',
+                      'catalogue items 1', 'projects 1 (with 1 billing periods)', 'W-0005 now leads no active team', 'password log 6 rows',
+                      'role log 1 rows', p.photo]) {
+    assert(dry.includes(part), 'the message says ' + part + ': ' + dry);
+  }
+  eq(await pilotSnap(db), before, 'the dry run changed nothing');
+  await cleanup(db, true);
+  const left = await one(db, `select (select count(*) from folders where name like 'ZZ 3b%') f, (select count(*) from projects where folder_id = $1) per,
+    (select count(*) from pr_catalog_items where name like 'ZZ 3b%') i, (select count(*) from pr_teams where name like 'ZZ 3b%') t,
+    (select count(*) from pr_team_members where team_id = $2) m, (select count(*) from tl_tools where id = $3) tool,
+    (select count(*) from tl_records where tool_id = $3) recs, (select count(*) from tl_problems where tool_id = $3) probs`, [p.zf, p.zteam, p.zt]);
+  eq(Object.values(left).map(num), [0, 0, 0, 0, 0, 0, 0, 0], 'nothing ZZ 3b left: ' + j(left));
+  eq(await realTool(), realToolBefore, 'the real tool as it was');
+  eq((await realRecs()).rows, realRecsBefore, 'and its records');
+  eq((await others()).rows, othersBefore, 'W-0007\'s real team and every other membership unchanged');
+  eq(await logs(), logsBefore, 'the password and role logs: every row kept, none changed');
+  eq([await roleOf(db, BEN), await roleOf(db, AMY)], ['teamLeader', 'worker'], 'the script changes no role');
+  eq(await leadsActive(db, BEN), 0, 'W-0005 leads no active team');
+  eq(num((await one(db, `select count(*) n from attendance_records`)).n), 2, 'attendance untouched');
+  // Step 2: the switch, which now works and writes its own row.
+  eq((await rpc(db, OWNER, 'wk_set_team_leader', [BEN, false])).changed, true);
+  eq(await roleOf(db, BEN), 'worker');
+  eq((await rpc(db, OWNER, 'wk_worker_log', [BEN])).filter((e) => e.kind === 'role').map((e) => e.detail),
+     ['teamLeader → worker', 'worker → teamLeader'], 'both role changes in the log');
+  await as(db, '');
+  eq(num((await one(db, `select count(*) n from pg_trigger where tgname in ('tl_events_no_change', 'tl_problems_no_change', 'tl_records_no_delete',
+      'tl_tools_no_delete', 'tl_covers_no_change', 'wk_password_events_no_change', 'wk_role_events_no_change') and tgenabled = 'O'`)).n), 7, 'guards on');
+  await refused(db.query(`delete from tl_tools`), 'HISTORY_IMMUTABLE', 'and they hold');
+  await refused(db.query(`delete from wk_password_events`), 'HISTORY_IMMUTABLE');
+  const next = (await rpc(db, OWNER, 'tl_register', [op(), j({ item_id: db.item, condition: 'good', at: 'warehouse', photo_path: photoOf() })])).tools[0];
+  eq(next.number, 2, 'the pilot\'s number went with its row: the next tool takes it');
+  await as(db, '');
+  await refused(cleanup(db), 'nothing to clean', 'a second run finds nothing');
+});
+
+await test('pilot clean-up: a pilot stopped before any tool (only the switch and the team) is cleaned the same way', async () => {
+  const db = await pilotBase();
+  const s = await pilotSetUp(db);
+  await refused(cleanup(db), 'DRY RUN OK');
+  await cleanup(db, true);
+  eq(num((await one(db, `select count(*) n from pr_teams where id = $1`, [s.zteam])).n), 0);
+  eq(await leadsActive(db, BEN), 0);
+  eq((await rpc(db, OWNER, 'wk_set_team_leader', [BEN, false])).changed, true);
+});
+
+await test('pilot clean-up: it stops, changing nothing, when ZZ and real are mixed or the test accounts are not as expected', async () => {
+  const repaired = (p) => rpc(p.db, OWNER, 'tl_repaired', [op(), p.zt, 'ok']);
+  for (const [why, spoil, want] of [
+    ['a real worker added to the ZZ team', (p) => rpc(p.db, OWNER, 'pr_office_add_member', [p.zteam, DEE]), 'someone other than W-0005 and W-0007'],
+    ['W-0005 also leads a real team', async (p) => {
+      await rpc(p.db, OWNER, 'pr_office_add_member', [p.db.plain, BEN]);
+      await rpc(p.db, OWNER, 'pr_office_set_leader', [p.db.plain, BEN]); }, 'W-0005 leads a real team'],
+    ['a request names the ZZ team', (p) => requestLine(p.db, { team: p.zteam }), 'names a ZZ team'],
+    ['a Work Plan task names the ZZ team', (p) => p.db.query(`insert into wp_tasks (folder_id, work_folder_id, team_id) values ($1, $1, $2)`, [p.db.project, p.zteam]), 'names a ZZ team'],
+    ['the ZZ tool issued on a real project', async (p) => {
+      await repaired(p);
+      await issue(p.db, BEN, { tool_id: p.zt, holder_id: AMY, folder_id: p.db.project }); }, 'a ZZ tool was recorded on a real project'],
+    ['a real tool issued on the ZZ project', async (p) => {
+      const t = await newTool(p.db);
+      await rpc(p.db, OWNER, 'tl_issue', [op(), j({ tool_id: t, holder_id: FAR, folder_id: p.zf })]); }, 'a real tool was recorded on a ZZ project'],
+    ['a request on the ZZ project', (p) => requestLine(p.db, { folder: p.zf, team: null, item: null }), 'is on a ZZ project'],
+    ['an expense on the ZZ project', (p) => p.db.query(`insert into expenses (owner_id, project_id, amount) values ($1, $2, 100)`, [OWNER, p.period]), 'is on a ZZ project'],
+    ['a photo on the ZZ item', (p) => p.db.query(`insert into pr_gallery_photos (catalog_item_id) values ($1)`, [p.zi]), 'a ZZ item is on a request, in stock, or has photos'],
+    ['a ZZ team of another company', (p) => p.db.query(`insert into pr_teams (owner_id, name) values ($1, 'ZZ 3b other')`, [OTHER]), 'more than one company'],
+    ['no W-0005 in this company', (p) => p.db.query(`update profiles set worker_no = 55 where id = $1`, [BEN]), 'W-0005 or W-0007 is not an account'],
+  ]) {
+    const p = await pilotDb();
+    await spoil(p);
+    await as(p.db, '');
+    const before = await pilotSnap(p.db);
+    await refused(cleanup(p.db, true), want, why);
+    eq(await pilotSnap(p.db), before, why + ': nothing changed');
+  }
+});
+
+await test('pilot clean-up: the script never writes the logs, a profile, attendance or operation ids; it ends the leadership before removing the team', async () => {
+  const body = CLEAN.replace(/--.*$/gm, '');
+  for (const t of ['wk_password_events', 'wk_role_events', 'profiles', 'attendance_records', 'pur_ops', 'tl_settings']) {
+    assert(!new RegExp(`(delete\\s+from|update|insert\\s+into|truncate)\\s+${t}\\b|alter\\s+table\\s+${t}\\b`, 'i').test(body), t + ' is written');
+  }
+  const off = [...body.matchAll(/alter table (\w+) disable trigger (\w+)/g)].map((m) => m[1] + '.' + m[2]);
+  const on = [...body.matchAll(/alter table (\w+) enable trigger (\w+)/g)].map((m) => m[1] + '.' + m[2]);
+  eq(on, off, 'every guard it turns off, it turns back on');
+  assert(off.length === 4 && !off.some((x) => x.startsWith('wk_')), 'the logs\' guards are never turned off');
+  const end = body.indexOf('update pr_team_members set is_leader = false, removed_at = now()');
+  const check = body.indexOf("raise exception 'GUARD: W-0005 still leads an active team'");
+  const del = body.indexOf('delete from pr_team_members');
+  assert(end > 0 && end < check && check < del && del < body.indexOf('delete from pr_teams'), 'end the leadership, check, then remove');
+});
+
 console.log('\n' + passed + ' passed, ' + failed + ' failed');
 if (failed) { console.log('\nFAILURES:\n  ' + failures.join('\n  ')); process.exit(1); }
