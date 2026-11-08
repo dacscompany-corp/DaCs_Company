@@ -8130,6 +8130,12 @@ window.lcSyncFromPortal = function(folderId, contracts, payroll) {
     expLaborContracts = Array.isArray(contracts) ? contracts : [];
     if (Array.isArray(payroll)) expPayroll = payroll;   // raw payroll docs (have totalSalary + contractId)
     if (typeof lcPopulatePayrollPicker === 'function') lcPopulatePayrollPicker();
+    // Linked Labor (0113): fetch linked accounts' worker numbers for the labels,
+    // then redraw the picker once they are known.
+    const linked = expLaborContracts.filter(c => c && c.workerId).map(c => c.workerId);
+    if (linked.length && window.LinkedLabor) {
+        window.LinkedLabor.people(linked).then(() => { if (typeof lcPopulatePayrollPicker === 'function') lcPopulatePayrollPicker(); });
+    }
     // Contract roles feed the expense Category dropdown — rebuild it now that the
     // active folder's contracts are known.
     if (typeof refreshCategoryDropdown === 'function') refreshCategoryDropdown();
@@ -8554,11 +8560,17 @@ function lcViewAgreementCurrent() {
 // the screen it was printed from. A blank name groups with nothing — nameless
 // contracts are not all the same person.
 function lcWorkerContracts(c) {
-    const key = String((c && c.workerName) || '').trim();
+    // Linked Labor (migration 0113): a LINKED contract's worker is its account,
+    // so two linked people who share a typed name never share an agreement
+    // sheet, a merge or a card. Unlinked contracts group by trimmed name exactly
+    // as before. (The same key as LinkedLabor.identityKey, written out here so
+    // the money tests can run this slice headless.)
+    const keyOf = (x) => (x && x.workerId) ? 'acct:' + x.workerId : String((x && x.workerName) || '').trim();
+    const key = keyOf(c);
     if (!key) return c ? [c] : [];
     const os = lcIsOutsource(c);
     const cs = (expLaborContracts || [])
-        .filter(x => String(x.workerName || '').trim() === key && lcIsOutsource(x) === os)
+        .filter(x => keyOf(x) === key && lcIsOutsource(x) === os)
         .sort((a, b) => String(a.scope || '').localeCompare(String(b.scope || '')));
     return cs.length ? cs : [c];
 }
@@ -8983,6 +8995,8 @@ function lcOpenNew(category) {
     lcFillWorkerDatalist();
     openExpModal('laborContractModal');
     lcAgrPopulate(null);
+    // Linked Labor (0113): the main owner's optional WorkMate account picker.
+    if (window.LinkedLabor) window.LinkedLabor.formOpened(null);
 }
 function lcOpenEdit(id) {
     const c = expLaborContracts.find(x => x.id === id); if (!c) return;
@@ -9002,6 +9016,8 @@ function lcOpenEdit(id) {
     lcFillWorkerDatalist();
     openExpModal('laborContractModal');
     lcAgrPopulate(c);
+    // Linked Labor (0113): the reason box, and daily↔fixed locked once signed or paid.
+    if (window.LinkedLabor) window.LinkedLabor.formOpened(c, expPayroll);
 }
 function setupLaborContractFormListeners() {
     const form = document.getElementById('laborContractForm');
@@ -9078,7 +9094,11 @@ async function handleSaveLaborContract(e) {
                 update.capHistory = hist;
             }
             if (agrFields) Object.assign(update, agrFields);   // attach/replace/clear PDF
-            try {
+            // Linked Labor (0113): one server step (lc_edit) that keeps the old
+            // terms and, once the contract is signed or paid, needs the reason.
+            if (window.LinkedLabor) {
+                await window.LinkedLabor.edit(id, update, window.LinkedLabor.formReason());
+            } else try {
                 await db.collection('laborContracts').doc(id).update(update);
             } catch (colErr) {
                 // Fallback if the DB doesn't have the newer agreement_pdf_name column
@@ -9102,17 +9122,26 @@ async function handleSaveLaborContract(e) {
                 } else { throw colErr; }
             }
         } else {
+            // Linked Labor (0113): the main owner may choose the WorkMate account
+            // now; the server checks who is choosing and that the account is an
+            // active worker of this company. Staff never see the picker.
+            const workerId = (!isOutsource && window.LinkedLabor) ? window.LinkedLabor.formAccountId() : null;
             const addDoc = {
                 userId: _uid(), folderId, workerName, scope, trade, agreedAmount, payType, notes, category, works, payBasis,
                 status: 'ongoing',
                 capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
                 ...(agrFields || { agreementSigned: false }),
+                ...(workerId ? { workerId } : {}),
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             };
             try {
                 await db.collection('laborContracts').add(addDoc);
             } catch (colErr) {
                 if (/agreement_pdf_name|trade|category|works|pay_basis|column/i.test(colErr.message || '')) {
+                    if (/worker_id/i.test(colErr.message || '')) {              // migration 0113 not applied yet
+                        delete addDoc.workerId;
+                        if (workerId) { showExpNotif('Linking needs migration 0113 — saved without the WorkMate account.', 'error'); }
+                    }
                     delete addDoc.agreementPdfName;
                     if (/trade/i.test(colErr.message || '')) delete addDoc.trade;   // migration 0039 not applied yet
                     if (/category/i.test(colErr.message || '')) {                   // migration 0057 not applied yet
@@ -9134,7 +9163,10 @@ async function handleSaveLaborContract(e) {
         showExpNotif((agrFields && agrFields.agreementSigned) ? 'Contract saved — agreement PDF attached ✓' : 'Contract saved ✓', 'success');
         closeExpModal('laborContractModal');
     } catch (err) {
-        showExpNotif('Error: ' + err.message, 'error');
+        // LinkedLabor's own errors are already in plain words (err.raw); a
+        // refusal from the contract guard on a direct save is translated here.
+        const LL = window.LinkedLabor;
+        showExpNotif(LL && !(err && err.raw) ? LL.errorText(err) : (err && err.raw ? err.message : 'Error: ' + err.message), 'error');
     } finally { showExpLoading('lcSaveBtn', false); }
 }
 // Raise cap. Was a native browser prompt() — no branding, no sense of what the
@@ -9148,6 +9180,8 @@ function lcOpenRaiseCap(id) {
 
     const existing = document.getElementById('lcCapOverlay');
     if (existing) existing.remove();
+    // Linked Labor (0113): once signed or paid, a cap change needs a reason.
+    const _lcCapEst = window.LinkedLabor ? window.LinkedLabor.isEstablished(c, expPayroll) : false;
 
     // Cap history = entries carrying an amount (file uploads share capHistory).
     const hist = (Array.isArray(c.capHistory) ? c.capHistory : []).filter(h => h && h.amount != null);
@@ -9184,6 +9218,9 @@ function lcOpenRaiseCap(id) {
                 style="flex:1;border:0;outline:none;background:transparent;font-size:18px;color:#1C1C1E;font-variant-numeric:tabular-nums;width:100%;">
             </div>
             <div id="lcCapDelta" style="margin-top:12px;"></div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#A1A1A6;margin:18px 0 6px;">Reason${_lcCapEst ? ' <span style="color:#B4453A;">(required: signed or paid)</span>' : ' <span style="font-weight:500;text-transform:none;letter-spacing:0;">(optional)</span>'}</div>
+            <textarea id="lcCapReason" rows="2" maxlength="500" placeholder="e.g. Added the rear wall"
+              style="width:100%;border:1.5px solid #D1D5DB;border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;"></textarea>
             <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#A1A1A6;margin:22px 0 2px;">Cap history</div>
             <div>${histHtml}</div>
           </div>
@@ -9226,20 +9263,26 @@ function lcOpenRaiseCap(id) {
     const save = async () => {
         const next = parse();
         if (next <= 0) { showExpNotif('Enter a valid amount.', 'error'); return; }
+        const reason = String((ov.querySelector('#lcCapReason') || {}).value || '').trim();
+        if (_lcCapEst && !reason) { showExpNotif('This contract is signed or paid. Give a reason for the change.', 'error'); return; }
         const btn = ov.querySelector('#lcCapSave');
         btn.disabled = true; btn.textContent = 'Saving…';
         try {
             const h = Array.isArray(c.capHistory) ? c.capHistory.slice() : [];
             h.push({ amount: next, at: new Date().toISOString(), note: next >= cur ? 'Raised cap' : 'Lowered cap' });
-            await db.collection('laborContracts').doc(id).update({
-                agreedAmount: next, capHistory: h,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
+            if (window.LinkedLabor) {
+                await window.LinkedLabor.edit(id, { agreedAmount: next, capHistory: h }, reason);
+            } else {
+                await db.collection('laborContracts').doc(id).update({
+                    agreedAmount: next, capHistory: h,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            }
             close();
             showExpNotif('Cap updated ✓', 'success');
         } catch (err) {
             btn.disabled = false; btn.textContent = 'Update cap';
-            showExpNotif('Error: ' + err.message, 'error');
+            showExpNotif(err && err.raw ? err.message : 'Error: ' + err.message, 'error');
         }
     };
     ov.querySelector('#lcCapSave').addEventListener('click', save);
@@ -9252,16 +9295,33 @@ function lcOpenRaiseCap(id) {
     input.focus();
     input.select();
 }
+// Linked Labor (0113): a linked contract is never deleted (end it, or unlink
+// it first); a signed or paid one needs a reason and its terms stay in its
+// history (lc_delete). A draft deletes as before.
 async function lcDelete(id) {
+    const c = (expLaborContracts || []).find(x => x.id === id) || null;
+    const LL = window.LinkedLabor;
+    if (c && c.workerId) { showExpNotif(LL ? LL.MESSAGES.LC_LINKED : 'This contract is linked to a WorkMate account.', 'error'); return; }
     const paid = lcPaid(id);
-    const msg = paid > 0
-        ? 'This contract has ₱' + formatNum(paid) + ' in linked payments. Deleting it unlinks them (the payroll rows stay). Continue?'
-        : 'Delete this labor contract?';
-    if (!await showDeleteConfirm(msg)) return;
+    const unlinkNote = paid > 0
+        ? 'This contract has ₱' + formatNum(paid) + ' in linked payments. Deleting it unlinks them (the payroll rows stay). '
+        : '';
+    let reason = '';
+    if (LL && c && LL.isEstablished(c, expPayroll)) {
+        reason = await LL.askReason({
+            title: 'Delete this contract', sub: (c.workerName || '') + ' · ' + (c.scope || 'job'), action: 'Delete',
+            body: unlinkNote + 'It is signed or paid, so its terms are kept in its history.',
+            placeholder: 'e.g. Entered twice' });
+        if (reason === null) return;
+    } else {
+        const msg = paid > 0 ? unlinkNote + 'Continue?' : 'Delete this labor contract?';
+        if (!await showDeleteConfirm(msg)) return;
+    }
     try {
-        await db.collection('laborContracts').doc(id).delete();
+        if (LL) await LL.remove(id, reason);
+        else await db.collection('laborContracts').doc(id).delete();
         showExpNotif('Contract deleted', 'success');
-    } catch (err) { showExpNotif('Error: ' + err.message, 'error'); }
+    } catch (err) { showExpNotif(err && err.raw ? err.message : 'Error: ' + err.message, 'error'); }
 }
 
 // ── Merge a worker's jobs into ONE lumpsum contract ────────────────────
@@ -9269,110 +9329,82 @@ async function lcDelete(id) {
 // ONE capped contract that LISTS those five as its `works` (migration 0062), so
 // the next payment is tagged once instead of split five ways.
 //
-// ORDER IS LOAD-BEARING, and this is the whole reason it is not a bare SQL
-// script. `payroll.contract_id` is `on delete set null` (migration 0014), so
-// deleting a contract UNLINKS its payments. Delete first and the worker's paid-
-// to-date silently becomes 0 while the pesos drift into "Other (uncapped)
-// payments". The three steps therefore run in this order, and only this order:
+// ONE SERVER STEP (lc_merge, migration 0113), all or nothing: the keeper takes
+// the summed cap, the works and the title, every payroll row of the others is
+// repointed to it, then the others are deleted, with each one's terms kept in
+// its history. It used to be four browser saves in a careful order; a failure
+// part-way can no longer leave half a merge.
 //
-//   1. UPDATE THE KEEPER first — title, summed cap, works list. If the `works`
-//      column is missing (migration 0062 unapplied) this is where it fails, and
-//      it fails BEFORE anything has been repointed or deleted. Nothing is lost.
-//   2. REPOINT the other contracts' payroll rows onto the keeper.
-//   3. DELETE the now-empty contracts.
-//
-// A failure part-way leaves a state the merge can simply be re-run on: the
-// keeper is already a lumpsum, some rows already point at it, and the leftovers
-// still exist to be swept up. It never strands money.
+// Only ONE PERSON's contracts on ONE PROJECT: all linked to the same WorkMate
+// account, or all unlinked with the same typed name (lcWorkerContracts); never
+// across projects (Additional Works is a project of its own) and never across
+// daily and fixed. A reason is needed if any of them is signed or paid.
 //
 // The money does not move. The new cap is the SUM of the old caps and every
 // payroll row is preserved (only its contract_id changes), so agreed / paid /
 // remaining read exactly as they did before — which is what §M of
 // money-math.test.js asserts about the two shapes in the first place.
-// `preconfirmed` is set by lcOpenMerge, whose own dialog already spells out the
-// works, the cap and the deletions. Without it the user is asked twice, the
-// second time through showDeleteConfirm — which is branded "Confirm Delete" with
-// a red Delete button, and so misnames a merge as a deletion. The fallback
-// confirm stays for any other caller reaching this directly.
-async function lcMergeToLumpsum(workerName, title, preconfirmed) {
+// `arg` is a contract id (the card passes its first job) or, as before, a
+// typed name. `preconfirmed` is set by lcOpenMerge, whose own dialog already
+// spells out the works, the cap and the deletions.
+function lcMergeSeed(arg) {
+    const list = expLaborContracts || [];
+    const byId = list.find(c => c.id === arg);
+    if (byId) return byId;
+    const key = String(arg || '').trim();
+    return list.find(c => !c.workerId && String(c.workerName || '').trim() === key) || null;
+}
+async function lcMergeToLumpsum(arg, title, preconfirmed, reason) {
     if (_staff()) return;                       // a money action, like the amounts themselves
-    const key = String(workerName || '').trim();
-    const seed = (expLaborContracts || []).find(c => String(c.workerName || '').trim() === key);
-    if (!seed) { showExpNotif('No contracts found for ' + (key || 'this worker') + '.', 'error'); return; }
+    const seed = lcMergeSeed(arg);
+    if (!seed) { showExpNotif('No contracts found for ' + (String(arg || '').trim() || 'this worker') + '.', 'error'); return; }
+    const LL = window.LinkedLabor;
+    const label = LL ? LL.labelOf(seed) : String(seed.workerName || '').trim();
 
-    // Exactly the jobs the WORKER CARD shows — same trimmed, case-sensitive name
-    // and same category filter (lcWorkerContracts), so the merge can never sweep
-    // in a vendor subcontract or a differently-cased second card.
+    // Exactly the jobs the WORKER CARD shows — the same person and the same
+    // category (lcWorkerContracts), so the merge can never sweep in a vendor
+    // subcontract, a differently-cased second card or a same-name other person.
     const cs = lcWorkerContracts(seed);
-    if (cs.length < 2) { showExpNotif('Nothing to merge — ' + key + ' has only one contract.', 'error'); return; }
-
-    // A contract already carrying works contributes THOSE works, not its
-    // container title, so merging a lumpsum with more jobs stays flat.
-    const works = cs.reduce((a, c) => {
-        const w = lcWorksList(c);
-        return a.concat(w.length ? w : [c.scope || 'Untitled job']);
-    }, []);
-    const total = cs.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
+    if (cs.length < 2) { showExpNotif('Nothing to merge — ' + label + ' has only one contract.', 'error'); return; }
+    const problem = LL ? LL.mergeProblem(cs) : null;
+    if (problem === 'BASIS') { showExpNotif(LL.MESSAGES.LC_MERGE_BASIS, 'error'); return; }
+    if (problem === 'FOLDER') { showExpNotif(LL.MESSAGES.LC_MERGE_FOLDER, 'error'); return; }
+    if (problem) { showExpNotif(LL.MESSAGES.LC_MERGE_MIXED, 'error'); return; }
 
     // The keeper carries the signed agreement if one of them does — the sheet is
     // per worker, so losing the PDF to a delete would lose the whole agreement.
     const keeper = cs.find(c => c.agreementPdfUrl && String(c.agreementPdfUrl).trim()) || cs[0];
-    const losers = cs.filter(c => c.id !== keeper.id);
-    const paidBefore = cs.reduce((s, c) => s + lcPaid(c.id), 0);
-    const moving = (expPayroll || []).filter(p => losers.some(l => l.id === p.contractId));
-
-    const msg = 'Merge ' + cs.length + ' jobs into ONE lumpsum contract for ' + key + '?\n\n'
-        + '₱' + formatNum(total) + ' agreed · ₱' + formatNum(paidBefore) + ' paid · '
-        + moving.length + ' payment' + (moving.length === 1 ? '' : 's') + ' will be re-tagged.\n\n'
-        + 'The ' + losers.length + ' extra contracts are then deleted. This cannot be undone.';
-    if (!preconfirmed && !await showDeleteConfirm(msg)) return;
-
-    const hist = Array.isArray(keeper.capHistory) ? keeper.capHistory.slice() : [];
-    if ((parseFloat(keeper.agreedAmount) || 0) !== total) {
-        hist.push({ amount: total, at: new Date().toISOString(),
-                    note: 'Merged ' + cs.length + ' jobs into one lumpsum' });
+    if (!preconfirmed) {
+        const total = cs.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
+        const msg = 'Merge ' + cs.length + ' jobs into ONE lumpsum contract for ' + label + '?\n\n'
+            + '₱' + formatNum(total) + ' agreed · ₱' + formatNum(cs.reduce((s, c) => s + lcPaid(c.id), 0)) + ' paid.\n\n'
+            + 'The ' + (cs.length - 1) + ' extra contracts are then deleted. This cannot be undone.';
+        if (!await showDeleteConfirm(msg)) return;
     }
-
     try {
-        // 1. Keeper first — the migration-0062 guard. If `works` does not exist
-        //    this throws here, with every contract and payment still untouched.
-        await db.collection('laborContracts').doc(keeper.id).update({
-            scope: String(title || '').trim() || 'General Works Package',
-            agreedAmount: total,
-            works: works,
-            capHistory: hist,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-
-        // 2. Repoint the payments BEFORE the deletes below unlink them.
-        for (const p of moving) {
-            await db.collection('payroll').doc(p.id).update({ contractId: keeper.id });
-        }
-
-        // 3. Only now are the leftovers empty and safe to remove.
-        for (const l of losers) {
-            await db.collection('laborContracts').doc(l.id).delete();
-        }
-
+        if (!LL) throw new Error('Linked Labor is not loaded.');
+        await LL.merge(cs.map(c => c.id), keeper.id, title, reason || '');
         showExpNotif('Merged ' + cs.length + ' jobs into one lumpsum ✓', 'success');
     } catch (err) {
-        showExpNotif(/works|column/i.test(err.message || '')
-            ? 'Merge stopped: migration 0062 is not applied, so the works list cannot be saved. Nothing was changed.'
-            : 'Merge failed: ' + err.message + ' — re-run it to finish.', 'error');
+        // lc_merge is one transaction: a failure leaves every contract and payment as it was.
+        showExpNotif((err && err.raw ? err.message : 'Merge failed: ' + err.message) + ' Nothing was changed.', 'error');
     }
 }
 // Confirm-and-name dialog. The title becomes the contract's visible name for
 // good, so it is asked for once here rather than defaulted silently.
-function lcOpenMerge(workerName) {
-    const key = String(workerName || '').trim();
-    const seed = (expLaborContracts || []).find(c => String(c.workerName || '').trim() === key);
+function lcOpenMerge(arg) {
+    const seed = lcMergeSeed(arg);
     if (!seed) return;
+    const LL = window.LinkedLabor;
+    const label = LL ? LL.labelOf(seed) : String(seed.workerName || '').trim();
     const cs = lcWorkerContracts(seed);
     const total = cs.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
     const jobs = cs.map(c => {
         const w = lcWorksList(c);
         return w.length ? w : [c.scope || 'Untitled job'];
     }).reduce((a, b) => a.concat(b), []);
+    // Linked Labor (0113): a reason is needed if any of them is signed or paid.
+    const needReason = !!LL && cs.some(c => LL.isEstablished(c, expPayroll));
 
     const existing = document.getElementById('lcMergeOverlay');
     if (existing) existing.remove();
@@ -9385,7 +9417,7 @@ function lcOpenMerge(workerName) {
           <div class="lcm-head">
             <div>
               <h3 class="lcm-title">Merge into one lumpsum</h3>
-              <div class="lcm-sub">${_mvpEsc(key)} · ${cs.length} jobs</div>
+              <div class="lcm-sub">${_mvpEsc(label)} · ${cs.length} jobs</div>
             </div>
             <button type="button" class="lcm-x" data-merge-close aria-label="Close">&times;</button>
           </div>
@@ -9403,10 +9435,13 @@ function lcOpenMerge(workerName) {
               <span style="font-size:12.5px;font-weight:600;color:#6C6C70;">One agreed cap</span>
               <span class="num" style="font-size:18px;color:#1C1C1E;font-variant-numeric:tabular-nums;">₱ ${formatNum(total)}</span>
             </div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#A1A1A6;margin:18px 0 6px;">Reason${needReason ? ' <span style="color:#B4453A;">(required: signed or paid)</span>' : ' <span style="font-weight:500;text-transform:none;letter-spacing:0;">(optional)</span>'}</div>
+            <textarea id="lcMergeReason" rows="2" maxlength="500" placeholder="e.g. One agreement for the whole job"
+              style="width:100%;border:1.5px solid #D1D5DB;border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;"></textarea>
             <div style="margin-top:12px;font-size:12px;color:#8A8A8E;line-height:1.55;">
               Every payment stays exactly where it is — it is only re-tagged onto the one
               contract, so paid and remaining do not change. The ${cs.length - 1} extra
-              contracts are then deleted. <b>This cannot be undone.</b>
+              contracts are then deleted, and their terms kept in their history. <b>This cannot be undone.</b>
             </div>
           </div>
           <div class="lcm-foot">
@@ -9419,8 +9454,10 @@ function lcOpenMerge(workerName) {
     const go = ov.querySelector('#lcMergeGo');
     if (go) go.onclick = async () => {
         const title = (ov.querySelector('#lcMergeTitle') || {}).value || '';
+        const reason = String((ov.querySelector('#lcMergeReason') || {}).value || '').trim();
+        if (needReason && !reason) { showExpNotif('Some of these contracts are signed or paid. Give a reason for the merge.', 'error'); return; }
         ov.remove();
-        await lcMergeToLumpsum(key, title, true);   // this dialog IS the confirmation
+        await lcMergeToLumpsum(seed.id, title, true, reason);   // this dialog IS the confirmation
     };
 }
 
@@ -9479,7 +9516,10 @@ function lcPickerLabel(c) {
     // tells the user this single line is the whole package, so they don't go
     // hunting for the four jobs that used to be listed beside it.
     const n = lcWorksList(c).length;
-    return (c.workerName || 'Worker') + ' · ' + (c.scope || 'job')
+    // Linked Labor (0113): a linked contract carries its worker number, so two
+    // people with one typed name are told apart here too.
+    const tag = (typeof window !== 'undefined' && window.LinkedLabor) ? window.LinkedLabor.tagOf(c) : '';
+    return (c.workerName || 'Worker') + tag + ' · ' + (c.scope || 'job')
         + (n ? ' (' + n + ' works)' : '')
         + (lcIsDaily(c) ? ' — daily' : '');
 }

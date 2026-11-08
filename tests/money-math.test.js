@@ -1410,34 +1410,45 @@ console.log('\nM. Lumpsum contracts');
 }
 
 
-// == N. MERGING JOBS INTO ONE LUMPSUM (migration 0062) ==============
+// == N. MERGING JOBS INTO ONE LUMPSUM (migrations 0062, 0113) ========
 // Collapsing a worker's five contracts into ONE lumpsum rewrites live money
-// records, so the ORDER of the three writes is the whole safety property:
+// records. Since Linked Labor (0113) it is ONE server step, lc_merge, all or
+// nothing, in the order that keeps the money whole:
 //
-//   1. update the KEEPER (title, summed cap, works)
+//   1. update the KEEPER (title, summed cap, works, a capHistory line)
 //   2. REPOINT the other contracts' payroll rows onto it
-//   3. DELETE the now-empty contracts
+//   3. DELETE the now-empty contracts (their terms kept in lc_events)
 //
 // `payroll.contract_id` is `on delete set null` (migration 0014). Delete before
 // repointing and every payment silently unlinks: the worker's paid-to-date drops
-// to 0 and the pesos reappear as "Other (uncapped) payments". Doing the keeper
-// FIRST is what makes an unapplied migration 0062 abort harmlessly, before any
-// payment has moved and before any contract is gone.
+// to 0 and the pesos reappear as "Other (uncapped) payments".
+//
+// The browser's part, fenced here: send exactly ONE person's jobs (the card's
+// lcWorkerContracts — never a vendor, another worker, or a same-name other
+// linked account), pick the keeper that holds the signed agreement, write
+// nothing itself, and say so when nothing changed. The server's part — the
+// order above and MONEY UNCHANGED — is fenced by the source checks below and,
+// on a real database, by ll_linked_labor.pglite.mjs (G1–G5).
 //
 // MONEY: the merge must be a pure reshape. The new cap is the SUM of the old
 // caps and every payroll row survives with only its contract_id changed, so
 // agreed / paid / remaining read exactly as they did before.
 {
   // Francis Febra as the screen shows him: 5 jobs, 200,000 agreed, 53,000 paid.
-  const mkContracts = () => [
+  const mkContracts = (o) => [
     { id: 'a1', folderId: 'f1', workerName: 'Francis Febra', scope: 'Architectural/Interior Finishing Works', agreedAmount: 50000, payType: 'pakyaw' },
     { id: 'a2', folderId: 'f1', workerName: 'Francis Febra', scope: 'Carpentry Works', agreedAmount: 35000, payType: 'pakyaw' },
-    { id: 'a3', folderId: 'f1', workerName: 'Francis Febra', scope: 'Civil Works',     agreedAmount: 40000, payType: 'pakyaw' },
-    { id: 'a4', folderId: 'f1', workerName: 'Francis Febra', scope: 'Owner Supply',    agreedAmount: 30000, payType: 'pakyaw' },
-    { id: 'a5', folderId: 'f1', workerName: 'Francis Febra', scope: 'Plumbing Works',  agreedAmount: 45000, payType: 'pakyaw' },
+    { id: 'a3', folderId: 'f1', workerName: 'Francis Febra', scope: 'Civil Works',     agreedAmount: 40000, payType: 'pakyaw',
+      agreementPdfUrl: (o && o.pdfOnA3) ? 'https://x/signed.pdf' : '' },
+    { id: 'a4', folderId: 'f1', workerName: 'Francis Febra', scope: 'Owner Supply',    agreedAmount: 30000, payType: 'pakyaw',
+      payBasis: (o && o.dailyA4) ? 'daily' : 'fixed' },
+    { id: 'a5', folderId: (o && o.otherProjectA5) ? 'f2' : 'f1', workerName: 'Francis Febra', scope: 'Plumbing Works',  agreedAmount: 45000, payType: 'pakyaw' },
     // A vendor of the same name, and a second worker: neither may be swept in.
     { id: 'v9', folderId: 'f1', workerName: 'Francis Febra', scope: 'Windows supply & install', agreedAmount: 90000, category: 'outsource' },
     { id: 'z9', folderId: 'f1', workerName: 'Mark Frias',    scope: 'Masonry',         agreedAmount: 10000, payType: 'pakyaw' },
+    // Linked Labor: two jobs of a DIFFERENT Francis Febra, linked to his own account.
+    { id: 'k1', folderId: 'f1', workerName: 'Francis Febra', workerId: 'acct-2', scope: 'Ceiling', agreedAmount: 8000, payType: 'pakyaw' },
+    { id: 'k2', folderId: 'f1', workerName: 'Francis Febra (Ceiling)', workerId: 'acct-2', scope: 'Drywall', agreedAmount: 6000, payType: 'pakyaw' },
   ];
   const mkPayroll = () => [
     { id: 'p1', contractId: 'a1', totalSalary: 13250 },
@@ -1445,50 +1456,43 @@ console.log('\nM. Lumpsum contracts');
     { id: 'p3', contractId: 'a3', totalSalary: 10600 },
     { id: 'p4', contractId: 'a4', totalSalary: 7950 },
     { id: 'p5', contractId: 'a5', totalSalary: 11925 },
-    { id: 'p6', contractId: 'v9', totalSalary: 5000 },   // vendor — must NOT move
-    { id: 'p7', contractId: 'z9', totalSalary: 2000 },   // Mark   — must NOT move
-    { id: 'p8', contractId: null, totalSalary: 500 },    // uncapped — must NOT move
+    { id: 'p6', contractId: 'v9', totalSalary: 5000 },
+    { id: 'p7', contractId: 'z9', totalSalary: 2000 },
+    { id: 'p8', contractId: null, totalSalary: 500 },
   ];
+  const LL = require(path.join(ROOT, 'js/linked-labor.js'));
 
-  // A recording fake of the Firestore-compat shim: every write appends to `log`
-  // in the order it was actually issued, which is the thing under test.
+  // The browser half, driven against a recording stand-in for the server call
+  // (window.LinkedLabor.merge) and a db that records any direct write.
   function harness(opts) {
     opts = opts || {};
-    const contracts = mkContracts(), payroll = mkPayroll();
-    const log = [];
-    const db = {
-      collection: (name) => ({
-        doc: (id) => ({
-          update: async (patch) => {
-            log.push(name + ':update:' + id);
-            if (name === 'laborContracts' && opts.failKeeperUpdate) {
-              throw new Error('column "works" of relation "labor_contracts" does not exist');
-            }
-            const row = (name === 'payroll' ? payroll : contracts).find(x => x.id === id);
-            if (row) Object.assign(row, patch);
-          },
-          delete: async () => {
-            log.push(name + ':delete:' + id);
-            const i = contracts.findIndex(x => x.id === id);
-            // Faithful to migration 0014: `on delete set null` unlinks the rows.
-            if (i !== -1) { contracts.splice(i, 1); payroll.forEach(p => { if (p.contractId === id) p.contractId = null; }); }
-          },
-        }),
-      }),
-    };
+    const contracts = mkContracts(opts), payroll = mkPayroll();
+    const log = [], calls = [];
+    const db = { collection: (name) => ({ doc: (id) => ({
+      update: async () => { log.push(name + ':update:' + id); },
+      delete: async () => { log.push(name + ':delete:' + id); },
+    }) }) };
+    const window = { LinkedLabor: Object.assign({}, LL, {
+      labelOf: (c) => String(c.workerName || ''),
+      merge: async (ids, keeper, title, reason) => {
+        calls.push({ ids, keeper, title, reason });
+        if (opts.serverFails) { const e = new Error('Linked Labor needs migration 0113 applied first.'); e.raw = {}; throw e; }
+        return { keeper, merged: ids.filter(x => x !== keeper) };
+      },
+    }) };
     const merge = evalWith(
-      slice(expensesSrc, 'async function lcMergeToLumpsum(', '// Confirm-and-name dialog.', 'js/expenses-module.js'),
+      slice(expensesSrc, 'async function lcMergeToLumpsum(', '// Confirm-and-name dialog.', 'js/expenses-module.js')
+        + '\n' + slice(expensesSrc, 'function lcMergeSeed(', 'async function lcMergeToLumpsum(', 'js/expenses-module.js'),
       {
-        db,
+        db, window,
         expLaborContracts: contracts,
         expPayroll: payroll,
         _staff: () => !!opts.staff,
         showDeleteConfirm: async () => opts.confirm !== false,
         showExpNotif: (m, k) => log.push('notif:' + (k || '') + ':' + m),
         formatNum: (n) => String(n),
-        firebase: { firestore: { FieldValue: { serverTimestamp: () => 'TS' } } },
-        // The LIVE grouping and drawdown helpers, so the merge is tested against
-        // the same code the worker card and the agreement are built from.
+        // The LIVE grouping helper, so the merge is tested against the same code
+        // the worker card and the agreement are built from.
         lcWorkerContracts: evalWith(
           slice(expensesSrc, 'function lcWorkerContracts(', '// Orientation date as it prints on the manual', 'js/expenses-module.js'),
           { lcIsOutsource: (c) => !!c && c.category === 'outsource',
@@ -1500,130 +1504,105 @@ console.log('\nM. Lumpsum contracts');
                                 .reduce((s, p) => s + (Number(p.totalSalary) || 0), 0),
       },
       ['lcMergeToLumpsum']);
-    return { merge: merge.lcMergeToLumpsum, contracts, payroll, log };
+    return { merge: merge.lcMergeToLumpsum, contracts, payroll, log, calls };
   }
 
-  const paidOf = (payroll, ids) => payroll
-    .filter(p => ids.indexOf(p.contractId) !== -1)
-    .reduce((s, p) => s + (Number(p.totalSalary) || 0), 0);
-  const FIVE = ['a1', 'a2', 'a3', 'a4', 'a5'];
-
-  // Every assertion below needs the merge to have finished, so each test drives
-  // its own harness to completion first. The merge swallows its own errors into a
-  // notif, so the rejection arm is only a safety net.
-  const run = (opts, title) => {
+  const run = (opts, arg) => {
     const h = harness(opts);
-    return h.merge('Francis Febra', title || 'General Works Package').then(() => h, () => h);
+    return h.merge(arg || 'Francis Febra', 'General Works Package', !!(opts && opts.preconfirmed), 'one agreement').then(() => h, () => h);
   };
-
   const results = {};
   const pending = [
-    run().then(r => { results.ok = { h: r }; }),
-    run({ failKeeperUpdate: true }).then(r => { results.failed = { h: r }; }),
-    run({ confirm: false }).then(r => { results.cancelled = { h: r }; }),
-    run({ staff: true }).then(r => { results.staff = { h: r }; }),
+    run().then(r => { results.ok = r; }),
+    run({ pdfOnA3: true }).then(r => { results.pdf = r; }),
+    run({ serverFails: true }).then(r => { results.failed = r; }),
+    run({ confirm: false }).then(r => { results.cancelled = r; }),
+    run({ staff: true }).then(r => { results.staff = r; }),
+    run({ dailyA4: true }).then(r => { results.basis = r; }),
+    run({ otherProjectA5: true }).then(r => { results.project = r; }),
+    run({ preconfirmed: true }, 'k1').then(r => { results.linked = r; }),
   ];
+  const M113 = read('supabase/migrations/0113_linked_labor.sql');
+  const lcMergeSql = slice(M113, 'create or replace function lc_merge(', '\n$$;', 'supabase/migrations/0113_linked_labor.sql');
 
   asyncSections.push(Promise.all(pending).then(() => {
     console.log('\nN. Merging jobs into one lumpsum');
-    test('the keeper is written BEFORE any payment moves or contract dies', () => {
-      const log = results.ok.h.log.filter(l => l.indexOf('notif:') !== 0);
-      const firstDelete = log.findIndex(l => l.indexOf(':delete:') !== -1);
-      const firstRepoint = log.findIndex(l => l.indexOf('payroll:update:') === 0);
-      eq(log[0].indexOf('laborContracts:update:'), 0, 'first write is not the keeper update');
-      ok(firstRepoint !== -1 && firstRepoint < firstDelete,
-         'a contract was deleted before its payments were repointed — on delete set null just unlinked them');
+    test('ONE server merge, with exactly the person’s five jobs, in card order', () => {
+      eq(results.ok.calls.length, 1, 'server merges');
+      eq(results.ok.calls[0].ids.join(','), 'a1,a2,a3,a4,a5', 'the jobs sent');
+      eq(results.ok.calls[0].title, 'General Works Package', 'title');
+      eq(results.ok.calls[0].reason, 'one agreement', 'the reason is passed on');
     });
 
-    test('every payment of the merged jobs now points at the ONE keeper', () => {
-      const { contracts, payroll } = results.ok.h;
-      const keeper = contracts.find(c => c.workerName === 'Francis Febra' && c.category !== 'outsource');
-      eq(payroll.filter(p => p.contractId === keeper.id).length, 5, 'payments on the lumpsum');
-      ok(!payroll.some(p => p.contractId === null && ['p1', 'p2', 'p3', 'p4', 'p5'].indexOf(p.id) !== -1),
-         'a payment was left unlinked — its pesos fell out of the contract into "uncapped"');
+    test('the vendor, another worker and a same-name LINKED person are never sent', () => {
+      const ids = results.ok.calls[0].ids;
+      ['v9', 'z9', 'k1', 'k2'].forEach(x => ok(ids.indexOf(x) === -1, x + ' was swept into the merge'));
     });
 
-    test('MONEY UNCHANGED: the same paid total, under one summed cap', () => {
-      const { contracts, payroll } = results.ok.h;
-      const keeper = contracts.find(c => c.workerName === 'Francis Febra' && c.category !== 'outsource');
-      eq(keeper.agreedAmount, 200000, 'the merged cap is not the sum of the five');
-      eq(paidOf(payroll, [keeper.id]), 53000, 'paid-to-date moved during the merge');
-      eq(keeper.agreedAmount - paidOf(payroll, [keeper.id]), 147000, 'still to pay');
+    test('a linked person merges only their own account’s jobs, whatever the typed names', () => {
+      eq(results.linked.calls.length, 1, 'server merges');
+      eq(results.linked.calls[0].ids.slice().sort().join(','), 'k1,k2', 'the account’s jobs');
     });
 
-    test('the five jobs become the works list, and the container gets the title', () => {
-      const keeper = results.ok.h.contracts.find(c => c.workerName === 'Francis Febra' && c.category !== 'outsource');
-      eq((keeper.works || []).join(' | '),
-         'Architectural/Interior Finishing Works | Carpentry Works | Civil Works | Owner Supply | Plumbing Works',
-         'works list');
-      eq(keeper.scope, 'General Works Package', 'contract title');
+    test('the keeper carries the signed agreement when one of them does', () => {
+      eq(results.pdf.calls[0].keeper, 'a3', 'keeper with the PDF');
+      eq(results.ok.calls[0].keeper, 'a1', 'keeper without any PDF: the first job');
     });
 
-    test('exactly four contracts are deleted — the vendor and Mark survive', () => {
-      const { contracts } = results.ok.h;
-      eq(contracts.filter(c => c.workerName === 'Francis Febra' && c.category !== 'outsource').length, 1, 'Francis labor rows');
-      ok(contracts.some(c => c.id === 'v9'), 'the vendor subcontract was swallowed by the worker merge');
-      ok(contracts.some(c => c.id === 'z9'), 'another worker’s contract was deleted');
+    test('the browser writes nothing itself — no contract or payment write', () => {
+      [results.ok, results.failed, results.linked].forEach(h =>
+        ok(!h.log.some(l => /^(laborContracts|payroll):/.test(l)), 'a direct write was issued: ' + h.log.join(' | ')));
     });
 
-    test('the vendor’s and other workers’ payments are never re-tagged', () => {
-      const { payroll } = results.ok.h;
-      eq(payroll.find(p => p.id === 'p6').contractId, 'v9', 'vendor payment moved');
-      eq(payroll.find(p => p.id === 'p7').contractId, 'z9', 'another worker’s payment moved');
-      eq(payroll.find(p => p.id === 'p8').contractId, null, 'an uncapped payment was captured');
+    test('daily and fixed jobs are refused before anything is sent', () => {
+      eq(results.basis.calls.length, 0, 'a mixed-basis merge reached the server');
+      ok(results.basis.log.some(l => /^notif:error:.*[Dd]aily and fixed/.test(l)), 'no reason given to the user');
     });
 
-    test('the cap change is recorded in capHistory, not applied silently', () => {
-      const keeper = results.ok.h.contracts.find(c => c.workerName === 'Francis Febra' && c.category !== 'outsource');
-      ok((keeper.capHistory || []).some(h => /merged/i.test(h.note || '') && h.amount === 200000),
-         'the merge raised a cap from 50,000 to 200,000 and left no trace of it');
+    test('jobs on two projects are refused before anything is sent — and by the server too', () => {
+      eq(results.project.calls.length, 0, 'a two-project merge reached the server');
+      ok(results.project.log.some(l => /^notif:error:.*same project/.test(l)), 'no reason given to the user');
+      ok(/count\(distinct coalesce\(folder_id::text, '-'\)\)[\s\S]{0,140}LC_MERGE_FOLDER/.test(lcMergeSql),
+         'lc_merge no longer refuses contracts on different projects');
     });
 
-    // The load-bearing failure case: migration 0062 unapplied.
-    test('a failed keeper write moves NO payment and deletes NO contract', () => {
-      const { contracts, payroll, log } = results.failed.h;
-      eq(contracts.length, 7, 'contracts were deleted after the merge had already failed');
-      eq(paidOf(payroll, FIVE), 53000, 'payments were repointed after the merge had already failed');
-      ok(!log.some(l => l.indexOf(':delete:') !== -1), 'a delete ran after the keeper write failed');
-      ok(!log.some(l => l.indexOf('payroll:update:') === 0), 'a repoint ran after the keeper write failed');
-    });
-
-    test('a failed merge says migration 0062 is missing, and that nothing changed', () => {
-      ok(results.failed.h.log.some(l => /0062/.test(l) && /[Nn]othing was changed/.test(l)),
+    test('a failed merge says that nothing changed', () => {
+      ok(results.failed.log.some(l => /^notif:error:/.test(l) && /Nothing was changed/.test(l)),
          'the user is not told the merge was a no-op — they may re-run it blind');
     });
 
     test('the merge dialog is the ONLY confirmation — no second Delete prompt', () => {
       // lcOpenMerge's dialog already states the works, the cap and the deletes.
-      // Falling through to showDeleteConfirm as well asked the user twice, the
-      // second time under a red "Confirm Delete" heading that misnames a merge.
-      ok(/lcMergeToLumpsum\(key, title, true\)/.test(expensesSrc),
+      ok(/lcMergeToLumpsum\(seed\.id, title, true, reason\)/.test(expensesSrc),
          'the merge dialog stopped passing preconfirmed — the user gets a second, mislabelled Delete prompt');
-      ok(/if \(!preconfirmed && !await showDeleteConfirm\(msg\)\)/.test(expensesSrc),
+      ok(/if \(!preconfirmed\) \{[\s\S]{0,600}?if \(!await showDeleteConfirm\(msg\)\) return;/.test(expensesSrc),
          'the preconfirmed guard is gone; either the dialog is bypassed or the double prompt is back');
     });
 
-    test('declining the confirm changes nothing at all', () => {
-      const { contracts, payroll, log } = results.cancelled.h;
-      eq(contracts.length, 7, 'contracts changed after Cancel');
-      eq(paidOf(payroll, FIVE), 53000, 'payments changed after Cancel');
-      eq(log.length, 0, 'a write was issued after Cancel');
+    test('declining the confirm sends nothing at all', () => {
+      eq(results.cancelled.calls.length, 0, 'a merge was sent after Cancel');
+      eq(results.cancelled.log.filter(l => l.indexOf('notif:') !== 0).length, 0, 'a write was issued after Cancel');
     });
 
     test('staff cannot merge — it rewrites caps, which they may not even see', () => {
-      eq(results.staff.h.log.length, 0, 'a staff account issued a merge write');
-      eq(results.staff.h.contracts.length, 7, 'staff merged contracts');
+      eq(results.staff.calls.length, 0, 'a staff account sent a merge');
+      eq(results.staff.log.length, 0, 'a staff account issued a write');
     });
 
-    // Guard the ordering at the source too: the tests above prove the behaviour,
-    // this names the rule so a future edit that reorders the block is caught even
-    // if someone stubs the harness differently.
-    test('the source still repoints before deleting', () => {
-      const src = slice(expensesSrc, 'async function lcMergeToLumpsum(', '// Confirm-and-name dialog.', 'js/expenses-module.js');
-      const repoint = src.indexOf("collection('payroll')");
-      const del = src.indexOf('.delete()');
-      ok(repoint !== -1 && del !== -1 && repoint < del,
-         'the delete loop now runs before the repoint loop — on delete set null will unlink every payment');
+    // The server's order, at the source: keeper, then repoint, then delete.
+    test('the server merge writes the keeper, then repoints, then deletes', () => {
+      const keeper = lcMergeSql.indexOf('update labor_contracts set scope = v_title, agreed_amount = v_total');
+      const repoint = lcMergeSql.indexOf('update payroll set contract_id = p_keeper where contract_id = any (v_others)');
+      const del = lcMergeSql.indexOf('delete from labor_contracts where id = any (v_others)');
+      ok(keeper !== -1 && repoint !== -1 && del !== -1, 'a merge step is missing from lc_merge');
+      ok(keeper < repoint && repoint < del,
+         'lc_merge no longer writes keeper → repoint → delete; on delete set null would unlink every payment');
+    });
+
+    test('MONEY UNCHANGED stays proven on a real database (ll_linked_labor G1)', () => {
+      const suite = read('supabase/tests/ll_linked_labor.pglite.mjs');
+      ok(/eq\(await paidOf\(db, c\.id\), paidBefore\)/.test(suite), 'the merge money check (G1) is gone');
+      ok(/eq\(\[r\.agreed, r\.works\], \[22000,/.test(suite), 'the summed-cap check (G1) is gone');
     });
 
   }));
@@ -1803,12 +1782,16 @@ console.log('\nM. Lumpsum contracts');
     });
 
     test('PM and PC merges agree: keeper first, repoint, then delete', () => {
-      const pc = slice(expensesSrc, 'async function lcMergeToLumpsum(', '// Confirm-and-name dialog.', 'js/expenses-module.js');
+      // Project Control merges on the server since Linked Labor (lc_merge, 0113);
+      // Project Management still merges in the browser. Both sum the caps and
+      // write the works list.
+      const pc = slice(read('supabase/migrations/0113_linked_labor.sql'), 'create or replace function lc_merge(', '\n$$;', '0113_linked_labor.sql');
       const pm = slice(pmSrc, 'async function _pmMergeToLumpsum(', '// Confirm-and-name dialog.', 'js/pm-admin.js');
-      [['PC', pc], ['PM', pm]].forEach(([lbl, src]) => {
-        ok(/agreedAmount: total/.test(src), lbl + ': the merged cap is no longer the sum of the caps');
-        ok(/works: works/.test(src), lbl + ': the merge stopped writing the works list');
-      });
+      ok(/select coalesce\(sum\(coalesce\(agreed_amount, 0\)\), 0\) into v_total/.test(pc) && /agreed_amount = v_total/.test(pc),
+         'PC: the merged cap is no longer the sum of the caps');
+      ok(/works = v_works/.test(pc), 'PC: the merge stopped writing the works list');
+      ok(/agreedAmount: total/.test(pm), 'PM: the merged cap is no longer the sum of the caps');
+      ok(/works: works/.test(pm), 'PM: the merge stopped writing the works list');
     });
 
   }));
@@ -2599,6 +2582,51 @@ console.log('\nY. Reconciliation reads and points; a payment only from the perso
       eq(f._expPaidNowPayments('none', 1000, '', 'company', f._expPayHowOf(paidWith), '2026-10-24').length, 0, paidWith);
     }
     eq(f._expPaidNowPayments('full', 1000, '', 'company', 'gcash', '2026-10-24')[0].amount, '1000', 'Paid in full: the total');
+  });
+}
+
+// == Z. LINKED LABOR (0113) MOVES NO MONEY ==============================
+// Linking a contract to a WorkMate account, the contract history, ending a
+// contract and the worker's own view never feed a money figure: no Spent /
+// Earned / Profit function reads a Linked Labor symbol, the drawdown (lcPaid /
+// lcStats) never reads the link or the end, ending a contract marks nothing
+// paid, and neither the browser module nor the migration writes payroll, an
+// expense or a bill — apart from the merge's repoint of contract_id, which
+// §N and ll_linked_labor G1 prove keeps every peso where it was.
+console.log('\nZ. Linked Labor moves no money');
+{
+  const llSrc = read('js/linked-labor.js');
+  const mig = read('supabase/migrations/0113_linked_labor.sql');
+  const body = (src, name) => { const i = src.indexOf('function ' + name + '('); ok(i !== -1, name + ' not found'); return src.slice(i, src.indexOf('\n}\n', i) + 3); };
+  const LLSYM = /workerId|worker_id|endedAt|ended_at|lc_events|LinkedLabor|_LL\b|ll_my_agreements|lc_link|_cardKey|_llTick/;
+  test('no money function reads a Linked Labor symbol', () => {
+    for (const name of ['buildProject', '_projSpent', '_projEarned', '_projMargin', '_recognisedProfit', '_companyOverhead', '_folderCompletion']) {
+      ok(!LLSYM.test(body(portalSrc, name)), name + ' reads Linked Labor');
+    }
+    const drawdown = slice(expensesSrc, 'function lcDrawsDown', '// Worker names seen on this folder', 'expenses-module.js');
+    ok(!LLSYM.test(drawdown), 'the drawdown (lcPaid / lcStats) reads Linked Labor');
+  });
+  test('ending a contract marks nothing paid: the balance ignores the end', () => {
+    const pk = pakyaw([{ id: 'p1', contractId: 'c1', totalSalary: 20000, laborType: 'direct' }]);
+    const c = { id: 'c1', agreedAmount: 50000 };
+    eq(JSON.stringify(pk.lcStats({ ...c, endedAt: '2026-11-08T00:00:00Z', workerId: 'acct-1' })), JSON.stringify(pk.lcStats(c)));
+    eq(pk.lcStats({ ...c, endedAt: '2026-11-08T00:00:00Z' }).remaining, 30000);
+    eq(pk.lcStats({ ...c, endedAt: '2026-11-08T00:00:00Z' }).status, 'Ongoing');
+  });
+  test('linked-labor.js calls only its own functions and touches no money table', () => {
+    const browser = llSrc.slice(llSrc.indexOf('// ── Browser half'));
+    const rpcs = [...new Set([...browser.matchAll(/rpc\('([a-z_]+)'/g)].map(m => m[1]))].sort();
+    eq(JSON.stringify(rpcs), JSON.stringify(['lc_delete', 'lc_edit', 'lc_end', 'lc_link', 'lc_link_candidates', 'lc_merge', 'lc_reopen', 'wk_me']));
+    const tables = [...new Set([...browser.matchAll(/\.from\('([a-z_]+)'\)/g)].map(m => m[1]))].sort();
+    eq(JSON.stringify(tables), JSON.stringify(['lc_events', 'profiles']));
+    ok(!/collection\(/.test(browser), 'linked-labor.js writes through the shim');
+  });
+  test('0113 inserts no payroll, expense or bill; its one payroll write is the merge repoint', () => {
+    ok(!/insert into (payroll|expenses|weekly_bills|invoices|payments|projects)\b/i.test(mig), '0113 inserts a money row');
+    ok(!/update (expenses|weekly_bills|invoices|payments|projects)\b/i.test(mig), '0113 updates a money row');
+    ok(!/delete from (payroll|expenses|weekly_bills|invoices|payments)\b/i.test(mig), '0113 deletes a money row');
+    const payrollUpdates = [...mig.matchAll(/update payroll set ([^;]+);/g)].map(m => m[1]);
+    eq(JSON.stringify(payrollUpdates), JSON.stringify(['contract_id = p_keeper where contract_id = any (v_others)']));
   });
 }
 

@@ -5028,10 +5028,20 @@
                     <label class="lc-shape"><input type="radio" name="lcShape" value="lumpsum" onchange="lcApplyShapeMode()"><span><span class="lc-shape-t">Lumpsum</span><span class="lc-shape-h">Many works, ONE cap — pay it once, no splitting.</span></span></label>
                     <label class="lc-shape"><input type="radio" name="lcShape" value="daily" onchange="lcApplyShapeMode()"><span><span class="lc-shape-t">Daily basis</span><span class="lc-shape-h">No agreed total — paid per day, tagged on its own.</span></span></label>
                 </div>
+                <!-- Linked Labor (0113): shown by LinkedLabor.formOpened once the contract is signed or paid. -->
+                <div id="lcBasisLockNote" style="display:none;margin-top:6px;font-size:11.5px;color:#6b7280;">Daily ↔ fixed is locked: this contract is signed or paid. To change how it is paid, end it and make a new contract.</div>
             </div>
             <div class="exp-form-row">
                 <div class="exp-form-group"><label id="lcWorkerLabel">Worker Name</label><input type="text" id="lcWorker" list="lcWorkerNames" required placeholder="Full name" autocomplete="off" oninput="if(window.lcAgrSyncWorkerName)lcAgrSyncWorkerName()"><datalist id="lcWorkerNames"></datalist><datalist id="lcVendorNames"></datalist></div>
                 <div class="exp-form-group"><label id="lcScopeLabel">Scope / Job</label><input type="text" id="lcScope" placeholder="e.g. Tiling &amp; masonry"></div>
+            </div>
+            <!-- Linked Labor (0113): the main owner's optional WorkMate account, New
+                 Labor Contract only (an existing contract links from its card).
+                 Hidden for staff and Out Source; the server checks it anyway. -->
+            <div class="exp-form-group" id="lcAccountGroup" style="display:none;">
+                <label for="lcAccount">WorkMate account <span style="color:#9ca3af;font-weight:400;">(optional · main owner)</span></label>
+                <select id="lcAccount" onchange="LinkedLabor.onFormAccountChange()"><option value="">— Not linked (typed name only) —</option></select>
+                <div id="lcAccountNote" style="display:none;margin-top:6px;padding:9px 12px;border-radius:8px;background:#FFF8E6;border:1px solid #F1D48A;font-size:12px;line-height:1.5;color:#5C4813;"></div>
             </div>
             <!-- Works covered — shown in Lumpsum mode only (lcApplyShapeMode).
                  NAMES ONLY, never amounts: the contract has ONE cap below. -->
@@ -5062,6 +5072,11 @@
                 </div>
             </div>
             <div class="exp-form-group"><label>Notes (optional)</label><textarea id="lcNotes" rows="2" placeholder="Additional details…"></textarea></div>
+            <!-- Linked Labor (0113): Edit only. Required by the server once the contract is signed or paid. -->
+            <div class="exp-form-group" id="lcReasonGroup" style="display:none;">
+                <label for="lcReason" id="lcReasonLabel">Reason for this change (optional)</label>
+                <input type="text" id="lcReason" maxlength="500" placeholder="e.g. Added the rear wall">
+            </div>
 
             <!-- ── Worker Agreement — upload the signed PDF ── -->
             <!-- Hidden in Out Source mode: a vendor subcontract is not an employment record. -->
@@ -5541,7 +5556,8 @@
 <script src="js/receipt-storage.js?v=20261031a"></script>
 <script src="js/expense-split-rows.js?v=20261028a"></script>
 <script src="js/expense-pending-save.js?v=20261031a"></script>
-<script src="js/expenses-module.js?v=20261104c"></script>
+<script src="js/linked-labor.js?v=20261108a"></script>
+<script src="js/expenses-module.js?v=20261108a"></script>
 <script src="js/overhead-module.js?v=20261104b"></script>
 <script src="js/reimbursement-module.js"></script>
 <script src="js/construction-module.js"></script>
@@ -5574,7 +5590,7 @@
 <script src="js/user-navigator.js?v=20261104a"></script>
 <script src="js/client-accounts.js"></script>
 <script src="js/payment-requests.js"></script>
-<script src="js/invoice-module.js?v=20261104b"></script>
+<script src="js/invoice-module.js?v=20261108a"></script>
 <script src="js/labor-invoice-module.js"></script>
 <script src="js/pm-sharing.js?v=20261031a"></script>
 <script src="js/pm-admin.js?v=20261031a"></script>

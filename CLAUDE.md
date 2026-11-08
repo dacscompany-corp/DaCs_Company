@@ -217,6 +217,20 @@ Profit   = Earned − Spent
   session follows whoever signed in last in any tab; a sign-in change stops the save and keeps it for that account.
   Only `js/reconciliation-admin.js` calls the `rec_*` functions. Spec:
   `docs/superpowers/specs/2026-10-30-workmate-stage4-reconciliation-questions.md`.
+- **Linked Labor (0113) links a Project Control labor contract to a worker's WorkMate account — it moves no money.**
+  `labor_contracts.worker_id` is set, changed or cleared **only by the main owner** (`lc_link`, or the account picker
+  on New Labor Contract) — never by name, never in bulk, never by payroll names or a contract's leader. The linked
+  worker sees only their own agreements on the phone (`ll_my_agreements`): progress from that project's own BOQ
+  (Additional Works never borrows the main project's figure), agreed / paid / balance under `lcPaid`'s rule, and
+  payments as date · amount · method. **Online only: nothing about money is saved on the phone.** Every Project Control
+  labor contract keeps an append-only history (`lc_events`, owner accounts only): once **signed or paid**, its terms
+  change only with a reason, daily↔fixed is locked, and `capHistory` only grows. A linked contract is never deleted;
+  **ending one marks nothing paid and moves no payment** (it can still be paid to settle it). Worker cards, statements,
+  the agreement print and merges group by **linked account first, then typed name**. Merging is one server step
+  (`lc_merge`) that only repoints payroll to the keeper, and **never crosses projects** (Additional Works is a project
+  of its own). A blank box (`''`, `[]`) is never a change of terms. Only `js/linked-labor.js` calls the `lc_*` functions; §Z of
+  `money-math.test.js` keeps every money function free of them. Spec:
+  `docs/superpowers/specs/2026-11-04-workmate-linked-labor-contracts-mvp-terms.md`.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 

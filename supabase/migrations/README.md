@@ -6,8 +6,8 @@
 one-offs — that habit is why `0020_schema_drift_catchup.sql`, `0025` and the drift they
 capture exist. Write the migration, apply the migration, commit the migration.
 
-- **Next number = highest existing + 1** (**0113** — highest on disk is
-  `0112_password_change_per_reset.sql`). Sort the folder before you pick; don't
+- **Next number = highest existing + 1** (**0114** — highest on disk is
+  `0113_linked_labor.sql`). Sort the folder before you pick; don't
   trust this line if it looks stale. Duplicate numbers are how we got into trouble. **0109** (WorkMate Stage 4) was reserved before 0110 and is applied live after it.
 - **`0075` and `0076` are TAKEN but not on `main`.** They belong to the abandoned
   project cost-plan branch (`project_cost_plans`, then its `%` columns) and **both
@@ -209,6 +209,8 @@ file creates the policy only when it is missing, so applying it live changes not
 **0111 (WorkMate Stage 3b-a — tools on the phone, the Team Leader switch, password records)** adds `tl_problems`, `wk_role_events` and `wk_password_events` (row security on, no policies; the last two append-only), the `tl_my_*`, `tl_team_*` and `wk_*` functions, and redefines `tl_actor`, `profiles_guard`, `pr_office_teams` and `pr_office_set_leader`. No money, no new column on `profiles`. It needs 0107 and 0108 first. The Edge Function `admin-set-worker-password` needs this migration first.
 
 **0112 (WorkMate Stage 3b-b — a password change confirms the reset it answers)** adds a nullable `reset_id` to `wk_password_events` (a "changed" row names its reset; only "changed" rows carry one), the internal `wk_password_open_reset(uuid)`, rewrites `wk_password_state()` (the same `must_change`, plus `reset_id`) and adds `wk_password_changed_for(bigint)`, which records a change only for the caller's open reset. 0111's `wk_password_changed()` is unchanged. No money, no policy. It needs 0111 first; WorkMate 1012 needs it. The way back: `supabase/tests/3b_b_rollback.sql`.
+
+**0113 (WorkMate Linked Labor — a labor contract linked to a worker's account, and every contract's history)** adds the nullable `labor_contracts.worker_id`, `ended_at` and `ended_by`; the append-only `lc_events` (owner accounts read it; no insert, update or delete for anyone); the `lc_guard` / `lc_log` triggers on `labor_contracts`; the office functions `lc_link_candidates`, `lc_link`, `lc_edit`, `lc_end`, `lc_reopen`, `lc_delete`, `lc_merge` (only `js/linked-labor.js` calls them); and the worker's `ll_my_agreements` (WorkMate only). Once a contract is signed or paid, its terms change only with a reason and daily↔fixed is locked; a linked contract is never deleted; deleting a project folder still takes its contracts. Linking and the history move no money; `lc_merge` repoints payroll to the keeper exactly as the office merge always has. It needs 0098 (`pm_main_owner_id`) and 0085 (`pr_is_requester`). No real contract is linked by it.
 
 Get the truth before relying on this line:
 

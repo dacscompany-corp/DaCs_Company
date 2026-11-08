@@ -2337,14 +2337,30 @@ ${window.dacsStatementPrintScript()}
         // Include payments by typed name OR linked to a contract owned by this worker,
         // so a name mismatch (payment "Mark Frias" vs contract "Mark Frias (Demolition)")
         // still gathers the right entries.
+        //
+        // Linked Labor (migration 0113): an 'acct:<id>' key is ONE linked WorkMate
+        // account — its own contracts and their payments only, never anyone who
+        // shares its typed name. A typed name, as before, now leaves out payments
+        // on LINKED contracts: those belong to their account's statement.
+        const _allC0  = (typeof expLaborContracts !== 'undefined' ? expLaborContracts : []);
+        const _acct   = (typeof workerName === 'string' && workerName.indexOf('acct:') === 0) ? workerName.slice(5) : null;
+        const _linked = new Set(_allC0.filter(c => c.workerId).map(c => c.id));
         const _wcIds = new Set(
-            (typeof expLaborContracts !== 'undefined' ? expLaborContracts : [])
-                .filter(c => (c.workerName || '') === workerName && _catOf(c) === _soaCat)
+            _allC0
+                .filter(c => _catOf(c) === _soaCat && (_acct
+                    ? c.workerId === _acct
+                    : (!c.workerId && (c.workerName || '') === workerName)))
                 .map(c => c.id)
         );
+        if (_acct) {
+            const c0 = _allC0.find(c => c.workerId === _acct);
+            workerName = c0 ? (c0.workerName || 'Worker') + (window.LinkedLabor ? window.LinkedLabor.tagOf(c0) : '') : 'Worker';
+        }
         let entries = _allPay
-            .filter(p => periodIds.has(p.projectId) &&
-                ((p.workerName || '') === workerName || (p.contractId && _wcIds.has(p.contractId))))
+            .filter(p => periodIds.has(p.projectId) && (_acct
+                ? !!(p.contractId && _wcIds.has(p.contractId))
+                : (((p.workerName || '') === workerName && !(p.contractId && _linked.has(p.contractId)))
+                   || (p.contractId && _wcIds.has(p.contractId)))))
             .sort((a, b) => new Date(a.paymentDate || 0) - new Date(b.paymentDate || 0));
         if (!entries.length) { _stopPrint(w, 'No labor entries found for ' + workerName + ' in this project.'); return; }
 
@@ -2392,7 +2408,7 @@ ${window.dacsStatementPrintScript()}
         const _allC      = (typeof expLaborContracts !== 'undefined' ? expLaborContracts : [])
             .filter(c => _catOf(c) === _soaCat);
         const _entryCids = new Set(entries.map(p => p.contractId).filter(Boolean));
-        const _wContracts = _allC.filter(c => (c.workerName || '') === workerName || _entryCids.has(c.id));
+        const _wContracts = _allC.filter(c => _wcIds.has(c.id) || _entryCids.has(c.id));
 
         // Contract position — hoisted out of the status-pill branch below because
         // the Contract band also needs it. Same arithmetic the Worker Tracker row

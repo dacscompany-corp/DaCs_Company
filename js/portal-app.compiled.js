@@ -2524,7 +2524,11 @@ const _LC_ICON_PATHS = {
   print:     ["M6 9V2h12v7", "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2", "M6 14h12v8H6z"],
   attach:    ["M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"],
   eye:       ["M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z", "M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"],
-  trash:     ["M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"]
+  trash:     ["M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"],
+  // Linked Labor (migration 0113)
+  link:      ["M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71", "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"],
+  end:       ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z", "M9 9h6v6H9z"],
+  history:   ["M3 3v5h5", "M3.05 13A9 9 0 1 0 6 5.3L3 8", "M12 7v5l4 2"]
 };
 function _lcIcon(name) {
   return /* @__PURE__ */ React.createElement(
@@ -2576,6 +2580,19 @@ function _lcFirstName(n) {
   // pesos stay in the Labor bucket and the money model is untouched. The split
   // below is DERIVED from each payment's contract, never stamped on the payroll row.
   const [lcSeg, setLcSeg] = React.useState("labor");
+  // Linked Labor (migration 0113): a LINKED contract's card is its ACCOUNT, so
+  // two linked people who share a typed name never share a card or a statement.
+  // Unlinked contracts keep today's key, the trimmed name. Linked accounts'
+  // names and worker numbers load once (js/linked-labor.js); no peso is involved.
+  const _LL = window.LinkedLabor || null;
+  const _cardKey = (c) => (_LL ? _LL.cardKey(c) : (((c && c.workerName) || "—").trim() || "—"));
+  const [_llTick, _setLlTick] = React.useState(0);
+  React.useEffect(() => {
+    if (!_LL) return;
+    const ids = (contracts || []).filter((c) => c && c.workerId).map((c) => c.workerId);
+    if (ids.length) _LL.people(ids).then(() => _setLlTick((n) => n + 1));
+    _LL.me().then(() => _setLlTick((n) => n + 1));
+  }, [contracts]);
   const _isOutsourceC = (c) => (typeof window.lcIsOutsource === "function" ? window.lcIsOutsource(c) : !!c && c.category === "outsource");
   // Lumpsum works (migration 0062): ONE capped contract listing several works,
   // paid by a single payment stream. Deliberately NOT a third segment — a
@@ -2617,11 +2634,22 @@ function _lcFirstName(n) {
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [soaOpen]);
+  // The Worker Statement list. A payment against a LINKED contract belongs to
+  // that account (Linked Labor, 0113), not to whoever shares its typed name;
+  // every other payment groups by typed name, as before.
   const workers = React.useMemo(() => {
     const m = {};
-    laborTx.forEach((t) => { const n = t.name || "\u2014"; if (!m[n]) m[n] = { name: n, role: t.role || "", total: 0, count: 0 }; m[n].total += t.amount || 0; m[n].count++; });
+    const byId = {};
+    (contracts || []).forEach((c) => { byId[c.id] = c; });
+    laborTx.forEach((t) => {
+      const lc = t.contractId ? byId[t.contractId] : null;
+      const linked = !!(lc && lc.workerId);
+      const n = linked ? _cardKey(lc) : (t.name || "\u2014");
+      if (!m[n]) m[n] = { key: n, name: linked && _LL ? _LL.labelOf(lc) : n, role: t.role || "", total: 0, count: 0 };
+      m[n].total += t.amount || 0; m[n].count++;
+    });
     return Object.values(m).sort((a, b) => b.total - a.total);
-  }, [laborTx]);
+  }, [laborTx, contracts, _llTick]);
   const billingByProjectId = React.useMemo(() => {
     const monthNum = (m) => {
       const map2 = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
@@ -2696,9 +2724,16 @@ function _lcFirstName(n) {
   });
   const _lcByWorker = {};
   _lcRows.forEach((r) => {
-    const w = (r.c.workerName || "\u2014").trim() || "\u2014";
+    const w = _cardKey(r.c);
     (_lcByWorker[w] = _lcByWorker[w] || []).push(r);
   });
+  // What a card is called: the typed name, or for a linked account the recorded
+  // name and its worker number ("Juan Cruz \u00b7 W-0013").
+  const _wLabel = (w) => {
+    if (!(_LL && _LL.isAccountKey(w))) return w;
+    const r0 = (_lcByWorker[w] || [])[0];
+    return r0 ? _LL.labelOf(r0.c) : w;
+  };
   const _lcWorkers = Object.keys(_lcByWorker);
   // Daily rows contribute a real `paid` but no cap, so folding them into one
   // total would subtract their payments from a ceiling they were never drawn
@@ -2716,7 +2751,7 @@ function _lcFirstName(n) {
   // (Demolition)" on the contract) doesn't split it into a phantom "No contract"
   // row \u2014 the contract link wins over the free-typed name.
   const _cWorkerById = {};
-  _lcRows.forEach((r) => { _cWorkerById[r.c.id] = (r.c.workerName || "\u2014").trim() || "\u2014"; });
+  _lcRows.forEach((r) => { _cWorkerById[r.c.id] = _cardKey(r.c); });
   const _payByWorker = {};
   filtered.forEach((p) => {
     const w = (p.contractId && _cWorkerById[p.contractId]) || (p.name || "\u2014").trim() || "\u2014";
@@ -2726,11 +2761,11 @@ function _lcFirstName(n) {
   const _union = Array.from(new Set([..._lcWorkers, ...Object.keys(_payByWorker)]));
   const _allWorkers = _union.filter((w) => {
     if (!q) return true;
-    if (w.toLowerCase().includes(q)) return true;
+    if (_wLabel(w).toLowerCase().includes(q)) return true;
     if ((_payByWorker[w] || []).length) return true;
     if ((_lcByWorker[w] || []).some((r) => (String(r.c.scope || "") + String(r.c.role || "")).toLowerCase().includes(q))) return true;
     return false;
-  }).sort((a, b) => a.localeCompare(b));
+  }).sort((a, b) => _wLabel(a).localeCompare(_wLabel(b)));
 
   const toggle = (w) => setOpenW((s) => ({ ...s, [w]: !s[w] }));
 
@@ -2757,6 +2792,16 @@ function _lcFirstName(n) {
       rc("button", { onClick: (e) => window.lcAddFile && window.lcAddFile(r.c.id, e.currentTarget) }, _lcIcon("attach"), "Add file"),
       rc("button", { onClick: () => window.lcViewFiles && window.lcViewFiles(r.c.id) }, _lcIcon("eye"), "View")
     ),
+    // Linked Labor (0113): the WorkMate account (main owner only), End /
+    // Reopen and the contract's history (owner accounts; it holds amounts).
+    _LL ? rc("span", { className: "lc2-cdiv" }) : null,
+    _LL ? rc("div", { className: "lc2-cgrp" },
+      (_LL.isMainOwnerNow() && !_isOutsourceC(r.c))
+        ? rc("button", { onClick: () => _LL.openLinkDialog(r.c, project && project.name) }, _lcIcon("link"), r.c.workerId ? "Account" : "Link account")
+        : null,
+      rc("button", { onClick: () => (r.c.endedAt ? _LL.confirmReopen(r.c) : _LL.confirmEnd(r.c)) }, _lcIcon("end"), r.c.endedAt ? "Reopen" : "End"),
+      rc("button", { onClick: () => _LL.openHistory(r.c) }, _lcIcon("history"), "History")
+    ) : null,
     rc("button", { className: "danger", title: "Delete contract", onClick: () => window.lcDelete && window.lcDelete(r.c.id) }, _lcIcon("trash"), "Delete")
   );
 
@@ -2821,7 +2866,7 @@ function _lcFirstName(n) {
     const toggleJob = (id, isOpen) => setOpenJob((s) => ({ ...s, [w]: isOpen ? null : id }));
     if (crows.length) {
       blocks.push(rc("div", { key: "_jobshead", className: "lc2-jobs-head" },
-        rc("div", { className: "lc2-jobs-lbl" }, "Jobs agreed with " + _lcFirstName(w) + " — " + crows.length),
+        rc("div", { className: "lc2-jobs-lbl" }, "Jobs agreed with " + _lcFirstName(_wLabel(w)) + " — " + crows.length),
         crows.length > 1 ? rc("div", { className: "lc2-jobs-hint" }, "Tap a job to open it") : null
       ));
     }
@@ -2863,7 +2908,9 @@ function _lcFirstName(n) {
           rc("div", { className: "lc2-job-id" },
             rc("div", { className: "lc2-job-name" }, r.c.scope || "Untitled job",
               works.length ? rc("span", { className: "lc2-lump", title: "One capped agreement covering " + works.length + " works — paid as a single stream" }, "Lumpsum") : null,
-              r.daily ? rc("span", { className: "lc2-lump lc2-daily", title: "No agreed total — paid per day, tagged on its own" }, "Daily") : null
+              r.daily ? rc("span", { className: "lc2-lump lc2-daily", title: "No agreed total — paid per day, tagged on its own" }, "Daily") : null,
+              // Linked Labor (0113): ended — it keeps its payments and balance.
+              r.c.endedAt ? rc("span", { className: "lc2-lump lc2-ended", title: "Ended — it keeps its payments and its balance, and can still be paid to settle it" }, "Ended") : null
             ),
             rc("div", { className: "lc2-job-sub" }, sub)
           ),
@@ -2877,6 +2924,14 @@ function _lcFirstName(n) {
           rc("svg", { className: "lc2-job-chev", width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }))
         ),
         isOpen ? rc("div", { className: "lc2-job-body" },
+          // Linked Labor (0113), owner accounts: who sees this agreement on the phone.
+          (!_staff() && _LL && !_isOutsourceC(r.c)) ? rc("div", { className: "lc2-link" + (r.c.workerId ? " on" : "") },
+            r.c.workerId
+              ? "WorkMate: " + (_LL.personOf(r.c.workerId)
+                  ? _LL.personOf(r.c.workerId).name + " · " + _LL.workerNo(_LL.personOf(r.c.workerId).no)
+                  : "a linked account") + " sees this agreement on their phone"
+              : "Not linked to a WorkMate account"
+          ) : null,
           // The works this ONE cap covers. No amount per line, deliberately:
           // a lumpsum has a single agreed total and a single payment stream, so
           // a per-work peso figure would invent a balance nobody agreed to.
@@ -2939,7 +2994,8 @@ function _lcFirstName(n) {
     const open = !!openW[w];
     const role = (crows[0] && crows[0].c.role) || (pays[0] && pays[0].role) || "";
     const payType = crows[0] && crows[0].c.payType;
-    const initial = (w || "?").trim().charAt(0).toUpperCase() || "?";
+    const wl = _wLabel(w);                          // the card's name (Linked Labor: + worker number)
+    const initial = (wl || "?").trim().charAt(0).toUpperCase() || "?";
     // A daily hire is never "Completed" by arithmetic — only by the owner
     // closing it — so an all-daily card never collapses to the done state.
     const isDone = hasContract && !allDaily && paidCap >= agreed && paidCap <= agreed;
@@ -2959,7 +3015,7 @@ function _lcFirstName(n) {
       rc("div", { className: "lc2-acc-head", onClick: () => toggle(w) },
         rc("div", { className: "lc2-av" }, initial),
         rc("div", { className: "lc2-id" },
-          rc("div", { className: "lc2-name" }, w),
+          rc("div", { className: "lc2-name" }, wl),
           rc("div", { className: "lc2-role" }, role || "\u2014",
             payType ? rc("span", { className: "lc2-type lc2-type-" + (payType === "inhouse" ? "in" : "pk") }, payType === "inhouse" ? "In-house" : "Pakyaw") : null
           )
@@ -3000,7 +3056,7 @@ function _lcFirstName(n) {
         agrJobs.length
           ? rc("button", {
               className: "lc2-agr",
-              title: "Open " + w + "’s " + (lcSeg === "outsource" ? "Out Source agreement" : "work agreement")
+              title: "Open " + wl + "’s " + (lcSeg === "outsource" ? "Out Source agreement" : "work agreement")
                 + " — all " + agrJobs.length + " job" + (agrJobs.length === 1 ? "" : "s")
                 + ", ₱ " + peso(agrJobs.reduce((s, j) => s + (Number(j.agreedAmount) || 0), 0)) + " total",
               onClick: (e) => { e.stopPropagation(); window.lcOpenAgreement && window.lcOpenAgreement(agrJobs[0].id); }
@@ -3013,10 +3069,12 @@ function _lcFirstName(n) {
         (crows.length > 1 && !_staff())
           ? rc("button", {
               className: "lc2-merge",
-              title: "Combine " + w + "’s " + crows.length + " jobs into one lumpsum contract — "
+              title: "Combine " + wl + "’s " + crows.length + " jobs into one lumpsum contract — "
                 + "₱ " + peso(agreed) + " under a single cap, paid once instead of split "
                 + crows.length + " ways",
-              onClick: (e) => { e.stopPropagation(); window.lcOpenMerge && window.lcOpenMerge(w); }
+              // The first job's id, not the name: a linked account's card is that
+              // account, and lcOpenMerge takes the same person's contracts only.
+              onClick: (e) => { e.stopPropagation(); window.lcOpenMerge && window.lcOpenMerge(crows[0].c.id); }
             }, "Merge")
           : null,
         rc("button", { className: "lc2-pay", onClick: (e) => { e.stopPropagation(); openAddEntry("labor", childMonths, activeFolder); } }, Ico.plus, " Pay"),
@@ -3053,7 +3111,7 @@ function _lcFirstName(n) {
             " Worker Statement"),
           soaOpen && rc("div", { className: "pcf-soa-pop" },
             rc("div", { className: "pcf-soa-head" }, rc("div", { className: "t" }, "Worker Statement"), rc("div", { className: "s" }, "Select a worker to generate their SOA")),
-            rc("div", { className: "pcf-soa-list" }, workers.length === 0 ? rc("div", { className: "pcf-soa-empty" }, "No workers yet.") : workers.map((wk) => rc("button", { key: wk.name, type: "button", className: "pcf-soa-item", onClick: () => { setSoaOpen(false); if (!_staff()) window.printWorkerLaborSOA && window.printWorkerLaborSOA(wk.name, project.id, lcSeg); } },
+            rc("div", { className: "pcf-soa-list" }, workers.length === 0 ? rc("div", { className: "pcf-soa-empty" }, "No workers yet.") : workers.map((wk) => rc("button", { key: wk.key || wk.name, type: "button", className: "pcf-soa-item", onClick: () => { setSoaOpen(false); if (!_staff()) window.printWorkerLaborSOA && window.printWorkerLaborSOA(wk.key || wk.name, project.id, lcSeg); } },
               rc("span", { className: "pcf-soa-av" }, (wk.name || "?").trim().charAt(0).toUpperCase() || "?"),
               rc("span", { className: "pcf-soa-info" }, rc("span", { className: "pcf-soa-name" }, wk.name), rc("span", { className: "pcf-soa-sub" }, (wk.role || "\u2014") + " \u00B7 " + wk.count + " " + (wk.count === 1 ? "entry" : "entries"))),
               rc("span", { className: "pcf-soa-amt" }, "\u20B1 ", peso(wk.total)))))
