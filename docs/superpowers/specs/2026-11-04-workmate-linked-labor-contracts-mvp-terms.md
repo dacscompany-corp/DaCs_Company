@@ -6,6 +6,8 @@ Written for: the owner, the designer/implementer and the reviewer.
 
 Status: **Approved by the owner on 4 November 2026,** including section 8's editing rules, the Project Control-only MVP boundary and main-owner-only account linking. **Still open:** Additional Works progress and sensitive offline-cache behaviour need concrete proposals in the implementation plan (section 11). Linked Labor stays a separate stage from WorkMate 3b/0E, and its release timing is not chosen. Approving these terms does not approve a build, alter an existing implementation plan, authorize data linking, reset accounts, commit files or change the live system. No individual worker/contract progress feature is requested.
 
+**Clarification, 9 November 2026 (wording only).** These terms first said staff "keep entering the typed name" and kept "staff contract-entry rights". That did not describe the existing workflow. In Project Control, **staff type a worker's name when they record a payment; they do not create contracts.** The two sentences in section 5 now say so. This changes no permission: account linking stays main-owner-only, and what staff can do on screen and on the server is exactly what it was.
+
 ## 1. Purpose
 
 Connect existing Project Control labor contracts to WorkMate accounts without replacing today's New Labor Contract workflow. The office may continue creating a contract with a manually entered name and link the correct account later. A linked worker or responsible leader can see that agreement's scope, amounts and recorded payments on the phone, alongside the project's existing overall accomplishment percentage.
@@ -59,14 +61,14 @@ The linked account represents the agreement holder/responsible leader, not every
 ### Create
 
 - Keep manual name entry, scope, trade, notes, agreement documents and existing payment/contract options.
-- Optionally, the main owner selects an existing worker account using name and worker number. Show which account will receive phone access before saving. Staff keep entering the typed name.
+- Optionally, the main owner selects an existing worker account using name and worker number. Show which account will receive phone access before saving. Staff do not create contracts; they type a worker's name when they record a payment (clarified 9 November 2026).
 - Selection may prefill the name and main trade as defaults. The office can edit the **contract's** job/trade and scope without writing to `profiles.position`.
 - Do not infer a Team Leader role from the contract's job title, pay type, scope or the fact that the person distributes money to helpers.
 - Do not require a team, a helper list or a project assignment record to save the contract.
 
 ### Link an existing manual-name agreement
 
-- The main owner explicitly selects the account and confirms the agreement, project and worker number. **Approved authority: only the main owner grants or changes this financial access**, while existing staff contract-entry rights are preserved.
+- The main owner explicitly selects the account and confirms the agreement, project and worker number. **Approved authority: only the main owner grants or changes this financial access**, while staff access stays exactly as it was (clarified 9 November 2026: staff record payments and do not create contracts).
 - Check active eligible worker/team-leader account, company ownership and agreement ownership on the server. Do not accept an account from another company, or a client/partner account.
 - Keep the same contract ID, category, agreed amount, payment basis, payments, funding allocations and signed documents. Preserve the original recorded name and an audit of the link.
 - A suggested name match is never an approved link. “Danilo”, “Danilo Tapales” and duplicate names require the main owner's confirmation.

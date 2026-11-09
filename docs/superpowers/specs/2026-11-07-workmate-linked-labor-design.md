@@ -49,7 +49,7 @@ Written for: the owner, and whoever builds and reviews Linked Labor.
 | Worker cards, statements and the agreement print group by typed name | **Grouped by linked account first, then by typed name.** Two linked people who share a name never share a card, a statement or an agreement print. |
 | Contract changes leave no trustworthy trail | **Every change is logged** in `lc_events`: who, when, before and after, and the reason. The log can't be edited or deleted. Owner accounts can read it; staff can't, because it holds amounts. |
 
-Staff keep exactly what they have: they add contracts with a typed name, and never see the account picker, amounts or the history.
+Staff keep exactly what they have today; this stage adds them nothing. In Project Control's screens they have no New Contract button, no contract toolbar (Ledger, Raise cap, Edit contract, End, History, Delete and the rest) and no Merge. They record and edit payments, which they can tag to a contract. They see those payments' amounts and what has been paid so far. Since the staff-hiding fix of 9 November 2026 they see no percentage, balance, progress bar or payment-calculated Ongoing / Completed / Over cap status for a capped contract, in the tracker or the payment forms, because any of those beside the pesos paid states the contract's total; a payment that goes over the agreed amount still stops for confirmation, without figures. A project's real completion and a contract's Ended label stay. This is on-screen hiding only: the browser still receives the amounts, so it does not stop a staff account inspecting what the browser received. They don't see the account picker, the history or the tracker's agreed totals. On the server nothing changes for them either: `lc_admin` and `lc_edit` still accept a staff account's contract write, as they did before this stage, though no screen offers one. `lc_end`, `lc_reopen`, `lc_delete` and `lc_merge` need an owner account, and `lc_link` needs the main owner.
 
 ## 3. Data (migration `0113_linked_labor.sql`)
 
@@ -231,7 +231,7 @@ A new section of `money-math.test.js` reads their source and fails on any Linked
 
 **Web (`tests/linked-labor-web.test.js`):**
 - only `linked-labor.js` calls `lc_*`
-- staff see no picker, history or amounts
+- staff see no picker, link controls, account line or history
 - grouping by identity
 - the reason prompt appears exactly when established
 - merge refuses mixed identities before calling the server
