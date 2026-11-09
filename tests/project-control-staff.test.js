@@ -313,6 +313,146 @@ async function test(name, fn) {
     assert(/stkCostMoveId: d\.stkCostMoveId \|\| null,/.test(source), 'mapExpense keeps the link');
     assert(/const isOldSplit = \(m\) => [^\n]*window\.expIsStockCostRow\(m\)\);/.test(source), 'never edited part by part');
   });
+  // Contract totals (owner decision 2026-11-09). Staff enter payroll, so they
+  // see the pesos paid; anything measuring those pesos against the agreed total
+  // gives the total away. The "identical" checks say it literally: change the
+  // total and nothing staff can see may change.
+  const TOTALS = [5000, 1234, 900, 100000];   // under, exactly paid, over, far under
+  const laborWith = (agreedAmount, extra = {}) => ({ ...laborProps,
+    contracts: [{ ...contract, agreedAmount, ...extra }] });
+  const laborViews = [['worker closed', {}], ['job open', { 3: { Mason: true } }],
+    ['job closed', { 3: { Mason: true }, 4: { Mason: null } }]];
+  for (const [label, state] of laborViews) {
+    await test('staff labor screen is identical whatever the contract total: ' + label, () => {
+      const h = harness('staff');
+      const seen = TOTALS.map(a => JSON.stringify(h.render('LaborDrill', laborWith(a), state)));
+      seen.forEach(s => assert.equal(s, seen[0]));
+    });
+    await test('staff labor screen names no share, balance or status of a contract: ' + label, () => {
+      const tree = harness('staff').render('LaborDrill', laborWith(5000), state);
+      const out = text(tree);
+      for (const bad of [/\d\s*%/, /In progress/, /Ongoing/, /Completed/, /Over cap/, /Still to pay/, /Over by/, /daily basis/i])
+        assert(!bad.test(out), bad + ' shown: ' + out);
+      assert(!nodes(tree).some(n => /lc2-bar/.test(n.props.className || '')), 'a progress bar is a share of the contract');
+      assert(/Total Agreed\s*—/.test(out) && /Remaining to Pay\s*—/.test(out), 'both tiles stay a dash: ' + out);
+    });
+  }
+  await test('staff keep the labor amounts they need for payroll entry', () => {
+    const tree = harness('staff').render('LaborDrill', laborWith(5000), { 3: { Mason: true } });
+    const out = text(tree);
+    assert(/Paid So Far\s*₱\s*1,234/.test(out), 'the paid tile: ' + out);
+    assert(/Paid so far · of the agreed job\s*₱\s*1,234/.test(out), 'the paid footer: ' + out);
+    for (const label of ['Edit', 'Pay', 'Add Payment']) assert(button(tree, label), label + ' missing for staff');
+  });
+  await test('staff: a daily job has no total to hide, so its paid pesos and label stay', () => {
+    const out = text(harness('staff').render('LaborDrill', laborWith(0, { payBasis: 'daily' }), laborViews[2][1]));
+    assert(/daily basis/.test(out) && /Daily basis/.test(out) && /No cap/.test(out) && out.includes('1,234'), out);
+  });
+  await test('staff still see that the owner ended a contract', () => {
+    assert(text(harness('staff').render('LaborDrill', laborWith(5000, { endedAt: '2026-11-01' }), laborViews[1][1])).includes('Ended'));
+  });
+  await test('staff keep a project\'s real completion: no contract total decides it', () => {
+    const done = { ...project, id: 'f2', name: 'Done house', completedAt: '2026-11-01T00:00:00Z' };
+    const out = text(harness('staff').render('FoldersGrid', { folders: [project, done], foldersRaw: [project, done],
+      monthsRaw: months, payrollRaw: [pay], expensesRaw: [{ ...material, expenseName: 'Wire' }],
+      overheadRaw: [], boqRaw: [], onPickFolder() {} }, { 1: 0, 4: true, 5: true }));
+    assert(/Completed/.test(out) && out.includes('Done house'), out);
+  });
+  await test('owner keeps every contract figure on the labor screen', () => {
+    const tree = harness('owner').render('LaborDrill', laborWith(5000), laborViews[2][1]);
+    const out = text(tree);
+    assert(/25% · Ongoing/.test(out) && /25% · In progress/.test(out), 'the badges: ' + out);
+    assert(/paid of ₱\s*5,000/.test(out) && /Still to pay/.test(out) && out.includes('3,766'), 'the balance: ' + out);
+    assert(/Remaining to Pay\s*₱\s*3,766/.test(out), 'the tile: ' + out);
+    assert(nodes(tree).some(n => /lc2-bar-fill/.test(n.props.className || '')), 'the owner keeps the bar');
+    assert(/Completed/.test(text(harness('owner').render('LaborDrill', laborWith(1234), laborViews[2][1]))), 'the owner keeps Completed');
+  });
+
+  // The Add / Edit Payment forms, from the live functions in expenses-module.js.
+  const expSrc = fs.readFileSync(path.join(__dirname, '../js/expenses-module.js'), 'utf8');
+  const expFn = name => {
+    const at = expSrc.indexOf('function ' + name + '(');
+    assert(at >= 0, 'SLICE NOT FOUND: ' + name + ' in expenses-module.js');
+    const eol = expSrc.indexOf('\n', at);
+    if (expSrc.slice(at, eol).trimEnd().endsWith('}')) return expSrc.slice(at, eol);
+    const end = expSrc.indexOf('\n}\n', at);
+    assert(end > at, 'SLICE NOT FOUND: end of ' + name);
+    return expSrc.slice(at, end + 2);
+  };
+  const EXP_FNS = ['lcDrawsDown', 'lcIsOverheadPay', 'lcPaid', 'lcStats', 'lcIsOutsource', 'lcIsDaily',
+    'lcListByCategory', 'lcLaborOnly', 'lcOutsourceOnly', 'lcWorksList', 'lcPopulatePayrollPicker', 'lcPickerLabel',
+    'lcCheckedContractIds', 'lcApplyDailyPickLock', 'lcAllocateAcrossContracts', '_updatePayContractPreview',
+    'lcUpdateRemainingHint', 'lcConfirmOverCapMulti', 'lcConfirmOverCap'];
+  function payForms(role, contracts, payroll) {
+    const els = {}, confirms = [];
+    let checked = [], answer = false;
+    const el = id => els[id] || (els[id] = { id, innerHTML: '', value: '', style: {} });
+    const document = { getElementById: el,
+      querySelectorAll: sel => (/:checked/.test(sel) ? checked.map(value => ({ value })) : []) };
+    const api = new Function('window', 'document', 'confirm', 'expLaborContracts', 'expPayroll', '_mvpEsc', 'formatNum', 'lcFillWorkerDatalist',
+      EXP_FNS.map(expFn).join('\n') + '\nreturn {' + EXP_FNS.join(',') + '};')(
+        { currentUserRole: role }, document, msg => { confirms.push(msg); return answer; }, contracts, payroll,
+        s => String(s), n => Number(n).toLocaleString('en-US'), () => {});
+    return { api, el, confirms, tick: ids => { checked = ids; }, answer: v => { answer = v; },
+      html: (...ids) => ids.map(id => el(id).innerHTML + '|' + el(id).style.display).join('\n') };
+  }
+  const job = (id, agreedAmount, extra) => ({ id, workerName: 'Mason', scope: 'Wall ' + id, agreedAmount, category: 'labor', ...extra });
+  const paidRow = { id: 'r1', contractId: 'c1', laborType: 'direct', totalSalary: 1234 };
+  const FORM_IDS = ['payContractList', 'editPayContract', 'payContractRemaining', 'editPayContractRemaining'];
+  const fillForms = f => {
+    f.el('payMilestoneRow').style.display = 'none';
+    f.api.lcPopulatePayrollPicker();
+    f.tick(['c1']); f.api.lcUpdateRemainingHint('payContract', 'payContractRemaining');
+    f.el('editPayContract').value = 'c1'; f.api.lcUpdateRemainingHint('editPayContract', 'editPayContractRemaining');
+    return f;
+  };
+  await test('staff payment forms are identical whatever the contract total', () => {
+    const seen = TOTALS.map(a => fillForms(payForms('staff', [job('c1', a)], [paidRow])).html(...FORM_IDS));
+    seen.forEach(s => assert.equal(s, seen[0]));
+  });
+  await test('staff payment forms state no balance, but still list the contract and its milestone', () => {
+    const f = fillForms(payForms('staff', [job('c1', 5000)], [paidRow]));
+    const out = f.html(...FORM_IDS);
+    assert(!/₱|left|remaining|agreed/i.test(out.replace(/display|editPayContract/g, '')), out);
+    assert(f.el('payContractList').innerHTML.includes('Mason · Wall c1') && f.el('editPayContract').innerHTML.includes('Mason · Wall c1'), out);
+    assert.equal(f.el('payMilestoneRow').style.display, '', 'staff can still pick the milestone');
+  });
+  await test('staff split: says how many contracts, no balance; the split of THIS payment stays', () => {
+    const f = payForms('staff', [job('c1', 5000), job('c2', 3000)], [paidRow]);
+    f.el('payTotal').value = '1,000'; f.tick(['c1', 'c2']);
+    f.api.lcUpdateRemainingHint('payContract', 'payContractRemaining');
+    const hint = f.el('payContractRemaining').innerHTML;
+    assert(/Splitting across <strong>2 contracts<\/strong>/.test(hint) && !/₱|remaining/i.test(hint), hint);
+    assert(/Split across 2 contracts/.test(f.el('payContractSplitPreview').innerHTML) && /₱1,000/.test(f.el('payContractSplitPreview').innerHTML),
+      'the amounts being entered: ' + f.el('payContractSplitPreview').innerHTML);
+  });
+  await test('staff: a daily job keeps what it has been paid in the picker', () => {
+    const f = payForms('staff', [job('c1', 0, { payBasis: 'daily' })], [paidRow]);
+    f.api.lcPopulatePayrollPicker();
+    assert(f.el('payContractList').innerHTML.includes('₱1,234 paid · daily'), f.el('payContractList').innerHTML);
+  });
+  await test('staff over-cap stop still fires and obeys the answer, without any figure', () => {
+    const f = payForms('staff', [job('c1', 5000)], [paidRow]);
+    assert.equal(f.api.lcConfirmOverCap('c1', 100), true, 'under the cap: no stop');
+    assert.equal(f.confirms.length, 0);
+    assert.equal(f.api.lcConfirmOverCap('c1', 9000), false, 'over the cap and refused');
+    assert(!/\d|₱/.test(f.confirms[0]), f.confirms[0]);
+    f.answer(true);
+    assert.equal(f.api.lcConfirmOverCap('c1', 9000), true, 'over the cap and accepted');
+    const multi = f.api.lcConfirmOverCapMulti([{ contract: job('c1', 5000), contractId: 'c1', amount: 9000 }]);
+    assert.equal(multi, true);
+    assert(f.confirms[2].includes('Mason · Wall c1') && !/₱/.test(f.confirms[2]), f.confirms[2]);
+  });
+  await test('owner payment forms keep every figure', () => {
+    const f = fillForms(payForms('owner', [job('c1', 5000)], [paidRow]));
+    assert(f.el('payContractList').innerHTML.includes('₱3,766 left'), 'the tick list');
+    assert(f.el('editPayContract').innerHTML.includes('(remaining ₱3,766)'), 'the dropdown');
+    assert(/₱3,766<\/strong> of ₱5,000 agreed/.test(f.el('payContractRemaining').innerHTML), f.el('payContractRemaining').innerHTML);
+    f.api.lcConfirmOverCap('c1', 9000);
+    assert(/₱10,234.*₱5,000.*₱5,234/.test(f.confirms[0]), f.confirms[0]);
+    f.api.lcConfirmOverCapMulti([{ contract: job('c1', 5000), contractId: 'c1', amount: 9000 }]);
+    assert(/₱10,234 of ₱5,000 \(over by ₱5,234\)/.test(f.confirms[1]), f.confirms[1]);
+  });
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exitCode = 1;
 })();

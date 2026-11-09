@@ -2805,19 +2805,15 @@ function _lcFirstName(n) {
     rc("button", { className: "danger", title: "Delete contract", onClick: () => window.lcDelete && window.lcDelete(r.c.id) }, _lcIcon("trash"), "Delete")
   );
 
-  // Staff must never see peso amounts. Every money figure on this screen is
-  // shown to them as a percentage of the agreed contract instead — the same
-  // thing the progress bar and the "17% · Ongoing" badge already convey.
-  // Returns "—" when there is no contract to measure against (an uncapped
-  // payment has no denominator, so no honest percentage exists).
-  const _pctTxt = (part, whole) => (whole > 0 ? (part / whole * 100).toFixed(1) + "%" : "—");
+  // Staff see the pesos they enter, so NOTHING here may measure those pesos
+  // against a contract's agreed total: no percentage, bar, balance or
+  // Ongoing / Completed / Over cap word. Any of them, beside the pesos paid,
+  // states the total (owner decision 2026-11-09). A daily job has no total.
 
-  // `agreed` is the denominator staff figures are expressed against \u2014 they see
-  // every payment as a share of the job's cap, never a peso amount. Pass 0 for
-  // uncapped payments: there is no honest percentage without a cap, so the
-  // column falls back to "\u2014". `paidTotal` is the job's true paid figure
-  // (folder + linked PM payments), which is why it is passed in rather than
-  // summed off the visible \u2014 tab- and search-filtered \u2014 rows.
+  // `agreed` is 0 for uncapped payments, which get no footer. `paidTotal` is
+  // the job's true paid figure (folder + linked PM payments), which is why it
+  // is passed in rather than summed off the visible \u2014 tab- and
+  // search-filtered \u2014 rows.
   const payRows = (list, agreed, paidTotal, daily) => {
     const sorted = [...list].sort((a, b) => new Date(b.dateTime || b.date || 0) - new Date(a.dateTime || a.date || 0));
     return rc("table", { className: "lc2-tx" },
@@ -2888,10 +2884,10 @@ function _lcFirstName(n) {
       // from the four beside it — one row standing for five works, not one job.
       const works = _lcWorks(r.c);
       const wLead = works.length ? works.length + " work" + (works.length === 1 ? "" : "s") + " · " : "";
-      const sub = isOpen
+      const sub = (isOpen || (_staff() && !r.daily))
         ? wLead + nPay + (latest ? " · latest " + _lcDayLabel(latest) : "")
         : wLead + nPay + " · " + (_staff()
-            ? (r.daily ? "daily basis" : _pctTxt(r.paid, r.agreed) + " paid")
+            ? "daily basis"
             : (r.daily
                 ? "₱ " + peso(r.paid) + " paid · no agreed total"
                 : "₱ " + peso(r.paid) + " paid of ₱ " + peso(r.agreed)));
@@ -2915,12 +2911,12 @@ function _lcFirstName(n) {
             rc("div", { className: "lc2-job-sub" }, sub)
           ),
           // Peso balance — dropped outright for staff, the same way the worker
-          // header's Remaining column is. The badge still carries the percent.
+          // header's Remaining column is, and so is the badge of a capped job.
           _staff() ? null : rc("div", { className: "lc2-job-rem" },
             rc("div", { className: "lc2-job-rem-lbl" }, r.daily ? "Paid so far" : (r.remaining < 0 ? "Over by" : "Still to pay")),
             rc("div", { className: "lc2-job-rem-val" + (!r.daily && r.remaining < 0 ? " neg" : "") }, "₱ " + peso(r.daily ? r.paid : Math.abs(r.remaining)))
           ),
-          rc("span", { className: "lc2-badge " + st.cls }, st.label),
+          (_staff() && r.agreed > 0) ? null : rc("span", { className: "lc2-badge " + st.cls }, st.label),
           rc("svg", { className: "lc2-job-chev", width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }))
         ),
         isOpen ? rc("div", { className: "lc2-job-body" },
@@ -3023,22 +3019,24 @@ function _lcFirstName(n) {
         rc("div", { className: "lc2-mid" },
           !hasContract
             ? rc("div", { className: "lc2-mid-cap" }, pays.length + " payment" + (pays.length === 1 ? "" : "s") + " \u00B7 no capped contract")
-            : isDone
+            : (isDone && !_staff())
             ? null
             : rc(React.Fragment, null,
-                rc("div", { className: "lc2-bar" }, rc("div", { className: "lc2-bar-fill " + barcls, style: { width: (allDaily ? 0 : pct).toFixed(1) + "%" } })),
+                // Staff get the job's name alone: a bar is a share of the contract,
+                // and collapsing once fully paid would say so by its absence.
+                _staff() ? null : rc("div", { className: "lc2-bar" }, rc("div", { className: "lc2-bar-fill " + barcls, style: { width: (allDaily ? 0 : pct).toFixed(1) + "%" } })),
                 rc("div", { className: "lc2-mid-cap" },
-                  (allDaily
+                  [allDaily
                     ? (_staff() ? "daily basis" : "\u20B1 " + peso(paid) + " paid \u00B7 no agreed total")
-                    : (_staff() ? pct.toFixed(0) + "% paid"
+                    : (_staff() ? ""
                         : "\u20B1 " + peso(paidCap) + " paid of \u20B1 " + peso(agreed)
-                          + (paidDay > 0 ? " \u00B7 +\u20B1 " + peso(paidDay) + " daily" : "")))
-                  + (crows.length === 1 && crows[0].c.scope ? " \u00B7 " + crows[0].c.scope : " \u00B7 " + crows.length + (crows.length === 1 ? " job" : " jobs")))
+                          + (paidDay > 0 ? " \u00B7 +\u20B1 " + peso(paidDay) + " daily" : "")),
+                   crows.length === 1 && crows[0].c.scope ? crows[0].c.scope : crows.length + (crows.length === 1 ? " job" : " jobs")
+                  ].filter(Boolean).join(" \u00B7 "))
               )
         ),
-        // The Remaining column is a peso figure with no useful percentage form
-        // of its own \u2014 the status badge already reads "17% \u00B7 Ongoing" \u2014 so for
-        // staff it is dropped entirely rather than restated.
+        // The Remaining column says what is left of the agreed total, so staff
+        // never get it, in pesos or any other form.
         (isDone || _staff())
           ? null
           : rc("div", { className: "lc2-rem" },
@@ -3047,7 +3045,9 @@ function _lcFirstName(n) {
                 allDaily ? "\u20B1 " + peso(paid)
                   : (remaining < 0 ? "\u2212 \u20B1 " + peso(Math.abs(remaining)) : "\u20B1 " + peso(hasContract ? remaining : totalPaidAll)))
             ),
-        rc("span", { className: "lc2-badge " + scls }, (status === "Ongoing" && !allDaily ? pct.toFixed(0) + "% \u00B7 " : "") + status),
+        // Staff: Ongoing, Completed and Over cap all compare the pesos paid with
+        // the total. "No contract" and "Daily basis" don't.
+        (_staff() && hasContract && !allDaily) ? null : rc("span", { className: "lc2-badge " + scls }, (status === "Ongoing" && !allDaily ? pct.toFixed(0) + "% \u00B7 " : "") + status),
         // ONE work agreement per worker (lcViewAgreement in expenses-module.js):
         // the sheet lists every job in this card and its agreed amount is their
         // total, so the button belongs on the worker header rather than on each
@@ -3164,12 +3164,11 @@ function _lcFirstName(n) {
         : "No labor contracts yet."
     ) : null,
     _lcRows.length ? rc("div", { className: "lc2-totals" },
-      // Total Agreed is the denominator every other figure is measured against,
-      // so it has no percentage form \u2014 staff see a dash, not "100%", which
-      // would read as "fully paid".
+      // Total Agreed, and Remaining to Pay beside Paid So Far, are the contract
+      // total by another name \u2014 staff see a dash for both.
       rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Total Agreed"), rc("div", { className: "lc2-tval" }, _staff() ? rc("span", { style: { color: "#908A81" } }, "\u2014") : "\u20B1 " + peso(_lcTotAgreed))),
       rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Paid So Far"), rc("div", { className: "lc2-tval" }, "\u20B1 " + peso(_lcTotPaid))),
-      rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Remaining to Pay"), rc("div", { className: "lc2-tval" + (_lcTotRem < 0 ? " neg" : " accent") }, _staff() ? (_lcTotRem < 0 ? "\u2212 " + _pctTxt(Math.abs(_lcTotRem), _lcTotAgreed) : _pctTxt(_lcTotRem, _lcTotAgreed)) : (_lcTotRem < 0 ? "\u2212 \u20B1 " + peso(Math.abs(_lcTotRem)) : "\u20B1 " + peso(_lcTotRem)))),
+      rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Remaining to Pay"), rc("div", { className: "lc2-tval" + (_staff() ? "" : (_lcTotRem < 0 ? " neg" : " accent")) }, _staff() ? rc("span", { style: { color: "#908A81" } }, "\u2014") : (_lcTotRem < 0 ? "\u2212 \u20B1 " + peso(Math.abs(_lcTotRem)) : "\u20B1 " + peso(_lcTotRem)))),
       rc("div", { className: "lc2-tcell lc2-tcell-last" }, rc("div", { className: "lc2-tlbl" }, "Contracts"), rc("div", { className: "lc2-tval" }, String(_lcRows.length), rc("span", { style: { fontSize: 13, color: "var(--ink-4)", fontFamily: "var(--sans)", fontWeight: 400 } }, " \u00B7 " + _lcWorkers.length + " workers")))
     ) : null,
     rc("div", { className: "lc2-toolbar" },

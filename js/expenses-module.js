@@ -9468,6 +9468,10 @@ function lcOpenMerge(arg) {
 // drawdown, and lcPaid() sums rows by contractId, so a row can only carry one.
 function lcPopulatePayrollPicker() {
     lcFillWorkerDatalist();
+    // Staff record payments but never learn a contract's total: what is "left",
+    // with the pesos paid beside it, IS the total (owner decision 2026-11-09).
+    // A daily job has no total, so what it has been paid stays.
+    const staff = window.currentUserRole === 'staff';
 
     // BOTH kinds are offered here: a payroll row is what draws down an Out Source
     // contract too (migration 0057), so filtering them out would make a vendor
@@ -9480,7 +9484,7 @@ function lcPopulatePayrollPicker() {
         sel.innerHTML = ['<option value="">— None (normal payroll) —</option>'].concat(
             ordered.map(c => '<option value="' + c.id + '">'
                 + (lcIsOutsource(c) ? '[Out Source] ' : '') + _mvpEsc(lcPickerLabel(c))
-                + ' (remaining ₱' + formatNum(lcStats(c).remaining) + ')</option>')).join('');
+                + (staff ? '' : ' (remaining ₱' + formatNum(lcStats(c).remaining) + ')') + '</option>')).join('');
         if (cur && ordered.some(c => c.id === cur)) sel.value = cur;
     }
 
@@ -9503,6 +9507,7 @@ function lcPopulatePayrollPicker() {
                 + _mvpEsc(lcPickerLabel(c)) + '</span>'
                 + (st.daily
                     ? '<span class="exp-funding-check-item__remain is-daily">₱' + formatNum(st.paid) + ' paid · daily</span>'
+                    : staff ? ''
                     : '<span class="exp-funding-check-item__remain' + (st.remaining <= 0 ? ' is-settled' : '')
                       + '">₱' + formatNum(st.remaining) + ' left</span>')
                 + '</label>';
@@ -9633,7 +9638,12 @@ function lcUpdateRemainingHint(selId, hintId) {
         return;
     }
     hint.style.display = '';
-    if (picked.length === 1) {
+    if (window.currentUserRole === 'staff') {
+        // No balance for staff (see lcPopulatePayrollPicker). The milestone row
+        // below still shows: they choose it when they record the payment.
+        if (picked.length === 1) { hint.style.display = 'none'; hint.innerHTML = ''; }
+        else hint.innerHTML = 'Splitting across <strong>' + picked.length + ' contracts</strong>';
+    } else if (picked.length === 1) {
         const st = lcStats(picked[0]);
         hint.innerHTML = 'Remaining on this contract: <strong class="' + (st.remaining < 0 ? 'lc-neg' : '')
             + '">₱' + formatNum(st.remaining) + '</strong> of ₱' + formatNum(st.agreed) + ' agreed';
@@ -9688,8 +9698,10 @@ function lcConfirmOverCapMulti(alloc) {
     if (!over.length) return true;
     return confirm('This payment takes ' + over.length + (over.length === 1 ? ' contract' : ' contracts')
         + ' over the agreed cap:\n\n'
-        + over.map(o => '· ' + o.name + ' — ₱' + formatNum(o.after) + ' of ₱' + formatNum(o.agreed)
-            + ' (over by ₱' + formatNum(o.after - o.agreed) + ')').join('\n')
+        // Staff get the same stop without the figures: "of ₱X" is the contract's total.
+        + over.map(o => '· ' + o.name + (window.currentUserRole === 'staff' ? ''
+            : ' — ₱' + formatNum(o.after) + ' of ₱' + formatNum(o.agreed)
+              + ' (over by ₱' + formatNum(o.after - o.agreed) + ')')).join('\n')
         + '\n\nSave anyway?');
 }
 // Over-cap guard — returns true to proceed. excludeRowId lets edits ignore their own old amount.
@@ -9699,6 +9711,9 @@ function lcConfirmOverCap(contractId, addAmount, excludeRowId) {
     const agreed = parseFloat(c.agreedAmount) || 0;
     const after = lcPaid(contractId, excludeRowId) + (parseFloat(addAmount) || 0);
     if (agreed > 0 && after > agreed) {
+        if (window.currentUserRole === 'staff') {
+            return confirm('This payment takes the contract over its agreed amount.\n\nSave anyway?');
+        }
         const over = after - agreed;
         return confirm('This payment brings the contract total to ₱' + formatNum(after)
             + ', which exceeds the agreed ₱' + formatNum(agreed) + ' by ₱' + formatNum(over) + '.\n\nSave anyway?');
