@@ -232,7 +232,7 @@ test('no-period rows reach every Spent site: Project Control cards, detail, Addi
   assert(PC.includes('childIds.has(e.projectId) || !e.projectId && e.folderId === f.id'), 'project cards');
   assert(PC.includes('childMonthIds.has(e.projectId) || !e.projectId && e.folderId === projectId'), 'project detail');
   assert(PC.includes('cfMonthIds.has(e.projectId) || !e.projectId && e.folderId === cf.id'), 'Additional Works cards');
-  assert(/const totalSpent = cards\.reduce\(\(sum, c\) => sum \+ c\.totalCost, 0\) \+ noPeriodSpent;/.test(PC), 'billing-period drill total');
+  assert(/const totalSpent = cards\.reduce\(\(sum, c\) => sum \+ c\.totalCost, 0\) \+ noPeriodSpent \+ unassignedOverhead;/.test(PC), 'billing-period drill total includes no-period material and unassigned project overhead');
   assert(/where\('folderId', '==', folderId\)/.test(between(EXP, 'function subscribeFolderData(', '\n}\n')), 'Expenses folder view');
   const model = between(EXP, 'function _pcReportModel(', '\nfunction _pcDashboardReport(');
   assert(/noPeriodMaterial/.test(model) && /mats:sum\(rows, 'mats'\) \+ noPeriodMaterial/.test(model)

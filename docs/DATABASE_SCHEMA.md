@@ -1288,6 +1288,34 @@ The owner's checks — **outside the money model**: nothing here writes an expen
 | `pur_op_reserve(op)` | accounts that may use Add Expense (`pur_actor_owner('expenses_form')`) | Registers a save's id before it is sent; again is harmless |
 | `pur_op_recover()` | the same | For the **calling** account: every registered save the server has no answer for is cancelled for good (`pur_op_cancel`, under the lock recording takes — its first request arriving later is refused, `OP_CANCELLED`) or found recorded; returns `{cancelled, recorded}`. Used only when the browser cannot read a save's id (damaged storage) — an absent row in a list proves nothing |
 
+## Billing Acknowledgement Receipts (0114)
+
+Owner-only and **outside the money model**: nothing feeds these tables into Spent / Earned / Profit. Reached only through the `bar_*` functions from `js/billing-receipts.js`. Terms: `docs/superpowers/specs/2026-11-09-billing-acknowledgement-receipts-mvp-terms.md`.
+
+**`billing_receipts`**: one row per issued receipt. Owner accounts of the company may read; nobody writes directly. A row can only ever be voided, once (`billing_receipts_guard`: `RECEIPT_PERMANENT`). `folder_id` and `period_id` have no foreign key on purpose, so a receipt outlives a deleted billing period or project. One live receipt per period (`billing_receipts_one_live`).
+
+| Column | Notes |
+|---|---|
+| `owner_id` | the company |
+| `folder_id`, `period_id` | the project (`folders.id`) and the billing period (`projects.id`) |
+| `receipt_no` | `AR-YYYYMM-NNN`, unique per company, never reused |
+| `issued_on` | Philippine date of issue |
+| `billing_label` | frozen, e.g. `Progress Billing 3 (November 2026)` |
+| `amount` | the period's Fund Allocated when issued. Greater than zero |
+| `received_from`, `received_by` | frozen names |
+| `business`, `payment_details` | jsonb copied from `settings.invoiceDefaults` when issued |
+| `created_by`, `created_at` | who issued it |
+| `voided_at`, `voided_by`, `void_reason` | all set together, or all null |
+
+**`billing_receipt_counters`** (`owner_id`, `year_month`, `last_no`): the running number. **`billing_receipt_parties`** (`folder_id`, `owner_id`, `received_from`, `received_by`, `updated_by`, `updated_at`): the names offered next time. Neither table can be read or written directly.
+
+| Function | Who | What |
+|---|---|---|
+| `bar_state(folder)` | owner accounts | Names, company and payment details, client billing periods with their Fund Allocated, `total_received` (Cover left out), and the project's receipts |
+| `bar_issue(period, from, by)` | owner accounts | Issues the receipt, or returns the live one. Takes no amount |
+| `bar_reissue(receipt, reason, from, by)` | owner accounts | Voids and issues a replacement, together or not at all |
+| `bar_set_parties(folder, from, by)` | owner accounts | Saves the names without issuing (the Overall page) |
+
 ## PM profit sharing (0098)
 
 An internal owner/partner allocation per PM project - **outside the money model** (never a payout, invoice or accounting entry). Spec `docs/superpowers/specs/2026-10-18-pm-profit-sharing-mvp-terms.md`; plan `docs/superpowers/plans/2026-10-18-pm-profit-sharing.md`. `project_id` is a `construction_projects.id` (never a `folders.id`). The three tables have **RLS on, no policies, and all privileges revoked** from `anon`/`authenticated`: nothing reads or writes them directly. Read through `pm_sharing_read` (owner-role accounts of the company); write through `pm_set_sharing` (main owner only).

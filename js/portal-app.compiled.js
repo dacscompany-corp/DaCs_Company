@@ -1658,6 +1658,130 @@ function AllocationHistory({ periodId, periodLabel, adjustments, onClose }) {
         h("p", null, "This period still uses the allocation it started with.")),
     h("p", { className: "pc-ah-foot" }, "Allocation history is permanent — entries can never be edited or removed."));
 }
+function _pcBillingRequestHTML(project, periods, request) {
+  const esc = value => String(value == null ? "" : value).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
+  const money = value => "₱" + (Number(value) || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  // Client billing periods only: each billing's amount and the total allocated. No spending on this page.
+  const rows = periods.filter(p => p.fundingType !== "president").slice().sort((a, b) =>
+    (Number(a.year) || 0) - (Number(b.year) || 0) || monthNames.indexOf(a.month) - monthNames.indexOf(b.month)
+    || (Number(a.billingNumber) || 0) - (Number(b.billingNumber) || 0))
+    .map(p => ({ name: _pcBillingName(p), when: _pcBillingWhen(p), budget: Number(p.monthlyBudget) || 0 }));
+  if (!rows.length) throw new Error("No client billing periods are available.");
+  const allocated = rows.reduce((sum, p) => sum + p.budget, 0);
+  const now = new Date();
+  const issued = now.toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+  const clientName = project.clientName || project.clientEmail || "";
+  const clientEmail = project.clientName && project.clientEmail ? project.clientEmail : "";
+  const letterhead = typeof window.dacsPrintHeader === "function" ? window.dacsPrintHeader("Billing Request", "Client billing periods · All time")
+    : '<header><strong>DAC\'S BUILDING DESIGN SERVICES</strong></header>';
+  const css = 'body{margin:0;background:#e9ebe8;font:13px/1.5 Arial,Helvetica,sans-serif;color:#17251d;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+    + '.toolbar{max-width:794px;margin:24px auto 0;display:flex;justify-content:flex-end}'
+    + '.toolbar button{font:700 13px Arial;background:#1a5c3a;color:#fff;border:0;border-radius:6px;padding:9px 16px;cursor:pointer}'
+    + '.page{max-width:794px;min-height:1123px;margin:16px auto 40px;background:#fff;box-shadow:0 2px 12px rgba(23,37,29,.12);box-sizing:border-box;padding:48px 56px 44px;display:flex;flex-direction:column}'
+    + '.eb{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b7280}.g{color:#1a5c3a}'
+    + '.titlebar{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;margin-top:6px}'
+    + 'h1{margin:0;font-size:28px;font-weight:700;letter-spacing:-.01em}.sub{font-size:13px;color:#6b7280;margin-top:4px}'
+    + '.meta{display:grid;grid-template-columns:auto auto;column-gap:16px;row-gap:3px;font-size:12px;text-align:right}.meta span:nth-child(odd){color:#6b7280}.meta span:nth-child(even){font-weight:700}'
+    + '.parties{display:flex;margin-top:24px;border:1px solid #dfe5e1;border-radius:6px}.parties>div{flex:1 1 0;min-width:0;padding:14px 18px}.parties>div:not(:last-child){border-right:1px solid #dfe5e1}'
+    + '.n{font-size:15px;font-weight:700;margin-top:6px}.d{color:#4b5563}'
+    + '.lead{margin:22px 0 0;color:#374151}'
+    + '.req{margin-top:18px;background:#f2f6f3;border:1px solid #cfd9d2;border-radius:6px;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:16px}'
+    + '.req .basis{font-size:20px;font-weight:700;margin-top:4px}.req .amt{font-size:26px;font-weight:700;color:#1a5c3a;font-variant-numeric:tabular-nums;white-space:nowrap}'
+    + '.sec{margin-top:26px}'
+    + 'table{width:100%;border-collapse:collapse;margin-top:8px;font-variant-numeric:tabular-nums}'
+    + 'thead th{background:#f2f6f3;text-align:left;padding:9px 12px;font-size:11px;font-weight:700;color:#4b5563;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #cfd9d2}'
+    + '.bk tbody td,.bk tbody th{padding:11px 12px;border-bottom:1px solid #e8ece9;text-align:left;vertical-align:top}.bk tbody th{font-weight:600}'
+    + '.bk small{display:block;font-weight:400;color:#6b7280;font-size:12px;margin-top:2px}'
+    + '.bk td:last-child,.bk thead th:last-child{text-align:right}.bk .no{width:36px}.bk td.no{color:#9ca3af}'
+    + '.bk tfoot th,.bk tfoot td{padding:13px 12px;border-top:2px solid #1a5c3a}.bk tfoot th{text-align:right;font-size:12px;text-transform:uppercase;letter-spacing:.05em}.bk tfoot td{text-align:right;font-size:16px;font-weight:700;color:#1a5c3a}'
+    + '.spacer{flex:1;min-height:40px}'
+    + '.sigs{display:grid;grid-template-columns:minmax(0,320px);justify-content:center;text-align:center}.line{border-bottom:1px solid #17251d;height:48px;box-sizing:border-box;padding-bottom:3px;display:flex;align-items:flex-end;justify-content:center;font-weight:700}.cap{display:flex;justify-content:space-between;font-size:11px;color:#6b7280;margin-top:6px}'
+    + '.foot{margin-top:28px;padding-top:10px;border-top:1px solid #e8ece9;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af}'
+    // Tighter on paper than on screen, so the whole request fits one A4 sheet.
+    + '@media print{body{background:#fff}.toolbar{display:none}.page{margin:0 auto;box-shadow:none;min-height:auto;padding:0}'
+    + '.parties{margin-top:12px}.lead{margin-top:10px}.req{margin-top:10px;padding:10px 14px}.sec{margin-top:12px}table{margin-top:4px}'
+    + '.bk tbody td,.bk tbody th{padding:4px 12px}.bk small{margin-top:0}.bk tfoot th,.bk tfoot td{padding:7px 12px}'
+    + (rows.length > 5 ? '.bk small{display:inline;margin-left:8px}' : '')
+    + '.spacer{min-height:14px}.line{height:30px}.foot{margin-top:12px}'
+    + '.sigs,.foot,.bk tr{break-inside:avoid}@page{size:A4 portrait;margin:10mm}}';
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Billing Request</title><style>' + css + '</style></head><body>'
+    + '<div class="toolbar"><button type="button" onclick="window.print()">Print / Save PDF</button></div>'
+    + '<div class="page">' + letterhead
+    + '<div class="titlebar"><div><h1>Billing Request</h1><div class="sub">Billing breakdown</div></div>'
+    + '<div class="meta">' + (project.code ? '<span>Reference</span><span>' + esc(project.code) + '</span>' : '') + '<span>Date issued</span><span>' + esc(issued) + '</span></div></div>'
+    + '<div class="parties">' + (clientName ? '<div><div class="eb">Requested from</div><div class="n">' + esc(clientName) + '</div>' + (clientEmail ? '<div class="d">' + esc(clientEmail) + '</div>' : '') + '</div>' : '')
+    + '<div><div class="eb">Project</div><div class="n">' + esc(project.name) + '</div>' + (project.location ? '<div class="d">' + esc(project.location) + '</div>' : '') + '</div></div>'
+    + '<p class="lead">Please release the next billing funds to support continued project work. The breakdown below lists each client billing period.</p>'
+    + '<div class="req"><div><div class="eb g">Requested this billing</div><div class="basis">' + esc(request.percent) + '% of Project Budget</div></div><div class="amt">' + money(request.amount) + '</div></div>'
+    + '<div class="sec eb g">Billing breakdown</div>'
+    + '<table class="bk"><thead><tr><th scope="col" class="no">No.</th><th scope="col">Billing</th><th scope="col">Amount</th></tr></thead><tbody>'
+    + rows.map((p, i) => '<tr><td class="no">' + String(i + 1).padStart(2, "0") + '</td><th scope="row">' + esc(p.name) + '<small>' + esc(p.when) + '</small></th><td>' + money(p.budget) + '</td></tr>').join('')
+    + '</tbody><tfoot><tr><th scope="row" colspan="2">Total Allocated</th><td>' + money(allocated) + '</td></tr></tfoot></table>'
+    + '<div class="spacer"></div>'
+    + '<div class="sigs"><div><div class="eb">Prepared by</div><div class="line">' + esc(request.preparedBy || '') + '</div><div class="cap"><span>Signature over printed name</span><span>Date</span></div></div></div>'
+    + '<div class="foot"><span>DAC\'S Building Design Services · Billing Request</span><span>Generated ' + esc(now.toLocaleString("en-PH")) + '</span></div>'
+    + '</div></body></html>';
+}
+async function _pcPrintBillingRequest(project, percent, preparedBy) {
+  if (window.currentUserRole !== "owner") return;
+  if (!(percent > 0)) return;
+  const popup = window.open("", "_blank");
+  if (!popup) { window.alert("Please allow pop-ups to open the billing request."); return; }
+  popup.document.write("<p>Preparing billing request…</p>");
+  popup.document.close();
+  try {
+    const folder = await db.collection("folders").doc(project.id).get();
+    if (!folder.exists) throw new Error("Project is no longer available.");
+    const fresh = { ...folder.data(), id: folder.id, code: shortRef("FLD", folder.id), location: folder.data().description || "" };
+    if (!fresh.userId) throw new Error("Project owner is unavailable.");
+    const contractDoc = await db.collection("folderBudgets").doc(project.id).get();
+    const contract = contractDoc.exists ? Number(contractDoc.data().totalBudget) || 0 : 0;
+    if (!(contract > 0)) throw new Error("Project has no contract amount.");
+    const snapshots = await Promise.all(["projects", "projectBudgets"].map(name => db.collection(name).where("userId", "==", fresh.userId).get()));
+    const [allPeriods, budgets] = snapshots.map(s => s.docs.map(d => ({ ...d.data(), id: d.id })));
+    const budgetMap = new Map(budgets.map(b => [b.id, Number(b.monthlyBudget) || 0]));
+    const periods = allPeriods.filter(p => p.folderId === project.id && p.fundingType !== "president")
+      .map(p => ({ ...p, monthlyBudget: budgetMap.get(p.id) || 0 }));
+    if (fresh.clientEmail) {
+      const clients = await db.collection("clientUsers").where("email", "==", fresh.clientEmail).get();
+      // Only use an unambiguous profile matching this folder's assigned client.
+      if (clients.docs.length === 1) {
+        const client = clients.docs[0].data();
+        fresh.clientName = ((client.firstName || "") + " " + (client.lastName || "")).trim();
+      }
+    }
+    if (window.currentUserRole !== "owner") throw new Error("Owner access is required.");
+    if (popup.closed) return;
+    popup.document.open();
+    popup.document.write(_pcBillingRequestHTML(fresh, periods, { percent, amount: window.BillingReceipts.requestAmount(contract, percent), preparedBy }));
+    popup.document.close();
+  } catch (error) {
+    popup.close();
+    window.alert("Could not prepare the billing request. Please refresh and try again.");
+    console.error("Billing request", error);
+  }
+}
+// The Billing Request button: set the percentage of the contract first, then open the page.
+async function _pcStartBillingRequest(project, totalAllocated) {
+  if (window.currentUserRole !== "owner") return;
+  let contract = 0;
+  try {
+    const doc = await db.collection("folderBudgets").doc(project.id).get();
+    contract = doc.exists ? Number(doc.data().totalBudget) || 0 : 0;
+  } catch (error) {
+    window.alert("Could not prepare the billing request. Please refresh and try again.");
+    console.error("Billing request", error);
+    return;
+  }
+  if (window.currentUserRole !== "owner") return;
+  if (!(contract > 0)) {
+    window.alert("This project has no contract amount yet, so a percentage cannot be worked out.");
+    return;
+  }
+  window.BillingReceipts.askRequestPercent({ projectName: project.name, contract, allocated: totalAllocated,
+    onContinue: (percent, preparedBy) => _pcPrintBillingRequest(project, percent, preparedBy) });
+}
 function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, overheadRaw, allocationMap, allocationAdjustments, onBack }) {
   const h = React.createElement;
   const owner = window.currentUserRole === "owner";
@@ -1697,7 +1821,10 @@ function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, ov
   // "office review" only while one of those lines still waits — "Cover is right" (Stage 4, Q6) clears it. Words only.
   const noPeriodReview = typeof window.expPurNeedsReview === "function"
     && expensesRaw.some(e => !e.projectId && e.folderId === project.id && window.expPurNeedsReview(e.purchaseLineId));
-  const totalSpent = cards.reduce((sum, c) => sum + c.totalCost, 0) + noPeriodSpent;
+  const periodIds = new Set(childMonths.map(m => m.id));
+  const unassignedOverhead = overheadRaw.filter(e => !e.deletedAt && e.scope !== "company" && e.folderId === project.id && !periodIds.has(e.billingPeriodId))
+    .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const totalSpent = cards.reduce((sum, c) => sum + c.totalCost, 0) + noPeriodSpent + unassignedOverhead;
   const historyPeriod = owner && cards.find(c => c.id === historyId && !c.cover);
   // Two DIFFERENT styles: .drill-stat is the big header block, .pc-period-stat the
   // compact in-card row. Using the card class in the header kills .drill-stat's type scale.
@@ -1715,13 +1842,18 @@ function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, ov
       h("div", null,
         h("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Billing Periods · Fund Allocated per billing"),
         h("h2", null, "Billing Periods"),
-        h("div", { className: "sub" }, project.name, project.code ? " · " + project.code : "")),
+        h("div", { className: "sub" }, project.name, project.code ? " · " + project.code : ""),
+        h("p", { className: "sub" }, "Project costs follow the selected date range. Billing Requests use all-time client billing periods only.")),
       !_staff() && h("button", { className: "btn-primary", onClick: openCreate }, Ico.plus, " New Billing Period")),
     owner && h("div", { className: "drill-stats" },
       headStat("Periods", cards.length, true),
       headStat("Total Allocated", totalAllocated),
       headStat("Total Spent", totalSpent),
       headStat("Remaining", totalAllocated - totalSpent, totalAllocated - totalSpent >= 0 ? "accent" : "")),
+    owner && cards.some(c => !c.cover) && h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+      h("button", { type: "button", className: "pc-btn-ghost", onClick: () => window.BillingReceipts && window.BillingReceipts.openOverall(project) }, "Overall Billing Acknowledgement"),
+      h("button", { type: "button", className: "pc-btn-ghost", onClick: () => _pcStartBillingRequest(project, totalAllocated) }, "Billing Request")),
+    owner && unassignedOverhead > 0 && h("p", { className: "sub" }, "Project overhead without a billing period is included in Total Spent; it is outside the Billing Request summary."),
     noPeriodSpent > 0 && h("div", { className: "pc-feed-empty", role: "note" }, owner
       ? ["₱ ", peso(noPeriodSpent), " of Cover material has no billing period yet — it counts in Total Spent", noPeriodReview ? "; office review needed." : "."]
       : "Some Cover material has no billing period yet" + (noPeriodReview ? " — office review needed." : ".")),
@@ -1747,6 +1879,7 @@ function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, ov
         owner && !c.cover && (c.view ? h(AllocationBands, { view: c.view })
           : h("div", { className: "pc-allocation-legacy" }, h("span", null, "Allocation not configured"),
             h("button", { type: "button", className: "pc-btn-ghost", onClick: () => { if (window.currentUserRole === "owner") openEdit(c.id); } }, Ico.plus, " Apply Policy"))),
+        owner && !c.cover && h("button", { type: "button", className: "pc-btn-ghost", onClick: () => window.BillingReceipts && window.BillingReceipts.openReceipt(project, c.id) }, "Acknowledgement Receipt"),
         owner && !c.cover && h("button", { type: "button", className: "pc-btn-ghost pc-allocation-history-button", onClick: () => { if (window.currentUserRole === "owner") setHistoryId(c.id); } }, Ico.calendar, " Allocation History"),
         h("div", { className: "pc-period-meta" }, c.expCount, " expense", c.expCount !== 1 ? "s" : "", " · ", c.payCount, " payroll entr", c.payCount !== 1 ? "ies" : "y")))),
     historyPeriod && h(AllocationHistory, { key: historyPeriod.id, periodId: historyPeriod.id, periodLabel: historyPeriod.label, adjustments: allocationAdjustments, onClose: () => setHistoryId(null) }));

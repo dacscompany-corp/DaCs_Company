@@ -232,6 +232,18 @@ Profit   = Earned − Spent
   `money-math.test.js` keeps every money function free of them. Spec:
   `docs/superpowers/specs/2026-11-04-workmate-linked-labor-contracts-mvp-terms.md`.
 
+- **Acknowledgement Receipts (0114) are a record of a document, outside the money model.** Each client billing period
+  can have one live receipt, whose amount is **always that period's Fund Allocated, read by the server**: no `bar_*`
+  function accepts an amount. Numbers (`AR-YYYYMM-NNN`) are never reused. If Fund Allocated changes, the receipt is voided
+  with a reason, kept on record and re-issued with a new number; voiding is the only change a receipt can receive. Nothing
+  may feed a receipt into Spent / Earned / Profit or turn one into an invoice or payment. The **Overall Billing
+  Acknowledgement** lists each client billing's amount and the total received, not saved or numbered. The **Billing Request** (`_pcBillingRequestHTML`) asks first
+  for a percentage of the contract and prints it with its peso amount (a document only: it creates no billing period and
+  records no money), then each client billing's amount and the total allocated, for client billing periods only. It shows
+  no spending, and leaving Cover off that page changes nothing about Spent elsewhere. Owner accounts only; Cover periods get
+  none of the three. Only `js/billing-receipts.js` calls the `bar_*` functions. Spec:
+  `docs/superpowers/specs/2026-11-09-billing-acknowledgement-receipts-mvp-terms.md`.
+
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 
 ---
