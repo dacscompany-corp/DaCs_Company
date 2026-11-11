@@ -82,8 +82,10 @@ Measurements are the design's (logical pixels). Colours are `WmColors` names.
    | 4 | New request (`add`) — worker | Requests service present | ComposeScreen with a new draft, exactly as the Requests tab's New request |
    | 4 | My proposals (`lightbulb`) — team leader (`role == 'teamLeader'`) | My Work service present | ProposalsScreen (page, as today) |
 
-   Tiles that are not shown leave their column empty; the others keep their columns, so a tile never jumps. No tile
-   shown → no row. Tiles show **English only**; the Tagalog title stays as the subtitle inside each screen or sheet.
+   **The tiles that are shown sit side by side, in this order, and share the row equally** (owner decision after the
+   11 Nov 2026 pilot, which replaced "a tile not shown leaves its column empty"): a tile that is not shown leaves no gap,
+   so the others shift when it appears. No tile shown → no row. Tiles show **English only**; the Tagalog title stays as
+   the subtitle inside each screen or sheet. (Shipped as 0.12.1+1016; 1015 was piloted but not published.)
 8. **This week** (22 below) and **Weekly reward** — unchanged.
 
 ## 5. "Needs you"
