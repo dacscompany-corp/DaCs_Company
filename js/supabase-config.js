@@ -16,6 +16,7 @@
 const SUPABASE_URL      = 'https://hqbgduyonlbbsvjuapre.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhxYmdkdXlvbmxiYnN2anVhcHJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2Mjc3NDEsImV4cCI6MjA5NjIwMzc0MX0.sDKSroNIm-1Lip6ueq2lN1VTsvO1g4mT7Rf_WZ5AxWo';
 const ADMIN_CREATE_USER_FN = SUPABASE_URL + '/functions/v1/admin-create-user';
+const ADMIN_SET_WORKER_PASSWORD_FN = SUPABASE_URL + '/functions/v1/admin-set-worker-password';
 
 // persistSession:true → the session is kept in localStorage and survives browser
 // restarts (users stay logged in by design). The legacy auth.setPersistence(SESSION)
@@ -716,6 +717,21 @@ async function adminCreateUser(payload) {
 }
 window.adminCreateUser = adminCreateUser;
 
+// A temporary password for one worker: main owner only, decided by the Edge
+// Function. It answers with the password once; nothing here keeps it.
+async function adminSetWorkerPassword(workerId) {
+  const { data: { session } } = await sb.auth.getSession();
+  const res = await fetch(ADMIN_SET_WORKER_PASSWORD_FN, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (session?.access_token || '') },
+    body: JSON.stringify({ worker_id: workerId }),
+  });
+  const out = await res.json();
+  if (!res.ok) throw new Error(out.error || 'SERVER_ERROR');
+  return out; // { temporary_password, worker_no, name, marked }
+}
+window.adminSetWorkerPassword = adminSetWorkerPassword;
+
 // ── 10. firebase.* compatibility surface ─────────────────────────────
 const firebase = {
   firestore: Object.assign(() => db, {
@@ -778,7 +794,9 @@ window.dacsSignedUrl = async function (urlOrPath, expiresIn = 3600) {
   // off. Download with this account's own session instead — Storage checks
   // uploads_can_read on EVERY download — and hand back a blob: copy that
   // lives only in this page (and the tab it opens). Never cached.
-  if (path.startsWith('purchases/')) {
+  // Petty-cash return photos (0102, R13: the main owner and their uploader
+  // only) are handled the same way — a signed link could be passed on.
+  if (path.startsWith('purchases/') || path.startsWith('pettyCash/')) {
     const { data, error } = await sb.storage.from('uploads').download(path);
     if (error) throw error;
     return URL.createObjectURL(data);

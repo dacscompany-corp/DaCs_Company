@@ -2140,16 +2140,44 @@ ${previewOnly ? '' : '<script>window.onload=function(){window.print();};<\\/scri
     // ACKNOWLEDGE INVOICE — Single payroll entry
     // ══════════════════════════════════════════════════════
 
+    // A statement or receipt reads payroll just before printing, because Project
+    // Control's list above its button is live and the two must agree. The window
+    // opens first, on the click itself: opened after a wait it can be blocked.
+    // If it cannot be printed from current figures, the window closes and nothing
+    // is printed, never the page's older copy.
+    function _openPrintWindow(features, blockedMessage) {
+        const w = window.open('', '_blank', features);
+        if (!w) { alert(blockedMessage); return null; }
+        w.document.write('<p style="font:14px Arial,sans-serif;padding:24px;color:#555">Preparing…</p>');
+        return w;
+    }
+    function _stopPrint(w, message) {
+        w.close();
+        alert(message);
+    }
+    const _PRINT_READ_FAILED = 'Could not load the latest payroll, so nothing was printed. Check your connection and try again.';
+
     window.printSinglePayrollInvoice = async function (payrollId) {
+        const w = _openPrintWindow('width=720,height=960', 'Please allow pop-ups to print the invoice.');
+        if (!w) return;
+        try {
+            await _writeSinglePayrollInvoice(w, payrollId);
+        } catch (err) {
+            console.error('printSinglePayrollInvoice:', err);
+            _stopPrint(w, _PRINT_READ_FAILED);
+        }
+    };
+
+    async function _writeSinglePayrollInvoice(w, payrollId) {
         if (!_ownerUid) await _resolveOwnerUid();
         if (!_defaults || !Object.keys(_defaults).length) await _loadDefaults();
 
-        const _allPay = (typeof _ovAllPayroll !== 'undefined' && _ovAllPayroll.length)
-                        ? _ovAllPayroll
-                        : (typeof expPayroll !== 'undefined' ? expPayroll : []);
-
-        const p = _allPay.find(e => e.id === payrollId);
-        if (!p) { alert('Payroll entry not found.'); return; }
+        const snap = await db.collection('payroll').doc(payrollId).get();
+        if (!snap.exists) {
+            _stopPrint(w, 'This payroll entry no longer exists, so nothing was printed. It may have been deleted from another tab or account.');
+            return;
+        }
+        const p = { id: snap.id, ...snap.data() };
 
         const _projs   = (typeof expProjects !== 'undefined' ? expProjects : []);
         const _folders = (typeof expFolders  !== 'undefined' ? expFolders  : []);
@@ -2179,9 +2207,7 @@ ${previewOnly ? '' : '<script>window.onload=function(){window.print();};<\\/scri
             k === _method ? '<strong class="on">' + lbl + '</strong>' : lbl
         ).join(' <span class="sep">/</span> ') + '</div>';
 
-        const w = window.open('','_blank','width=720,height=960');
-        if (!w) { alert('Please allow pop-ups to print the invoice.'); return; }
-
+        w.document.open();
         w.document.write(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2272,7 +2298,7 @@ ${window.dacsStatementPrintScript()}
 </body>
 </html>`);
         w.document.close();
-    };
+    }
 
     // ══════════════════════════════════════════════════════
     // WORKER STATEMENT OF ACCOUNT — all of ONE worker's labor
@@ -2283,15 +2309,24 @@ ${window.dacsStatementPrintScript()}
     // 'labor' (default) = in-house worker; 'outsource' = outside vendor. Without
     // it a vendor sharing a worker's name would pull both kinds into one document.
     window.printWorkerLaborSOA = async function (workerName, folderId, category) {
+        const w = _openPrintWindow('width=870,height=1100', 'Please allow pop-ups to print the statement.');
+        if (!w) return;
+        try {
+            await _writeWorkerLaborSOA(w, workerName, folderId, category);
+        } catch (err) {
+            console.error('printWorkerLaborSOA:', err);
+            _stopPrint(w, _PRINT_READ_FAILED);
+        }
+    };
+
+    async function _writeWorkerLaborSOA(w, workerName, folderId, category) {
         const _soaCat    = category === 'outsource' ? 'outsource' : 'labor';
         const _soaIsVend = _soaCat === 'outsource';
         const _catOf     = c => (c && c.category === 'outsource') ? 'outsource' : 'labor';
         if (!_ownerUid) await _resolveOwnerUid();
         if (!_defaults || !Object.keys(_defaults).length) await _loadDefaults();
 
-        const _allPay  = (typeof _ovAllPayroll !== 'undefined' && _ovAllPayroll.length)
-                         ? _ovAllPayroll
-                         : (typeof expPayroll !== 'undefined' ? expPayroll : []);
+        const _allPay  = await _ovReadPayroll();
         const _projs   = (typeof expProjects !== 'undefined' ? expProjects : []);
         const _folders = (typeof expFolders  !== 'undefined' ? expFolders  : []);
 
@@ -2302,16 +2337,32 @@ ${window.dacsStatementPrintScript()}
         // Include payments by typed name OR linked to a contract owned by this worker,
         // so a name mismatch (payment "Mark Frias" vs contract "Mark Frias (Demolition)")
         // still gathers the right entries.
+        //
+        // Linked Labor (migration 0113): an 'acct:<id>' key is ONE linked WorkMate
+        // account — its own contracts and their payments only, never anyone who
+        // shares its typed name. A typed name, as before, now leaves out payments
+        // on LINKED contracts: those belong to their account's statement.
+        const _allC0  = (typeof expLaborContracts !== 'undefined' ? expLaborContracts : []);
+        const _acct   = (typeof workerName === 'string' && workerName.indexOf('acct:') === 0) ? workerName.slice(5) : null;
+        const _linked = new Set(_allC0.filter(c => c.workerId).map(c => c.id));
         const _wcIds = new Set(
-            (typeof expLaborContracts !== 'undefined' ? expLaborContracts : [])
-                .filter(c => (c.workerName || '') === workerName && _catOf(c) === _soaCat)
+            _allC0
+                .filter(c => _catOf(c) === _soaCat && (_acct
+                    ? c.workerId === _acct
+                    : (!c.workerId && (c.workerName || '') === workerName)))
                 .map(c => c.id)
         );
+        if (_acct) {
+            const c0 = _allC0.find(c => c.workerId === _acct);
+            workerName = c0 ? (c0.workerName || 'Worker') + (window.LinkedLabor ? window.LinkedLabor.tagOf(c0) : '') : 'Worker';
+        }
         let entries = _allPay
-            .filter(p => periodIds.has(p.projectId) &&
-                ((p.workerName || '') === workerName || (p.contractId && _wcIds.has(p.contractId))))
+            .filter(p => periodIds.has(p.projectId) && (_acct
+                ? !!(p.contractId && _wcIds.has(p.contractId))
+                : (((p.workerName || '') === workerName && !(p.contractId && _linked.has(p.contractId)))
+                   || (p.contractId && _wcIds.has(p.contractId)))))
             .sort((a, b) => new Date(a.paymentDate || 0) - new Date(b.paymentDate || 0));
-        if (!entries.length) { alert('No labor entries found for ' + workerName + ' in this project.'); return; }
+        if (!entries.length) { _stopPrint(w, 'No labor entries found for ' + workerName + ' in this project.'); return; }
 
         const role    = (entries.find(e => e.role) || {}).role || '—';
         // Blank, not '—': the letterhead omits an address/TIN line it doesn't have.
@@ -2357,7 +2408,7 @@ ${window.dacsStatementPrintScript()}
         const _allC      = (typeof expLaborContracts !== 'undefined' ? expLaborContracts : [])
             .filter(c => _catOf(c) === _soaCat);
         const _entryCids = new Set(entries.map(p => p.contractId).filter(Boolean));
-        const _wContracts = _allC.filter(c => (c.workerName || '') === workerName || _entryCids.has(c.id));
+        const _wContracts = _allC.filter(c => _wcIds.has(c.id) || _entryCids.has(c.id));
 
         // Contract position — hoisted out of the status-pill branch below because
         // the Contract band also needs it. Same arithmetic the Worker Tracker row
@@ -2401,9 +2452,7 @@ ${window.dacsStatementPrintScript()}
             _contractType = [..._types].join(' & ');
         }
 
-        const w = window.open('','_blank','width=870,height=1100');
-        if (!w) { alert('Please allow pop-ups to print the statement.'); return; }
-
+        w.document.open();
         w.document.write(`<!DOCTYPE html>
 <html lang="en">
 <head>

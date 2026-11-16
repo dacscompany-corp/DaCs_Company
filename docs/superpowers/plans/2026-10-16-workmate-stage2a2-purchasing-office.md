@@ -7452,3 +7452,46 @@ The whole-branch review of Tasks 1–3 found the server sound (authorization, co
 - Task 4 Step 2 now checks that `uploads_select_scoped` is the only policy that can read bucket `uploads`.
 - Tests: 2A-2 suite 44, static 23, screen/wiring 33 (each new test failing before its fix); `npm test` exit 0; `npm run test:sql` (alone) all green; the three acceptance dry-runs pass. Re-review: all addressed.
 - Parked with rulings in the SDD ledger, to carry into 2A-3: staff may void a request-linked purchase (they cannot unlink one); the substitute prompt is browser-only; a change request is compared with the purchase as it was when sent; non-buyer staff cannot see or withdraw a change sent from Project Control. Also parked: receipt blob housekeeping, a retry-safe lock-order deadlock, and the earlier deferred minors (all triaged "can follow").
+
+## Execution notes (Task 4, 16–20 Oct 2026)
+
+**Live.** 0097 dry-run, then applied 16 Oct (`20261016150712 0097_purchasing_office`). Step 2 checks all passed: 17 named functions, one 7-argument `pur_insert`, anon has no execute, `pur_reader` = `pur_buyer`, `pur_cover_lines` not executable by `authenticated`, `uploads_select_scoped` the only policy that can read bucket `uploads`, and all 50 function bodies identical to the file (md5). The live 2A-2 and 2A-1 acceptance scripts passed and left nothing behind. The web was pushed right after (cbb84b0) and the live site served the new files.
+
+**Browser checks (owner `admin@`, staff `staff@`, test project "ZZ 2a2 browser").** **22 passed, no defects found:** C1–C16, C6b, C18–C21, C23.
+- C17 dropped: C6b and C7 already prove picked-portion coverage plus extra.
+- C22 skipped: no Expenses-only admin account exists (the only `allowed_modules` account is `admin-pm@` = pm).
+- Checklist defect, C5: after C4 the staff member holds all 10, so the owner must **Release** first, then Assign 4. The table assumed the portions were unassigned.
+- Re-routed after test-entry slips (each a valid purchase, so it was kept and routed around):
+  - cement saved as 4 bags (not 6), and the hinge in pcs;
+  - C7 ran on the Sat 24 Oct sand portion, because the 17 Oct cutoff had passed;
+  - C8 was first saved in "gal" (it counted at once — correct); it was redone as 1 **pail**, which waited for the office check;
+  - C10 covered 1 instead of 2;
+  - C18/C19 used the sand (renamed "ZZ washed sand", substitute, covers 4), because the paint was fully bought.
+- C9: the refusal reads "Someone else must check a purchase you bought or recorded yourself". The rule is *not the buyer/recorder*, not *owner only*.
+- C13: staff still see the delete icon on a completed project; pressing it turns the void into "Send to the owner?" as designed.
+- C15: no receipt photo had been opened at C6, so the "dead receipt tab" half was not exercised there. C20 opened a receipt as a `blob:` URL (downloaded with the session, never signed).
+- C21: the owner side was clicked on a local copy (127.0.0.1). The purchasing files there were identical to cbb84b0, so the check stands; the decision runs on the server.
+- A voided purchase keeps its `purchase_line_covers` rows as history; every reader counts only recorded purchases (`pr_portion_bought` confirmed 0 for the voided portion).
+- "Failed to fetch" at C7 was a browser network blip: no `client_errors`, and `pur_shopping_list` answered in 22 ms.
+
+**Step 6.** `client_errors` held nothing from 18 Oct to 20 Oct apart from one unrelated Turnstile 300010.
+
+**Step 7: clean-up incident.** The Purchases tab lists **every** purchase, including Project Control's (`source = expenses_form`). While voiding the ZZ purchases, the owner also voided **4 real purchases** with the reason "test":
+- Eagle Residence ₱344
+- De Leon Residence ₱3,360
+- Sulit Residence ₱15,750
+- J. Apo Residence ₱4,880
+
+There is no un-void, so the owner re-entered all four in Project Control the same morning; Spent was restored. Dates are to be corrected to the originals by edit. The originals stay voided as history. The cause was the clean-up instruction, which did not say that real rows share the list.
+
+The test project could not be deleted in the app, because a project with any WorkMate request (cancelled included) is kept as history (`pr_folder_request_count`). With the owner's explicit approval (dry run, then apply, 20 Oct), one guarded SQL transaction removed:
+- the project, its 2 billing periods, the cancelled request (4 lines, 11 events);
+- the 10 voided ZZ purchases (including the ZZ tape left by the deleted "ZZ 2a2 browser B"), their 22 history rows and 1 change request;
+- the supplier ZZ Hardware.
+
+It refused to run if any purchase was recorded, on a non-ZZ project, or still had expense rows. Afterwards there were 0 ZZ 2a2 rows and the 4 real recorded purchases were untouched. Two test receipt photos remain in `purchases/` (buyer-only, harmless).
+
+**Carry into 2A-3** (with the parked rulings above):
+- the Purchases list should show each purchase's source and project, and be filterable by project, before anyone bulk-voids from it;
+- consider a "record again from this voided purchase" action;
+- the open questions from the ledger: staff void of a request-linked purchase; the browser-only substitute prompt; a change compared at send time; staff cannot withdraw a change.

@@ -2,8 +2,11 @@
 // Requests → Purchasing → Record purchase (0097). One receipt, many lines,
 // several projects. Opens from the shopping list with the ticked request
 // lines, empty ("Purchase with no request"), or from a purchase to correct
-// it. Saves through the SAME server operations as everything else:
-//   new            → pur_record   (source 'purchasing')
+// it, or from a voided purchase to record it again (R7, 2A-3a: a NEW
+// purchase filled in from the old one). Saves through the SAME server
+// operations as everything else:
+//   new            → pur_record   (source 'purchasing'; a correction or
+//                                  replacement keeps the purchase's own source)
 //   same lines     → pur_correct  (reason required)
 //   lines added or removed → pur_replace (reason required)
 // The server decides Spent, the billing periods and what each line covers;
@@ -30,7 +33,8 @@
             (help ? '<p class="pur-sec-help">' + esc(help) + '</p>' : '');
     }
 
-    let ctx = null;   // { requestLines, batchId, purchase, onDone }
+    let ctx = null;   // { requestLines, batchId, purchase, again, onDone }
+    let openCredits = [];   // 0102: the chosen supplier's credits with something left (R10)
     let st = null;    // the form
 
     const DOCS = [['po', 'po_image_url', 'Purchase order'], ['dr', 'delivery_receipt_url', 'Delivery receipt'],
@@ -79,6 +83,9 @@
         (doc.requests || []).forEach(r => { reqs[r.line] = r; });
         return {
             opId: root.DacsReceipts.newId(), editId: doc.id, editLines: (doc.lines || []).length, reason: '',
+            // Where it was entered stays (a replacement too); a phone
+            // purchase's "No receipt" reason goes with it.
+            source: doc.source || 'purchasing', noReceiptReason: doc.no_receipt_reason || '',
             purchaseDate: doc.purchase_date, supplierId: doc.supplier_id || '', supplier: doc.supplier_id ? '' : (doc.supplier || ''),
             paymentMethod: doc.payment_method || '', notes: doc.notes || '', boughtBy: doc.bought_by || '',
             dateTime: doc.date_time || '',
@@ -101,16 +108,20 @@
             }),
             // A split the office adjusted stays adjusted: a correction never
             // quietly resets it to the automatic one.
-            charges: (doc.charges || []).map(c => {
-                const given = (doc.lines || []).map(l => {
-                    const sh = (c.shares || []).find(x => x.line === l.line);
-                    return sh ? Number(sh.amount) : 0;
-                });
-                const auto = PA.prorate(Number(c.amount), (doc.lines || []).map(l => Number(l.amount)));
-                const custom = given.some((g, i) => PA.round2(g) !== PA.round2(auto[i]));
-                return { kind: c.kind, amount: String(c.amount), adjust: custom, shares: custom ? given.map(String) : null };
-            }),
+            charges: PA.chargesOf(doc),
         };
+    }
+
+    // R7: a NEW purchase filled in from a voided one (PurchasingAdmin.
+    // recordAgainState): request links are re-checked by the server, picks
+    // are not copied, nothing is saved until Save.
+    function fromAgain(doc, me) {
+        const s = PA.recordAgainState(doc, me);
+        return Object.assign(s, {
+            opId: root.DacsReceipts.newId(), editId: null, editLines: 0, reason: '', againOf: doc.id,
+            files: {}, uploaded: {},
+            lines: s.lines.map(l => Object.assign(newLine(), l)),
+        });
     }
 
     // The line with its typed quantity, for the pure previews.
@@ -140,6 +151,7 @@
     // ones it covers; none picked = the server's automatic order.
     function picksHtml(l, i) {
         if (!l.requestLineId) return '';
+        if (l.copied) return '<div class="req-muted">Covers your own portions first, then unassigned ones, earliest first — checked again when you save.</div>';
         if (!l.portions) {
             const kept = (l.portionPicks || []).filter(k => Number(k.quantity) > 0);
             return kept.length ? '<div class="req-muted">Picked portions are kept: ' + esc(kept.map(k => PA.qty(k.quantity)).join(' + ')) + '</div>'
@@ -204,7 +216,8 @@
               '</select></label>' +
             '</div>' +
             (linked ? '' :
-              '<div class="pur-rec-row"><label class="att-label pur-w2">Why was it bought without a request?<input class="att-input" data-f="unplannedReason" data-i="' + i + '" maxlength="300" placeholder="What it was for and why it was not requested" value="' + esc(l.unplannedReason) + '"></label></div>') +
+              '<div class="pur-rec-row"><label class="att-label pur-w2">Why was it bought without a request?' +
+                (PA.unplannedReasonNeeded(st.source) ? '' : ' (optional)') + '<input class="att-input" data-f="unplannedReason" data-i="' + i + '" maxlength="300" placeholder="What it was for and why it was not requested" value="' + esc(l.unplannedReason) + '"></label></div>') +
             '</div></div>';
     }
 
@@ -279,11 +292,24 @@
         }
     }
 
+    // Whose petty cash or own money a "paid now" payment is (0102): a staff
+    // buyer only — the caller, or the buyer the owner picked in "Bought by".
+    function cashHolder(me) {
+        if (!me.isOwner) return me.userId;
+        return st.boughtBy && st.boughtBy !== me.userId ? st.boughtBy : null;
+    }
+
     async function save(host, me) {
         const box = host.querySelector('[data-problems]');
         const fs = formState();
         const problems = PA.formProblems(fs);
         if (st.editId && !String(st.reason || '').trim()) problems.unshift({ code: 'REASON_REQUIRED' });
+        // "Paid now?" (0102, Q3): new purchases only — a correction never carries payments.
+        if (!st.editId) {
+            const credit = openCredits.find(c => c.id === st.paidCredit);
+            PA.paidNowProblems(st, PA.receiptTotal(PA.buildBody(fs).lines, PA.buildBody(fs).charges), cashHolder(me), credit ? credit.left : null)
+              .forEach(code => problems.push({ code }));
+        }
         if (problems.length) {
             box.innerHTML = '<ul>' + problems.map(p => '<li>' + esc((p.line ? 'Line ' + p.line + ': ' : p.charge ? 'Fee/discount ' + p.charge + ': ' : '') +
                 PA.ERRORS[p.code]) + '</li>').join('') + '</ul>';
@@ -299,7 +325,9 @@
             body = PA.buildBody(formState());
             let res;
             if (!st.editId) {
-                res = await RA.rpc('pur_record', { p_op: st.opId, p_body: body });
+                // The purchase and its "paid now" payment are accepted together, or neither is.
+                const pays = PA.paidNowPayments(st, body.receipt_total, cashHolder(me));
+                res = await RA.rpc('pur_record', { p_op: st.opId, p_body: pays.length ? Object.assign({}, body, { payments: pays }) : body });
             } else if (body.lines.length === st.editLines) {
                 res = await RA.rpc('pur_correct', { p_op: st.opId, p_purchase: st.editId, p_body: body, p_reason: st.reason.trim() });
             } else {
@@ -346,21 +374,58 @@
             onSubmit: async () => {
                 await RA.rpc('pur_request_change', { p_op: root.DacsReceipts.newId(), p_purchase: editId, p_kind: kind, p_body: body, p_reason: reason });
             },
-            onDone: () => { ctx = null; st = null; PA.ui.tab = 'purchases'; PA.openPurchase(editId); },
+            onDone: () => {
+                ctx = null; st = null;
+                // Project Control's "Waiting for the owner" pill, now — not after a refresh.
+                if (root.expPurReloadFlags) root.expPurReloadFlags();
+                PA.ui.tab = 'purchases'; PA.openPurchase(editId);
+            },
         });
+    }
+
+    // Section 5 (0102, Q3): was it paid at the counter? Saved with the
+    // purchase in one go. Later payments: Record payment on the purchase.
+    // A credit with the chosen supplier may pay at the counter too (R10).
+    function paidNowHtml(me) {
+        const holder = cashHolder(me);
+        const from = { company: PA.PAY_SOURCE.company };
+        if (holder) { from.petty_cash = PA.PAY_SOURCE.petty_cash; from.own_money = PA.PAY_SOURCE.own_money; }
+        if (openCredits.length) from.credit = PA.PAY_SOURCE.credit;
+        if (!from[st.paidFrom]) st.paidFrom = holder ? 'petty_cash' : 'company';
+        if (st.paidFrom === 'credit' && !openCredits.some(c => c.id === st.paidCredit)) st.paidCredit = openCredits[0].id;
+        if (!PA.PAY_METHOD[st.paidMethod]) st.paidMethod = PA.methodOf(st.paymentMethod);
+        const sel = (map, v) => Object.keys(map).map(k => '<option value="' + esc(k) + '"' + (k === v ? ' selected' : '') + '>' + esc(map[k]) + '</option>').join('');
+        const now = st.paidNow || 'none';
+        return secHtml('5', 'Paid now?', 'Optional. A payment never changes Spent — it only says how the receipt was paid.') +
+            '<div class="att-card"><div class="att-card-body"><div class="pur-rec-row">' +
+              '<label class="att-label">Paid at the counter<select class="att-input" data-paid="paidNow">' +
+                sel({ none: 'Not paid yet / record later', full: 'Paid in full', part: 'Paid part (deposit)' }, now) + '</select></label>' +
+              (now === 'part' ? '<label class="att-label">Amount paid (₱)<input class="att-input" data-paid="paidAmount" inputmode="decimal" value="' + esc(st.paidAmount || '') + '"></label>' : '') +
+              (now !== 'none' ? '<label class="att-label">Paid from<select class="att-input" data-paid="paidFrom">' + sel(from, st.paidFrom) + '</select></label>' +
+                (st.paidFrom === 'credit'
+                  ? '<label class="att-label">Credit to use<select class="att-input" data-paid="paidCredit">' +
+                      openCredits.map(c => '<option value="' + esc(c.id) + '"' + (c.id === st.paidCredit ? ' selected' : '') + '>' +
+                        esc(PA.peso(c.left) + ' left') + '</option>').join('') + '</select></label>'
+                  : '<label class="att-label">How<select class="att-input" data-paid="paidMethod">' + sel(PA.PAY_METHOD, st.paidMethod) + '</select></label>') : '') +
+            '</div>' +
+            (now !== 'none' && !holder && me.isOwner ? '<p class="req-muted">Petty cash and own money belong to a staff buyer: pick them in "Bought by" to use theirs.</p>' : '') +
+            '</div></div>';
     }
 
     async function renderRecord(host, me) {
         if (!ctx) { PA.ui.tab = 'list'; return PA.renderPurchasing(host.closest('.content-view') || host.parentNode); }
         let suppliers, buyers, folders;
         try {
-            const [s, b, f] = await Promise.all([
+            const [s, b, f, cr] = await Promise.all([
                 RA.rpc('pur_suppliers'),
                 me.isOwner ? RA.rpc('pur_buyer_options') : Promise.resolve([]),
                 root.sbClient.from('folders').select('id, name, parent_folder_id, completed_at').order('name'),
+                // R10: the chosen supplier's open credits, for "Paid now" (new purchases only).
+                st && !st.editId && st.supplierId ? RA.rpc('pur_credits', { p_supplier: st.supplierId }) : Promise.resolve([]),
             ]);
             if (f.error) throw f.error;
             suppliers = s || []; buyers = b || [];
+            openCredits = (cr || []).filter(c => !c.voided_at && Number(c.left) > 0);
             const all = f.data || [];
             folders = [];
             all.filter(x => !x.parent_folder_id && (me.isOwner || !x.completed_at)).forEach(p => {
@@ -369,7 +434,7 @@
             });
         } catch (e) { RA.fail(host, e); return; }
         if (!st) {
-            st = ctx.purchase ? fromPurchase(ctx.purchase) : {
+            st = ctx.purchase ? fromPurchase(ctx.purchase) : ctx.again ? fromAgain(ctx.again, me) : {
                 opId: root.DacsReceipts.newId(), editId: null, editLines: 0, reason: '',
                 purchaseDate: todayKey(), supplierId: '', supplier: '', paymentMethod: 'Cash', notes: '', boughtBy: me.userId,
                 docs: {}, files: {}, uploaded: {}, onFile: [],
@@ -379,11 +444,14 @@
         }
 
         host.innerHTML =
-            (!st.editId && !ctx.requestLines.length
+            (!st.editId && !st.againOf && !(ctx.requestLines || []).length
                 ? '<div class="att-info"><i data-lucide="info"></i><div><strong>Bought something nobody asked for?</strong> ' +
                   'Add each item below, choose the project it was for (or Warehouse), and say why it was bought.</div></div>'
                 : '') +
-            secHtml('1', st.editId ? 'Correct this purchase' : 'Purchase details', 'Who sold it, when it was bought and how it was paid.') +
+            (st.againOf ? '<div class="att-info"><i data-lucide="copy"></i><div><strong>Record again</strong> — a new purchase copied from a voided one. ' +
+                  'Check every line: it is saved as a new purchase. The voided one stays voided, as history.</div></div>' : '') +
+            secHtml('1', st.editId ? 'Correct this purchase' : st.againOf ? 'Record again — purchase details' : 'Purchase details',
+                    'Who sold it, when it was bought and how it was paid.') +
             '<div class="att-card"><div class="att-card-body">' +
               '<div class="pur-rec-row">' +
                 '<label class="att-label">Date bought<input class="att-input" type="date" data-h="purchaseDate" value="' + esc(st.purchaseDate) + '"></label>' +
@@ -416,6 +484,7 @@
             '<div class="att-card"><div class="att-card-body">' +
               '<p class="req-muted">Kept once for the whole receipt, office buyers only — never shown to clients, partners or workers.</p>' +
               '<div class="pur-rec-row">' + DOCS.map(docHtml).join('') + '</div></div></div>' +
+            (st.editId ? '' : paidNowHtml(me)) +
             (st.editId ? '<label class="att-label">Reason for the change (kept in the history)<input class="att-input" data-h="reason" maxlength="500" value="' + esc(st.reason) + '"></label>' : '') +
             '<div class="att-info att-info--warn" data-problems hidden></div>' +
             '<div class="pur-rec-foot"><span>Receipt total <strong data-total></strong></span>' +
@@ -423,7 +492,17 @@
               '<button type="button" class="att-btn att-btn--primary" data-save>' + (st.editId ? 'Save correction' : 'Save purchase') + '</button></div>';
 
         const rerender = () => renderRecord(host, me);
-        host.querySelectorAll('[data-h]').forEach(el => el.addEventListener('input', () => { st[el.dataset.h] = el.value; if (el.dataset.h === 'supplierId' && el.value) st.supplier = ''; refresh(host); }));
+        host.querySelectorAll('[data-h]').forEach(el => el.addEventListener('input', () => {
+            st[el.dataset.h] = el.value;
+            if (el.dataset.h === 'supplierId' && el.value) st.supplier = '';
+            // Whose petty cash "Paid now" can use follows "Bought by"; which credit, the supplier.
+            if ((el.dataset.h === 'boughtBy' || el.dataset.h === 'supplierId') && st.paidNow && st.paidNow !== 'none') return rerender();
+            refresh(host);
+        }));
+        host.querySelectorAll('[data-paid]').forEach(el => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
+            st[el.dataset.paid] = el.value;
+            if (el.dataset.paid === 'paidNow' || el.dataset.paid === 'paidFrom') rerender();
+        }));
         host.querySelectorAll('[data-f]').forEach(el => el.addEventListener(el.tagName === 'SELECT' ? 'change' : 'input', () => {
             const l = st.lines[Number(el.dataset.i)];
             if (el.dataset.f === 'where') {
@@ -498,7 +577,7 @@
             onDone: rerender,
         }));
         host.querySelector('[data-cancel]').addEventListener('click', () => {
-            const back = st.editId;
+            const back = st.editId || st.againOf;
             ctx = null; st = null;
             PA.ui.tab = back ? 'purchases' : 'list';
             if (back) PA.openPurchase(back); else root.switchView('reqPurchasing');

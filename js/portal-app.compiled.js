@@ -139,6 +139,11 @@ const peso = (n, opts = {}) => {
   return n.toLocaleString("en-PH", { maximumFractionDigits: 0 });
 };
 const _staff = () => typeof window !== "undefined" && window.currentUserRole === "staff";
+// 2C (0105): a stock cost move the main owner approved — its value is for owner
+// accounts only, so staff see the row (and its state) but never its pesos, and
+// their subtotals leave it out. Every total that is Spent still counts it.
+const _hideStockCost = (m) => _staff() && (m._parts || [m]).some((p) => p.stkCostMoveId);
+const _shownAmount = (m) => _hideStockCost(m) ? 0 : Number(m.amount) || 0;
 // Project Control financial shortcuts recheck the role when invoked as well as
 // when rendered. Encoding in the separate Expenses module is unchanged.
 const _pcMoneyAction = (action) => (...args) => { if (!_staff()) return action(...args); };
@@ -314,6 +319,9 @@ function mapExpenseDoc(d) {
     splitTotal: Number(d.splitTotal) || 0,
     purchaseLineId: d.purchaseLineId || null,
     purchaseChargeId: d.purchaseChargeId || null,
+    // 2C (0105): a row an approved stock cost move wrote — read-only; the main
+    // owner reverses the cost move in Requests → Stock.
+    stkCostMoveId: d.stkCostMoveId || null,
     docs,
     docUrls,
     receipts,
@@ -1650,6 +1658,130 @@ function AllocationHistory({ periodId, periodLabel, adjustments, onClose }) {
         h("p", null, "This period still uses the allocation it started with.")),
     h("p", { className: "pc-ah-foot" }, "Allocation history is permanent — entries can never be edited or removed."));
 }
+function _pcBillingRequestHTML(project, periods, request) {
+  const esc = value => String(value == null ? "" : value).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
+  const money = value => "₱" + (Number(value) || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  // Client billing periods only: each billing's amount and the total allocated. No spending on this page.
+  const rows = periods.filter(p => p.fundingType !== "president").slice().sort((a, b) =>
+    (Number(a.year) || 0) - (Number(b.year) || 0) || monthNames.indexOf(a.month) - monthNames.indexOf(b.month)
+    || (Number(a.billingNumber) || 0) - (Number(b.billingNumber) || 0))
+    .map(p => ({ name: _pcBillingName(p), when: _pcBillingWhen(p), budget: Number(p.monthlyBudget) || 0 }));
+  if (!rows.length) throw new Error("No client billing periods are available.");
+  const allocated = rows.reduce((sum, p) => sum + p.budget, 0);
+  const now = new Date();
+  const issued = now.toLocaleDateString("en-PH", { year: "numeric", month: "long", day: "numeric" });
+  const clientName = project.clientName || project.clientEmail || "";
+  const clientEmail = project.clientName && project.clientEmail ? project.clientEmail : "";
+  const letterhead = typeof window.dacsPrintHeader === "function" ? window.dacsPrintHeader("Billing Request", "Client billing periods · All time")
+    : '<header><strong>DAC\'S BUILDING DESIGN SERVICES</strong></header>';
+  const css = 'body{margin:0;background:#e9ebe8;font:13px/1.5 Arial,Helvetica,sans-serif;color:#17251d;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+    + '.toolbar{max-width:794px;margin:24px auto 0;display:flex;justify-content:flex-end}'
+    + '.toolbar button{font:700 13px Arial;background:#1a5c3a;color:#fff;border:0;border-radius:6px;padding:9px 16px;cursor:pointer}'
+    + '.page{max-width:794px;min-height:1123px;margin:16px auto 40px;background:#fff;box-shadow:0 2px 12px rgba(23,37,29,.12);box-sizing:border-box;padding:48px 56px 44px;display:flex;flex-direction:column}'
+    + '.eb{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6b7280}.g{color:#1a5c3a}'
+    + '.titlebar{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;margin-top:6px}'
+    + 'h1{margin:0;font-size:28px;font-weight:700;letter-spacing:-.01em}.sub{font-size:13px;color:#6b7280;margin-top:4px}'
+    + '.meta{display:grid;grid-template-columns:auto auto;column-gap:16px;row-gap:3px;font-size:12px;text-align:right}.meta span:nth-child(odd){color:#6b7280}.meta span:nth-child(even){font-weight:700}'
+    + '.parties{display:flex;margin-top:24px;border:1px solid #dfe5e1;border-radius:6px}.parties>div{flex:1 1 0;min-width:0;padding:14px 18px}.parties>div:not(:last-child){border-right:1px solid #dfe5e1}'
+    + '.n{font-size:15px;font-weight:700;margin-top:6px}.d{color:#4b5563}'
+    + '.lead{margin:22px 0 0;color:#374151}'
+    + '.req{margin-top:18px;background:#f2f6f3;border:1px solid #cfd9d2;border-radius:6px;padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:16px}'
+    + '.req .basis{font-size:20px;font-weight:700;margin-top:4px}.req .amt{font-size:26px;font-weight:700;color:#1a5c3a;font-variant-numeric:tabular-nums;white-space:nowrap}'
+    + '.sec{margin-top:26px}'
+    + 'table{width:100%;border-collapse:collapse;margin-top:8px;font-variant-numeric:tabular-nums}'
+    + 'thead th{background:#f2f6f3;text-align:left;padding:9px 12px;font-size:11px;font-weight:700;color:#4b5563;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #cfd9d2}'
+    + '.bk tbody td,.bk tbody th{padding:11px 12px;border-bottom:1px solid #e8ece9;text-align:left;vertical-align:top}.bk tbody th{font-weight:600}'
+    + '.bk small{display:block;font-weight:400;color:#6b7280;font-size:12px;margin-top:2px}'
+    + '.bk td:last-child,.bk thead th:last-child{text-align:right}.bk .no{width:36px}.bk td.no{color:#9ca3af}'
+    + '.bk tfoot th,.bk tfoot td{padding:13px 12px;border-top:2px solid #1a5c3a}.bk tfoot th{text-align:right;font-size:12px;text-transform:uppercase;letter-spacing:.05em}.bk tfoot td{text-align:right;font-size:16px;font-weight:700;color:#1a5c3a}'
+    + '.spacer{flex:1;min-height:40px}'
+    + '.sigs{display:grid;grid-template-columns:minmax(0,320px);justify-content:center;text-align:center}.line{border-bottom:1px solid #17251d;height:48px;box-sizing:border-box;padding-bottom:3px;display:flex;align-items:flex-end;justify-content:center;font-weight:700}.cap{display:flex;justify-content:space-between;font-size:11px;color:#6b7280;margin-top:6px}'
+    + '.foot{margin-top:28px;padding-top:10px;border-top:1px solid #e8ece9;display:flex;justify-content:space-between;font-size:10px;color:#9ca3af}'
+    // Tighter on paper than on screen, so the whole request fits one A4 sheet.
+    + '@media print{body{background:#fff}.toolbar{display:none}.page{margin:0 auto;box-shadow:none;min-height:auto;padding:0}'
+    + '.parties{margin-top:12px}.lead{margin-top:10px}.req{margin-top:10px;padding:10px 14px}.sec{margin-top:12px}table{margin-top:4px}'
+    + '.bk tbody td,.bk tbody th{padding:4px 12px}.bk small{margin-top:0}.bk tfoot th,.bk tfoot td{padding:7px 12px}'
+    + (rows.length > 5 ? '.bk small{display:inline;margin-left:8px}' : '')
+    + '.spacer{min-height:14px}.line{height:30px}.foot{margin-top:12px}'
+    + '.sigs,.foot,.bk tr{break-inside:avoid}@page{size:A4 portrait;margin:10mm}}';
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Billing Request</title><style>' + css + '</style></head><body>'
+    + '<div class="toolbar"><button type="button" onclick="window.print()">Print / Save PDF</button></div>'
+    + '<div class="page">' + letterhead
+    + '<div class="titlebar"><div><h1>Billing Request</h1><div class="sub">Billing breakdown</div></div>'
+    + '<div class="meta">' + (project.code ? '<span>Reference</span><span>' + esc(project.code) + '</span>' : '') + '<span>Date issued</span><span>' + esc(issued) + '</span></div></div>'
+    + '<div class="parties">' + (clientName ? '<div><div class="eb">Requested from</div><div class="n">' + esc(clientName) + '</div>' + (clientEmail ? '<div class="d">' + esc(clientEmail) + '</div>' : '') + '</div>' : '')
+    + '<div><div class="eb">Project</div><div class="n">' + esc(project.name) + '</div>' + (project.location ? '<div class="d">' + esc(project.location) + '</div>' : '') + '</div></div>'
+    + '<p class="lead">Please release the next billing funds to support continued project work. The breakdown below lists each client billing period.</p>'
+    + '<div class="req"><div><div class="eb g">Requested this billing</div><div class="basis">' + esc(request.percent) + '% of Project Budget</div></div><div class="amt">' + money(request.amount) + '</div></div>'
+    + '<div class="sec eb g">Billing breakdown</div>'
+    + '<table class="bk"><thead><tr><th scope="col" class="no">No.</th><th scope="col">Billing</th><th scope="col">Amount</th></tr></thead><tbody>'
+    + rows.map((p, i) => '<tr><td class="no">' + String(i + 1).padStart(2, "0") + '</td><th scope="row">' + esc(p.name) + '<small>' + esc(p.when) + '</small></th><td>' + money(p.budget) + '</td></tr>').join('')
+    + '</tbody><tfoot><tr><th scope="row" colspan="2">Total Allocated</th><td>' + money(allocated) + '</td></tr></tfoot></table>'
+    + '<div class="spacer"></div>'
+    + '<div class="sigs"><div><div class="eb">Prepared by</div><div class="line">' + esc(request.preparedBy || '') + '</div><div class="cap"><span>Signature over printed name</span><span>Date</span></div></div></div>'
+    + '<div class="foot"><span>DAC\'S Building Design Services · Billing Request</span><span>Generated ' + esc(now.toLocaleString("en-PH")) + '</span></div>'
+    + '</div></body></html>';
+}
+async function _pcPrintBillingRequest(project, percent, preparedBy) {
+  if (window.currentUserRole !== "owner") return;
+  if (!(percent > 0)) return;
+  const popup = window.open("", "_blank");
+  if (!popup) { window.alert("Please allow pop-ups to open the billing request."); return; }
+  popup.document.write("<p>Preparing billing request…</p>");
+  popup.document.close();
+  try {
+    const folder = await db.collection("folders").doc(project.id).get();
+    if (!folder.exists) throw new Error("Project is no longer available.");
+    const fresh = { ...folder.data(), id: folder.id, code: shortRef("FLD", folder.id), location: folder.data().description || "" };
+    if (!fresh.userId) throw new Error("Project owner is unavailable.");
+    const contractDoc = await db.collection("folderBudgets").doc(project.id).get();
+    const contract = contractDoc.exists ? Number(contractDoc.data().totalBudget) || 0 : 0;
+    if (!(contract > 0)) throw new Error("Project has no contract amount.");
+    const snapshots = await Promise.all(["projects", "projectBudgets"].map(name => db.collection(name).where("userId", "==", fresh.userId).get()));
+    const [allPeriods, budgets] = snapshots.map(s => s.docs.map(d => ({ ...d.data(), id: d.id })));
+    const budgetMap = new Map(budgets.map(b => [b.id, Number(b.monthlyBudget) || 0]));
+    const periods = allPeriods.filter(p => p.folderId === project.id && p.fundingType !== "president")
+      .map(p => ({ ...p, monthlyBudget: budgetMap.get(p.id) || 0 }));
+    if (fresh.clientEmail) {
+      const clients = await db.collection("clientUsers").where("email", "==", fresh.clientEmail).get();
+      // Only use an unambiguous profile matching this folder's assigned client.
+      if (clients.docs.length === 1) {
+        const client = clients.docs[0].data();
+        fresh.clientName = ((client.firstName || "") + " " + (client.lastName || "")).trim();
+      }
+    }
+    if (window.currentUserRole !== "owner") throw new Error("Owner access is required.");
+    if (popup.closed) return;
+    popup.document.open();
+    popup.document.write(_pcBillingRequestHTML(fresh, periods, { percent, amount: window.BillingReceipts.requestAmount(contract, percent), preparedBy }));
+    popup.document.close();
+  } catch (error) {
+    popup.close();
+    window.alert("Could not prepare the billing request. Please refresh and try again.");
+    console.error("Billing request", error);
+  }
+}
+// The Billing Request button: set the percentage of the contract first, then open the page.
+async function _pcStartBillingRequest(project, totalAllocated) {
+  if (window.currentUserRole !== "owner") return;
+  let contract = 0;
+  try {
+    const doc = await db.collection("folderBudgets").doc(project.id).get();
+    contract = doc.exists ? Number(doc.data().totalBudget) || 0 : 0;
+  } catch (error) {
+    window.alert("Could not prepare the billing request. Please refresh and try again.");
+    console.error("Billing request", error);
+    return;
+  }
+  if (window.currentUserRole !== "owner") return;
+  if (!(contract > 0)) {
+    window.alert("This project has no contract amount yet, so a percentage cannot be worked out.");
+    return;
+  }
+  window.BillingReceipts.askRequestPercent({ projectName: project.name, contract, allocated: totalAllocated,
+    onContinue: (percent, preparedBy) => _pcPrintBillingRequest(project, percent, preparedBy) });
+}
 function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, overheadRaw, allocationMap, allocationAdjustments, onBack }) {
   const h = React.createElement;
   const owner = window.currentUserRole === "owner";
@@ -1686,7 +1818,13 @@ function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, ov
   // A purchase on a project with NO billing period (0096) belongs to no card,
   // but it is spent: it counts in Total Spent and is named below the cards.
   const noPeriodSpent = expensesRaw.filter(e => !e.projectId && e.folderId === project.id).reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  const totalSpent = cards.reduce((sum, c) => sum + c.totalCost, 0) + noPeriodSpent;
+  // "office review" only while one of those lines still waits — "Cover is right" (Stage 4, Q6) clears it. Words only.
+  const noPeriodReview = typeof window.expPurNeedsReview === "function"
+    && expensesRaw.some(e => !e.projectId && e.folderId === project.id && window.expPurNeedsReview(e.purchaseLineId));
+  const periodIds = new Set(childMonths.map(m => m.id));
+  const unassignedOverhead = overheadRaw.filter(e => !e.deletedAt && e.scope !== "company" && e.folderId === project.id && !periodIds.has(e.billingPeriodId))
+    .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const totalSpent = cards.reduce((sum, c) => sum + c.totalCost, 0) + noPeriodSpent + unassignedOverhead;
   const historyPeriod = owner && cards.find(c => c.id === historyId && !c.cover);
   // Two DIFFERENT styles: .drill-stat is the big header block, .pc-period-stat the
   // compact in-card row. Using the card class in the header kills .drill-stat's type scale.
@@ -1704,16 +1842,21 @@ function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, ov
       h("div", null,
         h("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Billing Periods · Fund Allocated per billing"),
         h("h2", null, "Billing Periods"),
-        h("div", { className: "sub" }, project.name, project.code ? " · " + project.code : "")),
+        h("div", { className: "sub" }, project.name, project.code ? " · " + project.code : ""),
+        h("p", { className: "sub" }, "Project costs follow the selected date range. Billing Requests use all-time client billing periods only.")),
       !_staff() && h("button", { className: "btn-primary", onClick: openCreate }, Ico.plus, " New Billing Period")),
     owner && h("div", { className: "drill-stats" },
       headStat("Periods", cards.length, true),
       headStat("Total Allocated", totalAllocated),
       headStat("Total Spent", totalSpent),
       headStat("Remaining", totalAllocated - totalSpent, totalAllocated - totalSpent >= 0 ? "accent" : "")),
+    owner && cards.some(c => !c.cover) && h("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } },
+      h("button", { type: "button", className: "pc-btn-ghost", onClick: () => window.BillingReceipts && window.BillingReceipts.openOverall(project) }, "Overall Billing Acknowledgement"),
+      h("button", { type: "button", className: "pc-btn-ghost", onClick: () => _pcStartBillingRequest(project, totalAllocated) }, "Billing Request")),
+    owner && unassignedOverhead > 0 && h("p", { className: "sub" }, "Project overhead without a billing period is included in Total Spent; it is outside the Billing Request summary."),
     noPeriodSpent > 0 && h("div", { className: "pc-feed-empty", role: "note" }, owner
-      ? ["₱ ", peso(noPeriodSpent), " of Cover material has no billing period yet — it counts in Total Spent; office review needed."]
-      : "Some Cover material has no billing period yet — office review needed."),
+      ? ["₱ ", peso(noPeriodSpent), " of Cover material has no billing period yet — it counts in Total Spent", noPeriodReview ? "; office review needed." : "."]
+      : "Some Cover material has no billing period yet" + (noPeriodReview ? " — office review needed." : ".")),
     !cards.length ? h("div", { className: "pc-feed-empty" }, "No billing periods yet.")
       : h("div", { className: "pc-period-grid" }, cards.map(c => h("div", { key: c.id, className: "pc-period-card" },
         h("div", { className: "pc-period-head" },
@@ -1736,6 +1879,7 @@ function BillingPeriodsDrill({ project, childMonths, payrollRaw, expensesRaw, ov
         owner && !c.cover && (c.view ? h(AllocationBands, { view: c.view })
           : h("div", { className: "pc-allocation-legacy" }, h("span", null, "Allocation not configured"),
             h("button", { type: "button", className: "pc-btn-ghost", onClick: () => { if (window.currentUserRole === "owner") openEdit(c.id); } }, Ico.plus, " Apply Policy"))),
+        owner && !c.cover && h("button", { type: "button", className: "pc-btn-ghost", onClick: () => window.BillingReceipts && window.BillingReceipts.openReceipt(project, c.id) }, "Acknowledgement Receipt"),
         owner && !c.cover && h("button", { type: "button", className: "pc-btn-ghost pc-allocation-history-button", onClick: () => { if (window.currentUserRole === "owner") setHistoryId(c.id); } }, Ico.calendar, " Allocation History"),
         h("div", { className: "pc-period-meta" }, c.expCount, " expense", c.expCount !== 1 ? "s" : "", " · ", c.payCount, " payroll entr", c.payCount !== 1 ? "ies" : "y")))),
     historyPeriod && h(AllocationHistory, { key: historyPeriod.id, periodId: historyPeriod.id, periodLabel: historyPeriod.label, adjustments: allocationAdjustments, onClose: () => setHistoryId(null) }));
@@ -2513,7 +2657,11 @@ const _LC_ICON_PATHS = {
   print:     ["M6 9V2h12v7", "M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2", "M6 14h12v8H6z"],
   attach:    ["M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"],
   eye:       ["M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z", "M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"],
-  trash:     ["M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"]
+  trash:     ["M3 6h18", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"],
+  // Linked Labor (migration 0113)
+  link:      ["M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71", "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"],
+  end:       ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z", "M9 9h6v6H9z"],
+  history:   ["M3 3v5h5", "M3.05 13A9 9 0 1 0 6 5.3L3 8", "M12 7v5l4 2"]
 };
 function _lcIcon(name) {
   return /* @__PURE__ */ React.createElement(
@@ -2565,6 +2713,19 @@ function _lcFirstName(n) {
   // pesos stay in the Labor bucket and the money model is untouched. The split
   // below is DERIVED from each payment's contract, never stamped on the payroll row.
   const [lcSeg, setLcSeg] = React.useState("labor");
+  // Linked Labor (migration 0113): a LINKED contract's card is its ACCOUNT, so
+  // two linked people who share a typed name never share a card or a statement.
+  // Unlinked contracts keep today's key, the trimmed name. Linked accounts'
+  // names and worker numbers load once (js/linked-labor.js); no peso is involved.
+  const _LL = window.LinkedLabor || null;
+  const _cardKey = (c) => (_LL ? _LL.cardKey(c) : (((c && c.workerName) || "—").trim() || "—"));
+  const [_llTick, _setLlTick] = React.useState(0);
+  React.useEffect(() => {
+    if (!_LL) return;
+    const ids = (contracts || []).filter((c) => c && c.workerId).map((c) => c.workerId);
+    if (ids.length) _LL.people(ids).then(() => _setLlTick((n) => n + 1));
+    _LL.me().then(() => _setLlTick((n) => n + 1));
+  }, [contracts]);
   const _isOutsourceC = (c) => (typeof window.lcIsOutsource === "function" ? window.lcIsOutsource(c) : !!c && c.category === "outsource");
   // Lumpsum works (migration 0062): ONE capped contract listing several works,
   // paid by a single payment stream. Deliberately NOT a third segment — a
@@ -2606,11 +2767,22 @@ function _lcFirstName(n) {
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [soaOpen]);
+  // The Worker Statement list. A payment against a LINKED contract belongs to
+  // that account (Linked Labor, 0113), not to whoever shares its typed name;
+  // every other payment groups by typed name, as before.
   const workers = React.useMemo(() => {
     const m = {};
-    laborTx.forEach((t) => { const n = t.name || "\u2014"; if (!m[n]) m[n] = { name: n, role: t.role || "", total: 0, count: 0 }; m[n].total += t.amount || 0; m[n].count++; });
+    const byId = {};
+    (contracts || []).forEach((c) => { byId[c.id] = c; });
+    laborTx.forEach((t) => {
+      const lc = t.contractId ? byId[t.contractId] : null;
+      const linked = !!(lc && lc.workerId);
+      const n = linked ? _cardKey(lc) : (t.name || "\u2014");
+      if (!m[n]) m[n] = { key: n, name: linked && _LL ? _LL.labelOf(lc) : n, role: t.role || "", total: 0, count: 0 };
+      m[n].total += t.amount || 0; m[n].count++;
+    });
     return Object.values(m).sort((a, b) => b.total - a.total);
-  }, [laborTx]);
+  }, [laborTx, contracts, _llTick]);
   const billingByProjectId = React.useMemo(() => {
     const monthNum = (m) => {
       const map2 = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
@@ -2685,9 +2857,16 @@ function _lcFirstName(n) {
   });
   const _lcByWorker = {};
   _lcRows.forEach((r) => {
-    const w = (r.c.workerName || "\u2014").trim() || "\u2014";
+    const w = _cardKey(r.c);
     (_lcByWorker[w] = _lcByWorker[w] || []).push(r);
   });
+  // What a card is called: the typed name, or for a linked account the recorded
+  // name and its worker number ("Juan Cruz \u00b7 W-0013").
+  const _wLabel = (w) => {
+    if (!(_LL && _LL.isAccountKey(w))) return w;
+    const r0 = (_lcByWorker[w] || [])[0];
+    return r0 ? _LL.labelOf(r0.c) : w;
+  };
   const _lcWorkers = Object.keys(_lcByWorker);
   // Daily rows contribute a real `paid` but no cap, so folding them into one
   // total would subtract their payments from a ceiling they were never drawn
@@ -2705,7 +2884,7 @@ function _lcFirstName(n) {
   // (Demolition)" on the contract) doesn't split it into a phantom "No contract"
   // row \u2014 the contract link wins over the free-typed name.
   const _cWorkerById = {};
-  _lcRows.forEach((r) => { _cWorkerById[r.c.id] = (r.c.workerName || "\u2014").trim() || "\u2014"; });
+  _lcRows.forEach((r) => { _cWorkerById[r.c.id] = _cardKey(r.c); });
   const _payByWorker = {};
   filtered.forEach((p) => {
     const w = (p.contractId && _cWorkerById[p.contractId]) || (p.name || "\u2014").trim() || "\u2014";
@@ -2715,11 +2894,11 @@ function _lcFirstName(n) {
   const _union = Array.from(new Set([..._lcWorkers, ...Object.keys(_payByWorker)]));
   const _allWorkers = _union.filter((w) => {
     if (!q) return true;
-    if (w.toLowerCase().includes(q)) return true;
+    if (_wLabel(w).toLowerCase().includes(q)) return true;
     if ((_payByWorker[w] || []).length) return true;
     if ((_lcByWorker[w] || []).some((r) => (String(r.c.scope || "") + String(r.c.role || "")).toLowerCase().includes(q))) return true;
     return false;
-  }).sort((a, b) => a.localeCompare(b));
+  }).sort((a, b) => _wLabel(a).localeCompare(_wLabel(b)));
 
   const toggle = (w) => setOpenW((s) => ({ ...s, [w]: !s[w] }));
 
@@ -2746,22 +2925,28 @@ function _lcFirstName(n) {
       rc("button", { onClick: (e) => window.lcAddFile && window.lcAddFile(r.c.id, e.currentTarget) }, _lcIcon("attach"), "Add file"),
       rc("button", { onClick: () => window.lcViewFiles && window.lcViewFiles(r.c.id) }, _lcIcon("eye"), "View")
     ),
+    // Linked Labor (0113): the WorkMate account (main owner only), End /
+    // Reopen and the contract's history (owner accounts; it holds amounts).
+    _LL ? rc("span", { className: "lc2-cdiv" }) : null,
+    _LL ? rc("div", { className: "lc2-cgrp" },
+      (_LL.isMainOwnerNow() && !_isOutsourceC(r.c))
+        ? rc("button", { onClick: () => _LL.openLinkDialog(r.c, project && project.name) }, _lcIcon("link"), r.c.workerId ? "Account" : "Link account")
+        : null,
+      rc("button", { onClick: () => (r.c.endedAt ? _LL.confirmReopen(r.c) : _LL.confirmEnd(r.c)) }, _lcIcon("end"), r.c.endedAt ? "Reopen" : "End"),
+      rc("button", { onClick: () => _LL.openHistory(r.c) }, _lcIcon("history"), "History")
+    ) : null,
     rc("button", { className: "danger", title: "Delete contract", onClick: () => window.lcDelete && window.lcDelete(r.c.id) }, _lcIcon("trash"), "Delete")
   );
 
-  // Staff must never see peso amounts. Every money figure on this screen is
-  // shown to them as a percentage of the agreed contract instead — the same
-  // thing the progress bar and the "17% · Ongoing" badge already convey.
-  // Returns "—" when there is no contract to measure against (an uncapped
-  // payment has no denominator, so no honest percentage exists).
-  const _pctTxt = (part, whole) => (whole > 0 ? (part / whole * 100).toFixed(1) + "%" : "—");
+  // Staff see the pesos they enter, so NOTHING here may measure those pesos
+  // against a contract's agreed total: no percentage, bar, balance or
+  // Ongoing / Completed / Over cap word. Any of them, beside the pesos paid,
+  // states the total (owner decision 2026-11-09). A daily job has no total.
 
-  // `agreed` is the denominator staff figures are expressed against \u2014 they see
-  // every payment as a share of the job's cap, never a peso amount. Pass 0 for
-  // uncapped payments: there is no honest percentage without a cap, so the
-  // column falls back to "\u2014". `paidTotal` is the job's true paid figure
-  // (folder + linked PM payments), which is why it is passed in rather than
-  // summed off the visible \u2014 tab- and search-filtered \u2014 rows.
+  // `agreed` is 0 for uncapped payments, which get no footer. `paidTotal` is
+  // the job's true paid figure (folder + linked PM payments), which is why it
+  // is passed in rather than summed off the visible \u2014 tab- and
+  // search-filtered \u2014 rows.
   const payRows = (list, agreed, paidTotal, daily) => {
     const sorted = [...list].sort((a, b) => new Date(b.dateTime || b.date || 0) - new Date(a.dateTime || a.date || 0));
     return rc("table", { className: "lc2-tx" },
@@ -2810,7 +2995,7 @@ function _lcFirstName(n) {
     const toggleJob = (id, isOpen) => setOpenJob((s) => ({ ...s, [w]: isOpen ? null : id }));
     if (crows.length) {
       blocks.push(rc("div", { key: "_jobshead", className: "lc2-jobs-head" },
-        rc("div", { className: "lc2-jobs-lbl" }, "Jobs agreed with " + _lcFirstName(w) + " — " + crows.length),
+        rc("div", { className: "lc2-jobs-lbl" }, "Jobs agreed with " + _lcFirstName(_wLabel(w)) + " — " + crows.length),
         crows.length > 1 ? rc("div", { className: "lc2-jobs-hint" }, "Tap a job to open it") : null
       ));
     }
@@ -2832,10 +3017,10 @@ function _lcFirstName(n) {
       // from the four beside it — one row standing for five works, not one job.
       const works = _lcWorks(r.c);
       const wLead = works.length ? works.length + " work" + (works.length === 1 ? "" : "s") + " · " : "";
-      const sub = isOpen
+      const sub = (isOpen || (_staff() && !r.daily))
         ? wLead + nPay + (latest ? " · latest " + _lcDayLabel(latest) : "")
         : wLead + nPay + " · " + (_staff()
-            ? (r.daily ? "daily basis" : _pctTxt(r.paid, r.agreed) + " paid")
+            ? "daily basis"
             : (r.daily
                 ? "₱ " + peso(r.paid) + " paid · no agreed total"
                 : "₱ " + peso(r.paid) + " paid of ₱ " + peso(r.agreed)));
@@ -2852,20 +3037,30 @@ function _lcFirstName(n) {
           rc("div", { className: "lc2-job-id" },
             rc("div", { className: "lc2-job-name" }, r.c.scope || "Untitled job",
               works.length ? rc("span", { className: "lc2-lump", title: "One capped agreement covering " + works.length + " works — paid as a single stream" }, "Lumpsum") : null,
-              r.daily ? rc("span", { className: "lc2-lump lc2-daily", title: "No agreed total — paid per day, tagged on its own" }, "Daily") : null
+              r.daily ? rc("span", { className: "lc2-lump lc2-daily", title: "No agreed total — paid per day, tagged on its own" }, "Daily") : null,
+              // Linked Labor (0113): ended — it keeps its payments and balance.
+              r.c.endedAt ? rc("span", { className: "lc2-lump lc2-ended", title: "Ended — it keeps its payments and its balance, and can still be paid to settle it" }, "Ended") : null
             ),
             rc("div", { className: "lc2-job-sub" }, sub)
           ),
           // Peso balance — dropped outright for staff, the same way the worker
-          // header's Remaining column is. The badge still carries the percent.
+          // header's Remaining column is, and so is the badge of a capped job.
           _staff() ? null : rc("div", { className: "lc2-job-rem" },
             rc("div", { className: "lc2-job-rem-lbl" }, r.daily ? "Paid so far" : (r.remaining < 0 ? "Over by" : "Still to pay")),
             rc("div", { className: "lc2-job-rem-val" + (!r.daily && r.remaining < 0 ? " neg" : "") }, "₱ " + peso(r.daily ? r.paid : Math.abs(r.remaining)))
           ),
-          rc("span", { className: "lc2-badge " + st.cls }, st.label),
+          (_staff() && r.agreed > 0) ? null : rc("span", { className: "lc2-badge " + st.cls }, st.label),
           rc("svg", { className: "lc2-job-chev", width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round" }, rc("polyline", { points: "6 9 12 15 18 9" }))
         ),
         isOpen ? rc("div", { className: "lc2-job-body" },
+          // Linked Labor (0113), owner accounts: who sees this agreement on the phone.
+          (!_staff() && _LL && !_isOutsourceC(r.c)) ? rc("div", { className: "lc2-link" + (r.c.workerId ? " on" : "") },
+            r.c.workerId
+              ? "WorkMate: " + (_LL.personOf(r.c.workerId)
+                  ? _LL.personOf(r.c.workerId).name + " · " + _LL.workerNo(_LL.personOf(r.c.workerId).no)
+                  : "a linked account") + " sees this agreement on their phone"
+              : "Not linked to a WorkMate account"
+          ) : null,
           // The works this ONE cap covers. No amount per line, deliberately:
           // a lumpsum has a single agreed total and a single payment stream, so
           // a per-work peso figure would invent a balance nobody agreed to.
@@ -2928,7 +3123,8 @@ function _lcFirstName(n) {
     const open = !!openW[w];
     const role = (crows[0] && crows[0].c.role) || (pays[0] && pays[0].role) || "";
     const payType = crows[0] && crows[0].c.payType;
-    const initial = (w || "?").trim().charAt(0).toUpperCase() || "?";
+    const wl = _wLabel(w);                          // the card's name (Linked Labor: + worker number)
+    const initial = (wl || "?").trim().charAt(0).toUpperCase() || "?";
     // A daily hire is never "Completed" by arithmetic — only by the owner
     // closing it — so an all-daily card never collapses to the done state.
     const isDone = hasContract && !allDaily && paidCap >= agreed && paidCap <= agreed;
@@ -2948,7 +3144,7 @@ function _lcFirstName(n) {
       rc("div", { className: "lc2-acc-head", onClick: () => toggle(w) },
         rc("div", { className: "lc2-av" }, initial),
         rc("div", { className: "lc2-id" },
-          rc("div", { className: "lc2-name" }, w),
+          rc("div", { className: "lc2-name" }, wl),
           rc("div", { className: "lc2-role" }, role || "\u2014",
             payType ? rc("span", { className: "lc2-type lc2-type-" + (payType === "inhouse" ? "in" : "pk") }, payType === "inhouse" ? "In-house" : "Pakyaw") : null
           )
@@ -2956,22 +3152,24 @@ function _lcFirstName(n) {
         rc("div", { className: "lc2-mid" },
           !hasContract
             ? rc("div", { className: "lc2-mid-cap" }, pays.length + " payment" + (pays.length === 1 ? "" : "s") + " \u00B7 no capped contract")
-            : isDone
+            : (isDone && !_staff())
             ? null
             : rc(React.Fragment, null,
-                rc("div", { className: "lc2-bar" }, rc("div", { className: "lc2-bar-fill " + barcls, style: { width: (allDaily ? 0 : pct).toFixed(1) + "%" } })),
+                // Staff get the job's name alone: a bar is a share of the contract,
+                // and collapsing once fully paid would say so by its absence.
+                _staff() ? null : rc("div", { className: "lc2-bar" }, rc("div", { className: "lc2-bar-fill " + barcls, style: { width: (allDaily ? 0 : pct).toFixed(1) + "%" } })),
                 rc("div", { className: "lc2-mid-cap" },
-                  (allDaily
+                  [allDaily
                     ? (_staff() ? "daily basis" : "\u20B1 " + peso(paid) + " paid \u00B7 no agreed total")
-                    : (_staff() ? pct.toFixed(0) + "% paid"
+                    : (_staff() ? ""
                         : "\u20B1 " + peso(paidCap) + " paid of \u20B1 " + peso(agreed)
-                          + (paidDay > 0 ? " \u00B7 +\u20B1 " + peso(paidDay) + " daily" : "")))
-                  + (crows.length === 1 && crows[0].c.scope ? " \u00B7 " + crows[0].c.scope : " \u00B7 " + crows.length + (crows.length === 1 ? " job" : " jobs")))
+                          + (paidDay > 0 ? " \u00B7 +\u20B1 " + peso(paidDay) + " daily" : "")),
+                   crows.length === 1 && crows[0].c.scope ? crows[0].c.scope : crows.length + (crows.length === 1 ? " job" : " jobs")
+                  ].filter(Boolean).join(" \u00B7 "))
               )
         ),
-        // The Remaining column is a peso figure with no useful percentage form
-        // of its own \u2014 the status badge already reads "17% \u00B7 Ongoing" \u2014 so for
-        // staff it is dropped entirely rather than restated.
+        // The Remaining column says what is left of the agreed total, so staff
+        // never get it, in pesos or any other form.
         (isDone || _staff())
           ? null
           : rc("div", { className: "lc2-rem" },
@@ -2980,7 +3178,9 @@ function _lcFirstName(n) {
                 allDaily ? "\u20B1 " + peso(paid)
                   : (remaining < 0 ? "\u2212 \u20B1 " + peso(Math.abs(remaining)) : "\u20B1 " + peso(hasContract ? remaining : totalPaidAll)))
             ),
-        rc("span", { className: "lc2-badge " + scls }, (status === "Ongoing" && !allDaily ? pct.toFixed(0) + "% \u00B7 " : "") + status),
+        // Staff: Ongoing, Completed and Over cap all compare the pesos paid with
+        // the total. "No contract" and "Daily basis" don't.
+        (_staff() && hasContract && !allDaily) ? null : rc("span", { className: "lc2-badge " + scls }, (status === "Ongoing" && !allDaily ? pct.toFixed(0) + "% \u00B7 " : "") + status),
         // ONE work agreement per worker (lcViewAgreement in expenses-module.js):
         // the sheet lists every job in this card and its agreed amount is their
         // total, so the button belongs on the worker header rather than on each
@@ -2989,7 +3189,7 @@ function _lcFirstName(n) {
         agrJobs.length
           ? rc("button", {
               className: "lc2-agr",
-              title: "Open " + w + "’s " + (lcSeg === "outsource" ? "Out Source agreement" : "work agreement")
+              title: "Open " + wl + "’s " + (lcSeg === "outsource" ? "Out Source agreement" : "work agreement")
                 + " — all " + agrJobs.length + " job" + (agrJobs.length === 1 ? "" : "s")
                 + ", ₱ " + peso(agrJobs.reduce((s, j) => s + (Number(j.agreedAmount) || 0), 0)) + " total",
               onClick: (e) => { e.stopPropagation(); window.lcOpenAgreement && window.lcOpenAgreement(agrJobs[0].id); }
@@ -3002,10 +3202,12 @@ function _lcFirstName(n) {
         (crows.length > 1 && !_staff())
           ? rc("button", {
               className: "lc2-merge",
-              title: "Combine " + w + "’s " + crows.length + " jobs into one lumpsum contract — "
+              title: "Combine " + wl + "’s " + crows.length + " jobs into one lumpsum contract — "
                 + "₱ " + peso(agreed) + " under a single cap, paid once instead of split "
                 + crows.length + " ways",
-              onClick: (e) => { e.stopPropagation(); window.lcOpenMerge && window.lcOpenMerge(w); }
+              // The first job's id, not the name: a linked account's card is that
+              // account, and lcOpenMerge takes the same person's contracts only.
+              onClick: (e) => { e.stopPropagation(); window.lcOpenMerge && window.lcOpenMerge(crows[0].c.id); }
             }, "Merge")
           : null,
         rc("button", { className: "lc2-pay", onClick: (e) => { e.stopPropagation(); openAddEntry("labor", childMonths, activeFolder); } }, Ico.plus, " Pay"),
@@ -3042,7 +3244,7 @@ function _lcFirstName(n) {
             " Worker Statement"),
           soaOpen && rc("div", { className: "pcf-soa-pop" },
             rc("div", { className: "pcf-soa-head" }, rc("div", { className: "t" }, "Worker Statement"), rc("div", { className: "s" }, "Select a worker to generate their SOA")),
-            rc("div", { className: "pcf-soa-list" }, workers.length === 0 ? rc("div", { className: "pcf-soa-empty" }, "No workers yet.") : workers.map((wk) => rc("button", { key: wk.name, type: "button", className: "pcf-soa-item", onClick: () => { setSoaOpen(false); if (!_staff()) window.printWorkerLaborSOA && window.printWorkerLaborSOA(wk.name, project.id, lcSeg); } },
+            rc("div", { className: "pcf-soa-list" }, workers.length === 0 ? rc("div", { className: "pcf-soa-empty" }, "No workers yet.") : workers.map((wk) => rc("button", { key: wk.key || wk.name, type: "button", className: "pcf-soa-item", onClick: () => { setSoaOpen(false); if (!_staff()) window.printWorkerLaborSOA && window.printWorkerLaborSOA(wk.key || wk.name, project.id, lcSeg); } },
               rc("span", { className: "pcf-soa-av" }, (wk.name || "?").trim().charAt(0).toUpperCase() || "?"),
               rc("span", { className: "pcf-soa-info" }, rc("span", { className: "pcf-soa-name" }, wk.name), rc("span", { className: "pcf-soa-sub" }, (wk.role || "\u2014") + " \u00B7 " + wk.count + " " + (wk.count === 1 ? "entry" : "entries"))),
               rc("span", { className: "pcf-soa-amt" }, "\u20B1 ", peso(wk.total)))))
@@ -3095,12 +3297,11 @@ function _lcFirstName(n) {
         : "No labor contracts yet."
     ) : null,
     _lcRows.length ? rc("div", { className: "lc2-totals" },
-      // Total Agreed is the denominator every other figure is measured against,
-      // so it has no percentage form \u2014 staff see a dash, not "100%", which
-      // would read as "fully paid".
+      // Total Agreed, and Remaining to Pay beside Paid So Far, are the contract
+      // total by another name \u2014 staff see a dash for both.
       rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Total Agreed"), rc("div", { className: "lc2-tval" }, _staff() ? rc("span", { style: { color: "#908A81" } }, "\u2014") : "\u20B1 " + peso(_lcTotAgreed))),
       rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Paid So Far"), rc("div", { className: "lc2-tval" }, "\u20B1 " + peso(_lcTotPaid))),
-      rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Remaining to Pay"), rc("div", { className: "lc2-tval" + (_lcTotRem < 0 ? " neg" : " accent") }, _staff() ? (_lcTotRem < 0 ? "\u2212 " + _pctTxt(Math.abs(_lcTotRem), _lcTotAgreed) : _pctTxt(_lcTotRem, _lcTotAgreed)) : (_lcTotRem < 0 ? "\u2212 \u20B1 " + peso(Math.abs(_lcTotRem)) : "\u20B1 " + peso(_lcTotRem)))),
+      rc("div", { className: "lc2-tcell" }, rc("div", { className: "lc2-tlbl" }, "Remaining to Pay"), rc("div", { className: "lc2-tval" + (_staff() ? "" : (_lcTotRem < 0 ? " neg" : " accent")) }, _staff() ? rc("span", { style: { color: "#908A81" } }, "\u2014") : (_lcTotRem < 0 ? "\u2212 \u20B1 " + peso(Math.abs(_lcTotRem)) : "\u20B1 " + peso(_lcTotRem)))),
       rc("div", { className: "lc2-tcell lc2-tcell-last" }, rc("div", { className: "lc2-tlbl" }, "Contracts"), rc("div", { className: "lc2-tval" }, String(_lcRows.length), rc("span", { style: { fontSize: 13, color: "var(--ink-4)", fontFamily: "var(--sans)", fontWeight: 400 } }, " \u00B7 " + _lcWorkers.length + " workers")))
     ) : null,
     rc("div", { className: "lc2-toolbar" },
@@ -3272,20 +3473,22 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
     sorted.forEach((m, i) => map.set(m.id, m.fundingType === "president" ? i + 1 + " (Cover)" : i + 1));
     return map;
   }, [childMonths]);
-  // "Billing #1 ₱5,000 · Billing #2 ₱3,000" for a split expense. Staff see the
-  // periods without pesos.
+  // "Billing #1 ₱5,000 · Billing #1 (Cover) ₱3,000" for a split expense. Staff
+  // see each billing period once — no pesos per part and no Cover: the parts
+  // would show how much budget was left.
   const splitChargedTo = (m) => {
     const label = (p) => {
       if (!p.projectId) return "No billing period";
       const n = billingByProjectId.get(p.projectId);
       return n ? "Billing #" + n : "Billing period";
     };
-    const parts = m._parts.map((p, i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: p.id || i }, i > 0 && " \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)", fontWeight: 600 } }, label(p)), " ₱" + peso(p.amount)));
+    const shown = _staff() ? m._parts.filter((p, i, all) => all.findIndex((q) => label(q) === label(p)) === i) : m._parts;
+    const parts = shown.map((p, i) => /* @__PURE__ */ React.createElement(React.Fragment, { key: p.id || i }, i > 0 && " \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)", fontWeight: 600 } }, label(p) + (!_staff() && p.coverExpense ? " (Cover)" : "")), _staff() ? "" : " ₱" + peso(p.amount)));
     return /* @__PURE__ */ React.createElement(React.Fragment, null, parts, m._partial && " \xB7 part of a larger expense");
   };
   // A purchase (0096) is edited / voided as a whole. An older split is changed
   // part by part, from the details window.
-  const isOldSplit = (m) => !!m._parts && !(window.expIsPurchaseRow && window.expIsPurchaseRow(m));
+  const isOldSplit = (m) => !!m._parts && !(window.expIsPurchaseRow && window.expIsPurchaseRow(m)) && !(window.expIsStockCostRow && window.expIsStockCostRow(m));
   // "From purchase" (0096: edit / void it as a purchase) and "Office review"
   // (its month had no billing period, so it sits on Cover until the office
   // reviews it). The review flags load separately — re-render when they land.
@@ -3293,13 +3496,23 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
   React.useEffect(() => {
     const onFlags = () => setReviewTick((n) => n + 1);
     window.addEventListener("dacs:pur-review-flags", onFlags);
+    if (typeof window.expPurReloadFlags === "function") window.expPurReloadFlags();
     return () => window.removeEventListener("dacs:pur-review-flags", onFlags);
   }, []);
   const tagStyle = (bg, color, border) => ({ display: "inline-flex", alignItems: "center", padding: "1px 7px", borderRadius: 999, background: bg, color, fontSize: 10.5, fontWeight: 700, border: "1px solid " + border, whiteSpace: "nowrap" });
   const purchaseTags = (m) => {
+    if (window.expIsStockCostRow && window.expIsStockCostRow(m)) {
+      return /* @__PURE__ */ React.createElement("span", { title: "Moved from stock — the main owner approved where its cost goes. Only the main owner reverses it (Requests → Stock).", style: tagStyle("#f0f9ff", "#0369a1", "#bae6fd") }, "Stock cost move");
+    }
     if (!(window.expIsPurchaseRow && window.expIsPurchaseRow(m))) return null;
     const review = typeof window.expPurNeedsReview === "function" && (m._parts || [m]).some((p) => window.expPurNeedsReview(p.purchaseLineId));
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { title: "Recorded as a purchase — edit or void it to change it", style: tagStyle("#eef2ff", "#3730a3", "#c7d2fe") }, "From purchase"), review && /* @__PURE__ */ React.createElement("span", { title: "No billing period for its month — charged to Cover until the office reviews it", style: tagStyle("#fff7ed", "#c2410c", "#fed7aa") }, "Office review"));
+    // 2A-3a (Q16): a change this account sent to the owner, not yet decided.
+    const waiting = typeof window.expPurPendingChange === "function" && (m._parts || [m]).some((p) => window.expPurPendingChange(p.purchaseLineId || p.purchaseChargeId));
+    // 2A-4a (0102): how the purchase was paid — owner/admin only, never staff,
+    // and never part of Spent (the badge reads a separate owner-only list).
+    const payState = !_staff() && typeof window.expPurPayBadge === "function" && window.expPurPayBadge((m._parts || [m]).map((p) => p.purchaseLineId || p.purchaseChargeId).find(Boolean));
+    const payTag = payState && { unpaid: ["Unpaid", "#fef2f2", "#b91c1c", "#fecaca"], partial: ["Partially paid", "#fefce8", "#a16207", "#fde68a"], paid: ["Paid", "#f0fdf4", "#15803d", "#bbf7d0"], overpaid: ["Overpaid", "#fef2f2", "#b91c1c", "#fecaca"] }[payState];
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { title: "Recorded as a purchase — edit or void it to change it", style: tagStyle("#eef2ff", "#3730a3", "#c7d2fe") }, "From purchase"), review && /* @__PURE__ */ React.createElement("span", { title: "No billing period for its month — charged to Cover until the office reviews it", style: tagStyle("#fff7ed", "#c2410c", "#fed7aa") }, "Office review"), waiting && /* @__PURE__ */ React.createElement("span", { title: "You sent a change of this purchase to the owner — open the row to withdraw it", style: tagStyle("#fefce8", "#a16207", "#fde68a") }, "Waiting for the owner"), payTag && /* @__PURE__ */ React.createElement("span", { title: "How this purchase was paid (Requests → Purchasing). Payments never change Spent.", style: tagStyle(payTag[1], payTag[2], payTag[3]) }, payTag[0]));
   };
   const openReceiptThumb = (m) => {
     if (_staff()) return;
@@ -3374,7 +3587,7 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
     const flat = [];
     order.forEach((cat) => {
       const items = byCat.get(cat) || [];
-      const total = items.reduce((s, m) => s + (Number(m.amount) || 0), 0);
+      const total = items.reduce((s, m) => s + _shownAmount(m), 0);
       const pctContract = project.revenue > 0 ? total / project.revenue * 100 : 0;
       flat.push({ kind: "header", cat, total, pctContract, count: items.length });
       items.forEach((m) => flat.push({ kind: "item", m }));
@@ -3438,7 +3651,7 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
     }
     const m = row.m;
     const billingNum = billingByProjectId.get(m.projectId);
-    return /* @__PURE__ */ React.createElement("tr", { key: m.id || i, className: "row", onClick: () => setDetailsItem(m), title: "Click to view item details" }, /* @__PURE__ */ React.createElement("td", { style: { fontSize: 12.5, color: "var(--ink-2)", whiteSpace: "nowrap" } }, fmtDateTime(m.dateTime || m.date)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { className: "name" }, m.name), /* @__PURE__ */ React.createElement(PaymentTag, { method: m.paymentMethod }), purchaseTags(m)), (billingNum || m._parts) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--ink-3)", marginTop: 3, display: "inline-flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("svg", { width: "11", height: "11", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })), "Charged to \xB7 ", m._parts ? splitChargedTo(m) : /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)", fontWeight: 600 } }, "Billing #", billingNum))),/* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-2)" } }, m.category || "\u2014")), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { className: "pc-docs-row", title: "Purchase Order \xB7 Delivery Receipt \xB7 Supplier Invoice \xB7 Payment Receipt" }, /* @__PURE__ */ React.createElement(DocPill, { m, k: "po", label: "PO", title: "Purchase Order" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "dr", label: "DR", title: "Delivery Receipt" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "si", label: "SI", title: "Supplier Invoice" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "pay", label: "PR", title: "Payment Receipt" }))), /* @__PURE__ */ React.createElement("td", { className: "right" }, /* @__PURE__ */ React.createElement("span", { className: "amt" }, ["\u20B1 ", peso(m.amount)]), _staff() ? null : /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "var(--ink-3)", marginTop: 2 } }, project.revenue > 0 ? (Number(m.amount) / project.revenue * 100).toFixed(2) + "% of contract" : "\u2014")), /* @__PURE__ */ React.createElement("td", { onClick: (e) => e.stopPropagation() }, !_staff() && (m.firstReceipt || m.lazyImages) ? /* @__PURE__ */ React.createElement(LazyReceiptThumb, { m, onOpen: openReceiptThumb }) : /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db", fontSize: 11 } }, "\u2014")), /* @__PURE__ */ React.createElement("td", null, !_staff() && /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Print receipt for this material expense", onClick: (e) => {
+    return /* @__PURE__ */ React.createElement("tr", { key: m.id || i, className: "row", onClick: () => setDetailsItem(m), title: "Click to view item details" }, /* @__PURE__ */ React.createElement("td", { style: { fontSize: 12.5, color: "var(--ink-2)", whiteSpace: "nowrap" } }, fmtDateTime(m.dateTime || m.date)), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", { className: "name" }, m.name), /* @__PURE__ */ React.createElement(PaymentTag, { method: m.paymentMethod }), purchaseTags(m)), (billingNum || m._parts) && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: "var(--ink-3)", marginTop: 3, display: "inline-flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("svg", { width: "11", height: "11", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })), "Charged to \xB7 ", m._parts ? splitChargedTo(m) : /* @__PURE__ */ React.createElement("b", { style: { color: "var(--ink-2)", fontWeight: 600 } }, "Billing #", billingNum))),/* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: "var(--ink-2)" } }, m.category || "\u2014")), /* @__PURE__ */ React.createElement("td", null, /* @__PURE__ */ React.createElement("div", { className: "pc-docs-row", title: "Purchase Order \xB7 Delivery Receipt \xB7 Supplier Invoice \xB7 Payment Receipt" }, /* @__PURE__ */ React.createElement(DocPill, { m, k: "po", label: "PO", title: "Purchase Order" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "dr", label: "DR", title: "Delivery Receipt" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "si", label: "SI", title: "Supplier Invoice" }), /* @__PURE__ */ React.createElement(DocPill, { m, k: "pay", label: "PR", title: "Payment Receipt" }))), /* @__PURE__ */ React.createElement("td", { className: "right" }, /* @__PURE__ */ React.createElement("span", { className: "amt" }, _hideStockCost(m) ? "—" : ["\u20B1 ", peso(m.amount)]), _staff() ? null : /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "var(--ink-3)", marginTop: 2 } }, project.revenue > 0 ? (Number(m.amount) / project.revenue * 100).toFixed(2) + "% of contract" : "\u2014")), /* @__PURE__ */ React.createElement("td", { onClick: (e) => e.stopPropagation() }, !_staff() && (m.firstReceipt || m.lazyImages) ? /* @__PURE__ */ React.createElement(LazyReceiptThumb, { m, onOpen: openReceiptThumb }) : /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db", fontSize: 11 } }, "\u2014")), /* @__PURE__ */ React.createElement("td", null, !_staff() && /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: "Print receipt for this material expense", onClick: (e) => {
       e.stopPropagation();
       printMaterialReceipt(m);
     } }, Ico.receipt || "\u{1F9FE}"), /* @__PURE__ */ React.createElement("button", { className: "pc-row-icon", title: isOldSplit(m) ? "Edit \u2014 choose which part" : "Edit", onClick: (e) => {
@@ -3465,11 +3678,12 @@ function MaterialDrill({ project, onBack, materialTx, childMonths, activeFolder,
 function ItemDetailsModal({ item, billingNum, billingOf, onClose, onOpenImage, onPrint }) {
   // A split expense: one line per part. An older split is edited / deleted
   // part by part here; a purchase (0096) is edited / voided as a whole.
+  // Staff see the parts without pesos or Cover (the row's total stays).
   const oldSplit = !!item._parts && !(window.expIsPurchaseRow && window.expIsPurchaseRow(item));
   const partsList = item._parts ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } }, item._parts.map((p, i) => {
     const n = p.projectId && billingOf ? billingOf(p.projectId) : null;
     const btn = { padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: "1px solid #e5e7eb", background: "#fff", color: "#374151" };
-    return /* @__PURE__ */ React.createElement("div", { key: p.id || i, style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("b", null, !p.projectId ? "No billing period" : n ? "Billing #" + n : "Billing period"), /* @__PURE__ */ React.createElement("span", null, "\u20B1 ", peso(p.amount)), p.coverExpense && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "#b45309", fontWeight: 600 } }, "Cover"), oldSplit && /* @__PURE__ */ React.createElement("button", { type: "button", style: btn, onClick: () => {
+    return /* @__PURE__ */ React.createElement("div", { key: p.id || i, style: { display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("b", null, !p.projectId ? "No billing period" : n ? "Billing #" + n : "Billing period"), /* @__PURE__ */ React.createElement("span", null, _staff() ? "" : ["\u20B1 ", peso(p.amount)]), !_staff() && p.coverExpense && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: "#b45309", fontWeight: 600 } }, "Cover"), oldSplit && /* @__PURE__ */ React.createElement("button", { type: "button", style: btn, onClick: () => {
       onClose();
       window.openEditExpenseModal && window.openEditExpenseModal(p.id);
     } }, "Edit"), oldSplit && /* @__PURE__ */ React.createElement("button", { type: "button", style: { ...btn, color: "#b91c1c", borderColor: "#fecaca" }, onClick: () => {
@@ -3512,7 +3726,7 @@ function ItemDetailsModal({ item, billingNum, billingOf, onClose, onOpenImage, o
     }
   };
   const Row = ({ label, children }) => /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 12, padding: "10px 0", borderBottom: "1px solid #f3f4f6" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 130, fontSize: 12, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", flexShrink: 0 } }, label), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, fontSize: 14, color: "#111827" } }, children));
-  return /* @__PURE__ */ React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" } }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: "#fff", borderRadius: 14, maxWidth: 720, width: "100%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, position: "sticky", top: 0, background: "#fff", zIndex: 1, borderRadius: "14px 14px 0 0" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#6b7280", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 } }, "Item Details"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: "#111827", wordBreak: "break-word" } }, m.name)), /* @__PURE__ */ React.createElement("button", { onClick: onClose, "aria-label": "Close", style: { background: "#f3f4f6", border: "none", width: 32, height: 32, borderRadius: 8, fontSize: 18, cursor: "pointer", color: "#6b7280", lineHeight: 1, flexShrink: 0 } }, "\xD7")), /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 24px 20px" } }, /* @__PURE__ */ React.createElement(Row, { label: "Amount" }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 700, color: "#1A5C3A" } }, "\u20B1 ", peso(m.amount))), /* @__PURE__ */ React.createElement(Row, { label: "Date & Time" }, fmtDateTime(m.dateTime || m.date)), /* @__PURE__ */ React.createElement(Row, { label: "Category" }, m.category || /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db" } }, "\u2014")), /* @__PURE__ */ React.createElement(Row, { label: "Payment" }, /* @__PURE__ */ React.createElement(PaymentTag, { method: m.paymentMethod }), " ", !m.paymentMethod && /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db" } }, "\u2014")), m.quantity > 1 && /* @__PURE__ */ React.createElement(Row, { label: "Quantity" }, m.quantity), partsList ? /* @__PURE__ */ React.createElement(Row, { label: "Charged To" }, partsList) : billingNum && /* @__PURE__ */ React.createElement(Row, { label: "Charged To" }, /* @__PURE__ */ React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })), /* @__PURE__ */ React.createElement("b", null, "Billing #", billingNum))), /* @__PURE__ */ React.createElement(Row, { label: "Documents" }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, docOrder.map((o) => {
+  return /* @__PURE__ */ React.createElement("div", { onClick: onClose, style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" } }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), style: { background: "#fff", borderRadius: 14, maxWidth: 720, width: "100%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 24px", borderBottom: "1px solid #e5e7eb", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, position: "sticky", top: 0, background: "#fff", zIndex: 1, borderRadius: "14px 14px 0 0" } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: "#6b7280", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 } }, "Item Details"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: "#111827", wordBreak: "break-word" } }, m.name)), /* @__PURE__ */ React.createElement("button", { onClick: onClose, "aria-label": "Close", style: { background: "#f3f4f6", border: "none", width: 32, height: 32, borderRadius: 8, fontSize: 18, cursor: "pointer", color: "#6b7280", lineHeight: 1, flexShrink: 0 } }, "\xD7")), /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 24px 20px" } }, /* @__PURE__ */ React.createElement(Row, { label: "Amount" }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 700, color: "#1A5C3A" } }, _hideStockCost(m) ? "—" : ["\u20B1 ", peso(m.amount)])), /* @__PURE__ */ React.createElement(Row, { label: "Date & Time" }, fmtDateTime(m.dateTime || m.date)), /* @__PURE__ */ React.createElement(Row, { label: "Category" }, m.category || /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db" } }, "\u2014")), /* @__PURE__ */ React.createElement(Row, { label: "Payment" }, /* @__PURE__ */ React.createElement(PaymentTag, { method: m.paymentMethod }), " ", !m.paymentMethod && /* @__PURE__ */ React.createElement("span", { style: { color: "#d1d5db" } }, "\u2014")), m.quantity > 1 && /* @__PURE__ */ React.createElement(Row, { label: "Quantity" }, m.quantity), partsList ? /* @__PURE__ */ React.createElement(Row, { label: "Charged To" }, partsList) : billingNum && /* @__PURE__ */ React.createElement(Row, { label: "Charged To" }, /* @__PURE__ */ React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" }, /* @__PURE__ */ React.createElement("rect", { x: "3", y: "4", width: "18", height: "18", rx: "2", ry: "2" }), /* @__PURE__ */ React.createElement("line", { x1: "16", y1: "2", x2: "16", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "8", y1: "2", x2: "8", y2: "6" }), /* @__PURE__ */ React.createElement("line", { x1: "3", y1: "10", x2: "21", y2: "10" })), /* @__PURE__ */ React.createElement("b", null, "Billing #", billingNum))), /* @__PURE__ */ React.createElement(Row, { label: "Documents" }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, flexWrap: "wrap" } }, docOrder.map((o) => {
     const has = !!(m.docs && m.docs[o.k]);
     return /* @__PURE__ */ React.createElement("span", { key: o.k, title: o.label, style: { padding: "3px 8px", borderRadius: 6, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.05em", background: has ? "#dcfce7" : "#f3f4f6", color: has ? "#166534" : "#9ca3af", border: "1px solid", borderColor: has ? "#86efac" : "#e5e7eb" } }, o.k === "pay" ? "PR" : o.k.toUpperCase(), " ", has ? "\u2713" : "\u2014");
   }))), m.notes && /* @__PURE__ */ React.createElement(Row, { label: "Notes" }, /* @__PURE__ */ React.createElement("div", { style: { whiteSpace: "pre-wrap", color: "#374151" } }, m.notes)), m.ref && /* @__PURE__ */ React.createElement(Row, { label: "Reference" }, /* @__PURE__ */ React.createElement("code", { style: { fontSize: 12, color: "#6b7280" } }, m.ref)), !full && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 18, fontSize: 12.5, color: "#9ca3af" } }, "Loading attachments…"), allImages.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 10 } }, "Attachments (", allImages.length, ")"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 10 } }, allImages.map((img, i) => /* @__PURE__ */ React.createElement("div", { key: i, onClick: () => openImg(img.url, img.label), style: { cursor: "pointer", borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb", background: "#f9fafb" } }, /* @__PURE__ */ React.createElement("img", { src: img.url, alt: img.label, loading: "lazy", style: { width: "100%", height: 90, objectFit: "cover", display: "block" } }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10.5, color: "#6b7280", padding: "4px 6px", textAlign: "center" } }, img.label)))))), /* @__PURE__ */ React.createElement("div", { style: { padding: "14px 24px", borderTop: "1px solid #e5e7eb", display: "flex", gap: 8, justifyContent: "flex-end", position: "sticky", bottom: 0, background: "#fff", borderRadius: "0 0 14px 14px" } }, !_staff() && /* @__PURE__ */ React.createElement("button", { onClick: _pcMoneyAction(() => onPrint && onPrint(m)), style: { padding: "8px 14px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#374151", fontSize: 13, fontWeight: 600, cursor: "pointer" } }, "Print Receipt"), !oldSplit && /* @__PURE__ */ React.createElement("button", { onClick: () => {

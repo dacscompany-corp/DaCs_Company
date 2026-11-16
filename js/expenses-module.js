@@ -390,6 +390,12 @@ function fmtBudgetInput(el) {
 // ── Overview: global all-expenses/payroll cache (keeps folder grid live) ──
 let _ovAllExpenses  = [];
 let _ovAllPayroll   = [];
+// The shared copy never holds photos: nothing that reads it shows one (the worker
+// receipt summary fetches a row's photos itself, _fillLazyPayroll), and they are
+// 14.5 MB of the two tables' 15 MB. It can also be old: see _ovReadPayroll.
+const _EXP_PHOTO_FIELDS = ['poImageUrl', 'deliveryReceiptUrl', 'supplierInvoiceUrl', 'paymentReceiptUrl'];
+let _ovExpRead = 0, _ovPayRead = 0;   // only the newest read of a table may replace the copy
+let _ovPayLatest = null;
 let _ovExpUnsub     = null;
 let _ovPayUnsub     = null;
 
@@ -627,6 +633,7 @@ function loadProjects() {
     _pcReportOverheadGeneration++;
     _pcReportOverheadPromise = null;
     _rptOvhdRows = null;
+    _rptForgetFresh();
     _pcPolicyMap = {};
     _pcAllocationMap = {};
     _pcAdjustmentRows = [];
@@ -756,28 +763,47 @@ function subscribeOvAllData() {
     }
 
     // Single fetch — no live listener
+    var expRead = ++_ovExpRead;
     db.collection('expenses')
         .where('userId', '==', _uid())
+        .omit(_EXP_PHOTO_FIELDS)
         .get()
         .then(function(snap) {
+            if (expRead !== _ovExpRead) return;
             _ovAllExpenses = snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
             _updateSpent();
         })
         .catch(function(err) { console.error('ov expenses fetch:', err); });
 
-    db.collection('payroll')
-        .where('userId', '==', _uid())
-        .get()
-        .then(function(snap) {
-            _ovAllPayroll = snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
-            _updateSpent();
-        })
+    _ovReadPayroll()
+        .then(function() { _updateSpent(); })
         .catch(function(err) { console.error('ov payroll fetch:', err); });
+}
+
+// Read payroll now, for whoever must not use an old copy: other accounts, tabs and
+// devices change it without telling this page. Resolves with the rows, which become
+// the shared copy; rejects if the read fails, so the caller stops instead of falling
+// back. A read overtaken by a newer one waits for it and hands over the newer rows.
+function _ovReadPayroll() {
+    const run = ++_ovPayRead;
+    _ovPayLatest = db.collection('payroll')
+        .where('userId', '==', _uid())
+        .omit('receiptImages')
+        .get()
+        .then(snap => {
+            if (run !== _ovPayRead) return _ovPayLatest;
+            _ovAllPayroll = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            return _ovAllPayroll;
+        });
+    return _ovPayLatest;
 }
 
 // Call this after any expense/payroll write to keep folder grid totals fresh.
 function refreshOvAllData() {
     subscribeOvAllData();
+    // Reports reads its own copy (_rptLoadFresh), so a save lands there by reading again.
+    const reports = document.getElementById('expReportsView');
+    if (reports && reports.style.display !== 'none') _rptLoadFresh();
 }
 
 function _renderAllPanels() {
@@ -2059,7 +2085,7 @@ function renderExpensesTable() {
         let cum = 0;
         sorted.forEach(e => {
             cum += (e.amount || 0);
-            if (e.purchaseLineId || e.purchaseChargeId) return;
+            if (e.purchaseLineId || e.purchaseChargeId || e.stkCostMoveId) return;
             if (e.coverExpense || cum > budget) _coverSet.add(e.id);
         });
     });
@@ -2071,9 +2097,14 @@ function renderExpensesTable() {
         const fundingBadge = (_coverSet.has(e.id) || e.coverExpense) ? _fundingBadgeHTML(null, true) : (srcProj ? _fundingBadgeHTML(srcProj, false) : '');
         const catBadge = showCategoryBadge ? getCategoryPillHTML(e.category) : '';
         const invBadge = e.inInventory ? '<span style="display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;border-radius:999px;background:#ecfdf5;color:#15803d;font-size:10.5px;font-weight:700;border:1px solid #a7f3d0;">📦 In Inventory</span>' : '';
-        const purBadge = (e.purchaseLineId || e.purchaseChargeId)
+        const purBadge = e.stkCostMoveId
+            ? '<span title="Moved from stock — the main owner approved where its cost goes. Only the main owner reverses it (Requests → Stock)." style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#f0f9ff;color:#0369a1;font-size:10.5px;font-weight:700;border:1px solid #bae6fd;">Stock cost move</span>'
+            : (e.purchaseLineId || e.purchaseChargeId)
             ? '<span title="Recorded as a purchase — edit or void it to change it" style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#eef2ff;color:#3730a3;font-size:10.5px;font-weight:700;border:1px solid #c7d2fe;">From purchase</span>'
               + (_purReviewLines.has(e.purchaseLineId) ? '<span title="No billing period for its month — charged to Cover until the office reviews it" style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#fff7ed;color:#c2410c;font-size:10.5px;font-weight:700;border:1px solid #fed7aa;">Office review</span>' : '')
+              + (window.expPurPendingChange(e.purchaseLineId || e.purchaseChargeId) ? '<span title="You sent a change of this purchase to the owner — open the row to withdraw it" style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:#fefce8;color:#a16207;font-size:10.5px;font-weight:700;border:1px solid #fde68a;">Waiting for the owner</span>' : '')
+              // 2A-4a (0102): how it was paid — owner accounts only; never part of Spent.
+              + ((st => st ? '<span title="How this purchase was paid (Requests → Purchasing). Payments never change Spent." style="display:inline-flex;align-items:center;margin-left:6px;padding:1px 7px;border-radius:999px;background:' + (st === 'paid' ? '#f0fdf4;color:#15803d;border:1px solid #bbf7d0' : st === 'partial' ? '#fefce8;color:#a16207;border:1px solid #fde68a' : '#fef2f2;color:#b91c1c;border:1px solid #fecaca') + ';font-size:10.5px;font-weight:700;">' + ({ unpaid: 'Unpaid', partial: 'Partially paid', paid: 'Paid', overpaid: 'Overpaid' })[st] + '</span>' : '')(window.expPurPayBadge && window.expPurPayBadge(e.purchaseLineId || e.purchaseChargeId)))
             : '';
         return `
         <tr class="exp-group-row">
@@ -2784,9 +2815,176 @@ async function _uploadReceiptFile(kind, file) {
 }
 
 // One id per Save press, kept until the save succeeds, so a retry after a
-// lost response can never create a second copy (0089 unique index).
-let _expSubmissionId = null;
+// lost response can never create a second copy (0089 unique index). Add
+// Expense keeps its id AND body in js/expense-pending-save.js instead — across
+// closing the form and reloading — until the server answers (Stage 4 review).
 let _paySubmissionId = null;
+
+// ── A save that may already be on the server (js/expense-pending-save.js) ──
+function _expPendingStore() { try { return window.localStorage; } catch (e) { return null; } }
+// One save at a time per account across tabs and windows (Web Locks).
+function _expLocks() { try { return navigator.locks || null; } catch (e) { return null; } }
+// The account that pressed Save (pur_ops is per account), never the data owner.
+function _expActor() { return (typeof currentUser !== 'undefined' && currentUser && currentUser.uid) || null; }
+// Every request of one save carries the sign-in of the account that pressed
+// Save (R121): a client bound to that account's token — never the shared
+// client, whose session follows whoever signed in last, in any tab. null:
+// someone else is signed in now, so nothing is sent.
+let _expBound = null;   // {token, calls} — reused while the token is the same
+async function _expBoundCalls(actor) {
+    let token = null;
+    try {
+        const { data } = await window.sbClient.auth.getSession();
+        const s = data && data.session;
+        if (actor && s && s.user && s.user.id === actor) token = s.access_token;
+    } catch (e) { token = null; }
+    if (!token) return null;
+    if (_expBound && _expBound.token === token) return _expBound.calls;
+    const c = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        global: { headers: { Authorization: 'Bearer ' + token } },
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'dacs.addExpense.bound' },
+    });
+    const calls = { reserve: (args) => c.rpc('pur_op_reserve', args), record: (args) => c.rpc('pur_record', args),
+                    cancelOp: (args) => c.rpc('pur_op_cancel', args), stateOp: (args) => c.rpc('pur_op_state', args),
+                    recoverOps: () => c.rpc('pur_op_recover') };
+    _expBound = { token, calls };
+    return calls;
+}
+// Who is signed in now — asked before every request of a save.
+async function _expAccountNow() {
+    try {
+        const { data } = await window.sbClient.auth.getSession();
+        return (data && data.session && data.session.user && data.session.user.id) || null;
+    } catch (e) { return null; }
+}
+function _expPendingState() { return DacsPendingSave.inspect(_expPendingStore(), _expActor()); }
+// What the box says for each state of DacsPendingSave.inspect().
+function _expPendingText(s) {
+    if (s.status === 'pending') {
+        const p = s.pending, when = new Date(p.at);
+        return 'A save from ' + (isNaN(when) ? 'earlier' : when.toLocaleString('en-PH',
+            { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })) + (p.label ? ' — ' + p.label : '') +
+            ' — may already be on the server: there was no answer. Settle it first; nothing in this form changes until then.';
+    }
+    if (s.status === 'damaged' && s.op) return 'A save kept in this browser can no longer be read whole, so it cannot be sent again. ' +
+        'Cancel it: the server says whether it had been saved, or makes sure it never will be. Nothing new is sent until then.';
+    if (s.status === 'damaged') return 'A save kept in this browser is damaged and its ID cannot be read — and a missing row in the list ' +
+        'does not prove it will not still arrive. Check with the server: every Add Expense save of your account that has not reached it ' +
+        'is cancelled for good; anything that did is in the list once. Nothing new is sent until then.';
+    if (s.status === 'no_account') return 'Sign in again to add an expense.';
+    return 'This browser is not letting Project Control keep a save (site storage is blocked, full, or in a private window), so nothing ' +
+        'is sent: a save it cannot keep could be recorded twice. Allow site storage, then open this form again.';
+}
+// Why a press sent nothing (DacsPendingSave's 'blocked' codes).
+function _expNotSentText(code) {
+    if (code === 'SAVE_IN_PROGRESS') return 'Another tab or window is saving an expense for this account — wait for it to finish, then try again.';
+    if (code === 'LOCKS_UNAVAILABLE') return 'This browser cannot keep two tabs from saving the same expense (it needs updating), so nothing is sent.';
+    if (code === 'ACCOUNT_CHANGED') return 'The signed-in account changed (in another tab or window), so nothing more is sent. The save stays with ' +
+        'the account that pressed Save — sign in as that account again to settle it.';
+    const now = _expPendingState();
+    return _expPendingText(now.status === 'none' ? { status: 'blocked' } : now);
+}
+// Locks the form while a save may be on the server — or while this browser
+// cannot keep one (blocked or damaged storage): nothing can be edited and no
+// new entry starts; only the box's choices (and closing).
+function _expShowPending(s) {
+    const box = document.getElementById('expPendingBox');
+    if (!box || !s || s.status === 'none') return;
+    document.getElementById('expPendingText').textContent = _expPendingText(s);
+    const choice = (id, on) => { const b = document.getElementById(id); if (b) b.style.display = on ? '' : 'none'; };
+    choice('expPendingResend', s.status === 'pending');
+    choice('expPendingCancel', s.status === 'pending' || (s.status === 'damaged' && !!s.op));
+    choice('expPendingRecover', s.status === 'damaged' && !s.op);
+    box.style.display = '';
+    document.querySelectorAll('#addExpenseForm .aer-body input, #addExpenseForm .aer-body select, #addExpenseForm .aer-body textarea, ' +
+        '#addExpenseForm .aer-body button, #addExpenseBtn').forEach(el => {
+        if (el.closest('#expPendingBox') || el.disabled) return;
+        el.disabled = true;
+        el.dataset.pendingLock = '1';
+    });
+}
+function _expHidePending() {
+    const box = document.getElementById('expPendingBox');
+    if (box) box.style.display = 'none';
+    document.querySelectorAll('[data-pending-lock]').forEach(el => { el.disabled = false; delete el.dataset.pendingLock; });
+}
+// Shows what this browser holds now (unlocked only when nothing is waiting).
+function _expRefreshPending() { _expHidePending(); _expShowPending(_expPendingState()); }
+// "Send it again" or "Cancel it" in a window whose save another tab of this
+// account already settled: nothing to send — the form's values may already
+// be in the list, so the form is cleared, never saved as a new entry.
+function _expSettledElsewhere() {
+    _expHidePending();
+    showExpNotif('That save was already settled in another tab or window — check the list before entering it again.', 'error');
+    document.getElementById('addExpenseForm').reset();
+    closeExpModal('addExpenseModal');
+    refreshOvAllData();
+}
+// When Add Expense opens: a save from before (this page or an earlier one)?
+// Ask the server whether it was recorded meanwhile; otherwise keep it locked.
+async function _expCheckPending() {
+    const store = _expPendingStore(), uid = _expActor();
+    const s = DacsPendingSave.inspect(store, uid);
+    _expHidePending();
+    if (s.status === 'none') return;
+    _expShowPending(s);
+    const calls = await _expBoundCalls(uid);
+    if (!calls) return;                       // someone else is signed in now: shown, not asked
+    const r = await DacsPendingSave.check({ store, uid, locks: _expLocks(), account: _expAccountNow, stateOp: calls.stateOp });
+    if (r.state === 'recorded') {
+        showExpNotif('Your earlier save had reached the server — it is in the list, once.', 'success');
+        refreshOvAllData();
+    } else if (r.state === 'cancelled') {
+        showExpNotif('Your earlier save was cancelled — it was never recorded, and never will be. Enter it again if it is still needed.', 'success');
+    }
+    if (r.state === 'recorded' || r.state === 'cancelled') _expRefreshPending();
+}
+window.expResendPending = function () { return handleAddExpense(null, { resend: true }); };
+window.expCancelPending = async function () {
+    const uid = _expActor(), calls = await _expBoundCalls(uid);
+    if (!calls) { showExpNotif('Nothing changed — ' + _expNotSentText('ACCOUNT_CHANGED'), 'error'); return; }
+    const r = await DacsPendingSave.cancel({ store: _expPendingStore(), uid, locks: _expLocks(), account: _expAccountNow,
+                                             cancelOp: calls.cancelOp });
+    if (r.state === 'none') { _expSettledElsewhere(); return; }
+    if (r.state !== 'recorded' && r.state !== 'cancelled') {
+        showExpNotif(r.state === 'unknown' ? 'Still no answer from the server — nothing changed. Try again when the connection is back.'
+                                           : 'Nothing changed — ' + _expNotSentText(r.code), 'error');
+        _expRefreshPending();
+        return;
+    }
+    _expRefreshPending();
+    if (r.state === 'recorded') {
+        showExpNotif('It had been saved — it is in the list once, exactly as first entered.', 'success');
+        document.getElementById('addExpenseForm').reset();
+        closeExpModal('addExpenseModal');
+    } else {
+        showExpNotif('Cancelled — the server will never record it. Enter it again if it is still needed.', 'success');
+    }
+    refreshOvAllData();
+};
+// A damaged save with no readable id: the server settles every Add Expense
+// save of this account it has no answer for (pur_op_recover) — cancelled for
+// good, or found recorded — and only then does the form unlock (R120).
+window.expRecoverPending = async function () {
+    const yes = await showConfirm('Check with the server? Every Add Expense save of your account that has not reached the server — in this ' +
+        'browser or another — is cancelled for good, so it can never be recorded later. Anything that did reach it stays in the list, once.',
+        { title: 'Check with the server', confirm: 'Check with the server', tone: 'ok' });
+    if (!yes) return;
+    const uid = _expActor(), calls = await _expBoundCalls(uid);
+    if (!calls) { showExpNotif('Nothing changed — ' + _expNotSentText('ACCOUNT_CHANGED'), 'error'); return; }
+    const r = await DacsPendingSave.recover({ store: _expPendingStore(), uid, locks: _expLocks(), account: _expAccountNow,
+                                              recoverOps: calls.recoverOps });
+    _expRefreshPending();
+    if (r.state === 'settled') {
+        showExpNotif('Settled with the server: ' + r.cancelled + ' save(s) that had not reached it are cancelled for good — they can never be ' +
+            'recorded. Anything that did reach it is in the list once; enter again only what is missing.', 'success');
+        refreshOvAllData();
+    } else if (r.state === 'unknown') {
+        showExpNotif('No answer from the server — nothing changed; the form stays locked. Try again when the connection is back.', 'error');
+    } else if (r.state !== 'refused') {
+        showExpNotif('Nothing changed — ' + _expNotSentText(r.code), 'error');
+    }
+};
 
 // ════════════════════════════════════════════════════════════
 // PURCHASES (migration 0096) — one server operation records them
@@ -2818,6 +3016,14 @@ function _purErrorText(err) {
         NOT_OFFICE:            'Only office accounts can record expenses.',
         NOT_ALLOWED:           'This account is not set up for Expenses.',
         BUYER_REQUIRED:        'This needs an account that may buy (the owner, or staff with the Buyer switch).',
+        // "Paid now?" (0102): the payment is saved with the purchase — both or neither.
+        BAD_PAY_SOURCE:        'Choose where the money came from.',
+        PERSON_REQUIRED:       'Petty cash and own money belong to a staff buyer — choose "Company (paid directly)", or record it in Requests → Purchasing.',
+        NOT_A_BUYER:           'Only a staff buyer holds petty cash or own money.',
+        BAD_METHOD:            'Choose how it was paid.',
+        BAD_SUPPLIER:          'That supplier is no longer on the list — type the name again.',
+        BAD_PAY:               'Check the payment: more than zero, and not more than the total.',
+        OP_CANCELLED:          'That earlier save was cancelled, so it was never recorded — enter it again.',
         BAD_DOCS:              'A receipt photo link is not valid — attach the photo again.',
         EXTRA_REASON_REQUIRED: 'This purchase covers a request and would now be more than the request needs — correct it in Requests → Purchasing, where you can give the reason.',
         BAD_REQUEST_LINK:      'This purchase is linked to a request for another project — correct it in Requests → Purchasing.',
@@ -2833,6 +3039,12 @@ function _purErrorText(err) {
         BAD_PROJECT:           'This project no longer exists or belongs to another account — refresh the page.',
         NOT_FOUND:             'That purchase or project was not found — refresh the page.',
         PURCHASE_ROW:          'This row was made by a purchase — use Edit or Void on it instead.',
+        // Stock (0104) and stock cost moves (0105): a purchase whose goods are stock, or whose cost the owner moved.
+        STOCK_COST_IN_USE:     'The owner approved stock cost moves that rely on this purchase line\'s price and quantity — the main owner reverses them first (Requests → Stock).',
+        STOCK_COST_FUNDING:    'The owner approved stock cost moves that rely on where this purchase\'s cost sits (its billing periods and Cover) — the main owner reverses them first (Requests → Stock).',
+        STOCK_IN_USE:          'This purchase line has stock records — reverse them first (Requests → Stock), or keep its destination, project, unit and enough quantity.',
+        STOCK_COST_ROW:        'This row is a stock cost move the owner approved — only the main owner reverses it (Requests → Stock).',
+        STOCK_LIVE:            'It has stock records or stock cost moves — mark the project completed instead.',
         TOTAL_MISMATCH:        'The items and fees do not add up to the receipt total.',
         BAD_LINES:             'Check the item lines.',
     };
@@ -2905,6 +3117,8 @@ async function _purSendToOwner(purchaseId, kind, body, reason) {
         p_kind: kind, p_body: body, p_reason: reason });
     if (error) throw error;
     showExpNotif('Sent to the owner for approval.', 'success');
+    // The row's "Waiting for the owner" pill, now — not after a refresh.
+    _purLoadReviewFlags();
     return true;
 }
 
@@ -2938,17 +3152,67 @@ function _expNoPeriodSpent(folderId) {
 // Lines the server charged to Cover because their month had no billing
 // period (Q23) — shown as "Office review" in the Expenses list and in
 // Project Control's Materials list (which listens for the event below).
+// Also (2A-3a, Q16) the changes THIS account sent to the owner and the owner
+// has not decided: "Waiting for the owner", with Withdraw. Staff without the
+// Buyer switch read no purchase rows, so both come through the server as ids
+// (pur_review_lines, pur_my_pending_changes — no amounts).
 let _purReviewLines = new Set();
+let _purPending = new Map();   // purchase line / charge id → my pending change request
+let _purPayBadges = {};        // 0102: purchase line / charge id → unpaid / partial / paid / overpaid (owner only)
 async function _purLoadReviewFlags() {
     try {
         // Ids only, through the server (0097: purchase tables are buyers-only).
         const { data, error } = await window.sbClient.rpc('pur_review_lines');
         if (error) throw error;
         _purReviewLines = new Set(data || []);
-        window.dispatchEvent(new Event('dacs:pur-review-flags'));
     } catch (err) { console.warn('purchase review flags:', err); }
+    try {
+        const { data, error } = await window.sbClient.rpc('pur_my_pending_changes');
+        if (error) throw error;
+        const byId = new Map();
+        (data || []).forEach(r => (r.line_ids || []).concat(r.charge_ids || []).forEach(id => byId.set(id, r)));
+        _purPending = byId;
+    } catch (err) { console.warn('purchase changes waiting for the owner:', err); }
+    // 2A-4a (0102): Unpaid / Partially paid / Paid — owner accounts only (the
+    // server refuses everyone else). How a purchase was paid never changes Spent.
+    if (window.currentUserRole === 'owner') {
+        try {
+            const { data, error } = await window.sbClient.rpc('pur_payment_badges');
+            if (error) throw error;
+            _purPayBadges = data || {};
+        } catch (err) { _purPayBadges = {}; console.warn('purchase payment badges:', err); }
+    }
+    window.dispatchEvent(new Event('dacs:pur-review-flags'));
 }
 window.expPurNeedsReview = id => !!id && _purReviewLines.has(id);
+// The words for Cover material with no billing period (0096): "office review"
+// only while one of its lines still waits — "Cover is right" (Stage 4, Q6)
+// clears it like every other Office review mark. Words only; no total reads it.
+function _pcNoPeriodStatus(rows) {
+    return (rows || []).some(e => !e.projectId && e.purchaseLineId && _purReviewLines.has(e.purchaseLineId))
+        ? 'No billing period — office review' : 'No billing period — Cover';
+}
+window.expPurPendingChange = id => (id && _purPending.get(id)) || null;
+window.expPurPayBadge = id => (id && window.currentUserRole === 'owner' && _purPayBadges[id]) || null;
+// The Purchasing tab sends changes to the owner too; it re-reads the flags.
+window.expPurReloadFlags = _purLoadReviewFlags;
+
+// Q16: a purchase-made row whose purchase has a change this account sent to
+// the owner. Changing it now would make that request out of date, so offer
+// to withdraw it first. true = nothing is waiting, or it was withdrawn (go on).
+async function _purOfferWithdraw(e) {
+    const r = window.expPurPendingChange(e && (e.purchaseLineId || e.purchaseChargeId));
+    if (!r) return true;
+    const ok = await _purConfirm('Waiting for the owner',
+        'You sent this purchase to the owner to ' + (r.kind === 'void' ? 'void' : 'change') + ' it. Your reason: "' + (r.reason || '') +
+        '". Withdraw that request to change the purchase yourself?', 'Withdraw request');
+    if (!ok) return false;
+    const { error } = await window.sbClient.rpc('pur_withdraw_change', { p_request: r.id });
+    if (error) { showExpNotif('Error: ' + _purErrorText(error), 'error'); return false; }
+    showExpNotif('Request withdrawn.', 'success');
+    await _purLoadReviewFlags();
+    return true;
+}
 
 // Set while the Edit Expense modal is correcting a purchase (else null).
 let _editingPurchase = null;
@@ -2974,63 +3238,119 @@ async function _saveRowsOnce(collection, rows, submissionId) {
     }
 }
 
-async function handleAddExpense(e) {
-    e.preventDefault();
+async function handleAddExpense(e, opts = {}) {
+    if (e && e.preventDefault) e.preventDefault();
 
-    // The project this expense belongs to. The SERVER picks its billing
-    // periods (see "PURCHASES (migration 0096)" above); nothing is split here.
-    const folderId = expCurrentProject ? (expCurrentProject.folderId || null) : (expCurrentFolder ? expCurrentFolder.id : null);
-    if (!folderId) { showExpNotif('Open a project first — this expense needs one.', 'error'); return; }
+    // A save that may already be on the server is settled first (Stage 4
+    // review): Save only shows it; "Send it again" resends it EXACTLY — the
+    // same operation id and body, never the form's fields. Storage that is
+    // blocked or damaged sends nothing new (R119).
+    const pendingStore = _expPendingStore(), actor = _expActor();
+    const state = DacsPendingSave.inspect(pendingStore, actor);
+    const pending = state.status === 'pending' ? state.pending : null;
+    if (opts.resend && state.status === 'none') { _expSettledElsewhere(); return; }
+    if (state.status !== 'none' && !(pending && opts.resend)) { _expShowPending(state); return; }
+    let build = null, label = '';
+    if (!pending) {
+        // The project this expense belongs to. The SERVER picks its billing
+        // periods (see "PURCHASES (migration 0096)" above); nothing is split here.
+        const folderId = expCurrentProject ? (expCurrentProject.folderId || null) : (expCurrentFolder ? expCurrentFolder.id : null);
+        if (!folderId) { showExpNotif('Open a project first — this expense needs one.', 'error'); return; }
 
-    const totalAmt   = Math.round((parseFloat((document.getElementById('expAmount').value || '').replace(/,/g, '')) || 0) * 100) / 100;
-    const expName    = document.getElementById('expName').value.trim();
-    const category   = document.getElementById('expCategory').value;
-    const qty        = Math.round((parseFloat(document.getElementById('expQty').value) || 1) * 1000) / 1000 || 1;
-    const dateTime   = _buildDateTime('expDate', 'expTime');
-    const notes      = document.getElementById('expNotes').value.trim();
-    const paymentMethod = (document.getElementById('expPaymentMethod')?.value || '').trim();
-    // Inventory toggle — when on, this material is also tracked as a stock item.
-    const toInventory = !!document.getElementById('expToInventory')?.checked;
-    const invUnit     = document.getElementById('expInvUnit')?.value || 'pcs';
-    const invMinStock = Math.round(Math.max(0, parseFloat(document.getElementById('expInvMinStock')?.value) || 0) * 1000) / 1000;
-    // The ACTUAL purchase date decides the billing month (spec §3.3).
-    const purchaseDate = dateTime ? dateTime.slice(0, 10) : _purLocalDateKey(new Date());
+        const totalAmt   = Math.round((parseFloat((document.getElementById('expAmount').value || '').replace(/,/g, '')) || 0) * 100) / 100;
+        const expName    = document.getElementById('expName').value.trim();
+        const category   = document.getElementById('expCategory').value;
+        const qty        = Math.round((parseFloat(document.getElementById('expQty').value) || 1) * 1000) / 1000 || 1;
+        const dateTime   = _buildDateTime('expDate', 'expTime');
+        const notes      = document.getElementById('expNotes').value.trim();
+        const paymentMethod = (document.getElementById('expPaymentMethod')?.value || '').trim();
+        // "Paid now?" (Stage 4, Q7): accounts that may record payments, and only what the person chose.
+        const paidNow  = window.currentCanBuy ? (document.getElementById('expPaidNow')?.value || 'none') : 'none';
+        const paidPart = document.getElementById('expPaidAmount')?.value || '';
+        // Inventory toggle — when on, this material is also tracked as a stock item.
+        // Once Stock is on (0104, Q29) the old tick is retired: the server refuses it,
+        // and the form hides it (openExpModal). Stock lives in Requests → Stock.
+        const toInventory = !window.currentStockOn && !!document.getElementById('expToInventory')?.checked;
+        const invUnit     = document.getElementById('expInvUnit')?.value || 'pcs';
+        const invMinStock = Math.round(Math.max(0, parseFloat(document.getElementById('expInvMinStock')?.value) || 0) * 1000) / 1000;
+        // The ACTUAL purchase date decides the billing month (spec §3.3).
+        const purchaseDate = dateTime ? dateTime.slice(0, 10) : _purLocalDateKey(new Date());
+        const paidProblem = _expPaidNowProblem(paidNow, totalAmt, paidPart);
+        if (paidProblem) { showExpNotif(paidProblem, 'error'); return; }
+        label = (expName || 'Expense') + ' · ₱' + formatNum(totalAmt) + (paidNow !== 'none' ? ' (paid now)' : '');
+
+        // The body is built ONCE (uploads included) and kept with its operation id
+        // until the server answers.
+        build = async () => {
+            // Supporting docs (PO/DR/SI/PR): uploaded as files first — a failure
+            // stops here with nothing saved and the form untouched.
+            const _docMap = { po: 'expDocPO', dr: 'expDocDR', si: 'expDocSI', pay: 'expDocPR' };
+            const docUrls = {};
+            for (const [key, inputId] of Object.entries(_docMap)) {
+                const file = document.getElementById(inputId)?.files?.[0];
+                if (file) docUrls[key] = await _uploadReceiptFile('expense', file);
+            }
+
+            const body = {
+                source: 'expenses_form',
+                purchase_date: purchaseDate,
+                date_time: dateTime || purchaseDate,
+                receipt_total: totalAmt,
+                notes,
+                payment_method: paymentMethod,
+                ...(window.currentCanBuy ? _expSupplierBody(document.getElementById('expSupplier')?.value, _expSuppliers) : {}),
+                docs: {
+                    ...(docUrls.po  ? { po_image_url:         docUrls.po  } : {}),
+                    ...(docUrls.dr  ? { delivery_receipt_url: docUrls.dr  } : {}),
+                    ...(docUrls.si  ? { supplier_invoice_url: docUrls.si  } : {}),
+                    ...(docUrls.pay ? { payment_receipt_url:  docUrls.pay } : {}),
+                },
+                lines: [{ destination: 'project', folder_id: folderId, item_name: expName, category,
+                          quantity: qty, unit: toInventory ? invUnit : '', amount: totalAmt,
+                          in_inventory: toInventory, min_stock: toInventory ? invMinStock : 0 }],
+                charges: [],
+            };
+            const payments = _expPaidNowPayments(paidNow, totalAmt, paidPart, document.getElementById('expPaidFrom')?.value,
+                                                 document.getElementById('expPaidHow')?.value, purchaseDate);
+            if (payments.length) body.payments = payments;
+            return body;
+        };
+    }
 
     try {
         showExpLoading('addExpenseBtn', true);
-
-        // Supporting docs (PO/DR/SI/PR): uploaded as files first — a failure
-        // stops here with nothing saved and the form untouched.
-        const _docMap = { po: 'expDocPO', dr: 'expDocDR', si: 'expDocSI', pay: 'expDocPR' };
-        const docUrls = {};
-        for (const [key, inputId] of Object.entries(_docMap)) {
-            const file = document.getElementById(inputId)?.files?.[0];
-            if (file) docUrls[key] = await _uploadReceiptFile('expense', file);
+        // One operation id and one body per save (pur_ops records an id once),
+        // kept until the server answers — js/expense-pending-save.js — and bound
+        // to the account that pressed Save through every request (R121).
+        const calls = await _expBoundCalls(actor);
+        if (!calls) { showExpNotif('Not sent — ' + _expNotSentText('ACCOUNT_CHANGED'), 'error'); return; }
+        const res = await DacsPendingSave.submit({ store: pendingStore, uid: actor, locks: _expLocks(), account: _expAccountNow,
+                                                   resend: !!opts.resend, newId: () => DacsReceipts.newId(), build, label,
+                                                   reserve: calls.reserve, record: calls.record });
+        if (res.outcome === 'blocked') {
+            // Nothing was sent or uploaded: this browser cannot keep the save, or one still waits.
+            if (res.error.message === 'NOTHING_PENDING') { _expSettledElsewhere(); return; }
+            showExpNotif('Not sent — ' + _expNotSentText(res.error.message), 'error');
+            return;
         }
-
-        // One id per Save press: a resent request is recorded once (pur_ops).
-        if (!_expSubmissionId) _expSubmissionId = DacsReceipts.newId();
-        const body = {
-            source: 'expenses_form',
-            purchase_date: purchaseDate,
-            date_time: dateTime || purchaseDate,
-            receipt_total: totalAmt,
-            notes,
-            payment_method: paymentMethod,
-            docs: {
-                ...(docUrls.po  ? { po_image_url:         docUrls.po  } : {}),
-                ...(docUrls.dr  ? { delivery_receipt_url: docUrls.dr  } : {}),
-                ...(docUrls.si  ? { supplier_invoice_url: docUrls.si  } : {}),
-                ...(docUrls.pay ? { payment_receipt_url:  docUrls.pay } : {}),
-            },
-            lines: [{ destination: 'project', folder_id: folderId, item_name: expName, category,
-                      quantity: qty, unit: toInventory ? invUnit : '', amount: totalAmt,
-                      in_inventory: toInventory, min_stock: toInventory ? invMinStock : 0 }],
-            charges: [],
-        };
-        const { data, error } = await window.sbClient.rpc('pur_record', { p_op: _expSubmissionId, p_body: body });
-        if (error) throw error;
-        _expSubmissionId = null;
+        if (res.outcome === 'unknown') {
+            _expShowPending({ status: 'pending', pending: res.pending });
+            showExpNotif('No answer from the server — this expense may already be saved. Send it again or cancel it; the form is locked until then.', 'error');
+            return;
+        }
+        if (res.outcome === 'refused' && res.kept) {
+            // A later attempt refused for another reason: the first request may have
+            // been recorded, so the save stays until "Cancel it" settles it.
+            _expShowPending({ status: 'pending', pending: res.pending });
+            showExpNotif('The server refused this attempt (' + _purErrorText(res.error) + '). Your earlier save may already be on the ' +
+                         'server — Cancel it to settle it; the form stays locked until then.', 'error');
+            return;
+        }
+        // The server answered — saved, or refused (nothing saved) — so the save is
+        // settled and forgotten: the form unlocks either way.
+        _expRefreshPending();
+        if (res.error) throw res.error;
+        const data = res.data;
 
         // The stock update ("track in inventory") happens on the SERVER, inside
         // the same transaction and once per purchase line — never here, so a
@@ -3040,7 +3360,10 @@ async function handleAddExpense(e) {
         const noPeriod = rows.some(r => !r.period_id);
         // A replayed answer (a retry of a press that had already saved) is the
         // FIRST press's result: edits made to the form since were not applied.
-        const msg = (data && data.replayed)
+        const msg = res.resent
+            ? (data && data.replayed ? 'Your earlier save had reached the server — it is recorded once, exactly as first entered.'
+                                     : 'Your earlier save is recorded now — once, exactly as first entered.')
+            : (data && data.replayed)
             ? 'An earlier attempt of this expense was already saved — check the list; changes made since were not applied.'
             : noPeriod
             ? 'Saved ✓ — this project has no billing period for that month yet, so it was charged to Cover for office review'
@@ -3049,7 +3372,8 @@ async function handleAddExpense(e) {
                 : (data && data.stock_moves)
                     ? 'Expense added & sent to inventory ✓'
                     : (rows.length > 1 ? `Split into ${rows.length} records across funding sources ✓` : 'Expense added! ✓');
-        showExpNotif(msg, 'success');
+        showExpNotif(msg + (data && data.pay ? ' · payment recorded (' + ({ paid: 'Paid', partial: 'Partly paid' }[data.pay.state] || data.pay.state) + ')' : ''),
+                     'success');
         refreshOvAllData();
         if (review.length) _purLoadReviewFlags().then(refreshOvAllData);
 
@@ -3062,6 +3386,8 @@ async function handleAddExpense(e) {
         console.error(err);
     } finally {
         showExpLoading('addExpenseBtn', false);
+        const still = DacsPendingSave.inspect(pendingStore, actor);
+        if (still.status !== 'none') _expShowPending(still);
     }
 }
 
@@ -3073,7 +3399,10 @@ async function deleteExpense(id) {
         try { const snap = await db.collection('expenses').doc(id).get(); if (snap.exists) pe = { id: snap.id, ...snap.data() }; }
         catch (err) { console.error('deleteExpense fetch:', err); }
     }
+    // 2C (0105): a stock cost move's row — the database refuses it too (STOCK_COST_ROW).
+    if (pe && pe.stkCostMoveId) { showExpNotif('This is a stock cost move the main owner approved. It is never edited or deleted here — the main owner reverses it in Requests → Stock.', 'error'); return; }
     if (pe && (pe.purchaseLineId || pe.purchaseChargeId)) {
+        if (!await _purOfferWithdraw(pe)) return;
         let pur;
         try { pur = await _purForRow(pe); } catch (err) { showExpNotif('Error: ' + _purErrorText(err), 'error'); return; }
         if (pur.purchase.status !== 'recorded') { showExpNotif('This purchase was already voided.', 'error'); return; }
@@ -3121,6 +3450,85 @@ window.expSetMoreDetails = function (open) {
     if (label) label.textContent = open ? 'Fewer details' : 'More details — payment, date, notes';
 };
 window.expToggleMoreDetails = function () { window.expSetMoreDetails(); };
+
+// ════════════════════════════════════════════════════════════
+// "PAID NOW?" AND SUPPLIER ON ADD EXPENSE (WorkMate Stage 4, Q7)
+// For accounts that may record payments — owner accounts and Buyer staff
+// (window.currentCanBuy) — the payment goes WITH the purchase and the server
+// saves both or neither (pur_record, 2A-4 Q3). "Paid with" alone never marks
+// anything paid: only "Paid in full" / "Paid part", chosen by the person. A
+// payment never changes Spent. Staff without the Buyer switch see none of
+// this and record as before (Unpaid until a payment is recorded).
+// ════════════════════════════════════════════════════════════
+const _EXP_PAY_HOW = { cash: 'Cash', gcash: 'GCash', bank_transfer: 'Bank transfer', check: 'Check', other: 'Other' };
+// "Paid with" → how the payment was made: a starting value for "How" only.
+function _expPayHowOf(paidWith) {
+    const m = String(paidWith || '').trim().toLowerCase();
+    if (m === 'cash' || m === 'gcash') return m;
+    if (m === 'cheque' || m === 'check') return 'check';
+    if (['bank transfer', 'bdo', 'bpi', 'metrobank'].includes(m)) return 'bank_transfer';
+    return 'other';
+}
+// The payments to send with the purchase: none unless the person chose
+// "Paid in full" or "Paid part".
+function _expPaidNowPayments(choice, total, partAmount, source, how, paidOn) {
+    if (choice !== 'full' && choice !== 'part') return [];
+    const amount = choice === 'full' ? total : Math.round((parseFloat(String(partAmount || '').replace(/,/g, '')) || 0) * 100) / 100;
+    return [{ amount: String(amount), paid_on: paidOn, method: _EXP_PAY_HOW[how] ? how : 'other',
+              source: ['company', 'petty_cash', 'own_money'].includes(source) ? source : 'company', note: '' }];
+}
+// What the form refuses before sending (the server checks again).
+function _expPaidNowProblem(choice, total, partAmount) {
+    if (choice !== 'full' && choice !== 'part') return '';
+    if (!(total > 0)) return 'Enter the total first.';
+    if (choice === 'part') {
+        const a = parseFloat(String(partAmount || '').replace(/,/g, '')) || 0;
+        if (!(a > 0)) return 'Enter the amount paid.';
+        if (a >= total) return 'A part payment is less than the total — choose "Paid in full".';
+    }
+    return '';
+}
+let _expSuppliers = [];
+function _expSupplierLabel(s) { return s.name + (s.branch ? ' · ' + s.branch : ''); }
+// The supplier part of the purchase: one from the list by its id, else the typed name.
+function _expSupplierBody(typed, suppliers) {
+    const text = String(typed || '').trim();
+    const hit = text && (suppliers || []).find(s => _expSupplierLabel(s).toLowerCase() === text.toLowerCase());
+    return hit ? { supplier: '', supplier_id: hit.id } : { supplier: text.slice(0, 200) };
+}
+window.expTogglePaidNow = function () {
+    const choice = document.getElementById('expPaidNow')?.value || 'none';
+    const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? '' : 'none'; };
+    show('expPaidAmountWrap', choice === 'part');
+    show('expPaidFromRow', choice === 'full' || choice === 'part');
+    const how = document.getElementById('expPaidHow');
+    if (how && !how.dataset.touched) how.value = _expPayHowOf(document.getElementById('expPaymentMethod')?.value);
+};
+// Each time Add Expense opens: shown only to accounts that may record payments, set back to "Not paid yet".
+async function _expSetupPaidNow() {
+    const wrap = document.getElementById('expPaidNowWrap');
+    if (!wrap) return;
+    const can = !!window.currentCanBuy;
+    wrap.style.display = can ? '' : 'none';
+    const choice = document.getElementById('expPaidNow'); if (choice) choice.value = 'none';
+    const part = document.getElementById('expPaidAmount'); if (part) part.value = '';
+    const how = document.getElementById('expPaidHow'); if (how) delete how.dataset.touched;
+    const from = document.getElementById('expPaidFrom');
+    // A staff buyer may pay from their own petty cash or own money (the server fills in who);
+    // an owner account pays as the company.
+    if (from) from.innerHTML = '<option value="company">Company (paid directly)</option>' + (window.currentUserRole === 'staff'
+        ? '<option value="petty_cash">My petty cash</option><option value="own_money">My own money</option>' : '');
+    const sup = document.getElementById('expSupplier'); if (sup) sup.value = '';
+    window.expTogglePaidNow();
+    if (!can) return;
+    try {
+        const { data, error } = await window.sbClient.rpc('pur_suppliers');
+        if (error) throw error;
+        _expSuppliers = (data || []).filter(s => s.active);
+        const list = document.getElementById('expSupplierList');
+        if (list) list.innerHTML = _expSuppliers.map(s => '<option value="' + _mvpEsc(_expSupplierLabel(s)) + '"></option>').join('');
+    } catch (err) { _expSuppliers = []; console.warn('suppliers:', err); }
+}
 
 // ════════════════════════════════════════════════════════════
 // PAYROLL FORM
@@ -4376,7 +4784,9 @@ async function openEditExpenseModal(id) {
     // and a reason is required. The billing period is the server's to choose.
     _editingPurchase = null;
     _purEditOpId = null;
+    if (e.stkCostMoveId) { showExpNotif('This is a stock cost move the main owner approved. It is never edited or deleted here — the main owner reverses it in Requests → Stock.', 'error'); return; }
     if (e.purchaseLineId || e.purchaseChargeId) {
+        if (!await _purOfferWithdraw(e)) return;
         let pur;
         try { pur = await _purForRow(e); } catch (err) { showExpNotif('Error: ' + _purErrorText(err), 'error'); return; }
         if (pur.purchase.status !== 'recorded') { showExpNotif('This purchase was voided.', 'error'); return; }
@@ -4763,6 +5173,13 @@ function openExpModal(id)  {
             d.value = n.getFullYear() + '-' + String(n.getMonth() + 1).padStart(2, '0') + '-' + String(n.getDate()).padStart(2, '0');
         }
         if (typeof window.expSetMoreDetails === 'function') window.expSetMoreDetails(false);
+        // One stock path (0104, Q29): no "Add to inventory" once Stock is on.
+        const inv = document.getElementById('expToInventory');
+        const box = inv && inv.closest('.aer-inv');
+        if (box) box.style.display = window.currentStockOn ? 'none' : '';
+        if (inv && window.currentStockOn) { inv.checked = false; window.expToggleInventoryFields(); }
+        _expSetupPaidNow();
+        _expCheckPending();
     }
     if (id === 'addPayrollModal' && typeof payToggleMode === 'function') payToggleMode(); // sync Daily/Lamsam UI
     if (id === 'addPayrollModal' && typeof lcPopulatePayrollPicker === 'function') {
@@ -4777,7 +5194,8 @@ function closeExpModal(id) {
     // A submission id belongs to ONE open form (spec 2026-10-08 §4.3): closing
     // the form forgets it, so a later, different entry can never be mistaken
     // for an earlier save whose response was lost.
-    if (id === 'addExpenseModal') _expSubmissionId = null;
+    // Add Expense: a save that may be on the server is NOT forgotten on close
+    // (js/expense-pending-save.js keeps it until the server answers).
     if (id === 'addPayrollModal') _paySubmissionId = null;
     const m = document.getElementById(id);
     if (m) m.classList.remove('active');
@@ -5044,7 +5462,8 @@ let _rptState = {
     projects:    [],
     allExpenses: [],
     allPayroll:  [],
-    loading:     false
+    loading:     false,
+    noFigures:   null     // 'loading' or 'failed': nothing current to show, print or export
 };
 let _rptCharts = {};
 
@@ -5084,17 +5503,17 @@ function initReportsDashboard() {
     );
     if (typeof lucide !== 'undefined') lucide.createIcons();
     _rptUpdateAxisHint(_rptState.period);
-    loadRptData();
+    _rptLoadFresh();
 }
 
 function onRptYearChange() {
     _rptState.year = parseInt(document.getElementById('rptYearSel')?.value) || new Date().getFullYear();
-    loadRptData();
+    _rptLoadFresh();
 }
 
 function onRptFolderChange() {
     _rptState.folderId = document.getElementById('rptFolderSel')?.value || '';
-    loadRptData();
+    _rptLoadFresh();
 }
 
 function setRptPeriod(period) {
@@ -5119,25 +5538,65 @@ function _rptUpdateAxisHint(period) {
     el.innerHTML = hints[period] || '';
 }
 
-function loadRptData() {
+// Reports reads expenses and payroll itself when it is opened or its folder or
+// year changes. _ovAllExpenses is a copy from page load that Stock, Purchasing,
+// the phone and other accounts never refresh, so it can still hold a row that is
+// gone. The cost-move note ("changed after the month ended") is read with the
+// figures, so it can't be newer than they are.
+let _rptFresh = null;     // { expenses, payroll } from the latest read
+let _rptFreshRun = 0;     // only the newest read may land
+function _rptLoadFresh() {
     if (!currentUser) return;
-    _rptState.loading = true;
+    _rptShowScope(_rptScopePeriods());
+    const run = ++_rptFreshRun;
+    _rptState.noFigures = 'loading';
+    _pcCostChanges = null;
+    _pcCostChangesPromise = null;
+    _rptClearFigures('Loading report data…');
     _rptShowLoading();
+    const rowsOf = snap => snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    Promise.all([
+        db.collection('expenses').where('userId', '==', _uid()).omit(_EXP_PHOTO_FIELDS).get(),
+        db.collection('payroll').where('userId', '==', _uid()).omit('receiptImages').get()
+    ]).then(([expenses, payroll]) => {
+        if (run !== _rptFreshRun) return;
+        _rptFresh = { expenses: rowsOf(expenses), payroll: rowsOf(payroll) };
+        _rptState.noFigures = null;
+        loadRptData();
+    }).catch(err => {
+        if (run !== _rptFreshRun) return;
+        console.error('Reports fetch error:', err);
+        _rptState.noFigures = 'failed';
+        _rptClearFigures('Could not load the latest figures. Check your connection, then open Reports again.');
+    });
+}
 
+function _rptForgetFresh() {
+    _rptFreshRun++;
+    _rptFresh = null;
+    _rptState.noFigures = null;
+}
+
+// Print and CSV never run from figures that aren't on screen.
+function _rptFiguresReady() {
+    if (!_rptState.noFigures) return true;
+    showExpNotif(_rptState.noFigures === 'loading'
+        ? 'The latest figures are still loading. Try again in a moment.'
+        : 'The latest figures did not load. Open Reports again first.', 'error');
+    return false;
+}
+
+function _rptScopePeriods() {
     // Specific folder → ALL billing periods for that folder (any year).
     // All Folders → ALL billing periods across all years; year dropdown only affects chart labels.
-    let folderProjects;
-    if (_rptState.folderId) {
-        const folderIds = _pcReportFolderIds(_rptState.folderId);
-        folderProjects = expProjects.filter(p => folderIds.has(p.folderId));
-    } else {
-        folderProjects = expProjects; // all billing periods, all years
-    }
+    if (!_rptState.folderId) return expProjects; // all billing periods, all years
+    const folderIds = _pcReportFolderIds(_rptState.folderId);
+    return expProjects.filter(p => folderIds.has(p.folderId));
+}
 
-    const idSet = new Set(folderProjects.map(p => p.id));
-    const ids   = Array.from(idSet);
-
-    // Update subtitle
+// Names what was chosen, whether or not its figures have arrived: a failed read
+// must not sit beside the last folder's name.
+function _rptShowScope(folderProjects) {
     const folderCount = _rptState.folderId ? 1 : new Set(folderProjects.map(p => p.folderId).filter(Boolean)).size;
     const projCount   = folderProjects.length;
     const folderLabel = _rptState.folderId
@@ -5148,18 +5607,31 @@ function loadRptData() {
     setText('rptScopeChip', folderLabel.toUpperCase());
     setText('rptCompanySub',
         `${projCount} project period${projCount!==1?'s':''} · ${folderCount} folder${folderCount!==1?'s':''}`);
+}
+
+function loadRptData() {
+    if (!currentUser) return;
+    if (_rptState.noFigures) return;
+    _rptState.loading = true;
+    _rptShowLoading();
+
+    const folderProjects = _rptScopePeriods();
+    const idSet = new Set(folderProjects.map(p => p.id));
+    const ids   = Array.from(idSet);
+
+    _rptShowScope(folderProjects);
 
     _rptState.projects = folderProjects;
 
-    // Use global cache if populated; otherwise fetch from Firestore.
+    // Use Reports' own read (_rptLoadFresh); before one, the global cache or a fetch.
     // For specific folder: filter by projectId only.
     // For All Folders: same — no year filtering on expenses (all-time totals).
     const scopeFolders = _rptState.folderId ? _pcReportFolderIds(_rptState.folderId) : null;
     const inScope = e => idSet.has(e.projectId) || (!e.projectId && !!e.folderId && (!scopeFolders || scopeFolders.has(e.folderId)));
-    const cachedExp = _ovAllExpenses.filter(inScope);
-    const cachedPay = _ovAllPayroll.filter(p => idSet.has(p.projectId));
+    const cachedExp = (_rptFresh ? _rptFresh.expenses : _ovAllExpenses).filter(inScope);
+    const cachedPay = (_rptFresh ? _rptFresh.payroll : _ovAllPayroll).filter(p => idSet.has(p.projectId));
 
-    if (cachedExp.length || cachedPay.length) {
+    if (_rptFresh || cachedExp.length || cachedPay.length) {
         _rptState.allExpenses = cachedExp;
         _rptState.allPayroll  = cachedPay;
         _rptState.loading = false;
@@ -5236,6 +5708,16 @@ function _rptShowEmpty(msg) {
     if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="exp-empty-row">${msg}</td></tr>`;
     Object.values(_rptCharts).forEach(c => { try { c.destroy(); } catch(e){} }); _rptCharts = {};
     if (typeof lucide !== 'undefined') lucide.createIcons();
+}
+
+// Everything the last visit drew: old figures must not sit under a loading or error message.
+function _rptClearFigures(msg) {
+    _rptShowEmpty(msg);
+    ['rptAllocationReport', 'rptExpDetailTbody', 'rptPayDetailTbody'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '';
+    });
+    if (expCharts.pie) { expCharts.pie.destroy(); delete expCharts.pie; }
 }
 
 function _rptAllTimeGroups() {
@@ -5453,7 +5935,7 @@ function _pcAllocationReportHtml(model) {
         remaining:-model.totals.unallocatedIndirect, allocation:null, status:'Unallocated Indirect' }));
     if (model.totals.noPeriodMaterial) rows.push(_pcReportCells({ label:'No billing period (Cover)',
         mats:model.totals.noPeriodMaterial, totalSpent:model.totals.noPeriodMaterial,
-        remaining:-model.totals.noPeriodMaterial, allocation:null, status:'No billing period — office review' }));
+        remaining:-model.totals.noPeriodMaterial, allocation:null, status:_pcNoPeriodStatus(model.expenses) }));
     rows.push(_pcReportCells({ ...model.totals, allocation:totalAllocation, status:model.allocation.legacyCount ? 'Allocation not configured: ' + model.allocation.legacyCount : '' }));
     return _pcReportTable(_PC_REPORT_HEADERS, rows, 'Billing Allocation Performance')
         + '<p class="pc-report-note">Target Margin Reserve: planning only. Variance = planned minus actual. Cover Expenses are included above.</p>';
@@ -5468,13 +5950,70 @@ function _pcPeriodAllocationHtml(row) {
         ['Target Margin Reserve',a.targetMarginReserve,null,null]], 'Billing Allocation');
 }
 
+// A billing period changed by a stock cost move AFTER its month ended
+// (WorkMate Stage 4, Q11) — approvals AND reversals. They come from the
+// server's lasting log of cost-move rows (0109's rec_cost_row_log, through
+// rec_bills in js/reconciliation-admin.js): a reversal deletes its expense
+// rows, so the rows alone could never say that a month changed again. The
+// figures stay today's; the note says what changed later and when, so an
+// older printout can be matched. Display only: no total reads it.
+let _pcCostChanges = null;          // null until loaded for this Reports visit
+let _pcCostChangesPromise = null;
+function _pcEnsureCostChanges(onReady) {
+    if (!_pcIsOwner() || _pcCostChanges !== null || !window.ReconciliationAdmin || !window.ReconciliationAdmin.costChanges) return false;
+    if (!_pcCostChangesPromise) {
+        _pcCostChangesPromise = window.ReconciliationAdmin.costChanges().then(list => { _pcCostChanges = list || []; }).catch(err => {
+            console.warn('Report cost-move history:', err);
+            _pcCostChanges = [];
+            showExpNotif('Could not load the stock cost-move history for the Reports notes.', 'error');
+        });
+    }
+    _pcCostChangesPromise.then(onReady);
+    return true;
+}
+// changes: rec_bills' items ({cost_move_id, change, at, item, from, to,
+// sides: [{period_id, amount}]}); periods: the report's billing periods.
+function _pcLateCostMoveNotes(changes, periods) {
+    const byId = new Map((periods || []).map(p => [p.id, p]));
+    const out = new Map();
+    (changes || []).forEach(b => (b.sides || []).forEach(s => {
+        const p = byId.get(s.period_id);
+        const m = p ? _MONTHS.indexOf(p.month) : -1;
+        if (m < 0 || !Number(p.year) || !b.at) return;
+        const at = new Date(b.at);
+        if (isNaN(at) || at < new Date(Number(p.year), m + 1, 1)) return;
+        // Local parts — PH is UTC+8.
+        const day = at.getFullYear() + '-' + String(at.getMonth() + 1).padStart(2, '0') + '-' + String(at.getDate()).padStart(2, '0');
+        const key = p.id + '|' + b.cost_move_id + '|' + b.change + '|' + day;
+        const n = out.get(key) || { period: p.name || [p.month, p.year].filter(Boolean).join(' '), day, at, change: b.change, amount: 0,
+                                    what: [b.item, (b.from || '') + ' → ' + (b.to || '')].filter(Boolean).join(': ') };
+        n.amount = Math.round((n.amount + (Number(s.amount) || 0)) * 100) / 100;
+        out.set(key, n);
+    }));
+    return [...out.values()].sort((a, b) => a.at - b.at);
+}
+function _pcLateCostMoveHtml(folderId) {
+    if (!_pcIsOwner()) return '';
+    const folders = _pcReportFolderIds(folderId);
+    const notes = _pcLateCostMoveNotes(_pcCostChanges, expProjects.filter(p => folders.has(p.folderId)));
+    if (!notes.length) return '';
+    return '<div class="pc-report-note"><strong>Changed after the month ended</strong> — the figures above are today\'s.'
+        + notes.map(n => '<div>' + _mvpEsc(n.period) + ': changed ' + (n.change === 'reversed' ? 'again ' : '')
+            + _mvpEsc(n.at.toLocaleDateString('en-PH', { year:'numeric', month:'short', day:'numeric' }))
+            + (n.change === 'reversed' ? ' — a stock cost move was reversed: ' : ' by a stock cost move: ')
+            + _mvpEsc((n.amount < 0 ? '−' : '+') + '₱' + formatNum(Math.abs(n.amount))) + (n.what ? ' (' + _mvpEsc(n.what) + ')' : '')
+            + '</div>').join('') + '</div>';
+}
+
 function renderReportsDashboard() {
     if (_pcEnsureReportOverhead(renderReportsDashboard)) return;
+    if (_pcEnsureCostChanges(renderReportsDashboard)) return;
+    if (_rptState.noFigures) return;
     const report = _pcDashboardReport();
     _rptRenderKPIs(report.model);
     _rptRenderTable(report.groups, report.model);
     const allocation = document.getElementById('rptAllocationReport');
-    if (allocation) allocation.innerHTML = _pcAllocationReportHtml(report.model);
+    if (allocation) allocation.innerHTML = _pcAllocationReportHtml(report.model) + _pcLateCostMoveHtml(_rptState.folderId);
     const owner = _pcIsOwner();
     ['rptTrendChart', 'rptBudgetVsActualChart', 'expCategoryChart'].forEach(id => {
         const canvas = document.getElementById(id);
@@ -5849,6 +6388,7 @@ function _expPeriodCell(r, labelOf) {
 }
 
 function exportRptTable() {
+    if (!_rptFiguresReady()) return;
     if (_pcEnsureReportOverhead(exportRptTable)) return;
     const report = _pcDashboardReport();
     const model = report.model;
@@ -5869,7 +6409,7 @@ function exportRptTable() {
             remaining:-model.totals.unallocatedIndirect,status:'Unallocated Indirect' }));
         if (model.totals.noPeriodMaterial) rows.push(_pcReportCells({ label:'No billing period (Cover)',
             mats:model.totals.noPeriodMaterial,totalSpent:model.totals.noPeriodMaterial,
-            remaining:-model.totals.noPeriodMaterial,status:'No billing period — office review' }));
+            remaining:-model.totals.noPeriodMaterial,status:_pcNoPeriodStatus(model.expenses) }));
         const a = model.allocation;
         rows.push(_pcReportCells({ ...model.totals, allocation:a.configuredCount ? { ...a,
             directRemaining:a.directBudget-a.directActual, indirectRemaining:a.indirectBudget-a.indirectActual } : null }));
@@ -6123,7 +6663,8 @@ function _pcPrintFundingSummary(model) {
     }
     if (model.totals.noPeriodMaterial) {
         const amount = model.totals.noPeriodMaterial;
-        html += _pcReportTable(headers, [['','No billing period (Cover) — office review','','','',0,amount,0,0,amount,-amount]], 'No billing period');
+        const words = _pcNoPeriodStatus(model.expenses) === 'No billing period — office review' ? ' — office review' : '';
+        html += _pcReportTable(headers, [['','No billing period (Cover)' + words,'','','',0,amount,0,0,amount,-amount]], 'No billing period');
     }
     return html + _pcReportTable(['Materials','Labor','Overhead','Grand Total Balance'],
         [[model.totals.mats,model.totals.labor,model.totals.overhead,model.totals.remaining]], 'Grand Total Balance');
@@ -6171,6 +6712,7 @@ function _pcPrintReport(title, model, groups, options = {}) {
                 .concat([['TOTAL',t.totalSpent,t.totalSpent ? '100.0%' : '0.0%']]), 'Category Breakdown');
         }
         body += _pcAllocationReportHtml(model);
+        if (options.kind === 'dashboard') body += _pcLateCostMoveHtml(options.folderId);
         if (options.kind !== 'dashboard' || options.folderId) body += _pcReportDetails(model);
     } else body = _pcReportTable(['Billing Period','Status'], model.rows.map(r => [r.label,r.status]), 'Billing Summary');
     const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>' + _mvpEsc(title + (receiptNo ? ' - ' + receiptNo : ''))
@@ -6236,7 +6778,9 @@ function _rptRenderDetailTables(model) {
 // PRINT REPORTS DASHBOARD
 // ════════════════════════════════════════════════════════════
 function printReportsDashboard() {
+    if (!_rptFiguresReady()) return;
     if (_pcEnsureReportOverhead(printReportsDashboard)) return;
+    if (_pcEnsureCostChanges(printReportsDashboard)) return;
     const report = _pcDashboardReport();
     _pcPrintReport((expFolders.find(f => f.id === _rptState.folderId)?.name || 'Company-Wide Report')
         + ' · ' + report.label, report.model, report.groups, {kind:'dashboard',folderId:_rptState.folderId,dateLabel:report.label,
@@ -7467,11 +8011,27 @@ function _folderName(id) {
     const f = expFolders.find(x => x.id === id);
     return (f && f.name) || 'this project';
 }
+// Tools (0107, Q20): completing is never blocked, but the confirm names the
+// tools still out on the project and its Additional Works jobs — they stay
+// in Requests → Tools → Out until returned or handed over.
+async function _toolsOutNote(id) {
+    if (!window.currentToolsOn) return '';
+    let out = [];
+    try {
+        const { data, error } = await window.sbClient.rpc('tl_project_out', { p_folder: id });
+        if (!error && Array.isArray(data)) out = data;
+    } catch (_) { out = []; }
+    if (!out.length) return '';
+    return '\n\n' + out.length + (out.length === 1 ? ' tool is' : ' tools are') + ' still out on this project: '
+        + out.map(t => t.label + ' with ' + t.holder_name).join(', ')
+        + '. They stay in Requests → Tools → Out until returned or handed over.';
+}
 async function markFolderComplete(id) {
     if (window.currentUserRole === 'staff') return;
     const ok = await showConfirm(
         'Mark "' + _folderName(id) + '" as complete? It leaves the project selector and moves into the '
-        + 'Completed section. Nothing is deleted, its costs still count, and you can re-open it any time.',
+        + 'Completed section. Nothing is deleted, its costs still count, and you can re-open it any time.'
+        + await _toolsOutNote(id),
         { title: 'Mark as Complete', confirm: 'Mark Complete', tone: 'ok' });
     if (!ok) return;
     try {
@@ -7570,6 +8130,12 @@ window.lcSyncFromPortal = function(folderId, contracts, payroll) {
     expLaborContracts = Array.isArray(contracts) ? contracts : [];
     if (Array.isArray(payroll)) expPayroll = payroll;   // raw payroll docs (have totalSalary + contractId)
     if (typeof lcPopulatePayrollPicker === 'function') lcPopulatePayrollPicker();
+    // Linked Labor (0113): fetch linked accounts' worker numbers for the labels,
+    // then redraw the picker once they are known.
+    const linked = expLaborContracts.filter(c => c && c.workerId).map(c => c.workerId);
+    if (linked.length && window.LinkedLabor) {
+        window.LinkedLabor.people(linked).then(() => { if (typeof lcPopulatePayrollPicker === 'function') lcPopulatePayrollPicker(); });
+    }
     // Contract roles feed the expense Category dropdown — rebuild it now that the
     // active folder's contracts are known.
     if (typeof refreshCategoryDropdown === 'function') refreshCategoryDropdown();
@@ -7994,11 +8560,17 @@ function lcViewAgreementCurrent() {
 // the screen it was printed from. A blank name groups with nothing — nameless
 // contracts are not all the same person.
 function lcWorkerContracts(c) {
-    const key = String((c && c.workerName) || '').trim();
+    // Linked Labor (migration 0113): a LINKED contract's worker is its account,
+    // so two linked people who share a typed name never share an agreement
+    // sheet, a merge or a card. Unlinked contracts group by trimmed name exactly
+    // as before. (The same key as LinkedLabor.identityKey, written out here so
+    // the money tests can run this slice headless.)
+    const keyOf = (x) => (x && x.workerId) ? 'acct:' + x.workerId : String((x && x.workerName) || '').trim();
+    const key = keyOf(c);
     if (!key) return c ? [c] : [];
     const os = lcIsOutsource(c);
     const cs = (expLaborContracts || [])
-        .filter(x => String(x.workerName || '').trim() === key && lcIsOutsource(x) === os)
+        .filter(x => keyOf(x) === key && lcIsOutsource(x) === os)
         .sort((a, b) => String(a.scope || '').localeCompare(String(b.scope || '')));
     return cs.length ? cs : [c];
 }
@@ -8423,6 +8995,8 @@ function lcOpenNew(category) {
     lcFillWorkerDatalist();
     openExpModal('laborContractModal');
     lcAgrPopulate(null);
+    // Linked Labor (0113): the main owner's optional WorkMate account picker.
+    if (window.LinkedLabor) window.LinkedLabor.formOpened(null);
 }
 function lcOpenEdit(id) {
     const c = expLaborContracts.find(x => x.id === id); if (!c) return;
@@ -8442,6 +9016,8 @@ function lcOpenEdit(id) {
     lcFillWorkerDatalist();
     openExpModal('laborContractModal');
     lcAgrPopulate(c);
+    // Linked Labor (0113): the reason box, and daily↔fixed locked once signed or paid.
+    if (window.LinkedLabor) window.LinkedLabor.formOpened(c, expPayroll);
 }
 function setupLaborContractFormListeners() {
     const form = document.getElementById('laborContractForm');
@@ -8518,7 +9094,11 @@ async function handleSaveLaborContract(e) {
                 update.capHistory = hist;
             }
             if (agrFields) Object.assign(update, agrFields);   // attach/replace/clear PDF
-            try {
+            // Linked Labor (0113): one server step (lc_edit) that keeps the old
+            // terms and, once the contract is signed or paid, needs the reason.
+            if (window.LinkedLabor) {
+                await window.LinkedLabor.edit(id, update, window.LinkedLabor.formReason());
+            } else try {
                 await db.collection('laborContracts').doc(id).update(update);
             } catch (colErr) {
                 // Fallback if the DB doesn't have the newer agreement_pdf_name column
@@ -8542,17 +9122,26 @@ async function handleSaveLaborContract(e) {
                 } else { throw colErr; }
             }
         } else {
+            // Linked Labor (0113): the main owner may choose the WorkMate account
+            // now; the server checks who is choosing and that the account is an
+            // active worker of this company. Staff never see the picker.
+            const workerId = (!isOutsource && window.LinkedLabor) ? window.LinkedLabor.formAccountId() : null;
             const addDoc = {
                 userId: _uid(), folderId, workerName, scope, trade, agreedAmount, payType, notes, category, works, payBasis,
                 status: 'ongoing',
                 capHistory: [{ amount: agreedAmount, at: new Date().toISOString(), note: 'Initial cap' }],
                 ...(agrFields || { agreementSigned: false }),
+                ...(workerId ? { workerId } : {}),
                 createdAt: firebase.firestore.FieldValue.serverTimestamp()
             };
             try {
                 await db.collection('laborContracts').add(addDoc);
             } catch (colErr) {
                 if (/agreement_pdf_name|trade|category|works|pay_basis|column/i.test(colErr.message || '')) {
+                    if (/worker_id/i.test(colErr.message || '')) {              // migration 0113 not applied yet
+                        delete addDoc.workerId;
+                        if (workerId) { showExpNotif('Linking needs migration 0113 — saved without the WorkMate account.', 'error'); }
+                    }
                     delete addDoc.agreementPdfName;
                     if (/trade/i.test(colErr.message || '')) delete addDoc.trade;   // migration 0039 not applied yet
                     if (/category/i.test(colErr.message || '')) {                   // migration 0057 not applied yet
@@ -8574,7 +9163,10 @@ async function handleSaveLaborContract(e) {
         showExpNotif((agrFields && agrFields.agreementSigned) ? 'Contract saved — agreement PDF attached ✓' : 'Contract saved ✓', 'success');
         closeExpModal('laborContractModal');
     } catch (err) {
-        showExpNotif('Error: ' + err.message, 'error');
+        // LinkedLabor's own errors are already in plain words (err.raw); a
+        // refusal from the contract guard on a direct save is translated here.
+        const LL = window.LinkedLabor;
+        showExpNotif(LL && !(err && err.raw) ? LL.errorText(err) : (err && err.raw ? err.message : 'Error: ' + err.message), 'error');
     } finally { showExpLoading('lcSaveBtn', false); }
 }
 // Raise cap. Was a native browser prompt() — no branding, no sense of what the
@@ -8588,6 +9180,8 @@ function lcOpenRaiseCap(id) {
 
     const existing = document.getElementById('lcCapOverlay');
     if (existing) existing.remove();
+    // Linked Labor (0113): once signed or paid, a cap change needs a reason.
+    const _lcCapEst = window.LinkedLabor ? window.LinkedLabor.isEstablished(c, expPayroll) : false;
 
     // Cap history = entries carrying an amount (file uploads share capHistory).
     const hist = (Array.isArray(c.capHistory) ? c.capHistory : []).filter(h => h && h.amount != null);
@@ -8624,6 +9218,9 @@ function lcOpenRaiseCap(id) {
                 style="flex:1;border:0;outline:none;background:transparent;font-size:18px;color:#1C1C1E;font-variant-numeric:tabular-nums;width:100%;">
             </div>
             <div id="lcCapDelta" style="margin-top:12px;"></div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#A1A1A6;margin:18px 0 6px;">Reason${_lcCapEst ? ' <span style="color:#B4453A;">(required: signed or paid)</span>' : ' <span style="font-weight:500;text-transform:none;letter-spacing:0;">(optional)</span>'}</div>
+            <textarea id="lcCapReason" rows="2" maxlength="500" placeholder="e.g. Added the rear wall"
+              style="width:100%;border:1.5px solid #D1D5DB;border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;"></textarea>
             <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#A1A1A6;margin:22px 0 2px;">Cap history</div>
             <div>${histHtml}</div>
           </div>
@@ -8666,20 +9263,26 @@ function lcOpenRaiseCap(id) {
     const save = async () => {
         const next = parse();
         if (next <= 0) { showExpNotif('Enter a valid amount.', 'error'); return; }
+        const reason = String((ov.querySelector('#lcCapReason') || {}).value || '').trim();
+        if (_lcCapEst && !reason) { showExpNotif('This contract is signed or paid. Give a reason for the change.', 'error'); return; }
         const btn = ov.querySelector('#lcCapSave');
         btn.disabled = true; btn.textContent = 'Saving…';
         try {
             const h = Array.isArray(c.capHistory) ? c.capHistory.slice() : [];
             h.push({ amount: next, at: new Date().toISOString(), note: next >= cur ? 'Raised cap' : 'Lowered cap' });
-            await db.collection('laborContracts').doc(id).update({
-                agreedAmount: next, capHistory: h,
-                updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
+            if (window.LinkedLabor) {
+                await window.LinkedLabor.edit(id, { agreedAmount: next, capHistory: h }, reason);
+            } else {
+                await db.collection('laborContracts').doc(id).update({
+                    agreedAmount: next, capHistory: h,
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            }
             close();
             showExpNotif('Cap updated ✓', 'success');
         } catch (err) {
             btn.disabled = false; btn.textContent = 'Update cap';
-            showExpNotif('Error: ' + err.message, 'error');
+            showExpNotif(err && err.raw ? err.message : 'Error: ' + err.message, 'error');
         }
     };
     ov.querySelector('#lcCapSave').addEventListener('click', save);
@@ -8692,16 +9295,33 @@ function lcOpenRaiseCap(id) {
     input.focus();
     input.select();
 }
+// Linked Labor (0113): a linked contract is never deleted (end it, or unlink
+// it first); a signed or paid one needs a reason and its terms stay in its
+// history (lc_delete). A draft deletes as before.
 async function lcDelete(id) {
+    const c = (expLaborContracts || []).find(x => x.id === id) || null;
+    const LL = window.LinkedLabor;
+    if (c && c.workerId) { showExpNotif(LL ? LL.MESSAGES.LC_LINKED : 'This contract is linked to a WorkMate account.', 'error'); return; }
     const paid = lcPaid(id);
-    const msg = paid > 0
-        ? 'This contract has ₱' + formatNum(paid) + ' in linked payments. Deleting it unlinks them (the payroll rows stay). Continue?'
-        : 'Delete this labor contract?';
-    if (!await showDeleteConfirm(msg)) return;
+    const unlinkNote = paid > 0
+        ? 'This contract has ₱' + formatNum(paid) + ' in linked payments. Deleting it unlinks them (the payroll rows stay). '
+        : '';
+    let reason = '';
+    if (LL && c && LL.isEstablished(c, expPayroll)) {
+        reason = await LL.askReason({
+            title: 'Delete this contract', sub: (c.workerName || '') + ' · ' + (c.scope || 'job'), action: 'Delete',
+            body: unlinkNote + 'It is signed or paid, so its terms are kept in its history.',
+            placeholder: 'e.g. Entered twice' });
+        if (reason === null) return;
+    } else {
+        const msg = paid > 0 ? unlinkNote + 'Continue?' : 'Delete this labor contract?';
+        if (!await showDeleteConfirm(msg)) return;
+    }
     try {
-        await db.collection('laborContracts').doc(id).delete();
+        if (LL) await LL.remove(id, reason);
+        else await db.collection('laborContracts').doc(id).delete();
         showExpNotif('Contract deleted', 'success');
-    } catch (err) { showExpNotif('Error: ' + err.message, 'error'); }
+    } catch (err) { showExpNotif(err && err.raw ? err.message : 'Error: ' + err.message, 'error'); }
 }
 
 // ── Merge a worker's jobs into ONE lumpsum contract ────────────────────
@@ -8709,110 +9329,82 @@ async function lcDelete(id) {
 // ONE capped contract that LISTS those five as its `works` (migration 0062), so
 // the next payment is tagged once instead of split five ways.
 //
-// ORDER IS LOAD-BEARING, and this is the whole reason it is not a bare SQL
-// script. `payroll.contract_id` is `on delete set null` (migration 0014), so
-// deleting a contract UNLINKS its payments. Delete first and the worker's paid-
-// to-date silently becomes 0 while the pesos drift into "Other (uncapped)
-// payments". The three steps therefore run in this order, and only this order:
+// ONE SERVER STEP (lc_merge, migration 0113), all or nothing: the keeper takes
+// the summed cap, the works and the title, every payroll row of the others is
+// repointed to it, then the others are deleted, with each one's terms kept in
+// its history. It used to be four browser saves in a careful order; a failure
+// part-way can no longer leave half a merge.
 //
-//   1. UPDATE THE KEEPER first — title, summed cap, works list. If the `works`
-//      column is missing (migration 0062 unapplied) this is where it fails, and
-//      it fails BEFORE anything has been repointed or deleted. Nothing is lost.
-//   2. REPOINT the other contracts' payroll rows onto the keeper.
-//   3. DELETE the now-empty contracts.
-//
-// A failure part-way leaves a state the merge can simply be re-run on: the
-// keeper is already a lumpsum, some rows already point at it, and the leftovers
-// still exist to be swept up. It never strands money.
+// Only ONE PERSON's contracts on ONE PROJECT: all linked to the same WorkMate
+// account, or all unlinked with the same typed name (lcWorkerContracts); never
+// across projects (Additional Works is a project of its own) and never across
+// daily and fixed. A reason is needed if any of them is signed or paid.
 //
 // The money does not move. The new cap is the SUM of the old caps and every
 // payroll row is preserved (only its contract_id changes), so agreed / paid /
 // remaining read exactly as they did before — which is what §M of
 // money-math.test.js asserts about the two shapes in the first place.
-// `preconfirmed` is set by lcOpenMerge, whose own dialog already spells out the
-// works, the cap and the deletions. Without it the user is asked twice, the
-// second time through showDeleteConfirm — which is branded "Confirm Delete" with
-// a red Delete button, and so misnames a merge as a deletion. The fallback
-// confirm stays for any other caller reaching this directly.
-async function lcMergeToLumpsum(workerName, title, preconfirmed) {
+// `arg` is a contract id (the card passes its first job) or, as before, a
+// typed name. `preconfirmed` is set by lcOpenMerge, whose own dialog already
+// spells out the works, the cap and the deletions.
+function lcMergeSeed(arg) {
+    const list = expLaborContracts || [];
+    const byId = list.find(c => c.id === arg);
+    if (byId) return byId;
+    const key = String(arg || '').trim();
+    return list.find(c => !c.workerId && String(c.workerName || '').trim() === key) || null;
+}
+async function lcMergeToLumpsum(arg, title, preconfirmed, reason) {
     if (_staff()) return;                       // a money action, like the amounts themselves
-    const key = String(workerName || '').trim();
-    const seed = (expLaborContracts || []).find(c => String(c.workerName || '').trim() === key);
-    if (!seed) { showExpNotif('No contracts found for ' + (key || 'this worker') + '.', 'error'); return; }
+    const seed = lcMergeSeed(arg);
+    if (!seed) { showExpNotif('No contracts found for ' + (String(arg || '').trim() || 'this worker') + '.', 'error'); return; }
+    const LL = window.LinkedLabor;
+    const label = LL ? LL.labelOf(seed) : String(seed.workerName || '').trim();
 
-    // Exactly the jobs the WORKER CARD shows — same trimmed, case-sensitive name
-    // and same category filter (lcWorkerContracts), so the merge can never sweep
-    // in a vendor subcontract or a differently-cased second card.
+    // Exactly the jobs the WORKER CARD shows — the same person and the same
+    // category (lcWorkerContracts), so the merge can never sweep in a vendor
+    // subcontract, a differently-cased second card or a same-name other person.
     const cs = lcWorkerContracts(seed);
-    if (cs.length < 2) { showExpNotif('Nothing to merge — ' + key + ' has only one contract.', 'error'); return; }
-
-    // A contract already carrying works contributes THOSE works, not its
-    // container title, so merging a lumpsum with more jobs stays flat.
-    const works = cs.reduce((a, c) => {
-        const w = lcWorksList(c);
-        return a.concat(w.length ? w : [c.scope || 'Untitled job']);
-    }, []);
-    const total = cs.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
+    if (cs.length < 2) { showExpNotif('Nothing to merge — ' + label + ' has only one contract.', 'error'); return; }
+    const problem = LL ? LL.mergeProblem(cs) : null;
+    if (problem === 'BASIS') { showExpNotif(LL.MESSAGES.LC_MERGE_BASIS, 'error'); return; }
+    if (problem === 'FOLDER') { showExpNotif(LL.MESSAGES.LC_MERGE_FOLDER, 'error'); return; }
+    if (problem) { showExpNotif(LL.MESSAGES.LC_MERGE_MIXED, 'error'); return; }
 
     // The keeper carries the signed agreement if one of them does — the sheet is
     // per worker, so losing the PDF to a delete would lose the whole agreement.
     const keeper = cs.find(c => c.agreementPdfUrl && String(c.agreementPdfUrl).trim()) || cs[0];
-    const losers = cs.filter(c => c.id !== keeper.id);
-    const paidBefore = cs.reduce((s, c) => s + lcPaid(c.id), 0);
-    const moving = (expPayroll || []).filter(p => losers.some(l => l.id === p.contractId));
-
-    const msg = 'Merge ' + cs.length + ' jobs into ONE lumpsum contract for ' + key + '?\n\n'
-        + '₱' + formatNum(total) + ' agreed · ₱' + formatNum(paidBefore) + ' paid · '
-        + moving.length + ' payment' + (moving.length === 1 ? '' : 's') + ' will be re-tagged.\n\n'
-        + 'The ' + losers.length + ' extra contracts are then deleted. This cannot be undone.';
-    if (!preconfirmed && !await showDeleteConfirm(msg)) return;
-
-    const hist = Array.isArray(keeper.capHistory) ? keeper.capHistory.slice() : [];
-    if ((parseFloat(keeper.agreedAmount) || 0) !== total) {
-        hist.push({ amount: total, at: new Date().toISOString(),
-                    note: 'Merged ' + cs.length + ' jobs into one lumpsum' });
+    if (!preconfirmed) {
+        const total = cs.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
+        const msg = 'Merge ' + cs.length + ' jobs into ONE lumpsum contract for ' + label + '?\n\n'
+            + '₱' + formatNum(total) + ' agreed · ₱' + formatNum(cs.reduce((s, c) => s + lcPaid(c.id), 0)) + ' paid.\n\n'
+            + 'The ' + (cs.length - 1) + ' extra contracts are then deleted. This cannot be undone.';
+        if (!await showDeleteConfirm(msg)) return;
     }
-
     try {
-        // 1. Keeper first — the migration-0062 guard. If `works` does not exist
-        //    this throws here, with every contract and payment still untouched.
-        await db.collection('laborContracts').doc(keeper.id).update({
-            scope: String(title || '').trim() || 'General Works Package',
-            agreedAmount: total,
-            works: works,
-            capHistory: hist,
-            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-        });
-
-        // 2. Repoint the payments BEFORE the deletes below unlink them.
-        for (const p of moving) {
-            await db.collection('payroll').doc(p.id).update({ contractId: keeper.id });
-        }
-
-        // 3. Only now are the leftovers empty and safe to remove.
-        for (const l of losers) {
-            await db.collection('laborContracts').doc(l.id).delete();
-        }
-
+        if (!LL) throw new Error('Linked Labor is not loaded.');
+        await LL.merge(cs.map(c => c.id), keeper.id, title, reason || '');
         showExpNotif('Merged ' + cs.length + ' jobs into one lumpsum ✓', 'success');
     } catch (err) {
-        showExpNotif(/works|column/i.test(err.message || '')
-            ? 'Merge stopped: migration 0062 is not applied, so the works list cannot be saved. Nothing was changed.'
-            : 'Merge failed: ' + err.message + ' — re-run it to finish.', 'error');
+        // lc_merge is one transaction: a failure leaves every contract and payment as it was.
+        showExpNotif((err && err.raw ? err.message : 'Merge failed: ' + err.message) + ' Nothing was changed.', 'error');
     }
 }
 // Confirm-and-name dialog. The title becomes the contract's visible name for
 // good, so it is asked for once here rather than defaulted silently.
-function lcOpenMerge(workerName) {
-    const key = String(workerName || '').trim();
-    const seed = (expLaborContracts || []).find(c => String(c.workerName || '').trim() === key);
+function lcOpenMerge(arg) {
+    const seed = lcMergeSeed(arg);
     if (!seed) return;
+    const LL = window.LinkedLabor;
+    const label = LL ? LL.labelOf(seed) : String(seed.workerName || '').trim();
     const cs = lcWorkerContracts(seed);
     const total = cs.reduce((s, c) => s + (parseFloat(c.agreedAmount) || 0), 0);
     const jobs = cs.map(c => {
         const w = lcWorksList(c);
         return w.length ? w : [c.scope || 'Untitled job'];
     }).reduce((a, b) => a.concat(b), []);
+    // Linked Labor (0113): a reason is needed if any of them is signed or paid.
+    const needReason = !!LL && cs.some(c => LL.isEstablished(c, expPayroll));
 
     const existing = document.getElementById('lcMergeOverlay');
     if (existing) existing.remove();
@@ -8825,7 +9417,7 @@ function lcOpenMerge(workerName) {
           <div class="lcm-head">
             <div>
               <h3 class="lcm-title">Merge into one lumpsum</h3>
-              <div class="lcm-sub">${_mvpEsc(key)} · ${cs.length} jobs</div>
+              <div class="lcm-sub">${_mvpEsc(label)} · ${cs.length} jobs</div>
             </div>
             <button type="button" class="lcm-x" data-merge-close aria-label="Close">&times;</button>
           </div>
@@ -8843,10 +9435,13 @@ function lcOpenMerge(workerName) {
               <span style="font-size:12.5px;font-weight:600;color:#6C6C70;">One agreed cap</span>
               <span class="num" style="font-size:18px;color:#1C1C1E;font-variant-numeric:tabular-nums;">₱ ${formatNum(total)}</span>
             </div>
+            <div style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#A1A1A6;margin:18px 0 6px;">Reason${needReason ? ' <span style="color:#B4453A;">(required: signed or paid)</span>' : ' <span style="font-weight:500;text-transform:none;letter-spacing:0;">(optional)</span>'}</div>
+            <textarea id="lcMergeReason" rows="2" maxlength="500" placeholder="e.g. One agreement for the whole job"
+              style="width:100%;border:1.5px solid #D1D5DB;border-radius:10px;padding:10px 12px;font:inherit;font-size:14px;"></textarea>
             <div style="margin-top:12px;font-size:12px;color:#8A8A8E;line-height:1.55;">
               Every payment stays exactly where it is — it is only re-tagged onto the one
               contract, so paid and remaining do not change. The ${cs.length - 1} extra
-              contracts are then deleted. <b>This cannot be undone.</b>
+              contracts are then deleted, and their terms kept in their history. <b>This cannot be undone.</b>
             </div>
           </div>
           <div class="lcm-foot">
@@ -8859,8 +9454,10 @@ function lcOpenMerge(workerName) {
     const go = ov.querySelector('#lcMergeGo');
     if (go) go.onclick = async () => {
         const title = (ov.querySelector('#lcMergeTitle') || {}).value || '';
+        const reason = String((ov.querySelector('#lcMergeReason') || {}).value || '').trim();
+        if (needReason && !reason) { showExpNotif('Some of these contracts are signed or paid. Give a reason for the merge.', 'error'); return; }
         ov.remove();
-        await lcMergeToLumpsum(key, title, true);   // this dialog IS the confirmation
+        await lcMergeToLumpsum(seed.id, title, true, reason);   // this dialog IS the confirmation
     };
 }
 
@@ -8871,6 +9468,10 @@ function lcOpenMerge(workerName) {
 // drawdown, and lcPaid() sums rows by contractId, so a row can only carry one.
 function lcPopulatePayrollPicker() {
     lcFillWorkerDatalist();
+    // Staff record payments but never learn a contract's total: what is "left",
+    // with the pesos paid beside it, IS the total (owner decision 2026-11-09).
+    // A daily job has no total, so what it has been paid stays.
+    const staff = window.currentUserRole === 'staff';
 
     // BOTH kinds are offered here: a payroll row is what draws down an Out Source
     // contract too (migration 0057), so filtering them out would make a vendor
@@ -8883,7 +9484,7 @@ function lcPopulatePayrollPicker() {
         sel.innerHTML = ['<option value="">— None (normal payroll) —</option>'].concat(
             ordered.map(c => '<option value="' + c.id + '">'
                 + (lcIsOutsource(c) ? '[Out Source] ' : '') + _mvpEsc(lcPickerLabel(c))
-                + ' (remaining ₱' + formatNum(lcStats(c).remaining) + ')</option>')).join('');
+                + (staff ? '' : ' (remaining ₱' + formatNum(lcStats(c).remaining) + ')') + '</option>')).join('');
         if (cur && ordered.some(c => c.id === cur)) sel.value = cur;
     }
 
@@ -8906,6 +9507,7 @@ function lcPopulatePayrollPicker() {
                 + _mvpEsc(lcPickerLabel(c)) + '</span>'
                 + (st.daily
                     ? '<span class="exp-funding-check-item__remain is-daily">₱' + formatNum(st.paid) + ' paid · daily</span>'
+                    : staff ? ''
                     : '<span class="exp-funding-check-item__remain' + (st.remaining <= 0 ? ' is-settled' : '')
                       + '">₱' + formatNum(st.remaining) + ' left</span>')
                 + '</label>';
@@ -8919,7 +9521,10 @@ function lcPickerLabel(c) {
     // tells the user this single line is the whole package, so they don't go
     // hunting for the four jobs that used to be listed beside it.
     const n = lcWorksList(c).length;
-    return (c.workerName || 'Worker') + ' · ' + (c.scope || 'job')
+    // Linked Labor (0113): a linked contract carries its worker number, so two
+    // people with one typed name are told apart here too.
+    const tag = (typeof window !== 'undefined' && window.LinkedLabor) ? window.LinkedLabor.tagOf(c) : '';
+    return (c.workerName || 'Worker') + tag + ' · ' + (c.scope || 'job')
         + (n ? ' (' + n + ' works)' : '')
         + (lcIsDaily(c) ? ' — daily' : '');
 }
@@ -9033,7 +9638,12 @@ function lcUpdateRemainingHint(selId, hintId) {
         return;
     }
     hint.style.display = '';
-    if (picked.length === 1) {
+    if (window.currentUserRole === 'staff') {
+        // No balance for staff (see lcPopulatePayrollPicker). The milestone row
+        // below still shows: they choose it when they record the payment.
+        if (picked.length === 1) { hint.style.display = 'none'; hint.innerHTML = ''; }
+        else hint.innerHTML = 'Splitting across <strong>' + picked.length + ' contracts</strong>';
+    } else if (picked.length === 1) {
         const st = lcStats(picked[0]);
         hint.innerHTML = 'Remaining on this contract: <strong class="' + (st.remaining < 0 ? 'lc-neg' : '')
             + '">₱' + formatNum(st.remaining) + '</strong> of ₱' + formatNum(st.agreed) + ' agreed';
@@ -9088,8 +9698,10 @@ function lcConfirmOverCapMulti(alloc) {
     if (!over.length) return true;
     return confirm('This payment takes ' + over.length + (over.length === 1 ? ' contract' : ' contracts')
         + ' over the agreed cap:\n\n'
-        + over.map(o => '· ' + o.name + ' — ₱' + formatNum(o.after) + ' of ₱' + formatNum(o.agreed)
-            + ' (over by ₱' + formatNum(o.after - o.agreed) + ')').join('\n')
+        // Staff get the same stop without the figures: "of ₱X" is the contract's total.
+        + over.map(o => '· ' + o.name + (window.currentUserRole === 'staff' ? ''
+            : ' — ₱' + formatNum(o.after) + ' of ₱' + formatNum(o.agreed)
+              + ' (over by ₱' + formatNum(o.after - o.agreed) + ')')).join('\n')
         + '\n\nSave anyway?');
 }
 // Over-cap guard — returns true to proceed. excludeRowId lets edits ignore their own old amount.
@@ -9099,6 +9711,9 @@ function lcConfirmOverCap(contractId, addAmount, excludeRowId) {
     const agreed = parseFloat(c.agreedAmount) || 0;
     const after = lcPaid(contractId, excludeRowId) + (parseFloat(addAmount) || 0);
     if (agreed > 0 && after > agreed) {
+        if (window.currentUserRole === 'staff') {
+            return confirm('This payment takes the contract over its agreed amount.\n\nSave anyway?');
+        }
         const over = after - agreed;
         return confirm('This payment brings the contract total to ₱' + formatNum(after)
             + ', which exceeds the agreed ₱' + formatNum(agreed) + ' by ₱' + formatNum(over) + '.\n\nSave anyway?');

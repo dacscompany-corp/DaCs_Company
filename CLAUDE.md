@@ -131,6 +131,12 @@ Profit   = Earned − Spent
   (role owner, `owner_id` null, active; **never** `allowed_modules`). History is append-only. Only
   `js/pm-sharing.js` computes it; warranty data reaches it only through `WF.reserveFor`. Owner-role
   only; staff never see it. Spec: `docs/superpowers/specs/2026-10-18-pm-profit-sharing-mvp-terms.md`.
+- **PM sharing personal items (0110) come off one person's share, after the split.** An item the owner or
+  partner bought for themselves: `ownerAfterCents = ownerCents − owner items`, same for the partner. It never
+  changes the sharing balance, the reserve or the split, and is **never** a bill, expense, Spent, Profit, payout
+  or amount owed. Main owner writes (`pm_si_*`, only from `js/pm-sharing-items.js`); owner-role reads; staff
+  nothing. Corrected or voided with a reason, never deleted. Receipts in owner-only `pmSharing/`.
+  Spec: `docs/superpowers/specs/2026-10-31-pm-sharing-personal-items-design.md`.
 - **Worker cash advances (0100) are a tracking ledger outside the money model.** Money advanced to a
   worker on a PM project and the repayments the owner records by hand. Balance = advance −
   non-voided repayments; a repayment can never exceed it, and the server locks the advance row for
@@ -141,6 +147,102 @@ Profit   = Earned − Spent
   every write carries an operation id so a retry records once. Only `js/cash-advance.js` calls the
   `pm_ca_*` functions (`tests/cash-advance.test.js` fences it). Owner-role only; staff never see it.
   Spec: `docs/superpowers/specs/2026-10-19-worker-cash-advances-design.md`.
+- **Stock (0104, WorkMate 2B-a) is quantities only.** Lots, receipts, issues, returns, leftovers, counts and opening
+  stock never read or write a peso, an `expenses` row or Spent; the value of stock and every cost move are 0105
+  (below). "Bought" in request capacity (`pr_portion_bought`) means **covered** — purchases plus live stock
+  records — so Still to buy is never negative; the shopping list's `bought` stays purchases alone. A stock record is
+  never edited, only reversed with a reason. Goods are issued **oldest received first** — by delivery, never by
+  purchase date. A catalogue item's kind and unit are fixed once a request or stock uses it. Only `js/stock-admin.js`
+  and `js/stock-cost-admin.js` call the `stk_*` functions. Dormant until the main owner switches it on; then the old
+  "Add to inventory" tick and `inventory` table refuse writes.
+- **Stock cost moves (0105, WorkMate 2C) — only the main owner moves the cost of stock.** Moving goods never moves
+  their cost: the server opens a pending cost move wherever goods arrive in someone else's cost (company → project,
+  project → project, a company lot back to the warehouse), and until the main owner approves, the cost stays where it
+  was — a pending one covers only what is still there. Approval writes **ordinary expense rows**
+  (`expenses.stk_cost_move_id`): the receiving project funded like a purchase (the month it received the goods), the
+  giving project **negative** rows on every billing period / Cover group that carried that lot's cost, in proportion.
+  They count in Material / Spent / Cover like any row — never filter them out. Value is by lot (item amount − discount +
+  delivery fee); the last portion takes what is left, so a line's portions always add up to it. **Company stock is never
+  in a project's Spent and never G&A**; a confirmed loss of company goods goes to company stock loss with no expense row.
+  Cost-move rows are never edited or deleted (`STOCK_COST_ROW`) — the main owner reverses the cost move with a reason; a
+  movement whose cost was approved is not reversed (`COST_MOVED`), a line's price can't change under approved moves
+  (`STOCK_COST_IN_USE`), and neither can where the purchase's cost sits — its billing periods and Cover: a correction,
+  re-fund or approved change request that would move its rows waits until those moves are reversed (`STOCK_COST_FUNDING`). Values are for owner accounts only: staff see the "Stock cost move" row and its state, never its
+  pesos, and it is left out of their subtotals (`_hideStockCost`). Pesos for stock live only in `js/stock-cost-admin.js`.
+- **Tools (0107, WorkMate 3a) are custody only — no money.** A catalogue item of kind `tool` is tracked as numbered tools
+  (TOOL-0001…, never reused), never as quantity stock (`TOOL_ITEM` / `TOOL_LINE`). A tool's cost stays where its purchase
+  put it — no value per tool, no depreciation, no charge for using one, no cost move. Nothing in tools reads or writes a
+  peso, an `expenses` row or Spent. **A tool at a project always has a named responsible person** (anyone active in the
+  company); one there that needs repair or is missing parts stays with that person but is not handed over until Repaired.
+  Lost and Retire wait for
+  the main owner, and a rejection puts the tool back where it was (Retire: Under repair). In request figures a tool counts
+  **once**: covered = purchases + stock + tools issued for the line that were **not** bought for it (`pr_line_bought`); a
+  return or handover keeps it filled, reversing an issue reopens it only if that issue counted on its own. Records are never
+  edited — reversed with a reason while they are the tool's latest. Only `js/tools-admin.js` calls the `tl_*` operations.
+  Dormant until the main owner switches tools on.
+- **Tools on the phone (0111, WorkMate 3b-a) — still no money.** A worker sees their own tools and can report a problem,
+  which changes no tool, holder or record. A team leader acts only for the current members of the teams they lead now,
+  checked on every call by `tl_i_lead`, never by the role alone. `tl_team_*` check that and then call 0107's own functions, so
+  every tool rule holds; `tl_actor` is the only 0107 function redefined. A leader finds a tool to issue by typing its number:
+  `tl_team_find` answers only for an Available tool of this company, and gives one refusal for everything else, so it reveals
+  no custody or history. A request link uses 0107's fill-once rules, limited to lines the leader can already see; any other
+  line is `REQUEST_NEEDS_OFFICE`. No photos on the phone: the `tools/` folder stays office-only. No phone reader returns a
+  purchase link, an office note or a photo.
+- **The Team Leader role (0111) changes only through `wk_set_team_leader`:** main owner only (owner role, `owner_id` null,
+  active; **never** `allowed_modules`), logged append-only, refused while the person leads an active team. It joins, removes and
+  names nobody. The role alone gives no powers: being named leader of a team does. A labor contract, a pay type or payroll's
+  typed "Team Lead" **never** gives the role. A named leader without the role or with a switched-off account counts as no leader
+  (`leader_problem` in `pr_office_teams`); read the mark through that, not `is_leader` alone.
+- **A temporary password (0111) is set only by the `admin-set-worker-password` Edge Function:** main owner only, one active
+  worker or team leader of this company at a time, and each needs the owner's approval. It is shown once and never stored or
+  logged. **A reset invalidates the worker's sessions. Phones can continue using their current access until it expires, then
+  the worker needs to sign in again.** (GoTrue's admin password change.) Check the old app's "Not sent yet" first. Attendance waiting to send stays on the phone. It can sync before the worker signs in again if the phone's current
+  access is still valid. Otherwise, the same worker needs to sign in again. `attendance-signin` and the `profiles` columns stay
+  untouched: the old Attendance app reads both and cannot be updated.
+- **Reconciliation (0109, WorkMate Stage 4) reads and points — it moves no money.** The owner's **Reconciliation** tab
+  (Requests → Purchasing, owner accounts; petty cash, own money, returns, disputes and Overpaid for the main owner only)
+  shows where every peso of each purchase sits — its own project, other projects, company stock, company stock loss — and
+  the difference, which must be **₱0**: a difference is a bug to report, never a business event. **"Cover is right"** only
+  clears a line's Office review flag, with a reason; its rows stay on Cover and in Spent, and a correction re-checks the
+  line (only a line's newest mark applies). **Bills to check** never changes a bill (Q25). Nothing in `rec_*` or
+  `js/reconciliation-admin.js` writes an expense row, payment, billing period or bill, or feeds `_projSpent` /
+  `_projEarned` / `_projMargin` / `_recognisedProfit` (§Y of `money-math.test.js`). **A payment is recorded only from the
+  person's own choice** — Project Control's "Paid now?" (owner accounts and Buyer staff; default Not paid yet) or
+  Purchasing's Record payment — never from "Paid with", a receipt photo or anything else on record
+  (`supabase/tests/4_confirmed_payments.sql` stays empty: not needed, the payments were entered by hand).
+  **Add Expense records a save once** (`js/expense-pending-save.js`): its id and body are kept in the browser until
+  the server answers, one save at a time per account across tabs, and the id is registered (`pur_op_reserve`) before it is
+  sent — a save whose id the browser cannot read is settled only by `pur_op_recover`, never cleared by hand. Every request
+  of a save carries the sign-in of the account that pressed Save (`_expBoundCalls`) — never the shared `sbClient`, whose
+  session follows whoever signed in last in any tab; a sign-in change stops the save and keeps it for that account.
+  Only `js/reconciliation-admin.js` calls the `rec_*` functions. Spec:
+  `docs/superpowers/specs/2026-10-30-workmate-stage4-reconciliation-questions.md`.
+- **Linked Labor (0113) links a Project Control labor contract to a worker's WorkMate account — it moves no money.**
+  `labor_contracts.worker_id` is set, changed or cleared **only by the main owner** (`lc_link`, or the account picker
+  on New Labor Contract) — never by name, never in bulk, never by payroll names or a contract's leader. The linked
+  worker sees only their own agreements on the phone (`ll_my_agreements`): progress from that project's own BOQ
+  (Additional Works never borrows the main project's figure), agreed / paid / balance under `lcPaid`'s rule, and
+  payments as date · amount · method. **Online only: nothing about money is saved on the phone.** Every Project Control
+  labor contract keeps an append-only history (`lc_events`, owner accounts only): once **signed or paid**, its terms
+  change only with a reason, daily↔fixed is locked, and `capHistory` only grows. A linked contract is never deleted;
+  **ending one marks nothing paid and moves no payment** (it can still be paid to settle it). Worker cards, statements,
+  the agreement print and merges group by **linked account first, then typed name**. Merging is one server step
+  (`lc_merge`) that only repoints payroll to the keeper, and **never crosses projects** (Additional Works is a project
+  of its own). A blank box (`''`, `[]`) is never a change of terms. Only `js/linked-labor.js` calls the `lc_*` functions; §Z of
+  `money-math.test.js` keeps every money function free of them. Spec:
+  `docs/superpowers/specs/2026-11-04-workmate-linked-labor-contracts-mvp-terms.md`.
+
+- **Acknowledgement Receipts (0114) are a record of a document, outside the money model.** Each client billing period
+  can have one live receipt, whose amount is **always that period's Fund Allocated, read by the server**: no `bar_*`
+  function accepts an amount. Numbers (`AR-YYYYMM-NNN`) are never reused. If Fund Allocated changes, the receipt is voided
+  with a reason, kept on record and re-issued with a new number; voiding is the only change a receipt can receive. Nothing
+  may feed a receipt into Spent / Earned / Profit or turn one into an invoice or payment. The **Overall Billing
+  Acknowledgement** lists each client billing's amount and the total received, not saved or numbered. The **Billing Request** (`_pcBillingRequestHTML`) asks first
+  for a percentage of the contract and prints it with its peso amount (a document only: it creates no billing period and
+  records no money), then each client billing's amount and the total allocated, for client billing periods only. It shows
+  no spending, and leaving Cover off that page changes nothing about Spent elsewhere. Owner accounts only; Cover periods get
+  none of the three. Only `js/billing-receipts.js` calls the `bar_*` functions. Spec:
+  `docs/superpowers/specs/2026-11-09-billing-acknowledgement-receipts-mvp-terms.md`.
 
 Full reasoning: [docs/OVERHEAD_MODULE.md](docs/OVERHEAD_MODULE.md).
 
@@ -212,9 +314,9 @@ exceptions: the Buyer purchasing rule under *Money invariants*, and **data entry
 Control** (owner decision 2026-10-15): staff add and edit material expenses and payroll there, so
 the Add/Edit Expense and Payroll forms, and the Materials and Labor lists (rows, category
 subtotals, paid so far), show staff the peso amounts. **Never a share of the contract** in those
-screens — with the pesos it would reveal the contract value. Everything else in Project Control
+screens — with the pesos it would reveal the contract value — and no balance, progress bar or payment-calculated Ongoing / Completed / Over cap badge of a capped contract, in the tracker or the payment forms; the over-cap stop names no figure (owner decision 2026-11-09). A project's real completion and a contract's Ended stay. Everything else in Project Control
 stays amount-free for staff — profit, contract, actual cost, fund allocated, budget remaining,
 cover, agreed contract totals, CSV, prints, receipts and contract management (caps, ledgers,
 statements). Staff never see billing budgets, so their payroll goes to
 the payment month's client-funded period (`_payStaffPeriodId`); their purchases are funded by the
-server (`pur_record`). `tests/project-control-staff.test.js` fences both sides.
+server (`pur_record`). `tests/project-control-staff.test.js` fences both sides. **All of this is on-screen hiding only:** the staff browser still receives the amounts (`lc_admin` lets staff read `labor_contracts`), so it does not stop a staff account inspecting what the browser received.

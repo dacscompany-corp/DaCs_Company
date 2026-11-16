@@ -66,19 +66,28 @@
         return !!(r && (r.purchaseLineId || r.purchaseChargeId));
     }
 
+    // A stock cost move's rows (0105): read-only, reversed as one by the main
+    // owner (Requests → Stock) — never edited or deleted part by part.
+    function isStockCostRow(r) {
+        return !!(r && (r.stkCostMoveId || (r._parts || []).some(function (p) { return p.stkCostMoveId; })));
+    }
+
     // The billing period column for a (grouped) row: "Billing #1 + Billing #2"
-    // for a split. labelOf(periodId) returns a period's label or ''.
+    // for a split; a part on Cover reads "Billing #1 (Cover)". Owner screens
+    // only (reports, CSV, print). labelOf(periodId) returns a period's label or ''.
     function periodLabel(r, labelOf) {
         if (!r._parts) return labelOf(r.projectId) || '';
         return r._parts.map(function (p) {
-            return labelOf(p.projectId) || (p.projectId ? '' : 'No billing period');
+            var label = labelOf(p.projectId) || (p.projectId ? '' : 'No billing period');
+            return label && p.coverExpense ? label + ' (Cover)' : label;
         }).filter(Boolean).join(' + ');
     }
 
     root.expGroupSplitRows = groupSplitRows;
     root.expIsPurchaseRow = isPurchaseRow;
+    root.expIsStockCostRow = isStockCostRow;
     root.expSplitPeriodLabel = periodLabel;
     if (typeof module !== 'undefined' && module.exports) {
-        module.exports = { groupSplitRows: groupSplitRows, isPurchaseRow: isPurchaseRow, periodLabel: periodLabel };
+        module.exports = { groupSplitRows: groupSplitRows, isPurchaseRow: isPurchaseRow, isStockCostRow: isStockCostRow, periodLabel: periodLabel };
     }
 })(typeof window !== 'undefined' ? window : globalThis);

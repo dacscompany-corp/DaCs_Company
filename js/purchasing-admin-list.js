@@ -2,13 +2,23 @@
 // Requests → Purchasing (0097). Buyers only (the nav hides it otherwise;
 // the server refuses everyone else).
 //
-// One view with three tabs:
+// One view with four tabs:
 //   Shopping list    — this file: every open request line with something
 //                      still to buy, its portions and who is buying each;
 //   Purchases        — js/purchasing-admin-purchases.js;
-//   Owner approvals  — js/purchasing-admin-purchases.js.
+//   Owner approvals  — js/purchasing-admin-purchases.js;
+//   Cash             — js/purchasing-admin-cash.js (0102): the main owner's
+//                      petty-cash tracker, or a buyer's own cash;
+//   Company stock    — owner accounts, once stock is on (2C, 0105):
+//                      js/stock-cost-admin.js.
+//   Reconciliation   — owner accounts (Stage 4, 0109): where every purchase
+//                      peso is, what is waiting, "Cover is right", money
+//                      still out, bills to check — js/reconciliation-admin.js.
 // "Record purchase" (js/purchasing-admin-record.js) opens from the list
 // with the ticked lines.
+// 0104: a line whose catalogue item is in the warehouse says so ("In
+// warehouse: 12", a hint — no reservation) and, once stock is on, offers
+// "Issue from stock" (js/stock-admin.js). "From stock" counts only issues.
 //
 // Wording (spec): Needed · Bought · Still to buy; "Unassigned / You /
 // <name>"; assigning is NOT "arranged" — that stays its own button.
@@ -27,7 +37,19 @@
     function tabs() {
         const t = (id, label) => '<button type="button" class="att-seg-btn' + (ui.tab === id ? ' is-on' : '') + '" data-tab="' + id + '">' + label + '</button>';
         return '<div class="att-seg" role="tablist" aria-label="Purchasing">' +
-            t('list', 'Shopping list') + t('purchases', 'Purchases') + t('approvals', 'Owner approvals') + '</div>';
+            t('list', 'Shopping list') + t('purchases', 'Purchases') + t('approvals', 'Owner approvals') + t('cash', 'Cash') +
+            (companyStockTab() ? t('company', 'Company stock') : '') +
+            (reconcileTab() ? t('reconcile', 'Reconciliation') : '') + '</div>';
+    }
+
+    // Stage 4: the owner's checks — owner accounts (the server refuses anyone else).
+    function reconcileTab() {
+        return !!(root.ReconciliationAdmin && PA.ui.isOwner);
+    }
+
+    // 2C: the value of company stock — owner accounts, once stock is on.
+    function companyStockTab() {
+        return !!(root.StockCostAdmin && root.currentStockOn && PA.ui.isOwner);
     }
 
     // Needed · Bought · Still to buy, as three blocks the eye can compare.
@@ -37,6 +59,7 @@
         return '<div class="pur-stats">' +
             stat('Needed', l.needed) +
             (Number(l.from_stock) > 0 ? stat('From stock', l.from_stock) : '') +
+            (l._tools && Number(l._tools.filled) > 0 ? stat('Tools issued', l._tools.filled) : '') +
             stat('Bought', l.bought) +
             stat('Still to buy', l.still_to_buy, 'is-key') +
             (Number(l.extra) > 0 ? stat('Extra', l.extra) : '') +
@@ -53,6 +76,8 @@
               '<span class="pur-portion-batch">' + esc('Cutoff ' + RA.cutoffLabel(p.cutoff_at)) + '</span></div>' +
             '<div class="pur-pcell"><span class="pur-plabel">To buy</span>' +
               '<span class="pur-portion-qty">' + esc(PA.qty(p.quantity - p.pending_reduction)) + ' needed · ' +
+              (Number(p.from_stock) > 0 ? esc(PA.qty(p.from_stock)) + ' from stock · ' : '') +
+              (Number(p._tools) > 0 ? esc(PA.qty(p._tools)) + ' tools issued · ' : '') +
               esc(PA.qty(p.bought)) + ' bought · <strong>' + esc(PA.qty(p.still_to_buy)) + ' still to buy</strong></span></div>' +
             '<div class="pur-pcell"><span class="pur-plabel">Buyer</span>' +
               '<span class="pur-portion-who' + (p.buyer_id ? '' : ' is-open') + '">' + esc(who) + '</span></div>' +
@@ -81,6 +106,21 @@
                     (l.catalog_name ? ' <span class="req-muted">· ' + esc(l.catalog_name) + '</span>' : '') + ' ' + urgent +
                     (Number(l.unit_checks) > 0 ? ' ' + PA.pill('Office check waiting', 'abandoned') : '') + '</div>' +
                   '<div class="req-muted">' + esc(l.project_name) + ' · ' + esc(l.work_name) + ' · requested by ' + esc(l.requester_name) + '</div>' +
+                  // 0104: warehouse stock of this catalogue item — a hint to check
+                  // before buying (no reservation, Q9); issuing is what counts.
+                  (canBuy && Number(l.in_warehouse) > 0
+                    ? '<div class="pur-instock"><i data-lucide="warehouse"></i> In warehouse: <strong>' + esc(PA.qty(l.in_warehouse)) + ' ' +
+                      esc(l.in_warehouse_unit || l.unit) + '</strong> — check before buying' +
+                      (root.StockAdmin && root.currentStockOn
+                        ? ' <button type="button" class="att-btn att-btn--sm" data-issue="' + esc(l.line_id) + '">Issue from stock…</button>' : '') +
+                      '</div>'
+                    : '') +
+                  // 0107 (Q14): each tool issued for this line — one bought for it
+                  // counts through its purchase, once.
+                  (l._tools && l._tools.tools.length
+                    ? '<div class="pur-instock"><i data-lucide="wrench"></i> Issued: ' + l._tools.tools.map(t => '<strong>' + esc(t.label) + '</strong> with ' +
+                      esc(t.holder_name) + (t.counted ? '' : ', bought for this')).join('; ') + '</div>'
+                    : '') +
                 '</div>' +
                 figures(l) +
               '</div>' +
@@ -111,6 +151,15 @@
             lines = await RA.rpc('pur_shopping_list', { p_batch: ui.batchId || null, p_folder: ui.folderId || null, p_scope: 'open' });
         } catch (e) { RA.fail(host, e); return; }
         lines = lines || [];
+        // 0107 (Q14): the tools issued for these lines, while tools are on.
+        let tools = {};
+        if (root.currentToolsOn && lines.length) {
+            try { tools = (await RA.rpc('tl_line_tools', { p_lines: lines.map(l => l.line_id) })) || {}; } catch (_) { tools = {}; }
+        }
+        lines.forEach(l => {
+            l._tools = tools[l.line_id] || null;
+            (l.portions || []).forEach(p => { p._tools = l._tools && l._tools.portions ? Number(l._tools.portions[p.id] || 0) : 0; });
+        });
         const projects = [];
         lines.forEach(l => { if (!projects.some(p => p.id === l.project_id)) projects.push({ id: l.project_id, name: l.project_name }); });
         const shown = PA.filterList(lines, { text: ui.text, mineOnly: ui.mine, unassignedOnly: ui.unassigned, urgentOnly: ui.urgent, userId: me.userId });
@@ -168,6 +217,10 @@
         if (clr) clr.addEventListener('click', () => { ui.picked = {}; reload(); });
         body.querySelector('[data-unplanned]').addEventListener('click', () => PA.openRecord({ requestLines: [] }));
         body.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => act(b.dataset.act, b.dataset.portion, lines, me, reload)));
+        body.querySelectorAll('[data-issue]').forEach(b => b.addEventListener('click', () => {
+            const line = lines.find(l => l.line_id === b.dataset.issue);
+            if (line && root.StockAdmin) root.StockAdmin.openIssue(line, reload);
+        }));
         RA.icons();
     }
 
@@ -213,6 +266,7 @@
         host.innerHTML = '<div class="att-stack pur-tab req-detail"><div class="att-empty">Loading…</div></div>';
         let me;
         try { me = await PA.me(); } catch (e) { RA.fail(host, e); return; }
+        ui.isOwner = !!me.isOwner;
         if (!me.canBuy) {
             host.innerHTML = '<div class="att-stack"><div class="att-info att-info--warn"><i data-lucide="lock"></i><div>' +
                 esc(PA.ERRORS.BUYER_REQUIRED) + '</div></div></div>';
@@ -232,6 +286,9 @@
         if (ui.tab === 'purchases') return PA.renderPurchases(host.querySelector('[data-body]'), me);
         if (ui.tab === 'approvals') return PA.renderApprovals(host.querySelector('[data-body]'), me);
         if (ui.tab === 'record') return PA.renderRecord(host.querySelector('[data-body]'), me);
+        if (ui.tab === 'cash' && PA.renderCash) return PA.renderCash(host.querySelector('[data-body]'), me);
+        if (ui.tab === 'company' && companyStockTab()) return root.StockCostAdmin.renderCompanyStock(host.querySelector('[data-body]'));
+        if (ui.tab === 'reconcile' && reconcileTab()) return root.ReconciliationAdmin.render(host.querySelector('[data-body]'));
         return renderList(host, me);
     }
 

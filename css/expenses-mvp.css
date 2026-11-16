@@ -3237,6 +3237,13 @@
    lumpsum blue: a lumpsum still has a ceiling, this one has none, and the two
    must not read as the same kind of thing at a glance. */
 .lc2-lump.lc2-daily { background: #FDF3E3; color: #9A6413; }
+/* LINKED LABOR (migration 0113). An ENDED contract keeps its payments and its
+   balance, so it is grey rather than red: nothing is wrong, it is just closed. */
+.lc2-lump.lc2-ended { background: #EFEFF1; color: #6C6C70; }
+/* Who sees this agreement on the phone - owner accounts only. */
+.lc2-link { margin: 0 0 10px; padding: 8px 12px; border-radius: 9px; background: #F6F6F7;
+  color: #6C6C70; font-size: 12px; font-weight: 600; }
+.lc2-link.on { background: #EAF2EC; color: #1A5C3A; }
 
 /* A daily job is TAGGED ALONE, so ticking one locks every other row of the
    payment picker (lcApplyDailyPickLock). Locked rows stay readable - greying

@@ -15,6 +15,42 @@ export const fnText = (src, name) => {
   return m[0];
 };
 
+// PGlite's clock counts whole milliseconds, so the two records one call writes (a damaged return
+// and its Retire request) can share a recorded_at; tl_latest (0107) then picks between them by their
+// random ids, and a check expecting the Retire request to be the latest passes or fails at random.
+// This gives each tool record a strictly later time, on PGlite only. Run right after 0107.
+// On real PostgreSQL, with no test clock, 3b_concurrency.mjs check 10 runs the same case: no ties
+// observed in 200 runs. Live ordering still rests on recorded_at with a random-id tie-break; that is
+// a separate ordering issue, not changed here.
+export const TOOL_RECORD_CLOCK = `
+create sequence test_tool_record_tick;
+alter table tl_records alter column recorded_at
+  set default clock_timestamp() + nextval('test_tool_record_tick') * interval '1 microsecond';`;
+
+// The same for request parts. pr_line_portions.created_at is the time of the step that made the part
+// (now()), and a part split off another (pr_split_portion) can be made in the same millisecond as it, so
+// a list "order by created_at, id" puts the two either way round. This gives each part a strictly later
+// time, on PGlite only; run it before any part is made. On real PostgreSQL, with no test clock,
+// 2a2_concurrency.mjs check 6 splits a part off another: no ties observed in 200 runs.
+export const PORTION_CLOCK = `
+create sequence test_portion_tick;
+alter table pr_line_portions alter column created_at
+  set default now() + nextval('test_portion_tick') * interval '1 microsecond';`;
+
+// 0085's (and 0090's aliases / brand) catalogue columns that the minimal
+// pr_catalog_items above leaves out — 0104 (stock, and its copy of 0092's
+// catalogue save and list) reads them. Run after prBase, before 0104.
+export const CATALOG_0085 = `
+alter table pr_catalog_items add column if not exists kind text not null default 'material';
+alter table pr_catalog_items add column if not exists spec text not null default '';
+alter table pr_catalog_items add column if not exists unit text not null default 'bag';
+alter table pr_catalog_items add column if not exists category text not null default '';
+alter table pr_catalog_items add column if not exists active boolean not null default true;
+alter table pr_catalog_items add column if not exists updated_at timestamptz not null default now();
+alter table pr_catalog_items add column if not exists aliases text[] not null default '{}';
+alter table pr_catalog_items add column if not exists brand text not null default '';
+`;
+
 export function prBase(ROOT) {
   const mig = (f) => read(path.join(ROOT, 'supabase/migrations', f));
   const M02 = mig('0002_rls.sql');

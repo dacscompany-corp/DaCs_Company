@@ -47,6 +47,8 @@ function loadPmAdmin(opts = {}) {
     + '\nfunction setText(id, v) { const e = document.getElementById(id); if (e) e.textContent = v; }\n', ctx);
   vm.runInContext(read('js/pm-sharing.js'), ctx, { filename: 'pm-sharing.js' });
   vm.runInContext(read('js/pm-admin.js'), ctx, { filename: 'pm-admin.js' });
+  // PM sharing personal items (0110): the Overview print and the dashboard page reuse its list.
+  vm.runInContext(read('js/pm-sharing-items.js'), ctx, { filename: 'pm-sharing-items.js' });
   ctx._pmToast = (msg, isErr) => { toasts.push([msg, !!isErr]); };
   const run = (code) => vm.runInContext(code, ctx);
   return { ctx, els, printed, toasts, run };

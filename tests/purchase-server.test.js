@@ -193,7 +193,9 @@ console.log('\nDacs Web around it');
 
 test('Add expense records through pur_record and decides no funding, Cover or stock itself', () => {
   const add = between(EXP, 'async function handleAddExpense(', '\nasync function deleteExpense(');
-  assert(add.includes("rpc('pur_record'"), 'Add expense must call pur_record');
+  // Stage 4 (R121): through the client bound to the account that pressed Save — calls.record is pur_record.
+  assert(add.includes('record: calls.record') && between(EXP, 'async function _expBoundCalls(', '\n}\n').includes("rpc('pur_record'"),
+         'Add expense must call pur_record');
   assert(!/sortedSources|\.remain\b|coverExpense/.test(add), 'Add expense still decides funding or Cover itself');
   assert(!add.includes('_addExpenseToInventory('), 'the stock update must be the server\'s (once per line), never the browser\'s');
   assert(/data && data\.replayed/.test(add), 'handleAddExpense must read replayed and warn that later form edits were not applied');
@@ -209,7 +211,9 @@ test('staff never see a budget-based Cover guess (they cannot read budgets; the 
   assert(staff !== -1 && staff < b.indexOf('const folderMonths'), 'staff must return before the budget-based banner');
   const list = between(EXP, 'const _coverSet = new Set();', 'const _renderExpRow');
   assert(/if \(window\.currentUserRole !== 'staff'\)/.test(list), 'the list guess must skip staff');
-  assert(/if \(e\.purchaseLineId \|\| e\.purchaseChargeId\) return;/.test(list), 'purchase rows must keep their real Cover flag');
+  // 2C (0105): a stock cost move's rows carry the server's Cover flag too.
+  assert(/if \(e\.purchaseLineId \|\| e\.purchaseChargeId \|\| e\.stkCostMoveId\) return;/.test(list),
+         'purchase and stock cost-move rows must keep their real Cover flag');
 });
 
 test('purchase-made rows are edited and deleted through their purchase', () => {
@@ -228,7 +232,7 @@ test('no-period rows reach every Spent site: Project Control cards, detail, Addi
   assert(PC.includes('childIds.has(e.projectId) || !e.projectId && e.folderId === f.id'), 'project cards');
   assert(PC.includes('childMonthIds.has(e.projectId) || !e.projectId && e.folderId === projectId'), 'project detail');
   assert(PC.includes('cfMonthIds.has(e.projectId) || !e.projectId && e.folderId === cf.id'), 'Additional Works cards');
-  assert(/const totalSpent = cards\.reduce\(\(sum, c\) => sum \+ c\.totalCost, 0\) \+ noPeriodSpent;/.test(PC), 'billing-period drill total');
+  assert(/const totalSpent = cards\.reduce\(\(sum, c\) => sum \+ c\.totalCost, 0\) \+ noPeriodSpent \+ unassignedOverhead;/.test(PC), 'billing-period drill total includes no-period material and unassigned project overhead');
   assert(/where\('folderId', '==', folderId\)/.test(between(EXP, 'function subscribeFolderData(', '\n}\n')), 'Expenses folder view');
   const model = between(EXP, 'function _pcReportModel(', '\nfunction _pcDashboardReport(');
   assert(/noPeriodMaterial/.test(model) && /mats:sum\(rows, 'mats'\) \+ noPeriodMaterial/.test(model)

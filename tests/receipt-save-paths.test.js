@@ -5,8 +5,9 @@
 //   • the four receipt save paths upload files — never base64 in the row;
 //   • add-payroll saves all split rows in ONE insert (addMany) with a
 //     submission id, so a retry can't duplicate; add-expense records ONE
-//     purchase through pur_record (0096) with a per-Save operation id, and
-//     the server (not the browser) adds any stock, once per line;
+//     purchase through pur_record (0096) with ONE operation id and body kept
+//     until the server answers (js/expense-pending-save.js, Stage 4 review),
+//     and the server (not the browser) adds any stock, once per line;
 //   • a failure keeps the form (no reset in the catch);
 //   • the two print popups sign photo links before writing the window.
 // If a check fails with "SLICE NOT FOUND", update the markers — don't delete it.
@@ -62,17 +63,20 @@ for (const [name, kind] of [['async function handleEditExpense(', 'expense'], ['
     ok(!/catch \(_\) \{\}/.test(f), 'a photo failure is still swallowed silently');
   });
 }
-test('closing an add form forgets its submission id (a later entry can never be taken for an earlier lost save)', () => {
+test('closing add-payroll forgets its submission id; closing add-expense KEEPS a save the server may have (Stage 4 review)', () => {
   const f = fn('function closeExpModal(');
-  ok(f.includes("if (id === 'addExpenseModal') _expSubmissionId = null;"), 'expense id not cleared on close');
   ok(f.includes("if (id === 'addPayrollModal') _paySubmissionId = null;"), 'payroll id not cleared on close');
+  ok(!/_expSubmissionId|DacsPendingSave/.test(f), 'closing Add Expense must not forget a save that may be on the server');
 });
 test('async function handleAddExpense( uploads files, then records ONE purchase through pur_record (0096)', () => {
   const f = fn('async function handleAddExpense(');
   ok(f.includes("_uploadReceiptFile('expense'"), 'no file upload');
-  ok(f.includes("rpc('pur_record', { p_op: _expSubmissionId, p_body: body })"), 'not recorded through pur_record with the Save id');
+  // Through the client bound to the account that pressed Save (Stage 4, R121): calls.record is pur_record.
+  ok(f.includes('record: calls.record') && f.includes('DacsPendingSave.submit(')
+     && fn('async function _expBoundCalls(').includes("record: (args) => c.rpc('pur_record', args)"),
+     'not recorded through pur_record with the kept id and body');
   ok(!f.includes("_saveRowsOnce('expenses'") && !f.includes('.addMany(') && !f.includes("collection('expenses')"), 'still writes expense rows itself');
-  ok(f.includes('_expSubmissionId = null'), 'operation id not cleared after success');
+  ok(!f.includes('_expSubmissionId'), 'the kept id is DacsPendingSave\'s, forgotten only once the server answered');
   const c = f.slice(f.lastIndexOf('} catch'));
   ok(!/\.reset\(\)/.test(c), 'the catch branch must keep the form and its attachments');
 });

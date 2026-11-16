@@ -196,6 +196,7 @@ no envelope.
 | `splitGroup?` `splitIndex?` `splitTotal?` | — | multi-source split metadata |
 | `clientSubmissionId?` | uuid | `client_submission_id` — one id per Save press; unique with `split_index` (0089), so a retry cannot duplicate |
 | `purchaseLineId?` `purchaseChargeId?` | uuid | `purchase_line_id` / `purchase_charge_id` (0096): the row was written by a **purchase** (`pur_record`). It changes only through `pur_correct` / `pur_refund` / `pur_void` — the `expenses_purchase_guard` trigger refuses any other insert, update or delete |
+| `stkCostMoveId?` | uuid | `stk_cost_move_id` (0105): the row was written by a stock cost move the main owner approved (`stk_cost_decide`); negative on the giving project. It leaves only through `stk_cost_reverse` — the same trigger refuses anything else (`STOCK_COST_ROW`). See *Stock cost moves (0105)* |
 | `folderId?` | uuid | `folder_id` (0096): set ONLY on a purchase row for a project with **no billing period** for the purchase month and no Cover period (`projectId` null). It is that project's Cover Material — counted once in Material, Spent and Cover, in no period's envelope, shown as "No billing period" — until a re-fund moves it onto a period |
 | `createdAt` | ts | |
 
@@ -224,7 +225,7 @@ One row per file uploaded to `expenseReceipts/` or `payrollReceipts/` (path `<fo
 
 Insert is column-granted to (`path`, `owner_id`, `kind`) only; `uploaded_by`, `state` and the timestamps always take their defaults. The attach trigger only flips the SAME company's pending rows.
 
-### `laborContracts/{id}` → `labor_contracts` — pakyaw / in-house capped pay (migration 0014; `category` 0057; `works` 0062)
+### `laborContracts/{id}` → `labor_contracts` — pakyaw / in-house capped pay (migration 0014; `category` 0057; `works` 0062; Linked Labor 0113)
 | Field | Type | Notes |
 |---|---|---|
 | `userId`, `folderId` | string | folder-scoped (spans every billing period inside it) |
@@ -240,6 +241,16 @@ Insert is column-granted to (`path`, `owner_id`, `kind`) only; `uploaded_by`, `s
 | `payBasis` | string | migration 0063 — **`fixed` (default) \| `daily`**. `daily` is an **UNCAPPED** contract: a worker hired by the day has no agreed total, so `agreedAmount` is forced to **0** and is meaningless. Nothing may report a **remaining**, a **percentage** or an **"over cap"** on one — paid-to-date is the only honest figure; `lcStats` / `_pmContractStats` return `daily: true` with `remaining` and `pct` as inert 0s, and every reader must branch on the flag, never on the numbers. **Not a category and not a pay type** — `category` stays `labor`\|`outsource` and `payType` stays `pakyaw`\|`inhouse`. Daily is a **shape**, like `works`: `works` non-empty → Lumpsum; `payBasis='daily'` → Daily; otherwise Single job. The three are mutually exclusive in the modal (a daily contract saves an empty `works`). **Money model unchanged**: drawdown still runs through `payroll.contractId` (PC) / `weeklyBills.entries[].contractId` (PM), and `pay_basis` carries no pesos. **A daily job is TAGGED ALONE** — the pro-rata splitter weights by what a job still owes, which is undefined without a cap, so ticking one clears and disables every other pick (`lcApplyDailyPickLock` / `_pmApplyDailyPickLock`) and both allocators hand it the payment whole. **Capped and daily jobs are summed APART** on every worker card and tab total, or a daily payment gets subtracted from a cap it never drew on and the card reads a false "Over by". Out Source takes the daily shape too (2026-09-08): PC's shared modal always allowed it, and PM's Out Source modal gained it — a vendor hired by the DAY (own crew, own pace) had to be given an invented cap before that. `pmOcSave` lifts its cap guard for `daily` only, and `_pmOcStats` returns the same inert-zero shape as the labor twin. **Lumpsum** is still never typed for Out Source — a vendor lumpsum only ever arrives through `pmOpenMerge`. Unapplied migration reads as `fixed` = the old capped behaviour. §Q of `money-math.test.js` fences all of it |
 | `agreementSigned`, `agreementSignedAt`, `agreementSignature`, `agreementPdfUrl`, `agreementPdfName` | — | signed Worker Agreement (migration 0023) |
 | `createdAt`, `updatedAt` | ts | |
+| `workerId` | uuid | migration 0113 — **Linked Labor**: the WorkMate account (`profiles.id`) that sees this agreement on the phone. Null = not linked, the normal state. Set, changed or cleared only by the **main owner** (`lc_link`, or the account picker when creating); never by name, never in bulk. Labor contracts only. Linking moves no money and renames nothing. A linked contract's worker card, statement, agreement print and merge are that **account's**, never a same-name other person's (`lcWorkerContracts`, `LinkedLabor.cardKey`) |
+| `endedAt`, `endedBy` | ts, uuid | migration 0113 — set and cleared only by `lc_end` / `lc_reopen` (owner accounts, with a reason). An ended contract keeps its payments and balance and can still be paid to settle it: **ending marks nothing paid and moves no payment**. A replacement is a new contract |
+
+**Contract history (0113).** Once a contract is **established** (signed, or paid at least once) its terms — name, scope, trade, agreed amount, pay type, basis, category, works, folder, orientation date and the agreement fields — change only through `lc_edit` / `lc_merge` **with a reason**; daily↔fixed and labor↔outsource are then locked; `capHistory` only grows; a blank (`''`, `[]`, NULL) is never a change of terms (`lc_blank_free`). `lc_merge` takes one person's contracts on **one project** only (`LC_MERGE_FOLDER`; Additional Works is a project of its own). A linked contract is never deleted (except into a keeper linked to the same account); an established one only through `lc_delete` with a reason. Deleting a project folder still takes its contracts (logged as "Project folder deleted"). The `lc_guard` trigger enforces all of it.
+
+### `lc_events` — contract history (migration 0113) — **append-only**
+One row per change: `owner_id`, `contract_id` (no foreign key: it outlives a deleted contract), `kind` (`created` \| `linked` \| `relinked` \| `unlinked` \| `edited` \| `ended` \| `reopened` \| `merged` \| `deleted`), `before` / `after` (jsonb — only the changed fields for `edited`; the full terms, payment count and paid total for `deleted` / `merged`), `reason` (≤ 500), `actor_id`, `at`. Row security: **owner accounts of the company read it; staff do not** (it holds amounts). No insert, update or delete for anyone; a trigger refuses update, delete and truncate. Read by `js/linked-labor.js` (History).
+
+### `ll_my_agreements()` — the worker's own agreements (migration 0113, WorkMate only)
+For an active worker or team leader: their OWN linked labor contracts in their own company — project, main project (Additional Works), completed, **progress %** (that project's own BOQ, `ll_folder_progress` = `_folderCompletion`; null when not recorded, never the main project's figure, never 100% stand-in), scope, trade, basis, works, agreed / paid / balance (fixed; paid = `lcPaid`'s rule, indirect pay excluded), paid only (daily), ended, and payments as date · amount · method (a payment's split parts summed). Never notes, receipts, signatures, history, billing periods or another person's money.
 
 ### `categories/{id}` — expense categories — **Project Control only**
 `userId`, `name`, `color`, `createdAt`
@@ -934,7 +945,7 @@ Stage 1a-1 server (plan `docs/superpowers/plans/2026-10-02-workmate-stage1a1-req
 
 Every `pr_*` office policy is tenant-scoped with `can_access` (`pr_ops` via its actor's owner), and worker write RPCs serialise retries of the same operation with an advisory lock.
 
-Worker RPCs: `pr_destinations()`, `pr_my_teams()`, `pr_catalog()`, `pr_submit_request(op, request)`, `pr_change_quantity(op, line, base_version, quantity)`, `pr_cancel_line(op, line)`, `pr_cancel_request(op, request)`, `pr_my_requests(limit)`, `pr_attach_photo(op, request, line, path)`. Completed projects / Additional Works refuse new requests and quantity increases (decreases, cancels and reading stay). PM projects are never destinations. A worker's cancel of the last open line closes the request (0088); cancelling something already cancelled succeeds without change.
+Worker RPCs: `pr_destinations()`, `pr_my_teams()`, `pr_catalog()`, `pr_submit_request(op, request)`, `pr_change_quantity(op, line, base_version, quantity)`, `pr_cancel_line(op, line)`, `pr_cancel_request(op, request)`, `pr_my_requests(limit)` (since 0106 each line and weekly portion also carries `from_stock`: what the office issued from stock for it — 0 while stock is off), `pr_attach_photo(op, request, line, path)`. Completed projects / Additional Works refuse new requests and quantity increases (decreases, cancels and reading stay). PM projects are never destinations. A worker's cancel of the last open line closes the request (0088); cancelling something already cancelled succeeds without change.
 
 **Legacy `requests` / `request_items`** (Flutter-prototype era) are read-only history since `0085`: owner/staff full access; a worker reads only their own rows and writes nothing.
 
@@ -953,7 +964,7 @@ Every office write is a `SECURITY DEFINER` RPC that refuses non-office callers (
 | `pr_office_move_portion(portion, batch, note)` | Move an **unarranged** portion to another weekly batch (merges with that batch's unarranged portion) |
 | `pr_office_batches()` / `pr_office_set_batch_dates(batch, purchase, delivery)` | Batches from 35 days ago on (this week + next two always exist); only purchase/delivery dates change. **0086 dropped the direct insert/update policies on `pr_batches` and on the four setup tables (teams, members, catalogue, project settings)** |
 | `pr_office_people/teams/save_team/add_member/remove_member/set_leader` | Teams; a leader must hold the teamLeader role and be a current member |
-| `pr_office_catalog/save_item` | Catalogue; the same name + spec + unit is refused (`DUPLICATE_ITEM`). Since `0092`: once any request line uses an item, a Kind or Unit change is refused (`ITEM_IN_USE` — add a new item, deactivate the old); `pr_office_catalog` returns `in_use` |
+| `pr_office_catalog/save_item` | Catalogue; the same name + spec + unit is refused (`DUPLICATE_ITEM`). Since `0092`: once any request line uses an item, a Kind or Unit change is refused (`ITEM_IN_USE` — add a new item, deactivate the old); `pr_office_catalog` returns `in_use`. Since `0104`: stock counts as use too (a match, a lot or a stock record) |
 | `pr_office_projects/set_allow_requests` | Top-level Project Control projects and the *Allow requests* switch |
 | `pr_folder_request_count(folder)` | Requests on a folder or its children — Dacs Web refuses to delete a project / Additional Works that has any |
 
@@ -1043,7 +1054,7 @@ One recording operation for every purchase, shared by Dacs Web (Expenses → Add
 | `purchase_lines` (`purchase_id`, `line_no`, `destination` `project`/`warehouse`, `folder_id` + `folder_name` — history, **no foreign key**, `item_name`, `category`, `quantity` (up to 3 decimals), `unit`, `gross_amount`, `in_inventory`, `min_stock`, `needs_funding_review`) | What was bought, for which project (Main Contract or Additional Works folder). Warehouse lines write no expense rows |
 | `purchase_charges` (`kind` `delivery_fee`/`discount`, `amount`) + `purchase_charge_shares` (`charge_id`, `line_id`, `amount`) | A shared fee or discount and how it is split across lines (default: by line amount, to the centavo by largest remainder — never a negative share, always exactly the charge) |
 | `purchase_history` (`kind` `recorded`/`corrected`/`refunded`/`voided`/`replaced`, `reason`, `before`, `after`, `actor_id`) | Never edited |
-| `pur_ops` (`actor_id`, `op_id`, `kind`, `result`) | First answer per operation id — a retry or an overlapping call returns it, nothing is recorded twice |
+| `pur_ops` (`actor_id`, `op_id`, `kind`, `result`) | First answer per operation id — a retry or an overlapping call returns it, nothing is recorded twice. Since 0106 a row of kind `cancelled` marks an id the phone cancelled (`pur_op_cancel`): every write refuses it (`OP_CANCELLED`) |
 | `purchase_stock_moves` (`line_id` **primary key**, `inventory_id`, `quantity`, `moved_at`) | The "track in inventory" stock added for a line — once, ever. Stock items are matched within the company: its own item, else an unowned one (the old browser mirror wrote items with no owner), never another company's |
 | `pur_record(p_op, p_body)` | Records a purchase and writes its `expenses` rows: per project line, the net amount (item − discount shares) funded by the **actual purchase month** — that month's client periods with a budget (this company's, this project's), **earliest billing number first**, each up to budget − expenses − payroll; shortage → Cover (`cover_expense = true`, on the project's Cover period, else a client period of **that month only** — never another month's); no eligible period that month → all Cover and `needs_funding_review`; **no Cover period and no billing period in the purchase month** → one Cover row tied to the project (`folder_id`), flagged. Additional Works → their own period in full. Fee shares → "Delivery fee (share)" rows, funded the same way. Adds stock for "track in inventory" lines. Refuses: totals ≠ receipt, shares ≠ charge, discount > line, sub-centavo or negative amounts, another company's project, staff on a completed project (or an Additional Works job under one) |
 | `pur_correct(p_op, p_purchase, p_body, p_reason)` | Same lines, new content: the purchase's rows are replaced and re-funded in one transaction; reason required. Moving a line to another project, or any change on a completed project, is owner-only. Stock already moved is not moved again |
@@ -1077,6 +1088,234 @@ The office side of buying: who may buy, who is buying which part of a request, a
 | Storage `uploads/purchases/<company>/<yyyy-mm>/<uuid>.jpg` | One receipt per purchase, read and written only by `pur_buyer()` of that company — not by non-buyer staff, workers, clients or partners. Dacs Web never signs a link for this folder: it downloads with the viewer's session, so Storage checks the rule on every view (`supabase-config.js` §11b). `receipt_uploads` accepts kind `purchase` |
 | Changed 0085/0086/0096 functions | `pr_apply_quantity` (bought quantity is protected like arranged: reduced only by flagging), `pr_office_move_portion` (`BOUGHT`), `pur_reader` (buyers only), `pur_actor_owner` (sources `purchasing`/`workmate` need the switch), `pur_store`, `pur_insert` (7 arguments), `pur_correct` (keeps a line's request link when the body leaves it out — Project Control's form — and its covers' portions), `pur_replace` (voids first, keeps covers' portions, the old buyer and the supplier), `pur_doc`, `pur_header_ok`, `pur_body_keys` / `pur_stored_keys` (`pr_line:` locks) |
 
+## Phone purchasing (0101) — WorkMate Stage 2A-3a
+
+What buying from the WorkMate phone needs from the server. Spec `docs/superpowers/specs/2026-09-30-workmate-mobile-purchasing-design.md`; answers `docs/superpowers/specs/2026-10-20-workmate-stage2a3-questions.md`; plan `docs/superpowers/plans/2026-10-20-workmate-stage2a3a-server-web.md`.
+
+| Table / object | Columns and rules |
+|---|---|
+| `pur_signin_can_buy(user)` | **Service role only.** The `attendance-signin` Edge Function's buyer check: `pur_can_buy` in that account's own company (worked out as `data_owner_id()` does) — the same answer `pur_buyer()` gives the account signed in |
+| `pur_fund` (0096, redefined, now VOLATILE) | An Additional Works job with no billing period gets ONE hidden period (`funding_type 'downpayment'`, the purchase's month and year, no budget row, no allocation snapshot) instead of `AW_NO_PERIOD`. Charged in full to it, never Cover, as before. The job's `pur_folder:` lock keeps it to one |
+| `purchases.no_receipt_reason` (text, ≤ 300, default `''`) | Why a phone purchase has no receipt photo. Trigger `purchases_require_receipt`: a `workmate` purchase must keep an https link in `docs` or a non-blank reason (`NO_RECEIPT`), on insert and on every update of `docs` / the reason / `source`. Web sources keep receipts optional |
+| `pur_insert` (0097, redefined) | Stores `no_receipt_reason` (`BAD_REASON` over 300). Nothing else changed |
+| `pur_list_doc(purchase)` | One purchases-list row: 0097's row plus `no_receipt_reason` and `replaced_by`. Used by `pur_purchases` and `pur_my_purchases` (internal) |
+| `pur_my_purchases(days default 60)` | Buyers only: what the caller bought or recorded, every status, purchase date within the last 1–366 Philippine days (`BAD_DAYS`), newest first, at most 300 |
+| `pur_destinations()` | Buyers only: the company's open projects (name not blank) with their open Additional Works jobs (`works`), for the phone's record form |
+| `pur_my_pending_changes()` | Any account that may record (0096's rule), buyer or not: the caller's OWN pending change requests — `id`, `purchase_id`, `kind`, `reason`, `requested_at`, and the purchase's `line_ids` / `charge_ids`. No amounts. Project Control and Expenses show "Waiting for the owner" on those rows and offer Withdraw (`pur_withdraw_change`) |
+| `pur_purchase_view` (0097, redefined) | Adds `no_receipt_reason` |
+
+## Paying for purchases (0102) — WorkMate Stage 2A-4a
+
+Supplier payments, Overpaid, refunds and supplier credit, petty cash and "Company owes buyer". **Outside the money model:** nothing here writes or reads `expenses` or `payroll`; Spent, Earned and Profit never read these tables (CLAUDE.md). Answers `docs/superpowers/specs/2026-10-22-workmate-stage2a4-questions.md`; plan `docs/superpowers/plans/2026-10-22-workmate-stage2a4a-payments-server-web.md`.
+
+Every table has RLS on, **no policies** and every privilege revoked: the screens read and write only through the functions below. Every write takes an operation id (`pur_ops`, 0096: a retry returns the first answer). Mistakes are **voided with a reason**, never edited or deleted. "Main owner" = 0098's `pm_main_owner_id()` (owner role, no `owner_id`, active) with the Expenses section.
+
+| Table / object | Columns and rules |
+|---|---|
+| `purchases.payments_tracked` (boolean) | `false` on every purchase recorded before 0102 ("Payment not tracked" until a payment is recorded on it); `true` on every purchase since |
+| `pur_payments` (`purchase_id`, `first_purchase_id` (never changes: a replacement moves `purchase_id` only, with one `payment_moved` history entry per payment), `amount` > 0, `paid_on`, `method` `cash`/`gcash`/`bank_transfer`/`check`/`other`, `source`, `person_id`, `credit_id`, `authorized`, `accepted_by`/`accepted_at`, `rejected_by`/`rejected_at`/`reject_reason`, `proof_url` (https or ''), `note`, `created_by`, void fields) | One payment on the WHOLE purchase (never per project). `source`: `petty_cash` / `own_money` (`person_id` = the staff buyer whose money), `company` (paid directly; `person_id` = who handed it over), `credit` (`credit_id`; not cash). `authorized` = the buyer's own-money switch was on; an unauthorized one counts in "Company owes buyer" only once the main owner accepts it; rejected (with a reason, `pur_reject_own_money`) it is never owed. Either decision is kept |
+| `pur_supplier_credits` (`supplier_id`, `purchase_id` = the overpaid purchase it came from, `amount`, `note`, void fields) | A balance with one supplier. Left = `amount` − non-voided `credit` payments using it (`pur_credit_left`). A used credit is not voided (`CREDIT_USED`) |
+| `pur_refunds` (`purchase_id`, `amount`, `funded_by` `petty_cash`/`own_money`/`company`/`credit`, `received_by` `petty_cash`/`company`/`buyer`, `person_id`, `received_on`, `note`, void fields) | Tied to the money that paid. Routes (check constraint): petty cash → back into the buyer's petty cash (cash held up) or the company; own money → the buyer ("Company owes buyer" down) or the company; company or credit → the company, or the buyer (company cash now held by the buyer). A credit-funded excess normally goes back to the supplier's credit (a new `pur_supplier_credits` row); a `credit` refund is the supplier paying it back in cash instead. Each `funded_by` part ≤ what that money paid (`OVER_SOURCE`); refunds + credits ≤ what is over (`OVER_RESOLVED`) |
+| `pur_cash_issues` (`buyer_id`, `amount`, `issued_on`, `method`, `note`, `disputed_at`/`dispute_note`, `dispute_cleared_*`, void fields) | Petty cash the main owner gave a staff buyer. Counts at once; "I did not receive this" flags it and changes nothing |
+| `pur_cash_returns` (`buyer_id`, `amount`, `handed_on`, `handed_to`, `photo_url`, `note`, `status` `reported`/`withdrawn`/`confirmed`/`rejected`, `decided_at`/`decided_by`/`decision_note`, void fields — confirmed only) | The buyer reports; only the main owner's confirmation lowers the balance, on the **confirmation** day (Philippine date) |
+| `pur_cash_counts` (`buyer_id`, `counted_on`, `counted` ≥ 0, `note`, void fields) | A cash count: a record only, shown against the balance recorded that day |
+| `pur_own_money` (`user_id`, `owner_id`, `allowed`, `updated_by`, `updated_at`) | The "May use own money" switch (main owner); history in `pur_money_events` (`own_money_on` / `own_money_off`) |
+| `pur_buyer_repayments` (`buyer_id`, `amount`, `paid_on`, `method`, `note`, void fields) | The company repaying a buyer's own money. Never more than owed (`OVER_OWED`) |
+| `pur_money_events` (`seq`, `kind`, `purchase_id`, `person_id`, `ref_id`, `amount`, `detail`, `reason`, `actor_id`, `at`) | Append-only history of all of the above (`HISTORY_IMMUTABLE`) |
+| `pur_pay_state(purchase)` (internal) | `{state, tracked, due, paid, balance, excess, resolved, unresolved, over_resolved}`. `due` = receipt total while recorded, ₱0 once voided. `state`: `not_tracked`, `unpaid`, `partial`, `paid`, `overpaid` (unresolved excess), `void`, `void_paid` (voided, money to recover) |
+| `pur_cash_raw(owner, buyer, upto)` (internal) | Petty cash recorded at the end of a day: issues + refunds received into petty cash − petty-cash payments − confirmed returns. A voided entry counts until the day it was voided (`pur_stood`), so a past day's closing never changes; the daily report shows the void as a reversal on its own day. Below 0 = the screens show ₱0 held and an "Unreconciled shortfall" |
+| `pur_owes(owner, buyer)` (internal) | Authorized or accepted own-money payments − own-money refunds the buyer received − repayments |
+| `pur_record` (0096, redefined) | Body `payments` (≤ 5): "paid now", saved in the SAME transaction as the purchase; a refused payment refuses the purchase. Needs the Buyer switch when it carries payments |
+| `pur_header_ok` (0097, redefined) | A correction or replacement carrying `payments` → `BAD_PAY` |
+| `pur_list_doc` (0101, redefined) | Adds `pay` (the payment state) — shown in the Purchases list and My purchases |
+| `receipt_mark_attached` (0097, redefined) | Also marks a payment's proof and a return's photo attached |
+| Trigger `purchases_pay_follow_replace` | When a purchase is replaced, its payments, refunds and credits move to the new version, with "not tracked" |
+| `pur_cash_detail(owner, buyer)` (internal) | One buyer's cash summary with the last 90 days of petty cash given, returns, cash counts and repayments. Read by `pur_my_cash` (the buyer) and `pur_cash_buyer` (the main owner) |
+| `pur_cash_detail` (0103, redefined) | Each return also carries `photo_url`, so a buyer sees the photo of their own return in "My cash" (the phone and Dacs Web) and the main owner sees it in that buyer's view. Still internal |
+| `pur_list_doc` (0103, redefined) | Also `supplier_id` (the listed supplier), so the phone can pay from that supplier's credit from its saved copy of My purchases. Still internal |
+| `pur_my_ops_done(op ids)` (0103) | Which of the caller's own operation ids `pur_ops` already holds (at most 200 asked). The phone finishes those before reading fresh balances, so a payment whose answer was lost is never counted twice |
+| `pur_op_cancel(op)` (0106) | The phone's "Cancel it" for a stock submission whose answer was lost: under the operation's own lock, `recorded` (it was — nothing changes) or `cancelled` (the id is cancelled for good; a late request with it is refused). Only then may the phone let the person change or drop it |
+| `pur_op_state(op)` (0106) | Read only: `recorded`, `cancelled` or `none` for the caller's own operation id (the phone's "Check") |
+| Buyer reads and writes | `pur_pay`, `pur_void_payment` (the recorder or the main owner; `RESOLVED_FIRST` if a refund or credit already relies on it), `pur_purchase_payments`, `pur_credits`, `pur_my_cash`, `pur_cash_dispute`, `pur_cash_report_return`, `pur_cash_withdraw_return` |
+| Main-owner reads and writes | `pur_cash_give`, `pur_cash_clear_dispute`, `pur_cash_void_issue`, `pur_cash_decide_return`, `pur_cash_void_return`, `pur_cash_count`, `pur_cash_void_count`, `pur_set_own_money`, `pur_accept_own_money`, `pur_repay_buyer`, `pur_void_repayment`, `pur_resolve_overpaid`, `pur_void_refund`, `pur_void_credit`, `pur_cash_tracker`, `pur_cash_buyer(buyer)`, `pur_overpaid` (with a suggested split: the latest payments first), `pur_cash_report(buyer, from, to)` (≤ 92 days; voided entries listed apart) |
+| `pettyCash/<company>/<yyyy-mm>/<id>.jpg` (storage, R13) | A return photo. `uploads_can_read` (0097's, plus this branch first): only the main owner and the buyer who uploaded it (`pur_petty_reader`, by the upload ledger); written by buyers of the company; never overwritten. Ledger kind `petty_cash`. Payment proofs stay in `purchases/` |
+| `pur_payment_badges()` | Owner accounts only: `{line or charge id: state}` for Project Control's Unpaid / Partially paid / Paid / Overpaid badge |
+
+## Stock (0104) — WorkMate Stage 2B-a
+
+Quantities only, in catalogue units — **no peso amount anywhere** (the value of stock and every cost move are 0105, below — main owner). Private tables (RLS on, no policies): reads and writes only through the `stk_*` functions. Dormant until the main owner switches stock on (`stk_set_enabled`); until then every write is `STOCK_OFF`.
+
+| Table | What it holds |
+|---|---|
+| `stk_settings` | `owner_id` (pk), `enabled`, `updated_by`, `updated_at` — the company's stock switch (main owner only) |
+| `stk_locations` | `id`, `owner_id`, `kind` (`warehouse` \| `site`), `folder_id` (history, not a foreign key), `folder_name` — one warehouse per company, one site per project folder (Main Contract or Additional Works), made on first use |
+| `stk_matches` | (`purchase_id`, `line_no`) pk, `item_id` (catalogue item), `line_unit`, `per`, `covers` (`per` line units = `covers` item units), `auto`, `note`, `matched_by`, `matched_at` — how a purchase line counts as stock. Keyed by line number, which a correction keeps |
+| `stk_lots` | `id`, `item_id`, `purchase_id` + `line_no` (unique; null = untraced), `cost_folder_id` (null = company stock; a project = its leftovers), `untraced`, `since` (purchase date, or the day counted — display only) |
+| `stk_records` | `id`, `kind` (`receive`, `not_delivered`, `leftover`, `issue`, `return`, `move`, `count`, `opening`), `status` (`done`, `pending`, `rejected`, `withdrawn`), `item_id`, `purchase_id` + `line_no`, `from_location`, `to_location`, `quantity` (item units; receive / not delivered in the line's unit; a count = counted), `book_quantity` (a count: the books), `lot_id`, `on_date`, `request_line_id`, `unplanned_reason`, `returns_record` (a return: its issue), `reason`, `note`, recorded / decided / reversed by + at + reason. Live = done and not reversed. Never edited |
+| `stk_moves` | `record_id`, `lot_id`, `layer` (the record that brought these goods into stock — a receipt, leftover, opening or count; its `on_date` is the day received), `from_location` (null = enters stock, and then `layer = record_id`), `to_location` (null = leaves stock, a confirmed loss), `quantity` — append-only |
+| `stk_covers` | `record_id`, `request_line_id`, `portion_id`, `quantity` — what goods entering a project filled on a request ("From stock"); append-only |
+| `stk_events` | switched / matched / unmatched / confirmed / rejected / withdrawn / reversed — append-only |
+
+A lot's balance at a place = live moves in − live moves out, kept per **layer** (one per delivery received — a part delivery is its own — leftover record, confirmed opening stock or goods found by a count); never below zero (checked under the item's lock). A matched warehouse line's receipt enters stock as its own layer: the converted total received (the receipts already in stock plus this one) less the item units already assigned to them — a receipt's quantity never changes afterwards, so the whole line adds up exactly whatever the receipt dates or the order they were entered in (3 boxes = 100 pieces: 33.333 + 33.334 + 33.333; a box reversed and received again brings it back to exactly 100). Receipts made before the match enter at the match, in the order received, each with its own received day. Issues, moves and losses take the **oldest received** layer first (`stk_layers`), never by purchase date, unless a lot is named.
+
+| Function | Who | What |
+|---|---|---|
+| `stk_status()` | signed in | `enabled`, `can_record`, `is_main_owner`, `is_owner`, `user_id` |
+| `stk_set_enabled(on)` | main owner | Switch stock on (launch) or off |
+| `stk_match(op, purchase, line, item, covers, note)` | office | Match a line; another unit needs a note and never the buyer's own check; fixed once any of its goods are stock (reverse those receipts to change it) |
+| `stk_receive(op, purchase, line, qty, on, note)` | office (incl. Buyer staff) | A warehouse line arrived, in parts if need be |
+| `stk_not_delivered(op, purchase, line, qty, reason)` | office | The rest will not come (money: supplier refund / credit, 2A-4) |
+| `stk_leftover(op, purchase, line, qty, where, on, note)` | office | Leftovers of a project line, at its site or in the warehouse; never more than it brought |
+| `stk_move(op, body)` | office | Issue (warehouse → project), return (one issue's lots back), move (between sites / to the warehouse); fills a request line or is unplanned with a reason; oldest lot first unless named |
+| `stk_count(op, body)` | office | A count; a difference waits for the main owner with a reason |
+| `stk_opening(op, body)` | office | Opening stock, traced to a project purchase line or untraced; waits for the main owner |
+| `stk_decide(op, record, approve, note)` | main owner | Confirm (a count only while the books still read what was counted) or reject with a reason |
+| `stk_reverse(op, record, reason)` | recorder or an owner account (a confirmed count / opening: the main owner) | Reverse a record, or withdraw a pending one; refused while its goods have moved on |
+| `stk_overview()`, `stk_item(item)`, `stk_project_lines(folder)`, `stk_choices()`, `stk_request_lines(folder)` | office, stock on | The Stock screens' reads — quantities only |
+| `pr_portion_bought` / `pr_line_bought` (redefined) | internal | COVERED = recorded purchases + live stock records; `*_purchased` and `*_from_stock` are the parts |
+| `pur_shopping_list` (redefined) | buyers | `bought` = purchases, plus `from_stock` and `in_warehouse` (a hint, no reservation) |
+
+Guards: `stk_guard_line` (a purchase line may not undo its stock: destination, project, unit, quantity — `STOCK_IN_USE`), `stk_guard_void` (no void or replacement with stock records), `stk_inventory_frozen` (once stock is on, the old `inventory` table refuses writes — `STOCK_TICK_RETIRED`), `stk_item_fixed` (a catalogue item's kind and unit never change once a request line **or stock** uses it — `ITEM_IN_USE`).
+
+Catalogue (0092 extended): `pr_item_in_use(item)` = a request line, a stock match, a lot or any stock record uses it. `pr_office_save_item` refuses a Kind or Unit change of such an item (`ITEM_IN_USE`), and `pr_office_catalog`'s `in_use` counts stock too, so the Catalogue form locks the two fields.
+
+## Stock cost moves (0105) — WorkMate Stage 2C
+
+Where the **cost** of stock sits, decided by the **main owner**. Moving goods never moves their cost by itself: every stock move row carries its `holder` (a project folder, or null = the company), and when goods arrive where someone else holds their cost the server opens a pending cost move. Approval writes **ordinary `expenses` rows** tied to the cost move (`stk_cost_move_id`) — so every Spent / Cover / report site reads them like any other row. Company stock is never in a project's Spent, nor in company overhead (G&A). Client billing is never changed.
+
+| Table / column | What it holds |
+|---|---|
+| `stk_moves.holder` | Whose cost the moved goods are. Goods entering stock take their lot's `cost_folder_id` (trigger `stk_moves_holder`): a warehouse purchase = the company; leftovers / traced opening stock = their project, even in the warehouse |
+| `stk_cost_moves` | `id`, `kind` (`assign` company → project, `transfer` project → project, `back` project → company, `loss` company stock → company stock loss), `status` (`pending`, `approved`, `rejected`, `withdrawn`), `record_id` + `move_id` (the physical record and move row), `lot_id`, `layer`, `location` (null for a loss), `from_folder` / `to_folder` (null = company), `quantity` (asked), `approved_quantity`, `value` (pesos), `basis_value` / `basis_quantity` (the lot's price and quantity it was valued at), `basis_alloc` (where its purchase's cost sat when approved — `stk_purchase_alloc`: its rows summed by billing period, project and Cover), `received_on` (the day the project received the goods — funding month), `resubmits` (the rejected / reversed one it asks again for), `note`, `requested_*`, `decided_*` + `decision_note`, `reversed_*` + `reverse_reason`. RLS on, no policies |
+| `expenses.stk_cost_move_id` | The approved cost move that wrote the row (both sides). Changed only by the stock functions — `pur_guard_expense_row` refuses anything else (`STOCK_COST_ROW`) |
+| `stk_events.cost_move_id` | `cost_requested`, `cost_approved`, `cost_rejected`, `cost_resubmitted`, `cost_withdrawn`, `cost_reversed` |
+
+When a cost move is opened (`stk_cost_requests`, after every physical move, untraced lots never): goods arriving at a project site whose holder is not that project → `assign` (from the company) or `transfer` (from another project); a **company** lot's goods brought to the warehouse while a project holds them → `back`. A project's own leftovers keep their cost in the warehouse. A confirmed loss (`stk_decide` on a count) of company-held goods → an approved `loss` with the count (`stk_cost_losses`): value to company stock loss, **no expense row**; reversing the count reverses it.
+
+Value (`stk_lot_basis`, `stk_held`, `stk_cost_value`): a lot is worth its purchase line's item amount − discount shares + delivery-fee shares, for the line's quantity in item units; its own holder starts with all of it. Each approved move takes the line's cost × quantity / the line's quantity, to the centavo; the **last** portion out of a holder takes what it holds, so the portions of a line always add up to it exactly (₱100 for 3 pieces → ₱33.33 + ₱33.33 + ₱33.34). A pending move covers only what the holder still has there after earlier pending requests (`stk_cost_effective`) — goods that left before approval are not charged; approval is whole, for that.
+
+Rows (`stk_cost_rows`): the receiving project is funded like a purchase (`pur_fund`: its periods for the month in `received_on`, earliest billing number first, the rest Cover; Additional Works its own period) — "From warehouse — item" / "Moved from A — item"; the giving project gets negative rows on every (billing period, Cover) group that carried the lot's cost for it (its purchase line rows, its share of the delivery-fee rows, earlier cost-move rows — `stk_cost_carriers`), in proportion with `pur_prorate` — "Moved to B — item" / "Back to company stock — item". A split is one `split_group` (`stkcost:<id>:in|out`).
+
+| Function | Who | What |
+|---|---|---|
+| `stk_cost_decide(op, cost, approve, note)` | main owner | Approve (refused `COMPLETED_PROJECT` into or out of a completed project or a job under one; `NOTHING_LEFT` when the goods are gone) or reject with a reason (the goods stay recorded, the cost stays) |
+| `stk_cost_reverse(op, cost, reason)` | main owner | Its rows leave Spent; the record stays. Refused `LATER_MOVES_FIRST` while later movements or cost moves rely on it. A loss goes with its count instead |
+| `stk_cost_resubmit(op, cost, note)` | stock recorders | Ask again for the same movement after a rejection or a reversal — no second physical record |
+| `stk_cost_pending()` | main owner | The Owner approvals cards: what is still there, the estimate, the giving project's groups, the record and its evidence. Stock off: `[]` |
+| `stk_company_stock()` | owner accounts | By item: in the warehouse, issued with the assignment pending, awaiting delivery, company stock loss — quantity and value |
+
+Redefined: from 0104 `stk_take` (returns the holder; within a delivery, goods not yet the place's own leave first), `stk_check_record`, `stk_move` (holder on every row; a return takes the issue's goods as their cost now stands; then `stk_cost_requests`; answer + `cost_moves`), `stk_decide` (+ `stk_cost_losses`), `stk_reverse` (`COST_MOVED` while an approved cost move rides on the record; pending ones withdrawn), `stk_record_json` (`costs` — states for everyone who reads stock, `value` / `estimate` keys for owner accounts only); from 0096 `pur_guard_expense_row` and `pur_guard_delete` (a project with live stock records or open cost moves, or a billing period carrying cost-move rows: `STOCK_LIVE`). Guard `stk_guard_cost_basis` (after insert on `purchase_history`, kinds corrected / unit_checked / refunded — every 2A path that stores a purchase again, an approved change request included): a purchase line's price or quantity cannot change while approved cost moves value its lot (`STOCK_COST_IN_USE`), and neither can where the purchase's cost sits — its rows' billing periods and Cover (`STOCK_COST_FUNDING`; reverse those moves first). Locks: the lot's purchase first (as every purchase write), then the item and the projects charged in one sorted pass; a count's loss and a purchase correction meet on the lot row.
+
+## Tools (0107) — WorkMate Stage 3a
+
+Every real tool, numbered, and who answers for it — **no money**: a tool's cost stays where its purchase put it (a project's Spent, or company stock cost). A catalogue item of kind `tool` is tracked only here, never as quantity stock. Dormant until the main owner switches tools on (`tl_set_enabled`). Answers: `docs/superpowers/specs/2026-10-28-workmate-stage3-tools-questions.md` (all A).
+
+| Table | What it holds |
+|---|---|
+| `tl_settings` | `owner_id`, `enabled` — the company's tools switch (main owner only) |
+| `tl_tools` | `number` (TOOL-0001…, per company, never reused), `item_id` (kind `tool`), `purchase_id` + `line_no` (the purchase line it came from, or none — the opening register), `details` (brand / model / serial), `photo_path` (`tools/<company>/<yyyy-mm>/<uuid>.jpg` in `uploads`), `state` (`available`, `issued`, `repair`, `lost_pending`, `lost`, `retire_pending`, `retired`, `cancelled`), `condition` (`good`, `needs_repair`, `missing_parts`, `damaged`), `holder_id` + `folder_id` (who has it and on which project — an issued tool always has both; while lost, who had it last), `since` (when the current state began). Never deleted |
+| `tl_records` | One action on one tool: `kind` (`register`, `issue`, `handover`, `return`, `repaired`, `lost`, `found`, `retire`), `status` (`done`; Lost / Retire also `pending`, `rejected`, `withdrawn`), `before` / `after` (the tool's custody around it), `holder_id` / `folder_id` (the custody it gave or ended), `request_line_id`, `condition`, `photo_path`, `note`, the decision and the reversal with their reasons. Never deleted |
+| `tl_covers` | What an issue filled on a tool request line when the tool was **not** bought for it (`request_line_id`, `portion_id`, `quantity`); counts while its issue stands. Never changed |
+| `tl_events` | Append-only: the switch, confirmations, rejections, withdrawals, reversals |
+
+| Function | Who | What |
+|---|---|---|
+| `tl_register(op, body)` | office | 1–50 tools of one tool item, at the warehouse or with a **named person** on a project (`PERSON_REQUIRED`); from a purchase line never more than it bought (`MORE_THAN_BOUGHT`), never a line already received as stock (`LINE_IS_STOCK`) |
+| `tl_issue(op, body)` | office | An `available` tool to a person on a project that is not completed; optionally for a tool request line — it fills the line only if the tool was not bought for it (`tl_bought_for`) |
+| `tl_handover(op, body)` | office | Person to person (and project to project), never through the warehouse — only a tool in good condition (`NEEDS_REPAIR`) |
+| `tl_return(op, body)` | office | With its condition: good → available; needs repair / missing parts → repair; damaged → repair + a pending Retire |
+| `tl_repaired`, `tl_found` | office | Repaired: under repair → available, or an issued tool not in good condition → good, with the same person, project and days out; Found: lost → available or repair |
+| `tl_report_lost`, `tl_request_retire` | office | Wait for the main owner; the tool cannot be issued, handed over or returned meanwhile |
+| `tl_decide(op, record, approve, note)` | main owner | Confirm → lost / retired; reject (reason) → exactly where it was before (Retire: Under repair) |
+| `tl_reverse(op, record, reason)` | recorder or owner | Withdraw a pending one, or reverse the tool's latest record (`LATER_RECORDS` otherwise); reversing a registration cancels the tool |
+| `tl_overview`, `tl_tool`, `tl_choices`, `tl_request_lines` | office | The Tools screens |
+| `tl_project_out(folder)`, `tl_line_tools(lines)` | owner / office / buyers | Tools still out on a project and its jobs (Mark as Complete); tools issued for request lines (the shopping list). Empty while off |
+
+Covered (every Still to buy): `pr_line_bought` = purchases + stock + tools. A return or a handover keeps a line filled; reversing an issue reopens it only if that issue counted on its own.
+
+Names: every person on these screens comes from `tl_person_name` — since **0108** the crew as "Name (W-0007)" (two crew members may share a name), or "W-0007" with no name; office and owner accounts by their name or e-mail.
+
+## Tools on the phone, the Team Leader switch, temporary passwords (0111) — WorkMate Stage 3b-a
+
+No money: nothing here reads or writes a peso, an expense or payroll. Every read and write goes through the functions: the tables have row security on and no policy.
+
+| Table | What it holds |
+|---|---|
+| `tl_problems` | `tool_id`, `kind` (`dont_have` / `broken`), `note`, `reported_by`, `reported_at`, `closed_by`, `closed_at`, `close_note`. One open report per person, tool and kind. Never edited or deleted: closed once (`tl_problems_guard`). A report changes no tool |
+| `wk_role_events` | Who changed whom, when, and from what to what. Append-only |
+| `wk_password_events` | `worker_id`, `kind` (`requested` / `temporary_set` / `failed` / `changed`), `actor_id`, `at`, `reset_id` (0112: the reset a "changed" row answers; null on every other row and on changes recorded before 0112). Append-only. **Never a password** |
+
+| Function | Who | What |
+|---|---|---|
+| `tl_my_tools()`, `tl_my_tool(tool)` | a worker or team leader | Their own tools, and a tool's records while they had it. Who has it now only if that is still them |
+| `tl_team_tools()`, `tl_team_tool(tool)` | the leader, now | The tools of the current members of the teams they lead |
+| `tl_team_find(number)` | the leader, now | An Available tool of this company, by `7` or `TOOL-0007`. One refusal for everything else: `TOOL_NOT_AVAILABLE` |
+| `tl_team_choices()`, `tl_team_request_lines(tool, folder)`, `tl_team_my_records(limit)` | the leader, now | Who they may record for and the open projects; the lines this tool can fill that they can see; their own recent records and which can be reversed |
+| `tl_team_issue`, `tl_team_handover`, `tl_team_return`, `tl_team_reverse` | the leader, now | The team check, then 0107's own function under the same operation id. `NOT_YOUR_TEAM`, `REQUEST_NEEDS_OFFICE`. A retry answers first, with their own earlier answer |
+| `tl_report_problem(op, tool, kind, note)` | the person holding it | `NOT_YOUR_TOOL`, `BAD_KIND`, `ALREADY_REPORTED` |
+| `tl_problems(open_only)`, `tl_close_problem(op, problem, note)` | office with Tools | The Tools tab's Problems. `ALREADY_CLOSED`, `REASON_REQUIRED` |
+| `wk_me()` | signed in | `is_main_owner`, to show the buttons. The server still decides |
+| `wk_set_team_leader(worker, on)` | **main owner** | `LEADS_A_TEAM` (team names in `detail`), `NOT_A_WORKER`, `ACCOUNT_INACTIVE`. Clears that person's marks on turned-off teams |
+| `wk_worker_log(worker)` | **main owner** | One worker's role and password events |
+| `wk_password_state()`, `wk_password_changed()` | the worker | "Must change", and clearing it. Since 0112 the state also names the open reset (`reset_id`) |
+| `wk_password_changed_for(bigint)` (0112) | the worker | Records the change of that reset only, while it is their open one; anything else records nothing. WorkMate 1012 uses this, never `wk_password_changed()` |
+
+Redefined: `tl_actor` (0107), which answers for a leader's company only inside `tl_as_leader`; `profiles_guard` (0019), which opens only for `wk_set_team_leader`'s own change; `pr_office_teams` (0086), which adds `leader_problem` (`no_role` / `inactive`); `pr_office_set_leader` (0086), which can clear a mark on a turned-off team and reads the role under a lock.
+
+Edge Function `admin-set-worker-password`: main owner only, active crew of their company only. It records `requested`, changes the password, then records `temporary_set` or `failed`, and returns the password once. No new column on `profiles`, and `attendance-signin` is unchanged.
+
+## Reconciliation (0109) — WorkMate Stage 4
+
+The owner's checks — **outside the money model**: nothing here writes an expense row, a payment, a billing period or a client bill, or feeds Spent / Earned / Profit. Owner accounts allowed Expenses (`rec_owner`; staff never); petty cash, own money, returns, disputes and Overpaid reach the **main owner** only (the keys are left out for anyone else). Answers: `docs/superpowers/specs/2026-10-30-workmate-stage4-reconciliation-questions.md`.
+
+| Table | What it holds |
+|---|---|
+| `rec_cover_marks` | "Cover is right": `purchase_id` + `line_no` (lines are re-created by a correction), `seq` (only a line's newest mark applies), the line as marked (`item_name`, `folder_name`, `amount`, `purchase_date`, `line_key` — a fingerprint of its project, amount, date and rows), `reason`, `marked_by` / `marked_at`, `withdrawn_by` / `withdrawn_at` / `withdraw_reason`. Never deleted; changed only by its withdrawal (`HISTORY_LOCKED`) |
+| `rec_cost_row_log` | Every cost-move expense row as it is `added` or `removed` (triggers `rec_log_cost_rows_*` on `expenses`): `cost_move_id`, `expense_id`, `folder_id`, `project_id` (the billing period), `cover`, `amount`, `xact` (the transaction), `at`. An item = (cost move, `xact`, `change`): an approval or a reversal. Back-filled from the rows already there (`xact` 0). Append-only |
+| `rec_bill_checks` | "Bill checked" per item: `cost_move_id`, `xact`, `change`, `checked` (a tick or an un-tick), `note`, `checked_by` / `checked_at`. Append-only; the latest counts |
+| `pur_op_reservations` | Add Expense's saves (R120): `actor_id` + `op_id` (the primary key), `owner_id`, `reserved_at` — every operation id Project Control's Add Expense registers **before** it sends `pur_record`. Settled ids are the ones `pur_ops` holds (recorded or cancelled). Written only by `pur_op_reserve`, read only by `pur_op_recover` |
+
+| Function | Who | What |
+|---|---|---|
+| `rec_purchase_places(from, to)` | owner accounts | Each recorded purchase made between the two days: `recorded` (its receipt total) = `own` (its own rows + cost-move rows on the project that bought the lot) + `other` (cost-move rows on any other project) + `company` (what the company still holds: `stk_held`, or a warehouse line not yet in stock at its value) + `loss` (company stock loss) — `difference` must be ₱0; the two sides come from different records. Voided purchases apart. At most 3,700 days |
+| `rec_waiting()` | owner accounts (cash counts: main owner) | Counts only: cost moves, change requests, stock and tools waiting for the owner, lines waiting for a billing period, Unpaid / Partly paid purchases, bills to check; own money, returns, disputes, Overpaid |
+| `rec_review_lines()` | owner accounts | The lines waiting for a billing period (with their rows and whether a period exists now) and the "Cover is right" marks (each with `current`) |
+| `rec_accept_cover(op, purchase, line_no, reason)` | owner accounts | Clears the line's flag; the rows stay. Refused `NOT_WAITING`, `NOT_COVER`, `BAD_STATE` (voided), `REASON_REQUIRED` |
+| `rec_withdraw_cover(op, mark, reason)` | owner accounts | Puts the flag back — only while the mark applies (`CHANGED_SINCE` otherwise) |
+| `rec_bills()` | owner accounts | Every approval and reversal of a cost move: the item, quantity, value, from → to, the months it changed on each side (`sides`), the latest tick; its `group` key names it |
+| `rec_bill_check(op, cost_move, group, checked, note)` | owner accounts | Tick or un-tick one item. Never changes a bill |
+| `rec_money_out()` | owner accounts (cash: main owner) | Unpaid and Partly paid balances by supplier ("No supplier recorded"), payment not tracked (never owed), supplier credit left; Overpaid and each buyer's petty cash held, shortfall, owed and own money to review |
+| `pur_op_reserve(op)` | accounts that may use Add Expense (`pur_actor_owner('expenses_form')`) | Registers a save's id before it is sent; again is harmless |
+| `pur_op_recover()` | the same | For the **calling** account: every registered save the server has no answer for is cancelled for good (`pur_op_cancel`, under the lock recording takes — its first request arriving later is refused, `OP_CANCELLED`) or found recorded; returns `{cancelled, recorded}`. Used only when the browser cannot read a save's id (damaged storage) — an absent row in a list proves nothing |
+
+## Billing Acknowledgement Receipts (0114)
+
+Owner-only and **outside the money model**: nothing feeds these tables into Spent / Earned / Profit. Reached only through the `bar_*` functions from `js/billing-receipts.js`. Terms: `docs/superpowers/specs/2026-11-09-billing-acknowledgement-receipts-mvp-terms.md`.
+
+**`billing_receipts`**: one row per issued receipt. Owner accounts of the company may read; nobody writes directly. A row can only ever be voided, once (`billing_receipts_guard`: `RECEIPT_PERMANENT`). `folder_id` and `period_id` have no foreign key on purpose, so a receipt outlives a deleted billing period or project. One live receipt per period (`billing_receipts_one_live`).
+
+| Column | Notes |
+|---|---|
+| `owner_id` | the company |
+| `folder_id`, `period_id` | the project (`folders.id`) and the billing period (`projects.id`) |
+| `receipt_no` | `AR-YYYYMM-NNN`, unique per company, never reused |
+| `issued_on` | Philippine date of issue |
+| `billing_label` | frozen, e.g. `Progress Billing 3 (November 2026)` |
+| `amount` | the period's Fund Allocated when issued. Greater than zero |
+| `received_from`, `received_by` | frozen names |
+| `business`, `payment_details` | jsonb copied from `settings.invoiceDefaults` when issued |
+| `created_by`, `created_at` | who issued it |
+| `voided_at`, `voided_by`, `void_reason` | all set together, or all null |
+
+**`billing_receipt_counters`** (`owner_id`, `year_month`, `last_no`): the running number. **`billing_receipt_parties`** (`folder_id`, `owner_id`, `received_from`, `received_by`, `updated_by`, `updated_at`): the names offered next time. Neither table can be read or written directly.
+
+| Function | Who | What |
+|---|---|---|
+| `bar_state(folder)` | owner accounts | Names, company and payment details, client billing periods with their Fund Allocated, `total_received` (Cover left out), and the project's receipts |
+| `bar_issue(period, from, by)` | owner accounts | Issues the receipt, or returns the live one. Takes no amount |
+| `bar_reissue(receipt, reason, from, by)` | owner accounts | Voids and issues a replacement, together or not at all |
+| `bar_set_parties(folder, from, by)` | owner accounts | Saves the names without issuing (the Overall page) |
+
 ## PM profit sharing (0098)
 
 An internal owner/partner allocation per PM project - **outside the money model** (never a payout, invoice or accounting entry). Spec `docs/superpowers/specs/2026-10-18-pm-profit-sharing-mvp-terms.md`; plan `docs/superpowers/plans/2026-10-18-pm-profit-sharing.md`. `project_id` is a `construction_projects.id` (never a `folders.id`). The three tables have **RLS on, no policies, and all privileges revoked** from `anon`/`authenticated`: nothing reads or writes them directly. Read through `pm_sharing_read` (owner-role accounts of the company); write through `pm_set_sharing` (main owner only).
@@ -1086,6 +1325,9 @@ An internal owner/partner allocation per PM project - **outside the money model*
 | `pm_project_companies` | `project_id` PK -> `construction_projects` (cascade), `company_owner_id`, `mapped_by`, `mapped_at`, `source` (`owner_verified` / `created`). The trusted project -> company map. Rows come only from `pm_map_new_project_trg` (`created`) or an owner-verified mapping migration (0099, applied 2026-10-19; it maps six explicit projects). A project with no row is **unmapped** and its sharing is locked |
 | `pm_sharing_agreements` | `project_id` PK -> `construction_projects` (cascade), `company_owner_id`, `partner_pct` `numeric(5,2)` 0-100, `version` >= 1, `updated_by`, `updated_at`. Only `partner_pct` is stored (owner % = 100 - partner %). **No row = 50/50**, computed on read, never back-filled |
 | `pm_sharing_changes` | Append-only history: `project_id` (plain value, **no foreign key**, so a deleted project cannot blank its history), `project_name_snapshot`, `client_name_snapshot`, `company_owner_id`, `old_pct`, `new_pct`, `old_was_default`, `reason` (non-blank), `actor_id`, `actor_email`, `changed_at`. UPDATE and DELETE are refused by `pm_sharing_changes_immutable_trg` |
+| `pm_sharing_items` (0110) | `id`, `company_owner_id`, `project_id` (**plain value, no FK**), `charged_to` `owner`/`partner`, `item_name` 1-120, `amount numeric(14,2)` > 0 and < 100,000,000, `bought_on` (not future, PH date), `note` <= 500, `receipt_path` (`pmSharing/<company>/<yyyy-mm>/<uuid>.jpg`), `status` `active`/`voided`, `void_reason` (set iff voided), `version`, `created_*`, `updated_*`. Personal item bought for ONE person: comes off only that person's sharing figure, after the split. **Outside the money model.** Never deleted. Private: read via `pm_sharing_read().items`, written via `pm_si_record` / `pm_si_correct` / `pm_si_void` (main owner only) |
+| `pm_sharing_item_events` (0110) | Append-only (UPDATE/DELETE refused by `pm_si_events_immutable_trg`, `HISTORY_IMMUTABLE`): `item_id`, `company_owner_id`, `kind` recorded/corrected/voided, `old_values`, `new_values`, `reason`, `actor_id`, `actor_email`, `at` |
+| `pm_sharing_item_ops` (0110) | Run-once ledger: `op_id` PK, `company_owner_id`, `action` record/correct/void, `result`, `actor_id`, `at` |
 | `pm_map_new_project_trg` (AFTER INSERT on `construction_projects`) | Maps the new project to the creator's company. A signed-in creator with no valid company link is **rejected**; an insert with no signed-in account (service role / SQL editor) is left unmapped |
 | `pm_caller_company()` / `pm_owner_company()` / `pm_main_owner_id()` | Who is calling: any office account's company (the main owner's id); an owner-role account's company; the main owner only (role `owner`, `owner_id` null, active). `profiles.allowed_modules` is **never** read for authority |
 | `pm_set_sharing(project, partner_pct, expected_version, reason)` | The only way to change a split. Main owner only; locks the project row; project must be mapped to the caller's company; rejects a raw `%` with more than 2 decimals (`BAD_PCT`) before storage; optimistic version check (`STALE`); same value = no-op with no history; reason required; upserts the agreement and inserts the history row together |

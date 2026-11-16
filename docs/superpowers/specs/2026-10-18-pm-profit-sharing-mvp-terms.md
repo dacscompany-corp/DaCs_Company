@@ -589,3 +589,8 @@ Grounded in local source review and **read-only live queries on 18 Oct 2026**: p
 project list and statuses, warranty rows for completed projects, the `construction_projects` RLS
 policy, and the `profiles` policies and `profiles_guard` trigger. No live data or schema was changed. This document does not
 assert that anything is implemented, tested or deployed.
+
+## Addendum 2026-10-31 — Personal items
+
+Personal items (0110) extend this calculation after the split; see
+`2026-10-31-pm-sharing-personal-items-design.md`. Nothing in §5's balance, reserve or split changes.

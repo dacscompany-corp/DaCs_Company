@@ -11,7 +11,7 @@ import { PGlite } from '@electric-sql/pglite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { prBase, fnText } from './pr_base.mjs';
+import { prBase, fnText, CATALOG_0085, PORTION_CLOCK } from './pr_base.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = process.env.DACS_ROOT || path.join(HERE, '..', '..');
@@ -20,6 +20,25 @@ const M02 = read(path.join(ROOT, 'supabase/migrations/0002_rls.sql'));
 const M94 = read(path.join(ROOT, 'supabase/migrations/0094_workmate_work_plan_office.sql'));
 const M96 = read(path.join(ROOT, 'supabase/migrations/0096_purchase_recording.sql'));
 const M97 = read(path.join(ROOT, 'supabase/migrations/0097_purchasing_office.sql'));
+// --with-0101: the same tests with 2A-3a's 0101 on top — 0101 must not change
+// how the Purchasing tab buys, covers, corrects or approves.
+// --with-0102: and 2A-4a's 0102 on top of 0101.
+// --with-0104: and 2B-a's 0104 (stock) on top, switched ON (launch) — stock
+// must not change how the Purchasing tab buys, covers, corrects or approves.
+// --with-0105: and 2C's 0105 (cost moves) on top of 0104 — it redefines 0096's two guards.
+// --with-0107: and 3a's 0107 (tools) on top of 0105, switched ON — tools must not change
+// how a purchase is recorded, corrected or voided.
+const WITH_0107 = process.argv.includes('--with-0107');
+const M107 = WITH_0107 ? read(path.join(ROOT, 'supabase/migrations/0107_tools.sql')) : '';
+const WITH_0105 = process.argv.includes('--with-0105') || WITH_0107;
+const WITH_0104 = process.argv.includes('--with-0104') || WITH_0105;
+const M104 = WITH_0104 ? read(path.join(ROOT, 'supabase/migrations/0104_stock.sql')) : '';
+const M105 = WITH_0105 ? read(path.join(ROOT, 'supabase/migrations/0105_stock_cost_moves.sql')) : '';
+const WITH_0102 = process.argv.includes('--with-0102') || WITH_0104;
+const M98 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0098_pm_profit_sharing.sql')) : '';
+const M102 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0102_purchase_payments.sql')) : '';
+const WITH_0101 = process.argv.includes('--with-0101') || WITH_0102;
+const M101 = WITH_0101 ? read(path.join(ROOT, 'supabase/migrations/0101_purchasing_phone.sql')) : '';
 
 // The 2A-1 base schema (same as 2a1_purchase.pglite.mjs).
 const BASE = `
@@ -87,6 +106,10 @@ async function fresh() {
   await db.exec(M96);
   await db.exec(prBase(ROOT));
   await db.exec(M97);
+  if (WITH_0101) { await db.exec(`create role service_role`); await db.exec(M101); }
+  if (WITH_0102) { await db.exec(fnText(M98, 'pm_main_owner_id')); await db.exec(M102); }
+  if (WITH_0104) { await db.exec(CATALOG_0085); await db.exec(M104); if (WITH_0105) await db.exec(M105); if (WITH_0107) await db.exec(M107); }
+  await db.exec(PORTION_CLOCK);
   await db.exec(`insert into profiles (id, role, owner_id, status, allowed_modules, email, display_name) values
     ('${OWNER}', 'owner', null, 'active', null, 'admin@dacs.test', null),
     ('${STAFF}', 'staff', '${OWNER}', 'active', null, 'staff@dacs.test', null),
@@ -99,6 +122,8 @@ async function fresh() {
   await as(db, OWNER);
   await db.query(`select pur_set_buyer($1, true)`, [BUYER]);
   await db.query(`select pur_set_buyer($1, true)`, [BUYER2]);
+  if (WITH_0104) await db.query(`select stk_set_enabled(true)`);
+  if (WITH_0107) await db.query(`select tl_set_enabled(true)`);
   return db;
 }
 async function as(db, uid) { await db.exec(`select set_config('test.uid', '${uid}', false)`); }
@@ -153,7 +178,7 @@ async function spent(db, folderId) {
   return num((await one(db, `select coalesce(sum(e.amount), 0) s from expenses e join projects p on p.id = e.project_id where p.folder_id = $1`, [folderId])).s);
 }
 
-console.log('\n2A-2 purchasing tab + Buyer switch (0096 + 0097 on PGlite)');
+console.log('\n2A-2 purchasing tab + Buyer switch (0096 + 0097' + (WITH_0101 ? ' + 0101' : '') + (WITH_0102 ? ' + 0102' : '') + (WITH_0104 ? ' + 0104 (stock on)' : '') + (WITH_0105 ? ' + 0105' : '') + ' on PGlite)');
 
 // ── A. The Buyer switch ──────────────────────────────────────────────
 
@@ -197,10 +222,12 @@ await test('Purchasing and phone sources need the switch; the Expenses form keep
   const b = body([{ folder_id: f, item_name: 'Nails', amount: 50, unplanned_reason: 'site ran out' }]);
   await as(db, STAFF);
   assert((await code(record(db, b))).includes('BUYER_REQUIRED'), 'purchasing refused');
-  assert((await code(record(db, { ...b, source: 'workmate' }))).includes('BUYER_REQUIRED'), 'phone refused');
+  // A phone purchase carries its receipt photo (0101 refuses one with neither a photo nor a reason).
+  const phone = { ...b, source: 'workmate', docs: { po_image_url: 'https://example.test/receipt.jpg' } };
+  assert((await code(record(db, phone))).includes('BUYER_REQUIRED'), 'phone refused');
   await record(db, { ...b, source: 'expenses_form' });
   await as(db, BUYER); await record(db, b);
-  await record(db, { ...b, source: 'workmate' });
+  await record(db, phone);
   await as(db, OWNER);
   await db.query(`update profiles set status = 'inactive' where id = $1`, [BUYER]);
   await as(db, BUYER);

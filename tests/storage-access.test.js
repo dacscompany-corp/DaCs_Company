@@ -74,6 +74,12 @@ const FOLDERS = {
   expenseReceipts: 'tenant', payrollReceipts: 'tenant',
   // 0097: one receipt per purchase — only accounts that may BUY in that company.
   purchases: 'buyer',
+  // 0102 (R13): a petty-cash return photo — the main owner and the buyer who uploaded it.
+  pettyCash: 'pettyCash',
+  // 0107 (3a): tool photos — the office only (owner / staff), the generic rule.
+  tools: 'admin',
+  // 0110: PM sharing personal-item receipts — main owner writes, owner-role of the company reads.
+  pmSharing: 'pmSharing',
 };
 const OWNER_ONLY_SQL = "('quotations', 'reimbursementReceipts')";
 const CLIENT_PROJECT_SQL = "('weeklyBillReceipts', 'procurementReceipts', 'accomplishmentReports', 'projectTerms')";
@@ -199,6 +205,41 @@ test('purchase receipts are buyer-locked (0097): buyers of THAT company only, be
   ok(upd.includes("split_part(name, '/', 1) = 'purchases'") && upd.includes('pur_buyer()'), 'overwrite policy is not buyer-locked for purchases');
 });
 
+test('petty-cash return photos are locked to the main owner and their uploader (0102, R13), before every other rule', () => {
+  const r = lastFn('uploads_can_read');
+  const w = lastFn('uploads_can_write');
+  ok(r.includes("v_folder = 'pettyCash' then\n    return pur_petty_reader(p_name);"), 'read rule for pettyCash missing or reshaped');
+  ok(w.includes("v_folder = 'pettyCash' then\n    return pur_buyer() and v_seg2 = data_owner_id()::text;"), 'write rule for pettyCash missing or reshaped');
+  ok(r.indexOf("v_folder = 'pettyCash'") < r.indexOf('p_owner_id = v_uid::text then return true'), 'read: pettyCash rule must precede the uploader read-back');
+  ok(r.indexOf("v_folder = 'pettyCash'") < r.indexOf('if is_owner() or is_staff() then return true'), 'read: pettyCash rule must precede the generic rule');
+  ok(w.indexOf("v_folder = 'pettyCash'") < w.indexOf('if is_owner() or is_staff() then return true'), 'write: pettyCash rule must precede the generic rule');
+  // The purchases rule is still there, unchanged, in the same latest definition.
+  ok(r.includes("v_folder = 'purchases' then\n    return pur_buyer() and split_part(p_name, '/', 2) = data_owner_id()::text;"), 'purchases read rule kept');
+  const sql = allRules();
+  const from = sql.lastIndexOf('create policy "uploads_admin_update"');
+  const upd = sql.slice(from, sql.indexOf(');', from) + 2);
+  ok(upd.includes("split_part(name, '/', 1) = 'pettyCash' then false"), 'a return photo is never overwritten');
+});
+
+test('PM sharing receipts: main owner writes, owner-role of the company reads (0110), before every other rule', () => {
+  const r = lastFn('uploads_can_read');
+  const w = lastFn('uploads_can_write');
+  ok(r.includes("v_folder = 'pmSharing' then\n    return pm_si_file_ok(p_name, false);"), 'read rule for pmSharing missing or reshaped');
+  ok(w.includes("v_folder = 'pmSharing' then\n    return pm_si_file_ok(p_name, true);"), 'write rule for pmSharing missing or reshaped');
+  ok(r.indexOf("v_folder = 'pmSharing'") < r.indexOf('p_owner_id = v_uid::text then return true'), 'read: pmSharing rule must precede the uploader read-back');
+  ok(r.indexOf("v_folder = 'pmSharing'") < r.indexOf('if is_owner() or is_staff() then return true'), 'read: pmSharing rule must precede the generic rule');
+  ok(w.indexOf("v_folder = 'pmSharing'") < w.indexOf('if is_owner() or is_staff() then return true'), 'write: pmSharing rule must precede the generic rule');
+  // Earlier folder rules are still there, unchanged, in the same latest definition.
+  ok(r.includes("v_folder = 'pettyCash' then\n    return pur_petty_reader(p_name);"), 'pettyCash read rule kept');
+  ok(r.includes("v_folder = 'purchases' then\n    return pur_buyer() and split_part(p_name, '/', 2) = data_owner_id()::text;"), 'purchases read rule kept');
+  ok(w.includes("v_folder = 'pettyCash' then\n    return pur_buyer() and v_seg2 = data_owner_id()::text;"), 'pettyCash write rule kept');
+  const sql = allRules();
+  const from = sql.lastIndexOf('create policy "uploads_admin_update"');
+  const upd = sql.slice(from, sql.indexOf(');', from) + 2);
+  ok(upd.includes("split_part(name, '/', 1) = 'pmSharing' then false"), 'a personal-item receipt is never overwritten');
+  ok(upd.includes("split_part(name, '/', 1) = 'pettyCash' then false"), 'pettyCash overwrite rule kept');
+});
+
 console.log('\nIII. Every upload folder is classified');
 function uploadFolders() {
   const files = fs.readdirSync(path.join(ROOT, 'js')).filter((f) => f.endsWith('.js')).map((f) => path.join(ROOT, 'js', f));
@@ -208,7 +249,7 @@ function uploadFolders() {
     /storage\.ref\(\s*[`'"]([A-Za-z][\w-]*)\//g,          // storage.ref('folder/…')
     /const path\s*=\s*[`'"]([A-Za-z][\w-]*)\//g,           // const path = `folder/…`
     /\b(?:store|contracts):\s*'([A-Za-z][\w-]*)'/g,        // expenses-module agreement config
-    /\b(?:expense|payroll|purchase):\s*'([A-Za-z][\w-]*)'/g, // receipt-storage.js FOLDER map
+    /\b(?:expense|payroll|purchase|petty_cash|pm_sharing):\s*'([A-Za-z][\w-]*)'/g, // receipt-storage.js FOLDER map
   ];
   for (const f of files) {
     const src = fs.readFileSync(f, 'utf8');
@@ -228,7 +269,7 @@ test('the scan still finds the known upload sites (guards against a silent regex
   const found = uploadFolders();
   for (const f of ['expenseInbox', 'weeklyBillReceipts', 'procurementReceipts', 'signatures', 'signed-terms',
                    'quotations', 'reimbursementReceipts', 'workerAgreementGlobal', 'workerAgreements',
-                   'expenseReceipts', 'payrollReceipts', 'purchases']) {
+                   'expenseReceipts', 'payrollReceipts', 'purchases', 'pettyCash', 'pmSharing']) {
     ok(found.has(f), 'scan no longer sees uploads to ' + f);
   }
 });

@@ -87,6 +87,7 @@
 .pur-rec-kind.is-open { background: var(--att-gold-tint); color: var(--att-gold); }
 .pur-rec-remove { margin-left: auto; color: var(--att-red); }
 .pur-rec-row[hidden] { display: none; }
+.att-info[hidden] { display: none; }   /* F1: an empty warning box stays hidden (.att-info sets display: flex) */
 .pur-preview { padding: 8px 12px; border-radius: 10px; background: var(--att-field); font-size: 13.5px; color: var(--att-ink-2); }
 .pur-shares { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; }
 .pur-shares .att-label { flex: 0 1 110px; }
@@ -155,34 +156,54 @@
     .pur-portion-acts { margin-left: 0; }
     .pur-rec-row .att-label.pur-w2 { grid-column: auto; }
 }
-/* Final alignment fixes for the redesigned Purchases pages */
-.pur-ptable th.pur-num, .pur-lines th.pur-num { text-align: right; }
-.pur-side .pur-docs { padding: 4px 18px 16px; gap: 14px; }
-.pur-filter-fields .att-filter, .pur-filter-fields .att-input { height: 46px; box-sizing: border-box; }
 
-/* Receipt photos: one tidy row per photo */
-.pur-side .pur-docs { display: grid; gap: 8px; padding: 14px 18px 18px; }
-.pur-doc { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--att-line); border-radius: 12px; background: var(--att-field); color: var(--att-ink); text-decoration: none; font-size: 14.5px; font-weight: 600; text-transform: capitalize; }
-.pur-doc:hover, .pur-doc:focus-visible { border-color: var(--att-green); background: var(--att-green-tint); outline: none; }
-.pur-doc-ico { display: inline-grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 9px; background: var(--att-green-tint); color: var(--att-green); }
-.pur-doc-ico svg, .pur-doc-ico i { width: 18px; height: 18px; }
-.pur-doc-name { flex: 1; min-width: 0; }
-.pur-doc-open { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--att-green); text-transform: none; }
-.pur-doc-open svg, .pur-doc-open i { width: 14px; height: 14px; }
-/* Owner approvals */
-.pur-req-section { display: flex; align-items: center; gap: 10px; margin: 20px 0 10px; }
-.pur-req-section .pur-h3 { margin: 0; font-size: 17px; }
-.pur-req-count { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 8px; border-radius: 999px; background: var(--att-field); border: 1px solid var(--att-line); font-size: 12.5px; font-weight: 700; color: #55555A; }
-.pur-req-count.is-on { background: var(--att-gold-tint); border-color: transparent; color: var(--att-gold); }
-.pur-req { padding: 0; overflow: hidden; }
-.pur-req.is-pending { border-left: 3px solid var(--att-gold); }
-.pur-req-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 20px; border-bottom: 1px solid var(--att-line-soft); }
-.pur-req-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14.5px; }
-.pur-req-kind { padding: 3px 11px; border-radius: 999px; background: var(--att-green-tint); color: var(--att-green); font-size: 12.5px; font-weight: 700; }
-.pur-req-kind--void { background: var(--att-red-tint); color: var(--att-red); }
-.pur-req-body { display: grid; gap: 12px; padding: 14px 20px; }
-.pur-req-reason { font-size: 15px; color: var(--att-ink); }
-.pur-req-label { display: block; margin-bottom: 2px; font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #55555A; }
-.pur-req-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 20px; border-top: 1px solid var(--att-line-soft); background: var(--att-field); }
-.pur-req .pur-change td { padding: 8px 12px; }
-.pur-req .att-info { margin: 0; }
+/* ── Payments and petty cash (0102, 2A-4a) — never part of Spent ── */
+.pur-h4 { margin: 14px 0 6px; font-size: 13.5px; font-weight: 700; }
+.pur-pay-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.pur-pay-figs { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 8px 0 12px; font-size: 13px; }
+.pur-pay-figs strong { margin-left: 4px; }
+.pur-pay-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.pur-history li.is-void { color: var(--att-ink-3, #888); text-decoration: line-through; text-decoration-thickness: 1px; }
+.pur-voided { margin-top: 10px; font-size: 13px; }
+.pur-resolve-part { border: 1px solid var(--att-line, #e3e3df); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; }
+.pur-cash-cards { gap: 12px; }
+.pur-cash-cards > span { display: flex; flex-direction: column; min-width: 160px; padding: 10px 14px; border: 1px solid var(--att-line, #e3e3df);
+    border-radius: 12px; background: var(--att-card, #fff); }
+.pur-cash-cards > span strong { margin: 2px 0 0; font-size: 18px; }
+.pur-cash-cards small { color: var(--att-ink-3, #888); font-size: 12px; }
+
+/* ── Stock (0104, 2B-a) — js/stock-admin.js. Quantities only ── */
+.pur-instock { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 4px; font-size: 13.5px; color: var(--att-ink-2); }
+.pur-instock svg, .pur-instock i { width: 15px; height: 15px; }
+.stk-tab .att-card { margin-bottom: 12px; }
+.stk-form .att-label, .stk-tab .att-label { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--att-ink-2); }
+.stk-form { display: grid; gap: 12px; }
+.stk-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.stk-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.stk-switch-off { margin-top: 18px; display: flex; justify-content: flex-end; }
+.stk-item { cursor: pointer; }
+.stk-item:hover { border-color: var(--att-green); }
+.stk-item-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; }
+.stk-item-total { margin-left: auto; font-size: 18px; font-weight: 700; color: var(--att-ink); font-variant-numeric: tabular-nums; }
+.stk-places { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: 13.5px; color: var(--att-ink-2); }
+.stk-place.is-warehouse strong { color: var(--att-green); }
+.stk-h { margin: 18px 0 8px; font-size: 15px; font-weight: 700; }
+.stk-lots, .stk-recs { display: grid; gap: 8px; }
+.stk-lot, .stk-rec { padding: 10px 14px; border: 1px solid var(--att-line); border-radius: 12px; background: var(--att-field); font-size: 13.5px; }
+.stk-rec { display: flex; align-items: flex-start; gap: 12px; }
+.stk-rec-main { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.stk-rec.is-reversed .stk-rec-main { color: var(--att-muted); }
+.stk-rec-acts, .stk-line-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.stk-line-acts { margin-top: 8px; }
+/* ── Tools (0107, 3a) — js/tools-admin.js. No money ── */
+.tl-state { margin-left: auto; }
+.tl-photo { display: block; max-width: 160px; max-height: 120px; margin: 6px 0; border-radius: 10px;
+  border: 1px solid var(--att-line); object-fit: cover; cursor: zoom-in; }
+.tl-photo--lg { max-width: 260px; max-height: 200px; margin: 10px 0; }
+/* 2C (0105): a record's cost moves, under it. */
+.stk-cost { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 4px; padding-top: 6px; border-top: 1px dashed var(--att-line); }
+.stk-cost-acts { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+@media (max-width: 640px) {
+    .stk-rec { flex-direction: column; }
+    .stk-grid2 { grid-template-columns: 1fr; }
+}

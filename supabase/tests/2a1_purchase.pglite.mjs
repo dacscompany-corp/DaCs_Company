@@ -19,9 +19,28 @@ const MIG = process.env.DACS_0096 || path.join(ROOT, 'supabase/migrations/0096_p
 const read = (p) => fs.readFileSync(p, 'utf8').replace(/\r\n/g, '\n');
 // --with-0097: the same tests with 2A-2's migration applied on top — 0097
 // must not change how a purchase is recorded, funded, corrected or voided.
-const WITH_0097 = process.argv.includes('--with-0097');
-const PR_BASE = WITH_0097 ? (await import('./pr_base.mjs')).prBase(ROOT) : '';
+// --with-0101: the same again with 2A-3a's 0101 on top of 0097.
+// --with-0102: and 2A-4a's 0102 on top of those (payments must not change recording).
+// --with-0104: and 2B-a's 0104 (stock) on top, switched OFF as before launch —
+// the old tickbox and every purchase rule unchanged.
+// --with-0105: and 2C's 0105 (cost moves) on top of 0104 — it redefines 0096's two guards.
+// --with-0107: and 3a's 0107 (tools) on top of 0105, switched OFF — tools must not change
+// how a purchase is recorded, corrected or voided.
+const WITH_0107 = process.argv.includes('--with-0107');
+const M107 = WITH_0107 ? read(path.join(ROOT, 'supabase/migrations/0107_tools.sql')) : '';
+const WITH_0105 = process.argv.includes('--with-0105') || WITH_0107;
+const WITH_0104 = process.argv.includes('--with-0104') || WITH_0105;
+const WITH_0102 = process.argv.includes('--with-0102') || WITH_0104;
+const M98 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0098_pm_profit_sharing.sql')) : '';
+const M102 = WITH_0102 ? read(path.join(ROOT, 'supabase/migrations/0102_purchase_payments.sql')) : '';
+const WITH_0101 = process.argv.includes('--with-0101') || WITH_0102;
+const WITH_0097 = process.argv.includes('--with-0097') || WITH_0101;
+const PR_MOD = WITH_0097 ? await import('./pr_base.mjs') : null;
+const PR_BASE = WITH_0097 ? PR_MOD.prBase(ROOT) : '';
+const M104 = WITH_0104 ? read(path.join(ROOT, 'supabase/migrations/0104_stock.sql')) : '';
+const M105 = WITH_0105 ? read(path.join(ROOT, 'supabase/migrations/0105_stock_cost_moves.sql')) : '';
 const M97 = WITH_0097 ? read(path.join(ROOT, 'supabase/migrations/0097_purchasing_office.sql')) : '';
+const M101 = WITH_0101 ? read(path.join(ROOT, 'supabase/migrations/0101_purchasing_phone.sql')) : '';
 const fnText = (src, name) => {
   const m = src.match(new RegExp('create or replace function ' + name + '\\s*\\([\\s\\S]*?\\n\\$\\$;', 'i'));
   if (!m) throw new Error('function ' + name + ' not found');
@@ -93,6 +112,9 @@ async function fresh() {
   await db.exec(BASE);
   await db.exec(read(MIG));
   if (WITH_0097) { await db.exec(PR_BASE); await db.exec(M97); }
+  if (WITH_0101) { await db.exec(`create role service_role`); await db.exec(M101); }
+  if (WITH_0102) { await db.exec(fnText(M98, 'pm_main_owner_id')); await db.exec(M102); }
+  if (WITH_0104) { await db.exec(PR_MOD.CATALOG_0085); await db.exec(M104); if (WITH_0105) await db.exec(M105); if (WITH_0107) await db.exec(M107); }
   await db.exec(`insert into profiles values
     ('${OWNER}', 'owner', null, 'active', null), ('${STAFF}', 'staff', '${OWNER}', 'active', null),
     ('${WORKER}', 'worker', '${OWNER}', 'active', null), ('${OTHER}', 'owner', null, 'active', null),
@@ -138,7 +160,7 @@ async function code(promise) {
   try { await promise; return 'no error'; } catch (e) { return e.message; }
 }
 
-console.log('\n2A-1 purchase recording (0096' + (WITH_0097 ? ' + 0097' : '') + ' on PGlite)');
+console.log('\n2A-1 purchase recording (0096' + (WITH_0097 ? ' + 0097' : '') + (WITH_0101 ? ' + 0101' : '') + (WITH_0102 ? ' + 0102' : '') + (WITH_0104 ? ' + 0104 (stock off)' : '') + (WITH_0105 ? ' + 0105' : '') + ' on PGlite)');
 
 await test('§3.3 example: ₱8,000 on 14 Oct → ₱3,000 + ₱4,000 + ₱1,000 Cover (earliest billing number first)', async () => {
   const db = await fresh(); await as(db, OWNER);

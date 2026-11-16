@@ -159,8 +159,8 @@ Payments (deposits, partial, full, petty-cash-funded, personal-funded, refunds a
 |---|---|
 | **9** | An unlisted request line **can be bought**; it must be **matched to a catalogue item before it becomes stock** (2B). |
 | **10** | A simple **supplier list** (name, optional branch/contact) that buyers can add to. Safe supplier names may be shown to workers (Section 1). |
-| **13** | Leftover material released to an **outside job**: Stage 2 records **evidence only** — who took it, quantity, photo, date. The original project's Spent does not change; money is reconciled in Stage 4. |
-| **14** | A **partial return** from an outside job reduces the quantity still out, linked to the original release; after owner confirmation it is a **new correcting record**. History is never edited. |
+| **13** | Leftover material released to an **outside job**: Stage 2 records **evidence only** — who took it, quantity, photo, date. The original project's Spent does not change; money is reconciled in Stage 4. **Deferred scope (28 Oct 2026):** not built in 2B — the company does not give or lend materials to outside jobs. Revisit only if that changes. |
+| **14** | A **partial return** from an outside job reduces the quantity still out, linked to the original release; after owner confirmation it is a **new correcting record**. History is never edited. **Deferred with Q13.** |
 | **15** | **No tool lending** to outside jobs in Stage 2; decide in Stage 3 (Tools). |
 | **16** | WorkMate purchasing sign-in: **staff with the Buyer switch, plus admin/owner within their account scope** — Purchasing + Profile only, no Attendance unless they also qualify as a worker. Enforced on the server. |
 | **17** | **Multi-project receipt photos stay office-only** (owner/admin/Buyer staff). Clients and partners never see purchase receipts; each project's own expense rows stay visible as today. |
