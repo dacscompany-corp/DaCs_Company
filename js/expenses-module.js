@@ -1388,6 +1388,10 @@ function _updateBillingSummary(projects) {
     const totalBlock  = document.getElementById('expBsTotalBlock');
     if (!listEl) return;
 
+    // These elements live in admin.html's hidden legacy block: other code still
+    // writes to and toggles them, so the ids and this signature stay. What they
+    // SAY is corrected (Financial MVP Phase 1, spec 2026-11-14 §3.4): every
+    // figure is named for what it measures, never "Profit" or "P&L".
     const typeOrder = ['mobilization','downpayment','progress','final','president'];
     const typeInfo  = {
         mobilization: { icon: '🚧', label: 'Mobilization' },
@@ -1404,87 +1408,74 @@ function _updateBillingSummary(projects) {
         return (a.billingNumber || 0) - (b.billingNumber || 0);
     });
 
-    // Helper: sum expenses/payroll for a project's month+year (by dateTime, not projectId)
-    const _bsMonthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-    const _bsSpentForPeriod = (p) => {
-        const m = p.month, y = Number(p.year);
-        const exps = expExpenses.filter(e => {
-            if (!e.dateTime) return false;
-            const d = new Date(e.dateTime);
-            return _bsMonthNames[d.getMonth()] === m && d.getFullYear() === y;
-        }).reduce((s, e) => s + (e.amount || 0), 0);
-        const pays = expPayroll
-            .filter(pr => _payInPeriod(pr, m, y))
-            .reduce((s, pr) => s + (pr.totalSalary || 0), 0);
-        return exps + pays;
-    };
-
-    // Totals for summary stats
-    const totalReceived = sorted.filter(p => p.fundingType !== 'president')
-                                .reduce((s, p) => s + (p.monthlyBudget || 0), 0);
-    const totalSpent    = expExpenses.reduce((s, e) => s + (e.amount || 0), 0)
-                        + expPayroll.reduce((s, pr) => s + (pr.totalSalary || 0), 0);
-    // Contract value from the current folder for overall P&L
-    const _bsFolder      = expCurrentFolder || (expCurrentProject?.folderId ? expFolders.find(f => f.id === expCurrentProject.folderId) : null);
-    const _bsContractVal = _bsFolder?.totalBudget || 0;
-    const _bsOverallPL   = _bsContractVal - totalSpent;   // Total Contract − Total Cost = true P&L
-    let   grandBalance   = 0;
+    // Fund balance per billing = Fund Allocated − cost CHARGED to that billing,
+    // matched by period id (js/project-finance.js) — never by calendar month,
+    // and never by billing number (two billings can share one). Month-by-date
+    // activity is a different measure and is not used here. Project overhead
+    // comes from the owner's overhead read: until it is loaded, every figure
+    // that needs it says Unavailable rather than leave overhead out.
+    const _bsFolder   = expCurrentFolder || (expCurrentProject?.folderId ? expFolders.find(f => f.id === expCurrentProject.folderId) : null);
+    const folderId    = _bsFolder ? _bsFolder.id : (sorted[0] && sorted[0].folderId);
+    const ovhLoaded   = Array.isArray(_rptOvhdRows);
+    const fb = pfFundBalances({ periods: sorted, payroll: expPayroll, expenses: expExpenses,
+        overhead: ovhLoaded ? _rptOvhdRows : [], folderIds: new Set([folderId]) });
+    const byId        = new Map(fb.rows.map(r => [r.id, r]));
+    const contractCts = pfCents(_bsFolder?.totalBudget || 0);
+    const money  = c => '&#8369;' + formatNum(Math.abs(c) / 100);
+    const signed = c => (c > 0 ? '+' : c < 0 ? '-' : '') + money(c);
+    const tone   = c => c > 0 ? 'pos' : c < 0 ? 'neg' : 'zero';
+    const NA     = PF_LABELS.unavailable;
 
     // ── Summary stats row ──────────────────────────────────────
     if (statsEl) {
-        const plCls  = _bsOverallPL > 0 ? 'pos' : _bsOverallPL < 0 ? 'neg' : '';
-        const plSign = _bsOverallPL > 0 ? '+' : _bsOverallPL < 0 ? '-' : '';
-        const plLabel = _bsOverallPL > 0 ? 'Overall Profit' : _bsOverallPL < 0 ? 'Overall Loss' : 'Break-even';
+        const clc = contractCts - fb.spentCents;
         statsEl.innerHTML =
             '<div class="exp-bs-stat">'
-            +   '<div class="exp-bs-stat-val">&#8369;' + formatNum(_bsContractVal || totalReceived) + '</div>'
-            +   '<div class="exp-bs-stat-label">' + (_bsContractVal > 0 ? 'Total Contract' : 'Total Billed') + '</div>'
+            +   '<div class="exp-bs-stat-val">' + money(contractCts || fb.clientBaseCents) + '</div>'
+            +   '<div class="exp-bs-stat-label">' + (contractCts > 0 ? 'Total Contract' : 'Total Fund Allocated') + '</div>'
             + '</div>'
             + '<div class="exp-bs-stat">'
-            +   '<div class="exp-bs-stat-val spent">&#8369;' + formatNum(totalSpent) + '</div>'
-            +   '<div class="exp-bs-stat-label">Current Fund Spent</div>'
+            +   '<div class="exp-bs-stat-val spent">' + (ovhLoaded ? money(fb.spentCents) : NA) + '</div>'
+            +   '<div class="exp-bs-stat-label">Cost to date</div>'
             + '</div>'
             + '<div class="exp-bs-stat">'
-            +   '<div class="exp-bs-stat-val ' + plCls + '">' + plSign + '&#8369;' + formatNum(Math.abs(_bsOverallPL)) + '</div>'
-            +   '<div class="exp-bs-stat-label">' + plLabel + '</div>'
+            +   '<div class="exp-bs-stat-val ' + (ovhLoaded && contractCts > 0 ? tone(clc) : '') + '">'
+            +     (ovhLoaded && contractCts > 0 ? signed(clc) : NA) + '</div>'
+            +   '<div class="exp-bs-stat-label">' + PF_LABELS.contractLessCost + '</div>'
             + '</div>';
     }
 
     // ── Entry rows ─────────────────────────────────────────────
-    let listHtml = '';
-    const bdItems = [];
+    let listHtml = pfDuplicateBillingNumbers(sorted).map(g =>
+        '<p class="exp-bs-duplicate" role="note">&#9888; ' + _mvpEsc(pfDuplicateText(g)) + '</p>').join('');
 
     sorted.forEach(p => {
         const ft      = p.fundingType || 'downpayment';
         const info    = typeInfo[ft] || { icon: '💸', label: ft };
-        const isCover = ft === 'president';
-        const recv    = isCover ? 0 : (p.monthlyBudget || 0);
-        const spent   = _bsSpentForPeriod(p);
-        const bal     = isCover ? -spent : recv - spent;
-        grandBalance += bal;
-
+        const row     = byId.get(p.id);
+        const isCover = row.cover;
         const label   = ft === 'progress'
             ? info.icon + ' ' + info.label + ' #' + (p.billingNumber || '?')
             : info.icon + ' ' + info.label;
-        const balCls  = bal > 0 ? 'pos' : bal < 0 ? 'neg' : 'zero';
-        const balSign = bal > 0 ? '+' : bal < 0 ? '-' : '';
-        const balStr  = balSign + '&#8369;' + formatNum(Math.abs(bal));
+        const chip    = isCover
+            ? PF_LABELS.companyFronted + ' ' + money(row.companyFrontedCents)
+            : PF_LABELS.fundBalance + ' ' + signed(row.balanceCents);
 
-        // Bar: received width + spent width (relative to the larger)
-        const maxRef  = Math.max(recv, spent, 1);
-        const recW    = Math.min((recv  / maxRef) * 100, 100).toFixed(1);
-        const sptW    = Math.min((spent / maxRef) * 100, 100).toFixed(1);
+        // Bar: allocated width + charged width (relative to the larger)
+        const maxRef  = Math.max(row.baseCents, row.chargedCents, 1);
+        const recW    = Math.min((row.baseCents    / maxRef) * 100, 100).toFixed(1);
+        const sptW    = Math.min((row.chargedCents / maxRef) * 100, 100).toFixed(1);
 
         listHtml +=
-            '<div class="exp-bs-entry' + (isCover ? ' exp-bs-entry-cover' : '') + '">'
+            '<div class="exp-bs-entry' + (isCover ? ' exp-bs-entry-cover' : '') + '" data-period-id="' + _mvpEsc(p.id) + '">'
             +   '<div class="exp-bs-entry-top">'
             +     '<div class="exp-bs-entry-info">'
             +       '<span class="exp-bs-entry-label">' + label + '</span>'
-            +       '<span class="exp-bs-entry-period">' + p.month + ' ' + p.year + '</span>'
+            +       '<span class="exp-bs-entry-period">' + _mvpEsc(p.month) + ' ' + _mvpEsc(p.year) + '</span>'
             +     '</div>'
             +     '<div class="exp-bs-entry-amounts">'
-            +       '<span class="exp-bs-entry-received">&#8369;' + formatNum(isCover ? spent : recv) + '</span>'
-            +       '<span class="exp-bs-entry-bal ' + balCls + '">' + balStr + '</span>'
+            +       '<span class="exp-bs-entry-received">' + money(isCover ? row.chargedCents : row.baseCents) + '</span>'
+            +       '<span class="exp-bs-entry-bal ' + (isCover ? 'neg' : tone(row.balanceCents)) + '">' + chip + '</span>'
             +     '</div>'
             +   '</div>'
             +   '<div class="exp-bs-bar-track">'
@@ -1495,44 +1486,39 @@ function _updateBillingSummary(projects) {
             +   '</div>'
             +   '<div class="exp-bs-bar-labels">'
             +     (isCover
-                    ? '<span>Covers &#8369;' + formatNum(spent) + ' expenses</span>'
-                    : '<span style="color:#3b82f6">&#8369;' + formatNum(recv) + ' received</span>'
-                    +  '<span style="color:#f59e0b">&#8369;' + formatNum(spent) + ' spent</span>')
+                    ? '<span>Covers ' + money(row.chargedCents) + ' of cost charged to it</span>'
+                    : '<span style="color:#3b82f6">' + money(row.baseCents) + ' allocated</span>'
+                    +  '<span style="color:#f59e0b">' + money(row.chargedCents) + ' charged</span>')
             +   '</div>'
             + '</div>';
-
-        bdItems.push({ label, bal, balCls, balStr });
     });
+
+    // Cost with no billing period is still Spent: it is listed, so the list
+    // adds up to the total below.
+    if (fb.notChargedRows.expenses || fb.notChargedRows.overhead || !ovhLoaded) {
+        listHtml +=
+            '<div class="exp-bs-entry exp-bs-entry-cover">'
+            +   '<div class="exp-bs-entry-top">'
+            +     '<div class="exp-bs-entry-info"><span class="exp-bs-entry-label">' + PF_LABELS.notCharged + '</span>'
+            +       '<span class="exp-bs-entry-period">' + fb.notChargedRows.expenses + ' expense'
+            +         (fb.notChargedRows.expenses === 1 ? '' : 's') + ' · ' + fb.notChargedRows.overhead + ' overhead row'
+            +         (fb.notChargedRows.overhead === 1 ? '' : 's') + '</span></div>'
+            +     '<div class="exp-bs-entry-amounts"><span class="exp-bs-entry-received">'
+            +       (ovhLoaded ? money(fb.notChargedCents) : NA) + '</span></div>'
+            +   '</div>'
+            + '</div>';
+    }
 
     listEl.innerHTML = listHtml || '<p class="exp-empty" style="padding:1rem 0">No billing data yet.</p>';
 
-    // ── Grand total block ──────────────────────────────────────
+    // ── Grand total block: Fund Allocated − Spent, the reserve included ──
     if (totalBlock) {
-        const plSign  = _bsOverallPL > 0 ? '+' : _bsOverallPL < 0 ? '-' : '';
-        const plColor = _bsOverallPL > 0 ? '#059669' : _bsOverallPL < 0 ? '#ef4444' : '#6b7280';
-        const plTitle = _bsOverallPL > 0 ? 'Profit' : _bsOverallPL < 0 ? 'Loss' : 'Break-even';
-
-        // Per-period P&L breakdown (billing received - period spent)
-        let bdHtml = bdItems.map(item =>
-            '<div class="exp-bs-bd-item">'
-            +   '<span class="exp-bs-bd-name">' + item.label + '</span>'
-            +   '<span class="exp-bs-bd-amt ' + item.balCls + '">' + item.balStr + '</span>'
-            + '</div>'
-        ).join('');
-
-        // Remaining contract (not yet billed)
-        const remaining = _bsContractVal - totalReceived;
-        const remHtml = _bsContractVal > 0
-            ? '<div class="exp-bs-bd-item" style="border-top:1px dashed #e5e7eb;margin-top:0.4rem;padding-top:0.4rem">'
-              + '<span class="exp-bs-bd-name" style="opacity:0.6">Remaining unbilled</span>'
-              + '<span class="exp-bs-bd-amt" style="color:#6b7280">&#8369;' + formatNum(Math.max(remaining, 0)) + '</span>'
-              + '</div>'
-            : '';
-
+        const t = fb.totalRemainingCents;
         totalBlock.innerHTML =
             '<div class="exp-bs-total-row">'
-            +   '<div class="exp-bs-total-label"><i data-lucide="sigma" class="inline-icon"></i> Overall ' + plTitle + ' / Loss</div>'
-            +   '<div class="exp-bs-total-val" style="color:' + plColor + '">' + plSign + '&#8369;' + formatNum(Math.abs(_bsOverallPL)) + '</div>'
+            +   '<div class="exp-bs-total-label"><i data-lucide="sigma" class="inline-icon"></i> ' + PF_LABELS.totalRemaining + '</div>'
+            +   '<div class="exp-bs-total-val" style="color:' + (!ovhLoaded ? '#6b7280' : t > 0 ? '#059669' : t < 0 ? '#ef4444' : '#6b7280') + '">'
+            +     (ovhLoaded ? signed(t) : NA) + '</div>'
             + '</div>';
         if (typeof lucide !== 'undefined') lucide.createIcons();
     }
@@ -1580,11 +1566,10 @@ function _updateBudgetOverviewFolder() {
             be.textContent = s.text; be.style.background = s.bg; be.style.color = s.col; }
     };
 
-    _setDelta('expContractDeltaVal', 'expContractDeltaBadge', contractVal - clientAlloc, [
-        { text: 'Profitable', bg: '#d1fae5', col: '#065f46' },
-        { text: 'Loss',       bg: '#fee2e2', col: '#991b1b' },
-        { text: 'Break-even', bg: '#e5e7eb', col: '#374151' }
-    ]);
+    // Contract − Fund Allocated is what is left of the contract to allocate —
+    // never profit, and not "unbilled" either: Project Control has no verified billings yet.
+    const _cla = { text: PF_LABELS.contractLessAllocated, bg: '#e5e7eb', col: '#374151' };
+    _setDelta('expContractDeltaVal', 'expContractDeltaBadge', contractVal - clientAlloc, [_cla, _cla, _cla]);
 
     // ── Delta: Total Contract − Total Cost (contract variance) ──
     _setDelta('expContractVsSpentVal', 'expContractVsSpentBadge', contractVal - _totalCost, [
@@ -5874,7 +5859,10 @@ function _pcReportModel(folderId, options = {}) {
     const allocation = pcProjectAllocationRollup(rows.map(r => r.allocation), unallocatedIndirect, 0, true);
     allocation.configuredCount = rows.filter(r => r.allocation).length;
     allocation.legacyCount = rows.filter(r => r.status === 'Allocation not configured').length;
-    return { rows, totals, allocation, expenses: expenses.concat(noPeriodRows), payroll, overheadRows: options.projectId
+    // byDate: the model is windowed (a year or shorter) — its costs are counted by
+    // date and its allocations by the month raised, so a row's balance is not the
+    // billing's Fund balance and contract − allocated is not cumulative.
+    return { byDate: !!options.start, rows, totals, allocation, expenses: expenses.concat(noPeriodRows), payroll, overheadRows: options.projectId
         ? overheadRows.filter(e => periods.some(p => assignedTo(e, p))) : overheadRows };
 }
 
@@ -5906,6 +5894,13 @@ function _pcDashboardReport() {
 }
 
 function _pcReportMoney(value) { return value == null ? '' : '₱' + formatNum(value); }
+// Allocated − Spent on the Reports dashboard: on All Time it is the project's
+// Total Allocation Remaining; for a year or a shorter
+// window the costs are counted BY DATE, so it is named that way — kept apart
+// from the billing-period Fund balance (by period id). Spec 2026-11-14 §3.4.
+function _pcReportBalanceLabel() {
+    return _rptState.period === 'annual' ? PF_LABELS.totalRemaining : PF_LABELS.byDateRemaining;
+}
 function _pcReportCells(row) {
     const a = row.allocation;
     return [row.label, row.budget, row.mats, row.labor, row.overhead, row.totalSpent, row.remaining,
@@ -5913,8 +5908,13 @@ function _pcReportCells(row) {
         a ? a.indirectBudget : null, a ? a.indirectActual : null, a ? a.indirectRemaining : null,
         a ? a.targetMarginReserve : null, row.status || ''];
 }
-const _PC_REPORT_HEADERS = ['Billing Period','Fund Allocated','Materials','Labor','Overhead','Spent','Remaining',
+const _PC_REPORT_HEADERS = ['Billing Period','Fund Allocated','Materials','Labor','Overhead','Spent','Fund balance',
     'Planned Direct','Actual Direct','Direct Variance','Planned Indirect','Actual Indirect','Indirect Variance','Target Margin Reserve','Allocation Status'];
+// The balance column is a billing's Fund balance only when the report covers all
+// time; in a windowed (by-date) report it is named for what it is.
+function _pcReportHeaders(byDate) {
+    return _PC_REPORT_HEADERS.map((h, i) => i === 6 && byDate ? PF_LABELS.byDateRemaining : h);
+}
 
 function _pcReportTable(headers, rows, caption) {
     return '<div class="pc-report-scroll" role="region" aria-label="' + _mvpEsc(caption) + '" tabindex="0"><table class="pc-report-table">'
@@ -5937,7 +5937,7 @@ function _pcAllocationReportHtml(model) {
         mats:model.totals.noPeriodMaterial, totalSpent:model.totals.noPeriodMaterial,
         remaining:-model.totals.noPeriodMaterial, allocation:null, status:_pcNoPeriodStatus(model.expenses) }));
     rows.push(_pcReportCells({ ...model.totals, allocation:totalAllocation, status:model.allocation.legacyCount ? 'Allocation not configured: ' + model.allocation.legacyCount : '' }));
-    return _pcReportTable(_PC_REPORT_HEADERS, rows, 'Billing Allocation Performance')
+    return _pcReportTable(_pcReportHeaders(model.byDate), rows, 'Billing Allocation Performance')
         + '<p class="pc-report-note">Target Margin Reserve: planning only. Variance = planned minus actual. Cover Expenses are included above.</p>';
 }
 
@@ -6207,7 +6207,7 @@ function _rptRenderKPIs(model) {
         .reduce((s, f) => s + (Number(f.totalBudget) || 0), 0);
     const cards = [['Project Budget',contract], ['Fund Allocated',t.budget], ['Materials',t.mats],
         ['Labor',t.labor], ['Overhead',t.overhead], ['Total Fund Spent',t.totalSpent],
-        ['Funds Available',t.remaining], ['Cover Expenses',t.cover]];
+        [_pcReportBalanceLabel(),t.remaining], ['Cover Expenses',t.cover]];
     row.innerHTML = '<div class="rpt-grid rpt-grid-4">' + cards.map(([label, value]) =>
         '<div class="rpt-kpi-card"><div class="rpt-kpi-label">' + label + '</div><div class="rpt-kpi-val">'
         + _pcReportMoney(value) + '</div>' + (label === 'Cover Expenses'
@@ -6366,7 +6366,7 @@ function _rptRenderTable(groups, model) {
     if (!tbody) return;
     const owner = _pcIsOwner();
     const rows = owner ? groups.filter(g => g.budget || g.totalSpent).concat([model.totals]) : groups;
-    const headers = ['Period','Fund Allocated','Materials','Labor','Overhead','Spent','Remaining','Utilized'];
+    const headers = ['Period','Fund Allocated','Materials','Labor','Overhead','Spent',PF_LABELS.byDateRemaining,'Utilized'];
     const head = document.getElementById('rptSummaryHead');
     if (head) head.innerHTML = '<tr>' + (owner ? headers : ['Period']).map(h => '<th scope="col">' + h + '</th>').join('') + '</tr>';
     tbody.innerHTML = rows.map(g => '<tr><th scope="row">' + _mvpEsc(g.label) + '</th>'
@@ -6399,10 +6399,10 @@ function exportRptTable() {
     }).join(',');
     const rows = [['PERIOD SUMMARY']];
     if (_pcIsOwner()) {
-        rows.push(['Period','Fund Allocated','Materials','Labor','Overhead','Spent','Remaining','Utilized']);
+        rows.push(['Period','Fund Allocated','Materials','Labor','Overhead','Spent',PF_LABELS.byDateRemaining,'Utilized']);
         report.groups.filter(g => g.budget || g.totalSpent).concat([model.totals]).forEach(g => rows.push([
             g.label,g.budget,g.mats,g.labor,g.overhead,g.totalSpent,g.remaining,g.usedPct.toFixed(1) + '%']));
-        rows.push([], ['BILLING ALLOCATION PERFORMANCE'], _PC_REPORT_HEADERS);
+        rows.push([], ['BILLING ALLOCATION PERFORMANCE'], _pcReportHeaders(model.byDate));
         model.rows.forEach(r => rows.push(_pcReportCells(r)));
         if (model.totals.unallocatedIndirect) rows.push(_pcReportCells({ label:'Unallocated Indirect',
             overhead:model.totals.unallocatedIndirect,totalSpent:model.totals.unallocatedIndirect,
@@ -6687,22 +6687,22 @@ function _pcPrintReport(title, model, groups, options = {}) {
         const folderIds = _pcReportFolderIds(options.folderId);
         const contract = options.kind === 'full' && !options.folderId ? 0
             : expFolders.filter(f => folderIds.has(f.id)).reduce((sum,f) => sum + (Number(f.totalBudget) || 0), 0);
-        if (options.kind !== 'receipt') body += _pcReportTable(['Total Contract','Receivable Balance','Cover Expenses (included above)'],
-            [[contract,contract - t.budget,t.cover]], 'Project Summary');
+        if (options.kind !== 'receipt') body += _pcReportTable(['Total Contract',PF_LABELS.contractLessAllocated,'Cover Expenses (included above)'],
+            [[contract,model.byDate ? PF_LABELS.allTimeOnly : contract - t.budget,t.cover]], 'Project Summary');
         const isCover = options.project?.fundingType === 'president';
         const firstLabel = options.kind === 'receipt' ? (isCover ? 'Covered' : 'Received')
-            : options.kind === 'full' ? 'Total Billed (Received)' : 'Fund Allocated';
+            : options.kind === 'full' ? 'Total Billed (Fund Allocated)' : 'Fund Allocated';
         const balanceLabel = options.kind === 'receipt' && isCover ? 'Total Covered'
-            : options.kind === 'dashboard' ? 'Funds Available' : 'Net Balance';
+            : options.kind === 'dashboard' ? _pcReportBalanceLabel() : 'Net Balance';
         body += _pcReportTable([firstLabel,'Materials','Labor','Overhead','Current Fund Spent',balanceLabel],
             [[options.kind === 'receipt' && isCover ? t.totalSpent : t.budget,t.mats,t.labor,t.overhead,t.totalSpent,
                 options.kind === 'receipt' && isCover ? t.totalSpent : t.remaining]], 'Actual Costs');
         if (options.kind === 'full') body += _pcPrintFundingSummary(model);
         if (groups) {
             const status = pct => pct > 100 ? 'Over Budget' : pct > 85 ? 'Near Limit' : pct > 60 ? 'On Track' : 'Healthy';
-            body += _pcReportTable(['Period','Fund Allocated','Materials','Labor','Overhead','Spent','Remaining','Used','Status','Transactions','Workers'],
+            body += _pcReportTable(['Period','Fund Allocated','Materials','Labor','Overhead','Spent',PF_LABELS.byDateRemaining,'Used','Status','Transactions','Workers'],
                 groups.filter(g => g.budget || g.totalSpent).concat([t]).map(g => [g.label,g.budget,g.mats,g.labor,g.overhead,g.totalSpent,g.remaining,
-                    g.usedPct.toFixed(1) + '%',status(g.usedPct),String(g.txCount),String(g.workerCount)]), options.periodLabel + ' Period Breakdown');
+                    g.usedPct.toFixed(1) + '%',status(g.usedPct),String(g.txCount),String(g.workerCount)]), options.periodLabel + ' Period Breakdown · ' + PF_LABELS.byDateCaption);
             const empty = groups.filter(g => !g.budget && !g.totalSpent);
             if (empty.length) body += '<p>' + empty.length + (empty.length === 1 ? ' period' : ' periods')
                 + ' with no activity: ' + _mvpEsc(empty.map(g => g.shortLabel).join(', ')) + '</p>';
@@ -7373,8 +7373,8 @@ function mvpRenderOvFolderDetail(folderId) {
     setText('mvpOvKpiContractVal', fmt(contract));
     var cDelta1 = contract - budgetRcv;
     var cDelta2 = contract - totalSpent;
-    _ovSetDelta('mvpOvKpiContractDelta1', 'mvpOvKpiContractDelta1Badge', cDelta1,
-        cDelta1 >= 0 ? 'Profitable' : 'Loss');
+    // Contract − Fund Allocated: Contract less allocated funds, never profit.
+    _ovSetDelta('mvpOvKpiContractDelta1', 'mvpOvKpiContractDelta1Badge', cDelta1, PF_LABELS.contractLessAllocated);
     _ovSetDelta('mvpOvKpiContractDelta2', 'mvpOvKpiContractDelta2Badge', cDelta2,
         cDelta2 >= 0 ? 'Under Budget' : 'Over Budget');
     _ovSetStatusBadge('mvpOvKpiContractStatusBadge', totalOfContract);

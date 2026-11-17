@@ -15,7 +15,7 @@
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     <link rel="stylesheet" href="css/expenses-module.css">
     <link rel="stylesheet" href="css/expenses-mvp.css"> 
-    <link rel="stylesheet" href="css/dacs-portal.css?v=20260924c">
+    <link rel="stylesheet" href="css/dacs-portal.css?v=20261114b">
     <!-- Overhead Module Styles -->
     <link rel="stylesheet" href="css/overhead-module.css">
     <!-- Client Reimbursement Tracker Styles -->
@@ -1053,7 +1053,7 @@
                 <h2>Period Summary</h2>
                 <button class="rpt-export-btn" onclick="exportRptTable()"><i data-lucide="download"></i>CSV</button>
                 <div class="pc-report-scroll" role="region" aria-label="Period Summary" tabindex="0">
-                    <table class="pc-report-table"><caption>Actual Costs by Period</caption><thead id="rptSummaryHead"></thead><tbody id="rptSummaryTbody"></tbody></table>
+                    <table class="pc-report-table"><caption>Actual Costs by Period · Costs by date</caption><thead id="rptSummaryHead"></thead><tbody id="rptSummaryTbody"></tbody></table>
                 </div>
                 <div id="rptAllocationReport" data-pc-owner-only></div>
             </section>
@@ -5547,17 +5547,18 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="js/supabase-config.js?v=20261023a"></script>
 <script src="js/billing-allocation.js"></script>
+<script src="js/project-finance.js?v=20261114c"></script>
 <script src="js/booking.js"></script>
 <!-- ?v= is a cache-buster, same convention as expenses-module.js below. Bump
      it whenever a change to this file must reach an already-open browser —
      admin.js carries PRIMARY_NAV, so a stale copy silently hides new tabs. -->
 <script src="js/admin.js?v=20261018a"></script>
-<script src="js/print-utils.js"></script>
+<script src="js/print-utils.js?v=20261114c"></script>
 <script src="js/receipt-storage.js?v=20261031a"></script>
 <script src="js/expense-split-rows.js?v=20261028a"></script>
 <script src="js/expense-pending-save.js?v=20261031a"></script>
 <script src="js/linked-labor.js?v=20261108a"></script>
-<script src="js/expenses-module.js?v=20261109a"></script>
+<script src="js/expenses-module.js?v=20261114b"></script>
 <script src="js/overhead-module.js?v=20261104b"></script>
 <script src="js/reimbursement-module.js"></script>
 <script src="js/construction-module.js"></script>
@@ -5613,8 +5614,8 @@
 <script src="js/cash-advance-admin.js?v=20261020a"></script>
 <script src="js/cash-advance-forms.js?v=20261020a"></script>
 <script src="js/error-log.js"></script>
-<script src="js/ai-summary.js?v=20261013a"></script>
-<script src="js/ai-assistant.js?v=20261013a"></script>
+<script src="js/ai-summary.js?v=20261114b"></script>
+<script src="js/ai-assistant.js?v=20261114b"></script>
 
 <!-- ════════════ DACS PORTAL (Project Control) — React via CDN ════════════
      React + ReactDOM are loaded from CDN. js/portal-app.compiled.js IS the

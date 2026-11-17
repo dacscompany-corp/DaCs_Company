@@ -32,6 +32,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const A = require('../js/billing-allocation.js');
+const PF = require('../js/project-finance.js');
 
 const read = f => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 const UID = 'owner-1';
@@ -167,7 +168,7 @@ function openTab(server, role) {
     addEventListener() {}, removeEventListener() {}, dispatchEvent() {}
   };
   const context = vm.createContext({
-    console: { log() {}, warn() {}, error() {}, info() {} }, ...A, window: windowObj,
+    console: { log() {}, warn() {}, error() {}, info() {} }, ...A, ...PF, window: windowObj,
     document: { getElementById: el, querySelector: () => null, querySelectorAll: () => [], addEventListener() {},
       createElement: () => el('created-' + Math.random()), createTextNode: () => ({}), body: { style: {}, appendChild() {}, removeChild() {} },
       head: { appendChild() {} }, documentElement: { style: {} } },

@@ -1,0 +1,59 @@
+{
+  "name": "Sample Residence — 12 Nov 2026 snapshot (the ₱74,267 display)",
+  "frozenOn": "2026-11-14",
+  "source": "An anonymised copy of live records (read-only), aggregated per billing period and kind: the project name, record ids and every amount are replaced. No names.",
+  "window": { "from": "2026-11-12T12:16:14+08:00", "until": "2026-11-13T11:07:32+08:00" },
+  "today": "2026-11-12T04:16:15Z",
+  "folder": { "id": "00000000-0000-4000-8000-000000000001", "name": "Sample Residence", "totalBudget": 6600000 },
+  "boq": { "folderId": "00000000-0000-4000-8000-000000000001", "status": "draft", "updatedAt": "2026-09-07T06:14:46.774Z",
+    "costItems": [{ "subItems": [{ "lineItems": [{ "qty": 1, "materialRate": 6822056.76, "laborRate": 0, "percentCompletion": 70 }] }] }] },
+  "policy": { "directPct": 70, "indirectPct": 20, "targetMarginPct": 10 },
+  "periods": [
+    { "id": "00000000-0000-4000-8000-000000000002", "folderId": "00000000-0000-4000-8000-000000000001", "fundingType": "downpayment", "billingNumber": 1, "month": "June", "year": "2026", "monthlyBudget": 3150000 },
+    { "id": "00000000-0000-4000-8000-000000000003", "folderId": "00000000-0000-4000-8000-000000000001", "fundingType": "progress", "billingNumber": 2, "month": "August", "year": "2026", "monthlyBudget": 1056000 },
+    { "id": "00000000-0000-4000-8000-000000000004", "folderId": "00000000-0000-4000-8000-000000000001", "fundingType": "progress", "billingNumber": 3, "month": "September", "year": "2026", "monthlyBudget": 1056000 },
+    { "id": "00000000-0000-4000-8000-000000000005", "folderId": "00000000-0000-4000-8000-000000000001", "fundingType": "progress", "billingNumber": 3, "month": "October", "year": "2026", "monthlyBudget": 528000 },
+    { "id": "00000000-0000-4000-8000-000000000006", "folderId": "00000000-0000-4000-8000-000000000001", "fundingType": "mobilization", "billingNumber": null, "month": "May", "year": "2026", "monthlyBudget": 150000 }
+  ],
+  "payroll": [
+    { "projectId": "00000000-0000-4000-8000-000000000002", "laborType": "direct", "totalSalary": 851064 },
+    { "projectId": "00000000-0000-4000-8000-000000000002", "laborType": "indirect", "totalSalary": 109670.73 },
+    { "projectId": "00000000-0000-4000-8000-000000000003", "laborType": "direct", "totalSalary": 716379 },
+    { "projectId": "00000000-0000-4000-8000-000000000004", "laborType": "direct", "totalSalary": 45000 },
+    { "projectId": "00000000-0000-4000-8000-000000000005", "laborType": "direct", "totalSalary": 129000 }
+  ],
+  "expenses": [
+    { "projectId": "00000000-0000-4000-8000-000000000002", "amount": 829152, "coverExpense": false },
+    { "projectId": "00000000-0000-4000-8000-000000000002", "amount": 22950, "coverExpense": true },
+    { "projectId": "00000000-0000-4000-8000-000000000003", "amount": 900615, "coverExpense": false },
+    { "projectId": "00000000-0000-4000-8000-000000000004", "amount": 109155, "coverExpense": false },
+    { "projectId": "00000000-0000-4000-8000-000000000005", "amount": 448800, "coverExpense": false },
+    { "projectId": "00000000-0000-4000-8000-000000000005", "amount": 41862, "coverExpense": true },
+    { "projectId": "00000000-0000-4000-8000-000000000006", "amount": 14826, "coverExpense": false },
+    { "projectId": "00000000-0000-4000-8000-000000000006", "amount": 2880, "coverExpense": true },
+    { "projectId": null, "folderId": "00000000-0000-4000-8000-000000000001", "amount": 107070, "coverExpense": true }
+  ],
+  "overhead": [
+    { "folderId": "00000000-0000-4000-8000-000000000001", "scope": "project", "billingPeriodId": "00000000-0000-4000-8000-000000000003", "amount": 21649.5 },
+    { "folderId": "00000000-0000-4000-8000-000000000001", "scope": "project", "billingPeriodId": "00000000-0000-4000-8000-000000000004", "amount": 22635 },
+    { "folderId": "00000000-0000-4000-8000-000000000001", "scope": "project", "billingPeriodId": null, "amount": 173025 }
+  ],
+  "expected": {
+    "spentCents": 454573323, "laborCents": 174144300, "materialCents": 247731000, "overheadCents": 32698023, "coverCents": 17476200,
+    "legacyLabel": "Net Profit · Earned", "legacyHeroText": "₱ 74,267",
+    "earnedCents": 462000000, "boqEstimateCents": 7426677, "boqEstimateText": "₱ 74,266.77", "marginText": "1.61%",
+    "ageDays": 66, "savedText": "BOQ last saved 7 Sep 2026", "badges": ["Draft", "Stale · 66 days"],
+    "headline": { "kind": "notConfirmed", "label": "Profit not confirmed", "cents": null, "reasons": ["BOQ is Draft", "BOQ last saved 66 days ago"] },
+    "directCents": 415800000, "indirectCents": 118800000, "reserveCents": 59400000,
+    "directVarianceCents": -6075300, "indirectVarianceCents": 86101977,
+    "operatingCents": 80026677, "totalRemainingCents": 139426677,
+    "contractLessCostCents": 205426677, "contractLessAllocatedCents": 66000000,
+    "fundBalanceCents": {
+      "00000000-0000-4000-8000-000000000002": 133716327, "00000000-0000-4000-8000-000000000003": -58264350,
+      "00000000-0000-4000-8000-000000000004": 87921000, "00000000-0000-4000-8000-000000000005": -9166200,
+      "00000000-0000-4000-8000-000000000006": 13229400 },
+    "notChargedCents": 28009500,
+    "duplicates": [{ "number": 3, "periodIds": ["00000000-0000-4000-8000-000000000004", "00000000-0000-4000-8000-000000000005"],
+      "text": "Billing #3 is used by 2 periods (September 2026, October 2026) — check and renumber" }]
+  }
+}

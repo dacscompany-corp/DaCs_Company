@@ -135,9 +135,14 @@
     var o = ensureModal();
     o.classList.add('active');
 
-    var spent = (parseFloat(folder.labor) || 0) + (parseFloat(folder.material) || 0);
+    // Spent = Labor + Material + Overhead — the same Spent as Project Control.
+    var spent = (parseFloat(folder.labor) || 0) + (parseFloat(folder.material) || 0) + (parseFloat(folder.overhead) || 0);
     var remaining = parseFloat(folder.remaining);
     if (isNaN(remaining)) remaining = (parseFloat(folder.allocated) || 0) - spent;
+    // Fund Allocated − Spent includes the Target Margin Reserve. The picker card
+    // is this folder alone, so say so when it has Additional Works.
+    var remainingLabel = 'Total Allocation Remaining'
+      + (folder.additionalWorks ? ' (this folder; Additional Works not included)' : '');
 
     // Header + status badge
     o.querySelector('#aiSumTitle').innerHTML =
@@ -154,7 +159,7 @@
     statsEl.innerHTML =
       '<div class="ai-sum-stat"><div class="k">Allocated</div><div class="v">' + peso(folder.allocated) + '</div></div>' +
       '<div class="ai-sum-stat"><div class="k">Spent</div><div class="v">' + peso(spent) + '</div></div>' +
-      '<div class="ai-sum-stat"><div class="k">Remaining</div><div class="v' + (remaining < 0 ? ' neg' : '') + '">' + peso(remaining) + '</div></div>';
+      '<div class="ai-sum-stat"><div class="k">' + remainingLabel + '</div><div class="v' + (remaining < 0 ? ' neg' : '') + '">' + peso(remaining) + '</div></div>';
     statsEl.style.display = '';
 
     var bodyEl = o.querySelector('#aiSumBody');
@@ -180,7 +185,7 @@
       'Total Fund Allocated: ' + peso(folder.allocated) + '\n' +
       'Current Fund Spent: ' + peso(spent) + '\n' +
       'Cover Expenses: ' + peso(folder.coverCost) + '\n' +
-      'Remaining: ' + peso(remaining) + '\n' +
+      remainingLabel + ' (Fund Allocated − Spent; not profit): ' + peso(remaining) + '\n' +
       'Status: ' + (folder.statusLabel || 'n/a') + ' (' + (Number(folder.spentPct) || 0).toFixed(1) + '% spent)\n' +
       'Number of billing periods: ' + (folder.periodCount || 0);
 

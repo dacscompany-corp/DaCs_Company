@@ -398,11 +398,11 @@ test('Q17: each purchase says where it came from — Project Control, Purchasing
 test('Q17: search matches every word against supplier, projects, people and source', () => {
   const rows = [
     { id: 1, supplier: 'Wilcon Depot', projects: ['Barlin Residence'], warehouse: false, bought_by_name: 'Juan', recorded_by_name: 'Juan', source: 'workmate', receipt_total: 1500 },
-    { id: 2, supplier: 'Citi Hardware', projects: ['Sulit Residence', 'Prado'], warehouse: true, bought_by_name: 'Pedro', recorded_by_name: 'admin', source: 'expenses_form', receipt_total: 15750 },
+    { id: 2, supplier: 'Citi Hardware', projects: ['Sample Residence', 'Prado'], warehouse: true, bought_by_name: 'Pedro', recorded_by_name: 'admin', source: 'expenses_form', receipt_total: 15750 },
   ];
   eq(pa.searchPurchases(rows, '').map(r => r.id), [1, 2], 'empty search keeps all');
   eq(pa.searchPurchases(rows, 'barlin').map(r => r.id), [1], 'project, any case');
-  eq(pa.searchPurchases(rows, 'hardware sulit').map(r => r.id), [2], 'every word must match');
+  eq(pa.searchPurchases(rows, 'hardware sample').map(r => r.id), [2], 'every word must match');
   eq(pa.searchPurchases(rows, 'project control').map(r => r.id), [2], 'by source label');
   eq(pa.searchPurchases(rows, 'phone').map(r => r.id), [1], 'phone');
   eq(pa.searchPurchases(rows, 'warehouse').map(r => r.id), [2], 'warehouse');
@@ -432,7 +432,7 @@ test('R6: the word to type — the one project\'s first word, else VOID', () => 
 });
 test('R6: the places of a purchase (purchase view) and of an approval (review doc)', () => {
   eq(pa.placesOf({ lines: [{ destination: 'project', folder_name: 'Barlin' }, { destination: 'warehouse', folder_name: '' }] }), ['Barlin', 'Warehouse']);
-  eq(pa.placesOf({ lines: [{ where: 'Sulit · Main Contract' }, { where: 'Warehouse' }] }), ['Sulit · Main Contract', 'Warehouse']);
+  eq(pa.placesOf({ lines: [{ where: 'Sample · Main Contract' }, { where: 'Warehouse' }] }), ['Sample · Main Contract', 'Warehouse']);
   eq(pa.placesOf(null), []);
 });
 test('R6: Void asks for the word, and so does the owner\'s approval of a staff void', () => {

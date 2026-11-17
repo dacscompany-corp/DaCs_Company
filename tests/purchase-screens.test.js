@@ -14,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const A = require('../js/billing-allocation.js');
+const PF = require('../js/project-finance.js');
 const expensesSource = fs.readFileSync(path.join(__dirname, '..', 'js', 'expenses-module.js'), 'utf8');
 
 let passed = 0, failed = 0;
@@ -37,7 +38,7 @@ function harness({ rpc, collections }) {
                 onSnapshot: (next) => { next(snap((collections || {})[name] || [])); return () => {}; } };
     return q;
   };
-  const context = vm.createContext({ console: { log() {}, error() {}, warn() {} }, ...A,
+  const context = vm.createContext({ console: { log() {}, error() {}, warn() {} }, ...A, ...PF,
     window: { currentUserRole: 'owner', sbClient: { rpc: async (name, args) => rpc(name, args) },
       location: { href: 'https://example.test/admin.html', origin: 'https://example.test' } },
     document: { getElementById: el, querySelector: () => null, querySelectorAll: () => [], addEventListener() {},

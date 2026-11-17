@@ -5,7 +5,8 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const allocation = require('../js/billing-allocation.js');
+// The portal reads the allocation engine AND the finance labelling layer as globals.
+const allocation = { ...require('../js/billing-allocation.js'), ...require('../js/project-finance.js') };
 const source = fs.readFileSync(path.join(__dirname, '../js/portal-app.compiled.js'), 'utf8');
 const start = source.indexOf('const peso =');
 const end = source.indexOf('function PortalApp()');
@@ -453,6 +454,94 @@ async function test(name, fn) {
     f.api.lcConfirmOverCapMulti([{ contract: job('c1', 5000), contractId: 'c1', amount: 9000 }]);
     assert(/₱10,234 of ₱5,000 \(over by ₱5,234\)/.test(f.confirms[1]), f.confirms[1]);
   });
+  // ── Financial MVP Phase 1 (spec 2026-11-14 §3.2–3.5): what each figure IS ──
+  const fa = { id: 'fa', name: 'Alpha', totalBudget: 100000 };
+  const fb = { id: 'fb', name: 'Beta', totalBudget: 100000 };
+  const gridMonths = [{ id: 'ma', folderId: 'fa', month: 'October', year: 2026, monthlyBudget: 90000 },
+    { id: 'mb', folderId: 'fb', month: 'October', year: 2026, monthlyBudget: 100000 }];
+  const gridPay = [{ id: 'pa', projectId: 'ma', laborType: 'direct', totalSalary: 50000, paymentDate: '2026-10-12' },
+    { id: 'pb', projectId: 'mb', laborType: 'direct', totalSalary: 92000, paymentDate: '2026-10-12' }];
+  const draftBoq = { folderId: 'fa', status: 'draft', updatedAt: '2026-11-01T00:00:00Z',
+    costItems: [{ subItems: [{ lineItems: [{ qty: 1, materialRate: 1000, laborRate: 0, percentCompletion: 40 }] }] }] };
+  const grid_ = (role, folders) => harness(role).render('FoldersGrid', { folders, foldersRaw: folders,
+    monthsRaw: gridMonths, payrollRaw: gridPay, expensesRaw: [], overheadRaw: [], boqRaw: [draftBoq], onPickFolder() {} },
+    { 0: { fa: true, fb: true }, 1: 0 });
+  // The company strip, the health banner and the old card grid sit AFTER
+  // FoldersGrid's `return` (the 2026 picker redesign) — they do not render
+  // today. They are corrected anyway so they cannot come back wrong; the live
+  // picker shows no profit figure at all.
+  const grid = source.slice(source.indexOf('function FoldersGrid('), source.indexOf('function PageHead('));
+  await test('dormant company strip and health banner carry the honest labels', () => {
+    for (const label of ['Company profit estimate \\xB7 BOQ-based', 'BOQ-based estimate \\xB7 all projects', 'After company overhead',
+      'projects measured by BOQ', 'showing a loss (BOQ-based estimate, or cost above the contract)', 'with a low BOQ-based margin',
+      'PF_LABELS.totalRemaining']) assert(grid.includes(label), 'missing ' + label);
+    assert(!/"Net Profit"|"Net Loss"|Gross Profit|Company Profit \\xB7 To Date|losing money|low profit margin|_marginOf|"Remaining"/.test(grid),
+      'an old profit label survives in FoldersGrid');
+    // the low-margin rule needs a CURRENT BOQ estimate; contract − cost is never a margin
+    assert(/_lowM = cards\.filter\(\(c\) => c\.remaining >= 0 && c\.pv\.boq\.available && c\.pv\.boq\.basis\.current/.test(grid));
+  });
+  await test('owner live picker shows no profit figure and keeps the AI summary', () => {
+    const tree = grid_('owner', [fa, fb]);
+    assert(!/Profit|profit|estimate/.test(text(tree)), text(tree));
+    assert(button(tree, 'AI budget summary'));
+  });
+  await test('staff company strip and grid stay amount-free', () => {
+    const tree = grid_('staff', [fa, fb]);
+    staffSafe(tree);
+    assert(!/estimate|[Aa]llocation [Rr]emaining/.test(text(tree)), text(tree));
+  });
+  const fx = require('./fixtures/sample-residence-2026-11-12.json');
+  const sampleDrill = (role, period) => harness(role).render('BillingPeriodsDrill', { project: { id: fx.folder.id, name: 'Sample Residence' },
+    childMonths: fx.periods, payrollRaw: fx.payroll, expensesRaw: fx.expenses, overheadRaw: fx.overhead, allocationMap: {}, period });
+  const dupText = 'Billing #3 is used by 2 periods (September 2026, October 2026) — check and renumber';
+  await test('owner billing periods: fund balance per period id, both #3 periods distinct, duplicate flagged once', () => {
+    const tree = sampleDrill('owner', 'All Time');
+    const out = text(tree);
+    assert.equal(out.split(dupText).length - 1, 1, 'the duplicate note appears once: ' + out);
+    assert(out.includes('Total Allocation Remaining'), out);
+    const cards = nodes(tree).filter(n => n.props && n.props.className === 'pc-period-card');
+    const sep = cards.find(n => text(n).includes('September')), oct = cards.find(n => text(n).includes('October'));
+    assert(sep && oct && sep !== oct, 'two separate #3 cards');
+    assert(/Fund balance ₱ 879,210\.00/.test(text(sep)), text(sep));
+    assert(/Fund balance −₱ 91,662\.00/.test(text(oct)), text(oct));
+    assert(/Total Allocation Remaining ₱ 1,394,266\.77/.test(out), 'the total carries centavos: ' + out);
+    assert(!/\bRemaining\b/.test(out.replace(/Total Allocation Remaining/g, '')), out);
+  });
+  await test('billing periods show the SAME total allocation remaining as the hero, Additional Works named', () => {
+    // The hero's finance view covers the project AND its Additional Works (here
+    // ₱50,000.00 of AW cost); the cards list only this project's billings.
+    const withAw = { remaining: { totalCents: 139426677 - 5000000 } };
+    let out = text(harness('owner').render('BillingPeriodsDrill', { project: { id: fx.folder.id, name: 'Sample Residence' },
+      childMonths: fx.periods, payrollRaw: fx.payroll, expensesRaw: fx.expenses, overheadRaw: fx.overhead, allocationMap: {},
+      period: 'All Time', finance: withAw }));
+    assert(/Total Allocation Remaining ₱ 1,344,266\.77/.test(out), out);
+    assert(out.includes("includes this project's Additional Works") && out.includes('−₱ 50,000.00'), out);
+    assert(/Total Allocated ₱ 5,940,000\.00/.test(out) && /Total Spent ₱ 4,545,733\.23/.test(out), 'header figures carry centavos: ' + out);
+    out = text(sampleDrill('owner', 'All Time'));
+    assert(!out.includes('Additional Works'), 'no note without Additional Works: ' + out);
+  });
+  await test('testBillingPeriodsAllTimeOnly: cumulative balances read All Time only under every other filter', () => {
+    for (const period of ['This Month', 'Last 30 days', 'Quarter to Date', 'Year to Date']) {
+      const out = text(sampleDrill('owner', period));
+      assert(out.includes('All Time only'), period + ': ' + out);
+      assert(!/879,210|91,662|1,394,267/.test(out), period + ' shows a cumulative balance: ' + out);
+    }
+  });
+  await test('staff billing periods see the duplicate note, never a peso', () => {
+    const tree = sampleDrill('staff', 'All Time');
+    staffSafe(tree);
+    assert(text(tree).includes(dupText), text(tree));
+  });
+  await test('Additional Works: contract − cost is "Contract value minus costs", All Time only under a filter', () => {
+    const child = { id: 'aw1', name: 'Kitchen', revenue: 50000, labor: 10000, material: 0, overhead: 0, raw: { id: 'aw1' } };
+    const props = { project, onBack() {}, childFolders: [child], additionalWorksRaw: [], onOpenChild() {}, folderId: 'f1' };
+    let out = text(harness('owner').render('AdditionalWorksDrill', { ...props, period: 'All Time' }));
+    assert(out.includes('Contract value minus costs') && out.includes('₱ 40,000.00'), out);
+    assert(!/\bRemaining\b/.test(out), out);
+    out = text(harness('owner').render('AdditionalWorksDrill', { ...props, period: 'This Month' }));
+    assert(out.includes('All Time only') && !out.includes('40,000.00'), out);
+  });
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exitCode = 1;
 })();

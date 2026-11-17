@@ -421,7 +421,7 @@ console.log('\nI. Cover / president money');
   const vm = require('vm');
   const elements = {};
   let printed = '';
-  const report = vm.createContext({ ...require('../js/billing-allocation.js'),
+  const report = vm.createContext({ ...require('../js/billing-allocation.js'), ...require('../js/project-finance.js'),
     console: { log() {}, error: console.error },
     window: { currentUserRole:'owner', location:{origin:'https://example.test'},
       open:() => ({ document:{ write(html) { printed = html; }, close() {} } }) },

@@ -121,6 +121,7 @@ Also note: **`projects` means billing period**, not project. Read it that way ev
 | Budget Overview / Expenses | `expenses-module.js` (8.1k lines — the biggest) | Folders, billing periods, payroll, expenses, pakyaw labor contracts. **Add expense records a purchase through `pur_record` (`0096`)** — the server picks the billing periods (actual purchase month, earliest billing number, shortage → Cover) and adds any "track in inventory" stock once per line; rows marked *From purchase* are edited (`pur_correct`, reason required) or voided (`pur_void`) through their purchase. A project with **no billing period** gets a Cover row tied to the project (`expenses.folder_id`): Project Control, the dashboard, the folder list and folder cards (`_expNoPeriodSpent`), the Expenses folder view and every report, print and CSV count it once, as "No billing period". Deleting a project (with its Additional Works jobs), a period, or — in Project Control — an Additional Works job asks `pur_live_purchases()` first and removes nothing if one is live. Tests: `tests/purchase-server.test.js`, `tests/purchase-screens.test.js`, `npm run test:sql` |
 | Overhead | `overhead-module.js` | Company + project overhead ([OVERHEAD_MODULE.md](OVERHEAD_MODULE.md)) |
 | Billing Allocations | `billing-allocation.js` | The **shared planning engine** for `0073`, not a nav section. Pure functions (`pcValidateAllocationPolicy`, `pcAllocationAmounts`, `pcAllocationStatus`, `pcPeriodAllocationView`, `pcActualsForPeriod`, `pcProjectAllocationRollup`) loaded by `admin.html` **before** `expenses-module.js` and `portal-app.compiled.js`, and `require()`d directly by the tests. It holds no state, touches no database and knows nothing about roles — every caller (Project Control dashboard, the owner forms, the reports, print, CSV) must get its numbers from here so they cannot drift apart. **Planning only:** see §6. Owner-only at every call site; staff see no percentage and no peso |
+| Project Finance | `project-finance.js` (globals, `pf*` / `PF_LABELS`) | The shared **labelling layer** for profit and allocation figures (Financial MVP Phase 1, 2026-11-14). Pure, integer centavos, Asia/Manila dates, no database, no roles; loaded right after `billing-allocation.js` and `require()`d by the tests. Turns the totals `_projSpent` / `_projMargin` / `_folderCompletion` already produce into named figures — BOQ-based profit estimate and its basis, Profit not confirmed, Recognized Project Profit (Unavailable), Contract value minus costs, operating vs total allocation remaining, fund balances by period id, duplicate billing numbers — so the hero, cost card, billing periods, print, Budget Overview, Reports and AI payloads cannot drift. Owns no arithmetic of Spent / Earned. Tests: `tests/project-finance.test.js`, `tests/sample-regression.test.js` |
 | Reimbursement | `reimbursement-module.js` | Client Reimbursement Tracker (`0041`) — expenses the **owner/admin advanced** and whether the **client** paid them back. **Deliberately isolated:** no invoice, payment, expense, payroll or journal side effects, and no money math reads it. Prints are read-only: one record (invoice / receipt) or **Print All** — every record the filters show, grouped by project with subtotals, totals from the same `_rbTotals()` as the KPI cards. Owner-only (staff blocked in nav, switchView and RLS) |
 | Project Management | `pm-admin.js` | Construction projects, weekly bills, procurement, milestones, revolving fund |
 | Project Closeout | `termination-requests.js` | Ends a construction project — **`completed`** (work finished) or **`terminated`** (stopped early). Same final bill either way (cost-plus: actual costs + fee; `budget` is an estimate, not a price); only the status, badge and client wording differ. Writes `termination_requests`, sets the project status, auto-issues the final invoice via `invGenerateFromCloseout`, notifies the client. **Admin-initiated only** since `0042` — the client's Termination Zone and its RLS insert policy are gone. Owner-only (staff blocked in the UI) |
@@ -185,9 +186,10 @@ This is the part most likely to be "fixed" wrongly later. All of it lives in
 Labor Cost   = direct + (liability − liabilityIndirect)
 Overhead     = indirect + liabilityIndirect + overhead_expenses
 Spent        = Labor + Material + Overhead
-Earned       = % complete × contract          ← percentage-of-completion
-Gross Profit = Earned − Spent
-Net Profit   = Σ recognised project profit − company overhead (G&A)
+Earned                    = % complete × contract   ← BOQ percentage-of-completion
+BOQ-based profit estimate = Earned − Spent          (labelled by js/project-finance.js)
+Company profit estimate   = Σ recognised project estimate − company overhead (G&A)
+Recognized Project Profit = Unavailable             (no accounting source)
 ```
 
 Four invariants, each of which cost real debugging to establish:
@@ -196,9 +198,15 @@ Four invariants, each of which cost real debugging to establish:
    burden follows the worker it was paid for (a coordinator's SSS is Overhead; a mason's is Labor).
 2. **Overhead pay never draws down a pakyaw contract.** Enforced in three places — `lcPaid()`,
    both payroll save paths, and the form.
-3. **Profit is measured on EARNED revenue.** Contract-minus-cost-to-date reports a ~90% margin on
-   a job that is 10% built. Where there is no accomplishment data the figure falls back to the
-   full contract and **must be labelled "Forecast"**, never "Earned".
+3. **Profit is measured on BOQ-earned revenue, and labelled as an estimate.** Contract-minus-cost-
+   to-date reports a ~90% margin on a job that is 10% built. Earned − Spent is the **BOQ-based profit
+   estimate**: it shows its BOQ %, **BOQ last saved** and Draft / For review / Stale (> 30 Manila days)
+   / BOQ date unavailable, and leads only while the BOQ is approved and current — otherwise the
+   headline reads **"Profit not confirmed"**. With no BOQ progress there is no estimate; contract −
+   cost is **Contract value minus costs**, never profit. **Recognized Project Profit** is Unavailable
+   (no accounting source). Cumulative figures read "All Time only" under a date filter. Sample
+   Residence's ₱74,267 "Net Profit · Earned" (a Draft BOQ frozen at 70%) is the regression case in
+   `tests/fixtures/` — spec `superpowers/specs/2026-11-14-financial-management-mvp-design.md`.
 4. **Company overhead (G&A) is never charged to a job.** It is subtracted once, at company level.
    Projects with no accomplishment data recognise **zero profit** (but losses immediately).
 
@@ -221,10 +229,17 @@ asserts that by reading their source.
 Two words that are deliberately not interchangeable:
 
 - **Target Margin Reserve** — the 10% envelope. Planning only. Always labelled as such.
-- **Earned / Forecast Profit** — actual `Earned − Spent`, under the rules above. Unchanged.
+- **BOQ-based profit estimate** — `Earned − Spent`, under the rules above. Arithmetic unchanged;
+  labelled with its BOQ %, **BOQ last saved** and Draft / For review / Stale warnings (Financial MVP
+  Phase 1, 2026-11-14).
 
-The dashboard shows the variance between them only when profit is *earned*; on a Forecast project
-`targetMarginVariance` is `null`, because comparing a plan against a placeholder is not a finding.
+The dashboard shows the variance between them only against a **current** BOQ-based estimate; for a
+draft, stale or missing estimate `targetMarginVariance` is `null`, because comparing a plan against
+a placeholder is not a finding. Fund Allocated − Spent is **Total Allocation Remaining** (the
+reserve is included); direct + indirect − Spent is **Operating allocation remaining** (owner-only, Incomplete
+while a funded client period has no snapshot); contract − Fund Allocated is **Contract less allocated
+funds**. A billing's **Fund balance** is its Fund Allocated less the cost charged to it, matched by
+period id; costs with no billing period are "Not charged to a billing period" and still Spent.
 A period with no snapshot (created before `0073`) reads **"Allocation not configured"** and is
 counted, never guessed at. A **cover** (`president`) period has no allocation at all — its costs
 still land in Labor / Material / Overhead exactly as before.

@@ -48,7 +48,8 @@ jobs:
       - name: Syntax check every JS file
         run: |
           fail=0
-          for f in js/*.js tests/*.js service-worker.js; do
+          shopt -s nullglob   # a folder with no .js yet is skipped, not checked as a literal name
+          for f in js/*.js tests/*.js tests/helpers/*.js tools/finance/*.js service-worker.js; do
             if ! node --check "$f"; then
               echo "::error file=$f::JavaScript syntax error"
               fail=1
